@@ -44,6 +44,31 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
+- **The 0.7 round's files were closed out.** *(Documentation only — no package changed.)* Four entries
+  sat in forward-only files with a `SHIPPED` banner on them, which reads as late rather than done:
+  RM126 and RM71 in `ROADMAP_0_7.md`, RM133 and RM134 in ROADMAP.md. All four moved to
+  [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md), so the round's twelve are now in one place.
+
+  **`ROADMAP_0_7.md` closed with them, and the succession is the point rather than the tidying.** The
+  minor-deferral file is named for the release that will decide its contents, so a cut closes one and
+  opens the next: the round is in [history/ROADMAP_0_7.md](history/ROADMAP_0_7.md) with the seven
+  entries that shipped or closed, and the ten still waiting — RM122, RM23, RM16, RM28, RM56, RM65,
+  RM66, RM67, RM68, RM84 — became [ROADMAP_0_8.md](ROADMAP_0_8.md), unchanged but for the file they sit
+  in. `PROPOSAL_0_7.md` stays beside the other five concluded threads in `docs/proposals/` and is
+  marked a record rather than a plan; it no longer wins over anything, because everything it decided
+  has landed.
+
+  Every inbound link was retargeted **by item rather than by path** — a link to a deferral that moved
+  now resolves in `ROADMAP_0_8.md`, one to an entry that shipped resolves in `ROADMAP_HISTORY.md`, and
+  one to the round itself resolves in `history/`. Verified by `test_doc_links.py`, which is the
+  authority here rather than a fresh sweep: it exempts a consumer's byte-frozen prose, and **three
+  links in an archived report were reverted after being retargeted** — including the `ROADMAP.md#rm89`
+  in S35 that the exemption test asserts on, which records where RM89 lived on the day it was written
+  and whose current pointer is in the reply above it. Our own replies in that file *are* ours to
+  correct and were. Three stale counters in ROADMAP.md were fixed in passing, including the *Active
+  items* enumeration, blind for the third time — it read *not one of them is a decision* through the
+  three decisions filed beneath it.
+
 - **RM139 — the release gate could not tell a broken compile from a spec that outgrew the old
   compiler.** *(`just-dna-format` + `just-dna-compiler`.)* Filed by running RM126's own gate for real
   at this cut, where it refused the release over `reference_examples/cyp2c9_warfarin_grch37/`: RM70
@@ -879,7 +904,7 @@ would have silently removed it, so it was promoted to a numbered principle inste
 
 **[RM127](ROADMAP_HISTORY.md#rm127--a-corrected-derivation-has-no-release-class-and-the-version-number-is-the-wrong-place-to-carry-one)
 is closed** — filed, rewritten and answered inside one pass.
-**[RM126](ROADMAP_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)
+**[RM126](ROADMAP_HISTORY.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)
 moves to 0.7 as owed rather than deferred**: the amendment obliges a release to declare its
 corrections, and that channel does not exist yet, so the charter currently names a surface that is not
 there. Two axes — `output_differs` measured by a previous-tag sweep, correction-versus-addition
@@ -905,7 +930,7 @@ sixteen changed a published, indexed manifest field with *both* hashes byte-iden
 went `genes: []` → `["APOE"]` at the same `artifact.digest` and the same `content_signature`.
 (`stats.genes` moved on seven modules; an earlier draft of this entry said eight.) That is precisely why nothing can see this — a digest comparison, a
 signature comparison and `revalidate` are each correct to report no change while an indexed field goes
-stale. **[RM126](ROADMAP_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)**
+stale. **[RM126](ROADMAP_HISTORY.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)**
 is the missing third axis, asked for as an interval-keyed declaration with the axes separated,
 explicitly not a `should_rebuild` verdict, and with unknown-interval as a *state* rather than an empty
 result. The guard it needs is a measurement rather than a hand-kept map, and the sweep above is its
@@ -1156,7 +1181,7 @@ than record a zero.*
   The six unscoped columns are checked claims — RM43 puts resolution on the positional kinds, RM47 makes
   a bin a second citation site — and scoping either from the checker-name strings would have suppressed
   a *true* advisory.
-- **[RM122](ROADMAP_0_7.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it)
+- **[RM122](ROADMAP_0_8.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it)
   — the binning family is now specified for consumers, and says so.** [SCHEMAS.md](SCHEMAS.md) gains the
   normative **measure lookup** beside the genotype join contract: scope to the group, select the row whose
   inclusive range contains the value, greatest `measure_min` on a shared endpoint, compare in float32
@@ -1166,7 +1191,7 @@ than record a zero.*
   places and both count rows. The authoring skill now tells an author to write what the bins mean into
   the README. RM122 is open for the question they did not ask — whether the rule should also be a public
   function — which waits on a consumer to fix the signature against.
-- **[RM124](ROADMAP_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it)
+- **[RM124](history/ROADMAP_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it)
   — an authored overlay table, filed for 0.7.** RM83 named two exits from *nothing records that a row was
   overridden*; the reporter **built the first one** — a non-destructive capture/delete/re-derive/reapply
   wrapper — and it stops exactly where RM83 predicted. RM124 is the second exit with their shape, the tier
@@ -1310,7 +1335,7 @@ that registry's own answer to the question RM86 had left open: **a `reviews` row
 `authorship` entry when the record must travel inside the module or be signed; both when both matter** —
 so *visible downstream* deliberately does not become *bump a version for every review*.
 
-**[RM86](ROADMAP_0_7.md#rm86--a-review-pass-is-legal-at-the-gate-refused-by-the-pre-flight-and-invisible-once-published)
+**[RM86](history/ROADMAP_0_7.md#rm86--a-review-pass-is-legal-at-the-gate-refused-by-the-pre-flight-and-invisible-once-published)
 is closed** in place, with per-finding dispositions; its own status line ("waits on their answer to S12")
 was stale too, since that answer arrived in their 0.16.0. [RM_TOC.md](RM_TOC.md) carries the same, and
 the entry's `../just-dna-marketplace` pointer now names `just-dna-registry` — the former is a symlink to
@@ -2491,7 +2516,8 @@ Suite 2262 → 2264.
 ledger, [DOGFOOD_0_6_FINDINGS.md](probes/DOGFOOD_0_6_FINDINGS.md), whose own header said fixing was a separate
 round. This is that round: twelve parallel units in isolated worktrees, one finding or group each, every
 one exercised against a real module rather than only the suite. Ten `fix` findings landed, five
-`surface` ones became **RM68–RM72** in [ROADMAP_0_7.md](ROADMAP_0_7.md), and the work turned up **nine
+`surface` ones became **RM68–RM72** in `ROADMAP_0_7.md` ([now closed](history/ROADMAP_0_7.md); what is
+still waiting moved to [ROADMAP_0_8.md](ROADMAP_0_8.md)), and the work turned up **nine
 new findings** which are filed in the same ledger as Round 2 rather than in a new file.
 
 **Nothing in the corpus moved except where a new column made it legal.** All sixteen reference examples

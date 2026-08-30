@@ -22,13 +22,15 @@ deferral is filed against the release that will decide it:
   a shape that was rejected. The proposal also carries RM53–RM67, from
   [VCF_4_4_AUDIT.md](probes/VCF_4_4_AUDIT.md), which are not repeated here.
 - **[PROPOSAL_0_6_PT2.md](proposals/PROPOSAL_0_6_PT2.md)** — **the second 0.6 design round, decided 2026-08-16.**
-  Everything filed *behind* the first round accumulated in ROADMAP_0_7 because that was the next release
+  Everything filed *behind* the first round accumulated in the minor-deferral file because that was the
+  next release
   at the time; PT2 re-asked which release each belonged to now that 0.6 is uncut, and took five back:
   RM55's fix, RM72, RM82, RM84 and RM87. It is authoritative for those five, and for three of them the
   probe overturned what the roadmap entry says.
-- **[ROADMAP_0_7.md](ROADMAP_0_7.md)** — items legal in a minor, each waiting on a design question, a
-  corpus or a caller. RM10 closed there, folded into RM28. **Five of its entries are now records rather
-  than decisions** — see the line above. **Read the membership rule in its header, not a list here**:
+- **[ROADMAP_0_8.md](ROADMAP_0_8.md)** — items legal in a minor, each waiting on a design question, a
+  corpus or a caller. RM10 closed there, folded into RM28. **It succeeded `ROADMAP_0_7.md` at the 0.7
+  cut** — that round is closed in [history/](history/ROADMAP_0_7.md), which keeps four of the five
+  records the line above names; only RM84 is still waiting and still here. **Read the membership rule in its header, not a list here**:
   these two bullets carried per-item enumerations until 2026-08-27 and both had gone stale, which is
   what let RM69 sit in the 0.7 file gated on a 1.0 item without anyone noticing.
   [RM_TOC.md](RM_TOC.md) is the complete list, and it is the only one.
@@ -39,9 +41,10 @@ deferral is filed against the release that will decide it:
 Code comments citing "ROADMAP item N" / "ROADMAP 0.3 item 5b" are historical breadcrumbs — follow them
 to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 
-**Status:** **0.7.0 is being cut.** The twelve items `PROPOSAL_0_7.md` decided have all landed on the
-`0.7` branch; the bump, the release record and the tag are the remaining steps, so all three
-`pyproject.toml` files still read `0.6.6` as this is written and work *does* sit on top of `v0.6.6`.
+**Status:** **0.7.0 is bumped and not tagged.** The twelve items `PROPOSAL_0_7.md` decided have all
+landed on the `0.7` branch, the release record is measured, and the three `pyproject.toml` files read
+`0.7.0` since 2026-08-31; **the tag is the one remaining step and it is the maintainer's**, so work
+still sits on top of `v0.6.6` as far as git is concerned.
 The last cut release is **0.6.6, tagged `v0.6.6`** (2026-08-21) — It carries **nine patch fixes**: the 2026-08-19
 doc-audit round (RM104–RM107, RM109, RM111), the two shipped items of the S57–S60 batch (RM121, RM123),
 and S61's lookup fix (RM125). RM122 and RM124 were the two of that batch not in it; RM124 has
@@ -175,17 +178,20 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Not one of them is a decision** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, which is why the paragraph under it says to count off the sections rather than off this sentence):
+**Seven, and four of them are not decisions** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a decision* through the three that are, which is why the paragraph under it says to count off the sections rather than off this sentence). The four whose shape is settled:
 [RM103](#rm103--a-version-with-no-digits-coerces-to-000-which-is-a-real-version-nobody-wrote)
 (the manifest half only),
 [RM108](#rm108--a-clingen-re-curation-appends-a-second-row-and-nothing-marks-the-superseded-one),
 [RM110](#rm110--constraint_flags-has-two-producers-with-two-encodings-and-the-column-is-inside-the-fact-set)
 and
 [RM117](#rm117--an-outrank-record-exists-and-no-check-reads-it-and-what-a-check-should-do-is-undecided)
-(the observability half only) — all minors, all with the release undecided, all with their shape
-settled and nothing left in them but the typing. **Count them off the sections, not off the
-sentence**: this line said *three* for as long as it took to notice that a narrowed item is still an
-item, which is the same arithmetic failure recorded two paragraphs down.
+(the observability half only) — all minors, all with the release undecided, all with nothing left in
+them but the typing. **The other three are decisions and say so**: RM136 and RM137 from the RM124
+audit, RM138 from the RM131 review, each carrying its candidate repairs and why each one fails.
+**Count them off the sections, not off the sentence**: this line said *three* for as long as it took
+to notice that a narrowed item is still an item, and *not one of them is a decision* for as long as it
+took three decisions to be filed beneath it — the same arithmetic failure recorded two paragraphs
+down, twice more.
 
 **The release-class token in a status line is a fixed field, not prose — a tool reads it.** An open
 item's `**Status**` reads `open —` and then, immediately and in bold, `a minor, release undecided`
@@ -200,7 +206,8 @@ number that then shipped.
 
 **The 2026-08-21 decision round is what emptied the other half.** Six items stood here, every one of
 them a decision rather than a missing line of code, and one pass answered all six: **RM102** closed
-outright, **RM122** parked on demand and moved to [ROADMAP_0_7.md](ROADMAP_0_7.md), **RM117** narrowed
+outright, **RM122** parked on demand and moved to the minor-deferral file ([ROADMAP_0_8.md](ROADMAP_0_8.md) since
+the 0.7 cut), **RM117** narrowed
 to the half that costs nobody a decision, and **RM103** split — the manifest half stays here, the
 refusal is a tightening and moved to [§ The 1.0 cleanup](#the-10-cleanup-candidate-tracker). The
 reasoning is in
@@ -226,7 +233,7 @@ with their rationale and with the five places the eight filings turned out to un
 there. **An empty list here is not an all-clear** — it means nothing is *filed*, and this file has read
 empty twice before while carrying real work one heading down. The live consumer inbox
 ([CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md)) is the other half of that question, and
-[ROADMAP_0_7.md](ROADMAP_0_7.md) / [ROADMAP_1_0.md](ROADMAP_1_0.md) hold the deferred items.
+[ROADMAP_0_8.md](ROADMAP_0_8.md) / [ROADMAP_1_0.md](ROADMAP_1_0.md) hold the deferred items.
 Every one of them broke a rule this repo had already written down — which is the finding worth keeping
 out of the item entries and stating once: **the gotcha book is not the thing that catches a
 regression.** In four of the eight the file carrying the violation also carried the rule, sometimes in
@@ -252,7 +259,7 @@ several of these grew from — closed on 2026-08-16, both halves. What remains o
 blocker, in [ROADMAP_1_0.md](ROADMAP_1_0.md). Everything that was open on the
 `0.6` branch *before* that round was built in the 0.6 batch and moved to
 [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) with its rationale; what was deferred moved to the roadmap of
-the release that will decide it — [ROADMAP_0_7.md](ROADMAP_0_7.md) (RM16, RM23, RM28, the deferred
+the release that will decide it — [ROADMAP_0_8.md](ROADMAP_0_8.md) (RM16, RM23, RM28, the deferred
 halves of RM55, RM56, RM65, plus RM66 and RM67, and the dogfooding items RM68–RM72) and
 [ROADMAP_1_0.md](ROADMAP_1_0.md) (RM15, RM52, RM55's removal half). *That sentence records the
 2026-08-13 split and is not a current inventory — RM69 has since moved to the 1.0 file, and five of the
@@ -420,7 +427,7 @@ capture half the reporter is building has a place to write. Neither identity mov
 The proposal was that a filled record change the severity of a source-mismatch — WARNING today, INFO
 where a record names the column. It is closed rather than deferred, on the three objections below and
 on one that outranks them: **the 0.7 authored-overlay work supersedes the question.**
-[RM124](ROADMAP_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it)
+[RM124](history/ROADMAP_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it)
 carries it as its own open question 2 — `outranks` and an overlay are both an authored value beating a
 source with prose attached, the split between them is *exactly the kind of line that erodes*, and that
 entry says outright to decide whether one record serves both **before either grows a second field**.
@@ -463,163 +470,6 @@ it is closed rather than parked:
 **Do not answer this by parsing the prose.** The field is freeform because the judgement is not
 formalizable — a grading pyramid exists, but whether a retraction outranks an archive call is a
 natural-language question. Presence is the bit a check may read.
-
-## RM133 — a card subtitle has no amendable home, and the binding is not where that gets fixed
-
-**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm133--a-card-subtitle-has-no-amendable-home) on 2026-08-28 — BUILDS in 0.7, on the authored layer at zero cost.** `short_description` joins the registry-owned family as a **separate** frozenset beside `IDENTITY_AUTHORITY_KEYS`, stripped by the same function, so the stored bytes are untouched and the closure stands; the ~120-character calibration ships as a constant rather than being guessed at downstream.
-
-**Severity** low-medium · **Status** ✅ **SHIPPED in 0.7** (2026-08-28) — the binding question it
-arrived with is **answered and closed** · **Owner** format (+ registry, for the half that is theirs) ·
-**Motivating case** S64 (just-module-creator) in CONSUMER_SUGGESTIONS_HISTORY.md
-
-Measured by the reporter: editing `module.description` from 44 words to 11 moves **no**
-`content_signature`, **no** `artifact.digest`, **no** fact signature — and drops the closure, because
-`manifest.inputs` covers the raw bytes of `module_spec.yaml`. `README.md`, by a wide margin the longer
-prose, is outside `inputs` and freely amendable. The shortest fixable prose in the system was the one
-that could not be fixed.
-
-**The binding stays as it is, and the reason is the partition, not the cost.** The ask was to split it
-along the line `content_signature` already draws. That line is stated in `integrity.py` and excludes
-**name, version and namespace** alongside title and colour — so a binding drawn there makes a closure
-**transferable across a rename**: a module closed and signed by a named reviewer keeps its attestation
-after its identity is changed. `content_signature` excludes those *so a registry strip does not move
-content identity*, which is right for a content-dedup key and exactly wrong for an attestation. The two
-hashes cannot share a partition because they answer opposite questions about the same fields. **Do not
-re-propose this.**
-
-The reporter's narrower six-field version (`title`/`description`/`report_title`/`icon`/`icon_set`/
-`color`) does **not** carry that attack and is recorded as the better form of the idea. It inherits the
-cost they named themselves — hashing a *parse* of the yaml, and so every canonicalization question
-`content_signature` answers, with two hashes able to disagree about what counts as display. RM82 is the
-precedent that prices it: the last change to the binding turned on being *a byte transform needing no
-loader, no parse and no schema knowledge*, and refused BOM/whitespace/final-newline because each
-*"makes the binding more content-ish without making it content"*. A field-aware split crosses that line
-on purpose.
-
-**What the binding buys, since the reporter asked and could not construct it:** it is the *reviewer's*
-claim rather than the artifact's. The other two hashes answer *is this the same data* and *are these
-the same bytes*; this one answers *is this the same document a named person signed off*. A card
-subtitle is a claim about what the rows mean, so excluding it would make the attestation cover less
-than the reviewer actually read.
-
-**The route that actually unblocks it, and it is the item.** The framing *"the binding overrides the
-registry's rule from a layer below"* assumes an amend must **rewrite the stored `module_spec.yaml`**.
-It need not: `normalize.IDENTITY_AUTHORITY_KEYS` (`namespace`, `owner`, `canonical_id`) is the standing
-precedent for **registry-owned** metadata that sits beside the module rather than inside it, with
-`strip_authority_keys` handing the spec to our validator without them. A registry-owned display
-override leaves the stored bytes untouched, so `manifest.inputs` still matches, `verify_manifest` still
-passes and the closure stands. **So the registry's `amend_display` is not gated on this item** — it is
-gated on whether the amended value is registry-owned or a spec rewrite.
-
-**What is left to design: where a bounded `short_description` lives so that it lands amendable.** Not
-on `ModuleInfo` — under the answer above every field in `module_spec.yaml` is on the un-amendable side,
-so putting it there reproduces the defect in a new place, which is the reporter's own objection and it
-is correct. Their argument for why a `max_length` is legitimate on a **new** field where it is not on
-`description` holds and is why this is a real item: a field that exists to fit a fixed layout is
-*specified* by that layout, it refuses nothing anyone has written, and absent it everything behaves as
-today. Calibration from the live catalog: ~**120 characters**, against a measured 71 (comfortable) and
-467 (the case that prompted it).
-
-**Not in scope**: render-time truncation or folding, which hides prose an author chose to write and
-leaves the spec as wrong; and anything retroactive to the seven published modules, which met every
-requirement that existed.
-
-## RM134 — PubMind as a literature-derived annotation authority, and a ClinVar concordance check
-
-**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check) on 2026-08-28 — BUILDS in 0.7, pulled in after the other eleven were decided and reviewed against them.** Eight corrections, two of which were defects that would have shipped: **the concordance record is shared with RM130 and RM130's shape changes because of it** (`ClinSigConflict` names its authority in a *field*, so a second authority would have cost a key change or a retype — major-only); and **one normalizer, not two, after two fixes** — `_normalize_clin_sig`'s map keys are underscored while PubMind's tokens are spaced, so `Uncertain significance` and `Conflicting` both fall to `other` today and the check would manufacture a disagreement on PubMind's largest disagreeing class. **A maintainer stress test at five authorities failed the drafted vocabulary**: `pubmind_only`/`clinvar_only` name the authority inside the member, because one field carried two axes. Split into `authority_concordance` and `authored_position`, five members each at any N. **Nothing resolves a split** — E+A agreeing against B/C/D needs a weighting model this repo has refused to invent three times — so the precedence list is recorded as methodology and computed with by nothing. Licensing governs what a module may *do* with the values, not whether the machinery exists: unknown terms warn and never gate, and publishing such a module is RM27's axis.
-
-**Severity** low-medium · **Status** ✅ **SHIPPED in 0.7** — all four sections (§ A the snapshot and
-the shared normalizer, § B the N-authority check, § C `draft-panel --source pubmind`, § D the hint)
-· **Owner** enricher · **Motivating case** the PubMind paper
-(doi:10.1038/s41467-026-76834-4, 20 August 2026), and a user direction on 2026-08-28 to design both a
-ClinVar-shaped derived table and a ClinVar concordance check · **Full design**
-[PUBMIND_ASSESSMENT.md](PUBMIND_ASSESSMENT.md)
-
-PubMind extracts variant–disease–pathogenicity associations from 41.7 M PubMed abstracts and 5.4 M PMC
-full texts with LLaMA-3.3-70B behind a fine-tuned BERT triage stage. It is **a source, not a
-competitor**: its own discussion calls it *"a literature-grounded complement to human curated
-databases"*, and the description holds one layer further down — it produces assertions and stops
-exactly where we start, at identity, integrity, licensing and the round trip. The only contested
-surface is its pitch to institutions wanting their own interpretation database, which is our module
-author's use case; what it hands them is a SQLite file behind a Flask app.
-
-**What is reachable, measured against the bytes rather than the paper.** The web API takes `gene`,
-MONDO and PMID/PMCID only — an rsID query is refused — and returns aggregate counts, never a record,
-which the response says outright. So the single per-variant channel is the coordinate table ANNOVAR
-redistributes as `hg38_pubmind_db` (2026-08-24, 6.5 MB gzipped, 909,224 rows: `PVID`,
-`pathogenicity_sum`, `paper_level_pathogenicity_score`, `confidence` 0–3). Its coordinates are
-**VCF-style despite the ANNOVAR packaging** — no `-` alleles anywhere, deletions carry the anchor base
-— so it joins our `chrom`/`start`/`ref`/`alts` with no translation. Whether the indels are
-left-normalized is not established.
-
-**It is much smaller than 909,224.** 439,388 rows (48 %) are **enumerated codon alternatives, not
-observed variants**: where only a protein change was recovered from text, every codon encoding that
-amino acid is written out, and 439,383 of those triplets need two or three simultaneous base changes
-to reach the reported protein — which is a statement about the protein, not a position anyone can
-genotype.
-Decomposing the single-base codons leaves **342,209 distinct `chrom:start:ref:alt` keys over 305,935
-loci** as the honest joinable layer. 523 rows have `Ref == Alt`.
-
-**Consolidation is on extracted text, never on a coordinate**, so PubMind has record identity where we
-have variant identity: 68,744 coordinate keys (8.4 %) carry more than one PVID, worst case 35. At
-chr6:26092913 G>A (HFE C282Y) eight PVIDs disagree four ways, and one of them — `PVID926871`, verdict
-**Benign** — pairs `rs1800562` with gene *TMPRSS6*, a chromosome 22 gene on a chromosome 6 variant.
-`_gene_locus_conflicts` catches that shape today (`@gene-locus-relationship`).
-
-**Worth on our own corpus**: 173 of 423 GRCh38 `reference_examples` loci matched (40.9 %), 190 of 589
-authored ALTs exactly (32.3 %), and where both sides state a verdict they agree on 83 of 134 (62 %),
-every disagreement running our-pathogenic vs their-uncertain-or-benign. That profile — real breadth,
-low confidence — is a **cross-check source, not a fact source**.
-
-**The design, directed 2026-08-28, is four sections.** An earlier draft of this entry stopped at a
-report-only check and recorded the rest as blocked; that framing is overtaken, and the licence
-constraint moves from *reason not to design* to *precondition on shipping*.
-
-**A. `pubmind build` / `pubmind publish`**, a sub-app beside `clinvar`, mirroring `clinvar_build.py`:
-polars builder, fixed column order for a byte-identical rebuild (P7), one parquet plus `release.json`
-through `locations`. Schema follows `_empty_schema()`'s split, except **no column is a resolver link** —
-"authority" here means an authoritative *annotation* source the way ClinVar is one, never
-`resolution.csv`'s `authority` (`@source-vs-authority`), because PubMind's coordinates are PyEnsembl
-back-mappings of extracted text. `pathogenicity_sum` maps into `VALID_CLIN_SIG` with the composite kept
-verbatim in `pubmind_sig_raw`, the `clin_sig_raw` precedent. Every normalization drop is **counted into
-`release.json`** rather than silently applied (`@dont-discard-computed`): 160,090 codon rows decomposed,
-439,388 enumerations and 523 `Ref == Alt` rows dropped, 20,131 indels kept but stamped, and PVID
-fan-out kept as separate rows because collapsing it would pick a winner by an ordering nobody defined.
-**`publish` refuses**, on the PharmVar precedent (`@gated-source-caches`) — a bulk file under terms we
-cannot establish is not one we may pass on, and the command exists and refuses rather than being
-absent, which would read as an oversight somebody helpfully fixes.
-
-**B. A three-way check, module ↔ ClinVar ↔ PubMind**, beside the existing ClinVar `clin_sig` check
-rather than replacing it. Seven outcomes — `concordant`, `authored_dissents`, **`authorities_differ`**
-(the case nothing today can report), `pubmind_only`, `clinvar_only`, `neither`, `unchecked` — combined
-under Kleene, with unknown withheld and never negated. `ClinSigConflict.opposed` already draws the
-severity line (opposed vs merely different) and is reused rather than re-invented. Warning-tier in both
-modes, never escalating (`@clinsig-never-escalates`), and `authorities_differ` is not a module defect at
-all. Corpus-wide concordance is stamped into `release.json` **at build time only** — our own
-reproduction of their 10.6 % / >80 % claims against our denominator — because a message embedding a
-count that runs twice publishes two numbers (`@no-rerun-with-counts`).
-
-**C. Drafting**, through `--source pubmind` on the existing `draft-panel` rather than a new command,
-since it writes the same tables from the same gene argument and a twin would duplicate the genotype
-worklist, placeholder guard and dedup pass. `--min-confidence` is the `min_review_stars` analogue;
-identity is coordinate-whole or nothing (`@identity-whole-or-none`), most PubMind rows carrying no
-rsID. **The self-agreement trap has an existing answer**: a module drafted from PubMind and then checked
-against PubMind agrees with itself, so `pubmind` joins `DRAFT_PROJECTIONS` projected onto `clin_sig`
-(`@draft-digest`) — raw CSV cells at draft time, and the skip a conjunction of release **and** digest.
-The ClinVar half of B is unaffected, which is why the three-way shape earns its keep.
-
-**D. The hint surface**, unchanged and cheapest: surface verdict, confidence, paper count and PMIDs
-beside the cell, and never pre-fill `clin_sig` (`@hint-redundancy-bearing`) — the same defect
-`@draft-digest` solves one layer down, without a digest to rescue it.
-
-**The gate is one unanswered question, and asking is the unblock action.** A and D are buildable now;
-B and C acquire and carry values. The ANNOVAR-distributed table publishes **no data terms** —
-`LICENSE.md` covers the software (academic, non-commercial), the paper is CC BY-NC-ND, the table itself
-says nothing, and unknown is not permissive (`@no-named-licence`). Ask WGLab and CHOP's Office of
-Technology Transfer in writing; it will not resolve itself by the file continuing to download without
-a key. Separately, RM27 still owes the redistribution axis (`@redistribution-ungated`) — a gate on
-*publishing a module that carries such bytes*, not on building the snapshot or running the check
-locally, and conflating the two is what stalled this area in the first draft.
 
 ## RM136 — `enrich` re-reads the derived file, so an overlay correction is invisible to the checks
 
@@ -1751,7 +1601,8 @@ it fires correctly on all ten.
   just like it decided and written down.
 
 **Everything above is a note, not a request, and we are not tracking any of it.** Where an entry is
-already covered by an item in `PROPOSAL_0_6_PT2` or `ROADMAP_0_7` that we have not read closely enough,
+already covered by an item in `PROPOSAL_0_6_PT2` or the minor-deferral file that we have not read
+closely enough,
 the existing item wins.
 
 ### Disposition of the note above — every finding, 2026-08-24

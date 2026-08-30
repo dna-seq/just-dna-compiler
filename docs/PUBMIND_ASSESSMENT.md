@@ -7,7 +7,7 @@ measured and read — and is not rewritten to match the decisions; where a decis
 below, an inline note says so and names it. Three such notes exist: the significance mapping, the
 `clin_sig` column names, and the concordance outcome table. Written 2026-08-28 against the paper's
 accepted version and against the database's own bytes, both probed the same day. The open item is
-[RM134](ROADMAP.md#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check).
+[RM134](ROADMAP_HISTORY.md#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check).
 
 PubMind (Wang & Wang, *Nat Commun*, 20 August 2026, doi:10.1038/s41467-026-76834-4) runs a fine-tuned
 DistilBERT triage stage over 41.7 M PubMed abstracts and 5.4 M PMC full texts, hands the surviving

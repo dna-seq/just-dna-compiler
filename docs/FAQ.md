@@ -308,7 +308,7 @@ identity. `content_signature` excludes them so a registry strip does not move *c
 is correct for a dedup key and exactly wrong for an attestation. The binding answers *is this the same
 document a named person signed off*, which is why it is coarse. The fix for an already-published
 subtitle is registry-owned metadata stored beside the module (the `IDENTITY_AUTHORITY_KEYS` shape), not
-a smaller binding. → [ROADMAP § RM133](ROADMAP.md#rm133--a-card-subtitle-has-no-amendable-home-and-the-binding-is-not-where-that-gets-fixed).
+a smaller binding. → [ROADMAP § RM133](ROADMAP_HISTORY.md#rm133--a-card-subtitle-has-no-amendable-home-and-the-binding-is-not-where-that-gets-fixed).
 
 **Why does the binding cover only the authored files and not the sidecars?**
 Because the derived sidecars carry a `fetched_at` per row, so binding to them would perish the

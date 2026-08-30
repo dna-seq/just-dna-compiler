@@ -28,8 +28,9 @@ gotcha book: it is loaded into every session and has a size ceiling.
 
 **`docs/` root holds only what is still live.** Five subfolders hold the rest, and nothing in them is
 edited as routine work: `docs/history/` (the closed record — the pre-0.6 halves of the three history
-files, plus the round-2 consumer thread), `docs/proposals/` (the `PROPOSAL_*` design threads — five
-concluded, plus `PROPOSAL_0_7` which is live and wins over the roadmap files until its items land), `docs/probes/` (the dogfood and VCF audit rounds), `docs/audit/` (the tier
+files, the round-2 consumer thread, and `ROADMAP_0_7.md`, the 0.7 deferral round closed at that cut),
+`docs/proposals/` (the `PROPOSAL_*` design threads, **all six concluded** — a live one wins over the
+roadmap files until its items land, and `PROPOSAL_0_7` stopped being live when the twelfth landed), `docs/probes/` (the dogfood and VCF audit rounds), `docs/audit/` (the tier
 references re-derived from the code on 2026-08-18 — **evidence, never contract**; the maintained
 reference is the one in `docs/` root), `docs/vendor/` (two upstream files kept for reference,
 PharmVar's OpenAPI document and its licence text).
@@ -42,7 +43,7 @@ PharmVar's OpenAPI document and its licence text).
 | [RM_TOC.md](docs/RM_TOC.md) | where any `RMn` lives, status included — the complete list | `grep -n 'RM47' docs/RM_TOC.md` |
 | [ROADMAP.md](docs/ROADMAP.md) | open items, the idea-book, the reserved-namespace and 1.0-cleanup trackers | `grep -n '^## RM' docs/ROADMAP.md` |
 | [ROADMAP_HISTORY.md](docs/ROADMAP_HISTORY.md) | shipped items with their rationale, 0.6 onward. Pre-0.6 is in [history/](docs/history/ROADMAP_HISTORY_PRE_0_6.md) — **use RM_TOC rather than guessing the half** | `grep -rn '^## RM' docs/ROADMAP_HISTORY.md docs/history/` |
-| [ROADMAP_0_7.md](docs/ROADMAP_0_7.md) / [ROADMAP_1_0.md](docs/ROADMAP_1_0.md) | deferred items, with the reason for the deferral | `grep -n '^## RM' docs/ROADMAP_1_0.md` |
+| [ROADMAP_0_8.md](docs/ROADMAP_0_8.md) / [ROADMAP_1_0.md](docs/ROADMAP_1_0.md) | deferred items, with the reason for the deferral. **The minor file is named for the release that will decide its contents**, so a cut closes one and opens the next — 0_7 closed on 2026-08-31 into [history/](docs/history/ROADMAP_0_7.md) | `grep -n '^## RM' docs/ROADMAP_1_0.md` |
 | [CHANGELOG.md](docs/CHANGELOG.md) | what shipped, newest first (shared across the ecosystem repos); 2026-08-12 onward, earlier entries in [history/](docs/history/CHANGELOG_PRE_0_6.md) | `grep -rn '^## 2026-' docs/CHANGELOG.md docs/history/` |
 | [INTEGRATION_0_6.md](docs/INTEGRATION_0_6.md) | the 0.5.4→0.6 surface delta and the per-consumer check/change lists | `grep -n '^## \|^### ' docs/INTEGRATION_0_6.md` |
 | [SCHEMAS.md](docs/SCHEMAS.md) | models, CSV families, conventions, the hash family (one signature per derived sidecar, plus the two identity halves and the three verification ones — the roster states the rule, never a total), the tri-state inventory, the allele grammar | `grep -n '^## ' docs/SCHEMAS.md` |
@@ -56,7 +57,7 @@ PharmVar's OpenAPI document and its licence text).
 | [USE_CASES.md](docs/USE_CASES.md) | a use case → enabled / consumer-side / gap. **Start a design task here** | `grep -n '^## ' docs/USE_CASES.md` |
 | [REFERENCE_EXAMPLES.md](docs/REFERENCE_EXAMPLES.md) | how to author each case with today's bricks; indexes `reference_examples/` | `grep -n '^## ' docs/REFERENCE_EXAMPLES.md` |
 | [PUBMIND_ASSESSMENT.md](docs/PUBMIND_ASSESSMENT.md) | the 2026-08-28 assessment of PubMind — what it competes with (little), what it complements (a lot, upstream), what its open channel actually contains, and the four-section adoption design behind RM134: a ClinVar-shaped derived snapshot, a three-way ClinVar concordance check, drafting, and the hint | `grep -n '^## ' docs/PUBMIND_ASSESSMENT.md` |
-| PROPOSAL_[0_4_1\|0_5\|0_5_1\|0_6\|0_6_PT2\|0_7].md | design threads with their charter checks and open questions. **0.6 has two** — PT2 sorted the items that landed behind the first round. **0_7 is the live one**: eleven items decided per-item with the maintainer, and it wins over ROADMAP_0_7/ROADMAP until each lands | `grep -n '^## ' docs/proposals/PROPOSAL_0_7.md` |
+| PROPOSAL_[0_4_1\|0_5\|0_5_1\|0_6\|0_6_PT2\|0_7].md | design threads with their charter checks and open questions. **0.6 has two** — PT2 sorted the items that landed behind the first round. **0_7 is the most recent and is now a record, not a plan**: twelve items decided per-item with the maintainer, every one shipped, entries in ROADMAP_HISTORY | `grep -n '^## ' docs/proposals/PROPOSAL_0_7.md` |
 | [DOGFOOD_0_6.md](docs/probes/DOGFOOD_0_6.md), [DOGFOOD_0_6_FINDINGS.md](docs/probes/DOGFOOD_0_6_FINDINGS.md), [VCF_4_4_AUDIT.md](docs/probes/VCF_4_4_AUDIT.md) | probe rounds and what they broke | `grep -n '^## ' docs/probes/DOGFOOD_0_6_FINDINGS.md` |
 | [audit/](docs/audit/README.md) | the 2026-08-18 code-first re-derivation of all three tier references, and the instrument that found RM93–RM100. Its durable material is **merged**; what stays there is dated detail (per-parquet columns, per-command flags) that would rot in a maintained doc. Never edit one to record a fact | `grep -rn '<symbol>' docs/audit/` |
 

@@ -1,7 +1,9 @@
 # Roadmap — 1.0
 
 **What this file is.** Items that need a **major**, plus the one item that is release-blocking for it.
-Split out of [ROADMAP.md](ROADMAP.md) on 2026-08-13, alongside [ROADMAP_0_7.md](ROADMAP_0_7.md), so the
+Split out of [ROADMAP.md](ROADMAP.md) on 2026-08-13, alongside the minor-deferral file — then
+`ROADMAP_0_7.md`, now [ROADMAP_0_8.md](ROADMAP_0_8.md), with the closed round in
+[history/](history/ROADMAP_0_7.md) — so the
 active roadmap describes the line being built.
 
 **What makes an item belong here.** Under the amended charter (2026-08-11) a new optional column or
@@ -80,7 +82,7 @@ findable from its gate)*:
   closes outright.** The `_resolve_positional_tables` skip on `genome_build != DEFAULT_GENOME_BUILD`
   *is* the RM15 gate; un-gating the fill makes the injected rows reach the positional parquets, which is
   the missing field Principle 7's own remedy clause points at. Nothing else reaches it.
-- **[RM68](ROADMAP_0_7.md#rm68--a-drafting-provider-on-a-non-grch38-module-refuse-or-strip-to-the-rsid)
+- **[RM68](ROADMAP_0_8.md#rm68--a-drafting-provider-on-a-non-grch38-module-refuse-or-strip-to-the-rsid)
   loses its premise but keeps its own exit.** Once a provider can write the coordinate under the build
   it came from there is nothing left to refuse or strip. It stays filed in 0.7 because its other exit —
   an author with a non-GRCh38 module saying which outcome they wanted — is reachable first and would
@@ -91,7 +93,7 @@ findable from its gate)*:
 ## RM69 — `resolution_signature` is not a round-trip invariant when the positional fill is skipped
 
 **Severity** low · **Status** **gated on [RM15](#rm15--build-agnostic-identity--multi-build-support),
-moved here from [ROADMAP_0_7.md](ROADMAP_0_7.md) on 2026-08-27** — the repair itself needs no major, but
+moved here from `ROADMAP_0_7.md` ([now closed](history/ROADMAP_0_7.md)) on 2026-08-27** — the repair itself needs no major, but
 every route to it before RM15 lands is refused below, so 1.0 is the release that decides it. Until then
 it is a documented limit of Principle 7 on non-GRCh38 modules, not a breach · **Owner** compiler ·
 **Found by** dogfooding on 2026-08-13, the D6 corpus sweep
@@ -177,7 +179,7 @@ Closing was the live alternative when the misfiling was found, and the case for 
 low, no incident behind it, and a mechanism reproduced once in sixteen modules is normally grounds to
 close rather than to carry. **It stays open because the fix arrives on its own** — RM15 un-gates the
 fill and the signature becomes an invariant with no work filed against this entry, so filing it as a
-"documented divergence" the way [RM67](ROADMAP_0_7.md#rm67--polyploid-and-partially-phased-genotypes)
+"documented divergence" the way [RM67](ROADMAP_0_8.md#rm67--polyploid-and-partially-phased-genotypes)
 is filed would say the wrong thing — RM67 is **not work**, a limit nobody intends to lift, and this one
 is scheduled. (Neither is *closed*: RM_TOC's ✖ section holds two items and neither of these is one.)
 The other half of the argument is the candidate-repair list above, which is the record of five refusals.

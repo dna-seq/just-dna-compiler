@@ -1,6 +1,6 @@
 # 0.7 design thread — the deferrals that were waiting on a decision, not on the world
 
-**What this is.** Stage 3 of the design cycle for the 0.7 line. [ROADMAP_0_7.md](../ROADMAP_0_7.md)
+**What this is.** Stage 3 of the design cycle for the 0.7 line. [ROADMAP_0_7.md](../history/ROADMAP_0_7.md)
 holds items that are legal in a minor and were not taken into 0.6, each waiting on **a design
 question, a corpus, or a caller**. That taxonomy is the whole of this round's sort: an item waiting on
 a corpus or a caller is not ours to decide, and an item waiting on a design question has been waiting
@@ -14,8 +14,17 @@ while being decided, and one grew an obligation nobody had filed.
 **Status.** Decided 2026-08-28, on the `0.7` branch, before implementation. **All twelve items
 have since shipped**, across four waves on that branch; this document is kept as the decision record
 and is not rewritten to match. Where it and the code disagree the code won, and the corrections made
-during the build are marked inline where they apply. Where a decision changes what ROADMAP_0_7.md or ROADMAP.md says, those files are stale and
-this one wins until the item lands and moves to ROADMAP_HISTORY.
+during the build are marked inline where they apply.
+
+**Concluded on 2026-08-31, and it no longer wins over anything.** While items were landing, this
+document beat whatever `ROADMAP_0_7.md` and [ROADMAP.md](../ROADMAP.md) still said about them. All
+twelve have landed now, so every entry is in [ROADMAP_HISTORY.md](../ROADMAP_HISTORY.md) and that is
+the file to read for what shipped; the last four moved there on 2026-08-31, having sat in the
+forward-only files with a `SHIPPED` banner. `ROADMAP_0_7.md` closed the same day into
+[history/](../history/ROADMAP_0_7.md), and what was still waiting became
+[ROADMAP_0_8.md](../ROADMAP_0_8.md). This document stays here beside the other five concluded threads:
+it is the decision record, kept for the reasoning and the refusals, and is not rewritten to match the
+code — where the two disagree the code won.
 
 **The release.** 0.7 **is** the minor that was left uncut on 2026-08-27 — the S63–S74 batch already on
 this branch, whose `next-minor` markers resolve here. Everything below joins that batch and cuts with
@@ -68,7 +77,7 @@ premise stopped holding.
 ## RM126 — nothing tells a consumer what a release changed about compiled output
 
 **Severity** medium-high · **Owner** format (record + `needs_recompile` + roster) + compiler (the
-sweep) · **Entry** [ROADMAP_0_7.md § RM126](../ROADMAP_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output) ·
+sweep) · **Entry** [ROADMAP_HISTORY.md § RM126](../ROADMAP_HISTORY.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output) ·
 **Motivating case** S62 (just-dna-registry), narrowed by S65
 
 ### The problem
@@ -181,7 +190,7 @@ compiler: no authored layer is touched at all, so this is the cheapest layer the
 ## RM124 — an author's correction to a derived table has nowhere to live except inside it
 
 **Severity** medium-high · **Owner** format (schema) + compiler (apply + reverse) + enricher (the
-derived-table writers) · **Entry** [ROADMAP_0_7.md § RM124](../ROADMAP_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it) ·
+derived-table writers) · **Entry** [ROADMAP_0_7.md § RM124](../history/ROADMAP_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it) ·
 **Motivating case** S60 (just-module-creator)
 
 **This is the keystone of the round.** RM83 closes into it, RM130 was blocked on one of its questions,
@@ -382,7 +391,7 @@ integration notes rather than being discovered.
 
 ## RM83 — a derived sidecar can only be refreshed by deleting it
 
-**Severity** medium-high · **Owner** enricher · **Entry** [ROADMAP_0_7.md § RM83](../ROADMAP_0_7.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold) ·
+**Severity** medium-high · **Owner** enricher · **Entry** [ROADMAP_0_7.md § RM83](../history/ROADMAP_0_7.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold) ·
 **Disposition** **closed as filed, contingent on RM124 landing**
 
 ### The decision, and it is not a build
@@ -512,7 +521,7 @@ human-overridable at all, since the answer goes in the overlay rather than into 
 
 **Severity** low-medium for the snapshot, medium-high for the concordance machinery, which reaches
 RM130 · **Owner** enricher, with the concordance record shared with RM130 · **Entry**
-[ROADMAP.md § RM134](../ROADMAP.md#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check) ·
+[ROADMAP.md § RM134](../ROADMAP_HISTORY.md#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check) ·
 **Assessment** [PUBMIND_ASSESSMENT.md](../PUBMIND_ASSESSMENT.md), which stays the evidence document ·
 **Motivating case** the PubMind paper (doi:10.1038/s41467-026-76834-4) and a maintainer direction
 2026-08-28
@@ -1037,7 +1046,7 @@ full cost on two authored tables, and the scoping decision is what keeps it from
 ## RM71 — the alleles a drafted `genotype` stub must be written from are in no file
 
 **Severity** medium · **Owner** enricher (`clinvar_draft`) + compiler (`draft`) · **Entry**
-[ROADMAP_0_7.md § RM71](../ROADMAP_0_7.md#rm71--the-alleles-a-drafted-genotype-stub-must-be-written-from-are-in-no-file) ·
+[ROADMAP_HISTORY.md § RM71](../ROADMAP_HISTORY.md#rm71--the-alleles-a-drafted-genotype-stub-must-be-written-from-are-in-no-file) ·
 **Found by** dogfooding 2026-08-13, `reference_examples/hboc_palb2/`
 
 ### The problem
@@ -1177,7 +1186,7 @@ new record member; the vocabulary member is additive. P9 — nothing authored, n
 ## RM133 — a card subtitle has no amendable home
 
 **Severity** low-medium · **Owner** format (+ registry, for their half) · **Entry**
-[ROADMAP.md § RM133](../ROADMAP.md#rm133--a-card-subtitle-has-no-amendable-home-and-the-binding-is-not-where-that-gets-fixed) ·
+[ROADMAP.md § RM133](../ROADMAP_HISTORY.md#rm133--a-card-subtitle-has-no-amendable-home-and-the-binding-is-not-where-that-gets-fixed) ·
 **Motivating case** S64 (just-module-creator)
 
 ### The problem, and the half that is already closed
@@ -1263,15 +1272,15 @@ deferral is a reason rather than an omission.
 
 | Item | Gate |
 | --- | --- |
-| [RM122](../ROADMAP_0_7.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it) — the measure lookup as a public function | **A caller.** The signature's open choices — one row or one per trait, `None` or a three-state result — are exactly what a first consumer implementing the lookup would settle. A leaf shipped against a hypothesis is one P3 keeps working forever. |
-| [RM68](../ROADMAP_0_7.md#rm68--a-drafting-provider-on-a-non-grch38-module-refuse-or-strip-to-the-rsid) — drafting on a non-GRCh38 module | **A real author with a GRCh37 module saying which outcome they wanted.** Refusal makes such a module undraftable; stripping drops the 36 CPIC defining variants that have a position and no rsID. The warning shipped in 0.6. |
-| [RM16](../ROADMAP_0_7.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest) — authored PRS weights | **A real consumer combining authored weights into a score.** Not derivable, so full cost, and a score's shape is exactly what a first case would dictate. |
-| [RM56](../ROADMAP_0_7.md#rm56-policy-half--the-rule-for-a-measurement-that-spans-bins) (policy) — a measurement spanning bins | **Real caller output**, so the vocabulary is fixed against what callers emit rather than against a guess. |
-| [RM65](../ROADMAP_0_7.md#rm65-implementation-half--repeat-and-copy-number-tables-are-positional) — coordinates on the positional repeat/CNV tables | **A real repeat-caller or CNV VCF.** Same gate as RM56. Would take RM43's coordinate lane from three tables to five. |
-| [RM66](../ROADMAP_0_7.md#rm66--one-repeat-locus-several-motifs) — several motifs at one repeat locus | **Same gate as RM65**, and it is a keying change on a shipped table, the expensive kind. |
-| [RM23](../ROADMAP_0_7.md#rm23--computational-predictor-scores-as-a-table) — predictor scores as a table | **Two blockers unmoved**: per-transcript grain, and the acquisition measurement. Licensing is not the blocker. |
-| [RM28](../ROADMAP_0_7.md#rm28--meta-conclusions-the-predicate-half) — meta-conclusions, predicate half | **A corpus.** The injected-cofactor half dissolved on 2026-08-13; what is left is small and genuinely unsolved. |
-| [RM67](../ROADMAP_0_7.md#rm67--polyploid-and-partially-phased-genotypes) — polyploid / partially-phased genotypes | **Not work** — a documented divergence, numbered so it is findable and not re-probed. |
+| [RM122](../ROADMAP_0_8.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it) — the measure lookup as a public function | **A caller.** The signature's open choices — one row or one per trait, `None` or a three-state result — are exactly what a first consumer implementing the lookup would settle. A leaf shipped against a hypothesis is one P3 keeps working forever. |
+| [RM68](../ROADMAP_0_8.md#rm68--a-drafting-provider-on-a-non-grch38-module-refuse-or-strip-to-the-rsid) — drafting on a non-GRCh38 module | **A real author with a GRCh37 module saying which outcome they wanted.** Refusal makes such a module undraftable; stripping drops the 36 CPIC defining variants that have a position and no rsID. The warning shipped in 0.6. |
+| [RM16](../ROADMAP_0_8.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest) — authored PRS weights | **A real consumer combining authored weights into a score.** Not derivable, so full cost, and a score's shape is exactly what a first case would dictate. |
+| [RM56](../ROADMAP_0_8.md#rm56-policy-half--the-rule-for-a-measurement-that-spans-bins) (policy) — a measurement spanning bins | **Real caller output**, so the vocabulary is fixed against what callers emit rather than against a guess. |
+| [RM65](../ROADMAP_0_8.md#rm65-implementation-half--repeat-and-copy-number-tables-are-positional) — coordinates on the positional repeat/CNV tables | **A real repeat-caller or CNV VCF.** Same gate as RM56. Would take RM43's coordinate lane from three tables to five. |
+| [RM66](../ROADMAP_0_8.md#rm66--one-repeat-locus-several-motifs) — several motifs at one repeat locus | **Same gate as RM65**, and it is a keying change on a shipped table, the expensive kind. |
+| [RM23](../ROADMAP_0_8.md#rm23--computational-predictor-scores-as-a-table) — predictor scores as a table | **Two blockers unmoved**: per-transcript grain, and the acquisition measurement. Licensing is not the blocker. |
+| [RM28](../ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half) — meta-conclusions, predicate half | **A corpus.** The injected-cofactor half dissolved on 2026-08-13; what is left is small and genuinely unsolved. |
+| [RM67](../ROADMAP_0_8.md#rm67--polyploid-and-partially-phased-genotypes) — polyploid / partially-phased genotypes | **Not work** — a documented divergence, numbered so it is findable and not re-probed. |
 
 **RM126 is the counter-example that makes the table honest**: it is in this document rather than this
 table because it waits on nobody, which is what "owed rather than offered" means.

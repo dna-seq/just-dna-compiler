@@ -29,6 +29,15 @@ The items [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) decided on 2026-08-27/28 
 built. Every one is additive under Principles 3 and 8; what is kept here is each entry's reasoning,
 including the repairs it refused, which is the half that would otherwise be re-derived.
 
+**The round's twelve are all here as of 2026-08-31**, which is when the last four entries left the
+forward-only files they had been sitting in with a `SHIPPED` banner on them: RM126 and RM71 from
+`ROADMAP_0_7.md`, RM133 and RM134 from [ROADMAP.md](ROADMAP.md). An entry marked shipped in a file that
+describes what is *not* built reads as late rather than done, which is the state this move ends. The
+deferral round those two came from closed at the same time —
+[history/ROADMAP_0_7.md](history/ROADMAP_0_7.md) keeps it, and everything still waiting moved to
+[ROADMAP_0_8.md](ROADMAP_0_8.md). RM83 is in this file as **closed, not shipped**, and RM139 was filed
+by the cut itself rather than by the proposal.
+
 ## RM139 — the release gate could not tell a broken compile from a spec that outgrew the old compiler
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format` + `just-dna-compiler`). Filed by
@@ -88,6 +97,404 @@ root exits 1 on the other direction, naming it.
 **The prose-versus-field shape is the recurring one.** A count or an exclusion stated only in a
 sentence goes blind — the triage threshold counter did it twice — so the field is pinned to the
 sentence by a test rather than maintained beside it.
+
+## RM126 — nothing tells a consumer what a release changed about compiled *output*
+
+**SHIPPED in 0.7 on 2026-08-28 — `just_dna_format.release_records` (record, `needs_recompile`, roster), `just_dna_compiler.sweep` + `just-dna-compiler sweep` (instrument and gate), and `0.6.1`/`0.6.6` backfilled by measurement. See [SCHEMAS § The release record](SCHEMAS.md#the-release-record-07-rm126--what-a-release-changed-about-compiled-output) and [COMPILER § The release-record sweep](COMPILER.md#the-release-record-sweep-rm126).**
+
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output) on 2026-08-28 — BUILDS in 0.7, in full plus the S65 roster.** Record + `needs_recompile` in format, the sweep in the compiler, the gate in the bump→tag sequence; intervals compose as a union over `(a, b]`, which is what gives S65's convergence requirement for free.
+
+**Severity** medium-high · **Status** ✅ **SHIPPED in 0.7** (2026-08-28) — the record, `needs_recompile`,
+the roster, the sweep and the release gate. The charter *required* this channel: Principle 3 says a corrected derivation may ship in
+any release but never silently, and this is the declaration it mandates. Until it exists the charter
+describes a surface that is not there · **Owner** format (record + `needs_recompile`) + compiler
+(the sweep) · **Motivating case** [S62](CONSUMER_SUGGESTIONS_HISTORY.md) (just-dna-registry)
+
+A registry sweeping its catalog for artifacts that should be recompiled has two questions it can
+answer and one it cannot. *Is the stored input still legal?* — re-run `validate_spec`, which answers
+`ok`. *Was this compiled under a contract-incompatible compiler?* — compare versions, and a patch is
+compatible. Neither is the question a changed derivation raises: **would recompiling this artifact
+produce different output than the stored one?** Today the only way to answer it is to enrich into a
+scratch directory, recompile and diff — which is the operation, not a triage for it.
+
+**Reproduced here, and it is wider than the report.** All sixteen `reference_examples/` compiled under
+`v0.6.1` (detached worktree) and under `0.6.6`, spec inputs byte-identical across the interval — the
+whole of which is patch releases:
+
+| | measured |
+|---|---|
+| changed at least one published manifest field | **16 / 16** |
+| moved `artifact.digest` (and `artifact.files` with it) | **10 / 16** |
+| moved `content_signature` | **0 / 16** |
+
+`compilation.compiled_at` is a timestamp and is excluded as noise. The digest movement is not noise:
+`studies.parquet` grew by exactly 257 bytes on each of the ten because **RM120 added the authored
+column `curator`**, first present in `v0.6.5`. So the *parquet schema* moved across a patch interval,
+which is the sharpest form of the finding and the one the reporter had not seen — they reported
+changed manifest fields. `stats.genes`/`stats.gene_count` moved on **seven** (RM121) and
+`literature.quotes_unchecked` appeared on three (RM119). **Six of the sixteen changed a published,
+indexed manifest field with *both* hashes byte-identical** — `apoe_epsilon` went `genes: []` →
+`["APOE"]` at the same `artifact.digest` and the same `content_signature`. That is the sharpest number
+here and the one the surface has to answer to.
+
+**Authored identity held throughout**, which is the charter working as designed: an unset optional
+column is omitted from `content_signature`, so nothing a consumer keys on moved. That is exactly why
+no existing surface can see this — a digest comparison, a signature comparison and a `revalidate` all
+correctly report no change while an indexed field goes stale.
+
+**The shape asked for** is a declaration keyed on the **interval** rather than on a version, because
+the question is always *compiled under X, installed Y*, with the axes separated — parquet schema,
+parquet bytes, `content_signature`, and the set of manifest fields. Deliberately **not** a
+`should_rebuild` verdict: the same fact carries different costs per consumer (a stale cache is a free
+rebuild for `just-dna-lite`; for a registry it mints an immutable PATCH and moves what a client
+tracking `latest` receives), so the decision is the consumer's and only the fact is ours.
+
+**Three things the design has to get right, and the third is why this is filed rather than shipped.**
+
+- **Unknown must be a state, not an empty result.** Asked about an interval the installed package has
+  no record of — an artifact compiled under something newer, or older than the table reaches — the
+  answer is *cannot say*, never *nothing changed*. That is the house tri-state (`None` is never
+  `False`), and without it the surface is worse than nothing, because a consumer would stop
+  recompiling on the strength of a silence.
+- **`content_signature` needs its own axis, separate from bytes.** For a registry a signature is a
+  permanent global duplicate-content claim that only a purge frees, so *the identity moved in a patch*
+  is an answer to fail loudly on rather than merely to act on. Our sweep says it has never happened;
+  the axis exists so that stays checkable rather than remembered.
+- **A hand-kept per-release map is the defect wearing a public name.** The reporter said so themselves,
+  and it is `@registry-completeness` — five of the six RM104–RM111 fixes were a derived value restated
+  by hand. So the map has to be a **measurement**: the sweep above is the guard's prototype, and it is
+  cheap — check out the previous tag into a detached worktree, compile `reference_examples/`, diff the
+  manifests, and fail when the declared hints disagree with what actually moved.
+
+**The shape, decided 2026-08-21 in the S62 thread — two axes, and only one of them is measurable.**
+
+- **`output_differs` — measured.** One record per release, produced by the sweep: parquet schema,
+  parquet bytes, `content_signature`, and the set of changed manifest fields. Intervals compose as a
+  **union over the releases in `(a, b]`**, so storage is linear rather than O(releases²) and
+  *moved-and-moved-back still counts as moved*, which is the right reading for staleness. Backfillable
+  for 0.6.1→0.6.6 by measurement with the harness that produced the numbers above; older intervals stay
+  honestly `unknown`.
+- **Correction versus addition — declared.** Only the person fixing the bug knows whether the stored
+  value was **wrong** (`stats.genes`) or merely **absent** (`curator`), and no diff can tell them
+  apart: both look like "a field changed". This is the canary — *not a minor, but rebuild time* — and
+  it is the half the consumer cannot compute for themselves at any price.
+- **The gate is what keeps the declaration honest.** A release whose sweep shows a changed field with
+  no declaration covering it **fails**. That is what stops this becoming the hand-kept map everyone
+  agrees it must not be: the measurement forces the declaration rather than the author remembering to
+  write one. A release where nothing moved records a measured zero **with its evidence**, never
+  silence (`@tautology-zero`).
+
+**This does not contradict the reporter's "no `should_rebuild` verdict", and the item must say so.**
+Their objection is to a *cost* verdict, because the cost differs per consumer. The correction flag is
+not a cost judgement — it is a fact about whether a value we published was wrong, which is upstream
+knowledge only this repo holds. The per-axis breakdown stays exposed underneath it, so a consumer who
+wants the facts rather than the flag still has them. A bare boolean with nothing under it would deserve
+their objection exactly.
+
+**Tiers.** The record, its model and a pure `needs_recompile(compiled_under, current)` belong in
+`just-dna-format` — a static table plus a function, which pydantic-only holds comfortably, and format
+is the tier every consumer has. The **sweep instrument** belongs in the compiler, since producing a
+record means compiling. The **gate** runs in the bump → `uv sync` → tag sequence rather than as an
+ordinary test, because it needs the previous release actually installed. Keyed on `compiler_version`,
+which is what `manifest.compilation` already stamps and what a consumer holds. **Scope v1 to
+compiler-derived outputs and say so** — enricher-side outputs stay unmeasured rather than unchanged.
+
+**Open, because the representation is not obvious.** An interval table is O(releases²) unless it is
+composed from per-release records, and composing them means deciding whether the axes are unions
+(a field that moved and moved back still moved) — probably yes, but that is a decision. The tier is
+open too: the natural caller is a consumer of `just-dna-compiler`, and the hints describe compiler
+behaviour, but a verify-only consumer holding `just-dna-format` alone has the same question about a
+manifest it can read. **[RM127](ROADMAP_HISTORY.md#rm127--a-corrected-derivation-has-no-release-class-and-the-version-number-is-the-wrong-place-to-carry-one)
+is why this is needed rather than a nicety**, and it is now **closed**: a corrected derivation is a bug
+fix, deferring it to a minor means serving a wrong value meanwhile, so the release number cannot carry
+staleness and a second channel is the only resolution left. The charter amendment of 2026-08-21 made
+that a rule, which is what turns this item from a nicety into a debt.
+
+### Four constraints handed back by the consumer who built the other half (S65, 2026-08-21)
+
+just-dna-registry shipped the recomputation side as `services/rebuild.py` in their 0.21.0 and reported
+what building it taught them. Each of these narrows the design and none was visible from here.
+
+- **Convergence is a hard requirement, and the obvious shape fails it.** If a hint fires for a version
+  compiled by the *exact* compiler now installed, recompiling derives the same value again — so an
+  automated sweep mints a fresh PATCH every run, forever. That is the *a patch is not a gap* rule
+  re-entering by a different door. **The interval-keyed shape gets this for free, because the interval
+  from a version to itself is empty** — so state that as load-bearing rather than incidental, since a
+  field-keyed or "latest known defect" shape would not have the property. It is also what bounds a
+  false positive to one wasted version number per module ever, which is what made them willing to act
+  unattended at all.
+- **Recomputability splits the problem in half, and the better half already shipped.** For a manifest
+  field that is a pure function of the authored rows, a consumer can recompute the *current* answer
+  from stored inputs — no enrichment, no parquet, no network — using `spec_tables` (RM116) for the
+  defaults-folded rows and `module_stats` (RM121) for the derivation. Neither landed for this reason.
+  **So what would help most is not a bigger table but a small published roster: which manifest fields
+  are pure functions of the authored rows.** That is a fact we hold and they guess at, and it *shrinks*
+  this item rather than growing it. The interval-keyed table then only has to cover what a consumer
+  cannot recompute — `literature.quotes_unchecked` (RM119) is their worked example, since it derives
+  from a sidecar rather than from authored rows.
+- **The roster's boundary is conditional, and the condition is invisible from outside.** `validate_spec`
+  computes `stats` over the full row set; `compile_module` re-derives over the survivors **only when
+  the symbolic-allele drop removed something**. So a recomputation from authored rows is the *pre-drop*
+  side, and `manifest.stats` legitimately disagrees with it — permanently, under any compiler — for a
+  module that lost the sole row naming a gene. A roster stating "pure function of the authored rows"
+  without that condition would send consumers to spend version numbers on modules that are current.
+- **`compilation.dropped_rows` closes the residue, and shipped 2026-08-24.** Their guard discriminates
+  on `variant_count`, which catches a drop from `variants.csv`; a drop inside a *kind* table moved no
+  published counter at all. With the counter, the `stats` half of the roster is unconditionally
+  checkable. They rejected reading the warning text for the reason our own catalogue rule gives.
+
+**Scope it for coexistence rather than replacement, at the reporter's request.** Their probes sit
+behind one named seam so a probe this covers retires by deletion, and they may keep one or two anyway
+— a recomputation checks the artifact actually in front of them, a hint states what a release did in
+general, and the two fail differently. **The useful division: we state what a release did, they check
+what a specific stored artifact says.** And they are not re-asking for `should_rebuild`; building the
+decision themselves is what surfaced all four constraints above.
+
+---
+
+## RM134 — PubMind as a literature-derived annotation authority, and a ClinVar concordance check
+
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check) on 2026-08-28 — BUILDS in 0.7, pulled in after the other eleven were decided and reviewed against them.** Eight corrections, two of which were defects that would have shipped: **the concordance record is shared with RM130 and RM130's shape changes because of it** (`ClinSigConflict` names its authority in a *field*, so a second authority would have cost a key change or a retype — major-only); and **one normalizer, not two, after two fixes** — `_normalize_clin_sig`'s map keys are underscored while PubMind's tokens are spaced, so `Uncertain significance` and `Conflicting` both fall to `other` today and the check would manufacture a disagreement on PubMind's largest disagreeing class. **A maintainer stress test at five authorities failed the drafted vocabulary**: `pubmind_only`/`clinvar_only` name the authority inside the member, because one field carried two axes. Split into `authority_concordance` and `authored_position`, five members each at any N. **Nothing resolves a split** — E+A agreeing against B/C/D needs a weighting model this repo has refused to invent three times — so the precedence list is recorded as methodology and computed with by nothing. Licensing governs what a module may *do* with the values, not whether the machinery exists: unknown terms warn and never gate, and publishing such a module is RM27's axis.
+
+**Severity** low-medium · **Status** ✅ **SHIPPED in 0.7** — all four sections (§ A the snapshot and
+the shared normalizer, § B the N-authority check, § C `draft-panel --source pubmind`, § D the hint)
+· **Owner** enricher · **Motivating case** the PubMind paper
+(doi:10.1038/s41467-026-76834-4, 20 August 2026), and a user direction on 2026-08-28 to design both a
+ClinVar-shaped derived table and a ClinVar concordance check · **Full design**
+[PUBMIND_ASSESSMENT.md](PUBMIND_ASSESSMENT.md)
+
+PubMind extracts variant–disease–pathogenicity associations from 41.7 M PubMed abstracts and 5.4 M PMC
+full texts with LLaMA-3.3-70B behind a fine-tuned BERT triage stage. It is **a source, not a
+competitor**: its own discussion calls it *"a literature-grounded complement to human curated
+databases"*, and the description holds one layer further down — it produces assertions and stops
+exactly where we start, at identity, integrity, licensing and the round trip. The only contested
+surface is its pitch to institutions wanting their own interpretation database, which is our module
+author's use case; what it hands them is a SQLite file behind a Flask app.
+
+**What is reachable, measured against the bytes rather than the paper.** The web API takes `gene`,
+MONDO and PMID/PMCID only — an rsID query is refused — and returns aggregate counts, never a record,
+which the response says outright. So the single per-variant channel is the coordinate table ANNOVAR
+redistributes as `hg38_pubmind_db` (2026-08-24, 6.5 MB gzipped, 909,224 rows: `PVID`,
+`pathogenicity_sum`, `paper_level_pathogenicity_score`, `confidence` 0–3). Its coordinates are
+**VCF-style despite the ANNOVAR packaging** — no `-` alleles anywhere, deletions carry the anchor base
+— so it joins our `chrom`/`start`/`ref`/`alts` with no translation. Whether the indels are
+left-normalized is not established.
+
+**It is much smaller than 909,224.** 439,388 rows (48 %) are **enumerated codon alternatives, not
+observed variants**: where only a protein change was recovered from text, every codon encoding that
+amino acid is written out, and 439,383 of those triplets need two or three simultaneous base changes
+to reach the reported protein — which is a statement about the protein, not a position anyone can
+genotype.
+Decomposing the single-base codons leaves **342,209 distinct `chrom:start:ref:alt` keys over 305,935
+loci** as the honest joinable layer. 523 rows have `Ref == Alt`.
+
+**Consolidation is on extracted text, never on a coordinate**, so PubMind has record identity where we
+have variant identity: 68,744 coordinate keys (8.4 %) carry more than one PVID, worst case 35. At
+chr6:26092913 G>A (HFE C282Y) eight PVIDs disagree four ways, and one of them — `PVID926871`, verdict
+**Benign** — pairs `rs1800562` with gene *TMPRSS6*, a chromosome 22 gene on a chromosome 6 variant.
+`_gene_locus_conflicts` catches that shape today (`@gene-locus-relationship`).
+
+**Worth on our own corpus**: 173 of 423 GRCh38 `reference_examples` loci matched (40.9 %), 190 of 589
+authored ALTs exactly (32.3 %), and where both sides state a verdict they agree on 83 of 134 (62 %),
+every disagreement running our-pathogenic vs their-uncertain-or-benign. That profile — real breadth,
+low confidence — is a **cross-check source, not a fact source**.
+
+**The design, directed 2026-08-28, is four sections.** An earlier draft of this entry stopped at a
+report-only check and recorded the rest as blocked; that framing is overtaken, and the licence
+constraint moves from *reason not to design* to *precondition on shipping*.
+
+**A. `pubmind build` / `pubmind publish`**, a sub-app beside `clinvar`, mirroring `clinvar_build.py`:
+polars builder, fixed column order for a byte-identical rebuild (P7), one parquet plus `release.json`
+through `locations`. Schema follows `_empty_schema()`'s split, except **no column is a resolver link** —
+"authority" here means an authoritative *annotation* source the way ClinVar is one, never
+`resolution.csv`'s `authority` (`@source-vs-authority`), because PubMind's coordinates are PyEnsembl
+back-mappings of extracted text. `pathogenicity_sum` maps into `VALID_CLIN_SIG` with the composite kept
+verbatim in `pubmind_sig_raw`, the `clin_sig_raw` precedent. Every normalization drop is **counted into
+`release.json`** rather than silently applied (`@dont-discard-computed`): 160,090 codon rows decomposed,
+439,388 enumerations and 523 `Ref == Alt` rows dropped, 20,131 indels kept but stamped, and PVID
+fan-out kept as separate rows because collapsing it would pick a winner by an ordering nobody defined.
+**`publish` refuses**, on the PharmVar precedent (`@gated-source-caches`) — a bulk file under terms we
+cannot establish is not one we may pass on, and the command exists and refuses rather than being
+absent, which would read as an oversight somebody helpfully fixes.
+
+**B. A three-way check, module ↔ ClinVar ↔ PubMind**, beside the existing ClinVar `clin_sig` check
+rather than replacing it. Seven outcomes — `concordant`, `authored_dissents`, **`authorities_differ`**
+(the case nothing today can report), `pubmind_only`, `clinvar_only`, `neither`, `unchecked` — combined
+under Kleene, with unknown withheld and never negated. `ClinSigConflict.opposed` already draws the
+severity line (opposed vs merely different) and is reused rather than re-invented. Warning-tier in both
+modes, never escalating (`@clinsig-never-escalates`), and `authorities_differ` is not a module defect at
+all. Corpus-wide concordance is stamped into `release.json` **at build time only** — our own
+reproduction of their 10.6 % / >80 % claims against our denominator — because a message embedding a
+count that runs twice publishes two numbers (`@no-rerun-with-counts`).
+
+**C. Drafting**, through `--source pubmind` on the existing `draft-panel` rather than a new command,
+since it writes the same tables from the same gene argument and a twin would duplicate the genotype
+worklist, placeholder guard and dedup pass. `--min-confidence` is the `min_review_stars` analogue;
+identity is coordinate-whole or nothing (`@identity-whole-or-none`), most PubMind rows carrying no
+rsID. **The self-agreement trap has an existing answer**: a module drafted from PubMind and then checked
+against PubMind agrees with itself, so `pubmind` joins `DRAFT_PROJECTIONS` projected onto `clin_sig`
+(`@draft-digest`) — raw CSV cells at draft time, and the skip a conjunction of release **and** digest.
+The ClinVar half of B is unaffected, which is why the three-way shape earns its keep.
+
+**D. The hint surface**, unchanged and cheapest: surface verdict, confidence, paper count and PMIDs
+beside the cell, and never pre-fill `clin_sig` (`@hint-redundancy-bearing`) — the same defect
+`@draft-digest` solves one layer down, without a digest to rescue it.
+
+**The gate is one unanswered question, and asking is the unblock action.** A and D are buildable now;
+B and C acquire and carry values. The ANNOVAR-distributed table publishes **no data terms** —
+`LICENSE.md` covers the software (academic, non-commercial), the paper is CC BY-NC-ND, the table itself
+says nothing, and unknown is not permissive (`@no-named-licence`). Ask WGLab and CHOP's Office of
+Technology Transfer in writing; it will not resolve itself by the file continuing to download without
+a key. Separately, RM27 still owes the redistribution axis (`@redistribution-ungated`) — a gate on
+*publishing a module that carries such bytes*, not on building the snapshot or running the check
+locally, and conflating the two is what stalled this area in the first draft.
+
+## RM133 — a card subtitle has no amendable home, and the binding is not where that gets fixed
+
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm133--a-card-subtitle-has-no-amendable-home) on 2026-08-28 — BUILDS in 0.7, on the authored layer at zero cost.** `short_description` joins the registry-owned family as a **separate** frozenset beside `IDENTITY_AUTHORITY_KEYS`, stripped by the same function, so the stored bytes are untouched and the closure stands; the ~120-character calibration ships as a constant rather than being guessed at downstream.
+
+**Severity** low-medium · **Status** ✅ **SHIPPED in 0.7** (2026-08-28) — the binding question it
+arrived with is **answered and closed** · **Owner** format (+ registry, for the half that is theirs) ·
+**Motivating case** S64 (just-module-creator) in CONSUMER_SUGGESTIONS_HISTORY.md
+
+Measured by the reporter: editing `module.description` from 44 words to 11 moves **no**
+`content_signature`, **no** `artifact.digest`, **no** fact signature — and drops the closure, because
+`manifest.inputs` covers the raw bytes of `module_spec.yaml`. `README.md`, by a wide margin the longer
+prose, is outside `inputs` and freely amendable. The shortest fixable prose in the system was the one
+that could not be fixed.
+
+**The binding stays as it is, and the reason is the partition, not the cost.** The ask was to split it
+along the line `content_signature` already draws. That line is stated in `integrity.py` and excludes
+**name, version and namespace** alongside title and colour — so a binding drawn there makes a closure
+**transferable across a rename**: a module closed and signed by a named reviewer keeps its attestation
+after its identity is changed. `content_signature` excludes those *so a registry strip does not move
+content identity*, which is right for a content-dedup key and exactly wrong for an attestation. The two
+hashes cannot share a partition because they answer opposite questions about the same fields. **Do not
+re-propose this.**
+
+The reporter's narrower six-field version (`title`/`description`/`report_title`/`icon`/`icon_set`/
+`color`) does **not** carry that attack and is recorded as the better form of the idea. It inherits the
+cost they named themselves — hashing a *parse* of the yaml, and so every canonicalization question
+`content_signature` answers, with two hashes able to disagree about what counts as display. RM82 is the
+precedent that prices it: the last change to the binding turned on being *a byte transform needing no
+loader, no parse and no schema knowledge*, and refused BOM/whitespace/final-newline because each
+*"makes the binding more content-ish without making it content"*. A field-aware split crosses that line
+on purpose.
+
+**What the binding buys, since the reporter asked and could not construct it:** it is the *reviewer's*
+claim rather than the artifact's. The other two hashes answer *is this the same data* and *are these
+the same bytes*; this one answers *is this the same document a named person signed off*. A card
+subtitle is a claim about what the rows mean, so excluding it would make the attestation cover less
+than the reviewer actually read.
+
+**The route that actually unblocks it, and it is the item.** The framing *"the binding overrides the
+registry's rule from a layer below"* assumes an amend must **rewrite the stored `module_spec.yaml`**.
+It need not: `normalize.IDENTITY_AUTHORITY_KEYS` (`namespace`, `owner`, `canonical_id`) is the standing
+precedent for **registry-owned** metadata that sits beside the module rather than inside it, with
+`strip_authority_keys` handing the spec to our validator without them. A registry-owned display
+override leaves the stored bytes untouched, so `manifest.inputs` still matches, `verify_manifest` still
+passes and the closure stands. **So the registry's `amend_display` is not gated on this item** — it is
+gated on whether the amended value is registry-owned or a spec rewrite.
+
+**What is left to design: where a bounded `short_description` lives so that it lands amendable.** Not
+on `ModuleInfo` — under the answer above every field in `module_spec.yaml` is on the un-amendable side,
+so putting it there reproduces the defect in a new place, which is the reporter's own objection and it
+is correct. Their argument for why a `max_length` is legitimate on a **new** field where it is not on
+`description` holds and is why this is a real item: a field that exists to fit a fixed layout is
+*specified* by that layout, it refuses nothing anyone has written, and absent it everything behaves as
+today. Calibration from the live catalog: ~**120 characters**, against a measured 71 (comfortable) and
+467 (the case that prompted it).
+
+**Not in scope**: render-time truncation or folding, which hides prose an author chose to write and
+leaves the spec as wrong; and anything retroactive to the seven published modules, which met every
+requirement that existed.
+
+## RM71 — the alleles a drafted `genotype` stub must be written from are in no file
+
+**Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm71--the-alleles-a-drafted-genotype-stub-must-be-written-from-are-in-no-file) on 2026-08-28 — BUILDS in 0.7, and no schema moves.** The answer to *where does an author do this work* is **in the command they already ran**: the worklist covers every stubbed row in the file rather than only this run's additions, and `draft-panel` gains the `--dry-run` that `draft` has. The bulk advisory command is rejected for putting the worklist in a third place.
+
+**Severity** medium · **Status** ✅ **SHIPPED in 0.7** (2026-08-28) — the worklist now covers every
+stubbed row in the file, and the `--dry-run` the decision asked for turned out to have shipped in
+0.5.1 already, so what landed is the test that pins it · **Owner** enricher (`clinvar_draft`) ·
+**Found by** dogfooding on 2026-08-13, `reference_examples/hboc_palb2/`
+
+### What was observed
+
+`draft-panel` drafts `variants.csv` rows from ClinVar and leaves `genotype` as
+`vocab.TEMPLATE_PLACEHOLDER`, correctly: ClinVar publishes **alleles, not genotypes**, and whether
+carrying a pathogenic allele once is informative is inheritance-mode interpretation the source does not
+state. The mechanism under it is `draft.PartialRow` — the row is validated by **omission** and matched
+on `match_on` (the identity columns) rather than the natural key, because the natural key runs *through*
+the stub, which is what makes a re-draft after the human fills the genotype report `already_present`
+instead of appending a second stub. None of that is in question.
+
+What is missing is that the alleles the author must write the genotype *from* are in no file. A drafted
+row is rsID-only — identity whole or not at all — so `rs118203998` arrives with empty `ref`/`alts`, and
+the pair is stated once, in the warning stream:
+
+```
+warning:   genotype for rs118203998: ClinVar publishes G>T — an allele pair from {G, T}
+```
+
+The author's next action is an edit to a file that does not contain the information. At the 16 rows
+PALB2 yields at ClinVar's 3-star floor this is a transcription exercise; at the **761** the same command
+drafts for PALB2 at the 2-star floor it is not one.
+
+**And it is emitted exactly once.** The worklist is built inside `if report.added:` and scoped to
+`added_records`, which is itself a correct earlier repair — it used to name rows the model had refused
+and rows already in the file, so a "3 row(s) carry a placeholder" header was followed by twenty-seven
+lines. The consequence is that re-running `draft-panel` after the first draft adds nothing and therefore
+prints **no worklist at all**, and `draft-panel` has no `--dry-run` (`draft` does). The information
+cannot be re-requested from the command that produced it.
+
+### Candidate repairs, and why each is wrong
+
+- **Write `ref`/`alts` into the drafted row.** The one the ledger already names. A drafting provider
+  fills identity whole or not at all, and the model forbids `ref`/`alts` without a coordinate — so this
+  means writing the full coordinate, which discards the rsID identity the provider deliberately chose as
+  the stabler and more legible one. `alts` is also `REDUNDANCY_BEARING`: the compiler's allele-membership
+  check compares the author's genotype against it, and that check keeps its force *because* the two were
+  authored independently. Filling it makes the compiler compare ClinVar with ClinVar.
+- **A comment column on `VariantRow`.** `extra="forbid"` rejects any column the model does not declare,
+  so a "comment" is a real optional field — full cost on the most expensive table, carrying text that is
+  dead the moment the stub is replaced. It
+  is also a provenance claim with no machine reader: "ClinVar publishes G>T" is a statement about a
+  snapshot release, and a re-draft from a newer one leaves it naming the old alleles. That is exactly
+  the staleness `licensing.withdraw_stale_dataset` had to be built for on `dataset`, on a column where
+  nothing could notice.
+- **A sidecar the author reads beside the CSV.** Half cost, so the cheapest legal candidate, and still
+  wrong three ways. Its only reader is a human, which is the one thing the charter amendment says to
+  discourage rather than leave unmentioned. Its join key is the key the stub runs through, so it either
+  keys on the rsID — saying nothing a `hint variant` call does not — or on the natural key, which
+  contains the placeholder. And an unknown file in a spec directory is tolerated but not read, hashed or
+  listed in `artifact.files` (S16), so a worklist file the author must remember to delete becomes a
+  permanent resident of every drafted module, with one more name for `_check_misspelled_tables` to
+  learn.
+- **Have the enricher fill it after resolution.** `enrich` resolves the alleles, so it *could*. It must
+  not, twice: `ref` and `alts` are both in `hints.REDUNDANCY_BEARING` (`ref` against
+  `verify_reference_alleles`, `alts` against the allele-membership check), and filling a cell a Class-2
+  check cross-examines makes the comparison vacuous. And the dependency runs the other way — `enrich`
+  refuses to load a file containing a placeholder, correctly, because forward resolution is allele-aware
+  (`hosting_verdict`) and a placeholder genotype would silently skip that filter on exactly the
+  one-to-many rsIDs that need it. Rewriting the authored cell at all is the parked enricher-co-authoring
+  item, which nothing here should ship by accident.
+- **Make `genotype` optional so the stub is unnecessary.** Barred by Principle 8 — it is a required
+  field, and demoting one within a major is the forbidden move. It would be wrong at 1.0 too: the
+  zygosity decision is what the stub protects, and an optional genotype lets a module ship without it
+  silently, which is the reassurance-manufacturing failure this format guards hardest against.
+
+### What is actually undecided
+
+`just-dna-enricher hint variant rs118203998` already returns the alleles and already refuses to apply
+them (`refusal="redundancy_bearing"`), so the information is reachable at one command per row. The
+candidate that survives every objection above is therefore a **bulk read-only advisory** over a module's
+stubbed rows: it changes no schema, fills no cell, and re-answers a question the drafting run answered
+once. That is a build rather than a decision — but it is not obviously the answer either, because it
+puts the worklist in a *third* place while the author's complaint is that it is not in the one place
+they are editing.
+
+So the open question is not "which column" but **where an author does this work**, and this repo has no
+model of that. Filed here rather than built for exactly that reason.
 
 ## RM85 — a recorded release, compared against the one its source publishes now
 
@@ -884,7 +1291,7 @@ item plus Principle 9, the cost-by-layer pricing promoted out of an amendment en
 the only rule stated nowhere else. The reasoning moved to `CONSTITUTION_AMENDMENTS_HISTORY.md`, a new
 file, and the charter came out **11.5% smaller while gaining three rules**. The obligation the
 amendment creates — a release declares its corrections — is owed by
-[RM126](ROADMAP_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output),
+[RM126](ROADMAP_HISTORY.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output),
 queued for 0.7, and until it is built the charter names a channel that does not exist.
 
 **This entry was first filed as *the release table and the practice disagree*, and that was aimed at
@@ -928,7 +1335,7 @@ your stored outputs stale*, and those are orthogonal. **They must be separated r
 optional column… lands in a minor: the authored identity is unchanged, and only a recompile's
 `artifact.digest` moves"* — get amended to say that release class and artifact staleness are different
 axes, with the second carried by the mechanism in
-[RM126](ROADMAP_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)? The sentence
+[RM126](ROADMAP_HISTORY.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)? The sentence
 currently states a ruling and, in the same breath, offers the identity test as its rationale — which
 is exactly the reading that sized RM121, so leaving it unamended leaves the trap armed. Everything
 else RM127 used to ask now belongs to RM126.
@@ -940,7 +1347,7 @@ else RM127 used to ask now belongs to RM126.
 every one of them was a *decision* rather than a missing line of code, and none had been made. All six
 were answered in a single pass on 2026-08-21. Four stayed open with their shape settled or narrowed and
 are still in the active file (RM103's manifest half, RM108, RM110, RM117); **RM122** parked on demand
-and moved to [ROADMAP_0_7.md](ROADMAP_0_7.md); **RM103's refusal half** moved to
+and moved to the minor-deferral file ([ROADMAP_0_8.md](ROADMAP_0_8.md) since the 0.7 cut); **RM103's refusal half** moved to
 [ROADMAP § The 1.0 cleanup](ROADMAP.md#the-10-cleanup-candidate-tracker); and **RM102** closed
 outright, which is why it is here.
 
@@ -1826,7 +2233,7 @@ before being claimed as a guard.
 
 ## RM88 — republishing without bumping `version:` overwrites a versioned path with different bytes
 
-✅ **Shipped in `just-dna-enricher` 0.6.1.** [RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
+✅ **Shipped in `just-dna-enricher` 0.6.1.** [RM84](ROADMAP_0_8.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
 built the versioned path `data/<name>/v<version>/` and it did exactly what it said. What it could not
 do was notice that the version had *not* moved: an author who recompiled a changed module and
 republished without editing `version:` overwrote the versioned copy with different bytes, and the path

@@ -755,7 +755,7 @@ consumer could install. Both are answered.*
 ## S33 — "exactly one of those rows can match" is true, and the other rows are not inert to a reader
 
 **Status — accepted, both halves. Ask 1 and ask 2 are in the tree for 0.6; ask 2's bigger sibling is
-filed as [RM87](ROADMAP_0_7.md#rm87--an-expanded-row-is-indistinguishable-from-an-authored-one-in-the-artifact),
+filed as [RM87](history/ROADMAP_0_7.md#rm87--an-expanded-row-is-indistinguishable-from-an-authored-one-in-the-artifact),
 and the reason you gave for not asking for it is wrong — it is minor-legal, not a 1.0 conversation.**
 You are also owed a correction about your mitigation, which is narrower than you think for a reason
 that is instantiated in our own corpus.
@@ -934,7 +934,7 @@ better to ask than to find out after recompiling the corpus.
 ## S34 — reply to CONSUMER_BRIEF_LITE: two gaps (both now closed), two deliberate, one joint
 
 **Status — every section answered; §1 fixed here as a documentation defect, §2 fixed as one already,
-§4 filed as [RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own),
+§4 filed as [RM84](ROADMAP_0_8.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own),
 §3 and §5 need nothing from us. And your opening complaint is upheld: the brief was wrong about what
 you could install.**
 
@@ -989,7 +989,7 @@ that either is the module you meant to install. That is what a pinned key is for
 null` finding is yours, as you say, and we are only glad it surfaced in your pipeline rather than in a
 reader's report.
 
-**§4 — joint, agreed, and filed on our side as [RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own).**
+**§4 — joint, agreed, and filed on our side as [RM84](ROADMAP_0_8.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own).**
 Our half is `upload.upload_module`, which writes the flat `data/<name>/` layout with no version
 segment; the item records your §4 statement — that you will follow a version segment in discovery if
 the publisher grows one — as the consumer half already agreed in writing, so whoever picks it up does
@@ -2413,7 +2413,7 @@ was stale. §6.6 now ends on the `reviews`-versus-`authorship` advice instead of
 argument. The stages 7–8 passage is marked fixed with the version floor. Your second candidate — delete
 the paragraph and defer to the registry's docs — is rejected for exactly your reason: §6.6 is where a
 module author meets this question and their reference docs are not on that reader's path.
-[RM86](ROADMAP_0_7.md#rm86--a-review-pass-is-legal-at-the-gate-refused-by-the-pre-flight-and-invisible-once-published)
+[RM86](history/ROADMAP_0_7.md#rm86--a-review-pass-is-legal-at-the-gate-refused-by-the-pre-flight-and-invisible-once-published)
 is **closed**, in place, with the per-finding dispositions and the note that its "waits on their answer to
 S12" status was itself stale; [RM_TOC.md](RM_TOC.md)'s row carries the same. Its pointer said
 `../just-dna-marketplace`, which is a symlink to `just-dna-registry` — the real name is now given.
@@ -3895,7 +3895,7 @@ currently tell authors this is a known gap and cannot tell them who will close i
 
 **Status — accepted as the documentation defect you filed it as; both of your two closers shipped in
 the tree, and the third question they raise is filed as
-[RM122](ROADMAP_0_7.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it).**
+[RM122](ROADMAP_0_8.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it).**
 [SCHEMAS.md](SCHEMAS.md) now carries the normative bin lookup beside the genotype one, opening with the
 plain sentence that the family is specified ahead of its consumers. You asked for either; you have both,
 because the paragraph without the admission would still have left an author guessing whether anything
@@ -4076,8 +4076,8 @@ reader can tell "checked and agreed" from "compared a source with itself".
 ## S60 — an author's correction to a derived table has nowhere to live except inside it
 
 **Status — accepted as a design, filed as
-[RM124](ROADMAP_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it)
-for 0.7, and it answers the question [RM83](ROADMAP_0_7.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold)
+[RM124](history/ROADMAP_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it)
+for 0.7, and it answers the question [RM83](history/ROADMAP_0_7.md#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold)
 has been blocked on since it was filed.** Your tier argument is accepted and is not among the open
 questions. **And your first prerequisite is already discharged: S51 shipped as RM115 and was cut as
 0.6.5 this morning** — read the keys off `hints.key_fields`, because your derivation is now stale on
@@ -4345,7 +4345,7 @@ found nothing to do while an indexed manifest field went stale underneath it.
 
 ## S62 — a patch changed a published field, and nothing a consumer can read said so
 
-**Status — accepted, and filed as two items: [RM126](ROADMAP_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)
+**Status — accepted, and filed as two items: [RM126](ROADMAP_HISTORY.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)
 for the surface you asked for, [RM127](ROADMAP_HISTORY.md#rm127--a-corrected-derivation-has-no-release-class-and-the-version-number-is-the-wrong-place-to-carry-one)
 for the thing underneath it that you found without naming.** Nothing ships yet — the second one sizes
 the first, and it is the maintainer's decision rather than ours. Your analysis stands in full, and
@@ -4676,7 +4676,7 @@ authored.
 
 **Status — answered (a): the binding is justified, and here is the attack you could not construct.
 `short_description` is filed as
-[RM133](ROADMAP.md#rm133--a-card-subtitle-has-no-amendable-home-and-the-binding-is-not-where-that-gets-fixed),
+[RM133](ROADMAP_HISTORY.md#rm133--a-card-subtitle-has-no-amendable-home-and-the-binding-is-not-where-that-gets-fixed),
 open — but not on `ModuleInfo`, because there it would reproduce the defect. And the answer to your
 ordering question is better than you expected: registry S16 is *not* gated on us.**
 
@@ -4895,7 +4895,7 @@ from this side.
 ## S65 — we built the consumer half of RM126, and it narrows what RM126 has to publish
 
 **Status — accepted with thanks; your four constraints are written into
-[RM126](ROADMAP_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)
+[RM126](ROADMAP_HISTORY.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output)
 as a section of their own, and the fifth ask — `compilation.dropped_rows` — shipped 2026-08-24 in
 `just-dna-compiler`.** S62 stays archived and untouched; your three corrections are recorded here,
 which is where a correction to a report belongs.

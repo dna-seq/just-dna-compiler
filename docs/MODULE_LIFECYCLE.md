@@ -205,7 +205,7 @@ is) is **allowed** by the gate, which carves out *"a collision under the same mo
 namespace was never threaded into it, so it reported `published_as: [the predecessor]` and
 `would_publish: false` for a publish that then succeeded. A publisher branching on that field — the
 field the API docs say to branch on — refused its own legal publish. Recorded as an ask to the registry
-in [RM86](ROADMAP_0_7.md#rm86--a-review-pass-is-legal-at-the-gate-refused-by-the-pre-flight-and-invisible-once-published);
+in [RM86](history/ROADMAP_0_7.md#rm86--a-review-pass-is-legal-at-the-gate-refused-by-the-pre-flight-and-invisible-once-published);
 their own test file stated the standard it violated, and the repair added `published_elsewhere` so the
 verdict quantifies over what the gate actually refuses. **Branch on `would_publish` against a current
 registry; a deployment older than 0.16.0 will still refuse a legal review publish.**
@@ -726,7 +726,7 @@ Stated plainly, because each of these is currently an absence a reader has to in
   linking it to the version before it — no parent digest, no previous `content_signature`. The
   registry knows the history; a module handed to you on a disk does not.
 - **Nothing notifies a consumer.** Both acquisition paths are pull. One of them had no version to pull
-  against at all (§6.8) — [RM84](ROADMAP_0_7.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own),
+  against at all (§6.8) — [RM84](ROADMAP_0_8.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own),
   whose publisher half shipped in 0.6: the path can now express a version. It is still pull, and the
   reader half is the consumer's.
 - **No results are traceable to the module version that produced them** (§6.8), which is the missing
@@ -760,7 +760,7 @@ as a reference example whose README names what it broke.
 **2026-08-16**, on the reasoning that each needed a decision before it needed an item. That reasoning
 is the one this repo has twice found to be wrong — a question filed against a release is findable, and
 a question at the bottom of a prose document is a backlog nobody reads. Five became
-[RM82–RM86](ROADMAP_0_7.md#the-lifecycle-items--what-writing-down-the-second-pass-surfaced), two of them
+[RM82–RM86](history/ROADMAP_0_7.md#the-lifecycle-items--what-writing-down-the-second-pass-surfaced), two of them
 carrying a decision rather than a fork — and RM82's shipped in 0.6, which is why §6.2's line-ending row
 now reads *kept*. Two did not become items and are recorded where they belong
 instead: the published trust rule addresses *"a consumer"* while its reader is a catalog, which

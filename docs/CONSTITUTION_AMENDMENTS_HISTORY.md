@@ -52,7 +52,7 @@ module can carry it, and no stored value became wrong.
 
 Unusually, it **adds a permission and an obligation together**. The permission was already being
 exercised before anyone wrote it down; only the obligation is new. The declaration mechanism itself is
-[RM126](ROADMAP_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output) and
+[RM126](ROADMAP_HISTORY.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output) and
 does not exist yet, so the charter currently requires a channel that is still to be built.
 
 **0.5 amendment — the network tier.** Goal 2, the two Non-goals on dependencies and network, and
