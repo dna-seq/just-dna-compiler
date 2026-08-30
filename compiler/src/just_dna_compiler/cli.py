@@ -661,8 +661,11 @@ def sweep(
     installed. COMPILER.md carries the full sequence.
     """
     before_outputs = read_outputs(before)
-    after_outputs = build_outputs(spec_root, after) if spec_root is not None else read_outputs(after)
-    measurement = compare_outputs(before_outputs, after_outputs)
+    if spec_root is not None:
+        after_outputs, build_failures = build_outputs(spec_root, after)
+    else:
+        after_outputs, build_failures = read_outputs(after), {}
+    measurement = compare_outputs(before_outputs, after_outputs, build_failures)
     if as_json:
         typer.echo(json.dumps(measurement_json(measurement), indent=2))
     else:

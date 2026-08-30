@@ -31,9 +31,12 @@ from just_dna_compiler.sweep import (
     NO_MODULES_PHRASE,
     NO_RECORD_PHRASE,
     OVERDECLARED_NOTE_PHRASE,
+    OVERDECLARED_UNMEASURED_NOTE_PHRASE,
+    REGRESSED_MODULE_PHRASE,
     UNDECLARED_AXIS_PHRASE,
     UNDECLARED_FIELD_PHRASE,
     UNDECLARED_KIND_PHRASE,
+    UNDECLARED_UNMEASURED_PHRASE,
     UNMEASURED_MODULE_PHRASE,
     WRONG_PREVIOUS_PHRASE,
     WRONG_VERSION_PHRASE,
@@ -204,8 +207,8 @@ def test_the_sweep_over_the_real_corpus_reports_a_measured_zero_with_its_denomin
     A release where nothing moved must record a measured zero *with its evidence*, never silence —
     so the sentence the record will carry has to name what was compared and how many of it moved.
     """
-    before = build_outputs(_EXAMPLES, tmp_path / "before")
-    after = build_outputs(_EXAMPLES, tmp_path / "after")
+    before, _ = build_outputs(_EXAMPLES, tmp_path / "before")
+    after, _ = build_outputs(_EXAMPLES, tmp_path / "after")
     measurement = compare_outputs(before, after)
 
     assert measurement.modules == tuple(sorted(before))
@@ -222,7 +225,7 @@ def test_the_sweep_over_the_real_corpus_reports_a_measured_zero_with_its_denomin
 
 def test_a_side_stamped_with_two_releases_is_refused(tmp_path: Path) -> None:
     """A tree compiled by two compilers is not a side of an interval."""
-    outputs = build_outputs(_EXAMPLES, tmp_path / "mixed")
+    outputs, _ = build_outputs(_EXAMPLES, tmp_path / "mixed")
     name = min(outputs)
     outputs[name].manifest["compilation"]["compiler_version"] = "just-dna-compiler 0.0.1"
 
@@ -245,7 +248,7 @@ def _measurement(tmp_path: Path, **moved: bool):
     Real modules and a real evidence sentence, so only the axis values are synthetic — which is the
     part the gate reads.
     """
-    before = build_outputs(_EXAMPLES, tmp_path / "before")
+    before, _ = build_outputs(_EXAMPLES, tmp_path / "before")
     base = compare_outputs(before, before)
     axes = dict(base.axes)
     axes.update(moved)
@@ -287,26 +290,103 @@ def test_the_gate_refuses_a_sweep_that_did_not_measure_the_release_being_gated(
     assert any(WRONG_VERSION_PHRASE in f for f in findings)
 
 
-def test_the_gate_refuses_a_release_whose_sweep_could_not_measure_every_module(
-    tmp_path: Path,
-) -> None:
-    """A module that compiled on one side only is a module the sweep says nothing about.
-
-    Under the one-spec-root sequence there is no innocent reading: both sides see the same specs, so
-    a module missing from one is a compile that failed. Rolling it into an all-`False` result over
-    its surviving neighbours is the silence this whole surface exists to replace, and
-    `SweepMeasurement`'s own docstring says so.
-    """
-    measurement = replace(_measurement(tmp_path), unmeasured=("cyp2c19_star_alleles",))
-    record = ReleaseRecord(
+def _zero_record(**kwargs: Any) -> ReleaseRecord:
+    return ReleaseRecord(
         version="1.0.1",
         previous="1.0.0",
         axes=dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False),
         evidence="claims a measured zero over what survived",
+        **kwargs,
     )
-    findings, _ = gate_findings(measurement, "1.0.1", {"1.0.1": record})
 
-    assert any(UNMEASURED_MODULE_PHRASE in f and "cyp2c19_star_alleles" in f for f in findings)
+
+def test_the_gate_refuses_a_module_this_release_cannot_compile_and_names_the_error(
+    tmp_path: Path,
+) -> None:
+    """The BEFORE side compiled it and this one does not: a regression in the release being gated.
+
+    Rolling it into an all-`False` result over its surviving neighbours is the silence this whole
+    surface exists to replace. Nothing may excuse it — the record below declares the same module
+    `unmeasured`, which covers the *other* direction and must not reach this one.
+    """
+    measurement = replace(
+        _measurement(tmp_path),
+        only_before=("cyp2c19_star_alleles",),
+        build_failures={"cyp2c19_star_alleles": "variants.csv line 4: bad allele"},
+    )
+    findings, _ = gate_findings(
+        measurement, "1.0.1", {"1.0.1": _zero_record(unmeasured=["cyp2c19_star_alleles"])}
+    )
+
+    regression = [f for f in findings if "cyp2c19_star_alleles" in f and REGRESSED_MODULE_PHRASE in f]
+    assert len(regression) == 1
+    assert UNMEASURED_MODULE_PHRASE in regression[0]
+    # The compiler's own error travels with the finding, so the operator is not sent to a log.
+    assert "variants.csv line 4: bad allele" in regression[0]
+    assert measurement.unmeasured == ("cyp2c19_star_alleles",)
+
+
+def test_a_module_the_previous_release_could_not_compile_fails_until_the_record_names_it(
+    tmp_path: Path,
+) -> None:
+    """RM139, the case that made the first real cut a two-step.
+
+    *One side only* used to mean *a compile failed*. In this direction nothing failed: the previous
+    release produced no output for the module — its spec uses a column that release refuses, or it
+    did not exist yet — so no like-for-like comparison exists and there is no measurement to declare.
+    The gate still refuses until the published record names it, which is the same forcing shape
+    `declared` uses, and the declaration cannot excuse anything else.
+    """
+    measurement = replace(_measurement(tmp_path), only_after=("cyp2c9_warfarin_grch37",))
+
+    findings, notes = gate_findings(measurement, "1.0.1", {"1.0.1": _zero_record()})
+    assert any(
+        UNDECLARED_UNMEASURED_PHRASE in f and "cyp2c9_warfarin_grch37" in f for f in findings
+    )
+
+    declared = _zero_record(unmeasured=["cyp2c9_warfarin_grch37"])
+    findings, notes = gate_findings(measurement, "1.0.1", {"1.0.1": declared})
+    assert findings == [] and notes == []
+
+
+def test_declaring_a_module_unmeasured_that_the_sweep_did_measure_is_reported(
+    tmp_path: Path,
+) -> None:
+    """An EQUALITY over the measured set, checked in both directions (`@registry-completeness`).
+
+    A one-sided membership test would let the list grow into a permanent exemption nobody re-reads,
+    which is the escape hatch this field was refused as. A note rather than a finding, for the same
+    reason over-declaring an axis is: the reading is *this claim outlived its measurement*, not
+    *this release is broken*.
+    """
+    measurement = _measurement(tmp_path)
+    assert "cyp2c19_star_alleles" in measurement.modules
+
+    findings, notes = gate_findings(
+        measurement, "1.0.1", {"1.0.1": _zero_record(unmeasured=["cyp2c19_star_alleles"])}
+    )
+
+    assert findings == []
+    assert notes == [f"cyp2c19_star_alleles {OVERDECLARED_UNMEASURED_NOTE_PHRASE}"]
+
+
+def test_a_measurement_carrying_a_regression_cannot_mint_a_record(tmp_path: Path) -> None:
+    """`only_after` becomes a declared denominator; `only_before` never does.
+
+    Minting a record over the survivors of a broken compile would publish exactly the false green the
+    gate exists to refuse, one layer earlier and with a signature on it.
+    """
+    measurement = replace(
+        _measurement(tmp_path), before="1.0.0", after="1.0.1",
+        only_before=("cyp2c19_star_alleles",), only_after=("apoe_epsilon",),
+    )
+    with pytest.raises(ValueError, match="cannot mint a record"):
+        measurement.as_record(version="1.0.1", previous="1.0.0")
+
+    measured = replace(measurement, only_before=())
+    record = measured.as_record(version="1.0.1", previous="1.0.0")
+    assert record.unmeasured == ["apoe_epsilon"]
+    assert "apoe_epsilon" in record.evidence
 
 
 def test_the_gate_refuses_a_sweep_with_no_module_in_common(tmp_path: Path) -> None:

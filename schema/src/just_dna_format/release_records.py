@@ -152,6 +152,15 @@ class ReleaseRecord(BaseModel):
 
     **A release where nothing moved records a measured zero with its `evidence`, never silence.** An
     absent record and an all-`False` record answer different questions.
+
+    **`unmeasured` is a denominator, not an exemption (RM139).** `axes` is a claim about the modules
+    the sweep could compare, and a minor that adds an authored column and exercises it in the corpus
+    leaves at least one module the previous release cannot compile at all — so there is no before
+    state to compare it against, and no measurement to declare. The 0.7.0 cut stated that fact in
+    `evidence` prose, which the gate cannot read, so the tag had to be waved through by hand.
+    Naming the modules in a field the gate checks for **equality** is the opposite of an escape
+    hatch: it cannot cover a module that compiled on both sides, it cannot cover one this release
+    broke, and listing a module the sweep did measure is itself reported.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -179,6 +188,15 @@ class ReleaseRecord(BaseModel):
     declared: list[DeclaredChange] = Field(
         default_factory=list,
         description="The correction-versus-addition split — declared by the author, never measured.",
+    )
+    unmeasured: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Modules the previous release produced no output for, so no like-for-like comparison "
+            "exists — a new example, or one whose spec uses a column the previous release refuses. "
+            "Sorted. Checked for EQUALITY against the sweep, so it acknowledges a measured fact and "
+            "cannot excuse a module the sweep did measure (RM139)."
+        ),
     )
     evidence: str = Field(
         description=(
@@ -701,6 +719,8 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
                 item="RM131",
             ),
         ],
+        # RM139: the same fact its `evidence` sentence already states, in the field the gate reads.
+        unmeasured=["cyp2c9_warfarin_grch37"],
         evidence=(
             "15 reference module(s) compiled under 0.6.6 and 0.7.0 from one spec root, so the "
             "compiler is the only variable; modules moved per axis: content_signature 0/15, "

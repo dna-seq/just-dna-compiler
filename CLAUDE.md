@@ -195,6 +195,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - "Keyed kind ⇒ dupe-checked" is not the line — which loop calls the checker is. `@which-loop-calls-the-checker`
 - An analogy in a `Field(description=…)` is a claim, and it does not travel with the field. `@field-description-is-a-claim`
 - A warning's text is an API: pin the phrase, and publish the denominator behind any flag. `@warning-text-is-api`
+- A release sweep's *one side only* has two causes: missing from AFTER is this release's regression, missing from BEFORE is the previous one's. `@one-side-only-has-two-causes`
+- An exclusion the gate must act on is a field checked for equality, never a sentence in `evidence`. `@one-side-only-has-two-causes`
 - A warning code is a permanent key: name the **finding**, one code per remediation, never the emission site. `@warning-code-names-the-finding`
 - A `Finding` loses its code at a pydantic field and at any reformat — seed from the classified list, reformat through `restate`. `@finding-loses-its-code-at-a-boundary`
 - Count a correction's record over the **overlay**, never over what it removed, or lap 2 disagrees with lap 1. `@suppression-counts-the-overlay-not-the-effect`

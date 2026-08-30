@@ -40,8 +40,48 @@ signature, so `just-dna-compiler` took the patch alongside while `just-dna-forma
 under Principles 3 and 8, and a new optional column is what sizes a release. The heading names `0.7.0`
 because the proposal decided it per item, so unlike the 2026-08-24 batch below — which is also an
 uncut minor and deliberately names no number — there is a version to write down here. The three
-`pyproject.toml` files read `0.6.6` until the release is cut, and the 2026-08-24 work ships
-inside this same number. Each entry below names the packages it actually touched.
+`pyproject.toml` files were bumped to `0.7.0` on 2026-08-30 and **the tag is not cut**, so work still
+lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
+packages it actually touched.
+
+- **RM139 — the release gate could not tell a broken compile from a spec that outgrew the old
+  compiler.** *(`just-dna-format` + `just-dna-compiler`.)* Filed by running RM126's own gate for real
+  at this cut, where it refused the release over `reference_examples/cyp2c9_warfarin_grch37/`: RM70
+  put the optional `requires_callable` column on `pharm_variants.csv`, that example uses it, and 0.6.6
+  refuses the spec under `extra="forbid"`. Nothing had failed — the previous release cannot produce a
+  before state for it, so no like-for-like comparison exists — and this recurs in **every minor that
+  adds an authored column and exercises it in the corpus**, as it does for any example newer than the
+  last release. The gate read *one side only* as *a compile failed* and the tag had to be waved
+  through by hand.
+
+  **The two directions are facts about different releases, and the gate now says which.** A module in
+  the BEFORE tree and not the AFTER one is a regression **in the release being cut**: still fatal,
+  unconditionally, and now carrying the compiler's own errors, which `build_outputs` had been logging
+  and throwing away. A module in the AFTER tree and not the BEFORE one fails until the published
+  record's new `ReleaseRecord.unmeasured` list names it. `SweepMeasurement` splits `unmeasured` into
+  `only_before`/`only_after` and keeps the union as a derived property; the sweep's JSON keeps its
+  original `unmeasured` key and adds the two halves beside it, so a release script piping to `jq` is
+  unaffected. `UNMEASURED_MODULE_PHRASE` still appears in both messages for the same reason.
+
+  **`unmeasured` is a denominator, not the per-module escape hatch the roadmap entry refused**, and
+  the difference is that the gate checks an **equality** against what it could not measure rather than
+  a membership test: a module measured on both sides cannot be excused by listing it (that is reported
+  as a note), a regression cannot be excused by listing it, `as_record` refuses to mint a record over
+  one, and a movement on a measured module gates however the list reads. `as_record` fills the field
+  from the measurement, so the exclusion is forced into the record the same way `declared` is —
+  extending the existing mechanism, not adding a second kind of gate input. Records written before the
+  field read `[]`, which is their correct claim; the 0.7.0 record is backfilled with the module its own
+  `evidence` sentence already named.
+
+  **Consumers:** `ReleaseRecord` gains one optional list field, minor-legal under Principle 3 and read
+  by nothing that does not want it. `build_outputs` now returns `(outputs, failures)` — a compiler
+  internal, but a release script calling it directly must unpack.
+
+  Re-measured end to end rather than asserted: the 0.6.6 → 0.7.0 sweep was re-run over all sixteen
+  reference examples with 0.6.6 installed in an isolated environment — fifteen measured, one refused on
+  `requires_callable]: Extra inputs are not permitted`, gate exit 0 against the shipped record where
+  the cut had needed a human to read past it, and exit 1 naming the module when one is removed from the
+  spec root instead.
 
 - **RM134 § B — the concordance check takes a second authority, and the record has a producer.**
   *(`just-dna-enricher`, plus one optional `module_spec.yaml` field in `just-dna-format` and its

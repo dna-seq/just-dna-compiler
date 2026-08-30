@@ -1804,6 +1804,10 @@ DEGENERATE_INTERVAL_PHRASE = "measured one release against itself, so it measure
 UNMEASURED_MODULE_PHRASE   = "could not be measured on both sides, so the sweep says nothing about it"
 NO_MODULES_PHRASE          = "measured no module at all"
 OVERDECLARED_NOTE_PHRASE   = "is declared and this sweep did not see it move"
+
+REGRESSED_MODULE_PHRASE             = "compiled under the previous release and does not compile under this one"
+UNDECLARED_UNMEASURED_PHRASE        = "has no output from the previous release and the record does not list it"
+OVERDECLARED_UNMEASURED_NOTE_PHRASE = "is declared unmeasured and this sweep measured it on both sides"
 ```
 
 The middle four are about the **sweep** rather than about the record, and they exist because a gate
@@ -1813,9 +1817,35 @@ all all produce an all-`False` measurement, and none of them is a release that c
 `--release` accepts the stamped `just-dna-compiler X.Y.Z` spelling as well as the bare one, for the
 same reason `needs_recompile` does.
 
-The last is a **note, not a finding**, and does not fail the release: the reference corpus is sixteen
-modules and a real correction can land on a shape none of them has. It is still printed, so
-over-declaring is visible rather than invisible.
+`OVERDECLARED_NOTE_PHRASE` is a **note, not a finding**, and does not fail the release: the reference
+corpus is sixteen modules and a real correction can land on a shape none of them has. It is still
+printed, so over-declaring is visible rather than invisible.
+
+The last three are RM139's split of *one side only*, below.
+
+### Which side a module is missing from (RM139)
+
+`UNMEASURED_MODULE_PHRASE` stays in every message here, so a script grepping it catches all of them.
+What changed is the clause after it, because the two directions are facts about **different
+releases**:
+
+| the module is | what it means | the gate |
+| --- | --- | --- |
+| in BEFORE, not in AFTER (`only_before`) | this release cannot compile a spec the previous one could — a regression, or a stale reused BEFORE directory holding a module the spec root no longer has | **fails, unconditionally**, with the compiler's own errors beside it where `--spec-root` built the AFTER side. `as_record` refuses to mint over one |
+| in AFTER, not in BEFORE (`only_after`) | the previous release produced no output for it: its spec uses a column that release refuses under `extra="forbid"`, or the example is newer than that release | **fails until `ReleaseRecord.unmeasured` names it.** Then it is measured-nothing rather than measured-zero |
+
+The first real use of the gate hit the second row, which the rule did not model: RM70 put the optional
+`requires_callable` column on `pharm_variants.csv`, `reference_examples/cyp2c9_warfarin_grch37/` uses
+it, and 0.6.6 refuses that spec. Nothing failed — the module has no before state at all, so no
+like-for-like comparison exists — and it **recurs in every minor that adds an authored column and
+exercises it in the corpus**. The 0.7.0 cut stated the exclusion in `evidence` prose the gate cannot
+read and the tag was waved through by hand.
+
+`unmeasured` is a **denominator, not an exemption**, and the difference is the equality: a module the
+sweep measured on both sides cannot be excused by listing it (that is reported as a note), a
+regression cannot be excused by listing it, and a movement on a measured module still gates however
+the list reads. What it buys is that the exclusion is forced into the published record by the
+measurement — `as_record` fills it — instead of living in a sentence nothing checks.
 
 **Under `--json`, stdout is the JSON document and nothing else** — the notes and the success line go
 to stderr there. The caller of that flag is a release script piping to `jq`, and a note printed after

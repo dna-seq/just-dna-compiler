@@ -327,6 +327,36 @@ def test_a_declared_change_names_an_axis_the_record_says_moved() -> None:
             assert record.axes[change.axis] is True, f"{version} declares {change.target} on a still axis"
 
 
+def test_an_unmeasured_module_is_named_in_the_prose_that_used_to_be_its_only_home() -> None:
+    """RM139: the field the gate reads and the sentence a person reads must not drift apart.
+
+    `evidence` carried the exclusion alone until the field existed, and prose the gate cannot read is
+    how a real cut ended up waved through by hand. Two homes for one fact is the shape that goes
+    blind, so the field is pinned to the sentence rather than left to be maintained beside it.
+    """
+    for version, record in RELEASE_RECORDS.items():
+        assert record.unmeasured == sorted(set(record.unmeasured)), version
+        for name in record.unmeasured:
+            assert name in record.evidence, f"{version} excludes {name} in a field its prose omits"
+
+
+def test_a_record_declaring_nothing_unmeasured_says_so_by_default() -> None:
+    """The field is additive, so a record written before it existed reads as *nothing excluded*.
+
+    That is the correct reading rather than a convenient one: the 0.6.1 and 0.6.6 records each state
+    a denominator of sixteen over a sixteen-module corpus, so their silence and an empty list are the
+    same claim. A record whose evidence names an exclusion is the one that must fill the field, which
+    is what the test above holds it to.
+    """
+    bare = ReleaseRecord(
+        version="9.9.9",
+        previous="9.9.8",
+        axes=dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False),
+        evidence="a measured zero over every module",
+    )
+    assert bare.unmeasured == []
+
+
 def test_every_shipped_record_chains_to_a_lower_release() -> None:
     """The chain is what composes an interval; a link that does not descend cannot be walked."""
     from just_dna_format.identity import parse_version

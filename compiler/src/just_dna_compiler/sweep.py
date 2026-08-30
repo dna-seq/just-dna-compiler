@@ -55,6 +55,12 @@ DEGENERATE_INTERVAL_PHRASE = "measured one release against itself, so it measure
 UNMEASURED_MODULE_PHRASE = "could not be measured on both sides, so the sweep says nothing about it"
 NO_MODULES_PHRASE = "measured no module at all"
 OVERDECLARED_NOTE_PHRASE = "is declared and this sweep did not see it move"
+# RM139 split *one side only* by direction, because the two directions are facts about different
+# releases. `UNMEASURED_MODULE_PHRASE` stays in both messages — a script grepping it still catches
+# both — and these say which side, for a script that needs to tell them apart.
+REGRESSED_MODULE_PHRASE = "compiled under the previous release and does not compile under this one"
+UNDECLARED_UNMEASURED_PHRASE = "has no output from the previous release and the record does not list it"
+OVERDECLARED_UNMEASURED_NOTE_PHRASE = "is declared unmeasured and this sweep measured it on both sides"
 
 
 @dataclass(frozen=True)
@@ -93,9 +99,20 @@ class ModuleDelta:
 class SweepMeasurement:
     """The union across every module the sweep could measure, plus the ones it could not.
 
-    `unmeasured` is not cosmetic. A module present on one side only is a module this sweep says
-    nothing about, and rolling it silently into an all-`False` result would be the silence the record
-    exists to replace.
+    A module present on one side only is a module this sweep says nothing about, and rolling it
+    silently into an all-`False` result would be the silence the record exists to replace. **Which
+    side it is missing from is a different fact about a different release (RM139)**, so the two are
+    kept apart and `unmeasured` is their union rather than a third stored field:
+
+    * `only_before` — the previous release compiled it and this one does not. That is a regression in
+      the release being cut, and it is fatal however it is declared. A stale reused BEFORE directory
+      holding a module the spec root no longer has lands here too, which is the fail-safe direction;
+      the runbook's answer is a fresh tree every time.
+    * `only_after` — the previous release produced no output for it, so no before state exists to
+      compare against. A module added since the last release, or one whose spec now uses a column the
+      previous release refuses under `extra="forbid"`, which happens in every minor that adds an
+      authored column and exercises it in the corpus. Nothing failed and nothing is measurable, so
+      the record names it in `unmeasured` and the gate checks that list for equality.
     """
 
     before: str
@@ -103,8 +120,18 @@ class SweepMeasurement:
     axes: dict[str, bool]
     manifest_fields: tuple[str, ...]
     modules: tuple[str, ...]
-    unmeasured: tuple[str, ...]
+    only_before: tuple[str, ...]
+    only_after: tuple[str, ...]
     per_module: tuple[ModuleDelta, ...]
+    #: Why a spec under `--spec-root` did not compile under THIS release, keyed by module. Populated
+    #: by `build_outputs` and empty when the AFTER side was read from a tree, where nothing recorded
+    #: it. Carried so the fatal finding names the error instead of sending the operator to a log.
+    build_failures: dict[str, str]
+
+    @property
+    def unmeasured(self) -> tuple[str, ...]:
+        """Every module measured on one side only, derived rather than stored beside the two halves."""
+        return tuple(sorted(self.only_before + self.only_after))
 
     @property
     def moved_counts(self) -> dict[str, int]:
@@ -130,8 +157,16 @@ class SweepMeasurement:
             f"from one spec root, so the compiler is the only variable",
             f"modules moved per axis: {counts}",
         ]
-        if self.unmeasured:
-            parts.append(f"unmeasured (present on one side only): {', '.join(self.unmeasured)}")
+        if self.only_after:
+            parts.append(
+                f"unmeasured rather than unchanged — no output under {self.before}, so no "
+                f"like-for-like comparison exists: {', '.join(self.only_after)}"
+            )
+        if self.only_before:
+            parts.append(
+                f"compiled under {self.before} and not under {self.after}: "
+                f"{', '.join(self.only_before)}"
+            )
         return "; ".join(parts)
 
     def as_record(self, version: str, previous: str) -> ReleaseRecord:
@@ -154,12 +189,21 @@ class SweepMeasurement:
                 f"this sweep measured {self.before} -> {self.after}, so it cannot mint a record for "
                 f"{previous} -> {version}"
             )
+        if self.only_before:
+            # `only_after` becomes a declared denominator below; `only_before` never does. A module
+            # the previous release compiled and this one cannot is a regression, and minting a record
+            # over its surviving neighbours would publish the false green the gate exists to refuse.
+            raise ValueError(
+                f"{', '.join(self.only_before)} compiled under {self.before} and not under "
+                f"{self.after}, so this measurement cannot mint a record for {version}"
+            )
         return ReleaseRecord(
             version=version,
             previous=previous,
             axes=dict(self.axes),
             manifest_fields=list(self.manifest_fields),
             declared=[],
+            unmeasured=list(self.only_after),
             evidence=self.evidence,
         )
 
@@ -189,24 +233,33 @@ def read_outputs(root: Path) -> dict[str, ModuleOutput]:
     return found
 
 
-def build_outputs(spec_root: Path, out_root: Path) -> dict[str, ModuleOutput]:
-    """Compile every spec directory under `spec_root` into `out_root/<name>/` with THIS compiler.
+def build_outputs(
+    spec_root: Path, out_root: Path
+) -> tuple[dict[str, ModuleOutput], dict[str, str]]:
+    """Compile every spec under `spec_root` into `out_root/<name>/` with THIS compiler, and what broke.
 
     Discovery rather than a list, the same rule `test_reference_examples_roundtrip` follows: a spec
     added without being added here is a spec nobody sweeps, and adding one is precisely when a new
     shape arrives.
+
+    The second half of the pair is the compiler's own errors per spec that did not compile. Returned
+    rather than only logged (RM139): the module lands in `only_before`, which is fatal, and a fatal
+    finding that names the error is the difference between a release an operator can fix and one they
+    have to go looking for.
     """
     specs = sorted(d for d in spec_root.iterdir() if (d / "module_spec.yaml").is_file())
     if not specs:
         raise ValueError(f"no module specs found under {spec_root}")
     built: dict[str, ModuleOutput] = {}
+    failures: dict[str, str] = {}
     for spec in specs:
         result = compile_module(spec, out_root / spec.name)
         if not result.success:
-            # Not silently skipped: the module lands outside `built`, so it reaches `unmeasured` and
+            # Not silently skipped: the module lands outside `built`, so it reaches `only_before` and
             # the gate refuses the release. A sweep that quietly measured the modules that still work
             # is the silence this whole surface exists to replace.
-            logger.warning("sweep: %s did not compile: %s", spec.name, "; ".join(result.errors))
+            failures[spec.name] = "; ".join(result.errors)
+            logger.warning("sweep: %s did not compile: %s", spec.name, failures[spec.name])
             continue
         built[spec.name] = read_output(out_root / spec.name)
     if not built:
@@ -214,7 +267,7 @@ def build_outputs(spec_root: Path, out_root: Path) -> dict[str, ModuleOutput]:
             f"no spec under {spec_root} compiled — nothing to measure (this is a broken compiler, "
             "not a release that changed nothing)"
         )
-    return built
+    return built, failures
 
 
 def _flatten(value: Any, prefix: str = "") -> dict[str, Any]:
@@ -339,11 +392,16 @@ def _release_of(outputs: dict[str, ModuleOutput], side: str) -> str:
 
 
 def compare_outputs(
-    before: dict[str, ModuleOutput], after: dict[str, ModuleOutput]
+    before: dict[str, ModuleOutput],
+    after: dict[str, ModuleOutput],
+    build_failures: dict[str, str] | None = None,
 ) -> SweepMeasurement:
-    """Union the per-module deltas into the measurement one release record carries."""
+    """Union the per-module deltas into the measurement one release record carries.
+
+    `build_failures` is what `build_outputs` saw refusing to compile under THIS release, so a module
+    in `only_before` can be reported with the compiler's own error rather than as a bare absence.
+    """
     shared = sorted(set(before) & set(after))
-    unmeasured = sorted(set(before) ^ set(after))
     deltas = tuple(compare_module(before[name], after[name]) for name in shared)
     axes = {
         axis: any(delta.axes[axis] for delta in deltas) for axis in sorted(VALID_RELEASE_OUTPUT_AXES)
@@ -357,8 +415,10 @@ def compare_outputs(
         axes=axes,
         manifest_fields=tuple(sorted(fields)),
         modules=tuple(shared),
-        unmeasured=tuple(unmeasured),
+        only_before=tuple(sorted(set(before) - set(after))),
+        only_after=tuple(sorted(set(after) - set(before))),
         per_module=deltas,
+        build_failures=dict(build_failures or {}),
     )
 
 
@@ -378,6 +438,25 @@ def gate_findings(
     interval's **upper** end is checked against the version being gated, a degenerate interval is
     refused outright, and a module that compiled on one side only fails rather than vanishing into an
     all-`False` result over its surviving neighbours.
+
+    **Which side a module is missing from decides which of those it is (RM139).** *One side only* was
+    read as *a compile failed* until the first real cut, where it was wrong: RM70 put an optional
+    column on `pharm_variants.csv`, one reference example uses it, and 0.6.6 refuses that spec under
+    `extra="forbid"`. Nothing failed — the previous release simply cannot produce a before state, and
+    that recurs in every minor that adds an authored column and exercises it in the corpus, as it does
+    for any example added since the last release. So:
+
+    * a module in the BEFORE tree and not the AFTER one is a **regression in the release being
+      gated** and fails unconditionally, with the compiler's own error beside it where the AFTER side
+      was built here;
+    * a module in the AFTER tree and not the BEFORE one fails **unless the record's `unmeasured`
+      names it**, and a record naming one the sweep did measure is reported as a note.
+
+    That is the same forcing shape as `declared`, not an exemption bolted beside it: `as_record`
+    mints the measured half and the gate refuses until the author commits it to the published record.
+    It cannot silence anything, because it reaches neither direction that carries a measurement — a
+    movement on a measured module still gates however `unmeasured` reads, and a regression is fatal
+    however it is listed.
 
     A **note** is the other direction — a declaration this sweep did not see move — and it is
     deliberately not a failure: the reference corpus is sixteen modules and a real correction can land
@@ -407,13 +486,27 @@ def gate_findings(
         )
     if not measurement.modules:
         findings.append(f"the sweep {NO_MODULES_PHRASE}: the two trees share no module")
-    for name in measurement.unmeasured:
+    for name in measurement.only_before:
+        reason = measurement.build_failures.get(name)
         findings.append(
-            f"{name} {UNMEASURED_MODULE_PHRASE} — it compiled on one side only, which under the "
-            "documented one-spec-root sequence means a compile failed"
+            f"{name} {UNMEASURED_MODULE_PHRASE} — it {REGRESSED_MODULE_PHRASE}"
+            + (f": {reason}" if reason else "")
         )
 
     record = table.get(version)
+    # Read before the `record is None` return so an unmeasured module is reported alongside the
+    # missing record rather than behind it — an author minting the record needs both in one pass.
+    declared_unmeasured = set(record.unmeasured) if record is not None else set()
+    for name in measurement.only_after:
+        if name not in declared_unmeasured:
+            findings.append(
+                f"{name} {UNMEASURED_MODULE_PHRASE} — it {UNDECLARED_UNMEASURED_PHRASE} as "
+                "unmeasured. Nothing failed if its spec uses a column the previous release refuses, "
+                "or if it is new since that release, but the record must say so"
+            )
+    for name in sorted(declared_unmeasured - set(measurement.only_after)):
+        notes.append(f"{name} {OVERDECLARED_UNMEASURED_NOTE_PHRASE}")
+
     if record is None:
         findings.append(
             f"{version} {NO_RECORD_PHRASE}: a release that changed compiled output must declare "
@@ -454,7 +547,12 @@ def measurement_json(measurement: SweepMeasurement) -> dict[str, Any]:
         "axes": dict(measurement.axes),
         "manifest_fields": list(measurement.manifest_fields),
         "modules": list(measurement.modules),
+        # The union stays under its original key — a release script piping this to `jq` predates the
+        # split — with the two halves beside it rather than in place of it.
         "unmeasured": list(measurement.unmeasured),
+        "only_before": list(measurement.only_before),
+        "only_after": list(measurement.only_after),
+        "build_failures": dict(measurement.build_failures),
         "evidence": measurement.evidence,
         "per_module": [
             {

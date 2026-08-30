@@ -2474,6 +2474,24 @@ condition is **checkable** rather than merely stated because `compilation.droppe
 2026-08-24: empty means the two must agree, non-empty means the manifest is the post-drop answer.
 `content_signature` and `stats.study_count` are unconditional; the seven `module_stats` facets are not.
 
+### `unmeasured` — the denominator, in the field the gate reads (RM139)
+
+A record's `axes` is a claim about the modules the sweep could **compare**, and a minor that adds an
+authored column and exercises it in the corpus leaves at least one module the previous release cannot
+compile at all: 0.6.6 refuses `reference_examples/cyp2c9_warfarin_grch37/` because RM70 put the
+optional `requires_callable` column on its `pharm_variants.csv`. There is no before state, so no
+like-for-like comparison exists and there is nothing measurable to declare. A brand-new example is the
+same shape. `unmeasured` names those modules, and the 0.7.0 record carries the one it had.
+
+It is a **denominator, not an exemption**, and the equality is what makes that true: the gate checks
+the list against what the sweep actually could not measure, so listing a module measured on both sides
+is reported rather than obeyed, a module *this* release broke is fatal however it is listed, and a
+movement on a measured module gates regardless. The fact lived in the `evidence` sentence until the
+first real cut, where the gate could not read it and the tag went through by hand — the same
+counted-prose shape that has gone blind here before. Records written before the field read `[]`,
+which is the correct claim for them: their evidence states a denominator of sixteen over a
+sixteen-module corpus.
+
 ### Scope, said out loud because a silence reads as a claim
 
 v1 measures **compiler-derived** outputs — the manifest, the parquet schemas and the parquet bytes.

@@ -729,6 +729,42 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   the name set from the table registries. Keyed on **near miss** rather than "any unknown csv" on purpose
   — warning about every unrecognised file would undo the tolerance it sits beside.
 
+- `@one-side-only-has-two-causes` — **A module the release sweep could measure on only one side is a
+  fact about *whichever release lacks it*, and the two directions are not the same finding (RM139).**
+  `gate_findings` refused a release when a module compiled on one side only, reading it as *a compile
+  failed*. That is right in one direction and wrong in the other, and the very first real use of the
+  gate — the 0.7.0 cut — hit the wrong one: RM70 added the optional `requires_callable` column to
+  `pharm_variants.csv`, `reference_examples/cyp2c9_warfarin_grch37/` uses it, and 0.6.6 refuses that
+  spec under `extra="forbid"`. Nothing had failed. The previous release cannot produce a **before**
+  state for that module at all, so no like-for-like comparison exists, and the sweep saying nothing
+  about it is correct rather than a gap. **It recurs in every minor that adds an authored column and
+  exercises it in the corpus**, and equally for any reference example newer than the last release, so
+  it is a standing shape and not one cut's accident.
+
+  The split: **missing from AFTER** is a regression *in the release being gated* — fatal
+  unconditionally, and it now carries the compiler's own errors, which `build_outputs` had been
+  logging and discarding, so the operator is not sent to a log. **Missing from BEFORE** is a fact
+  about the *previous* release, whatever the cause; even a bug in that release is not something this
+  release did. A stale reused BEFORE directory holding a module the spec root no longer has reads as
+  the first, which is the fail-safe direction and is why the runbook says fresh trees every time.
+
+  **The repair that was refused, and the one that is not it.** The entry refused *let the record
+  declare a module unmeasurable* as a per-module escape hatch weakening the gate exactly where its
+  docstring warns, and that refusal was right about the shape it named. `ReleaseRecord.unmeasured` is
+  not that shape, because the gate checks an **equality** over the set the sweep could not measure
+  rather than a membership test (`@registry-completeness` again, three surfaces along): listing a
+  module measured on both sides is reported as a note rather than obeyed, listing a regression does
+  not save it, `as_record` refuses to mint a record over one, and a movement on a measured module
+  gates however the list reads. The only strength given up is that *the previous release could not
+  compile module X* no longer blocks a tag — which is not a fact about the release being cut. And
+  `as_record` fills the field from the measurement, so it is the same forcing function `declared`
+  already uses rather than a second kind of gate input beside it.
+
+  The underlying shape is the recurring one: the 0.7.0 record stated the exclusion in its `evidence`
+  sentence, honestly, and the gate cannot read prose — so the cut became a two-step a human had to
+  wave through. A count or an exclusion that lives only in a sentence goes blind; a test now pins the
+  field to the sentence rather than leaving them to be maintained side by side.
+
 - `@warning-text-is-api` — **A warning's TEXT became an API, because the manifest carries prose and no field (RM44).**
   `compile_module` copies its warnings into `manifest.compilation.warnings` → `manifest.json`, and a
   catalog reindexing from a published manifest has nothing else: `fully_resolved` is `all()` over

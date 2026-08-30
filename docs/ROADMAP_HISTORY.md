@@ -29,6 +29,66 @@ The items [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) decided on 2026-08-27/28 
 built. Every one is additive under Principles 3 and 8; what is kept here is each entry's reasoning,
 including the repairs it refused, which is the half that would otherwise be re-derived.
 
+## RM139 — the release gate could not tell a broken compile from a spec that outgrew the old compiler
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format` + `just-dna-compiler`). Filed by
+running RM126's gate for real at that cut, decided and built the day after.
+
+**Severity** medium · **Status** ✅ shipped · **Owner** compiler · **Found by** the 0.7.0 cut
+
+`gate_findings` failed a release when a module compiled on **one side only**, and its reasoning was
+sound as far as it went: the likeliest operator error is running the sweep before `uv sync` propagated
+the bump, and a module vanishing into an all-`False` result over its surviving neighbours is a false
+green in the one mechanism the item rests on. But *one side only* was read as *a compile failed*, and
+the very first real use of the gate hit the other cause. RM70 added the optional `requires_callable`
+column to `pharm_variants.csv`, `reference_examples/cyp2c9_warfarin_grch37/` uses it, and 0.6.6
+refuses that spec under `extra="forbid"`. Nothing failed: the previous release cannot produce a before
+state for that module at all, so no like-for-like comparison exists and the sweep is right to say
+nothing about it. The 0.7.0 record stated the exclusion in `evidence` prose the gate cannot read, and
+the tag was waved through by a human — which is the state this entry ends.
+
+**The decision, in two halves.**
+
+*Which side, not whether.* The two directions are facts about **different releases**, and collapsing
+them lost that. A module in the BEFORE tree and not the AFTER one is a regression **in the release
+being gated** — it fails unconditionally, and now carries the compiler's own errors, which
+`build_outputs` had been logging and discarding. A module in the AFTER tree and not the BEFORE one is
+a fact about the *previous* release: whatever the cause, nothing in this release failed, and there is
+no measurement to declare. A stale reused BEFORE directory holding a module the spec root no longer
+has reads as the first, which is the fail-safe direction; the runbook already says fresh trees every
+time.
+
+*The exclusion moves into a field the gate reads.* `ReleaseRecord.unmeasured` names the modules the
+previous release produced no output for, and the second direction fails until the published record
+lists them. Old records read `[]`, which is the correct claim for them.
+
+**Why that is not the per-module escape hatch this entry originally refused.** The refusal was right
+about the shape it named — a field an operator can use to silence the gate is weaker exactly where the
+docstring warns — and `unmeasured` is not that field, because the check is an **equality** over the
+measured set rather than a membership test (`@registry-completeness`). It cannot cover a module the
+sweep measured on both sides: listing one is reported as a note. It cannot cover a module this release
+broke: that direction is fatal however it is listed, and `as_record` refuses to mint a record over
+one. And a movement on a measured module still gates however the list reads. What is lost, precisely
+and only, is that *the previous release could not compile module X* no longer blocks a tag — which is
+right, because it is not a fact about the release being cut. What is gained is the forcing function:
+`as_record` fills the field from the measurement, so the exclusion is committed to the published record
+rather than remembered in a sentence nothing checks. That is the same mechanism `declared` already
+uses, extended to the unmeasured set, not a second kind of gate input beside it.
+
+The other three refusals in the original entry stand and were not revisited: the sweep still cannot
+see the authored spec at the previous version, compiling the old spec from git would vary input *and*
+compiler, and demoting the check to a note would re-open the false green RM126 exists to close.
+
+**Measured, not asserted.** The 0.6.6 → 0.7.0 sweep was re-run end to end over all sixteen reference
+examples with 0.6.6 installed in an isolated environment: fifteen measured, `cyp2c9_warfarin_grch37`
+refused by 0.6.6 on `requires_callable]: Extra inputs are not permitted`, and the gate now exits 0
+against the shipped record instead of needing a human to read past it. Removing a module from the spec
+root exits 1 on the other direction, naming it.
+
+**The prose-versus-field shape is the recurring one.** A count or an exclusion stated only in a
+sentence goes blind — the triage threshold counter did it twice — so the field is pinned to the
+sentence by a test rather than maintained beside it.
+
 ## RM85 — a recorded release, compared against the one its source publishes now
 
 **Shipped in `just-dna-enricher` (plus a `just-dna-format` vocabulary member) on 2026-08-29.** The
