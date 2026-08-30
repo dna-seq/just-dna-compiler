@@ -6134,6 +6134,11 @@ def _build_manifest(
         # RM92: what the module's `weight` column means, copied verbatim. Advisory like `license`,
         # so it reaches the manifest and neither identity half.
         weighting=config.weighting,
+        # RM134: whose clinical call this curator weighted, copied verbatim and read by nothing.
+        # Same class as `weighting` — advisory, in the manifest, in neither identity half — and the
+        # compile path deliberately does not consult it: resolving a disagreement between two
+        # authorities needs a weighting model this format does not have.
+        authority_precedence=list(config.authority_precedence),
         inputs=file_entries(spec_dir, list(_INPUT_FILES)),
         # `file_entries` skips what is absent, so a module carrying no sidecars gets an empty list
         # rather than a fabricated one — and a new optional sidecar cannot move an existing module's

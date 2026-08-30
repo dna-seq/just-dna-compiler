@@ -21,7 +21,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` |
 | **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` over the injected table (warning), and `enrich()` against the injected Ensembl snapshot (`resolver.check_rsid_coordinates`, warning in both modes) — one question, two tiers, so one attestation name, and the enricher's half is the one that attests |
 | **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` |
-| **Clinical significance** | authored `clin_sig` vs the ClinVar snapshot's, allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the concordance record by `clinical.clin_sig_concordance` (0.7, RM130) |
+| **Clinical significance** | authored `clin_sig` vs **every annotation authority** consulted — ClinVar and, since 0.7, PubMind — allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the N-authority concordance record by `clinical.clin_sig_concordance` (0.7, RM130 + RM134 § B) |
 | **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does) |
 | **Citation existence** | a cited `pmid` vs PubMed | `literature.enrich_literature` |
 | **Identifier agreement** | an authored `doi` vs the registry's for that PMID | `literature.enrich_literature` |
@@ -1789,21 +1789,56 @@ passed that was never put. Its values are `not_requested` (the author's own `--n
 than a comparison of zeros), the tautology sentence, or `None` when the check really ran. Where a **human**
 typed the `clin_sig`, nothing changes — that is the case this check exists for.
 
-### The concordance record (`concordance.py`, offline) — RM130
+### The concordance record (`concordance.py`, offline) — RM130 + RM134 § B
 
 The check above counts its findings and, until 0.7, kept none of them. `clin_sig_concordance(variants,
-resolution_rows, *, reference)` in `clinical.py` runs the same comparison and returns the two tables
-`concordance.write_concordance_tables` puts beside the spec:
+resolution_rows, *, reference, pubmind_reference=None, sources=None, spec_dir=None, checked_at=None,
+clinvar_comparison=None)` in `clinical.py` consults every authority and returns a `ConcordanceRecord`
+whose two tables `concordance.write_concordance_tables` puts beside the spec. `enrich()` calls it once
+per run and commits both tables **at the gate**, so a refused `strict` run leaves none behind.
 
 | file | key | carries |
 | --- | --- | --- |
 | `clin_sig_concordance.csv` | `(variant_key, genotype)` | `authority_concordance`, `authored_position`, `opposed`, and the module's own call |
 | `clin_sig_authority_calls.csv` | `(variant_key, genotype, authority)` | that authority's normalized `clin_sig`, its raw token, and its confidence in its own units |
 
-`None` rather than two empty tables when there is no snapshot or an unusable one, and the distinction
-is the whole tri-state: two empty tables are a claim (*nothing here is contested*), while `None` says
-the question was never put. A caller must not write a file that says the first when the second
-happened.
+`None` rather than two empty tables when **no authority could be consulted at all**, and the
+distinction is the whole tri-state: two empty tables are a claim (*nothing here is contested*), while
+`None` says the question was never put. A caller must not write a file that says the first when the
+second happened, and `enrich()` writing nothing on `None` is what leaves an earlier record readable
+instead of overwriting it with a comparison nobody made.
+
+**The three-way check subsumes the two-way rather than running beside it.** With no PubMind snapshot
+that authority's call reads `unchecked` on every subject, and the degenerate case is exactly the
+ClinVar-only finding: the same subjects are contested, the same conflicts are logged in the same
+words, and no author meets one disagreement twice. What changes is what the record *withholds* —
+`authority_concordance` reads `unchecked` rather than `single`, because one authority speaking while
+another was never asked is not corroboration.
+
+**Each authority is a leg, and a leg has three states** (`clinical.AUTHORITY_LEG_STATES`):
+
+| state | means | contributes |
+| --- | --- | --- |
+| `consulted` | a snapshot answered | that authority's call per subject |
+| `unchecked` | no snapshot, or one present that would not answer | an `unchecked` call per subject — never an absence, never agreement |
+| `tautological` | this module's rows were drafted out of this very snapshot and have not moved | **nothing at all**; the reason is on the leg and reported separately |
+
+`AUTHORITY_ORDER` is `(clinvar, pubmind)` and it is walked rather than restated: it fixes the order
+the detail rows come out in, which matters because the table becomes a parquet whose bytes depend on
+row order.
+
+**PubMind's several PVIDs over one allele fold to one call, and the camp guard runs first.** The
+detail table is keyed `(variant_key, genotype, authority)`, so a subject carries one row per
+authority and something has to stand for the set. Where the records straddle the pathogenic/benign
+line there is no representative call: `fold_authority_records` answers `conflicting`, the
+vocabulary's own word for it, which sits in the `undecided` camp and so opposes nothing. Folding by
+severity there would silently answer `pathogenic` — a winner picked by an ordering nobody defined.
+Within one camp the fold **is** the shared normalizer's own severity rule, the same one that resolves
+a composite token, so `Benign` and `Likely benign` in two rows fold exactly as `Benign/Likely benign`
+does in one cell. Confidence is withheld unless exactly one record stands behind the call: PubMind's
+0–3 count is per record, and any function of two of them is an arithmetic nobody defined. The
+multiplicity is counted on the record (`multi_record_subjects`, `internally_contested`) rather than
+discarded.
 
 **Not merge-not-clobber, and it is the one derived sidecar that is not.** Every other one gap-fills
 because a recorded row might carry a curator's judgement; this one carries none, since the judgement
@@ -1818,13 +1853,21 @@ moved here from `clinical.py` for the neighbouring reason: the record and the tw
 the opposed-versus-differing line in the same place, and two maps for one distinction is how a drift
 in our own code comes to read as a disagreement between two archives.
 
-**The tautology skip reaches the record too**, and it is repeated here rather than left to the
-caller. Where a module's `clin_sig` column was drafted out of the snapshot it would be compared
-against and has not moved since, the comparison is a value against itself and is guaranteed to find
-nothing — so writing two empty tables would publish *nothing here is contested* on no evidence, which
-is the `findings: 0` defect wearing a new file. `clin_sig_concordance` takes `sources`/`spec_dir` and
-calls `tautology_reason`, the same function `enrich()` calls, rather than restating the rule.
-Omitting them establishes nothing and the comparison runs: an unknown is never a permission to skip.
+**The tautology skip reaches the record too, and since 0.7 it is decided per LEG.** Where a module's
+`clin_sig` column was drafted out of a snapshot it would be compared against and has not moved since,
+that comparison is a value against itself and is guaranteed to find nothing — so writing two empty
+tables would publish *nothing here is contested* on no evidence, which is the `findings: 0` defect
+wearing a new file. But skipping the *whole* check would be the opposite error once there are two
+authorities: a module drafted from ClinVar still gets a real comparison out of PubMind, which copied
+nothing, and throwing that away to suppress the hollow half is what `enrich_pgx` already learned.
+
+So `clinical.is_tautological_leg(sources, authority, dataset, spec_dir)` states the conjunction once —
+the licence row names **this** release of **this** source, **and** the drafter's digest over the
+checked column still matches — and every leg calls it with its own label. The checked column comes
+from `DRAFT_PROJECTIONS`, derived rather than restated, so a drafting provider added later says which
+cell it copied without this module learning about it. `tautology_reason` is the ClinVar instantiation
+and keeps its shipped wording, because a warning's text is an API. Omitting `sources`/`spec_dir`
+establishes nothing and the comparison runs: an unknown is never a permission to skip.
 
 **The subject list is built from the comparison that already ran**, never from a second pass over the
 snapshot. A subject that produced a conflict is rendered from that conflict's own record, so the
@@ -1839,9 +1882,54 @@ archive costs a rename — major-only work — the moment a second one arrives.
 **One thing the record makes visible that the two-way check cannot.** At a single authority every
 reported conflict is `opposed` by construction, because the check only reports where both sides are
 opinionated and their camps differ, and `pathogenic`/`benign` are the only two opinionated camps. So
-the *differing-but-not-opposed* case has no producer at N=1 — `_clin_sig_detail`'s second group is
-unreachable today. It becomes reachable as soon as two authorities can disagree with each other while
-neither contradicts the module, which is what the record is shaped for.
+the *differing-but-not-opposed* case had no producer at N=1 — `_clin_sig_detail`'s second group was
+unreachable. It became reachable the moment PubMind arrived: two authorities can disagree with each
+other while neither contradicts the module, which is `discordant` + `matches_some` and is what the
+record was shaped for.
+
+**Severity: warning-tier in both modes, escalating in neither** (`@clinsig-never-escalates`), with
+more force at two authorities than at one. A disagreement with a literature miner's aggregate over
+the field is a statement about that extraction's limits at least as often as about the module — the
+measured corpus join agreed 62 % of the time — so `discordant` is a fact about the field rather than
+a defect to gate on. `clinical.concordance_sentences` produces the warnings, each carrying its
+denominator and the authorities that answered; `clinical.concordance_notes` produces the info-tier
+lines for the legs that did not run, because a leg that silently did not run reads as a leg that
+found nothing. A run that found nothing contested emits neither: a check that cannot fail reports no
+zero, and neither does one that ran and found nothing. The two warning stems a consumer greps, pinned
+by test because a warning's text is an API:
+
+```
+{n} of {m} subject(s) put to the authorities are contested, {k} of them on opposed calls
+{n} of {m} contested subject(s) are a disagreement between the authorities themselves
+```
+
+The leg notes are info-tier and deduped against the two-way skip's own sentence — the ClinVar
+tautology's prose comes out of `tautology_reason` on both paths, so a drafted module would otherwise
+read it twice in one run. Matched on the sentence, not on the skip key, so a reword stays deduped.
+
+**Nothing resolves a split, at two authorities or at five.** There is no `majority`, no consensus
+call and no resolved winner, and `module_spec.yaml`'s optional `authority_precedence:` is recorded
+and **computed with by nothing** — it says whose call the curator weighted while deciding, so a
+consumer can see the stance, and no tier reads it. Choosing between a declared order and a majority
+needs a weighting model this workspace has declined to invent three times.
+
+### PubMind as the second authority (`pubmind.py`, offline) — RM134 § B
+
+`pubmind.py` is the runtime reader over the snapshot `pubmind_build` writes: duckdb, in the ordinary
+install, mirroring `clinvar.py`'s split against `clinvar_build.py` (`@duckdb-vs-polars`).
+`lookup_pubmind_calls(reference, alleles)` answers *what does PubMind say about this allele*, and
+`pubmind_dataset_label(reference)` reads the release label back out of `release.json`.
+
+**There is deliberately no `lookup_loci` beside it.** PubMind's coordinates are PyEnsembl
+back-mappings of text an LLM extracted, so they are annotation and never resolution: nothing it
+produces may enter `resolution.csv`, whose `authority` column is a different word for a different
+thing (`@source-vs-authority`).
+
+The snapshot is located by `locations.resolve_pubmind_reference` — explicit path →
+`$JUST_DNA_PUBMIND_CACHE` → the default cache directory — and there is **no `ensure_pubmind_snapshot`
+to pair with it**: the snapshot is operator-built, `pubmind publish` refuses, and a missing one is
+`unchecked` rather than a download a run should attempt. `enrich(pubmind_cache=…)` overrides the
+lookup.
 
 ## PubMind snapshot (`pubmind_build.py`, `[dev]`) — RM134 § A
 

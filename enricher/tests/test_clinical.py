@@ -685,7 +685,7 @@ def test_the_record_names_exactly_the_rows_the_check_reports(snapshot: Path) -> 
     conflicts = verify_clin_sig([opposed, agreeing], rows, reference=snapshot)
     record = clin_sig_concordance([opposed, agreeing], rows, reference=snapshot)
     assert record is not None
-    parents, calls = record
+    parents, calls = record.parents, record.calls
 
     assert {(p.variant_key, p.genotype) for p in parents} == {
         (c.variant_key, c.genotype) for c in conflicts
@@ -700,20 +700,25 @@ def test_the_record_carries_clinvars_own_call_and_its_stars_in_clinvars_units(sn
 
     `review_stars` is ClinVar's own scale, so it travels unconverted with `confidence_unit` saying
     which scale it is — the record must never leave a magnitude standing on its own.
+
+    The verdicts read `unchecked` because RM134 § B made the check three-way: with no PubMind
+    snapshot that authority's call is nobody-asked, and one authority speaking while another was
+    never asked is not corroboration. `opposed` survives it — an opposition already witnessed is not
+    unwitnessed by a source that could not be reached (Kleene).
     """
     variant = _variant("benign", "A/T")
     record = clin_sig_concordance([variant], _resolution(variant), reference=snapshot)
     assert record is not None
-    parents, calls = record
+    parents, calls = record.parents, record.calls
 
     assert [p.authored_clin_sig for p in parents] == ["benign"]
-    assert [p.authority_concordance for p in parents] == ["single"]
-    assert [p.authored_position for p in parents] == ["matches_none"]
+    assert [p.authority_concordance for p in parents] == ["unchecked"]
+    assert [p.authored_position for p in parents] == ["unchecked"]
     assert [p.opposed for p in parents] == [True]
-    assert [c.authority for c in calls] == ["clinvar"]
-    assert [c.status for c in calls] == ["recorded"]
-    assert [c.clin_sig for c in calls] == ["pathogenic"]
-    assert [c.confidence_unit for c in calls] == ["review_stars"]
+    assert [c.authority for c in calls] == ["clinvar", "pubmind"]
+    assert [c.status for c in calls] == ["recorded", "unchecked"]
+    assert [c.clin_sig for c in calls] == ["pathogenic", None]
+    assert [c.confidence_unit for c in calls] == ["review_stars", None]
     assert calls[0].confidence == str(
         verify_clin_sig([variant], _resolution(variant), reference=snapshot)[0].review_stars
     )
@@ -726,7 +731,12 @@ def test_a_module_that_agrees_with_the_archive_records_nothing(snapshot: Path) -
     published as the check's denominator."""
     variant = _variant("pathogenic", "A/T")
     record = clin_sig_concordance([variant], _resolution(variant), reference=snapshot)
-    assert record == ([], [])
+    assert record is not None
+    assert (record.parents, record.calls) == ([], [])
+    # The denominator is kept rather than discarded: an empty record over one subject asked is a
+    # different statement from an empty record over none.
+    assert record.subjects == 1
+    assert record.consulted == ("clinvar",)
 
 
 def test_a_run_with_no_snapshot_writes_no_record_rather_than_an_empty_one(snapshot: Path) -> None:

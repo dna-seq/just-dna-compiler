@@ -32,14 +32,24 @@ from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import VariantRow
 
+from just_dna_enricher.clin_sig import CLIN_SIG_SEVERITY
 from just_dna_enricher.clinvar import clinvar_dataset_label, lookup_clin_sig
 from just_dna_enricher.concordance import (
+    AUTHORITY_CALLS_CSV,
     CLIN_SIG_CAMP,
+    CONCORDANCE_CSV,
+    OPINIONATED_CAMPS,
     AuthorityCall,
     ConcordanceSubject,
+    camp_of,
     concordance_tables,
 )
-from just_dna_enricher.provenance import drafted_unchanged
+from just_dna_enricher.provenance import DRAFT_PROJECTIONS, drafted_unchanged
+from just_dna_enricher.pubmind import (
+    PUBMIND_CONFIDENCE_UNIT,
+    lookup_pubmind_calls,
+    pubmind_dataset_label,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +62,19 @@ CLINVAR_AUTHORITY: str = "clinvar"
 #: converted into anybody else's scale: a gold-star count and a literature miner's evidence-depth
 #: count are not the same quantity.
 CLINVAR_CONFIDENCE_UNIT: str = "review_stars"
+
+#: The second annotation authority, added by RM134 § B. An authoritative *annotation* source in the
+#: sense ClinVar is one, and never a resolver link: PubMind's coordinates are back-mappings of
+#: extracted text, so nothing it says may enter `resolution.csv` (`@source-vs-authority`).
+PUBMIND_AUTHORITY: str = "pubmind"
+
+#: The order the authorities are consulted and their detail rows emitted in, fixed rather than derived
+#: from a set: `clin_sig_authority_calls.csv` becomes a parquet whose bytes depend on row order, so a
+#: run must not be able to emit the same two calls the other way round (Principle 7).
+#:
+#: A tuple rather than a list because it is a registry: the legs the check runs are built by walking
+#: it, so an authority added to the check without a place here has nowhere to be consulted from.
+AUTHORITY_ORDER: tuple[str, ...] = (CLINVAR_AUTHORITY, PUBMIND_AUTHORITY)
 
 
 @dataclass
@@ -131,6 +154,74 @@ def _effect_allele(variant: VariantRow, ref: str, alts: list[str]) -> str | None
     return None
 
 
+def is_tautological_leg(
+    sources: Sequence[SourceRow],
+    authority: str,
+    dataset: str | None,
+    spec_dir: Path | None,
+) -> bool:
+    """Would consulting this authority compare its own values against themselves? (RM134 § B)
+
+    The conjunction RM4 established and RM73 completed, stated **once** and applied per authority:
+    the module's licence row must name *this* release of *this* source — so the values really were
+    copied out of what is about to be read — **and** the drafter's digest over the checked column
+    must still match, so no cell has moved since. Either half missing runs the leg, which is the
+    conservative direction: an unknown is never a permission to skip.
+
+    Per **leg**, never per module, and that is the whole reason it is a predicate rather than the
+    module-level `tautology_reason` generalized in place. A module drafted from ClinVar still gets a
+    real comparison out of a second authority that copied nothing, so skipping the whole check would
+    throw away a genuine finding to suppress a hollow one — the shape `enrich_pgx` already found the
+    hard way when its CPIC leg went unmarked for two releases.
+
+    Returns a plain `bool` rather than a tri-state on purpose: the two unknowns it can meet — no
+    recorded digest, no `spec_dir` — both mean *nothing was established*, and nothing established is
+    exactly the state in which a check runs. There is no third answer for a caller to act on.
+    """
+    if not dataset:
+        return False
+    recorded = [
+        (row.dataset or "").strip()
+        for row in sources
+        if row.source == authority and row.layer == "annotation" and (row.dataset or "").strip()
+    ]
+    if not recorded or any(value != dataset for value in recorded):
+        return False
+    if spec_dir is None:
+        return False
+    # `drafted_unchanged` is tri-state and only `True` counts. `None` — a module drafted before the
+    # digest existed — has established nothing about its cells, so it is checked in full rather than
+    # trusted.
+    return drafted_unchanged(spec_dir, authority, list(sources)) is True
+
+
+def leg_tautology_note(
+    sources: Sequence[SourceRow],
+    authority: str,
+    dataset: str | None,
+    spec_dir: Path | None,
+) -> str | None:
+    """Why this authority's leg cannot fail on this module, or `None` when it genuinely can.
+
+    The sentence an author reads for any authority but ClinVar, which keeps its own shipped wording
+    in `tautology_reason`. The checked column is **derived** from `DRAFT_PROJECTIONS` rather than
+    named here, so a drafting provider added later says which cell it copied without this function
+    learning about it — and a source that drafts nothing at all can never reach this branch, because
+    it records no digest for the predicate above to match.
+    """
+    if not is_tautological_leg(sources, authority, dataset, spec_dir):
+        return None
+    projection = DRAFT_PROJECTIONS.get(authority)
+    column = projection.checked[0] if projection else "the checked column"
+    return (
+        f"{authority}: this module's licence row records that these rows were drafted from "
+        f"{dataset}, the very snapshot this leg reads, and every authored {column} still hashes to "
+        f"what the drafter wrote — so each is a copy of the value it would be compared against. This "
+        f"authority is therefore not consulted at all: it states no call here, rather than one that "
+        f"would agree with the module by construction. Edit any {column} and the leg runs again."
+    )
+
+
 def tautology_reason(
     sources: Sequence[SourceRow], reference: Path | None, spec_dir: Path | None = None
 ) -> str | None:
@@ -174,20 +265,14 @@ def tautology_reason(
     `spec_dir` is optional so an existing caller keeps working, and omitting it is not treated as a
     pass: with no directory there is nothing to recompute, nothing is established, and the check
     runs.
+
+    **The rule is shared with every other authority's leg and the prose is not** (RM134 § B). The
+    conjunction lives in `is_tautological_leg`, which the PubMind leg calls with its own label, so
+    two authorities cannot come to disagree about what "drafted from this very snapshot" means. This
+    sentence stays here, verbatim, because a warning's text is an API and this one has shipped.
     """
     label = clinvar_dataset_label(reference)
-    if label is None:
-        return None
-    recorded = [
-        (row.dataset or "").strip()
-        for row in sources
-        if row.source == "clinvar" and row.layer == "annotation" and (row.dataset or "").strip()
-    ]
-    if not recorded or any(dataset != label for dataset in recorded):
-        return None
-    if spec_dir is None or not drafted_unchanged(spec_dir, "clinvar", list(sources)):
-        # Includes the `None` case on purpose — a module drafted before the digest existed has
-        # established nothing about its cells, so it is checked in full rather than trusted.
+    if not is_tautological_leg(sources, CLINVAR_AUTHORITY, label, spec_dir):
         return None
     return (
         f"this module's licence row records that its ClinVar annotations were drafted from {label}, "
@@ -196,6 +281,81 @@ def tautology_reason(
         f"does not cover: a row hand-authored *before* a later re-draft, which the drafter's stamp "
         f"then covers along with its own. Edit any clin_sig and this check runs again in full"
     )
+
+
+@dataclass(frozen=True)
+class PlannedComparison:
+    """One authored clinical call and the alleles an authority will be asked about for it.
+
+    The unit of the *reference-independent* half of the comparison: which subjects have a claim to
+    check and which coordinates that claim lives at. Extracted from `compare_clin_sig` by RM134 § B
+    because a second authority has to be asked about exactly the same alleles — building the plan
+    twice, once per snapshot, is how the two legs would come to disagree about what was asked.
+    """
+
+    variant: VariantRow
+    authored: str
+    targets: tuple[tuple[str, int, str, str], ...]
+    #: True when the annotation's own ALT could not be determined, so the whole locus is in play.
+    locus_wide: bool
+
+    @property
+    def subject(self) -> tuple[str, str]:
+        """The `(variant_key, genotype)` this comparison is about — the concordance record's key."""
+        return (self.variant.variant_key or "", self.variant.genotype)
+
+
+def comparison_plan(
+    variants: list[VariantRow], resolution_rows: list[ResolutionRow]
+) -> tuple[list[PlannedComparison], list[tuple[str, int, str, str]], int]:
+    """`(plan, alleles to ask about, rows resolved with no ALT to ask about)`.
+
+    Needs no snapshot and consults nothing, which is the point: every authority's leg is asked about
+    the same alleles, and a leg that could not run does not change what a leg that did run was asked.
+
+    The allele list is in first-occurrence order and deduplicated, so a batch look-up and the findings
+    that come out of it are deterministic (Principle 7). The third element is a count rather than a
+    silence: a resolved row naming no ALT is a question nobody could put, not a question answered
+    with nothing.
+    """
+    resolved: dict[str, list[ResolutionRow]] = {}
+    for row in resolution_rows:
+        if row.chrom is not None and row.start is not None and row.ref and row.alts:
+            resolved.setdefault(row.variant_key, []).append(row)
+
+    wanted: list[tuple[str, int, str, str]] = []
+    seen: set[tuple[str, int, str, str]] = set()
+    plan: list[PlannedComparison] = []
+    no_record = 0
+    for variant in variants:
+        authored = variant.effective_clin_sig
+        if not authored or variant.variant_key not in resolved:
+            continue
+        for row in resolved[variant.variant_key]:
+            alts = [a.strip() for a in (row.alts or "").split(",") if a.strip()]
+            chosen = _effect_allele(variant, row.ref or "", alts)
+            targets = [
+                (row.chrom, row.start, row.ref, alt)
+                for alt in ([chosen] if chosen else alts)
+            ]
+            for target in targets:
+                if target not in seen:
+                    seen.add(target)
+                    wanted.append(target)
+            if targets:
+                plan.append(
+                    PlannedComparison(
+                        variant=variant,
+                        authored=authored,
+                        targets=tuple(targets),
+                        locus_wide=chosen is None,
+                    )
+                )
+            else:
+                # Resolved, but nothing to ask: the row names no ALT at this locus. Counted, not
+                # dropped — an unasked question is not an answered one.
+                no_record += 1
+    return plan, wanted, no_record
 
 
 @dataclass
@@ -279,39 +439,7 @@ def compare_clin_sig(
         logger.info("ClinVar clin_sig cross-check skipped: no snapshot provisioned this run.")
         return None
 
-    resolved: dict[str, list[ResolutionRow]] = {}
-    for row in resolution_rows:
-        if row.chrom is not None and row.start is not None and row.ref and row.alts:
-            resolved.setdefault(row.variant_key, []).append(row)
-
-    # Collect every (allele, variant) pair worth asking about, in first-occurrence order so the query
-    # and the emitted findings are deterministic (Principle 7).
-    wanted: list[tuple[str, int, str, str]] = []
-    seen: set[tuple[str, int, str, str]] = set()
-    plan: list[tuple[VariantRow, str, list[tuple[str, int, str, str]], bool]] = []
-    no_record = 0
-    for variant in variants:
-        authored = variant.effective_clin_sig
-        if not authored or variant.variant_key not in resolved:
-            continue
-        for row in resolved[variant.variant_key]:
-            alts = [a.strip() for a in (row.alts or "").split(",") if a.strip()]
-            chosen = _effect_allele(variant, row.ref or "", alts)
-            targets = [
-                (row.chrom, row.start, row.ref, alt)
-                for alt in ([chosen] if chosen else alts)
-            ]
-            for target in targets:
-                if target not in seen:
-                    seen.add(target)
-                    wanted.append(target)
-            if targets:
-                plan.append((variant, authored, targets, chosen is None))
-            else:
-                # Resolved, but nothing to ask: the row names no ALT at this locus. Counted, not
-                # dropped — an unasked question is not an answered one.
-                no_record += 1
-
+    plan, wanted, no_record = comparison_plan(variants, resolution_rows)
     if not wanted:
         return ClinSigComparison(no_record=no_record)
     try:
@@ -334,15 +462,16 @@ def compare_clin_sig(
     pooled: dict[tuple[str, str], list[dict]] = {}
     conflicted: dict[tuple[str, str], ClinSigConflict] = {}
     authored_by_subject: dict[tuple[str, str], str] = {}
-    for variant, authored, targets, locus_wide in plan:
+    for entry in plan:
+        variant, authored = entry.variant, entry.authored
         authored_camp = CLIN_SIG_CAMP.get(authored, "undecided")
         candidates = [
             (target, record)
-            for target in targets
+            for target in entry.targets
             for record in records.get(target, [])
             if record.get("clin_sig")
         ]
-        subject = (variant.variant_key or "", variant.genotype)
+        subject = entry.subject
         authored_by_subject[subject] = authored
         pooled.setdefault(subject, []).extend(record for _t, record in candidates)
         if not candidates:
@@ -378,7 +507,7 @@ def compare_clin_sig(
         )
         conflicts.append(conflict)
         conflicted.setdefault(subject, conflict)
-        if locus_wide:
+        if entry.locus_wide:
             logger.debug(
                 "%s: compared against the whole locus (the annotation's ALT could not be determined "
                 "from genotype %s)", variant.variant_key, variant.genotype,
@@ -473,47 +602,430 @@ def _concordance_subjects(
     return subjects
 
 
+@dataclass(frozen=True)
+class AuthorityLegOutcome:
+    """What happened when one annotation authority was approached, before any subject was asked.
+
+    Three states, and the third is the one this release exists to keep honest:
+
+    * `consulted` — a snapshot was open and answered. The only state that produces evidence.
+    * `unchecked` — nobody asked. No snapshot was provisioned, or one was present and would not
+      answer. Never an absence of records and never agreement (`@unreachable-not-absent`).
+    * `tautological` — asking would compare the authority's own values against themselves, because
+      this module's rows were drafted out of this very snapshot and have not moved since. The
+      authority is left unconsulted and **states nothing**: a call recorded here would agree with the
+      module by construction, and the record would publish that agreement as though somebody had
+      checked it.
+    """
+
+    authority: str
+    state: str
+    dataset: str | None = None
+    reason: str | None = None
+
+    @property
+    def consulted(self) -> bool:
+        """Whether this leg produced evidence — the only state that lets a record be written."""
+        return self.state == "consulted"
+
+
+#: The three states above as a registry rather than literals scattered through the branches. Walked
+#: by the test that asserts every member is reachable, so a fourth cannot arrive unexercised.
+AUTHORITY_LEG_STATES: frozenset[str] = frozenset({"consulted", "unchecked", "tautological"})
+
+
+@dataclass(frozen=True)
+class ConcordanceRecord:
+    """A run's concordance record: the two tables, plus everything the run measured making them.
+
+    **Nothing here is computed and discarded** (`@dont-discard-computed`). The counts below are what
+    a caller would otherwise recompute, and recomputing them means a second implementation of the
+    selection rule — the drift RM130 built this record to avoid.
+    """
+
+    parents: list[ClinSigConcordanceRow]
+    calls: list[ClinSigAuthorityCallRow]
+    #: One per authority, in `AUTHORITY_ORDER`. Walked rather than restated, so an authority added to
+    #: the check but not to the order has no leg to be consulted from.
+    legs: tuple[AuthorityLegOutcome, ...]
+    #: `(variant_key, genotype)` pairs the comparison put a question about — the denominator the
+    #: contested count is read against.
+    subjects: int
+    #: Subjects for which an authority returned more than one record. PubMind's consolidation is on
+    #: extracted *text*, so one allele legitimately carries several PVIDs; the multiplicity is a
+    #: finding rather than tidy-up work (`@multiplicity-is-a-finding`).
+    multi_record_subjects: int
+    #: Subjects where one authority's own records straddle the pathogenic/benign line, so no single
+    #: call represents it and the fold withholds by answering `conflicting`.
+    internally_contested: int
+
+    @property
+    def consulted(self) -> tuple[str, ...]:
+        """The authorities that actually answered, in consultation order."""
+        return tuple(leg.authority for leg in self.legs if leg.consulted)
+
+    @property
+    def contested(self) -> int:
+        """How many subjects reached the record. The numerator; `subjects` is the denominator."""
+        return len(self.parents)
+
+
+def concordance_sentences(record: ConcordanceRecord | None) -> list[str]:
+    """The findings a run reports about its concordance record, warning-tier, in both modes.
+
+    Empty for a run that could not put the question (`record is None`) and for one that found nothing
+    contested. **A check that cannot fail reports no zero** (`@tautology-zero`), and neither does one
+    that did run and found nothing — the denominator is on the record for a caller that wants it.
+
+    Every sentence carries its denominator, because "9 contested" is unreadable without the number
+    compared, and names the authorities that actually answered: the same nine subjects mean something
+    different when one archive spoke and when three did.
+
+    **Never escalated under `strict`** (`@clinsig-never-escalates`), and with more force here than
+    for ClinVar alone. A disagreement with a literature miner's aggregate over the field is a
+    statement about that extraction's limits at least as often as about the module, the corpus join
+    measured 62 % agreement, and `discordant` is a fact about the field rather than a defect in the
+    module. Reporting it as one would have the format arbitrate a clinical dispute.
+    """
+    if record is None or not record.parents:
+        return []
+    consulted = ", ".join(record.consulted)
+    opposed = sum(1 for row in record.parents if row.opposed)
+    discordant = sum(1 for row in record.parents if row.authority_concordance == "discordant")
+    lines = [
+        f"{record.contested} of {record.subjects} subject(s) put to the authorities are "
+        f"contested, "
+        f"{opposed} of them on opposed calls — a pathogenic-class call against a benign-class one, "
+        f"rather than a difference of confidence within one conclusion. Authorities consulted: "
+        f"{consulted}. Reported and never escalated: a curator who has read the primary literature "
+        f"may legitimately disagree. Answer one with an overrides.csv row naming "
+        f"'{CONCORDANCE_CSV}', the subject's variant_key and its genotype, with your reason."
+    ]
+    if discordant:
+        lines.append(
+            f"{discordant} of {record.contested} contested subject(s) are a disagreement between "
+            f"the authorities themselves rather than with the module. Nothing here resolves it: "
+            f"picking a winner between two archives needs a weighting model this format does not "
+            f"have, so each authority's own call is in {AUTHORITY_CALLS_CSV} for you to weigh."
+        )
+    return lines
+
+
+def concordance_notes(record: ConcordanceRecord | None) -> list[str]:
+    """What a run should say about its concordance record that is *not* a finding about the module.
+
+    Info-tier, and said out loud rather than left silent: a leg that quietly did not run reads as a
+    leg that found nothing, which is the failure this whole tri-state exists to prevent
+    (`@unreachable-not-absent`). Three kinds of note:
+
+    * an authority nobody could ask — unchecked is not absent, and it is never agreement;
+    * an authority this module's own rows were drafted from, which is left unconsulted because its
+      call would agree with the module by construction; and
+    * the multiplicity, where one authority holds several records for one allele. Counted rather than
+      collapsed, and the subset of those that straddle the pathogenic/benign line is counted
+      separately because those are the ones no single call can represent.
+    """
+    if record is None:
+        return []
+    notes = []
+    for leg in record.legs:
+        if leg.state == "unchecked":
+            notes.append(
+                f"{leg.authority} was not consulted ({leg.reason}). Its call reads unchecked on "
+                f"every subject: nobody asked is not an absence of records, and it is never "
+                f"agreement."
+            )
+        elif leg.state == "tautological":
+            notes.append(str(leg.reason))
+    if record.multi_record_subjects:
+        notes.append(
+            f"{record.multi_record_subjects} of {record.subjects} subject(s) drew more than one "
+            f"record from a single authority, and {record.internally_contested} of those straddle "
+            f"the pathogenic/benign line. The straddling ones are recorded as 'conflicting' rather "
+            f"than resolved to a winner, because picking one is an ordering nobody defined."
+        )
+    return notes
+
+
+def fold_authority_records(records: Sequence[dict]) -> tuple[str | None, str | None, bool]:
+    """`(clin_sig, clin_sig_raw, internally_contested)` for one authority's records about a subject.
+
+    One authority can hold several records for one allele — ClinVar's several submissions, PubMind's
+    several PVIDs over one coordinate — and the detail table is keyed
+    `(variant_key, genotype, authority)`, so a subject carries **one** row per authority. Something
+    has to stand for the set, and the two ways of getting that wrong are the interesting part.
+
+    **The camp guard runs first, and it is the whole safety property.** When the records straddle the
+    pathogenic/benign line there is no representative call, and folding by severity would silently
+    answer `pathogenic` — severity ranks it above `benign`, so the more consequential verdict would
+    win a vote nobody held. That is choosing a winner by an ordering nobody defined, which this item
+    rejected outright. The answer is `conflicting`, the vocabulary's own word for exactly this, and
+    it sits in the `undecided` camp so it opposes nothing and manufactures no disagreement.
+
+    **Within one camp the fold is the shared normalizer's own rule.** `CLIN_SIG_SEVERITY` is what
+    resolves a composite token — `Benign/Likely benign` becomes `likely_benign` — so resolving two
+    records that say `Benign` and `Likely benign` the same way is one rule applied twice rather than
+    a second rule invented here.
+
+    `clin_sig_raw` keeps every distinct wording behind the fold, sorted and pipe-joined, so the
+    answer stays auditable and a token this release does not model is still visible.
+    """
+    stated = [r for r in records if r.get("clin_sig")]
+    if not stated:
+        return None, None, False
+    distinct = sorted({str(r["clin_sig"]) for r in stated})
+    raw_tokens = sorted({str(r["clin_sig_raw"]) for r in stated if r.get("clin_sig_raw")})
+    raw = "|".join(raw_tokens) or None
+    opinionated = {camp_of(sig) for sig in distinct} & OPINIONATED_CAMPS
+    if len(opinionated) > 1:
+        return "conflicting", raw, True
+    for sig in CLIN_SIG_SEVERITY:
+        if sig in distinct:
+            return sig, raw, False
+    # Unreachable while `CLIN_SIG_SEVERITY` covers `VALID_CLIN_SIG` — an equality the shared
+    # normalizer asserts at import — so reaching it is the shape of a registry that grew without its
+    # walker, and it says so rather than returning a value nobody derived.
+    raise ValueError(f"no severity rank for any of {distinct!r}")
+
+
+def _pubmind_calls_by_subject(
+    reference: Path,
+    plan: Sequence[PlannedComparison],
+    wanted: list[tuple[str, int, str, str]],
+    dataset: str | None,
+) -> tuple[dict[tuple[str, str], AuthorityCall], int, int] | None:
+    """PubMind's call per subject, plus the two multiplicity counts. `None` if it will not answer.
+
+    `None` rather than a dict of `no_record` calls when the snapshot is unusable, for the reason
+    `compare_clin_sig` returns `None`: a leg that could not run has not found nothing, and rendering
+    it as an archive with no records would turn a failure to ask into an established absence.
+
+    Confidence is recorded **only where exactly one record stands behind the call**. PubMind's 0–3
+    count is per record, so two records each reporting 2 do not make 2 the subject's evidence depth,
+    and any function of the two would be an arithmetic nobody defined. Withheld, never averaged.
+    """
+    try:
+        found = lookup_pubmind_calls(reference, wanted)
+    except Exception as exc:
+        # The same degradation the ClinVar leg uses: a located-but-unusable snapshot must not sink an
+        # enrichment the rest of the chain can still complete. Broad because duckdb publishes no
+        # exception base this tier may depend on, and because the alternative — letting it out — ends
+        # the run over a snapshot nothing else needed.
+        logger.warning(
+            "PubMind reference at %s is present but not queryable (%s); its leg of the clin_sig "
+            "concordance check reads unchecked this run. Rebuild it with "
+            "`just-dna-enricher pubmind build`.", reference, exc,
+        )
+        return None
+
+    pooled: dict[tuple[str, str], list[dict]] = {}
+    for entry in plan:
+        pooled.setdefault(entry.subject, []).extend(
+            record for target in entry.targets for record in found.get(target, [])
+        )
+    calls: dict[tuple[str, str], AuthorityCall] = {}
+    multi_record = 0
+    contested = 0
+    for subject, records in pooled.items():
+        if len(records) > 1:
+            multi_record += 1
+        clin_sig, raw, internally_contested = fold_authority_records(records)
+        contested += int(internally_contested)
+        confidence = (
+            str(records[0]["confidence"])
+            if len(records) == 1 and records[0].get("confidence") is not None
+            else None
+        )
+        calls[subject] = AuthorityCall(
+            authority=PUBMIND_AUTHORITY,
+            status="recorded" if clin_sig is not None else "no_record",
+            clin_sig=clin_sig,
+            clin_sig_raw=raw,
+            confidence=confidence,
+            confidence_unit=None if confidence is None else PUBMIND_CONFIDENCE_UNIT,
+            dataset=dataset,
+        )
+    return calls, multi_record, contested
+
+
 def clin_sig_concordance(
     variants: list[VariantRow],
     resolution_rows: list[ResolutionRow],
     *,
     reference: Path | None,
+    pubmind_reference: Path | None = None,
     sources: Sequence[SourceRow] | None = None,
     spec_dir: Path | None = None,
     checked_at: str | None = None,
-) -> tuple[list[ClinSigConcordanceRow], list[ClinSigAuthorityCallRow]] | None:
-    """The concordance record for a module, or `None` when the comparison could not be made at all.
+    clinvar_comparison: ClinSigComparison | None = None,
+) -> ConcordanceRecord | None:
+    """The N-authority concordance record for a module, or `None` when nobody could be consulted.
 
-    The record RM130 exists for: the contested subjects, named, in a form something can join to —
-    against the counts the check has always published and the log lines nothing kept.
+    The record RM130 exists for and RM134 § B widened: the contested subjects, named, in a form
+    something can join to — against the counts the check has always published and the log lines
+    nothing kept.
 
-    `None` rather than two empty tables when the question could not be put, and the distinction is
-    the whole tri-state. Two empty tables are a claim — *nothing here is contested* — and a caller
-    that wrote them after a comparison that never happened would be publishing that claim on no
-    evidence. There are two ways to reach `None`, and neither is "nothing disagreed":
+    **The three-way check subsumes the two-way rather than running beside it.** With no PubMind
+    snapshot that authority's calls read `unchecked`, which is what the tri-state is for, and the
+    degenerate case is exactly the finding the ClinVar-only check reported: the same subjects are
+    contested, the same conflicts are logged in the same words, and no author meets one disagreement
+    twice. What changes is only what the record *withholds* — `authority_concordance` reads
+    `unchecked` rather than `single`, because one authority speaking while another was never asked is
+    not corroboration and must not be recorded as any.
 
-    * **no snapshot, or one that is present and not queryable**, which `compare_clin_sig` already
-      answers with `None` rather than a comparison of zeros; and
-    * **the tautology**, when `sources` (and `spec_dir`) say the module's `clin_sig` column was
-      copied out of the very snapshot it would be compared against and has not moved since. That
-      check is the caller's in `enrich()` and it is repeated here on purpose: this function has its
-      own callers, an empty record is exactly as misleading as a `findings: 0` was, and the guard
-      being one call to `tautology_reason` rather than a second copy of the rule is what keeps the
-      two from drifting. Omitting `sources` is not treated as a pass — with nothing to read, nothing
-      is established and the comparison runs.
+    **`None` rather than empty tables when nobody could be consulted**, and the distinction is the
+    whole tri-state. Two empty tables are a claim — *nothing here is contested* — and writing them
+    after a comparison that never happened publishes that claim on no evidence. That is this
+    release's most-repeated defect, a check agreeing with its own derivation, and this check is its
+    likeliest home: it compares two normalizations, and a module drafted out of a snapshot it is then
+    compared against agrees with itself by construction. So a record is written **iff at least one
+    authority was actually consulted**, where consulted excludes:
 
-    **One authority today, and the shape does not change when there are five.** The subject rows
-    carry the agreement state and the call rows carry each authority's own words, so a second archive
-    adds rows to the detail table and changes no key and no column.
+    * an authority with no snapshot, or one that is present and will not answer; and
+    * an authority whose values this module was drafted from and has not edited since — the
+      tautology, decided **per leg** by `is_tautological_leg`, so a module drafted from ClinVar still
+      gets a real comparison out of PubMind rather than losing the whole check to suppress half of it.
+
+    Nothing resolves a split. At five authorities in a two-against-three disagreement, precedence and
+    majority pick different winners and choosing needs a weighting model this workspace has declined
+    to invent three times, so `authored_position` stays a relation to the *set* and a consumer with
+    its own model computes what it likes from the detail rows.
+
+    `clinvar_comparison` is the comparison a caller has **already run this run**, reused rather than
+    repeated: `enrich()` performs it for the two-way findings, and asking the snapshot twice costs a
+    consumer the whole look-up again (25 s on a 7,818-row panel) for an answer already in hand. It is
+    ignored where the leg is tautological, which is the one case a caller holds no comparison for.
     """
-    if sources is not None and tautology_reason(sources, reference, spec_dir) is not None:
-        logger.info(
-            "The concordance record was not written: this module's clin_sig column was drafted from "
-            "the snapshot it would be compared against and has not moved since, so an empty record "
-            "would report a comparison nobody made."
+    recorded_sources = list(sources) if sources is not None else []
+    plan, wanted, _no_alt = comparison_plan(variants, resolution_rows)
+
+    # ── the legs, walked from AUTHORITY_ORDER so the record cannot silently lose one ──────────────
+    clinvar_dataset = clinvar_dataset_label(reference)
+    pubmind_dataset = pubmind_dataset_label(pubmind_reference)
+    clinvar_taut = (
+        tautology_reason(recorded_sources, reference, spec_dir) if sources is not None else None
+    )
+    pubmind_taut = (
+        leg_tautology_note(recorded_sources, PUBMIND_AUTHORITY, pubmind_dataset, spec_dir)
+        if sources is not None
+        else None
+    )
+
+    by_authority: dict[str, dict[tuple[str, str], AuthorityCall]] = {}
+    outcomes: dict[str, AuthorityLegOutcome] = {}
+    multi_record_subjects = 0
+    internally_contested = 0
+
+    if clinvar_taut is not None:
+        outcomes[CLINVAR_AUTHORITY] = AuthorityLegOutcome(
+            CLINVAR_AUTHORITY, "tautological", clinvar_dataset, clinvar_taut
         )
+    else:
+        comparison = clinvar_comparison
+        if comparison is None:
+            comparison = compare_clin_sig(variants, resolution_rows, reference=reference)
+        if comparison is None:
+            outcomes[CLINVAR_AUTHORITY] = AuthorityLegOutcome(
+                CLINVAR_AUTHORITY, "unchecked", clinvar_dataset,
+                "no ClinVar snapshot was provisioned, or the one present would not answer",
+            )
+        else:
+            outcomes[CLINVAR_AUTHORITY] = AuthorityLegOutcome(
+                CLINVAR_AUTHORITY, "consulted", clinvar_dataset
+            )
+            by_authority[CLINVAR_AUTHORITY] = {
+                (subject.variant_key, subject.genotype): subject.calls[0]
+                for subject in comparison.subjects
+            }
+
+    if pubmind_taut is not None:
+        outcomes[PUBMIND_AUTHORITY] = AuthorityLegOutcome(
+            PUBMIND_AUTHORITY, "tautological", pubmind_dataset, pubmind_taut
+        )
+    elif pubmind_reference is None:
+        outcomes[PUBMIND_AUTHORITY] = AuthorityLegOutcome(
+            PUBMIND_AUTHORITY, "unchecked", pubmind_dataset,
+            "no PubMind snapshot was provisioned; it is operator-built and nothing provisions it "
+            "for you (`just-dna-enricher pubmind build`)",
+        )
+    else:
+        answered = _pubmind_calls_by_subject(pubmind_reference, plan, wanted, pubmind_dataset)
+        if answered is None:
+            outcomes[PUBMIND_AUTHORITY] = AuthorityLegOutcome(
+                PUBMIND_AUTHORITY, "unchecked", pubmind_dataset,
+                "the PubMind snapshot is present and would not answer",
+            )
+        else:
+            pubmind_calls, multi_record_subjects, internally_contested = answered
+            outcomes[PUBMIND_AUTHORITY] = AuthorityLegOutcome(
+                PUBMIND_AUTHORITY, "consulted", pubmind_dataset
+            )
+            by_authority[PUBMIND_AUTHORITY] = pubmind_calls
+
+    legs = tuple(outcomes[authority] for authority in AUTHORITY_ORDER)
+    if not any(leg.consulted for leg in legs):
+        logger.info(
+            "The clinical-significance concordance record was not written: no authority could be "
+            "consulted. %s",
+            " ".join(f"{leg.authority}: {leg.reason}." for leg in legs),
+        )
+        # Every authority was either unasked or unaskable. A check that could not run reports no
+        # zero: returning `None` leaves whatever record a previous run wrote exactly where it is,
+        # rather than replacing it with two empty tables that claim nothing is contested.
         return None
-    comparison = compare_clin_sig(variants, resolution_rows, reference=reference)
-    if comparison is None:
-        return None
-    return concordance_tables(comparison.subjects, checked_at=checked_at)
+
+    # Subject order is the module's own row order, taken from the plan rather than from whichever leg
+    # answered — otherwise the emitted rows would depend on which snapshots a deployment happens to
+    # hold (Principle 7).
+    authored_by_subject: dict[tuple[str, str], str] = {}
+    for entry in plan:
+        authored_by_subject.setdefault(entry.subject, entry.authored)
+    subjects: list[ConcordanceSubject] = []
+    for subject, authored in authored_by_subject.items():
+        calls_for_subject: list[AuthorityCall] = []
+        for authority in AUTHORITY_ORDER:
+            answers = by_authority.get(authority)
+            if answers is not None:
+                calls_for_subject.append(
+                    answers.get(
+                        subject,
+                        AuthorityCall(
+                            authority=authority,
+                            status="no_record",
+                            dataset=outcomes[authority].dataset,
+                        ),
+                    )
+                )
+            elif outcomes[authority].state == "unchecked":
+                # An authority nobody could ask still gets a row, and it says so. Omitting it would
+                # leave a reader unable to tell a two-authority agreement from a one-authority one,
+                # and `classify_concordance` would read the silence as a closed set and answer
+                # `matches_all` over a question that was never put.
+                calls_for_subject.append(
+                    AuthorityCall(
+                        authority=authority,
+                        status="unchecked",
+                        dataset=outcomes[authority].dataset,
+                    )
+                )
+            # A tautological authority contributes nothing at all: it was deliberately not consulted,
+            # so it has neither a record nor an unasked question to report (`@unreachable-not-absent`
+            # — write no row, and name it separately, which the leg's `reason` does).
+        subjects.append(
+            ConcordanceSubject(
+                variant_key=subject[0],
+                genotype=subject[1],
+                authored_clin_sig=authored,
+                calls=tuple(calls_for_subject),
+            )
+        )
+
+    parents, calls = concordance_tables(subjects, checked_at=checked_at)
+    return ConcordanceRecord(
+        parents=parents,
+        calls=calls,
+        legs=legs,
+        subjects=len(subjects),
+        multi_record_subjects=multi_record_subjects,
+        internally_contested=internally_contested,
+    )
