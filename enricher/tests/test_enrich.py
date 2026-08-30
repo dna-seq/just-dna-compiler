@@ -98,12 +98,18 @@ def test_offline_enrich_then_compile_matches_duckdb_digest(cache: Path, tmp_path
     assert (spec1 / "resolution.csv").is_file()
 
     # Direct DuckDB compile (path 2) for the reference digest, handed the **same non-resolution
-    # inputs** — including the `sources.csv` the enricher now records for the links it consulted
-    # (RM33). Parity is a claim about resolution: a module that carries an extra fact table genuinely
-    # has a different content identity, because `sources.parquet` is an artifact file. Copying it is
-    # what isolates the claim instead of quietly weakening it to a weights-only comparison.
+    # inputs** — the `sources.csv` the enricher records for the links it consulted (RM33), and since
+    # RM134 § B the concordance record too, which a run holding a ClinVar snapshot writes even when
+    # nothing is contested (the empty pair is the claim *we asked, and nothing here is contested*).
+    # Parity is a claim about resolution: a module carrying an extra fact table genuinely has a
+    # different content identity, because each of those is an artifact file. Copying **every** sidecar
+    # the enrichment produced is what isolates the claim instead of quietly weakening it to a
+    # weights-only comparison — and it is derived from what the run actually wrote rather than from a
+    # hand-kept list, so a sidecar added later cannot silently re-weaken it.
     spec2 = _spec(tmp_path / "spec2", variants)
-    shutil.copy(spec1 / _LICENCE_CSV, spec2 / _LICENCE_CSV)
+    for produced in sorted(spec1.iterdir()):
+        if produced.is_file() and produced.name != "resolution.csv":
+            shutil.copy(produced, spec2 / produced.name)
     d2 = compile_module(spec2, tmp_path / "o2", ensembl_cache=cache).manifest.artifact.digest
     r1 = compile_module(spec1, tmp_path / "o1", ensembl_cache=None)
     assert r1.success, r1.errors

@@ -35,7 +35,9 @@ from just_dna_format.spec import VariantRow
 from just_dna_enricher.clin_sig import CLIN_SIG_SEVERITY
 from just_dna_enricher.clinvar import clinvar_dataset_label, lookup_clin_sig
 from just_dna_enricher.concordance import (
+    AUTHORITY_CALLS_CSV,
     CLIN_SIG_CAMP,
+    CONCORDANCE_CSV,
     OPINIONATED_CAMPS,
     AuthorityCall,
     ConcordanceSubject,
@@ -668,6 +670,82 @@ class ConcordanceRecord:
         return len(self.parents)
 
 
+def concordance_sentences(record: ConcordanceRecord | None) -> list[str]:
+    """The findings a run reports about its concordance record, warning-tier, in both modes.
+
+    Empty for a run that could not put the question (`record is None`) and for one that found nothing
+    contested. **A check that cannot fail reports no zero** (`@tautology-zero`), and neither does one
+    that did run and found nothing — the denominator is on the record for a caller that wants it.
+
+    Every sentence carries its denominator, because "9 contested" is unreadable without the number
+    compared, and names the authorities that actually answered: the same nine subjects mean something
+    different when one archive spoke and when three did.
+
+    **Never escalated under `strict`** (`@clinsig-never-escalates`), and with more force here than
+    for ClinVar alone. A disagreement with a literature miner's aggregate over the field is a
+    statement about that extraction's limits at least as often as about the module, the corpus join
+    measured 62 % agreement, and `discordant` is a fact about the field rather than a defect in the
+    module. Reporting it as one would have the format arbitrate a clinical dispute.
+    """
+    if record is None or not record.parents:
+        return []
+    consulted = ", ".join(record.consulted)
+    opposed = sum(1 for row in record.parents if row.opposed)
+    discordant = sum(1 for row in record.parents if row.authority_concordance == "discordant")
+    lines = [
+        f"{record.contested} of {record.subjects} compared subject(s) are contested, "
+        f"{opposed} of them on opposed calls — a pathogenic-class call against a benign-class one, "
+        f"rather than a difference of confidence within one conclusion. Authorities consulted: "
+        f"{consulted}. Reported and never escalated: a curator who has read the primary literature "
+        f"may legitimately disagree. Answer one with an overrides.csv row naming "
+        f"'{CONCORDANCE_CSV}', the subject's variant_key and its genotype, with your reason."
+    ]
+    if discordant:
+        lines.append(
+            f"{discordant} of {record.contested} contested subject(s) are a disagreement between "
+            f"the authorities themselves rather than with the module. Nothing here resolves it: "
+            f"picking a winner between two archives needs a weighting model this format does not "
+            f"have, so each authority's own call is in {AUTHORITY_CALLS_CSV} for you to weigh."
+        )
+    return lines
+
+
+def concordance_notes(record: ConcordanceRecord | None) -> list[str]:
+    """What a run should say about its concordance record that is *not* a finding about the module.
+
+    Info-tier, and said out loud rather than left silent: a leg that quietly did not run reads as a
+    leg that found nothing, which is the failure this whole tri-state exists to prevent
+    (`@unreachable-not-absent`). Three kinds of note:
+
+    * an authority nobody could ask — unchecked is not absent, and it is never agreement;
+    * an authority this module's own rows were drafted from, which is left unconsulted because its
+      call would agree with the module by construction; and
+    * the multiplicity, where one authority holds several records for one allele. Counted rather than
+      collapsed, and the subset of those that straddle the pathogenic/benign line is counted
+      separately because those are the ones no single call can represent.
+    """
+    if record is None:
+        return []
+    notes = []
+    for leg in record.legs:
+        if leg.state == "unchecked":
+            notes.append(
+                f"{leg.authority} was not consulted ({leg.reason}). Its call reads unchecked on "
+                f"every subject: nobody asked is not an absence of records, and it is never "
+                f"agreement."
+            )
+        elif leg.state == "tautological":
+            notes.append(str(leg.reason))
+    if record.multi_record_subjects:
+        notes.append(
+            f"{record.multi_record_subjects} of {record.subjects} subject(s) drew more than one "
+            f"record from a single authority, and {record.internally_contested} of those straddle "
+            f"the pathogenic/benign line. The straddling ones are recorded as 'conflicting' rather "
+            f"than resolved to a winner, because picking one is an ordering nobody defined."
+        )
+    return notes
+
+
 def fold_authority_records(records: Sequence[dict]) -> tuple[str | None, str | None, bool]:
     """`(clin_sig, clin_sig_raw, internally_contested)` for one authority's records about a subject.
 
@@ -778,6 +856,7 @@ def clin_sig_concordance(
     sources: Sequence[SourceRow] | None = None,
     spec_dir: Path | None = None,
     checked_at: str | None = None,
+    clinvar_comparison: ClinSigComparison | None = None,
 ) -> ConcordanceRecord | None:
     """The N-authority concordance record for a module, or `None` when nobody could be consulted.
 
@@ -810,6 +889,11 @@ def clin_sig_concordance(
     majority pick different winners and choosing needs a weighting model this workspace has declined
     to invent three times, so `authored_position` stays a relation to the *set* and a consumer with
     its own model computes what it likes from the detail rows.
+
+    `clinvar_comparison` is the comparison a caller has **already run this run**, reused rather than
+    repeated: `enrich()` performs it for the two-way findings, and asking the snapshot twice costs a
+    consumer the whole look-up again (25 s on a 7,818-row panel) for an answer already in hand. It is
+    ignored where the leg is tautological, which is the one case a caller holds no comparison for.
     """
     recorded_sources = list(sources) if sources is not None else []
     plan, wanted, _no_alt = comparison_plan(variants, resolution_rows)
@@ -832,12 +916,13 @@ def clin_sig_concordance(
     internally_contested = 0
 
     if clinvar_taut is not None:
-        logger.info("ClinVar leg of the clin_sig concordance check not run: %s.", clinvar_taut)
         outcomes[CLINVAR_AUTHORITY] = AuthorityLegOutcome(
             CLINVAR_AUTHORITY, "tautological", clinvar_dataset, clinvar_taut
         )
     else:
-        comparison = compare_clin_sig(variants, resolution_rows, reference=reference)
+        comparison = clinvar_comparison
+        if comparison is None:
+            comparison = compare_clin_sig(variants, resolution_rows, reference=reference)
         if comparison is None:
             outcomes[CLINVAR_AUTHORITY] = AuthorityLegOutcome(
                 CLINVAR_AUTHORITY, "unchecked", clinvar_dataset,
@@ -853,7 +938,6 @@ def clin_sig_concordance(
             }
 
     if pubmind_taut is not None:
-        logger.info("PubMind leg of the clin_sig concordance check not run: %s.", pubmind_taut)
         outcomes[PUBMIND_AUTHORITY] = AuthorityLegOutcome(
             PUBMIND_AUTHORITY, "tautological", pubmind_dataset, pubmind_taut
         )
@@ -879,6 +963,11 @@ def clin_sig_concordance(
 
     legs = tuple(outcomes[authority] for authority in AUTHORITY_ORDER)
     if not any(leg.consulted for leg in legs):
+        logger.info(
+            "The clinical-significance concordance record was not written: no authority could be "
+            "consulted. %s",
+            " ".join(f"{leg.authority}: {leg.reason}." for leg in legs),
+        )
         # Every authority was either unasked or unaskable. A check that could not run reports no
         # zero: returning `None` leaves whatever record a previous run wrote exactly where it is,
         # rather than replacing it with two empty tables that claim nothing is contested.

@@ -26,6 +26,7 @@ from just_dna_format.base import derive_variant_key, merge_key
 from just_dna_format.binning import HeteroplasmyRow
 from just_dna_format.layout import atomic_writer
 from just_dna_format.manifest import VerificationRecord
+from just_dna_format.normalize import now_utc_iso
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
 from just_dna_format.resolution import RESOLUTION_FACT_FIELDS, ResolutionRow
 from just_dna_format.spec import VariantRow
@@ -35,10 +36,15 @@ from just_dna_enricher import clinvar
 from just_dna_enricher.clinical import (
     ClinSigComparison,
     ClinSigConflict,
+    ConcordanceRecord,
+    clin_sig_concordance,
     compare_clin_sig,
+    concordance_notes,
+    concordance_sentences,
     tautology_reason,
 )
 from just_dna_enricher.clinvar import clinvar_dataset_label
+from just_dna_enricher.concordance import write_concordance_tables
 from just_dna_enricher.currency import (
     CurrencyCheck,
     ReleaseProbe,
@@ -67,6 +73,7 @@ from just_dna_enricher.locations import (
     read_release,
     resolve_clinvar_reference,
     resolve_ensembl_reference,
+    resolve_pubmind_reference,
 )
 from just_dna_enricher.resolver import PairCheck, check_rsid_coordinates, lookup_loci
 from just_dna_enricher.sequences import (
@@ -523,6 +530,11 @@ class EnrichmentResult:
     # `clin_sig_not_checked`), and for a module that never claimed a draft the copied/authored split
     # would assert a provenance nobody established.
     clin_sig_comparison: ClinSigComparison | None = None
+    # The N-authority concordance record this run built, or `None` when no authority could be
+    # consulted at all — which is never "nothing was contested". Carried rather than recomputed: the
+    # counts on it are the run's own, and a caller re-deriving them would be a second implementation
+    # of the selection rule.
+    clin_sig_record: ConcordanceRecord | None = None
     # Authored rsIDs dbSNP has merged away or has no record of. Recorded onto the rows' provenance
     # columns and reported; never substituted — see `identifiers.check_rsids`.
     stale_rsids: list[RsidStatus] = field(default_factory=list)
@@ -602,6 +614,7 @@ def enrich(
     offline: bool = False,
     ensembl_cache: Path | None = None,
     clinvar_cache: Path | None = None,
+    pubmind_cache: Path | None = None,
     use_clinvar: bool = True,
     use_gnomad: bool = True,
     download: bool = True,
@@ -708,6 +721,7 @@ def enrich(
         return _run_enrichment(
             spec_dir,
             mode=mode, offline=offline, ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache,
+            pubmind_cache=pubmind_cache,
             use_clinvar=use_clinvar, use_gnomad=use_gnomad, download=download,
             genome_build=genome_build, write=write, mint_vrs=mint_vrs, verify_ref=verify_ref,
             verify_clinsig=verify_clinsig, verify_rsids=verify_rsids,
@@ -725,6 +739,7 @@ def _run_enrichment(
     offline: bool,
     ensembl_cache: Path | None,
     clinvar_cache: Path | None,
+    pubmind_cache: Path | None,
     use_clinvar: bool,
     use_gnomad: bool,
     download: bool,
@@ -914,6 +929,15 @@ def _run_enrichment(
     # module's artifact.digest moves. Offline uses a local ClinVar cache only (no download).
     # Located once rather than inside the link, because the clin_sig cross-check below needs the same
     # snapshot even when every variant is already resolved and the link itself has nothing to do.
+    # The PubMind snapshot is the concordance check's second authority (RM134 § B). Located here
+    # beside ClinVar's for the same reason ClinVar's is located here rather than inside its link: one
+    # resolution, read by the pass that needs it. **No `ensure_*` beside it, deliberately** — the
+    # snapshot is operator-built and `pubmind publish` refuses, so nothing provisions it for you and
+    # a missing one is `unchecked` rather than a download this run should attempt.
+    pubmind_ref: Path | None = None
+    if verify_clinsig and genome_build == "GRCh38":
+        pubmind_ref = resolve_pubmind_reference(pubmind_cache)
+
     clinvar_ref: Path | None = None
     if (use_clinvar or verify_clinsig) and genome_build == "GRCh38":
         clinvar_ref = resolve_clinvar_reference(clinvar_cache)
@@ -1321,6 +1345,9 @@ def _run_enrichment(
     clin_sig_conflicts: list[ClinSigConflict] = []
     clin_sig_not_checked: str | None = None
     clin_sig_comparison: ClinSigComparison | None = None
+    # Read once for the whole clinical pass, because both the two-way skip and every leg of the
+    # concordance record ask the same licence table the same question.
+    recorded_sources = read_sources_file(spec_dir)
     # What the comparison was evaluated OVER, for the attestation (RM45). `None` until the look-up
     # runs, and never a zero standing in for it: `ClinSigComparison.compared` is the count the check itself
     # arrived at, and re-deriving one here from `variants` would be the recomputation RM40/RM41 rules
@@ -1341,7 +1368,7 @@ def _run_enrichment(
         # avoid, so `strict` paid for it. `tautology_reason` now recomputes the drafter's digest over
         # the `clin_sig` column and answers that offline, so the skip is sound in both modes and the
         # ladder — along with the per-row audit under it — is gone.
-        drafted_from_it = tautology_reason(read_sources_file(spec_dir), clinvar_ref, spec_dir)
+        drafted_from_it = tautology_reason(recorded_sources, clinvar_ref, spec_dir)
         if drafted_from_it is not None:
             clin_sig_not_checked = drafted_from_it
             clin_sig_skip = "tautology"
@@ -1358,6 +1385,38 @@ def _run_enrichment(
     for conflict in clin_sig_conflicts:
         logger.warning("ClinVar clin_sig %s — %s",
                        "conflict" if conflict.opposed else "difference", conflict)
+
+    # The concordance record (RM130's sidecar, widened to N authorities by RM134 § B). Built from the
+    # comparison that already ran rather than from a second pass over the snapshot: re-asking would
+    # cost the whole look-up again, and a second implementation of the record-selection rule is a
+    # second place for it to drift from the one that decided the conflicts above.
+    #
+    # It is **computed here and written at the commit**, like every other product of this run. A
+    # refused `strict` run must leave the module exactly as it was, and a record written before the
+    # gates would survive a refusal.
+    clin_sig_record: ConcordanceRecord | None = None
+    if verify_clinsig:
+        clin_sig_record = clin_sig_concordance(
+            variants, out,
+            reference=clinvar_ref,
+            pubmind_reference=pubmind_ref,
+            sources=recorded_sources,
+            spec_dir=spec_dir,
+            checked_at=now_utc_iso(),
+            clinvar_comparison=clin_sig_comparison,
+        )
+    for line in concordance_sentences(clin_sig_record):
+        # Warned in BOTH modes and escalated in neither (`@clinsig-never-escalates`), with more force
+        # here than for ClinVar alone: a disagreement with a literature miner's aggregate is a
+        # statement about that extraction's limits at least as often as about the module. `discordant`
+        # is a fact about the field, not a defect in the module, and gating on it would have the
+        # format arbitrate a clinical dispute.
+        logger.warning("clin_sig concordance — %s", line)
+    for line in concordance_notes(clin_sig_record):
+        # INFO, because none of these is a finding about the module: an authority nobody could ask,
+        # and one this module's own rows were drafted from. Said out loud all the same — a leg that
+        # silently did not run reads as a leg that found nothing.
+        logger.info("clin_sig concordance — %s", line)
 
     # Third validation pass: is the rsID a module keys on still the one dbSNP serves? Needs the live
     # API (NCBI is the oracle — Ensembl 400s on some merges), so `--offline` skips it. The verdict is
@@ -1522,6 +1581,7 @@ def _run_enrichment(
         rsid_coordinates=pair_check,
         rederived=rederived,
         dataset_currency=dataset_currency,
+        clin_sig_record=clin_sig_record,
     )
 
     if unreachable_rsids:
@@ -1631,6 +1691,13 @@ def _run_enrichment(
     # and it is asserted on the bytes on disk by test, not on a return value.
     if write:
         _write_resolution_csv(out, resolution_path)
+        if clin_sig_record is not None:
+            # Rewritten whole rather than merged: a subject the authorities stopped contesting has to
+            # *leave* the record, since a conflict that stops being reported is how an author learns
+            # the archive caught up with them. A run where nobody could be consulted returns `None`
+            # above and writes nothing, so a previous run's record survives a run that could not
+            # replace it.
+            write_concordance_tables(spec_dir, clin_sig_record.parents, clin_sig_record.calls)
         # The attestation (RM45), written once for the whole run — the proof-of-work binds the
         # document, so recording per check would pay it once per check for one guarantee. It goes after
         # `resolution.csv` and before the licence rows for no reason but reading order; the binding is
