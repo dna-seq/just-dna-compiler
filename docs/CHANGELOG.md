@@ -40,7 +40,7 @@ signature, so `just-dna-compiler` took the patch alongside while `just-dna-forma
 under Principles 3 and 8, and a new optional column is what sizes a release. The heading names `0.7.0`
 because the proposal decided it per item, so unlike the 2026-08-24 batch below — which is also an
 uncut minor and deliberately names no number — there is a version to write down here. The three
-`pyproject.toml` files were bumped to `0.7.0` on 2026-08-30 and **the tag is not cut**, so work still
+`pyproject.toml` files were bumped to `0.7.0` on 2026-08-31 and **the tag is not cut**, so work still
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
