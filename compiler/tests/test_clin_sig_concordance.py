@@ -335,7 +335,10 @@ def test_two_records_for_one_subject_are_refused(tmp_path: Path) -> None:
     validated = validate_spec(spec)
     compiled = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
     assert not validated.valid and not compiled.success
-    assert set(validated.errors) <= set(compiled.errors)
+    # `@validate-refuses-all`: `validate_spec` must refuse everything `compile_module` refuses, so
+    # COMPILE's errors are the contained side. Written the other way round it passes unchanged on the
+    # one day it matters — the day `compile` grows a refusal `validate` never makes.
+    assert set(compiled.errors) <= set(validated.errors)
 
 
 @pytest.mark.parametrize("table", ["clin_sig_concordance.csv", "clin_sig_authority_calls.csv"])

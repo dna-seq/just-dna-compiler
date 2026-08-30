@@ -62,13 +62,11 @@ nothing in this repo designs yet.
   reasons.
 """
 
-import json
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import duckdb
 from just_dna_compiler.draft import DraftReport, PartialRow, append_partial_rows
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import normalize_chrom
@@ -95,6 +93,7 @@ from just_dna_enricher.licensing import (
 )
 from just_dna_enricher.locations import RELEASE_FILENAME, resolve_pubmind_reference
 from just_dna_enricher.provenance import stamp_draft_digest
+from just_dna_enricher.pubmind import PubMindReferenceError, _connect, pubmind_dataset_label
 from just_dna_enricher.pubmind_build import PUBMIND_GENOME_BUILD
 from just_dna_enricher.verification import examples
 
@@ -181,32 +180,22 @@ class PubMindDraftResult:
 
 # ── Reading the snapshot ────────────────────────────────────────────────────────────────────────
 #
-# The reader lives beside its one caller rather than in a `pubmind.py` twin of `clinvar.py`, because
-# this pass and the hint are the only things that read the snapshot today and a module holding one
-# query is a module. Move it out when a third reader lands.
+# The reader is `pubmind.py`'s, not a second copy beside this caller. An earlier comment here
+# said to move it out "when a third reader lands" — the twin already existed when that was
+# written, landed by the concordance lane in the same release. Two copies of
+# `pubmind_dataset_label` is the specific thing `clinvar_dataset_label` documents as fatal: it
+# is the key `is_tautological_leg` matches on, so a drafter stamping `SourceRow.dataset` with
+# one spelling and a check comparing against the other does not fail — it quietly never
+# matches, and the guard stops being able to fire.
 
 
-def _connect(reference: Path) -> duckdb.DuckDBPyConnection:
-    """An in-memory connection exposing a `pubmind` view over the snapshot's parquet files."""
-    reference = Path(reference)
-    data = reference / "data"
-    parquet_dir = data if data.is_dir() and any(data.glob("*.parquet")) else reference
-    if not (parquet_dir.is_dir() and any(parquet_dir.glob("*.parquet"))):
-        raise PubMindDraftError(
-            f"no usable PubMind parquet files at {reference}. Build one with "
-            f"`just-dna-enricher pubmind build --download`."
-        )
-    # DuckDB cannot bind a parameter inside `read_parquet()`; the path comes from our own cache
-    # resolution rather than from user input, and is single-quote-escaped defensively — the same
-    # shape `clinvar._connect` uses.
-    pattern = f"{parquet_dir}/*.parquet".replace("'", "''")
-    con = duckdb.connect(":memory:")
-    con.execute(f"CREATE VIEW pubmind AS SELECT * FROM read_parquet('{pattern}')")
-    return con
-
-
-#: Every column a reader of this snapshot takes, in the order `_schema()` writes them.
-_SELECT = "chrom, start, ref, alt, pvid, clin_sig, clin_sig_raw, pathogenicity_score, confidence, derivation"
+#: The columns this pass reads. Narrower than the concordance reader's, and its own: the two
+#: passes ask different questions of one snapshot, which is a different thing from keeping two
+#: copies of the reader that answers them.
+_SELECT = (
+    "chrom, start, ref, alt, pvid, clin_sig, clin_sig_raw, pathogenicity_score, confidence, "
+    "derivation"
+)
 
 
 def select_by_positions(reference: Path, positions: Sequence[tuple[str, int]]) -> list[dict]:
@@ -223,7 +212,15 @@ def select_by_positions(reference: Path, positions: Sequence[tuple[str, int]]) -
     by_chrom: dict[str, list[int]] = {}
     for chrom, start in sorted(wanted):
         by_chrom.setdefault(chrom, []).append(start)
-    con = _connect(reference)
+    # The reader is shared with the concordance pass, so it raises the reader's own
+    # `PubMindReferenceError`. A pass owes its caller its OWN type (RM101): translated here rather
+    # than left to leak, which is what the two exception-contract tests walk the package for.
+    try:
+        con = _connect(reference)
+    except PubMindReferenceError as exc:
+        raise PubMindDraftError(
+            f"{exc} Draft with `--source pubmind` needs the snapshot this reads."
+        ) from exc
     rows: list[dict] = []
     try:
         for chrom in sorted(by_chrom):
@@ -242,26 +239,6 @@ def select_by_positions(reference: Path, positions: Sequence[tuple[str, int]]) -
     finally:
         con.close()
     return rows
-
-
-def pubmind_dataset_label(reference: Path | None) -> str | None:
-    """Which PubMind bytes a snapshot was built from, or `None` when it cannot say.
-
-    The builder derives the label from the source file's sha256 because PubMind publishes no version
-    string of its own; this reads that value back rather than re-deriving it, so the licence row and
-    `release.json` cannot disagree about which release a module's rows came from.
-    """
-    if reference is None:
-        return None
-    path = Path(reference) / RELEASE_FILENAME
-    if not path.is_file():
-        return None
-    try:
-        release = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    label = str(release.get("dataset") or "").strip()
-    return label or None
 
 
 # ── Turning a gene into positions, and positions into rows ──────────────────────────────────────

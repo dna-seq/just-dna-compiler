@@ -2283,7 +2283,11 @@ def draft_panel_(
     except (ClinVarDraftError, PubMindDraftError, *_DRAFT_PRECONDITION_ERRORS) as exc:
         typer.secho(f"DRAFT FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    if getattr(result, "skipped", False):
+    # Only the ClinVar result carries `skipped`; `PubMindDraftResult` has no such field. A
+    # `getattr(..., False)` default reads "this type cannot skip" and "this run did not skip" as the
+    # same answer, so a skip path added to the PubMind provider would go dark with nothing failing.
+    # Ask whether the field exists, then read it.
+    if hasattr(result, "skipped") and result.skipped:
         for warning in result.warnings:
             typer.secho(f"  skipped: {warning}", fg=typer.colors.YELLOW, err=True)
         return

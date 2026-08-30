@@ -696,3 +696,33 @@ def test_the_clinvar_path_is_untouched_by_the_new_flag(tmp_path: Path) -> None:
     output = result.output + (result.stderr or "")
     assert "ClinVar publishes" in output
     assert "PubMind" not in output
+
+
+def test_one_reader_serves_both_passes_because_the_label_is_a_guard_key(tmp_path: Path) -> None:
+    """`pubmind_dataset_label` has exactly one implementation, and both passes get that one.
+
+    The drafter shipped with its own copy, under a comment saying to move the reader out "when a
+    third reader lands" — but the `pubmind.py` twin already existed, landed by the concordance lane
+    in the same release. Two copies is the specific thing `clinvar_dataset_label`'s docstring calls
+    fatal: the label is the key `is_tautological_leg` matches on, so a drafter stamping
+    `SourceRow.dataset` with one spelling and a check comparing against the other does not fail — it
+    quietly never matches and the guard stops being able to fire.
+
+    They had already diverged. The drafter's copy parsed `release.json` itself and called `.get` on
+    whatever came back, so a release file holding a JSON array raised an unhandled `AttributeError`
+    instead of withholding; the shared reader routes through `read_release`, which checks the payload
+    is a mapping. That is the case asserted below, because it is the one that told them apart.
+    """
+    from just_dna_enricher import pubmind, pubmind_draft
+    from just_dna_enricher.locations import RELEASE_FILENAME
+
+    assert pubmind_draft.pubmind_dataset_label is pubmind.pubmind_dataset_label
+    assert pubmind_draft._connect is pubmind._connect
+
+    reference = tmp_path / "snapshot"
+    reference.mkdir()
+    (reference / RELEASE_FILENAME).write_text('["not", "a", "mapping"]', encoding="utf-8")
+
+    # Withheld, not raised: an unreadable release is an unknown, and `None` is never a label
+    # something could match.
+    assert pubmind_draft.pubmind_dataset_label(reference) is None
