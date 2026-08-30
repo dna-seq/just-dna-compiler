@@ -929,15 +929,6 @@ def _run_enrichment(
     # module's artifact.digest moves. Offline uses a local ClinVar cache only (no download).
     # Located once rather than inside the link, because the clin_sig cross-check below needs the same
     # snapshot even when every variant is already resolved and the link itself has nothing to do.
-    # The PubMind snapshot is the concordance check's second authority (RM134 § B). Located here
-    # beside ClinVar's for the same reason ClinVar's is located here rather than inside its link: one
-    # resolution, read by the pass that needs it. **No `ensure_*` beside it, deliberately** — the
-    # snapshot is operator-built and `pubmind publish` refuses, so nothing provisions it for you and
-    # a missing one is `unchecked` rather than a download this run should attempt.
-    pubmind_ref: Path | None = None
-    if verify_clinsig and genome_build == "GRCh38":
-        pubmind_ref = resolve_pubmind_reference(pubmind_cache)
-
     clinvar_ref: Path | None = None
     if (use_clinvar or verify_clinsig) and genome_build == "GRCh38":
         clinvar_ref = resolve_clinvar_reference(clinvar_cache)
@@ -947,6 +938,17 @@ def _run_enrichment(
                 clinvar_ref = resolve_clinvar_reference(clinvar_cache)
             except Exception as exc:  # provisioning is best-effort; degrade to live/offline
                 logger.warning("ClinVar snapshot provisioning failed (%s); continuing without it.", exc)
+
+    # The PubMind snapshot is the concordance check's *second* authority (RM134 § B), and it is
+    # located beside ClinVar's for the same reason ClinVar's is located outside its own link: one
+    # resolution, read by the pass that needs it. It is **not** a resolver link and never becomes one
+    # — PubMind's coordinates are back-mappings of extracted text (`@source-vs-authority`) — so this
+    # sits after the link above rather than inside it. **No `ensure_*` beside it, deliberately**: the
+    # snapshot is operator-built and `pubmind publish` refuses, so nothing provisions it for you and
+    # a missing one reads `unchecked` rather than becoming a download this run should attempt.
+    pubmind_ref: Path | None = None
+    if verify_clinsig and genome_build == "GRCh38":
+        pubmind_ref = resolve_pubmind_reference(pubmind_cache)
 
     if use_clinvar and genome_build == "GRCh38" and (need_pos or need_rsid):  # noqa: SIM102
         # Kept nested: the outer clause is the build/mode gate, the inner is whether a cache resolved.

@@ -666,7 +666,8 @@ def test_the_reported_sentences_carry_their_denominator_and_the_authorities_that
     assert record is not None
     sentences = concordance_sentences(record)
     assert any(
-        f"{record.contested} of {record.subjects} compared subject(s) are contested" in line
+        f"{record.contested} of {record.subjects} subject(s) put to the authorities are contested"
+        in line
         for line in sentences
     )
     assert any("Authorities consulted: clinvar, pubmind" in line for line in sentences)

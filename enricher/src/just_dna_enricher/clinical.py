@@ -693,7 +693,8 @@ def concordance_sentences(record: ConcordanceRecord | None) -> list[str]:
     opposed = sum(1 for row in record.parents if row.opposed)
     discordant = sum(1 for row in record.parents if row.authority_concordance == "discordant")
     lines = [
-        f"{record.contested} of {record.subjects} compared subject(s) are contested, "
+        f"{record.contested} of {record.subjects} subject(s) put to the authorities are "
+        f"contested, "
         f"{opposed} of them on opposed calls — a pathogenic-class call against a benign-class one, "
         f"rather than a difference of confidence within one conclusion. Authorities consulted: "
         f"{consulted}. Reported and never escalated: a curator who has read the primary literature "
