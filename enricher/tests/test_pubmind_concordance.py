@@ -93,6 +93,19 @@ def _pubmind(directory: Path, rows: list[tuple[str, int, str, str, str, str, str
     return out
 
 
+def _no_pubmind(tmp_path: Path) -> Path:
+    """A cache path nothing resolves from, for a run that must have no PubMind authority.
+
+    Passed explicitly rather than left to the default resolution, because that reads
+    `$JUST_DNA_PUBMIND_CACHE` and then the platformdirs cache — so a machine that happens to hold a
+    built snapshot would hand the run a second authority and change what these tests assert. The
+    same hazard already broke a digest-parity test one file over, on the ClinVar cache. Emptying the
+    environment variable does **not** work: `explicit or os.getenv(...)` reads `""` as unset and
+    falls through to the default directory.
+    """
+    return tmp_path / "no-pubmind-snapshot-here"
+
+
 def _variant(clin_sig: str, genotype: str, **kw) -> VariantRow:
     return VariantRow(
         chrom=_CHROM, start=_START, ref=_REF, alts="A,G", genotype=genotype,
@@ -652,6 +665,26 @@ def test_a_contested_module_never_refuses_a_strict_run(clinvar: Path, tmp_path: 
         assert (spec / AUTHORITY_CALLS_CSV).is_file(), mode
 
 
+def test_the_two_way_skip_and_the_leg_note_do_not_both_print_the_same_sentence(
+    clinvar: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """One sentence, once. `clin_sig_not_checked` and the ClinVar leg's `reason` are the same prose —
+    both come out of `tautology_reason` — so a drafted module would otherwise read the tautology
+    twice in one run. Matched on the sentence rather than on a skip key, so a reword stays deduped.
+    """
+    spec = _drafted_panel(tmp_path / "panel", clinvar)
+    pubmind = _pubmind(tmp_path / "pm", [(_CHROM, _START, "T", "A", "PV1", "Benign", "0.1", "1")])
+    with caplog.at_level("INFO", logger="just_dna_enricher.enrich"):
+        result = enrich(
+            spec, offline=True, clinvar_cache=clinvar, pubmind_cache=pubmind, use_gnomad=False,
+            verify_rsids=False, verify_datasets=False, mint_vrs=False,
+        )
+    sentence = result.clin_sig_not_checked
+    assert sentence and "drafted from" in sentence
+    printed = [record.getMessage() for record in caplog.records if sentence in record.getMessage()]
+    assert len(printed) == 1, printed
+
+
 def test_the_reported_sentences_carry_their_denominator_and_the_authorities_that_answered(
     clinvar: Path, tmp_path: Path
 ) -> None:
@@ -713,16 +746,16 @@ def test_a_record_survives_a_run_that_could_not_replace_it(clinvar: Path, tmp_pa
     (spec / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
     _write_variants(spec, [_variant("benign", "A/T", rsid="rs334")])
 
-    enrich(spec, offline=True, clinvar_cache=clinvar, use_gnomad=False, verify_rsids=False,
-           verify_datasets=False, mint_vrs=False)
+    enrich(spec, offline=True, clinvar_cache=clinvar, pubmind_cache=_no_pubmind(tmp_path),
+           use_gnomad=False, verify_rsids=False, verify_datasets=False, mint_vrs=False)
     written = (spec / CONCORDANCE_CSV).read_text(encoding="utf-8")
     assert len(written.splitlines()) > 1, "the first run really did record a contested subject"
 
     # Now take the snapshot away: nobody can be asked, so nothing may be rewritten.
     empty = tmp_path / "empty"
     empty.mkdir()
-    result = enrich(spec, offline=True, clinvar_cache=empty, use_gnomad=False, verify_rsids=False,
-                    verify_datasets=False, mint_vrs=False)
+    result = enrich(spec, offline=True, clinvar_cache=empty, pubmind_cache=_no_pubmind(tmp_path),
+                    use_gnomad=False, verify_rsids=False, verify_datasets=False, mint_vrs=False)
     assert result.clin_sig_record is None
     assert (spec / CONCORDANCE_CSV).read_text(encoding="utf-8") == written
 
@@ -740,7 +773,8 @@ def test_a_refused_strict_run_leaves_no_record_behind(clinvar: Path, tmp_path: P
                    conclusion="c", clin_sig="benign"),
     ])
     with pytest.raises(Exception):
-        enrich(spec, mode="strict", offline=True, clinvar_cache=clinvar, use_gnomad=False,
+        enrich(spec, mode="strict", offline=True, clinvar_cache=clinvar,
+               pubmind_cache=_no_pubmind(tmp_path), use_gnomad=False,
                verify_rsids=False, verify_datasets=False, mint_vrs=False)
     assert not (spec / CONCORDANCE_CSV).exists()
     assert not (spec / AUTHORITY_CALLS_CSV).exists()

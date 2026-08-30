@@ -1895,7 +1895,17 @@ a defect to gate on. `clinical.concordance_sentences` produces the warnings, eac
 denominator and the authorities that answered; `clinical.concordance_notes` produces the info-tier
 lines for the legs that did not run, because a leg that silently did not run reads as a leg that
 found nothing. A run that found nothing contested emits neither: a check that cannot fail reports no
-zero, and neither does one that ran and found nothing.
+zero, and neither does one that ran and found nothing. The two warning stems a consumer greps, pinned
+by test because a warning's text is an API:
+
+```
+{n} of {m} subject(s) put to the authorities are contested, {k} of them on opposed calls
+{n} of {m} contested subject(s) are a disagreement between the authorities themselves
+```
+
+The leg notes are info-tier and deduped against the two-way skip's own sentence — the ClinVar
+tautology's prose comes out of `tautology_reason` on both paths, so a drafted module would otherwise
+read it twice in one run. Matched on the sentence, not on the skip key, so a reword stays deduped.
 
 **Nothing resolves a split, at two authorities or at five.** There is no `majority`, no consensus
 call and no resolved winner, and `module_spec.yaml`'s optional `authority_precedence:` is recorded

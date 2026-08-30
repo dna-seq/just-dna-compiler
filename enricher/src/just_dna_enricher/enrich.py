@@ -1418,6 +1418,14 @@ def _run_enrichment(
         # INFO, because none of these is a finding about the module: an authority nobody could ask,
         # and one this module's own rows were drafted from. Said out loud all the same — a leg that
         # silently did not run reads as a leg that found nothing.
+        #
+        # Skipping a line the two-way check has already said, matched on the sentence rather than on
+        # a skip key: `clin_sig_not_checked` carries the ClinVar tautology's exact prose and so does
+        # that leg's `reason`, since both come from `tautology_reason`. Comparing the strings means a
+        # reworded sentence stays deduped, where keying on `clin_sig_skip` would silently start
+        # printing both the day either wording moved.
+        if line == clin_sig_not_checked:
+            continue
         logger.info("clin_sig concordance — %s", line)
 
     # Third validation pass: is the rsID a module keys on still the one dbSNP serves? Needs the live
