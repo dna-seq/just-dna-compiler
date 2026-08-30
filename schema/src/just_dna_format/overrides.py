@@ -172,7 +172,7 @@ class OverrideRow(AuthoredModel):
     """One authored correction to one cell (or one row) of one derived table.
 
     An `AuthoredModel` and not a fact model, which is the whole distinction: a human writes this,
-    every other row in the seven tables it names is machine-written. So it carries the reserved-
+    every other row in the tables it names is machine-written. So it carries the reserved-
     namespace guard and the shared field validators, and it is inside `content_signature` — a
     correction is part of what the module says.
     """

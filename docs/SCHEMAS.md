@@ -40,7 +40,7 @@ is the maintained one, and where the two disagree this one is what a consumer ma
 | `binning` | Measure→phenotype binning rows (4 table kinds) | `base`, `vocab` |
 | `pgx` | PGx star-allele rows (4 table kinds) | `base`, `vocab` |
 | `pgs` | `PgsRow` (PGS-Catalog-ID manifest) | `base`, `vocab` |
-| `overrides` | `OverrideRow` + `OVERRIDABLE_TABLES` + `apply_overrides` — the 0.7 authored overlay over the seven derived tables (RM124) | `base`, `normalize`, `vocab`, and the seven derived row models |
+| `overrides` | `OverrideRow` + `OVERRIDABLE_TABLES` + `apply_overrides` — the 0.7 authored overlay over the covered derived tables (RM124) | `base`, `normalize`, `vocab`, and the covered derived row models |
 | `integrity` | SHA-256 hashing, the signatures, Ed25519 verify | `manifest`, `resolution`, `frequency`, `gene_metrics`, `literature`, `sources`, `cryptography` |
 | `signing` | Ed25519 private-key signing (over `artifact.digest`) | `integrity`, `manifest`, `cryptography` |
 | `reference` | Drift-proof authoring reference generated from live models | spec/binning/pgx/pgs/manifest/normalize/vocab |
@@ -89,14 +89,17 @@ existence and identifiers exactly like a study-grounded one. `sources.csv` does 
 either: it records a *dataset's* terms and attribution, which answers where a table came from, never
 why a bound is where it is. `resolution.csv` is compiler *input*, produced by the enricher, not authored
 annotation (see [§ resolution table](#the-resolution-table-05-provisional)) — and the same is true of
-the seven derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
-`gene_validity.csv` / `clinical_assertions.csv` / `gwas_effects.csv` / `sources.csv`, which are
-therefore absent from the table below. Since 0.7 an author corrects them through `overrides.csv`,
-which *is* authored and therefore *is* in the table — **except `sources.csv`**, which the overlay
-deliberately does not cover: it has its own merge path and is the one derived table a human is told to
-write. `resolution.csv` is covered — see [§ the authored overlay](#the-authored-overlay-07-rm124--overridescsv).
+the **nine** derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
+`gene_validity.csv` / `clinical_assertions.csv` / `gwas_effects.csv` / `clin_sig_concordance.csv` /
+`clin_sig_authority_calls.csv` / `sources.csv`, which are therefore absent from the table below.
+Since 0.7 an author corrects them through `overrides.csv`, which *is* authored and therefore *is* in
+the table — **except two**. `sources.csv` the overlay deliberately does not cover: it has its own
+merge path and is the one derived table a human is told to write. `clin_sig_authority_calls.csv` is
+excluded for the opposite reason: it records what each archive published, and an author answers the
+question a conflict asks rather than rewriting the answer an archive gave. `resolution.csv` *is*
+covered — see [§ the authored overlay](#the-authored-overlay-07-rm124--overridescsv).
 
-**`sources.csv` is the one of those six a human is expected to write, and 0.5.4 stopped pretending
+**`sources.csv` is the one of those nine a human is expected to write, and 0.5.4 stopped pretending
 otherwise (S21).** The others are produced by an enricher pass, so an author never starts one by
 hand; this one the schema tells them to write — a source read **by hand** leaves no `source` cell
 anywhere for the compiler's coverage check to find, so declaring it as a row here is the only route
@@ -122,7 +125,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
 | `pharm_variants.csv` | `pgx.PharmVariantRow` | single-variant drug response (PharmGKB) |
 | `pgs.csv` | `pgs.PgsRow` | PGS-Catalog-ID manifest + ancestry-validity fields |
 | `gwas_effects.csv` | `gwas.GwasEffectRow` | injected GWAS Catalog effect sizes (0.6, RM90; enricher-produced) |
-| `overrides.csv` | `overrides.OverrideRow` | the authored overlay over the seven derived tables (0.7, RM124) |
+| `overrides.csv` | `overrides.OverrideRow` | the authored overlay over the covered derived tables (0.7, RM124) — the set is `OVERRIDABLE_TABLES`, and it has grown once already |
 
 ## Conventions (the idioms every model obeys)
 
@@ -1673,11 +1676,18 @@ grammar was rejected. The meaning of both is the named table's own:
 | `clinical_assertions.csv` | `variant_key` | `variation_id` |
 | `literature.csv` | `pmid` | — |
 | `gwas_effects.csv` | `association_id` | — |
+| `clin_sig_concordance.csv` | `variant_key` | `genotype` |
 
-`sources.csv` / `licensing.csv` is deliberately **outside** the set: it has its own merge path and it
-is the one derived table the schema tells a human to hand-write, so an overlay over it would put a
-second spelling of the licence position beside the first. The registry is
-`overrides.OVERRIDABLE_TABLES` and a test asserts it equals *every* derived sidecar but that one.
+**Two** derived sidecars sit outside the set, not one. `sources.csv` / `licensing.csv` has its own
+merge path and is the one derived table the schema tells a human to hand-write, so an overlay over it
+would put a second spelling of the licence position beside the first. `clin_sig_authority_calls.csv`
+is excluded for the opposite reason: it records what each archive published, and an author answers the
+question a conflict asks rather than rewriting the answer an archive gave. Its parent record —
+`clin_sig_concordance.csv`, the row that *asks* — is in.
+
+The registry is `overrides.OVERRIDABLE_TABLES`, and a test asserts it equals every derived sidecar
+minus those two. **Derive the set from that registry, never from this table**: it read seven for a
+release after the eighth landed.
 
 `gene_validity.csv` is the table whose key has two levels (`assertion_id`, else the gene's grain). A
 row the source published no `assertion_id` for can only be reached **group-scoped, by `gene`**, and

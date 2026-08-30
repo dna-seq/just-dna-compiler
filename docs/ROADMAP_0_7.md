@@ -49,8 +49,8 @@ because it is deferred.
 
 **Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output) on 2026-08-28 — BUILDS in 0.7, in full plus the S65 roster.** Record + `needs_recompile` in format, the sweep in the compiler, the gate in the bump→tag sequence; intervals compose as a union over `(a, b]`, which is what gives S65's convergence requirement for free.
 
-**Severity** medium-high · **Status** **queued for 0.7, moved here 2026-08-21 — to be built, not
-parked.** The charter now *requires* this channel: Principle 3 says a corrected derivation may ship in
+**Severity** medium-high · **Status** ✅ **SHIPPED in 0.7** (2026-08-28) — the record, `needs_recompile`,
+the roster, the sweep and the release gate. The charter *required* this channel: Principle 3 says a corrected derivation may ship in
 any release but never silently, and this is the declaration it mandates. Until it exists the charter
 describes a surface that is not there · **Owner** format (record + `needs_recompile`) + compiler
 (the sweep) · **Motivating case** [S62](CONSUMER_SUGGESTIONS_HISTORY.md) (just-dna-registry)
@@ -1290,8 +1290,9 @@ would create under an empty member carries no member value and so could never be
 
 **Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it) on 2026-08-28 — BUILDS in 0.7, and it is the round's keystone.** `overrides.csv`, keyed `(table, subject, member, field)`; operations `update`/`insert`/`suppress`, with the wildcard refused for the destructive one; applied at load and merge-not-clobber's *cost* dropped for the covered tables; P7 held by idempotency, so no `previous_value` column. Question 2 answered as a dated succession — see **RM135**.
 
-**Severity** medium-high · **Status** open — a shape proposed by a consumer who built the workaround,
-tier argued, four questions unsettled · **Owner** format + compiler · **Motivating case**
+**Severity** medium-high · **Status** ✅ **SHIPPED in 0.7** (2026-08-28) — the four questions were
+settled in PROPOSAL_0_7 and the entry below is kept as the record of what was observed · **Owner**
+format + compiler · **Motivating case**
 S60 (just-module-creator, in CONSUMER_SUGGESTIONS_HISTORY.md) · **Answers the blocking sub-question of
 [RM83](#rm83--a-derived-sidecar-can-only-be-refreshed-by-deleting-it-which-discards-the-overrides-it-exists-to-hold)**
 

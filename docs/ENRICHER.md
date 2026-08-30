@@ -206,9 +206,11 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   longer exist. Re-running the pass re-attests. Currency of the *source* is a different question and is
   read off each record's own `release`.
 
-**Which of these attest, and which are recording passes rather than checks.** Seven commands attest,
-for fifteen of the seventeen members. `enrich()` attests five (reference allele, wrong build, clinical
-significance, rsID currency, rsid↔coordinate), `enrich_literature` three (citation existence,
+**Which of these attest, and which are recording passes rather than checks.** `VALID_VERIFICATION_CHECKS`
+has eighteen members and sixteen have an emitter — `test_verification_record.py` walks the vocabulary
+and names the two that are reserved without one, so read the count off that test rather than off this
+sentence, which has been wrong twice. `enrich()` attests six (reference allele, wrong build, clinical
+significance, rsID currency, rsid↔coordinate, dataset currency), `enrich_literature` three (citation existence,
 identifier agreement, provenance quote), `check-identifiers` three (gene symbol currency, trait
 currency, gene↔locus agreement), and `enrich_clinpgx`, `pgx`, `vrs mint` and `check-acmg` one each.
 The last four members were wired in **RM72** (0.6): the two check commands put a real
@@ -340,7 +342,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `pubmind_build` | **`[dev]`** builder (0.7, RM134): the ANNOVAR-distributed PubMind table → one parquet + `release.json`. Operator-built, and `pubmind publish` **refuses** | `polars` (lazy), `httpx`, `clin_sig` |
 | `ensembl` | live Ensembl: V2 GraphQL → V1 REST fallback, tenacity | `httpx`, `tenacity` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
-| `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar`/`pubmind` build+publish, `vrs mint` | `typer` |
+| `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar`/`pubmind` builders — `build+publish` for the first four, **`build` only** for `pharmvar` (there is no `pharmvar publish` and there will not be) and `pubmind`, whose `publish` exists and refuses with its reason, `vrs mint` | `typer` |
 
 ## Rate limits (public APIs)
 
@@ -3155,6 +3157,8 @@ just-dna-enricher enrich spec/ --no-verify-ref     # skip the reference-allele c
 just-dna-enricher enrich spec/ --no-verify-clinsig # skip the ClinVar clin_sig cross-check
 just-dna-enricher enrich spec/ --no-verify-rsids   # skip the dbSNP merge/withdrawal check
 just-dna-enricher enrich spec/ --no-verify-datasets # skip the recorded-release currency check
+just-dna-enricher enrich spec/ --pubmind-cache pm/ # add PubMind as a second authority to the
+                                                  # clin_sig check; without it that leg is unchecked
 just-dna-enricher enrich spec/ --keep-par-twin   # record both contigs of a pseudoautosomal locus
 just-dna-enricher enrich spec/ --rederive          # re-ask every recorded subject; report what moved
 just-dna-enricher enrich spec/ --keep-staging      # keep the staged answers after a successful commit
@@ -3222,7 +3226,8 @@ just-dna-enricher clinvar publish cv/                           # create-or-upda
 
 `enrich` takes the mode and cache flags (`--strict/--best-effort`, `--offline`, `--ensembl-cache`,
 `--clinvar-cache`), the per-link toggles (`--clinvar/--no-clinvar`, `--gnomad/--no-gnomad`,
-`--vrs/--no-vrs`), the three verify toggles above, `--keep-par-twin`, and the two transaction flags
+`--vrs/--no-vrs`), the four verify toggles above (`--verify-ref`, `--verify-clinsig`, `--verify-rsids`,
+`--verify-datasets`), `--pubmind-cache`, `--keep-par-twin`, and the two transaction flags
 `--rederive` / `--keep-staging`. **`enrich-and-compile` takes the mode, cache and link flags and none
 of the rest** — it is the offline convenience wrapper, so the verify toggles and the transaction flags
 are `enrich`'s alone. That distinction is the rule worth writing down; the enumeration is not, because
@@ -3372,7 +3377,7 @@ rejected, because it would put the full resolution time on every run to buy drif
 asked to run continuously.
 
 What changed is what leaving a recorded row alone risks, and the answer is now **nothing**. A
-curator's correction to any of the seven tables above except `licensing.csv` lives in `overrides.csv`
+curator's correction to a covered derived table lives in `overrides.csv`
 beside the spec, not inside the sidecar; the compiler applies it on every build. So every derived file
 this tier writes is a pure build product, hand-editing one is not expected, and `rm` plus a re-run —
 the crude form of a full re-derivation — costs nothing. Each writer's docstring says so at the point a
@@ -3393,7 +3398,7 @@ about the other seven and wrong about the one where it matters. The two levels a
 ### A check's findings, and where each one's survive (S70)
 
 `verification.json` records **counts**, and until S70 `clinical_significance` was the only one of
-the five checks `enrich()` puts whose findings then survived nowhere at all:
+the checks `enrich()` puts whose findings then survived nowhere at all:
 
 | check | where its findings survive |
 |---|---|

@@ -89,7 +89,9 @@ def test_build_offers_no_declared_use_flag() -> None:
     # why it is absent, and matching on the raw text would find that sentence.
     flags = {token for token in result.output.split() if token.startswith("--")}
     assert "--use" not in flags
-    assert {"--table", "--download", "--out"} <= flags
+    # An EQUALITY over the advertised surface, not a floor: `<=` passes unchanged on the day a
+    # flag is silently added or one of these three is dropped, which is the only day it matters.
+    assert flags == {"--table", "--download", "--out", "--help"}
 
 
 def test_the_cache_resolver_finds_a_built_snapshot_and_withholds_otherwise(

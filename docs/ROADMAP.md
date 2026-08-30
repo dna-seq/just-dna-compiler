@@ -39,11 +39,13 @@ deferral is filed against the release that will decide it:
 Code comments citing "ROADMAP item N" / "ROADMAP 0.3 item 5b" are historical breadcrumbs — follow them
 to [CHANGELOG.md](CHANGELOG.md) / [COMPILER.md](COMPILER.md).
 
-**Status:** **0.6.6 is cut and tagged `v0.6.6`** (2026-08-21) — all three packages read `0.6.6` in
-their `pyproject.toml` and the tag is the newest. It carries **nine patch fixes**: the 2026-08-19
+**Status:** **0.7.0 is being cut.** The twelve items `PROPOSAL_0_7.md` decided have all landed on the
+`0.7` branch; the bump, the release record and the tag are the remaining steps, so all three
+`pyproject.toml` files still read `0.6.6` as this is written and work *does* sit on top of `v0.6.6`.
+The last cut release is **0.6.6, tagged `v0.6.6`** (2026-08-21) — It carries **nine patch fixes**: the 2026-08-19
 doc-audit round (RM104–RM107, RM109, RM111), the two shipped items of the S57–S60 batch (RM121, RM123),
-and S61's lookup fix (RM125). RM122 and RM124 are the two of that batch still open, so they are not in
-it. Nothing sits uncut on top of the tag as this is written.
+and S61's lookup fix (RM125). RM122 and RM124 were the two of that batch not in it; RM124 has
+since shipped in 0.7.
 **This paragraph read "0.6.4 is the current line" for two releases**, which is the same failure the
 *Active items* heading had and the reason both are called out rather than quietly corrected: a status
 line nobody re-reads is a status line that lies, so re-read this one whenever a version moves.
@@ -173,7 +175,7 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Four as of 2026-08-21, and not one of them is a decision:**
+**Not one of them is a decision** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, which is why the paragraph under it says to count off the sections rather than off this sentence):
 [RM103](#rm103--a-version-with-no-digits-coerces-to-000-which-is-a-real-version-nobody-wrote)
 (the manifest half only),
 [RM108](#rm108--a-clingen-re-curation-appends-a-second-row-and-nothing-marks-the-superseded-one),
@@ -526,8 +528,9 @@ requirement that existed.
 
 **Decided in [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check) on 2026-08-28 — BUILDS in 0.7, pulled in after the other eleven were decided and reviewed against them.** Eight corrections, two of which were defects that would have shipped: **the concordance record is shared with RM130 and RM130's shape changes because of it** (`ClinSigConflict` names its authority in a *field*, so a second authority would have cost a key change or a retype — major-only); and **one normalizer, not two, after two fixes** — `_normalize_clin_sig`'s map keys are underscored while PubMind's tokens are spaced, so `Uncertain significance` and `Conflicting` both fall to `other` today and the check would manufacture a disagreement on PubMind's largest disagreeing class. **A maintainer stress test at five authorities failed the drafted vocabulary**: `pubmind_only`/`clinvar_only` name the authority inside the member, because one field carried two axes. Split into `authority_concordance` and `authored_position`, five members each at any N. **Nothing resolves a split** — E+A agreeing against B/C/D needs a weighting model this repo has refused to invent three times — so the precedence list is recorded as methodology and computed with by nothing. Licensing governs what a module may *do* with the values, not whether the machinery exists: unknown terms warn and never gate, and publishing such a module is RM27's axis.
 
-**Severity** low-medium · **Status** 🔨 **§ A SHIPPED in 0.7** (2026-08-28), §§ B–D in build; the
-batch is a minor, release undecided** · **Owner** enricher · **Motivating case** the PubMind paper
+**Severity** low-medium · **Status** ✅ **SHIPPED in 0.7** — all four sections (§ A the snapshot and
+the shared normalizer, § B the N-authority check, § C `draft-panel --source pubmind`, § D the hint)
+· **Owner** enricher · **Motivating case** the PubMind paper
 (doi:10.1038/s41467-026-76834-4, 20 August 2026), and a user direction on 2026-08-28 to design both a
 ClinVar-shaped derived table and a ClinVar concordance check · **Full design**
 [PUBMIND_ASSESSMENT.md](PUBMIND_ASSESSMENT.md)

@@ -11,8 +11,10 @@ terms, the **facts established while deciding it** — four of which change what
 the decision, the repairs rejected and why, and the charter check. Two items dissolved into others
 while being decided, and one grew an obligation nobody had filed.
 
-**Status.** Decided 2026-08-28, on the `0.7` branch, before implementation. **Nothing here has
-shipped.** Where a decision changes what ROADMAP_0_7.md or ROADMAP.md says, those files are stale and
+**Status.** Decided 2026-08-28, on the `0.7` branch, before implementation. **All twelve items
+have since shipped**, across four waves on that branch; this document is kept as the decision record
+and is not rewritten to match. Where it and the code disagree the code won, and the corrections made
+during the build are marked inline where they apply. Where a decision changes what ROADMAP_0_7.md or ROADMAP.md says, those files are stale and
 this one wins until the item lands and moves to ROADMAP_HISTORY.
 
 **The release.** 0.7 **is** the minor that was left uncut on 2026-08-27 — the S63–S74 batch already on

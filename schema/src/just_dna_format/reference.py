@@ -160,8 +160,9 @@ _FACT_MODELS: dict[str, type[BaseModel]] = {
 # `AuthoredModel`'s reserved-namespace guard, it is inside `content_signature`, and it is byte-hashed
 # into `manifest.inputs` rather than fact-hashed.
 #
-# What it *is* is the overlay that makes the seven fact tables pure build products (RM124), so a
-# reader of the authoring reference meets it beside them and not inside them.
+# What it *is* is the overlay that makes the covered derived tables pure build products (RM124), so a
+# reader of the authoring reference meets it beside them and not inside them. The count is
+# `OVERRIDABLE_TABLES`' to state and moved once already; it is not restated here.
 _OVERLAY_MODELS: dict[str, type[BaseModel]] = {"OverrideRow": OverrideRow}
 
 _ALL_MODELS: dict[str, type[BaseModel]] = {

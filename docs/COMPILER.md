@@ -1642,7 +1642,7 @@ positions"`; `test_roundtrip_regressions.py` holds `"pointer, not an expression"
 | `requirements <kind>` | `draft.authoring_requirements` | `--json` |
 | `scaffold <spec>` | `scaffold.scaffold_module` | `--kind`, `--rows`, `--dry-run` |
 | `describe <kind>` | `hints.describe_table` | one table's columns + pick-lists, each column's `category` and its vocabulary's per-member `notes` |
-| `hint <kind>` | `hints.inspect_rows` | `--rows-file`/`--row`, `--json` |
+| `hint <kind>` | `hints.inspect_rows` | `--file`/`--row`, `--json` |
 | `sweep <before> <after>` | `sweep.compare_outputs` + `gate_findings` | `--spec-root` (compile AFTER with the installed compiler), `--release` (run the release gate; exit 1 on a finding), `--json`. A **release-sequence** command, not an ordinary test — it needs the previous release installed |
 
 **`--no-resolve` is the master switch, not an Ensembl switch** (S14). With an injected `resolution.csv`

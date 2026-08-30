@@ -658,20 +658,25 @@ The house algebra is **three-valued: true / false / unknown**, and `None` is nev
   already there exactly as it is.
 - **Write CSVs with a CSV writer, not by splitting on commas.** Several `conclusion` values contain
   commas, and a column shift usually surfaces as a bizarre validation error three columns away.
-- **Never hand-edit a derived table. Correct it in `overrides.csv` instead.** The seven machine-written
+- **Never hand-edit a derived table. Correct it in `overrides.csv` instead.** The eight machine-written
   tables — `resolution.csv`, `frequencies.csv`, `gene_metrics.csv`, `gene_validity.csv`,
-  `clinical_assertions.csv`, `literature.csv`, `gwas_effects.csv` — are build products: delete one and
-  re-run its pass and you get it back, which is why an edit inside it is a value nothing preserves. An
-  overlay row is applied on every compile and carries the reason it was made. (`licensing.csv` is the
-  exception both ways: you *do* write it by hand, and the overlay does not cover it.)
+  `clinical_assertions.csv`, `literature.csv`, `gwas_effects.csv`, `clin_sig_concordance.csv` — are
+  build products: delete one and re-run its pass and you get it back, which is why an edit inside it is
+  a value nothing preserves. An overlay row is applied on every compile and carries the reason it was
+  made.
+
+  Two derived files are outside the overlay, for opposite reasons. `licensing.csv` you *do* write by
+  hand, and the overlay does not cover it. `clin_sig_authority_calls.csv` you do not correct at all: it
+  records what each archive published, and answering the question a conflict asks is not the same as
+  rewriting the answer an archive gave. Correct the concordance row that asks; leave the calls alone.
 
   One row per column you are changing, with these cells:
 
   | column | what goes in it |
   | --- | --- |
   | `table` | the derived file you are correcting, e.g. `resolution.csv` |
-  | `subject` | that table's own subject: `variant_key` for resolution/frequencies/clinical\_assertions, `gene` for gene\_metrics/gene\_validity, `pmid` for literature, `association_id` for gwas\_effects |
-  | `member` | the row within that subject: `locus_index`, `population`, `dataset`, `assertion_id`, `variation_id`. Leave empty for literature and gwas\_effects |
+  | `subject` | that table's own subject: `variant_key` for resolution/frequencies/clinical\_assertions/clin\_sig\_concordance, `gene` for gene\_metrics/gene\_validity, `pmid` for literature, `association_id` for gwas\_effects |
+  | `member` | the row within that subject: `locus_index`, `population`, `dataset`, `assertion_id`, `variation_id`, `genotype` for clin\_sig\_concordance. Leave empty for literature and gwas\_effects |
   | `field` | the column being written. Empty for `suppress` |
   | `operation` | `update`, `insert` or `suppress` |
   | `value` | what to write. Empty on an `update` clears the cell |
@@ -740,7 +745,7 @@ workaround.
 
 | Command | Does |
 |---|---|
-| `enrich <dir>` | → `resolution.csv`. `--strict`, `--offline`, `--no-clinvar`, `--no-gnomad`, `--no-vrs`, `--no-verify-ref/-clinsig/-rsids/-datasets`, `--keep-par-twin`, `--rederive`, `--keep-staging`, `--ensembl-cache`, `--clinvar-cache` |
+| `enrich <dir>` | → `resolution.csv`. `--strict`, `--offline`, `--no-clinvar`, `--no-gnomad`, `--no-vrs`, `--no-verify-ref/-clinsig/-rsids/-datasets`, `--keep-par-twin`, `--rederive`, `--keep-staging`, `--ensembl-cache`, `--clinvar-cache`, `--pubmind-cache` |
 | `frequencies <dir>` | → `frequencies.csv` from gnomAD. `--populations`, `--dataset`. Online only |
 | `gene-metrics <dir>` | → `gene_metrics.csv` constraint. Snapshot first, live API (v2.1.1) as fallback |
 | `dosage <dir>` | ClinGen dosage rows onto `gene_metrics.csv`. `--use`, `--url` |

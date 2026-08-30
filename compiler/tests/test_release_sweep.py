@@ -536,11 +536,13 @@ def test_the_roster_agrees_with_the_manifest_when_nothing_was_dropped(tmp_path: 
     """The other side of the condition, over the real corpus: with `dropped_rows` empty, every
     conditional roster entry recomputes to exactly what the manifest published."""
     checked = 0
+    covered = 0
     for spec in sorted(d for d in _EXAMPLES.iterdir() if (d / "module_spec.yaml").is_file()):
         result = compile_module(spec, tmp_path / spec.name)
         assert result.success, result.errors
         if result.manifest.compilation.dropped_rows:
             continue
+        covered += 1
         rows, _build = spec_tables(spec)
         recomputed = module_stats(rows.get("variants.csv", []), rows)
         for entry in AUTHORED_ROW_DERIVED_FIELDS:
@@ -553,4 +555,8 @@ def test_the_roster_agrees_with_the_manifest_when_nothing_was_dropped(tmp_path: 
         entry for entry in AUTHORED_ROW_DERIVED_FIELDS
         if entry.condition is not None and entry.field.startswith("stats.")
     ]
-    assert checked > 0 and checked % len(conditional_stats) == 0
+    # An equality over what was walked, not a floor plus a modulo: `checked > 0` passes on one
+    # example and the modulo passes on any whole multiple, so together they can still be blind to
+    # a corpus that silently stopped covering most of the specs.
+    assert covered > 0, "no example reached the nothing-was-dropped branch"
+    assert checked == covered * len(conditional_stats)

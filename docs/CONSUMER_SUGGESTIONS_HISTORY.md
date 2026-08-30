@@ -5324,7 +5324,7 @@ to your spec directory can clear, so subtracting it gives you the actionable set
 `len(warnings)` so you can tell the digest is complete rather than hoping. All three on
 `ValidationResult`/`CompilationResult`/`ClosureResult` too, filled on every path including a failed
 compile. `warnings` itself is byte-identical, so anything you grep today keeps working.
-[COMPILER.md § Warning texts a consumer keys on](COMPILER.md) lists all 68 codes and marks the 9
+[COMPILER.md § Warning texts a consumer keys on](COMPILER.md) lists all 69 codes and marks the 9
 carried ones.
 
 **The diagnosis is right and the best line in it is yours:** *you already compute the discriminator

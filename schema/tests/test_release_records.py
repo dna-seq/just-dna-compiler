@@ -286,8 +286,17 @@ def test_the_declared_split_is_exhaustive_over_the_kind_vocabulary() -> None:
     declarations reachable through neither accessor, and a length check on one of them would not see
     it.
     """
+    # Declared kinds are a legitimate SUBSET — a release need not use every member — so this one
+    # stays a containment.
     assert {change.kind for record in RELEASE_RECORDS.values() for change in record.declared} <= set(
         VALID_RELEASE_CHANGE_KINDS
+    )
+    # What the docstring actually promises, and what nothing asserted: every member is reachable
+    # through an accessor. A third kind added with no property beside it leaves its declarations
+    # readable through neither, and the containment above cannot see that.
+    reachable = {"correction", "addition"}
+    assert reachable == set(VALID_RELEASE_CHANGE_KINDS), (
+        "a change kind gained or lost a member; `corrections`/`additions` must still cover all of them"
     )
     for version in RELEASE_RECORDS:
         answer = needs_recompile(RELEASE_RECORDS[version].previous, version)

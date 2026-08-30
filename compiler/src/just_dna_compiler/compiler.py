@@ -341,8 +341,11 @@ _INPUT_FILES: tuple[str, ...] = (
     OVERRIDES_CSV,
 )
 # PUBLIC, and the reason is a defect this list caused while it was private (S35). Every parquet a
-# compiled artifact may carry, in `artifact.digest` order — so it is also exactly what
-# `manifest.artifact.files` attests. `just_dna_enricher.upload` derives its allow-patterns from this
+# compiled artifact may carry, in `manifest.artifact.files` LISTING order — which is what this tuple
+# governs. It is NOT `artifact.digest` order: `integrity.artifact_digest` sorts the listing by name
+# before hashing, so a member's position here is invisible to the digest and its NAME is what places
+# it. Said twice in this file because the false version stood in five documents for a release and was
+# corrected there while these comments were not. `just_dna_enricher.upload` derives its allow-patterns from this
 # tuple instead of hand-keeping a parallel one; the hand-kept copy covered three of the sixteen names
 # and silently dropped the rest at publish, which is `@fieldnames-from-model` one tier out.
 ARTIFACT_PARQUETS: tuple[str, ...] = (
@@ -362,9 +365,10 @@ ARTIFACT_PARQUETS: tuple[str, ...] = (
     # `_DERIVED_FILES` is derived, so a new fact table has to be added here and only here.
     "gene_validity.parquet",
     "clinical_assertions.parquet",
-    # RM90 (0.6), on the same terms as the six above. Position is load-bearing: this tuple is
-    # `artifact.digest` order, so inserting anywhere but beside its siblings would move the digest of
-    # every module carrying a later table for no reason.
+    # RM90 (0.6), on the same terms as the six above. Append rather than insert mid-tuple — but the
+    # reason is the `artifact.files` listing a consumer iterates, NOT the digest, which name-sorts and
+    # cannot see this position at all. What keeps an already-published module's digest still is that it
+    # carries no such file. `test_overrides_overlay.py` proves the sort by construction.
     "gwas_effects.parquet",
     # RM130 (0.7), on the same terms as the seven above and in the same place for the same reason —
     # beside its siblings, so `manifest.artifact.files` reads in family order. The pair is two

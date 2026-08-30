@@ -40,7 +40,7 @@ signature, so `just-dna-compiler` took the patch alongside while `just-dna-forma
 under Principles 3 and 8, and a new optional column is what sizes a release. The heading names `0.7.0`
 because the proposal decided it per item, so unlike the 2026-08-24 batch below — which is also an
 uncut minor and deliberately names no number — there is a version to write down here. The three
-`pyproject.toml` files still read `0.6.6` until the release is cut, and the 2026-08-24 work ships
+`pyproject.toml` files read `0.6.6` until the release is cut, and the 2026-08-24 work ships
 inside this same number. Each entry below names the packages it actually touched.
 
 - **RM134 § B — the concordance check takes a second authority, and the record has a producer.**
@@ -293,7 +293,7 @@ inside this same number. Each entry below names the packages it actually touched
   shape the item decided rather than an oversight, and the three cheaper encodings are weighed as
   **RM138** instead of being taken unilaterally. → [COMPILER.md § Warning texts a consumer keys on](COMPILER.md)
 
-- **RM124 — `overrides.csv`, an authored overlay over the seven derived tables.** A correction to a
+- **RM124 — `overrides.csv`, an authored overlay over the derived tables.** A correction to a
   derived row now lives beside the spec rather than inside the file, so `resolution.csv`,
   `frequencies.csv`, `gene_metrics.csv`, `gene_validity.csv`, `clinical_assertions.csv`,
   `literature.csv` and `gwas_effects.csv` become pure build products — `derived = f(source, overlay)`.
