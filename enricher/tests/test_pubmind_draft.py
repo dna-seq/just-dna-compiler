@@ -17,6 +17,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 from just_dna_compiler.compiler import load_csv_rows
+from just_dna_enricher.cli import PANEL_SOURCES, app
 from just_dna_enricher.licensing import PUBMIND_TERMS, sources_path
 from just_dna_enricher.lookup import lookup_variant
 from just_dna_enricher.provenance import DRAFT_PROJECTIONS, draft_digest, drafted_unchanged
@@ -35,6 +36,7 @@ from just_dna_enricher.pubmind_draft import (
 from just_dna_format.layout import SOURCES_CSV, preferred_spelling
 from just_dna_format.sources import SourceRow, taints_commercial_use
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
+from typer.testing import CliRunner
 
 # ── Fixtures, in the real on-disk layouts ───────────────────────────────────────────────────────
 
@@ -635,3 +637,62 @@ def test_the_hint_reports_every_record_at_a_contested_position_and_picks_none(
     (warned,) = [f for f in hint.findings if "own records disagree" in f.message]
     assert warned.level == "warning"
     assert "none is picked" in warned.message
+
+
+# ── The command surface ─────────────────────────────────────────────────────────────────────────
+
+_runner = CliRunner()
+
+
+def _invoke(spec: Path, tmp_path: Path, records: list[dict], *extra: str):
+    return _runner.invoke(
+        app,
+        [
+            "draft-panel", str(spec), "--gene", "BRCA1",
+            "--snapshot", str(_clinvar_snapshot(tmp_path)),
+            "--pubmind-cache", str(_pubmind_snapshot(tmp_path, records)),
+            "--offline", *extra,
+        ],
+    )
+
+
+def test_an_unknown_source_is_refused_by_name_with_the_ones_it_knows(tmp_path: Path) -> None:
+    """A closed set, and the refusal lists it: `--source clinsig` is a typo an author can fix from
+    the message rather than a stack trace."""
+    result = _invoke(_spec(tmp_path), tmp_path, [_pubmind_record()], "--source", "clinsig")
+    assert result.exit_code == 1
+    output = result.output + (result.stderr or "")
+    assert "is not an authority this command drafts from" in output
+    for member in PANEL_SOURCES:
+        assert member in output
+
+
+def test_a_dial_belonging_to_the_other_authority_is_named_rather_than_ignored(
+    tmp_path: Path,
+) -> None:
+    """A run that honoured neither the flag nor the author's expectation is the failure worth
+    reporting before it happens — and the flag that *does* apply stays quiet."""
+    result = _invoke(
+        _spec(tmp_path), tmp_path, [_pubmind_record()],
+        "--source", "pubmind", "--min-review-stars", "3", "--dry-run",
+    )
+    assert result.exit_code == 0
+    output = result.output + (result.stderr or "")
+    assert "--min-review-stars is a --source clinvar dial and does nothing" in output
+    assert "--min-confidence is a" not in output
+
+
+def test_the_clinvar_path_is_untouched_by_the_new_flag(tmp_path: Path) -> None:
+    """`--source` defaults to clinvar, and a ClinVar draft still reports ClinVar as the publisher of
+    the alleles — the shared worklist is parameterized, not rewritten."""
+    result = _runner.invoke(
+        app,
+        [
+            "draft-panel", str(_spec(tmp_path)), "--gene", "BRCA1",
+            "--snapshot", str(_clinvar_snapshot(tmp_path)), "--offline", "--dry-run",
+        ],
+    )
+    assert result.exit_code == 0
+    output = result.output + (result.stderr or "")
+    assert "ClinVar publishes" in output
+    assert "PubMind" not in output
