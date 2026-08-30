@@ -50,6 +50,7 @@ from just_dna_compiler.sweep import (
 from just_dna_format.release_records import (
     AUTHORED_ROW_DERIVED_FIELDS,
     RECOMPILE_DRIVING_AXES,
+    RELEASE_RECORDS,
     DeclaredChange,
     ReleaseRecord,
 )
@@ -488,11 +489,20 @@ def test_without_json_the_gate_prose_reaches_the_terminal(tmp_path: Path) -> Non
 
 
 def test_the_gate_exits_one_for_a_release_the_table_has_no_record_of(tmp_path: Path) -> None:
-    """The mechanism the coordinator relies on at cut time: no record, no release."""
+    """The mechanism the coordinator relies on at cut time: no record, no release.
+
+    The version here must be one `RELEASE_RECORDS` will never hold. It was `0.7.0`, chosen while that
+    record did not exist yet — and the day the 0.7.0 record landed this test stopped testing what it
+    names, because the gate then failed on the interval instead and the assertion still passed on the
+    wrong error. Derived from the table rather than written down, so it cannot expire again.
+    """
+    unrecorded = "99.99.99"
+    assert unrecorded not in RELEASE_RECORDS
+
     build_outputs(_EXAMPLES, tmp_path / "before")
     build_outputs(_EXAMPLES, tmp_path / "after")
     result = runner.invoke(
-        app, ["sweep", str(tmp_path / "before"), str(tmp_path / "after"), "--release", "0.7.0"]
+        app, ["sweep", str(tmp_path / "before"), str(tmp_path / "after"), "--release", unrecorded]
     )
 
     assert result.exit_code == 1

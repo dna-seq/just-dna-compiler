@@ -616,4 +616,99 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
             "manifest_fields 9/16, parquet_bytes 10/16, parquet_schema 10/16, warnings 0/16"
         ),
     ),
+    "0.7.0": ReleaseRecord(
+        version="0.7.0",
+        previous="0.6.6",
+        axes={
+            "parquet_schema": True,
+            "parquet_bytes": True,
+            "content_signature": False,
+            "manifest_fields": True,
+            "warnings": True,
+        },
+        manifest_fields=[
+            "authority_precedence",
+            "clin_sig_concordance",
+            "verification.checks",
+        ],
+        declared=[
+            DeclaredChange(
+                axis="manifest_fields",
+                target="clin_sig_concordance",
+                kind="addition",
+                detail=(
+                    "RM130's concordance summary block. A module enriched against a ClinVar snapshot "
+                    "now carries the pair of concordance tables even when nothing is contested, so "
+                    "the block appears where no earlier artifact had one. Absent before, never wrong."
+                ),
+                item="RM130",
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="authority_precedence",
+                kind="addition",
+                detail=(
+                    "RM134 § B's optional `module_spec.yaml` field, echoed to the manifest so a "
+                    "consumer can read the author's stance. Nothing computes with it, so its "
+                    "appearance changes no verdict."
+                ),
+                item="RM134",
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="verification.checks",
+                kind="addition",
+                detail=(
+                    "RM85 added `dataset_currency` to VALID_VERIFICATION_CHECKS, so a module whose "
+                    "enrich run attested it lists one more member. A new member, not a changed one."
+                ),
+                item="RM85",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
+                target="haplotypes.parquet,pharm_variants.parquet:requires_callable",
+                kind="addition",
+                detail=(
+                    "RM70 put the optional `requires_callable` column on `HaplotypeRow` and "
+                    "`PharmVariantRow`, so those parquets gained a column earlier artifacts could "
+                    "not carry. A module that never writes the cell hashes as it did."
+                ),
+                item="RM70",
+            ),
+            DeclaredChange(
+                axis="parquet_bytes",
+                target="clin_sig_concordance.parquet,clin_sig_authority_calls.parquet",
+                kind="addition",
+                detail=(
+                    "The two concordance parquets are new files, so a module carrying them lists "
+                    "two more entries in `artifact.files` and its `artifact.digest` moves. This is "
+                    "the release's most visible consequence and it is an addition, not a correction: "
+                    "no value we previously published was wrong."
+                ),
+                item="RM130",
+            ),
+            DeclaredChange(
+                axis="warnings",
+                target="compilation.warnings",
+                kind="addition",
+                detail=(
+                    "RM131 restructured the findings channel and RM130/RM132/RM134 added emission "
+                    "sites, so the warning text a module carries moves. The warnings axis is "
+                    "deliberately OUTSIDE the set that drives a recompile, for exactly this release: "
+                    "acting on it would mint a version across a whole catalogue for a message change. "
+                    "`carried` is the discriminator that tells a rewording from a new finding."
+                ),
+                item="RM131",
+            ),
+        ],
+        evidence=(
+            "15 reference module(s) compiled under 0.6.6 and 0.7.0 from one spec root, so the "
+            "compiler is the only variable; modules moved per axis: content_signature 0/15, "
+            "manifest_fields 15/15, parquet_bytes 4/15, parquet_schema 4/15, warnings 3/15. "
+            "`cyp2c9_warfarin_grch37` is unmeasured rather than unchanged: RM70 added "
+            "`requires_callable` to its `pharm_variants.csv`, which 0.6.6 refuses under "
+            "`extra=\"forbid\"`, so its authored input is not byte-identical across the interval and "
+            "no like-for-like comparison exists for it."
+        ),
+    ),
 }

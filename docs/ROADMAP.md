@@ -735,6 +735,42 @@ whether a published manifest should pay ~1.8× on this channel for it. Worth dec
 table above, rather than drifting: a fourth encoding after 1.0 is a removal, and removals are
 major-only under Principle 3.
 
+## RM139 — the release gate cannot tell a failed compile from a spec that legitimately outgrew the old compiler
+
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** compiler ·
+**Found by** running RM126's gate for real at the 0.7.0 cut, 2026-08-30
+
+`gate_findings` fails a release when a module compiled on **one side only**, and its reasoning is
+sound: the likeliest operator error is running the sweep before `uv sync` propagated the bump, and a
+module vanishing into an all-`False` result over its surviving neighbours is a false green in the one
+mechanism the item rests on. That guard should stay.
+
+But its premise — *one side only means a compile failed* — is not the only way to reach that state,
+and the very first real use of the gate hit the other way. RM70 added the optional `requires_callable`
+column to `pharm_variants.csv` and `reference_examples/cyp2c9_warfarin_grch37/` now uses it, so 0.6.6
+refuses that spec under `extra="forbid"`. Nothing failed: the module's **authored input is not
+byte-identical across the interval**, so no like-for-like comparison exists for it and the sweep
+correctly says nothing about it.
+
+**This recurs in every release that adds an authored column and exercises it in the corpus**, which is
+most minors. The 0.7.0 record states the exclusion in its `evidence` string, which is honest but is
+prose the gate cannot read.
+
+**Why each obvious repair is wrong.**
+- *Let the record declare a module unmeasurable.* The closest to right, and it needs a decision the
+  cut is the wrong moment for: it puts a per-module escape hatch on a published `ReleaseRecord`, and a
+  gate an operator can silence per module is weaker in exactly the direction the docstring warns about.
+- *Exempt a module whose spec bytes moved across the interval.* Sounds automatic and is not: the sweep
+  reads two compiled trees and has no access to the authored spec at either version, so it cannot tell
+  a spec that outgrew the old compiler from one whose compile genuinely broke.
+- *Compile the old spec from git for the before side.* Then the measurement varies input **and**
+  compiler, which is the one thing the sweep's premise forbids.
+- *Drop the unmeasured check to a note.* Notes do not fail, and the false-green it prevents is the
+  failure mode RM126 exists to close.
+
+Until it is decided, the cut is a two-step: the gate reports, a human reads whether the unmeasured
+module is an outgrown spec or a real breakage, and the tag is theirs.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
