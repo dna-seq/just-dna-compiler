@@ -376,6 +376,25 @@ worklist, the placeholder guard, the dedup-against-`variants.csv` pass and the r
 which are the parts that are hard to get right. `draft-clinpgx` is a separate command because it
 writes *different tables*; this does not.
 
+> **Settled 2026-08-30, while building § C: the section assumes a gene argument works, and the snapshot
+> has no gene column.** Every locational thing PubMind publishes is `(chrom, start, ref, alt)`, so
+> `--gene BRCA1` needs a gene→locus map — and this workspace deliberately holds none, which is why the
+> compiler's own gene/locus check is chromosome-granular. The map built is **ClinVar's own per-record
+> attribution matched at the exact position**, taking every position ClinVar records for the gene with
+> no clinical or review filter, because it is a locus universe rather than a selection. A min/max span
+> over those positions was refused: it invents a boundary nobody defined and writes a `gene` cell that
+> is a false claim wherever two genes overlap. Two consequences, both stated in the drafter and in
+> ENRICHER: `--source pubmind` needs **both** snapshots, and a PubMind verdict at a position ClinVar has
+> no record for cannot be reached by gene at all — a class that is not countable, since attributing it
+> to a gene is exactly what there is no map for.
+>
+> Two smaller corrections from the same build. **`derivation=indel` gets no `--include-indels` flag**:
+> a flag is a permanent name the proposal did not price, and additive means one can be added later if
+> anybody wants those rows. And the drafter does **not** call `check_declared_use` — that gate decides
+> whether a *fetch* may proceed and skips on unknown terms, while nothing here fetches; wiring it in
+> would have made the command skip unconditionally whatever `--use` said. The reason is reported in the
+> source's own words instead (`@acquisition-gate-is-not-a-read-gate`).
+
 What changes behind the flag:
 
 - **`--min-confidence` is the `min_review_stars` analogue**, defaulting to a floor rather than 0.
@@ -407,6 +426,15 @@ more than either two-way: a PubMind-drafted module still gets a genuine independ
 ClinVar.
 
 ### D. The hint surface
+
+> **Corrected 2026-08-30 while building it: the ANNOVAR channel carries no PMID and no paper count.**
+> The section promises "verdict, confidence, paper count and PMIDs"; § A's probe of the real file
+> settled the columns, and they are `pvid`, `clin_sig`, `clin_sig_raw`, `pathogenicity_score`,
+> `confidence` and `derivation`. What the hint surfaces is those, per record. It also answers for a
+> coordinate the caller typed rather than only for a locus an rsID resolved to, which the ClinVar leg
+> does not do — their channel is coordinate-keyed and most of its rows carry no rs-number, so the
+> rsID-only shape would leave the leg unreachable for most of the corpus.
+
 
 Unchanged from the earlier draft and still the cheapest thing here: `hint-variant` surfaces the
 verdict, confidence, paper count and PMIDs beside a cell an author is about to fill. It may **not**

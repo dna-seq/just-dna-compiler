@@ -184,6 +184,20 @@ makes the panel compilable, since a variant row needs grounding evidence.
 `draft-clinpgx` is inject-only and downloads nothing: build the snapshot first with
 `just-dna-enricher clinpgx build --out cp/ --use non-commercial`.
 
+**`draft-panel --source pubmind` drafts the same table from a literature-derived authority instead**,
+where somebody in your deployment has built that snapshot (`just-dna-enricher pubmind build`; there is
+none to download, and `--pubmind-cache` or `$JUST_DNA_PUBMIND_CACHE` points at it). Read what it gives
+you as what it is: an LLM's reading of published papers, not a curated assertion, so the rows want more
+of your judgement than a ClinVar draft does. Three things about it are worth knowing before you run it.
+It still reads a **ClinVar** snapshot, because the source names no gene and a coordinate can only be
+attributed to one through something that does — so it drafts only at positions ClinVar records for your
+gene, and it says how many of those the literature is silent about. It writes **no study rows at all**,
+because that channel carries no PMIDs, so the grounding evidence `studies.csv` requires is yours to
+find. And it refuses to write a row at a coordinate where the source disagrees with itself, naming the
+coordinate and every competing call: several of its records can describe one position, and choosing
+between them is your call rather than the tool's. `--min-confidence` (0–3, default 1) is its
+`--min-review-stars`; `--min-review-stars` and `--max-citations` do nothing here and say so.
+
 **Drafting appends and never rewrites a cell.** A row whose key already exists is reported
 (`already_present` / `differs`), never overwritten — drift on existing rows is `pgx` / `clinpgx check`'s
 job to report, not drafting's to fix. Re-run per gene as the module grows; `--dry-run` first.
@@ -241,6 +255,7 @@ For anything the draft did not produce, or a single row you want to check:
 just-dna-enricher hint variant --rsid rs1801133          # locus, ref, alts — and "[redundancy_bearing]"
 just-dna-enricher hint variant --rsid rs334 --ambiguity  # warn when the answer is not unique
 just-dna-enricher hint variant --chrom 1 --start 11796321 --ref G --alts A   # allele-exact by coordinate
+just-dna-enricher hint variant --chrom 1 --start 11796321 --ref G --alts A --pubmind-cache pm/  # + the literature verdict
 just-dna-enricher hint citation --pmid 7647779           # does it exist, and what DOI does it carry
 just-dna-enricher hint citation --pmcid PMC3110566       # the PubMed id for a PMC id you hold
 just-dna-enricher hint trait EFO_0004541                 # current | obsolete | absent
@@ -731,13 +746,13 @@ workaround.
 | `dosage <dir>` | ClinGen dosage rows onto `gene_metrics.csv`. `--use`, `--url` |
 | `literature <dir>` | → `literature.csv`. `--fulltext/--no-fulltext`, `--doi/--no-doi` |
 | `draft <dir> --gene G` | CPIC → the three PGx tables. `--drug`, `--allele`, `--population`, `--use`, `--offline`, `--cpic-cache`, `--dry-run` |
-| `draft-panel <dir> --gene G` | ClinVar → `variants.csv` + `studies.csv`. `--snapshot`, `--offline`, `--download/--no-download`, `--clin-sig`, `--min-review-stars`, `--max-citations`, `--use`, `--dry-run` |
+| `draft-panel <dir> --gene G` | ClinVar → `variants.csv` + `studies.csv`. `--source clinvar\|pubmind`, `--snapshot`, `--pubmind-cache`, `--offline`, `--download/--no-download`, `--clin-sig`, `--min-review-stars`, `--max-citations`, `--min-confidence`, `--use`, `--dry-run` |
 | `draft-clinpgx <dir> --snapshot S` | ClinPGx → `pharm_variants.csv`. `--gene`, `--drug`, `--min-evidence-level`, `--use`, `--dry-run` |
 | `check-identifiers <dir>` | trait CURIEs (OLS4), gene symbols (HGNC). `--no-traits`, `--no-genes` |
 | `check-acmg <dir>` | `acmg_sf` vs the ACMG SF list. `--sf-list` (strongly preferred), `--offline`, `--url` |
 | `pgx <dir>` | `function_status` vs PharmVar + CPIC. `--no-pharmvar`, `--no-cpic`, `--use` |
 | `clinpgx check <dir> --snapshot S` | `pharm_variants.csv` vs the ClinPGx snapshot, offline-capable |
-| `hint variant\|citation\|trait\|gene` | look up one identifier. Writes nothing. `--json`, `--offline`, `--ambiguity`, `--frequencies` |
+| `hint variant\|citation\|trait\|gene` | look up one identifier. Writes nothing. `--json`, `--offline`, `--ambiguity`, `--frequencies`, `--pubmind-cache` |
 | `vrs mint <dir>` | stamp `ga4gh:VA.…` ids onto `resolution.csv` (substitutions offline, indels online) |
 | `enrich-and-compile <dir> <out>` | steps 4 + 6. `--frequencies`, `--gene-metrics` |
 | `template <kind>` | the compiler's, mirrored |

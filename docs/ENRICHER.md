@@ -2707,6 +2707,76 @@ real PMIDs**, then refuses to compile on the genotype placeholders — which is 
 failure. No snapshot and `--offline` **raises** rather than drafting nothing: an empty draft would read as
 "ClinVar has nothing for this gene".
 
+### Drafting from PubMind — a source with no gene column (0.7, RM134 § C)
+
+`draft-panel --source pubmind` writes the same rows into the same table from the same gene argument,
+so it is **a flag on the existing command rather than a `draft-pubmind` beside it**. The parts that
+are hard to get right — the genotype worklist, the placeholder guard, the dedup-against-the-file pass,
+the refusal summary — are the parts a twin command would have to carry a second copy of, and the
+worklist's file-scoped seam above is the one this release had to repair. `draft-clinpgx` is a separate
+command because it writes *different* tables; this does not, so `pubmind_draft` imports the ClinVar
+provider's machinery instead of restating it.
+
+**PubMind names no gene, and this pass does not invent one.** The snapshot is
+`(chrom, start, ref, alt)` and nothing else locational. Turning `--gene BRCA1` into positions needs a
+gene→locus map, and this repo deliberately holds none — the compiler's own gene/locus check is
+chromosome-granular for exactly that reason. So the map is **ClinVar's own per-record gene attribution
+matched at the exact position**: every position ClinVar records for the gene, with no clinical or
+review filter, because it is a locus universe rather than a selection and filtering it would narrow
+what PubMind is even asked about, invisibly. A min/max span over those positions was refused: it
+invents a boundary nobody defined and writes a `gene` cell that is a false claim wherever two genes
+overlap. Both snapshots are therefore required, and each absence names its own switch —
+`$JUST_DNA_PUBMIND_CACHE` or `--pubmind-cache` for one, the ClinVar ladder for the other.
+
+The cost of that choice is stated rather than counted: **a PubMind verdict at a position ClinVar has
+no record for cannot be reached by gene at all**, and that class is not countable, since attributing
+it to a gene is precisely what there is no map for. It includes many of the codon-decomposed offsets.
+
+**Identity is the whole coordinate or nothing.** The snapshot has no rsID column and most of the
+source's rows carry no rs-number, so `chrom`/`start`/`ref`/`alts` go in together. The row still matches
+on the same five identity columns a ClinVar-drafted row does, so a coordinate both sources speak about
+is one row in the file rather than two.
+
+**Five classes never become a row, and each is named at draft time.** A contested key, a
+length-changing row, a call outside `--clin-sig`, a confidence below `--min-confidence`, and a
+confidence the source never stated — that last one its own class, because `None` is not 0 and reading
+an unstated confidence as 0 invents a reading. Every candidate key is drafted or withheld under
+exactly one reason, and `candidates == drafted + Σ withheld` is an equality over the walked reason set.
+A class that withheld nothing reports no zero.
+
+**Contestation is decided over every PVID at the key, before either dial runs.** PubMind's record id
+keys on the text a model extracted rather than on a coordinate, so one position carries several
+records and their calls can disagree. Choosing one needs an ordering nobody defined — `mode()` over an
+unsorted group. A `--clin-sig` or `--min-confidence` applied *first* would remove the dissenting record
+and pick that winner just as effectively, so the filters run second and the coordinate, its PVIDs and
+its competing calls are all reported instead. Where the records agree, one row is written and the
+record count, the PVIDs and the best stated confidence stay visible in the transcription.
+
+**No study row is drafted, and that is said out loud.** The ANNOVAR-redistributed channel carries no
+PMID and their API withholds per-record detail, so a PubMind draft grounds nothing — `studies.csv` is
+mandatory, so the run names the gap rather than leaving the author to meet it at compile.
+
+**Unknown terms warn and never gate.** `check_declared_use` is a gate on *fetching* and its unknown
+branch skips, which is right for a pass that would go and get data whose terms nobody can state.
+Nothing is fetched here: there is deliberately no `ensure_pubmind_snapshot`, the operator built the
+snapshot with `pubmind build`, and refusing to read it would make that command's output a file nothing
+may consume. The reason is reported in the source's own words instead, and the licence row records
+`None` on every term — which does not taint, because `taints_commercial_use` requires an explicit
+`False`. What the unknown answer governs is *publishing* such a module.
+
+**A module drafted from PubMind must not be able to confirm itself.** `pubmind` is in
+`DRAFT_PROJECTIONS`, projected onto `clin_sig`, so the drafter stamps a digest of the column the
+concordance check later reads and the check can establish the copy rather than assume it
+(`@draft-digest`). Its `identity` is the coordinate and **not** the provider's `match_on`: the source
+states no rs-number, so an rs-number an author later adds is a change to the row's spelling and not to
+the call.
+
+What it does not fill is as deliberate as what it does. No `clinvar`, `pathogenic` or `benign` — all
+three are ClinVar flags by their own field descriptions, and a position appearing in ClinVar's gene map
+says nothing about whether *this allele* is in ClinVar. No `phenotype`, because the channel carries no
+condition. `state` is folded from the source's own call exactly as it is on the ClinVar path, and left
+as a stub for any call the fold does not cover.
+
 ### Lookups answer, they never fill
 
 `lookup.py` is the authoring counterpart to the passes above: same clients, same offline-capable
@@ -2714,9 +2784,23 @@ snapshots, and **no writes at all** — not a sidecar, not a cell. It answers wh
 asks. For an rsID: is it live, merged or absent (dbSNP is the oracle; Ensembl returns HTTP 400 on
 some merged ids and would misclassify them), which coordinates it maps to, and — **on demand** —
 whether that answer is ambiguous. For a coordinate: `ref`, `alts`, gnomAD populations with the
-frequency computed as `allele_count / allele_number` (the API deliberately exposes no `af`), and
-ClinVar's own call. For a citation: whether PubMed has the record, plus the DOI and PMC id that
+frequency computed as `allele_count / allele_number` (the API deliberately exposes no `af`),
+ClinVar's own call, and — since 0.7 — PubMind's (RM134 § D). For a citation: whether PubMed has the record, plus the DOI and PMC id that
 arrive free in the same response, with Crossref covering what PubMed does not index at all.
+
+**The PubMind leg is three-valued, and it may not fill the cell it reports on.** `clin_sig` is what
+the concordance check cross-examines, so a hint filling it from one of the authorities being compared
+would make the check agree with the source it is checking (`@hint-redundancy-bearing`) — the same
+defect `@draft-digest` handles one layer down, and here there is no digest to rescue it. So every
+record comes back as an advisory with `applied=False`. No snapshot is *nobody asked* and says so,
+naming `$JUST_DNA_PUBMIND_CACHE`: it is operator-built and there is nothing to download, so an empty
+answer would otherwise read as "PubMind states nothing here". A snapshot holding no record at the
+allele is the third state and is reported as an absence in their corpus — no paper survived their
+triage, which is not a benign call and not a disagreement. Where their own records disagree, every one
+is reported and none is picked. Unlike the ClinVar leg it also answers for a coordinate the caller
+typed rather than only for one an rsID resolved to, because their channel is coordinate-keyed and most
+of its rows carry no rs-number at all.
+
 
 Every one of those comes back as an `Alteration` with `applied=False` and a `refusal` naming why the
 value is the author's to type. That is not fastidiousness. `resolution._verify` compares an authored
@@ -3012,6 +3096,8 @@ just-dna-enricher draft-panel spec/ --gene MTHFR --gene BRCA1   # ClinVar gene p
 just-dna-enricher draft-panel spec/ --gene MTHFR --snapshot cv/ --offline   # a snapshot you built
 just-dna-enricher draft-panel spec/ --gene MTHFR --no-download   # use a cached snapshot; fetch none
 just-dna-enricher draft-panel spec/ --gene MTHFR --dry-run   # the genotype worklist, appending nothing
+just-dna-enricher draft-panel spec/ --gene BRCA1 --source pubmind --pubmind-cache pm/  # literature verdicts
+just-dna-enricher draft-panel spec/ --gene BRCA1 --source pubmind --min-confidence 2   # a deeper floor
 just-dna-enricher clinvar citations --out cv/ --download   # add PMIDs so a panel can compile
 just-dna-enricher clinvar publish cv/                     # data/ + citations/ + release.json
 
@@ -3020,6 +3106,7 @@ just-dna-enricher hint variant --rsid rs1801133              # validity, loci, r
 just-dna-enricher hint variant --rsid rs334 --ambiguity      # warn when the answer is not unique
 just-dna-enricher hint variant --rsid rs1801133 --frequencies  # + gnomAD populations (paced ~6s)
 just-dna-enricher hint variant --rsid rs1801133 --offline --json
+just-dna-enricher hint variant --chrom 17 --start 43093220 --ref C --alts T --pubmind-cache pm/
 just-dna-enricher hint citation --pmid 9545397               # which paper it is + the DOI/PMC id it carries (--json)
 just-dna-enricher hint citation --pmcid PMC3110566           # the PubMed id for a PMC id — reported, never written
 just-dna-enricher hint trait EFO_0004340                     # current | obsolete | absent

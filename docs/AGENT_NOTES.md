@@ -1496,6 +1496,34 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `derive_variant_key` mint a VRS `ga4gh:VA.…` id instead of `chrom:start:ref`, so a partial
   coordinate silently changes *which variant the row is*.
 
+- `@gene-map-is-another-sources-attribution` — **A source with no gene column is drafted by gene through
+  another source's PER-RECORD attribution, never through a span (RM134 § C).** PubMind publishes
+  `(chrom, start, ref, alt)` and nothing else locational, so `draft-panel --gene BRCA1 --source pubmind`
+  has to turn a symbol into positions — and this repo deliberately holds no gene coordinates at all,
+  which is why `_gene_locus_conflicts` checks at **chromosome** granularity (`@gene-locus-relationship`).
+  Two candidate maps, and only one of them states a fact somebody published. The min/max span over
+  ClinVar's positions for the gene is the tempting one: it is one query, it catches everything in the
+  neighbourhood, and it is **wrong wherever two genes overlap or nest**, because every position inside
+  the interval then gets a `gene` cell naming whichever gene defined the interval — a false claim, in an
+  authored file, produced by a pass the author trusted. The position-exact map carries ClinVar's own
+  per-record claim about that exact base and nothing more. Two consequences to keep: the map takes **no**
+  clinical or review filter, because it is a locus universe rather than a selection and filtering it
+  narrows what the second source is even asked about while looking like a filter on the second source's
+  calls; and the class it cannot reach — a verdict at a position the mapping source has no record for —
+  is **not countable**, since attributing it to a gene is precisely what there is no map for. Say so in
+  prose; a count there would be the span reintroduced as a number.
+
+- `@filter-before-the-group-picks-a-winner` — **Decide contestation over the WHOLE group before any dial
+  runs, or the dial has chosen the winner (RM134 § C).** A coordinate PubMind describes with several
+  records is withheld when their calls disagree, because choosing one needs an ordering nobody defined
+  (`@multiplicity-is-a-finding`). Push `--clin-sig` or `--min-confidence` into the query — the obvious
+  shape, since SQL is where a filter belongs — and a key whose dissenting record the filter removed
+  arrives looking unanimous: the run then writes a confident row at a coordinate where the source
+  disagrees with itself, and nothing anywhere says so. The filter is not innocent for being the author's:
+  it is `mode()` with an ordering supplied by a flag. So fetch every record at the candidate positions,
+  decide contested-or-agreeing per key over the full group, and apply the dials only to what survives.
+  The test that bites constructs a dissenter which **either** dial alone would have hidden.
+
 - `@sourcerow-placeholder-guard` — **`SourceRow` carries the placeholder guard, and the "a generated stub cannot compile" guarantee is
   now tested over every `DRAFTABLE` kind (RM76).** It is a plain `BaseModel` — a machine-produced
   reference fact, like the other four sidecars — *and* the one a human starts from a template (S21),
@@ -2461,6 +2489,20 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   spellings of one and `g/dL`/`g/dl` differ only in case. Store the unit verbatim, including the Catalog's
   useless `unit` (138 of those rows), because "these betas are on unknown and possibly different scales" is
   the fact a consumer needs, and normalizing the spellings would be inventing agreement.
+
+- `@acquisition-gate-is-not-a-read-gate` — **`check_declared_use` gates a FETCH; reading a snapshot the
+  operator built is not one (RM134 § C).** Its unknown branch returns a skip, which is right for a pass
+  about to go and get data whose terms nobody can state — and PubMind is the first source in
+  `licensing.py` whose `commercial_use` is `None`, so that branch had never had a real caller. Wiring the
+  drafting provider through it the way `clinvar_draft` and `pgx_draft` are wired would have made
+  `draft-panel --source pubmind` skip unconditionally, whatever `--use` said: a feature that is dead on
+  arrival, and dead for a reason that is not about drafting. Nothing is fetched there — there is
+  deliberately no `ensure_pubmind_snapshot`, the operator ran `pubmind build` themselves, and refusing to
+  read the result would make our own command's output a file nothing may consume. The precedent already
+  existed one file over: `gwas.py` writes its `SourceRow` and never calls the gate, and the GWAS
+  Catalog's `commercial_use` is unknown too. So the provider **reports** the reason in the source's own
+  words and writes the row with nulls; unknown terms warn and never gate (`@no-named-licence`), and what
+  the unknown answer really governs is *publishing* a module carrying those bytes.
 
 - `@no-named-licence` — **A source may state its terms in prose and name no licence, and unknown commercial
   terms warn rather than gate (RM90).** `GWAS_CATALOG_TERMS` is the first entry in `licensing.py` with

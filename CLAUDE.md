@@ -237,6 +237,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - ClinPGx/CPIC/PharmVar are CC BY-SA + no-sale, never a resolution link, and the PharmVar key is personal. `@pgx-research-only`
 - Every gated source has a cache; PharmVar's is unpublishable; `offline` outranks an injected client. `@gated-source-caches`
 - A source may publish no licence at all; unknown commercial terms warn, they never gate. `@no-named-licence`
+- `check_declared_use` gates a fetch; reading a snapshot the operator built is not one. `@acquisition-gate-is-not-a-read-gate`
 
 ### PGx sources
 
@@ -260,6 +261,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A partial row validates by omission and matches on `match_on`, not the natural key. `@partial-row-omission`
 - A placeholder protects a decision — fill it where the contig leaves none. `@placeholder-protects-decision`
 - A provider fills identity whole or not at all. `@identity-whole-or-none`
+- A source with no gene column is drafted by gene through another source's per-record attribution, never a span. `@gene-map-is-another-sources-attribution`
+- Decide contestation over the whole group before any dial runs, or the dial picked the winner. `@filter-before-the-group-picks-a-winner`
 - `SourceRow` carries the placeholder guard, tested over every `DRAFTABLE` kind. `@sourcerow-placeholder-guard`
 - A generated stub must be unable to compile — `mode="before"`, and never reuse `unresolved`. `@stub-cannot-compile`
 - Scaffolding refuses per file; drafting refuses per row. `@file-vs-row-refusal`

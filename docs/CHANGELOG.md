@@ -566,6 +566,74 @@ inside this same number. Each entry below names the packages it actually touched
   Technology Transfer in writing. Whether the indel rows are left-normalized is likewise unestablished,
   which is what `derivation=indel` exists to let a consumer act on.
 
+- **RM134 §§ C and D — drafting from PubMind, and the hint.** *(`just-dna-enricher`; nothing in the format or compiler tiers moves and the compile path imports none of it.)*
+
+  **Package: `just-dna-enricher`.** Additive: one flag and two options on an existing command, one
+  option on `hint variant`, a new provider module and a fourth `DRAFT_PROJECTIONS` entry. No schema
+  field is added, removed, promoted or retyped, and no published module is invalidated. Decided in
+  [PROPOSAL_0_7 § RM134](proposals/PROPOSAL_0_7.md); the evidence is
+  [PUBMIND_ASSESSMENT.md](PUBMIND_ASSESSMENT.md).
+
+  - **New: `just-dna-enricher draft-panel --source pubmind`** — a flag on the existing command rather
+    than a `draft-pubmind` beside it. The two write the same rows into the same table from the same
+    gene argument, so a twin command would carry a second copy of the genotype worklist, the
+    placeholder guard, the dedup pass and the refusal summary — the four parts that are hard to get
+    right. `pubmind_draft` therefore **imports** the ClinVar provider's machinery, `_open_stubs`
+    included: scoping the worklist to `report.added` is the once-only defect RM71 removed in this same
+    release, and a second copy of that rule is the one that goes stale. `draft-clinpgx` stays separate
+    because it writes *different* tables.
+  - **The gene map is ClinVar's own per-record attribution, matched at the exact position.** PubMind
+    names no gene, so `--gene BRCA1` needs a gene→locus map, and this repo deliberately holds none —
+    the compiler's gene/locus check is chromosome-granular for that reason. Every position ClinVar
+    records for the gene is the universe, with **no** clinical or review filter, because filtering the
+    map would narrow what PubMind is asked about while looking like a filter on PubMind's calls. A
+    min/max span was rejected: it invents a boundary nobody defined and writes a `gene` cell that is a
+    false claim wherever two genes overlap. Both snapshots are required and each absence names its own
+    switch. The cost is stated rather than counted — **a PubMind verdict at a position ClinVar has no
+    record for cannot be reached by gene at all**, and that class is not countable, since attributing
+    it to a gene is exactly what there is no map for.
+  - **Five withheld classes, each named at draft time, and the accounting is an equality over the
+    walked reason set.** `PUBMIND_WITHHELD_REASONS` covers a contested key, a length-changing row, a
+    call outside `--clin-sig`, a confidence below `--min-confidence`, and a confidence the source never
+    stated — that last one its own class, because `None` is not 0 and reading an unstated confidence as
+    0 invents a reading. `candidates == drafted + Σ withheld` holds over the set, and a class that
+    withheld nothing reports no zero.
+  - **Contestation is decided over every PVID at the key, before either dial runs.** A `--clin-sig` or
+    `--min-confidence` applied first would remove the dissenting record and pick the winner exactly as
+    the `mode()` this design already refused would; a test constructs a dissenter that either dial
+    alone would have hidden. Where the records agree, one row is written and the record count, the
+    PVIDs and the best stated confidence stay in the transcription.
+  - **Identity is the whole coordinate or nothing**, since the snapshot has no rsID column at all — and
+    the row still matches on the same five columns a ClinVar-drafted row does, so a coordinate both
+    sources speak about is one row rather than two. No `clinvar`, `pathogenic` or `benign` is folded:
+    all three are ClinVar flags by their own field descriptions, and a position appearing in ClinVar's
+    gene map says nothing about whether *this allele* is in ClinVar. No `studies.csv` row is drafted —
+    the ANNOVAR channel carries no PMID — and the run says so, because that table is mandatory.
+  - **New: `pubmind` in `DRAFT_PROJECTIONS`**, projected onto `clin_sig`, so a module drafted from
+    PubMind cannot confirm itself when the concordance check reads the same column (`@draft-digest`).
+    Its `identity` is the coordinate and **not** the provider's `match_on`: the source states no
+    rs-number, so an rs-number an author adds later is a change to the row's spelling, not to the call.
+  - **Unknown terms warn and never gate, and the drafter does not call the acquisition gate.**
+    `check_declared_use` decides whether a *fetch* may proceed and skips on unknown terms, which is
+    right for a pass that would go and get such data. Nothing is fetched here — there is deliberately
+    no `ensure_pubmind_snapshot`, the operator built the snapshot with our own command, and refusing to
+    read it would make that command's output a file nothing may consume. The reason is reported in the
+    source's own words instead, and the licence row the provider writes carries `None` on every term,
+    which does not taint: `taints_commercial_use` requires an explicit `False`. That is § A's finding,
+    re-asserted here over the row this provider actually writes rather than trusted from a fixture.
+  - **New: `just-dna-enricher hint variant --pubmind-cache`** (§ D) — PubMind's records beside the cell
+    an author is about to fill, **never filling it**: `clin_sig` is what the concordance check
+    cross-examines, so a hint supplying it from one of the authorities being compared would make the
+    check agree with the source it is checking (`@hint-redundancy-bearing`). Three states rather than
+    two: no snapshot is *nobody asked* and names `$JUST_DNA_PUBMIND_CACHE`, a snapshot holding nothing
+    at the allele is an absence in their corpus, and disagreeing records are all reported with none
+    picked. It answers for a coordinate the caller typed as well as one an rsID resolved to, because
+    their channel is coordinate-keyed and most of its rows carry no rs-number.
+  - **A dial belonging to the other authority is named rather than ignored.** `--min-review-stars` and
+    `--max-citations` under `--source pubmind`, and `--min-confidence` under `--source clinvar`, warn
+    when set away from their default: a run that honoured neither the flag nor the author's
+    expectation is the failure worth reporting before it happens.
+
 - **RM132 — `pharm_variants.csv` can cite the evidence for its own claim.** *(`just-dna-format` +
   `just-dna-compiler` + `just-dna-enricher`; a new optional authored column, additive under Principles
   3 and 8, and no published module is invalidated.)*
