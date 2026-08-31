@@ -6256,7 +6256,15 @@ def _build_manifest(
     )
     _carried, _summary = classify(warnings)
     return ModuleManifest(
-        identity=Identity(name=module.name, version=authored_version),
+        # `version_coerced_from` is the authored string when the model rewrote it, and `None` when it
+        # did not (RM103). Published because `identity.version` alone cannot distinguish an invented
+        # `0.0.0` from an author who wrote one: the warning naming both values only ever existed in a
+        # build log, and the artifact is what a consumer holds.
+        identity=Identity(
+            name=module.name,
+            version=authored_version,
+            version_coerced_from=module.version_coerced_from,
+        ),
         display=Display(
             title=module.title,
             description=module.description,
@@ -7202,6 +7210,31 @@ def _module_name_from_parquets(parquet_dir: Path) -> str | None:
     return None
 
 
+def _authored_version_from_artifact(parquet_dir: Path) -> str | None:
+    """The `module.version` the author wrote, recovered from the artifact's own `manifest.json`.
+
+    **`version_coerced_from` first, `version` second, and that order is the whole point (RM103).**
+    `identity.version` holds the *coerced* SemVer, so re-emitting it would hand the next compile a
+    string with nothing left to coerce — `version_coerced_from` would come back absent on lap 2, and a
+    module would disagree with its own round trip on a published field. Preferring the pre-coercion
+    string makes the field a fixed point: `v2` re-emits as `v2`, coerces to `2.0.0` again, and both
+    manifest cells match lap 1.
+
+    It also repairs a quieter loss. Reverse used to emit no `version:` at all unless a caller supplied
+    one, so the author's spelling did not survive a round trip even when it was ordinary SemVer. Same
+    tolerant shape as `_genome_build_from_artifact`, and the same rule: recover it or return `None`,
+    never invent one.
+    """
+    path = parquet_dir / "manifest.json"
+    if not path.is_file():
+        return None
+    try:
+        identity = read_manifest(path).identity
+    except (OSError, ValueError):
+        return None
+    return identity.version_coerced_from or identity.version
+
+
 def _genome_build_from_artifact(parquet_dir: Path) -> str | None:
     """Recover the module's declared `genome_build` from the artifact's own `manifest.json`.
 
@@ -7294,8 +7327,13 @@ def reverse_module(
     """Reverse-engineer a parquet module back into the spec DSL (yaml + csv). Returns output_dir.
 
     `version` (like `title`/`description`) is authored `module:` metadata, out of `artifact.digest`
-    and so not materialized into any parquet — a caller that wants it in the re-emitted spec supplies
-    it (e.g. from the manifest's `identity.version`); when omitted it is left out of the block.
+    and so not materialized into any parquet. **Since RM103 it is recovered from the artifact's own
+    `manifest.json` when the caller supplies none**, rather than dropped: an explicit argument still
+    wins, and a bare parquet directory with no manifest still leaves the key out of the block. What is
+    recovered is `identity.version_coerced_from` where the compile recorded one, falling back to
+    `identity.version` — the pre-coercion string, because re-emitting the coerced one gives the next
+    compile nothing to coerce and `version_coerced_from` then goes absent on lap 2, which is a module
+    disagreeing with its own round trip on a published field.
 
     `genome_build` is **not** in that class, even though it reaches the artifact the same way (the
     manifest, never a parquet column). A wrong title is cosmetic; a wrong build relocates every
@@ -7348,6 +7386,8 @@ def reverse_module(
         module_name = _module_name_from_parquets(parquet_dir) or parquet_dir.name
     if genome_build is None:
         genome_build = _genome_build_from_artifact(parquet_dir) or "GRCh38"
+    if version is None:
+        version = _authored_version_from_artifact(parquet_dir)
 
     # **The attestation cannot be carried, and the silence about that was the defect (RM45).**
     # `verification.json` records checks the *enricher* put against sources this tier cannot reach,

@@ -707,6 +707,20 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
                 item="RM132",
             ),
             DeclaredChange(
+                axis="manifest_fields",
+                target="identity.version_coerced_from",
+                kind="addition",
+                detail=(
+                    "RM103 publishes the `module.version` the author actually wrote whenever the "
+                    "model rewrote it — `'v2'` beside `'2.0.0'`, `'abc'` beside `'0.0.0'`. The "
+                    "coercion is unchanged and stays (RM17); what changes is that the artifact now "
+                    "records what was READ, so an invented `0.0.0` stops being indistinguishable "
+                    "from an author who wrote one. Absent on every module whose authored version was "
+                    "already canonical SemVer, which is most of them, so this fires on few artifacts."
+                ),
+                item="RM103",
+            ),
+            DeclaredChange(
                 axis="parquet_bytes",
                 target="gene_metrics.parquet",
                 kind="correction",

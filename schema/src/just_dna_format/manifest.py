@@ -102,6 +102,24 @@ class Identity(BaseModel):
     namespace: str | None = Field(default=None, description="Owning account/org slug")
     name: str = Field(description="Machine name, matches ^[a-z][a-z0-9_]*$")
     version: str | None = Field(default=None, description="SemVer MAJOR.MINOR.PATCH")
+    # RM103. The coercion itself is settled and stays (RM17: the pre-0.4 corpus is full of `v2` and
+    # `3`, and 0.6 widened it after 26 of 61 foreign modules refused on an unquoted integer). What was
+    # missing is that the artifact recorded only the *result*: `ModuleInfo.version_coerced_from` held
+    # the authored text, the compiler warned naming both values, and neither reached the published
+    # bytes — so `identity.version: "0.0.0"` from a digitless string was indistinguishable from an
+    # author who really wrote `0.0.0`, unless somebody had kept the build log.
+    version_coerced_from: str | None = Field(
+        default=None,
+        description=(
+            "The `module.version` the author actually wrote, when it is not what `version` says — "
+            "`'v2'` beside `'2.0.0'`, `'abc'` beside `'0.0.0'`. **Absent means the authored value "
+            "was already canonical SemVer**, never that nothing was authored. It exists because the "
+            "digitless case invents a version rather than reading one: every three-number string is "
+            "a legal SemVer and somebody's real release, so no sentinel could mark the fabrication "
+            "and the only honest fix is publishing what was read. Advisory, like `version` itself — "
+            "the registry stamps the canonical identity on publish — and out of `artifact.digest`."
+        ),
+    )
     canonical_id: str | None = Field(
         default=None, description="namespace/name@version"
     )

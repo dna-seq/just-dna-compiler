@@ -2005,7 +2005,7 @@ are **zero same-`ref` expansions** in either. The 8,231 matchable rows are the l
 
 ## S42 — `ModuleInfo.version` coerces `'abc'` to `'0.0.0'` rather than refusing it
 
-**Status — accepted as a real defect, filed as [RM103](ROADMAP.md#rm103--a-version-with-no-digits-coerces-to-000-which-is-a-real-version-nobody-wrote)
+**Status — accepted as a real defect, filed as [RM103](ROADMAP_HISTORY.md#rm103--the-manifest-now-records-the-version-that-was-read-not-only-the-one-that-was-invented)
 rather than fixed in this pass, and documented in [SCHEMAS.md](SCHEMAS.md) meanwhile. Your correction
 about the unquoted integer is confirmed, and our own docs did not carry the claim.** Reproduced:
 `ModuleInfo(version="abc").version` is `"0.0.0"`, as are `draft`, `TBD`, `unreleased` and `-`. We then

@@ -44,6 +44,27 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
+- **RM103 — the manifest now records the version that was read, not only the one that was invented.**
+  *(`just-dna-format` + `just-dna-compiler`; **additive** — a new optional manifest field, no digest
+  moves.)* `normalize_version` strips every non-digit and pads to three zeros, so `version: abc`
+  becomes `"0.0.0"` — deliberate since RM17, and unchanged here. What changes is that the artifact
+  recorded only the *result*: `manifest.identity.version` read `0.0.0` with nothing beside it saying
+  the author wrote `abc`. **New: `manifest.identity.version_coerced_from`**, the authored string when
+  the model rewrote it and `None` when it was already canonical SemVer. The compiler's warning naming
+  both values is unchanged and still fires in `compile` and `validate` alike; a build log is just not
+  what a consumer holds.
+
+  **`reverse_module` now re-emits the pre-coercion string**, recovered from the artifact's own
+  `manifest.json` (`version_coerced_from` first, `version` second). Re-emitting the coerced one would
+  leave the next compile nothing to coerce, so the new field would go absent on lap 2 and a module
+  would disagree with its own round trip on a published field. An explicit `--version` still wins, and
+  a bare parquet directory with no manifest still leaves the key out. **Side effect worth knowing:**
+  reverse previously dropped `module.version` entirely unless a caller supplied one, so a reversed
+  spec now carries the authored version where it used to carry none. Nothing hashes on it.
+
+  The **refusal** half of RM103 — should a digitless version be rejected outright — is unchanged and
+  stays on the 1.0 cleanup tracker; it is a tightening, and no sentinel SemVer exists to coerce to.
+
 - **RM110 — `constraint_flags` had two producers, two encodings, and one of them inside the fact set.**
   *(`just-dna-format` + `just-dna-enricher`; **one existing artifact's digest moves** — see the cost
   line.)* The live gnomAD route pipe-joined its flag list; the bulk-TSV snapshot route copied gnomAD's

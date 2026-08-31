@@ -44,6 +44,58 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM103 — the manifest now records the version that was READ, not only the one that was invented
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format` + `just-dna-compiler`; the
+manifest half of the split item — the refusal half stays on the 1.0 tracker). **Severity** low-medium
+· **Owner** format · **Motivating case** S42 (just-dna-lite, in CONSUMER_SUGGESTIONS_HISTORY.md)
+
+### What shipped, and what deliberately did not
+
+`Identity.version_coerced_from` — the authored `module.version` when the model rewrote it, `None`
+when it was already canonical SemVer. `'v2'` beside `'2.0.0'`, `'abc'` beside `'0.0.0'`. Additive,
+out of `artifact.digest`, declared in `RELEASE_RECORDS` on the `manifest_fields` axis.
+
+**The coercion is untouched and must stay untouched.** RM17 decided coerce-rather-than-reject because
+the pre-0.4 corpus is full of `v2` and `3`, and 0.6 widened it at `mode="before"` after **26 of 61**
+foreign modules refused on an unquoted integer. Every digit-bearing case still behaves exactly as it
+did, and the test parametrizes all of them precisely so a later change cannot quietly undo RM17 while
+appearing to be about this item.
+
+**A sentinel stays rejected.** Coercing to something unmistakable has no target: every three-number
+string is a legal SemVer and therefore somebody's real release. Publishing what was *read* is the only
+repair available, which is exactly why the additive half was worth separating from the refusal.
+
+### The second-order effect that was nearly shipped, in the release that files RM137 about it
+
+`reverse_module` takes `version` from its caller, and the caller has `manifest.identity.version` — the
+**coerced** string. Re-emitting that leaves lap 2 with nothing to coerce, so `version_coerced_from`
+comes back absent and a module disagrees with its own round trip on a published field. That is RM137's
+exact shape, and it would have arrived in the same release.
+
+So reverse re-emits the **pre-coercion** string: `_authored_version_from_artifact` reads the
+artifact's own manifest, prefers `version_coerced_from`, falls back to `version`. Both cells then hold
+across two laps, which the test asserts rather than assumes — and the failure was demonstrated on the
+naive implementation before the test was called a regression net (`abc` → lap 1 `abc`, lap 2 `None`).
+
+**It also repairs a quieter loss nobody had filed.** Reverse emitted no `version:` at all unless a
+caller supplied one, so even an ordinary canonical version did not survive a round trip. Nothing
+hashed on it — `module.version` is advisory and out of `artifact.digest` — which is why it went
+unnoticed. An explicit argument still wins, and a bare parquet directory with no manifest still leaves
+the key out: recover it or say nothing, never invent one, the same rule `genome_build` follows.
+
+### What the reporter should do meanwhile, restated because it was already true
+
+Both `compile` and `validate` have always warned, naming the authored string and the coerced result,
+so a build that greps its warnings caught this before 0.7. The gap was between the *model* (silent)
+and the *pipeline* (loud), and the reporter was testing the model directly. The manifest closes it for
+a consumer holding only the artifact, which is the population that could not act at all.
+
+**One correction to their report, in their favour**, kept from the original entry: they noted their own
+CLAUDE.md claimed *"an unquoted `1` in YAML loads as an int and is rejected"* and is wrong on 0.6.1 —
+`1` coerces to `1.0.0`. Confirmed, and our documents do not carry that claim. The hazard is the
+unquoted *decimal*, still refused and deliberately so.
+
 ## RM110 — `constraint_flags` had two producers, two encodings, and one of them inside the fact set
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format` + `just-dna-enricher`).

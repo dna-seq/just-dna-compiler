@@ -278,7 +278,13 @@ class ModuleInfo(Display):
         """The authored `version` before SemVer coercion, or `None` if it was already SemVer.
 
         Not a field: it describes what happened during validation, not module content, so it stays out
-        of `model_dump()` and never reaches the manifest or a CSV."""
+        of `model_dump()` and out of every CSV.
+
+        **It does reach the manifest, since RM103** — `Identity.version_coerced_from`, copied by the
+        compiler rather than serialized from here. That is the distinction this docstring used to
+        blur: staying out of the authored surface is a property of the *field*, while publishing the
+        fabrication is what makes it auditable in the artifact instead of only in a build log
+        somebody had to have kept."""
         return self._version_coerced_from
 
     @field_validator("name")

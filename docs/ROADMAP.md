@@ -178,16 +178,15 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Seven, and four of them are not decisions** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a decision* through the three that are, which is why the paragraph under it says to count off the sections rather than off this sentence). The three whose shape is settled:
-[RM103](#rm103--a-version-with-no-digits-coerces-to-000-which-is-a-real-version-nobody-wrote)
-(the manifest half only),
+**Six, and four of them are not decisions** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a decision* through the three that are, which is why the paragraph under it says to count off the sections rather than off this sentence). The two whose shape is settled:
 [RM108](#rm108--a-clingen-re-curation-appends-a-second-row-and-nothing-marks-the-superseded-one)
 and
 [RM117](#rm117--an-outrank-record-exists-and-no-check-reads-it-and-what-a-check-should-do-is-undecided)
 (the observability half only) — all minors, all with the release undecided, all with nothing left in
 them but the typing. **The other four are decisions and say so**: RM136 and RM137 from the RM124
 audit, RM138 from the RM131 review, and RM146 from a 2026-08-31 consumer report, each carrying its
-candidate repairs and why each one fails. RM110 was a fourth settled one and shipped on 2026-08-31.
+candidate repairs and why each one fails. RM110 and RM103's manifest half were two more settled
+ones and both shipped on 2026-08-31.
 **Count them off the sections, not off the sentence**: this line said *three* for as long as it took
 to notice that a narrowed item is still an item, and *not one of them is a decision* for as long as it
 took three decisions to be filed beneath it — the same arithmetic failure recorded two paragraphs
@@ -274,62 +273,6 @@ same commit.
 
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
-
-## RM103 — a version with no digits coerces to `0.0.0`, which is a real version nobody wrote
-
-**Severity** low-medium · **Status** open — **a minor, release undecided** — the manifest half
-only; the refusal half is a tightening and moved to
-[§ The 1.0 cleanup](#the-10-cleanup-candidate-tracker) on 2026-08-21 · **Owner** format ·
-**Motivating case** S42 (just-dna-lite, in CONSUMER_SUGGESTIONS_HISTORY.md)
-
-`ModuleInfo(version="abc").version` is `"0.0.0"`. `normalize_version` strips every non-digit, finds
-nothing, and pads to three zeros — documented in its own docstring (*"a value with no digits →
-`0.0.0`"*) and pinned by a test, so this is deliberate behaviour rather than an oversight. The
-reporter's objection is nonetheless right, and it is about *which* value is invented: `0.0.0` is a
-legal SemVer and a plausible pre-release marker, so an unreadable string becomes a confident claim
-instead of an error. Verified to reach the published artifact — `identity.version` in `manifest.json`
-reads `0.0.0`, with nothing beside it recording that the author wrote `abc`.
-
-**The coercion itself is not in question and must not be undone.** RM17 decided coerce-rather-than-
-reject because the pre-0.4 corpus is full of `v2` and `3`, and 0.6 widened it at `mode="before"` after
-**26 of 61** foreign modules refused on an unquoted integer. Every digit-bearing case — `v2`, `3`,
-`1.5`, `v1.2.3-beta` — is working as intended and stays. What is at issue is the *digitless* case
-alone, where there is no authorial intent to read and the function invents one.
-
-**Decided 2026-08-21: the item splits, and only the additive half stays here.** Surfacing
-`version_coerced_from` in the manifest is purely additive and minor-legal on every reading of the
-charter. Refusing a digitless version is a *tightening*, and it moved to
-[§ The 1.0 cleanup](#the-10-cleanup-candidate-tracker) because the two readings of the charter
-genuinely disagree and settling that is not this item's job: RM50 and RM48 both shipped new refusals
-in **0.6.0** as minor work, and INTEGRATION_0_6 § 1 lists them under *"two checks can newly refuse an
-author's spec"* precisely because a consumer compiling other people's specs sees CI go red — while
-Principle 8's forbidden-moves clause is written to keep anything previously valid from becoming
-invalid. Precedent says minor; the principle's stated purpose says major. **Neither half of this item
-needed that answer, and the entry was holding its own additive half hostage to it** — which is why
-the split is the decision and not a way of ducking one.
-
-**What ships here.** `version_coerced_from` already holds the authored text, and the compiler already
-**warns**, naming both values (*"module.version 'abc' was read as SemVer '0.0.0'"*); `validate_spec`
-reports it identically, so there is no parity gap to close. What is missing is the *manifest*: publish
-the authored string beside `identity.version`, so the fabrication is auditable in the artifact and not
-only in a build log somebody had to have kept. It does not stop a bad value being published and was
-never claimed to — it makes one legible afterwards, which is the whole of the ask that is additive.
-
-**A sentinel stays rejected.** Coercing to something that cannot be mistaken for a version has no
-target: every three-number string is a legal SemVer, so any sentinel is someone's real one — the
-complaint restated.
-
-**What the reporter should do meanwhile, and it is not nothing.** The compiler already tells them:
-both `compile` and `validate` emit the coercion warning with the authored string in it, so a build
-that greps its warnings catches this today. The gap is between the *model* (silent) and the
-*pipeline* (loud), and the reporter was testing the model directly.
-
-**One correction to their report, in their favour.** They note their own CLAUDE.md claimed *"an
-unquoted `1` in YAML loads as an int and is rejected"* and is wrong on 0.6.1 — `1` coerces to
-`1.0.0`. Confirmed, and our documents do not carry that claim: AGENT_NOTES `@yaml-version-int`,
-CHANGELOG and DOGFOOD_0_6_FINDINGS all describe the int refusal as the **pre-0.6** state that RM17's
-widening fixed. The hazard is the unquoted *decimal*, which is still refused and deliberately so.
-
 
 ## RM108 — a ClinGen re-curation appends a second row and nothing marks the superseded one
 
@@ -735,7 +678,7 @@ here.** That ordering is the item's own upgrade line under RM52.
 **Severity** low-medium · **Status** queued for 1.0 — **filed here on 2026-08-21 by the RM103 split**,
 and filed as a charter question rather than as a fix
 
-Split off [RM103](#rm103--a-version-with-no-digits-coerces-to-000-which-is-a-real-version-nobody-wrote),
+Split off [RM103](ROADMAP_HISTORY.md#rm103--the-manifest-now-records-the-version-that-was-read-not-only-the-one-that-was-invented),
 whose additive half stays open as a minor. `normalize_version("abc")` returns `"0.0.0"` — a legal
 SemVer and a plausible pre-release marker — and it reaches `identity.version` in a published
 `manifest.json`. Refusing it instead is the cleanest end state and is the reporter's implicit ask; the

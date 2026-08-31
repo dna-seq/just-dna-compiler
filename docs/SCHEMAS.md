@@ -2397,9 +2397,24 @@ and deleting the block moves neither `artifact.digest` nor `content_signature`.
   as a deliberate pre-release, so an unparseable string arrives downstream as a confident claim.
   **`compile` and `validate` both warn**, naming the authored string and the coerced result
   (`module.version 'abc' was read as SemVer '0.0.0'`), and `ModuleInfo.version_coerced_from` holds the
-  original for a caller that wants to report it — so the fabrication is visible to a pipeline and
-  silent only to code that instantiates the model directly. Whether the digitless case should refuse
-  outright is **RM103**: it would be a new refusal, which sizes as a minor rather than a patch. Every
+  original for a caller that wants to report it.
+
+  **Since 0.7 the artifact carries it too — `manifest.identity.version_coerced_from`, beside
+  `identity.version` (RM103).** A warning lives in a build log somebody had to have kept; the manifest
+  is what a consumer holds, and until this shipped an invented `0.0.0` was indistinguishable there
+  from an author who wrote one. Absent means the authored value was already canonical SemVer, never
+  that nothing was authored. **`reverse_module` re-emits the pre-coercion string** rather than
+  `identity.version`, so the field is a fixed point across a round trip — re-emitting the coerced one
+  leaves the next compile nothing to coerce, and the field would come back absent on lap 2, which is a
+  module disagreeing with itself on a published field. That also repairs a quieter loss: reverse used
+  to drop `module.version` entirely unless a caller supplied one.
+
+  **A sentinel was rejected and stays rejected**: every three-number string is somebody's real
+  version, so nothing can be coerced *to* that could not be mistaken for one — publishing what was
+  read is the only honest repair. Whether the digitless case should additionally **refuse** is a
+  separate question and sits on [ROADMAP § The 1.0 cleanup](ROADMAP.md#the-10-cleanup-candidate-tracker):
+  it is a tightening, and the two readings of the charter genuinely disagree about whether that is a
+  minor. Every
   digit-bearing case (`v2` → `2.0.0`, `3` → `3.0.0`, `v1.2.3-beta` → `1.2.3`) is working as intended
   and is not in question; a **float** is refused outright, because YAML reads `1.10` as `1.1` and the
   authored text is gone before any validator sees it.
