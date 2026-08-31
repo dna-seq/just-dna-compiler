@@ -597,7 +597,7 @@ genotype while the 0.4 families keep the string) and the `stats` counter retype.
 
 | gate | result |
 | --- | --- |
-| `uv run pytest` | **3610 passed, 18 skipped, 0 failed** (3581 before RM151; 3394 before the 2026-08-31 batch; 2916 at the 2026-08-24 one) |
+| `uv run pytest` | **3653 passed, 18 skipped, 0 failed** (3610 at this table's own sweep, before the readiness pass that closed the lint gate, added the workspace-floor guard and fixed the CIViC drafter's `trait_efo_id`; 3581 before RM151; 3394 before the 2026-08-31 batch; 2916 at the 2026-08-24 one) |
 | `uv run ruff check` | clean |
 | Reference corpus under the 0.7 compiler | **16 / 16 compile** |
 | 0.6.6 → 0.7.0 release sweep | 15 measured, gate exit 0 against the shipped record |
@@ -611,7 +611,10 @@ measured; what remains before a cut is release management rather than work. Two 
 
 1. The three `pyproject.toml` files already read `0.7.0` while `git tag` stops at `v0.6.6`. Anything
    published from here must be a real cut; **wipe `dist/` before building**, since `uv publish`
-   uploads everything in it.
+   uploads everything in it — it still holds the 0.6.6 artifacts. Their **intra-workspace floors** now
+   read `0.7.0` as well: the bump moved only the `version` fields, leaving `just-dna-format>=0.6.6`
+   under a compiler that imports four modules 0.6.6 does not have. Nothing in a checkout can see that
+   — `uv.lock` records those edges as editable with no specifier — so a test walks them now.
 2. This release moves all three packages. Format gains models and columns, the compiler gains columns
    and `sweep`, the enricher gains the transaction, the PubMind surface and the currency check. There
    is no partial cut available.
