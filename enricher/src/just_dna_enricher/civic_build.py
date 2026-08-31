@@ -297,6 +297,23 @@ def parse_rsids(aliases: str | None) -> list[str]:
     return seen
 
 
+def variant_rsids(variant: dict) -> list[str]:
+    """Every rs-number CIViC states for one variant, name first, then aliases.
+
+    **Two fields, because CIViC uses both and neither is the documented one.** The obvious place is
+    `variant_aliases`, and a first version read only that — missing five variants in the germline
+    direction set whose *name* is the rs-number itself (`RS2736100`, `rs681673`), sometimes with a
+    protein alias beside it and sometimes with nothing. Those five needed no registry lookup and no
+    conversion; the identity was published in plain sight, in the column a reader looks at first.
+
+    Name before aliases, because the name is the source's own primary label for the variant while an
+    alias is a synonym. Order only decides which is stored as `rsid`; both are parsed either way.
+    """
+    return parse_rsids(
+        " , ".join(x for x in ((variant.get("variant") or ""), (variant.get("variant_aliases") or "")) if x)
+    )
+
+
 def parse_grch38_substitution(hgvs: str | None) -> tuple[str, int, str, str] | None:
     """`(chrom, start, ref, alt)` from a GRCh38 genomic HGVS substitution, or `None`.
 
@@ -442,7 +459,7 @@ def build_snapshot(
             dropped["combination_profile" if arity > 1 else "no_variant_record"] += 1
             continue
 
-        rsids = parse_rsids(variant.get("variant_aliases"))
+        rsids = variant_rsids(variant)
         coords = parse_grch38_substitution(variant.get("hgvs_descriptions"))
         if coords is None and has_unparsable_grch38(variant.get("hgvs_descriptions")):
             unparsable_hgvs += 1

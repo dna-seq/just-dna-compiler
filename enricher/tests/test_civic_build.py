@@ -24,6 +24,7 @@ from just_dna_enricher.civic_build import (
     has_unparsable_grch38,
     parse_grch38_substitution,
     parse_rsids,
+    variant_rsids,
 )
 from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
 
@@ -75,6 +76,22 @@ def test_rsids_are_selected_by_shape_and_normalized():
     assert parse_rsids("R1275Q, rs113994087, RS12345, rs113994087") == ["rs113994087", "rs12345"]
     assert parse_rsids("") == []
     assert parse_rsids("rsSOMETHING, rs, 12345") == [], "an rs-shaped prefix is not an rs-number"
+
+
+def test_an_rsid_is_read_from_the_variant_name_as_well_as_the_aliases():
+    """CIViC names some variants by their rs-number, and only the aliases were being read.
+
+    Five variants in the germline direction set are named `RS2736100`, `rs681673` and the like; the
+    first version of this builder looked only at `variant_aliases` and dropped all five as having no
+    identity, when the identity was in the column a reader looks at first. They needed no registry
+    lookup and no conversion.
+    """
+    assert variant_rsids({"variant": "RS2736100", "variant_aliases": ""}) == ["rs2736100"]
+    assert variant_rsids({"variant": "rs681673", "variant_aliases": "1506T>C"}) == ["rs681673"]
+    # An alias-only rsID still works, and the name is preferred when both carry one.
+    assert variant_rsids({"variant": "R262W", "variant_aliases": "rs3184504"}) == ["rs3184504"]
+    assert variant_rsids({"variant": "rs1", "variant_aliases": "rs2"}) == ["rs1", "rs2"]
+    assert variant_rsids({"variant": "V600E", "variant_aliases": "BRAF V600E"}) == []
 
 
 def test_every_kept_row_carries_an_identity_and_names_which_one(built):
