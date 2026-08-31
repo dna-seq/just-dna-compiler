@@ -487,21 +487,33 @@ representative_transcript, ensembl_version, reference_build, hgvs_descriptions, 
 clinvar_ids, variant_aliases`. It does **not** carry the API's `myVariantInfo` block, which is where
 `dbsnpRsid` and `clinvarHgvsGenomic` live. So over the 290 joined variants:
 
-| Route | Variants (nightly) | Variants (`01-Aug-2026`) |
-|---|---|---|
-| GRCh38 `NC_` accession in `hgvs_descriptions` | 40 | — |
-| GRCh37-only accession | 181 | — |
-| rsID in `variant_aliases` | 126 | — |
-| ClinGen `allele_registry_id` (excluding the `unregistered` sentinel) | 235 | — |
-| **Reachable — a GRCh38 accession *or* an rsID** | **159** | **133** |
-| neither | 131 | **157**, of which **102 carry a CAID** |
+| Route | Variants |
+|---|---|
+| GRCh38 `NC_` accession **present** in `hgvs_descriptions` | 40 |
+| …of those, one `parse_grch38_substitution` can **read** | 12 |
+| GRCh37-only accession | 181 |
+| rsID in `variant_aliases` | 126 |
+| ClinGen `allele_registry_id` (excluding the `unregistered` sentinel) | 235 |
+| **Reachable — a readable GRCh38 substitution *or* an rsID** | **133** |
+| neither | **157**, of which **102 carry a CAID** |
 
-**Name the file, not just the surface.** The left column is the *nightly* download and the right is the
-dated `01-Aug-2026` release the builder actually reads, measured with the shipped `parse_rsids` and
-`parse_grch38_substitution` rather than an ad-hoc regex. They differ because the nightly is later and
-better curated, not because either is wrong — but **the dated figures are the ones a reader should
-compare a built snapshot against**, since that is what `civic build --release` consumes. On the dated
-release, 329 of the 533 evidence rows are reachable and **204 are not**.
+Measured with the shipped `parse_rsids` and `parse_grch38_substitution` rather than an ad-hoc regex.
+On this release, 329 of the 533 evidence rows are reachable and **204 are not**.
+
+**This table used to have two columns, and the reconciliation is worth more than the numbers were.**
+It gave 159 reachable / 131 not for the *nightly* download against 133 / 157 for the dated
+`01-Aug-2026` release, and read the gap as the nightly being later and better curated. Re-measured on
+2026-09-01, that reading is wrong: the two files are **identical on this slice** — same 533 rows, same
+290 variants, same 53 unreached, and not one identity cell different on any shared variant — and each
+of them gives 133 under one definition of "reachable" and 159 under another. The 159 counts every
+variant *carrying* a GRCh38 accession (40 of them); the 133 counts only those carrying one the
+substitution parser can **read** (12). One file, two definitions, 26 variants of daylight.
+
+That is `@existence-not-identity` in the shape a denominator can take — an accession that exists is
+not an accession that resolves — and the 28 unreadable ones are not a parser defect: they are
+deletions and insertions, and `NC_000003.12:g.10146622del` states no bases for a substitution parser
+to hold. `has_unparsable_grch38` exists precisely to keep that class countable (49 rows) instead of
+folding it into "the source said nothing".
 
 **Scoring the accession requires the per-chromosome RefSeq map, not a version number.** `NC_000001.11`
 is GRCh38 but `NC_000002.11` is GRCh37 — the version that means "GRCh38" differs per chromosome. A
@@ -512,8 +524,48 @@ The map is a domain constant and belongs in the builder as one.
 
 **Consequence for a snapshot.** Build from the **dated TSV pair** — that is what makes a rebuild
 byte-reproducible, and mixing in live API enrichment would forfeit exactly that. Carry
-`allele_registry_id` as a snapshot column so the 131 unreachable variants stay addressable, and leave
+`allele_registry_id` as a snapshot column so the 157 unreachable variants stay addressable, and leave
 CAID→GRCh38 resolution to a later pass, where RM48's *report-never-fill* rule governs it.
+
+### The nightly, re-surveyed — what a month of curation actually added
+
+**Probed 2026-09-01**, both files downloaded fresh and put through the shipped builder's own filter
+chain. The question was how much a snapshot pinned to `01-Aug-2026` is missing by not reading the
+nightly. The answer is nothing at all on the axis this source was adopted for:
+
+| | `01-Aug-2026` | nightly (2026-09-01) |
+|---|---:|---:|
+| Evidence rows in the file | 4,878 | 4,903 |
+| Variant records | 1,992 | 1,999 |
+| Germline rows | 811 | 813 |
+| **Direction-axis rows** | **533** | **533** |
+| Joined to a single-variant profile | 533 / 290 variants | 533 / 290 variants |
+| Kept by the builder | 474 / 237 variants | 474 / 237 variants |
+| Dropped `unresolvable_identity` | 59 / 53 variants | 59 / 53 variants |
+| Identity `rsid` / `both` / `grch38_hgvs` / `caid` | 310 / 17 / 7 / 140 | 310 / 17 / 7 / 140 |
+
+**+25 evidence rows and +7 variants, and not one of them reaches this format.** The 25 new rows are 21
+`Somatic`, 1 `Unknown`, 1 `N/A` and **2 germline** — and the two germline ones are `Gain of Function`
+and `Sensitivity/Response`, neither on the direction axis. The 7 new variants are FGFR3, PTPRD, FGFR2,
+GNAS and three with no gene named: somatic oncology, which is what CIViC mostly is.
+
+Two further checks, because "the totals match" is a weaker claim than it looks:
+
+- **The sets are identical, not merely the counts.** The 290 direction variants are the same 290 ids,
+  and the 53 unreached are the same 53 ids — no variant swapped places with another.
+- **No shared variant changed an identity cell.** All nine of `variant`, `variant_aliases`,
+  `hgvs_descriptions`, `allele_registry_id`, `chromosome`, `start`, `reference_bases`,
+  `variant_bases`, `reference_build` were compared across every variant present in both files:
+  **zero differences**. So the curation that happened in this window added records; it did not
+  back-fill an identifier onto an existing one.
+
+`01-Sep-2026` does not exist yet — all three files 404 on 2026-09-01 — so the dated release a snapshot
+can pin is still `01-Aug-2026`, and pinning it costs nothing measurable.
+
+**What this does not say.** It is one month, on one axis, and the germline direction slice is 11% of
+the file; a nightly read on the somatic majority would be a different measurement with a different
+answer. It is also not a currency check — that asks the download index for a later *dated* release
+(survey item 3), and this compares two files that both exist today.
 
 ## What was built from this, and what it looks like in practice
 
@@ -666,9 +718,10 @@ remaining registry rows and took recovery to **237/290 = 82%**.
    recovery **at most one**, and the one precise event in the class lifts *exactly* to the wrong
    allele. Full working in [CIVIC_LIFTOVER_NINE](CIVIC_LIFTOVER_NINE.md).
 
-**One thing to check before trusting anything above.** Every count here is over one dated release. The
-source is actively curated — the nightly file already disagrees with `01-Aug-2026` on reach (159
-reachable variants against 133) — so re-derive rather than quote if a decision turns on a margin.
+**One thing to check before trusting anything above.** Every count here is over one dated release, and
+the source is actively curated, so re-derive rather than quote if a decision turns on a margin. What
+that caution used to say — that the nightly already disagreed with `01-Aug-2026` on reach, 159 against
+133 — was itself the artefact described above, and the re-survey below is what replaced it.
 
 
 ## What this survey concludes, and what it deliberately does not

@@ -70,10 +70,14 @@ Over the dated `01-Aug-2026` release, 533 germline direction rows on 290 variant
 The registry answered all 102 probe requests with **zero failures**, serves both an rs-number and a
 GRCh38 coordinate, and needs no key.
 
-**A correction to this item's own figures.** It said 131 unreachable where the dated release gives
-157: its reach numbers had been taken from the *nightly* download while its row counts came from the
-dated release. Same source, two files, and the collision is the reason
-[CIVIC_SURVEY](probes/CIVIC_SURVEY.md) now labels which file every identity figure is over.
+**A correction to this item's own figures, and then a correction to the correction.** It said 131
+unreachable where the dated release gives 157. That gap was first written up as nightly-versus-dated —
+reach numbers from one file, row counts from the other. Re-measured on **2026-09-01** it is not two
+files at all: the nightly and `01-Aug-2026` are identical on this slice, and 131 versus 157 is one
+file read two ways, counting variants that *carry* a GRCh38 accession (40) against variants carrying
+one `parse_grch38_substitution` can *read* (12). 157 is the number the builder acts on.
+[CIVIC_SURVEY](probes/CIVIC_SURVEY.md) carries the measurement and now labels the *definition* behind
+every identity figure, not just the file.
 
 ### What shipped
 

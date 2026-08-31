@@ -18,12 +18,13 @@ where this document and those disagree, they win. Nothing here re-argues either 
 re-closed liftover on a count of 131 variants and left the residue unexamined. This document opens
 that residue and reports what is inside it.
 
-**Why RM153 says 131 and the table below says 157.** They are the same class measured on two different
-files, not by two different methods. The survey's own table gives 159 reachable / 131 not for the
-**nightly** download and 133 / 157 for the **dated `01-Aug-2026`** release, and RM153's prose attaches
-the nightly pair to the dated release — its 533 rows on 290 variants are the dated file's, its reach
-figures are the nightly's. Everything here is the dated file, because that is what `civic build
---release` reads. Reconciling the roadmap's sentence is the maintainer's call, not this document's.
+**Why RM153 says 131 and the table below says 157.** They are the same class measured two ways. This
+document originally read the gap as nightly-versus-dated, following the survey's two-column table;
+re-measured on **2026-09-01** that explanation is wrong, and the survey now carries the correction.
+The two files are identical on this slice, and each gives 159 under a reading that counts every
+variant *carrying* a GRCh38 accession and 133 under the one that counts only accessions the
+substitution parser can **read**. 157 is the strict reading's residue and is the number this document
+uses throughout, because it is the one `civic build --release` acts on.
 
 Companion: [CIVIC_SURVEY.md](CIVIC_SURVEY.md), whose closing section sized this class from the outside
 ("after every published identifier is tried the remainder is 157 variants, 102 of which a CAID would
@@ -407,9 +408,10 @@ they belong to RM153, which decides them.
 `@probe-names-the-table`, applied line by line:
 
 - The class of **nine** is over the **`01-Aug-2026` dated release**, germline direction rows only,
-  after the shipped identity parsers. The nightly file is better curated and disagrees with the dated
-  one on reach (the survey measures 159 reachable variants against 133), so re-derive rather than
-  quote if a decision turns on a margin.
+  after the shipped identity parsers. The nightly file was re-surveyed on 2026-09-01 and is identical
+  to the dated one on this slice — same rows, same variants, same residue, no identity cell different
+  — so the earlier caution that the two disagreed on reach does not apply. Re-derive rather than quote
+  anyway if a decision turns on a margin: the source is actively curated and this held for one month.
 - "No rsID / no CAID / no GRCh38 HGVS" is over **both** CIViC surfaces — the dated bulk file and the
   GraphQL API, queried per variant.
 - "Not in ClinVar" for 2099 is over **six E-utilities searches** of `db=clinvar` (five name-shaped,
