@@ -695,6 +695,19 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
             ),
             DeclaredChange(
                 axis="parquet_schema",
+                target="pharm_variants.parquet:pmid",
+                kind="addition",
+                detail=(
+                    "RM132 put the optional `pmid` column on `PharmVariantRow`, so that parquet gains "
+                    "a SECOND column in this release rather than only RM70's. Listed separately "
+                    "because it is a separate item with a separate remediation: one states a "
+                    "callability requirement, the other cites the evidence for a drug/genotype claim. "
+                    "Absent, never wrong."
+                ),
+                item="RM132",
+            ),
+            DeclaredChange(
+                axis="parquet_schema",
                 target="studies.parquet:statistical_test",
                 kind="addition",
                 detail=(
