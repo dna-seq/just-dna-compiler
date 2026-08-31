@@ -2628,6 +2628,87 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   reads as full coverage. One drop reason was found only by probing the real file — 16 rows whose alt is
   `0` or `N`, which no documentation mentions (`@probe-the-real-file`).
 
+
+- `@two-surfaces-two-denominators` — **A source's bulk download and its API are different sources, and a count that does not name its basis is not reproducible.**
+
+
+  CIViC serves 11,518 evidence items from `civicdb.org/api/graphql` and 4,903 from the same day's
+  `ClinicalEvidenceSummaries.tsv`. Neither is wrong and neither surface says why they differ: the API
+  defaults to `status: NON_REJECTED`, the TSV carries only `accepted`. S84's report, RM152, and the
+  first two probes here all quoted the API figure without naming the filter, so every derived
+  percentage rode an undeclared denominator.
+
+  It matters more than a footnote because the **conclusions move**. Restricted to `accepted`, CIViC's
+  contested-variant count over the germline direction set falls from 3 to **0**. So `release.json`
+  records `status_basis`, and every count in `CIVIC_SURVEY.md` names the surface it came from.
+
+  **The rejected repair was to pick one surface and call it canonical.** They answer different
+  questions — the API is current and includes unreviewed items, the download is dated and reviewed —
+  and a snapshot needs the dated one while a currency check would want the live one. Naming the basis
+  costs a field; choosing for the reader costs the ability to compare at all.
+
+- `@accession-version-names-no-build` — **The version in a RefSeq accession does not name an assembly — use the per-chromosome map.**
+
+
+  `NC_000001.11` is GRCh38. `NC_000002.11` is GRCh37. The version increments per chromosome, so the
+  number meaning "GRCh38" differs by contig and a test for `".11"` or `".12"` is a coin flip wearing
+  the shape of a rule. Written that way first, it reported 208 of 620 CIViC variants as carrying a
+  GRCh38 coordinate where the real figure is **40** — a five-fold overcount that would have made an
+  unbuildable adoption look comfortable.
+
+  Both builds are written out as domain constants in `civic_build`, with an assertion that the two
+  sets do not intersect, and the confusable pair is pinned in a test on **both** members rather than
+  on one example.
+
+- `@published-identity-not-liftover` — **Place an old-assembly source by the identity it publishes beside the coordinate, never by lifting the coordinate.**
+
+
+  CIViC has no GRCh38 coordinates: 2,189 GRCh37 gene variants, 2,433 with no build, two GRCh38. In a
+  GRCh38-only format that reads as fatal, and the first instinct is a liftover — which RM48 refused,
+  because a lifted coordinate becomes the row's sole identity with nothing independent to check it
+  against, the hazard class behind the 3,038-variant off-by-one.
+
+  A coordinate is not the only identity in the file. Of the 620 direction-set variants, 363 carry a
+  ClinGen CAID, 276 an rsID, 252 a GRCh38 `NC_` accession inside ClinVar's HGVS, and **318 of the 376
+  coordinate-bearing ones carry at least one**. Reading those is neither liftover nor RM48's rs-number
+  *recovery*: it is the ordinary resolution chain, and it is strictly better than recovery, because a
+  **published** rs-number is an independent second value while one recovered from Ensembl at a GRCh37
+  position would have resolution verify Ensembl against Ensembl (`hints.REDUNDANCY_BEARING`).
+
+  So the order for any source on an old assembly is: count the published identifiers, size the
+  remainder, and only then ask whether the remainder earns a conversion. Done that way for CIViC the
+  remainder is 131 variants of 290 on the bulk file, most of them carrying a CAID — which is RM153,
+  not a liftover.
+
+
+- `@match-on-is-per-batch` — **One `match_on` serves a whole `append_partial_rows` batch; a mixed one re-adds rows every lap.**
+
+
+  The helper builds its covered-set once, from `partials[0].match_on`, and compares every partial's
+  signature against it. A provider computing `match_on` per row — from whichever identity cells that
+  row happens to carry — produces signatures of different arities, none of which can match, so those
+  rows are re-added on **every lap**.
+
+  The failure is invisible on a first run and appears on the second as a file grown by the same rows,
+  which is the shape that once grew an overlay one row per lap. Found by dogfooding the CIViC provider
+  rather than by review. Both halves are fixed: providers pass one constant tuple, as `clinvar_draft`
+  always did and with absent cells comparing as empty, and the helper now refuses a mixed batch rather
+  than leaving the next caller to discover it.
+
+- `@refutation-withholds` — **Evidence against a claim withholds the axis; it never writes the opposite value, and it is not `contested` either.**
+
+
+  CIViC's `Does Not Support` × `Predisposition` says a paper does not support the variant being
+  predisposing. It does **not** say the variant is protective, and mapping it to `direction=protective`
+  would be an unknown recorded as its negation — `None` is never `False`.
+
+  Two ways to get this wrong, in opposite directions. The row is **kept**, with its raw words, because
+  a refutation is a real thing the source said and dropping it loses evidence. And it is **not**
+  `contested`: that word means sources were consulted and disagree, so a lone refutation with nothing
+  asserting the claim is not contested. RM152 read four such items as "precisely the reading
+  `contested` was added for"; measured at variant granularity, three of the four have no opposing
+  sibling at all, and genuine risk-versus-protective opposition across the whole source is zero.
+
 ## Dogfooding, adversarial probing, and how a finding gets filed
 
 - `@dogfood-lacks-are-results` — **Dogfooding means using the shipped surface to do real work — and a capability the tool LACKS is

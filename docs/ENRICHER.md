@@ -934,6 +934,7 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 | **CPIC** 🔒 | `cpic/` | `$JUST_DNA_CPIC_CACHE` | `ensure_cpic_snapshot` | `just-dna-seq/cpic` | alleles / diplotypes / recommendations (`pgx`, `draft`) |
 | **PharmVar** 🔒 | `pharmvar/` | `$JUST_DNA_PHARMVAR_CACHE` | **none, by design** | **never published** | star alleles (`pgx`) |
 | **PubMind** ❓ | `pubmind/` | `$JUST_DNA_PUBMIND_CACHE` | **none, by design** | **never published** | literature-derived verdicts (RM134) |
+| **CIViC** ✅ | `civic/` | `$JUST_DNA_CIVIC_CACHE` | **none yet** | CC0 — publishable, none built | curated cancer interpretations, **`direction` axis only** (RM152) |
 
 🔒 = licence-gated (`commercial_use=False`). ❓ = terms **unestablished** (`commercial_use=None`), which
 is a different state and not a weaker one: unknown is not permissive. The three 🔒 rows are RM38, new in
@@ -1115,6 +1116,55 @@ from a failure.
 | `ensure_*` appears to hang | anonymous 429 backoff | set `HF_TOKEN` |
 | a pass says a source was "skipped: --offline and no built snapshot" | exactly what it says | `cache pull`, or `<source> build` |
 | `repository not found` for cpic/clinpgx | nobody has published that snapshot yet | build it locally and point `$JUST_DNA_*_CACHE` at it |
+
+
+## CIViC — the direction axis, and a source whose coordinates are all on the wrong build (RM152)
+
+```bash
+just-dna-enricher civic build --release 01-Aug-2026 --out ./civic
+just-dna-enricher draft-panel spec/ --gene VHL --source civic --civic-cache ./civic
+```
+
+**It writes `direction`, never `clin_sig`, and the inversion is the finding.** CIViC was proposed as a
+second clinical-significance concordance authority. Measured, its germline subset carries five
+ACMG-tier calls and **zero benign-class**, so `discordant` is unsayable about anything and the check
+would read `single` or `concordant` by construction. What it does carry is 1,458 germline rows on
+`Predisposition`/`Protectiveness` — this format's `direction` (`risk`/`protective`) — where the `NA`
+count is **0**, against 812 on `clin_sig`. Every number is in
+[CIVIC_SURVEY.md](probes/CIVIC_SURVEY.md).
+
+**The build reads the dated bulk TSVs, not the GraphQL API**, and the two are different sources. Only
+the download side has dated releases, and a snapshot that cannot name its input cannot be reproduced.
+The cost is that the TSV is `accepted`-only at 4,903 rows while the API defaults to `NON_REJECTED` at
+11,518 — **2.35× apart, declared by neither** — so `release.json` records `status_basis` and a count
+from one surface must never be compared with a count from the other.
+
+Three input files are required and the third is not padding: without
+`MolecularProfileSummaries.tsv`, a profile naming two variants and a profile naming none are one
+blurred drop reason instead of two different facts.
+
+**Coordinates are GRCh37 or absent, never GRCh38 — and nothing is lifted over.** 2,189 gene variants
+are GRCh37, 2,433 carry no build, two are GRCh38. The snapshot places rows by reading the identity
+CIViC publishes *beside* the coordinate: an rsID, or a GRCh38 RefSeq accession inside ClinVar's HGVS.
+That is RM48's rule applied rather than circumvented — and better than RM48 hoped, because a
+**published** rs-number is an independent value ordinary resolution cross-examines, where a *recovered*
+one would have resolution verify Ensembl against Ensembl. Scoring an accession needs the
+per-chromosome map: `NC_000001.11` is GRCh38 while `NC_000002.11` is GRCh37. What carries neither
+identifier is dropped by count, and [RM153](ROADMAP.md) is what to do about it.
+
+**A refutation is kept and its direction withheld.** `Does Not Support` removes a claim without
+establishing the opposite one, so the row keeps its raw words and states no `direction` — an unknown
+is withheld, never negated. The drafter reports how many it held back and why.
+
+**Every drop is counted, and the somatic majority is the point of that.** Roughly three quarters of
+CIViC describes tumour tissue no germline genotype can satisfy. A filter whose scope is narrower than
+its name is what this adoption was designed against, so `input_rows == record_count + sum(dropped)` is
+asserted as an equality over a walked registry and every reason lands in `release.json`.
+
+**There is no `--use` flag on `civic build`.** CIViC is CC0 on every axis, so a declared-use gate would
+permit every build unconditionally, and a flag feeding a gate that never gates is a flag that does
+nothing.
+
 
 ## Cache internals — locations, resolver, download
 

@@ -31,7 +31,7 @@ edited as routine work: `docs/history/` (the closed record — the pre-0.6 halve
 files, the round-2 consumer thread, and `ROADMAP_0_7.md`, the 0.7 deferral round closed at that cut),
 `docs/proposals/` (the `PROPOSAL_*` design threads, **all six concluded** — a live one wins over the
 roadmap files until its items land, and `PROPOSAL_0_7` stopped being live when the twelfth landed —
-it gained a dated addendum on 2026-08-31 and is still a record, because that item landed with it), `docs/probes/` (the dogfood and VCF audit rounds), `docs/audit/` (the tier
+it gained **two** dated addenda on 2026-08-31, RM140 and RM152, and is still a record, because both landed inside the same uncut 0.7.0 — the second one also states the rule that a closed proposal is closed against reopening its own decisions, never against recording a new one taken inside the same release), `docs/probes/` (the dogfood and VCF audit rounds), `docs/audit/` (the tier
 references re-derived from the code on 2026-08-18 — **evidence, never contract**; the maintained
 reference is the one in `docs/` root), `docs/vendor/` (two upstream files kept for reference,
 PharmVar's OpenAPI document and its licence text).
@@ -294,6 +294,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - "It moves the digest" does not forbid a row move; the tool picks where, the caller never indexes. `@row-move-allowed`
 - Report a ragged row's field-count mismatch before the type error it explains. `@ragged-csv-row`
 - A drafted value that has not moved is an establishable copy — digest the *checked column*. `@draft-digest`
+- One `match_on` per batch: sameness is decided against a single covered-set, and a mixed one re-adds every lap. `@match-on-is-per-batch`
+- Refute is not reverse: evidence against a claim withholds the axis, it never writes the opposite value. `@refutation-withholds`
 - Authoring has an end: `close` + `VerificationDoc.closure`; `validate` stays read-only. `@closure-phase-boundary`
 - The attestation binds newline-normalized bytes and their normalized `size`; `manifest.inputs[]` stays raw. `@binding-normalizes-newlines`
 - The draft marker is machine-written into `dataset`; a stale one is withdrawn, never re-labelled. `@rm4-dataset-marker`
@@ -345,6 +347,9 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A currency check asks the source, never the cache it was drafted from; and a digest label does not compare against a dated one. `@currency-asks-the-source-not-the-cache`
 - A baseline the same run overwrites is read before the commit, walked by an AST guard, and the finding fires once. `@baseline-is-the-file-the-commit-overwrites`
 - A source's record-id fan-out is a finding: keep every row, count the contested keys, never `mode()` a winner. `@multiplicity-is-a-finding`
+- A source's bulk download and its API are different sources; state the status basis or the counts mean nothing. `@two-surfaces-two-denominators`
+- Score a RefSeq accession for build with the per-chromosome map — the version alone names no build. `@accession-version-names-no-build`
+- A source on an old assembly is placed by the identity it publishes beside the coordinate, never by lifting it. `@published-identity-not-liftover`
 
 ## The design cycle (the order of things)
 

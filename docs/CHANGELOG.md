@@ -44,16 +44,52 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
-**The ten entries dated 2026-08-31 are a batch of their own and are worth reading as one.** They are
+**The eleven entries dated 2026-08-31 are a batch of their own and are worth reading as one.** They are
 the roadmap items that stood open against this release — RM103, RM108, RM110, RM117, RM136, RM137 and
 RM138 — plus RM146 and RM150 from the same day's consumer reports, and RM151, which was filed and
-built the same day as RM117's other half; all taken in one pass so 0.7 cuts with its own backlog
-cleared rather than carrying it. Nine are built; **RM138 is closed with its numbers measured and no
+built the same day as RM117's other half, and RM152, a consumer measurement that arrived carrying
+no release class and acquired one when its probe was finally run; all taken in one pass so 0.7 cuts
+with its own backlog cleared rather than carrying it. Ten are built; **RM138 is closed with its numbers measured and no
 code changed**. Two things a reader should take from them together: `carried` costs
 1.06× gzipped rather than the 1.84× raw the item was filed about, so **serve manifests compressed**;
 and two derived values change — `gene_metrics.constraint_flags` and
 `gene_validity.classifications` — which are **corrections**, so a moved signature there is the fix
 arriving rather than drift.
+
+- **RM152 — CIViC adopted on the axis it can answer, and refused on the one it was proposed for.**
+  *(`just-dna-enricher`; **additive**, and there is **no schema change of any kind** — no column, no
+  table, no vocabulary member. The adoption rides on `direction` and `state`, which have existed since
+  0.3, which is why it lands inside an uncut release without sizing it.)* S84 proposed CIViC as a
+  second `clin_sig` concordance authority; measured, its germline subset carries five ACMG-tier calls
+  and **zero benign-class**, so `discordant` is unsayable and the check would read `single` or
+  `concordant` by construction. The same measurement found 1,458 germline rows on
+  `Predisposition`/`Protectiveness` — the **`direction`** axis — where the `NA` count is 0. So the
+  drafter that was rejected for "rows with an empty significance column" is right on `direction` and
+  wrong only on `clin_sig` (812 `NA`), and that is what shipped.
+  **New `civic build`**: a dated release (`--release 01-Aug-2026`) reduced to one parquet plus
+  `release.json`, byte-reproducible. It reads the **bulk TSVs, not the GraphQL API**, because only the
+  download side is dated — and that surfaces a fact neither surface declares: the TSV is
+  `accepted`-only at 4,903 rows while the API defaults to `NON_REJECTED` at 11,518, so **a count from
+  one is not comparable with a count from the other**. Three inputs are required, because
+  `MolecularProfileSummaries.tsv` is what tells a combination genotype from a dangling reference.
+  **New `draft-panel --source civic`**, writing `direction` and never `clin_sig`; `--clin-sig` is
+  reported inert rather than silently ignored. **New `CIVIC_TERMS`** (CC0 1.0), distinctive not for
+  permitting redistribution — five sources here do — but for asking nothing back.
+  **A `direction`-axis concordance record was refused**, which was RM152's open question: genuine
+  risk-versus-protective opposition is **0** at every scope and status basis, the three contested
+  variants are claim-against-refutation and dissolve under `ACCEPTED`, and **nothing else in the
+  enricher fills `direction`**, so there is no second authority to be concordant with.
+  **Coordinates are GRCh37 or absent, never GRCh38**, and the snapshot survives that by reading the
+  rsID and GRCh38 accession CIViC publishes beside them rather than lifting anything — RM48's rule
+  applied, and better than it hoped, since a published rs-number is an independent value resolution
+  can cross-examine. The residue is RM153. **A refutation is kept with its direction withheld**:
+  "does not support predisposition" removes a claim without establishing its opposite.
+  **One fix in shared code, found by dogfooding rather than review** — `append_partial_rows` built its
+  covered-set from `partials[0].match_on` while comparing each row against its own, so a mixed-arity
+  batch re-added rows on **every lap**: invisible on a first run, a file that grows thereafter.
+  Providers now pass one constant tuple and a mixed batch is refused.
+  Measurements in [CIVIC_SURVEY.md](probes/CIVIC_SURVEY.md); the decision is the RM152 addendum in
+  [PROPOSAL_0_7](proposals/PROPOSAL_0_7.md).
 
 - **RM146 — every authored column now says which release it appeared in.**
   *(`just-dna-format`; **additive** — a marker on each field declaration. No column, no parquet, no
@@ -3045,6 +3081,7 @@ still Principles 3 and 8, decided first — but it retires the instinct that the
 which was right about some additions and wrong about others with no stated way to tell which. Its first
 consequence is written into SCHEMAS.md: `resolution.csv` is a build-time artifact with exactly two
 consumers and **gets no parquet, deliberately**.
+
 
 ### What a module author will notice
 

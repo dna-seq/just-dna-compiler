@@ -7306,7 +7306,7 @@ that, and the follow-up probe moved the number.
 
 ## S84 — CIViC is a source of the same kind as PubMind, and its germline quarter is the only part that reaches a VCF
 
-**Status — accepted as a measurement, filed as [RM152](ROADMAP.md#rm152--civic-is-a-source-of-the-same-kind-and-its-germline-quarter-has-almost-nothing-to-say-in-the-vocabulary-we-would-ask-it); neither candidate adoption survived, and the one you preferred is the one that dies.**
+**Status — accepted as a measurement, filed as [RM152](ROADMAP_HISTORY.md#rm152--civics-germline-quarter-says-almost-nothing-on-the-axis-we-asked-it-and-a-great-deal-on-the-one-next-to-it); neither candidate adoption survived, and the one you preferred is the one that dies.**
 Every number reproduced against `civicdb.org/api/graphql` on 2026-08-31, including the 412 you got by
 subtraction — queried individually it is `UNKNOWN` 374, `COMBINED` 20, `MIXED` 18, and the seven
 buckets sum to 11,518 exactly, so the enum partitions cleanly and germline is 3,103, 26.9 %. You are

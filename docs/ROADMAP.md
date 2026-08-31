@@ -178,20 +178,27 @@ Two consequences worth stating outright:
 
 # Active items
 
-**One, and it is a decision rather than a shape** (the count is the `## RMn` sections below — it read
-"four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a
-decision* through the three that are, then *three* for the hour it took a fourth to be filed under
-it, then *two* until RM151 shipped, which is why the paragraph under it says to count off the sections
-rather than off this sentence). It is **RM152**, from a 2026-08-31 consumer measurement, carrying its
-candidate repairs and why each one fails. **It deliberately carries no release-class token**: both of
-its candidate adoptions were refuted by the measurement in it, so there is no repair for a class to
-describe, and the counters below are meant to pass over it rather than count it as work awaiting a
-release — which means this section reads as **no work awaiting a release**, correctly.
+**One, and it is a residue rather than a proposal** (the count is the `## RMn` sections below — it
+read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is
+a decision* through the three that are, then *three* for the hour it took a fourth to be filed under
+it, then *two* until RM151 shipped, then *one* naming RM152 until RM152 itself shipped and left this
+file, which is why the paragraph under it says to count off the sections rather than off this
+sentence). It is **RM153**, and it carries `a minor, release undecided` — the first token this section
+has held since the 2026-08-21 round emptied it.
+
+RM152, which stood here carrying no release class on the grounds that both its candidate adoptions had
+been refuted, **acquired one and shipped inside the uncut 0.7.0** on 2026-08-31: the probe it named was
+run, both refutations held, and a third route nobody had proposed turned out to be buildable with no
+schema change. Its entry is in [ROADMAP_HISTORY](ROADMAP_HISTORY.md) and its measurements are in
+[CIVIC_SURVEY](probes/CIVIC_SURVEY.md). That sequence is worth keeping: *no release class* was the
+correct state for an item whose repairs had all failed, and the thing that changed it was a
+measurement, not an argument.
 RM151, filed on 2026-08-31 the same day RM117's other half shipped, was built the same day and is in
 [ROADMAP_HISTORY](ROADMAP_HISTORY.md). Both items the RM124 wave-1 audit filed — RM136 and RM137 —
 shipped on 2026-08-31, and so did RM117's observability half and RM146; RM138 was closed the same day
 with its numbers measured. RM110, RM103's manifest half and RM108 were three more settled ones and all
 three shipped on 2026-08-31.
+
 **Count them off the sections, not off the sentence**: this line said *three* for as long as it took
 to notice that a narrowed item is still an item, *not one of them is a decision* for as long as it
 took three decisions to be filed beneath it, and *two* while one of the two was already built — the
@@ -279,102 +286,64 @@ same commit.
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
-## RM152 — CIViC is a source of the same kind, and its germline quarter has almost nothing to say in the vocabulary we would ask it
+## RM153 — the identity CIViC does not publish, and the liftover question reopened and re-closed on the number
 
-**Severity** low-medium · **Status** open — **and deliberately carrying no release class**: both
-candidate adoptions were refuted by the measurement in this item, so there is no repair for a class to
-describe, and the threshold counters are meant to pass over it · **Owner** enricher · **Motivating
-case** [S84](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator), 2026-08-31
+**Severity** low-medium · **Status** open — **a minor, release undecided**; the residue RM152's build
+left, and the reopening the maintainer asked for, which the measurement answers against itself ·
+**Owner** enricher · **Motivating case** measured while building RM152, 2026-08-31
 
-> **Reconstructed on 2026-08-31 after this section was destroyed by a concurrent session's edit**
-> (the 0.7 batch lifting RM146 out of this file removed everything to the next heading, and this
-> section had been written into that span minutes earlier). Rebuilt from the two records that
-> survived — the `Sn` reply in CONSUMER_SUGGESTIONS_HISTORY and this item's RM_TOC row — and from
-> nothing else. Every number below appears in one of those; **the prose is a reconstruction and the
-> measurements are not**. If the original carried reasoning neither record kept, it is lost, and this
-> note is here so a reader knows to suspect that rather than assume completeness.
+CIViC's coordinates are GRCh37 or absent and never GRCh38, and the snapshot handles that by reading
+the identity the source publishes beside them — an rsID, or a GRCh38 RefSeq accession inside ClinVar's
+HGVS. What is left over is the class that carries neither. Over the dated `01-Aug-2026` release, the
+germline direction set is 533 evidence rows on 290 variants, of which **159 are reachable and 131 are
+not** — and **235 of the 290 carry a ClinGen `allele_registry_id`**, which the snapshot keeps for
+exactly this reason.
 
-CIViC (`civicdb.org/api/graphql`, CC0 1.0, no key) scores as a **source** on the same criteria
-[PUBMIND_ASSESSMENT.md](PUBMIND_ASSESSMENT.md) used, and the reporter is right that adopting one needs
-**no schema change**: `concordance.py` keys `authority: str`, and RM134's two five-member vocabularies
-were stress-tested to hold at any number of authorities. Legality was never the obstacle and CC0 makes
-the licence row trivial.
+### The liftover reopening, and why it closes again
 
-### The whole report reproduced, and then the follow-up probe moved the number
+The maintainer asked for the liftover item to be reopened *with new balance weights*, on the reasonable
+ground that RM48 priced its refusal against "one authoring convenience" and a real blocked source is a
+different weight. Reopened, and the weights moved — but they moved **against** liftover, not for it:
 
-Every figure in the report reproduced, including the 412 the reporter obtained by subtraction —
-queried individually it is `UNKNOWN` 374, `COMBINED` 20, `MIXED` 18. The seven `VariantOrigin` buckets
-sum to 11,518 exactly, so the enum partitions cleanly and germline is **3,103, 26.9%**.
+| | At RM48's refusal (2026-08-13) | Now |
+|---|---|---|
+| Benefit | a hypothetical author with hg19 tables | a real CC0 source with 533 germline direction rows |
+| Caller | none; RM68's unblock condition was *"a real author with a non-GRCh38 module"* | **131 variants**, and only after every published identifier has been tried |
+| Hazard | a lifted coordinate is the row's sole identity with nothing to check it against | **unchanged** |
+| Cost | *"a chain file … the whole snapshot apparatus"* | already falsified by RM48 itself |
 
-**27% is not the operative denominator, and the operative one is 5.** Of the 3,103 germline items, the
-ACMG five-tier — the only members `VALID_CLIN_SIG` can receive — covers 599, and **594 of those are
-`UNCERTAIN_SIGNIFICANCE`**. That leaves 4 `PATHOGENIC`, 1 `LIKELY_PATHOGENIC`, and **zero benign-class
-calls of any kind**; the largest single germline significance is `NA` at 812.
+RM48's own text leaves exactly one door open — *"liftover survives only as the fallback for a locus
+with no rsID at all, where it must announce itself"* — and the measurement sized that fallback rather
+than arguing about it. It is 131 variants, of which 235-of-290 minus the reachable set could instead be
+recovered through an identifier CIViC already publishes. **So the reopening concludes that liftover
+stays refused, and the item that replaces it is an identity pass, not a conversion.**
 
-**Scoped over both tables rather than one** (`@probe-names-the-table`): `assertions` takes no
-`variantOrigin` filter, so all 296 were paged and split per record — 275 `SOMATIC`, **6 germline**, 5
-pathogenic-class, 1 uncertain, none benign-class, none `COMMON_GERMLINE`. The finding is as wide as
-`evidenceItems` **and** `assertions`, and no wider.
+That is the useful outcome of a reopening: not a reversal, but a number where an assumption was.
 
-### That kills the concordance candidate, which was the preferred one
+### The open question, which is not about liftover at all
 
-The clin_sig concordance check's entire product is **opposition** — a pathogenic-class call set against
-a benign-class one — and `concordance.py` states in terms that an uncertain call opposes nothing. An
-authority carrying 5 calls in one camp and 0 in the other cannot make `discordant` sayable about
-anything; it would join and read `single` or `concordant` by construction. The reporter's *"3,103 items
-is too few to draft from and plenty to disagree with"* is exactly half right, and the wrong half is the
-one the preference rests on: the disagreeing quantity is 5. Their argument against the drafter stands
-and measures worse than they knew.
+**Should the enricher resolve a ClinGen `allele_registry_id` to a GRCh38 locus?** A CAID is
+build-independent by construction, so this would recover most of the 131 without lifting anything, and
+it produces the independent second value `resolution._verify` cross-examines — the same property that
+makes an rsID acceptable and a lifted coordinate not.
 
-### The other two repairs rejected, restored alongside the charter half
+What it costs, and none of it is decided:
 
-The concordance candidate has its own section above. These two were in the destroyed original and are
-back from the `Sn` reply and the probe record; **the charter half below referred to the second of
-them**, which is how the loss was noticed — a restored paragraph citing a bullet that no longer existed.
+- **A new source.** ClinGen's Allele Registry is a fetch this tier does not currently make, so it wants
+  a `SourceTerms` row, a cache, and a place in the resolver chain. `CLINGEN_TERMS` already exists for a
+  different ClinGen surface, and whether the registry is the same licence position is unchecked.
+- **Which layer it belongs in.** Resolving an identifier to a locus is `resolution.csv`'s job, and
+  `authority` is the column that records who answered — so this may be a resolver rather than anything
+  CIViC-specific, in which case it serves every future source with the same problem.
+- **Whether a snapshot may carry it at all.** The CIViC snapshot is built offline from a dated release;
+  a build that resolved CAIDs would fetch, which changes what `civic build` is. The alternative is a
+  pass at `enrich` time, which keeps the snapshot reproducible and is probably right.
 
-- **`draft_from_civic` beside `draft_from_clinvar`.** The reporter argues against their own first
-  instinct and is right; measured, it is worse than they knew. Their objection was the **silent 73 %
-  somatic drop** — a filter whose scope is narrower than its name, and the reason a drafter's excluded
-  count belongs in its result and not in its docstring. Underneath it, the germline remainder that
-  survives the filter is a further quarter unclassified (`NA`, 812), so the drafter would carry the
-  count it excluded *and* still write rows whose significance column is empty.
-- **Filing it as a non-issue and closing.** Refused. The measurement that defeats both adoptions also
-  locates **1,458 germline rows** (`PREDISPOSITION` 1,456 + `PROTECTIVENESS` 2) on an axis nobody has
-  asked CIViC about, and closing would bury that with them. A source can be legal, licensed and
-  well-provenanced and still bring 5 usable calls; that is a result worth keeping, not a non-event.
+**Not blocked on RM15.** RM68 records that build-agnostic identity *dissolves* the liftover premise,
+which is the strongest argument for leaving a liftover unbuilt — and it is not an argument against
+this, because reading a build-independent identifier is what RM15 would make general rather than
+something RM15 would have to undo.
 
-### What survives is real, and it is one axis over from where the report aimed
-
-By evidence type the germline subset is **2,867 of 3,103 `PREDISPOSING`**; by significance,
-`PREDISPOSITION` 1,456 + `PROTECTIVENESS` 2. That is our **`direction`** axis (`risk`/`protective`),
-not `clin_sig`. The reporter's instinct to connect this to S83 was sound and lands there:
-`PREDISPOSITION` × `DOES_NOT_SUPPORT` is **4 items**, precisely the reading `contested` was added for
-when RM150 shipped on 2026-08-31, hours before the report arrived.
-
-But there is no `direction`-axis concordance check to add an authority to — the RM130/RM134 machinery
-is clin_sig-only end to end. **So the open question this item carries is *does `direction` warrant the
-apparatus `clin_sig` has*, not *adopt CIViC*.** It is filed with no release class on purpose: an item
-with no repair has none to state.
-
-### The charter half, which the reconstruction could not recover from either record
-
-Restored on 2026-08-31 from the `Sn` reply, which is the only place it survived. It is a Step 1
-first-hand Constitution reading rather than a nicety, and it is here so the question is not re-argued
-from the report's framing.
-
-The report reasons from *"this ecosystem annotates germline genotypes from a VCF"* as though it were a
-charter rule. **It is not** — the Constitution says nothing about germline. The somatic/germline split
-is a *fitness* argument about what a consumer's genotype can satisfy, which is the right argument and
-needs no charter standing to work; treating it as a principle would invent a scope rule nobody adopted.
-What the charter does settle is the half the report raised by analogy: recording what an authority
-*said* catalogs a curated annotation rather than inferring a gene–disease relation, so CIViC is legal
-to consume for exactly the reason ClinVar and PubMind are. **The bar it fails is quantitative, not
-constitutional** — which is also why the entry above rejects closing it as a non-issue: a source can be
-legal, licensed, well-provenanced and still bring 5 usable calls.
-
-**One guard on the status line above.** Its missing release-class token is deliberate and is not an
-omission to tidy up: do not add one without a repair to attach it to. The counters exist to ask whether
-a release should start, and an item with no repair is not work awaiting one.
 
 # Not format scope
 

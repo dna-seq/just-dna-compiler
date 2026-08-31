@@ -44,6 +44,95 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM152 — CIViC's germline quarter says almost nothing on the axis we asked it, and a great deal on the one next to it
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-enricher`; additive — a new snapshot
+builder, a new drafting source, one licence row, and no schema change of any kind).
+**Severity** low-medium · **Owner** enricher · **Motivating case**
+[S84](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator), 2026-08-31
+
+**The item was filed carrying no release class**, because both adoptions S84 proposed had been refuted
+by measurement and an item with no repair has none to state. It acquired one when the probe it named
+was finally run: the refutations stood, and a third route nobody had proposed turned out to be
+buildable. The full measurement record is [CIVIC_SURVEY.md](probes/CIVIC_SURVEY.md), which is evidence
+and not contract.
+
+### What was measured, and by whom
+
+S84 reported the germline split and declined to claim the follow-up probe. The reply named it —
+`SUPPORTS`/`DOES_NOT_SUPPORT` × `PREDISPOSITION`/`PROTECTIVENESS` against `VALID_DIRECTIONS`, over a
+corpus that can say how much it reaches — and it was run on 2026-08-31. Every figure in the item
+reproduced, including the 412 obtained by subtraction. Four things it did not know:
+
+1. **The contested count was wrong in both directions.** The item read `PREDISPOSITION` ×
+   `DOES_NOT_SUPPORT` as "4 items, precisely the reading `contested` was added for". Grouped by
+   molecular profile it is 1; grouped by **variant**, which is the granularity identity uses, it is
+   **3**, because a two-variant profile's refuting row propagates to both members while each carries
+   supporting evidence on its own profile. Two of the original four are lone refutations, which
+   `contested` does not describe. **Genuine opposition — a risk call against a protective one — is 0**,
+   at every scope probed and under every status basis.
+2. **Widening the scope changes nothing.** All 620 variants re-swept with no origin, significance or
+   status filter: 2,811 items, 11 newly camp-bearing, every one `SUPPORTS` on a variant already
+   carrying risk, **0 new contested variants**.
+3. **The assertions table cannot carry the axis at all.** Not thinly — *structurally*.
+   `AssertionSignificance` is a different 16-member enum that does not contain `PREDISPOSITION` or
+   `PROTECTIVENESS`, so filtering by them is a GraphQL type error rather than an empty result. No
+   CIViC assertion can ever hold a direction call, however the database grows.
+4. **The number everything quotes has an undeclared denominator.** Both connections default to
+   `status: NON_REJECTED`, so the 11,518 in the item and the report is that basis; `ACCEPTED` is 4,904.
+   The bulk TSV release is `accepted`-only at 4,903 rows. Two published surfaces of one source, 2.35×
+   apart, neither declaring it.
+
+### What shipped
+
+- **`civic build`** — a dated release reduced to one parquet plus `release.json`, byte-reproducible.
+  It reads the **bulk TSVs**, not the API, because only the download side has dated releases and a
+  snapshot that cannot name its input cannot be reproduced; `release.json` records the `accepted`
+  basis so a count from it is never compared with one from the API. Three input files, because
+  `MolecularProfileSummaries.tsv` is what tells a combination genotype from a dangling reference.
+- **`draft-panel --source civic`** — writes `direction`, never `clin_sig`, reading the snapshot.
+- **`CIVIC_TERMS`** — CC0 1.0, permissive on all three axes.
+- **A defect in shared drafting code**, found by dogfooding rather than by review: `append_partial_rows`
+  built its covered-set from `partials[0].match_on` while comparing each row against its own, so a
+  batch of mixed arity re-added rows on every lap. Fixed at the provider and guarded at the helper.
+
+### Repairs rejected
+
+- **CIViC as a concordance authority.** S84's preferred candidate, refuted before this round and
+  confirmed by it: five germline ACMG-tier calls, **zero** benign-class, so `discordant` is unsayable.
+- **A `direction`-axis concordance apparatus.** The open question the item carried, and the answer is
+  no. Genuine opposition is 0; the 3 contested variants are claim-against-refutation, all three
+  dissolve under `ACCEPTED`, and nothing else in the enricher fills `direction` — `clinvar_draft`'s
+  fold targets `state`, the legacy axis, and `@axes-passthrough` bars crossing them. A concordance
+  record needs two authorities and this axis has one.
+- **`draft_from_civic` on the `clin_sig` axis.** Still refused, and the surviving half of the item's
+  own objection is the silent somatic drop — now a counted drop rather than a filter. The half that
+  did **not** survive is "it would write rows with an empty significance column": true of `clin_sig`
+  at 812 `NA`, and false of `direction`, where `NA` is 0 of 1,458. The rejection had been measured on
+  the axis the report aimed at rather than the one the item itself identified as surviving.
+- **Liftover, to reach the GRCh37 coordinates.** Reopened on the maintainer's instruction and closed
+  again on the number — see [RM153](ROADMAP.md#rm153--the-identity-civic-does-not-publish-and-the-liftover-question-reopened-and-re-closed-on-the-number).
+- **Reading "does not support predisposition" as `protective`.** A refutation removes a claim without
+  establishing its opposite. The row is kept, the axis value withheld, and the count reported.
+
+### Charter check
+
+P1 — a snapshot is data and a drafted row is an ordinary authored row; no predicate language. P2 — all
+of it in the enricher, the only tier permitted to fetch; the compile path imports none of it. P3/P8 —
+**no schema change at all**: no new column, no new table, no vocabulary member, nothing demoted or
+retyped, no published module invalidated. The whole adoption rides on `direction` and `state`, which
+have existed since 0.3. P5 — `direction` and `clin_sig` stay separate axes, which is the entire finding.
+P7 — a rebuild is byte-identical and a re-draft is a no-op, both pinned. P9 — the snapshot is the free
+layer and the drafter writes only authored columns that already exist, so the authored surface is
+priced at zero.
+
+### What it measured
+
+Over the `01-Aug-2026` release: 4,878 evidence rows in, 329 kept on 133 variants; dropped
+`non_germline_origin` 4,067, `not_direction_axis` 278, `unresolvable_identity` 204, and the two
+structural reasons 0 each. Identity: `rsid` 305, `both` 17, `grch38_hgvs` 7. Drafted into an empty
+spec: 110 variant rows and 311 study rows, every study row carrying a real PMID.
+
 ## RM146 — every authored column now says which release it appeared in
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format`; **additive** — a marker on each

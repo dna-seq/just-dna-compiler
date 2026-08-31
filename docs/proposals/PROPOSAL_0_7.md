@@ -35,12 +35,24 @@ additive under Principles 3 and 8, and legality stopped nothing this round.
 *a minor, release undecided*. **Eleven build and one closes into another** — RM83, whose premise stopped
 holding. The succession filed alongside them is RM135 and is not one of the twelve.
 
-**One item was decided after the round closed, and it is [an addendum](#addendum--rm140-decided-2026-08-31-after-the-round-closed)
-rather than a thirteenth.** RM140 arrived on 2026-08-31 as a consumer report (S75) against a `0.7.0`
-that was bumped and not yet cut, so it ships inside the same number. It is recorded here, in this
-file's idiom, because a decision of the same shape as the twelve belongs beside them rather than in a
-thread of its own — and it is dated and set apart because the round itself is closed and the count
-above is a fact about that round. Every "twelve" in this document means the 2026-08-27/28 round.
+**Two items were decided after the round closed, and both are addenda rather than a thirteenth and a
+fourteenth** — [RM140](#addendum--rm140-decided-2026-08-31-after-the-round-closed) and
+[RM152](#addendum--rm152-decided-2026-08-31-after-the-round-closed). Each arrived on 2026-08-31 against
+a `0.7.0` that was bumped and not yet cut, so each ships inside the same number. They are recorded
+here, in this file's idiom, because a decision of the same shape as the twelve belongs beside them
+rather than in a thread of its own — and they are dated and set apart because the round itself is
+closed and the count above is a fact about that round. Every "twelve" in this document means the
+2026-08-27/28 round.
+
+**And the practice itself was reviewed when the second one arrived, because a closed file had started
+to read as a closed door.** The maintainer's objection, recorded because it outlives this item: while
+the release is an open construction site — three `pyproject.toml` files at `0.7.0`, last tag `v0.6.6` —
+anything landing in it is to be decided *here*, and a deferral to the next minor is a case-by-case
+call rather than the default a concluded document quietly imposes. Otherwise unblocked minor work
+accumulates deferrals for a reason that is bookkeeping rather than design. **The rule, stated once:
+a proposal file is closed against re-opening its own decisions, never against recording a new one
+taken inside the same uncut release.** An addendum is how that is written down, and there may be as
+many as the release earns.
 
 **RM134 was pulled in on 2026-08-28, after the other eleven were decided**, and it is the largest single
 piece of work here. It also reaches back into two of them: its concordance machinery supersedes RM130's
@@ -1352,6 +1364,122 @@ that still reports.
 
 ---
 
+# Addendum — RM152, decided 2026-08-31 after the round closed
+
+**Severity** low-medium · **Owner** enricher · **Entry**
+[ROADMAP_HISTORY.md § RM152](../ROADMAP_HISTORY.md#rm152--civics-germline-quarter-says-almost-nothing-on-the-axis-we-asked-it-and-a-great-deal-on-the-one-next-to-it) ·
+**Evidence** [CIVIC_SURVEY.md](../probes/CIVIC_SURVEY.md), which stays the measurement document ·
+**Motivating case** S84 (just-module-creator), 2026-08-31
+
+**Not one of the twelve, and not a reopening of RM134.** It arrived as a consumer measurement against
+the same uncut `0.7.0` that RM140 landed inside, and it is here for the reason RM140 is: its shape is
+this document's shape — a candidate refused on evidence, a second candidate refused on *better*
+evidence, and a third route nobody proposed that turned out to cost nothing. What makes it worth
+reading beside the twelve rather than only in ROADMAP_HISTORY is that it is the first item in this line
+where **a measurement, not an argument, changed the release class** — it was filed deliberately
+carrying none.
+
+## The problem
+
+RM134 shipped an N-authority `clin_sig` concordance record whose two vocabularies were stress-tested
+to hold at five authorities — **synthetically**. No real third authority had ever been run through it.
+S84 proposed CIViC as that authority and RM152 refused it on arithmetic: of CIViC's 3,103 germline
+evidence items the ACMG five-tier covers 599, **594 of them uncertain**, leaving four pathogenic, one
+likely-pathogenic and **zero benign-class**. The check's entire product is opposition, and an authority
+with five calls in one camp and none in the other cannot make `discordant` sayable.
+
+RM152 then left one question open — *does `direction` warrant the apparatus `clin_sig` has?* — and
+named the probe that would answer it, noting the reporter had declined to claim it.
+
+## Facts established while deciding it
+
+The probe was run. All of RM152's figures reproduced; four things it did not know did not survive.
+
+1. **Its own contested number was wrong in both directions.** Grouped by molecular profile the count is
+   1, and that grouping is the mistake — a profile may name several variants and a variant sit in
+   several profiles, so a two-variant profile's refuting row propagates to both members while each
+   carries supporting evidence on its own. At **variant** granularity, which is what identity uses, it
+   is **3**. Two of the original four are lone refutations, which `contested` does not describe. And
+   **genuine opposition — risk against protective — is 0**, at every scope and under every status basis.
+2. **Widening past the germline origin filter adds nothing.** All 620 variants re-swept unfiltered:
+   2,811 items, 11 newly camp-bearing, all `SUPPORTS` on variants already carrying risk, **0** new
+   contested.
+3. **The `assertions` table is structurally incapable of the axis.** `AssertionSignificance` is a
+   different 16-member enum without `PREDISPOSITION` or `PROTECTIVENESS`, so filtering by them is a
+   GraphQL type error, not an empty result. This is stronger than a count: no assertion can ever hold
+   a direction call, however the database grows.
+4. **The denominator every record quotes was never declared.** Both connections default to
+   `status: NON_REJECTED`; `ACCEPTED` is 4,904 of 11,518, and the dated bulk TSV is `accepted`-only at
+   4,903 rows. Two published surfaces of one source, 2.35× apart, neither saying so.
+
+And one nobody was looking for: **CIViC publishes no GRCh38 coordinates** — 2,189 GRCh37, 2,433 with no
+build, two GRCh38. That reads as fatal for a GRCh38-only format and is not, because coordinates are not
+the only identity in the file.
+
+## The decision
+
+**Refuse the apparatus; build the source anyway, on the axis that survives.**
+
+- **No `direction`-axis concordance record.** Opposition is 0, the three contested variants are
+  claim-against-refutation and all three dissolve under `ACCEPTED`, and the one real case is
+  *intra*-authority — which `(variant_key, genotype, authority)` cannot represent as a disagreement
+  and `fold_authority_records` already collapses on the sibling axis. Decisively: **nothing in the
+  enricher fills `direction` at all** (swept). `clinvar_draft`'s fold targets `state`, the legacy axis,
+  and `@axes-passthrough` bars crossing them; `VALID_EFFECT_DIRECTIONS` is a deliberately separate axis.
+  A concordance record needs two authorities and this one has one.
+- **`civic build`** — a dated release reduced to one parquet plus `release.json`, byte-reproducible.
+  The **bulk TSVs, not the API**, because only the download side has dated releases and a snapshot that
+  cannot name its input cannot be reproduced; the `accepted` basis is recorded so a count from it is
+  never silently compared with one from the API.
+- **`draft-panel --source civic`**, writing `direction` and never `clin_sig`.
+- **Identity from what CIViC publishes** — an rsID, or a GRCh38 accession inside ClinVar's HGVS — and
+  never a liftover. This is RM48's rule applied rather than circumvented, and better than RM48 hoped:
+  a published rs-number is an independent value ordinary resolution cross-examines, where a *recovered*
+  one would have resolution verify Ensembl against Ensembl.
+- **A refutation is kept and its direction withheld.** "Does not support predisposition" removes a
+  claim without establishing its opposite; `None` is never `False`.
+
+## Repairs rejected
+
+- **CIViC as a `clin_sig` concordance authority.** S84's own preference, and the one the arithmetic
+  kills. Unchanged by this round.
+- **A `direction`-axis concordance apparatus.** The open question, answered no — above.
+- **Closing the item as a non-issue.** Refused before this round on the grounds that 1,458 germline
+  rows sit on an axis nobody had asked CIViC about. That refusal is now vindicated rather than merely
+  argued: those rows are what shipped.
+- **`draft_from_civic` on `clin_sig`.** Still refused; the silent somatic drop is now a counted drop.
+  But **half its stated reason did not survive** — "it would write rows with an empty significance
+  column" is true of `clin_sig` (812 `NA`) and false of `direction` (0 of 1,458). The rejection had been
+  measured on the axis the report aimed at, not the one RM152 itself named as surviving.
+- **Liftover.** Reopened at the maintainer's instruction with new balance weights, and the weights moved
+  *against* it: the fallback branch RM48 left open is 131 variants, most recoverable through a ClinGen
+  CAID without lifting anything, while the hazard is unchanged. Filed as
+  [RM153](../ROADMAP.md#rm153--the-identity-civic-does-not-publish-and-the-liftover-question-reopened-and-re-closed-on-the-number).
+- **Resolving CAIDs inside `civic build`.** A build that fetched would forfeit the offline
+  reproducibility that is the whole reason it reads a dated file. RM153 carries it as an `enrich`-time
+  question instead.
+
+## Charter check
+
+P1 — a snapshot is data and a drafted row is an ordinary authored row; no predicate language, no code
+in a cell. P2 — all of it in the enricher, the only tier permitted to fetch; the compile path imports
+none of it. P3/P8 — **no schema change of any kind**: no column, no table, no vocabulary member,
+nothing demoted or retyped, no published module invalidated. The entire adoption rides on `direction`
+and `state`, which have existed since 0.3, which is also why it could land inside an uncut release
+without sizing it. P5 — `direction` and `clin_sig` stay separate axes, which is not incidental here but
+the whole finding: the source is useless on one and substantial on the other. P6 — no vocabulary was
+added; the measurement is the argument for *not* adding one. P7 — a rebuild is byte-identical and a
+re-draft is a no-op, both pinned. P9 — the snapshot is the free layer and the drafter writes only
+authored columns that already exist, so the authored surface is priced at zero.
+
+**One thing this round did that the twelve did not**: dogfooding the new provider found a defect in
+shared drafting code — `append_partial_rows` built its covered-set from `partials[0].match_on` while
+comparing each row against its own, so a mixed-arity batch re-added rows on every lap. Invisible on a
+first run, and it grows a file by the same rows each time thereafter. Turning the tool on the work just
+done is what found it, which is the standing rule and not a lucky catch.
+
+---
+
 # Filed by this round
 
 Two items the decisions above created. Neither is 0.7 work.
@@ -1424,6 +1552,7 @@ touch, and its release gate is the only piece that lands outside the packages.
 | I | RM133 — the registry-owned key and the constant | format |
 | J | **RM134** — `pubmind build`/`publish`, the shared normalizer fix, the N-authority check, `--source pubmind`, the hint | enricher (+ format for the precedence field) |
 | K | **RM140** — `StudyRow.statistical_test` + the analysis-aware dedup check (the addendum; not one of the twelve) | format, compiler |
+| L | **RM152** — `civic build`, `draft-panel --source civic`, `CIVIC_TERMS` (the second addendum; not one of the twelve) | enricher |
 
 **B before B1 and B2**, by construction. **C before B1**, because `enrich --rederive` composes with the
 transaction rather than reimplementing staging. **D before the suppression finding lands**, which is
@@ -1436,6 +1565,11 @@ table with ClinVar as its only authority, then add the second. **G before J's se
 new checks inside D's audit**, not after it, since they are emission sites like any other. **A before or
 with J**, because J's checks are what make RM126's warnings axis load-bearing; landing them first means
 retrofitting the release's declaration.
+
+**L is independent of every other lane and was built last**, on 2026-08-31 — it adds two enricher
+modules and one licence row, touches no schema and no compiler path, and the only shared file it edits
+is `draft.py`, where it fixed a defect its own dogfooding exposed. It is in this table for the reason K
+is: a reader asking *what was built inside 0.7.0* should find all of it in one place.
 
 **K is independent of every other lane and was built after them**, on 2026-08-31 — it touches
 `StudyRow` and one function in `compiler.py` that no other lane goes near, and it is sequenced only by
