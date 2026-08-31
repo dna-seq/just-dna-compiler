@@ -165,13 +165,14 @@ biology is not something a compiler can say. The test greps the message for adju
 that the correction is wrong*, which grades the author's row while claiming not to. The published
 sentence says the disagreement ended and the row can be retired.
 
-### The second signal is filed rather than built
+### The second signal was filed rather than built, and shipped the same day
 
 *A record whose row's value has changed again* needs the archive's value **now** against its value at
 record time, so it needs a fetch — enricher work, with the offline/no-snapshot/nobody-asked ladder
-every network check here carries. It is **RM151**, and it is more tractable than this entry assumed:
-`clin_sig_authority_calls.csv` records each authority's call, its verbatim wording and its release, so
-the baseline exists — for the concordance pair alone, which is the scope RM151 has to state.
+every network check here carries. It is **RM151**, and it turned out more tractable than this entry
+assumed: `clin_sig_authority_calls.csv` records each authority's call, its verbatim wording and its
+release, so the baseline exists — for the concordance pair alone, which is the scope RM151 states. It
+is below, shipped inside the same uncut 0.7.0.
 
 ### Scope
 
@@ -179,6 +180,88 @@ One table, because one table's absence has a single reading. Every other overrid
 update is ambiguous and takes RM137's split; `VINDICATING_OVERLAY_TABLE` names the exception, and the
 routing is a `continue` rather than a reachability predicate, since the generic classifier's two
 readings are exactly what must not be printed here.
+
+## RM151 — the second vindication signal, and the baseline is the file the same run overwrites
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-enricher`). **Severity** low-medium ·
+**Owner** enricher · **Motivating case** [S52](CONSUMER_SUGGESTIONS_HISTORY.md)
+(just-module-creator), RM117's second signal
+
+RM117 shipped the signal that a subject has **left** the concordance record. This is the other one: an
+`overrides.csv` row answering a contested subject is a judgement written *about a particular
+disagreement* — the archive said X, the author says Y, and `reason` explains why — and if the archive
+later says Z, that reason was written about a value that is no longer there. Nothing distinguished a
+justification that still describes the disagreement on file from one that describes a disagreement
+since replaced by a different one.
+
+### The baseline exists, and it is exactly one file
+
+RM117 said a record "is not bound to the value it justifies", and for the concordance pair that is no
+longer quite true. `clin_sig_authority_calls.csv` records what each authority actually said —
+`clin_sig`, the verbatim `clin_sig_raw`, and the `dataset` release it came from, keyed
+`(variant_key, genotype, authority)` — so recorded-call against fresh-call is available here and
+nowhere else in this format.
+
+**Scoped to that table, and the finding says so in its own text** (`@probe-names-the-table`). An
+overlay row against `frequencies.csv` or `resolution.csv` has no recorded prior value at all, so a
+general *the value moved* check would be answerable for one table and silently absent for every other
+— an unscoped negative becoming a permanent false constraint.
+
+### The ordering is the feature, and it is guarded where a refactor would break it
+
+`write_concordance_tables` replaces the record whole, so the previous run's rows exist only until this
+run commits. The comparison is therefore computed in the staging phase, above the commit — which
+`enrich()` already does for every product of a run, for the unrelated reason that a refused `strict`
+run must change nothing. No assertion over a return value can see statement order, so the test walks
+the AST and asserts the read's line precedes the write's, in the same enclosing function. The guard
+was demonstrated to fail on a source copy with the two swapped before it was kept.
+
+### A move is observable exactly once, and that is the honest shape
+
+The run that notices also rewrites the baseline; the next run compares against the new one and is
+silent. Persisting it needs the overlay row **bound** to the value it justifies — a column on
+`overrides.csv` recording what the answer was written against — and that is a schema change to the
+authored surface, a minor rather than a patch, and precisely the binding RM117's three objections all
+turned on missing. **None of those objections is an objection to noticing that the value moved**, which
+is why this ships as an observation and the binding stays unbuilt. Decided per item with the maintainer.
+
+### Three states, and the third is the whole point
+
+Unchanged is `recorded` on both sides with the same classification, `dataset` moved or not: a
+re-released archive saying the same thing has not moved the disagreement. A **shift** is a changed
+classification, or `recorded → no_record` and back — asked both times, and the answer differs.
+Everything else is **withheld**, `no_prior_record` or `unchecked_now`, and reported as an info note.
+Neither withheld state ever reads as *nothing moved*: telling an author their reasoning still stands on
+evidence nobody looked at is the one way this check does real harm, and it is what the tests spend
+their weight on.
+
+**A move this tier's own normalizer made is reported apart from the archive's.** Same verbatim
+`clin_sig_raw`, different normalized member, means `clin_sig.py` changed rather than ClinVar — a fact
+about our code with nothing for an author to do. Folding it in would accuse a source of a change we
+made.
+
+### What counts as an answer, and why it is the opposite rule from RM136's
+
+**Any overlay row naming the subject** — every operation, every field. What goes stale is the `reason`,
+which the model makes mandatory on every row whatever the row does, so a per-field rule would have to
+name a column the reason does not live in. RM136's `overlay_answers` is per field for the opposite
+direction: it decides whether a finding may be **silenced**, and anything looser silences findings the
+author never looked at. A finding raised too widely costs a reader one line; one silenced too widely
+costs them the finding. `licensing.overlay_answered_subjects` is the second reader, beside rather than
+inside the first.
+
+### The boundary with RM117, and the wording
+
+A subject that has left the record entirely never enters this comparison: that is
+`overlay_answer_vindicated`, reported by the compiler as good news, and hanging a second and gloomier
+finding on the same overlay row is exactly the *already firing with the wrong words* failure RM117 was.
+The messages are pinned by a word-boundary grep refusing `correct`, `wrong`, `mistaken`, `vindicated`,
+`confirmed` and their siblings — *the disagreement you answered is not the one on record now* is a
+statement about the record, and *your answer may be wrong* is a verdict this check cannot see the
+reasoning for.
+
+**Warning-tier in both modes, escalating in neither** (`@clinsig-never-escalates`), with more force
+than the record itself: gating on it would make an artifact refuse over an archive's release schedule.
 
 ## RM138 — closed: the duplication costs 1.84× raw and 1.06× compressed, and the encoding stands
 

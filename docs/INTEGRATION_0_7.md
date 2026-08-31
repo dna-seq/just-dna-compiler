@@ -574,7 +574,7 @@ genotype while the 0.4 families keep the string) and the `stats` counter retype.
 | 0.6.6 → 0.7.0 release sweep | 15 measured, gate exit 0 against the shipped record |
 | 0.6.6 client parses 0.7 manifests | **15 / 16** — see § 1 |
 | Open consumer inbox | **empty** — S78 was answered as RM143 and committed; S79–S84 arrived and were answered on 2026-08-31 (RM144, RM145, RM146, RM148, RM152). S76 was withdrawn as a duplicate of S66; S75 and S77 answered as RM140 / RM142. |
-| Open roadmap items in format scope | **RM151 and RM152**, both filed on 2026-08-31 and neither blocking the cut. The seven that stood here — RM103, RM108, RM110, RM117, RM136, RM137, RM138 — all landed in the 2026-08-31 batch, six built and RM138 closed with its numbers measured; RM146 and RM150 landed with them. |
+| Open roadmap items in format scope | **RM152 alone**, filed on 2026-08-31 and not blocking the cut — and it deliberately carries no release class, since the measurement in it refuted both candidate adoptions. The seven that stood here — RM103, RM108, RM110, RM117, RM136, RM137, RM138 — all landed in the 2026-08-31 batch, six built and RM138 closed with its numbers measured; RM146, RM150 and RM151 landed with them, RM151 built the same day it was filed. |
 
 **The blocker this section carried is gone.** RM143 shipped and S78 was answered, and the 2026-08-31
 batch took the seven roadmap items that stood above with them. Everything here is committed, green and

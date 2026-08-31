@@ -730,3 +730,40 @@ def overlay_answers(spec_dir: Path, table: str) -> set[tuple[str, str]]:
         for row in overrides
         if row.table == table and row.operation == "update" and row.field
     }
+
+
+def overlay_answered_subjects(spec_dir: Path, table: str) -> list[tuple[str, str]]:
+    """The `(subject, member)` pairs this module's overlay answers for `table` (RM151).
+
+    **Every operation and every field, and that is the rule rather than an omission.** What this
+    feeds is the staleness question — has the value a recorded judgement was written *about* moved
+    since? — and the judgement is the `reason`, which the model makes mandatory on every overlay row
+    whatever it does. An author who suppresses a contested subject has reasoned about the same
+    values as one who updates its call, so a per-field rule would have to name a field the reason
+    does not live in.
+
+    **It is deliberately not `overlay_answers`, whose per-field rule is the right one for the
+    opposite direction.** That one decides whether a finding may be *silenced*, so it insists the
+    overlay touched the very cell the finding is about — anything looser would silence findings the
+    author never looked at, the overlay design's own worst case. This one *raises* a finding, and a
+    finding raised too widely costs a reader one line rather than hiding one.
+
+    An empty `member` is group-scoped and is returned as `""`; the caller decides what a group means
+    for its table, because only it knows the members. Ordered by first appearance in the overlay,
+    deduplicated, so a caller's message is deterministic.
+
+    Read-only, and empty for a module whose overlay does not parse — a malformed overlay is raised on
+    by `overlaid_input_rows`, and answering `[]` here rather than guessing keeps one loader owning
+    that diagnosis.
+    """
+    overrides, overlay_errors, _ = load_overlay(Path(spec_dir))
+    if overlay_errors:
+        return []
+    seen: list[tuple[str, str]] = []
+    for row in overrides:
+        if row.table != table:
+            continue
+        pair = (row.subject, row.member or "")
+        if pair not in seen:
+            seen.append(pair)
+    return seen

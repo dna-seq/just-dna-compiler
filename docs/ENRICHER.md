@@ -22,6 +22,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` over the injected table (warning), and `enrich()` against the injected Ensembl snapshot (`resolver.check_rsid_coordinates`, warning in both modes) — one question, two tiers, so one attestation name, and the enricher's half is the one that attests |
 | **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` |
 | **Clinical significance** | authored `clin_sig` vs **every annotation authority** consulted — ClinVar and, since 0.7, PubMind — allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the N-authority concordance record by `clinical.clin_sig_concordance` (0.7, RM130 + RM134 § B) |
+| **Answered-call currency** | an authority's call **now** vs what it said when the author's `overrides.csv` answer was written (0.7, RM151) | `clinical.answered_call_shift` → `concordance.shifted_authority_calls` (**warns in both modes**; the baseline is the previous run's `clin_sig_authority_calls.csv`, so it is read before the commit rewrites it and a move is observable exactly once) |
 | **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does) |
 | **Citation existence** | a cited `pmid` vs PubMed | `literature.enrich_literature` |
 | **Identifier agreement** | an authored `doi` vs the registry's for that PMID | `literature.enrich_literature` |
@@ -479,6 +480,16 @@ answers no prior finding, and a `suppress` is already reported in its own right 
 Wiring a further check to the answered set is deliberate rather than automatic, because *which cells
 does this comparison read* is a per-check fact (`resolver._COORDINATE_FIELDS` is the first one written
 down) and guessing it wrong silences a finding nobody answered.
+
+**A second answered-set reader arrived with RM151, and it reads the overlay the other way round.**
+`licensing.overlay_answered_subjects(spec_dir, table)` returns the `(subject, member)` pairs the
+overlay names — **every operation and every field**, which is the opposite rule from `overlay_answers`
+above and is right for the opposite direction. `overlay_answers` decides whether a finding may be
+*silenced*, so it insists the overlay touched the very cell the finding is about; anything looser
+silences findings the author never looked at. `overlay_answered_subjects` *raises* a finding, and what
+goes stale there is the `reason` — mandatory on every overlay row whatever the row does — so a
+per-field rule would have to name a column the reason does not live in. A finding raised too widely
+costs a reader one line; one silenced too widely costs them the finding.
 
 ## `enrich()` — the resolver chain
 
@@ -1967,6 +1978,75 @@ call and no resolved winner, and `module_spec.yaml`'s optional `authority_preced
 and **computed with by nothing** — it says whose call the curator weighted while deciding, so a
 consumer can see the stance, and no tier reads it. Choosing between a declared order and a majority
 needs a weighting model this workspace has declined to invent three times.
+
+#### Has the disagreement you answered moved? (RM151, 0.7)
+
+RM117 shipped the first of two signals about an answer an author has already recorded: a subject that
+has **left** the record, which the compiler computes offline because the record holds contested
+subjects only and is rewritten whole. This is the second, and it lives here because it needs the
+archive's value *now* against its value *at record time* — the first of those requires a consultation.
+
+**An `overrides.csv` row against `clin_sig_concordance.csv` is a judgement about a particular
+disagreement**: the archive said X, the author says Y, and the `reason` column explains why. If the
+archive later says Z, that reason was written about a value that is no longer there. Nothing in the
+record distinguished a justification that still describes the disagreement on file from one that
+describes a disagreement since replaced by a different one.
+
+**The baseline is the previous run's `clin_sig_authority_calls.csv`, and it is the only one this
+format keeps.** That table records what each authority actually said — `clin_sig`, the verbatim
+`clin_sig_raw`, and the `dataset` it came from — keyed `(variant_key, genotype, authority)`, so the
+comparison is recorded-call against fresh-call per authority. **Do not expect this for a table that
+records no prior value** (`@probe-names-the-table`): an overlay row against `frequencies.csv` or
+`resolution.csv` has no recorded baseline at all, so a general *the value moved* check would be
+answerable for one table and silently absent for every other. The finding names its table for that
+reason.
+
+**It is read before the commit, and that ordering is the whole feature.** `write_concordance_tables`
+replaces the file whole, so the previous run's rows exist only until this run commits.
+`clinical.answered_call_shift` is called in the staging phase — the same phase every other product of
+the run is computed in, for the unrelated reason that a refused `strict` run must change nothing — and
+an AST guard pins the read above the write, because no assertion over a return value can see statement
+order.
+
+**A move is therefore observable exactly once**, by the run that notices; the run after that compares
+against the new baseline and is silent. That is a limit rather than a bug, and it is the honest shape
+for an *observation*: binding an overlay row to the value it justifies is a mechanism this format does
+not have, and RM117's three objections to giving `outranks` a severity consequence all turned on
+exactly that missing binding. None of them is an objection to noticing that the value moved.
+
+**Three states, and the third is what the check is for.** A call `recorded` on both sides with the
+same classification is unchanged, `dataset` moved or not — a re-released archive saying the same thing
+has not moved the disagreement. A call that moved, or that went `recorded → no_record` (or back), is a
+**shift**. Everything else is **withheld** and reported as a note rather than as agreement:
+`no_prior_record` (this run is writing the first record, the previous one would not parse, or the
+authority was `unchecked` when the answer was written) and `unchecked_now` (nobody could ask this
+run). Neither ever reads as *nothing moved*.
+
+**A move this tier's own normalizer made is reported apart from the archive's.** When both sides
+recorded the same verbatim `clin_sig_raw` and only the normalized member differs, what changed is how
+`clin_sig.py` reads the token — a fact about our code, with nothing for an author to do. Folding it in
+with the archive's revisions would accuse a source of a change we made.
+
+**A subject that left the record entirely is not this finding.** It is `overlay_answer_vindicated`,
+which the compiler reports as good news, and hanging a second and gloomier finding on the same overlay
+row is exactly the *already firing with the wrong words* failure RM117 was.
+
+**Warning-tier in both modes, escalating in neither**, with more force than the record itself: nothing
+here is even a disagreement, it is a note that the record an author reasoned over was rewritten
+underneath their reasoning, and gating on it would make an artifact refuse over an archive's release
+schedule. Silent on a module with no overlay answers, which is every module today. The two warning
+stems, pinned by test:
+
+```
+{n} of {m} answered subject(s) rest on an authority call that has moved since the answer was recorded
+{n} answered call(s) differ only after this release's own normalization
+```
+
+**The wording observes and never adjudicates**, and that is a test rather than a convention: a
+word-boundary grep refuses `correct`, `wrong`, `mistaken`, `vindicated`, `confirmed` and their
+siblings in every message. *The disagreement you answered is not the one on record now* is a statement
+about the record; *your answer may be wrong* is a verdict, and this format does not put a verdict under
+a check that cannot see the reasoning.
 
 ### PubMind as the second authority (`pubmind.py`, offline) — RM134 § B
 

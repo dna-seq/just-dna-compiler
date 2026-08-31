@@ -175,6 +175,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A sidecar is merged, never clobbered — delete it to regenerate after a machinery change; since 0.7 that delete is free. `@sidecar-authoritative`
 - A correction to a derived table goes in `overrides.csv`, applied and never merged in; it is a third category in neither table registry. `@overlay-not-inside`
 - The enricher reads the overlay at input reads only, never at a merge baseline; answered is per field. `@overlay-read-at-inputs-never-at-baselines`
+- An answered set that **silences** a finding is per field; one that **raises** a finding is per subject. `@a-set-that-silences-is-narrower-than-one-that-raises`
 - The overlay applies twice (reverse emits the post-overlay table plus the overlay), so no operation may report its own no-op. `@overlay-not-inside`
 - Match an overlay key as the model **stores** it, never as the author spelled it — a raw compare grew the table one row per lap. `@overlay-not-inside`
 - Resolution reaches the positional tables too since 0.6; `authored_ident` is what keeps the fill out of `content_signature`. `@rm43-positional-fill`
@@ -342,6 +343,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A progress callback's unit is a contract — subjects, because `total` must be known up front. `@progress-unit-is-subjects`
 - `--rederive` never shortens a table: answered replaces, could-not-ask keeps its rows. `@rederive-never-shortens`
 - A currency check asks the source, never the cache it was drafted from; and a digest label does not compare against a dated one. `@currency-asks-the-source-not-the-cache`
+- A baseline the same run overwrites is read before the commit, walked by an AST guard, and the finding fires once. `@baseline-is-the-file-the-commit-overwrites`
 - A source's record-id fan-out is a finding: keep every row, count the contested keys, never `mode()` a winner. `@multiplicity-is-a-finding`
 
 ## The design cycle (the order of things)

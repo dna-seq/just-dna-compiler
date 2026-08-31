@@ -38,6 +38,7 @@ from just_dna_enricher.clinical import (
     ClinSigComparison,
     ClinSigConflict,
     ConcordanceRecord,
+    answered_call_shift,
     clin_sig_concordance,
     compare_clin_sig,
     concordance_notes,
@@ -45,7 +46,12 @@ from just_dna_enricher.clinical import (
     tautology_reason,
 )
 from just_dna_enricher.clinvar import clinvar_dataset_label
-from just_dna_enricher.concordance import write_concordance_tables
+from just_dna_enricher.concordance import (
+    AnsweredCallReport,
+    answered_call_notes,
+    answered_call_sentences,
+    write_concordance_tables,
+)
 from just_dna_enricher.currency import (
     CurrencyCheck,
     ReleaseProbe,
@@ -538,6 +544,10 @@ class EnrichmentResult:
     # counts on it are the run's own, and a caller re-deriving them would be a second implementation
     # of the selection rule.
     clin_sig_record: ConcordanceRecord | None = None
+    # What this run could say about the answers the module's overlay already carries (RM151): which
+    # of them rest on an authority call that has moved since the answer was written. `None` when the
+    # comparison was not made at all — the clin_sig check is off — which is never "nothing moved".
+    answered_calls: AnsweredCallReport | None = None
     # Authored rsIDs dbSNP has merged away or has no record of. Recorded onto the rows' provenance
     # columns and reported; never substituted — see `identifiers.check_rsids`.
     stale_rsids: list[RsidStatus] = field(default_factory=list)
@@ -1431,6 +1441,29 @@ def _run_enrichment(
             continue
         logger.info("clin_sig concordance — %s", line)
 
+    # RM151's half of the RM117 pair: not *is this subject still contested* — the compiler answers
+    # that from the record alone — but *is the disagreement the author answered still the one on
+    # record*. It needs the archive's value now against its value at record time, and the only
+    # baseline this format keeps is the previous run's `clin_sig_authority_calls.csv`. So it is read
+    # HERE, before the commit rewrites it, and it is the last thing this pass can still ask.
+    #
+    # Silent on every module with no overlay answers, which is every module today.
+    answered_calls: AnsweredCallReport | None = None
+    if verify_clinsig:
+        answered_calls = answered_call_shift(
+            spec_dir, clin_sig_record.calls if clin_sig_record is not None else None
+        )
+        for line in answered_call_sentences(answered_calls):
+            # Warned in both modes and escalated in neither, with more force than the concordance
+            # record itself: nothing here is a disagreement, it is a note that the record an author
+            # reasoned over was rewritten underneath their reasoning. Gating a build on it would
+            # make an artifact refuse over an archive's release schedule.
+            logger.warning("clin_sig answers — %s", line)
+        for line in answered_call_notes(answered_calls):
+            # A comparison that quietly did not run reads as one that found nothing, which is the
+            # failure the whole tri-state exists to prevent.
+            logger.info("clin_sig answers — %s", line)
+
     # Third validation pass: is the rsID a module keys on still the one dbSNP serves? Needs the live
     # API (NCBI is the oracle — Ensembl 400s on some merges), so `--offline` skips it. The verdict is
     # STAMPED onto the rows' provenance columns and reported; the authored label is never replaced,
@@ -1610,6 +1643,7 @@ def _run_enrichment(
         rederived=rederived,
         dataset_currency=dataset_currency,
         clin_sig_record=clin_sig_record,
+        answered_calls=answered_calls,
     )
 
     if unreachable_rsids:

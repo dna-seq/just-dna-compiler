@@ -2064,6 +2064,40 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   dropping it reports a cleaner module than there is. Wire a check to the answered set one at a time;
   *which cells does this comparison read* is a per-check fact, and guessing it silences a real finding.
 
+- `@baseline-is-the-file-the-commit-overwrites` — **A check that compares against a table its own run
+  rewrites has to read it before the commit, and its finding is then observable exactly once
+  (RM151).** `clin_sig_authority_calls.csv` is the only place this format keeps what a source said at
+  the time, and `write_concordance_tables` replaces it whole — so *what did the archive say when the
+  author wrote this answer* is answerable for exactly as long as the run has not committed.
+  `enrich()` already stages everything above its commit, for the unrelated reason that a refused
+  `strict` run must change nothing, so the read has a place; what it does not have is a test that can
+  see it. **Statement order inside one function is invisible to every assertion over a return value**,
+  so it is walked: the AST guard asserts the read's line precedes the write's, in the same enclosing
+  function, and it was demonstrated failing on a source copy with the two swapped before it was kept.
+  Found by the call it must precede rather than by the enclosing function's name — the pipeline has
+  been a private helper behind the public `enrich` for a while, and a test naming that helper goes
+  green by finding nothing the day it is renamed.
+
+  **Report-once is a limit to state, not to paper over.** The run that notices rewrites the baseline;
+  the next one is silent. Persisting it needs the record *bound* to the value it justifies — a column
+  recording what the answer was written against — which is an authored-surface change, a minor rather
+  than a patch, and exactly the binding RM117's three objections all turned on missing. None of those
+  objections is an objection to *noticing* that the value moved, which is why the observation ships
+  and the mechanism does not. **And say which table**: this is the only overridable table with a
+  recorded prior value, so a general *the value moved* check would be answerable for one and silently
+  absent for the rest (`@probe-names-the-table`).
+
+- `@a-set-that-silences-is-narrower-than-one-that-raises` — **The overlay's answered set has two
+  readings and they take opposite rules; do not reuse the wrong one (RM151 beside RM136).**
+  `overlay_answers` is **per field**: it decides whether a finding may be *silenced*, so it insists
+  the overlay corrected the very cell the finding is about, and anything looser silences findings the
+  author never looked at — the silent-suppress hole the overlay's own design calls its worst case.
+  `overlay_answered_subjects` is **every operation and every field**: it decides whether a finding is
+  *raised*, and what it is about is the `reason`, which the model makes mandatory on every row whatever
+  the row does — so a per-field rule would have to name a column the reason does not live in. The
+  asymmetry is priced: a finding raised too widely costs a reader one line, one silenced too widely
+  costs them the finding. Two readers, beside each other, neither derived from the other.
+
 - `@a-generic-refusal-cannot-name-its-own-cause` — **`extra="forbid"` cannot tell a typo from a column
   newer than the reader, and no wording fixes that (RM146).** `[curator]` (ours, 0.6.5) and `[curatr]`
   (a mistake) produce the byte-identical *Extra inputs are not permitted*, and they want opposite

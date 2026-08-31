@@ -178,18 +178,24 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Two, and neither is a settled shape** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a decision* through the three that are, and then read *three* for the hour it took a fourth to be filed under it, which is why the paragraph under it says to count off the sections rather than off this sentence). **Both are decisions and say so**: RM151, filed the same day
-RM117's other half shipped, and RM152 from a 2026-08-31 consumer measurement — each carrying its
-candidate repairs and why each one fails. **RM152 deliberately carries no release-class token**: both of its candidate adoptions were
-refuted by the measurement in it, so there is no repair for a class to describe, and the counters
-below are meant to pass over it rather than count it as work awaiting a release. Both items the RM124 wave-1 audit filed —
-RM136 and RM137 — shipped on 2026-08-31, and so did RM117's observability half and RM146; RM138 was
-closed the same day with its numbers measured. RM110, RM103's manifest half and RM108 were three more
-settled ones and all three shipped on 2026-08-31.
+**One, and it is a decision rather than a shape** (the count is the `## RMn` sections below — it read
+"four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a
+decision* through the three that are, then *three* for the hour it took a fourth to be filed under
+it, then *two* until RM151 shipped, which is why the paragraph under it says to count off the sections
+rather than off this sentence). It is **RM152**, from a 2026-08-31 consumer measurement, carrying its
+candidate repairs and why each one fails. **It deliberately carries no release-class token**: both of
+its candidate adoptions were refuted by the measurement in it, so there is no repair for a class to
+describe, and the counters below are meant to pass over it rather than count it as work awaiting a
+release — which means this section reads as **no work awaiting a release**, correctly.
+RM151, filed on 2026-08-31 the same day RM117's other half shipped, was built the same day and is in
+[ROADMAP_HISTORY](ROADMAP_HISTORY.md). Both items the RM124 wave-1 audit filed — RM136 and RM137 —
+shipped on 2026-08-31, and so did RM117's observability half and RM146; RM138 was closed the same day
+with its numbers measured. RM110, RM103's manifest half and RM108 were three more settled ones and all
+three shipped on 2026-08-31.
 **Count them off the sections, not off the sentence**: this line said *three* for as long as it took
-to notice that a narrowed item is still an item, and *not one of them is a decision* for as long as it
-took three decisions to be filed beneath it — the same arithmetic failure recorded two paragraphs
-down, twice more.
+to notice that a narrowed item is still an item, *not one of them is a decision* for as long as it
+took three decisions to be filed beneath it, and *two* while one of the two was already built — the
+same arithmetic failure recorded two paragraphs down, three times more.
 
 **The release-class token in a status line is a fixed field, not prose — a tool reads it.** An open
 item's `**Status**` reads `open —` and then, immediately and in bold, `a minor, release undecided`
@@ -272,59 +278,6 @@ same commit.
 
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
-
-## RM151 — a justification written about a value the source has since changed is stale, and nothing says so
-
-**Severity** low-medium · **Status** open — **a minor, release undecided; filed 2026-08-31 by the
-maintainer while RM117's other half shipped** · **Owner** enricher · **Motivating case**
-[S52](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator), RM117's second signal
-
-**RM117 shipped one of its two signals and this is the other.** An `overrides.csv` row answering a
-contested `clin_sig` is a judgement written *about a particular disagreement* — the archive said X, the
-author says Y, and the reason column explains why. If the archive later says Z, the reason is stale by
-construction: it was written about a value that is no longer there. The author is not told, and nothing
-in the record distinguishes a justification that still describes the disagreement from one that
-describes a disagreement since replaced by a different one.
-
-**This is the binding problem showing up as an observation rather than as a mechanism**, which is the
-honest place for it until there is a binding. RM117's three objections to giving `outranks` a severity
-consequence all turned on a record not being bound to the value it justifies; none of them is an
-objection to *noticing* that the value moved.
-
-### Why it is a separate item from the half that shipped
-
-The signal that shipped — an answered subject the authorities now agree on — is computable offline, in
-the compiler, from data it already holds: `clin_sig_concordance.csv` is rewritten whole and holds
-contested subjects only, so a subject leaving it means the contest ended. **This one is not.** It needs
-the archive's value *now* against the archive's value *at record time*, and the first requires a fetch.
-
-### What it has to work with, which is more than RM117 assumed
-
-RM117 said a record "is not bound to the value it justifies". For the concordance pair that is no
-longer quite true: **`clin_sig_authority_calls.csv` records what each authority actually said**, with
-`clin_sig`, the verbatim `clin_sig_raw`, and the `dataset` release it came from. So the comparison is
-available in principle — recorded call against fresh call, per authority, keyed
-`(variant_key, genotype, authority)`.
-
-**Do not promise it for tables that record no prior value.** The concordance pair is the only place
-this format keeps what a source said at the time; an overlay row against `frequencies.csv` or
-`resolution.csv` has no recorded baseline, so a general "the value moved" check would be answerable for
-one table and silent for the rest. Say which table (`@probe-names-the-table`).
-
-### The open questions
-
-1. **Where it runs.** The concordance pass already fetches, so the comparison is nearly free there —
-   but it needs the ladder every network check in this tier has: what `--offline` reports, what a
-   missing snapshot reports, and the three-valued *nobody asked* that must never read as *unchanged*.
-2. **What it says.** *The disagreement you answered is not the disagreement that exists now* is a
-   statement about the record; *your answer may be wrong* is a verdict, and this format does not put a
-   verdict under a check that cannot see the reasoning. The wording is most of the work.
-3. **Whether the recorded call is the right baseline.** `dataset` names the release, so a moved call
-   and a re-released archive are distinguishable — but only if the check compares the pair rather than
-   the classification alone.
-
-**Not blocked on RM135.** The overlay is the surviving mechanism and this reads the overlay; nothing
-here grows `outranks`, which is what RM117's closed half was warned off.
 
 ## RM152 — CIViC is a source of the same kind, and its germline quarter has almost nothing to say in the vocabulary we would ask it
 

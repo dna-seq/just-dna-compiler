@@ -39,11 +39,15 @@ from just_dna_enricher.concordance import (
     CLIN_SIG_CAMP,
     CONCORDANCE_CSV,
     OPINIONATED_CAMPS,
+    AnsweredCallReport,
     AuthorityCall,
     ConcordanceSubject,
     camp_of,
     concordance_tables,
+    read_recorded_calls,
+    shifted_authority_calls,
 )
+from just_dna_enricher.licensing import overlay_answered_subjects
 from just_dna_enricher.provenance import DRAFT_PROJECTIONS, drafted_unchanged
 from just_dna_enricher.pubmind import (
     PUBMIND_CONFIDENCE_UNIT,
@@ -745,6 +749,48 @@ def concordance_notes(record: ConcordanceRecord | None) -> list[str]:
             f"than resolved to a winner, because picking one is an ordering nobody defined."
         )
     return notes
+
+
+def answered_call_shift(
+    spec_dir: Path, calls: Sequence[ClinSigAuthorityCallRow] | None
+) -> AnsweredCallReport:
+    """Read this module's answers and its previous record, and compare them to `calls` (RM151).
+
+    The IO half of the staleness check: it names the overlay table, resolves what an answer means
+    for that table's key, and hands two sequences to the pure comparison. **It must be called before
+    the commit**, because the commit rewrites the very file it reads as the baseline.
+
+    **A group-scoped answer is expanded against the record, not against the overlay.** `member` is
+    `genotype` here, so an empty one answers every genotype of that `variant_key` — and the only
+    place the genotypes are known is the record itself. Expanding here rather than inside the
+    comparison keeps the table's key grammar out of a function that has no table.
+
+    **The answered set is intersected with what is still on the record, and that is deliberate.** An
+    answer whose subject has *left* the record is not uncomparable — it is
+    `overlay_answer_vindicated`, which the compiler already reports as good news. Counting it here
+    as a question nobody could put would put a second, gloomier finding on the same overlay row.
+
+    With no record to compare against (`calls is None` — nobody could be consulted, or the check is
+    off) the overlay's own pairs are the count, so the notes can still say how many answers went
+    unexamined. `enrich()` has already said why in that case.
+    """
+    pairs = overlay_answered_subjects(spec_dir, CONCORDANCE_CSV)
+    if calls is None or not pairs:
+        return shifted_authority_calls(None, None, pairs)
+    on_record: list[tuple[str, str]] = []
+    for row in calls:
+        subject = (row.variant_key, row.genotype)
+        if subject not in on_record:
+            on_record.append(subject)
+    answered = [
+        subject
+        for subject in on_record
+        if any(
+            variant_key == subject[0] and (not member or member == subject[1])
+            for variant_key, member in pairs
+        )
+    ]
+    return shifted_authority_calls(read_recorded_calls(spec_dir), calls, answered)
 
 
 def fold_authority_records(records: Sequence[dict]) -> tuple[str | None, str | None, bool]:

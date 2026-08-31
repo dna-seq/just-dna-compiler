@@ -39,8 +39,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
-from just_dna_format.layout import atomic_writer, sidecar_write_path
+from just_dna_format.layout import atomic_writer, resolve_sidecar, sidecar_write_path
 
 logger = logging.getLogger(__name__)
 
@@ -357,3 +358,300 @@ def write_concordance_tables(
         len(parents), len(calls), CONCORDANCE_CSV,
     )
     return parent_path, calls_path
+
+
+def read_recorded_calls(spec_dir: Path) -> list[ClinSigAuthorityCallRow] | None:
+    """The authority calls this module already has on file, or `None` when it has none (RM151).
+
+    **The baseline half of the staleness comparison, and it must be read before the commit rewrites
+    it.** `write_concordance_tables` replaces this table whole, so the previous run's rows are the
+    record as it stood when an author read it and wrote their answer — available for exactly as long
+    as this run has not yet committed. `enrich()` computes everything before its commit already, for
+    the unrelated reason that a refused `strict` run must change nothing, and that ordering is what
+    makes this readable at all.
+
+    `None` rather than `[]` for a module that has never had a record written, because the two are
+    different claims and the whole check turns on the difference: no file is *nobody asked at record
+    time*, an empty file is a run that asked and found nothing contested.
+
+    A file that will not parse is `None` too, and says so. Guessing at a half-read baseline would
+    manufacture a movement out of our own inability to read, which is the one wrong answer available.
+
+    Resolved through `layout` so a module keeping its sidecars under `derived/` is read where it
+    keeps them (`@sidecar-name-and-place`).
+    """
+    path = resolve_sidecar(spec_dir, AUTHORITY_CALLS_CSV)
+    if path is None:
+        return None
+    rows, errors, _ = load_csv_rows(path, ClinSigAuthorityCallRow, path.name)
+    if errors:
+        logger.warning(
+            "%s is present but unreadable (%s); no answered call can be compared against it this "
+            "run, which is reported as unknown rather than as unchanged.", path.name, errors[0],
+        )
+        return None
+    return rows
+
+
+# ── RM151: the disagreement an answer was written about, against the one on record now ───────────
+
+
+#: Why one answered subject's call could not be compared. **Neither member ever reads as
+#: `unchanged`** — that is the whole tri-state, and it is the reason this is a registry rather than
+#: two string literals in a branch: a third state must arrive with a note attached, not silently join
+#: the ones that say nothing (`@unreachable-not-absent`, `@registry-completeness`).
+VALID_CALL_SHIFT_WITHHELD: frozenset[str] = frozenset({
+    #: No usable prior row for this `(subject, authority)` — the previous record has none, or it has
+    #: one whose status was `unchecked`. Nobody-asked at record time, so there is no baseline to move
+    #: away from. The first run to write the record puts every answered subject here.
+    "no_prior_record",
+    #: The authority could not be consulted *this* run, so its call today is unknown. An unknown is
+    #: withheld and never negated: a leg nobody could ask has not agreed with what was recorded.
+    "unchecked_now",
+})
+
+
+@dataclass(frozen=True)
+class CallShift:
+    """One authority's call about one answered subject, as it was recorded and as it reads now.
+
+    Both sides are whole `ClinSigAuthorityCallRow`s rather than the two classifications, because the
+    `dataset` pair is what separates the two readings a reader actually needs: a **re-released**
+    archive that revised its call, and an archive that revised **in place** within one release. The
+    check does not branch on that difference — it has no rule for a `dataset` neither side recorded —
+    it just puts both in the message and lets the reader see which happened.
+    """
+
+    before: ClinSigAuthorityCallRow
+    after: ClinSigAuthorityCallRow
+
+    @property
+    def subject(self) -> tuple[str, str]:
+        """The `(variant_key, genotype)` the answer was written about."""
+        return (self.after.variant_key, self.after.genotype)
+
+    @property
+    def authority(self) -> str:
+        return self.after.authority
+
+    @property
+    def wording_held(self) -> bool:
+        """Whether the authority's own words are unchanged while our reading of them moved.
+
+        True only when both sides recorded a verbatim token and the two are equal. That is *this
+        release's normalizer* having moved, not the archive — a different finding wearing the same
+        shape, and reporting it as an archive revision would accuse a source of a change we made.
+        """
+        return (
+            self.before.status == "recorded"
+            and self.after.status == "recorded"
+            and self.before.clin_sig_raw is not None
+            and self.before.clin_sig_raw == self.after.clin_sig_raw
+        )
+
+    def _side(self, row: ClinSigAuthorityCallRow) -> str:
+        call = row.clin_sig if row.status == "recorded" and row.clin_sig else "no record"
+        return f"{call} ({row.dataset})" if row.dataset else call
+
+    def __str__(self) -> str:
+        variant_key, genotype = self.subject
+        return (
+            f"{variant_key} {genotype} {self.authority}: "
+            f"{self._side(self.before)} → {self._side(self.after)}"
+        )
+
+
+@dataclass(frozen=True)
+class AnsweredCallReport:
+    """What a run can say about the answers this module already carries.
+
+    **Nothing here is computed and discarded** (`@dont-discard-computed`): `answered` and `subjects`
+    are the two denominators, and a caller that recomputed either would be re-implementing the
+    answered-subject rule — the drift the overlay's own design refuses.
+    """
+
+    #: Calls whose recorded value moved, and where the move is the authority's own.
+    shifts: tuple[CallShift, ...]
+    #: Calls that differ only after this release's normalization, the verbatim token unchanged.
+    #: Kept apart because it is a statement about this tier, not about the archive.
+    normalization: tuple[CallShift, ...]
+    #: `(variant_key, genotype, authority, reason)` for every comparison that could not be made,
+    #: `reason` from `VALID_CALL_SHIFT_WITHHELD`.
+    withheld: tuple[tuple[str, str, str, str], ...]
+    #: Answered subjects at least one authority could be compared for — the denominator the moved
+    #: count is read against.
+    subjects: int
+    #: Answered subjects the overlay carries at all. Larger than `subjects` whenever the question
+    #: could not be put, which is the gap the notes exist to say out loud.
+    answered: int
+
+    @property
+    def moved_subjects(self) -> int:
+        """Answered subjects carrying at least one moved call. The numerator."""
+        return len({shift.subject for shift in self.shifts})
+
+
+def shifted_authority_calls(
+    baseline: Sequence[ClinSigAuthorityCallRow] | None,
+    fresh: Sequence[ClinSigAuthorityCallRow] | None,
+    answered: Sequence[tuple[str, str]],
+) -> AnsweredCallReport:
+    """The answered subjects whose authority calls have moved since the answer was written (RM151).
+
+    **An `overrides.csv` row against the concordance record is a judgement about a particular
+    disagreement** — the archive said X, the author says Y, and the `reason` column explains why. If
+    the archive later says Z, that reason was written about a value that is no longer there. Nothing
+    in the record distinguishes a justification that still describes the disagreement on file from
+    one that describes a disagreement since replaced by a different one, and this is the check that
+    notices.
+
+    **The comparison is recorded-call against fresh-call, per `(variant_key, genotype, authority)`,
+    and the previous `clin_sig_authority_calls.csv` is the only baseline this format has.** That
+    table is what each authority actually said, with `clin_sig`, the verbatim `clin_sig_raw` and the
+    `dataset` it came from — so the comparison is available here and nowhere else. **Do not promise
+    this for a table that records no prior value** (`@probe-names-the-table`): an overlay row against
+    `frequencies.csv` or `resolution.csv` has no recorded baseline at all, so a general "the value
+    moved" check would be answerable for one table and silently absent for the rest.
+
+    **It observes, it does not adjudicate.** *The disagreement you answered is not the disagreement
+    that exists now* is a statement about the record. *Your answer may be wrong* is a verdict, and
+    this format does not put a verdict under a check that cannot see the reasoning — the same
+    restraint the concordance tables keep everywhere else.
+
+    **A subject that left the record entirely is not this finding.** It is not in `fresh`, so it
+    never enters the loop: the authorities stopped contesting it, which is RM117's
+    `overlay_answer_vindicated` and is reported by the compiler as good news. Two findings about one
+    overlay row would be one of them firing with the wrong words on it.
+
+    Order is `fresh` row order, preserved rather than sorted: the message is read by a human and a
+    sort over values would let a corrected classification move a line.
+    """
+    answered_keys = set(answered)
+    if fresh is None:
+        # No run to compare against — nobody could be consulted, so there is not even a set of
+        # authorities to name. Zero comparable subjects, which is not the claim that nothing moved;
+        # `answered` carries the gap and the notes are what say it out loud.
+        return AnsweredCallReport((), (), (), 0, len(answered_keys))
+
+    # **A missing baseline is an empty one, not a short circuit.** `None` here means the module has
+    # never had a record written, or the one it has will not parse; either way every lookup below
+    # misses and every answered call is withheld as `no_prior_record` — which is the reading, and it
+    # is worth saying per authority rather than collapsing into "the question could not be put". The
+    # first run to write a record takes this path, and its note is the useful one: run once more.
+    before = {
+        (row.variant_key, row.genotype, row.authority): row for row in (baseline or ())
+    }
+    shifts: list[CallShift] = []
+    normalization: list[CallShift] = []
+    withheld: list[tuple[str, str, str, str]] = []
+    comparable: set[tuple[str, str]] = set()
+
+    for now in fresh:
+        subject = (now.variant_key, now.genotype)
+        if subject not in answered_keys:
+            continue
+        key = (now.variant_key, now.genotype, now.authority)
+        then = before.get(key)
+        if then is None or then.status == "unchecked":
+            withheld.append((*key, "no_prior_record"))
+            continue
+        if now.status == "unchecked":
+            withheld.append((*key, "unchecked_now"))
+            continue
+        comparable.add(subject)
+        if then.status == now.status and then.clin_sig == now.clin_sig:
+            # Unchanged, `dataset` included or not: a re-released archive that says the same thing
+            # has not moved the disagreement the answer was written about.
+            continue
+        shift = CallShift(before=then, after=now)
+        (normalization if shift.wording_held else shifts).append(shift)
+
+    return AnsweredCallReport(
+        shifts=tuple(shifts),
+        normalization=tuple(normalization),
+        withheld=tuple(withheld),
+        subjects=len(comparable),
+        answered=len(answered_keys),
+    )
+
+
+def _render_shifts(shifts: Sequence[CallShift]) -> str:
+    """A bounded, ordered rendering — a log line a person reads must not grow with the corpus."""
+    shown = "; ".join(str(shift) for shift in shifts[:5])
+    return shown + ("" if len(shifts) <= 5 else f" (+{len(shifts) - 5} more)")
+
+
+def answered_call_sentences(report: AnsweredCallReport) -> list[str]:
+    """The findings a run reports about its answered subjects, warning-tier, in both modes (RM151).
+
+    **Never escalated under `strict`** (`@clinsig-never-escalates`), and with more force than for the
+    concordance record itself: nothing here is even a disagreement, it is a note that the record an
+    author reasoned over has been rewritten underneath their reasoning. Refusing a build over it
+    would gate an artifact on an archive's release schedule.
+
+    Two sentences, kept apart because they are about different parties. The first is the archive
+    revising; the second is **this release's own normalizer** reading unchanged wording differently,
+    which is a fact about our code and is not the author's to act on.
+
+    Empty when nothing moved and empty when nothing could be compared — a check that cannot fail
+    reports no zero (`@tautology-zero`), and the gap belongs in the notes rather than dressed up as a
+    clean bill.
+    """
+    lines: list[str] = []
+    if report.shifts:
+        lines.append(
+            f"{report.moved_subjects} of {report.subjects} answered subject(s) rest on an authority "
+            f"call that has moved since the answer was recorded: {_render_shifts(report.shifts)}. "
+            f"The overrides.csv reason for each was written about the earlier call, so it describes "
+            f"a disagreement that is no longer the one on record. Nothing here grades the answer — "
+            f"re-read the reason and decide whether it still says what you mean. Asked for "
+            f"{CONCORDANCE_CSV} alone: it is the one table this format keeps a prior value in."
+        )
+    if report.normalization:
+        lines.append(
+            f"{len(report.normalization)} answered call(s) differ only after this release's own "
+            f"normalization — the authority's verbatim wording is unchanged: "
+            f"{_render_shifts(report.normalization)}. What moved is how this tier reads the token, "
+            f"not what the archive published, so the answer is about the same disagreement it "
+            f"always was and there is nothing for an author to do."
+        )
+    return lines
+
+
+def answered_call_notes(report: AnsweredCallReport) -> list[str]:
+    """What a run should say about answers it could **not** put the question for. Info-tier.
+
+    Said out loud rather than left silent, because a comparison that quietly did not run reads as one
+    that found nothing — the failure the whole tri-state exists to prevent
+    (`@unreachable-not-absent`). Grouped by reason rather than by row, like every repeated finding
+    here.
+
+    Silent for a module with no answers at all, which is every module today: a check that cannot fire
+    must not announce a zero.
+    """
+    if not report.answered:
+        return []
+    notes: list[str] = []
+    uncomparable = report.answered - report.subjects
+    if uncomparable:
+        notes.append(
+            f"{uncomparable} of {report.answered} answered subject(s) could not be compared against "
+            f"what the authorities said when the answer was written. That is not agreement and not "
+            f"an absence of movement: it is a question nobody could put."
+        )
+    reasons: dict[str, int] = {}
+    for *_key, reason in report.withheld:
+        reasons[reason] = reasons.get(reason, 0) + 1
+    if reasons.get("no_prior_record"):
+        notes.append(
+            f"{reasons['no_prior_record']} answered call(s) have no prior {AUTHORITY_CALLS_CSV} row "
+            f"to compare against — this run is writing the first record, the previous one would not "
+            f"parse, or the authority was unchecked when the answer was written. Once a record is on "
+            f"file the comparison becomes available on the next run."
+        )
+    if reasons.get("unchecked_now"):
+        notes.append(
+            f"{reasons['unchecked_now']} answered call(s) come from an authority this run could not "
+            f"consult, so what it says today is unknown. Nothing is claimed about them either way."
+        )
+    return notes

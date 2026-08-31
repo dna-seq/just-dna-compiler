@@ -1586,6 +1586,16 @@ and is available nowhere else in this format.
 table apart, 0.7 settled the overlap as a dated succession in the overlay's favour, and steering a new
 author onto the side that survives 1.0 costs a sentence.
 
+**`clin_sig_authority_calls.csv` is the only table in this format that records what a source said at
+the time**, and that accident of shape is load-bearing (RM151). Every other derived sidecar holds the
+source's *current* answer, so *has the value this correction was written about changed?* is a question
+nothing can put about them — an overlay row against `frequencies.csv` or `resolution.csv` has no
+recorded baseline at all. Here `clin_sig`, the verbatim `clin_sig_raw` and the `dataset` release are
+all on the row, so the enricher can compare the previous run's file against a fresh consultation and
+tell an author that the disagreement their `reason` describes is no longer the one on record. That
+comparison lives in the enricher because it needs a fetch, and it **names this table** rather than
+speaking generally, precisely because the others cannot answer it.
+
 ### Two tables, and why the split is the design
 
 | table | key | carries |

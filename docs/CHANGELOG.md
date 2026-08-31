@@ -88,8 +88,34 @@ arriving rather than drift.
   that one table, because every other unmatched update is ambiguous and takes RM137's split.
 
   This is RM117's observability half. The **severity** half stays closed, and the second signal — a
-  justification written about a value the source has since changed — is filed as **RM151**: it needs
-  the archive's value now against its value at record time, so it needs a fetch.
+  justification written about a value the source has since changed — is **RM151**, below: it needs the
+  archive's value now against its value at record time, so it needed a fetch and an enricher home.
+
+- **RM151 — an answer written about a disagreement the archive has since changed says so.**
+  *(`just-dna-enricher`; **two new warning stems**, no field, no schema and no signature moves.)*
+  An `overrides.csv` row against `clin_sig_concordance.csv` is a judgement about a *particular*
+  disagreement, and its `reason` explains why. When the archive later says something else, that reason
+  describes a disagreement that is no longer the one on record — and nothing said so.
+
+  `enrich()` now compares each authority's fresh call against **the previous run's
+  `clin_sig_authority_calls.csv`**, per `(variant_key, genotype, authority)`, for every subject the
+  module's overlay answers. That table is the only place this format keeps what a source said at the
+  time, so the finding **names it**: an overlay row against `frequencies.csv` or `resolution.csv` has
+  no recorded baseline and nothing here promises one. Warns in both modes, escalates in neither.
+
+  Three states, and withheld is never *unchanged*: `no_prior_record` (first run, unreadable previous
+  record, or the authority was unchecked when the answer was written) and `unchecked_now` are info
+  notes, not agreement. A difference that is only our own normalizer moving — same verbatim
+  `clin_sig_raw`, different normalized member — is reported as a separate sentence, because folding it
+  in would accuse a source of a change we made.
+
+  **A move is observable exactly once**, by the run that notices, because the commit rewrites the
+  baseline it read. That is the honest shape for an observation; persisting it needs the overlay row
+  bound to the value it justifies, which is an authored-surface change and the binding RM117's
+  objections all turned on missing. Silent on a module with no overlay answers, which is every module
+  today. New surfaces: `clinical.answered_call_shift`, `concordance.shifted_authority_calls` /
+  `read_recorded_calls` / `answered_call_sentences` / `answered_call_notes`,
+  `licensing.overlay_answered_subjects`, and `EnrichmentResult.answered_calls`.
 
 - **RM138 — closed with its numbers measured; no code changed.** *(documentation only.)* `carried`
   duplicates the text of the warnings it names, growing `compilation` **1.84×** across the reference
