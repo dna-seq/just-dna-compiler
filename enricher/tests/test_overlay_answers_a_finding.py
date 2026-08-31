@@ -50,10 +50,10 @@ def _spec(tmp_path: Path, overlay: list[list[str]] | None = None) -> Path:
 
 
 def _row(**kwargs) -> ResolutionRow:
-    base = dict(
-        variant_key=_KEY, rsid=_KEY, chrom="1", start=11856378, ref="G", alts="A",
-        genome_build="GRCh38", locus_index=0, source="ensembl", status="resolved",
-    )
+    base = {
+        "variant_key": _KEY, "rsid": _KEY, "chrom": "1", "start": 11856378, "ref": "G", "alts": "A",
+        "genome_build": "GRCh38", "locus_index": 0, "source": "ensembl", "status": "resolved",
+    }
     return ResolutionRow(**{**base, **kwargs})
 
 

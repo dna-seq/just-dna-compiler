@@ -75,7 +75,7 @@ def _uncited_pmid(spec: Path) -> str:
     rows = _read(spec / "literature.csv")
     assert rows, "the fixture must carry a literature sidecar"
     fields = list(rows[0])
-    orphan = {k: "" for k in fields}
+    orphan = dict.fromkeys(fields, "")
     orphan.update({k: v for k, v in rows[0].items() if k in {"source", "status", "dataset"}})
     orphan["pmid"] = "99999999"
     with (spec / "literature.csv").open("w", newline="", encoding="utf-8") as handle:

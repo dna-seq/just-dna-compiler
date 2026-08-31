@@ -24,8 +24,8 @@ from pydantic import (
 )
 
 from just_dna_format.base import (
-    AuthoredModel,
     COMPILER_MANAGED,
+    AuthoredModel,
     derive_variant_key,
     since,
     stamped_identity_field,

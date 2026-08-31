@@ -10,8 +10,8 @@ fails unless every in-scope variant resolves to a position (the network analogue
 
 import csv
 import logging
-from collections.abc import Set as AbstractSet
 from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional

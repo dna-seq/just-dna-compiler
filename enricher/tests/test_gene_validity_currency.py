@@ -96,11 +96,11 @@ def _spec(tmp_path: Path) -> Path:
 
 
 def _row(**kwargs) -> GeneValidityRow:
-    base = dict(
-        gene="BRCA1", disease_id="MONDO:0003582", moi="autosomal_dominant",
-        submitter=_PANEL, dataset="clingen_gene_validity_2026-08-13", source="clingen",
-        status="resolved",
-    )
+    base = {
+        "gene": "BRCA1", "disease_id": "MONDO:0003582", "moi": "autosomal_dominant",
+        "submitter": _PANEL, "dataset": "clingen_gene_validity_2026-08-13", "source": "clingen",
+        "status": "resolved",
+    }
     return GeneValidityRow(**{**base, **kwargs})
 
 

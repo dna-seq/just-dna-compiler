@@ -155,8 +155,8 @@ from just_dna_format.overrides import (
     apply_overrides,
     classify_update_targets,
     classify_vindicated_answers,
-    update_targets,
     overlay_coherence_errors,
+    update_targets,
 )
 from just_dna_format.pgs import PgsRow
 from just_dna_format.pgx import (

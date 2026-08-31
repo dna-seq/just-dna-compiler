@@ -26,7 +26,6 @@ from just_dna_format.derive import (
 from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import VALID_DIRECTIONS, VALID_SIGNIFICANCE
 
-
 # ── the guard, which is the point of the whole item ─────────────────────────────────────────────
 
 
