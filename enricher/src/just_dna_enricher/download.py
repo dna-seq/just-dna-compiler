@@ -32,14 +32,14 @@ from just_dna_enricher.resolver import EnsemblReferenceError
 logger = logging.getLogger(__name__)
 
 _PARQUET_MAGIC = b"PAR1"
-_ENSEMBL_HF_PREFIX = "datasets/anon-org/ensembl_variations/data"
-_CLINVAR_HF_PREFIX = "datasets/anon-org/clinvar/data"
-_CONSTRAINT_HF_PREFIX = "datasets/anon-org/gnomad_constraint/data"
+_ENSEMBL_HF_PREFIX = "datasets/just-dna-seq/ensembl_variations/data"
+_CLINVAR_HF_PREFIX = "datasets/just-dna-seq/clinvar/data"
+_CONSTRAINT_HF_PREFIX = "datasets/just-dna-seq/gnomad_constraint/data"
 
 # What each snapshot is *made of*, so provisioning fetches its own files and nothing else.
 #
 # **A published dataset accumulates.** The publisher adds files and never deletes, so a repo carries
-# whatever any earlier layout put there — and `anon-org/clinvar/data` really does still hold a
+# whatever any earlier layout put there — and `just-dna-seq/clinvar/data` really does still hold a
 # 159 MB `clinvar.parquet` from the single-file era beside today's 25 `clinvar-chr*.parquet`. Its
 # columns are the raw VCF INFO fields (`clnsig`, `clnrevstat`, …), and the reader globs
 # `data/*.parquet`, so provisioning everything hands DuckDB two schemas under one relation and every
@@ -58,8 +58,8 @@ _CONSTRAINT_FILES = "gnomad_constraint.parquet"
 _CLINPGX_FILES = "*.parquet"
 _CPIC_FILES = "*.parquet"
 
-_CLINPGX_HF_PREFIX = "datasets/anon-org/clinpgx/data"
-_CPIC_HF_PREFIX = "datasets/anon-org/cpic/data"
+_CLINPGX_HF_PREFIX = "datasets/just-dna-seq/clinpgx/data"
+_CPIC_HF_PREFIX = "datasets/just-dna-seq/cpic/data"
 
 
 class ConstraintReferenceError(FileNotFoundError):

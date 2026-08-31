@@ -89,15 +89,15 @@ _SNAPSHOT_ALLOW_PATTERNS = [
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_REPO_ID = "anon-org/annotators"
-DEFAULT_CLINVAR_REPO_ID = "anon-org/clinvar"
-DEFAULT_CONSTRAINT_REPO_ID = "anon-org/gnomad_constraint"
+DEFAULT_REPO_ID = "just-dna-seq/annotators"
+DEFAULT_CLINVAR_REPO_ID = "just-dna-seq/clinvar"
+DEFAULT_CONSTRAINT_REPO_ID = "just-dna-seq/gnomad_constraint"
 # The two licence-gated snapshots that may be published (RM38): both record `redistribution=True`, and
 # CC BY-SA grants sharing under share-alike plus attribution. **PharmVar has no entry here on purpose** —
 # its bulk data is pulled under a personal, non-transferable key and no recorded axis covers passing
 # that on, so an unestablished permission stays a refusal.
-DEFAULT_CLINPGX_REPO_ID = "anon-org/clinpgx"
-DEFAULT_CPIC_REPO_ID = "anon-org/cpic"
+DEFAULT_CLINPGX_REPO_ID = "just-dna-seq/clinpgx"
+DEFAULT_CPIC_REPO_ID = "just-dna-seq/cpic"
 
 
 def _hf_api(repo_id: str, token: str | None = None):
