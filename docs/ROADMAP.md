@@ -373,6 +373,23 @@ is too few to draft from and plenty to disagree with"* is exactly half right, an
 one the preference rests on: the disagreeing quantity is 5. Their argument against the drafter stands
 and measures worse than they knew.
 
+### The other two repairs rejected, restored alongside the charter half
+
+The concordance candidate has its own section above. These two were in the destroyed original and are
+back from the `Sn` reply and the probe record; **the charter half below referred to the second of
+them**, which is how the loss was noticed — a restored paragraph citing a bullet that no longer existed.
+
+- **`draft_from_civic` beside `draft_from_clinvar`.** The reporter argues against their own first
+  instinct and is right; measured, it is worse than they knew. Their objection was the **silent 73 %
+  somatic drop** — a filter whose scope is narrower than its name, and the reason a drafter's excluded
+  count belongs in its result and not in its docstring. Underneath it, the germline remainder that
+  survives the filter is a further quarter unclassified (`NA`, 812), so the drafter would carry the
+  count it excluded *and* still write rows whose significance column is empty.
+- **Filing it as a non-issue and closing.** Refused. The measurement that defeats both adoptions also
+  locates **1,458 germline rows** (`PREDISPOSITION` 1,456 + `PROTECTIVENESS` 2) on an axis nobody has
+  asked CIViC about, and closing would bury that with them. A source can be legal, licensed and
+  well-provenanced and still bring 5 usable calls; that is a result worth keeping, not a non-event.
+
 ### What survives is real, and it is one axis over from where the report aimed
 
 By evidence type the germline subset is **2,867 of 3,103 `PREDISPOSING`**; by significance,
