@@ -1503,7 +1503,7 @@ two sentences cleared by the same edit share a code and say which cell (the weig
 orphan fact tables), two cleared differently do not. The set is published, so it is permanent within
 the major — additions are minor-legal, re-spellings are not.
 
-**Carried findings** — the nine an author cannot clear, and the reason each is on this side:
+**Carried findings** — the eleven an author cannot clear, and the reason each is on this side:
 
 | Code | Why no authored edit clears it |
 |---|---|
@@ -1516,6 +1516,8 @@ the major — additions are minor-legal, re-spellings are not.
 | `vrs_coverage_incomplete` | the alleles a VA does not reach; minting more is not an authored edit |
 | `measurement_spans_bins` | the format has no reading for an interval that straddles a boundary (RM56) |
 | `verification_findings_recorded` | a disagreement with an archive, where the archive is the stale side often enough that nothing is owed |
+| `gene_validity_superseded` | a curating body re-curated its own claim; the only edit available is deleting a true record |
+| `gene_validity_currency_undecidable` | the source published several curations of one claim and not enough to order them |
 
 **Every published code**, by the surface it comes from. Everything not in the table above is
 actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
@@ -1545,12 +1547,21 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
   `declared_license_disagrees`
 - **the injected fact tables** — `derived_row_orphan`, `faf95_exceeds_frequency`,
   `oe_lof_outside_interval`, `oe_lof_disagrees_with_counts`, `clin_sig_contradicts_frequency`,
-  `clin_sig_concordance_contested`
+  `clin_sig_concordance_contested`, `gene_validity_superseded`,
+  `gene_validity_currency_undecidable`
 - **the overlay** — `overlay_update_unmatched`, `overlay_targets_missing_table`,
   `overlay_rows_suppressed`
 - **verification and closure** — `verification_two_copies`, `verification_unreadable`,
   `verification_stale`, `verification_findings_recorded`, `module_not_closed`,
   `closure_discarded_unreadable_record`
+
+The two `gene_validity_*` codes are new in 0.7 (RM108) and are the first fact-table findings the
+**pre-flight also computes**, so `validate` reports them exactly as `compile` does. They stay apart on
+purpose: `gene_validity_superseded` says a later curation replaced an earlier one and the manifest now
+publishes the later verdict, while `gene_validity_currency_undecidable` says several curations exist
+and nothing orders them — a tie on `classification_date`, or a row stating none — so every
+classification in that group is still published. One number meaning both would tell a reader the
+archive moved on when it had simply not said enough.
 
 `overlay_rows_suppressed` is new in 0.7 and is the one finding here that reports a *decision* rather
 than a defect: a `suppress` removes a row and leaves no trace of the removal in the build product, so

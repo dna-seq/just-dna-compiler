@@ -45,7 +45,11 @@ from pathlib import Path
 import httpx
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.base import merge_key
-from just_dna_format.gene_validity import GeneValidityRow
+from just_dna_format.gene_validity import (
+    GeneValidityRow,
+    superseded_groups,
+    undecidable_groups,
+)
 from just_dna_format.layout import atomic_writer
 from just_dna_format.normalize import normalize_utc_timestamp, now_utc_iso
 
@@ -184,6 +188,15 @@ class GeneValidityResult:
     #: Every one of them costs a **cell**, never a row and never the pass: the assertion is kept with
     #: that column empty, which is this codebase's answer to an unknown everywhere else.
     unmapped: list[str] = field(default_factory=list)
+    #: Gene-disease claims where a later curation replaced an earlier one, and both rows are kept
+    #: (RM108). Rendered as `gene/disease/moi/submitter`. **Never a reason to fail the pass, in either
+    #: mode**: a curating body re-curating is the source working, not the module being wrong.
+    superseded: list[str] = field(default_factory=list)
+    #: Claims carrying several curations that nothing orders — a tie on `classification_date`, or a
+    #: member stating none. Reported apart from `superseded` because it asks the reader for a
+    #: different thing: the archive did not say enough to tell, rather than the archive having moved
+    #: on. The house algebra withholds here rather than picking a winner from an identifier.
+    undecidable: list[str] = field(default_factory=list)
     #: The pass did not run because the deployment is offline and neither submitter has a snapshot.
     skipped_offline: bool = False
 
@@ -500,6 +513,33 @@ def enrich_gene_validity(
             "survives in classification_raw): %s",
             len(unmapped), sorted(unmapped),
         )
+    # **Currency is derived, never written** (RM108). ClinGen's `assertion_id` embeds the curation
+    # timestamp, so a re-curated assertion arrives under a different id, misses `_merge_key` and is
+    # appended beside the row it replaces — correctly, because both are true records. What was missing
+    # is that nobody said so. A `superseded` column was refused: the row that would have to be marked
+    # is the one already in the file, and merge-not-clobber forbids this pass editing it, so the
+    # marker would be right on every run except the one that created the ambiguity.
+    #
+    # Reported in BOTH modes and raising in neither. The rule is the same one this pass already
+    # applies to `missing` a few lines down — `strict` is a report, not a refusal to have looked —
+    # and the stronger form of it: a finding no edit to the spec directory could clear is not a
+    # `strict` matter, and the only edit available here is deleting a row, which falsifies the record.
+    superseded = [_currency_label(g) for g in superseded_groups(out)]
+    undecidable = [_currency_label(g) for g in undecidable_groups(out)]
+    if superseded:
+        logger.warning(
+            "%d gene-disease claim(s) carry a later curation, so an earlier row is superseded and "
+            "kept: %s. Nothing is deleted — the newest classification_date reads as current, and the "
+            "compiled manifest publishes that one. A curating body re-curating is not an error.",
+            len(superseded), superseded[:5] + (["..."] if len(superseded) > 5 else []),
+        )
+    if undecidable:
+        logger.warning(
+            "%d gene-disease claim(s) carry several curations that nothing orders: %s. Two rows share "
+            "a classification_date, or one states none, so no row is called current and none "
+            "superseded — every classification stays published. Withheld deliberately.",
+            len(undecidable), undecidable[:5] + (["..."] if len(undecidable) > 5 else []),
+        )
     result = GeneValidityResult(
         rows=out,
         covered=sorted(set(covered)),
@@ -507,6 +547,8 @@ def enrich_gene_validity(
         dataset=dataset,
         source=source,
         unmapped=sorted(unmapped),
+        superseded=superseded,
+        undecidable=undecidable,
     )
     if mode == "strict" and result.missing:
         raise GeneValidityError(
@@ -543,6 +585,16 @@ def _module_genes(spec_dir: Path) -> list[str]:
         return module_genes(spec_dir)
     except GeneMetricsEnrichmentError as exc:
         raise GeneValidityError(str(exc)) from exc
+
+
+def _currency_label(group: tuple) -> str:
+    """A currency group as one readable token, skipping the parts the source left empty.
+
+    `gene/disease/moi/submitter`, which is `CURRENCY_GROUP_FIELDS` in its declared order — read off
+    the tuple that function built rather than re-derived, so the label cannot describe a different
+    grouping from the one that produced it.
+    """
+    return "/".join(str(part) for part in group if part)
 
 
 def _merge_key(row: GeneValidityRow) -> tuple:

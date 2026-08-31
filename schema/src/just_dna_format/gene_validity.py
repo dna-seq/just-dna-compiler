@@ -34,6 +34,7 @@ else. It is not the same as `no_known_disease_relationship`, which is a graded v
 """
 
 
+from collections.abc import Sequence
 from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -267,3 +268,139 @@ class GeneValidityRow(BaseModel):
         zone marker at all). Two spellings of one instant in one column would hash as two facts.
         """
         return normalize_utc_timestamp(v if v is None or isinstance(v, str) else str(v))
+
+
+# ── Currency: which assertion is the live one, and where nothing can say (RM108) ─────────────────
+#
+# ClinGen's `assertion_id` **embeds the curation timestamp**
+# (`CGGV:assertion_…-2019-08-18T160312.829Z`), so a re-curated assertion arrives under a different id,
+# misses `_merge_key`, and is appended beside the row it replaces. `manifest.gene_validity` then
+# published a pair as far apart as `["definitive", "refuted"]` with nothing anywhere saying which is
+# current, and `classification_date` and `dataset` were the only discriminators — neither of which any
+# consumer read.
+#
+# **Nothing is stored, and that is the decision rather than an economy.** A `superseded` column would
+# have to be written onto the row that is *already in the file*, which is precisely what
+# merge-not-clobber forbids (`@sidecar-authoritative`): the pass may append the new curation and may
+# not edit the old one, so the marker would be correct on every run except the one that created the
+# ambiguity. A `superseded_by` pointer fails that way too and adds three problems of its own — GenCC
+# rows may carry no `assertion_id` to point at, a row superseded twice needs a rule about immediate
+# versus current successor, and a pointer is a *location* rather than an assertion, which is the
+# line `GENE_VALIDITY_FACT_FIELDS` already draws to keep `report_url` outside.
+#
+# Currency is a total function of the rows present, so it is derived at every read instead
+# (`@derived-not-stored`). Both tiers call this one function: the enricher to report, the compiler to
+# warn and to build the manifest block. Nothing about the file changes, so
+# `integrity.gene_validity_signature` does not move and no existing module recompiles to new bytes.
+
+#: What makes two rows the same assertion across curations — the source's grain **without `dataset`**,
+#: which is the one difference from `_KEY_FALLBACK_FIELDS`. `dataset` names the release, and a
+#: re-curation is by definition a later release of the same claim, so including it would put the two
+#: rows in different groups and answer "nothing was superseded" every time. Deliberately *beside*
+#: `_merge_key` and never inside it: the merge must keep both rows, because the drift staying visible
+#: is the property this whole item exists to preserve.
+CURRENCY_GROUP_FIELDS: tuple[str, ...] = ("gene", "disease_id", "moi", "submitter")
+
+#: A row's standing within its group. `None` is the third state and is not a failure mode: it means
+#: nothing here can order the group, so no row is called current and none is called superseded. The
+#: house algebra withholds rather than guessing (`None` is never `False`).
+CURRENT: str = "current"
+SUPERSEDED: str = "superseded"
+
+
+def currency_group(row: "GeneValidityRow") -> tuple:
+    """The group a row's currency is decided within. See `CURRENCY_GROUP_FIELDS`."""
+    return tuple(getattr(row, name) for name in CURRENCY_GROUP_FIELDS)
+
+
+def classify_currency(rows: "Sequence[GeneValidityRow]") -> list[str | None]:
+    """Per row: `CURRENT`, `SUPERSEDED`, or `None` where nothing orders its group.
+
+    **Newest `classification_date` wins, and nothing is deleted.** That is S45's answer carried to a
+    weaker signal, and taking it means accepting one thing this format had not accepted before — that
+    a date is authoritative for currency. The concession is narrower than it looks: the date decides
+    *ordering* and nothing else. It never says a classification is right, both rows stay in the file so
+    the drift stays visible, and a consumer wanting the history still has it.
+
+    Publishing both facts and leaving the consumer to choose was the honest alternative and lost on one
+    point: every consumer then implements the same date comparison, and they will not all implement it
+    the same way.
+
+    **Two edges, and both withhold** rather than inventing an order:
+
+    * a **tie** on `classification_date` — two curations of one claim stamped the same instant, and
+      nothing in the row says which came second;
+    * **any row in the group carrying no date** — an undated row cannot be placed, and calling it
+      superseded because a dated one exists would assert a fact about a curation on the strength of a
+      cell the source left empty.
+
+    In both cases every row in the group answers `None`. Breaking a tie on `assertion_id` was
+    rejected: an identifier carries no chronology, and sorting on one would manufacture a winner out
+    of a spelling.
+
+    **A group of one is `CURRENT`**, dated or not — there is nothing to order it against, and a lone
+    assertion is the live one by construction. That is what keeps this quiet on the ordinary module:
+    a check that cannot fail must not report (`@tautology-zero`), and almost every real group is a
+    singleton.
+    """
+    groups: dict[tuple, list[int]] = {}
+    for index, row in enumerate(rows):
+        groups.setdefault(currency_group(row), []).append(index)
+
+    verdicts: list[str | None] = [None] * len(rows)
+    for members in groups.values():
+        if len(members) == 1:
+            verdicts[members[0]] = CURRENT
+            continue
+        dates = [rows[i].classification_date for i in members]
+        if any(d is None for d in dates):
+            continue          # undated row in the group — nothing can be placed
+        newest = max(dates)
+        if dates.count(newest) > 1:
+            continue          # a tie orders nothing
+        for index in members:
+            verdicts[index] = (
+                CURRENT if rows[index].classification_date == newest else SUPERSEDED
+            )
+    return verdicts
+
+
+def superseded_groups(rows: "Sequence[GeneValidityRow]") -> list[tuple]:
+    """The groups where a later curation replaced an earlier one, in first-seen order.
+
+    Deterministic order because a warning built from it is a published string: insertion order is the
+    order the groups were first met, never a set iteration (`@dont-discard-computed` next door — the
+    ordering rules the compiler keeps).
+    """
+    verdicts = classify_currency(rows)
+    seen: list[tuple] = []
+    marked: set[tuple] = set()
+    for row, verdict in zip(rows, verdicts, strict=True):
+        key = currency_group(row)
+        if verdict == SUPERSEDED and key not in marked:
+            marked.add(key)
+            seen.append(key)
+    return seen
+
+
+def undecidable_groups(rows: "Sequence[GeneValidityRow]") -> list[tuple]:
+    """The multi-row groups nothing orders — a tie, or a member with no `classification_date`.
+
+    Reported **separately** from the superseded ones, because they ask the reader for different
+    things: a superseded row is the archive having moved on, and an unorderable group is the archive
+    not having said enough to tell. Collapsing them would publish one number meaning two facts, which
+    is the shape `@unreachable-not-absent` exists about.
+    """
+    verdicts = classify_currency(rows)
+    counts: dict[tuple, int] = {}
+    order: list[tuple] = []
+    undecided: set[tuple] = set()
+    for row, verdict in zip(rows, verdicts, strict=True):
+        key = currency_group(row)
+        if key not in counts:
+            counts[key] = 0
+            order.append(key)
+        counts[key] += 1
+        if verdict is None:
+            undecided.add(key)
+    return [key for key in order if key in undecided and counts[key] > 1]

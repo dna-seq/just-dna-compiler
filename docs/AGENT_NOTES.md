@@ -2050,6 +2050,44 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   cosmetic: float64 goes subnormal below ~1e-308 and is flatly `0.0` below ~5e-324, so a single float
   column would render a panel's strongest association as its weakest.
 
+- `@currency-cannot-be-a-column` — **A marker for "this row was superseded" cannot be STORED in a
+  merge-not-clobber file, and RM108 is the worked example.** ClinGen's `assertion_id` embeds the
+  curation timestamp, so a re-curated assertion arrives under a new id, misses `_merge_key` and is
+  appended beside the row it replaces — correctly, since both are true records. The entry filed for it
+  said the marking "needs a column, which is additive and minor-legal". Legal it is; workable it is
+  not, and the reason only surfaces when you try to write it: **the row that must be marked is the one
+  already in the file**, and merge-not-clobber forbids the pass editing it (`@sidecar-authoritative`).
+  The marker would therefore be correct on every run *except the one that created the ambiguity*. A
+  boolean fails that way; a `superseded_by` pointer fails that way and adds three more — the source
+  may publish no id to point at, a twice-superseded row needs an immediate-versus-current rule, and a
+  pointer *locates* rather than asserts, which is the line `GENE_VALIDITY_FACT_FIELDS` already draws to
+  keep `report_url` outside the fact set. **Generalize it: before adding a column to a derived sidecar,
+  ask which run writes it — if the answer is "a later one, into an earlier one's row", it is a
+  derivation and not a column** (`@derived-not-stored`). The payoff is not only correctness: nothing
+  stored means no signature moves and no existing module recompiles to different bytes.
+
+- `@a-source-recuring-is-not-a-strict-matter` — **The gene-validity currency findings warn in both
+  modes and raise in neither, which is the SECOND deliberate departure from the enricher's mode
+  ladder** (`@enrichment-is-validation`; `@clinsig-never-escalates` is the first). The governing rule
+  is the compiler's, written at the VRS coverage site: *a finding no authored edit could clear is not
+  a `strict` matter*. Here the only edit available is deleting a row, which falsifies the record
+  rather than repairing it — a curating body re-curating is the source working. Both codes are in
+  `CARRIED_WARNING_CODES` for the same reason. **The two findings stay apart**: a superseded row is
+  the archive having moved on, an unorderable group is the archive not having said enough to tell, and
+  one number meaning two facts is `@unreachable-not-absent`'s shape. And **both edges withhold** — a
+  tie on `classification_date`, or any group member stating none, leaves no row current and none
+  superseded. Breaking the tie on `assertion_id` was refused: an identifier carries no chronology, so
+  sorting on one manufactures a winner out of a spelling.
+
+- `@first-fact-check-on-both-sides` — **RM108's currency check is the first fact-table check the
+  pre-flight also runs, so it was the first to arrive twice.** `compile_module` runs `validate_spec`
+  whatever its own mode, both reached the identical sentence, and the doubled line doubled
+  `warnings_summary`'s count with it — the case `@no-rerun-with-counts` exists about. The fact-handler
+  loop now dedupes on the message like every other both-sides check (RM94's idiom), and the rule holds
+  rather than being dodged because **both passes read the same post-overlay rows**: `validate_spec`
+  applies the overlay in its own loop, so a message embedding a count says the same number on each
+  side. When you move a fact check into the pre-flight, check the extend site dedupes.
+
 - `@verbatim-except-order` — **Store a source's value verbatim — EXCEPT when the encoding lies about its own order.** ClinGen's
   dosage codes are `{0,1,2,3,30,40}` where `30` = "autosomal recessive" and `40` = "dosage sensitivity
   unlikely", so sorting the raw numbers ranks `40` above `3` (sufficient evidence). They are decoded to

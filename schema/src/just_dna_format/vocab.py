@@ -1388,6 +1388,9 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "oe_lof_disagrees_with_counts",     # obs/exp and `oe_lof` are one quantity and they differ
         "clin_sig_contradicts_frequency",   # a pathogenic call above the BA1 frequency threshold
         "clin_sig_concordance_contested",   # the concordance record names subjects still unanswered
+        # ── gene-disease validity currency (RM108) ──
+        "gene_validity_superseded",         # a later curation of the same claim replaced an earlier one
+        "gene_validity_currency_undecidable",  # several curations of one claim and nothing orders them
         # ── the overlay (overrides.csv) ──
         "overlay_update_unmatched",         # an `update` naming a row the target table does not carry
         "overlay_targets_missing_table",    # an overlay correcting a table this module does not carry
@@ -1428,6 +1431,13 @@ CARRIED_WARNING_CODES: frozenset[str] = frozenset(
         "vrs_coverage_incomplete",
         "measurement_spans_bins",
         "verification_findings_recorded",
+        # RM108's pair. Both are facts of a SOURCE — ClinGen re-curated, or ClinGen published two
+        # curations of one claim without enough to order them — and no edit to the spec directory
+        # clears either. The only repair available to an author is deleting a row, which would
+        # falsify the record rather than fix it, so this is a question put to a reader and not work
+        # owed. Same reasoning that carries `verification_findings_recorded` next door.
+        "gene_validity_superseded",
+        "gene_validity_currency_undecidable",
     }
 )
 

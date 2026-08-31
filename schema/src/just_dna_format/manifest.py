@@ -527,9 +527,25 @@ class GeneValidity(BaseModel):
     classifications: list[str] = Field(
         default_factory=list,
         description=(
-            "Sorted union of the strengths present. Read it as a set, not a verdict: a module whose "
-            "list contains 'refuted' carries a gene somebody has argued against, which is information "
-            "rather than a defect."
+            "Sorted union of the strengths present **on the current rows** — a claim whose curation "
+            "was superseded by a later one contributes only the later verdict (RM108). Before 0.7 "
+            "this spanned every row, so a re-curated claim published a pair as far apart as "
+            "['definitive', 'refuted'] and nothing said which stood. A group nothing can order (a tie "
+            "on classification_date, or a row stating none) still contributes all of its "
+            "classifications, deliberately: picking one would name a winner the data does not. Read "
+            "it as a set, not a verdict — a list containing 'refuted' carries a gene somebody has "
+            "argued against, which is information rather than a defect."
+        ),
+    )
+    superseded_count: int = Field(
+        default=0,
+        description=(
+            "How many rows a later curation of the same claim replaced (RM108). Derived, never "
+            "stored: `superseded` could not be a column, because the row that must be marked is the "
+            "one already in the file and merge-not-clobber forbids editing it. **0 is a real answer** "
+            "— every claim here carries one curation, or the several it carries cannot be ordered. "
+            "The rows are all still in `gene_validity.parquet`; this says the drift exists so a "
+            "reader holding only the manifest can see it where the published pair used to."
         ),
     )
     submitters: list[str] = Field(

@@ -44,6 +44,32 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
+- **RM108 — a re-curation is recognised, and currency is derived rather than marked.**
+  *(all three packages; **additive** — one new manifest field and two new warning codes. No column
+  changed, so `gene_validity.signature` does not move and no module recompiles to new bytes.)*
+  ClinGen's `assertion_id` embeds the curation timestamp, so a re-curated assertion arrives under a
+  different id, misses the merge key, and is appended beside the row it replaces —
+  `manifest.gene_validity.classifications` then published `["definitive", "refuted"]` with nothing
+  saying which stood. **The newest `classification_date` is now read as current and nothing is
+  deleted**; both rows stay in the file so the drift is visible.
+
+  **The marker column the item was filed for does not exist, deliberately.** The row that must be
+  marked is the one *already in the file*, and merge-not-clobber forbids the pass editing it — so a
+  stored marker would be correct on every run except the one that created the ambiguity. Currency is
+  derived at every read (`just_dna_format.gene_validity.classify_currency`, public), grouped on
+  `(gene, disease_id, moi, submitter)` — the source's grain minus `dataset`.
+
+  **Two edges withhold rather than guess:** a tie on `classification_date`, or any member of the group
+  stating none, leaves no row current and none superseded; those groups publish all of their
+  classifications. New: **`manifest.gene_validity.superseded_count`**, and the warning codes
+  `gene_validity_superseded` / `gene_validity_currency_undecidable`, both **carried** — an author's
+  only available edit is deleting a row, which falsifies the record. They warn in both modes in both
+  tiers and escalate in neither; `validate` reports what `compile` reports.
+
+  **One behaviour change beyond gene-validity:** the compiler's fact-table loop now de-duplicates
+  check warnings on the message, as every both-sides check already did. This is the first fact check
+  the pre-flight also runs, and without it the line — and its `warnings_summary` count — arrived twice.
+
 - **RM103 — the manifest now records the version that was read, not only the one that was invented.**
   *(`just-dna-format` + `just-dna-compiler`; **additive** — a new optional manifest field, no digest
   moves.)* `normalize_version` strips every non-digit and pads to three zeros, so `version: abc`

@@ -64,7 +64,13 @@ from just_dna_format.concordance import (
 from just_dna_format.findings import CodedWarning, classify, restate
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
-from just_dna_format.gene_validity import GeneValidityRow
+from just_dna_format.gene_validity import (
+    SUPERSEDED,
+    GeneValidityRow,
+    classify_currency,
+    superseded_groups,
+    undecidable_groups,
+)
 from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.identity import is_valid_version
 from just_dna_format.integrity import (
@@ -3979,6 +3985,14 @@ def _validate_spec(
             )
             all_errors.extend(tbl_errors)
             all_warnings.extend(tbl_warnings)
+            if model is GeneValidityRow:
+                # Parity by CHECK, not by table (`@parity-by-check`): the currency finding is pure
+                # computation over bytes the pre-flight has already loaded, needs no `output_dir` and
+                # reads no resolved row, so it belongs here as well as in the compile. A green
+                # pre-flight followed by a warning the author did not see coming is the shape
+                # `validate` exists to prevent. The compile dedupes on message text, so a module
+                # running both sees it once (`@no-rerun-with-counts`).
+                all_warnings.extend(_check_gene_validity_currency(injected_rows))
         if model is ResolutionRow and not injected_errors:
             for injected_row in injected_rows:
                 membership_table.setdefault(injected_row.variant_key, []).append(injected_row)
@@ -5227,7 +5241,12 @@ def compile_module(
         ]
 
     def _gene_validity_checks(rows: list) -> tuple[list[str], list[str]]:
-        return [], list(_cross_check_gene_validity(rows, variants))
+        # Both warn in either mode (see `_check_gene_validity_currency`), so nothing here reads
+        # `strict` — the errors list stays empty by construction rather than by a branch.
+        return [], [
+            *_cross_check_gene_validity(rows, variants),
+            *_check_gene_validity_currency(rows),
+        ]
 
     def _clinical_assertion_checks(rows: list) -> tuple[list[str], list[str]]:
         return [], list(_cross_check_clinical_assertions(rows, variants))
@@ -5349,7 +5368,15 @@ def compile_module(
         fact_rows[model] = rows
         if check_errors:
             return CompilationResult(success=False, errors=check_errors, warnings=all_warnings)
-        all_warnings.extend(check_warnings)
+        # De-duplicated on the message, like every other check that runs on both sides (RM94): a
+        # fact-table check the pre-flight also performs reaches the identical sentence twice, and a
+        # doubled line in `manifest.compilation.warnings` doubles `warnings_summary`'s count with it.
+        # Both passes read the same POST-OVERLAY rows — `validate_spec` applies the overlay in its own
+        # loop — so a message embedding a count says the same number on both sides and
+        # `@no-rerun-with-counts` is satisfied rather than dodged. The dedup was previously
+        # unnecessary here because no fact check ran in the pre-flight; RM108's currency check is the
+        # first, and stating the rule once is cheaper than remembering it for the second.
+        all_warnings.extend(w for w in check_warnings if w not in all_warnings)
         fact_df = build(rows)
         fact_df.write_parquet(output_dir / parquet_name, compression=compression)
         table_rows[parquet_name] = fact_df.height
@@ -5606,6 +5633,21 @@ def _gene_validity_block(rows: list[GeneValidityRow]) -> GeneValidity | None:
     """
     if not rows:
         return None
+    # RM108. `classifications` is the one facet where "the union of every row" was the wrong
+    # question: a re-curated claim contributed BOTH its verdicts, so a module whose only disagreement
+    # was ClinGen changing its own mind published `["definitive", "refuted"]` and left a consumer to
+    # reconstruct which one stands. Superseded rows are excluded here; every other facet still spans
+    # the whole table, because "which submitters contributed" and "which releases" are questions
+    # about the file rather than about the live verdict.
+    #
+    # A group nothing orders contributes **all** of its classifications, which is the withholding
+    # rather than an oversight: with no way to say which curation is current, publishing one of them
+    # would be picking a winner the data does not name.
+    verdicts = classify_currency(rows)
+    live = [
+        row for row, verdict in zip(rows, verdicts, strict=True)
+        if verdict != SUPERSEDED
+    ]
     return GeneValidity(
         signature=_gene_validity_signature(rows),
         sources=sorted({r.source for r in rows if r.source}),
@@ -5613,8 +5655,9 @@ def _gene_validity_block(rows: list[GeneValidityRow]) -> GeneValidity | None:
         row_count=len(rows),
         genes=sorted({r.gene for r in rows}),
         diseases=sorted({r.disease_id for r in rows if r.disease_id}),
-        classifications=sorted({r.classification for r in rows if r.classification}),
+        classifications=sorted({r.classification for r in live if r.classification}),
         submitters=sorted({r.submitter for r in rows if r.submitter}),
+        superseded_count=sum(1 for v in verdicts if v == SUPERSEDED),
     )
 
 
@@ -6919,6 +6962,65 @@ def _cross_check_gene_metrics(
         "derived_row_orphan",
         f"gene_metrics.csv names {len(orphans)} gene(s) this module never mentions: {orphans}",
     )]
+
+
+def _check_gene_validity_currency(rows: list[GeneValidityRow]) -> list[str]:
+    """Report a claim carrying several curations: which one is live, or that nothing says (RM108).
+
+    ClinGen's `assertion_id` embeds the curation timestamp, so a re-curated assertion arrives under a
+    different id, misses the merge key and is appended beside the row it replaces. The manifest then
+    published `["definitive", "refuted"]` as a pair, and nothing anywhere said which was current.
+
+    **Two findings, never one number**, because they ask a reader for different things: a superseded
+    row is the archive having moved on, and an unorderable group is the archive not having said enough
+    to tell. Both aggregate by kind with a count rather than printing per group, which is this
+    workspace's standing rule for a repeated finding, and both name their groups in a bounded,
+    deterministic list so the message is stable across recompiles.
+
+    **A warning in BOTH modes, never a `strict` error.** `strict` means *reproducible artifact*, and a
+    module carrying two curations of one claim is perfectly reproducible: the bytes are injected and
+    the compile is deterministic. What the author can do about it is nothing — both rows are true
+    records of what a curating body published, and deleting one would falsify the file rather than
+    repair it. The rule this follows is the one `_vrs_coverage_warnings` and `frequencies`'
+    `not_covered` already follow: **a finding no authored edit could clear is not a `strict` matter**,
+    which is also why both codes are in `CARRIED_WARNING_CODES`.
+    """
+    findings: list[str] = []
+    superseded = superseded_groups(rows)
+    if superseded:
+        findings.append(CodedWarning(
+            "gene_validity_superseded",
+            f"gene_validity.csv carries a later curation for {len(superseded)} gene-disease claim(s), "
+            f"so an earlier row is superseded and kept: {_currency_group_names(superseded)}. Nothing is "
+            f"deleted and nothing is wrong — the newest classification_date is read as current, both "
+            f"rows stay so the drift is visible, and manifest.gene_validity.classifications publishes "
+            f"the current one. A curating body re-curating is not an error in your module."
+        ))
+    undecidable = undecidable_groups(rows)
+    if undecidable:
+        findings.append(CodedWarning(
+            "gene_validity_currency_undecidable",
+            f"gene_validity.csv carries several curations for {len(undecidable)} gene-disease claim(s) "
+            f"and nothing orders them: {_currency_group_names(undecidable)}. Either two rows share a "
+            f"classification_date or one states none, so no row is called current and none superseded "
+            f"— every classification in those groups is published, which is the honest answer rather "
+            f"than a winner picked from an identifier. Withheld deliberately, not skipped."
+        ))
+    return findings
+
+
+def _currency_group_names(groups: list[tuple]) -> str:
+    """A bounded, ordered rendering of currency groups for a warning string.
+
+    Capped at five with a count of the rest, the way every other aggregated finding here is: the
+    message is a published field, so it must not grow with the table. `groups` already arrives in
+    first-seen order, so this adds no ordering of its own.
+    """
+    shown = ", ".join(
+        "/".join(str(part) for part in group if part) for group in groups[:5]
+    )
+    more = "" if len(groups) <= 5 else f" (+{len(groups) - 5} more)"
+    return f"{shown}{more}"
 
 
 def _cross_check_gene_validity(

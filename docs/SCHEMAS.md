@@ -1735,6 +1735,35 @@ The registry is `overrides.OVERRIDABLE_TABLES`, and a test asserts it equals eve
 minus those two. **Derive the set from that registry, never from this table**: it read seven for a
 release after the eighth landed.
 
+### Which curation is current, and where nothing can say (0.7, RM108)
+
+ClinGen's `assertion_id` **embeds the curation timestamp**
+(`CGGV:assertion_…-2019-08-18T160312.829Z`), so a re-curated assertion arrives under a different id,
+misses the merge key, and is appended beside the row it replaces. That is correct — both rows are true
+records of what a curating body published — but until 0.7 nothing said which stood, and
+`manifest.gene_validity.classifications` published pairs as far apart as `["definitive", "refuted"]`.
+
+**The newest `classification_date` is current, and nothing is deleted.** The date decides *ordering*
+and nothing else: it never says a classification is right, both rows stay in the file so the drift is
+visible, and a consumer wanting the history still has it.
+
+**Nothing is stored, and that is forced rather than economical.** A `superseded` column would have to
+be written onto the row *already in the file*, which merge-not-clobber forbids — so the marker would be
+correct on every run except the one that created the ambiguity. Currency is instead derived at every
+read by `gene_validity.classify_currency`, which both the enricher and the compiler call. **No column
+changed, so `gene_validity.signature` does not move and no existing module recompiles to new bytes.**
+
+The group is `(gene, disease_id, moi, submitter)` — the source's grain **minus `dataset`**, because a
+re-curation is by definition a later release of the same claim and including it would answer "nothing
+was superseded" every time. Two edges **withhold**: a tie on `classification_date`, or any member of
+the group stating none, leaves no row current and none superseded. A group of one is current, dated or
+not. The manifest then publishes the current rows' classifications, an unorderable group contributes
+all of its own, and `manifest.gene_validity.superseded_count` says how many rows a later curation
+replaced — derived like the rest, and asserted to survive the round trip.
+
+Both findings are warnings in both modes, in both tiers, and are in `CARRIED_WARNING_CODES`: the only
+edit available to an author is deleting a row, which falsifies the record rather than repairing it.
+
 `gene_validity.csv` is the table whose key has two levels (`assertion_id`, else the gene's grain). A
 row the source published no `assertion_id` for can only be reached **group-scoped, by `gene`**, and
 not more finely. That is a stated limit rather than an oversight — spelling the five-column grain into

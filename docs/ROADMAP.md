@@ -178,15 +178,12 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Six, and four of them are not decisions** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a decision* through the three that are, which is why the paragraph under it says to count off the sections rather than off this sentence). The two whose shape is settled:
-[RM108](#rm108--a-clingen-re-curation-appends-a-second-row-and-nothing-marks-the-superseded-one)
-and
+**Five, and four of them are not decisions** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a decision* through the three that are, which is why the paragraph under it says to count off the sections rather than off this sentence). The one whose shape is settled:
 [RM117](#rm117--an-outrank-record-exists-and-no-check-reads-it-and-what-a-check-should-do-is-undecided)
-(the observability half only) — all minors, all with the release undecided, all with nothing left in
-them but the typing. **The other four are decisions and say so**: RM136 and RM137 from the RM124
+(the observability half only) — a minor, release undecided, with nothing left in it but the typing. **The other four are decisions and say so**: RM136 and RM137 from the RM124
 audit, RM138 from the RM131 review, and RM146 from a 2026-08-31 consumer report, each carrying its
-candidate repairs and why each one fails. RM110 and RM103's manifest half were two more settled
-ones and both shipped on 2026-08-31.
+candidate repairs and why each one fails. RM110, RM103's manifest half and RM108 were three more
+settled ones and all three shipped on 2026-08-31.
 **Count them off the sections, not off the sentence**: this line said *three* for as long as it took
 to notice that a narrowed item is still an item, and *not one of them is a decision* for as long as it
 took three decisions to be filed beneath it — the same arithmetic failure recorded two paragraphs
@@ -273,44 +270,6 @@ same commit.
 
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
-
-## RM108 — a ClinGen re-curation appends a second row and nothing marks the superseded one
-
-**Severity** medium · **Status** open — **a minor, release undecided** — shape decided 2026-08-21 ·
-**Owner** enricher · **Motivating case** the 2026-08-19 doc audit (just-module-creator's
-`gene_validity.md`)
-
-`_merge_key` returns `("id", row.assertion_id)` when the source published one — the right rule in
-general, and wrong here, because ClinGen's assertion id **embeds the curation timestamp**
-(`CGGV:assertion_…-2019-08-18T160312.829Z`). A re-curated assertion therefore arrives under a
-different id, misses the merge key, and is appended beside the old one. Reproduced with two injected
-exports differing only in date and grade: the file came back with both, and
-`manifest.gene_validity.classifications` then publishes a pair — as far apart as
-`["definitive", "refuted"]` — with nothing anywhere saying which is current. `classification_date` and
-`dataset` are the only discriminators and no consumer reads either.
-
-**Decided 2026-08-21: the newest `classification_date` is current, and nothing is deleted.** That is
-S45's answer carried over to a weaker signal, and taking it means accepting one thing this format has
-not accepted before — that a date is authoritative for currency. The concession is narrower than it
-looks. The date decides *ordering* and nothing else: it never says a classification is right, both
-rows stay in the file so the drift stays visible, and the superseded one is **marked** rather than
-dropped, so a consumer wanting the history has it and a consumer wanting the answer no longer has to
-reconstruct one. `manifest.gene_validity.classifications` then publishes the current classification
-instead of a pair as far apart as `["definitive", "refuted"]`.
-
-**What the fix has to contain, and the middle one is what gets forgotten.** A re-curated assertion has
-to be recognised as the same assertion — ClinGen's id embeds the timestamp, so the id alone cannot do
-it, and the recognition belongs beside `_merge_key` rather than inside it. The superseded marking needs
-a column, which is additive and minor-legal. And **the merge test has to stop re-running an identical
-export**: it cannot see this defect at all as written, so it is part of the fix rather than the thing
-that confirms it.
-
-**What was rejected, and why it is worth writing down.** Stripping the timestamp out of the merge key
-is the smallest change and removes the pair at source, but it overwrites the earlier curation — the
-opposite of S45 — and turns visible drift into invisible drift, which is the thing this item is about.
-Publishing both facts and leaving the consumer to choose was the honest alternative and lost on one
-point: every consumer then implements the same date comparison, and they will not all implement it the
-same way.
 
 ## RM117 — an outrank record exists and no check reads it, and what a check should do is undecided
 

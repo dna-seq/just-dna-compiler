@@ -44,6 +44,101 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM108 — a re-curation is recognised, and currency is DERIVED rather than marked
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format` + `just-dna-compiler` +
+`just-dna-enricher`). **Severity** medium · **Owner** enricher, and the derivation landed in format ·
+**Motivating case** the 2026-08-19 doc audit (just-module-creator's `gene_validity.md`)
+
+### The finding
+
+`_merge_key` returns `("id", row.assertion_id)` when the source published one — the right rule in
+general, and wrong here, because ClinGen's assertion id **embeds the curation timestamp**
+(`CGGV:assertion_…-2019-08-18T160312.829Z`). A re-curated assertion arrives under a different id,
+misses the merge key, and is appended beside the old one. `manifest.gene_validity.classifications`
+then published a pair as far apart as `["definitive", "refuted"]`, with `classification_date` and
+`dataset` the only discriminators and no consumer reading either.
+
+### The decision that survived contact with the code, and the one that did not
+
+**Survived:** the newest `classification_date` is current, and nothing is deleted. That is S45's
+answer carried over to a weaker signal, and taking it means accepting one thing this format had not
+accepted before — that a date is authoritative for currency. The concession is narrower than it looks.
+The date decides *ordering* and nothing else: it never says a classification is right, both rows stay
+in the file so the drift stays visible, and a consumer wanting the answer no longer has to reconstruct
+one.
+
+**Did not survive: the marker column.** The entry said the superseded marking "needs a column, which
+is additive and minor-legal". Legal it is; workable it is not, and the reason only shows up when you
+try to write it. **The row that must be marked is the one already in the file**, and merge-not-clobber
+forbids this pass editing it (`@sidecar-authoritative`). So the marker would be correct on every run
+*except the one that created the ambiguity* — the run that appends the new curation is exactly the run
+that cannot go back and mark the old one. A boolean fails that way and a `superseded_by` pointer fails
+that way too, plus three of its own: GenCC rows may carry no `assertion_id` to point at, a row
+superseded twice needs a rule about immediate-versus-current successor, and a pointer *locates* rather
+than asserts, which is the line `GENE_VALIDITY_FACT_FIELDS` already draws to keep `report_url` outside.
+
+**So nothing is stored.** Currency is a total function of the rows present, so it is derived at every
+read (`@derived-not-stored`): `classify_currency` in the format tier, called by the enricher to report
+and by the compiler to warn and to build the manifest block. One consequence worth stating plainly —
+**no column changed, so `gene_validity.signature` does not move and no existing module recompiles to
+different bytes.** The reported harm was in the manifest, and the manifest is where it is fixed.
+
+### The grouping, and its one difference from the merge key
+
+`(gene, disease_id, moi, submitter)` — the source's grain **without `dataset`**. A re-curation is by
+definition a later *release* of the same claim, so including `dataset` would put the two rows in
+different groups and answer "nothing was superseded" every time. Computed **beside** `_merge_key` and
+never inside it: the merge must keep both rows, because the drift staying visible is the property the
+item exists to preserve.
+
+### Two edges, and both withhold
+
+Neither was in the original entry, and both are decisions rather than defaults:
+
+* a **tie** on `classification_date` — two curations stamped the same instant, and nothing says which
+  came second;
+* **any row in the group carrying no date** — including the dated siblings, because being the newest
+  of the rows that *stated* a date is not the same as being the newest.
+
+In both cases no row is current and none superseded, and the manifest publishes every classification
+in the group. Breaking a tie on `assertion_id` was rejected: an identifier carries no chronology, and
+sorting on one manufactures a winner out of a spelling. A group of **one** is current, dated or not —
+there is nothing to order it against, and that is what keeps the finding quiet on an ordinary module.
+
+### Severity: a warning in both modes, in both tiers
+
+The enricher **never raises**, in `best_effort` or `strict` — a curating body re-curating is the source
+working, not the module being wrong. That is the pass's own argument for `missing` (*"`strict` is a
+report, not a refusal to have looked"*) and the stronger form of it: the only edit available to an
+author is deleting a row, which falsifies the record rather than repairing it. It is a deliberate
+departure from `@enrichment-is-validation`'s mode ladder, and the second such check.
+
+The compiler warns in both modes and never escalates, on the rule `_vrs_coverage_warnings` and
+`frequencies`' `not_covered` already follow — **a finding no authored edit could clear is not a
+`strict` matter** — and both codes are in `CARRIED_WARNING_CODES` for the same reason.
+`validate_spec` reports the same two findings, since this is pure computation over injected bytes
+(`@parity-by-check`).
+
+### What the build turned up on the way
+
+**The first fact-table check to run on both sides, so it was the first to double.** `compile_module`
+runs `validate_spec` as its pre-flight, both reached the identical sentence, and
+`manifest.compilation.warnings` carried it twice — which doubled `warnings_summary`'s count with it,
+the case `@no-rerun-with-counts` is about. The fact-handler loop now dedupes on the message like every
+other both-sides check (RM94's idiom); both passes read the same *post-overlay* rows, so the counts
+agree and the rule is satisfied rather than dodged.
+
+**`manifest.gene_validity.superseded_count` is new, and it is gated on the round trip.**
+`gene_validity.csv` is rebuilt whole from its parquet — no row drops, unlike `literature.csv` — so the
+row set is identical on lap 2 and the derivation over it is too. Asserted rather than assumed, because
+a published field that differs between a module and its own round trip is precisely RM137.
+
+**The merge test could not see this defect and is part of the fix, not the thing that confirms it.**
+`test_a_rerun_merges_rather_than_duplicating` feeds the same bytes twice, and the same bytes carry the
+same ids, so the key matches and nothing is appended however wrong the key is. The new fixture is two
+*different* exports of one claim, which is what the real source produces.
+
 ## RM103 — the manifest now records the version that was READ, not only the one that was invented
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format` + `just-dna-compiler`; the
