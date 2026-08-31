@@ -53,7 +53,7 @@ from typing import Any, ClassVar
 from pydantic import BaseModel, Field, ValidationError, ValidationInfo, field_validator, model_validator
 
 from just_dna_format.assertions import ClinicalAssertionRow
-from just_dna_format.base import AuthoredModel, vocabulary
+from just_dna_format.base import AuthoredModel, since, vocabulary
 from just_dna_format.concordance import ClinSigConcordanceRow
 from just_dna_format.findings import CodedWarning
 from just_dna_format.frequency import FrequencyRow
@@ -187,16 +187,16 @@ class OverrideRow(AuthoredModel):
             "The derived table this row corrects, by its authored filename (e.g. 'resolution.csv'). "
             "The overlay lies on a table the module CARRIES — it never creates one."
         ),
-        json_schema_extra=vocabulary("overridable_table", VALID_OVERRIDE_TABLES),
+        json_schema_extra={**vocabulary("overridable_table", VALID_OVERRIDE_TABLES), **since("0.7.0")},
     )
-    subject: str = Field(
+    subject: str = Field(json_schema_extra=since("0.7.0"), 
         description=(
             "The value identifying the group of derived rows this corrects, in the named table's own "
             "subject column: `variant_key` for resolution/frequencies/clinical_assertions, `gene` for "
             "gene_metrics/gene_validity, `pmid` for literature, `association_id` for gwas_effects."
         )
     )
-    member: str | None = Field(
+    member: str | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
             "The within-group discriminator, in the named table's own member column — `locus_index`, "
@@ -205,7 +205,7 @@ class OverrideRow(AuthoredModel):
             "which only `update` accepts."
         ),
     )
-    field: str | None = Field(
+    field: str | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
             "The column being written, for `update` and `insert`. Empty (and required empty) for "
@@ -216,11 +216,11 @@ class OverrideRow(AuthoredModel):
     )
     operation: str = Field(
         description="What this row does: update|insert|suppress",
-        json_schema_extra=vocabulary(
+        json_schema_extra={**vocabulary(
             "override_operation", VALID_OVERRIDE_OPERATIONS, notes=_OPERATION_MEANINGS
-        ),
+        ), **since("0.7.0")},
     )
-    value: str | None = Field(
+    value: str | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
             "The value to write, read with the target column's own type (so '5' lands in an int "
@@ -228,17 +228,17 @@ class OverrideRow(AuthoredModel):
             "refuses where the column is required. Required empty for `suppress`."
         ),
     )
-    reason: str = Field(
+    reason: str = Field(json_schema_extra=since("0.7.0"), 
         description=(
             "Why this correction was made, in a sentence. REQUIRED, and that is what makes the "
             "overlay a record rather than a knob: a derived cell that disagrees with its source is a "
             "claim, and a claim with no reason beside it is indistinguishable from a mistake."
         )
     )
-    decided_by: str | None = Field(
+    decided_by: str | None = Field(json_schema_extra=since("0.7.0"), 
         default=None, description="Who decided it (a curator, a panel, a tool run)"
     )
-    decided_at: str | None = Field(
+    decided_at: str | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
             "When it was decided — ISO-8601, canonicalized to UTC on load. A bare date is accepted "
@@ -669,6 +669,49 @@ def update_targets(
 #: rebuild whole, so an `update` reaching nothing there is unmatched on **both** laps already and
 #: needs none of this — the predicate is only defined where the loss is.
 LOSSY_OVERLAY_TABLES: frozenset[str] = frozenset({"literature.csv", "resolution.csv"})
+
+
+#: The table where an `update` reaching no row has a **known** meaning rather than an ambiguous one
+#: (RM117). `clin_sig_concordance.csv` is rewritten whole by the enricher and only *contested* subjects
+#: reach it, so a subject leaving the record is the archive having stopped contesting it — which
+#: `concordance.py` already names as how an author learns the archive caught up with them. Every other
+#: table's absence has several readings; this one's has one worth reporting as good news.
+VINDICATING_OVERLAY_TABLE: str = "clin_sig_concordance.csv"
+
+
+def classify_vindicated_answers(
+    table: str, targets: Sequence[tuple[tuple[str, str], bool]]
+) -> list[str]:
+    """An overlay answer whose conflict the archive has since resolved — the author was right (RM117).
+
+    **This is the one trust signal in the format that is available nowhere else, and it costs nobody a
+    decision.** An author records a judgement against a contested subject; later the authorities agree,
+    the enricher stops writing that subject into the record, and the overlay row reaches nothing. On
+    every other table that state is ambiguous. Here it is not: the record holds contested subjects
+    only and is rewritten whole, so leaving it means the contest ended.
+
+    **It replaces a message that was actively misleading**, which is why it is worth a code of its own.
+    The generic finding offers *the subject may be mistyped, or the correction may be aimed at a row
+    the compiler drops* — put to an author in the one case where their judgement was vindicated.
+
+    **It says nothing about who was right about the biology**, and the wording is careful: the
+    authorities agreed, and the author's row is now unnecessary. That the archive moved toward the
+    author is an observation about the record, not a verdict — the same restraint the concordance
+    tables keep everywhere else.
+    """
+    # `_render_keys` takes `(subject, member)` pairs, so the pair is passed through rather than the
+    # whole `(key, matched)` tuple — which rendered as a Python repr with the member appended twice.
+    resolved = [key for key, matched in targets if not matched]
+    if table != VINDICATING_OVERLAY_TABLE or not resolved:
+        return []
+    return [CodedWarning(
+        "overlay_answer_vindicated",
+        f"overrides.csv: {len(resolved)} answered subject(s) are no longer contested — the "
+        f"authorities now agree where they disagreed when the correction was written: "
+        f"{_render_keys(resolved)}. The record holds contested subjects only and is rewritten whole, "
+        f"so a subject leaving it means the disagreement ended. The overlay row can be retired; "
+        f"nothing forces it, and keeping it costs only this line."
+    )]
 
 
 def classify_update_targets(

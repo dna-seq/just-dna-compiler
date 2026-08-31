@@ -239,6 +239,7 @@ reports its own no-op**, so a `suppress` with a typo'd subject does nothing and 
 | `layout.atomic_write_text` / `layout.atomic_writer` | format | write a sidecar so a reader sees the whole file or the previous one. Nine writers were routed through these (S66) — if you write a sidecar yourself, use them. |
 | `normalize.PRESENTATION_AUTHORITY_KEYS` / `SHORT_DESCRIPTION_MAX_CHARS` / `PRESENTATION_AUTHORITY_REASONS` | format | the registry-held card subtitle (RM133), and its ~120-character ceiling. Still inject-only: `strip_authority_keys` takes the set *you* pass. |
 | `just_dna_compiler.compiler.load_spec` | compiler | public since S74, ending a private-symbol reach the enricher itself was making. |
+| `base.since` / `base.field_first_seen` | format | RM146. Which release each authored column first appeared in, declared on the field and read back as `{field: release}`. **This is what tells an "Extra inputs are not permitted" finding apart from a typo**: `[curator]` is a 0.6.5 column, `[curatr]` is a mistake, and the two want opposite actions. Per `(model, field)` — `curator` is on `VariantRow` from 0.2.0 and on `StudyRow` only from 0.6.5. |
 | `just_dna_compiler.compiler.load_overlay` | compiler | public since RM136, for the same reason: the enricher needs the author's overlay to stop re-reporting a finding they have already answered, and a second reader of `overrides.csv` is the drift the overlay's design refuses. |
 | `just_dna_compiler.sweep` | compiler | `read_outputs`, `build_outputs`, `compare_outputs`, `gate_findings`, `measurement_json` — the release measurement behind `sweep`. **`build_outputs` returns `(outputs, failures)`**; a release script calling it directly must unpack. |
 
@@ -323,9 +324,13 @@ Three properties are worth knowing before you build on it:
    minted after their pin, because `warnings_summary`'s validator checks its keys. Upgrade the schema
    package alongside the compilers whose manifests you read.
 3. **`carried` holds full message text**, which grows the channel **1.84× across the reference corpus**
-   (1.96× on `pathogenic_clinvar`). That is the shape the item decided, not an oversight; three cheaper
-   encodings are weighed as **RM138** rather than taken unilaterally. If you ship manifests over a
-   wire, budget for it.
+   uncompressed (1.96× on `pathogenic_clinvar`) — and **1.06× gzipped**, 1.13× on that worst case.
+   `carried` is a verbatim subset of `warnings`, which is exactly what DEFLATE's back-references
+   eliminate, so **if you ship manifests over a wire, serve them compressed and the duplication is
+   essentially free**; the whole with-`carried` payload gzips to 0.21× the *uncompressed*
+   warnings-only one. Measured on 2026-08-31, which closed **RM138**: the encoding stands, and the
+   three cheaper ones stay rejected (indices break the subtraction that the field exists for, a code
+   list is what `warnings_summary` already gives you).
 
 **Two more carried codes landed on 2026-08-31 (RM108)**, which is why the counts above read 71/11 and
 not 69/9: `gene_validity_superseded` (a curating body re-curated its own claim, so an earlier row is

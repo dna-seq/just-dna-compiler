@@ -150,9 +150,11 @@ from just_dna_format.normalize import now_utc_iso, parse_p_value, strip_authorit
 from just_dna_format.overrides import (
     LOSSY_OVERLAY_TABLES,
     OVERRIDABLE_TABLES,
+    VINDICATING_OVERLAY_TABLE,
     OverrideRow,
     apply_overrides,
     classify_update_targets,
+    classify_vindicated_answers,
     update_targets,
     overlay_coherence_errors,
 )
@@ -3988,7 +3990,11 @@ def _validate_spec(
                 # tables, which this function loads further down — the same stash-here/check-later
                 # shape the citation cross-check above already uses. The other six rebuild whole on a
                 # reverse, so their unmatched warning is lap-stable already and takes the old path.
-                lossy = csv_name in LOSSY_OVERLAY_TABLES
+                # The two lossy tables (RM137) and the concordance record (RM117) both defer: the
+                # first because reachability needs `studies.csv`, the second because an unmatched
+                # answer there is the archive having caught up rather than a fault, and saying so is
+                # the point.
+                lossy = csv_name in LOSSY_OVERLAY_TABLES or csv_name == VINDICATING_OVERLAY_TABLE
                 if lossy:
                     deferred_unmatched[csv_name] = update_targets(
                         csv_name, injected_rows, overrides
@@ -5398,7 +5404,7 @@ def compile_module(
         # from the same post-overlay rows.
         if csv_name in OVERRIDABLE_TABLES:
             overlaid.add(csv_name)
-            lossy = csv_name in LOSSY_OVERLAY_TABLES
+            lossy = csv_name in LOSSY_OVERLAY_TABLES or csv_name == VINDICATING_OVERLAY_TABLE
             if lossy:
                 compile_deferred[csv_name] = update_targets(csv_name, rows, overrides)
             rows, apply_errors, apply_warnings = apply_overrides(
@@ -7096,11 +7102,18 @@ def _classify_deferred_overlay_updates(
     for table, targets in deferred.items():
         if not targets:
             continue
+        if table == VINDICATING_OVERLAY_TABLE:
+            # RM117. Not a reachability question: an unmatched answer here has ONE reading, and it is
+            # the good one. Routed away from `classify_update_targets` entirely rather than given a
+            # predicate, because the generic finding's "may be mistyped" is the wrong thing to put to
+            # an author whose judgement the archive has just confirmed.
+            findings.extend(classify_vindicated_answers(table, targets))
+            continue
         if table == "literature.csv":
             survives = literature_target_survives(studies, kind_rows)
         elif table == "resolution.csv":
             survives = resolution_target_survives(variants, resolution_rows)
-        else:  # pragma: no cover - only the lossy tables are ever deferred
+        else:  # pragma: no cover - only the deferred tables reach here
             survives = None
         findings.extend(classify_update_targets(table, targets, survives))
     return findings

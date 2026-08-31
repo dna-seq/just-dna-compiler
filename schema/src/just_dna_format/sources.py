@@ -39,7 +39,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from just_dna_format.base import vocabulary
+from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import (
     VALID_DECLARED_USE,
@@ -118,7 +118,7 @@ class SourceRow(BaseModel):
         return reject_template_placeholders(data, what="sources.csv row")
 
     # ── identity: which source, contributing to which layer ──
-    source: str = Field(
+    source: str = Field(json_schema_extra=since("0.5.0"), 
         description=(
             "The source identifier, joining to the open `source` column on the other fact tables "
             "(e.g. 'clinpgx', 'cpic', 'pharmvar', 'ensembl', 'gnomad'). Open, like every source "
@@ -131,11 +131,11 @@ class SourceRow(BaseModel):
             "module's own authored tables — carries a derivative-work obligation; the fact sidecars "
             "report facts, not expression."
         ),
-        json_schema_extra=vocabulary("source_layer", VALID_SOURCE_LAYERS),
+        json_schema_extra={**vocabulary("source_layer", VALID_SOURCE_LAYERS), **since("0.5.0")},
     )
 
     # ── the terms ──
-    license: str | None = Field(
+    license: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Licence identifier or name, e.g. 'CC-BY-SA-4.0'. Deliberately an open string rather "
@@ -143,10 +143,10 @@ class SourceRow(BaseModel):
             "licence PLUS a bespoke clause, which no single identifier expresses."
         ),
     )
-    license_url: str | None = Field(
+    license_url: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None, description="Where the terms were read from"
     )
-    license_sha256: str | None = Field(
+    license_sha256: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "sha256: over the licence text as read, pinning the terms to the same moment as the "
@@ -154,11 +154,11 @@ class SourceRow(BaseModel):
             "rather than a silent pass."
         ),
     )
-    attribution: str | None = Field(
+    attribution: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description="The credit line the licence requires — one lookup, not a reconstruction",
     )
-    notice: str | None = Field(
+    notice: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Any use restriction the licence text states that is not captured by the flags below "
@@ -168,14 +168,14 @@ class SourceRow(BaseModel):
     )
 
     # ── the three orthogonal permissions, tri-state ──
-    share_alike: bool | None = Field(
+    share_alike: bool | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Whether the licence imposes a ShareAlike/copyleft obligation on derivatives. "
             "None means UNKNOWN, never false."
         ),
     )
-    commercial_use: bool | None = Field(
+    commercial_use: bool | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Whether commercial use/sale is permitted. Orthogonal to `share_alike` — CC BY-SA, "
@@ -185,7 +185,7 @@ class SourceRow(BaseModel):
         ),
     )
 
-    redistribution: bool | None = Field(
+    redistribution: bool | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Whether the terms permit passing the data on to a third party at all. A THIRD axis, not "
@@ -203,18 +203,18 @@ class SourceRow(BaseModel):
             "The use declared when the data was fetched (VALID_DECLARED_USE). A claim about the "
             "user, not about the licence — which is why it is a separate axis from the three flags."
         ),
-        json_schema_extra=vocabulary("declared_use", VALID_DECLARED_USE),
+        json_schema_extra={**vocabulary("declared_use", VALID_DECLARED_USE), **since("0.5.0")},
     )
 
     # ── provenance ──
-    dataset: str | None = Field(
+    dataset: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description="Which release the data came from, e.g. 'clinpgx_2026-07-05'",
     )
-    fetched_at: str | None = Field(
+    fetched_at: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None, description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything"
     )
-    draft_digest: str | None = Field(
+    draft_digest: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "Set by a drafting provider: a hash of the drafted table projected onto the column a "

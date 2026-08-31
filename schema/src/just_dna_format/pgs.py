@@ -28,7 +28,7 @@ from typing import ClassVar
 
 from pydantic import Field, field_validator
 
-from just_dna_format.base import AuthoredModel, vocabulary
+from just_dna_format.base import AuthoredModel, since, vocabulary
 from just_dna_format.vocab import MULTI_SEP, check_vocab, validate_finite
 
 PGS_ID_PATTERN: re.Pattern[str] = re.compile(r"^PGS\d+$")
@@ -47,25 +47,25 @@ class PgsRow(AuthoredModel):
     #: derives its dupe key from one place and `hints.key_fields` can name the columns (S48).
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("pgs_id", "trait_efo_id")
 
-    pgs_id: str = Field(description="PGS Catalog id, e.g. PGS000135")
-    trait_efo_id: str | None = Field(
+    pgs_id: str = Field(json_schema_extra=since("0.4.0"), description="PGS Catalog id, e.g. PGS000135")
+    trait_efo_id: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="EFO/MONDO/OBA/HP trait ontology id(s) — joins with variant modules"
     )
-    note: str | None = Field(default=None, description="Free-text note")
-    group: str | None = Field(default=None, description="Grouping label within the module")
+    note: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="Free-text note")
+    group: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="Grouping label within the module")
     training_ancestry: list[str] | None = Field(
         default=None,
         # NOT `vocab.RECOMMENDED_ANCESTRY_GROUPS` — these are 1000G superpopulation codes and that is
         # a gnomAD population list. `vocab.py` forbids merging them; keying the marker by vocabulary
         # *name* rather than by field name is what keeps two ancestry lists from collapsing into one.
-        json_schema_extra=vocabulary("training_ancestry", VALID_TRAINING_ANCESTRY),
+        json_schema_extra={**vocabulary("training_ancestry", VALID_TRAINING_ANCESTRY), **since("0.4.0")},
         description="Superpopulation(s) the score was validated in (1000G superpop codes; multi-valued)",
     )
-    training_cohort: str | None = Field(
+    training_cohort: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None,
         description="Optional free-form sub-superpop cohort, e.g. 'FIN', 'Ashkenazi', 'UK Biobank NW-EUR'",
     )
-    match_rate_floor: float | None = Field(
+    match_rate_floor: float | None = Field(json_schema_extra=since("0.4.0"), 
         default=None,
         description=(
             "Author-set variant-match floor in [0,1]; a score computed below it is invalid. Only the "
@@ -74,7 +74,7 @@ class PgsRow(AuthoredModel):
     )
     research_tier: str | None = Field(
         default=None,
-        json_schema_extra=vocabulary("research_tier", VALID_RESEARCH_TIERS),
+        json_schema_extra={**vocabulary("research_tier", VALID_RESEARCH_TIERS), **since("0.4.0")},
         description="research_only | calibrated (VALID_RESEARCH_TIERS)",
     )
 

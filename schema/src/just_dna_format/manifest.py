@@ -19,7 +19,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from just_dna_format.base import vocabulary
+from just_dna_format.base import since, vocabulary
 from just_dna_format.identity import (
     is_valid_version,
     validate_name,
@@ -151,10 +151,10 @@ class Display(BaseModel):
     # author what `icon_set` accepts said nothing whatever about the line a browsing consumer reads
     # first. What each one is for is stated here; how long it should be is a norm rather than a rule,
     # and deliberately not a `max_length` (see below).
-    title: str = Field(
+    title: str = Field(json_schema_extra=since("0.2.0"), 
         description="Human-readable module name — the heading a consumer shows for this module."
     )
-    description: str = Field(
+    description: str = Field(json_schema_extra=since("0.2.0"), 
         description=(
             "One short sentence — roughly 5–15 words — saying what this module is *about*. It is the "
             "subtitle beside the title wherever a module is listed, so its job is to tell this module "
@@ -165,21 +165,21 @@ class Display(BaseModel):
             "correctness and a ceiling would refuse a spec after the prose was written."
         )
     )
-    report_title: str = Field(
+    report_title: str = Field(json_schema_extra=since("0.2.0"), 
         description=(
             "Heading for the rendered per-consumer report, where that differs from `title` — `title` "
             "names the module in a catalog, this names the section a reader sees in their own results."
         )
     )
-    icon: str = Field(
+    icon: str = Field(json_schema_extra=since("0.2.0"), 
         default="database", description="Icon name within `icon_set` — the no-logo fallback glyph"
     )
     icon_set: str = Field(
         default="fomantic",
-        json_schema_extra=vocabulary("icon_set", VALID_ICON_SETS),
+        json_schema_extra={**vocabulary("icon_set", VALID_ICON_SETS), **since("0.2.0")},
         description="Icon family for `icon`: 'fomantic' or 'awesome' (FontAwesome)",
     )
-    color: str = Field(default="#6435c9", description="Hex color for UI theming")
+    color: str = Field(json_schema_extra=since("0.2.0"), default="#6435c9", description="Hex color for UI theming")
 
     @field_validator("color")
     @classmethod
@@ -971,17 +971,17 @@ class GenePanelSpec(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    source: str = Field(description="Reference the panel resolves against, e.g. 'clinvar'")
-    reference: str | None = Field(
+    source: str = Field(json_schema_extra=since("0.2.0"), description="Reference the panel resolves against, e.g. 'clinvar'")
+    reference: str | None = Field(json_schema_extra=since("0.2.0"), 
         default=None, description="Reference release/version id, e.g. a ClinVar release date"
     )
-    reference_sha256: str | None = Field(
+    reference_sha256: str | None = Field(json_schema_extra=since("0.2.0"), 
         default=None, description="Digest pinning the exact reference resource (sha256:...)"
     )
-    genes: list[str] = Field(
+    genes: list[str] = Field(json_schema_extra=since("0.2.0"), 
         default_factory=list, description="Panel gene symbols; empty = genome-wide (no gene filter)"
     )
-    significance: list[str] = Field(
+    significance: list[str] = Field(json_schema_extra=since("0.2.0"), 
         default_factory=list,
         description="Significance predicate, e.g. ['pathogenic', 'likely_pathogenic']",
     )
@@ -1143,43 +1143,43 @@ class VerificationRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     check: str = Field(
-        json_schema_extra=vocabulary("verification_check", VALID_VERIFICATION_CHECKS),
+        json_schema_extra={**vocabulary("verification_check", VALID_VERIFICATION_CHECKS), **since("0.6.0")},
         description=f"Which question was put (VALID_VERIFICATION_CHECKS). {UNTRUSTED_NOTE}",
     )
-    subjects: int = Field(
+    subjects: int = Field(json_schema_extra=since("0.6.0"), 
         default=0,
         description=(
             "Rows the check was evaluated over — the denominator. 0 with no `skipped` means the "
             f"check ran and had nothing in scope, which is not the same as not running. {UNTRUSTED_NOTE}"
         ),
     )
-    findings: int = Field(
+    findings: int = Field(json_schema_extra=since("0.6.0"), 
         default=0,
         description=f"Of those, how many disagreed with the source. {UNTRUSTED_NOTE}",
     )
     skipped: str | None = Field(
         default=None,
-        json_schema_extra=vocabulary("verification_skip", VALID_VERIFICATION_SKIPS),
+        json_schema_extra={**vocabulary("verification_skip", VALID_VERIFICATION_SKIPS), **since("0.6.0")},
         description=(
             "Why the check did not run (VALID_VERIFICATION_SKIPS), or null when it did. "
             f"{UNTRUSTED_NOTE}"
         ),
     )
-    detail: str | None = Field(
+    detail: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "The human sentence beside the machine key — the reason in full, or a note about what "
             f"was compared. Outside the fact set, so rewording it moves no signature. {UNTRUSTED_NOTE}"
         ),
     )
-    source: str | None = Field(
+    source: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "Which source answered, joining to the `source` column the licensing table keys on "
             f"(e.g. 'clinvar', 'hgnc', 'pubmed'). Null when the check needed none. {UNTRUSTED_NOTE}"
         ),
     )
-    release: str | None = Field(
+    release: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "Which release of that source it was checked against, as the source states it (a "
@@ -1187,14 +1187,14 @@ class VerificationRecord(BaseModel):
             f"PubMed is continuously updated and has nothing true to put here. {UNTRUSTED_NOTE}"
         ),
     )
-    checked_at: str | None = Field(
+    checked_at: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "ISO-8601 UTC timestamp of the run that put this check. Producer noise, so it is outside "
             f"the fact set. {UNTRUSTED_NOTE}"
         ),
     )
-    producer: str | None = Field(
+    producer: str | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
             "Tool and version that put **this** check, beside the `source`/`release`/`checked_at` "
@@ -1414,21 +1414,21 @@ class Contribution(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    who: str = Field(description="Contributor identity: a name, handle, or model id")
+    who: str = Field(json_schema_extra=since("0.4.0"), description="Contributor identity: a name, handle, or model id")
     role: str = Field(
-        json_schema_extra=vocabulary("author_role", VALID_AUTHOR_ROLES),
+        json_schema_extra={**vocabulary("author_role", VALID_AUTHOR_ROLES), **since("0.4.0")},
         description="What this contributor did (created|edited|audited|reviewed)",
     )
     kind: list[str] = Field(
         default_factory=list,
-        json_schema_extra=vocabulary("author_kind", RECOMMENDED_AUTHOR_KINDS, closed=False),
+        json_schema_extra={**vocabulary("author_kind", RECOMMENDED_AUTHOR_KINDS, closed=False), **since("0.4.0")},
         description=(
             "Multi-valued tag set describing the contributor — human ladder {human, human_expert, "
             "human_certified} or {ai} + scale {agent, team, swarm}. Open (recommended seed); route "
             "scrutiny by it."
         ),
     )
-    at: str | None = Field(default=None, description="ISO-8601 date/timestamp of the contribution")
+    at: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="ISO-8601 date/timestamp of the contribution")
 
     @field_validator("who")
     @classmethod
@@ -1490,14 +1490,14 @@ class Weighting(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    scale: str | None = Field(
+    scale: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "What the numbers mean and over what range, e.g. '0-1, curator-set, arbitrary' or "
             "'log(OR), from the cited meta-analyses'. Free text."
         ),
     )
-    method: str | None = Field(
+    method: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "How the weights were arrived at, e.g. 'literature triage, no GWAS input'. Distinct from "
@@ -1505,7 +1505,7 @@ class Weighting(BaseModel):
             "Free text."
         ),
     )
-    note: str | None = Field(
+    note: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "Anything a consumer must know before combining these weights — most usefully whether "

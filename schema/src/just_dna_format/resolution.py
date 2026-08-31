@@ -22,7 +22,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from just_dna_format.base import vocabulary
+from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import (
     VALID_RESOLUTION_STATUS,
@@ -68,25 +68,25 @@ class ResolutionRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # ── join key: the frozen authored identity (base.derive_variant_key) ──
-    variant_key: str = Field(
+    variant_key: str = Field(json_schema_extra=since("0.5.0"), 
         description="Frozen authored identity this row resolves (rsid, else chrom:start:ref)"
     )
 
     # ── resolved facts (feed resolution_signature) ──
-    rsid: str | None = Field(default=None, description="Resolved dbSNP identifier")
-    chrom: str | None = Field(default=None, description="Chromosome without 'chr' prefix")
-    start: int | None = Field(
+    rsid: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="Resolved dbSNP identifier")
+    chrom: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="Chromosome without 'chr' prefix")
+    start: int | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         ge=0,
         description="1-based genomic position (VCF POS convention; matches the Ensembl and ClinVar snapshots)",
     )
-    ref: str | None = Field(default=None, description="Reference allele")
-    alts: str | None = Field(default=None, description="Alt allele(s), comma-separated")
-    genome_build: str = Field(
+    ref: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="Reference allele")
+    alts: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="Alt allele(s), comma-separated")
+    genome_build: str = Field(json_schema_extra=since("0.5.0"), 
         default="GRCh38",
         description="Assembly the coordinate is in (the RM15 forward hook; GRCh38 today)",
     )
-    locus_index: int = Field(
+    locus_index: int = Field(json_schema_extra=since("0.5.0"), 
         default=0,
         ge=0,
         description="0 for a 1:1 resolution; 0..N-1 for a one-to-many rsid expansion",
@@ -99,7 +99,7 @@ class ResolutionRow(BaseModel):
     # them moves no existing `resolution_signature` while the columns bed in — the identity they carry
     # reaches the artifact through `variant_key` (which derives from the VA for a resolved
     # substitution), so the fact set does not need them.
-    vrs_id: str | None = Field(
+    vrs_id: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "GA4GH VRS allele id (`ga4gh:VA.…`) — one per ALT, comma-joined and **positionally "
@@ -111,7 +111,7 @@ class ResolutionRow(BaseModel):
             "available."
         ),
     )
-    vrs_spec: str | None = Field(
+    vrs_spec: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "VRS spec version the id was minted under ('2.0'). Recorded to disambiguate an embedded "
@@ -119,12 +119,12 @@ class ResolutionRow(BaseModel):
             "1.x and 2.0."
         ),
     )
-    caid: str | None = Field(
+    caid: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None, description="ClinGen Allele Registry canonical allele id (`CA<digits>`)"
     )
 
     # ── provenance (EXCLUDED from resolution_signature; who/what/when filled this) ──
-    source: str | None = Field(
+    source: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description="Which link filled this: cache|ensembl-graphql|ensembl-rest|manual|reversed (open)",
     )
@@ -140,7 +140,7 @@ class ResolutionRow(BaseModel):
     # `resolution.csv` already written carries link values there, so re-pointing the name would silently
     # change what existing data says. The map from link to authority lives in the enricher, the only
     # tier permitted to know one.
-    authority: str | None = Field(
+    authority: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "The licensed data source the link speaks for — `ensembl` for `ensembl-rest`/"
@@ -152,9 +152,9 @@ class ResolutionRow(BaseModel):
     status: str | None = Field(
         default=None,
         description="Resolution outcome: resolved|not_found|ambiguous",
-        json_schema_extra=vocabulary("resolution_status", VALID_RESOLUTION_STATUS),
+        json_schema_extra={**vocabulary("resolution_status", VALID_RESOLUTION_STATUS), **since("0.5.0")},
     )
-    rsid_alternates: str | None = Field(
+    rsid_alternates: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "When a reverse (position→rsid) back-fill hit several candidate rsIDs for the *same exact "
@@ -163,7 +163,7 @@ class ResolutionRow(BaseModel):
             "Provenance — EXCLUDED from resolution_signature (0.5, provisional)."
         ),
     )
-    rsid_current: str | None = Field(
+    rsid_current: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "The rsID dbSNP serves today when the authored one has been merged away (e.g. `rs3051860` "
@@ -183,9 +183,9 @@ class ResolutionRow(BaseModel):
             "invalidate the annotation rather than merely dating it. "
             "Provenance — EXCLUDED from resolution_signature (time-varying external state)."
         ),
-        json_schema_extra=vocabulary("rsid_status", VALID_RSID_STATUS),
+        json_schema_extra={**vocabulary("rsid_status", VALID_RSID_STATUS), **since("0.5.0")},
     )
-    fetched_at: str | None = Field(default=None, description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything")
+    fetched_at: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything")
 
     @field_validator("rsid")
     @classmethod

@@ -36,7 +36,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from just_dna_format.base import vocabulary
+from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import VALID_CLIN_SIG, VALID_RESOLUTION_STATUS, check_vocab
 
@@ -96,12 +96,12 @@ class ClinicalAssertionRow(BaseModel):
     # The COORDINATE-derived key, exactly as `FrequencyRow` documents: a one-to-many rsid is re-keyed
     # to distinct coordinate keys when the compiler expands it, so an rsid-keyed row would not line up
     # with the weights rows it describes.
-    variant_key: str = Field(
+    variant_key: str = Field(json_schema_extra=since("0.6.0"), 
         description="Coordinate-derived identity of the allele (matches the post-expansion weights key)"
     )
 
     # ── the allele this record is about ──
-    rsid: str | None = Field(
+    rsid: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "dbSNP identifier for this allele's locus, as the resolution table already established "
@@ -109,12 +109,12 @@ class ClinicalAssertionRow(BaseModel):
             "than this record's allele, and `variant_key` is what identifies the row."
         ),
     )
-    chrom: str | None = Field(default=None, description="Chromosome without 'chr' prefix")
-    start: int | None = Field(
+    chrom: str | None = Field(json_schema_extra=since("0.6.0"), default=None, description="Chromosome without 'chr' prefix")
+    start: int | None = Field(json_schema_extra=since("0.6.0"), 
         default=None, ge=0, description="1-based genomic position (VCF POS convention)"
     )
-    ref: str | None = Field(default=None, description="Reference allele")
-    alt: str | None = Field(
+    ref: str | None = Field(json_schema_extra=since("0.6.0"), default=None, description="Reference allele")
+    alt: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "The ONE alt allele this record is about — singular like `FrequencyRow.alt` and unlike "
@@ -122,7 +122,7 @@ class ClinicalAssertionRow(BaseModel):
             "carry a pathogenic, a benign and an uncertain allele (rs33922842 in HBB does)."
         ),
     )
-    genome_build: str = Field(
+    genome_build: str = Field(json_schema_extra=since("0.6.0"), 
         default="GRCh38",
         description=(
             "Assembly the coordinate is in. Load-bearing rather than decorative: the ClinVar snapshot "
@@ -132,7 +132,7 @@ class ClinicalAssertionRow(BaseModel):
     )
 
     # ── what the archive says ──
-    clin_sig: str | None = Field(
+    clin_sig: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "The archive's clinical significance, normalized to the module vocabulary "
@@ -140,14 +140,14 @@ class ClinicalAssertionRow(BaseModel):
             "adjudication: this table records the call, it does not decide who is right."
         ),
     )
-    clin_sig_raw: str | None = Field(
+    clin_sig_raw: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "The archive's verbatim token (`Pathogenic/Likely_pathogenic`), kept so the normalization "
             "above stays auditable and a value the mapping does not model is still visible."
         ),
     )
-    review_status: str | None = Field(
+    review_status: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "The archive's own review wording, verbatim — e.g. "
@@ -156,7 +156,7 @@ class ClinicalAssertionRow(BaseModel):
             "future release unloadable for no gain."
         ),
     )
-    review_stars: int | None = Field(
+    review_stars: int | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         ge=0,
         le=4,
@@ -167,7 +167,7 @@ class ClinicalAssertionRow(BaseModel):
             "is a rating ('no assertion criteria provided') and is not the same thing."
         ),
     )
-    condition: str | None = Field(
+    condition: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "The condition the call is scoped to, as the archive names it. Descriptive: the archive "
@@ -175,14 +175,14 @@ class ClinicalAssertionRow(BaseModel):
             "them for a reader."
         ),
     )
-    variation_id: str | None = Field(
+    variation_id: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "The archive's stable record id (ClinVar's VariationID). The thing a consumer cites, and "
             "the join key back into the archive — which is why it is in the fact set."
         ),
     )
-    dataset: str = Field(
+    dataset: str = Field(json_schema_extra=since("0.6.0"), 
         description=(
             "Which release this record is from, e.g. 'clinvar_2026-06-27'. A FACT: a re-reviewed "
             "record is a new fact, and telling the two apart is the point of this table."
@@ -190,7 +190,7 @@ class ClinicalAssertionRow(BaseModel):
     )
 
     # ── provenance (EXCLUDED from clinical_assertion_signature) ──
-    source: str | None = Field(
+    source: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "The licensed data source: clinvar|manual|reversed (open). Joins `sources.csv.source`. It "
@@ -204,9 +204,9 @@ class ClinicalAssertionRow(BaseModel):
             "FACT — the archive was consulted and has no record for this allele — and is different "
             "from an allele that was never queried, which has no row at all."
         ),
-        json_schema_extra=vocabulary("resolution_status", VALID_RESOLUTION_STATUS),
+        json_schema_extra={**vocabulary("resolution_status", VALID_RESOLUTION_STATUS), **since("0.6.0")},
     )
-    fetched_at: str | None = Field(
+    fetched_at: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-13T02:03:23Z'). Canonicalized on "

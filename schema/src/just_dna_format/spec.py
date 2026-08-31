@@ -24,9 +24,10 @@ from pydantic import (
 )
 
 from just_dna_format.base import (
-    COMPILER_MANAGED,
     AuthoredModel,
+    COMPILER_MANAGED,
     derive_variant_key,
+    since,
     stamped_identity_field,
     vocabulary,
 )
@@ -189,8 +190,8 @@ class ModuleInfo(Display):
 
     _version_coerced_from: str | None = PrivateAttr(default=None)
 
-    name: str = Field(description="Machine name: lowercase, underscores, no spaces")
-    version: str | None = Field(
+    name: str = Field(json_schema_extra=since("0.2.0"), description="Machine name: lowercase, underscores, no spaces")
+    version: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Authored **advisory** version — a human marker (informal `v2`/`3` or SemVer). The "
@@ -301,9 +302,9 @@ class Defaults(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    curator: str = Field(default="ai-module-creator", description="Default curator identifier")
-    method: str = Field(default="literature-review", description="Default annotation method")
-    priority: str | None = Field(default=None, description="Default priority level")
+    curator: str = Field(json_schema_extra=since("0.2.0"), default="ai-module-creator", description="Default curator identifier")
+    method: str = Field(json_schema_extra=since("0.2.0"), default="literature-review", description="Default annotation method")
+    priority: str | None = Field(json_schema_extra=since("0.2.0"), default=None, description="Default priority level")
 
 
 class ModuleSpecConfig(BaseModel):
@@ -324,10 +325,10 @@ class ModuleSpecConfig(BaseModel):
         # blocks (`module:`, `defaults:`) are models of their own and are checked when they validate.
         return reject_template_placeholders(data, what="module_spec.yaml")
 
-    schema_version: str = Field(default=SCHEMA_VERSION, description="DSL schema version")
-    module: ModuleInfo = Field(description="Module identity and display metadata")
-    defaults: Defaults = Field(default_factory=Defaults, description="Default variant-row values")
-    genome_build: str = Field(
+    schema_version: str = Field(json_schema_extra=since("0.2.0"), default=SCHEMA_VERSION, description="DSL schema version")
+    module: ModuleInfo = Field(json_schema_extra=since("0.2.0"), description="Module identity and display metadata")
+    defaults: Defaults = Field(json_schema_extra=since("0.2.0"), default_factory=Defaults, description="Default variant-row values")
+    genome_build: str = Field(json_schema_extra=since("0.2.0"), 
         default="GRCh38",
         description=(
             "Reference genome build for positions. REALITY: the reference compiler is "
@@ -337,7 +338,7 @@ class ModuleSpecConfig(BaseModel):
             "checked cross-build). Build-aware identity/resolution is RM15 (other-builds-support)."
         ),
     )
-    panel: GenePanelSpec | None = Field(
+    panel: GenePanelSpec | None = Field(json_schema_extra=since("0.2.0"), 
         default=None,
         description=(
             "DEPRECATED in 0.6, removed at 1.0 (RM4) — delete it. Descriptive provenance for modules "
@@ -348,7 +349,7 @@ class ModuleSpecConfig(BaseModel):
             "still compiles, with a deprecation warning."
         ),
     )
-    authorship: list[Contribution] = Field(
+    authorship: list[Contribution] = Field(json_schema_extra=since("0.4.0"), 
         default_factory=list,
         description=(
             "Optional structured per-version authorship (RM14): one entry per contributor with "
@@ -356,7 +357,7 @@ class ModuleSpecConfig(BaseModel):
             "`artifact.digest`. A joint contribution is two entries (a human and an ai)."
         ),
     )
-    license: str | None = Field(
+    license: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Optional licence the author declares for the module as a whole, e.g. 'CC-BY-SA-4.0'. "
@@ -369,7 +370,7 @@ class ModuleSpecConfig(BaseModel):
             "(same class as `panel`/`authorship`)."
         ),
     )
-    weighting: Weighting | None = Field(
+    weighting: Weighting | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "What this module's `weight` column means — `scale`, `method` and `note`, all free text "
@@ -380,7 +381,7 @@ class ModuleSpecConfig(BaseModel):
         ),
     )
 
-    authority_precedence: list[str] = Field(
+    authority_precedence: list[str] = Field(json_schema_extra=since("0.7.0"), 
         default_factory=list,
         description=(
             "Optional ordered list of the annotation authorities this module's curator weighted while deciding its clinical calls, most-trusted first — e.g. `[clinvar, pubmind]` (RM134). A **methodological stance, recorded and computed with by nothing**: no tier reads it to resolve anything, no check consults it, no verdict and no emitted row depends on it, and changing it moves neither identity half. It exists so a consumer can see the stance instead of inferring it by reading every contested row.\n\nIt resolves nothing because nothing can. With five authorities in a two-against-three disagreement, this order says one thing and a majority says another, and choosing between those rules is a judgement about how rank trades against agreement count — a weighting model this format does not have and has declined to invent three times. So the concordance record states the agreement state and each authority's own call, a consumer holding its own model computes what it likes, and a per-variant exception is an `overrides.csv` row rather than a second mechanism. Advisory like `weighting:`/`authorship:`/`license:`, copied into the manifest, and NOT reconstructed by the lossy `reverse_module`."
@@ -431,16 +432,16 @@ class VariantRow(AuthoredModel):
     field validators for `rsid`/`trait_efo_id`/`direction`/`clin_sig`/`stat_significance`/`effect_size`.
     """
 
-    rsid: str | None = Field(default=None, description="dbSNP identifier, e.g. rs1801133")
+    rsid: str | None = Field(json_schema_extra=since("0.2.0"), default=None, description="dbSNP identifier, e.g. rs1801133")
     chrom: str | None = Field(
         default=None,
-        json_schema_extra=vocabulary("chromosome", VALID_CHROMOSOMES),
+        json_schema_extra={**vocabulary("chromosome", VALID_CHROMOSOMES), **since("0.2.0")},
         description=(
             "Chromosome. A 'chr'/'CHR' prefix is accepted and stripped, and the mitochondrion may be "
             "written MT, chrMT, M or chrM — all fold to MT, which is what gets stored"
         ),
     )
-    start: int | None = Field(
+    start: int | None = Field(json_schema_extra=since("0.2.0"), 
         default=None,
         ge=0,
         description=(
@@ -449,14 +450,14 @@ class VariantRow(AuthoredModel):
             "every check and every minted identity reads this column as VCF POS"
         ),
     )
-    ref: str | None = Field(
+    ref: str | None = Field(json_schema_extra=since("0.2.0"), 
         default=None,
         description=(
             "Reference allele. Always spelled in bases — VCF's REF is a sequence, never symbolic; "
             "a structural allele belongs in `alts`"
         ),
     )
-    alts: str | None = Field(
+    alts: str | None = Field(json_schema_extra=since("0.2.0"), 
         default=None,
         description=(
             "Alt allele(s), comma-separated. Bases, or a symbolic/structural allele carrying its "
@@ -471,7 +472,7 @@ class VariantRow(AuthoredModel):
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("variant_key", "genotype")
     variant_key: str | None = Field(
         default=None,
-        json_schema_extra=COMPILER_MANAGED,
+        json_schema_extra={**COMPILER_MANAGED, **since("0.4.0")},
         description=(
             "Frozen machine identity (rsid, else chrom:start:ref, or chrom:start:ref:alts when an alt "
             "is present so distinct alleles at one locus don't collide), stamped at load and never "
@@ -482,7 +483,7 @@ class VariantRow(AuthoredModel):
     )
     authored_ident: list[str] | None = Field(
         default=None,
-        json_schema_extra=COMPILER_MANAGED,
+        json_schema_extra={**COMPILER_MANAGED, **since("0.5.0")},
         description=(
             "Which identity columns the author actually supplied, from {rsid, chrom, start, ref, "
             "alts}. Stamped at load like `variant_key` and never re-derived, so resolution can fill "
@@ -514,7 +515,7 @@ class VariantRow(AuthoredModel):
             "with `locus_count`, never alone. Compiler-managed: not authored, materialized to "
             "weights.parquet, never written back by reverse_module."
         ),
-    )
+     first_seen="0.6.0")
     locus_count: int | None = stamped_identity_field(
         default=1,
         description=(
@@ -524,14 +525,14 @@ class VariantRow(AuthoredModel):
             "alleles can carry the genotype asserts anything. Compiler-managed: not authored, "
             "materialized to weights.parquet, never written back by reverse_module."
         ),
-    )
+     first_seen="0.6.0")
     #: rsid, or a full coordinate. Mirrors `_validate_identification` below; pinned to it by test.
     REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = (
         frozenset({"rsid"}),
         frozenset({"chrom", "start"}),
     )
 
-    genotype: str = Field(
+    genotype: str = Field(json_schema_extra=since("0.2.0"), 
         description=(
             "Slash-separated sorted alleles, e.g. A/G, or a single allele where the contig is "
             "hemizygous or haploid (non-PAR X/Y in males, homoplasmic MT). An allele is bases, or a "
@@ -541,7 +542,7 @@ class VariantRow(AuthoredModel):
             "unaddressable — say cis/trans in diplotypes.csv where a module needs it."
         )
     )
-    weight: float | None = Field(default=None, description="Score (positive=protective)")
+    weight: float | None = Field(json_schema_extra=since("0.2.0"), default=None, description="Score (positive=protective)")
     # The description carries the members' STANDING, not just their names (S80). It read
     # `One of: risk, protective, neutral, significant, alt, ref` — six peers, no ordering — and an
     # authoring surface that passes our descriptions through verbatim (which is the contract we want
@@ -565,7 +566,7 @@ class VariantRow(AuthoredModel):
     # Not removed, and the reporter did not ask for that: published modules carry these values, the
     # read-time `effective_*` aliases depend on them, and removal is major-only under P3 regardless.
     state: str = Field(
-        json_schema_extra=vocabulary("state", VALID_STATES),
+        json_schema_extra={**vocabulary("state", VALID_STATES), **since("0.2.0")},
         description=(
             "Direction of effect for this genotype. Current: risk, protective, neutral. "
             "Superseded, still valid and still read: `significant` — a significance claim rather "
@@ -574,23 +575,23 @@ class VariantRow(AuthoredModel):
             "orthogonal `direction`/`stat_significance` columns, which this one predates."
         ),
     )
-    conclusion: str = Field(description="Human-readable interpretation for this genotype")
-    negatives: str | None = Field(
+    conclusion: str = Field(json_schema_extra=since("0.2.0"), description="Human-readable interpretation for this genotype")
+    negatives: str | None = Field(json_schema_extra=since("0.2.0"), 
         default=None,
         description=(
             "Optional free-text adverse/antagonistic-pleiotropy counterpart to `conclusion` "
             "(e.g. a protective allele's known trade-off). Consumers ignore it when absent."
         ),
     )
-    priority: str | None = Field(default=None, description="Priority level override")
-    gene: str | None = Field(default=None, description="Gene symbol, e.g. MTHFR")
-    phenotype: str | None = Field(default=None, description="Associated trait or phenotype")
-    category: str | None = Field(default=None, description="Grouping category within the module")
-    clinvar: bool | None = Field(default=None, description="Is this variant in ClinVar?")
-    pathogenic: bool | None = Field(default=None, description="ClinVar pathogenic flag")
-    benign: bool | None = Field(default=None, description="ClinVar benign flag")
-    curator: str | None = Field(default=None, description="Curator override")
-    method: str | None = Field(default=None, description="Annotation method override")
+    priority: str | None = Field(json_schema_extra=since("0.2.0"), default=None, description="Priority level override")
+    gene: str | None = Field(json_schema_extra=since("0.2.0"), default=None, description="Gene symbol, e.g. MTHFR")
+    phenotype: str | None = Field(json_schema_extra=since("0.2.0"), default=None, description="Associated trait or phenotype")
+    category: str | None = Field(json_schema_extra=since("0.2.0"), default=None, description="Grouping category within the module")
+    clinvar: bool | None = Field(json_schema_extra=since("0.2.0"), default=None, description="Is this variant in ClinVar?")
+    pathogenic: bool | None = Field(json_schema_extra=since("0.2.0"), default=None, description="ClinVar pathogenic flag")
+    benign: bool | None = Field(json_schema_extra=since("0.2.0"), default=None, description="ClinVar benign flag")
+    curator: str | None = Field(json_schema_extra=since("0.2.0"), default=None, description="Curator override")
+    method: str | None = Field(json_schema_extra=since("0.2.0"), default=None, description="Annotation method override")
 
     # ── 0.3 additive columns (all optional; shipped in 0.3 — see docs/CHANGELOG.md) ──
     # **The two axes are orthogonal, and the description now says what that means for a weak trend
@@ -616,7 +617,7 @@ class VariantRow(AuthoredModel):
     # of `direction` with `stat_significance` can express "two sources disagree about the sign", which
     # is why this shade earned a member where the third did not. `unknown` keeps its original meaning
     # (re-pointing a shipped member is a retype in all but name), and `contested` is added beside it.
-    direction: str | None = Field(
+    direction: str | None = Field(json_schema_extra=since("0.3.0"), 
         default=None,
         description=(
             "Effect direction: one of protective|risk|neutral|unknown|contested. The sign of the "
@@ -628,21 +629,21 @@ class VariantRow(AuthoredModel):
             "Orthogonal to `state`, which predates both."
         ),
     )
-    stat_significance: str | None = Field(
+    stat_significance: str | None = Field(json_schema_extra=since("0.3.0"), 
         default=None,
         description="Statistical significance: significant|suggestive|not_significant|unknown.",
     )
-    effect_size: float | None = Field(
+    effect_size: float | None = Field(json_schema_extra=since("0.3.0"), 
         default=None, description="Published effect magnitude (unit given by `effect_measure`)."
     )
     effect_measure: str | None = Field(
         default=None,
-        json_schema_extra=vocabulary(
+        json_schema_extra={**vocabulary(
             "effect_measure", RECOMMENDED_EFFECT_MEASURES, closed=False
-        ),
+        ), **since("0.3.0")},
         description="Unit of `effect_size`, e.g. OR|HR|beta|RR (recommended; not a closed set).",
     )
-    effect_allele: str | None = Field(
+    effect_allele: str | None = Field(json_schema_extra=since("0.3.0"), 
         default=None,
         description=(
             "The allele that `direction`/`weight`/`effect_size` refer to — bases, or a "
@@ -651,17 +652,17 @@ class VariantRow(AuthoredModel):
     )
     flags: list[str] | None = Field(
         default=None,
-        json_schema_extra=vocabulary("reserved_flags", RESERVED_FLAGS, closed=False),
+        json_schema_extra={**vocabulary("reserved_flags", RESERVED_FLAGS, closed=False), **since("0.3.0")},
         description=(
             "Open, multi-valued tag list (CSV: comma/semicolon/pipe-separated). Reserved tags the "
             "tooling acts on: conditional|phased|pleiotropic; other tags are allowed (surfaced as INFO)."
         ),
     )
-    trait_efo_id: str | None = Field(
+    trait_efo_id: str | None = Field(json_schema_extra=since("0.3.0"), 
         default=None,
         description="EFO/MONDO/OBA/HP trait ontology id(s), e.g. EFO_0004340 (matches just-prs).",
     )
-    clin_sig: str | None = Field(
+    clin_sig: str | None = Field(json_schema_extra=since("0.3.0"), 
         default=None,
         description="ClinVar/ACMG clinical significance (VEP CLIN_SIG vocabulary).",
     )
@@ -669,7 +670,7 @@ class VariantRow(AuthoredModel):
     # ── 0.4 general annotation axes (all optional; retired from the reserved namespace) ──
     # General per-variant refinements — any variant finding may carry them, so they live here rather
     # than in a domain table. A sparse SNP CSV simply omits them.
-    requires_callable: bool | None = Field(
+    requires_callable: bool | None = Field(json_schema_extra=since("0.4.0"), 
         default=None,
         description=(
             "True when the *absence* of this variant is the informative call (recessive carrier, "
@@ -677,7 +678,7 @@ class VariantRow(AuthoredModel):
             "then withhold the reference/absence conclusion, never assert it (no-call ≠ hom-ref)."
         ),
     )
-    acmg_sf: bool | None = Field(
+    acmg_sf: bool | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="True when the gene is on the ACMG secondary-findings list."
     )
     actionability: str | None = Field(
@@ -687,7 +688,7 @@ class VariantRow(AuthoredModel):
         # under `open_recommended`, so a tool offering a novel value got a rejection it was told to
         # expect to work — a drift in *closedness* rather than in membership, which is exactly why
         # this marker carries the flag instead of just the members.
-        json_schema_extra=vocabulary("actionability", ACTIONABILITY_SEED),
+        json_schema_extra={**vocabulary("actionability", ACTIONABILITY_SEED), **since("0.4.0")},
         description=(
             "Annotation-level actionability of the finding (ACTIONABILITY_SEED: actionable|"
             "preventable|pharmacogenomic|incurable|reproductive|descriptive|modifiable). A property "
@@ -699,7 +700,7 @@ class VariantRow(AuthoredModel):
     # ── 0.5: the second half of RM6 (retired from the reserved namespace on build) ──
     # `requires_callable` above says a negative *must be proven*; this says where the proof lives.
     # Same declarative-pointer grammar as `source_field` — validated on `AuthoredModel`, shared.
-    callable_from: str | None = Field(
+    callable_from: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Optional VCF field(s) a consumer establishes callability from, best written with the "
@@ -732,7 +733,7 @@ class VariantRow(AuthoredModel):
     # call — consumer-side measurement provenance with no module-side meaning. This states an
     # applicability bound the annotation itself carries, the same kind of thing `MeasureBinRow`'s
     # `[min, max]` states, and like those bounds it is inclusive.
-    quality_from: str | None = Field(
+    quality_from: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Optional VCF field the `min_quality` floor is stated against, best written with the "
@@ -747,7 +748,7 @@ class VariantRow(AuthoredModel):
     )
     # No `quality_element` either, and for the same reason as `callable_element` above: `min_quality`
     # is a scalar floor, so a multi-valued `quality_from` would need one — and nothing points at one.
-    min_quality: float | None = Field(
+    min_quality: float | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Inclusive floor on `quality_from`: withhold this row's conclusion where the consumer's "
@@ -1011,16 +1012,16 @@ class StudyRow(AuthoredModel):
     #: What makes two rows the same row (see `VariantRow._KEY_FIELDS`).
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("variant_key", "pmid")
 
-    rsid: str | None = Field(default=None, description="dbSNP identifier or variant key")
+    rsid: str | None = Field(json_schema_extra=since("0.2.0"), default=None, description="dbSNP identifier or variant key")
     # No `chromosome` marker: `StudyRow` runs no chrom validator (only `VariantRow` does), and a
     # marker must describe what actually rejects. Same call as the PGx tables — see `pgx.py`.
-    chrom: str | None = Field(default=None, description="Chromosome (for position-only variants)")
-    start: int | None = Field(
+    chrom: str | None = Field(json_schema_extra=since("0.2.0"), default=None, description="Chromosome (for position-only variants)")
+    start: int | None = Field(json_schema_extra=since("0.2.0"), 
         default=None,
         ge=0,
         description="1-based position, VCF POS convention (position-only variants) — do not subtract one",
     )
-    ref: str | None = Field(default=None, description="Reference allele (position-only variants)")
+    ref: str | None = Field(json_schema_extra=since("0.2.0"), default=None, description="Reference allele (position-only variants)")
     #: **Empty since 0.6 (RM47): a study row need not name a variant at all.** It used to be
     #: `({rsid}, {chrom})` — rsid, or a bare `chrom` with no `start`. The rule was unsatisfiable for
     #: exactly the modules that most needed a citation: a `repeat_alleles.csv`/`copynumbers.csv`/
@@ -1035,23 +1036,23 @@ class StudyRow(AuthoredModel):
     #: it is what the row's magnitude is stated relative to, exactly as on `VariantRow`.
     ALLELE_COLUMNS: ClassVar[tuple[str, ...]] = ("effect_allele",)
 
-    pmid: str = Field(description="PubMed ID or reference — free-form, must be non-empty")
-    population: str | None = Field(default=None, description="Study population")
-    p_value: str | None = Field(default=None, description="Raw p-value string (free-form)")
-    conclusion: str | None = Field(default=None, description="Study-specific conclusion")
-    study_design: str | None = Field(default=None, description="e.g. meta-analysis, GWAS")
+    pmid: str = Field(json_schema_extra=since("0.2.0"), description="PubMed ID or reference — free-form, must be non-empty")
+    population: str | None = Field(json_schema_extra=since("0.2.0"), default=None, description="Study population")
+    p_value: str | None = Field(json_schema_extra=since("0.2.0"), default=None, description="Raw p-value string (free-form)")
+    conclusion: str | None = Field(json_schema_extra=since("0.2.0"), default=None, description="Study-specific conclusion")
+    study_design: str | None = Field(json_schema_extra=since("0.2.0"), default=None, description="e.g. meta-analysis, GWAS")
 
     # ── 0.3 additive columns (per-study evidence; shipped in 0.3 — see docs/CHANGELOG.md) ──
-    stat_significance: str | None = Field(
+    stat_significance: str | None = Field(json_schema_extra=since("0.3.0"), 
         default=None,
         description="Per-study statistical significance: significant|suggestive|not_significant|unknown.",
     )
-    effect_size: float | None = Field(
+    effect_size: float | None = Field(json_schema_extra=since("0.3.0"), 
         default=None, description="Per-study effect magnitude (unit given by `effect_measure`)."
     )
     effect_measure: str | None = Field(
         default=None,
-        json_schema_extra=vocabulary("effect_measure", RECOMMENDED_EFFECT_MEASURES, closed=False),
+        json_schema_extra={**vocabulary("effect_measure", RECOMMENDED_EFFECT_MEASURES, closed=False), **since("0.3.0")},
         description="Unit of `effect_size`, e.g. OR|HR|beta|RR (recommended, open).",
     )
     # RM91 (0.6). `VariantRow` has carried `effect_allele` since 0.3 for a stated reason — `ref`/`alts`
@@ -1060,7 +1061,7 @@ class StudyRow(AuthoredModel):
     # the failure mode is the silent one: a wrong effect allele inverts the finding rather than
     # breaking it. Optional, so every published module stays valid (P8) and an unset cell is omitted
     # from `content_signature`.
-    effect_allele: str | None = Field(
+    effect_allele: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "The allele this study's `effect_size` is stated relative to — bases, or a "
@@ -1068,7 +1069,7 @@ class StudyRow(AuthoredModel):
             "study did not state one, which is not the same as the reference allele."
         ),
     )
-    trait_efo_id: str | None = Field(
+    trait_efo_id: str | None = Field(json_schema_extra=since("0.3.0"), 
         default=None, description="EFO/MONDO/OBA/HP trait ontology id(s) for this study."
     )
 
@@ -1092,7 +1093,7 @@ class StudyRow(AuthoredModel):
     # "Fisher's exact (allelic)", "univariate logistic regression", "logistic regression adjusted for
     # age, sex, BMI", "fixed-effect meta-analysis" — and a recommended set is additive later if a
     # corpus ever shows a shape. What the column has to do first is make two rows distinguishable.
-    statistical_test: str | None = Field(
+    statistical_test: str | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
             "Which analysis produced this row's `p_value`/`effect_size` — the test or model, and what "
@@ -1106,21 +1107,21 @@ class StudyRow(AuthoredModel):
     # ── 0.4 provenance columns (RM11/RM12, from the 0.5 scope; docs/USE_CASES.md §4a) ──
     # All optional → P3/P8 clean. They anchor a network-first validator (RM13) without the format
     # ever fetching: the module ships the pointer, the consumer supplies the source and does the check.
-    doi: str | None = Field(
+    doi: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None,
         description=(
             "Digital Object Identifier — wider than `pmid` (covers preprints/books/datasets with no "
             "PubMed id). Free-form, kept verbatim; a validator may cross-fill doi↔pmid."
         ),
     )
-    provenance_quote: str | None = Field(
+    provenance_quote: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None,
         description=(
             "Optional keyword phrase / literal passage locating this study's claim in the cited "
             "article's fulltext. Human-legible; a validator confirms fulltext-contains, yes/no."
         ),
     )
-    provenance_regex: str | None = Field(
+    provenance_regex: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None,
         description=(
             "Optional regex locating the claim in fulltext — a declarative pattern grammar "
@@ -1144,7 +1145,7 @@ class StudyRow(AuthoredModel):
     # **It records labour, never responsibility.** An AI is not a subject of right, so the human
     # author holds it entirely whatever this cell says; the point is that a reviewer can route
     # scrutiny, which is what `Contribution.kind`'s own docstring says its axis is for.
-    curator: str | None = Field(
+    curator: str | None = Field(json_schema_extra=since("0.6.5"), 
         default=None,
         description=(
             "Who located this row's provenance quote/regex — a name, handle, or model id, resolvable "
@@ -1158,7 +1159,7 @@ class StudyRow(AuthoredModel):
     # ── 0.5 additive column: the queryable form of `p_value` above ──
     # `p_value` stays the verbatim record (free-form, and kept by P8 — retyping or removing it is a
     # 1.0 item). This carries the same number in a form that sorts and thresholds.
-    p_value_num: float | None = Field(
+    p_value_num: float | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         gt=0.0,
         le=1.0,

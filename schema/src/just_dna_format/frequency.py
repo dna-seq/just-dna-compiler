@@ -28,7 +28,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from just_dna_format.base import vocabulary
+from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import (
     VALID_FREQUENCY_STATUS,
@@ -84,18 +84,18 @@ class FrequencyRow(BaseModel):
     # coordinate keys when the compiler expands it, so an rsid-keyed frequency row would fail to line
     # up with the weights rows it describes. The table is standalone regardless (the compiler does no
     # join, only a cross-check), but the key has to mean the same thing on both sides.
-    variant_key: str = Field(
+    variant_key: str = Field(json_schema_extra=since("0.5.0"), 
         description="Coordinate-derived identity of the allele (matches the post-expansion weights key)"
     )
 
     # ── the allele this row is about ──
-    rsid: str | None = Field(default=None, description="dbSNP identifier, when known")
-    chrom: str | None = Field(default=None, description="Chromosome without 'chr' prefix")
-    start: int | None = Field(
+    rsid: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="dbSNP identifier, when known")
+    chrom: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="Chromosome without 'chr' prefix")
+    start: int | None = Field(json_schema_extra=since("0.5.0"), 
         default=None, ge=0, description="1-based genomic position (VCF POS convention)"
     )
-    ref: str | None = Field(default=None, description="Reference allele")
-    alt: str | None = Field(
+    ref: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="Reference allele")
+    alt: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "The ONE alt allele this frequency is for — deliberately singular, unlike "
@@ -103,31 +103,31 @@ class FrequencyRow(BaseModel):
             "several rows, never one comma-joined cell."
         ),
     )
-    genome_build: str = Field(
+    genome_build: str = Field(json_schema_extra=since("0.5.0"), 
         default="GRCh38", description="Assembly the coordinate is in (the RM15 forward hook)"
     )
 
     # ── the counts ──
-    population: str = Field(
+    population: str = Field(json_schema_extra=since("0.5.0"), 
         description=(
             "Ancestry group the counts are for, or 'global' for the whole dataset. Open, seeded "
             "vocabulary (`vocab.RECOMMENDED_ANCESTRY_GROUPS`) — a label is interpretable only "
             "together with `dataset`."
         )
     )
-    allele_count: int | None = Field(
+    allele_count: int | None = Field(json_schema_extra=since("0.5.0"), 
         default=None, ge=0, description="AC — observed copies of `alt` in this group"
     )
-    allele_number: int | None = Field(
+    allele_number: int | None = Field(json_schema_extra=since("0.5.0"), 
         default=None, ge=0, description="AN — total called alleles in this group (the denominator)"
     )
-    homozygote_count: int | None = Field(
+    homozygote_count: int | None = Field(json_schema_extra=since("0.5.0"), 
         default=None, ge=0, description="Individuals homozygous for `alt` in this group"
     )
-    hemizygote_count: int | None = Field(
+    hemizygote_count: int | None = Field(json_schema_extra=since("0.5.0"), 
         default=None, ge=0, description="Hemizygous calls (X/Y outside the PAR, and MT)"
     )
-    faf95: float | None = Field(
+    faf95: float | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         ge=0.0,
         le=1.0,
@@ -137,7 +137,7 @@ class FrequencyRow(BaseModel):
             "on that group's row and null everywhere else (no extra column, no overloaded field)."
         ),
     )
-    dataset: str = Field(
+    dataset: str = Field(json_schema_extra=since("0.5.0"), 
         description=(
             "Which release these counts are from, e.g. 'gnomad_v4.1_joint'. A FACT, not provenance: "
             "the same allele has different (equally correct) counts in different releases."
@@ -145,21 +145,21 @@ class FrequencyRow(BaseModel):
     )
 
     # ── cross-references (out of the fact set, like ResolutionRow's) ──
-    vrs_id: str | None = Field(default=None, description="GA4GH VRS allele id (`ga4gh:VA.…`)")
-    caid: str | None = Field(
+    vrs_id: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="GA4GH VRS allele id (`ga4gh:VA.…`)")
+    caid: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None, description="ClinGen Allele Registry canonical allele id (`CA<digits>`)"
     )
 
     # ── provenance (EXCLUDED from frequency_signature) ──
-    source: str | None = Field(
+    source: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None, description="Which link filled this: gnomad|manual|reversed (open)"
     )
     status: str | None = Field(
         default=None,
         description="Outcome: resolved|not_found|not_covered (VALID_FREQUENCY_STATUS)",
-        json_schema_extra=vocabulary("frequency_status", VALID_FREQUENCY_STATUS),
+        json_schema_extra={**vocabulary("frequency_status", VALID_FREQUENCY_STATUS), **since("0.5.0")},
     )
-    fetched_at: str | None = Field(default=None, description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything")
+    fetched_at: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything")
 
     @property
     def allele_frequency(self) -> float | None:

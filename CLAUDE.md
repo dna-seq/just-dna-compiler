@@ -193,6 +193,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Never re-run a check whose message embeds a count — the manifest then publishes two numbers. `@no-rerun-with-counts`
 - A fact-table check the pre-flight also runs arrives twice; dedupe at the extend site. `@first-fact-check-on-both-sides`
 - Lap-stable means a property of the MODULE, fired matched-or-not; assert equality between laps. `@lap-stable-means-a-property-of-the-module`
+- Ask whether the signal already fires with the wrong words; pin adjudicating words on a boundary. `@the-signal-may-already-be-firing-with-the-wrong-words`
 - A source re-curating is not a `strict` matter; the two currency findings stay apart, and both edges withhold. `@a-source-recuring-is-not-a-strict-matter`
 - A check running on both sides dedupes on the message; re-running is the normal case. `@no-rerun-with-counts`
 - The ClinVar `clin_sig` cross-check never escalates under `strict`, deliberately. `@clinsig-never-escalates`
@@ -299,6 +300,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 ### Schema evolution
 
 - A new optional column or table is minor-legal; removal, promotion to required and retyping are major. `@optional-column-legal`
+- Every authored field declares its first release; per (model, field), measured from the tags. `@a-generic-refusal-cannot-name-its-own-cause`
 - An authored column is three touch points; the reverse half is really two, and the row dict fails silently. `@three-touch-points`
 - Derived-not-stored is the pattern for a convenience number. `@derived-not-stored`
 - Before adding a column to a merge-not-clobber sidecar, ask which run writes it. `@currency-cannot-be-a-column`

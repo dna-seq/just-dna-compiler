@@ -23,7 +23,7 @@ from typing import ClassVar
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from just_dna_format.base import AuthoredModel, stamped_identity_field, vocabulary
+from just_dna_format.base import AuthoredModel, since, stamped_identity_field, vocabulary
 from just_dna_format.spec import validate_pmid_cell
 from just_dna_format.vocab import (
     VALID_PHENOTYPE_CATEGORIES,
@@ -91,36 +91,36 @@ class HaplotypeRow(AuthoredModel):
         frozenset({"chrom", "start"}),
     )
 
-    haplotype_name: str = Field(description="Named haplotype/allele, e.g. *4 or e4")
-    rsid: str | None = Field(default=None, description="dbSNP id of the defining variant")
+    haplotype_name: str = Field(json_schema_extra=since("0.4.0"), description="Named haplotype/allele, e.g. *4 or e4")
+    rsid: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="dbSNP id of the defining variant")
     # No `chromosome` vocabulary marker here on purpose: unlike `VariantRow.chrom`/`StudyRow.chrom`,
     # these two models run no chrom validator, so the set is not enforced. A marker claims "a
     # validator rejects anything outside this", and attaching one where nothing rejects would be the
     # same closedness drift `actionability` already had, pointing the other way. (That the PGx tables
     # do not validate `chrom` while the SNP core does is a real inconsistency, but closing it is a
     # validation *tightening* — Principle 3 — not a marker change.)
-    chrom: str | None = Field(default=None, description="Chromosome (position-only variants)")
-    start: int | None = Field(
+    chrom: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="Chromosome (position-only variants)")
+    start: int | None = Field(json_schema_extra=since("0.4.0"), 
         default=None,
         ge=0,  # 1-based VCF POS; POS 0 is legal for a telomeric breakend (RM96, VCF_4_4_AUDIT s9)
         description="1-based position, VCF POS convention (position-only) — CPIC/PharmVar publish "
         "this convention and it is stored as-is; do not subtract one",
     )
-    ref: str | None = Field(default=None, description="Reference allele (position-only)")
+    ref: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="Reference allele (position-only)")
     alts: str | None = stamped_identity_field(
         "Alternate allele(s) at this locus, comma-separated — **filled by the compiler** from the "
         "injected resolution table, never authored (RM43). Distinct from `allele`, which is the one "
         "allele that *defines this haplotype*: a locus may offer several ALTs and the haplotype names "
         "one of them. It is here so `reverse_module` can rebuild `resolution.csv` from this parquet "
         "without dropping the allele list the injected table carried. Parquet-only; outside the key."
-    )
-    allele: str = Field(
+    , first_seen="0.6.0")
+    allele: str = Field(json_schema_extra=since("0.4.0"), 
         description=(
             "The defining (variant) allele on this haplotype — bases, or a symbolic/structural "
             "allele carrying its length (e.g. <DEL:1500> for a whole-gene deletion)"
         )
     )
-    gene: str | None = Field(default=None, description="Gene symbol, e.g. CYP2D6")
+    gene: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="Gene symbol, e.g. CYP2D6")
     # ── 0.7 (RM70): the callability claim, on the two PGx tables that name a locus. ──
     # `VariantRow` has carried `requires_callable` since 0.4, and a star-allele module could not state
     # it at all: CPIC's system assumes a position it did not call is reference, which is the whole
@@ -128,7 +128,7 @@ class HaplotypeRow(AuthoredModel):
     # deliberately does **not** travel with it — the two are different axes ("a proof is required" vs
     # "here is where the proof lives"), and a row may require one without knowing where the evidence
     # sits. Optional, tri-state, outside the key.
-    requires_callable: bool | None = Field(
+    requires_callable: bool | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
             "True when a consumer must prove this position was callable before reading the *absence* "
@@ -146,13 +146,13 @@ class HaplotypeRow(AuthoredModel):
         "`enrich._collect_subjects` and the compiler each derived one inline; materializing it to "
         "haplotypes.parquet gives a consumer the same key `weights.parquet` carries (RM43). "
         "Compiler-managed: not authored, never written back by reverse_module."
-    )
+    , first_seen="0.6.0")
     authored_ident: list[str] | None = stamped_identity_field(
         "Which identity columns the author actually supplied, from {rsid, chrom, start, ref}. "
         "Stamped at load like `variant_key`, so the compiler can fill a resolved coordinate into the "
         "parquet while `reverse_module` re-emits the authored shape — which is what keeps "
         "`content_signature` stable across a round-trip. Compiler-managed."
-    )
+    , first_seen="0.6.0")
     #: `ref` (the locus) and `allele` (the defining variant). See `AuthoredModel.ALLELE_COLUMNS`.
     #:
     #: **The compiler-filled `alts` above is deliberately NOT here**, on `ALLELE_COLUMNS`' own rule:
@@ -202,26 +202,26 @@ class AlleleFunctionRow(AuthoredModel):
     #: What makes two rows the same row (see `HaplotypeRow._KEY_FIELDS`).
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("gene", "allele")
 
-    gene: str = Field(description="Gene symbol, e.g. CYP2D6")
-    allele: str = Field(description="Star-allele string, verbatim canonical identity, e.g. *4")
-    activity_value: float | None = Field(
+    gene: str = Field(json_schema_extra=since("0.4.0"), description="Gene symbol, e.g. CYP2D6")
+    allele: str = Field(json_schema_extra=since("0.4.0"), description="Star-allele string, verbatim canonical identity, e.g. *4")
+    activity_value: float | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="Per-allele activity value (e.g. *1=1.0, *10=0.25, *4=0)"
     )
     function_status: str | None = Field(
         default=None,
-        json_schema_extra=vocabulary("function_status", VALID_FUNCTION_STATUS),
+        json_schema_extra={**vocabulary("function_status", VALID_FUNCTION_STATUS), **since("0.4.0")},
         description="CPIC function category (VALID_FUNCTION_STATUS)",
     )
-    suballele: str | None = Field(
+    suballele: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="Optional finer sub-allele, e.g. 1.001 (core star is the key)"
     )
-    copy_number: int | None = Field(
+    copy_number: int | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="Optional cis copy number of the allele-unit (e.g. *1x2 → 2)"
     )
-    sv_type: str | None = Field(
+    sv_type: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="Optional parsed SV type (duplication/deletion/hybrid)"
     )
-    hybrid_orientation: str | None = Field(
+    hybrid_orientation: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="Optional parsed tandem/hybrid orientation, e.g. *36+*10"
     )
 
@@ -267,22 +267,22 @@ class DiplotypeRow(AuthoredModel):
         "gene", "haplotype_a", "haplotype_b", "trait_efo_id", "drug", "clinical_context",
     )
 
-    gene: str = Field(description="Gene symbol, e.g. CYP2D6")
-    haplotype_a: str = Field(description="First haplotype of the pair (canonicalized a <= b)")
-    haplotype_b: str = Field(description="Second haplotype of the pair")
-    trait_efo_id: str | None = Field(
+    gene: str = Field(json_schema_extra=since("0.4.0"), description="Gene symbol, e.g. CYP2D6")
+    haplotype_a: str = Field(json_schema_extra=since("0.4.0"), description="First haplotype of the pair (canonicalized a <= b)")
+    haplotype_b: str = Field(json_schema_extra=since("0.4.0"), description="Second haplotype of the pair")
+    trait_efo_id: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="EFO/MONDO/OBA/HP trait ontology id(s)"
     )
-    direction: str | None = Field(default=None, description="Effect direction")
-    clin_sig: str | None = Field(default=None, description="Clinical significance")
-    phenotype: str | None = Field(default=None, description="Metabolizer phenotype, e.g. PM/NM")
-    conclusion: str = Field(description="Human-readable interpretation for this diplotype")
+    direction: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="Effect direction")
+    clin_sig: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="Clinical significance")
+    phenotype: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="Metabolizer phenotype, e.g. PM/NM")
+    conclusion: str = Field(json_schema_extra=since("0.4.0"), description="Human-readable interpretation for this diplotype")
 
     # ── Optional PharmGKB drug context (item 9) — a diplotype → drug response. Diplotype-keyed, so it
     # rides here; single-variant drug response lives in the separate PharmVariantRow. ──
-    drug: str | None = Field(default=None, description="Drug the response is about, e.g. codeine")
-    response: str | None = Field(default=None, description="Drug response / phenotype, free-form")
-    evidence_level: str | None = Field(
+    drug: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="Drug the response is about, e.g. codeine")
+    response: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="Drug response / phenotype, free-form")
+    evidence_level: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="PharmGKB clinical-annotation evidence level (1A..4)"
     )
     # ── 0.5: CPIC's own grading of the prescribing action, a THIRD axis beside `response` (what to
@@ -291,7 +291,7 @@ class DiplotypeRow(AuthoredModel):
     # optional action — so the two grades are not interchangeable and must not share a column. ──
     recommendation_strength: str | None = Field(
         default=None,
-        json_schema_extra=vocabulary("recommendation_strength", VALID_RECOMMENDATION_STRENGTH),
+        json_schema_extra={**vocabulary("recommendation_strength", VALID_RECOMMENDATION_STRENGTH), **since("0.5.0")},
         description=(
             "How firmly the guideline recommends the action: strong|moderate|optional|"
             "no_recommendation (CPIC's classification). Empty when the source did not classify."
@@ -317,7 +317,7 @@ class DiplotypeRow(AuthoredModel):
     #
     # Open, not a vocabulary: CPIC's own set is open-ended and every other guideline body (DPWG, CPNDS)
     # scopes differently. A closed set here would reject the next authority's contexts.
-    clinical_context: str | None = Field(
+    clinical_context: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Clinical setting this row applies to — indication, age band, prior treatment, dose "
@@ -393,29 +393,29 @@ class PharmVariantRow(AuthoredModel):
         "variant_key", "drug", "genotype", "phenotype_category", "annotation_id",
     )
 
-    rsid: str | None = Field(default=None, description="dbSNP id of the variant, e.g. rs9923231")
+    rsid: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="dbSNP id of the variant, e.g. rs9923231")
     # No `chromosome` vocabulary marker here on purpose: unlike `VariantRow.chrom`/`StudyRow.chrom`,
     # these two models run no chrom validator, so the set is not enforced. A marker claims "a
     # validator rejects anything outside this", and attaching one where nothing rejects would be the
     # same closedness drift `actionability` already had, pointing the other way. (That the PGx tables
     # do not validate `chrom` while the SNP core does is a real inconsistency, but closing it is a
     # validation *tightening* — Principle 3 — not a marker change.)
-    chrom: str | None = Field(default=None, description="Chromosome (position-only variants)")
-    start: int | None = Field(
+    chrom: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="Chromosome (position-only variants)")
+    start: int | None = Field(json_schema_extra=since("0.4.0"), 
         default=None,
         ge=0,  # 1-based VCF POS; POS 0 is legal for a telomeric breakend (RM96, VCF_4_4_AUDIT s9)
         description="1-based position, VCF POS convention (position-only) — CPIC/PharmVar publish "
         "this convention and it is stored as-is; do not subtract one",
     )
-    ref: str | None = Field(default=None, description="Reference allele (position-only)")
+    ref: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="Reference allele (position-only)")
     alts: str | None = stamped_identity_field(
         "Alternate allele(s) at this locus, comma-separated — **filled by the compiler** from the "
         "injected resolution table, never authored (RM43). It is carried as *data*, not identity: "
         "`variant_key` is still derived without it, so a pharm annotation keeps matching a variant at "
         "chrom:start:ref regardless of allele, and what the column buys is a direct VCF join, since a "
         "VCF row carries REF and ALT. Parquet-only: no CSV writer emits it."
-    )
-    gene: str | None = Field(default=None, description="Gene symbol, e.g. VKORC1")
+    , first_seen="0.6.0")
+    gene: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="Gene symbol, e.g. VKORC1")
     # ── 0.7 (RM70): the same callability claim as on `HaplotypeRow`, for the same reason — this is
     # the other PGx table that names a locus, so the claim is about a position the row states. It is
     # sharper here than anywhere, because this table is keyed on `genotype`: the row naming the
@@ -428,7 +428,7 @@ class PharmVariantRow(AuthoredModel):
     # corpus holds exactly that shape (a haplotype default-to-reference beside a reference-homozygote
     # genotype needing a proof), so a checker asserting the two agree would refuse a correct module.
     # A test compiles the disagreeing pair clean, so the check is not added later. ──
-    requires_callable: bool | None = Field(
+    requires_callable: bool | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
             "True when a consumer must prove this position was callable before concluding that the "
@@ -438,7 +438,7 @@ class PharmVariantRow(AuthoredModel):
             "alternate allele. Empty says nothing either way, and is not False."
         ),
     )
-    genotype: str | None = Field(
+    genotype: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Genotype the response applies to, canonical sorted form, e.g. C/T, or a single allele "
@@ -454,13 +454,13 @@ class PharmVariantRow(AuthoredModel):
         "row. Materialized to pharm_variants.parquet so a consumer can join this table to "
         "weights.parquet without re-implementing the precedence rule (RM43). Compiler-managed: not "
         "authored, never written back by reverse_module."
-    )
+    , first_seen="0.6.0")
     authored_ident: list[str] | None = stamped_identity_field(
         "Which identity columns the author actually supplied, from {rsid, chrom, start, ref}. "
         "Stamped at load like `variant_key`, so the compiler can fill a resolved coordinate into "
         "the parquet while `reverse_module` re-emits the authored shape — which is what keeps "
         "`content_signature` stable across a round-trip. Compiler-managed."
-    )
+    , first_seen="0.6.0")
     #: `ref` (the locus) and `genotype` (what the response applies to). The compiler-filled `alts`
     #: stays out for the reason given on `HaplotypeRow.ALLELE_COLUMNS`: it is an injected fact.
     ALLELE_COLUMNS: ClassVar[tuple[str, ...]] = ("ref", "genotype")
@@ -472,17 +472,17 @@ class PharmVariantRow(AuthoredModel):
         frozenset({"chrom", "start"}),
     )
 
-    drug: str = Field(description="Drug the response annotation is about, e.g. warfarin")
+    drug: str = Field(json_schema_extra=since("0.4.0"), description="Drug the response annotation is about, e.g. warfarin")
     phenotype_category: str | None = Field(
         default=None,
-        json_schema_extra=vocabulary("phenotype_category", VALID_PHENOTYPE_CATEGORIES),
+        json_schema_extra={**vocabulary("phenotype_category", VALID_PHENOTYPE_CATEGORIES), **since("0.5.0")},
         description=(
             "What kind of effect this is (VALID_PHENOTYPE_CATEGORIES; multi-valued via [,;|]). "
             "Part of the identity — one variant+drug carries separate efficacy, toxicity and "
             "metabolism annotations."
         ),
     )
-    annotation_id: str | None = Field(
+    annotation_id: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "The source's own accession for this annotation, e.g. a PharmGKB clinical-annotation id. "
@@ -490,10 +490,10 @@ class PharmVariantRow(AuthoredModel):
             "a source accession is a legitimate identity for a curated record."
         ),
     )
-    response: str | None = Field(
+    response: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="Drug response / phenotype, free-form (e.g. 'reduced dose requirement')"
     )
-    evidence_level: str | None = Field(
+    evidence_level: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="PharmGKB clinical-annotation evidence level (1A..4)"
     )
     # ── 0.7 (RM132): the third citation site, beside `StudyRow.pmid` and `MeasureBinRow.pmid`. ──
@@ -513,7 +513,7 @@ class PharmVariantRow(AuthoredModel):
     # binning side drew the same line: the row cites, and `studies.csv`/`literature.csv` describe —
     # which is what stops `StudyRow`'s whole provenance column set migrating here one column at a
     # time. A body of clinical claims this size is exactly where the question gets asked next.
-    pmid: str | None = Field(
+    pmid: str | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
             "Optional PubMed id grounding THIS row's claim — the literature behind this drug/"
@@ -523,10 +523,10 @@ class PharmVariantRow(AuthoredModel):
             "Separate from `evidence_level`, which grades evidence rather than pointing at it."
         ),
     )
-    trait_efo_id: str | None = Field(
+    trait_efo_id: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="Optional trait ontology id(s), for cross-module join"
     )
-    conclusion: str = Field(description="Human-readable interpretation")
+    conclusion: str = Field(json_schema_extra=since("0.4.0"), description="Human-readable interpretation")
 
     @field_validator("phenotype_category")
     @classmethod

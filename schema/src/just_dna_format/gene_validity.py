@@ -39,7 +39,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from just_dna_format.base import vocabulary
+from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import (
     VALID_GENE_VALIDITY,
@@ -107,10 +107,10 @@ class GeneValidityRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # ── the gene ──
-    gene: str = Field(
+    gene: str = Field(json_schema_extra=since("0.6.0"), 
         description="HGNC-style symbol, matching the `gene` column authored in variants.csv"
     )
-    gene_id: str | None = Field(
+    gene_id: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "HGNC id (`HGNC:20`) — the stable identity behind the mutable symbol, which both sources "
@@ -120,7 +120,7 @@ class GeneValidityRow(BaseModel):
     )
 
     # ── the disease ──
-    disease_id: str | None = Field(
+    disease_id: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "CURIE for the disease term, as the source states it — `MONDO:0013212` from ClinGen and "
@@ -128,7 +128,7 @@ class GeneValidityRow(BaseModel):
             "is an identity, and rewriting one across ontologies is a claim this tier cannot make."
         ),
     )
-    disease_label: str | None = Field(
+    disease_label: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "The term's human-readable name as the source publishes it, so the table is legible "
@@ -148,7 +148,7 @@ class GeneValidityRow(BaseModel):
             "two rows differing only here. `undetermined` is a stated finding; empty means the source "
             "has no such concept."
         ),
-        json_schema_extra=vocabulary("inheritance_mode", VALID_INHERITANCE_MODE),
+        json_schema_extra={**vocabulary("inheritance_mode", VALID_INHERITANCE_MODE), **since("0.6.0")},
     )
     classification: str | None = Field(
         default=None,
@@ -159,9 +159,9 @@ class GeneValidityRow(BaseModel):
             "association without grading it — which is NOT `no_known_disease_relationship`, a graded "
             "verdict against. A FACT, never this workspace's opinion."
         ),
-        json_schema_extra=vocabulary("gene_validity", VALID_GENE_VALIDITY),
+        json_schema_extra={**vocabulary("gene_validity", VALID_GENE_VALIDITY), **since("0.6.0")},
     )
-    classification_raw: str | None = Field(
+    classification_raw: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "The submitter's verbatim wording (`Disputed Evidence`, `Definitive`), kept so the "
@@ -169,7 +169,7 @@ class GeneValidityRow(BaseModel):
             "Same role `clin_sig_raw` plays beside `clin_sig`."
         ),
     )
-    classification_date: str | None = Field(
+    classification_date: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "ISO-8601 UTC timestamp of the curation itself — when the panel ruled, not when this row "
@@ -177,7 +177,7 @@ class GeneValidityRow(BaseModel):
             "is a new fact."
         ),
     )
-    submitter: str | None = Field(
+    submitter: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "Who made the assertion — 'Charcot-Marie-Tooth Disease Gene Curation Expert Panel' from "
@@ -185,7 +185,7 @@ class GeneValidityRow(BaseModel):
             "pair routinely carries several submitters at different strengths, and they are all data."
         ),
     )
-    assertion_id: str | None = Field(
+    assertion_id: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "The source's own stable id for this assertion (ClinGen's `CGGV:assertion_…`, GenCC's "
@@ -193,11 +193,11 @@ class GeneValidityRow(BaseModel):
             "and this one is inside."
         ),
     )
-    report_url: str | None = Field(
+    report_url: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description="Where a human can read the curation. Outside the fact set — a location, not a fact.",
     )
-    dataset: str = Field(
+    dataset: str = Field(json_schema_extra=since("0.6.0"), 
         description=(
             "Which release this assertion is from, e.g. 'clingen_gene_validity_2026-08-13'. A FACT, "
             "for the reason it is one on every sibling table: two releases are two facts."
@@ -205,7 +205,7 @@ class GeneValidityRow(BaseModel):
     )
 
     # ── provenance (EXCLUDED from gene_validity_signature) ──
-    source: str | None = Field(
+    source: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "The licensed data source this assertion came from: clingen|gencc|manual|reversed (open). "
@@ -216,9 +216,9 @@ class GeneValidityRow(BaseModel):
     status: str | None = Field(
         default=None,
         description="Outcome: resolved|not_found|ambiguous (the ResolutionRow vocabulary)",
-        json_schema_extra=vocabulary("resolution_status", VALID_RESOLUTION_STATUS),
+        json_schema_extra={**vocabulary("resolution_status", VALID_RESOLUTION_STATUS), **since("0.6.0")},
     )
-    fetched_at: str | None = Field(
+    fetched_at: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-13T02:03:23Z'). Canonicalized "

@@ -44,6 +44,198 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM146 — every authored column now says which release it appeared in
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format`; **additive** — a marker on each
+field declaration, no column, no parquet, no signature). **Severity** medium · **Owner** format
+(schema) · **Motivating case** [S81](CONSUMER_SUGGESTIONS_HISTORY.md) (just-dna-registry, relaying
+just-module-creator)
+
+### The finding
+
+A module authored on 0.6.6 was sent to a registry deployment running format 0.6.1, which runs our
+`validate_spec` server-side and reports its findings verbatim:
+
+```
+studies.csv line 2 [curator]: Extra inputs are not permitted
+```
+
+`StudyRow.curator` is ours, added in 0.6.5. A genuine typo produces the byte-identical shape
+(`[curatr]`), and the two want **opposite actions** from an author — upgrade the reader, or fix the
+cell. The finding is pydantic's under `extra="forbid"`, so it could not be reworded into carrying the
+distinction: the information was not in the model at all.
+
+### What shipped
+
+`base.since("0.6.5")` on every authored field, read back by `base.field_first_seen(model)`. It
+composes with `vocabulary()` rather than replacing it — both are entries in one `json_schema_extra`
+dict — and `stamped_identity_field` takes `first_seen` as a **required** argument, because a
+compiler-stamped column is still one an older reader refuses and defaulting it would let the next such
+column inherit a version nobody measured.
+
+**On the field, not in a roster.** A list keyed like `release_records` was the alternative and loses on
+the rule this repo keeps relearning: a hand-kept list beside a model is a second statement of one fact,
+and it is the copy that goes stale. Declared on the field, it travels through every rename and move.
+
+### The backfill was measured, and the numbers are worth recording
+
+Parsed out of each release tag's own sources — `git ls-tree` per tag, the model classes read from the
+**AST** rather than imported, since old code need not import under a current Python. **414 fields
+across 31 models**, and the distribution is a fair summary of this format's history: 115 fields date to
+0.2.0, 81 to 0.4.0, 150 to 0.5.0, 160 to 0.6.0, 3 to 0.6.5, and 78 land in the uncut 0.7.0.
+
+**`curator` is the worked example and it is the reason the answer is per `(model, field)`**: it is on
+`VariantRow` from 0.2.0 and gains its `StudyRow` twin only in 0.6.5. A roster keyed by column name
+would have given one answer for two facts — and the wrong one for the module in the report.
+
+### The guard, and why it is an equality
+
+`test_first_seen.py` asserts **set equality over the walked registry**: every field of every model in
+`_ALL_MODELS` declares one. A floor (`>= 400`) or a truthiness check is satisfied by exactly the state
+that produced this report (`@registry-completeness`). Two guards ride with it — the registry itself is
+checked for completeness, since a guard over an incomplete registry reports a clean bill about the
+models it happens to know (RM96's shape), and every declared version is checked against the set of
+releases that actually exist, because a typo'd number is the one error the model cannot catch itself.
+
+### Two things the build turned up
+
+**A mechanical edit needs an AST, and the AST needs to know what a field is.** The first pass wrapped
+nine `ClassVar` declarations — `ALLELE_COLUMNS`, `REQUIRED_ANY_OF` — in `Field(...)`, which is not a
+field at all; the suite caught it as `TypeError: 'FieldInfo' object is not iterable` from the tests
+that iterate those constants. Unwrapped by AST rather than by regex, because the multi-line forms are
+invisible to a line-oriented pattern.
+
+**The entry said 402 fields and the tree holds 414.** It was written before 0.7's own additions
+landed, which is the ordinary fate of a counted number in prose (`@counted-prose-needs-a-fixed-field`)
+— and the reason the test asserts a floor on the *total* while asserting equality on the *coverage*.
+
+### Repairs rejected, kept from the entry
+
+Reading `release_records`' `parquet_schema` axis names **4 of 402** authored columns, because it records
+what a release changed about compiled output; `curator` happens to be there, which is what makes it
+dangerous — right for the case in hand, silently wrong for 398 others. Rewording the pydantic message
+has nothing to word. Loosening `extra="forbid"` removes the guard that catches the typo half. And a
+compatibility handshake was explicitly *not* asked for; the reporter corrected their own side.
+
+### What it does not settle
+
+A reader still cannot be told *which* release it is missing without also knowing its own — that pairing
+is the consumer's, already shipped in their 0.22.0, and stays theirs. This supplies the half nobody
+outside this repo can compute.
+
+## RM117 — the vindication signal shipped, and it replaced a message that read as an accusation
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format` + `just-dna-compiler`).
+**Severity** medium · **Owner** enricher when filed, compiler as built · **Motivating case**
+[S52](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator)
+
+### What the item was by the time it was built
+
+Two halves settled before this one. `ProvenanceItem.outranks` — `{column: why}`, per column, additive
+— landed 2026-08-20 so an author overriding a checked value has somewhere to record why. The
+**severity** half was closed on 2026-08-21, not deferred: putting a checked verdict under authored
+control is something nothing else in this format does. What remained was the observability half: two
+signals a check can compute because it runs on every compile and needs nobody's permission.
+
+**Recast onto the overlay rather than `outranks`.** The entry proposed both signals over
+`provenance.json`, and by 2026-08-28 that was the wrong file: RM135 settled the overlap as a dated
+succession, `outranks` is filed for removal at the major, and `concordance.py` already names the
+overlay as where an answer goes. Growing observability on a field queued for deletion is what RM135
+warns against, so the signals compute from `overrides.csv`, where the surviving mechanism is.
+
+### The signal was already firing, with the wrong words on it
+
+This is the part worth keeping. `clin_sig_concordance.csv` holds **contested subjects only** and is
+**rewritten whole**, and `concordance.py` states outright that a subject leaving the record is how an
+author learns the archive caught up with them. So the state RM117 wanted to observe — *the archive
+resolved a conflict the author had answered* — already produced an observable: the overlay row reaches
+nothing.
+
+What it produced was the generic finding, offering *the subject may be mistyped, or the correction may
+be aimed at a row the compiler drops* — put to an author in the one case where their judgement had just
+been confirmed. **So the work was not adding a signal; it was stopping a wrong one**, which is why this
+earns a code (`overlay_answer_vindicated`) rather than a rewording, and why the test asserts the
+misleading line is **gone** as well as that the good one appears.
+
+### It is an observation, not a verdict, and the wording is pinned
+
+The authorities agreed and the overlay row is now unnecessary. Whether the author was right about the
+biology is not something a compiler can say. The test greps the message for adjudicating words on a
+**word boundary**, and it caught a real one: the first wording said *the conflict ended rather than
+that the correction is wrong*, which grades the author's row while claiming not to. The published
+sentence says the disagreement ended and the row can be retired.
+
+### The second signal is filed rather than built
+
+*A record whose row's value has changed again* needs the archive's value **now** against its value at
+record time, so it needs a fetch — enricher work, with the offline/no-snapshot/nobody-asked ladder
+every network check here carries. It is **RM151**, and it is more tractable than this entry assumed:
+`clin_sig_authority_calls.csv` records each authority's call, its verbatim wording and its release, so
+the baseline exists — for the concordance pair alone, which is the scope RM151 has to state.
+
+### Scope
+
+One table, because one table's absence has a single reading. Every other overridable table's unmatched
+update is ambiguous and takes RM137's split; `VINDICATING_OVERLAY_TABLE` names the exception, and the
+routing is a `continue` rather than a reachability predicate, since the generic classifier's two
+readings are exactly what must not be printed here.
+
+## RM138 — closed: the duplication costs 1.84× raw and 1.06× compressed, and the encoding stands
+
+**Closed on 2026-08-31 with no code change**, inside the uncut 0.7.0. **Severity** low · **Owner**
+format (schema) + compiler · **Found by** reviewing RM131 against its own motivation
+
+**Not a defect, and the entry said so first.** The shape was decided per item with the maintainer — a
+`carried` list beside `warnings`, holding the subset the author cannot clear — over a field on each
+finding, because it invents no permanent names and a consumer subtracts to get the actionable set.
+Both properties hold. What the decision did not have in front of it was the size, and the size is the
+thing RM131 exists about.
+
+### The number that was missing, measured rather than argued
+
+The entry measured the raw cost at **1.84×** across the corpus. The question it left open was whether a
+published manifest should pay that. Re-measured on 2026-08-31 with the compression a real transport
+uses, over every reference example that emits a warning:
+
+| module | warnings | carried | raw | gzip |
+|---|---|---|---|---|
+| `pathogenic_clinvar` | 113 | 109 | 1.96× | **1.13×** |
+| `hboc_palb2` | 12 | 12 | 2.00× | **1.07×** |
+| `shox_par1` / `apoe_epsilon` | 2 | 2 | 2.00× | 1.05× / 1.07× |
+| `htt_repeat_expansion` | 3 | 1 | 1.33× | 1.02× |
+| **corpus** | | | **1.84×** | **1.06×** |
+
+The raw column reproduces the entry's figure exactly, which is what makes the second column
+trustworthy. **`carried` is a verbatim subset of `warnings`, which is precisely the input DEFLATE's
+back-references are for**, so the duplication that doubles the bytes on the wire uncompressed adds
+**6%** compressed — and the whole with-`carried` payload gzips to **0.21×** the *uncompressed*
+warnings-only one. The worst case in the corpus, the 113-warning module the item was filed about, pays
+13%.
+
+### The decision
+
+**Keep the encoding, and recommend compression where the size matters** — a catalog serving many
+manifests, an API response, anything shipping `manifest.json` over a wire. That is a deployment
+concern rather than a schema one, and it is where the cost actually lands.
+
+The three cheaper encodings the entry weighed stay rejected, unchanged, and their reasons are now
+cheaper to accept because the thing they were buying is worth ~6%:
+
+* **`carried: list[int]`, indices into `warnings`.** Breaks the one property the field was chosen for
+   — the subtraction becomes a zip, and an index means nothing to a consumer that filtered or
+   re-ordered the channel. It also positionally couples two published fields, which
+   `manifest.compilation.warnings` has always avoided.
+* **`carried: list[str]` of codes.** Answers a different question, and one already answered:
+   carried-ness is a property of the code alone, so `warnings_summary` plus `CARRIED_WARNING_CODES`
+   gives the count without this field at all.
+* **Drop `carried`, publish a per-message `codes: list[str]`.** The genuinely minimal encoding, and
+   still a **third** shape rather than the decided one — it re-introduces the positional coupling and
+   hands every consumer a derivation where they currently read an answer.
+
+**Closing it now rather than leaving it open is the point.** A fourth encoding after 1.0 is a removal,
+and removals are major-only under Principle 3, so this had to be settled inside 0.7 either way. It is
+settled with a number rather than by drift.
+
 ## RM136 — the enricher reads the author's overlay, so a correction stops coming back forever
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-compiler` — one loader made public —

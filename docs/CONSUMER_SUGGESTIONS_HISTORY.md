@@ -107,6 +107,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S81** unknown column vs newer column, one finding — filed; RM146
 - **S82** a hand-read source that yielded no row — shipped; RM147
 - **S83** `direction` for a trend whose sign is unestablished — RM148
+- **S84** CIViC scored as a source; germline quarter too thin — RM152
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -2985,7 +2986,7 @@ sees.
 ## S52 — `ProvenanceItem.rationale` is the outrank marker a cross-check needs, and no check reads it
 
 **Status — accepted, split as you proposed: the capture half shipped in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published), the
-check half is filed as [RM117](ROADMAP.md#rm117--an-outrank-record-exists-and-no-check-reads-it-and-what-a-check-should-do-is-undecided) with the reasons it is not obviously right.**
+check half is filed as [RM117](ROADMAP_HISTORY.md#rm117--the-vindication-signal-shipped-and-it-replaced-a-message-that-read-as-an-accusation) with the reasons it is not obviously right.**
 
 **Taking your explicit ask first, since you said it unblocks you more than the check behaviour does:
 it is shape 1.** `ProvenanceItem.outranks: dict[str, str]` — `{column: why}` — is in the tree. Build
@@ -6939,7 +6940,7 @@ other side.
 
 ## S81 — an unknown column and a column newer than the reader are the same finding, and only this repo holds what separates them
 
-**Status — accepted, shape decided, and filed as [RM146](ROADMAP.md#rm146--an-unknown-column-and-a-column-newer-than-the-reader-are-the-same-finding-and-nothing-separates-them) rather than built in this pass.**
+**Status — accepted, shape decided, and filed as [RM146](ROADMAP_HISTORY.md#rm146--every-authored-column-now-says-which-release-it-appeared-in) rather than built in this pass.**
 The design is settled and written down; what is left is 402 field declarations plus the guard that
 keeps them honest, which is a change to every authored model in the tier. It is minor-legal and
 additive, so it waits on scheduling rather than on a question. You are not waiting on a decision from
@@ -7296,3 +7297,132 @@ decision list, so a reviewer sees the judgement rather than a value. And added a
 authoring skill: where the interval contains the null or the row carries a counter-direction, say
 which value you chose and why in the row's `conclusion`. That is prose covering a gap, which is
 usually the sign the gap is real.
+
+# just-module-creator, 2026-08-31 — a source scored for a paper, and the number that scored it
+
+Filed from writing a comparison table rather than from a broken run, and the report's own framing
+is that the measurement in it decides whether the adoption is worth anything. It was right about
+that, and the follow-up probe moved the number.
+
+## S84 — CIViC is a source of the same kind as PubMind, and its germline quarter is the only part that reaches a VCF
+
+**Status — accepted as a measurement, filed as [RM152](ROADMAP.md#rm152--civic-is-a-source-of-the-same-kind-and-its-germline-quarter-has-almost-nothing-to-say-in-the-vocabulary-we-would-ask-it); neither candidate adoption survived, and the one you preferred is the one that dies.**
+Every number reproduced against `civicdb.org/api/graphql` on 2026-08-31, including the 412 you got by
+subtraction — queried individually it is `UNKNOWN` 374, `COMBINED` 20, `MIXED` 18, and the seven
+buckets sum to 11,518 exactly, so the enum partitions cleanly and germline is 3,103, 26.9 %. You are
+also right that nothing here needs a schema change: `concordance.py` already keys `authority: str`,
+and RM134's two five-member vocabularies were stress-tested to hold at any number of authorities.
+Legality was never the obstacle, and CC0 makes the licence row trivial.
+
+**What the follow-up probe found is that 3,103 is not the operative denominator.** Of the germline
+subset, the ACMG five-tier — the only members `VALID_CLIN_SIG` can receive — covers 599, and **594 of
+those are `UNCERTAIN_SIGNIFICANCE`**. That leaves 4 `PATHOGENIC`, 1 `LIKELY_PATHOGENIC`, and **zero
+benign-class calls of any kind**; the largest single germline significance is `NA` at 812. Scoped over
+both tables rather than one: `assertions` takes no `variantOrigin` filter, so all 296 were paged and
+split per record — 275 `SOMATIC`, 6 germline, 5 pathogenic-class, 1 uncertain, none benign-class, none
+`COMMON_GERMLINE`. So the finding is as wide as `evidenceItems` **and** `assertions`, and no wider.
+
+**That kills the concordance candidate, which was your preferred one.** The check's entire product is
+opposition — a pathogenic-class call set against a benign-class one — and `concordance.py` states in
+terms that an uncertain call opposes nothing. An authority carrying 5 calls in one camp and 0 in the
+other cannot make `discordant` sayable about anything; it would join and read `single` or `concordant`
+by construction. Your sentence *"3,103 items is too few to draft from and plenty to disagree with"* is
+exactly half right, and the wrong half is the one the preference rests on: the disagreeing quantity is
+5. Your argument against the drafter stands and measures worse than you knew — the germline remainder
+that survives the origin filter is a further quarter unclassified.
+
+**What survives is real, and it is one axis over from where you aimed.** By evidence type the germline
+subset is 2,867 of 3,103 `PREDISPOSING`; by significance, `PREDISPOSITION` 1,456 + `PROTECTIVENESS` 2.
+That is our `direction` axis, not `clin_sig`. Your instinct to connect this to S83 was sound and lands
+there: `PREDISPOSITION` × `DOES_NOT_SUPPORT` is **4 items**, precisely the reading `contested` was
+added for when RM150 shipped on 2026-08-31, hours before your report arrived. But there is no
+`direction`-axis concordance check to add an authority to — the RM130/RM134 machinery is clin_sig-only
+end to end — so the open question RM152 carries is *does `direction` warrant the apparatus `clin_sig`
+has*, not *adopt CIViC*. It is filed with **no release class on purpose**, because an item with no
+repair has none to state.
+
+One correction worth making since it will be quoted: you reason from *"this ecosystem annotates
+germline genotypes from a VCF"* as though it were a charter rule. It is not — the Constitution says
+nothing about germline. It is a fitness argument about what a consumer's genotype can satisfy, which is
+the right argument and does not need charter standing. What the charter does settle is the half you
+raised by analogy: recording what an authority *said* catalogs a curated annotation rather than
+inferring a gene–disease relation, so CIViC is legal to consume for the same reason ClinVar and PubMind
+are. It fails on quantity, not on principle.
+
+**What to do now:** nothing on your side, and keep the paper's table as you have it — *a source to
+consume rather than an alternative* is the conclusion the measurement supports. If you want to move
+RM152, the probe that would do it is the one you declined to claim: `SUPPORTS`/`DOES_NOT_SUPPORT` ×
+`PREDISPOSITION`/`PROTECTIVENESS` mapped against `VALID_DIRECTIONS`, over a corpus where you can say
+how many of the 1,458 rows your modules actually reach.
+<!-- triaged: 0.7.0 · sha af8bd379c019 -->
+
+
+Filed from `just-module-creator` on 2026-08-31. This one did not come from a broken workflow: it came
+from writing the comparison table in our paper, where CIViC had to be scored against the same criteria
+the PubMind assessment used. It scored the same way, so the conclusion in
+[PUBMIND_ASSESSMENT.md](PUBMIND_ASSESSMENT.md) — *"PubMind is a **source**, of the same kind as ClinVar,
+gnomAD or the GWAS Catalog"* — appears to apply to CIViC unchanged, and the enricher already consumes
+four such sources. We are reporting the measurement rather than asking for the adoption, because the
+one number below is what decides whether the adoption is worth anything.
+
+**What we probed.** The public GraphQL API at `https://civicdb.org/api/graphql`, 2026-08-31, no key
+required:
+
+| | |
+|---|---|
+| Evidence items | 11,518 |
+| Variants | 5,065 |
+| Genes | 734 |
+| Molecular profiles | 5,661 |
+| Assertions | 296 |
+
+`EvidenceLevel` is the closed enum `{A, B, C, D, E}`. Every evidence item carries its own source:
+querying `source { citationId sourceType title }` on evidence item 116 returns
+`citationId 19357394`, `sourceType PUBMED`, and the paper's title. That is per-record provenance to a
+PMID, already in the shape `studies.csv` wants, which is why the comparison table gives CIViC a tick on
+provenance where it gives VEP a dash. Content is **CC0 1.0 Universal** (their FAQ: *"The content of
+CIViC, hosted by Washington University School of Medicine is released under the Creative Commons Public
+Domain Dedication (CC0 1.0 Universal) and the source code for the CIViC application is licensed under
+the MIT License"*), so `licensing.csv` has an easy row and redistribution is not the obstacle.
+
+**The number that matters, and it is the reason to read this before building anything.** `VariantOrigin`
+is the enum `{SOMATIC, RARE_GERMLINE, COMMON_GERMLINE, UNKNOWN, COMBINED, MIXED, NA}`, and the evidence
+items split:
+
+| Origin | Evidence items |
+|---|---|
+| `SOMATIC` | 7,376 |
+| `RARE_GERMLINE` | 3,018 |
+| `COMMON_GERMLINE` | 85 |
+| `NA` | 627 |
+| the remaining three values | 412 (by subtraction from 11,518; not queried individually) |
+
+**CIViC is a somatic cancer-interpretation resource, and this ecosystem annotates germline genotypes
+from a VCF.** The applicable subset is `RARE_GERMLINE` + `COMMON_GERMLINE` = **3,103 evidence items,
+27% of the database** — and `COMMON_GERMLINE`, the 85, is the part a population-frequency module would
+actually meet. A drafter that pulled CIViC wholesale would fill a module with assertions about tumour
+tissue that no consumer's genotype can satisfy, and every one of them would pass schema validation.
+
+**What we did meanwhile.** Nothing in the tool. We added CIViC to the paper's comparison table as a
+curated knowledgebase — ticks on schema validation, provenance and shared catalog, dashes on versioned
+modules and AI-assisted authoring — and said in prose that it is a source to consume rather than an
+alternative. No `draft_from_civic` exists and we have not started one.
+
+**A candidate, and the argument against our own first version of it.** The obvious move is
+`draft_from_civic` beside `draft_from_clinvar`. We think that is wrong as stated, for a reason the
+somatic split makes concrete: the natural filter is `variantOrigin` in `{RARE_GERMLINE,
+COMMON_GERMLINE}`, and applying it silently would hide from the author that 73% of the source was
+dropped — the same defect as a check whose scope is narrower than its name. If a drafter is built, the
+count it excluded belongs in its result, not in its docstring.
+
+The second candidate is the one we would rather have: CIViC as a **second authority for a concordance
+check**, the shape RM134 gave PubMind. It is a better fit here than a drafter, because 3,103 items is
+too few to draft from and plenty to disagree with, and because CIViC's `evidenceDirection`
+(`SUPPORTS` / `DOES_NOT_SUPPORT`) is an independently curated opinion about a direction — which is
+live for you right now, since **S83** is about `direction` having no member for a concordant trend
+whose sign is not established. We have not checked whether the two vocabularies map cleanly, and that
+is the next probe rather than a claim.
+
+**What we are not asking for.** Not a schema change. Nothing above needs a new column; the question is
+whether a somatic-majority source earns a place beside the four the enricher already reads, and that
+is your call about the enricher's scope, not ours.

@@ -18,6 +18,7 @@ from just_dna_compiler.compiler import (
     reverse_module,
     validate_spec,
 )
+from just_dna_format.base import field_vocabularies
 from just_dna_format.pgx import DiplotypeRow
 from just_dna_format.spec import VariantRow
 from pydantic import ValidationError
@@ -148,7 +149,20 @@ def test_the_context_is_not_the_ancestry_population_column() -> None:
     assert "clinical_context" not in FrequencyRow.model_fields
     # And unlike the ancestry column, this one is open: CPIC's real values are indications, age bands,
     # prior-treatment status and dose bands, and the next guideline body will scope differently.
-    assert DiplotypeRow.model_fields["clinical_context"].json_schema_extra is None
+    #
+    # Asserted through `field_vocabularies` rather than by testing `json_schema_extra is None`, which
+    # is what it said until RM146 put a `first_seen` marker on every field. That proxy was measuring
+    # "carries no marker of any kind" while claiming to measure "is not vocabulary-bound" — two things
+    # that happened to coincide, and the claim is the one worth keeping.
+    assert "clinical_context" not in field_vocabularies(DiplotypeRow)
+    # The ancestry column's own guard is a validator rather than a marker, so the contrast is drawn
+    # where it actually lives: `FrequencyRow` refuses a value off its list and `DiplotypeRow` takes one.
+    with pytest.raises(ValidationError):
+        FrequencyRow(variant_key="rs1", population="not-an-ancestry-group", dataset="d")
+    assert DiplotypeRow(
+        gene="CYP2C19", haplotype_a="*1", haplotype_b="*2", conclusion="intermediate metabolizer",
+        clinical_context="a scoping nobody has used before",
+    ).clinical_context == "a scoping nobody has used before"
 
 
 def test_three_disagreeing_contexts_survive_the_compile_as_three_rows(tmp_path: Path) -> None:

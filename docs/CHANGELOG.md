@@ -44,6 +44,55 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
+- **RM146 — every authored column now says which release it appeared in.**
+  *(`just-dna-format`; **additive** — a marker on each field declaration. No column, no parquet, no
+  signature, no manifest field.)* A module authored on 0.6.6 met a registry running 0.6.1 and got
+  `studies.csv line 2 [curator]: Extra inputs are not permitted` — byte-identical to what a typo
+  (`[curatr]`) produces, and the two want opposite actions from an author: upgrade the reader, or fix
+  the cell. pydantic's message under `extra="forbid"` could not carry the distinction, because the
+  information was not in the model.
+
+  **New: `just_dna_format.base.since("0.6.5")` on every authored field, read with
+  `base.field_first_seen(model)`** — a plain `{field: release}` map, so any tool rendering our findings
+  can answer *when did this column appear* offline. It composes with `vocabulary()` in one
+  `json_schema_extra` dict rather than replacing it. `stamped_identity_field` now takes `first_seen`
+  as a **required** argument: a compiler-stamped column is still one an older reader refuses.
+
+  **The backfill was measured, not recalled** — parsed per release tag from the AST rather than
+  imported, since old code need not import under a current Python. 414 fields across 31 models: 115
+  date to 0.2.0, 81 to 0.4.0, 150 to 0.5.0, 160 to 0.6.0, 3 to 0.6.5, and 78 land in 0.7.0. The answer
+  is per **(model, field)**, never per name: `curator` is on `VariantRow` from 0.2.0 and gains its
+  `StudyRow` twin only in 0.6.5.
+
+- **RM117 — an answered conflict the archive has since resolved says so, instead of reading as a typo.**
+  *(`just-dna-format` + `just-dna-compiler`; **one new warning code**, no field and no signature moves.)*
+  `clin_sig_concordance.csv` holds contested subjects only and is rewritten whole, so a subject leaving
+  the record means the authorities stopped disagreeing — which is how an author learns the archive
+  caught up with them. An `overrides.csv` row answering that conflict then reaches nothing, and until
+  now it drew the generic *the subject may be mistyped, or the correction may be aimed at a row the
+  compiler drops*, put to an author whose judgement had just been confirmed.
+
+  **New: `overlay_answer_vindicated`** (actionable — the author can retire the overlay row, and nobody
+  else can). It is an observation about the record and not a verdict: the authorities now agree and the
+  row is unnecessary; who was right about the biology is not something a compiler can say. Scoped to
+  that one table, because every other unmatched update is ambiguous and takes RM137's split.
+
+  This is RM117's observability half. The **severity** half stays closed, and the second signal — a
+  justification written about a value the source has since changed — is filed as **RM151**: it needs
+  the archive's value now against its value at record time, so it needs a fetch.
+
+- **RM138 — closed with its numbers measured; no code changed.** *(documentation only.)* `carried`
+  duplicates the text of the warnings it names, growing `compilation` **1.84×** across the reference
+  corpus. Re-measured with the compression a real transport uses: **1.06× gzipped** over the corpus and
+  **1.13×** on `pathogenic_clinvar`, the 113-warning module the item was filed about — because
+  `carried` is a verbatim subset of `warnings`, which is precisely what DEFLATE's back-references
+  eliminate. The whole with-`carried` payload gzips to 0.21× the *uncompressed* warnings-only one.
+
+  **The encoding stands, and the recommendation is to serve manifests compressed** where the size lands
+  — a catalog, an API response, anything shipping `manifest.json` over a wire. The three cheaper
+  encodings stay rejected for the reasons the item already recorded. Closed inside 0.7 deliberately: a
+  fourth encoding after 1.0 would be a removal, and removals are major-only.
+
 - **RM136 — the enricher reads the author's overlay, so a correction stops coming back forever.**
   *(`just-dna-compiler` + `just-dna-enricher`; **additive** — one loader made public, one new counter
   on an internal result, no manifest field and no signature moves.)* The compiler applies

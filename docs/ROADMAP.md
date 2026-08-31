@@ -178,11 +178,13 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Three, and two of them are not decisions** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a decision* through the three that are, which is why the paragraph under it says to count off the sections rather than off this sentence). The one whose shape is settled:
-[RM117](#rm117--an-outrank-record-exists-and-no-check-reads-it-and-what-a-check-should-do-is-undecided)
-(the observability half only) — a minor, release undecided, with nothing left in it but the typing. **The other two are decisions and say so**: RM138 from the RM131 review and
-RM146 from a 2026-08-31 consumer report, each carrying its candidate repairs and why each one fails.
-Both items the RM124 wave-1 audit filed — RM136 and RM137 — shipped on 2026-08-31. RM110, RM103's manifest half and RM108 were three more
+**Two, and neither is a settled shape** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a decision* through the three that are, and then read *three* for the hour it took a fourth to be filed under it, which is why the paragraph under it says to count off the sections rather than off this sentence). **Both are decisions and say so**: RM151, filed the same day
+RM117's other half shipped, and RM152 from a 2026-08-31 consumer measurement — each carrying its
+candidate repairs and why each one fails. **RM152 deliberately carries no release-class token**: both of its candidate adoptions were
+refuted by the measurement in it, so there is no repair for a class to describe, and the counters
+below are meant to pass over it rather than count it as work awaiting a release. Both items the RM124 wave-1 audit filed —
+RM136 and RM137 — shipped on 2026-08-31, and so did RM117's observability half and RM146; RM138 was
+closed the same day with its numbers measured. RM110, RM103's manifest half and RM108 were three more
 settled ones and all three shipped on 2026-08-31.
 **Count them off the sections, not off the sentence**: this line said *three* for as long as it took
 to notice that a narrowed item is still an item, and *not one of them is a decision* for as long as it
@@ -271,202 +273,138 @@ same commit.
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
-## RM117 — an outrank record exists and no check reads it, and what a check should do is undecided
+## RM151 — a justification written about a value the source has since changed is stale, and nothing says so
 
-*(Heading kept for its anchor; since 2026-08-21 the "undecided" half is decided — see the status line.)*
+**Severity** low-medium · **Status** open — **a minor, release undecided; filed 2026-08-31 by the
+maintainer while RM117's other half shipped** · **Owner** enricher · **Motivating case**
+[S52](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator), RM117's second signal
 
-**Severity** medium · **Status** open — **a minor, release undecided** — narrowed 2026-08-21 to the
-observability half; the severity half is **closed**, not deferred · **Owner** enricher ·
-**Motivating case** [S52](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator)
+**RM117 shipped one of its two signals and this is the other.** An `overrides.csv` row answering a
+contested `clin_sig` is a judgement written *about a particular disagreement* — the archive said X, the
+author says Y, and the reason column explains why. If the archive later says Z, the reason is stale by
+construction: it was written about a value that is no longer there. The author is not told, and nothing
+in the record distinguishes a justification that still describes the disagreement from one that
+describes a disagreement since replaced by a different one.
 
-**The half that shipped.** `ProvenanceItem.outranks` — `{column: why}`, per column, additive, in the
-tree since 2026-08-20 — so an author overriding a checked value has somewhere to record *why*, and the
-capture half the reporter is building has a place to write. Neither identity moves. See SCHEMAS.md.
+**This is the binding problem showing up as an observation rather than as a mechanism**, which is the
+honest place for it until there is a binding. RM117's three objections to giving `outranks` a severity
+consequence all turned on a record not being bound to the value it justifies; none of them is an
+objection to *noticing* that the value moved.
 
-**Decided 2026-08-21: the severity half is dropped, and the free half is what this item now is.**
-The proposal was that a filled record change the severity of a source-mismatch — WARNING today, INFO
-where a record names the column. It is closed rather than deferred, on the three objections below and
-on one that outranks them: **the 0.7 authored-overlay work supersedes the question.**
-[RM124](history/ROADMAP_0_7.md#rm124--an-authors-correction-to-a-derived-table-has-nowhere-to-live-except-inside-it)
-carries it as its own open question 2 — `outranks` and an overlay are both an authored value beating a
-source with prose attached, the split between them is *exactly the kind of line that erodes*, and that
-entry says outright to decide whether one record serves both **before either grows a second field**.
-Giving `outranks` a severity consequence now is growing that field. Deciding the ladder first would
-fix a shape against machinery about to move underneath it — the same error as fixing a signature
-against a hypothesis.
+### Why it is a separate item from the half that shipped
 
-**What this item is, and it costs nobody a decision.** Two signals the check can already compute,
-because it runs on every compile and needs nobody's permission:
+The signal that shipped — an answered subject the authorities now agree on — is computable offline, in
+the compiler, from data it already holds: `clin_sig_concordance.csv` is rewritten whole and holds
+contested subjects only, so a subject leaving it means the contest ended. **This one is not.** It needs
+the archive's value *now* against the archive's value *at record time*, and the first requires a fetch.
 
-- **A mismatch that has since resolved.** The archive caught up to the outrank — the author was right
-  and the source moved. That is a trust signal available nowhere else in this format, and it is
-  observable without asking anyone anything.
-- **A record whose row's value has changed again.** Stale by construction: the justification was
-  written about a value that is no longer there. This is the binding problem showing up as an
-  observation instead of as a mechanism, which is the honest place for it until there is a binding.
+### What it has to work with, which is more than RM117 assumed
 
-Neither touches the severity ladder, neither puts a verdict under authored control, and both stay
-correct whatever 0.7 does to the authored model.
+RM117 said a record "is not bound to the value it justifies". For the concordance pair that is no
+longer quite true: **`clin_sig_authority_calls.csv` records what each authority actually said**, with
+`clin_sig`, the verbatim `clin_sig_raw`, and the `dataset` release it came from. So the comparison is
+available in principle — recorded call against fresh call, per authority, keyed
+`(variant_key, genotype, authority)`.
 
-**The three objections the severity half never answered**, kept because they are the record of why
-it is closed rather than parked:
+**Do not promise it for tables that record no prior value.** The concordance pair is the only place
+this format keeps what a source said at the time; an overlay row against `frequencies.csv` or
+`resolution.csv` has no recorded baseline, so a general "the value moved" check would be answerable for
+one table and silent for the rest. Say which table (`@probe-names-the-table`).
 
-- **It puts a checked verdict under authored control**, which nothing else in this format does. Every
-  other severity here is a property of the finding; this one would be a property of a cell the author
-  writes. The reporter's guard against the obvious abuse is sound — a record is a *response* to a
-  warning, never a filter filed ahead of one, since a hallucinated value and a correctly outranked one
-  start identically — but the code cannot see the order. Nothing distinguishes a record written after
-  reading a warning from one written before, so the guard is a convention and not a mechanism.
-- **The ClinVar `clin_sig` cross-check is the obvious first site and is deliberately warn-only in both
-  modes.** Adding a downgrade *below* warn-only is legal, but the check's whole design is that its
-  severity does not vary — and the reason (`@clinsig-never-escalates`) is that whose limit it is, is
-  not knowable from the mismatch. That argument cuts both ways here.
-- **A record is not bound to the value it justifies.** The reporter saw this and named the right
-  precedent: `verification.json` binds to the authored bytes, and a justification written about one
-  `clin_sig` does not carry to a different one. Without a binding, an author edits the value and the
-  downgrade silently persists. Any severity change probably wants the binding *first*, which is a
-  larger design than the severity ladder.
+### The open questions
 
-**Do not answer this by parsing the prose.** The field is freeform because the judgement is not
-formalizable — a grading pyramid exists, but whether a retraction outranks an archive call is a
-natural-language question. Presence is the bit a check may read.
+1. **Where it runs.** The concordance pass already fetches, so the comparison is nearly free there —
+   but it needs the ladder every network check in this tier has: what `--offline` reports, what a
+   missing snapshot reports, and the three-valued *nobody asked* that must never read as *unchanged*.
+2. **What it says.** *The disagreement you answered is not the disagreement that exists now* is a
+   statement about the record; *your answer may be wrong* is a verdict, and this format does not put a
+   verdict under a check that cannot see the reasoning. The wording is most of the work.
+3. **Whether the recorded call is the right baseline.** `dataset` names the release, so a moved call
+   and a re-released archive are distinguishable — but only if the check compares the pair rather than
+   the classification alone.
 
-## RM138 — `carried` duplicates the message text, so the channel RM131 shrank nearly doubled
+**Not blocked on RM135.** The overlay is the surviving mechanism and this reads the overlay; nothing
+here grows `outranks`, which is what RM117's closed half was warned off.
 
-**Severity** low · **Status** open — **a minor, release undecided; filed 2026-08-28 by the RM131
-review, measured over the whole reference corpus** · **Owner** format (schema) + compiler ·
-**Found by** reviewing RM131 against its own motivation
+## RM152 — CIViC is a source of the same kind, and its germline quarter has almost nothing to say in the vocabulary we would ask it
 
-**Not a defect, and the entry says so first.** The shape was decided per item with the maintainer:
-*a `carried` list beside `warnings`, holding the subset the author cannot clear*, chosen over a field
-on each finding because it invents no permanent names and because *a consumer subtracts to get the
-actionable set*. Both properties hold. What the decision did not have in front of it is the size, and
-the size is the thing RM131 exists about.
+**Severity** low-medium · **Status** open — **and deliberately carrying no release class**: both
+candidate adoptions were refuted by the measurement in this item, so there is no repair for a class to
+describe, and the threshold counters are meant to pass over it · **Owner** enricher · **Motivating
+case** [S84](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator), 2026-08-31
 
-**Measured, not estimated** — every reference example that emits a warning, byte lengths of
-`compilation.warnings` against the `compilation.carried` added beside it:
+> **Reconstructed on 2026-08-31 after this section was destroyed by a concurrent session's edit**
+> (the 0.7 batch lifting RM146 out of this file removed everything to the next heading, and this
+> section had been written into that span minutes earlier). Rebuilt from the two records that
+> survived — the `Sn` reply in CONSUMER_SUGGESTIONS_HISTORY and this item's RM_TOC row — and from
+> nothing else. Every number below appears in one of those; **the prose is a reconstruction and the
+> measurements are not**. If the original carried reasoning neither record kept, it is lost, and this
+> note is here so a reader knows to suspect that rather than assume completeness.
 
-| module | warnings | carried | warnings (B) | + carried (B) | growth |
-|---|---|---|---|---|---|
-| `pathogenic_clinvar` | 113 | 109 | 28,059 | 26,991 | 1.96× |
-| `hboc_palb2` | 12 | 12 | 2,977 | 2,977 | 2.00× |
-| `htt_repeat_expansion` | 3 | 1 | 2,200 | 729 | 1.33× |
-| `cyp2d6_structural` | 2 | 1 | 1,787 | 723 | 1.40× |
-| `apoe_epsilon`, `shox_par1` | 2 | 2 | 224 / 478 | 224 / 478 | 2.00× |
-| **corpus** | | | **41,272** | **+34,744** | **1.84×** |
+CIViC (`civicdb.org/api/graphql`, CC0 1.0, no key) scores as a **source** on the same criteria
+[PUBMIND_ASSESSMENT.md](PUBMIND_ASSESSMENT.md) used, and the reporter is right that adopting one needs
+**no schema change**: `concordance.py` keys `authority: str`, and RM134's two five-member vocabularies
+were stress-tested to hold at any number of authorities. Legality was never the obstacle and CC0 makes
+the licence row trivial.
 
-So the reported 14 kB module becomes a 55 kB one on the worst case here, and a module every one of
-whose findings is carried pays exactly double. The channel is still *readable* — that was never about
-byte count — but a reader who came to this item because the output was too long to follow deserves the
-number stated rather than discovered.
+### The whole report reproduced, and then the follow-up probe moved the number
 
-**Why the obvious encodings are each wrong, so nobody re-proposes one.**
+Every figure in the report reproduced, including the 412 the reporter obtained by subtraction —
+queried individually it is `UNKNOWN` 374, `COMBINED` 20, `MIXED` 18. The seven `VariantOrigin` buckets
+sum to 11,518 exactly, so the enum partitions cleanly and germline is **3,103, 26.9%**.
 
-- **`carried: list[int]`, indices into `warnings`.** Roughly a hundredth of the bytes and it breaks the
-  one property the field was chosen for: the subtraction becomes a zip, and an index means nothing to a
-  consumer that filtered or re-ordered the channel it came from. It also makes two published fields
-  positionally coupled, which is the shape `manifest.compilation.warnings` has always avoided.
-- **`carried: list[str]` of codes.** Cannot say *which messages*, so it answers a different question —
-  and it is already answerable, because carried-ness is a property of the code alone:
-  `warnings_summary` plus `CARRIED_WARNING_CODES` already gives the count. A consumer wanting the
-  count does not need this field at all.
-- **Drop `carried` and publish a per-message `codes: list[str]` parallel to `warnings`.** The genuinely
-  minimal encoding — about 20 bytes a message instead of 250 — and both `carried` and
-  `warnings_summary` derive from it. It is also a **third** shape rather than the one that was decided,
-  it re-introduces the positional coupling above, and it hands every consumer a derivation to perform
-  where they currently read an answer.
+**27% is not the operative denominator, and the operative one is 5.** Of the 3,103 germline items, the
+ACMG five-tier — the only members `VALID_CLIN_SIG` can receive — covers 599, and **594 of those are
+`UNCERTAIN_SIGNIFICANCE`**. That leaves 4 `PATHOGENIC`, 1 `LIKELY_PATHOGENIC`, and **zero benign-class
+calls of any kind**; the largest single germline significance is `NA` at 812.
 
-**The honest framing** is that the duplication buys a self-describing field, and the question is
-whether a published manifest should pay ~1.8× on this channel for it. Worth deciding once, with the
-table above, rather than drifting: a fourth encoding after 1.0 is a removal, and removals are
-major-only under Principle 3.
+**Scoped over both tables rather than one** (`@probe-names-the-table`): `assertions` takes no
+`variantOrigin` filter, so all 296 were paged and split per record — 275 `SOMATIC`, **6 germline**, 5
+pathogenic-class, 1 uncertain, none benign-class, none `COMMON_GERMLINE`. The finding is as wide as
+`evidenceItems` **and** `assertions`, and no wider.
 
-## RM146 — an unknown column and a column newer than the reader are the same finding, and nothing separates them
+### That kills the concordance candidate, which was the preferred one
 
-**Severity** medium · **Status** open — **a minor, release undecided; filed 2026-08-31 from a consumer
-report** · **Owner** format (schema) · **Motivating case**
-[S81](CONSUMER_SUGGESTIONS_HISTORY.md) (just-dna-registry, relaying just-module-creator)
+The clin_sig concordance check's entire product is **opposition** — a pathogenic-class call set against
+a benign-class one — and `concordance.py` states in terms that an uncertain call opposes nothing. An
+authority carrying 5 calls in one camp and 0 in the other cannot make `discordant` sayable about
+anything; it would join and read `single` or `concordant` by construction. The reporter's *"3,103 items
+is too few to draft from and plenty to disagree with"* is exactly half right, and the wrong half is the
+one the preference rests on: the disagreeing quantity is 5. Their argument against the drafter stands
+and measures worse than they knew.
 
-**Filed rather than built, and the reason is the surface it needs.** The shape below is decided; what
-is left is 402 field declarations' worth of typing plus the guard that keeps them honest, and that is
-a change to every authored model in the tier. It is minor-legal and additive, so it waits on
-scheduling rather than on a design question.
+### What survives is real, and it is one axis over from where the report aimed
 
-### The finding
+By evidence type the germline subset is **2,867 of 3,103 `PREDISPOSING`**; by significance,
+`PREDISPOSITION` 1,456 + `PROTECTIVENESS` 2. That is our **`direction`** axis (`risk`/`protective`),
+not `clin_sig`. The reporter's instinct to connect this to S83 was sound and lands there:
+`PREDISPOSITION` × `DOES_NOT_SUPPORT` is **4 items**, precisely the reading `contested` was added for
+when RM150 shipped on 2026-08-31, hours before the report arrived.
 
-A module authored on 0.6.6 was sent to a registry deployment running format 0.6.1, which runs our
-`validate_spec` server-side and reports its findings verbatim. It said:
+But there is no `direction`-axis concordance check to add an authority to — the RM130/RM134 machinery
+is clin_sig-only end to end. **So the open question this item carries is *does `direction` warrant the
+apparatus `clin_sig` has*, not *adopt CIViC*.** It is filed with no release class on purpose: an item
+with no repair has none to state.
 
-```
-studies.csv line 2 [curator]: Extra inputs are not permitted
-```
+### The charter half, which the reconstruction could not recover from either record
 
-`StudyRow.curator` is ours, added in 0.6.5 (RM120). A genuine typo produces the byte-identical shape:
+Restored on 2026-08-31 from the `Sn` reply, which is the only place it survived. It is a Step 1
+first-hand Constitution reading rather than a nicety, and it is here so the question is not re-argued
+from the report's framing.
 
-```
-studies.csv line 2 [curatr]: Extra inputs are not permitted
-```
+The report reasons from *"this ecosystem annotates germline genotypes from a VCF"* as though it were a
+charter rule. **It is not** — the Constitution says nothing about germline. The somatic/germline split
+is a *fitness* argument about what a consumer's genotype can satisfy, which is the right argument and
+needs no charter standing to work; treating it as a principle would invent a scope rule nobody adopted.
+What the charter does settle is the half the report raised by analogy: recording what an authority
+*said* catalogs a curated annotation rather than inferring a gene–disease relation, so CIViC is legal
+to consume for exactly the reason ClinVar and PubMind are. **The bar it fails is quantitative, not
+constitutional** — which is also why the entry above rejects closing it as a non-issue: a source can be
+legal, licensed, well-provenanced and still bring 5 usable calls.
 
-The two differ only in the column name, and they want **opposite actions** from an author: upgrade the
-reader, or fix the cell. Both reproduced by the reporter against the real validator. The finding is
-pydantic's, under `extra="forbid"`, so it cannot be reworded into carrying the distinction — the
-information is not in the model at all.
-
-### What the reporter shipped, and where it stops
-
-Their 0.22.0 attaches the version pair to the report — *this instance validates against 0.6.1, your
-client reports 0.6.6* — derived from the two version strings and never from the findings, which cannot
-carry it. That turns a dead end into a decision and is as far as a consumer can get without modelling
-our schema history, which they decline to do on evidence: they hand-kept a map of our sidecar spellings
-once and it pointed the wrong way for a release. The sentence they cannot produce is the one the author
-needed: **`curator` is a 0.6.5 column.**
-
-### The decision
-
-**A `first_seen` version on the field, declared where the field is declared.** A roster keyed like
-`release_records` was the alternative and loses on the rule this repo keeps relearning: a hand-kept
-list beside a model is a second statement of one fact, and it is the copy that goes stale
-(`@fieldnames-from-model`, `@registry-completeness`). Put it in `json_schema_extra` beside the
-`vocabulary()` marker, which is the existing idiom for a per-field fact an authoring surface reads, and
-it travels with the field through every rename and move.
-
-Three things the implementation owes:
-
-- **A registry-iterating guard asserting an equality over the walked set** — every authored field of
-  every model in `_ALL_MODELS` carries a `first_seen`, so the next column added cannot omit one. A
-  floor or a count is satisfied by the state that produced this report.
-- **A public reader**, so the consumer of it is not parsing `model_fields` themselves: the point is
-  that any tool rendering our findings can answer *when did this column appear* offline.
-- **The backfill is archaeology and must be measured, not recalled.** The tags are in the tree, so each
-  column's first release is `git show <tag>:…` per member — and `curator` is the worked example of why:
-  it is on `VariantRow` at v0.6.1 and gains its `StudyRow` twin at v0.6.5, so the answer is per
-  **(model, field)**, never per name. Measured, not remembered.
-
-### Repairs rejected
-
-- **Reading `release_records`' `parquet_schema` axis.** The reporter argues against their own first
-  instinct here and is right; measured, it is worse than they knew. Its targets are spelled
-  `file:column` and it names **4 of 402** authored columns, because it records what a release *changed
-  about compiled output* — an optional column unset across the interval's corpus, or one no parquet
-  carries, never appears. `curator` happens to be there, which is exactly what makes it dangerous: it
-  gives the right answer for the case in hand and silent wrong answers for 398 others, where absence
-  reads as *this column has always been legal*. It also starts at 0.6.1, so it cannot answer the
-  question for anything older. Asking an output-side record an input-side question is the category
-  error our own docs name about `artifact.digest`.
-- **Rewording the pydantic message.** The distinction is not in the model, so there is nothing to word.
-- **A compatibility handshake covering the authored schema.** Explicitly *not* asked for, and the
-  reporter has already corrected their own side: `contract_compatible` certifies the parquet contract
-  and `artifact.digest` at `0.x` MINOR, which held here and was right to. The authored row schema
-  tightens at PATCH under `extra="forbid"`, and that distinction being unwritten is what let a consumer
-  conclude *every 0.6.x interoperates*. Their correction, their file.
-- **Loosening `extra="forbid"`.** It is the guard that catches the typo half, and the near-miss table
-  name it also catches (`@misspelled-tables`) came from a report of its own.
-
-### What it does not settle
-
-A reader still cannot be told *which* release it is missing without also knowing its own — that pairing
-is the consumer's, shipped, and stays theirs. This item only supplies the half nobody outside this repo
-can compute.
+**One guard on the status line above.** Its missing release-class token is deliberate and is not an
+omission to tidy up: do not add one without a repair to attach it to. The counters exist to ask whether
+a release should start, and an item with no repair is not work awaiting one.
 
 # Not format scope
 

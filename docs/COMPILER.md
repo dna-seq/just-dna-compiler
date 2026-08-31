@@ -1550,10 +1550,19 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
   `clin_sig_concordance_contested`, `gene_validity_superseded`,
   `gene_validity_currency_undecidable`
 - **the overlay** — `overlay_update_unmatched`, `overlay_update_target_unreachable`,
-  `overlay_targets_missing_table`, `overlay_rows_suppressed`
+  `overlay_answer_vindicated`, `overlay_targets_missing_table`, `overlay_rows_suppressed`
 - **verification and closure** — `verification_two_copies`, `verification_unreadable`,
   `verification_stale`, `verification_findings_recorded`, `module_not_closed`,
   `closure_discarded_unreadable_record`
+
+`overlay_answer_vindicated` (RM117) is the one finding in this catalogue that reports **good news**,
+and it exists because the alternative was actively misleading. `clin_sig_concordance.csv` holds
+contested subjects only and is rewritten whole, so a subject leaving it means the authorities stopped
+disagreeing — which is exactly how an author learns the archive caught up with them. An `overrides.csv`
+row answering that conflict then reaches nothing, and without this code it drew the generic *the
+subject may be mistyped* line, put to an author whose judgement had just been confirmed. It says
+nothing about who was right about the biology: the authorities agreed, and the overlay row is now
+unnecessary.
 
 The two `gene_validity_*` codes are new in 0.7 (RM108) and are the first fact-table findings the
 **pre-flight also computes**, so `validate` reports them exactly as `compile` does. They stay apart on

@@ -1735,6 +1735,28 @@ The registry is `overrides.OVERRIDABLE_TABLES`, and a test asserts it equals eve
 minus those two. **Derive the set from that registry, never from this table**: it read seven for a
 release after the eighth landed.
 
+### Which release a column appeared in (0.7, RM146)
+
+`extra="forbid"` makes an unknown column an error, which is right — it catches the typo and the
+near-miss table name. What it cannot do is tell a typo apart from a column **newer than the reader**:
+`[curator]` and `[curatr]` produce the byte-identical *Extra inputs are not permitted*, and the two
+want opposite actions from an author. That is not a wording problem; the information was not in the
+model.
+
+**Every authored field now declares its first release**, via `base.since("0.6.5")` in
+`json_schema_extra`, read back with `base.field_first_seen(model)` as `{field: release}`. It rides on
+the field rather than in a roster for the reason `vocabulary()` does: a hand-kept list beside a model
+is a second statement of one fact and it is the copy that rots. The two markers compose in one dict.
+
+**The answer is per `(model, field)`**, and `curator` is why: it is on `VariantRow` from 0.2.0 and
+gains its `StudyRow` twin only in 0.6.5, so a roster keyed by column name would give one answer for two
+facts. `stamped_identity_field` takes `first_seen` as a **required** argument, since a compiler-stamped
+column is still one an older reader refuses and the guard walks `model_fields`, which does not
+distinguish them.
+
+A consumer still cannot be told *which* release it is missing without also knowing its own — that
+pairing is theirs. This supplies the half nobody outside this repo can compute.
+
 ### Which curation is current, and where nothing can say (0.7, RM108)
 
 ClinGen's `assertion_id` **embeds the curation timestamp**

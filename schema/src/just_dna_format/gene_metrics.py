@@ -21,7 +21,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from just_dna_format.base import vocabulary
+from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import (
     VALID_DOSAGE_SENSITIVITY,
@@ -141,10 +141,10 @@ class GeneMetricsRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # ── identity ──
-    gene: str = Field(
+    gene: str = Field(json_schema_extra=since("0.5.0"), 
         description="HGNC-style symbol, matching the `gene` column authored in variants.csv"
     )
-    gene_id: str | None = Field(
+    gene_id: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Ensembl gene id (`ENSG…`) — the stable identity behind the mutable symbol. Carried "
@@ -152,10 +152,10 @@ class GeneMetricsRow(BaseModel):
             "authored against an old symbol can still be matched."
         ),
     )
-    transcript: str | None = Field(
+    transcript: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None, description="Ensembl transcript (`ENST…`) the metrics were computed on"
     )
-    mane_select: bool | None = Field(
+    mane_select: bool | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Whether `transcript` is the MANE Select transcript. Load-bearing for reproducibility, "
@@ -164,10 +164,10 @@ class GeneMetricsRow(BaseModel):
     )
 
     # ── loss-of-function constraint ──
-    pli: float | None = Field(
+    pli: float | None = Field(json_schema_extra=since("0.5.0"), 
         default=None, ge=0.0, le=1.0, description="Probability of being loss-of-function intolerant"
     )
-    loeuf: float | None = Field(
+    loeuf: float | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         ge=0.0,
         description=(
@@ -176,25 +176,25 @@ class GeneMetricsRow(BaseModel):
             "so the point estimate and the full interval are never lost."
         ),
     )
-    oe_lof: float | None = Field(default=None, ge=0.0, description="LoF observed/expected ratio")
-    oe_lof_lower: float | None = Field(
+    oe_lof: float | None = Field(json_schema_extra=since("0.5.0"), default=None, ge=0.0, description="LoF observed/expected ratio")
+    oe_lof_lower: float | None = Field(json_schema_extra=since("0.5.0"), 
         default=None, ge=0.0, description="Lower bound of the LoF o/e 90% CI"
     )
-    lof_z: float | None = Field(default=None, description="LoF constraint Z score")
-    obs_lof: int | None = Field(default=None, ge=0, description="Observed LoF variant count")
-    exp_lof: float | None = Field(default=None, ge=0.0, description="Expected LoF variant count")
+    lof_z: float | None = Field(json_schema_extra=since("0.5.0"), default=None, description="LoF constraint Z score")
+    obs_lof: int | None = Field(json_schema_extra=since("0.5.0"), default=None, ge=0, description="Observed LoF variant count")
+    exp_lof: float | None = Field(json_schema_extra=since("0.5.0"), default=None, ge=0.0, description="Expected LoF variant count")
 
     # ── missense / synonymous constraint ──
-    oe_mis: float | None = Field(
+    oe_mis: float | None = Field(json_schema_extra=since("0.5.0"), 
         default=None, ge=0.0, description="Missense observed/expected ratio"
     )
-    mis_z: float | None = Field(default=None, description="Missense constraint Z score")
-    syn_z: float | None = Field(
+    mis_z: float | None = Field(json_schema_extra=since("0.5.0"), default=None, description="Missense constraint Z score")
+    syn_z: float | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description="Synonymous constraint Z score — near zero for a well-behaved gene, so it doubles as a sanity check",
     )
 
-    constraint_flags: str | None = Field(
+    constraint_flags: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "The source's own caveat list, pipe-joined and sorted (e.g. 'no_exp_lof', "
@@ -220,7 +220,7 @@ class GeneMetricsRow(BaseModel):
             "sufficient_evidence|autosomal_recessive|dosage_sensitivity_unlikely. NOT an ordinal — "
             "see VALID_DOSAGE_SENSITIVITY. A FACT."
         ),
-        json_schema_extra=vocabulary("dosage_sensitivity", VALID_DOSAGE_SENSITIVITY),
+        json_schema_extra={**vocabulary("dosage_sensitivity", VALID_DOSAGE_SENSITIVITY), **since("0.5.0")},
     )
     triplosensitivity: str | None = Field(
         default=None,
@@ -228,14 +228,14 @@ class GeneMetricsRow(BaseModel):
             "ClinGen triplosensitivity rating, same vocabulary. Empty where ClinGen says 'Not yet "
             "evaluated' — an absence, not a rating. A FACT."
         ),
-        json_schema_extra=vocabulary("dosage_sensitivity", VALID_DOSAGE_SENSITIVITY),
+        json_schema_extra={**vocabulary("dosage_sensitivity", VALID_DOSAGE_SENSITIVITY), **since("0.5.0")},
     )
-    dataset: str = Field(
+    dataset: str = Field(json_schema_extra=since("0.5.0"), 
         description="Which release these metrics are from, e.g. 'gnomad_v4.1_constraint'. A FACT."
     )
 
     # ── provenance (EXCLUDED from gene_metrics_signature) ──
-    source: str | None = Field(
+    source: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "The licensed data source these metrics came from: gnomad|clingen|manual|reversed (open). "
@@ -247,9 +247,9 @@ class GeneMetricsRow(BaseModel):
     status: str | None = Field(
         default=None,
         description="Outcome: resolved|not_found (the ResolutionRow vocabulary)",
-        json_schema_extra=vocabulary("resolution_status", VALID_RESOLUTION_STATUS),
+        json_schema_extra={**vocabulary("resolution_status", VALID_RESOLUTION_STATUS), **since("0.5.0")},
     )
-    fetched_at: str | None = Field(default=None, description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything")
+    fetched_at: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything")
 
     @field_validator("haploinsufficiency", "triplosensitivity")
     @classmethod

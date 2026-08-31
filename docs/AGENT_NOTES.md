@@ -2064,6 +2064,37 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   dropping it reports a cleaner module than there is. Wire a check to the answered set one at a time;
   *which cells does this comparison read* is a per-check fact, and guessing it silences a real finding.
 
+- `@a-generic-refusal-cannot-name-its-own-cause` — **`extra="forbid"` cannot tell a typo from a column
+  newer than the reader, and no wording fixes that (RM146).** `[curator]` (ours, 0.6.5) and `[curatr]`
+  (a mistake) produce the byte-identical *Extra inputs are not permitted*, and they want opposite
+  actions — upgrade the reader, or fix the cell. The information was not in the model, so the repair is
+  to put it there: `base.since("0.6.5")` on every field, read by `field_first_seen`. **Per
+  `(model, field)`, never per name** — `curator` is `VariantRow` 0.2.0 and `StudyRow` 0.6.5, so a
+  name-keyed roster answers one of those wrongly. Three rules for the next one of these. **Measure the
+  backfill, never recall it**: parse each release tag's own sources from the **AST** rather than
+  importing them, because old code need not import under a current Python. **Guard with an equality
+  over the walked registry**, since a floor is satisfied by exactly the state that produced the report
+  — and check the *registry's* completeness too, or you get a clean bill about the models it happens to
+  know (RM96). **A mechanical edit needs to know what a field is**: the first pass wrapped nine
+  `ClassVar` constants in `Field(...)`, which the suite caught, and unwrapping them needed the AST
+  again since the multi-line forms are invisible to a regex.
+
+- `@the-signal-may-already-be-firing-with-the-wrong-words` — **Before building an observability
+  check, ask whether the state is already observable and merely misdescribed (RM117).** The signal S52
+  asked for — *the archive resolved a conflict the author had answered* — was already producing a
+  finding, because `clin_sig_concordance.csv` holds contested subjects only and is **rewritten whole**,
+  so a subject leaving the record is exactly how an author learns the archive caught up. The overlay
+  row answering it then reached nothing and drew the generic *the subject may be mistyped*, put to an
+  author whose judgement had just been confirmed. **So the work was stopping a wrong signal, not adding
+  a right one** — which is what earns a code of its own rather than a rewording of the generic one, and
+  why the test asserts the misleading line is **gone** as well as that the good one appears. Two
+  corollaries. **Pin the wording when the wording is the decision**: grep the message for adjudicating
+  words on a **word boundary**, not as substrings — the boundary version caught a real slip (*the
+  conflict ended rather than that the correction is wrong*, which grades the author's row while
+  claiming not to), and the substring version fires on "correction" and proves nothing. And **route by
+  a `continue`, not a predicate**, where a table's absence has one reading: handing it to the generic
+  classifier means the two ambiguous readings are still what gets printed.
+
 - `@lap-stable-means-a-property-of-the-module` — **"Report it over the overlay rather than over what
   it reached" has exactly one non-tautological reading, and RM137 is the worked example.** An overlay
   `update` on a row the compiler drops matched on lap 1 and warned on lap 2, so a module disagreed with

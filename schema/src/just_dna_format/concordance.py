@@ -61,7 +61,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from just_dna_format.base import vocabulary
+from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.vocab import (
     VALID_AUTHORED_POSITION,
@@ -124,10 +124,10 @@ class ClinSigConcordanceRow(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    variant_key: str = Field(
+    variant_key: str = Field(json_schema_extra=since("0.7.0"), 
         description="The subject's `variant_key`, matching the one in variants.csv and weights.parquet"
     )
-    genotype: str = Field(
+    genotype: str = Field(json_schema_extra=since("0.7.0"), 
         description=(
             "The authored genotype the clinical call was made for, spelled as variants.csv spells it. "
             "Part of the KEY: one variant carries one record per genotype the module annotates."
@@ -141,7 +141,7 @@ class ClinSigConcordanceRow(BaseModel):
             "Empty where the module makes no clinical claim, which is the `absent` position rather "
             "than a disagreement with anybody."
         ),
-        json_schema_extra=vocabulary("clin_sig", VALID_CLIN_SIG),
+        json_schema_extra={**vocabulary("clin_sig", VALID_CLIN_SIG), **since("0.7.0")},
     )
     authority_concordance: str = Field(
         description=(
@@ -149,7 +149,7 @@ class ClinSigConcordanceRow(BaseModel):
             "unchecked. Says nothing about the module's call — that is `authored_position`. "
             "`unchecked` means an authority could not be consulted at all, and is never agreement."
         ),
-        json_schema_extra=vocabulary("authority_concordance", VALID_AUTHORITY_CONCORDANCE),
+        json_schema_extra={**vocabulary("authority_concordance", VALID_AUTHORITY_CONCORDANCE), **since("0.7.0")},
     )
     authored_position: str = Field(
         description=(
@@ -158,9 +158,9 @@ class ClinSigConcordanceRow(BaseModel):
             "— nothing here picks a winner among disagreeing authorities, because picking needs a "
             "weighting model this format does not have."
         ),
-        json_schema_extra=vocabulary("authored_position", VALID_AUTHORED_POSITION),
+        json_schema_extra={**vocabulary("authored_position", VALID_AUTHORED_POSITION), **since("0.7.0")},
     )
-    opposed: bool | None = Field(
+    opposed: bool | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
             "True when two of the calls in play sit in OPPOSITE camps — a pathogenic-class call "
@@ -172,7 +172,7 @@ class ClinSigConcordanceRow(BaseModel):
     )
 
     # ── provenance (EXCLUDED from clin_sig_concordance_signature) ──
-    checked_at: str | None = Field(
+    checked_at: str | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
             "ISO-8601 UTC timestamp, second resolution, of the comparison that wrote this row. "
@@ -239,11 +239,11 @@ class ClinSigAuthorityCallRow(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    variant_key: str = Field(description="The subject's `variant_key`; joins clin_sig_concordance.csv")
-    genotype: str = Field(
+    variant_key: str = Field(json_schema_extra=since("0.7.0"), description="The subject's `variant_key`; joins clin_sig_concordance.csv")
+    genotype: str = Field(json_schema_extra=since("0.7.0"), 
         description="The authored genotype; the second half of the join onto clin_sig_concordance.csv"
     )
-    authority: str = Field(
+    authority: str = Field(json_schema_extra=since("0.7.0"), 
         description=(
             "Which annotation authority this call is from: clinvar|pubmind|manual (open). An "
             "authoritative ANNOTATION source in the sense ClinVar is one — never resolution.csv's "
@@ -258,7 +258,7 @@ class ClinSigAuthorityCallRow(BaseModel):
             "nobody-asked: no snapshot was provisioned, or one was present and not queryable. The "
             "two are never interchangeable, and neither is agreement."
         ),
-        json_schema_extra=vocabulary("authority_call_status", VALID_AUTHORITY_CALL_STATUS),
+        json_schema_extra={**vocabulary("authority_call_status", VALID_AUTHORITY_CALL_STATUS), **since("0.7.0")},
     )
     clin_sig: str | None = Field(
         default=None,
@@ -267,9 +267,9 @@ class ClinSigAuthorityCallRow(BaseModel):
             "shared significance normalizer every snapshot builder calls. Empty on `no_record` and "
             "on `unchecked`: an unknown is withheld, never written down as a negative."
         ),
-        json_schema_extra=vocabulary("clin_sig", VALID_CLIN_SIG),
+        json_schema_extra={**vocabulary("clin_sig", VALID_CLIN_SIG), **since("0.7.0")},
     )
-    clin_sig_raw: str | None = Field(
+    clin_sig_raw: str | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
             "The authority's verbatim wording (`Conflicting_classifications_of_pathogenicity`, "
@@ -277,7 +277,7 @@ class ClinSigAuthorityCallRow(BaseModel):
             "this release does not model is still visible."
         ),
     )
-    confidence: str | None = Field(
+    confidence: str | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
             "How much the authority stands behind this call, in ITS OWN units and unconverted — "
@@ -286,7 +286,7 @@ class ClinSigAuthorityCallRow(BaseModel):
             "nobody can justify. Meaningless without `confidence_unit` beside it."
         ),
     )
-    confidence_unit: str | None = Field(
+    confidence_unit: str | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
             "Which instrument `confidence` is measured on, e.g. 'review_stars'. Required whenever "
@@ -294,7 +294,7 @@ class ClinSigAuthorityCallRow(BaseModel):
             "and this format has paid for that once already on `weight`."
         ),
     )
-    dataset: str | None = Field(
+    dataset: str | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
             "Which release of the authority answered, e.g. 'clinvar_2026-08-01'. A FACT, on the rule "
@@ -303,7 +303,7 @@ class ClinSigAuthorityCallRow(BaseModel):
     )
 
     # ── provenance (EXCLUDED from clin_sig_authority_call_signature) ──
-    checked_at: str | None = Field(
+    checked_at: str | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
             "ISO-8601 UTC timestamp of the consultation that wrote this row. Canonicalized on load, "

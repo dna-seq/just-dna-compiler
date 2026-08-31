@@ -147,7 +147,7 @@ from typing import ClassVar, NamedTuple
 
 from pydantic import Field, field_validator, model_validator
 
-from just_dna_format.base import AuthoredModel, stamped_identity_field, vocabulary
+from just_dna_format.base import AuthoredModel, since, stamped_identity_field, vocabulary
 from just_dna_format.findings import CodedWarning
 from just_dna_format.spec import validate_pmid_cell
 from just_dna_format.vocab import check_vocab, validate_finite
@@ -250,7 +250,7 @@ class MeasureBinRow(AuthoredModel):
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ()
 
     measure_kind: str = Field(
-        json_schema_extra=vocabulary("measure_kind", VALID_MEASURE_KINDS),
+        json_schema_extra={**vocabulary("measure_kind", VALID_MEASURE_KINDS), **since("0.4.0")},
         description="Measured quantity; one of VALID_MEASURE_KINDS",
     )
     # Both bounds are float64, parsed from the decimal the author typed, while VCF 4.4 §1.3 makes
@@ -277,14 +277,14 @@ class MeasureBinRow(AuthoredModel):
     # The rule is stated on `measure_max`'s description, not only in docs/SCHEMAS.md, because
     # `describe`/`requirements`/`reference` print these strings and that is what an author writes a
     # table from (D6-1).
-    measure_min: float | None = Field(
+    measure_min: float | None = Field(json_schema_extra=since("0.4.0"), 
         default=None,
         description=(
             "Inclusive lower bound; None = open below. On a continuous measure this is also the "
             "tie-break: a value two bins share belongs to the one with the greater measure_min."
         ),
     )
-    measure_max: float | None = Field(
+    measure_max: float | None = Field(json_schema_extra=since("0.4.0"), 
         default=None,
         description=(
             "Inclusive upper bound; None = open above. Inclusive on every measure_kind — on a "
@@ -297,7 +297,7 @@ class MeasureBinRow(AuthoredModel):
     )
     measure_tiling: str | None = Field(
         default=None,
-        json_schema_extra=vocabulary("measure_tiling", VALID_MEASURE_TILINGS),
+        json_schema_extra={**vocabulary("measure_tiling", VALID_MEASURE_TILINGS), **since("0.6.0")},
         description=(
             "How this measure's axis is divided: quantised (a grid — two bins may not share an "
             "endpoint, and a hole narrower than one step is not a hole) or continuous (dense — "
@@ -311,22 +311,22 @@ class MeasureBinRow(AuthoredModel):
             "a bounded domain like allele_fraction it switches interior gap reporting off entirely."
         ),
     )
-    direction: str | None = Field(
+    direction: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="Effect direction: protective|risk|neutral|unknown"
     )
-    clin_sig: str | None = Field(
+    clin_sig: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="ClinVar/ACMG clinical significance (VEP CLIN_SIG vocabulary)"
     )
-    phenotype: str | None = Field(default=None, description="Associated trait or phenotype")
-    trait_efo_id: str | None = Field(
+    phenotype: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="Associated trait or phenotype")
+    trait_efo_id: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="EFO/MONDO/OBA/HP trait ontology id(s)"
     )
-    conclusion: str = Field(description="Human-readable interpretation for this bin")
-    unresolved: bool = Field(
+    conclusion: str = Field(json_schema_extra=since("0.4.0"), description="Human-readable interpretation for this bin")
+    unresolved: bool = Field(json_schema_extra=since("0.4.0"), 
         default=False,
         description="True on the sentinel row a consumer selects when the measurement is absent.",
     )
-    source_field: str | None = Field(
+    source_field: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None,
         description=(
             "Optional VCF field the consumer extracts this measure from, best written with its "
@@ -337,7 +337,7 @@ class MeasureBinRow(AuthoredModel):
             "ADF, ADR, MQ, AF and CN."
         ),
     )
-    source_element: str | None = Field(
+    source_element: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "Which of `source_field`'s values this bin is measured against, when the field carries "
@@ -352,7 +352,7 @@ class MeasureBinRow(AuthoredModel):
         ),
     )
 
-    pmid: str | None = Field(
+    pmid: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "Optional PubMed id grounding THIS boundary — the literature the threshold is drawn "
@@ -430,7 +430,7 @@ class ActivityPhenotypeRow(MeasureBinRow):
     _EXPECTED_KIND: ClassVar[str] = "activity_score"
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("gene",)
 
-    gene: str = Field(description="Gene symbol, e.g. CYP2D6")
+    gene: str = Field(json_schema_extra=since("0.4.0"), description="Gene symbol, e.g. CYP2D6")
     measure_kind: str = Field(
         default="activity_score",
         # A one-member vocabulary under its OWN name, not `VALID_MEASURE_KINDS`:
@@ -438,7 +438,7 @@ class ActivityPhenotypeRow(MeasureBinRow):
         # set would offer values this very model rejects. It needs a distinct name because a
         # vocabulary name must map to one option set — `measure_kind` is already the open choice
         # on the base, and this is the narrowed one.
-        json_schema_extra=vocabulary("measure_kind_activity_score", frozenset({"activity_score"})),
+        json_schema_extra={**vocabulary("measure_kind_activity_score", frozenset({"activity_score"})), **since("0.4.0")},
         description="Fixed: activity_score",
     )
 
@@ -469,11 +469,11 @@ class CopyNumberRow(MeasureBinRow):
         "gene", "modifier_gene", "effective_modifier_copy_number",
     )
 
-    gene: str = Field(description="Gene symbol whose copy number is binned, e.g. SMN1")
-    modifier_gene: str | None = Field(
+    gene: str = Field(json_schema_extra=since("0.4.0"), description="Gene symbol whose copy number is binned, e.g. SMN1")
+    modifier_gene: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="Optional modifier locus read in context, e.g. SMN2"
     )
-    modifier_cn: int | None = Field(
+    modifier_cn: int | None = Field(json_schema_extra=since("0.4.0"), 
         default=None,
         description=(
             "DEPRECATED since 0.6, removed at 1.0 — use modifier_copy_number, which holds the "
@@ -482,7 +482,7 @@ class CopyNumberRow(MeasureBinRow):
             "modifier_gene)."
         ),
     )
-    modifier_copy_number: float | None = Field(
+    modifier_copy_number: float | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "Copy number of the modifier locus (set with modifier_gene), as a number that may be "
@@ -497,7 +497,7 @@ class CopyNumberRow(MeasureBinRow):
         # set would offer values this very model rejects. It needs a distinct name because a
         # vocabulary name must map to one option set — `measure_kind` is already the open choice
         # on the base, and this is the narrowed one.
-        json_schema_extra=vocabulary("measure_kind_copy_number", frozenset({"copy_number"})),
+        json_schema_extra={**vocabulary("measure_kind_copy_number", frozenset({"copy_number"})), **since("0.4.0")},
         description="Fixed: copy_number",
     )
 
@@ -555,8 +555,8 @@ class RepeatAlleleRow(MeasureBinRow):
     _EXPECTED_KIND: ClassVar[str] = "repeat_count"
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("gene", "repeat_unit")
 
-    gene: str = Field(description="Gene symbol, e.g. HTT")
-    repeat_unit: str = Field(description="Repeat motif, part of the key, e.g. CAG")
+    gene: str = Field(json_schema_extra=since("0.4.0"), description="Gene symbol, e.g. HTT")
+    repeat_unit: str = Field(json_schema_extra=since("0.4.0"), description="Repeat motif, part of the key, e.g. CAG")
     measure_kind: str = Field(
         default="repeat_count",
         # A one-member vocabulary under its OWN name, not `VALID_MEASURE_KINDS`:
@@ -564,7 +564,7 @@ class RepeatAlleleRow(MeasureBinRow):
         # set would offer values this very model rejects. It needs a distinct name because a
         # vocabulary name must map to one option set — `measure_kind` is already the open choice
         # on the base, and this is the narrowed one.
-        json_schema_extra=vocabulary("measure_kind_repeat_count", frozenset({"repeat_count"})),
+        json_schema_extra={**vocabulary("measure_kind_repeat_count", frozenset({"repeat_count"})), **since("0.4.0")},
         description="Fixed: repeat_count",
     )
 
@@ -607,31 +607,31 @@ class HeteroplasmyRow(MeasureBinRow):
         "gene", "reference_sequence", "tissue", "variant_key",
     )
 
-    gene: str = Field(description="MT locus/gene, e.g. MT-TL1")
+    gene: str = Field(json_schema_extra=since("0.4.0"), description="MT locus/gene, e.g. MT-TL1")
     # Optional on purpose: required would invalidate every already-authored heteroplasmy table
     # (Principle 8 — a new field may not be unconditionally required), and a single-variant gene has
     # nothing to disambiguate. No `chromosome` vocabulary marker, matching the other tables that run
     # no chrom validator.
-    rsid: str | None = Field(
+    rsid: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None, description="dbSNP id of the variant these bins are about, when it has one"
     )
-    chrom: str | None = Field(default=None, description="Contig (MT), for a position-only variant")
-    start: int | None = Field(
+    chrom: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="Contig (MT), for a position-only variant")
+    start: int | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         ge=0,  # 1-based VCF POS; POS 0 is legal for a telomeric breakend (RM96, VCF_4_4_AUDIT s9)
         description="Position of the variant, e.g. 3243 for m.3243A>G",
     )
-    ref: str | None = Field(default=None, description="Reference allele, e.g. A")
-    alts: str | None = Field(default=None, description="Alternate allele(s), e.g. G")
+    ref: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="Reference allele, e.g. A")
+    alts: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="Alternate allele(s), e.g. G")
     #: The locus these bins are about. See `AuthoredModel.ALLELE_COLUMNS`.
     ALLELE_COLUMNS: ClassVar[tuple[str, ...]] = ("ref", "alts")
-    reference_sequence: str = Field(
+    reference_sequence: str = Field(json_schema_extra=since("0.4.0"), 
         description="MT reference accession, part of the key, e.g. NC_012920.1 (rCRS)"
     )
-    tissue: str | None = Field(
+    tissue: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="Tissue the bins assume, e.g. blood, muscle (bins are tissue-conditional)"
     )
-    assay_context: str | None = Field(
+    assay_context: str | None = Field(json_schema_extra=since("0.4.0"), 
         default=None, description="Optional assay context, e.g. WGS, chip, amplicon"
     )
     measure_kind: str = Field(
@@ -641,7 +641,7 @@ class HeteroplasmyRow(MeasureBinRow):
         # set would offer values this very model rejects. It needs a distinct name because a
         # vocabulary name must map to one option set — `measure_kind` is already the open choice
         # on the base, and this is the narrowed one.
-        json_schema_extra=vocabulary("measure_kind_allele_fraction", frozenset({"allele_fraction"})),
+        json_schema_extra={**vocabulary("measure_kind_allele_fraction", frozenset({"allele_fraction"})), **since("0.4.0")},
         description="Fixed: allele_fraction",
     )
 
@@ -653,13 +653,13 @@ class HeteroplasmyRow(MeasureBinRow):
         "`ga4gh:VA.…`, which names its reference sequence by refget accession and must know the "
         "assembly or it will claim the wrong one (RM36). Part of `_KEY_FIELDS`, so all the identity "
         "shapes collapse to one notion of which variant a row is about. Compiler-managed."
-    )
+    , first_seen="0.6.0")
     authored_ident: list[str] | None = stamped_identity_field(
         "Which identity columns the author actually supplied, from {rsid, chrom, start, ref, alts}. "
         "Stamped at load like `variant_key`, so the compiler can fill a resolved coordinate into the "
         "parquet while `reverse_module` re-emits the authored shape — which is what keeps "
         "`content_signature` stable across a round-trip (RM43). Compiler-managed."
-    )
+    , first_seen="0.6.0")
     #: The one positional table whose key includes `alts` — it always did, and narrowing it now would
     #: re-key every published mtDNA module. See `AuthoredModel._KEY_INCLUDES_ALTS`.
     _KEY_INCLUDES_ALTS: ClassVar[bool] = True

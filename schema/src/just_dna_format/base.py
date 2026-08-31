@@ -227,6 +227,51 @@ SHARED_VOCABULARY_NOTES: dict[str, dict[str, str]] = dict.fromkeys(
 )
 
 
+def since(version: str) -> dict[str, object]:
+    """Mark the release a field first appeared in — `Field(json_schema_extra=since("0.6.5"))` (RM146).
+
+    **The finding this answers.** A module authored on 0.6.6 was sent to a deployment running 0.6.1,
+    which runs `validate_spec` server-side and reported, verbatim:
+    `studies.csv line 2 [curator]: Extra inputs are not permitted`. `StudyRow.curator` is ours, added
+    in 0.6.5. A genuine typo produces the byte-identical shape — `[curatr]` — and the two want
+    **opposite actions** from an author: upgrade the reader, or fix the cell. The message is pydantic's
+    under `extra="forbid"`, so it cannot be reworded into carrying the distinction: the information was
+    not in the model at all.
+
+    **On the field, not in a roster.** A list keyed like `release_records` was the alternative and
+    loses on the rule this repo keeps relearning — a hand-kept list beside a model is a second
+    statement of one fact, and it is the copy that goes stale (`@fieldnames-from-model`,
+    `@registry-completeness`). Declared here it travels with the field through every rename and move,
+    and `test_first_seen.py` asserts an **equality over the walked registry**, so the next column added
+    cannot omit one.
+
+    **The answer is per (model, field), never per name**, which `curator` is the worked example of: it
+    is on `VariantRow` from 0.2.0 and gains its `StudyRow` twin only in 0.6.5. A roster keyed by column
+    name would give one answer for two facts.
+
+    Composes with `vocabulary()` rather than replacing it — both are entries in one
+    `json_schema_extra` dict, so a field can carry either or both:
+
+        Field(json_schema_extra={**vocabulary("state", VALID_STATES), **since("0.2.0")})
+    """
+    return {"first_seen": version}
+
+
+def field_first_seen(model: type[BaseModel]) -> dict[str, str]:
+    """`{field_name: release}` for every field of `model` that declares one (RM146).
+
+    The public reader, so a consumer rendering our findings can answer *when did this column appear*
+    **offline** rather than parsing `model_fields` themselves — which is what the reporter would
+    otherwise have had to do, and what their own rulebook forbids.
+    """
+    found: dict[str, str] = {}
+    for name, field in model.model_fields.items():
+        extra = field.json_schema_extra
+        if isinstance(extra, dict) and isinstance(extra.get("first_seen"), str):
+            found[name] = extra["first_seen"]
+    return found
+
+
 def field_vocabularies(model: type[BaseModel]) -> dict[str, dict]:
     """`{field_name: {name, options, closed[, notes]}}` for every vocabulary-bound field of `model`.
 
@@ -311,7 +356,7 @@ def derive_variant_key(
 IDENTITY_FIELDS: tuple[str, ...] = ("rsid", "chrom", "start", "ref", "alts")
 
 
-def stamped_identity_field(description: str, *, default: Any = None) -> Any:
+def stamped_identity_field(description: str, *, default: Any = None, first_seen: str) -> Any:
     """A `Field(...)` for a compiler-stamped column that is not part of the authored content.
 
     Three properties, and the middle one is the non-obvious one:
@@ -331,6 +376,11 @@ def stamped_identity_field(description: str, *, default: Any = None) -> Any:
       model without repeating the defect.
     * a fresh `FieldInfo` per call, because pydantic binds one to the model that declares it.
 
+    `first_seen` is **required rather than defaulted** (RM146). A compiler-stamped column is still a
+    column an older reader refuses under `extra="forbid"`, so it owes the same answer as an authored
+    one — and the guard walks `model_fields`, which does not distinguish them. Defaulting it would let
+    the next stamped column inherit a version nobody measured, which is the whole failure mode.
+
     `default` is the **caller's**, not this helper's. It was hard-coded to `None` while the only users
     were the three 0.4-family positional models (RM43), where an unstamped identity column genuinely
     has no value. RM87's `locus_count` defaults to `1` instead, because a row that was never expanded
@@ -341,7 +391,7 @@ def stamped_identity_field(description: str, *, default: Any = None) -> Any:
     return Field(
         default=default,
         exclude=True,
-        json_schema_extra=COMPILER_MANAGED,
+        json_schema_extra={**COMPILER_MANAGED, **since(first_seen)},
         description=description,
     )
 

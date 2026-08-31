@@ -43,7 +43,7 @@ from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from just_dna_format.base import vocabulary
+from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.spec import DOI_PATTERN
 from just_dna_format.vocab import (
@@ -106,7 +106,7 @@ class LiteratureRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # ── identity ──
-    pmid: str = Field(
+    pmid: str = Field(json_schema_extra=since("0.5.0"), 
         description=(
             "PubMed id, digits only. Normalized from `StudyRow.pmid`, which is free-form and may "
             "carry several ids or a `[PMID: N]` wrapper (`spec.extract_pmids` does the extraction)."
@@ -114,7 +114,7 @@ class LiteratureRow(BaseModel):
     )
 
     # ── cross-registry identifiers (facts: which article this is) ──
-    doi: str | None = Field(
+    doi: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Digital Object Identifier for this PMID, as the registry reports it. Filled here rather "
@@ -122,11 +122,11 @@ class LiteratureRow(BaseModel):
             "`content_signature` is defined as reference-independent."
         ),
     )
-    pmcid: str | None = Field(
+    pmcid: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description="PubMed Central id (`PMC…`) when the article is in PMC — the key to fulltext.",
     )
-    exists: bool | None = Field(
+    exists: bool | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Whether PubMed returned a document summary for this id. False is a FACT (the citation "
@@ -135,14 +135,14 @@ class LiteratureRow(BaseModel):
     )
 
     # ── provenance and time-varying state (excluded from the fact hash) ──
-    is_open_access: bool | None = Field(
+    is_open_access: bool | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Whether Europe PMC reports retrievable open-access fulltext. Outside the fact set: "
             "embargoes lift, so this describes the world's state rather than the module's."
         ),
     )
-    license: str | None = Field(
+    license: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "The article's own licence, verbatim as the source spells it (Europe PMC writes `cc by`, "
@@ -150,14 +150,14 @@ class LiteratureRow(BaseModel):
             "the publisher's text are different property, and the open subset spans all of those."
         ),
     )
-    share_alike: bool | None = Field(
+    share_alike: bool | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "Whether the article's licence is viral (the `-SA` family). Null when the terms could "
             "not be established — never false, which would state that they permit something."
         ),
     )
-    commercial_use: bool | None = Field(
+    commercial_use: bool | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "Whether the article's licence permits commercial reuse (`-NC` makes it false). This is "
@@ -165,14 +165,14 @@ class LiteratureRow(BaseModel):
             "quote is publisher text sitting in the module's own annotation layer."
         ),
     )
-    redistribution: bool | None = Field(
+    redistribution: bool | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "Whether the article's licence permits passing the text on. A third axis, not a reading "
             "of the other two: CC BY-NC forbids sale and allows sharing."
         ),
     )
-    quotes_authored: int | None = Field(
+    quotes_authored: int | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         ge=0,
         description=(
@@ -180,7 +180,7 @@ class LiteratureRow(BaseModel):
             "Derivable from studies.csv; carried here so the coverage figure is readable in one place."
         ),
     )
-    quotes_found: int | None = Field(
+    quotes_found: int | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         ge=0,
         description=(
@@ -197,9 +197,9 @@ class LiteratureRow(BaseModel):
             "retrieved. A hit is conclusive from either, but a *miss* is only conclusive against "
             "fulltext — which is why the two are recorded rather than collapsed."
         ),
-        json_schema_extra=vocabulary("quote_source", VALID_QUOTE_SOURCE),
+        json_schema_extra={**vocabulary("quote_source", VALID_QUOTE_SOURCE), **since("0.5.0")},
     )
-    doi_exists: bool | None = Field(
+    doi_exists: bool | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description=(
             "Whether the authored/derived DOI resolves in Crossref. Independent of `exists`, which is "
@@ -208,7 +208,7 @@ class LiteratureRow(BaseModel):
             "names which DOI it is about."
         ),
     )
-    doi_checked: str | None = Field(
+    doi_checked: str | None = Field(json_schema_extra=since("0.6.0"), 
         default=None,
         description=(
             "The DOI `doi_exists` is a verdict about — the authored one where a study row supplied "
@@ -218,16 +218,16 @@ class LiteratureRow(BaseModel):
             "could not clear the finding. Null when Crossref was not asked."
         ),
     )
-    source: str | None = Field(
+    source: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description="Which service answered: pubmed|pmc-idconv|europepmc (open, like every source column).",
     )
     status: str | None = Field(
         default=None,
         description="Lookup outcome: resolved|not_found|ambiguous",
-        json_schema_extra=vocabulary("resolution_status", VALID_RESOLUTION_STATUS),
+        json_schema_extra={**vocabulary("resolution_status", VALID_RESOLUTION_STATUS), **since("0.5.0")},
     )
-    fetched_at: str | None = Field(
+    fetched_at: str | None = Field(json_schema_extra=since("0.5.0"), 
         default=None,
         description="ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-03T02:03:23Z'). Canonicalized on load; records when this row was last written by a pass, not when the source published anything",
     )
