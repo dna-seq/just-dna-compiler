@@ -382,7 +382,7 @@ any rsid-only variant).
   dep, and the `just-dna-compiler` `[project.scripts]` entry. `--strict` / `--strip-identity` /
   `--authority-key` / `--ensembl-cache` / `--no-resolve`; exit codes 0/1.
 - **Dev tooling + metadata**: `ruff` added to the workspace-root dev group (it was referenced but
-  present in none of the three dev groups); `authors` + `maintainers` (Newton Winter) on both packages'
+  present in none of the three dev groups); `authors` + `maintainers` (Anonymous Contributor) on both packages'
   `[project]`.
 - Tests: `schema/tests/test_normalize.py`, `compiler/tests/test_authority_keys.py`,
   `compiler/tests/test_strict_compile.py`, `compiler/tests/test_content_signature.py`,

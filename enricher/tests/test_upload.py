@@ -504,20 +504,20 @@ def test_publish_reference_snapshot_creates_repo_then_uploads(tmp_path: Path) ->
         patch("huggingface_hub.HfApi", return_value=mock_api) as api_cls,
         patch("huggingface_hub.get_token", return_value="hf_test_token"),
     ):
-        plan = publish_reference_snapshot(snap, "just-dna-seq/clinvar")
+        plan = publish_reference_snapshot(snap, "anon-org/clinvar")
     api_cls.assert_called_once_with(token="hf_test_token")
     mock_api.create_repo.assert_called_once_with(
-        repo_id="just-dna-seq/clinvar", repo_type="dataset", exist_ok=True
+        repo_id="anon-org/clinvar", repo_type="dataset", exist_ok=True
     )
     kwargs: dict[str, Any] = mock_api.upload_folder.call_args.kwargs
     assert kwargs["folder_path"] == str(snap)
     assert kwargs["path_in_repo"] == ""
-    assert kwargs["repo_id"] == "just-dna-seq/clinvar"
+    assert kwargs["repo_id"] == "anon-org/clinvar"
     assert kwargs["repo_type"] == "dataset"
     assert kwargs["allow_patterns"] == [
         "data/*.parquet", "citations/*.parquet", "release.json", "LICENSE.txt",
     ]
-    assert plan.repo_id == "just-dna-seq/clinvar"
+    assert plan.repo_id == "anon-org/clinvar"
 
 
 def test_a_snapshots_licence_travels_with_its_bytes(tmp_path: Path) -> None:
@@ -533,7 +533,7 @@ def test_a_snapshots_licence_travels_with_its_bytes(tmp_path: Path) -> None:
 
     with_licence = _snapshot(tmp_path / "clinpgx")
     (with_licence / "LICENSE.txt").write_text("CC BY-SA 4.0 …", encoding="utf-8")
-    plan = plan_reference_snapshot(with_licence, "just-dna-seq/clinpgx")
+    plan = plan_reference_snapshot(with_licence, "anon-org/clinpgx")
     assert plan.files == ["data/clinvar-chr1.parquet", "release.json", "LICENSE.txt"]
 
 

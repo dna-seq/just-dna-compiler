@@ -165,7 +165,7 @@ discovering each blocker one compile at a time.
 
 # Field notes from just-dna-lite — the 0.5 enricher at panel scale
 
-*Written 2026-08-10 while rebuilding all ten `just-dna-seq` modules on the 0.5 route, including three
+*Written 2026-08-10 while rebuilding all ten `anon-org` modules on the 0.5 route, including three
 ClinVar gene panels: `cardio` (115,060 weight rows), `cancer` (139,254) and `pathogenic` (617,001,
 genome-wide, 4,793 genes).*
 

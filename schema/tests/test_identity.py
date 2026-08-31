@@ -37,8 +37,8 @@ def test_validate_name_raises_on_bad() -> None:
 @pytest.mark.parametrize(
     "ns,valid",
     [
-        ("just-dna-seq", True),
-        ("antonkulaga", True),
+        ("anon-org", True),
+        ("author-A", True),
         ("With_Underscore", False),
         ("-lead", False),
         ("trail-", False),  # hyphens separate segments — no trailing empty part
@@ -51,8 +51,8 @@ def test_namespace_rule(ns: str, valid: bool) -> None:
 
 def test_canonical_id() -> None:
     assert (
-        canonical_id("just-dna-seq", "longevity_variants_2026", "2.0.0")
-        == "just-dna-seq/longevity_variants_2026@2.0.0"
+        canonical_id("anon-org", "longevity_variants_2026", "2.0.0")
+        == "anon-org/longevity_variants_2026@2.0.0"
     )
 
 

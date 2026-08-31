@@ -5,7 +5,7 @@ filesystem substituted on the `huggingface_hub` module covers the whole path. Th
 parquet bytes, because the provisioner's footer check is the thing that catches a truncated download and
 a stub of zeros would pass through untested.
 
-The case these tests exist for is real and live: `just-dna-seq/clinvar/data` carries a 159 MB
+The case these tests exist for is real and live: `anon-org/clinvar/data` carries a 159 MB
 `clinvar.parquet` from the single-file era beside today's 25 `clinvar-chr*.parquet`, and the two have
 different schemas.
 """

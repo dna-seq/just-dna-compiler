@@ -5,10 +5,10 @@ description = "Reference compiler for just-dna annotation modules: spec director
 readme = "README.md"
 requires-python = ">=3.13"
 authors = [
-    { name = "Newton Winter", email = "isoutthere@gmail.com" },
+    { name = "Anonymous Contributor", email = "anonymous@example.org" },
 ]
 maintainers = [
-    { name = "Newton Winter", email = "isoutthere@gmail.com" },
+    { name = "Anonymous Contributor", email = "anonymous@example.org" },
 ]
 # Pure-Python transform tier: no duckdb, no network, no deployment/location deps. Resolution is
 # consumed from an injected resolution.csv; the DuckDB reference path moved to just-dna-enricher (the

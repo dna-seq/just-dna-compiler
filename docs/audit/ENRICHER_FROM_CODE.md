@@ -124,13 +124,13 @@ docstring names `just-dna-compiler template` as canonical.
 | --- | --- | --- |
 | `clinvar build` | — | `--vcf PATH`, `--download`, `--out DIR` (`clinvar`) |
 | `clinvar citations` | — | `--out DIR` (required, an existing snapshot dir), `--citations PATH`, `--download`, `--url` |
-| `clinvar publish` | `SNAPSHOT_DIR` | `--repo` (default `just-dna-seq/clinvar`), `--message/-m`, `--dry-run` |
+| `clinvar publish` | `SNAPSHOT_DIR` | `--repo` (default `anon-org/clinvar`), `--message/-m`, `--dry-run` |
 | `gnomad constraint build` | — | `--tsv PATH`, `--download`, `--out DIR` (`gnomad_constraint`) |
-| `gnomad constraint publish` | `SNAPSHOT_DIR` | `--repo` (default `just-dna-seq/gnomad_constraint`), `--message/-m`, `--dry-run` |
+| `gnomad constraint publish` | `SNAPSHOT_DIR` | `--repo` (default `anon-org/gnomad_constraint`), `--message/-m`, `--dry-run` |
 | `clinpgx build` | — | `--out DIR` (required), `--zip PATH`, `--url`, `--use` |
-| `clinpgx publish` | `SNAPSHOT_DIR` | `--repo` (default `just-dna-seq/clinpgx`), `--dry-run`, `--message/-m` |
+| `clinpgx publish` | `SNAPSHOT_DIR` | `--repo` (default `anon-org/clinpgx`), `--dry-run`, `--message/-m` |
 | `cpic build` | — | `--out DIR` (required), `--endpoint` (`https://api.cpicpgx.org/v1`), `--use` |
-| `cpic publish` | `SNAPSHOT_DIR` | `--repo` (default `just-dna-seq/cpic`), `--dry-run`, `--message/-m` |
+| `cpic publish` | `SNAPSHOT_DIR` | `--repo` (default `anon-org/cpic`), `--dry-run`, `--message/-m` |
 | `pharmvar build` | — | `--out DIR` (required), `--use` |
 | `acmg build` | `WORKBOOK` (.xlsx, must exist) | `--out DIR` (`acmg_sf`), `--source-url`, `--doi` |
 | `upload` | `MODULE_DIR` | `--repo`, `--name`, `--message/-m`, `--dry-run` |
@@ -338,7 +338,7 @@ at the `"resolution"` layer for every distinct `authority`.
 | NCBI ClinVar citations | `https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/var_citations.txt` | Builder download (streamed). | `clinvar_build.py` |
 | gnomAD constraint TSV | `https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/constraint/gnomad.v4.1.constraint_metrics.tsv` | Builder download (95.5 MB). Note the path is `release/4.1/`, not `release/v4.1/`. | `constraint_build.py` |
 | ClinPGx bulk archive | `https://api.clinpgx.org/v1/download/file/data/clinicalAnnotations.zip` | Builder download. | `clinpgx_build.py` |
-| HuggingFace Hub | `datasets/just-dna-seq/{ensembl_variations,clinvar,gnomad_constraint,clinpgx,cpic}/data` | Snapshot provisioning (`HfFileSystem`) and publishing (`HfApi.upload_folder`). | `download.py`, `upload.py` |
+| HuggingFace Hub | `datasets/anon-org/{ensembl_variations,clinvar,gnomad_constraint,clinpgx,cpic}/data` | Snapshot provisioning (`HfFileSystem`) and publishing (`HfApi.upload_folder`). | `download.py`, `upload.py` |
 
 ACMG's v3.3 supplementary workbook URL (`https://ars.els-cdn.com/content/image/1-s2.0-S1098360025001017-mmc1.xlsx`)
 and DOI `10.1016/j.gim.2025.101454` are recorded in `acmg_build` as `release.json` provenance and are
@@ -457,7 +457,7 @@ and a two-column file there unions with the 17-column variant parquet and every 
 
 | Cache | Subdir | Env override | Holds | `ensure_*` | Publishable |
 | --- | --- | --- | --- | --- | --- |
-| ensembl | `ensembl_variations` | `JUST_DNA_ENSEMBL_CACHE` (dir or `.duckdb`) | `homo_sapiens-*.parquet`; a stale/empty prebuilt `.duckdb` is ignored in favour of the parquet | `ensure_snapshot` | yes (`just-dna-seq/ensembl_variations`) |
+| ensembl | `ensembl_variations` | `JUST_DNA_ENSEMBL_CACHE` (dir or `.duckdb`) | `homo_sapiens-*.parquet`; a stale/empty prebuilt `.duckdb` is ignored in favour of the parquet | `ensure_snapshot` | yes (`anon-org/ensembl_variations`) |
 | clinvar | `clinvar` | `JUST_DNA_CLINVAR_CACHE` | `clinvar-*.parquet` (one per chromosome) + optional `citations/citations.parquet` | `ensure_clinvar_snapshot` | yes (`clinvar publish`) |
 | constraint | `gnomad_constraint` | `JUST_DNA_GNOMAD_CONSTRAINT_CACHE` (a bare `.parquet` is also accepted) | `gnomad_constraint.parquet`, one row per gene | `ensure_constraint_snapshot` | yes |
 | clinpgx | `clinpgx` | `JUST_DNA_CLINPGX_CACHE` | `data/annotations.parquet` + `LICENSE.txt` | `ensure_clinpgx_snapshot` | yes |
@@ -871,7 +871,7 @@ and without `LICENSE.txt` a share-alike snapshot's `license_sha256` pins nothing
 downloads it.
 
 `plan_reference_snapshot` refuses when `data/` holds no parquet. Default repo is
-`just-dna-seq/clinvar`; `constraint publish` passes `DEFAULT_CONSTRAINT_REPO_ID`, `cpic publish` and
+`anon-org/clinvar`; `constraint publish` passes `DEFAULT_CONSTRAINT_REPO_ID`, `cpic publish` and
 `clinpgx publish` pass theirs as the flag default.
 
 `ensure_repo` is create-or-update: `create_repo(repo_type="dataset", exist_ok=True)` followed by the
@@ -882,7 +882,7 @@ caller's `upload_folder`, with one `HfApi` per publish.
 ## 10. Undetermined from code
 
 * **The Ensembl snapshot's builder and its `release.json`.** `download.ensure_snapshot` provisions
-  `datasets/just-dna-seq/ensembl_variations/data/homo_sapiens-*.parquet`, and `resolver.py` reads a
+  `datasets/anon-org/ensembl_variations/data/homo_sapiens-*.parquet`, and `resolver.py` reads a
   fixed column set (`id`, `chrom`, `start`, `ref`, `alt`), but nothing in this package builds that
   snapshot or writes its `release.json`. `enrich._snapshot_release` reads a `dataset` key that no
   builder here produces, so the `rsid_coordinate_agreement` record's `release` is `None` in practice

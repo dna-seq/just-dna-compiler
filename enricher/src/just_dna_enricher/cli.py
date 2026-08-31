@@ -8,7 +8,7 @@
     just-dna-enricher assertions spec/                  # ClinVar call + review tier (offline capable)
     just-dna-enricher enrich-and-compile spec/ out/ --frequencies --gene-metrics
     just-dna-enricher gnomad constraint build --download --out gnomad_constraint/   # [dev]
-    just-dna-enricher upload out/coronary --repo just-dna-seq/annotators            # [dev]
+    just-dna-enricher upload out/coronary --repo anon-org/annotators            # [dev]
 """
 
 import json
@@ -1099,7 +1099,7 @@ def upload_(
     repo_id: str | None = typer.Option(
         None,
         "--repo",
-        help="Target HF dataset (owner/name). Default: just-dna-seq/annotators.",
+        help="Target HF dataset (owner/name). Default: anon-org/annotators.",
     ),
     name: str | None = typer.Option(
         None,
@@ -1295,7 +1295,7 @@ def clinvar_publish_(
         ..., exists=True, file_okay=False, help="Built snapshot directory (data/*.parquet + release.json).",
     ),
     repo_id: str | None = typer.Option(
-        None, "--repo", help="Target HF dataset (owner/name). Default: just-dna-seq/clinvar.",
+        None, "--repo", help="Target HF dataset (owner/name). Default: anon-org/clinvar.",
     ),
     commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
     dry_run: bool = typer.Option(
@@ -1641,7 +1641,7 @@ def constraint_publish_(
         ..., exists=True, file_okay=False, help="Built snapshot directory (data/*.parquet + release.json).",
     ),
     repo_id: str | None = typer.Option(
-        None, "--repo", help="Target HF dataset (owner/name). Default: just-dna-seq/gnomad_constraint.",
+        None, "--repo", help="Target HF dataset (owner/name). Default: anon-org/gnomad_constraint.",
     ),
     commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
     dry_run: bool = typer.Option(

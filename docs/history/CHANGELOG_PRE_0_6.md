@@ -321,7 +321,7 @@ from `weights.parquet` alone; both halves are in RM43, beside the registry's S8.
 
 ## 2026-08-10 — `just-dna-enricher` + `just-dna-compiler` 0.5.2: the quirks a panel-scale consumer hit
 
-Everything in this cut came from `just-dna-lite` rebuilding all ten `just-dna-seq` modules on the 0.5
+Everything in this cut came from `just-dna-lite` rebuilding all ten `anon-org` modules on the 0.5
 route (S3–S6 in [CONSUMER_SUGGESTIONS.md](../CONSUMER_SUGGESTIONS.md), plus five freeform items). None of
 it touches a model, a parquet column or a manifest field, which is what makes it patch-legal inside the
 closed digest window — **verified rather than assumed**: all eleven `reference_examples/` modules
@@ -474,7 +474,7 @@ Recorded from the consumer side, per the working agreement — no change is bein
 - `just_dna_compiler.resolver` to `just_dna_enricher.resolver`. Same `resolve_variants` signature and
   `EnsemblReferenceError`, so it was a one-line change once located.
 
-**Round-trip audit of all five published modules** (`just-dna-seq/annotators`: longevitymap,
+**Round-trip audit of all five published modules** (`anon-org/annotators`: longevitymap,
 lipidmetabolism, vo2max, superhuman, coronary), download -> `reverse_module` -> `validate_spec` ->
 `compile_module` -> diff. All five reverse, validate and recompile **cleanly**, and no column is ever
 dropped. The deltas, for anyone sizing the same migration:
@@ -1247,7 +1247,7 @@ a failure degrades to the API rather than sinking the pass, and the warning name
 numbers, not no numbers). Verified against the live upload: the pass fetched
 `gnomad_constraint.parquet` into the default cache and wrote a `gnomad_v4.1_constraint` row.
 
-**A published dataset accumulates, and `just-dna-seq/clinvar/data` proves it.** It carries a 159 MB
+**A published dataset accumulates, and `anon-org/clinvar/data` proves it.** It carries a 159 MB
 `clinvar.parquet` from the single-file era beside today's 25 `clinvar-chr*.parquet` — the publisher adds
 and never deletes. Its columns are the raw VCF INFO fields (`clnsig`, `clnrevstat`, …), the reader globs
 `data/*.parquet`, and provisioning everything would therefore put two schemas under one DuckDB relation

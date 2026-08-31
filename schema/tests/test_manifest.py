@@ -22,10 +22,10 @@ def _manifest(tmp_path: Path) -> ModuleManifest:
     artifact = build_artifact(tmp_path, ["weights.parquet"])
     return ModuleManifest(
         identity=Identity(
-            namespace="just-dna-seq",
+            namespace="anon-org",
             name="longevity_variants_2026",
             version="2.0.0",
-            canonical_id="just-dna-seq/longevity_variants_2026@2.0.0",
+            canonical_id="anon-org/longevity_variants_2026@2.0.0",
         ),
         display=Display(
             title="Longevity Variants 2026",
@@ -46,7 +46,7 @@ def test_manifest_roundtrips_through_disk(tmp_path: Path) -> None:
     path = write_manifest(original, tmp_path / "manifest.json")
     loaded = read_manifest(path)
     assert loaded == original
-    assert loaded.identity.canonical_id == "just-dna-seq/longevity_variants_2026@2.0.0"
+    assert loaded.identity.canonical_id == "anon-org/longevity_variants_2026@2.0.0"
     assert loaded.stats.genes == ["CGAS", "TERT"]
 
 

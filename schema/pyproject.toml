@@ -5,10 +5,10 @@ description = "Declarative schema + integrity contract for just-dna annotation m
 readme = "README.md"
 requires-python = ">=3.13"
 authors = [
-    { name = "Newton Winter", email = "isoutthere@gmail.com" },
+    { name = "Anonymous Contributor", email = "anonymous@example.org" },
 ]
 maintainers = [
-    { name = "Newton Winter", email = "isoutthere@gmail.com" },
+    { name = "Anonymous Contributor", email = "anonymous@example.org" },
 ]
 dependencies = [
     "pydantic>=2.12.5",

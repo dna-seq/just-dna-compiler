@@ -20,7 +20,7 @@ just-dna-enricher enrich-and-compile spec/ out/    # enrich, then compile from r
 just-dna-enricher upload out/coronary --dry-run    # publisher surface ([dev]): plan an HF upload
 just-dna-enricher upload out/coronary              # upload compiled artifacts to the HF collection
 just-dna-enricher clinvar build --vcf clinvar.vcf.gz --out cv/   # build the ClinVar snapshot ([dev])
-just-dna-enricher clinvar publish cv/              # create-or-update datasets/just-dna-seq/clinvar
+just-dna-enricher clinvar publish cv/              # create-or-update datasets/anon-org/clinvar
 ```
 
 **Publisher / `[dev]` surface.** Snapshot *download* is part of the runtime enrich chain; the

@@ -496,7 +496,7 @@ published artifact does not move when a consumer installs 0.6, only when its mai
 **and** republishes.
 
 `UNJOINABLE_PHRASE` and its test **stay**, and the comment claiming RM44 would retire them is
-corrected rather than deleted: manifests already on `just-dna-seq/annotators` carry neither new field,
+corrected rather than deleted: manifests already on `anon-org/annotators` carry neither new field,
 so for those the sentence is still the whole record. Retiring it is a decision for after the corpus is
 recompiled, not a consequence of the field existing.
 
@@ -512,7 +512,7 @@ Reported from **just-dna-lite** (consuming 0.5.4), 2026-08-16, same round as S30
 the same run, one layer down. **We know RM43 shipped this in the 0.6 tree**; this is the field cost of
 it not being installable yet, plus one consequence we do not think RM43 alone closes.
 
-**What we ran.** `annotate_and_report_job` over Anton Kulaga's public genome (Zenodo 18370498, CC-Zero,
+**What we ran.** `annotate_and_report_job` over Anonymous Author's public genome (Zenodo [redacted], CC-Zero,
 DeepVariant 1.1.0, GRCh38, variant-only), 4,257,537 records after quality filtering, against all twelve
 modules we discover — `pharmgkb` among them.
 
@@ -551,7 +551,7 @@ been rendering it; that part is our bug, now filed on our side.
 **Why we are writing it up rather than just waiting for 0.6.** Two things outlast the release:
 
 1. **The published corpus does not move when the compiler does.** Every module on
-   `just-dna-seq/annotators` was compiled under 0.5, so a consumer installing 0.6 still meets
+   `anon-org/annotators` was compiled under 0.5, so a consumer installing 0.6 still meets
    coordinate-less `pharm_variants` artifacts until each one is recompiled *and* republished — two
    maintainer actions, in our case gated on a namespace token. A consumer cannot tell from the artifact
    which era it is holding except by looking for the nulls. If `manifest` already distinguishes this
@@ -848,7 +848,7 @@ match"* — with an unconditional error rejected because it would break P7's fix
 the source at least as often as a defect in the module. We think all of that is right. This report is
 about the scope of the word **match**.
 
-**What we ran.** The same twelve-module annotation of Anton Kulaga's variant-only WGS genome, with the
+**What we ran.** The same twelve-module annotation of Anonymous Author's variant-only WGS genome, with the
 first cut of reference-genotype restoration: reporting a module's authored *reference* genotype at
 sites the callset emitted no record for.
 
@@ -1262,7 +1262,7 @@ RM84 discovery work is unstarted and unscheduled: until it lands, `read_module_p
 state `version: None` for every HF-discovered module, which our report renders as *Not stated* — correct,
 and now correct for a reason that has a fix on our side rather than yours.
 
-# Anton Kulaga on authored weights, from the app side (2026-08-17)
+# Anonymous Author on authored weights, from the app side (2026-08-17)
 
 Field feedback rather than a bug report, arriving over chat rather than as a written item — recorded
 here in the reporter's own words, Russian original and translation, because the diagnosis was right
@@ -1324,7 +1324,7 @@ want the effects.
 
 <!-- triaged: 0.6.0 · sha f3ed632b2b17 -->
 
-Reported 2026-08-17 by Anton Kulaga, over chat, in Russian, from the consumer side (the app that reads
+Reported 2026-08-17 by Anonymous Author, over chat, in Russian, from the consumer side (the app that reads
 `weights.parquet` and combines the column). Not a bug report — field feedback after living with the
 column across a corpus of modules. Quoted verbatim, then translated:
 
@@ -3403,7 +3403,7 @@ data/output/corrected_modules/*         4 files, 3668 rows, provenance_quote fil
 ```
 
 Those four are `aggression_anger`, `risk_impulsivity`, `cognitive_intelligence` and
-`big_five_personality` — the published `antonkulaga/*` modules. Every row carries a quote. But:
+`big_five_personality` — the published `author-A/*` modules. Every row carries a quote. But:
 
 ```
 module                    rows   distinct pmids   distinct quotes   quotes per pmid   avg words
@@ -3712,7 +3712,7 @@ Cut and tagged `v0.6.5` on 2026-08-20; publishing is a separate step and the mai
 
 *Filed 2026-08-20 by just-module-creator, against enricher 0.6.4 / compiler 0.6.1 as installed.
 Found while remediating a real module's quotes; the numbers are from the four published
-`antonkulaga/*` modules in your `data/output/corrected_modules/`. This is the separable half of
+`author-A/*` modules in your `data/output/corrected_modules/`. This is the separable half of
 `S54`'s correction.*
 
 **What we were doing.** Replacing the title-quotes in `aggression_anger` with located passages. Before
@@ -4622,13 +4622,13 @@ to find out what the field is supposed to look like.
 modules, `description` word counts:
 
 ```
- 79 words  antonkulaga/aggression_anger_snps@2.0.0
- 60 words  antonkulaga/cognitive_intelligence@2.0.0
- 45 words  antonkulaga/bodybuilding@1.0.0
- 38 words  antonkulaga/big_five_personality_snps@2.1.0
- 36 words  ksuha-dna/placebo_response_claude@1.0.0
- 25 words  antonkulaga/risk_impulsivity_snps@2.0.0
-  8 words  eric-mods/lactose_tolerance@1.0.1
+ 79 words  author-A/aggression_anger_snps@2.0.0
+ 60 words  author-A/cognitive_intelligence@2.0.0
+ 45 words  author-A/bodybuilding@1.0.0
+ 38 words  author-A/big_five_personality_snps@2.1.0
+ 36 words  author-C/placebo_response_claude@1.0.0
+ 25 words  author-A/risk_impulsivity_snps@2.0.0
+  8 words  author-B/lactose_tolerance@1.0.1
 ```
 
 Six of seven are two to five sentences. The registry renders the field whole, so the 60-word one
@@ -4839,7 +4839,7 @@ says it currently serves neither well.
 So: a **`short_description`** on `ModuleInfo` with a real `max_length` — a **character** bound, because
 that is the unit a card layout is measured in and the unit a validator can hold. Around **120
 characters** matches the readable band our owner named (5–15 words). Calibration from the live catalog:
-`eric-mods/lactose_tolerance`'s description is 71 characters and sits comfortably inside it; the
+`author-B/lactose_tolerance`'s description is 71 characters and sits comfortably inside it; the
 60-word one that prompted all of this is 467.
 
 **We argued against a `max_length` in `S63` and this is not us changing our minds — the distinction is

@@ -728,7 +728,7 @@ to fail on the buggy code before being kept. 2830 → 2833.
 ✅ **Shipped in `just-dna-enricher` on 2026-08-20**, motivating case
 [S54](CONSUMER_SUGGESTIONS_HISTORY.md) from just-module-creator.
 
-**Measured against our own tree and reproduced here in full.** Four published `antonkulaga/*` modules
+**Measured against our own tree and reproduced here in full.** Four published `author-A/*` modules
 carry a `provenance_quote` on every studies row — 3,668 of them — and **exactly one distinct quote per
 PMID**: `cognitive_intelligence` 2045 rows / 33 PMIDs / 33 quotes, `risk_impulsivity` 695/19/19,
 `big_five_personality` 859/26/26, `aggression_anger` 69/3/3. A passage located for a claim varies row
@@ -2481,7 +2481,7 @@ a publishable module.
 
 # 0.6 — what S36 closed: weights declare a scale, and a study names its allele
 
-Three items from one consumer report about authored `weight` values. Anton Kulaga's note is field
+Three items from one consumer report about authored `weight` values. Anonymous Author's note is field
 feedback rather than a bug: the column declares no scale, every module means something different by
 it, and published GWAS effects often beat hand-set curator weights. Triaging it found a fourth thing
 nobody had measured — `weight` is authored **zero times** in this repo — and one thing the report

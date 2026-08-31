@@ -220,7 +220,7 @@ a verdict per item, is at `just-dna-lite/docs/reviews/consumer-handoff-triage.md
 **A correction to what a consumer believed about the published corpus.** Both that repo's CLAUDE.md
 and the hand-off assumed no module on HuggingFace publishes a `manifest.json` — CLAUDE.md said "every
 module on HuggingFace today" and the hand-off called the logo fallback "dead code in production" on
-the same premise. Measured 2026-08-21 against `just-dna-seq/annotators`: **all ten modules publish
+the same premise. Measured 2026-08-21 against `anon-org/annotators`: **all ten modules publish
 one.** Attestation (INTEGRATION_0_6 § 2.8) is therefore the *normal* discovery path there and probing
 is the exception. Checked for the failure that implies — a file present at the path but absent from
 `artifact.files` is now dropped where it used to be probed and found — and the attested set matches

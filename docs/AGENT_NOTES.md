@@ -1889,7 +1889,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   2026-08-07 and it is frozen now** — see *A new OPTIONAL column is minor-legal* under **Schema evolution** below.)
 
 - `@snapshot-accumulates` — **A PUBLISHED snapshot accumulates — provisioning must fetch only its own files.** The publisher adds
-  and never deletes, so `just-dna-seq/clinvar/data` still carries a 159 MB `clinvar.parquet` from the
+  and never deletes, so `anon-org/clinvar/data` still carries a 159 MB `clinvar.parquet` from the
   single-file era beside the 25 `clinvar-chr*.parquet`; its columns are the raw VCF INFO fields
   (`clnsig`, `clnrevstat`), the readers glob `data/*.parquet`, and one foreign file therefore puts two
   schemas under one DuckDB relation and kills every query with `Referenced column "clin_sig" not found`.

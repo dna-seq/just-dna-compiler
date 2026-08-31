@@ -1,6 +1,6 @@
 # just-dna-format
 
-[![CI](https://github.com/dna-seq/just-dna-compiler/actions/workflows/ci.yml/badge.svg)](https://github.com/dna-seq/just-dna-compiler/actions/workflows/ci.yml)
+[![CI]([CI-badge-URL-redacted])]([CI-URL-redacted])
 
 The **module format** for just-dna annotation modules — the declarative schema/contract, its
 reference compiler, and the network tier that feeds them — as a uv workspace publishing three

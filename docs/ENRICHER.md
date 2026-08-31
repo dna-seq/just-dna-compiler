@@ -691,11 +691,11 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 
 | Cache | Subdir | Override | `ensure_*` | Published at | Serves |
 |---|---|---|---|---|---|
-| **Ensembl** | `ensembl_variations/` | `$JUST_DNA_ENSEMBL_CACHE` | `ensure_snapshot` | `just-dna-seq/ensembl_variations` | rsID → coordinate (`enrich`) |
-| **ClinVar** | `clinvar/` | `$JUST_DNA_CLINVAR_CACHE` | `ensure_clinvar_snapshot` | `just-dna-seq/clinvar` | records + `citations/` (`enrich`, `draft-panel`) |
-| **gnomAD constraint** | `gnomad_constraint/` | `$JUST_DNA_GNOMAD_CONSTRAINT_CACHE` | `ensure_constraint_snapshot` | `just-dna-seq/gnomad_constraint` | v4.1 gene constraint (`gene-metrics`) |
-| **ClinPGx** 🔒 | `clinpgx/` | `$JUST_DNA_CLINPGX_CACHE` | `ensure_clinpgx_snapshot` | `just-dna-seq/clinpgx` | clinical annotations (`clinpgx check`) |
-| **CPIC** 🔒 | `cpic/` | `$JUST_DNA_CPIC_CACHE` | `ensure_cpic_snapshot` | `just-dna-seq/cpic` | alleles / diplotypes / recommendations (`pgx`, `draft`) |
+| **Ensembl** | `ensembl_variations/` | `$JUST_DNA_ENSEMBL_CACHE` | `ensure_snapshot` | `anon-org/ensembl_variations` | rsID → coordinate (`enrich`) |
+| **ClinVar** | `clinvar/` | `$JUST_DNA_CLINVAR_CACHE` | `ensure_clinvar_snapshot` | `anon-org/clinvar` | records + `citations/` (`enrich`, `draft-panel`) |
+| **gnomAD constraint** | `gnomad_constraint/` | `$JUST_DNA_GNOMAD_CONSTRAINT_CACHE` | `ensure_constraint_snapshot` | `anon-org/gnomad_constraint` | v4.1 gene constraint (`gene-metrics`) |
+| **ClinPGx** 🔒 | `clinpgx/` | `$JUST_DNA_CLINPGX_CACHE` | `ensure_clinpgx_snapshot` | `anon-org/clinpgx` | clinical annotations (`clinpgx check`) |
+| **CPIC** 🔒 | `cpic/` | `$JUST_DNA_CPIC_CACHE` | `ensure_cpic_snapshot` | `anon-org/cpic` | alleles / diplotypes / recommendations (`pgx`, `draft`) |
 | **PharmVar** 🔒 | `pharmvar/` | `$JUST_DNA_PHARMVAR_CACHE` | **none, by design** | **never published** | star alleles (`pgx`) |
 
 🔒 = licence-gated (`commercial_use=False`). The bottom three are RM38, new in 0.5.1.
@@ -754,7 +754,7 @@ Four things worth knowing before you run it on a server:
   under a data-usage policy the terms are accepted when the data is **taken** — so downloading is the
   act being gated. `unstated` skips them with a reason, `commercial` refuses, `non-commercial`
   proceeds. Same three states as everywhere else; the tool will not assert a purpose for you.
-- **`just-dna-seq/cpic` and `just-dna-seq/clinpgx` have to exist first.** They are new with 0.5.1, so
+- **`anon-org/cpic` and `anon-org/clinpgx` have to exist first.** They are new with 0.5.1, so
   until somebody publishes them `cache pull` reports `repository not found` for those two — which is
   honest rather than a bug. Build and publish them once (below), or point at a locally built directory.
 - **A published dataset accumulates.** Each `ensure_*` fetches only the files its own snapshot is made
@@ -765,7 +765,7 @@ Four things worth knowing before you run it on a server:
 If you prefer the Hub CLI, the layout is plain and the same files are all there is:
 
 ```bash
-hf download just-dna-seq/clinvar --repo-type dataset \
+hf download anon-org/clinvar --repo-type dataset \
     --include 'data/clinvar-*.parquet' 'citations/*.parquet' 'release.json' \
     --local-dir "$JUST_DNA_PIPELINES_CACHE_DIR/clinvar"
 ```
@@ -917,8 +917,8 @@ from a failure.
   for both absence and corruption on purpose: a caller must not be able to mistake "this snapshot does
   not say" for a release id.
 - **`download.py`** — `ensure_snapshot`, `ensure_clinvar_snapshot` and `ensure_constraint_snapshot` pull
-  the parquet slice from the HF datasets (`just-dna-seq/ensembl_variations` / `just-dna-seq/clinvar` /
-  `just-dna-seq/gnomad_constraint`) via one shared footer-checked/atomic body. A complete parquet
+  the parquet slice from the HF datasets (`anon-org/ensembl_variations` / `anon-org/clinvar` /
+  `anon-org/gnomad_constraint`) via one shared footer-checked/atomic body. A complete parquet
   begins/ends with the `PAR1` magic; downloads go to a `.part` temp and rename only after the footer
   verifies, and a corrupt/truncated file is removed and refetched rather than skipped forever.
   `huggingface_hub` is a **guarded lazy import** — a missing wheel fails with a clear diagnosis pointing
@@ -1222,12 +1222,12 @@ publish_reference_snapshot(snapshot_dir, repo_id=None, token=None, commit_messag
 ```
 
 `upload_module` uploads **every parquet the compiled artifact carries** + `manifest.json` + optional
-logo and readme to `datasets/<repo>/data/<name>/` (default repo `just-dna-seq/annotators`), matching
+logo and readme to `datasets/<repo>/data/<name>/` (default repo `anon-org/annotators`), matching
 just-dna-lite's discovery layout, **and the same files again to `data/<name>/v<version>/`** (RM84 —
 see below). The parquet half of the allowlist is `just_dna_compiler.compiler.ARTIFACT_PARQUETS`,
 imported rather than restated — see *what publishes, and what refuses* below for why that is a rule
 rather than a tidiness. `publish_reference_snapshot` uploads a built `data/*.parquet` + its
-parquet **sidecars** + `release.json` to the **root** of a dataset repo (default `just-dna-seq/clinvar`),
+parquet **sidecars** + `release.json` to the **root** of a dataset repo (default `anon-org/clinvar`),
 matching the `download.ensure_*_snapshot` layout. Both go through `ensure_repo` — one
 create-or-update-then-upload pathway (`create_repo` was added here; the origin `v1_port.publish` assumed
 the repo pre-existed).
@@ -1395,7 +1395,7 @@ way the Ensembl snapshot does:
 flowchart LR
   ncbi["NCBI clinvar.vcf.gz GRCh38"] --> build["clinvar_build.py (dev)"]
   build --> pq["clinvar/data/*.parquet + release.json"]
-  pq --> hf["HF datasets/just-dna-seq/clinvar"]
+  pq --> hf["HF datasets/anon-org/clinvar"]
   hf --> cache["local cache"]
   cache --> link["clinvar.py lookup_loci (core)"]
   link --> chain["enrich() chain"]
@@ -2604,7 +2604,7 @@ just-dna-enricher upload out/coronary              # push to data/coronary/ and 
 just-dna-enricher clinvar build --vcf clinvar.vcf.gz --out cv/   # VCF → snapshot parquet ([dev])
 just-dna-enricher clinvar build --download --out cv/            # fetch the NCBI VCF first, then build
 just-dna-enricher clinvar publish cv/ --dry-run                 # plan the reference-snapshot upload
-just-dna-enricher clinvar publish cv/                           # create-or-update datasets/just-dna-seq/clinvar
+just-dna-enricher clinvar publish cv/                           # create-or-update datasets/anon-org/clinvar
 ```
 
 `enrich`/`enrich-and-compile` take `--strict/--best-effort`, `--offline`, `--ensembl-cache`,
@@ -2834,7 +2834,7 @@ deserves to know it is absent rather than hidden. None is a defect with a filed 
 place where the code and a stated rule disagree, and these are places where nothing states a rule.
 
 - **The Ensembl snapshot's builder and its `release.json`.** `download.ensure_snapshot` provisions
-  `datasets/just-dna-seq/ensembl_variations/data/homo_sapiens-*.parquet` and `resolver.py` reads a fixed
+  `datasets/anon-org/ensembl_variations/data/homo_sapiens-*.parquet` and `resolver.py` reads a fixed
   column set from it (`id`, `chrom`, `start`, `ref`, `alt`), but **nothing in this package builds that
   snapshot**, unlike the ClinVar and gnomAD ones. `enrich._snapshot_release` reads a `dataset` key no
   builder here writes, so `rsid_coordinate_agreement.release` is `None` in practice unless something

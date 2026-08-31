@@ -2,7 +2,7 @@
 Identity and versioning (SPEC §6).
 
 Identity is `namespace/name`. `name` keeps the DSL rule `^[a-z][a-z0-9_]*$`; `namespace` is an
-owned account/org slug (lowercase alphanumeric with hyphens, e.g. `just-dna-seq`). Versions are
+owned account/org slug (lowercase alphanumeric with hyphens, e.g. `anon-org`). Versions are
 SemVer `MAJOR.MINOR.PATCH` for public ordering; the legacy `vN` directory convention maps
 `v1 -> 1.0.0`, `v2 -> 2.0.0`.
 """
@@ -13,7 +13,7 @@ from functools import total_ordering
 
 NAME_PATTERN: re.Pattern[str] = re.compile(r"^[a-z][a-z0-9_]*$")
 # Hyphens *separate* alphanumeric segments — no leading/trailing hyphen, no doubled hyphen (so
-# `just-dna-seq` is valid but `just-dna-`/`a--b` are not; a slug is not a place to hide empty parts).
+# `anon-org` is valid but `just-dna-`/`a--b` are not; a slug is not a place to hide empty parts).
 NAMESPACE_PATTERN: re.Pattern[str] = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 _VERSION_PATTERN: re.Pattern[str] = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 _LEGACY_PATTERN: re.Pattern[str] = re.compile(r"^v?(\d+)$")
