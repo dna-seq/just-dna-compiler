@@ -44,6 +44,118 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM159 — the identity a source states in a variant's name, adopted rather than left in a probe
+
+**Severity** medium · **Status** ✅ shipped 2026-09-01 in the uncut 0.7.0 (`just-dna-enricher`;
+**no schema change**) · **Owner** enricher · **Motivating case** the 2026-09-01 residue round
+([CIVIC_UNRESOLVED](probes/CIVIC_UNRESOLVED.md))
+
+`civic build` placed a row from what CIViC puts in its *identifier columns* — an rs-number, or a
+GRCh38 RefSeq accession it can parse — and dropped 53 variants as `unresolvable_identity`. For most
+of them the identity was published the whole time, one column over: in the variant's own `name`.
+`N150fs (c.448delA)`, `IVS2+1G>A`, `D1709N`. A `c.` or protein fragment plus the gene's numbering
+frame is an allele, and an allele registry holds it.
+
+**Adopted: 33 of the 34 that resolved.** Coverage over the dated `01-Aug-2026` release goes from
+**237/290 variants (81.7%) to 270/290 (93.1%)**, and from 474/533 evidence rows (88.9%) to
+**507/533 (95.1%)**. `unresolvable_identity` falls from 59 rows to 26.
+
+**The one excluded, and why it is not an oversight.** CIViC 4968 `TP53 R72P` resolves — rs1042522,
+CA178298 — and its identity is the **reference** allele: codon 72 is `CCC` = Pro on GRCh38, so the
+name has reference and alternate inverted, and the registry answers `NC_000017.11:g.7676154G=`.
+A snapshot row is `chrom/start/ref/alt` and `ref == alt` is not a variant row. The identity exists and
+this representation cannot carry it, which is a fact about the representation.
+
+### Why the answers ship as data and the procedure does not run
+
+Resolving a name needs the network, and `civic build` must stay byte-reproducible from a pinned dated
+release — which is why the CAID pass (RM153) runs at *draft* time and never in a build. The obvious
+repair is therefore "do this at draft time too", and it was refused: **four of the 33 required a
+judgement no lookup makes.** A legacy `IVS2` name that converts structurally to the wrong exon
+(788 — the structural answer `c.319+1` and the true one `c.444+1` are both real registered alleles
+9 kb apart, so nothing in a lookup flags the error); a name pairing a missense protein label with a
+*synonymous* cDNA change (2459); a protein consequence standing over an intronic allele (804); an
+rs-number that is position-level where two alleles spell the same substitution (2196). A draft-time
+resolver would either fail on those or silently pick a side.
+
+So the **answer** is a shipped constant — `civic_identities.CIVIC_NAME_IDENTITIES`, 33 rows carrying
+coordinates, rsID, the CAID as provenance and a note where one was needed — the **procedure** is
+written down as [CIVIC_IDENTITY_PROTOCOL](probes/CIVIC_IDENTITY_PROTOCOL.md), and the build stays
+offline. `P9` — zero authored-layer cost, no CSV, no column.
+
+### The name is the key, and that is the safety property
+
+Every identity was derived from the `name` string quoted beside it, so a build applies a row only on
+an **exact** name match. Each curated row lands in exactly one of four counted states, published in
+`release.json` and asserted as an equality over the walked table (`@registry-completeness`):
+
+- `applied` — the name still matches, CIViC still publishes no identifier, the row was placed.
+- `superseded` — CIViC now publishes an identity of its own. **The source always wins**, and a
+  supersession is the cheapest currency signal available: it means the upstream has curated.
+- `renamed` — the variant is there and its name changed. The answer was an answer to a name.
+- `absent` — the variant is not in the file. Kept apart from `renamed` on `@unreachable-not-absent`:
+  over a full release it means withdrawn, over a slice it means nothing at all.
+
+A curated answer therefore cannot outlive the record it answered, which is what makes a hand-built
+table safe against the next release rather than merely correct for this one.
+
+### What the external check says
+
+`civic reproduce` cross-examines every placed coordinate against the GRCh38 reference through
+refget/seqrepo — an unrelated service asked whether the reference base at each position is what the
+snapshot wrote. It read 24 coordinates before this item and reads **57 of 57 with 0 mismatches**
+after. Every one of the 33 hand-read alleles is confirmed at its stated position by something that
+has never heard of CIViC.
+
+### Two smaller things the adoption fixed on the way
+
+- **`allele_registry_id` is untouched.** It is CIViC's verbatim cell and is empty for all 33 by
+  definition; the CAIDs the probe recovered live on the curated table as provenance. Writing them into
+  the source's column would publish a finding as if the source had made it, and a test pins it.
+- **`curated_name` is its own `identity_derivation` member**, not folded into `rsid`/`grch38_hgvs`.
+  Those mean "the source stated this in the column for it", and a consumer must be able to exclude the
+  difference without re-deriving it. The drafter needed no change — it special-cases `caid` and lets
+  every other member through the placed path — but that is now an equality over the vocabulary rather
+  than a property nobody checked (`@lookup-with-a-default-hides-a-new-member`).
+
+## RM159 — a release record's two halves are written at different times, and the second left the first behind
+
+**Severity** high (a red release gate) · **Status** ✅ shipped 2026-09-01 in the uncut 0.7.0
+(`just-dna-format`) · **Owner** format · **Motivating case** the pre-build gate run for the 0.7.0 cut
+
+`sweep --release 0.7.0` exited **1** with two findings: `gene_validity.superseded_count` and
+`identity.version_coerced_from` *"moved and the release record does not list it"*. Both are real
+manifest additions from the 2026-08-31 batch, both carry a `DeclaredChange` written the day they
+landed, and neither was in the record's `manifest_fields`. The readiness table had recorded the gate
+green on 2026-08-31; the two declarations were added at 06:52 and 07:04 that morning, after the
+measurement the list came from.
+
+**The shape is the record's own construction.** `SweepMeasurement.as_record` produces the *measured*
+half — `axes` and `manifest_fields` — with `declared` deliberately empty, so the gate keeps refusing
+until a person classifies each movement. That split is what makes the gate work, and it is also what
+lets an item landing after the measurement add its declaration and leave the measured list behind.
+Nothing in a checkout could see it: the gate needs the previous release installed and is a
+release-sequence command by design, so between two cuts the record can be wrong for a fortnight and
+every test stays green.
+
+**The guard is an asymmetry, not a symmetry.** A declared **addition** must appear in
+`manifest_fields`: a field that did not exist before moves wherever its block appears, so a release
+claiming to add one while measuring no movement is claiming something its own corpus contradicts. A
+declared **correction** may legitimately be unmeasurable — 0.7.0 declares `gene_validity.classifications`
+and `gene_metrics.signature`, and no reference module carries a re-curated gene-validity claim or a row
+from the snapshot the second is about. Those stay declared and unlisted, and the gate already has a
+*note* for the reverse case. Asserting the full set equal would have forced two false claims into the
+record to silence a true one.
+
+The test walks `RELEASE_RECORDS`, so a future release joins by existing. It fails on the pre-fix tree
+naming exactly the two fields, which is the whole point: this was findable offline and was not being
+looked for.
+
+**Evidence unchanged.** The record's `evidence` sentence already carried today's numbers
+(`content_signature 0/15, manifest_fields 15/15, parquet_bytes 14/15, parquet_schema 14/15, warnings
+3/15`) — only the field list was stale, which is why nothing else in the record needed touching. After
+the fix: *"release record for 0.7.0 covers the measurement"*, exit 0.
+
 ## RM158 — the GWAS pass asked about one table's rsIDs, and the answer already existed in this package
 
 **Severity** medium · **Status** ✅ shipped 2026-09-01 in the uncut 0.7.0 (`just-dna-enricher`) ·
@@ -283,9 +395,10 @@ through the registry was not measured and is the obvious next question.
 53 were put through a four-tier identity procedure and **34 of them have an identity**, from the
 fragments CIViC publishes in the variant's own name. The paragraph above understated it by testing a
 per-**gene** fact (which transcript a `c.` fragment is numbered against) as a per-**record** one, so
-29 variants were written off for lacking a `representative_transcript` cell. Adopting the resolutions
-would take coverage from 237/290 to **271/290 variants** and 474/533 to **508/533 rows**; adopting
-them is not decided here, and nothing has entered `civic build`. The "53 carry no identifier" sentence
+29 variants were written off for lacking a `representative_transcript` cell. Thirty-three of the 34 were adopted the
+same day as **RM159**, taking coverage from 237/290 to **270/290 variants** and 474/533 to **507/533
+rows**; the one held back is `TP53 R72P`, whose identity is the reference allele and so is not a
+`ref`/`alt` row. The "53 carry no identifier" sentence
 above therefore stands only as the state at this item's cut. What survives unchanged is the five that
 can never be reached, plus six more that name a class of event rather than an allele. Class by class,
 with the four wrong CIViC names and three self-duplicates the round also turned up, in

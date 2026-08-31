@@ -647,6 +647,8 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
         manifest_fields=[
             "authority_precedence",
             "clin_sig_concordance",
+            "gene_validity.superseded_count",
+            "identity.version_coerced_from",
             "verification.checks",
         ],
         declared=[

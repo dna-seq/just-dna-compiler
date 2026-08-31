@@ -320,6 +320,35 @@ def test_every_recorded_manifest_field_is_a_path_the_manifest_really_has() -> No
         assert bool(record.manifest_fields) <= (record.axes["manifest_fields"] is True), version
 
 
+def test_a_declared_field_ADDITION_is_also_listed_as_one_that_moved() -> None:
+    """A field this release *adds* must appear in `manifest_fields`, and two did not (RM159).
+
+    The two halves of a record are written at different times: `manifest_fields` comes out of a sweep
+    (`SweepMeasurement.as_record`, whose `declared` list is empty on purpose) and the declarations are
+    written by a person afterwards. So an item landing *after* the measurement can add its declaration
+    and leave the measured list behind it — which is what happened to `gene_validity.superseded_count`
+    and `identity.version_coerced_from`, and it turns the release gate red at the one moment nobody
+    wants to be debugging a record.
+
+    **Additions only, and that asymmetry is the whole test.** A field that did not exist before moves
+    wherever its block appears, so a release claiming to add one and measuring no movement is claiming
+    something the corpus contradicts. A **correction** may legitimately be unmeasurable: 0.7.0 declares
+    `gene_validity.classifications` and `gene_metrics.signature`, and no reference module carries a
+    re-curated gene-validity claim or a row from the snapshot the second is about. Those stay declared
+    and unlisted, and the gate has a *note* for a listed field a sweep did not see move.
+
+    Derived from the records rather than a literal, so a future release joins by existing.
+    """
+    for version, record in RELEASE_RECORDS.items():
+        listed = set(record.manifest_fields)
+        additions = {
+            change.target
+            for change in record.declared
+            if change.axis == "manifest_fields" and change.kind == "addition"
+        }
+        assert additions <= listed, f"{version}: declared as added but not listed: {additions - listed}"
+
+
 def test_a_declared_change_names_an_axis_the_record_says_moved() -> None:
     """A declaration on an axis the measurement reports as still is a contradiction in the record."""
     for version, record in RELEASE_RECORDS.items():

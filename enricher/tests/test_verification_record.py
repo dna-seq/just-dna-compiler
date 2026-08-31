@@ -587,21 +587,48 @@ def test_check_identifiers_attests_when_the_registry_never_answers(tmp_path: Pat
     assert by_check["trait_currency"].skipped == "not_requested"
 
 
-def test_a_module_with_no_variants_csv_is_not_attested_at_all(tmp_path: Path) -> None:
+def test_check_acmg_on_a_module_with_no_variants_csv_is_not_attested_at_all(tmp_path: Path) -> None:
     """The check does not APPLY, which is not a skip — `enrich_clinpgx`'s rule, one command over.
 
-    `acmg_sf`, `gene` and `trait_efo_id` are all `variants.csv` columns, so with no such file there
-    is no claim for these checks to have an opinion about. Recording one would mine a nonce and put a
+    `acmg_sf` is a `variants.csv` column and **only** that, so with no such file there is no claim for
+    this check to have an opinion about. Recording one would mine a nonce and put a
     `verification.json` on a module that never asked for one; `nothing_to_check` stays for a table
     that is there and carries no row in scope.
+
+    **`check-identifiers` used to be asserted here beside it and no longer belongs (RM155/RM156).**
+    `gene` and `trait_efo_id` are carried by nine authored tables each, four of them the PGx kinds
+    this very module is built out of, so on this spec that command now reads three tables, finds
+    CYP2C19, and attests — the question really was put. The rule it keeps is the one below: no
+    id-bearing table, no attestation.
     """
     spec = _module(tmp_path, "cyp2c19_star_alleles")
     assert not (spec / "variants.csv").exists()
     (spec / VERIFICATION_JSON).unlink(missing_ok=True)
 
-    for argv in (["check-identifiers", str(spec)], ["check-acmg", str(spec), "--offline"]):
-        result = CliRunner().invoke(app, argv)
-        assert result.exit_code == 0, result.output
+    result = CliRunner().invoke(app, ["check-acmg", str(spec), "--offline"])
+    assert result.exit_code == 0, result.output
+    assert not (spec / VERIFICATION_JSON).exists()
+
+
+def test_check_identifiers_is_not_attested_when_no_table_carries_an_identifier(
+    tmp_path: Path,
+) -> None:
+    """The same rule, keyed on the roster rather than on one filename (RM156).
+
+    A module carrying no table that declares `trait_efo_id` or `gene` has had no question put to it,
+    so there is nothing to record having asked — and this reaches no registry, because the command
+    returns before a client is built.
+    """
+    spec = tmp_path / "bare"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(
+        "schema_version: '1.0'\n"
+        "module:\n  name: bare\n  title: Bare\n  description: d\n  report_title: Bare\n",
+        encoding="utf-8",
+    )
+    result = CliRunner().invoke(app, ["check-identifiers", str(spec)])
+    assert result.exit_code == 0, result.output
+    assert "nothing to check" in result.output
     assert not (spec / VERIFICATION_JSON).exists()
 
 

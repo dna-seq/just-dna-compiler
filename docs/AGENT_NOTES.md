@@ -678,6 +678,30 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   without rows — `ran(0, 0)`, the third vacuous pass in two days, in the function whose own docstring
   forbids writing one.
 
+- `@a-record-written-in-two-passes-drifts-between-them` — **A release record has a measured half and a
+  declared half, written at different times, and the second leaves the first behind (RM159, 0.7).**
+  `SweepMeasurement.as_record` writes `axes` and `manifest_fields` from a sweep with `declared`
+  deliberately empty, so the gate refuses until a person classifies each movement. That split is the
+  mechanism — and it is also the drift: an item landing *after* the measurement adds its
+  `DeclaredChange` and nobody re-measures. 0.7.0 reached its own pre-build gate run missing
+  `gene_validity.superseded_count` and `identity.version_coerced_from`, both declared at 06:52 and
+  07:04 on the morning the readiness table recorded the gate green.
+
+  **Nothing in a checkout could see it.** The gate needs the previous release installed and is a
+  release-sequence command by design, so between two cuts a record can be wrong for a fortnight with
+  every test passing. That is the argument for finding whatever slice of it *is* offline-checkable
+  rather than filing the whole thing under "run the gate".
+
+  **The guard is an asymmetry, and asserting the symmetric version would have been worse.** A declared
+  **addition** must be listed: a field that did not exist before moves wherever its block appears, so a
+  release claiming to add one while measuring no movement is claiming something its own corpus
+  contradicts. A declared **correction** may be legitimately unmeasurable — 0.7.0 declares
+  `gene_validity.classifications` and `gene_metrics.signature`, and no reference module carries a
+  re-curated gene-validity claim or a row from the snapshot the second is about. Asserting set equality
+  would have forced two false claims into the record to silence one true one, and the gate already has
+  a *note* for the reverse case. Reach for the asymmetric invariant when only one direction is
+  entailed.
+
 ## Checks: where they run, and what severity means
 
 - `@parity-by-check` — **Audit `validate`/`compile` parity by CHECK, not by TABLE — that is how the third instance hid.**

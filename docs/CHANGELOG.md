@@ -34,7 +34,33 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-08-28 (latest) — 0.7.0: the items PROPOSAL_0_7 decided
+## 2026-09-01 (latest) — CIViC reads the identity stated in a variant's name (RM159)
+
+**`just-dna-enricher` only; no schema change, no new column, nothing in `just-dna-format` or
+`just-dna-compiler`.**
+
+- **`civic build` places 33 variants it used to drop.** CIViC states an identity in a variant's `name`
+  for records whose identifier columns are empty — `N150fs (c.448delA)`, `IVS2+1G>A`, `D1709N` — and
+  those identities now ship as `civic_identities.CIVIC_NAME_IDENTITIES` and are emitted with
+  `identity_derivation="curated_name"`. Coverage over the dated `01-Aug-2026` release goes from
+  **237/290 variants (81.7%) to 270/290 (93.1%)** and from 474/533 rows to **507/533**;
+  `unresolvable_identity` falls from 59 rows to 26.
+- **`identity_derivation` gains the member `curated_name`.** Additive, and deliberately not folded
+  into `rsid`/`grch38_hgvs`: those mean "the source stated this in the column for it". A consumer
+  filtering on the vocabulary should add the member; one that ignores it sees the rows as ordinary
+  placed rows, which they are.
+- **`release.json` gains `curated_identities`** — `applied` / `superseded` / `renamed` / `absent`,
+  every member present, summing to the table. `superseded` means CIViC has since published an identity
+  of its own and the curated row stood down; it is also a free currency signal.
+- **`civic reproduce` now reads 57 coordinates against the GRCh38 reference instead of 24**, still
+  0 mismatches. Every hand-read allele is confirmed at its stated position by an unrelated service.
+- Unchanged: the build is still offline and byte-reproducible from the dated TSV pair, and
+  `allele_registry_id` is still CIViC's verbatim cell — the CAIDs the resolutions went through are
+  provenance on the shipped table, not the source's statement.
+- The procedure behind the identities is `docs/probes/CIVIC_IDENTITY_PROTOCOL.md`; the per-variant
+  evidence and the classes that did **not** resolve are `docs/probes/CIVIC_UNRESOLVED.md`.
+
+## 2026-08-28 — 0.7.0: the items PROPOSAL_0_7 decided
 
 **A MINOR, being built; the number is decided and not yet cut.** Every item in this batch is additive
 under Principles 3 and 8, and a new optional column is what sizes a release. The heading names `0.7.0`
@@ -52,14 +78,34 @@ no release class and acquired one when its probe was finally run, and RM154, whi
 consumer report after the rest were built; all taken in one pass so 0.7 cuts with its own backlog
 cleared rather than carrying it. Eleven are built; **RM138 is closed with its numbers measured and no
 code changed**. **The items dated 2026-09-01 are deliberately outside that count** — RM155 arrived
-from a consumer the next morning, and RM156, RM157 and RM158 from sweeping its shape across the
-tier; all four ship inside the same uncut 0.7.0. The batch stays the thing it describes rather than growing a member
+from a consumer the next morning, RM156, RM157 and RM158 from sweeping its shape across the
+tier, and RM159 from the pre-build gate run those four preceded; all five ship inside the same uncut
+0.7.0. The batch stays the thing it describes rather than growing a member
 whenever another item lands before the tag: the count is of the 2026-08-31 round, and the rule for a
 later item is to date it and leave the number alone. Two things a reader should take from them together: `carried` costs
 1.06× gzipped rather than the 1.84× raw the item was filed about, so **serve manifests compressed**;
 and two derived values change — `gene_metrics.constraint_flags` and
 `gene_validity.classifications` — which are **corrections**, so a moved signature there is the fix
 arriving rather than drift.
+
+- **RM159 — a release record's two halves are written at different times, and the second left the
+  first behind.** *(`just-dna-format`; **additive** — two names into an existing list and one new test.
+  No column, no vocabulary member, no signature moves.)* The pre-build gate run for this cut exited
+  **1**: `gene_validity.superseded_count` and `identity.version_coerced_from` *"moved and the release
+  record does not list it"*. Both are real manifest additions from the 2026-08-31 batch, both carry a
+  `DeclaredChange` written the day they landed, and neither had reached `manifest_fields` — the two
+  declarations went in at 06:52 and 07:04, after the measurement the list came from, and the readiness
+  table recorded the gate green earlier that day. **The shape is the record's own construction**:
+  `SweepMeasurement.as_record` produces the measured half with `declared` deliberately empty, which is
+  exactly what makes the gate useful and also what lets a later item add its declaration and leave the
+  measured list behind. Nothing in a checkout could notice — the gate needs the previous release
+  installed and is a release-sequence command by design. The guard is an **asymmetry**: a declared
+  *addition* must be listed, because a field that did not exist before moves wherever its block
+  appears; a declared *correction* may be unmeasurable on the corpus, so `gene_validity.classifications`
+  and `gene_metrics.signature` stay declared and unlisted and the gate keeps its existing *note* for
+  the reverse. The record's `evidence` sentence already carried the current numbers, so only the field
+  list was stale. After the fix: *"release record for 0.7.0 covers the measurement"*, exit 0. *(from
+  the 0.7.0 pre-build gates)*
 
 - **RM158 — the GWAS pass asked about one table's rsIDs, and the answer already existed in this
   package.** *(`just-dna-enricher`; **additive**, and **no schema change** — no column, no vocabulary

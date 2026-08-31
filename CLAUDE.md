@@ -222,6 +222,9 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - The compiler discards an uncited literature row; `literature.csv` keeps it. `@uncited-literature-dropped`
 - One normalizer for a vocabulary two sources spell differently; test **both** sides' raw tokens. `@one-normalizer-two-spellings`
 
+- A release record's measured half and declared half drift; re-measure when a declaration lands. `@a-record-written-in-two-passes-drifts-between-them`
+- Assert the asymmetric invariant when only one direction is entailed; equality forces false claims. `@a-record-written-in-two-passes-drifts-between-them`
+
 ### PAR loci and contig ploidy
 
 - `chrom=Y` is not "never diploid" — PAR1 and PAR2 are diploid in everyone. `@y-not-haploid`
