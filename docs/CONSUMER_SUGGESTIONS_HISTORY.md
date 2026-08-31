@@ -109,6 +109,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S83** `direction` for a trend whose sign is unestablished — RM148
 - **S84** CIViC scored as a source; germline quarter too thin — RM152
 - **S85** `not_found` for an rsID the source has — accepted, RM154
+- **S86** identifier roster read only variants.csv — accepted, RM155
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -7516,3 +7517,76 @@ structured diagnosis beside the row — the shape `ref_mismatches` and `stale_rs
 allele set. That keeps the artifact's vocabulary fixed, makes the state legible in the result object
 where a caller can surface it, and leaves the row itself honestly unresolved. If you prefer the status
 member, the one we would want is not `not_found`.
+
+# just-module-creator, 2026-09-01 — a check as wide as one table
+
+## S86 — `check_identifiers` reads `variants.csv` only, so a trait id that lives in `studies.csv` is never checked and the tally says `0`
+
+**Status — accepted, both halves, and wider than filed; shipped in the tree as RM155, uncut at
+0.7.0.** Reproduced offline in both directions: a spec whose only `trait_efo_id` sits in
+`studies.csv` returns `module_trait_ids(variants) == []`, and a spec whose only `gene` sits in
+`haplotypes.csv` returns an empty gene roster. Thank you for the correction about the check not being
+dead — it saved the reproduction, and you were right that the scope and the `0` are the defect.
+
+**The scope is wider than "studies.csv and the binning kinds".** Walking `_ALL_MODELS`: **eleven**
+authored models declare one of these columns, so the roster now covers **nine tables per column**,
+derived from `DRAFTABLE` rather than listed. A hand-kept set here would be the same bug with a longer
+literal in it, so the test asserts an equality over the walked registry — a table kind added later
+joins by existing. Two edges fell out of that walk. `MeasureBinRow` is correctly absent, being the
+abstract base whose four concrete subclasses are each their own entry (pinned, not assumed). And the
+three **derived** models carrying these columns — `GeneMetricsRow`, `GeneValidityRow`, `GwasEffectRow`
+— are deliberately outside it: they are machine-written, so a stale id there is the *source's*
+currency and no author can act on it. `dataset_currency` is the surface that asks that question.
+
+**We took your `not_read` suggestion as well, because widening alone would have left the hole.** You
+put it as the fallback if the roster stayed narrow; it is load-bearing either way, since a widened
+roster still returns `[]` for a module that genuinely declares no trait. `IdentifierReport` now carries
+`trait_tables_read` / `trait_tables_not_read` and the gene pair beside them, and the CLI count names
+its own denominator — `traits checked: 0 (from 2 table(s): studies.csv, variants.csv)`. An absent
+optional table and one that exists and will not parse are kept apart: the first is every module's
+normal shape and says nothing, the second warns, because it means ids you really do carry went
+unchecked.
+
+**Your framing found one more, one level up.** `report.clean` is vacuously true over an empty roster,
+so `check-identifiers` printed a green *"all identifiers current"* having asked nothing at all — the
+same unreadable zero wearing a pass. It now says what it read.
+
+Nothing about your data needs changing, as you concluded. Your wrapper's warning is welcome but should
+become unnecessary: `spec_dir=` reads all nine tables now, and the narrow roster survives only for a
+caller passing `variants=`, which is told so in `*_tables_not_read` rather than left equal to the wide
+case.
+<!-- triaged: 0.7.0 · sha bc7dcb9fcc92 -->
+
+Reported by `just-module-creator`, 2026-09-01. Enricher 0.6.6.
+
+**What ran.** A 67-variant module whose `studies.csv` carries `trait_efo_id` on all 68 rows.
+`check_identifiers` returned `trait_tally: {checked: 0, clean: 0, flagged: 0}` beside
+`gene_tally: {checked: 55}`. `module_trait_ids(variants)` is the whole roster — the trait ids in
+`studies.csv` are not in it, and `StudyRow` has carried `trait_efo_id` since 0.3.
+
+**Why `0` is the problem rather than the omission.** A reader cannot tell *this module declares no
+trait* from *this module's trait ids are in a table the check does not read*. Both print `checked: 0`,
+and `0 clean, 0 flagged` beside it reads as a clean run — which is the three-valued rule at a finer
+grain, and the one your own `unconsulted_rsids` split (RM98) exists to protect one layer down. A
+module can therefore ship a retired or simply wrong CURIE with every gate green, provided the id sits
+only in `studies.csv`.
+
+**The gene half is the same defect and is worth fixing in the same change.** The roster is built from
+`variants.csv`, so a `gene` on a binning row is never checked either. We have had that one in our own
+notes since 2026-08-20 as an instance of *a check is only as wide as the table it reads*, and never
+filed it, which was our mistake — filing it now with the trait half, since one fix covers both.
+
+**What we did meanwhile.** Nothing to the data: the module's ids are correct, verified by putting each
+through `lookup_identifier` by hand. Our own wrapper can see both tables, so we will likely warn when
+`studies.csv` carries trait ids the check did not read — but that is a plaster over a scope question
+that is yours, and it cannot make the underlying check any wider.
+
+**Candidate fix.** Widen the roster to every authored table that carries the column — trait ids from
+`variants.csv` and `studies.csv`, gene symbols from `variants.csv` and the binning kinds — and keep
+the tally counting the union. If the roster stays narrow deliberately, then the honest report is a
+`not_read` count beside `checked`, naming the tables skipped, so `0` never has to mean two things.
+
+**One correction to the report that produced this, offered because it may save you a reproduction.**
+The run that found it concluded the trait check *never runs*. It does: once the same module's
+`variants.csv` carried `trait_efo_id`, the next call returned `checked: 1, clean: 1`. The first call's
+`0` was honest for the table it read. The defect is the scope and the unreadable `0`, not a dead check.

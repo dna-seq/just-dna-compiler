@@ -994,7 +994,23 @@ def check_identifiers_(
         )
         typer.secho(f"IDENTIFIER CHECK FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    typer.echo(f"traits checked: {len(report.traits)}  genes checked: {len(report.genes)}")
+    # **The count names the tables it is out of (S86).** `traits checked: 0` used to say two things —
+    # the module declares no trait, and its traits are in a table the roster never read — and a reader
+    # took the second for the first, which is how a retired CURIE ships with every gate green.
+    typer.echo(
+        f"traits checked: {len(report.traits)}"
+        f" (from {len(report.trait_tables_read)} table(s): {', '.join(report.trait_tables_read) or 'none'})"
+        f"  genes checked: {len(report.genes)}"
+        f" (from {len(report.gene_tables_read)} table(s): {', '.join(report.gene_tables_read) or 'none'})"
+    )
+    for name, why in sorted(report.unreadable_tables.items()):
+        # Only the tables that exist and would not parse. An absent optional table is every module's
+        # normal shape and would bury this line in noise.
+        typer.secho(
+            f"  {name} carries identifiers and could not be read ({why}) — its ids were NOT checked",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
     for finding in [*report.stale_traits, *report.stale_genes, *report.gene_loci]:
         typer.secho(f"  {finding}", fg=typer.colors.YELLOW, err=True)
     if report.gene_loci_not_checked:
@@ -1020,7 +1036,22 @@ def check_identifiers_(
         typer.secho(f"CHECKED, BUT NOT ATTESTED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     if report.clean:
-        typer.secho("all identifiers current", fg=typer.colors.GREEN)
+        # **"Current" out of nothing is the same unreadable zero one level up (S86).** With both
+        # checks off, or with every id-bearing table absent, `report.clean` is vacuously true and the
+        # green line asserted a pass over a question nobody put. It says what it read instead.
+        looked_at = len(report.trait_tables_read) + len(report.gene_tables_read)
+        if not report.traits and not report.genes:
+            typer.secho(
+                "no identifiers were checked"
+                + (
+                    f" — {looked_at} table(s) read and none carries a trait id or gene symbol"
+                    if looked_at
+                    else " — no table carrying identifiers was read"
+                ),
+                fg=typer.colors.YELLOW,
+            )
+        else:
+            typer.secho("all identifiers current", fg=typer.colors.GREEN)
     elif strict:
         raise typer.Exit(code=1)
 

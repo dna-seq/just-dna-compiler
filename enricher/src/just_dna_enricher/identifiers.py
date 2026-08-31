@@ -37,11 +37,14 @@ from typing import Any
 
 import httpx
 from just_dna_compiler.compiler import load_csv_rows, load_spec_variants
+from just_dna_compiler.draft import DRAFTABLE
+from just_dna_format.base import AuthoredModel
 from just_dna_format.layout import SidecarCollision, resolve_sidecar
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import MULTI_SEP
+from pydantic import BaseModel
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -268,6 +271,31 @@ class IdentifierReport:
     #: it would publish a coverage figure larger than the question that was put. A PAR-exempt row
     #: **is** counted: it was compared and found not to contradict itself.
     gene_loci_compared: int = 0
+    #: Which authored tables the trait roster was actually built from, and which were not, with the
+    #: reason (S86). Empty lists are honest: `traits == []` with `trait_tables_read == []` is a
+    #: different statement from `traits == []` after reading nine tables, and only the second is a
+    #: clean bill. Same rule as `gene_loci_not_checked` above and `unconsulted_rsids` one tier down —
+    #: a question never put is not an answer, and `0` must never have to mean both.
+    trait_tables_read: list[str] = field(default_factory=list)
+    trait_tables_not_read: dict[str, str] = field(default_factory=dict)
+    #: The same pair for gene symbols. The gene half of the roster was narrow for the same reason and
+    #: was filed with it: a `gene` on a binning or PGx row was never checked either.
+    gene_tables_read: list[str] = field(default_factory=list)
+    gene_tables_not_read: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def unreadable_tables(self) -> dict[str, str]:
+        """Tables that exist and would not parse, across both columns — never merely absent ones.
+
+        The actionable half: an absent optional table is the normal shape of every module, while one
+        that is present and unreadable means ids the module carries went unchecked.
+        """
+        return {
+            name: why
+            for source in (self.trait_tables_not_read, self.gene_tables_not_read)
+            for name, why in source.items()
+            if why != "not present"
+        }
 
     @property
     def stale_rsids(self) -> list[RsidStatus]:
@@ -482,10 +510,15 @@ def _curie_from_iri(iri: str | None) -> str | None:
 
 
 def module_trait_ids(variants: list[VariantRow]) -> list[str]:
-    """Every ontology CURIE the module names, de-duplicated in first-occurrence order.
+    """Every ontology CURIE the module's **`variants.csv` rows** name, in first-occurrence order.
 
     `trait_efo_id` is a multi-valued cell (comma/semicolon/pipe-separated), so one row can name
     several traits.
+
+    **This is the roster of one table, and eleven authored tables carry the column.** Kept as-is
+    because a caller holding rows is the only thing it can serve, and widened where the tables are
+    actually reachable: `authored_identifiers` below takes a spec directory and reads all of them.
+    A caller passing `variants=` gets this narrow roster and is told so (S86).
     """
     out: list[str] = []
     for variant in variants:
@@ -493,6 +526,94 @@ def module_trait_ids(variants: list[VariantRow]) -> list[str]:
             continue
         out.extend(part.strip() for part in MULTI_SEP.split(variant.trait_efo_id) if part.strip())
     return dedupe(out)
+
+
+def _id_bearing_tables(column: str) -> dict[str, type[BaseModel]]:
+    """`{filename: model}` for every **authored** table whose model declares `column`.
+
+    **Derived from `DRAFTABLE`, never restated** (`@registry-completeness`). The defect this repairs
+    is a roster that named one table while eleven carry the column, so a hand-kept list here would be
+    the same bug with a longer literal in it: a table kind added later must join this set by existing,
+    not by someone remembering. `DRAFTABLE` is the filename→model map the authoring surfaces already
+    share, and it is built from `_TABLE_KINDS`, so it carries every optional kind by construction.
+
+    `MeasureBinRow` is deliberately absent and nothing is missed: it is the abstract base, and its four
+    concrete subclasses are each their own `DRAFTABLE` entry. A test asserts this set equals the walk
+    over `_ALL_MODELS` minus that base, which is what would catch a kind that never reached `DRAFTABLE`.
+
+    **Authored only.** `GeneMetricsRow`, `GeneValidityRow` and `GwasEffectRow` carry these columns too
+    and are excluded: they are machine-written from a source, so a stale id in one is the *source's*
+    currency and belongs to the pass that wrote it — checking it here would report a finding no author
+    can act on, and `dataset_currency` is the surface that asks that question.
+    """
+    return {
+        name: model
+        for name, model in DRAFTABLE.items()
+        if isinstance(model, type)
+        and issubclass(model, AuthoredModel)
+        and column in model.model_fields
+    }
+
+
+@dataclass
+class IdentifierRoster:
+    """The ids an authored spec names, with the tables that were and were not read (S86).
+
+    `not_read` is the point of the type. A bare roster cannot distinguish *this module declares no
+    trait* from *this module's traits are in a table nobody read*, and both render as `0 checked,
+    0 clean, 0 flagged` — which reads as a clean run and let a module ship a retired CURIE with every
+    gate green. Same three-valued rule as `gene_loci_not_checked` two fields down in the report, and
+    as `unconsulted_rsids` one tier down: a question never put is not an answer.
+    """
+
+    ids: list[str] = field(default_factory=list)
+    #: Filenames actually opened and parsed, sorted. The denominator behind `ids`.
+    read: list[str] = field(default_factory=list)
+    #: `{filename: why}` for a table that carries the column and was not read — it is absent from the
+    #: spec (the common and benign case), or it could not be parsed (which is not benign at all, and
+    #: is why the reason is carried rather than the file merely omitted).
+    not_read: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def unreadable(self) -> dict[str, str]:
+        """Only the tables that exist and failed to parse — the half worth warning about."""
+        return {name: why for name, why in self.not_read.items() if why != "not present"}
+
+
+def authored_identifiers(spec_dir: Path, column: str) -> IdentifierRoster:
+    """Every value of `column` across every authored table that declares it, and what was read.
+
+    The roster `check_identifiers` runs on when it is given a spec directory. Rows are loaded with the
+    same `load_csv_rows` the compiler uses, so a table this cannot parse is reported as unread rather
+    than skipped silently — the distinction the whole item is about.
+
+    Multi-valued cells are split on `MULTI_SEP` for **both** columns. A `gene` cell is single-valued in
+    practice, and splitting it costs nothing and cannot mis-read one: a symbol contains no separator.
+    """
+    roster = IdentifierRoster()
+    for name, model in sorted(_id_bearing_tables(column).items()):
+        try:
+            table = resolve_sidecar(spec_dir, name) or spec_dir / name
+        except SidecarCollision as exc:
+            roster.not_read[name] = str(exc)
+            continue
+        if not table.exists():
+            roster.not_read[name] = "not present"
+            continue
+        rows, errors, _ = load_csv_rows(table, model, table.name)
+        if errors:
+            # Read-only pass: an unparseable table is a *reason a question was not put*, never a
+            # failure of this check. Dying here would say nothing about the ids the module does carry.
+            roster.not_read[name] = f"could not be read ({errors[0]})"
+            continue
+        roster.read.append(name)
+        for row in rows:
+            value = getattr(row, column, None)
+            if not value:
+                continue
+            roster.ids.extend(part.strip() for part in MULTI_SEP.split(value) if part.strip())
+    roster.ids = dedupe(roster.ids)
+    return roster
 
 
 def check_identifiers(
@@ -522,8 +643,55 @@ def check_identifiers(
         if errors:
             raise ValueError(f"variants.csv is invalid: {errors[0]}")
     report = IdentifierReport()
-    traits = module_trait_ids(variants) if check_traits else []
-    genes = dedupe(v.gene for v in variants if v.gene) if check_genes else []
+    # **The roster is every authored table carrying the column, not `variants.csv` alone (S86).** It
+    # read one table while eleven declare `trait_efo_id`/`gene`, so a module whose traits live in
+    # `studies.csv` — where `StudyRow` has carried the column since 0.3 — reported `0 checked, 0 clean,
+    # 0 flagged` and shipped a retired CURIE with every gate green. `0` said two things at once: *this
+    # module declares no trait* and *its traits are in a table nobody read*.
+    #
+    # A caller passing `variants=` still gets the narrow roster, because rows in hand are all it has;
+    # `tables_not_read` then records that, so the narrow case is stated rather than silently equal to
+    # the wide one.
+    if spec_dir is not None:
+        trait_roster = authored_identifiers(Path(spec_dir), "trait_efo_id")
+        gene_roster = authored_identifiers(Path(spec_dir), "gene")
+    else:
+        trait_roster = IdentifierRoster(
+            ids=module_trait_ids(variants),
+            read=["variants.csv"],
+            not_read={
+                name: "rows were passed in, so only variants.csv was available"
+                for name in sorted(_id_bearing_tables("trait_efo_id"))
+                if name != "variants.csv"
+            },
+        )
+        gene_roster = IdentifierRoster(
+            ids=dedupe(v.gene for v in variants if v.gene),
+            read=["variants.csv"],
+            not_read={
+                name: "rows were passed in, so only variants.csv was available"
+                for name in sorted(_id_bearing_tables("gene"))
+                if name != "variants.csv"
+            },
+        )
+    traits = trait_roster.ids if check_traits else []
+    genes = gene_roster.ids if check_genes else []
+    # Recorded whether or not anything was found, and **before** the early return below: a roster that
+    # came back empty is exactly the case where a reader needs to know which tables were behind it.
+    if check_traits:
+        report.trait_tables_read = trait_roster.read
+        report.trait_tables_not_read = trait_roster.not_read
+    if check_genes:
+        report.gene_tables_read = gene_roster.read
+        report.gene_tables_not_read = gene_roster.not_read
+    for column, roster in (("trait_efo_id", trait_roster), ("gene", gene_roster)):
+        for name, why in sorted(roster.unreadable.items()):
+            # An absent table is the normal case and says nothing; one that exists and will not parse
+            # means the check silently skipped ids the module really does carry.
+            logger.warning(
+                "%s carries %s and could not be read (%s), so its identifiers were not checked. "
+                "The counts below are out of the tables that were.", name, column, why,
+            )
     if not traits and not genes:
         return report
 

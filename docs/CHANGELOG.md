@@ -51,11 +51,35 @@ built the same day as RM117's other half, and RM152, a consumer measurement that
 no release class and acquired one when its probe was finally run, and RM154, which arrived from a
 consumer report after the rest were built; all taken in one pass so 0.7 cuts with its own backlog
 cleared rather than carrying it. Eleven are built; **RM138 is closed with its numbers measured and no
-code changed**. Two things a reader should take from them together: `carried` costs
+code changed**. **RM155 is dated 2026-09-01 and is deliberately outside that count** — it arrived from
+a consumer the next morning and ships inside the same uncut 0.7.0, so the batch stays the thing it
+describes rather than growing a member whenever another item lands before the tag. Two things a reader should take from them together: `carried` costs
 1.06× gzipped rather than the 1.84× raw the item was filed about, so **serve manifests compressed**;
 and two derived values change — `gene_metrics.constraint_flags` and
 `gene_validity.classifications` — which are **corrections**, so a moved signature there is the fix
 arriving rather than drift.
+
+- **RM155 — the identifier roster read one table while eleven carry the column, and reported its
+  blindness as a clean zero.** *(`just-dna-enricher`; **additive**, and **no schema change** — no
+  column, no vocabulary member, no signature moves; the new report fields default to empty, so an
+  existing caller reads unchanged.)* `check_identifiers` built its trait and gene rosters from
+  `variants.csv` alone while **eleven** authored models declare `trait_efo_id` or `gene` — `StudyRow`
+  has carried the trait column since 0.3 — so a 67-variant module carrying its trait id on all 68
+  `studies.csv` rows reported nothing checked and nothing flagged, and could ship a retired CURIE with
+  every gate green. **The unreadable `0` was the defect rather than the omission**: it asserted *this
+  module declares no trait* and *its traits are in a table nobody read* in one breath, which is
+  `@unreachable-not-absent` at a finer grain, so widening the roster alone would have left the hole —
+  a wide roster still returns `[]` for a module that genuinely declares none. Both halves shipped: the
+  roster is **derived from `DRAFTABLE`** (nine tables per column, asserted as an equality over the
+  walked `_ALL_MODELS` rather than listed, so a kind added later joins by existing), and
+  `IdentifierReport` gained `trait_tables_read`/`trait_tables_not_read` plus the gene pair, with the
+  CLI count naming its own denominator. `MeasureBinRow` is correctly absent — the abstract base whose
+  four concrete subclasses are each their own entry — and the three **derived** models carrying these
+  columns are excluded on purpose, since a stale id in a machine-written row is the *source's*
+  currency and no author can act on it. **A third instance one level up**, found by the same framing:
+  `report.clean` is `all()` over a possibly-empty set, so `check-identifiers` printed a green *"all
+  identifiers current"* having asked nothing at all. An absent optional table and one that exists and
+  will not parse are kept apart; only the second warns. *(S86)*
 
 - **RM154 — an rsID the source HAS was published as an absence, and the warning explaining it was
   false.** *(all three packages; **additive**, and **no schema change of any kind** — no column, no

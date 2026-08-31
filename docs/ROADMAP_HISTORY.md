@@ -726,6 +726,50 @@ the legacy set has no member for it, and `neutral` is where `unknown` already la
   start reporting existing `unknown` rows, which is the half that makes this an addition rather than a
   retype.
 
+## RM155 — the identifier roster read one table while eleven carry the column
+
+**Severity** medium · **Status** ✅ shipped 2026-09-01 in the uncut 0.7.0 (`just-dna-enricher`) ·
+**Owner** enricher · **Motivating case** S86 (just-module-creator, in CONSUMER_SUGGESTIONS_HISTORY.md)
+
+`check_identifiers` built its trait and gene rosters from `variants.csv` alone. Walking `_ALL_MODELS`,
+**eleven** authored models declare `trait_efo_id` or `gene` — `StudyRow` has carried the trait column
+since 0.3 — so a 67-variant module carrying the id on all 68 `studies.csv` rows reported nothing
+checked and nothing flagged, and could ship a retired or simply wrong CURIE with every gate green.
+Reproduced offline in both directions before anything moved.
+
+**The unreadable `0` is the item; the missing table is only how it got there.** `traits checked: 0`
+asserted *this module declares no trait* and *its traits are in a table nobody read* in one breath —
+`@unreachable-not-absent` at a finer grain, a question never put rendered as an answer. Widening the
+roster alone would have left that hole, because a wide roster still returns `[]` for a module that
+genuinely declares none. So the fix is both halves, which is what the reporter proposed as an
+either/or and is really an and: `IdentifierReport` gained `trait_tables_read` /
+`trait_tables_not_read` and the gene pair beside them, and the CLI count names its own denominator.
+
+**The roster is derived from `DRAFTABLE`, never listed.** A hand-kept set would be the same defect with
+a longer literal in it, so the test asserts an **equality over the walked `_ALL_MODELS`**
+(`@registry-completeness`) and a table kind added later joins by existing. Nine tables carry
+`trait_efo_id`, nine carry `gene`. Two edges the walk settled: `MeasureBinRow` is correctly absent as
+the abstract base whose four concrete subclasses are each their own entry — pinned rather than assumed
+— and the three **derived** models carrying these columns (`GeneMetricsRow`, `GeneValidityRow`,
+`GwasEffectRow`) are outside the roster on purpose, since a stale id in a machine-written row is the
+*source's* currency and no author can act on it. Widening to them would report findings against rows
+nobody wrote, and `dataset_currency` is the surface that asks that question.
+
+**A third instance, one level up, found by the same framing.** `report.clean` is `all()` over a set
+that can be empty, so `check-identifiers` printed a green *"all identifiers current"* having asked
+nothing at all. It now says what it read. Worth the general form: a predicate that is `all()` over a
+possibly-empty set reports a pass it did not earn.
+
+An absent optional table and one that exists and will not parse are kept apart — the first is every
+module's normal shape, the second means ids the module carries went unchecked, and only the second
+warns. The narrow roster survives for a caller passing `variants=`, which is all rows-in-hand can
+serve, and that caller is told so in `*_tables_not_read` rather than left indistinguishable from the
+wide case.
+
+**No schema change**: no column, no vocabulary member, no signature moves. `IdentifierReport` is a
+report object rather than a published row, and the added fields default to empty, so an existing
+caller reads unchanged.
+
 ## RM154 — an answered lookup whose alleles were rejected was published as an absence
 
 **Severity** medium · **Status** ✅ shipped 2026-08-31 in the uncut 0.7.0 (`just-dna-format` +

@@ -605,6 +605,36 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `called <= locus` **first**, because a palindromic SNV (`A/T` at `T>A`) satisfies both readings and
   would otherwise be reported as a flip when it needed no explaining at all.
 
+- `@roster-is-as-wide-as-the-tables-it-reads` — **A check is only as wide as the table it reads, and a
+  narrow roster reports its blindness as a clean zero (S86, 0.7).** `check_identifiers` built its trait
+  and gene rosters from `variants.csv` while **eleven** authored models declare one of those columns —
+  `StudyRow` has carried `trait_efo_id` since 0.3 — so a 67-variant module carrying the id on all 68
+  `studies.csv` rows reported nothing checked, nothing flagged, and would have shipped a retired CURIE
+  with every gate green. The reporter had the gene half in their own notes since 2026-08-20 and had not
+  filed it, which is the more useful lesson: the shape recurs, and the instance you notice is rarely the
+  only one.
+
+  **The unreadable `0` is the defect; the missing table is only how it got there.** `traits checked: 0`
+  said *this module declares no trait* and *its traits are in a table nobody read* in one breath, which
+  is `@unreachable-not-absent` at a finer grain — a question never put rendered as an answer. So the fix
+  is two things, and shipping only the first would leave the hole: widen the roster, **and** carry
+  `*_tables_read` / `*_tables_not_read` so a zero can never mean both again. The same vacuous pass sat
+  one level up in the CLI, where `report.clean` printed *"all identifiers current"* over an empty
+  roster — worth checking for whenever a predicate is `all()` over a set that can be empty.
+
+  **The roster is derived from `DRAFTABLE`, never listed.** A hand-kept set here would be the same bug
+  with a longer literal in it (`@registry-completeness`), so the test asserts an **equality over the
+  walked `_ALL_MODELS`** rather than naming tables. Two things that walk turned up: `MeasureBinRow` is
+  the abstract base and is correctly absent — its four concrete subclasses are each their own entry, and
+  the test pins that rather than assuming it — and the three **derived** models carrying these columns
+  (`GeneMetricsRow`, `GeneValidityRow`, `GwasEffectRow`) are outside the roster on purpose, because a
+  stale id in a machine-written row is the source's currency and no author can act on it. Widening to
+  them would report findings against rows nobody wrote.
+
+  An absent optional table and one that will not parse are also two states: the first is every module's
+  normal shape and says nothing, the second means ids the module really carries went unchecked. Only the
+  second warns.
+
 ## Checks: where they run, and what severity means
 
 - `@parity-by-check` — **Audit `validate`/`compile` parity by CHECK, not by TABLE — that is how the third instance hid.**

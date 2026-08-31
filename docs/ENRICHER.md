@@ -3525,6 +3525,26 @@ after resolution, so `spec_dir=` lets it read the injected `resolution.csv` besi
 `variants=` alone limits it to authored coordinates. Where that leaves nothing to compare,
 `gene_loci_not_checked` names the reason rather than reporting a clean zero.
 
+**Since 0.7 the roster is every authored table carrying the column, and only `spec_dir=` can reach
+them (S86).** `check_identifiers` built its roster from `variants.csv` alone while **eleven** authored
+models declare `trait_efo_id` or `gene` — `StudyRow` has carried the trait column since 0.3 — so a
+module whose traits live in `studies.csv` reported nothing checked and nothing flagged, and could ship
+a retired CURIE with every gate green. The set is derived from `DRAFTABLE` rather than listed
+(`@registry-completeness`): nine tables carry `trait_efo_id`, nine carry `gene`, and a table kind added
+later joins by existing. The three **derived** models that also carry these columns —
+`GeneMetricsRow`, `GeneValidityRow`, `GwasEffectRow` — are deliberately outside it: they are
+machine-written, so a stale id in one is the *source's* currency and no author can act on it.
+
+**The unreadable `0` was the item, not the omission.** `traits checked: 0` said *this module declares
+no trait* and *its traits are in a table nobody read* in the same breath, and a reader took the second
+for the first. `IdentifierReport` now carries `trait_tables_read`/`trait_tables_not_read` and the gene
+pair beside them, the CLI count names the tables it is out of, and a table that exists and will not
+parse is reported as unread — an absent optional table is every module's normal shape and says
+nothing, while an unreadable one means ids the module carries went unchecked. `report.clean` no longer
+prints *"all identifiers current"* over an empty roster, which was the same vacuous pass one level up.
+A caller passing `variants=` still gets the narrow roster and is told so in `*_tables_not_read`, since
+rows in hand are all that form has.
+
 **`template` is the one command that duplicates the compiler's**, and the other four offline authoring
 commands (`stub`, `requirements`, `describe`, `hint`, `scaffold`) are deliberately *not* mirrored. The
 offline authoring surface has an owner — `just-dna-compiler` — and the single mirror exists so a PGx
