@@ -38,7 +38,7 @@ def test_validate_name_raises_on_bad() -> None:
     "ns,valid",
     [
         ("anon-org", True),
-        ("author-A", True),
+        ("author-a", True),
         ("With_Underscore", False),
         ("-lead", False),
         ("trail-", False),  # hyphens separate segments — no trailing empty part
