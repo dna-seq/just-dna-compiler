@@ -25,6 +25,7 @@ accepts. The printed strings state the narrower, true versions.
 from __future__ import annotations
 
 import csv
+import re
 import struct
 from pathlib import Path
 
@@ -269,3 +270,86 @@ def test_the_description_field_states_where_methodology_goes_instead() -> None:
     assert ModuleInfo.model_fields["description"].metadata == [], (
         "description must carry no length constraint — see the docstring above"
     )
+
+
+# ── `state`'s members have standing, and the printed list gave them none (S80) ──────────────────
+
+
+def test_the_state_description_separates_current_members_from_superseded_ones() -> None:
+    """The description read as six peers, so an agent picked `alt` for a heterozygote (S80).
+
+    `derive.py` calls `alt`/`ref` **the retired descriptors** and maps both to `direction=unknown`;
+    nothing in the printed string carried that, and a consumer whose authoring surface passes our
+    descriptions through verbatim — which is the contract we want it to keep — therefore offered six
+    equal choices. The reporter had to read `derive.py` inside their own `.venv` to author one cell
+    honestly.
+
+    Asserted over the vocabulary rather than against a fixed sentence: every member must appear, and
+    the three still-current ones must be named as such. A test keyed on the exact prose would pass for
+    a description that lists all six under one heading again.
+    """
+    from just_dna_format.spec import VALID_STATES, VariantRow
+
+    printed = VariantRow.model_fields["state"].description or ""
+
+    assert set(VALID_STATES) == {"risk", "protective", "neutral", "significant", "alt", "ref"}
+    for member in VALID_STATES:
+        assert member in printed, member
+    current, superseded = printed.split("Superseded", 1)
+    # Word-boundary membership, not `split()`: the printed list is comma-separated prose, so a bare
+    # `.split()` leaves `risk,` and `neutral.` and the assertion silently tests nothing.
+    assert {"risk", "protective", "neutral"} <= set(re.findall(r"[a-z_]+", current))
+    for retired in ("significant", "alt", "ref"):
+        assert retired in superseded, retired
+    assert "neutral" not in re.findall(r"[a-z_]+", superseded.split(";")[0])
+
+
+def test_the_three_groups_are_the_three_axes_state_conflates() -> None:
+    """Not the two-way split the report asked for, and the difference is load-bearing.
+
+    `state` is the Principle 5 anti-pattern the charter names by hand: one field carrying statistical
+    significance, effect direction and a genotype descriptor. `significant` is not retired the way
+    `alt`/`ref` are — it makes a real claim that `direction` cannot express and `stat_significance`
+    owns — so grouping it with them would tell an author it means nothing, when it means something
+    this column is the wrong place for. `derive.py` is the evidence: `alt`/`ref` carry no direction
+    at all, while `significant` is refined from the weight sign before falling back.
+    """
+    from just_dna_format.derive import _STATE_TO_DIRECTION, _STATE_TO_STAT_SIGNIFICANCE
+    from just_dna_format.spec import VariantRow
+
+    # The behaviour first: what each group actually derives to.
+    assert _STATE_TO_DIRECTION["alt"] == _STATE_TO_DIRECTION["ref"] == "unknown"
+    assert _STATE_TO_STAT_SIGNIFICANCE["alt"] == _STATE_TO_STAT_SIGNIFICANCE["ref"] == "unknown"
+    assert _STATE_TO_STAT_SIGNIFICANCE["significant"] == "significant"
+    assert _STATE_TO_DIRECTION["significant"] == "unknown"
+
+    # Then that the printed string names each group's successor, since a standing with no destination
+    # is a warning nobody can clear — P3's own test for whether a deprecation belongs in a minor.
+    printed = VariantRow.model_fields["state"].description or ""
+    assert "stat_significance" in printed
+    assert "direction" in printed
+
+
+def test_no_shipped_example_uses_a_superseded_member() -> None:
+    """The usage evidence the report measured, recomputed here rather than copied from it.
+
+    377 `risk` and 4 `neutral` across the sixteen reference examples; `significant`, `alt` and `ref`
+    appear zero times. That is what made the flat list actively misleading — it gave equal standing to
+    values no shipped example uses. Recomputed at runtime, so the assertion is the *relationship*
+    (nothing superseded is in the corpus) rather than the counts, which are free to move.
+    """
+    from just_dna_format.spec import VariantRow
+
+    root = Path(__file__).resolve().parents[2] / "reference_examples"
+    used: set[str] = set()
+    for path in sorted(root.glob("*/variants.csv")):
+        with path.open(newline="", encoding="utf-8") as handle:
+            for row in csv.DictReader(handle):
+                if (value := (row.get("state") or "").strip()):
+                    used.add(value)
+
+    assert used, "no reference example authored a `state` cell — the corpus moved"
+    assert not used & {"significant", "alt", "ref"}
+    printed = VariantRow.model_fields["state"].description or ""
+    # And every value the corpus does use is on the current side of the printed split.
+    assert used <= set(re.findall(r"[a-z_]+", printed.split("Superseded", 1)[0]))

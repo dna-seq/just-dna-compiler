@@ -44,6 +44,124 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM144 — the licence-disagreement warning printed the remainder as though it were the whole set
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-compiler`). **Severity** medium ·
+**Owner** compiler · **Motivating case** [S79](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator)
+
+### The defect
+
+`_check_declared_license_agrees` filtered the annotation-layer rows to those whose licence *differs*
+from the module's declaration, then rendered that remainder as if it were the whole set. So a
+two-source module declaring `CC-BY-NC-ND-4.0` — an exact match for one row, and the binding constraint
+on the artifact — printed *declares 'CC-BY-NC-ND-4.0' but annotation-layer sources report
+['CC-BY-4.0']*. The row that agrees is invisible in the sentence complaining about agreement.
+
+Reproduced at the function, both ways: the matching-one case and the matching-none case produced
+messages of the same shape, differing only in the length of a list. Nothing in the output told the two
+apart.
+
+**Two problems with different repairs read identically.** *Your declaration is unsupported* means the
+author picked a licence no source grants. *Your declaration is not universal* is the ordinary shape of
+a mixed-licence module, where the most restrictive term binds and the declaration is already right. An
+author reading the first when the second was true re-adjudicated a module's whole licence position and
+found nothing wrong — measured twice, in two separate reported rounds, and it survived RM142's fix
+because removing the phantom `CC0-1.0` row leaves a real disagreement still rendered as total.
+
+### What shipped
+
+The reporter's option (1): the count leads and the agreeing rows are named beside the disagreeing ones.
+*declares 'CC-BY-NC-ND-4.0' and 1 of 2 annotation-layer source(s) report a different licence:
+['CC-BY-4.0']*, with a distinct sentence — *no annotation-layer source reports it* — for the case the
+old message was actually written for. The tail names the mixed-licence reading explicitly, so an author
+who sees a partial match knows it is a recognised shape rather than an unexplained complaint.
+
+**The denominator counts rows, not distinct licences.** Two sources sharing a licence are two
+obligations, and the number the author is checking against is how many sources they have; counting
+distinct licences would report "1 of 2" for a three-row file, a number matching nothing in it. Rows with
+no licence stay outside the denominator — unknown terms are neither agreement nor disagreement — and so
+do non-`annotation` layers, or the count would disagree with the set the warning is about.
+
+`declares license` still leads the sentence: it is the fragment an existing test keys on, and the
+non-escalation is unchanged and re-pinned — two claims about a legal position disagreeing is not the
+compiler's to arbitrate.
+
+### Repairs rejected
+
+- **Suppressing the warning when any row matches.** The reporter argued this against their own case and
+  is right: a module declaring the *least* restrictive of several licences is exactly the one worth
+  warning about.
+- **Their (2), a bare count, and (3), changing only the verb.** Both remove the false reading and
+  neither separates unsupported from not-universal, which is the distinction that cost the work. They
+  offered these as cheaper floors; the full form is three lines of code, so the cheaper ones buy
+  nothing.
+- **An SPDX compatibility matrix.** Unchanged and not reopened: world-knowledge that goes stale, in the
+  wrong tier.
+
+### Charter check
+
+P2/P3/P8 — pure text over already-loaded rows; no schema change, no field, no vocabulary member, and no
+severity change. `@warning-text-is-api` is the live constraint and the grepped fragment is preserved.
+Measured: no reference example moves a digest, signature or warning, so the 0.7.0 release record is
+unaffected — the corpus has no mixed-licence module, which is why this survived it.
+
+## RM145 — `state`'s six members were printed as peers, and two of them are retired in our own code
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format`). **Severity** low-medium ·
+**Owner** format · **Motivating case** [S80](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator)
+
+### The defect, and how it was found
+
+`VariantRow.state` was described as `One of: risk, protective, neutral, significant, alt, ref`. Six
+values, no ordering, no standing. `derive.py` calls `alt`/`ref` **the retired descriptors** and maps
+both to `direction=unknown`; nothing in the printed string carried that.
+
+A consumer's authoring surface passes our descriptions through verbatim — deliberately, so a vocabulary
+change reaches an author without them restating it and drifting — so an agent was offered six equal
+choices and picked `alt` for a heterozygote, honestly. **The reporter had to read `derive.py` inside
+their own `.venv` to author one cell**, which is the part they said they would fix first, and they are
+right: that contract works only while the description carries what an author needs in order to choose.
+
+Their usage measurement recomputed here: across the sixteen reference examples `state` is **377 `risk`
+and 4 `neutral`**, with `significant`, `alt` and `ref` used **zero** times.
+
+### What shipped, and why it is three groups rather than the two asked for
+
+The description now reads: *Direction of effect for this genotype. Current: risk, protective, neutral.
+Superseded, still valid and still read: `significant` — a significance claim rather than a direction,
+write `stat_significance` instead; `alt`/`ref` — genotype descriptors carrying no direction, which
+derive to `direction=unknown`.*
+
+The report proposed *current | retired*, with `significant` among the retired. **That would tell an
+author `significant` means nothing, when it means something this column is the wrong place for.**
+`state` is the Principle 5 anti-pattern the charter names by hand — one field conflating statistical
+significance, effect direction and a genotype descriptor — so the split has to be by *which axis a
+value was really on*, and `derive.py` is the evidence: `alt`/`ref` map to `unknown` on both axes, while
+`significant` maps to `significant` on the significance one and is refined from the weight sign before
+falling back.
+
+**Each group names its successor**, because a standing with no destination is a warning nobody can
+clear — P3's own test for whether a deprecation belongs in a minor — and all three successors ship.
+
+### Repairs rejected
+
+- **Removing the three.** The reporter did not ask for it and it is major-only regardless: published
+  modules carry these values and the read-time `effective_*` aliases derive from them. They cited S69's
+  lesson about a deprecation claiming *nothing else is lost*, from the other side.
+- **A `RECOMMENDED_STATES` frozenset beside the closed one.** Two lists to keep in step for a fact that
+  fits in the string every surface already prints.
+- **A compile warning on a superseded value.** Every such module would warn on every build for a value
+  that still works and still derives correctly, and the author of a *published* module cannot clear it.
+- **Fixing it in the consumer's `describe_table`.** Their own rulebook forbids it and they are right to
+  — a restated vocabulary is one that drifts.
+
+### Charter check
+
+P3/P8 — a description string; no schema change, no vocabulary member added or removed, nothing
+invalidated. P5 — the fix is that principle applied to the field the charter cites as its own example.
+P9 — zero cost on the authored layer; the burden it removes is on the author. Measured: no reference
+example moves anything, and none uses a superseded member — pinned by a test that recomputes it.
+
 ## RM143 — the enricher diagnosed a wrong-assembly coordinate and `compile --strict` built over it anyway
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-compiler`). **Severity** medium ·

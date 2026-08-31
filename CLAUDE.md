@@ -200,6 +200,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Unknown files in a spec dir are tolerated; a near-miss table name is not. `@misspelled-tables`
 - "Keyed kind ⇒ dupe-checked" is not the line — which loop calls the checker is. `@which-loop-calls-the-checker`
 - An analogy in a `Field(description=…)` is a claim, and it does not travel with the field. `@field-description-is-a-claim`
+- A vocabulary's members have standing; a flat list publishes them as peers. Group by axis, name each successor. `@field-description-is-a-claim`
 - A warning's text is an API: pin the phrase, and publish the denominator behind any flag. `@warning-text-is-api`
 - A release sweep's *one side only* has two causes: missing from AFTER is this release's regression, missing from BEFORE is the previous one's. `@one-side-only-has-two-causes`
 - An exclusion the gate must act on is a field checked for equality, never a sentence in `evidence`. `@one-side-only-has-two-causes`

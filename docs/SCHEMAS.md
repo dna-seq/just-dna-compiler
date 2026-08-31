@@ -405,7 +405,20 @@ buys a diagnosis where there would otherwise be a generic rejection.
 
 Only the load-bearing fields are listed; read the model for the full set and validators. `?` = optional.
 
-**`VariantRow` → `variants.csv`.** Required `genotype`, `state`, `conclusion`. Identity: `rsid?`,
+**`VariantRow` → `variants.csv`.** Required `genotype`, `state`, `conclusion`.
+
+**`state`'s six members do not have equal standing, and since 0.7 the field description says so
+(RM145).** `risk`/`protective`/`neutral` are current. `significant` is a significance claim rather than
+a direction — write `stat_significance`. `alt`/`ref` are genotype descriptors carrying no direction at
+all, which is why `derive.py` maps both to `direction=unknown` and calls them the retired descriptors.
+All three stay valid and are still read: published modules carry them and the `effective_*` aliases
+derive from them, so removal is major-only. The grouping is by **which axis a value was really on**,
+because `state` is the Principle 5 overloading the charter names by hand — grouping `significant` with
+`alt`/`ref` would say it means nothing, when it means something this column is the wrong place for. The
+standing lives in the field description rather than only here, so every surface rendering
+`model_fields` carries it: a consumer that passes our descriptions through verbatim is doing the right
+thing, and it only works while the description is complete.
+ Identity: `rsid?`,
 `chrom?`, `start? (ge=0)`, `ref?`, `alts?` (needs rsid **or** chrom+start), plus the frozen `variant_key`.
 Annotation: `weight?`, `negatives?`, `priority?`, `gene?`, `phenotype?`, `category?`,
 `clinvar?/pathogenic?/benign?` (tri-state bool). 0.3 axes: `direction?`, `stat_significance?`,

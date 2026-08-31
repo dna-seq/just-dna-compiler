@@ -536,9 +536,37 @@ class VariantRow(AuthoredModel):
         )
     )
     weight: float | None = Field(default=None, description="Score (positive=protective)")
+    # The description carries the members' STANDING, not just their names (S80). It read
+    # `One of: risk, protective, neutral, significant, alt, ref` — six peers, no ordering — and an
+    # authoring surface that passes our descriptions through verbatim (which is the contract we want
+    # it to keep) therefore offered an agent six equal choices. It picked `alt` for a heterozygote,
+    # honestly and wrongly, and the reporter had to read `derive.py` in their `.venv` to find out that
+    # `alt`/`ref` are what that module's own docstring calls *the retired descriptors*.
+    #
+    # **Three groups, not the two the report asked for.** `state` is the Principle 5 anti-pattern the
+    # charter names by hand — one field conflating statistical significance, effect direction and a
+    # genotype descriptor — so the split has to be by *which axis a value was really on*:
+    # `risk`/`protective`/`neutral` are directions and remain the ones to write; `significant` is a
+    # significance claim that `direction` cannot express and `stat_significance` now owns; `alt`/`ref`
+    # described the genotype and carry no direction at all, which is why `derive.py` maps both to
+    # `unknown`. Calling `significant` retired alongside them would tell an author it means nothing,
+    # when it means something this column is the wrong place for.
+    #
+    # **Naming the successor is what makes it actionable.** A standing with no destination is a
+    # warning nobody can clear (P3's own test for whether a deprecation belongs in a minor), and all
+    # three successors already ship.
+    #
+    # Not removed, and the reporter did not ask for that: published modules carry these values, the
+    # read-time `effective_*` aliases depend on them, and removal is major-only under P3 regardless.
     state: str = Field(
         json_schema_extra=vocabulary("state", VALID_STATES),
-        description="One of: risk, protective, neutral, significant, alt, ref",
+        description=(
+            "Direction of effect for this genotype. Current: risk, protective, neutral. "
+            "Superseded, still valid and still read: `significant` — a significance claim rather "
+            "than a direction, write `stat_significance` instead; `alt`/`ref` — genotype "
+            "descriptors carrying no direction, which derive to `direction=unknown`. Prefer the "
+            "orthogonal `direction`/`stat_significance` columns, which this one predates."
+        ),
     )
     conclusion: str = Field(description="Human-readable interpretation for this genotype")
     negatives: str | None = Field(

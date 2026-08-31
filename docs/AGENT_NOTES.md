@@ -612,6 +612,22 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   note, which is correct about the identity keys — the real third and fourth sites were
   `manifest.py`'s module docstring and its own `license` field.)
 
+  **A vocabulary's members have STANDING, and a flat list publishes them as peers (S80, RM145).**
+  `state` was described as `One of: risk, protective, neutral, significant, alt, ref` while `derive.py`
+  called two of them *the retired descriptors* and mapped both to `unknown`. A consumer whose authoring
+  surface passes our descriptions through verbatim — which is the contract we want them to keep, since
+  a restated vocabulary drifts — therefore offered an agent six equal choices, and the reporter had to
+  read `derive.py` in their own `.venv` to author one cell. Measured: 377 `risk`, 4 `neutral`, and zero
+  uses of the other three across the sixteen examples.
+
+  Three things to copy. **Group by which axis a value was really on**, not by live-versus-dead: the
+  report asked for *current | retired* with `significant` among the retired, and that would tell an
+  author it means nothing when it means something the column is the wrong place for. **Name each
+  group's successor** — a standing with no destination is a warning nobody can clear, which is P3's own
+  test for whether a deprecation belongs in a minor. And **assert over the vocabulary, never against
+  the prose**: a test keyed on the exact sentence passes for a description that lists all six under one
+  heading again.
+
 - `@validation-ceiling` — **Know the validation ceiling before adding a check.** [COMPILER.md](COMPILER.md) opens with
   *What the compiler can and cannot validate*: three strengthening classes it **can** do (formal
   conformance → validate-by-redundancy → content-addressed self-verification, which is the class VRS

@@ -5879,23 +5879,44 @@ def _check_declared_license_agrees(
     against a *fact*; this compares two claims about a legal position, and failing the compile would
     make the format arbitrate a licensing dispute. String equality only: an SPDX compatibility matrix
     is world-knowledge that would go stale, and the compiler is not the tier that should hold it.
+
+    **The message names its denominator (S79).** It used to render the *remainder* — the rows whose
+    licence differs — as though it were the whole set, so a declaration matching one of two
+    annotation-layer rows printed identically to one matching none. Those are different problems with
+    different repairs: *your declaration is unsupported* versus *your declaration is not universal*,
+    and the second is the ordinary shape of a mixed-licence module where the most restrictive term
+    binds. An author reading the first when the second was true re-adjudicated the module's whole
+    licence position and found nothing wrong, twice, in two separate reported rounds.
+
+    So the count leads and the agreeing rows are named beside the disagreeing ones. **Suppressing the
+    warning when any row matches was refused** — the reporter argued it against their own case and is
+    right: a module declaring the *least* restrictive of several licences is exactly the one worth
+    warning about.
+
+    `@warning-text-is-api`: `declares license` is the fragment the existing test keys on and it still
+    leads the sentence; what follows it is what changed.
     """
     if not declared_license:
         return []
-    conflicting = sorted(
-        {
-            r.license
-            for r in rows
-            if r.layer == "annotation" and r.license and r.license != declared_license
-        }
-    )
+    annotation = [r for r in rows if r.layer == "annotation" and r.license]
+    conflicting = sorted({r.license for r in annotation if r.license != declared_license})
     if not conflicting:
         return []
+    # Rows rather than distinct licences, because the denominator an author is checking against is how
+    # many sources they have — two rows sharing a licence are two obligations, not one.
+    agreeing = sum(1 for r in annotation if r.license == declared_license)
+    standing = (
+        f"{len(annotation) - agreeing} of {len(annotation)} annotation-layer source(s) report a "
+        f"different licence: {conflicting}"
+        if agreeing
+        else f"no annotation-layer source reports it; they report {conflicting}"
+    )
     return [CodedWarning(
         "declared_license_disagrees",
-        f"module declares license {declared_license!r} but annotation-layer sources report "
-        f"{conflicting}. Not adjudicated here — a compatible pair is legitimate, an incompatible "
-        f"one is a real problem, and only a human can tell which.",
+        f"module declares license {declared_license!r} and {standing}. Not adjudicated here — a "
+        f"compatible pair is legitimate, an incompatible one is a real problem, and only a human can "
+        f"tell which. A declaration matching some but not all of them is the ordinary mixed-licence "
+        f"case, where the most restrictive term binds the whole artifact.",
     )]
 
 

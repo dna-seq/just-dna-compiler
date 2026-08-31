@@ -44,6 +44,52 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
+- **RM144 — the licence-disagreement warning printed the remainder as though it were the whole set.**
+  *(`just-dna-compiler`.)* Filed and built on 2026-08-31 from a consumer report (S79).
+
+  The check filtered the annotation-layer rows to those whose licence *differs* from the declaration,
+  then rendered that remainder as the whole set. A two-source module declaring `CC-BY-NC-ND-4.0` — an
+  exact match for one row, and the binding constraint on the artifact — printed *sources report
+  ['CC-BY-4.0']*, with the agreeing row invisible in the sentence complaining about agreement.
+
+  **Two problems with different repairs read identically:** *your declaration is unsupported* versus
+  *your declaration is not universal*, the second being the ordinary mixed-licence shape where the most
+  restrictive term binds and the declaration is already correct. It cost two agents a full
+  re-adjudication that found nothing wrong, and it survived RM142's fix — removing the phantom row
+  leaves a real disagreement still rendered as total.
+
+  The count now leads and the agreeing rows are named beside the disagreeing ones, with a distinct
+  sentence for the genuinely-unsupported case. **The denominator counts rows, not distinct licences** —
+  two sources sharing a licence are two obligations — and a licence-less row or a non-`annotation` layer
+  stays outside it. Suppressing the warning when any row matches was refused, on the reporter's own
+  argument: a module declaring the least restrictive of several is exactly the one worth warning about.
+
+  **Consumers:** the message text changes; `declares license` still leads it, which is the fragment the
+  existing test keys on, and the non-escalation is unchanged and re-pinned. No reference example moves a
+  digest, signature or warning — the corpus has no mixed-licence module, which is why this survived it.
+
+- **RM145 — `state`'s six members were printed as peers, and two of them are retired in our own code.**
+  *(`just-dna-format`.)* Filed and built on 2026-08-31 from a consumer report (S80).
+
+  `VariantRow.state` was described as `One of: risk, protective, neutral, significant, alt, ref` — six
+  values, no standing — while `derive.py` calls `alt`/`ref` **the retired descriptors** and maps both to
+  `direction=unknown`. A consumer whose authoring surface passes our descriptions through verbatim
+  (deliberately, so a vocabulary change reaches an author without being restated) therefore offered an
+  agent six equal choices, and it picked `alt` for a heterozygote. **The reporter had to read
+  `derive.py` inside their own `.venv` to author one cell honestly.** Measured across the sixteen
+  reference examples: 377 `risk`, 4 `neutral`, and zero uses of `significant`, `alt` or `ref`.
+
+  The description now separates current members from superseded ones and names each group's successor.
+  **Three groups rather than the two the report asked for:** `state` is the Principle 5 anti-pattern the
+  charter names by hand, so the split is by which axis a value was really on — `significant` is a
+  significance claim that `stat_significance` owns, not a dead value, and grouping it with `alt`/`ref`
+  would tell an author it means nothing when it means something this column is the wrong place for.
+
+  **Consumers:** one description string, so anything rendering `model_fields` — `describe`,
+  `requirements`, `reference` and the reporter's own surface — picks it up with no change of their own.
+  No vocabulary member added or removed and nothing invalidated; removal stays major-only and was not
+  requested.
+
 - **RM143 — the enricher diagnosed a wrong-assembly coordinate and `compile --strict` built over it
   anyway.** *(`just-dna-compiler`.)* Filed and built on 2026-08-31 from a consumer report (S78).
 
