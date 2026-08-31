@@ -44,6 +44,80 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM110 — `constraint_flags` had two producers, two encodings, and one of them inside the fact set
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format` + `just-dna-enricher`).
+**Severity** medium · **Owner** enricher, and it moved to format — see below · **Motivating case**
+the 2026-08-19 doc audit (just-module-creator's `gene_metrics.md`)
+
+### What was wrong, measured on the published snapshot rather than estimated
+
+The live GraphQL route wrote `"|".join(sorted(flags)) if flags else None`. The snapshot route copied
+gnomAD's bulk-TSV cell verbatim, and gnomAD writes a **JSON array literal** there. Re-probed against
+`/data/.../gnomad_constraint/data/*.parquet` before any code was touched:
+
+| cell | rows | what a consumer got |
+|---|---|---|
+| `[]` | 17,403 | `if row.constraint_flags:` → **true**, for an unflagged gene |
+| a real array literal (`["outlier_mis","outlier_syn"]`, 14 distinct shapes) | 708 | splitting on `\|` → **one bogus token**, never two flags |
+| null or empty | **0** | — |
+
+So `if row.constraint_flags:` was true for **18,111 of 18,111 rows — 100%**, where the true flagged
+fraction is **3.9%**. The field description (*"kept verbatim and pipe-joined"*) was false on the
+snapshot leg in both directions, and `constraint_flags` is inside `GENE_METRICS_FACT_FIELDS`, so the
+same gene fetched two ways minted two `gene_metrics.signature` values.
+
+### The decision, and the one thing it changed on contact with the code
+
+Pipe-joined when non-empty, `None` when empty, on both legs — never in doubt:
+`enricher/tests/test_gnomad.py` had pinned `constraint_flags is None` on the live producer since 0.5,
+so the contract existed, was tested, and the snapshot producer had simply never implemented it. **The
+item was filed as needing a decision when what it needed was a release.**
+
+What the entry did not anticipate is *where* the normalizer belongs. It said the normalization "goes
+in the cell" rather than in a public accessor, and that argument, followed properly, puts it on the
+**model** — `just_dna_format.gene_metrics.normalize_constraint_flags`, bound as a `mode="before"`
+validator on the field. `mode="before"` because neither producer hands over the `str | None` the field
+declares (a Python `list` from the API, an array literal from the TSV), and a `mode="after"` validator
+cannot rescue a value the field's type rejects first (`@yaml-version-int`).
+
+**Putting it in the fetching tier would have fixed the wrong half.** The published v4.1 snapshot is
+immutable, and every `gene_metrics.csv` already written from it — including this repo's own
+`reference_examples/hboc_palb2/` — carries `[]` on disk. A producer-side fix makes new tables agree
+with each other and leaves those still contradicting the column's description and still hashing apart
+from a live fetch. On the model, one function reaches every producer there will ever be, a
+hand-written table, and a re-read of a file some earlier release wrote.
+
+Three call sites nonetheless, and each earns its place: the live route (so the payload is normal
+before it becomes a row), `gene_metrics.lookup_snapshot` (so the **published** snapshot reads
+correctly — the leg that matters most), and `constraint_build._gene_record` (so a snapshot built from
+here on is clean at source). All three are the same function, so they cannot drift; it is idempotent,
+so a rebuilt snapshot passes through unchanged.
+
+### What "empty → null" would have missed
+
+Half the finding. It clears the 17,403 `[]` rows and leaves the 708 flagged ones still unparsed, so a
+consumer splitting on `|` still gets one token. The non-empty cells needed **parsing**, which is why
+the normalizer takes the cell apart instead of testing it against a null set. A bracketed string that
+does not parse is kept verbatim — this normalizes an encoding it recognises and invents no reading for
+one it does not, and a cell surviving unchanged stays visible to whoever reads the table.
+
+### Cost, measured
+
+Exactly one row in the corpus: `reference_examples/hboc_palb2/gene_metrics.csv` carried
+`constraint_flags=[]`, so its `gene_metrics.signature` and `artifact.digest` move and nothing else in
+the sixteen examples does. The checked-in file was corrected in the same commit, so it now holds what
+the model stores. Beyond that it is whatever consumers have compiled from the snapshot, which nobody
+has counted — which is the entire reason this is a minor with a CHANGELOG line rather than a patch.
+
+### The test that would have caught it
+
+`enricher/tests/test_constraint_flags_normalization.py`, and its shape is the durable part
+(`@one-normalizer-two-spellings`): it runs **both producers' raw tokens** through the one function and
+names the answer both must reach. A suite over the live leg alone was green throughout — that is
+exactly what let this survive a release. The pre-fix behaviour was demonstrated before the tests were
+called a regression net: an unflagged gene read as flagged, and a two-flag cell split to one token.
+
 ## RM147 — a source read by hand that yields no row had nowhere to go, and the home already existed
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format`, documentation only — no

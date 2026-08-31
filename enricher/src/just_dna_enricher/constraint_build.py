@@ -43,6 +43,8 @@ from pathlib import Path
 import httpx
 from just_dna_format.normalize import now_utc_iso
 
+from just_dna_enricher.gnomad import normalize_constraint_flags
+
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
 except ImportError:  # pragma: no cover - exercised only where the [dev] extra is absent
@@ -161,10 +163,23 @@ def _coerce(field_name: str, raw: str | None) -> object:
 
 
 def _gene_record(gene: str, row: dict) -> dict:
-    """Reduce a picked TSV row to the snapshot's gene-level record."""
+    """Reduce a picked TSV row to the snapshot's gene-level record.
+
+    `constraint_flags` is the one column the TSV does not hand over in the shape the model documents:
+    gnomAD writes its **JSON array literal** into the cell, so `_coerce` — which only maps a null
+    spelling to `None` and otherwise keeps the text — stored `"[]"` for an unflagged gene and
+    `'["outlier_mis","outlier_syn"]'` for a flagged one. Neither survives `if row.constraint_flags:`
+    or a split on `|`, and the column is inside `GENE_METRICS_FACT_FIELDS`, so the two producers
+    disagreed on `gene_metrics.signature` for the same gene (RM110). Normalized through the same
+    function the live route uses, so the two legs cannot drift again.
+
+    This cleans snapshots built from here on. The already-published v4.1 snapshot is immutable, which
+    is why `gene_metrics.lookup_snapshot` normalizes on read as well.
+    """
     record: dict[str, object] = {"gene": gene, "mane_select": _is_true(row.get("mane_select"))}
     for source_column, field_name in _COLUMN_MAP.items():
         record[field_name] = _coerce(field_name, row.get(source_column))
+    record["constraint_flags"] = normalize_constraint_flags(record.get("constraint_flags"))
     return record
 
 

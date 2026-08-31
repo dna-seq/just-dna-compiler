@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
+from just_dna_format.gene_metrics import normalize_constraint_flags
 from just_dna_format.vocab import normalize_population, population_sort_key
 from just_dna_format.vrs import in_pseudoautosomal_region, normalize_chrom
 from tenacity import (
@@ -93,6 +94,7 @@ _MULTIPLE_VARIANTS_RE = re.compile(r"multiple variants found", re.IGNORECASE)
 _SEX_SUFFIX_RE = re.compile(r"(^|_)(XX|XY)$")
 # A gnomAD variantId is `chrom-pos-ref-alt`.
 _VARIANT_ID_RE = re.compile(r"^(?P<chrom>[^-]+)-(?P<pos>\d+)-(?P<ref>[A-Za-z]+)-(?P<alt>[A-Za-z]+)$")
+
 
 
 def covers_locus(
@@ -510,6 +512,6 @@ class GnomadClient:
                     "oe_mis": constraint.get("oe_mis"),
                     "obs_lof": constraint.get("obs_lof"),
                     "exp_lof": constraint.get("exp_lof"),
-                    "constraint_flags": "|".join(sorted(flags)) if flags else None,
+                    "constraint_flags": normalize_constraint_flags(flags),
                 }
         return out

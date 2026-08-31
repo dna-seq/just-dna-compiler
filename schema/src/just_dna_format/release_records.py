@@ -707,6 +707,33 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
                 item="RM132",
             ),
             DeclaredChange(
+                axis="parquet_bytes",
+                target="gene_metrics.parquet",
+                kind="correction",
+                detail=(
+                    "RM110 normalized gnomAD's flag list, which the snapshot route had stored as a "
+                    "JSON array literal — `\"[]\"` on 17,403 of the published v4.1 snapshot's 18,111 "
+                    "rows, a real literal on the other 708, and not one row null. The cell changes "
+                    "value, so `gene_metrics.parquet` and `artifact.digest` move on any module "
+                    "compiled from that snapshot. A CORRECTION, not an addition: the value we "
+                    "published contradicted the column's own description and read as *flagged* for "
+                    "100% of snapshot rows where 3.9% are. One row in our corpus (`hboc_palb2`)."
+                ),
+                item="RM110",
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="gene_metrics.signature",
+                kind="correction",
+                detail=(
+                    "`constraint_flags` is inside `GENE_METRICS_FACT_FIELDS`, so the same gene "
+                    "fetched two ways was already minting two signatures — which is why RM110 could "
+                    "not be fixed by normalizing on the way out. Moves with the cell above, on the "
+                    "same modules."
+                ),
+                item="RM110",
+            ),
+            DeclaredChange(
                 axis="parquet_schema",
                 target="studies.parquet:statistical_test",
                 kind="addition",

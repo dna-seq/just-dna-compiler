@@ -16,6 +16,7 @@ rather than to one column, and the reverse writer's round-trip is covered by a t
 """
 
 
+import json
 from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -54,6 +55,73 @@ GENE_METRICS_FACT_FIELDS: tuple[str, ...] = (
     "triplosensitivity",
     "dataset",
 )
+
+
+#: Spellings of "no value" this column may arrive carrying, beside the empty flag list handled
+#: below. gnomAD's bulk TSV writes the R-flavoured `NA`; the rest are the usual suspects a
+#: hand-edit or a third producer might leave. Declared here, in the tier that owns the column,
+#: rather than in either producer.
+_FLAG_NULLS: frozenset[str] = frozenset({"", "NA", "na", "NaN", "nan", "None", "null"})
+
+
+def normalize_constraint_flags(value: object) -> str | None:
+    """gnomAD's caveat list, from either producer, as one pipe-joined string or `None` (RM110).
+
+    **The two routes hand this the same fact in two encodings**, and until 0.7 only one of them was
+    read. The live GraphQL field returns `flags` as a JSON array, which arrives here as a Python
+    `list`; the bulk v4.1 TSV writes the array *literal* into the cell, so the snapshot route stored
+    the two-character string ``"[]"`` and the four-token string
+    ``'["no_exp_lof","no_exp_mis","no_exp_syn","no_variants"]'`` verbatim. Neither is a pipe-joined
+    flag list, and `constraint_flags` is inside `GENE_METRICS_FACT_FIELDS`, so the same gene fetched
+    two ways produced two `gene_metrics.signature` values.
+
+    **Measured over the published v4.1 snapshot rather than estimated**: of 18,111 rows, *not one* is
+    null or empty — 17,403 carry ``"[]"`` and 708 carry a real array literal — so a consumer writing
+    the obvious ``if row.constraint_flags:`` read **100%** of snapshot rows as flagged where the true
+    figure is 3.9%, and one splitting on ``|`` got a single bogus token instead of two flags.
+
+    So the empty case is only half of it: the non-empty cells need parsing too, which is why this
+    takes the cell apart rather than testing it against a null set. `"[]"` → `None` alone would have
+    left 708 rows still lying about their own shape.
+
+    Total and idempotent, because it runs on both legs and on a snapshot rebuilt after this shipped:
+    a list joins, a JSON array literal parses then joins, an already-pipe-joined string splits then
+    re-joins, and everything empty answers `None` rather than `""` — the house rule that an absence is
+    not a value. Sorted, because the live producer has always sorted and a signature must not depend
+    on which route filled the cell.
+
+    A string that starts like an array and does not parse is kept verbatim rather than dropped or
+    guessed at: this normalizes an encoding it can recognise and does not invent a reading for one it
+    cannot, and a cell that survives here unchanged is visible to whoever reads the table.
+
+    **It lives in this tier, not in the enricher, because the decision was that the normalization
+    goes in the CELL.** A helper the fetching tier called would fix rows written after 0.7 and
+    leave every `gene_metrics.csv` already carrying `"[]"` — including the one in this repo's own
+    reference corpus — still contradicting the column's description and still hashing differently
+    from the same gene fetched the other way. Bound as a `mode="before"` validator below, it
+    reaches every producer there will ever be, including a hand-written table and a re-read of a
+    file some earlier release wrote.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple, set)):
+        tokens: list[str] = [str(v).strip() for v in value]
+    else:
+        text = str(value).strip()
+        if text in _FLAG_NULLS:
+            return None
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                parsed = json.loads(text)
+            except ValueError:
+                return text
+            if not isinstance(parsed, list):
+                return text
+            tokens = [str(v).strip() for v in parsed]
+        else:
+            tokens = [part.strip() for part in text.split("|")]
+    kept = sorted(t for t in tokens if t)
+    return "|".join(kept) if kept else None
 
 
 class GeneMetricsRow(BaseModel):
@@ -129,9 +197,16 @@ class GeneMetricsRow(BaseModel):
     constraint_flags: str | None = Field(
         default=None,
         description=(
-            "The source's own caveat list (e.g. 'no_exp_lof', 'outlier_detected'), kept verbatim and "
-            "pipe-joined. A flagged gene's scores are not to be read at face value, and folding that "
-            "warning away would be the format editorializing over its source."
+            "The source's own caveat list, pipe-joined and sorted (e.g. 'no_exp_lof', "
+            "'outlier_mis|outlier_syn'), or **absent when the source flagged nothing** — never an "
+            "empty string and never an empty container, so `if row.constraint_flags:` is the right "
+            "test. The flag TOKENS are the source's, verbatim; the container is not, because gnomAD "
+            "spells the same list two ways depending on which route answered (a JSON array from the "
+            "live API, its array *literal* in the bulk TSV cell) and this column is inside "
+            "GENE_METRICS_FACT_FIELDS — one gene fetched two ways would otherwise carry two "
+            "signatures. A flagged gene's scores are not to be read at face value, and folding that "
+            "warning away would be the format editorializing over its source; normalizing how the "
+            "list is written down is not folding it away."
         ),
     )
     # ── 0.5: ClinGen dosage sensitivity. Gene-keyed like everything else here, so it is columns on
@@ -214,3 +289,19 @@ class GeneMetricsRow(BaseModel):
     def _canonical_fetched_at(cls, v: object) -> str | None:
         """One spelling, enforced on load — see `normalize.normalize_utc_timestamp`."""
         return normalize_utc_timestamp(v if v is None or isinstance(v, str) else str(v))
+
+    @field_validator("constraint_flags", mode="before")
+    @classmethod
+    def _canonical_constraint_flags(cls, v: object) -> str | None:
+        """One spelling for a list gnomAD writes two ways — see `normalize_constraint_flags` (RM110).
+
+        `mode="before"` because the snapshot route hands over a JSON array *literal* and the live
+        route a Python `list`, and neither is the `str | None` this field declares; a `mode="after"`
+        validator cannot rescue a value the field's type rejects first (`@yaml-version-int`).
+
+        On the field rather than in the two producers because this column is inside
+        `GENE_METRICS_FACT_FIELDS`: the same gene fetched two ways was minting two
+        `gene_metrics.signature` values, and a fix only the fetching tier applied would leave every
+        table already written — this repo's own `hboc_palb2` among them — carrying the divergence.
+        """
+        return normalize_constraint_flags(v)

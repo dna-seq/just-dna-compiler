@@ -40,6 +40,7 @@ from just_dna_enricher.gnomad import (
     CONSTRAINT_DATASET_LABEL,
     GnomadClient,
     GnomadError,
+    normalize_constraint_flags,
 )
 from just_dna_enricher.licensing import record_source_terms, sidecar_path
 from just_dna_enricher.locations import resolve_constraint_reference
@@ -138,6 +139,15 @@ def lookup_snapshot(reference: Path, genes: list[str]) -> dict[str, dict]:
     finally:
         con.close()
     records = [dict(zip(columns, row, strict=True)) for row in rows]
+    # **The snapshot's own cell is not the pipe-joined list the column is documented to hold** — the
+    # bulk TSV writes gnomAD's JSON array literal, so the published v4.1 parquet stores `"[]"` on
+    # 17,403 of its 18,111 rows and a real array literal on the other 708 (RM110). Normalized on the
+    # way out rather than left to the caller, because the published snapshot is immutable: fixing
+    # `constraint_build` cleans a snapshot nobody has yet, and this is the leg every module reading
+    # the one that exists goes through. Idempotent, so a snapshot rebuilt after 0.7 passes unchanged.
+    for record in records:
+        if "constraint_flags" in record:
+            record["constraint_flags"] = normalize_constraint_flags(record["constraint_flags"])
     return {record["gene"]: record for record in records}
 
 

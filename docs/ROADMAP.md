@@ -178,17 +178,16 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Eight, and four of them are not decisions** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a decision* through the three that are, which is why the paragraph under it says to count off the sections rather than off this sentence). The four whose shape is settled:
+**Seven, and four of them are not decisions** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a decision* through the three that are, which is why the paragraph under it says to count off the sections rather than off this sentence). The three whose shape is settled:
 [RM103](#rm103--a-version-with-no-digits-coerces-to-000-which-is-a-real-version-nobody-wrote)
 (the manifest half only),
-[RM108](#rm108--a-clingen-re-curation-appends-a-second-row-and-nothing-marks-the-superseded-one),
-[RM110](#rm110--constraint_flags-has-two-producers-with-two-encodings-and-the-column-is-inside-the-fact-set)
+[RM108](#rm108--a-clingen-re-curation-appends-a-second-row-and-nothing-marks-the-superseded-one)
 and
 [RM117](#rm117--an-outrank-record-exists-and-no-check-reads-it-and-what-a-check-should-do-is-undecided)
 (the observability half only) — all minors, all with the release undecided, all with nothing left in
 them but the typing. **The other four are decisions and say so**: RM136 and RM137 from the RM124
 audit, RM138 from the RM131 review, and RM146 from a 2026-08-31 consumer report, each carrying its
-candidate repairs and why each one fails.
+candidate repairs and why each one fails. RM110 was a fourth settled one and shipped on 2026-08-31.
 **Count them off the sections, not off the sentence**: this line said *three* for as long as it took
 to notice that a narrowed item is still an item, and *not one of them is a decision* for as long as it
 took three decisions to be filed beneath it — the same arithmetic failure recorded two paragraphs
@@ -369,48 +368,6 @@ opposite of S45 — and turns visible drift into invisible drift, which is the t
 Publishing both facts and leaving the consumer to choose was the honest alternative and lost on one
 point: every consumer then implements the same date comparison, and they will not all implement it the
 same way.
-
-## RM110 — `constraint_flags` has two producers with two encodings, and the column is inside the fact set
-
-**Severity** medium · **Status** open — **a minor, release undecided** — decided 2026-08-21; the
-minor is because it moves a fact signature, not because anything is unsettled · **Owner** enricher ·
-**Motivating case** the 2026-08-19 doc audit (just-module-creator's `gene_metrics.md`)
-
-The live API route writes `"|".join(sorted(flags)) if flags else None`. The snapshot route copies
-gnomAD's TSV cell verbatim, and gnomAD writes a **JSON array literal** there; `[]` is not in
-`constraint_build._NULLS`, so it survives as the two-character string `"[]"`. Measured over the
-published v4.1 snapshot: **17,403 of 18,111 rows** carry `"[]"`. Every consumer writing the obvious
-`if row.constraint_flags:` therefore reads 96% of snapshot rows as *flagged*, and the same gene fetched
-two ways gives two different cells. The field description (*"kept verbatim and pipe-joined"*) is true
-of one producer only.
-
-**Decided 2026-08-21: pipe-joined when non-empty, `None` when empty, on both legs.** There was never
-a second candidate. `enricher/tests/test_gnomad.py` already pins exactly this on the live producer —
-`assert myh7["constraint_flags"] is None  # empty flag list → null, not ""` — so the contract exists,
-is tested, and the snapshot producer simply never implemented it. **The item was filed as needing a
-decision when what it needed was a release**, and that is the part worth keeping: the round that found
-it was a *patch* round, normalizing the cell moves `gene_metrics.signature`, and a signature move is
-not patch work — a release-class objection that reads, in a status line, exactly like an open design
-question.
-
-**Re-measured on the published v4.1 snapshot, and it is worse than this entry first recorded.** Not one
-of the 18,111 rows is null or empty, so `if row.constraint_flags:` is true for **18,111 of 18,111 —
-100%**, not 96%: the 708 genuinely flagged rows are stored as JSON array literals too
-(`["outlier_mis","outlier_syn"]`), so a consumer splitting on `|` gets one bogus token rather than two
-flags. Only **3.9%** of genes are actually flagged. The fix is therefore not "empty → null" alone —
-the non-empty cells need parsing as well, and the field description (*"kept verbatim and pipe-joined"*)
-is false on the snapshot leg in both directions.
-
-**The third consequence is what makes normalizing-at-read insufficient.** `constraint_flags` is inside
-`GENE_METRICS_FACT_FIELDS`, so the same gene fetched two ways already produces two different
-`gene_metrics.signature` values. A public accessor normalizing on the way out would fix what consumers
-*read* and leave that divergence in the artifact, which is why the normalization goes in the cell.
-
-**Cost, measured rather than estimated.** One row in our own corpus: `reference_examples/hboc_palb2/`
-carries `constraint_flags=[]`, so its `gene_metrics.signature` and `artifact.digest` move and nothing
-else in the sixteen examples does. Beyond that it is whatever consumers have compiled from the
-snapshot, which nobody has counted — hence the CHANGELOG line, which is the entire reason this is a
-minor rather than a patch.
 
 ## RM117 — an outrank record exists and no check reads it, and what a check should do is undecided
 

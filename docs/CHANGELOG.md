@@ -44,6 +44,33 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
+- **RM110 — `constraint_flags` had two producers, two encodings, and one of them inside the fact set.**
+  *(`just-dna-format` + `just-dna-enricher`; **one existing artifact's digest moves** — see the cost
+  line.)* The live gnomAD route pipe-joined its flag list; the bulk-TSV snapshot route copied gnomAD's
+  **JSON array literal** into the cell. Re-probed against the published v4.1 parquet before any code
+  moved: of 18,111 rows **none** is null or empty — 17,403 carry `[]` and 708 carry a real literal in
+  14 distinct shapes — so `if row.constraint_flags:` was true for **100%** of snapshot rows where the
+  flagged fraction is 3.9%, and splitting a two-flag cell on `|` returned one bogus token. The column
+  is inside `GENE_METRICS_FACT_FIELDS`, so the same gene fetched two ways minted two
+  `gene_metrics.signature` values.
+
+  **Fixed on the model, not in the fetching tier**: `just_dna_format.gene_metrics.normalize_constraint_flags`,
+  bound as a `mode="before"` field validator (neither producer hands over the declared `str | None`,
+  and a `mode="after"` validator cannot rescue a value the type rejects first). The published snapshot
+  is immutable and every `gene_metrics.csv` already written from it carries `[]` on disk, so a
+  producer-side fix would have left those tables contradicting the column's own description. Three
+  call sites share the one function — the live route, `lookup_snapshot` (the published snapshot) and
+  `constraint_build` (future ones) — and it is idempotent, so a rebuilt snapshot passes unchanged.
+  "Empty → null" was only half the fix: the non-empty cells needed parsing, or the 708 flagged rows
+  stayed unreadable. A bracketed string that does not parse is kept verbatim rather than guessed at.
+
+  **Cost, measured:** exactly one row in the reference corpus — `reference_examples/hboc_palb2/`
+  carried `constraint_flags=[]`, so its `gene_metrics.signature` and `artifact.digest` move; the
+  checked-in CSV was corrected in the same commit. Nothing else in the sixteen examples changes.
+  **If you have compiled modules from the v4.1 constraint snapshot, their `gene_metrics.signature`
+  will move on the next recompile, and that is the fix arriving rather than a regression.** The field
+  description, false on the snapshot leg in both directions, was rewritten.
+
 - **RM147 — a source read by hand that yields no row had nowhere to go, and the home already existed.**
   *(`just-dna-format`; documentation and a test — no behaviour changed.)* Filed and answered on
   2026-08-31 from a consumer report (S82), which asked for a view rather than proposing a shape.
