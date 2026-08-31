@@ -704,6 +704,13 @@ The house algebra is **three-valued: true / false / unknown**, and `None` is nev
     suppression by reading the compiled table, not by waiting for a message. An `update` that matches
     nothing *does* warn, and the two readings are equally likely: you mistyped the subject, or the
     source stopped publishing that row.
+  - **A correction to `clin_sig_concordance.csv` is watched in two ways, and both are observations
+    rather than judgements.** When the archive stops contesting the subject entirely, the compile says
+    the disagreement ended and the row can be retired. When the archive instead says something *else*,
+    `enrich` says so and prints both calls with their release labels — your `reason` was written about
+    the earlier one, so re-read it and decide whether it still says what you mean. The second message
+    appears **once**, on the run that notices, because the comparison is against the record the same
+    run then replaces. Neither ever fails a run.
 
 - **`verification.json` is machine-written and yours to keep, not to edit.** It records which checks
   ran against which release, and your closure. Editing it by hand breaks the hash it carries, and the

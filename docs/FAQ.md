@@ -295,6 +295,30 @@ Only after you have built a **real, sensible** example against the actual code p
 mechanically-possible loss with no real instantiation is noise — see the `annotations.parquet` entry
 above, where the constraint set turns out to be empty.
 
+**`enrich` said an authority call under one of my `overrides.csv` answers has moved. Was my answer
+wrong?**
+Nothing in that message says so, and nothing in this format can. It is a statement about the *record*:
+the `reason` you wrote was written about a particular disagreement, and the archive now publishes a
+different value, so the reason describes a disagreement that is no longer the one on file. Often the
+reason still says exactly what you mean; sometimes the archive has moved toward you and the row is now
+unnecessary; occasionally it has moved somewhere you would argue with differently. All three are yours
+to decide. It warns in both modes and escalates in neither — see
+[ENRICHER § Has the disagreement you answered moved?](ENRICHER.md).
+
+**Why did that message not come back on the next run?**
+Because it cannot. The baseline is the previous run's `clin_sig_authority_calls.csv`, and the run that
+reports the move is the run that replaces it — so the next run compares against the new value and finds
+nothing. That is a limit of an *observation*: saying it every run would need your overlay row bound to
+the value it justifies, which is a column this format does not have and a change to the authored
+surface. Act on the message when you see it.
+
+**Can I get the same check for `frequencies.csv` or `resolution.csv`?**
+No, and the reason is worth knowing rather than working around. `clin_sig_authority_calls.csv` is the
+only derived table here that records what a source said *at the time* — its `clin_sig`, the verbatim
+token, and the release it came from. Every other sidecar holds the source's current answer, so there is
+no prior value to compare against and a general "the value moved" check would be answerable for one
+table and silently absent for the rest. The finding names its table for exactly that reason.
+
 **A message cites an `RMn` — is that a bug?**
 No, it means known and deliberate. Leave the data honest and note the limitation rather than inventing
 a workaround. → [RM_TOC.md](RM_TOC.md) for what any given number is.

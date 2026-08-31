@@ -508,6 +508,37 @@ many you wrote or edited, and how many conflict. (A conflict is a warning in bot
 this is the one check that never fails a run, because a curator is allowed to disagree with a
 low-reviewed submission.) `--no-verify-clinsig` is the manual switch and reports `not_requested`.
 
+**`N of M answered subject(s) rest on an authority call that has moved since the answer was recorded`**
+You corrected a `clin_sig_concordance.csv` row through `overrides.csv`, and the message lists what that
+archive said then and what it says now — `rs334 A/T clinvar: benign (clinvar_2026-08-01) →
+likely_pathogenic (clinvar_2026-09-01)`. **Nothing is wrong with the correction, and nothing here
+grades it.** What it tells you is narrower: the `reason` you wrote was written about the earlier call,
+so it describes a disagreement that is no longer the one on record. Read your reason and decide whether
+it still says what you mean — often it does and you change nothing; sometimes the archive has moved to
+your position and the row is now unnecessary; occasionally it has moved somewhere you would argue with
+differently, and the sentence to rewrite is the reason, not the value.
+
+Two things worth knowing about when it appears. Both release labels are in the message, so you can see
+whether the archive re-released or revised inside one release. And **you get told once**: the
+comparison is against the record from the *previous* run, which this run replaces, so the next run
+compares against the new one and is silent. Act on it when you see it rather than filing it to read
+later. It never fails a run, in either mode.
+
+**`N answered call(s) differ only after this release's own normalization`**
+The same shape, and **not about your module at all**. The archive's verbatim wording is unchanged; what
+moved is how the tooling maps that wording onto its own vocabulary. There is nothing to do, and the
+sentence is separate from the one above so that a change in our code is never reported as a change in
+a source's.
+
+**`N of M answered subject(s) could not be compared against what the authorities said when the answer
+was written`**
+Informational, and it is the honest answer rather than a clean bill: the comparison above could not be
+made, so *nothing moved* is not being claimed. The lines under it say which of the two reasons applies
+— no prior record to compare against (this run is writing the first one, or an authority was
+unconsulted when you wrote the answer), or an authority nobody could reach this run. In the first case
+run once more and the comparison becomes available; in the second, provision the snapshot that leg
+needs.
+
 **`dataset moved on: clinvar (annotation): drafted from clinvar_2026-06-27, now clinvar_2026-08-25`**
 Your `sources.csv` records which release these rows were drafted from, and that source has published
 since. Nothing is wrong with the module as it stands — the rows still say what the older release said —
