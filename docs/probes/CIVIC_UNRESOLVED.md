@@ -715,7 +715,9 @@ record, and it is worth reading anyway, because it establishes *why* in terms no
 - **1955 carries a second source the accepted-only basis cannot see.** EID **9969** cites PMID
   12202531 (Dollfus 2002, **free full text**) and is `SUBMITTED`, so it exists in the API and in no
   file `civic build` reads. It is the one reachable lead on either record, and the status basis is
-  exactly what hides it — a worked instance of the survey's open item on reading `SUBMITTED` items.
+  exactly what hides it — filed as **RM160**, where a per-record sweep found that **10 of the 20
+  records nothing can place gain a citation the accepted basis does not carry**, two of them more than
+  thirty.
 
 ## Class E — two records naming two alterations, and the instrument that already expresses one
 
