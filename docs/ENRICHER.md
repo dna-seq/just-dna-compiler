@@ -1195,6 +1195,31 @@ That takes recovery from 48% of the direction set to **82%**. `--offline` withho
 reason rather than being guessed at. Liftover was measured and refused: its ceiling is 13 rows, and
 the one precise event in the class lifts exactly to the *wrong allele*.
 
+**An identity CIViC states in a variant's `name` is read out of it (RM159).** 53 variants in the
+`01-Aug-2026` release carry nothing in the identifier columns, and for most of them the identity was
+published all along in the name itself — `N150fs (c.448delA)`, `IVS2+1G>A`, `D1709N`. Thirty-three
+were resolved by hand and ship as the constant `civic_identities.CIVIC_NAME_IDENTITIES`, emitted with
+`identity_derivation="curated_name"` — a member of its own, because `rsid`/`grch38_hgvs` mean "the
+source stated this in the column for it" and a consumer must be able to exclude the difference without
+re-deriving it. Coverage goes 237/290 → **270/290** of variants.
+
+They are **data rather than a draft-time lookup** because four of the 33 needed a judgement no lookup
+makes: a legacy `IVS2` name whose structural conversion lands on the wrong exon (both readings being
+real registered alleles 9 kb apart), a name pairing a missense protein label with a synonymous cDNA
+change, a protein consequence standing over an intronic allele, and an rs-number that is
+position-level where two alleles spell the same substitution. So the answers are shipped, the
+procedure is written down in `docs/probes/CIVIC_IDENTITY_PROTOCOL.md`, and the build stays offline.
+The one identity **not** adopted is `TP53 R72P`: it resolves to the *reference* allele
+(`g.7676154G=`), and `ref == alt` is not a variant row.
+
+**Each curated identity is keyed to the exact name it was read from**, and lands in one of four
+counted states in `release.json` — `applied`, `superseded` (CIViC now publishes one of its own; the
+source always wins, and this is also the cheapest currency signal there is), `renamed`, `absent`. The
+four sum to the table, asserted as an equality. `allele_registry_id` stays CIViC's verbatim cell: the
+CAIDs the resolution went through are provenance on the table, never written into the source's column.
+`civic reproduce` then cross-examines every placed coordinate against the GRCh38 reference through
+refget — **57 of 57, 0 mismatches**, up from 24 before the adoption.
+
 **A refutation is kept and its direction withheld.** `Does Not Support` removes a claim without
 establishing the opposite one, so the row keeps its raw words and states no `direction` — an unknown
 is withheld, never negated. The drafter reports how many it held back and why.

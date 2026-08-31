@@ -36,9 +36,16 @@ NCBI E-utilities, Ensembl's Variant Recoder, then the cited literature — and *
 | Two readings, nothing to choose (class D) | 2 | 2 | withheld; needs a curator and a paywalled paper |
 | Conjunction-named (class E) | 2 | 2 | two alterations each, all four alleles identified; the record is not one identity |
 
-**So coverage moves from 237/290 (81.7%) to 271/290 (93.4%) of variants, and 474/533 (88.9%) to
-508/533 (95.3%) of evidence rows** — if the resolutions are adopted, which is a decision this document
-does not take. Nineteen variants on 25 rows remain, and six of those are unreachable by construction.
+**Adopted 2026-09-01 (RM159): 33 of the 34.** Coverage moved from 237/290 (81.7%) to **270/290
+(93.1%)** of variants, and from 474/533 (88.9%) to **507/533 (95.1%)** of rows. The one held back is
+CIViC 4968 `TP53 R72P`, whose identity is the *reference* allele (`g.7676154G=`) and so is not a
+`ref`/`alt` row at all — the identity exists and the representation cannot carry it. Twenty variants
+on 26 rows remain, six of them unreachable by construction.
+
+Each adopted identity is keyed to the **exact name string** it was read from, so it stands down the
+moment CIViC re-names the record or fills the columns itself; the four states that can produce are
+counted in `release.json`. And every one of the 33 was then confirmed at its stated GRCh38 position by
+refget — `civic reproduce` reads **57 of 57 coordinates with 0 mismatches**, up from 24.
 
 **The procedure that did it is written up separately** as
 [CIVIC_IDENTITY_PROTOCOL](CIVIC_IDENTITY_PROTOCOL.md) — a re-runnable protocol with the exact request

@@ -305,4 +305,4 @@ untested here.
 - **`Q73fs` is a curation error either way**, and that is now established rather than suspected: no
   reading of `214insGCCC` reaches codon 73 under either convention, and the only route to it,
   `c.216_217insGCCC`, gives `fs*60` rather than `fs*61`.
-- **Coverage does not move.** 271/290 stands; neither record is adopted.
+- **Coverage does not move.** 270/290 stands (RM159); neither of these two is adopted.

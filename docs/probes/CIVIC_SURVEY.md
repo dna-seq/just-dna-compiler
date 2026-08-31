@@ -661,9 +661,19 @@ Per-variant tables, the queries behind each answer and the four wrong-name findi
 is [CIVIC_IDENTITY_PROTOCOL](CIVIC_IDENTITY_PROTOCOL.md), written to be re-run against any source that
 publishes a variant name and no identifier.
 
-**If the resolutions are adopted, coverage moves to 271/290 variants (93.4%) and 508/533 evidence
-rows (95.3%)** — from 237/290 (81.7%) and 474/533 (88.9%). Adoption is a decision this document does
-not take; nothing here has entered `civic build` or the published snapshot.
+**Adopted on 2026-09-01 as RM159 — 33 of the 34 — taking coverage to 270/290 variants (93.1%) and
+507/533 evidence rows (95.1%)**, from 237/290 (81.7%) and 474/533 (88.9%). The identities ship as a
+constant read by `civic build`, keyed to the exact variant name each was derived from, so the build
+stays offline and byte-reproducible; the four states a curated row can land in are counted in
+`release.json`. `unresolvable_identity` falls from 59 rows to 26.
+
+The one held back is CIViC 4968 `TP53 R72P`: it resolves, and its identity is the **reference** allele
+(`NC_000017.11:g.7676154G=`) because the name has reference and alternate inverted. `ref == alt` is not
+a variant row, so the identity exists and this representation cannot carry it.
+
+**An unrelated service then confirmed all 33.** `civic reproduce` cross-examines every placed
+coordinate against the GRCh38 reference through refget: **57 of 57 read, 0 mismatches**, up from 24
+before the adoption.
 
 **What this round overturned in the previous one, and what the error cost.** The earlier pass
 concluded that "the one remaining lever is worth 2 variants, not 31" and that the residue was "close
@@ -798,8 +808,9 @@ What is worth carrying forward in one place:
 - Genuine `risk`-vs-`protective` opposition is **0**, at every scope probed, under every status basis.
 - The identity obstacle was real, is now mostly closed, and **its size always depends on which surface
   you read** — always name the file. Over the dated bulk release a snapshot must build from, recovery
-  went **138 → 202 → 237 of 290 variants (48% → 70% → 82%)**: the builder's own reading of published
-  identifiers, then the ClinGen CAID pass, then anchoring one-sided indels. The API's own view is
+  went **138 → 202 → 237 → 270 of 290 variants (48% → 70% → 82% → 93%)**: the builder's own reading of
+  published identifiers, then the ClinGen CAID pass, then anchoring one-sided indels, then reading the
+  identities CIViC states in a variant's name (RM159). The API's own view is
   wider still (318 of 376 coordinate-bearing) because `dbsnpRsid` and `clinvarHgvsGenomic` are
   MyVariant.info enrichment the download does not carry — but reading it would cost the snapshot its
   reproducibility.
@@ -809,8 +820,10 @@ What is worth carrying forward in one place:
   liftover-only residue is 9 variants and its honest recovery is at most one.
 - **The 53 that carried no identifier were opened on 2026-09-01, and 34 of them resolve** — from the
   `c.` and protein fragments CIViC publishes in the variant's own `name`, against a numbering frame
-  established per *gene* rather than per record. That takes coverage to 271/290 variants and 508/533
-  rows if adopted. The earlier reading of this residue as "close to a permanent floor" was wrong, and
+  established per *gene* rather than per record. Thirty-three of them are now in the builder,
+  rows. Thirty-three were adopted into the builder on the same day (RM159), taking it to 270/290 and
+  507/533 — the odd one out is `TP53 R72P`, whose identity is the reference allele and therefore not a
+  `ref`/`alt` row. The earlier reading of this residue as "close to a permanent floor" was wrong, and
   wrong for one reason: a per-gene fact was tested as a per-record one. What survives is narrower and
   still true — 5 of the 9 coordinate-bearing ones state their own extent as unknown, which the allele
   registry refuses to parse, and 6 more name a class of event rather than an allele.

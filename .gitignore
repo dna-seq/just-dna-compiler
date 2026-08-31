@@ -224,3 +224,6 @@ __marimo__/
 # just-dna data conventions (CLAUDE.md): generated/sample data never travels with the repo or the
 # package. Fixtures that must travel live in assets/ (committed), not here.
 /data/
+
+# `civic reproduce --out` default: two full builds plus the downloaded release, in the cwd
+/civic-reproduce/

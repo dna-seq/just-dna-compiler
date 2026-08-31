@@ -1,7 +1,10 @@
 """The CIViC snapshot builder (RM152) — identity, the drop registry, and the withheld direction.
 
 The fixture under `assets/civic_slice/` is a real slice of the `01-Aug-2026` release, chosen so that
-every identity route and every drop reason has at least one row. Two rows in it are constructed rather
+every identity route and every drop reason has at least one row — including variant 3184
+(`V62Cfs*5 (c.180del)`), which carries no identifier CIViC publishes and is placed only from the
+curated name table, so the curated path runs through the real build rather than a stub. Two rows in it
+are constructed rather
 than harvested, and both are marked here, because upstream has no example: a germline direction row on
 a combination profile, and a `Does Not Support` row on a variant that carries identity. Everything
 else is upstream bytes.
@@ -19,12 +22,19 @@ from just_dna_enricher.civic_build import (
     CIVIC_DROP_REASONS,
     CIVIC_IDENTITY_DERIVATIONS,
     CivicBuildError,
+    assert_curation_closes,
     assert_registry_closes,
     build_snapshot,
     has_unparsable_grch38,
     parse_grch38_substitution,
     parse_rsids,
     variant_rsids,
+)
+from just_dna_enricher.civic_identities import (
+    CIVIC_CURATION_STATES,
+    CIVIC_NAME_IDENTITIES,
+    CIVIC_NAME_IDENTITY_BY_VARIANT,
+    CURATED_DERIVATION,
 )
 from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
 
@@ -105,13 +115,23 @@ def test_every_kept_row_carries_an_identity_and_names_which_one(built):
         # A row carries an identity, or a ROUTE to one. `caid` is the second: null coordinate, null
         # rsID, and a registry id a later pass resolves (RM153). What no kept row may be is neither.
         assert has_rsid or has_coords or caid, "a kept row with no route to an identity is a drop"
-        # The stamp is not decoration: it must agree with what the row actually carries.
-        assert row["identity_derivation"] == (
-            "both" if has_rsid and has_coords
-            else "rsid" if has_rsid
-            else "grch38_hgvs" if has_coords
-            else "caid"
-        )
+        # The stamp is not decoration: it must agree with what the row actually carries. The curated
+        # class is checked first and by its own route, because it is the one stamp that is NOT
+        # derivable from the cells: a curated row can look exactly like an `rsid` or a `both` row,
+        # and the difference is who said so — CIViC's identifier columns, or its variant name read by
+        # hand. That is the whole reason it is a separate member.
+        if row["identity_derivation"] == CURATED_DERIVATION:
+            curated = CIVIC_NAME_IDENTITY_BY_VARIANT[row["variant_id"]]
+            assert (row["chrom"], row["start"], row["ref"], row["alt"]) == (
+                curated.chrom, curated.start, curated.ref, curated.alt
+            )
+        else:
+            assert row["identity_derivation"] == (
+                "both" if has_rsid and has_coords
+                else "rsid" if has_rsid
+                else "grch38_hgvs" if has_coords
+                else "caid"
+            )
         if row["identity_derivation"] == "caid":
             assert not has_rsid and not has_coords and caid
 
@@ -384,3 +404,125 @@ def test_the_registrys_answers_are_not_in_the_published_snapshot(built):
         assert absent not in frame.columns
     caid_rows = frame.filter(pl.col("identity_derivation") == "caid")
     assert caid_rows["rsid"].is_null().all(), "a resolved rsID must not be persisted into the snapshot"
+
+
+# ── The curated name table (adopted 2026-09-01) ──────────────────────────────────────────────────
+#
+# The table answers a question the source asks and does not answer: an identity stated in the
+# variant's `name` and in none of its identifier columns. Its whole safety property is that a curated
+# answer is keyed to the name it was an answer *to*, so these tests are mostly about the three states
+# a curated row can land in rather than about the coordinates, which are data.
+
+
+def _fixture_rows(path):
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        return reader.fieldnames, list(reader)
+
+
+def _rebuild_with_variant_edit(tmp_path, variant_id, **edits):
+    """Rebuild the fixture with one variant row edited — the only way to reach `superseded`/`stale`."""
+    fields, rows = _fixture_rows(VARIANTS)
+    for row in rows:
+        if row["variant_id"] == str(variant_id):
+            row.update(edits)
+    out = tmp_path / "VariantSummaries.tsv"
+    with out.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fields, delimiter="\t", lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(rows)
+    return build_snapshot(EVIDENCE, out, PROFILES, tmp_path / "snap", release="01-Aug-2026")
+
+
+def test_a_curated_identity_places_a_row_the_source_alone_could_not(built):
+    """3184 carries no rsID, no GRCh38 accession and no CAID, and is placed anyway."""
+    frame = pl.read_parquet(built.parquet_file)
+    row = frame.filter(pl.col("variant_id") == 3184)
+    assert row.height == 1
+    curated = CIVIC_NAME_IDENTITY_BY_VARIANT[3184]
+    assert row["identity_derivation"][0] == CURATED_DERIVATION
+    assert (row["chrom"][0], row["start"][0], row["ref"][0], row["alt"][0]) == (
+        curated.chrom, curated.start, curated.ref, curated.alt
+    )
+    assert row["rsid"][0] == curated.rsid
+
+
+def test_the_curated_class_is_named_rather_than_folded_into_the_published_ones(built):
+    """A consumer must be able to exclude hand-read identities without re-deriving which they are."""
+    assert CURATED_DERIVATION in CIVIC_IDENTITY_DERIVATIONS
+    assert CURATED_DERIVATION not in {"rsid", "grch38_hgvs", "both", "caid"}
+    assert built.identity_derivations[CURATED_DERIVATION] >= 1
+
+
+def test_the_registrys_findings_never_enter_civics_own_column(built):
+    """`allele_registry_id` is CIViC's verbatim cell, empty for every curated row by definition.
+
+    The CAIDs the probe recovered are provenance on the curated table, not the source's statement.
+    Writing them into this column would publish a finding as if the source had made it.
+    """
+    frame = pl.read_parquet(built.parquet_file)
+    curated = frame.filter(pl.col("identity_derivation") == CURATED_DERIVATION)
+    assert curated.height >= 1
+    assert curated["allele_registry_id"].null_count() == curated.height
+
+
+def test_a_renamed_variant_withholds_its_curated_answer_rather_than_applying_it(tmp_path):
+    """The answer was an answer to a name. Change the name and the answer stands down."""
+    result = _rebuild_with_variant_edit(tmp_path, 3184, variant="V62Cfs*5 (c.180delG)")
+    assert result.curated_identities["renamed"] == 1
+    assert result.curated_identities["applied"] == 0
+    assert result.dropped["unresolvable_identity"] >= 1
+    frame = pl.read_parquet(result.parquet_file)
+    assert frame.filter(pl.col("variant_id") == 3184).height == 0
+
+
+def test_an_identity_civic_now_publishes_supersedes_the_curated_one(tmp_path):
+    """The source outranks this table, and a supersession is the cheapest currency signal there is."""
+    result = _rebuild_with_variant_edit(tmp_path, 3184, variant_aliases="rs730882037")
+    assert result.curated_identities["superseded"] == 1
+    assert result.curated_identities["applied"] == 0
+    frame = pl.read_parquet(result.parquet_file)
+    row = frame.filter(pl.col("variant_id") == 3184)
+    assert row["identity_derivation"][0] == "rsid"
+
+
+def test_the_curated_table_closes_as_an_equality_over_its_own_rows(built):
+    """Every curated row lands in exactly one state, and the states account for the whole table.
+
+    The fixture is a slice, so most rows are `absent` — which is the point of separating `absent`
+    from `renamed`: over a slice absence says nothing, and folding the two would make a partial input
+    indistinguishable from an upstream re-curation.
+    """
+    assert set(built.curated_identities) == set(CIVIC_CURATION_STATES)
+    assert sum(built.curated_identities.values()) == len(CIVIC_NAME_IDENTITIES)
+    assert built.curated_identities["renamed"] == 0
+    assert built.curated_identities["absent"] == len(CIVIC_NAME_IDENTITIES) - 1
+
+
+def test_a_curated_state_added_without_a_counter_is_refused():
+    """The guard is reachable directly, so proving it does not need a contrived build."""
+    with pytest.raises(CivicBuildError, match="does not close"):
+        assert_curation_closes(dict.fromkeys(CIVIC_CURATION_STATES, 0))
+
+
+def test_every_curated_row_is_a_representable_variant_row():
+    """Walked over the table, not sampled. `ref == alt` is why TP53 4968 is not in it."""
+    for row in CIVIC_NAME_IDENTITIES:
+        assert row.ref and row.alt and row.ref != row.alt, row
+        assert row.chrom and row.start > 0, row
+        assert row.name.strip() == row.name and row.name, row
+    assert len({row.variant_id for row in CIVIC_NAME_IDENTITIES}) == len(CIVIC_NAME_IDENTITIES)
+
+
+def test_the_curated_table_is_never_consulted_where_the_source_speaks(built):
+    """Applied + superseded + stale is the whole table, and applied rows are exactly the placed ones."""
+    frame = pl.read_parquet(built.parquet_file)
+    placed = frame.filter(pl.col("identity_derivation") == CURATED_DERIVATION)
+    assert placed["variant_id"].n_unique() == built.curated_identities["applied"]
+
+
+def test_release_json_publishes_what_became_of_every_curated_row(built):
+    payload = json.loads((built.out_dir / RELEASE_FILENAME).read_text())
+    assert set(payload["curated_identities"]) == set(CIVIC_CURATION_STATES)
+    assert sum(payload["curated_identities"].values()) == len(CIVIC_NAME_IDENTITIES)
+    assert payload["identity_derivations"][CURATED_DERIVATION] >= 1

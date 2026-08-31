@@ -59,6 +59,12 @@ from pathlib import Path
 import httpx
 from just_dna_format.normalize import now_utc_iso
 
+from just_dna_enricher.civic_identities import (
+    CIVIC_CURATION_STATES,
+    CIVIC_NAME_IDENTITY_BY_VARIANT,
+    CURATED_DERIVATION,
+    CivicNameIdentity,
+)
 from just_dna_enricher.locations import (
     RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
@@ -109,7 +115,14 @@ CIVIC_BULK_STATUS = "accepted"
 #:                 route. Kept rather than dropped because dropping it here would make the recovery
 #:                 invisible to every later pass — 99 of the 152 otherwise-unplaceable variants carry
 #:                 one, and 64 of those resolve.
-CIVIC_IDENTITY_DERIVATIONS: frozenset[str] = frozenset({"rsid", "grch38_hgvs", "both", "caid"})
+#: `curated_name` — CIViC published the identity in the variant's **name** and in none of its
+#:                 identifier columns, and it was read out by hand. A distinct member rather than
+#:                 folding into `rsid`/`grch38_hgvs`, because those two mean "the source stated this
+#:                 in the column for it" and a consumer must be able to exclude the difference
+#:                 without re-deriving it. See `civic_identities`.
+CIVIC_IDENTITY_DERIVATIONS: frozenset[str] = frozenset(
+    {"rsid", "grch38_hgvs", "both", "caid", CURATED_DERIVATION}
+)
 
 #: Why a source evidence row produced no output row. Walked rather than restated, so
 #: `input_rows == record_count + sum(dropped.values())` is an equality over it and a new reason
@@ -228,6 +241,10 @@ class CivicBuildResult:
     record_count: int
     #: Keyed by `CIVIC_DROP_REASONS`, every member present so a zero is a measured zero.
     dropped: dict[str, int] = field(default_factory=dict)
+    #: What became of each curated identity, keyed by `CIVIC_CURATION_STATES` with every member
+    #: present. Counted per **variant**, not per row: the table is keyed by variant id, so a variant
+    #: carrying three evidence rows is one application. The three sum to the table's length.
+    curated_identities: dict[str, int] = field(default_factory=dict)
     #: `identity_derivation` → rows carrying it. Every member of `CIVIC_IDENTITY_DERIVATIONS` present.
     identity_derivations: dict[str, int] = field(default_factory=dict)
     #: Distinct CIViC variant ids in the output.
@@ -444,6 +461,7 @@ def build_snapshot(
 
     dropped = dict.fromkeys(CIVIC_DROP_REASONS, 0)
     identity_derivations = dict.fromkeys(sorted(CIVIC_IDENTITY_DERIVATIONS), 0)
+    curated = _classify_curated(variants)
     records: list[dict[str, object]] = []
     unparsable_hgvs = 0
     withheld_direction = 0
@@ -475,11 +493,18 @@ def build_snapshot(
             unparsable_hgvs += 1
         caid = (variant.get("allele_registry_id") or "").strip()
         caid = caid if caid and caid != "unregistered" else ""
-        if not rsids and coords is None and not caid:
+        # The curated table is consulted only where the source itself says nothing, and only on an
+        # exact name match. Both halves matter: `applied` below is the same predicate `_classify_
+        # curated` counts with, so the registry closes, and a row CIViC has since filled never
+        # reaches here at all.
+        curated_row = _curated_for(variant) if not rsids and coords is None and not caid else None
+        if not rsids and coords is None and not caid and curated_row is None:
             dropped["unresolvable_identity"] += 1
             continue
 
-        if rsids and coords is not None:
+        if curated_row is not None:
+            derivation = CURATED_DERIVATION
+        elif rsids and coords is not None:
             derivation = "both"
         elif rsids:
             derivation = "rsid"
@@ -494,7 +519,13 @@ def build_snapshot(
         if direction is None:
             withheld_direction += 1
 
-        chrom, start, ref, alt = coords if coords is not None else (None, None, None, None)
+        if curated_row is not None:
+            chrom, start, ref, alt = (
+                curated_row.chrom, curated_row.start, curated_row.ref, curated_row.alt
+            )
+            rsids = [curated_row.rsid] if curated_row.rsid else rsids
+        else:
+            chrom, start, ref, alt = coords if coords is not None else (None, None, None, None)
         records.append(
             {
                 "chrom": chrom,
@@ -524,6 +555,7 @@ def build_snapshot(
         )
 
     assert_registry_closes(len(evidence), len(records), dropped)
+    assert_curation_closes(curated)
 
     records.sort(key=_sort_key)
     out_dir = Path(out_dir)
@@ -546,6 +578,7 @@ def build_snapshot(
         record_count=len(records),
         dropped=dropped,
         identity_derivations=identity_derivations,
+        curated_identities=curated,
         variants=len({int(r["variant_id"]) for r in records}),
         withheld_direction=withheld_direction,
         contested_variants=sum(1 for v in camps.values() if len(v) > 1),
@@ -593,6 +626,70 @@ def _write_license(out_dir: Path) -> Path:
     path = Path(out_dir) / SNAPSHOT_LICENSE_FILENAME
     path.write_text(CIVIC_LICENSE_TEXT, encoding="utf-8")
     return path
+
+
+def _curated_for(variant: dict[str, str]) -> CivicNameIdentity | None:
+    """The curated identity for this variant, or `None` — matched on the id **and** the exact name.
+
+    The name guard is the whole safety property (`civic_identities`): a curated answer was an answer
+    to a name, so it must not outlive it. Matched verbatim rather than normalized, because a curator
+    editing `N150fs (c.448delA)` into anything at all is a signal that the record moved.
+    """
+    row = CIVIC_NAME_IDENTITY_BY_VARIANT.get(int(variant["variant_id"]))
+    if row is None or (variant.get("variant") or "") != row.name:
+        return None
+    return row
+
+
+def _curated_superseded(variant: dict[str, str]) -> bool:
+    """True when CIViC now publishes an identity of its own for this variant.
+
+    The source always outranks the curated table, so this is checked before a curated row is used.
+    Derived from the same three parsers the build places rows with, never restated beside them.
+    """
+    return bool(
+        variant_rsids(variant)
+        or parse_grch38_substitution(variant.get("hgvs_descriptions"))
+        or ((variant.get("allele_registry_id") or "").strip() not in ("", "unregistered"))
+    )
+
+
+def _classify_curated(variants: list[dict[str, str]]) -> dict[str, int]:
+    """Every curated row's state in this release, keyed by `CIVIC_CURATION_STATES`.
+
+    Walked over the table rather than counted as placements happen, because the interesting states
+    are the two where **nothing** is placed: a curated row CIViC has since filled in for itself, and
+    one whose variant or name has gone. Counting only applications would report those two as the same
+    zero (`@unreachable-not-absent`).
+    """
+    by_id = {
+        int(v["variant_id"]): v for v in variants if (v.get("variant_id") or "").strip().isdigit()
+    }
+    states = dict.fromkeys(CIVIC_CURATION_STATES, 0)
+    for row in CIVIC_NAME_IDENTITY_BY_VARIANT.values():
+        variant = by_id.get(row.variant_id)
+        if variant is None:
+            states["absent"] += 1
+        elif (variant.get("variant") or "") != row.name:
+            states["renamed"] += 1
+        else:
+            states["superseded" if _curated_superseded(variant) else "applied"] += 1
+    return states
+
+
+def assert_curation_closes(states: dict[str, int]) -> None:
+    """Each curated row landed in exactly one state, and the states account for the whole table.
+
+    The same equality-over-a-walked-set the drop registry gets (`@registry-completeness`). A build
+    that quietly stopped consulting the table would otherwise look identical to one where every row
+    happened to be superseded.
+    """
+    total = sum(states.values())
+    if total != len(CIVIC_NAME_IDENTITY_BY_VARIANT):
+        raise CivicBuildError(
+            f"the curated identity table does not close: {len(CIVIC_NAME_IDENTITY_BY_VARIANT)} rows, "
+            f"{total} accounted for across {sorted(states)} (`@registry-completeness`)."
+        )
 
 
 def assert_registry_closes(input_rows: int, kept: int, dropped: dict[str, int]) -> None:
@@ -695,6 +792,7 @@ def _write_release_json(out_dir: Path, result: CivicBuildResult, *, release: str
         "record_count": result.record_count,
         "dropped": result.dropped,
         "identity_derivations": result.identity_derivations,
+        "curated_identities": result.curated_identities,
         "variants": result.variants,
         "withheld_direction": result.withheld_direction,
         "contested_variants": result.contested_variants,
@@ -708,7 +806,11 @@ def _write_release_json(out_dir: Path, result: CivicBuildResult, *, release: str
             "API defaults to NON_REJECTED and serves roughly 2.35x as many evidence items, so a "
             "count here is not comparable with one taken from the API. Coordinates are GRCh38, "
             "derived from the RefSeq accessions CIViC publishes; CIViC's own coordinates are GRCh37 "
-            "and are carried only as provenance. Nothing here may enter resolution.csv."
+            "and are carried only as provenance. Rows marked identity_derivation='curated_name' "
+            "are placed from an identity CIViC states in the variant's name and in none of its "
+            "identifier columns, read out by hand: the procedure is docs/probes/"
+            "CIVIC_IDENTITY_PROTOCOL.md and the per-variant evidence docs/probes/"
+            "CIVIC_UNRESOLVED.md. Nothing here may enter resolution.csv."
         ),
         "built_at": now_utc_iso(),
         "builder_version": _builder_version(),

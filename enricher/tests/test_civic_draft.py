@@ -390,3 +390,45 @@ def test_an_unreadable_anchor_withholds_the_row_and_names_the_reason(spec, snaps
     assert result.withheld["caid_no_identity"] == 0, "the registry answered; only the anchor failed"
     assert any("withheld rather than guessed" in w for w in result.warnings)
     assert result.accounts_for_every_candidate()
+
+
+def test_a_curated_identity_drafts_like_a_published_one(spec, snapshot):
+    """The curated class must reach `variants.csv`, not fall into a withheld bucket.
+
+    Variant 3184 carries no identifier CIViC publishes and is placed from the curated name table, so
+    this is the whole curated path end to end: build reads the table, drafter writes the row.
+    """
+    result = draft_panel_from_civic(spec, snapshot=snapshot)
+    assert result.accounts_for_every_candidate()
+    rows = _rows(spec / "variants.csv")
+    drafted = [r for r in rows if r.get("rsid") == "rs730882037"]
+    assert len(drafted) == 1, "the curated row did not reach variants.csv"
+    assert drafted[0]["direction"] == "risk"
+
+
+def test_every_identity_derivation_arrives_placed_or_is_the_one_the_drafter_dispatches_on(snapshot):
+    """An equality over the vocabulary, not a spot check on the member that happened to be added.
+
+    The drafter special-cases exactly one member — `caid`, which carries a *route* to an identity
+    rather than an identity — and lets every other fall through to the placed path. That is correct
+    only while every other member really does arrive placed. A new member arriving unplaced would
+    fall through silently and draft a row with no coordinate
+    (`@lookup-with-a-default-hides-a-new-member`), so the property is checked over the vocabulary
+    rather than over the member someone remembered to add a case for.
+    """
+    import polars as pl
+    from just_dna_enricher.civic_build import CIVIC_IDENTITY_DERIVATIONS, CIVIC_PARQUET
+    from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
+
+    frame = pl.read_parquet(snapshot / SNAPSHOT_DATA_DIRNAME / CIVIC_PARQUET)
+    present = set(frame["identity_derivation"].unique().to_list())
+    assert present <= CIVIC_IDENTITY_DERIVATIONS
+    for derivation in sorted(present):
+        rows = frame.filter(pl.col("identity_derivation") == derivation)
+        placed = rows.filter(pl.col("rsid").is_not_null() | pl.col("chrom").is_not_null())
+        if derivation == "caid":
+            assert placed.height == 0, "a caid row states a route, never a position"
+        else:
+            assert placed.height == rows.height, (
+                f"{derivation} rows reach the drafter's placed path but are not placed"
+            )
