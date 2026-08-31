@@ -44,6 +44,27 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
+- **RM150 — `direction` gains `contested`; `unknown` stops meaning two things.**
+  *(`just-dna-format`; **additive** — a new member on an existing vocabulary. Nothing re-points, so no
+  published module changes meaning and nothing drifts.)* `unknown` had been carrying both *nobody
+  assessed the sign* and *the sources disagree about it* — an absence and a finding — and RM148's own
+  field description said so without giving a consumer any way to tell them apart. **`unknown` keeps
+  its original meaning**, because re-pointing a shipped member would silently change what every
+  published module already says by it; `contested` is added beside it, using the word this workspace
+  already uses one table over (`clin_sig_concordance.csv`).
+
+  This is the shade RM148 could not fold into a pair. An unestablished sign is still a sign, so
+  *evidence that does not exclude either direction* is `direction=<sign>` +
+  `stat_significance=not_significant` and needs no member — but no pairing of the two axes says *two
+  sources disagree about the sign*.
+
+  **Upgrading a legacy module is unchanged.** `_STATE_TO_DIRECTION` deliberately gains nothing: no
+  legacy `state` value means *contested*, so only an author writing `direction` directly can produce
+  it. `stat_significance` gains nothing either — a disputed sign is not a disputed strength.
+  `contested` projects to `state=neutral` through `trimmed_state()`, like `unknown`, and that entry is
+  **explicit**: the map is read with a default, so a member missing from it projects silently rather
+  than failing, and the guard is now an equality over the walked vocabulary.
+
 - **RM108 — a re-curation is recognised, and currency is derived rather than marked.**
   *(all three packages; **additive** — one new manifest field and two new warning codes. No column
   changed, so `gene_validity.signature` does not move and no module recompiles to new bytes.)*

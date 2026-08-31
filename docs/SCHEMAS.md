@@ -2632,7 +2632,7 @@ makes that visible without reading the parquet.
 
 **`effect_direction` is not `direction`.** It is the Catalog's `betaDirection` — which way the effect
 allele moves the *measured trait* — while `VariantRow.direction` is a clinical judgement
-(protective|risk|neutral|unknown). Increasing HDL and increasing LDL are both `increase`; one field
+(protective|risk|neutral|unknown|contested). Increasing HDL and increasing LDL are both `increase`; one field
 carrying both axes is the Principle 5 overloading `state` is being unwound for.
 
 **A null `effect_allele` is a fact, not a gap.** The Catalog writes `rs4149056-?` when a study never

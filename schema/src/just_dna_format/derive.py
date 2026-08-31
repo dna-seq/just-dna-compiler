@@ -14,6 +14,10 @@ applying it to an already-derived value is a no-op (CONSTITUTION Principle 7). S
 
 
 # The "Upgrade derivation" mapping (docs/COMPILER.md): legacy `state` → (direction, stat_significance).
+# **Deliberately gains no `contested` entry, and the asymmetry with `_DIRECTION_TO_STATE` is correct**
+# (RM150). The two maps look like they should mirror, and they do not: no legacy `state` value means
+# *the sources disagree about the sign*, so there is nothing to map FROM. A module upgraded off the
+# legacy column can never produce `contested`; only an author writing `direction` directly can.
 _STATE_TO_DIRECTION: dict[str, str] = {
     "protective": "protective",
     "risk": "risk",
@@ -30,12 +34,30 @@ _STATE_TO_STAT_SIGNIFICANCE: dict[str, str] = {
     "alt": "unknown",
     "ref": "unknown",
 }
-# The trimmed legacy set an upgraded module emits: `unknown` collapses to `neutral`.
+# The trimmed legacy set an upgraded module emits: everything without a legacy spelling collapses to
+# `neutral`.
+#
+# **Every member of `vocab.VALID_DIRECTIONS` must have an explicit entry here, and that is a rule
+# rather than a convention** (RM150). `trimmed_state` reads this with `.get(direction, "neutral")` — a
+# default, not a lookup that raises — so a direction missing from this map does not fail, it silently
+# projects to `neutral`. Measured before `contested` was added: `trimmed_state("contested")` already
+# returned `"neutral"`, and so does `trimmed_state("total nonsense")`. Adding a member to the
+# vocabulary and stopping there therefore ships a module whose `upgraded()` emits a wrong legacy
+# `state` with nothing failing anywhere.
+#
+# That is why the guard is a **registry-iterating equality** over the walked set
+# (`set(_DIRECTION_TO_STATE) == VALID_DIRECTIONS`) and not a spot check: a test asserting
+# `trimmed_state("contested") == "neutral"` passes today, before the member exists, and proves
+# nothing. The default stays for input that is not a direction at all.
 _DIRECTION_TO_STATE: dict[str, str] = {
     "protective": "protective",
     "risk": "risk",
     "neutral": "neutral",
     "unknown": "neutral",
+    # `contested` collapses to `neutral` too, and the projection is right once it is EXPLICIT: the
+    # legacy set has no member meaning "the sources disagree about the sign", and `neutral` is where
+    # `unknown` already lands. Lossy, like every projection into the trimmed set.
+    "contested": "neutral",
 }
 
 
@@ -59,8 +81,12 @@ def stat_significance_from_state(state: str) -> str:
 
 
 def trimmed_state(direction: str) -> str:
-    """Project a `direction` back into the trimmed legacy `state` set {protective, risk, neutral}
-    (`unknown` → `neutral`). This is the derived, deprecated `state` an upgraded module emits."""
+    """Project a `direction` back into the trimmed legacy `state` set {protective, risk, neutral}.
+
+    `unknown` and `contested` both collapse to `neutral` — the legacy set has no member for either.
+    This is the derived, deprecated `state` an upgraded module emits. See `_DIRECTION_TO_STATE` for
+    why every vocabulary member needs an explicit entry there rather than relying on the default.
+    """
     return _DIRECTION_TO_STATE.get(direction, "neutral")
 
 

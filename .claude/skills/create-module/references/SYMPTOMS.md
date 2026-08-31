@@ -50,9 +50,19 @@ Identity is filled whole or not at all. Either give the complete coordinate or u
 lone `alts` on a position-only row would make the key a VRS allele id instead of `chrom:start:ref`,
 silently changing which variant the row is.
 
-**`direction must be one of ['neutral', 'protective', 'risk', 'unknown'], got: 'increase'`**
+**`direction must be one of ['contested', 'neutral', 'protective', 'risk', 'unknown'], got: 'increase'`**
 `direction` is not a magnitude — it is the same axis as `state`. Every closed vocabulary is printed by
 `just-dna-compiler describe <kind>`; do not write one from intuition.
+
+Two of those five are easy to confuse, and picking the wrong one records a different claim.
+**`unknown` is an absence** — nobody assessed which way the effect runs. **`contested` is a finding** —
+you consulted the sources and they disagree about the sign. Write `contested` only when you have
+actually seen the disagreement; `unknown` is the honest default.
+
+**A third case is neither, and it is the common one**: a real sign the evidence does not establish.
+That is not a `direction` value at all — write the sign you have and let
+`stat_significance: not_significant` (or `suggestive`) say how far to lean on it. Writing `unknown`
+there discards the direction the paper reports.
 
 **`state='risk' but weight=1.0 > 0`** — a **warning**, so it still compiles
 The sign convention is inverted from the one you probably assumed. `weight` contributes to a

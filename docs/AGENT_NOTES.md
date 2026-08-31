@@ -2050,6 +2050,22 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   cosmetic: float64 goes subnormal below ~1e-308 and is flatly `0.0` below ~5e-324, so a single float
   column would render a panel's strongest association as its weakest.
 
+- `@lookup-with-a-default-hides-a-new-member` — **A `.get(x, default)` over a vocabulary makes the map
+  the FIRST edit when the vocabulary grows, not a follow-up (RM150).**
+  `derive.trimmed_state` projects a `direction` into the legacy `state` set through
+  `_DIRECTION_TO_STATE.get(direction, "neutral")`. Measured before `contested` was added:
+  `trimmed_state("contested")` already returned `"neutral"` — and so does
+  `trimmed_state("a string that is not a direction")`. So adding a member to `VALID_DIRECTIONS` and
+  stopping there ships a module whose `upgraded()` emits a wrong legacy `state` with nothing failing
+  anywhere. **The consequence for the test is the sharp part**: an assertion on the *output*
+  (`trimmed_state("contested") == "neutral"`) passes against the unfixed code and measures nothing, so
+  the guard has to be an **equality over the walked set** — `set(_DIRECTION_TO_STATE) ==
+  VALID_DIRECTIONS` (`@registry-completeness`). Generalize: when a vocabulary gains a member, grep for
+  every `.get(` and `dict[...]` keyed on it and ask which ones default rather than raise; those are
+  the ones that will be wrong silently. And the mirror map may legitimately gain **nothing** — no
+  legacy `state` means *the sources disagree about the sign*, so `_STATE_TO_DIRECTION` is asymmetric
+  on purpose and says so at the site, because the asymmetry invites a "fix".
+
 - `@currency-cannot-be-a-column` — **A marker for "this row was superseded" cannot be STORED in a
   merge-not-clobber file, and RM108 is the worked example.** ClinGen's `assertion_id` embeds the
   curation timestamp, so a re-curated assertion arrives under a new id, misses `_merge_key` and is

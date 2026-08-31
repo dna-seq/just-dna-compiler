@@ -491,8 +491,14 @@ each row before hashing and the two spellings are one content. Writing a shared 
   Getting the sign backwards is a warning, not an error, so it compiles — check it rather than trusting
   a green run.
 - **`direction` is not a magnitude.** Its members are the same axis as `state`
-  (`neutral`/`protective`/`risk`/`unknown`), not `increase`/`decrease`. Ask
+  (`neutral`/`protective`/`risk`/`unknown`/`contested`), not `increase`/`decrease`. Ask
   `just-dna-compiler describe variants.csv` before writing any vocabulary cell from intuition.
+- **`unknown` and `contested` are different answers, and the third case is neither.** `unknown` is an
+  absence — nobody assessed the sign. `contested` is a finding — you read the sources and they
+  disagree about which way the effect runs, so write it only when you have seen the disagreement. A
+  real sign the evidence does not *establish* is neither: write the sign and let `stat_significance`
+  (`not_significant`, `suggestive`) carry how far to lean on it. Writing `unknown` there throws away
+  the direction the paper reports.
 - **`direction` is authored or it is empty — nothing computes it for you.** `state` is the required
   legacy axis and `direction`/`stat_significance`/`clin_sig` are the orthogonal ones that replaced it;
   the compiler copies whatever you wrote into the artifact and never fills a blank from `state`, since

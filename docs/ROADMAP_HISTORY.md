@@ -44,6 +44,70 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM150 — `unknown` was carrying an absence and a finding, and `contested` takes the second
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format`). **Severity** low-medium ·
+**Owner** format (schema) · **Motivating case** [S83](CONSUMER_SUGGESTIONS_HISTORY.md)
+(just-module-creator), the residue RM148 did not take · **Taken into 0.7 by the maintainer** on the
+grounds that there was no sense postponing it — it was filed to `ROADMAP_0_8.md` earlier the same day
+and moved here without its shape changing.
+
+### The shade RM148 left
+
+The reporter said `direction`'s `unknown` covers three things: *no evidence*, *conflicting evidence*,
+and *evidence that does not exclude either direction*. RM148 removed the third by **reassignment** —
+an unestablished sign is still a sign, so that state is the pair `direction=<sign>` +
+`stat_significance=not_significant`, and a member for it would have been a second spelling. That
+reasoning holds and is not reopened.
+
+It does not reach the first two, and RM148's own field description said so out loud — *"not assessed,
+or the sources conflict"* — while adding nothing that told a consumer which. **They are not one thing:
+one is an absence and the other is a finding.** The reply to S83 asserted the two were "one thing
+(nothing to record)", and that was our assertion rather than the reporter's concession.
+
+### The decision, and why the member is earned here where it was refused there
+
+`contested` is added and **`unknown` keeps its original meaning**. Both halves are load-bearing.
+Re-pointing a shipped member at the narrower sense would silently change what every published module
+already says by it — a retype in everything but name, and Principle 3 territory; adding beside it is
+minor-legal. The name is the workspace's own word for the same idea one table over
+(`clin_sig_concordance.csv` is one row per *contested* subject, and `clin_sig_concordance_contested`
+is an existing warning code), so coining a synonym would be the drift
+`@one-normalizer-two-spellings` records.
+
+The cost that made RM148 refuse a member — a wire vocabulary gains one — is paid here because this
+shade is genuinely **not expressible as a pair**: no combination of `direction` and
+`stat_significance` says *two sources disagree about the sign*.
+
+### The trap, and it is why the map was the first edit rather than a follow-up
+
+`trimmed_state()` projects a `direction` back into the legacy `state` set through
+`_DIRECTION_TO_STATE.get(direction, "neutral")` — **a `.get` with a default, not a lookup that
+raises**. Measured before anything was changed: `trimmed_state("contested")` already returned
+`"neutral"`, and so does `trimmed_state("a string that is not a direction")`. So adding `contested` to
+`VALID_DIRECTIONS` and stopping there ships a module whose `upgraded()` silently emits the wrong
+legacy `state`, with nothing failing anywhere.
+
+The map entry therefore went in first, and the guard is a **registry-iterating equality** —
+`set(_DIRECTION_TO_STATE) == VALID_DIRECTIONS`, walked. A test asserting
+`trimmed_state("contested") == "neutral"` would have passed against the unfixed code and measured
+nothing; the assertion has to be about the map's *coverage*, not its output, and the test says so with
+the demonstration beside it. `contested → neutral` is the right projection once it is **explicit**:
+the legacy set has no member for it, and `neutral` is where `unknown` already lands.
+
+### What it deliberately did not touch
+
+* **`_STATE_TO_DIRECTION` gains nothing.** The two maps look like they should mirror and do not: no
+  legacy `state` value means *the sources disagree about the sign*, so there is nothing to map from. A
+  module upgraded off the legacy column can never produce `contested`; only an author writing
+  `direction` directly can. Commented at the site, because it invites a "fix".
+* **`stat_significance` gains nothing.** Two sources disagreeing about the *sign* is not two sources
+  disagreeing about the *strength*, so the two vocabularies' intersection is still exactly `unknown` —
+  asserted, so a later member has to face the question deliberately.
+* **Nothing re-points, so nothing drifts.** `upgraded()` stays idempotent and `needs_upgrade` does not
+  start reporting existing `unknown` rows, which is the half that makes this an addition rather than a
+  retype.
+
 ## RM108 — a re-curation is recognised, and currency is DERIVED rather than marked
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format` + `just-dna-compiler` +

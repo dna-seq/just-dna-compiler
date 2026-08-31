@@ -386,12 +386,19 @@ def test_the_two_columns_stay_independent_vocabularies() -> None:
     spelling of `stat_significance`'s job — P5's overloading arriving as a synonym. Asserted as
     disjointness over the walked sets rather than by naming members, so a future addition to either
     side has to face the question deliberately.
+
+    `contested` (RM150) is what facing it deliberately looks like: it went to `direction` only,
+    because two sources disagreeing about the *sign* is not two sources disagreeing about the
+    *strength*, and the intersection below is unchanged by it.
     """
     from just_dna_format.vocab import VALID_DIRECTIONS, VALID_SIGNIFICANCE
 
-    assert {"protective", "risk", "neutral", "unknown"} == VALID_DIRECTIONS
+    assert {"protective", "risk", "neutral", "unknown", "contested"} == VALID_DIRECTIONS
     assert {"significant", "suggestive", "not_significant", "unknown"} == VALID_SIGNIFICANCE
     # `unknown` is the one shared member, and it means the same thing on both: nothing to record.
+    # `contested` (RM150) is deliberately NOT shared: "the sources disagree about the SIGN" is a
+    # statement about `direction` alone, and `stat_significance` has no matching sense — a disputed
+    # p-value is not the same claim. This assertion is what makes that stay true.
     assert {"unknown"} == VALID_DIRECTIONS & VALID_SIGNIFICANCE
 
 

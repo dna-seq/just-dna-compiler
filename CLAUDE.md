@@ -300,6 +300,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - An authored column is three touch points; the reverse half is really two, and the row dict fails silently. `@three-touch-points`
 - Derived-not-stored is the pattern for a convenience number. `@derived-not-stored`
 - Before adding a column to a merge-not-clobber sidecar, ask which run writes it. `@currency-cannot-be-a-column`
+- A vocabulary read through `.get(x, default)` makes the map the first edit, and the guard an equality. `@lookup-with-a-default-hides-a-new-member`
 - Store a source's value verbatim except when the encoding lies about its own order. `@verbatim-except-order`
 - The 0.3 axes are a passthrough — never fill `direction` from `state` at compile. `@axes-passthrough`
 - `annotations.parquet` carries **and keys on** `genotype`. `@annotations-keys-genotype`

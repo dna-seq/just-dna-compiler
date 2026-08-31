@@ -23,7 +23,29 @@ from just_dna_format.alleles import (
 
 # ── Orthogonal axis vocabularies (the 0.3 split out of the overloaded `state`) ──────────────────
 # Effect direction — the clean phenotypic scalar. Orthogonal to `clin_sig` and `stat_significance`.
-VALID_DIRECTIONS: frozenset[str] = frozenset({"protective", "risk", "neutral", "unknown"})
+#
+# **`unknown` and `contested` are two different answers, and separating them is RM150.** `unknown` is
+# an *absence* — nobody assessed the sign. `contested` is a *finding* — the sources were consulted and
+# they disagree about which way the effect runs. Until 0.7 `unknown` carried both, and its own field
+# description said so out loud without giving a consumer any way to tell which.
+#
+# `unknown` keeps its original meaning rather than being narrowed to the first sense, and that is a
+# Principle 3 decision: re-pointing a shipped member would silently change what every published module
+# already says by it — a retype in everything but name. Adding beside it is minor-legal.
+#
+# `contested` is the workspace's own word for this idea one table over (`clin_sig_concordance.csv` is
+# one row per *contested* subject, and `clin_sig_concordance_contested` is an existing warning code),
+# so coining a synonym would be the drift `@one-normalizer-two-spellings` records.
+#
+# **A third shade does NOT live here**: evidence that does not exclude either direction is the pair
+# `direction=<sign>` + `stat_significance=not_significant`, because an unestablished sign is still a
+# sign (RM148). A member for that would be a second spelling of a state the model can already express.
+#
+# Adding a member obliges an explicit entry in `derive._DIRECTION_TO_STATE` — see the rule stated
+# there, and the test that walks this set against it.
+VALID_DIRECTIONS: frozenset[str] = frozenset(
+    {"protective", "risk", "neutral", "unknown", "contested"}
+)
 # Graduated statistical significance (named `stat_significance`, NOT `significance` — that is the
 # clinical axis).
 VALID_SIGNIFICANCE: frozenset[str] = frozenset(

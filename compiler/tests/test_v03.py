@@ -109,7 +109,11 @@ def test_invalid_vocab_rejected(field: str, bad: str) -> None:
 
 def test_vocab_constants_are_the_contract() -> None:
     # Guard the enum sets so a silent vocab change is caught.
-    assert {"protective", "risk", "neutral", "unknown"} == VALID_DIRECTIONS
+    # `contested` joined in 0.7 (RM150): `unknown` had been carrying both *nobody assessed the sign*
+    # and *the sources disagree about it*, which are an absence and a finding. `unknown` keeps its
+    # original meaning — re-pointing a shipped member would be a retype in all but name — so this is
+    # an addition beside it, and the member obliges an explicit `derive._DIRECTION_TO_STATE` entry.
+    assert {"protective", "risk", "neutral", "unknown", "contested"} == VALID_DIRECTIONS
     assert {"significant", "suggestive", "not_significant", "unknown"} == VALID_SIGNIFICANCE
     assert {"pathogenic", "likely_pathogenic", "uncertain_significance", "benign"} <= VALID_CLIN_SIG
     assert {"conditional", "phased", "pleiotropic"} == RESERVED_FLAGS

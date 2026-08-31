@@ -609,14 +609,23 @@ class VariantRow(AuthoredModel):
     # `stat_significance=suggestive|not_significant`, and a member meaning "looked, no sign
     # established" would be a second spelling of it — P5's overloading, arriving as a synonym rather
     # than as a conflation.
+    #
+    # **That reasoning covered one of the reporter's three shades, and RM150 took a second.** The
+    # other two — *nobody asked* and *the sources disagree* — are not one thing, and this description
+    # used to say `unknown` meant both. One is an absence and the other is a finding, and no pairing
+    # of `direction` with `stat_significance` can express "two sources disagree about the sign", which
+    # is why this shade earned a member where the third did not. `unknown` keeps its original meaning
+    # (re-pointing a shipped member is a retype in all but name), and `contested` is added beside it.
     direction: str | None = Field(
         default=None,
         description=(
-            "Effect direction: one of protective|risk|neutral|unknown. The sign of the reported "
-            "estimate, whether or not it is established — a non-significant or borderline trend "
-            "still has a direction, and `stat_significance` is what says how far to lean on it. "
-            "`unknown` means no sign to record (not assessed, or the sources conflict), never a sign "
-            "you may not act on. Orthogonal to `state`, which predates both."
+            "Effect direction: one of protective|risk|neutral|unknown|contested. The sign of the "
+            "reported estimate, whether or not it is established — a non-significant or borderline "
+            "trend still has a direction, and `stat_significance` is what says how far to lean on "
+            "it. **`unknown` and `contested` are different answers**: `unknown` is an absence, "
+            "nobody assessed the sign; `contested` is a finding, the sources were consulted and they "
+            "disagree about which way the effect runs. Neither is a sign you may not act on. "
+            "Orthogonal to `state`, which predates both."
         ),
     )
     stat_significance: str | None = Field(
