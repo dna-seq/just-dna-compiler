@@ -3,7 +3,7 @@
 **Probed** 2026-08-31 against `https://civicdb.org/api/graphql`, the public GraphQL API. No key, no
 authentication, no rate-limit headers observed. **Licence** CC0 1.0 Universal for the content (the MIT
 licence covers their application source, not the data) — so `redistribution` and `commercial_use` are
-both permitted and `licensing.py`'s existing `cc0` entry already spells it.
+both permitted and `licensing.py`'s existing `cc0` entry already spells it. It asks nothing in return — no share-alike, no bar on sale, attribution requested rather than required — which is what distinguishes it from the several sources here that also permit redistribution.
 
 **This is evidence, never contract** — the standing rule for everything under `docs/probes/`. Nothing
 here is a decision. The decisions live in [ROADMAP.md § RM152](../ROADMAP.md) and in the

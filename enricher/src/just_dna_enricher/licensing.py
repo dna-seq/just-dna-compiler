@@ -409,6 +409,33 @@ PUBMIND_TERMS = SourceTerms(
     redistribution=None,
 )
 
+# CIViC is CC0 1.0 for the content — a public-domain dedication, so all three axes are permissive and
+# none of them is inferred. What is distinctive is not that it may be redistributed (ClinVar, Ensembl,
+# gnomAD, ClinGen and GenCC may too) but that it asks **nothing** in return: no share-alike, no bar on
+# sale, and attribution requested rather than required. Among the sources with a snapshot builder it
+# is the opposite pole from PubMind, whose terms are unstated on every axis and whose publish refuses.
+#
+# **The MIT licence in CIViC's own sentence is not this.** Their FAQ names two licences in one breath
+# — CC0 for the content, MIT for the application source — and reading the MIT half as the data terms
+# would attach a licence to bytes it does not cover. The content is the half a snapshot redistributes.
+CIVIC_TERMS = SourceTerms(
+    source="civic",
+    license="CC0-1.0",
+    license_url="https://civicdb.org/faq",
+    attribution=(
+        "CIViC (Clinical Interpretation of Variants in Cancer), civicdb.org — "
+        "CC0 1.0 Universal. Attribution is requested by the project, not required by the licence."
+    ),
+    notice=(
+        "CC0 1.0 Universal public-domain dedication; no restriction on sale or redistribution. "
+        "Attribution is a courtesy the project asks for and this workspace records anyway."
+    ),
+    share_alike=False,
+    commercial_use=True,
+    redistribution=True,
+)
+
+
 
 TERMS_BY_SOURCE: dict[str, SourceTerms] = {
     terms.source: terms
@@ -423,6 +450,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         GNOMAD_TERMS,
         GWAS_CATALOG_TERMS,
         PUBMIND_TERMS,
+        CIVIC_TERMS,
     )
 }
 

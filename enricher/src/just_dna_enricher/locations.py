@@ -107,6 +107,12 @@ PHARMVAR_SUBDIR: str = "pharmvar"
 #: refuse rather than being absent for somebody to helpfully add.
 PUBMIND_SUBDIR: str = "pubmind"
 
+#: CIViC's cache is operator-built like the two above, and for neither of their reasons — its content
+#: is CC0, so nothing bars publishing it. What it lacks is a *published* snapshot to download, because
+#: this workspace has not built one; the builder and the resolver pair up exactly as the others do,
+#: and adding an `ensure_civic_snapshot` later needs no permission, only a repo.
+CIVIC_SUBDIR: str = "civic"
+
 
 def read_release(reference: Path) -> dict | None:
     """A snapshot's `release.json` as a dict, or `None` when it is absent or unreadable.
@@ -354,6 +360,26 @@ def resolve_pharmvar_reference(
     return _resolve_parquet_cache(
         pharmvar_cache, "JUST_DNA_PHARMVAR_CACHE",
         default_pharmvar_cache_dir(load_dotenv_file=load_dotenv_file),
+        load_dotenv_file=load_dotenv_file,
+    )
+
+
+def default_civic_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    """The `<base>/civic` directory — operator-built for now (see `CIVIC_SUBDIR`)."""
+    return _cache_dir(CIVIC_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
+def resolve_civic_reference(
+    civic_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate an operator-built CIViC snapshot (`$JUST_DNA_CIVIC_CACHE`).
+
+    `None` when there is none, and the drafter reads that as nobody-asked rather than as an empty
+    source (`@unreachable-not-absent`). Build one with `civic build --release <date>`.
+    """
+    return _resolve_parquet_cache(
+        civic_cache, "JUST_DNA_CIVIC_CACHE",
+        default_civic_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
 

@@ -1655,6 +1655,110 @@ def pharmvar_build_(
 
 # ── the PubMind snapshot (build only; publish exists in order to refuse) — RM134 § A ────────────
 
+civic_app = typer.Typer(
+    add_completion=False,
+    help=(
+        "Build the CIViC snapshot from a dated bulk release. CC0, so unlike the PubMind snapshot "
+        "this one may be published."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(civic_app, name="civic")
+
+
+@civic_app.command("build")
+def civic_build_(
+    release: str | None = typer.Option(
+        None, "--release",
+        help=(
+            "Dated CIViC release to download, e.g. 01-Aug-2026. A DATED release, never the nightly: "
+            "a snapshot that cannot name its input is one nothing can reproduce."
+        ),
+    ),
+    evidence: Path | None = typer.Option(
+        None, "--evidence", exists=True, dir_okay=False,
+        help="Local ClinicalEvidenceSummaries.tsv. Use instead of --release to build offline.",
+    ),
+    variants: Path | None = typer.Option(
+        None, "--variants", exists=True, dir_okay=False,
+        help="Local VariantSummaries.tsv.",
+    ),
+    profiles: Path | None = typer.Option(
+        None, "--profiles", exists=True, dir_okay=False,
+        help="Local MolecularProfileSummaries.tsv.",
+    ),
+    out: Path = typer.Option(
+        Path("civic"), "--out", file_okay=False,
+        help="Output snapshot directory (writes data/civic.parquet + release.json).",
+    ),
+) -> None:
+    """Reduce a dated CIViC release to the parquet snapshot the direction-axis drafter reads.
+
+    **The bulk release, not the GraphQL API, and the two are not interchangeable.** Every row of
+    `ClinicalEvidenceSummaries.tsv` is status `accepted`; the API defaults to `NON_REJECTED` and
+    serves roughly 2.35x as many evidence items. A snapshot has to be reproducible from a pinned
+    input and only the download side is dated, so this reads the TSVs and records the basis in
+    `release.json`.
+
+    **There is no `--use` flag.** CIViC is CC0 on every axis, so a declared-use gate would permit
+    every build unconditionally, and a flag feeding a gate that never gates is a flag that does
+    nothing (`@acquisition-gate-is-not-a-read-gate`).
+    """
+    from just_dna_enricher.civic_build import (
+        CIVIC_EVIDENCE_FILE,
+        CIVIC_PROFILE_FILE,
+        CIVIC_VARIANT_FILE,
+        build_snapshot,
+        civic_release_url,
+        download_civic_file,
+    )
+
+    local = (evidence, variants, profiles)
+    if release is None and not all(local):
+        raise typer.BadParameter(
+            "pass --release to download a dated release, or all three of --evidence, --variants "
+            "and --profiles to build from local files. Two of the three is not a build: the "
+            "evidence file carries the claims, the variant file the identities, and the profile "
+            "file is what tells a combination genotype from a dangling reference."
+        )
+    shas: dict[str, str | None] = {}
+    if all(local):
+        evidence_path, variant_path, profile_path = local
+    else:
+        out.mkdir(parents=True, exist_ok=True)
+        paths = []
+        for filename in (CIVIC_EVIDENCE_FILE, CIVIC_VARIANT_FILE, CIVIC_PROFILE_FILE):
+            got = download_civic_file(out / filename, civic_release_url(release, filename))
+            shas[filename] = got.sha256
+            paths.append(got.path)
+        evidence_path, variant_path, profile_path = paths
+
+    result = build_snapshot(
+        evidence_path, variant_path, profile_path, out,
+        release=release,
+        evidence_sha256=shas.get(CIVIC_EVIDENCE_FILE),
+        variant_sha256=shas.get(CIVIC_VARIANT_FILE),
+        profile_sha256=shas.get(CIVIC_PROFILE_FILE),
+    )
+    typer.echo(f"Wrote {result.parquet_file} ({result.record_count} rows, {result.variants} variants)")
+    typer.echo(f"  dataset: {result.dataset or 'unknown (no --release named)'}")
+    typer.echo(f"  read {result.input_rows} evidence rows; dropped:")
+    for reason, count in result.dropped.items():
+        typer.echo(f"    {reason:24s} {count}")
+    typer.echo(f"  identity: {result.identity_derivations}")
+    if result.withheld_direction:
+        typer.echo(
+            f"  {result.withheld_direction} row(s) kept with no direction: the source refuted a "
+            f"claim rather than making one, and a refutation is not the opposite claim."
+        )
+    if result.dropped["unresolvable_identity"]:
+        typer.echo(
+            f"  {result.dropped['unresolvable_identity']} row(s) dropped for carrying neither an "
+            f"rsID nor a GRCh38 accession; {result.unresolvable_with_caid} of those variants do "
+            f"carry a ClinGen CAID, so they stay addressable by a later identity pass."
+        )
+
+
 pubmind_app = typer.Typer(
     add_completion=False,
     help=(
