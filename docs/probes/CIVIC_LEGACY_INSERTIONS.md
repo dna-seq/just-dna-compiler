@@ -286,7 +286,8 @@ That is why it was missed, and it is not an oversight in the search. The snapsho
 dated bulk TSV, which is **`accepted`-only**; a `SUBMITTED` item exists in the API and in no file the
 builder reads. So this record is a worked instance of the survey's open item 4 — reading `SUBMITTED`
 items — with something concrete at stake rather than a doubled row count: **the one free-fulltext lead
-that could settle a withheld identity lives outside the status basis the snapshot uses.**
+that could settle a withheld identity lives outside the status basis the snapshot uses.** That is
+filed as **RM160**, which carries the sizing and the three shapes an API read could take.
 
 PMID 12202531 is already in the corpus by another door, as the source for CIViC 2046
 (`VHL V155L (c.463G>C)`), which resolved. Whether its Table 3 pins the numbering convention is

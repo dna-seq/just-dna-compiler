@@ -770,7 +770,8 @@ remaining registry rows and took recovery to **237/290 = 82%**.
    builder reads. Unlike the two Hum Mutat papers the accepted item cites, it is **free full text**,
    so it is the only reachable lead on that record. The status basis is not only a denominator
    question; here it hides the evidence that could settle an identity. Working in
-   [CIVIC_LEGACY_INSERTIONS](CIVIC_LEGACY_INSERTIONS.md).
+   [CIVIC_LEGACY_INSERTIONS](CIVIC_LEGACY_INSERTIONS.md), and **filed as RM160** on the strength of
+   it — open, with the reproducibility bargain stated as options rather than decided.
 
 **Deliberately not worth doing, each closed on a measurement rather than an opinion:**
 

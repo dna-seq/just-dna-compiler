@@ -289,6 +289,72 @@ The trackers further down are the other live part of this file: the reserved-nam
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
 
+## RM160 — the CIViC snapshot reads the reviewed quarter of its source and says so nowhere a reader acts on
+
+**Severity** medium · **Status** open — **worth doing** (maintainer, 2026-09-01); the design question
+is which reproducibility bargain to take · **Owner** enricher · **Motivating case** the 2026-09-01
+residue round, variant 1955 ([CIVIC_LEGACY_INSERTIONS](probes/CIVIC_LEGACY_INSERTIONS.md) §7.4)
+
+`civic build` reads the dated bulk TSV release, and **every row in it is `evidence_status = accepted`**.
+CIViC's own GraphQL API defaults to `NON_REJECTED` and serves 11,518 evidence items against the bulk
+file's 4,903 — a 2.35× difference between two published faces of one database, declared by neither.
+`SUBMITTED` (a curator entered it, no editor signed off) is **the majority of CIViC**: 6,614 of 11,518.
+
+The snapshot records `status_basis: "accepted"` in `release.json`, so the basis is not hidden. What is
+missing is any sense that the choice **costs** something, and there is now a worked instance where it
+costs more than rows.
+
+### The instance, because a doubled row count was never the argument
+
+Variant 1955 (`VHL P71fs (c.211insT)`) is one of two records in the whole corpus that nothing
+resolves: a legacy insertion notation with two readings, both registered as real and different
+alleles, and no discriminator anywhere. Its accepted evidence item cites Olschwang 1998, paywalled and
+not in PMC. Ong 2007, behind the sibling record 2131, likewise.
+
+Queried directly, `evidenceItems(variantId: 1955, status: ALL)` returns **two** items. The second,
+EID 9969, cites PMID 12202531 — Dollfus 2002, **free full text**, whose Table 3 states the numbering
+convention the whole ambiguity turns on. It is `SUBMITTED`, so it exists in the API and in **no file
+the builder reads**.
+
+So the basis does not merely shrink the corpus. Here it hides the only reachable evidence that could
+settle an identity the snapshot is currently unable to state — and it hid it from a probe that had
+already gone looking, because the probe read the file the builder reads.
+
+### What is already measured, so nobody re-derives it
+
+- Reading `SUBMITTED` roughly **doubles** the corpus and moves **every** number in
+  [CIVIC_SURVEY](probes/CIVIC_SURVEY.md).
+- It takes the **contested-variant count from 0 to 3** (variants 2161, 2428, 2533, all VHL, all
+  `risk` against `not_risk`). Under `accepted` the count is 0 because both sides of every contest are
+  `SUBMITTED`.
+- Genuine `risk`-vs-`protective` opposition stays **0** at every basis, so this does not reopen the
+  concordance route (that is closed on arithmetic, not on volume).
+- The direction slice is 533 rows on the accepted basis and 925 `SUBMITTED` against 533 `ACCEPTED`
+  over the wider germline direction set.
+
+### The design question, stated as options rather than settled
+
+**The API has no dated release.** That is the whole tension: `civic build` is byte-reproducible
+because its input is a pinned dated file pair, and `civic reproduce` proves it by building twice. An
+API read has nothing to pin. Three shapes, none chosen:
+
+1. **Snapshot the API response** with a retrieval timestamp and hash it as an input, the way the
+   download files are hashed. Reproducible against *that capture*, not against CIViC.
+2. **A second parquet beside the accepted one**, built from the API, with its own `status_basis` and
+   its own provenance — so the reproducible artifact stays reproducible and the wider one is
+   separately labelled. Costs a consumer a decision it did not previously have.
+3. **Leave the build alone and read `SUBMITTED` at `enrich` time**, beside the CAID pass, where
+   network reads already live and reproducibility is not claimed. Narrowest, and it does not enlarge
+   the published snapshot — which may be the point or may be the missing half.
+
+**Whatever shape is taken, `status` belongs on the row as `confidence` with `confidence_unit`,
+unconverted** — CIViC's own instrument, named rather than translated into a house grade.
+`ClinSigAuthorityCallRow` already requires a magnitude to name its instrument, and this is that.
+An `accepted` row and a `submitted` row must not be indistinguishable once both are in the file.
+
+**Related** RM152 (the adoption), RM159 (the name-identity table, whose two unresolved records are the
+motivating case), RM153.
+
 ## RM7 — Evaluation-output / report-card schema
 
 **Severity** — · **Status** **not format scope** — a consumer contract · **Owner** consumer
