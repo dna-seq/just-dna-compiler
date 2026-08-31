@@ -44,6 +44,52 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
+- **RM147 — a source read by hand that yields no row had nowhere to go, and the home already existed.**
+  *(`just-dna-format`; documentation and a test — no behaviour changed.)* Filed and answered on
+  2026-08-31 from a consumer report (S82), which asked for a view rather than proposing a shape.
+
+  An agent read five literature services by hand to confirm the papers behind two rows and recorded it
+  as five `licensing.csv` rows at `layer=literature`. The reporter removed them on our own two rules —
+  a literature source's terms are per **article** (RM46), and a pass that put no row in a table records
+  no source (RM142) — and measured that they bought no enforcement. Then asked the real question: after
+  removal, nothing anywhere records that a human went and looked.
+
+  **The home already exists.** A `literature.csv` row no study, bin or pharm row cites is kept in the
+  CSV and dropped from the artifact with `literature_row_uncited`, shipped in RM79 for a citation the
+  author deleted — and it is the same shape for the opposite case, a paper read that did not become a
+  row. It is structured and checked, it **cannot make a licence claim**, and it is about the *paper*,
+  which is the thing consulted; a service is only how the author reached it.
+
+  **Consumers:** nothing changed. `LiteratureRow`'s docstring now says this is that case's home and why
+  the licensing table is not, and a test authors the reported shape — two articles, one cited and one
+  not, green `--strict`, the uncited one named, and no `licensing.csv` at all, because nothing is owed
+  for reading an abstract.
+
+- **RM148 — `direction` and `stat_significance` are one pair, and the description did not say so.**
+  *(`just-dna-format`.)* Filed and built on 2026-08-31 from a consumer report (S83), an hour after S80
+  was accepted and in the same spirit.
+
+  Two runs of a byte-identical prompt, same model and paper, wrote different values for one variant on
+  one body of evidence: `risk`/`suggestive` against `unknown`/`not_significant`, both green. The
+  evidence was two cohorts trending the same way at p ≈ 0.073, combined OR 3.58 with a CI of 0.96–13.4
+  at 28.4% power — and both readings were defensible against a description that named the four members
+  and said only *orthogonal to `state`*.
+
+  **Not a vocabulary gap.** `direction` records the sign of the reported estimate; `stat_significance`
+  records how far to lean on it; and the orthogonality is itself the answer to *is a sign you cannot
+  lean on still a sign* — yes, because the other column says you cannot lean on it. The state the
+  report wanted a member for is already the **pair**, `direction=risk` + `stat_significance=
+  not_significant`, which authors and validates today.
+
+  The description now carries that reading and bounds `unknown`: *no sign to record* — not assessed, or
+  the sources conflict — **never a sign you may not act on**. Writing `unknown` for a weak trend
+  discards the sign the paper reports and leaves `stat_significance` speaking about nothing.
+
+  **Consumers:** one description string, so anything rendering `model_fields` picks it up. No member
+  added — a *looked, no sign established* member would be a second spelling of the pair, which is
+  Principle 5's overloading arriving as a synonym, and permanent under P3. A test asserts the two
+  vocabularies stay disjoint but for `unknown`.
+
 - **RM144 — the licence-disagreement warning printed the remainder as though it were the whole set.**
   *(`just-dna-compiler`.)* Filed and built on 2026-08-31 from a consumer report (S79).
 

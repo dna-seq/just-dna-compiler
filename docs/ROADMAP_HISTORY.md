@@ -44,6 +44,130 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM147 — a source read by hand that yields no row had nowhere to go, and the home already existed
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format`, documentation only — no
+behaviour changed). **Severity** low-medium · **Owner** format · **Motivating case**
+[S82](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator)
+
+### The question
+
+An agent read five literature services by hand — Crossref, Europe PMC, OpenAlex, PubMed, Unpaywall —
+to find and confirm the papers behind two rows, and recorded that as five `licensing.csv` rows at
+`layer=literature`. The reporter removed them, correctly, on our own two rules: a literature source's
+terms are per **article** and live on `LiteratureRow` (RM46), and a pass that put no row in a table
+records no source (S77/RM142). They measured that the rows bought no enforcement — identical verdicts
+and warnings with and without them, since literature-layer rows are exempt from the orphan check.
+
+Then they asked the real question: **after removal there is no trace anywhere** that a human went and
+looked, and found the second paper the module's whole claim rests on. They offered three readings and
+were attached to none.
+
+### The answer: reading (2), and the home is already built
+
+Their reading (2) was *"it belongs in `logs/`, and nothing writes it"*. Close, and the file is
+`literature.csv` rather than a log. A row no study, bin or pharm row cites is **kept in the CSV and
+dropped from the artifact** with `literature_row_uncited` — shipped since RM79 for the case of a
+citation the author deleted, and the same shape answers the opposite case exactly: a paper that was
+read and did not become a row.
+
+That gives the consultation the three properties the report wanted and a log would not have. It is
+**structured** — a `pmid`, a `doi`, an `exists` verdict, checked by the same pass that checks a cited
+one. It **cannot make a licence claim**, which is what made the original rows wrong. And it is
+**about the paper**, which is the thing that was actually consulted; a service is only how the author
+reached it, and it is the paper that carries terms.
+
+The compiler dropping the row from the artifact is right rather than a loss: nothing in the module
+joins to it, and the CSV is where the author's own record lives.
+
+### Documented rather than built, and that is the whole change
+
+Nothing in the code moved. `LiteratureRow`'s docstring now says the uncited row is this case's home
+and why the licensing table is not, and a test authors the reported shape end to end: two articles,
+one cited and one not, a green `--strict` compile, `literature_row_uncited` naming the unused one, and
+**no `licensing.csv` at all** — because nothing is owed for reading an abstract.
+
+### The readings not taken
+
+- **(1), "it should not be recorded."** Their straight application of S77, and the near miss. S77 is
+  about *obligations*: a source that contributed nothing creates none. It is not a rule that the
+  looking is uninteresting — and the looking is a fact about a paper, which this format already has a
+  table for. Answering (1) would have made human search effort invisible by a rule that was never
+  about visibility.
+- **(3), a new `layer` member or a boolean meaning "consulted, contributed nothing".** The reporter
+  was least confident in this and named the reason themselves: a row meaning *no obligation*, sitting
+  in the obligations table, re-opens the check-that-cannot-fail shape S77 had just closed. Agreed, and
+  it is worse than they said — `VALID_SOURCE_LAYERS` is a wire vocabulary, so the member would be
+  permanent under P3 for a fact that has a home already.
+- **Keeping the rows as they were.** Their own rejected candidate, and their argument is the one to
+  keep: a `pubmed,literature` row with blank permission booleans sits one column from a false
+  all-clear for text quoted out of a `cc by-nc-nd` paper.
+- **A `logs/` writer.** Their (2) read literally. The transport exists, but a log line is unstructured,
+  unchecked and unqueryable, and would have made us specify a line format that publishes. The typed
+  row is strictly better and needed no new surface.
+
+### Charter check
+
+P3/P8/P9 — a docstring and a test; no field, no vocabulary member, no behaviour, and zero cost on the
+authored layer. Measured: nothing in the corpus changes, so the 0.7.0 release record is unaffected.
+
+## RM148 — `direction` and `stat_significance` are one pair, and the description did not say so
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format`). **Severity** low-medium ·
+**Owner** format · **Motivating case** [S83](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator)
+
+### The measurement
+
+Two runs of a byte-identical prompt, same model, same paper, authoring `rs117385980` for a longevity
+module. Both green through every gate, and they wrote **different values in `direction`** for the same
+variant on the same evidence: `risk`/`suggestive` against `unknown`/`not_significant`.
+
+The evidence: two cohorts trending the same way, p ≈ 0.074 and 0.073, combined OR 3.58 with a 95% CI
+of 0.96–13.4 — the interval contains 1 — at 28.4% power. Filed in the same spirit as S80, an hour
+after that one was accepted.
+
+### The answer: not a vocabulary gap, and the reason is the orthogonality itself
+
+The reporter's reading (1), which they identified as the cheap one and which is also the correct one.
+`direction` records the **sign of the reported estimate**; `stat_significance` records **how far to
+lean on it**. They are orthogonal by design — the split RM145 just finished unwinding out of `state` —
+and orthogonality is precisely the answer to *is a sign you cannot lean on still a sign*: yes, because
+the other column is what says you cannot lean on it.
+
+**The state they wanted a member for already exists as the pair.** `direction=risk` +
+`stat_significance=not_significant` is exactly *a real trend the evidence does not establish*, and it
+authors and validates today — asserted by a test that constructs their row rather than arguing about
+it.
+
+**Writing `unknown` there is the lossy choice**, which is the half the old description left an author
+to work out. It discards the sign the paper reports and leaves `stat_significance` making a statement
+about nothing. So the description now bounds `unknown`: *no sign to record* — not assessed, or the
+sources conflict — **never a sign you may not act on**.
+
+### Why no new member
+
+Their reading (2) — a member meaning *looked, and the evidence does not establish a sign* — is the one
+they could most easily imagine and did not push for. It would be a **second spelling of the pair**,
+which is Principle 5's overloading arriving as a synonym rather than as a conflation: two ways to say
+one thing, with consumers splitting on which they read. It is also a wire vocabulary change touching
+every consumer, permanent under P3, for a state that is already expressible.
+
+A test asserts the two vocabularies stay disjoint but for `unknown`, over the walked sets rather than
+by naming members, so a future addition to either has to face this deliberately.
+
+### What the fix is
+
+One description string, the RM145 mechanism the reporter explicitly cites — it reaches `describe`,
+`requirements`, `reference` and any consumer rendering `model_fields`, and it would have settled their
+two runs. Their own interim repair (say which value you chose and why in `conclusion`) stays good
+practice for a genuinely contested row; it is no longer the only thing standing between two agents and
+a coin flip.
+
+### Charter check
+
+P3/P8 — a description string; no member added or removed, nothing invalidated. P5 — the fix *is* that
+principle, stated where an author reads it. Measured: no reference example moves anything.
+
 ## RM144 — the licence-disagreement warning printed the remainder as though it were the whole set
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-compiler`). **Severity** medium ·

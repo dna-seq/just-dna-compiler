@@ -450,6 +450,50 @@ def test_a_regex_counts_as_an_authored_locator_here_too() -> None:
     )
 
 
+def test_an_article_read_and_not_used_is_an_uncited_row_and_no_source_obligation(tmp_path: Path) -> None:
+    """A paper someone looked at and built nothing from has a home, and it is not `licensing.csv` (S82).
+
+    Reported as five `licensing.csv` rows at `layer=literature` — Crossref, Europe PMC, OpenAlex,
+    PubMed, Unpaywall — each saying no article text was taken. Wrong home twice: a literature source's
+    terms are per **article** (RM46), and a pass contributing no row records no source (RM142).
+
+    The right home already exists and is asserted here: the row stays in `literature.csv`, the compile
+    is green, and `literature_row_uncited` names it — which is the trace the reporter said was missing
+    everywhere. Nothing is owed to `sources.csv` for reading an abstract, so the module carries no
+    licensing sidecar at all and still compiles.
+    """
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    (spec / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
+    (spec / "variants.csv").write_text(
+        "rsid,gene,genotype,weight,state,conclusion\nrs1800562,HFE,A/A,1.0,risk,c\n",
+        encoding="utf-8",
+    )
+    (spec / "studies.csv").write_text(f"rsid,pmid\nrs1800562,{_PMID}\n", encoding="utf-8")
+    # Two articles: the one a study row cites, and one that was read and yielded nothing.
+    (spec / "literature.csv").write_text(
+        "pmid,exists\n"
+        f"{_PMID},true\n"
+        "16199547,true\n",
+        encoding="utf-8",
+    )
+    (spec / "resolution.csv").write_text(
+        "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status\n"
+        "rs1800562,rs1800562,6,26092913,G,A,GRCh38,0,authored,resolved\n",
+        encoding="utf-8",
+    )
+
+    compiled = compile_module(spec, tmp_path / "out", strict=True)
+
+    assert compiled.success, compiled.errors
+    uncited = [w for w in compiled.warnings if "no study, bin or pharm row in" in w]
+    assert len(uncited) == 1 and "16199547" in uncited[0]
+    # The row is kept where the author wrote it — that is the record of the looking.
+    assert "16199547" in (spec / "literature.csv").read_text(encoding="utf-8")
+    # And nothing is owed to the licensing table for having consulted a service.
+    assert not (spec / "licensing.csv").exists()
+
+
 def test_a_bin_only_citation_carries_a_denominator_of_zero_rather_than_being_skipped() -> None:
     """A bin cites but cannot quote, so its literature row is current at zero and must not warn.
 

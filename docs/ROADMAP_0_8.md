@@ -396,6 +396,64 @@ provider can write the coordinate under the build it came from, and there is not
 strip. A behaviour fixed before RM15 lands is one RM15 would have to undo, which is the strongest single
 argument for leaving this at a warning.
 
+# Specification form — the ambiguity the prose costs
+
+## RM149 — expected behaviour lives in prose, and the prose is where two readers split
+
+**Severity** medium · **Status** open — **a minor, release undecided; asked by the maintainer
+2026-08-31** · **Owner** format + compiler (the test corpus) · **Found by** running the consumer loop
+
+**The ask, verbatim in intent:** express our described scenarios as Gherkin, because the freeform prose
+in expected-behaviour descriptions is producing ambiguities faster than it resolves them.
+
+**The evidence for it is this repo's own recent record**, which is what makes this an item rather than a
+preference. Three consumer reports in one week were **two readers splitting on one sentence**, none of
+them a code defect:
+
+- **S80** — `state`'s six members printed as peers; an agent chose a retired one honestly.
+- **S83** — two runs of a byte-identical prompt wrote `risk` and `unknown` for one variant on one body
+  of evidence, both green, both defensible against the field description.
+- **S79** — a warning's text read as *your declaration is unsupported* when it meant *not universal*.
+
+Each was answered by writing a better sentence. That is three fixes to prose in a week, and the pattern
+says the next one is already in flight somewhere.
+
+### What is actually being asked
+
+Not a testing framework — the suite is not the problem, and a `pytest`-to-`behave` migration would be
+motion rather than progress. The gap is that a **scenario** — *given a module with a partial
+`resolution.csv`, when `validate --strict` runs, then it refuses with the compile's own error* — exists
+today as a docstring, a test name, and a paragraph in `COMPILER.md`, and those three can drift from
+each other and from the code. A structured form is one statement, and the natural home is a
+`.feature`-shaped corpus each side is derived from or checked against.
+
+### Open questions this needs decided before it can be built
+
+- **What is the source of truth.** Gherkin generated *from* the tests is documentation that cannot
+  drift; tests generated *from* Gherkin makes the feature files the contract and every existing test a
+  migration. These are opposite projects with the same output, and the ask does not say which.
+- **What is in scope.** Every check the compiler runs is ~140 warning codes plus a mode ladder. The
+  release-gate scenarios, the tri-state outcomes and the parity rules are the parts where ambiguity has
+  actually cost something; the round-trip fixed points are already pinned by assertion and would gain
+  nothing from prose.
+- **Where it lives.** A `features/` tree at the root, per-package, or inside `docs/`. That decides
+  whether it ships to consumers — and if it does, it becomes a published surface under P3, which is a
+  much larger commitment than an internal one.
+- **What it costs the next contributor.** A second dialect to learn beside the docstring convention
+  this repo already leans on heavily, and every new check owing a `.feature` clause. That is the P9
+  question one layer up: this is a *maintenance* surface, not an authored one, and it is not free.
+
+### Why it is filed rather than started
+
+The three reports above were each fixed by naming what the rule is, and the fix was one string. A
+scenario corpus is worth building when the *cost of ambiguity* exceeds the cost of the corpus, and the
+measurement that would show that has not been taken — this entry is where it goes when it is. What is
+not in doubt is the direction: the recurring failure is real and repeatedly measured, and it is filed
+here so the next instance lands against a number rather than as a fourth anecdote.
+
+**Not to be confused with** the `/create-module` skill's authoring guidance, which is a different
+document for a different reader and stays prose. This is about *our* stated behaviour, not an author's.
+
 # The lifecycle items — what writing down the second pass surfaced
 
 Filed on **2026-08-16** out of [MODULE_LIFECYCLE.md](MODULE_LIFECYCLE.md), which mapped a module from

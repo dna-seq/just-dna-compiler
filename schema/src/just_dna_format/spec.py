@@ -587,9 +587,31 @@ class VariantRow(AuthoredModel):
     method: str | None = Field(default=None, description="Annotation method override")
 
     # ── 0.3 additive columns (all optional; shipped in 0.3 — see docs/CHANGELOG.md) ──
+    # **The two axes are orthogonal, and the description now says what that means for a weak trend
+    # (S83).** Two runs of one prompt over one paper split `risk`/`unknown` on a concordant
+    # non-significant trend (p ≈ 0.073, OR 3.58, CI 0.96–13.4), and both were defensible against the
+    # old text, which named the members and said only *orthogonal to `state`* — the reader's question
+    # is whether a sign you cannot lean on is still a sign, and orthogonality is precisely the answer:
+    # yes, because `stat_significance` is the column that says whether to lean on it.
+    #
+    # **`unknown` means no sign to record, never a sign you may not act on.** Left unsaid, `unknown`
+    # absorbs *the estimate does not exclude either direction*, and then the pair cannot express the
+    # ordinary case it exists for — a real trend that is not established. Writing `unknown` there
+    # discards the sign the paper reports and leaves `stat_significance` saying it about nothing.
+    #
+    # No new member: the state the reporter wanted is already the **pair** `direction=<sign>` +
+    # `stat_significance=suggestive|not_significant`, and a member meaning "looked, no sign
+    # established" would be a second spelling of it — P5's overloading, arriving as a synonym rather
+    # than as a conflation.
     direction: str | None = Field(
         default=None,
-        description="Effect direction: one of protective|risk|neutral|unknown. Orthogonal to `state`.",
+        description=(
+            "Effect direction: one of protective|risk|neutral|unknown. The sign of the reported "
+            "estimate, whether or not it is established — a non-significant or borderline trend "
+            "still has a direction, and `stat_significance` is what says how far to lean on it. "
+            "`unknown` means no sign to record (not assessed, or the sources conflict), never a sign "
+            "you may not act on. Orthogonal to `state`, which predates both."
+        ),
     )
     stat_significance: str | None = Field(
         default=None,

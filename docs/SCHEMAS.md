@@ -407,6 +407,16 @@ Only the load-bearing fields are listed; read the model for the full set and val
 
 **`VariantRow` → `variants.csv`.** Required `genotype`, `state`, `conclusion`.
 
+**`direction` and `stat_significance` are one pair, and the description says what that means
+(RM148).** `direction` is the sign of the reported estimate — a non-significant or borderline trend
+still has one — and `stat_significance` is how far to lean on it. `unknown` on `direction` means *no
+sign to record* (not assessed, or the sources conflict), never *a sign you may not act on*: writing it
+for a weak trend discards the sign the paper reports and leaves `stat_significance` speaking about
+nothing. Two runs of one prompt over one paper split `risk` against `unknown` on exactly that, both
+green and both defensible against the older text. There is deliberately **no** member meaning *looked,
+and no sign established* — that state is the pair itself, and a member for it would be a second
+spelling, which is P5's overloading arriving as a synonym rather than as a conflation.
+
 **`state`'s six members do not have equal standing, and since 0.7 the field description says so
 (RM145).** `risk`/`protective`/`neutral` are current. `significant` is a significance claim rather than
 a direction — write `stat_significance`. `alt`/`ref` are genotype descriptors carrying no direction at
@@ -1220,6 +1230,16 @@ Eight siblings of `resolution.csv` at eight different grains — `frequency.Freq
 facts rather than annotation: injected, hashed by facts, and compiled into their own optional
 parquets. All are standalone `BaseModel`s with `extra="forbid"`, for the same reason `ResolutionRow`
 is.
+
+**An article read and not used belongs in `literature.csv`, uncited (RM147).** A row no study, bin
+or pharm row cites is kept in the CSV and dropped from the artifact with `literature_row_uncited` —
+shipped for a citation the author deleted, and the same shape answers the opposite case: a paper
+someone went and looked at that did not become a row. That record is structured, checked by the same
+pass as a cited one, and **cannot make a licence claim**. It is deliberately *not* a `sources.csv` row:
+a literature source's terms are per **article** and live on the literature row (RM46), a pass that
+contributed nothing records no source (RM142), and the consultation is a fact about the paper rather
+than about the service the author reached it through. Nothing is owed to the licensing table for
+reading an abstract.
 
 All but two are machine-produced and human-*overridable* through `overrides.csv`. `sources.csv` is
 machine-produced and human-**authored**, because a source a curator read by hand has no pass to write

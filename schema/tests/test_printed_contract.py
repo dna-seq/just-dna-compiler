@@ -353,3 +353,68 @@ def test_no_shipped_example_uses_a_superseded_member() -> None:
     printed = VariantRow.model_fields["state"].description or ""
     # And every value the corpus does use is on the current side of the printed split.
     assert used <= set(re.findall(r"[a-z_]+", printed.split("Superseded", 1)[0]))
+
+
+# ── `direction` and `stat_significance` are one pair, and the description says so (S83) ─────────
+
+
+def test_the_direction_description_says_a_weak_trend_still_has_a_sign() -> None:
+    """Two runs of one prompt split `risk`/`unknown` on a concordant non-significant trend (S83).
+
+    The old text named the four members and said only *orthogonal to `state`*. Both readings were
+    defensible against it, which is the definition of a description that does not settle the question
+    an author is actually asking: is a sign you cannot lean on still a sign?
+
+    Asserted as *the pair is named together*, not as an exact sentence — a test keyed on the prose
+    passes for a rewrite that drops the half doing the work.
+    """
+    from just_dna_format.spec import VariantRow
+
+    printed = VariantRow.model_fields["direction"].description or ""
+
+    # The reading: the sign is recorded regardless, and the other column carries the confidence.
+    assert "stat_significance" in printed
+    assert "established" in printed
+    # And `unknown` is bounded, since absorbing "not established" is what made the two runs equal.
+    assert "unknown" in printed
+
+
+def test_the_two_columns_stay_independent_vocabularies() -> None:
+    """The behaviour behind the prose: neither vocabulary borrows a member from the other.
+
+    If `direction` ever gained a member meaning *looked, no sign established*, it would be a second
+    spelling of `stat_significance`'s job — P5's overloading arriving as a synonym. Asserted as
+    disjointness over the walked sets rather than by naming members, so a future addition to either
+    side has to face the question deliberately.
+    """
+    from just_dna_format.vocab import VALID_DIRECTIONS, VALID_SIGNIFICANCE
+
+    assert {"protective", "risk", "neutral", "unknown"} == VALID_DIRECTIONS
+    assert {"significant", "suggestive", "not_significant", "unknown"} == VALID_SIGNIFICANCE
+    # `unknown` is the one shared member, and it means the same thing on both: nothing to record.
+    assert {"unknown"} == VALID_DIRECTIONS & VALID_SIGNIFICANCE
+
+
+def test_the_reported_pair_is_expressible_without_a_new_member() -> None:
+    """The reporter's case, authored: a real sign the evidence does not establish.
+
+    `direction=risk` with `stat_significance=not_significant` is the state they wanted a member for,
+    and it already validates — which is the answer to the ask. Round-tripped through the model rather
+    than asserted about it, so the claim is that the pair is *authorable*, not merely that both
+    vocabularies contain the words.
+    """
+    from just_dna_format.spec import VariantRow
+
+    row = VariantRow(
+        rsid="rs117385980",
+        genotype="C/T",
+        state="risk",
+        conclusion="T allele depleted among the longest-lived; interval contains the null",
+        direction="risk",
+        stat_significance="not_significant",
+        effect_size=3.58,
+        effect_measure="OR",
+    )
+    assert (row.direction, row.stat_significance) == ("risk", "not_significant")
+    # And the counter-direction has its own home, which is why the row is not self-contradictory.
+    assert "negatives" in VariantRow.model_fields

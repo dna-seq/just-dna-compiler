@@ -83,6 +83,19 @@ class LiteratureRow(BaseModel):
     Standalone (not an `AuthoredModel`) for the same reason `ResolutionRow`/`FrequencyRow`/
     `GeneMetricsRow` are — a machine-produced reference fact rather than an authored annotation — with
     `extra="forbid"` so a typo'd column is caught rather than silently dropped.
+
+    **An article that was read and not used belongs here too, uncited (S82).** A row no study, bin or
+    pharm row names is kept in this CSV and dropped from the artifact with `literature_row_uncited` —
+    which reads as bookkeeping for a citation the author deleted, and is also the home for the
+    opposite case: a paper someone went and looked at, and did not build a row from. The record of the
+    looking is the row; the compiler's dropping it is right, because nothing in the module joins to it.
+
+    That case reached us as five `licensing.csv` rows at `layer=literature` naming Crossref, Europe
+    PMC, OpenAlex, PubMed and Unpaywall, each saying no article text was taken. Those are the wrong
+    home twice over: a literature source's terms are per **article** and live on this row (RM46), and
+    a pass that contributed no row records no source (RM142). The consultation is a fact about a
+    *paper*, not about a service — and a service consulted for a paper that yielded nothing has no
+    obligation to record. Nothing is owed to `sources.csv` for reading an abstract.
     """
 
     #: What makes two rows the same row — the key the literature pass merges on. One article, one
