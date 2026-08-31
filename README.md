@@ -1,6 +1,6 @@
 # just-dna-format
 
-[![CI]([CI-badge-URL-redacted])]([CI-URL-redacted])
+[![CI](https://anonymous.4open.science/r/just-dna-registry)](https://anonymous.4open.science/r/just-dna-registry)
 
 The **module format** for just-dna annotation modules — the declarative schema/contract, its
 reference compiler, and the network tier that feeds them — as a uv workspace publishing three

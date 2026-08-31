@@ -365,17 +365,17 @@ the probes themselves were held to.
 
 | finding | unit | PR |
 |---|---|---|
-| D1-1, D1-2 (enricher half) | 1 | [#15]([repo-URL-redacted]/pull/15) |
-| D1-2 (compiler half) | 2 | [#13]([repo-URL-redacted]/pull/13) |
-| D1-3 | 3 | [#14]([repo-URL-redacted]/pull/14) |
-| D1-4 | 4 | [#16]([repo-URL-redacted]/pull/16) |
-| D3-1 | 5 | [#12]([repo-URL-redacted]/pull/12) |
-| D3-2 | 6 | [#18]([repo-URL-redacted]/pull/18) |
-| D5-1, D5-2, D6-1 | 7 | [#21]([repo-URL-redacted]/pull/21) |
-| D4-2 | 8 | [#17]([repo-URL-redacted]/pull/17) |
-| D4-1, `allele_function` + `vrs_allele_id` | 10 | [#20]([repo-URL-redacted]/pull/20) |
-| D4-1, `rsid_coordinate_agreement` | 11 | [#22]([repo-URL-redacted]/pull/22) |
-| F1 (surface), F8, F11, D4-3, D4-1 (surface) → RM68–RM72 | 12 | [#19]([repo-URL-redacted]/pull/19) |
+| D1-1, D1-2 (enricher half) | 1 | [#15](https://anonymous.4open.science/r/just-dna-registry/pull/15) |
+| D1-2 (compiler half) | 2 | [#13](https://anonymous.4open.science/r/just-dna-registry/pull/13) |
+| D1-3 | 3 | [#14](https://anonymous.4open.science/r/just-dna-registry/pull/14) |
+| D1-4 | 4 | [#16](https://anonymous.4open.science/r/just-dna-registry/pull/16) |
+| D3-1 | 5 | [#12](https://anonymous.4open.science/r/just-dna-registry/pull/12) |
+| D3-2 | 6 | [#18](https://anonymous.4open.science/r/just-dna-registry/pull/18) |
+| D5-1, D5-2, D6-1 | 7 | [#21](https://anonymous.4open.science/r/just-dna-registry/pull/21) |
+| D4-2 | 8 | [#17](https://anonymous.4open.science/r/just-dna-registry/pull/17) |
+| D4-1, `allele_function` + `vrs_allele_id` | 10 | [#20](https://anonymous.4open.science/r/just-dna-registry/pull/20) |
+| D4-1, `rsid_coordinate_agreement` | 11 | [#22](https://anonymous.4open.science/r/just-dna-registry/pull/22) |
+| F1 (surface), F8, F11, D4-3, D4-1 (surface) → RM68–RM72 | 12 | [#19](https://anonymous.4open.science/r/just-dna-registry/pull/19) |
 
 ### What the round cost the corpus: three digests, and only where a column was added
 
