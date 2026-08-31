@@ -435,6 +435,9 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
     # An EQUALITY over what the walk found, so a new policy has to be named here and a deleted one
     # cannot go unnoticed — the two things the floor allowed through.
     assert set(found) == {
+        # RM153's registry leg. Retried inner, and the *outer* returns a three-state outcome rather
+        # than translating to an error type — see the exemption in the exception-contract suite.
+        "clingen_allele.ClingenAlleleClient._fetch",
         "cpic.CpicClient._request",
         # RM85's release probe: the retried inner reads the header, the outer translates both legs.
         "currency.ClinVarReleaseClient._header_bytes",

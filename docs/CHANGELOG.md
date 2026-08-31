@@ -81,6 +81,42 @@ arriving rather than drift.
   them); both withhold rather than guess — a degenerate code cannot be complemented, and a palindromic
   SNV that already fits is never reported as a flip. *(S85)*
 
+- **RM153 — the identity CIViC does not publish, recovered through a registry rather than by lifting a coordinate.**
+  *(`just-dna-enricher`; **additive**, **no schema change** — one client, one snapshot derivation, three
+  withhold reasons, one licence row.)* RM152's residue. CIViC publishes GRCh37 coordinates or none, and
+  after every published identifier is read some variants still have no route to a GRCh38 identity. Two
+  questions, answered in opposite directions.
+  **Taken: the ClinGen Allele Registry.** A CAID is build-independent; the registry serves an
+  rs-number *and* a GRCh38 coordinate, needs no key, and answered 102 probe requests with zero
+  failures. Recovery over the direction set goes from **138/290 (48%) to 237/290 (82%)** — 52 via an
+  rs-number, 12 via a coordinate, and **35 one-sided indels anchored**. The rs-number is preferred
+  because ClinGen supplies it and *Ensembl* verifies it: two authorities, so the check is real, which
+  is precisely what a lifted coordinate lacks. New `identity_derivation="caid"` keeps a route-bearing
+  row in the snapshot instead of dropping it; `unresolvable_identity` now means no identifier at all
+  and falls from 204 rows to 59. The pass runs at **draft** time — a build that fetched would forfeit
+  the offline reproducibility the dated input exists to give — and `--offline` withholds those rows as
+  `caid_unresolved`: **unplaced, never unplaceable**.
+  **One-sided indels are anchored VCF/Picard-style.** The registry states an insertion with an empty
+  `referenceAllele` and a deletion with an empty `allele`, in interbase terms; neither is a row a
+  `ref`/`alts` pair can hold. Prefixing both sides with the reference base before the event is the
+  left-aligned form VCF requires, and the interbase `start` *is* that anchor for both shapes, so one
+  rule covers them. All 35 rows that previously read `no_identity` are one-sided indels and every one
+  anchors. Verified twice: the base at `chr3:10142013` is `G`, and ClinGen's own HGVS is
+  `g.10142013dup`, which is exactly the `G>GG` produced. An unreadable anchor is withheld under its
+  own reason, never guessed.
+  **Refused: liftover.** Reopened on request and closed on the number — ceiling 13 evidence rows on 9
+  variants, honest recovery **at most one**. Three are gene-level assertions no genotype satisfies on
+  any build; five are imprecise by the source's own HGVS and the registry refuses to parse them at
+  all; and variant 2099 lifts *exactly* to **a different allele** than its own name and alias
+  describe, which is RM48's hazard demonstrated rather than argued. `pyliftover` agrees with Ensembl
+  on all 18 endpoints so buys no accuracy and downloads an unpinned chain; Picard `LiftoverVcf` was
+  not run because 8 of the 9 carry no REF/ALT to feed it.
+  **The registry's terms are unestablished** and recorded as such: `reg.clinicalgenome.org/site/terms`
+  answers 200 with a generic broken-link page, so every axis is `None`. ClinGen's CC0 grant covers the
+  gene-curation surface, not this one. Nothing is redistributed.
+  Measurements in [CIVIC_SURVEY.md](probes/CIVIC_SURVEY.md) and
+  [CIVIC_LIFTOVER_NINE.md](probes/CIVIC_LIFTOVER_NINE.md).
+
 - **RM152 — CIViC adopted on the axis it can answer, and refused on the one it was proposed for.**
   *(`just-dna-enricher`; **additive**, and there is **no schema change of any kind** — no column, no
   table, no vocabulary member. The adoption rides on `direction` and `state`, which have existed since

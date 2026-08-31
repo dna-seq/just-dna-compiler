@@ -2393,7 +2393,7 @@ def draft_panel_(
         if source == "civic":
             result = draft_panel_from_civic(
                 spec_dir, gene, snapshot=civic_cache,
-                declared_use=_use(use), dry_run=dry_run,
+                declared_use=_use(use), offline=offline, dry_run=dry_run,
             )
         elif source == "pubmind":
             result = draft_gene_panel_from_pubmind(

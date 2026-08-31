@@ -101,11 +101,19 @@ def test_every_kept_row_carries_an_identity_and_names_which_one(built):
         assert row["identity_derivation"] in CIVIC_IDENTITY_DERIVATIONS
         has_rsid = row["rsid"] is not None
         has_coords = row["chrom"] is not None and row["start"] is not None
-        assert has_rsid or has_coords, "a kept row with no identity is what the drop reason is for"
+        caid = row["allele_registry_id"]
+        # A row carries an identity, or a ROUTE to one. `caid` is the second: null coordinate, null
+        # rsID, and a registry id a later pass resolves (RM153). What no kept row may be is neither.
+        assert has_rsid or has_coords or caid, "a kept row with no route to an identity is a drop"
         # The stamp is not decoration: it must agree with what the row actually carries.
         assert row["identity_derivation"] == (
-            "both" if has_rsid and has_coords else "rsid" if has_rsid else "grch38_hgvs"
+            "both" if has_rsid and has_coords
+            else "rsid" if has_rsid
+            else "grch38_hgvs" if has_coords
+            else "caid"
         )
+        if row["identity_derivation"] == "caid":
+            assert not has_rsid and not has_coords and caid
 
 
 def test_civic_grch37_coordinates_are_provenance_and_never_the_emitted_position(built):

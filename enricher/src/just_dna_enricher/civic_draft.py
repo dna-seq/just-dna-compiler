@@ -41,10 +41,17 @@ from pathlib import Path
 
 from just_dna_compiler.draft import DraftReport, PartialRow, append_partial_rows
 from just_dna_format.spec import StudyRow, VariantRow
+from just_dna_format.vrs import UnsupportedBuildError, refget_accession
 
 from just_dna_enricher.civic_build import CIVIC_PARQUET
-from just_dna_enricher.licensing import CIVIC_TERMS, record_source_terms
+from just_dna_enricher.clingen_allele import ClingenAlleleClient, anchor_indel
+from just_dna_enricher.licensing import (
+    CIVIC_TERMS,
+    CLINGEN_ALLELE_REGISTRY_TERMS,
+    record_source_terms,
+)
 from just_dna_enricher.locations import RELEASE_FILENAME, resolve_civic_reference
+from just_dna_enricher.sequences import SequenceProxy
 from just_dna_enricher.verification import examples
 
 logger = logging.getLogger(__name__)
@@ -71,6 +78,17 @@ CIVIC_WITHHELD_REASONS: tuple[str, ...] = (
     "identity_refused_by_model",
     # The requested gene filter did not name this row's gene.
     "gene_not_requested",
+    # The registry states a one-sided indel and the reference base that would anchor it could not be
+    # read (offline, or the sequence service was unreachable). Nobody-asked about the ANCHOR, not
+    # about the allele: the registry answered, and a later run with sequence access places the row.
+    "anchor_base_unreadable",
+    # The row's only route to an identity is a ClinGen CAID and the registry was not consulted —
+    # `--offline`, or a lookup that failed. **Nobody-asked, never an absence**: the variant is not
+    # unplaceable, it is unplaced, and next run may place it.
+    "caid_unresolved",
+    # The registry answered and holds no rs-number and no GRCh38 substitution for this CAID. An
+    # established absence, and a different fact from the one above.
+    "caid_no_identity",
 )
 
 
@@ -84,6 +102,11 @@ class CivicDraftResult:
     withheld: dict[str, int] = field(default_factory=dict)
     #: Snapshot rows the gene filter admitted, before any withholding.
     candidates: int = 0
+    #: CAID-only rows the registry placed, and how — the recovery this pass exists for.
+    caid_resolved_by_rsid: int = 0
+    caid_resolved_by_coordinate: int = 0
+    #: One-sided indels the registry stated and a reference base placed, VCF/Picard left-aligned.
+    caid_anchored_indels: int = 0
     dataset: str | None = None
     skipped: bool = False
 
@@ -297,6 +320,25 @@ def _withheld_warnings(withheld: dict[str, int], contested: Sequence[str]) -> li
             f"needs a weighting model this format does not have. Read the evidence and author the "
             f"row yourself, or record the decision once you have made it."
         )
+    if withheld["anchor_base_unreadable"]:
+        lines.append(
+            f"{withheld['anchor_base_unreadable']} CIViC row(s) name an insertion or deletion the "
+            f"ClinGen registry states, but the GRCh38 reference base needed to write it VCF-style "
+            f"could not be read. The allele is known; the anchor is not, and it is withheld rather "
+            f"than guessed — a guessed anchor is a wrong `ref` on a right position."
+        )
+    if withheld["caid_no_identity"]:
+        lines.append(
+            f"{withheld['caid_no_identity']} CIViC row(s) name a ClinGen allele id the registry has "
+            f"no rs-number and no GRCh38 substitution for — typically an indel it does not express as "
+            f"one. The registry answered; this is an absence rather than a failure to ask."
+        )
+    if withheld["caid_unresolved"]:
+        lines.append(
+            f"{withheld['caid_unresolved']} CIViC row(s) could only be placed through the ClinGen "
+            f"Allele Registry and it was not consulted (offline, or the lookup failed). Those "
+            f"variants are unplaced, NOT unplaceable — re-run online and they may draft."
+        )
     if withheld["identity_refused_by_model"]:
         lines.append(
             f"{withheld['identity_refused_by_model']} CIViC row(s) publish identity cells that "
@@ -312,6 +354,8 @@ def draft_panel_from_civic(
     *,
     snapshot: Path | None = None,
     declared_use: str = "unstated",
+    offline: bool = False,
+    registry: ClingenAlleleClient | None = None,
     dry_run: bool = False,
 ) -> CivicDraftResult:
     """Append `direction`-axis rows from the CIViC snapshot, with everything withheld accounted for.
@@ -360,6 +404,26 @@ def draft_panel_from_civic(
          if int(r["variant_id"]) in contested_ids}
     )
 
+    # One client for the run, so its cache and its pacing gate are shared: a CAID appearing on several
+    # evidence rows is looked up once, and the registry sees one paced stream rather than N.
+    registry = registry if registry is not None else ClingenAlleleClient(offline=offline)
+    consulted_registry = False
+
+    # The anchor reader, built once per run so its cache is shared. `SequenceProxy` degrades to
+    # `None` offline and on an unreachable service, which is what makes `anchor_base_unreadable` a
+    # real outcome rather than a crash.
+    sequences = SequenceProxy(offline=offline)
+
+    def read_base(chrom: str, pos: int) -> str | None:
+        """One GRCh38 reference base at a 1-based position, or `None`."""
+        try:
+            accession = refget_accession(chrom)
+        except UnsupportedBuildError:  # pragma: no cover - GRCh38 is this snapshot's only build
+            return None
+        if accession is None:
+            return None
+        return sequences.subsequence(accession, pos - 1, pos)
+
     variant_partials: list[PartialRow] = []
     study_partials: list[PartialRow] = []
     for row in admitted:
@@ -369,6 +433,43 @@ def draft_panel_from_civic(
         if row["direction"] is None:
             result.withheld["refutation_states_no_direction"] += 1
             continue
+        if row["identity_derivation"] == "caid":
+            # The snapshot kept this row because it has a *route* to an identity rather than one.
+            # Walking that route is what turns it into a drafted row, and the three outcomes stay
+            # three: placed, established-absence, and nobody-asked.
+            consulted_registry = True
+            found = registry.resolve(row["allele_registry_id"])
+            if found.outcome == "needs_anchor" and found.unanchored is not None:
+                # An insertion or a deletion, which the registry states with one side empty. One
+                # reference base turns it into a row; without one it stays withheld rather than
+                # becoming a half-written coordinate.
+                placed = anchor_indel(found.unanchored, read_base)
+                if placed is None:
+                    result.withheld["anchor_base_unreadable"] += 1
+                    continue
+                row = dict(row)
+                row["chrom"], row["start"], row["ref"], row["alt"] = placed
+                result.caid_anchored_indels += 1
+                partial = _variant_row(row, dataset=result.dataset)
+                if identity_refused_by_model(partial.cells) is not None:
+                    result.withheld["identity_refused_by_model"] += 1
+                    continue
+                variant_partials.append(partial)
+                study = _study_row(row)
+                if study is not None:
+                    study_partials.append(study)
+                continue
+            if not found.placeable:
+                key = "caid_no_identity" if found.outcome == "no_identity" else "caid_unresolved"
+                result.withheld[key] += 1
+                continue
+            row = dict(row)
+            if found.rsid:
+                row["rsid"] = found.rsid
+                result.caid_resolved_by_rsid += 1
+            elif found.coordinate:
+                row["chrom"], row["start"], row["ref"], row["alt"] = found.coordinate
+                result.caid_resolved_by_coordinate += 1
         partial = _variant_row(row, dataset=result.dataset)
         if identity_refused_by_model(partial.cells) is not None:
             result.withheld["identity_refused_by_model"] += 1
@@ -393,8 +494,12 @@ def draft_panel_from_civic(
     # (`@write-the-sourcerow`). Not written on a run that never reached the snapshot: a pass that
     # contributed nothing writes none.
     if not dry_run:
+        # A pass that consults a source writes its row; one that contributed nothing writes none. The
+        # registry is listed only where it was actually asked, which is why the flag is set at the
+        # lookup rather than derived from the snapshot's contents.
+        consulted = [CIVIC_SOURCE] + ([CLINGEN_ALLELE_REGISTRY_TERMS.source] if consulted_registry else [])
         record_source_terms(
-            [CIVIC_SOURCE], "annotation", spec_dir,
+            consulted, "annotation", spec_dir,
             error=CivicDraftError, declared_use=declared_use,
         )
     return result

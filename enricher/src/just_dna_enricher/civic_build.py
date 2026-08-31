@@ -99,7 +99,13 @@ CIVIC_BULK_STATUS = "accepted"
 #:                 resolution verify the row against a source other than the one that supplied it.
 #: `grch38_hgvs` — a GRCh38 RefSeq `NC_` accession in `hgvs_descriptions`, parsed to chrom/pos/ref/alt.
 #: `both`        — an rsID *and* a parsed GRCh38 coordinate agreeing that this is one locus.
-CIVIC_IDENTITY_DERIVATIONS: frozenset[str] = frozenset({"rsid", "grch38_hgvs", "both"})
+#: `caid`        — **neither**, but a ClinGen `allele_registry_id` that a later pass can resolve. The
+#:                 row is kept with null `chrom`/`start`/`rsid`: it has a *route* to an identity rather
+#:                 than an identity, and a drafter must not write it until something has walked that
+#:                 route. Kept rather than dropped because dropping it here would make the recovery
+#:                 invisible to every later pass — 99 of the 152 otherwise-unplaceable variants carry
+#:                 one, and 64 of those resolve.
+CIVIC_IDENTITY_DERIVATIONS: frozenset[str] = frozenset({"rsid", "grch38_hgvs", "both", "caid"})
 
 #: Why a source evidence row produced no output row. Walked rather than restated, so
 #: `input_rows == record_count + sum(dropped.values())` is an equality over it and a new reason
@@ -122,9 +128,9 @@ CIVIC_DROP_REASONS: tuple[str, ...] = (
     # profile has no row in the profile file at all. A dangling reference inside the release, kept as
     # its own reason so it is never silently reported as a combination.
     "no_variant_record",
-    # Neither an rsID nor a GRCh38 accession. The record is real and this snapshot cannot place it on
-    # this format's build; `allele_registry_id` is carried in the release notice so the class stays
-    # addressable rather than being quietly forgotten.
+    # No rsID, no GRCh38 accession **and** no ClinGen CAID. The record is real and nothing in this
+    # release offers a route to a GRCh38 identity for it, so there is nothing a later pass could do
+    # either. A CAID-bearing row is NOT dropped here — it is kept with `identity_derivation="caid"`.
     "unresolvable_identity",
 )
 
@@ -228,8 +234,8 @@ class CivicBuildResult:
     #: Variants carrying evidence in more than one direction camp — the multiplicity that matters.
     #: Never collapsed: choosing a winner is `mode()` over an unsorted group.
     contested_variants: int = 0
-    #: Variants dropped for `unresolvable_identity` that nonetheless carry a ClinGen CAID, so a later
-    #: identity pass knows how much it would recover.
+    #: Distinct ClinGen CAIDs on rows kept with `identity_derivation="caid"` — the size of the class a
+    #: later identity pass would resolve, published so the recovery is a number rather than a guess.
     unresolvable_with_caid: int = 0
     #: `hgvs_descriptions` cells carrying a GRCh38 accession in a form the substitution parser cannot
     #: read (a del/dup/delins). Withheld rather than guessed at, and counted so "no GRCh38 accession"
@@ -463,19 +469,21 @@ def build_snapshot(
         coords = parse_grch38_substitution(variant.get("hgvs_descriptions"))
         if coords is None and has_unparsable_grch38(variant.get("hgvs_descriptions")):
             unparsable_hgvs += 1
-        if not rsids and coords is None:
+        caid = (variant.get("allele_registry_id") or "").strip()
+        caid = caid if caid and caid != "unregistered" else ""
+        if not rsids and coords is None and not caid:
             dropped["unresolvable_identity"] += 1
-            caid = (variant.get("allele_registry_id") or "").strip()
-            if caid and caid != "unregistered":
-                unresolvable_caids.add(caid)
             continue
 
         if rsids and coords is not None:
             derivation = "both"
         elif rsids:
             derivation = "rsid"
-        else:
+        elif coords is not None:
             derivation = "grch38_hgvs"
+        else:
+            derivation = "caid"
+            unresolvable_caids.add(caid)
         identity_derivations[derivation] += 1
 
         direction = CIVIC_DIRECTION_MAP[(significance, direction_raw)]
@@ -483,7 +491,6 @@ def build_snapshot(
             withheld_direction += 1
 
         chrom, start, ref, alt = coords if coords is not None else (None, None, None, None)
-        caid = (variant.get("allele_registry_id") or "").strip()
         records.append(
             {
                 "chrom": chrom,

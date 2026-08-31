@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from just_dna_enricher.civic_build import build_snapshot
+from just_dna_enricher.clingen_allele import AlleleIdentity
 from just_dna_enricher.civic_draft import (
     CIVIC_WITHHELD_REASONS,
     draft_panel_from_civic,
@@ -257,3 +258,135 @@ def test_a_redraft_reports_rows_already_there_rather_than_appending_them_twice(s
         v for k, v in first.withheld.items() if k != "gene_not_requested"
     )
     assert (spec / "variants.csv").read_bytes() == before, "a second lap changed the file"
+
+
+# ── the ClinGen CAID pass (RM153) ─────────────────────────────────────────────────────────────────
+
+
+class _StubRegistry:
+    """A registry whose answer per CAID is scripted, so the drafter's branches are testable offline."""
+
+    def __init__(self, answers):
+        self.answers = answers
+        self.asked = []
+
+    def resolve(self, caid):
+        self.asked.append(caid)
+        return self.answers.get(caid, AlleleIdentity(caid=caid, outcome="no_identity"))
+
+
+def _caid_rows(snapshot):
+    import polars as pl
+
+    frame = pl.read_parquet(snapshot / "data" / "civic.parquet")
+    return frame.filter(pl.col("identity_derivation") == "caid")
+
+
+def test_a_caid_row_is_kept_by_the_builder_rather_than_dropped(snapshot):
+    """It has a route to an identity, not an identity — dropping it would hide the recovery."""
+    rows = _caid_rows(snapshot)
+    assert rows.height > 0, "the fixture must carry a CAID-only row"
+    assert rows["rsid"].is_null().all() and rows["chrom"].is_null().all()
+    assert rows["allele_registry_id"].is_not_null().all()
+
+
+def test_offline_withholds_a_caid_row_as_unplaced_and_never_as_unplaceable(spec, snapshot):
+    """Nobody-asked is the third state, and `--offline` is where it bites."""
+    result = draft_panel_from_civic(spec, snapshot=snapshot, offline=True)
+    assert result.withheld["caid_unresolved"] == _caid_rows(snapshot).height
+    assert result.withheld["caid_no_identity"] == 0, "not asking is not an absence"
+    assert any("unplaced, NOT unplaceable" in w for w in result.warnings)
+    assert result.accounts_for_every_candidate()
+
+
+def test_a_resolved_caid_prefers_the_rsid_over_the_coordinate(spec, snapshot):
+    """An rsID is build-independent and is verified downstream by a DIFFERENT authority.
+
+    ClinGen supplies it and Ensembl checks it, so the check is real — which is exactly the property a
+    lifted coordinate lacks, and the reason RM48 refused one.
+    """
+    caid = _caid_rows(snapshot)["allele_registry_id"][0]
+    registry = _StubRegistry({
+        caid: AlleleIdentity(caid=caid, outcome="resolved", rsid="rs9999999",
+                             coordinate=("3", 1234, "A", "G")),
+    })
+    result = draft_panel_from_civic(spec, snapshot=snapshot, registry=registry)
+    assert result.caid_resolved_by_rsid >= 1
+    assert result.caid_resolved_by_coordinate == 0, "the rsID wins where both are offered"
+    rows = [r for r in _rows(spec / "variants.csv") if r["rsid"] == "rs9999999"]
+    assert rows and all(not r["chrom"] for r in rows), "the coordinate is not also written"
+
+
+def test_a_caid_that_resolves_to_a_coordinate_only_is_placed_by_it(spec, snapshot):
+    caid = _caid_rows(snapshot)["allele_registry_id"][0]
+    registry = _StubRegistry({
+        caid: AlleleIdentity(caid=caid, outcome="resolved", coordinate=("3", 10188320, "A", "G")),
+    })
+    result = draft_panel_from_civic(spec, snapshot=snapshot, registry=registry)
+    assert result.caid_resolved_by_coordinate >= 1
+    placed = [r for r in _rows(spec / "variants.csv") if r["start"] == "10188320"]
+    assert placed and all(r["chrom"] == "3" for r in placed)
+
+
+def test_an_established_absence_is_reported_apart_from_a_failure_to_ask(spec, snapshot):
+    """Two different facts, and a drafter that blurred them would make a blip look permanent."""
+    caid = _caid_rows(snapshot)["allele_registry_id"][0]
+    registry = _StubRegistry({caid: AlleleIdentity(caid=caid, outcome="no_identity")})
+    result = draft_panel_from_civic(spec, snapshot=snapshot, registry=registry)
+    assert result.withheld["caid_no_identity"] >= 1
+    assert result.withheld["caid_unresolved"] == 0
+    assert any("registry answered" in w for w in result.warnings)
+
+
+def test_the_registry_gets_its_own_source_row_only_where_it_was_consulted(spec, snapshot, tmp_path):
+    """A pass that consults a source writes its row; one that contributed nothing writes none."""
+    draft_panel_from_civic(spec, snapshot=snapshot, offline=True)
+    sources = next(p for p in (spec / "sources.csv", spec / "licensing.csv") if p.exists())
+    consulted = {r["source"] for r in _rows(sources)}
+    assert "civic" in consulted
+    assert "clingen_allele_registry" in consulted, (
+        "offline still ASKS the client, which answers skipped_offline — the source was consulted"
+    )
+
+
+def test_the_caid_pass_leaves_the_accounting_closed(spec, snapshot):
+    caid = _caid_rows(snapshot)["allele_registry_id"][0]
+    registry = _StubRegistry({
+        caid: AlleleIdentity(caid=caid, outcome="resolved", rsid="rs9999999"),
+    })
+    result = draft_panel_from_civic(spec, snapshot=snapshot, registry=registry)
+    assert result.accounts_for_every_candidate()
+
+
+def test_a_one_sided_indel_is_anchored_into_a_vcf_row(spec, snapshot, monkeypatch):
+    """The Picard-style recovery: one reference base turns a stated indel into a drafted row."""
+    caid = _caid_rows(snapshot)["allele_registry_id"][0]
+    registry = _StubRegistry({
+        caid: AlleleIdentity(caid=caid, outcome="needs_anchor", unanchored=("3", 10142013, "", "G")),
+    })
+    monkeypatch.setattr(
+        "just_dna_enricher.civic_draft.SequenceProxy",
+        lambda **kw: type("_S", (), {"subsequence": lambda self, a, s, e: "G"})(),
+    )
+    result = draft_panel_from_civic(spec, snapshot=snapshot, registry=registry)
+    assert result.caid_anchored_indels >= 1
+    placed = [r for r in _rows(spec / "variants.csv") if r["start"] == "10142013"]
+    assert placed and all(r["ref"] == "G" and r["alts"] == "GG" for r in placed)
+    assert result.accounts_for_every_candidate()
+
+
+def test_an_unreadable_anchor_withholds_the_row_and_names_the_reason(spec, snapshot, monkeypatch):
+    """The allele is known and the anchor is not — a fourth outcome, not an absence."""
+    caid = _caid_rows(snapshot)["allele_registry_id"][0]
+    registry = _StubRegistry({
+        caid: AlleleIdentity(caid=caid, outcome="needs_anchor", unanchored=("3", 10142013, "A", "")),
+    })
+    monkeypatch.setattr(
+        "just_dna_enricher.civic_draft.SequenceProxy",
+        lambda **kw: type("_S", (), {"subsequence": lambda self, a, s, e: None})(),
+    )
+    result = draft_panel_from_civic(spec, snapshot=snapshot, registry=registry)
+    assert result.withheld["anchor_base_unreadable"] >= 1
+    assert result.withheld["caid_no_identity"] == 0, "the registry answered; only the anchor failed"
+    assert any("withheld rather than guessed" in w for w in result.warnings)
+    assert result.accounts_for_every_candidate()

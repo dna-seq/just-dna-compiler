@@ -63,8 +63,8 @@ Over the dated `01-Aug-2026` release, 533 germline direction rows on 290 variant
 |---|---:|---|
 | Recovered by the builder before this item | 138 | 48% |
 | Recoverable through a ClinGen CAID | **+64** | 52 via an rs-number, 12 via a GRCh38 coordinate |
-| **After RM153** | **202** | **70%** |
-| CAID present but the registry holds no placeable identity | 35 | indels it does not express as substitutions |
+| …plus one-sided indels the registry states, once anchored | **+35** | 22 deletions, 13 insertions — **all 35**, no exceptions |
+| **After RM153** | **237** | **82%** |
 | No identifier of any kind | 53 | of which **9** carry a GRCh37 coordinate |
 
 The registry answered all 102 probe requests with **zero failures**, serves both an rs-number and a
@@ -95,7 +95,23 @@ dated release. Same source, two files, and the collision is the reason
   ClinGen supplies it and the ordinary resolution chain verifies it against **Ensembl**. Two
   authorities, so the check is real — which is precisely the property a lifted coordinate lacks.
 
-Measured end to end, the drafter goes from **115 variant rows offline to 167 online**.
+- **One-sided indels are anchored VCF/Picard-style, and that closed the last recoverable class.** The
+  registry states an insertion as `referenceAllele=""` and a deletion as `allele=""`, in interbase
+  terms — neither is a row a `ref`/`alts` pair can hold. Prefixing both sides with the single
+  reference base before the event is the left-aligned representation VCF requires, and the registry's
+  interbase `start` *is* that anchor position for both shapes, so one rule covers them with no
+  per-shape arithmetic. `anchor_indel` is a pure function with the base reader injected; the reader is
+  `SequenceProxy`, already in this tier for the reference-allele check. **All 35 rows that previously
+  read `no_identity` are one-sided indels, and every one anchors.**
+
+  Verified two ways rather than asserted: the reference base at `chr3:10142013` is `G`, and ClinGen's
+  own HGVS for that allele is `NC_000003.12:g.10142013dup` — a duplication of `G`, which is exactly
+  the `G>GG` row produced. An anchor that cannot be read is withheld under its own reason
+  (`anchor_base_unreadable`), never guessed: a guessed anchor is a wrong `ref` on a right position,
+  which is the mismatch class `sequences.RefMismatch` exists to report.
+
+Measured end to end, the drafter goes from **115 variant rows offline to 201 online**, withholding
+nothing.
 
 ### Repairs rejected
 
@@ -113,6 +129,11 @@ Measured end to end, the drafter goes from **115 variant rows offline to 167 onl
 - **`pyliftover` as a dev dependency.** Tried. It agrees with Ensembl on all 18 endpoints, so it buys
   no accuracy; it downloads an unpinned chain file from UCSC at construction; and the assembly-map
   endpoint already returns interval *segment structure*, which two point-lifts cannot.
+- **Picard `LiftoverVcf` as the tool of record.** Not run, and the reason is worth keeping. Two
+  independent implementations already agree to the base on all 18 endpoints, so a third would confirm
+  arithmetic nobody disputes — while eight of the nine carry no `REF`/`ALT` at all, so feeding
+  `LiftoverVcf` would mean **fabricating** symbolic records with invented spans, which is
+  manufacturing the input whose correctness is the question. The blocker was never the mapping.
 - **Resolving CAIDs inside `civic build`.** It would make the snapshot depend on a live service and
   cost the reproducibility the dated input exists to provide.
 - **Inheriting ClinGen's CC0 for the registry.** The gene-curation surface is CC0; this is a different
@@ -133,11 +154,13 @@ precisely because this pass is not in it. P9 — zero authored-layer cost.
 
 **53 variants carry no identifier at all**, and five of the nine coordinate-bearing ones can never be
 reached by any identity pass, because an unambiguous identity does not exist for them. That is a
-permanent floor on CIViC's germline reach rather than a gap to close. Three smaller residues are
-sized in the probes and not taken: 26 unresolved variants publish a GRCh38 **deletion** accession the
-substitution-only parser cannot read, 31 carry a `c.` HGVS inside their *name* rather than in
-`hgvs_descriptions`, and whether a name plus a transcript resolves through the registry was not
-measured.
+permanent floor on CIViC's germline reach rather than a gap to close.
+
+Two smaller residues are sized in the probes and not taken: 26 unresolved variants publish a GRCh38
+**deletion** accession the substitution-only parser cannot read *directly* — most are reached through
+the registry instead, which is why this was not worth a second parser — and 31 carry a `c.` HGVS
+inside their *name* rather than in `hgvs_descriptions`. Whether a name plus a transcript resolves
+through the registry was not measured and is the obvious next question.
 
 ## RM152 — CIViC's germline quarter says almost nothing on the axis we asked it, and a great deal on the one next to it
 
@@ -206,7 +229,7 @@ reproduced, including the 412 obtained by subtraction. Four things it did not kn
   at 812 `NA`, and false of `direction`, where `NA` is 0 of 1,458. The rejection had been measured on
   the axis the report aimed at rather than the one the item itself identified as surviving.
 - **Liftover, to reach the GRCh37 coordinates.** Reopened on the maintainer's instruction and closed
-  again on the number — see [RM153](ROADMAP.md#rm153--the-identity-civic-does-not-publish-and-the-liftover-question-reopened-and-re-closed-on-the-number).
+  again on the number — see [RM153](ROADMAP_HISTORY.md#rm153--the-identity-civic-does-not-publish-recovered-through-the-registry-rather-than-by-lifting-a-coordinate).
 - **Reading "does not support predisposition" as `protective`.** A refutation removes a claim without
   establishing its opposite. The row is kept, the axis value withheld, and the count reported.
 

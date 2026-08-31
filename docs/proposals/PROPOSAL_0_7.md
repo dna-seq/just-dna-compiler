@@ -1454,7 +1454,7 @@ the only identity in the file.
 - **Liftover.** Reopened at the maintainer's instruction with new balance weights, and the weights moved
   *against* it: the fallback branch RM48 left open is 131 variants, most recoverable through a ClinGen
   CAID without lifting anything, while the hazard is unchanged. Filed as
-  [RM153](../ROADMAP.md#rm153--the-identity-civic-does-not-publish-and-the-liftover-question-reopened-and-re-closed-on-the-number).
+  [RM153](../ROADMAP_HISTORY.md#rm153--the-identity-civic-does-not-publish-recovered-through-the-registry-rather-than-by-lifting-a-coordinate).
 - **Resolving CAIDs inside `civic build`.** A build that fetched would forfeit the offline
   reproducibility that is the whole reason it reads a dated file. RM153 carries it as an `enrich`-time
   question instead.

@@ -176,6 +176,12 @@ def test_every_network_client_in_the_tier_is_covered() -> None:
         # Raises nothing at all: every httpx path returns `None` or `[]`, which is the withhold. A
         # contract test asserting an error type would be asserting the wrong contract.
         "grch37.Grch37Client",
+        # Same shape and the same reason (RM153). Every httpx path returns an `AlleleIdentity` whose
+        # `outcome` carries the failure — `unchecked` for a transport error or a 5xx, `no_identity`
+        # for a 404, which is the registry answering. There is no error type for a caller to catch
+        # because a caller is never asked to: the three outcomes ARE the contract, and asserting an
+        # exception here would pin the opposite of what this client promises.
+        "clingen_allele.ClingenAlleleClient",
     }
     uncovered = {name for name in discovered if name.split(".")[0] not in covered}
     assert uncovered == exempt, sorted(uncovered.symmetric_difference(exempt))

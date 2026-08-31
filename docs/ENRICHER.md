@@ -1183,6 +1183,18 @@ one would have resolution verify Ensembl against Ensembl. Scoring an accession n
 per-chromosome map: `NC_000001.11` is GRCh38 while `NC_000002.11` is GRCh37. What carries neither
 identifier is dropped by count, and [RM153](ROADMAP.md) is what to do about it.
 
+**Identity comes from the registry where CIViC states none, and never from a liftover.** A row whose
+only route is a ClinGen `allele_registry_id` is *kept* in the snapshot as `identity_derivation="caid"`
+— a route to an identity rather than an identity — and `draft-panel --source civic` walks that route:
+the registry returns an rs-number (preferred, because Ensembl then verifies it and two authorities
+make the check real) or a GRCh38 coordinate. **One-sided indels are anchored VCF/Picard-style**: the
+registry states an insertion with an empty reference allele and a deletion with an empty allele, and
+prefixing both sides with the reference base before the event is the left-aligned form VCF requires.
+That takes recovery from 48% of the direction set to **82%**. `--offline` withholds those rows as
+`caid_unresolved` — unplaced, not unplaceable — and an unreadable anchor withholds under its own
+reason rather than being guessed at. Liftover was measured and refused: its ceiling is 13 rows, and
+the one precise event in the class lifts exactly to the *wrong allele*.
+
 **A refutation is kept and its direction withheld.** `Does Not Support` removes a claim without
 establishing the opposite one, so the row keeps its raw words and states no `direction` — an unknown
 is withheld, never negated. The drafter reports how many it held back and why.

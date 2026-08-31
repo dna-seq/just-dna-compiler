@@ -418,6 +418,38 @@ PUBMIND_TERMS = SourceTerms(
 # **The MIT licence in CIViC's own sentence is not this.** Their FAQ names two licences in one breath
 # — CC0 for the content, MIT for the application source — and reading the MIT half as the data terms
 # would attach a licence to bytes it does not cover. The content is the half a snapshot redistributes.
+# The ClinGen **Allele Registry** is a different surface from the gene-curation list above, and its
+# terms could not be established — so every axis it does not state is `None`, on the PubMind rule that
+# unknown is not permissive (`@no-named-licence`).
+#
+# **Probed 2026-08-31, and the probe is why this is not simply CC0.** The registry runs on Baylor's
+# Genboree infrastructure; `reg.clinicalgenome.org/site/terms` answers **HTTP 200** with a generic
+# Genboree "broken link" page rather than a licence — a soft-404, the same shape as HPO's licence URL
+# one module over. ClinGen's own terms-of-use page is real and grants CC0, but it is written about the
+# gene-curation surface, and a grant about one surface is not evidence about another
+# (`@probe-names-the-table`). So `license` is recorded as unknown rather than inherited.
+#
+# **Nothing here is redistributed, which is why the unknown does not block the pass.** The registry is
+# read to place a row — a lookup whose answer becomes an rs-number the author writes and the ordinary
+# resolution chain then verifies against Ensembl. `redistribution=None` therefore records a real
+# unknown that nothing currently depends on, and it would become load-bearing the moment somebody
+# proposed caching these responses into a published snapshot.
+CLINGEN_ALLELE_REGISTRY_TERMS = SourceTerms(
+    source="clingen_allele_registry",
+    license=None,
+    license_url="https://reg.clinicalgenome.org/",
+    attribution="ClinGen Allele Registry (reg.clinicalgenome.org), Baylor College of Medicine",
+    notice=(
+        "Terms not established: the registry states none at its own /site/terms, which answers 200 "
+        "with a generic error page. ClinGen's CC0 grant covers the gene-curation surface, not this "
+        "one. Read-only lookups; no bytes from this source are redistributed."
+    ),
+    share_alike=None,
+    commercial_use=None,
+    redistribution=None,
+)
+
+
 CIVIC_TERMS = SourceTerms(
     source="civic",
     license="CC0-1.0",
@@ -451,6 +483,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         GWAS_CATALOG_TERMS,
         PUBMIND_TERMS,
         CIVIC_TERMS,
+        CLINGEN_ALLELE_REGISTRY_TERMS,
     )
 }
 
