@@ -14,6 +14,11 @@ Those query logs were session-local and are gone; see §14. Nothing in this proc
 Every rule below exists because a record forced it, and the record is named. This states
 what was measured. It does not propose anything.
 
+**A portable copy of this exists.** [IDENTITY_FROM_A_NAME](IDENTITY_FROM_A_NAME.md) is the same
+procedure with the record ids and the CIViC-specific spellings stripped out, written to be carried to
+another source or another repository. This file is the one with the measurements attached, so **where
+the two disagree this one wins**; the handout says so itself.
+
 **This is evidence, never contract** — the standing rule for everything under `docs/probes/`.
 Nothing here is a decision, and no code in this repository implements it: the two probes ran outside
 the tree against live services and wrote no module. What the procedure was *applied to*, class by
