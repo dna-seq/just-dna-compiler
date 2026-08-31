@@ -10,6 +10,8 @@ import csv
 import io
 from pathlib import Path
 
+import pytest
+
 from just_dna_compiler.compiler import _load_csv_rows, validate_spec
 from just_dna_compiler.draft import (
     PartialRow,
@@ -175,3 +177,49 @@ def test_dry_run_writes_nothing(tmp_path: Path) -> None:
     report = append_partial_rows(tmp_path, "variants.csv", [_partial("rs1")], dry_run=True)
     assert len(report.added) == 1 and not report.written
     assert not (tmp_path / "variants.csv").exists()
+
+
+def test_a_batch_mixing_match_on_tuples_is_refused_rather_than_silently_mismatching(
+    tmp_path: Path,
+) -> None:
+    """Sameness is decided against ONE covered-set, so one `match_on` must serve the whole batch.
+
+    Found by dogfooding the CIViC provider, which computed `match_on` per row from whichever identity
+    cells that row carried — rsID-only for some, coordinates for others. The covered-set is built from
+    `partials[0].match_on` and every signature compared against it, so the mixed arities could never
+    match and those rows were re-added on every lap. The symptom appears only on the second run, as a
+    file that grows by the same rows each time, which is why the mixed batch is refused outright
+    rather than left to be discovered.
+    """
+    uniform = [_partial("rs1801133"), _partial("rs5030821")]
+    append_partial_rows(tmp_path, "variants.csv", uniform)
+    assert len(_rows(tmp_path / "variants.csv")) == 2
+
+    mixed = [
+        _partial("rs1801133"),
+        PartialRow(
+            model=VariantRow,
+            cells={"chrom": "3", "start": 10142010, "ref": "G", "state": "risk", "conclusion": "c"},
+            stubbed=("genotype",),
+            match_on=("chrom", "start", "ref"),
+        ),
+    ]
+    with pytest.raises(ValueError, match="must share a match_on"):
+        append_partial_rows(tmp_path, "variants.csv", mixed)
+
+
+def test_a_uniform_batch_matches_on_a_second_lap_even_where_cells_are_empty(tmp_path: Path) -> None:
+    """The fix's other half: one constant tuple, with absent cells comparing as empty.
+
+    A row carrying only an rsID and one carrying a full coordinate share the same `match_on`; the
+    columns a row does not fill compare as `""` on both sides, so the second lap recognises both.
+    """
+    batch = [
+        _partial("rs1801133"),
+        _partial("rs5030821", chrom="3", start=10149823, ref="G"),
+    ]
+    first = append_partial_rows(tmp_path, "variants.csv", batch)
+    assert len(first.added) == 2
+    second = append_partial_rows(tmp_path, "variants.csv", batch)
+    assert second.added == [] and len(second.already_present) == 2
+    assert len(_rows(tmp_path / "variants.csv")) == 2, "a second lap must not grow the file"

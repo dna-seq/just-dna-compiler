@@ -117,6 +117,7 @@ from just_dna_enricher.pubmind_build import (
     download_pubmind_table,
 )
 from just_dna_enricher.pubmind_build import build_snapshot as build_pubmind_snapshot
+from just_dna_enricher.civic_draft import draft_panel_from_civic
 from just_dna_enricher.pubmind_draft import (
     DEFAULT_MIN_CONFIDENCE,
     PubMindDraftError,
@@ -2276,7 +2277,7 @@ def draft_clinpgx_(
 
 #: Which authority `draft-panel` may draft from. A closed set, and the members reach an author's
 #: `sources.csv` through `SourceRow.source`, so they are named after the source and nothing else.
-PANEL_SOURCES: frozenset[str] = frozenset({"clinvar", "pubmind"})
+PANEL_SOURCES: frozenset[str] = frozenset({"clinvar", "pubmind", "civic"})
 
 
 @app.command("draft-panel")
@@ -2286,9 +2287,17 @@ def draft_panel_(
     source: str = typer.Option(
         "clinvar", "--source",
         help=(
-            "Which authority to draft the calls from: clinvar (the default), or pubmind — an LLM's "
+            "Which authority to draft the calls from: clinvar (the default); pubmind — an LLM's "
             "reading of the literature, which needs an operator-built snapshot and still reads the "
-            "ClinVar one for its gene attribution."
+            "ClinVar one for its gene attribution; or civic — curated cancer interpretations, which "
+            "writes the DIRECTION axis rather than clin_sig and needs a `civic build` snapshot."
+        ),
+    ),
+    civic_cache: Path | None = typer.Option(
+        None, "--civic-cache", exists=True, file_okay=False,
+        help=(
+            "Built CIViC snapshot (see `civic build`). Only read under --source civic; omit it and "
+            "$JUST_DNA_CIVIC_CACHE is used."
         ),
     ),
     snapshot: Path | None = typer.Option(
@@ -2369,8 +2378,24 @@ def draft_panel_(
                 f"--source {source}",
                 fg=typer.colors.YELLOW, err=True,
             )
+    # `--clin-sig` is the third dial belonging elsewhere, and it is named outside the loop above
+    # because it is not merely inert under --source civic: CIViC's germline clinical-significance
+    # calls are five in all with none benign-class, which is exactly why that provider writes
+    # `direction` instead. Once, not once per dial — a warning emitted from inside the loop printed
+    # three times for one condition.
+    if calls and source == "civic":
+        typer.secho(
+            "  warning: --clin-sig does nothing under --source civic, which drafts the "
+            "direction axis (risk/protective) rather than clinical significance",
+            fg=typer.colors.YELLOW, err=True,
+        )
     try:
-        if source == "pubmind":
+        if source == "civic":
+            result = draft_panel_from_civic(
+                spec_dir, gene, snapshot=civic_cache,
+                declared_use=_use(use), dry_run=dry_run,
+            )
+        elif source == "pubmind":
             result = draft_gene_panel_from_pubmind(
                 spec_dir, gene, snapshot=snapshot, pubmind_snapshot=pubmind_cache,
                 offline=offline, download=download,

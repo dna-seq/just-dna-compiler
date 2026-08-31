@@ -575,6 +575,19 @@ def append_partial_rows(
     header = existing_header or fieldnames
     fieldnames = header
 
+    # The covered-set is built from ONE `match_on`, so every partial in a batch must share it. A
+    # provider computing `match_on` per row from whichever identity cells that row happened to carry
+    # produces signatures of different arities, none of which can match the covered-set — and the
+    # symptom appears only on the second lap, as a file that grows by the same rows every run. Caught
+    # here rather than documented, because the silent version is indistinguishable from working.
+    distinct_match_on = {partial.match_on for partial in partials}
+    if len(distinct_match_on) > 1:
+        raise ValueError(
+            f"every PartialRow in one batch must share a match_on, because sameness is decided "
+            f"against a single covered-set; got {sorted(distinct_match_on)}. Use one constant tuple "
+            f"and let absent cells compare as empty."
+        )
+
     outcomes: list[RowOutcome] = []
     to_write: list[dict[str, str]] = []
     covered = [
