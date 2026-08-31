@@ -44,6 +44,99 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM141 — `validate --strict` blessed a module `compile --strict` refused, whenever the resolution table was partial
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-compiler`). **Severity** medium ·
+**Owner** compiler · **Motivating case** [S76](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator)
+
+### What was reported, and what reproduced
+
+A consumer's `enrich` was killed by an external quota limit partway through a 263-subject module,
+leaving a well-formed `resolution.csv` covering 201 of them. They reported two things: that nothing on
+disk marks such a file partial, and — the part that made it urgent — that **merge-not-clobber turns it
+into a silent wrong answer**, because the natural recovery of re-running merges onto the stale rows and
+never retries the missing 62.
+
+**The second half does not reproduce, and it does not reproduce on the version they ran either.**
+Probed directly: a run over a table covering one of three subjects asks the source about exactly the
+other two and commits all three. Measured on this tree and again on `v0.6.6` built from its own tag, so
+this is not something 0.7 fixed underneath them. `enrich` gap-fills; the merge is over subjects the
+table records, and a subject it does not record has nothing to merge onto. Their proposed repair (1),
+writing the sidecar atomically, is also already shipped — `layout.atomic_writer`, from RM128 in this
+same release, which is why the interrupted run left the *previous* table rather than a truncated one.
+
+**What is real is that nothing said so until the compile**, and that is a defect of ours.
+
+### The defect
+
+`compile --strict` refuses a module whose variants have no position after resolution — the check that
+keeps a partial artifact from being published as a reproducible one. `validate --strict` did not
+report it at all. So a spec whose table covers some of its variants passed the pre-flight clean and was
+refused by the compile immediately after: the green-pre-flight-then-refusal shape the parity rule exists
+to prevent, and the third time that rule has been broken in the same way.
+
+It hid behind the rule's own exemption. What stays compile-only is *a check reading resolved rows*, and
+coverage looks like one — but whether the injected table **can** place an authored row is arithmetic
+over bytes the pre-flight has already loaded, and needs no resolution to have run. The exemption is
+about resolved rows, not about the word "resolution".
+
+### What shipped
+
+`resolution.unresolved_subjects` is the predicate `resolve_from_table` applies, factored out and called
+from both sides, so the two cannot drift into disagreeing about which rows are unplaceable — the
+alternative was a second implementation of `_usable_loci`'s three exclusions (a `not_found` sentinel, a
+row under another build, a row with no `chrom`). The pre-flight emits `rsid_unresolved` with the
+sentence resolution already emits, and under `strict` appends the compile's error **verbatim**, which
+the test asserts by equality rather than by both being non-empty: a pre-flight refusing in its own words
+still sends the author hunting.
+
+Two distinctions the fix had to keep, both the compile's own rather than new:
+
+- **Nobody-asked is not asked-and-absent.** With a table present, an uncovered row is absent from
+  something that was consulted and is named. With no table, nothing was consulted, and the pre-flight
+  says so once instead of blaming a missing file once per variant. Both still refuse under `strict`.
+- **`--no-resolve` means the same thing on both sides.** The master switch turns resolution off by
+  request, and `resolution_disabled` already says that once with its row count; the coverage check
+  stays silent there rather than restating it per row.
+
+**A double-report was found and fixed while doing it.** `compile_module` runs the pre-flight in
+best_effort whatever its own mode, so both passes reach this finding for the same subject; appending
+blind published every one twice, measured at **24 warnings for 12 subjects** on a real example, with
+`warnings_summary` counting 24. De-duplicated on the message, the `_check_contig_ploidy` idiom — safe
+here because no message resolution re-derives embeds a count, which is the condition
+`@no-rerun-with-counts` sets.
+
+### Repairs rejected
+
+- **A partial-file marker, sentinel, or row-count header on `resolution.csv`** — the reporter's
+  framing. The file is a pure build product since RM124, and a marker in it would be a fact about a
+  *run* living in a table of facts about *variants*, on the same axis `fetched_at` is kept off the fact
+  set. It would also be unwritable by the case that needs it: a killed process writes no marker.
+- **A `--rederive`-style completeness command** (their option 3). They offered to build it themselves
+  and asked whether it is theirs; it is neither theirs nor a new surface — `compile` already answers it,
+  and now so does `validate`, which is the command their authoring loop runs first.
+- **Having `enrich` refuse to start on a short-looking sidecar.** Argued against by the reporter
+  themselves and correct: a deliberately-resolved subset and an injected curated table are both
+  supported practice, and nothing distinguishes either from a crash.
+- **Recording the intended subject count in the run's output** (their option 2). `SubjectProgress`
+  already carries `(done, total)` live, and a durable count of what a *killed* run meant to do is the
+  marker above wearing a different hat.
+
+### Charter check
+
+P2 — pure computation over already-loaded bytes; nothing fetches, and the pre-flight gains no new input.
+P3/P8 — no schema change, no new field, no vocabulary member: `rsid_unresolved` and
+`resolution_not_injected` are existing codes and the strict error is the existing sentence. Measured:
+no reference example moves its `artifact.digest`, `content_signature` or warnings, so the published
+0.7.0 release record is unaffected — none of the sixteen has a partial table, which is why the defect
+survived a corpus this size.
+
+**One test was asserting the defect and was corrected**, not deleted:
+`test_quoting_a_noncommercial_article_warns_and_never_gates` built a fixture with no `resolution.csv`
+and asserted `validate --strict` reported valid. Its subject is that a licence finding never gates, and
+the module was independently strict-refusable for an unrelated missing coordinate — so the fixture now
+injects the table, and the assertion means what it says.
+
 ## RM140 — a study row's p-value and effect size are asserted to belong together, and nothing recorded what either came from
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format` + `just-dna-compiler`).

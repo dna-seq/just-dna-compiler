@@ -203,6 +203,46 @@ def test_a_strict_refusal_commits_nothing_and_leaves_the_staged_work_behind(tmp_
     assert staging_dir_for(_table(spec)).exists()
 
 
+def test_a_kill_over_an_existing_table_leaves_that_table_byte_identical(tmp_path: Path) -> None:
+    """The missing cell of the matrix, and the shape a consumer actually reported (S76).
+
+    Two neighbours already exist: a kill over a module with **no** table (asserted absent above) and a
+    **strict refusal** over one that has a table. A kill over an existing table is a third exit and was
+    tested by neither — and it is the one that costs the most when it is wrong, because it is the shape
+    that made 0.6.6's in-place writer dangerous. There, a run killed partway left a well-formed shorter
+    table, and merge-not-clobber then read it as an author who had resolved less: the natural recovery,
+    running it again, entrenched the loss instead of repairing it.
+
+    Under the transaction the same kill must commit nothing at all. Three things are asserted rather
+    than one, because each is a way the failure came back: the table's **bytes**, the absence of a
+    `verification.json` attesting a run that did not finish, and the presence of the staged answers a
+    resume needs. Bytes rather than a row count — a rewritten table with the same number of rows is
+    still a table this run had no right to commit.
+    """
+    spec = _spec(
+        tmp_path / "spec",
+        "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c\nrs7412,C/T,risk,c\nrs999,A/G,risk,c\n",
+    )
+    _write_recorded(spec, [_recorded("rs1801133", "1", 11856377, "G", "A")])
+    before = _table(spec).read_bytes()
+
+    with pytest.raises(_Killed):
+        _run(spec, tmp_path, resolver=_StubResolver(die_after=1))
+
+    assert _table(spec).read_bytes() == before
+    assert not (spec / "verification.json").exists()
+    assert staging_dir_for(_table(spec)).exists()
+
+    # And the recovery works from there: the resumed run commits the table an uninterrupted one
+    # commits, which is what makes "leave it alone and re-run" the correct advice rather than the
+    # dangerous one it was.
+    whole = _spec(tmp_path / "whole", (spec / "variants.csv").read_text(encoding="utf-8"))
+    _write_recorded(whole, [_recorded("rs1801133", "1", 11856377, "G", "A")])
+    _run(whole, tmp_path, resolver=_StubResolver())
+    _run(spec, tmp_path, resolver=_StubResolver())
+    assert _table(spec).read_bytes() == _table(whole).read_bytes()
+
+
 def test_the_staging_directory_is_a_sibling_of_the_table_it_stages(tmp_path: Path) -> None:
     """The cross-device property, asserted structurally rather than trusted from a docstring.
 

@@ -203,6 +203,7 @@ from just_dna_compiler.resolution import (
     hosting_verdict,
     resolve_from_table,
     resolve_positional_rows,
+    unresolved_subjects,
 )
 
 # `validate_spec`/`compile_module` return their findings on a result object, which is the right shape
@@ -4227,6 +4228,58 @@ def _validate_spec(
         )
     )
 
+    # Resolution *coverage*, by the same parity rule and for the case that reported it (S76). This is
+    # the standing exemption's edge: what stays compile-only is a check reading **resolved** rows, and
+    # this one does not — it asks whether the injected table *can* place each authored row, which is
+    # arithmetic over the bytes already loaded here. `unresolved_subjects` is the predicate
+    # `resolve_from_table` applies, shared rather than restated, so the two sides cannot drift into
+    # disagreeing about which rows are unplaceable.
+    #
+    # It matters because the gap was the loud half of a silent failure: a spec whose `resolution.csv`
+    # covers some of its variants passes `validate --strict` clean and is refused by
+    # `compile --strict`, which is the green-pre-flight-then-refusal shape this rule exists to stop.
+    # An author whose enrich run was killed partway sees nothing until the compile.
+    #
+    # Both severities mirror the compile exactly. The per-subject warnings carry `rsid_unresolved`,
+    # the code `resolve_from_table` already emits for the identical sentence, so `compile_module` —
+    # which runs this pre-flight in best_effort whatever its own mode — de-duplicates them on the
+    # message rather than publishing each twice (the `_check_contig_ploidy` idiom). Neither message
+    # embeds a count that resolution could change, which is what makes re-running one safe here.
+    #
+    # **Nobody-asked is not asked-and-absent, and the two get different messages** — the compile's own
+    # split, mirrored rather than re-invented. With a table present, a row it does not cover is absent
+    # from something that was consulted, and `resolve_from_table` names each such row. With no table at
+    # all nothing was consulted, and the compile says so once, in one aggregated line, instead of
+    # blaming a file that does not exist once per variant. Both refuse under `strict`, because a
+    # partial artifact is unreproducible either way.
+    if variants and resolve_with_ensembl:
+        unplaceable = unresolved_subjects(variants, membership_table, declared_build)
+        if membership_table:
+            all_warnings.extend(
+                w
+                for w in (
+                    CodedWarning(
+                        "rsid_unresolved",
+                        f"{name}: not found in resolution table, position remains unset",
+                    )
+                    for name in unplaceable
+                )
+                if w not in all_warnings
+            )
+        elif unplaceable:
+            all_warnings.append(CodedWarning(
+                "resolution_not_injected",
+                "No resolution.csv and no ensembl_cache injected; variants lacking a genomic position "
+                "are left unresolved. Produce a resolution.csv with just-dna-enricher.",
+            ))
+        if strict and unplaceable:
+            all_errors.append(
+                f"strict compile: {len(unplaceable)} variant(s) have unresolved genomic "
+                f"positions after resolution: {unplaceable}. A partial artifact would not be "
+                f"byte-reproducible; inject a complete Ensembl reference (ensembl_cache=) or "
+                f"compile without strict."
+            )
+
     # Same rule about where a check belongs: the VCF pointer columns are authored cells read against
     # two spec-derived constants, with no resolution step and no `output_dir` in sight, so the
     # pre-flight is exactly where an author should hear about them.
@@ -4929,7 +4982,13 @@ def compile_module(
                 "No resolution.csv and no ensembl_cache injected; variants lacking a genomic position "
                 "are left unresolved. Produce a resolution.csv with just-dna-enricher.",
             )]
-        all_warnings.extend(resolve_warnings)
+        # De-duplicated on the message, the `_check_contig_ploidy` idiom: since S76 the pre-flight
+        # emits the `rsid_unresolved` sentence for the same subjects, and `compile_module` runs that
+        # pre-flight whatever its own mode, so appending blind published every such finding twice —
+        # and `warnings_summary` counted 24 for 12 subjects. Safe here for the reason the rule
+        # requires: no message resolution re-derives embeds a count, so two passes over one subject
+        # produce the identical sentence rather than two that differ by a number.
+        all_warnings.extend(w for w in resolve_warnings if w not in all_warnings)
         # The round-trip contract. `strict` promises a *reproducible* artifact, and these are the
         # conditions under which `compile → reverse → compile` cannot reproduce the resolution table
         # it started from (a dropped locus, an authored coordinate contradicting the table), plus the

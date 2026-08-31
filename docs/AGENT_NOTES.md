@@ -638,6 +638,17 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   over injected bytes and needs no `output_dir`, it belongs in `validate_spec` too. What stays
   compile-only is anything reading *resolved* rows.
 
+  **The exemption is about resolved ROWS, not about the word "resolution" — that is how the third
+  instance hid (S76, RM141).** Whether the injected table *can place* an authored row is arithmetic
+  over bytes the pre-flight has already loaded; it needs no resolution to have run, and it was
+  compile-only anyway. So `validate --strict` reported valid on every module whose `resolution.csv`
+  covered some of its variants, and `compile --strict` refused it a second later. When you move one:
+  **share the predicate rather than restating it** (`resolution.unresolved_subjects` is the function
+  `resolve_from_table` applies) and **append the compile's error verbatim**, asserted by *equality* —
+  a pre-flight refusing in its own words still sends an author hunting. And expect a **double-report**:
+  `compile_module` runs the pre-flight whatever its own mode, so both passes emit the finding, measured
+  at 24 warnings for 12 subjects before the message-dedup went in.
+
 - `@ploidy-behind-resolution` — **A warning computed post-resolution is discarded — the second `_cross_validate_variants` call takes
   errors only.** That is right for a warning about authored cells and wrong for any whose input
   resolution fills. It made the non-diploid guardrail invisible to every rsID-authored row, i.e. to

@@ -456,6 +456,36 @@ def _usable_loci(
     ]
 
 
+def unresolved_subjects(
+    variants: list[VariantRow], resolution: dict[str, list[ResolutionRow]], genome_build: str
+) -> list[str]:
+    """Authored rows the injected table cannot place, named by rsID (or `variant_key`).
+
+    The predicate `resolve_from_table` will apply, factored out so the pre-flight can ask it **before**
+    resolution runs and reach the same answer the compile does (S76). A row is unplaceable when it
+    authors no coordinate of its own and the table holds no usable locus for its key — the same
+    `_usable_loci` filter the fill uses, so a `not_found` sentinel and a row recorded under another
+    build count as no locus here exactly as they do there.
+
+    Deliberately **not** a re-derivation of the compile's check: `compile_module` runs its refusal over
+    `outcome.variants`, the post-expansion list, and the two agree because a subject with no usable
+    locus is carried through the expansion unchanged. Sharing the predicate is what keeps that true —
+    a second implementation beside the first is the drift this returns instead of.
+
+    Empty for a non-GRCh38 module, where `resolve_from_table` skips wholesale rather than resolving
+    less: reporting every row unplaceable there would restate the skip warning once per row and blame
+    the table for a limit of the tier.
+    """
+    if genome_build != "GRCh38":
+        return []
+    return sorted(
+        v.rsid or v.variant_key or ""
+        for v in variants
+        if v.chrom is None
+        and not _usable_loci(resolution.get(v.variant_key or ""), genome_build)
+    )
+
+
 def _coord_update(row: ResolutionRow) -> dict[str, object]:
     """The coordinate fields a fill copies onto a VariantRow (matches the DuckDB path's locus dict)."""
     return {"chrom": row.chrom, "start": row.start, "ref": row.ref, "alts": row.alts}

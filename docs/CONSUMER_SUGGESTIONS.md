@@ -8,7 +8,7 @@ which carries an index of every one and where it landed; the runbook for answeri
 **This file is the inbox, so an empty one means nothing is owed** — which is the property the split
 exists for, and the reason answered items do not stay here.
 
-## The next item is S77
+## The next item is S79
 
 **Claim ids from here, never from what this file shows.** S1–S46 are all answered and live in the
 history file, so an empty inbox says nothing about how many ids are taken — number from the corpus, or
@@ -51,7 +51,87 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 
-## S76 — an interrupted `enrich` leaves a partial `resolution.csv` that nothing on disk marks as partial, and merge-not-clobber makes the next run trust it
+## S76 — WITHDRAWN as a duplicate of S66; kept for its one new measurement
+
+**Status — the withdrawal is accepted and your closing question is answered YES; a real defect underneath the report is fixed and shipped in the tree as [RM141](ROADMAP_HISTORY.md#rm141--validate---strict-blessed-a-module-compile---strict-refused-whenever-the-resolution-table-was-partial).**
+No apology needed — an item withdrawn within hours with a measurement attached costs less than one
+nobody files. Three things, and the middle one is the reason this is not simply closed.
+
+**Your closing question first, because you said no reply is needed if the answer is yes, and it is
+yes.** `verification.json` is written inside the same commit block as `resolution.csv`, below the line
+every refusal raises above. A killed run writes neither; a resumed run writes both. So the two
+artifacts cannot disagree the way you describe, and the loud half you observed was 0.6.6's behaviour,
+where the transaction did not exist. Closed.
+
+**Your central mechanism does not reproduce, on either version — and this is worth more than the
+withdrawal.** You describe merge-not-clobber as making the re-run trust the partial file and never
+retry the missing 62. Probed directly: a module with three authored subjects and a table recording one
+is re-run against a resolver that records every question asked. It asks about **exactly the other two**
+and commits all three. The merge is over subjects the table records; a subject it does not record has
+nothing to merge onto and goes to the source like any other. Measured on this tree **and on `v0.6.6`
+built from its own tag**, so it is not something 0.7 fixed underneath you. Re-running would have filled
+your 62. The recovery you avoided as dangerous was the correct one.
+
+That also re-reads your arithmetic: 203 rows covering 201 of 263 is a **short** table, not a wrong one,
+and the distinction is the whole difference between S66's case and yours. S66's incident replaced a
+restored 330-row table with 162 — a run that *overwrote* good rows. Yours left rows that were all
+correct and simply stopped early, which the next run continues from. You were right that it is the same
+family and right to withdraw; the number belongs to the milder member of it.
+
+**What is real, and is ours.** `compile --strict` refuses a module whose variants still have no
+position after resolution. `validate --strict` said nothing about it — so your partial table passed the
+pre-flight clean and was refused by the compile immediately after, which is the
+green-pre-flight-then-refusal shape our own parity rule exists to prevent, and the third time we have
+broken it. It hid behind that rule's exemption: what stays compile-only is a check reading *resolved*
+rows, and whether the table **can place** a row is arithmetic over bytes the pre-flight has already
+loaded.
+
+So the detector you asked for exists now, in the command your loop already runs first: `validate
+--strict` refuses a partial table with the compile's verbatim error naming every unplaced subject,
+`validate` warns per uncovered row, a module with no table at all says so once rather than per variant,
+and `--no-resolve` silences it. A double-report was found while fixing it and is fixed too — both
+passes reached the finding for one subject, measured at 24 warnings for 12.
+
+**One thing we are refusing, and the reason generalises past this item.** A durable marker recording
+that a run was partial is a fact about a **run** living in a table of facts about **variants**, on the
+same axis that keeps `fetched_at` out of every fact set — and `resolution.csv` has been a pure build
+product since RM124. It is also unwritable by the case that needs it: a killed process writes no
+marker. The answer to "is this table complete" is a *reading*, computed from the spec beside it, which
+is what `validate` now gives you.
+
+**Answered is not installable.** All of it is inside `0.7.0`, bumped and **not tagged**.
+[CHANGELOG.md](CHANGELOG.md)'s 0.7.0 heading is the record.
+<!-- triaged: 0.7.0 · sha 82cd8b8dde15 -->
+
+**Withdrawn by the reporter, 2026-08-31, within hours of filing.** We filed this before finding
+`S66` in the history file, which reports the same defect from the same consumer and is already
+answered: the transaction, the `flock` and the atomic writers all shipped as `RM128` in 0.7. Our
+apologies — the duplicate check we ran keyed on "partial" and "sidecar" and missed it.
+
+**What is new and worth keeping is the arithmetic**, because `S66`'s worked example is a run that
+wrote *nothing*, and ours wrote something that looked complete: a run killed mid-`enrich` left
+`resolution.csv` with **203 rows covering 201 of 263 authored rsIDs**, every row correct, every
+`status=resolved`, and nothing in the file recording that it is short. Merge-not-clobber then means
+the natural recovery — re-run it — trusts the partial file and never retries the missing 62. That is
+`S66`'s "valid-looking short file" with a number against it, and it is `RM128`'s case for the
+transaction rather than a separate ask.
+
+**One thing that is genuinely not covered by `RM128`, stated as an observation rather than a new
+item:** the same interruption left `verification.json` attesting bytes a completed enrich would
+change. That half is loud — the stale-verification warning fires — so an interrupted run leaves two
+artifacts disagreeing, one that announces itself and one that does not. If the transaction already
+stages `verification.json` alongside `resolution.csv`, this is closed too and no reply is needed.
+
+The original report follows, unedited, because the prose is the record of what was observed.
+
+## S76 (original text) — an interrupted `enrich` leaves a partial `resolution.csv` that nothing on disk marks as partial, and merge-not-clobber makes the next run trust it
+
+**Status — answered in the withdrawal section above, which this is the evidence for.** Kept verbatim
+and marked only so the ledger can see it: the reporter wrote it as one item under two headings, and a
+top-level heading is the unit the ledger counts. No separate reply — the three findings (the gap-fill
+does reproduce as *working*, `verification.json` is inside the commit, and the `validate`/`compile`
+parity gap that is ours) are all above.
+<!-- triaged: 0.7.0 · sha 0d5594fa3e1e -->
 
 **Reported by** just-module-creator, 2026-08-31. Installed: format/compiler/enricher 0.6.6, registry 0.18.2.
 
@@ -125,3 +205,173 @@ short. It cannot distinguish a partial write from a legitimately smaller sidecar
 resolved a subset deliberately, or injected a curated `resolution.csv` for exactly the rows they care
 about, both of which are supported today. Refusing there would break a working practice to catch a
 crash.
+
+## S77 — `enrich_dosage_sensitivity` writes a ClinGen licence row for a gene it did not cover, so a module carries an obligation for a source that contributed nothing
+
+**Reported by** just-module-creator, 2026-08-31. Installed: format/compiler/enricher 0.6.6, registry 0.18.2.
+
+### What we ran
+
+A single-variant module on `SIRT6` (rs117385980), authored by an agent from one paper. It ran the
+fact passes, then compiled.
+
+### What happened
+
+The dosage pass reported, correctly, that it covered nothing:
+
+```
+dosage: missing: [SIRT6]
+```
+
+and nonetheless wrote a licence row into `licensing.csv`:
+
+```
+clingen,annotation,CC0-1.0,https://clinicalgenome.org/docs/terms-of-use/,,
+"ClinGen (https://clinicalgenome.org), accessed via the gene-curation list",
+CC0 public-domain dedication; attribution requested but not required.,
+false,true,true,non_commercial,"clingen_dosage_30 Aug,2026",2026-08-30T23:57:03Z,
+```
+
+So the compiled module declares an obligation to a source that supplied **no data to any table**.
+`SIRT6` is not on ClinGen's dosage curation list; the pass looked, found nothing, and still recorded
+having consumed the source.
+
+### Why it is worth fixing rather than shrugging at
+
+1. **It is a false statement in a published artifact.** `licensing.csv` travels to the registry and
+   is what a downstream consumer reads to decide whether a module is redistributable. A row saying
+   *this module uses ClinGen* is not true of this module.
+2. **It fires the licence-disagreement warning for no reason.** The compile emits *"module declares
+   license X but annotation-layer sources report [...]"*, and an author then adjudicates a conflict
+   that does not exist. We saw two independent agents spend real effort on exactly that in an earlier
+   round, before we traced it here — and the honest adjudication in both cases was "compatible",
+   reached by reasoning about a source that was never read.
+3. **It is the same shape as a check that cannot fail.** A licence row that appears whether or not the
+   source contributed says nothing about what the module contains.
+
+We are not certain whether the same holds for the other fact passes when they cover nothing — we saw
+it on dosage because that is the pass this module happened to run. Worth checking `gene_validity`,
+`frequencies` and `literature` in the same breath.
+
+### The ask
+
+**Write the licence row when the pass actually contributes a row, not when it runs.** If the intent is
+to record "we queried this source", then that is a different fact from "this module uses this source"
+and wants a different home — the `logs/` entry, or a `covered: false` marker on the row — because
+`licensing.csv` is read as the second thing.
+
+**A candidate we think is wrong:** having the author delete the spurious row. It is machine-written
+and would come back on the next pass, and an author deleting licence rows by hand is a worse habit
+than the defect.
+
+**Filed as an enricher item rather than a format one**, since the row is written by the pass, but the
+question of what `licensing.csv` means when a source was consulted-and-empty may be format's to
+settle.
+
+## S78 — `compile --strict` builds a green artifact over a coordinate the enricher has already diagnosed as another assembly's
+
+**Reported by** just-module-creator, 2026-08-31. Installed: format/compiler/enricher 0.6.6, registry 0.18.2.
+
+### What we ran
+
+A minimal spec, one variant, deliberately pasting a **GRCh37** coordinate onto a module declaring
+`genome_build: GRCh38` — the ordinary shape of a paper that states its assembly once in the methods
+and nowhere near the table an author is reading. `rs61849494` is `10:51613269 G/A` on GRCh37 and
+`10:45982565 C/T` on GRCh38: **5.6 Mb apart and strand-flipped**.
+
+```
+rsid,chrom,start,ref,alts,genotype,state,conclusion
+rs61849494,10,51613269,G,A,A/G,alt,Pasted verbatim from a GRCh37 paper.
+```
+
+### What each gate did, measured
+
+**`validate_spec` — passes.** `valid: True`, zero errors, and the only warning is the unrelated
+missing-closure one. Correct: it is offline and cannot know.
+
+**`enrich(mode="strict")` — refuses, and this is exactly right.** `EnrichmentError`, no
+`resolution.csv` written, module unchanged. Your diagnosis is better than anything we could have
+asked for; all three lines fire and the second names the repair:
+
+> Old-assembly coordinate — 1 row(s) — the authored ref is the GRCh37 base AND GRCh37 dbSNP records a
+> variant starting there — the strongest of the three, and the one that names the rs-number to author
+> instead (10:51613269 → rs61849494).
+
+**`enrich(mode="best_effort")` — reports all three, then writes `resolution.csv` with the GRCh37
+coordinate in it.** Also defensible: best-effort means proceed.
+
+**`compile_module(strict=True)` — succeeds. This is the ask.** Handed that `resolution.csv`, a strict
+compile builds the artifact, reports no error and no warning about the coordinate at all, and emits
+only the missing-closure warning. The module is internally consistent, reproducible, and about the
+wrong locus.
+
+### The gap, stated precisely
+
+Not "strict should catch reference mismatches" — the enricher's strict already does, and does it
+well. The gap is that **`resolution.csv` carries no record that its rows were produced over a
+diagnosed mismatch**, so the compiler cannot know, and a `--strict` compile therefore cannot refuse
+what a `--strict` enrich already refused. The two strict flags mean different things about the same
+defect, and the weaker one is the one that produces the published artifact.
+
+We know your position that `--strict` is a determinism gate and not a correctness gate, and we are
+not asking you to move that line generally. This is narrower: the correctness judgement **has already
+been made** by another pass in the same toolchain, and is then discarded.
+
+### The ask, and we would rather have your view than guess the shape
+
+Any of these closes it; they are in our order of preference:
+
+1. **Have the enricher record the diagnosis where the compiler can see it** — a column on
+   `resolution.csv`, or a marker beside it, saying this row was written despite a reported
+   ref/assembly disagreement. Then `compile --strict` can refuse on a fact rather than on a re-run of
+   the check, and `--no-strict` still builds.
+2. **Have `compile --strict` re-run the rsid↔coordinate agreement it already has the data for** —
+   `resolution.csv` holds both the authored coordinate and the resolved one, so the disagreement is
+   visible without any network. This is the smallest change but it does put a correctness judgement
+   inside the determinism gate.
+3. **Refuse nothing, but make the compile *warn*** — strictly better than silence, and it costs the
+   line nothing. This is the floor, not our preference: an author who did not read the enrich report
+   is not obviously going to read a compile warning either.
+
+**A candidate we argue against, having tried it:** telling authors to always run strict enrichment.
+That is what we will do in our own skills, and it is not sufficient — `best_effort` exists for good
+reasons (an unreachable Ensembl must not be a failure), and a module authored under it stays wrong
+forever with every subsequent gate green. The defect is that the diagnosis is thrown away, not that
+somebody chose the wrong mode.
+
+### The general form of the ask, which is bigger than one coordinate
+
+Sharpened by our owner after reading the measurement above, and it subsumes options 1–3:
+
+> **A `compile --strict` over a `resolution.csv` produced by a `best_effort` enrichment should be
+> blocked.**
+
+The reasoning is about what the two strict flags jointly promise, not about assemblies. `strict` on
+the enricher means *every row was checked against the reference and none disagreed*. `strict` on the
+compile means *this artifact is reproducible*. A module that ran `best_effort` and then compiled
+`--strict` gets the second stamp without the first ever having been earned — and nothing in the
+artifact records which of the two happened. The published module is indistinguishable either way.
+
+That makes the mode a **property of the derived sidecar**, not of the run that happened to produce
+it: `resolution.csv` should say which mode wrote it, and `compile --strict` should refuse a sidecar
+that does not carry the strict stamp. Refusal, not a warning, is what our owner asked for, and the
+argument for it is that the alternative has already failed once — the enricher's diagnosis is
+excellent and it still reached a green artifact, because a report nobody is required to read is not a
+gate.
+
+This also fixes a case our probe did not cover: **any** ref-mismatch class, not just an old assembly.
+`best_effort` is the mode that proceeds past all of them.
+
+**We are aware this is a behaviour change with a migration cost**, and we are not pretending
+otherwise: every existing `resolution.csv` has no mode stamp, so the rule needs an
+absent-means-unknown reading rather than absent-means-best_effort, or it retroactively blocks
+recompiles of published modules. `None` is not `False`, and this is that rule at the artifact level.
+Whether that is worth it is yours to weigh — we are stating the ask plainly because the weaker
+options above all leave the same artifact publishable.
+
+### Our side
+
+We default to `best_effort` and expose `strict` as a flag, so our own callers meet this. We are
+adding the assembly-triage prose to two skills and pointing them at rsID-only authoring, which
+prevents the paste rather than catching it. Neither fix reaches a module already authored, and
+neither is a substitute for the sidecar knowing how it was made.

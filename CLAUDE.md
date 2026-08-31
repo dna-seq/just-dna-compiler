@@ -183,6 +183,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 
 - Audit `validate`/`compile` parity by **check**, not by table. `@parity-by-check`
 - `validate_spec` must refuse everything `compile` refuses. `@validate-refuses-all`
+- The compile-only exemption is *resolved rows*, not the word resolution; share the predicate, copy the error. `@validate-refuses-all`
 - Know the validation ceiling first; a check needing a reference belongs in the enricher. `@validation-ceiling`
 - Enricher checks report, never repair; severity follows the mode. `@enrichment-is-validation`
 - Move a check behind resolution when resolution fills its input (`chrom` for ploidy). `@ploidy-behind-resolution`

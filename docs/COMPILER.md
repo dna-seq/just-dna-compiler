@@ -1196,6 +1196,42 @@ the key is canonical*. A VRS allele id names the variant without the coordinate 
 so the coordinate can live in `resolution.csv` where it belongs. Under the older coordinate-first keying
 the coordinate was load-bearing in `variants.csv` and could not be dropped.
 
+### Coverage is reported by the pre-flight too (RM141, 0.7)
+
+`compile --strict` refuses a module whose variants still have no position after resolution — a partial
+artifact is not byte-reproducible, which is the failure behind *"my local hash differs from the
+published one"*. Until 0.7 `validate --strict` said nothing about it, so a spec whose `resolution.csv`
+covered only some of its variants passed the pre-flight clean and was refused by the compile
+immediately after.
+
+That is the parity rule's own failure shape, and it hid behind the rule's exemption. What stays
+compile-only is *a check reading resolved rows*; whether the injected table **can** place an authored
+row is arithmetic over bytes the pre-flight has already loaded, and needs no resolution to have run.
+The exemption is about resolved rows, not about the word "resolution".
+
+`resolution.unresolved_subjects` is the predicate `resolve_from_table` applies, shared by both callers
+rather than restated — a second implementation of `_usable_loci`'s three exclusions (a `not_found`
+sentinel, a row recorded under another build, a row with no `chrom`) is exactly the drift this avoids.
+Under `strict` the pre-flight appends the compile's error **verbatim**; a pre-flight that refused for
+its own differently-worded reason would still send an author hunting.
+
+Three behaviours to know:
+
+| the module's table | what is reported |
+| --- | --- |
+| present, covers every row needing a position | nothing |
+| present, covers some | `rsid_unresolved` per uncovered row, then the strict refusal — the row is absent from a file that **was** consulted |
+| absent entirely | `resolution_not_injected`, once, plus the strict refusal — nothing was consulted, so nothing is named row by row |
+
+`--no-resolve` silences the check the way it silences the fill: resolution is off by request, and
+`resolution_disabled` already says so once with its row count.
+
+**One finding, though two passes produce it.** `compile_module` runs the pre-flight in `best_effort`
+whatever its own mode, so both reach this finding for the same subject; the compile de-duplicates on
+the message (the `_check_contig_ploidy` idiom). That is safe here for the reason the rule requires —
+neither message embeds a count resolution could change, so two passes over one subject produce the
+identical sentence rather than two differing by a number.
+
 ### The mishap matrix
 
 Five identity columns the author may or may not supply, crossed with what the table says about them, is

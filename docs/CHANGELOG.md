@@ -44,6 +44,39 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
+- **RM141 — `validate --strict` blessed a module `compile --strict` refused, whenever the resolution
+  table was partial.** *(`just-dna-compiler`.)* Filed and built on 2026-08-31 from a consumer report
+  (S76) whose headline mechanism did not reproduce, and whose second finding was ours.
+
+  The report: an `enrich` killed by a quota limit left a `resolution.csv` covering 201 of 263 subjects,
+  and — the urgent half — merge-not-clobber was said to turn that into a silent wrong answer, since
+  re-running would merge onto the stale rows and never retry the missing 62. **That does not
+  reproduce, on this tree or on the `v0.6.6` they ran.** `enrich` gap-fills: a run over a table
+  covering one of three subjects asks the source about exactly the other two. The atomic write they
+  asked for is also already shipped, as RM128 in this same release, which is why the interrupted run
+  left the previous table rather than a truncated one.
+
+  **What is real is that nothing said so until the compile.** `compile --strict` refuses a module whose
+  variants have no position after resolution; `validate --strict` did not report it at all. So the
+  pre-flight passed clean and the compile immediately after refused — the third break of the parity
+  rule, hiding behind that rule's own exemption. What stays compile-only is a check reading *resolved*
+  rows, and whether the injected table **can** place a row is arithmetic over bytes the pre-flight has
+  already loaded.
+
+  `resolution.unresolved_subjects` is the predicate resolution applies, now called from both sides
+  rather than restated, and under `strict` the pre-flight appends the compile's error verbatim. Two of
+  the compile's own distinctions are kept: nobody-asked is not asked-and-absent, and `--no-resolve`
+  silences the check the way it silences the fill. A **double-report** was found doing it — both passes
+  reach the finding for one subject, measured at 24 warnings for 12 subjects with `warnings_summary`
+  counting 24 — and is de-duplicated on the message.
+
+  **Consumers:** no schema change, no new field, no new warning code. A spec that was going to be
+  refused by `compile --strict` is now refused by `validate --strict` too, with the identical message —
+  which is a behaviour change for anyone treating a green `validate` as a compile guarantee, and is the
+  point. Measured: no reference example moves its `artifact.digest`, `content_signature` or warnings,
+  so the 0.7.0 release record is unaffected; none of the sixteen has a partial table, which is why this
+  survived a corpus that size.
+
 - **RM140 — a study row's p-value and effect size were asserted to belong together, and nothing
   recorded what either came from.** *(`just-dna-format` + `just-dna-compiler`.)* Filed and built on
   2026-08-31 from a consumer's reproducibility benchmark (S75), after the proposal round had closed —

@@ -323,6 +323,17 @@ def test_quoting_a_noncommercial_article_warns_and_never_gates(tmp_path: Path) -
         f"{_PMID},,,true,cc by-nc,false\n",
         encoding="utf-8",
     )
+    # The claim is that this finding NEVER gates — so it must stay a warning in both modes and must
+    # not be the thing that makes a module invalid. `resolution.csv` is what the fixture was missing:
+    # without it the module's one rsID has no position, which `compile --strict` has always refused
+    # and which `validate --strict` now reports too (S76). Asserting `valid` under strict was
+    # therefore asserting the parity gap rather than this check's behaviour; injecting the table
+    # removes the unrelated refusal and lets the assertion mean what it says.
+    (spec / "resolution.csv").write_text(
+        "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status\n"
+        "rs1800562,rs1800562,6,26092913,G,A,GRCh38,0,authored,resolved\n",
+        encoding="utf-8",
+    )
     for strict in (False, True):
         result = validate_spec(spec, strict=strict)
         assert result.valid, (strict, result.errors)
