@@ -44,6 +44,80 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM142 — the dosage pass declared a ClinGen obligation for a module ClinGen curates nothing of
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-enricher`). **Severity** medium ·
+**Owner** enricher · **Motivating case** [S77](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator)
+
+### What was measured
+
+A single-variant `SIRT6` module. The dosage pass reported, correctly, that it covered nothing —
+`dosage: missing: [SIRT6]` — wrote no `gene_metrics.csv` row, and wrote a ClinGen licence row into
+`licensing.csv` anyway. Reproduced exactly: `covered=[]`, `missing=['SIRT6']`, zero data rows,
+`licensing.csv` present with one `clingen` row.
+
+Two costs, and the reporter is right that the second is the expensive one:
+
+- **A false statement in a published artifact.** `licensing.csv` travels to the registry and is read as
+  *this module uses this source*. It is not true of a module ClinGen curates no gene of.
+- **It fires `declared_license_disagrees` for nothing.** Reproduced: a module declaring `license: MIT`
+  and using ClinGen for nothing warns *declares MIT but annotation-layer sources report CC0-1.0*, and
+  an author then adjudicates a conflict that does not exist. Two agents were measured spending real
+  effort on exactly that in an earlier round.
+
+**The compiler cannot catch it**, which is what makes this the pass's job rather than a check. The
+orphan warning `_source_checks` emits exempts the `annotation` layer deliberately (RM46), because
+`sources.csv` is where an author is told to record a hand-read source and warning about that would make
+compliance noisy while omission stayed silent. So an annotation-layer row nothing uses is silent by
+design, and only the pass knows whether it contributed.
+
+### The fix, which is what the siblings already do
+
+`merge_sources_file` is now behind `if covered:`. That is not a new rule — it is the rule the rest of
+the family already follows and this one member missed. `gene_metrics`, `frequencies`, `assertions` and
+`gene_validity` all pass `{row.source for row in out}` to `record_source_terms`, so a pass that wrote
+no row records no source. `clingen.py` alone built a fixed row and wrote it unconditionally.
+
+**Checked rather than assumed, because the reporter asked us to check the others**: `enrich_gene_metrics`
+and `enrich_frequencies` were run offline over a module they cover nothing of, and neither writes a
+`licensing.csv` at all. The defect is `clingen.py`'s alone.
+
+**`covered`, not `out`, and not `not missing`.** `out` carries rows a *previous* run merged in, whose
+terms are already recorded, so keying on it would be keying on history. `not missing` is the dangerous
+inversion — it would drop the declaration from every module carrying one uncurated gene beside a
+curated one, which is a real obligation going unrecorded. Both directions have a test, and so does the
+second lap, where `covered` is empty because the work is done and the row must stand.
+
+`ClinGenResult.source_row` is still populated whatever happened: the terms of what was *consulted* are
+a fact a caller may want to render, and they are a different fact from what the module uses.
+
+### Repairs rejected
+
+- **Having the author delete the row.** The reporter's own rejected candidate and correct: it is
+  machine-written and returns on the next pass, and authors deleting licence rows by hand is a worse
+  habit than the defect.
+- **A `covered: false` marker on the row.** Their alternative suggestion. It makes `sources.csv` carry
+  rows that are not declarations, so every consumer reading the table — the compile gate included —
+  gains a case to handle for a fact that has no reader. Absence already says it.
+- **Removing the `annotation` exemption from the compiler's orphan check.** It would catch this and
+  reintroduce what RM46 removed: a warning at the author who followed the documented advice to declare
+  a hand-read source. Compliance warning while omission stays quiet is the wrong direction, and the
+  exemption's reasoning is unchanged.
+- **Recording "we queried this source" somewhere.** The reporter floated a `logs/` entry. Nothing reads
+  it, and a run's history is not what `licensing.csv` is for — the same axis that keeps `fetched_at` out
+  of every fact set.
+
+### Charter check
+
+P2 — no new fetching; the pass consults exactly what it consulted. P3/P8 — no schema change, no field,
+no vocabulary member; a `licensing.csv` that was being written is not written, which cannot invalidate
+a module that never depended on it. Measured: no reference example changes — none carries a ClinGen
+dosage row from an empty pass — so the published 0.7.0 release record is unaffected.
+
+The direction is worth naming: this **removes** a declaration, and a licence table losing a row is the
+dangerous direction in general. It is safe here only because the row's own predicate is now the thing
+that decides — a module ClinGen fed keeps its row, checked by test in three arrangements.
+
 ## RM141 — `validate --strict` blessed a module `compile --strict` refused, whenever the resolution table was partial
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-compiler`). **Severity** medium ·
@@ -64,6 +138,21 @@ this is not something 0.7 fixed underneath them. `enrich` gap-fills; the merge i
 table records, and a subject it does not record has nothing to merge onto. Their proposed repair (1),
 writing the sidecar atomically, is also already shipped — `layout.atomic_writer`, from RM128 in this
 same release, which is why the interrupted run left the *previous* table rather than a truncated one.
+
+**And the reporter corrected their own account the same day, which sharpens what this closes.** From
+the preserved artifact: the 203 rows are sorted throughout, the last line ends cleanly, and the 62
+absent rsIDs scatter across the whole alphabetical range rather than forming a tail. So it is a
+**complete write of an incomplete resolution set**, not a half-written file — which matches the code
+rather than contradicting it, because a subject whose live request could not be made joins
+`unreachable_rsids` and is written as **no row at all**, deliberately, so the table never states a
+negative nobody established (`@unreachable-not-absent`). Nothing was interrupted mid-write, so RM128's
+transaction and atomic writer would not have prevented it, and the same file comes out of a
+`best_effort` run that completes normally over an unreachable source.
+
+That re-attributes the closure to this item rather than to RM128, and by the right route: a check
+reading the table against the spec beside it is the only thing that can see a set complete as a file and
+incomplete as an answer, and it is indifferent to *why* a row is absent — which matters, because the
+cause was misdescribed and the check does not depend on the cause.
 
 **What is real is that nothing said so until the compile**, and that is a defect of ours.
 

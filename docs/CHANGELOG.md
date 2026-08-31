@@ -44,6 +44,32 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
+- **RM142 — the dosage pass declared a ClinGen obligation for a module ClinGen curates nothing of.**
+  *(`just-dna-enricher`.)* Filed and built on 2026-08-31 from a consumer report (S77).
+
+  A single-variant `SIRT6` module. The pass reported `dosage: missing: [SIRT6]`, wrote no
+  `gene_metrics.csv` row, and wrote a ClinGen row into `licensing.csv` anyway. That table travels to
+  the registry and is read as *this module uses this source*, so the module carried a false statement —
+  and it fired `declared_license_disagrees` against a declared licence that never met ClinGen's, sending
+  an author to adjudicate a conflict that does not exist. Both reproduced.
+
+  **The compiler cannot catch it.** `_source_checks` exempts the `annotation` layer from its orphan
+  warning by design (RM46), because that is where an author is told to record a hand-read source and
+  warning about it would make compliance noisy while omission stayed silent. Only the pass knows whether
+  it contributed.
+
+  The fix is the rule the rest of the family already follows: `gene_metrics`, `frequencies`,
+  `assertions` and `gene_validity` all derive the source set from the rows they wrote, so a pass that
+  wrote nothing records nothing. `clingen.py` alone built a fixed row and wrote it unconditionally.
+  **The siblings were checked rather than assumed** — run offline over a module they cover nothing of,
+  neither writes a licensing file at all.
+
+  **Consumers:** a module whose dosage pass covered no gene no longer carries a `clingen` row, and no
+  longer warns about a licence disagreement it had no part in. A module ClinGen actually fed is
+  unchanged — keyed on what this run covered, not on what the table holds and not on the absence of
+  missing genes, with tests for all three. No reference example changes, so the 0.7.0 release record is
+  unaffected.
+
 - **RM141 — `validate --strict` blessed a module `compile --strict` refused, whenever the resolution
   table was partial.** *(`just-dna-compiler`.)* Filed and built on 2026-08-31 from a consumer report
   (S76) whose headline mechanism did not reproduce, and whose second finding was ours.
@@ -55,6 +81,15 @@ packages it actually touched.
   covering one of three subjects asks the source about exactly the other two. The atomic write they
   asked for is also already shipped, as RM128 in this same release, which is why the interrupted run
   left the previous table rather than a truncated one.
+
+  **The reporter then corrected their own account**, which sharpens what this closes: the file was
+  never truncated — 203 sorted rows, a clean final newline, and the 62 absent rsIDs scattered across the
+  whole range rather than forming a tail. A complete write of an incomplete resolution *set*, which
+  matches the code: a subject whose live request could not be made is written as no row at all, so the
+  table never states a negative nobody established. Nothing was interrupted, so the atomic writer would
+  not have prevented it — and the same file comes out of a `best_effort` run that completes normally
+  over an unreachable source. The closure is this item, by the right route: reading the table against
+  the spec beside it is indifferent to *why* a row is absent.
 
   **What is real is that nothing said so until the compile.** `compile --strict` refuses a module whose
   variants have no position after resolution; `validate --strict` did not report it at all. So the

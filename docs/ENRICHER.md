@@ -1713,6 +1713,22 @@ measured 27.1 s with the check on and 2.6 s with it off on a 7,818-row panel, by
 and 0 conflicts either way — necessarily 0. That zero is the problem rather than the cost: it looks
 like evidence and is none.
 
+**A pass that contributes nothing records no terms (RM142, 0.7).** Every fact pass writes the licence
+row for the source it consulted — that rule is unchanged and is what the compile gate reads. What it
+means is *this module uses this source*, so the row belongs to a pass that actually put a row in a
+table, never to one that merely ran. The family already worked that way by construction:
+`gene_metrics`, `frequencies`, `assertions` and `gene_validity` pass `{row.source for row in out}` to
+`record_source_terms`, so an empty pass records nothing. `clingen.py` built a fixed row and wrote it
+unconditionally, and a single-variant module on a gene ClinGen does not curate therefore shipped a
+ClinGen obligation and warned about a licence disagreement it had no part in.
+
+The predicate is **what this run covered** — not the table's contents, which include what an earlier
+run merged in and already recorded, and not the absence of missing genes, which would drop the
+declaration from any module carrying one uncurated gene beside a curated one. The compiler cannot check
+this: its orphan warning exempts the `annotation` layer deliberately (RM46), so only the pass knows.
+`ClinGenResult.source_row` is still returned whatever happened, because the terms of what was consulted
+are a real fact with a different meaning.
+
 **The marker is machine-written, not authored (RM4, 0.6).** `clinvar_draft` stamps the release it
 copied the rows out of into the `dataset` column of the `clinvar`/`annotation` row it already had to
 write in the licence table — `clinvar_2026-06-27`, from `clinvar.clinvar_dataset_label`, which prefers

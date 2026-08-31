@@ -1237,6 +1237,19 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   Corollary: **a fact-layer row cannot taint a module**, so what it carries is *attribution*, which is
   as much the table's purpose as the prohibitions are.
 
+  **The converse, and it is not symmetric: a pass that CONTRIBUTES NOTHING must write no row (S77,
+  RM142).** `sources.csv` travels to the registry and means *this module uses this source*, so a row
+  from a pass that looked and found nothing is a false statement in a published artifact — and it fires
+  `declared_license_disagrees` against a module whose licence never met that source's, sending an author
+  to adjudicate a conflict that does not exist. Two agents were measured doing that. **The compiler
+  cannot catch it**: `_source_checks`'s orphan warning exempts the `annotation` layer by design (RM46),
+  because that is where an author is told to declare a hand-read source. So the guard belongs in the
+  pass, and the shape is already there in four of the five — `{row.source for row in out}` records
+  nothing when `out` is empty. `clingen.py` built a fixed row and wrote it unconditionally. Key it on
+  **what this run covered**: the table's contents include what an earlier run already recorded, and
+  `not missing` inverts it — that would drop a real obligation from any module carrying one uncurated
+  gene beside a curated one.
+
 - `@fieldnames-from-model` — **A column list written by hand will lose a column — derive it from the model.** `SOURCES_FIELDNAMES`
   was a literal and omitted `redistribution`, so every `sources.csv` ever written recorded *unknown* for
   an axis the terms constants state as `True`, and `merge_sources_file` dropped it again on each merge —

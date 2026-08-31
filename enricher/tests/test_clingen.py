@@ -171,6 +171,65 @@ def test_the_source_row_reaches_sources_csv(tmp_path: Path) -> None:
     assert row.attribution  # CC0 requests it; the column exists to carry it
 
 
+def test_a_pass_that_covers_nothing_records_no_licence_row(tmp_path: Path) -> None:
+    """S77: the row said *this module uses ClinGen* about a module ClinGen curates no gene of.
+
+    `SIRT6` is not on the curation list, so the pass looked, wrote no `gene_metrics.csv` row, and
+    recorded the obligation anyway. Two costs. The declaration travels to the registry and is read as
+    a statement about what the module contains, where it is simply false; and it fires
+    `declared_license_disagrees` against a module whose declared licence never met ClinGen's, sending
+    an author to adjudicate a conflict that does not exist — which two agents were measured doing.
+
+    **The compiler cannot catch this**, which is what makes it the pass's job: `_source_checks`
+    exempts the `annotation` layer from its orphan warning by design (RM46), so an annotation-layer
+    row nothing uses is silent. Asserting the file's *absence* rather than the row's is deliberate —
+    this module has no other source, so a licensing table at all is the over-declaration.
+    """
+    spec = _spec(tmp_path, ["SIRT6"])
+    result = enrich_dosage_sensitivity(spec, curation_text=_CURATION_TSV)
+
+    assert result.covered == [] and result.missing == ["SIRT6"]
+    assert not (spec / _LICENCE_CSV).exists()
+    # The terms of what was consulted are still a fact and still returned — a different question from
+    # what the module uses, and it keeps a caller able to render them.
+    assert result.source_row is not None and result.source_row.source == "clingen"
+    # The empty table is still written: an author must be able to see the pass ran and found nothing.
+    assert (spec / "gene_metrics.csv").exists()
+
+
+def test_a_partly_covered_module_still_records_the_row(tmp_path: Path) -> None:
+    """The discriminating half: one covered gene is a real use, however many are missing beside it.
+
+    Without this the test above passes for a guard keyed on `missing` instead of `covered`, which
+    would drop the declaration from every module carrying one uncurated gene — the dangerous
+    direction, since that is a real obligation going unrecorded.
+    """
+    spec = _spec(tmp_path, ["BRCA1", "SIRT6"])
+    result = enrich_dosage_sensitivity(spec, curation_text=_CURATION_TSV)
+
+    assert result.covered == ["BRCA1"] and result.missing == ["SIRT6"]
+    written, errors, _ = _load_csv_rows(spec / _LICENCE_CSV, SourceRow, _LICENCE_CSV)
+    assert not errors
+    assert ("clingen", "annotation") in {(r.source, r.layer) for r in written}
+
+
+def test_a_second_run_over_an_already_covered_module_keeps_the_row(tmp_path: Path) -> None:
+    """Idempotency across the guard: `covered` is what this run added, and lap 2 adds nothing.
+
+    The row is merge-not-clobber, so the first run's declaration stands — the guard must not read
+    "nothing new was covered" as "ClinGen contributed nothing" and leave a module whose
+    `gene_metrics.csv` carries ClinGen rows with no terms recorded for them.
+    """
+    spec = _spec(tmp_path, ["BRCA1"])
+    enrich_dosage_sensitivity(spec, curation_text=_CURATION_TSV)
+    second = enrich_dosage_sensitivity(spec, curation_text=_CURATION_TSV)
+
+    assert second.covered == []  # already done, so this run added nothing
+    written, errors, _ = _load_csv_rows(spec / _LICENCE_CSV, SourceRow, _LICENCE_CSV)
+    assert not errors
+    assert [(r.source, r.layer) for r in written] == [("clingen", "annotation")]
+
+
 def test_recording_clingen_does_not_clobber_another_sources_row(tmp_path: Path) -> None:
     # A PGx pass may have written its own terms first. Merging must add beside them — losing a
     # restrictive row would silently make a module look sellable.

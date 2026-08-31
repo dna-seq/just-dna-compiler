@@ -179,6 +179,13 @@ def enrich_dosage_sensitivity(
     "looked up, genuinely absent", ClinGen's silence means *nobody has assessed this yet*, which is
     not a fact about the gene.
 
+    **A pass that covers nothing writes no licence row either** (S77). `licensing.csv` travels to the
+    registry and is read as *this module uses this source*; recording ClinGen for a module ClinGen
+    curates no gene of is a false statement in a published artifact, and it fires the
+    licence-disagreement warning against a conflict that does not exist. `ClinGenResult.source_row` is
+    still populated, so a caller can see the terms of what was consulted — that is a different fact
+    and it has a different home.
+
     **`offline` (RM39).** This was the one pass in the family without the flag, so it downloaded the
     curation TSV unconditionally and the only way to stop it was to inject `curation_text=` — which
     requires the caller to have fetched the thing already, i.e. to have solved the problem the
@@ -257,14 +264,37 @@ def enrich_dosage_sensitivity(
         )
     # The terms live beside the other sources in `licensing`, not here — one place per service, so the
     # endpoint and its terms cannot drift apart.
+    #
+    # **Built whatever happened, written only if this pass put a row in the table (S77).** The two are
+    # different questions and the result carries the row either way, so a caller can see the terms of
+    # what was consulted. What reaches `licensing.csv` is the narrower claim: `sources.csv` travels to
+    # the registry and is read as *this module uses this source*, which is false of a module ClinGen
+    # curates nothing for. The reported case is a single-variant `SIRT6` module — not on ClinGen's
+    # list, so the pass looked, wrote no `gene_metrics.csv` row, and recorded an obligation anyway.
+    # Two costs, and the second is the expensive one: the declaration is a false statement in a
+    # published artifact, and it fires `declared_license_disagrees` against a module whose declared
+    # licence never met ClinGen's, sending an author to adjudicate a conflict that does not exist.
+    #
+    # **The compiler cannot catch it**, which is why the guard belongs here: `_source_checks`'s orphan
+    # warning exempts the `annotation` layer deliberately (RM46), so an annotation-layer row nothing
+    # uses is silent by design. This pass is the only party that knows whether it contributed.
+    #
+    # **Derived from the rows, the way every sibling pass already does it.** `gene_metrics`,
+    # `frequencies`, `assertions` and `gene_validity` all pass `{row.source for row in out}` to
+    # `record_source_terms`, so an empty pass records nothing — checked, all four. `clingen.py` alone
+    # built a fixed row and wrote it unconditionally, which is the same defect shape as a check that
+    # cannot fail: a declaration appearing whether or not the source contributed says nothing about
+    # what the module contains. `covered` rather than `out` is the predicate because `out` carries the
+    # rows a *previous* run merged in, whose terms are already recorded.
     source_row = CLINGEN_TERMS.row("annotation", declared_use=declared_use, dataset=dataset)
     if write:
         _write_gene_metrics_csv(out, output_path)
-        # A pass that consulted a source records it, exactly as the PGx passes do. ClinGen's CC0 makes
-        # no difference to whether it is recorded: the compile gate reads `sources.csv` and nothing
-        # else, so an unrecorded source is one the module cannot account for — and CC0 asks for
-        # attribution, which is a thing this table exists to carry.
-        merge_sources_file([source_row], spec_dir, error=ClinGenError)
+        # A pass that CONTRIBUTES from a source records it, exactly as the PGx passes do. ClinGen's CC0
+        # makes no difference either way: the compile gate reads `sources.csv` and nothing else, so a
+        # source that fed a row and is unrecorded is one the module cannot account for — and CC0 asks
+        # for attribution, which is a thing this table exists to carry.
+        if covered:
+            merge_sources_file([source_row], spec_dir, error=ClinGenError)
     return ClinGenResult(
         rows=out,
         covered=sorted(set(covered)),

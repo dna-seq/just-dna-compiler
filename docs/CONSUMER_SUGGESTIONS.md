@@ -63,6 +63,21 @@ every refusal raises above. A killed run writes neither; a resumed run writes bo
 artifacts cannot disagree the way you describe, and the loud half you observed was 0.6.6's behaviour,
 where the transaction did not exist. Closed.
 
+**Your correction of 2026-08-31 is accepted, and it improves the item — this reply is amended for it
+rather than left standing.** You are right that a complete write of an incomplete resolution set is not
+S66's family, and right about the mechanism: a subject whose live request could not be made joins
+`unreachable_rsids` and is written as **no row at all**, deliberately, so the artifact never states a
+negative nobody established. Nobody-asked is a third state beside asked-and-failed and
+asked-and-absent, and it is the one that leaves no trace in the table. So your 62 are unanswered, not
+lost, and the same file comes out of a `best_effort` run that completes normally over a source it could
+not reach.
+
+That makes RM141 the closure by the right route rather than by luck. `validate --strict` reads the
+table against the spec beside it, which is the only thing that can see a set complete as a file and
+incomplete as an answer — and it is indifferent to *why* the rows are absent, which is what you want
+given the cause turned out to be misdescribed. Two paragraphs below reasoned from the truncation
+premise and are corrected in place.
+
 **Your central mechanism does not reproduce, on either version — and this is worth more than the
 withdrawal.** You describe merge-not-clobber as making the re-run trust the partial file and never
 retry the missing 62. Probed directly: a module with three authored subjects and a table recording one
@@ -72,11 +87,16 @@ nothing to merge onto and goes to the source like any other. Measured on this tr
 built from its own tag**, so it is not something 0.7 fixed underneath you. Re-running would have filled
 your 62. The recovery you avoided as dangerous was the correct one.
 
-That also re-reads your arithmetic: 203 rows covering 201 of 263 is a **short** table, not a wrong one,
-and the distinction is the whole difference between S66's case and yours. S66's incident replaced a
-restored 330-row table with 162 — a run that *overwrote* good rows. Yours left rows that were all
-correct and simply stopped early, which the next run continues from. You were right that it is the same
-family and right to withdraw; the number belongs to the milder member of it.
+That also re-reads your arithmetic, and your correction re-reads it further: 203 rows covering 201 of
+263 is a table **short of an answer** — not a wrong one, and, as you established from the sorted rsids
+and the clean final newline, not a half-written one either. S66's incident replaced a restored 330-row
+table with 162, a run that *overwrote* good rows. Yours recorded every answer it got. Either way the
+next run continues from it, which is the property that mattered.
+
+**And RM128's atomic write is therefore the answer to the failure you first described rather than the
+one you had** — worth keeping in this reply, because the 0.6.6 writer you were running *did* truncate
+in place, so it is what you would have met on the next kill. `layout.atomic_writer` stages a temp file
+beside the target and `os.replace`s it: an interrupted run leaves either the previous file or none.
 
 **What is real, and is ours.** `compile --strict` refuses a module whose variants still have no
 position after resolution. `validate --strict` said nothing about it — so your partial table passed the
@@ -130,8 +150,10 @@ The original report follows, unedited, because the prose is the record of what w
 and marked only so the ledger can see it: the reporter wrote it as one item under two headings, and a
 top-level heading is the unit the ledger counts. No separate reply — the three findings (the gap-fill
 does reproduce as *working*, `verification.json` is inside the commit, and the `validate`/`compile`
-parity gap that is ours) are all above.
-<!-- triaged: 0.7.0 · sha 0d5594fa3e1e -->
+parity gap that is ours) are all above. **The reporter appended a correction here on 2026-08-31** —
+the file was never truncated, which re-attributes the closure from RM128 to RM141 — and it is answered
+in the withdrawal section, which this reply's fingerprint now covers.
+<!-- triaged: 0.7.0 · sha f1c8681f3f6e -->
 
 **Reported by** just-module-creator, 2026-08-31. Installed: format/compiler/enricher 0.6.6, registry 0.18.2.
 
@@ -206,7 +228,85 @@ resolved a subset deliberately, or injected a curated `resolution.csv` for exact
 about, both of which are supported today. Refusing there would break a working practice to catch a
 crash.
 
+### Reporter's correction, 2026-08-31 — the file was never truncated, and that re-attributes the fix
+
+Appended by the reporter after re-reading the preserved artifact, because we handed you arithmetic
+that misdescribes it and part of your reply reasons from it. No new ask; no reply needed.
+
+**Proven, from the file itself.** The 203 rows are sorted by rsid throughout and the last line ends
+with a clean `\r\n`. The 62 absent rsIDs scatter across the whole alphabetical range of the authored
+set (indices 0 and 262 among them), not as a tail. So it is a **complete write of an incomplete
+resolution set**, not a half-written file — which we should have checked before calling it partial.
+
+**That matches your code rather than contradicting it.** `_write_resolution_csv` runs once at the end,
+and a subject whose live request could not be made joins `unreachable_rsids` and is written as **no row
+at all** — deliberately, so the artifact never states a negative nobody established. The 62 are
+missing because they were never answered, not because the write stopped.
+
+**What it re-attributes.** This is not `S66`'s family after all: `RM128`'s transaction and atomic
+write would not have prevented it, because nothing was interrupted mid-write. The same file is
+produced by a `best_effort` enrich that completes normally over an unreachable source. So the thing
+that closes it is `RM141` — `validate --strict` reading the table against the spec beside it — which
+you landed anyway, and which is the right shape for a cause we described wrongly.
+
+**Your two corrections stand, and one is now explained.** The gap-fill does work: we read
+`need_pos`/`need_rsid` in the installed 0.6.6 and they skip only subjects `existing` covers, so the
+62 go to the resolver like any other. Re-running was the correct recovery and we advised against it;
+that advice is being retracted in our own docs.
+
+**Inference, stated as such.** The likely cause of the 62 unanswered requests is our own benchmark
+running six agents through one shared pacing gate. The enrich thread also outlives a dead client in
+our wrapper, so the write plausibly completed after the agent that started it was gone. Neither is
+measured.
+
 ## S77 — `enrich_dosage_sensitivity` writes a ClinGen licence row for a gene it did not cover, so a module carries an obligation for a source that contributed nothing
+
+**Status — accepted in full and shipped in the tree as [RM142](ROADMAP_HISTORY.md#rm142--the-dosage-pass-declared-a-clingen-obligation-for-a-module-clingen-curates-nothing-of); your ask, verbatim, and it was a one-line guard.**
+`merge_sources_file` is now behind `if covered:`. A pass that put no row in a table records no source.
+
+Both halves reproduced. A single-variant `SIRT6` module: `covered=[]`, `missing=['SIRT6']`, zero
+`gene_metrics.csv` data rows, and a `licensing.csv` with one `clingen` row in it. And the second cost,
+which is the one worth the item — a module declaring `license: MIT` and using ClinGen for nothing warns
+*declares MIT but annotation-layer sources report CC0-1.0*. Your two agents were adjudicating a
+conflict that could not exist.
+
+**Your framing (3) is the right one and is why this could not be fixed on our side of the compile.**
+It is the shape of a check that cannot fail — and the compiler genuinely cannot catch it:
+`_source_checks`'s orphan warning **exempts the `annotation` layer deliberately** (RM46), because
+`sources.csv` is where an author is told to record a hand-read source, and warning about that would
+mean compliance is noisy while omission stays silent. So an annotation-layer row nothing uses is quiet
+by design, and the only party that knows whether it contributed is the pass.
+
+**We checked the other passes, as you asked, and the answer is that this was `clingen.py` alone.**
+`gene_metrics`, `frequencies`, `assertions` and `gene_validity` all pass `{row.source for row in out}`
+to `record_source_terms`, so an empty pass records nothing by construction. Run offline over a module
+they cover nothing of, `enrich_gene_metrics` and `enrich_frequencies` write no `licensing.csv` at all —
+measured, not read off the code. `clingen.py` was the one member building a fixed row and writing it
+unconditionally, which is the family's rule missed rather than a rule that needed inventing.
+
+**One choice inside the fix is worth your knowing, because the obvious spelling is the dangerous one.**
+The guard keys on `covered` — what *this run* contributed — not on `missing` being empty. `not missing`
+would drop the declaration from every module carrying one uncurated gene beside a curated one, which is
+a real obligation going unrecorded, and that is the direction that actually harms someone. It also does
+not key on the table's contents, which include rows an earlier run merged in and already recorded.
+Three tests: covers nothing, covers some, and a second lap where `covered` is empty because the work is
+done and the row must stand.
+
+**On your `covered: false` marker alternative** — we went the other way. It makes `sources.csv` carry
+rows that are not declarations, so every reader of the table gains a case to handle, the compile gate
+included, for a fact with no reader. Absence already says it. Your rejected candidate — the author
+deleting the row — we agree is worse than the defect, for exactly the reason you give.
+
+**And on the question you raised as possibly format's**: what `licensing.csv` means when a source was
+consulted-and-empty. It means nothing should be there. The table answers *what does this module use*,
+and "we queried this" is a fact about a **run**, on the same axis that keeps `fetched_at` out of every
+fact set. `ClinGenResult.source_row` is still returned whatever happened, so a caller wanting the terms
+of what was consulted has them — a different fact with a different home, which is your own distinction.
+
+**Answered is not installable.** Inside `0.7.0`, bumped and **not tagged**;
+[CHANGELOG.md](CHANGELOG.md)'s 0.7.0 heading is the record. Written up in
+[ENRICHER § a pass that contributes nothing records no terms](ENRICHER.md).
+<!-- triaged: 0.7.0 · sha be41eff2ba06 -->
 
 **Reported by** just-module-creator, 2026-08-31. Installed: format/compiler/enricher 0.6.6, registry 0.18.2.
 
