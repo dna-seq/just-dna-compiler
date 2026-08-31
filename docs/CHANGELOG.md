@@ -52,14 +52,33 @@ no release class and acquired one when its probe was finally run, and RM154, whi
 consumer report after the rest were built; all taken in one pass so 0.7 cuts with its own backlog
 cleared rather than carrying it. Eleven are built; **RM138 is closed with its numbers measured and no
 code changed**. **The items dated 2026-09-01 are deliberately outside that count** — RM155 arrived
-from a consumer the next morning, and RM156 and RM157 from sweeping its shape across the tier; all
-three ship inside the same uncut 0.7.0. The batch stays the thing it describes rather than growing a member
+from a consumer the next morning, and RM156, RM157 and RM158 from sweeping its shape across the
+tier; all four ship inside the same uncut 0.7.0. The batch stays the thing it describes rather than growing a member
 whenever another item lands before the tag: the count is of the 2026-08-31 round, and the rule for a
 later item is to date it and leave the number alone. Two things a reader should take from them together: `carried` costs
 1.06× gzipped rather than the 1.84× raw the item was filed about, so **serve manifests compressed**;
 and two derived values change — `gene_metrics.constraint_flags` and
 `gene_validity.classifications` — which are **corrections**, so a moved signature there is the fix
 arriving rather than drift.
+
+- **RM158 — the GWAS pass asked about one table's rsIDs, and the answer already existed in this
+  package.** *(`just-dna-enricher`; **additive**, and **no schema change** — no column, no vocabulary
+  member, no signature moves.)* `gwas._module_subjects` built its `(rsid, variant_key)` list from
+  `variants.csv` while five authored models carry `rsid`, so a module whose rsIDs live in
+  `haplotypes.csv` or `pharm_variants.csv` got no associations and no line saying none had been asked
+  for — a spec carrying one `haplotypes.csv` row for CYP2C19\*2, which the Catalog has associations
+  for, returned `[]` against the pre-fix code. **The third instance in one sweep, and the one worth
+  reading**: the fix was already written. `enrich.Subject` and its collector exist for exactly this
+  question — resolution read `variants.csv` alone until RM43, when a PGx module *"which by design
+  carries no `variants.csv`"* enriched to an empty `resolution.csv` — and this pass, written
+  afterwards, restated the narrow loop instead of calling it. So grep for the **question**, not for
+  the bug. `_collect_subjects`/`_Subject` are now public (`collect_subjects`/`Subject`), since a
+  private name is what kept the second caller from finding the first. `studies.csv` carries `rsid` and
+  is deliberately not a subject: a study row references the variant it grounds, which the module
+  already carries. Measured across the corpus before and after — `pathogenic_clinvar` 301,
+  `hboc_palb2` 16, `mt_heteroplasmy` 2, `grch37_build` 0, identical lists — because `variants.csv`
+  goes first in the collector and first occurrence wins, the precedence that stops a PGx row taking an
+  identity a SNP row minted. *(from the RM155 sweep)*
 
 - **RM157 — the gene set three passes take their scope from read one table while nine carry the
   column.** *(`just-dna-enricher`; **additive**, and **no schema change** — no column, no vocabulary

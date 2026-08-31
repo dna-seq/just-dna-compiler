@@ -198,6 +198,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A check is only as wide as the tables it reads; derive the roster, and publish what was read. `@roster-is-as-wide-as-the-tables-it-reads`
 - A widening is not done while a caller still gates on the narrow thing; reproduce it from the corpus. `@roster-is-as-wide-as-the-tables-it-reads`
 - A *scope* refuses where a *report* withholds; and two answers to one question go side by side. `@roster-is-as-wide-as-the-tables-it-reads`
+- Grep for the question, not the bug; a private name keeps the second caller from finding the first. `@roster-is-as-wide-as-the-tables-it-reads`
 - Lap-stable means a property of the MODULE, fired matched-or-not; assert equality between laps. `@lap-stable-means-a-property-of-the-module`
 - Ask whether the signal already fires with the wrong words; pin adjudicating words on a boundary. `@the-signal-may-already-be-firing-with-the-wrong-words`
 - A source re-curating is not a `strict` matter; the two currency findings stay apart, and both edges withhold. `@a-source-recuring-is-not-a-strict-matter`

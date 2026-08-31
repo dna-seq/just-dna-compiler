@@ -121,7 +121,7 @@ _FIELDNAMES = [
 
 
 @dataclass(frozen=True)
-class _Subject:
+class Subject:
     """One row asking for a coordinate, normalized across the tables allowed to ask.
 
     Resolution used to read `variants.csv` alone, so a PGx module — which by design carries **no**
@@ -151,7 +151,7 @@ class _Subject:
     origin: str
 
 
-def _subject_of_variant(v: VariantRow, genome_build: str = "GRCh38") -> _Subject:
+def _subject_of_variant(v: VariantRow, genome_build: str = "GRCh38") -> Subject:
     """The subject a `variants.csv` row asks about, keyed on the identity it already carries.
 
     `variant_key` is always set (`_freeze_identity` is a model validator) and `enrich` re-stamps it for
@@ -162,12 +162,12 @@ def _subject_of_variant(v: VariantRow, genome_build: str = "GRCh38") -> _Subject
     key = v.variant_key or derive_variant_key(
         v.rsid, v.chrom, v.start, v.ref, v.alts, build=genome_build
     )
-    return _Subject(key, v.rsid, v.chrom, v.start, v.ref, v.alts, v.genotype, "variants.csv")
+    return Subject(key, v.rsid, v.chrom, v.start, v.ref, v.alts, v.genotype, "variants.csv")
 
 
-def _collect_subjects(
+def collect_subjects(
     spec_dir: Path, variants: list[VariantRow], genome_build: str = "GRCh38"
-) -> list[_Subject]:
+) -> list[Subject]:
     """Every row in the spec that needs a coordinate, `variants.csv` first, deduped by `variant_key`.
 
     Order and precedence are load-bearing. `variants.csv` goes first so that when the same variant is
@@ -187,7 +187,7 @@ def _collect_subjects(
     nothing here changes; and `PharmVariantRow.alts`, added by the same item, is deliberately not read
     here because it is compiler-filled data rather than an authored fact.
     """
-    subjects: list[_Subject] = [_subject_of_variant(v, genome_build) for v in variants]
+    subjects: list[Subject] = [_subject_of_variant(v, genome_build) for v in variants]
 
     pharm_path = spec_dir / "pharm_variants.csv"
     if pharm_path.exists():
@@ -195,7 +195,7 @@ def _collect_subjects(
         if errors:
             raise EnrichmentError(f"pharm_variants.csv is invalid: {errors[0]}")
         subjects.extend(
-            _Subject(r.variant_key, r.rsid, r.chrom, r.start, r.ref, None, r.genotype,
+            Subject(r.variant_key, r.rsid, r.chrom, r.start, r.ref, None, r.genotype,
                      "pharm_variants.csv")
             for r in rows
         )
@@ -206,7 +206,7 @@ def _collect_subjects(
         if errors:
             raise EnrichmentError(f"haplotypes.csv is invalid: {errors[0]}")
         subjects.extend(
-            _Subject(derive_variant_key(r.rsid, r.chrom, r.start, r.ref),
+            Subject(derive_variant_key(r.rsid, r.chrom, r.start, r.ref),
                      r.rsid, r.chrom, r.start, r.ref, None, r.allele, "haplotypes.csv")
             for r in rows
         )
@@ -231,7 +231,7 @@ def _collect_subjects(
         if errors:
             raise EnrichmentError(f"heteroplasmy.csv is invalid: {errors[0]}")
         subjects.extend(
-            _Subject(
+            Subject(
                 r.variant_key or derive_variant_key(
                     r.rsid, r.chrom, r.start, r.ref, r.alts, build=genome_build
                 ),
@@ -240,13 +240,13 @@ def _collect_subjects(
             for r in rows
         )
 
-    deduped: dict[str, _Subject] = {}
+    deduped: dict[str, Subject] = {}
     for s in subjects:
         deduped.setdefault(s.variant_key, s)
     return list(deduped.values())
 
 
-def _authored_alt(v: _Subject) -> str | None:
+def _authored_alt(v: Subject) -> str | None:
     """The single authored ALT for allele-aware reverse resolution, or None when absent or
     multi-allelic (fall back to position/ref-level matching, which may resolve as ambiguous)."""
     if v.alts and "," not in v.alts:
@@ -861,7 +861,7 @@ def _run_enrichment(
         )
 
     # Every table that can ask for a coordinate, not just variants.csv (a PGx module has none).
-    subjects = _collect_subjects(spec_dir, variants, genome_build)
+    subjects = collect_subjects(spec_dir, variants, genome_build)
     # The progress unit. Constructed here because this is the first moment `total` is knowable, and it
     # reports `(0, total)` immediately so a caller rendering a bar has the denominator before any work
     # starts. Subjects that share an rsID settle together, which is why the map is built once.

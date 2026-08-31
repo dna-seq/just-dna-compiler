@@ -453,7 +453,7 @@ def test_progress_reports_done_and_total_over_subjects_monotonically(tmp_path: P
     """`(done, total)` over subjects, `total` known before the first call, `done` never going back.
 
     The counts are derived at runtime from the module rather than written down: the subject count is
-    what `_collect_subjects` dedupes to, and hardcoding it here would pin the test to today's fixture
+    what `collect_subjects` dedupes to, and hardcoding it here would pin the test to today's fixture
     instead of to the invariant.
     """
     spec = _spec(tmp_path / "spec")

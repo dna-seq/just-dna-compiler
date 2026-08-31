@@ -42,16 +42,20 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
-from just_dna_compiler.compiler import load_csv_rows
+from just_dna_compiler.compiler import load_csv_rows, load_spec_variants
 from just_dna_format.base import merge_key
 from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.layout import atomic_writer
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.sources import SourceRow
-from just_dna_format.spec import VariantRow
 from pydantic import ValidationError
 from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
 
+from just_dna_enricher.enrich import (
+    EnrichmentError,
+    collect_subjects,
+    spec_genome_build,
+)
 from just_dna_enricher.licensing import (
     GWAS_CATALOG_TERMS,
     merge_sources_file,
@@ -409,21 +413,39 @@ def _write_gwas_csv(rows: list[GwasEffectRow], output_path: Path) -> None:
 
 
 def _module_subjects(spec_dir: Path) -> list[tuple[str, str]]:
-    """`(rsid, variant_key)` for every variant in the module that has an rsID.
+    """`(rsid, variant_key)` for every row in the module that names an rsID.
 
     The Catalog is queried by rsID and has no coordinate entry point worth using here, so a
     coordinate-only row simply has no subject — reported by the caller rather than silently skipped.
+
+    **Every table allowed to ask, through `enrich.collect_subjects` (RM158).** This read
+    `variants.csv` alone while five authored models carry `rsid`, which is the defect `Subject` was
+    built to end one pass over: resolution read the same one table until RM43, so a PGx module — which
+    by design carries no `variants.csv` — enriched to an empty `resolution.csv`. The answer was
+    already in this package and this pass did not use it, so a module whose rsIDs live in
+    `haplotypes.csv` or `pharm_variants.csv` got no associations and no line saying none had been
+    asked for. Reusing the collector rather than restating its loop also inherits its precedence:
+    `variants.csv` first, first occurrence winning, so a variant named by two tables keeps the
+    identity the SNP row minted.
+
+    `studies.csv` carries `rsid` too and is deliberately not a subject: a study row *references* the
+    variant it grounds, which the module already carries as a row of its own, so admitting it would
+    add no rsID and change which table an identity came from.
     """
-    variants_path = spec_dir / "variants.csv"
-    if not variants_path.exists():
-        return []
-    rows, errors, _ = load_csv_rows(variants_path, VariantRow, "variants.csv")
-    if errors:
+    variants, errors, _ = load_spec_variants(spec_dir)
+    if errors and (spec_dir / "variants.csv").exists():
         raise GwasError(f"variants.csv is invalid: {errors[0]}")
+    try:
+        subjects = collect_subjects(spec_dir, variants, spec_genome_build(spec_dir))
+    except EnrichmentError as exc:
+        # A pass owes its caller its own exception type — the same re-raise `gene_validity` performs
+        # around `module_genes`, and for the same reason: nothing up this stack catches the other
+        # pass's error, so the CLI would print a traceback where a diagnosis belongs.
+        raise GwasError(str(exc)) from exc
     seen: dict[str, str] = {}
-    for row in rows:
-        if row.rsid:
-            seen.setdefault(row.rsid, row.variant_key or row.rsid)
+    for subject in subjects:
+        if subject.rsid:
+            seen.setdefault(subject.rsid, subject.variant_key)
     return sorted(seen.items())
 
 

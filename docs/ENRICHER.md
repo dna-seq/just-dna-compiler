@@ -3840,9 +3840,18 @@ letting the unit tests pass against a fiction.
 ## GWAS effect sizes (`gwas.py`, online only) — RM90
 
 `just-dna-enricher gwas <spec-dir>` fills `gwas_effects.csv` with the NHGRI-EBI GWAS Catalog's
-published effect sizes for every rsID `variants.csv` names. **One row per published association**, not
+published effect sizes for every rsID the module names. **One row per published association**, not
 per variant — rs1800562 alone carries 186 — keyed on the Catalog's own `association_id` and merged
 never clobbered.
+
+**The subjects come from `enrich.collect_subjects` since RM158, not from `variants.csv` alone.** Five
+authored models carry `rsid`, so a module whose rsIDs live in `haplotypes.csv` or `pharm_variants.csv`
+got no associations and no line saying none had been asked for. The collector is the same one
+resolution uses and answers the same question — which rows in this spec ask about a variant — so this
+pass inherits its precedence (`variants.csv` first, first occurrence winning, so a PGx row cannot take
+an identity a SNP row minted) rather than restating the loop. `studies.csv` carries `rsid` and is
+deliberately not a subject: a study row references the variant it grounds, which the module already
+carries as a row of its own.
 
 **It does not fill `weight`, and that is the point of the pass rather than a limitation of it.** A
 consumer asked for exactly that (S36); `MODULE_LIFECYCLE` § Stage 3 names the cell, and every check

@@ -659,6 +659,16 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   already patched the *symptom* — an `UnboundLocalError` on "any module with no `variants.csv`" — and
   wrote that sentence into a comment, treating the empty gene list as a shape rather than a question.
 
+  **Third instance, and the one worth keeping: the fix was already written (RM158).**
+  `gwas._module_subjects` built its subject list from `variants.csv` while five models carry `rsid` —
+  and `enrich.Subject` plus its collector exist for exactly that question, having been built when
+  resolution read the same one table and a PGx module *"which by design carries no `variants.csv`"*
+  enriched to an empty `resolution.csv` (RM43). The GWAS pass, written afterwards, restated the narrow
+  loop instead of calling it. Two rules out of that. **Grep for the question, not for the bug** — "what
+  in this spec asks about a variant" had one answer already, and a second one was written beside it. And
+  a **private name is what keeps the second caller from finding the first**: `_collect_subjects` is now
+  `collect_subjects`, because the reuse this shape needs cannot happen across an underscore.
+
   Three things the repair fixed in place. A guard becomes **derived** like the roster it protects —
   nothing to check means *no id-bearing table was read*, never *one named file is missing*. A
   justification comment is part of the change: the old one asserted such a module "has no `gene`,

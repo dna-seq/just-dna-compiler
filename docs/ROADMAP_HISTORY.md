@@ -44,6 +44,38 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM158 — the GWAS pass asked about one table's rsIDs, and the answer already existed in this package
+
+**Severity** medium · **Status** ✅ shipped 2026-09-01 in the uncut 0.7.0 (`just-dna-enricher`) ·
+**Owner** enricher · **Motivating case** the RM155 sweep, third instance
+
+`gwas._module_subjects` built its `(rsid, variant_key)` list from `variants.csv` while five authored
+models carry `rsid`, so a module whose rsIDs live in `haplotypes.csv` or `pharm_variants.csv` got no
+associations and no line saying none had been asked for. Reproduced against the pre-fix code: a spec
+carrying one `haplotypes.csv` row for `rs4244285` — CYP2C19\*2, which the Catalog has associations for
+— returned `[]`.
+
+**What makes this the useful one of the three: the fix was already written.** `enrich.Subject` and its
+collector exist for precisely this question, and the docstring says so — resolution read `variants.csv`
+alone until RM43, so a PGx module *"which by design carries **no** `variants.csv`"* enriched to an
+empty `resolution.csv` and shipped with no coordinates at all. That repair normalized the question to
+a subject and let three tables through the unchanged resolver. The GWAS pass, written afterwards,
+restated the narrow loop instead of calling it. So the shape recurs even where the package has already
+paid to end it, and a sweep is worth more than a fix: **grep for the question, not for the bug.**
+
+`_collect_subjects` and `_Subject` are now `collect_subjects` and `Subject` — a private name is what
+kept the second caller from finding the first. `studies.csv` carries `rsid` and is deliberately not a
+subject: a study row *references* the variant it grounds, which the module already carries as a row of
+its own, so admitting it would add no rsID and only change which table an identity came from.
+
+**Nothing moves for a module that already had subjects.** Measured across the corpus before and after:
+`pathogenic_clinvar` (301), `hboc_palb2` (16), `mt_heteroplasmy` (2) and `grch37_build` (0) return
+identical lists, because `variants.csv` goes first in the collector and first occurrence wins — the
+precedence that exists so a PGx row cannot take an identity a SNP row minted. This pass inherits it
+rather than re-implementing it.
+
+**No schema change**: no column, no vocabulary member, no signature moves.
+
 ## RM157 — the gene set three passes take their scope from read one table while nine carry the column
 
 **Severity** medium · **Status** ✅ shipped 2026-09-01 in the uncut 0.7.0 (`just-dna-enricher`) ·
