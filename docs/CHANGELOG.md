@@ -52,14 +52,35 @@ no release class and acquired one when its probe was finally run, and RM154, whi
 consumer report after the rest were built; all taken in one pass so 0.7 cuts with its own backlog
 cleared rather than carrying it. Eleven are built; **RM138 is closed with its numbers measured and no
 code changed**. **The items dated 2026-09-01 are deliberately outside that count** — RM155 arrived
-from a consumer the next morning and RM156 from sweeping its shape across the tier, and both ship
-inside the same uncut 0.7.0. The batch stays the thing it describes rather than growing a member
+from a consumer the next morning, and RM156 and RM157 from sweeping its shape across the tier; all
+three ship inside the same uncut 0.7.0. The batch stays the thing it describes rather than growing a member
 whenever another item lands before the tag: the count is of the 2026-08-31 round, and the rule for a
 later item is to date it and leave the number alone. Two things a reader should take from them together: `carried` costs
 1.06× gzipped rather than the 1.84× raw the item was filed about, so **serve manifests compressed**;
 and two derived values change — `gene_metrics.constraint_flags` and
 `gene_validity.classifications` — which are **corrections**, so a moved signature there is the fix
 arriving rather than drift.
+
+- **RM157 — the gene set three passes take their scope from read one table while nine carry the
+  column.** *(`just-dna-enricher`; **additive**, and **no schema change** — no column, no vocabulary
+  member, no signature moves, and no ordering change, since `gene_metrics` sorts its rows by
+  `(gene, dataset)` before writing.)* `gene_metrics.module_genes` built its list from `variants.csv`
+  alone. It is not a report but the **scope** of the constraint-metrics pass, the gene-validity pass
+  and the ClinGen dosage pass — all three call it — so a module whose genes live in its PGx tables had
+  all three quietly do nothing: no rows, no findings, and no line saying a question had not been put.
+  **Measured on this repo's own corpus**, where `cyp2c19_star_alleles`, `apoe_epsilon`,
+  `cyp2c9_warfarin_grch37` and `hfe_compound_het` returned `[]` while naming CYP2C19, APOE, CYP2C9,
+  VKORC1, CYP4F2 and HFE. Two things worth reading together: the workspace already held **two answers
+  to one question**, since `pgx._module_genes` reads two PGx tables and nobody had put them side by
+  side; and RM104 had patched the *symptom* — an `UnboundLocalError` on "any module with no
+  `variants.csv`" — with that sentence sitting in a comment, describing the defect as a shape rather
+  than asking why the list was empty. The set is now derived from the same registry walk the
+  identifier roster uses, and a table that will not parse **refuses** here rather than being routed to
+  `not_read`: a reporting surface may narrow, a scope may not. `IdentifierRoster` gained `read_errors`
+  so the loader's own message survives into that refusal and `gene_validity`'s `variants.csv is
+  invalid` diagnosis is unchanged. `pgx._GENE_TABLES` stays two tables — it decides whether the
+  star-allele cross-check *applies*, which is a fact about that check's inputs. *(from the RM155
+  sweep)*
 
 - **RM156 — the roster RM155 widened was gated behind the one table it had stopped depending on.**
   *(`just-dna-enricher`; **additive**, and **no schema change** — no column, no vocabulary member, no

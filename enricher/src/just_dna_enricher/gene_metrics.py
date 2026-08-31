@@ -32,7 +32,6 @@ from just_dna_format.base import merge_key
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.layout import atomic_writer
 from just_dna_format.normalize import now_utc_iso
-from just_dna_format.spec import VariantRow
 
 from just_dna_enricher.download import ensure_constraint_snapshot
 from just_dna_enricher.gnomad import (
@@ -42,6 +41,7 @@ from just_dna_enricher.gnomad import (
     GnomadError,
     normalize_constraint_flags,
 )
+from just_dna_enricher.identifiers import authored_identifiers
 from just_dna_enricher.licensing import record_source_terms, sidecar_path
 from just_dna_enricher.locations import resolve_constraint_reference
 
@@ -98,21 +98,32 @@ class GeneMetricsResult:
 
 
 def module_genes(spec_dir: Path) -> list[str]:
-    """The module's gene symbols, de-duplicated in first-occurrence order (P7: never set order)."""
-    variants_path = Path(spec_dir) / "variants.csv"
-    if not variants_path.exists():
-        return []
-    variants, errors, _ = load_csv_rows(variants_path, VariantRow, "variants.csv")
-    if errors:
-        raise GeneMetricsEnrichmentError(f"variants.csv is invalid: {errors[0]}")
-    seen: set[str] = set()
-    out: list[str] = []
-    for row in variants:
-        gene = (row.gene or "").strip()
-        if gene and gene not in seen:
-            seen.add(gene)
-            out.append(gene)
-    return out
+    """The module's gene symbols, de-duplicated in first-occurrence order (P7: never set order).
+
+    **Every authored table that carries `gene`, derived from the registry rather than named (RM157).**
+    This read `variants.csv` alone while nine models declare the column, and it is the gene set three
+    passes take their scope from — constraint metrics, gene validity and the ClinGen dosage pass — so
+    a module whose genes live in its PGx tables had all three quietly do nothing. Measured on this
+    repo's own corpus: `cyp2c19_star_alleles`, `apoe_epsilon`, `cyp2c9_warfarin_grch37` and
+    `hfe_compound_het` returned `[]` here while naming CYP2C19, APOE, CYP2C9, VKORC1, CYP4F2 and HFE
+    on rows an enrichment could have asked about. The workspace was already carrying two answers to
+    one question: `pgx._module_genes` reads two PGx tables, and this one read a table those modules do
+    not have.
+
+    `pgx._GENE_TABLES` stays as it is and is not the same roster: it is the pair whose *presence*
+    decides whether the star-allele cross-check applies at all, which is a question about that check's
+    inputs rather than about what the module is about.
+
+    **Refuses on a table that will not parse, in the phrasing this pass already used.** The roster
+    itself is a reporting surface and routes an unreadable table to `not_read`, but three passes take
+    their scope from this function and a half-read scope is a silently narrowed one — the same defect
+    one table wider. `read_errors` carries the loader's own message so the sentence is unchanged for
+    `variants.csv`, which is what `gene_validity` re-raises as its own error type.
+    """
+    roster = authored_identifiers(Path(spec_dir), "gene")
+    for name, error in sorted(roster.read_errors.items()):
+        raise GeneMetricsEnrichmentError(f"{name} is invalid: {error}")
+    return roster.ids
 
 
 def lookup_snapshot(reference: Path, genes: list[str]) -> dict[str, dict]:

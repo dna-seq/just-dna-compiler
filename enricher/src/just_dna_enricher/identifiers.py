@@ -573,6 +573,12 @@ class IdentifierRoster:
     #: spec (the common and benign case), or it could not be parsed (which is not benign at all, and
     #: is why the reason is carried rather than the file merely omitted).
     not_read: dict[str, str] = field(default_factory=dict)
+    #: `{filename: the loader's first error}` for a table that exists and would not parse — the same
+    #: tables `unreadable` names, carrying the message rather than the sentence built around it. A
+    #: caller that *reports* wants the sentence; one that *refuses* wants the error, in the phrasing
+    #: its own pass already uses (`gene_metrics.module_genes`), and re-deriving one from the other by
+    #: string surgery is how the two drift.
+    read_errors: dict[str, str] = field(default_factory=dict)
 
     @property
     def unreadable(self) -> dict[str, str]:
@@ -605,6 +611,7 @@ def authored_identifiers(spec_dir: Path, column: str) -> IdentifierRoster:
             # Read-only pass: an unparseable table is a *reason a question was not put*, never a
             # failure of this check. Dying here would say nothing about the ids the module does carry.
             roster.not_read[name] = f"could not be read ({errors[0]})"
+            roster.read_errors[name] = errors[0]
             continue
         roster.read.append(name)
         for row in rows:

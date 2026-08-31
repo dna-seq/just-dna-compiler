@@ -44,6 +44,47 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM157 — the gene set three passes take their scope from read one table while nine carry the column
+
+**Severity** medium · **Status** ✅ shipped 2026-09-01 in the uncut 0.7.0 (`just-dna-enricher`) ·
+**Owner** enricher · **Motivating case** the RM155 sweep, run against this repo's own corpus
+
+`gene_metrics.module_genes` built its list from `variants.csv` alone while nine authored models declare
+`gene`. It is not a report: it is the **scope** of the constraint-metrics pass, the gene-validity pass
+and the ClinGen dosage pass — all three call it, the second through a wrapper that exists only to
+re-raise its error as its own type — so a module whose genes live in its PGx tables had all three
+quietly do nothing. No rows, no findings, and no line saying a question had not been put.
+
+**Measured on the corpus, not on a fixture.** `cyp2c19_star_alleles`, `apoe_epsilon`,
+`cyp2c9_warfarin_grch37` and `hfe_compound_het` returned `[]` here while naming CYP2C19, APOE, CYP2C9,
+VKORC1, CYP4F2 and HFE on rows an enrichment could have asked gnomAD and ClinGen about. A fixture
+written to the widened roster cannot produce that evidence, which is the general rule this pair of
+items leaves behind.
+
+**The workspace was already carrying two answers to one question.** `pgx._module_genes` reads two PGx
+tables, and this one read a table those modules do not have; nobody had put them side by side. And the
+pass had already been patched for the *symptom* without anyone asking why the list was empty — RM104
+bound `reference` before the branch because "any module with no `variants.csv`" raised
+`UnboundLocalError` out of a run where `wanted` came back empty. That sentence was in the code, in a
+comment, describing the defect as a shape rather than a question.
+
+**Derived, and refusing rather than narrowing.** The set now comes from the same registry walk the
+identifier roster uses (`@registry-completeness`), so a table kind that gains the column joins by
+existing and a second implementation cannot drift from the first. A table that exists and will not
+parse **raises** here, in this pass's own phrasing — a reporting surface may route an unreadable table
+to `not_read`, but a scope may not: half a gene set is a silently narrowed one, which is the same
+defect one table wider. `IdentifierRoster` gained `read_errors` so the loader's own message survives
+into that refusal instead of being reconstructed by string surgery, which is what keeps
+`gene_validity`'s `variants.csv is invalid` diagnosis exactly as it was.
+
+**`pgx._GENE_TABLES` stays two tables** and is not this roster: it decides whether the star-allele
+cross-check *applies*, which is a fact about that check's inputs rather than about what the module is
+about. Widening it would run the cross-check over modules carrying no star alleles at all.
+
+**No schema change**, and no ordering change: `gene_metrics` sorts its rows by `(gene, dataset)` before
+writing, so the roster's order reaches no artifact. What moves is that three passes now have a scope on
+modules where they had none.
+
 ## RM156 — the widened roster was gated behind the one table it had stopped depending on
 
 **Severity** medium · **Status** ✅ shipped 2026-09-01 in the uncut 0.7.0 (`just-dna-enricher`) ·

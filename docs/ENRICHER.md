@@ -1366,8 +1366,19 @@ table.)
 ### Pass 3 — gene constraint (`gene_metrics.py`, offline capable)
 
 `enrich_gene_metrics(spec_dir, *, mode, offline, constraint_cache, dataset, download, write, client)`
-takes the `gene` column of `variants.csv` (deduplicated in first-occurrence order) and writes
+takes the module's gene symbols (deduplicated in first-occurrence order) and writes
 `gene_metrics.csv`: pLI, LOEUF, missense Z and friends, one row per gene. Snapshot first, live API second.
+
+**Since RM157 that is every authored table carrying `gene`, not `variants.csv` alone.** `module_genes`
+is not a report — it is the *scope* of this pass, of `gene_validity` and of the ClinGen dosage pass,
+all three of which call it — so a module whose genes live in its PGx tables had all three quietly do
+nothing: no rows, no findings, no line saying a question had not been put. Measured on this repo's own
+corpus, where `cyp2c19_star_alleles`, `apoe_epsilon`, `cyp2c9_warfarin_grch37` and `hfe_compound_het`
+returned an empty gene set while naming CYP2C19, APOE, CYP2C9, VKORC1, CYP4F2 and HFE. The set is
+derived from the same registry walk the identifier roster uses, so a table kind that gains the column
+joins by existing; a table that will not parse **refuses** here rather than being routed to `not_read`,
+because half a scope is a silently narrowed one. `pgx._GENE_TABLES` is deliberately not this roster: it
+is the pair whose presence decides whether the star-allele cross-check applies at all.
 
 This is the one gnomAD role that works with **zero egress**, and the difference from frequency is
 purely size: gene-level constraint is one row per gene, single-digit MB as parquet.

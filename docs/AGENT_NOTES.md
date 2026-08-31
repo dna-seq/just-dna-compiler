@@ -645,6 +645,20 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   having asked nothing about six real symbols. **Reproduce a widening from the corpus, not from a
   fixture**: a fixture is written to the new roster and cannot show you the gate in front of it.
 
+  **And the shape was not confined to reports (RM157).** The same sweep found
+  `gene_metrics.module_genes` reading `variants.csv` while nine models declare `gene` — except that
+  one is not a report, it is the **scope** of three passes (constraint metrics, gene validity, ClinGen
+  dosage), so the four PGx examples above had all three quietly do nothing at all. Two consequences
+  worth carrying. A *scope* refuses on an unparseable table where a *report* routes it to `not_read`:
+  half a gene set is a silently narrowed one, which is this defect one table wider — so the roster
+  gained `read_errors` to carry the loader's message into that refusal rather than reconstructing it
+  by string surgery. And when a workspace already holds **two answers to one question**
+  (`pgx._module_genes` reads two PGx tables), put them side by side before deciding either is right —
+  here one was the module's genes and the other was the pair whose presence decides whether a
+  cross-check applies, and only the first was a roster. Worth noting how long it hid: RM104 had
+  already patched the *symptom* — an `UnboundLocalError` on "any module with no `variants.csv`" — and
+  wrote that sentence into a comment, treating the empty gene list as a shape rather than a question.
+
   Three things the repair fixed in place. A guard becomes **derived** like the roster it protects —
   nothing to check means *no id-bearing table was read*, never *one named file is missing*. A
   justification comment is part of the change: the old one asserted such a module "has no `gene`,
