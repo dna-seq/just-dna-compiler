@@ -643,6 +643,14 @@ that measured them and had them generalised away are different findings.
 2182 also carries an aggregation defect worth naming on its own: three evidence rows from three
 unrelated cohorts share one variant record, so a consumer counting subjects would count one.
 
+**Scope of the three-way split** (`@probe-names-the-table`). The verdicts about what each **name**
+denotes are basis-independent: a class label stays a class label however many papers cite it. The
+*split* is not. It was decided from each record's cited papers, and those were the ones the
+`accepted`-only bulk file carries. Asked on a wider basis, 2036 gains 2 further citations, 2182 gains
+7 and 2439 gains 7 — so "the source never measured breakpoints" is a statement about the papers that
+were read, and a wider read could in principle move a record from that arm of the split to another.
+Sized in RM160; not a reason to hold the class.
+
 ## Class D — two records with two readings and nothing to choose between them (2026-09-01)
 
 Both are VHL frameshifts written in legacy `c.<N>ins<SEQ>` notation, which does not say whether the

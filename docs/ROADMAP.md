@@ -320,6 +320,48 @@ So the basis does not merely shrink the corpus. Here it hides the only reachable
 settle an identity the snapshot is currently unable to state — and it hid it from a probe that had
 already gone looking, because the probe read the file the builder reads.
 
+### Re-measured 2026-09-01, and it is worse than "a bigger corpus"
+
+Two numbers sharpen the item, and the second changes what it is *about*.
+
+**On the direction axis the gap is 2.77×, not 2.35×.** Queried per status rather than taken from the
+whole-database ratio:
+
+| basis | all evidence items | `PREDISPOSITION`/`SUPPORTS` |
+|---|---:|---:|
+| `ACCEPTED` | 4,906 | 534 |
+| `SUBMITTED` | 6,617 | 946 |
+| `NON_REJECTED` | 11,523 | **1,480** |
+
+So the axis this source was adopted *for* is more skewed toward unreviewed content than the database
+as a whole. (`DOES_NOT_SUPPORT` is 2 → 4 and `PROTECTIVENESS` 1 → 2, which is why the
+contested-variant count moves 0 → 3 and genuine `risk`-vs-`protective` opposition still does not.)
+
+**Ten of the twenty records nothing can place gain a citation the accepted basis does not carry.**
+This is the finding, and it is not about volume. Asked `status: ALL`, per record:
+
+| record | accepted citations | citations only `SUBMITTED` brings |
+|---|---:|---:|
+| 844 `VHL Exon 1 Deletion` | 3 | **34** |
+| 1939 `VHL Exon 3 Deletion` | 4 | **33** |
+| 843 `VHL Exon 1-3 Deletion` | 2 | 17 |
+| 845 `VHL Exon 1-2 Deletion` | 1 | 18 |
+| 2182 `VHL Null (Large deletion)` | 3 | 7 |
+| 2439 `VHL Rearrangement` | 2 | 7 |
+| 715 `STK11 Mutation` | 3 | 4 |
+| 2036 `VHL Null (Partial del Ex2&3)` | 1 | 2 |
+| 3298 `VHL P81S and L188V` | 1 | 1 |
+| 1955 `VHL P71fs (c.211insT)` | 1 | **1 — the free-fulltext one** |
+
+**A verdict is only as wide as the papers read, and these were read on the accepted basis.** The
+class-C three-way split in [CIVIC_UNRESOLVED](probes/CIVIC_UNRESOLVED.md) — *never measured* /
+*measured then generalised away* / *measured at a resolution that is not allele resolution* — was
+decided from each record's cited papers, and for 2036, 2182 and 2439 those were the accepted ones
+only. The verdicts about what the **name** denotes are untouched (a class label stays a class label
+however many papers cite it), but the claim that *the source never measured breakpoints* is scoped to
+papers that a wider basis would have added 2, 7 and 7 more of. That scope belongs on those verdicts
+whether or not this item is ever taken.
+
 ### What is already measured, so nobody re-derives it
 
 - Reading `SUBMITTED` roughly **doubles** the corpus and moves **every** number in
