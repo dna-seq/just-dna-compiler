@@ -38,6 +38,114 @@ deferral round those two came from closed at the same time —
 [ROADMAP_0_8.md](ROADMAP_0_8.md). RM83 is in this file as **closed, not shipped**, and RM139 was filed
 by the cut itself rather than by the proposal.
 
+**RM140 joined them on 2026-08-31 from a consumer report, after the round had closed.** It is not one
+of the twelve and does not reopen the thread; it lands inside the same uncut `0.7.0`, because a new
+optional column is what sizes a release and the number was already decided.
+[PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
+idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
+
+## RM140 — a study row's p-value and effect size are asserted to belong together, and nothing recorded what either came from
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format` + `just-dna-compiler`).
+**Severity** medium · **Owner** format + compiler · **Motivating case**
+[S75](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator)
+
+### What was measured, and by whom
+
+A reproducibility benchmark the reporter ran: two agents, byte-identical prompts, the same three DOIs,
+one module each. They overlapped on exactly one row — `rs117385980` from PMID 41249831 — and disagreed
+on its `p_value`, 0.36 against 0.75, with an identical `effect_size` of 1.42.
+
+Neither was a misreading. The paper reports **two analyses of the same association**: an allelic
+Fisher's exact test giving `OR 1.4, p 0.36` on the 2×2 allele table, and a univariate logistic
+regression giving `OR 1.42, 95% CI 0.18–11.67, p 0.75`, with five adjusted models after it. One run's
+row was internally consistent. The other carried the logistic regression's `effect_size` beside the
+Fisher test's `p_value` — one analysis's estimate and another's p-value on one row.
+
+**Everything was green**, and this is the part that made it an item rather than an authoring mistake:
+`validate_module(strict)`, `compile_module(strict)` and `audit_module` all passed, and `quotes_found`
+was satisfied — the provenance quote is verbatim and correct, because it grounds the *significance
+verdict* and contains no statistic at all. A quote cannot witness a number it does not contain, so
+quote verification is structurally blind to this class of error.
+
+`StudyRow` had `study_design` — *"e.g. meta-analysis, GWAS"* — which describes the **study**. Nothing
+described the **analysis**. So a correct row and a mispaired one were byte-indistinguishable to every
+consumer and every check, and no check could be written, because the facts it would compare were not
+recorded anywhere.
+
+### What shipped
+
+**One optional free-form column, `StudyRow.statistical_test`**, shaped like `study_design` beside it:
+which test or model produced this row's `p_value`/`effect_size`, and what it was adjusted for. Plain
+`str | None`, no vocabulary marker, no `RECOMMENDED_*` set — the space is open and a recommended set is
+additive later if a corpus ever shows a shape. Wired through all four touch points, with the round trip
+watched failing on each of the last two in turn before the test was called done.
+
+**And one behaviour change, which is what makes the column do something.**
+`duplicate_study_citation` fires on a repeated `(variant_key, pmid)` because the check's own docstring
+reads that pair as *the same claim written twice* — which two rows naming two analyses are not. Since
+this item, **both stated and different** suppresses it. Nothing else does: an absent `statistical_test`
+is *unknown*, and unknown against a stated value cannot establish that two rows describe separate work.
+Kleene, not `a != b` — the naive form would suppress on every absent cell and silently retire the check
+for every module written before the column existed.
+
+**`StudyRow._KEY_FIELDS` is not widened**, which the reporter explicitly scoped out and which is also
+the legal answer: that tuple drives `hints.key_fields` and the `key.columns` an authoring surface
+publishes, and re-keying a shipped authored table changes what an identity key means — major-only under
+P3. The check restates `(variant_key, pmid)` rather than reading `_KEY_FIELDS`, so the split is
+contained in the one place that needed it.
+
+### Repairs rejected
+
+- **A validator requiring the pair to come from one analysis.** The reporter argued this against their
+  own ask and is right: it cannot be written, because nothing on either side of the boundary knows what
+  test a number came from until the column exists, and adding column and gate together would make every
+  published row retroactively incomplete. **Column first, and possibly never a gate** — what a gate
+  would need is a second recorded fact per number, not a stricter reading of one.
+- **Widening `(variant_key, pmid)` to carry an analysis.** Above. Also unnecessary: both rows already
+  reach `studies.parquet` today — the duplicate is a warning, never a drop — so the capability was
+  present and only the *legibility* was missing.
+- **A `RECOMMENDED_STATISTICAL_TESTS` vocabulary.** A recommended set is a claim about what the corpus
+  contains, and one module is not a corpus. Open now, additive later.
+- **A second warning code for the half-stated pair** — one row naming an analysis, the other blank.
+  Considered and not taken: it is one more permanent key for a case that is a transient state of an
+  author mid-adoption, and the existing message plus the rule stated in
+  [COMPILER § the analysis grain](COMPILER.md#one-paper-several-analyses-and-the-dedup-key-rm140)
+  covers it. File it if anyone actually reports being stuck there.
+- **Editing a reference example to exercise the column.** It moves digests for no gain and manufactures
+  the RM139 *one side only* case at the next cut. Test fixtures only.
+
+### Charter check
+
+P3 — a new optional column on an authored model: additive, minor-legal, and it lands inside the already
+decided `0.7.0`. P8 — optional with respect to every published module, so nothing previously valid
+becomes invalid; pinned by a test asserting two specs differing only in the *presence* of the column
+hash to the same `content_signature`. P5 — `study_design` and `statistical_test` are separate axes, and
+a future `analysis_covariates` sits beside this one rather than inside it. P7 — the round trip carries
+the value and the digest is a fixed point. P9 — full cost, an authored column, and the answer is that
+the rare author here is the one asking: an unset cell burdens nobody and the alternative is prose in a
+README that no consumer can read.
+
+### What it measured
+
+`artifact.digest` moved on **10 of the 16** reference examples — exactly the ten carrying a
+`studies.parquet` — and `content_signature` on **none** of the sixteen. The same shape RM91 measured
+when it added `effect_allele`, for the same reason: a new column in a materialized table moves bytes
+and no authored identity.
+
+**The published `0.7.0` release record was re-measured rather than left standing.** RM126's record
+carries measured counts, and this item landed after they were taken: the 0.6.6 → 0.7.0 sweep was re-run
+end to end with 0.6.6 built from its own tag, and the two parquet axes went from `4/15` to `14/15`
+while `content_signature` stayed `0/15`. `studies.parquet:statistical_test` is declared on both axes,
+and the concordance-parquet declaration calling itself *the release's most visible consequence* was
+corrected in place — it was a measured claim, and ten digests to four is no longer that. The gate
+exits 0 against the amended record. A stale measured number reads as an all-clear, which is the failure
+this repo keeps meeting from the other direction.
+
+The suppression is a **loosening of a warning**, not of validity: no module that compiled stops
+compiling, and no module that was silent starts warning. The message and code are byte-identical for
+every case that still reports (`@warning-text-is-api`), pinned by its own test.
+
 ## RM139 — the release gate could not tell a broken compile from a spec that outgrew the old compiler
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format` + `just-dna-compiler`). Filed by

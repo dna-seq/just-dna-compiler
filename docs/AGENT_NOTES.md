@@ -1394,6 +1394,33 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   PharmVar API key" on a machine that had one. `load_env()` now runs in `__init__`, `override=False`, so
   a real environment variable and a test's neutralizing `""` both still win.
 
+- `@absent-is-not-different` — **A new optional column that splits a dedup key suppresses only when
+  BOTH rows state it and the two values differ — and it is the CHECK that learns the column, never the
+  key** (RM140, S75). `studies.csv` is keyed `(variant_key, pmid)`, and `duplicate_study_citation`
+  reads a repeat of that pair as *the same claim written twice*. Once `StudyRow.statistical_test`
+  existed, two rows naming two analyses of one association stopped being that, so the check contradicted
+  the column an author was using as intended.
+
+  **The tempting condition is `a != b`, and it is wrong in the house's own terms.** `None != "Fisher"`
+  is `True`, so the naive form suppresses the warning on every absent cell — which retires the check
+  outright for every module written before the column existed, silently, and looks like a passing test
+  suite. An absent value is **unknown**, and unknown against a stated value cannot establish that two
+  rows describe separate work. Kleene: only *stated-and-stated-and-different* is a distinction. Four
+  arrangements need pinning and three of them still warn — neither stated, both the same, and one
+  stated in either order.
+
+  **Do not widen `_KEY_FIELDS` to get the same effect.** It looks like the tidier fix and it is a much
+  larger one: the tuple drives `hints.key_fields` and the `key.columns` an authoring surface publishes,
+  `@dedup-key-decides-rows` makes it the thing that decides which columns may become several rows in
+  every drafting provider, and re-keying a shipped authored table changes what an identity key means —
+  major-only under P3. The check restated `(variant_key, pmid)` rather than reading the tuple, which is
+  what let the split be contained in one function. Check that property before choosing this route; if
+  the check reads `_KEY_FIELDS`, the two options are not the ones they appear to be.
+
+  **The message is the other half.** Every case that still warns must keep the byte-identical string and
+  code (`@warning-text-is-api`) — the change is behaviour, not text — and a test asserting exactly that
+  over a spec with no such column at all is what proves no published module moved.
+
 - `@dedup-key-decides-rows` — **Which columns may become several rows is decided by the DEDUP KEY, not by the source's dialect
   (R2-1).** ClinPGx `;`-joins both `drugs` and `gene`. `drug` is *in* `PharmVariantRow`'s dedup key, so
   one record legitimately becomes one row per drug; `gene` is **outside** it, so the same move makes

@@ -1007,6 +1007,37 @@ class StudyRow(AuthoredModel):
         default=None, description="EFO/MONDO/OBA/HP trait ontology id(s) for this study."
     )
 
+    # ── 0.7 additive column: which analysis produced the numbers on this row (RM140, S75) ──
+    # `study_design` describes the STUDY — case-control, GWAS, meta-analysis. One study routinely runs
+    # several analyses of one association, and this column describes THE ANALYSIS. The motivating case
+    # is a single paper reporting `OR 1.4, p 0.36` from an allelic Fisher's exact test and
+    # `OR 1.42, p 0.75` from a univariate logistic regression of the same variant: two agents building
+    # the same module from it produced rows that differed only in `p_value`, and one of the two had
+    # taken its `effect_size` from one analysis and its `p_value` from the other. Everything was green,
+    # because a `p_value` and an `effect_size` on one row are *asserted* to belong together and nothing
+    # recorded what either came from. A provenance quote cannot witness it either: the quote grounding
+    # that row's significance verdict contains no statistic at all.
+    #
+    # **A column, and deliberately not a gate.** Requiring the pair to come from one analysis is
+    # unwritable until the fact it compares exists, and adding the column and the gate together would
+    # make every published row retroactively incomplete. The reporter argued this against their own
+    # first candidate; it is recorded here because the column looks under-specified without it.
+    #
+    # **Free text like `study_design`, and no `RECOMMENDED_*` vocabulary.** The space is open —
+    # "Fisher's exact (allelic)", "univariate logistic regression", "logistic regression adjusted for
+    # age, sex, BMI", "fixed-effect meta-analysis" — and a recommended set is additive later if a
+    # corpus ever shows a shape. What the column has to do first is make two rows distinguishable.
+    statistical_test: str | None = Field(
+        default=None,
+        description=(
+            "Which analysis produced this row's `p_value`/`effect_size` — the test or model, and what "
+            "it was adjusted for, e.g. `Fisher's exact (allelic)` or `logistic regression adjusted "
+            "for age and sex`. Free text. `study_design` describes the study; this describes the "
+            "analysis, and one study may report several. Absent means the paper's analysis was not "
+            "recorded, never that it had only one."
+        ),
+    )
+
     # ── 0.4 provenance columns (RM11/RM12, from the 0.5 scope; docs/USE_CASES.md §4a) ──
     # All optional → P3/P8 clean. They anchor a network-first validator (RM13) without the format
     # ever fetching: the module ships the pointer, the consumer supplies the source and does the check.

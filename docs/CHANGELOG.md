@@ -44,6 +44,52 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
+- **RM140 — a study row's p-value and effect size were asserted to belong together, and nothing
+  recorded what either came from.** *(`just-dna-format` + `just-dna-compiler`.)* Filed and built on
+  2026-08-31 from a consumer's reproducibility benchmark (S75), after the proposal round had closed —
+  it is not one of the twelve and lands inside this same uncut number, because a new optional column is
+  what sizes a release.
+
+  Two agents, byte-identical prompts, the same three DOIs, overlapping on exactly one row: `p_value`
+  0.36 against 0.75, `effect_size` 1.42 on both. Neither was a misreading. The paper reports two
+  analyses of the same association — an allelic Fisher's exact test (`OR 1.4, p 0.36`) and a univariate
+  logistic regression (`OR 1.42, p 0.75`) — and one run's row carried the second's magnitude beside the
+  first's p-value. **Everything was green**, `strict` on both `validate` and `compile`, `audit_module`
+  and `quotes_found` included: the provenance quote is verbatim and correct because it grounds the
+  significance *verdict* and contains no statistic at all, so quote verification is structurally blind
+  to this. `study_design` describes the **study**; nothing described the **analysis**, so a correct row
+  and a mispaired one were byte-indistinguishable to every consumer and every check — and no check could
+  be written, because the facts it would compare were recorded nowhere.
+
+  **`StudyRow.statistical_test`** is one optional free-form column shaped like `study_design`: which
+  test or model produced this row's numbers, and what it was adjusted for. No vocabulary, and
+  **deliberately no gate** — the reporter argued that against their own ask and is right, since the
+  gate is unwritable before the column exists and shipping both would make every published row
+  retroactively incomplete.
+
+  **The one behaviour change is the duplicate-citation warning.** `duplicate_study_citation` reads a
+  repeated `(variant_key, pmid)` as *the same claim written twice*, which two rows naming two analyses
+  are not; **both stated and different** now suppresses it, and nothing else does. An absent
+  `statistical_test` is *unknown*, and unknown against a stated value cannot establish that two rows
+  describe separate work — Kleene rather than `a != b`, which would suppress on every absent cell and
+  silently retire the check for every module written before the column existed.
+
+  **Measured, not asserted.** `artifact.digest` moved on **10 of the 16** reference examples — exactly
+  the ten carrying a `studies.parquet` — and `content_signature` on **none** of the sixteen. The
+  published `0.7.0` release record was re-measured with it rather than left standing: its two parquet
+  axes read `4/15` before this item and read `14/15` after, the `studies.parquet` column is declared,
+  and the concordance-parquet declaration that called itself *the release's most visible consequence*
+  was corrected, because it was a measured claim and stopped being true. The gate exits 0 against the
+  amended record.
+
+  **Consumers:** one optional column on `studies.csv` and `studies.parquet`, read by nothing that does
+  not want it; unset, it is omitted from `content_signature`, so no published module's identity moves.
+  The warning's code and message are byte-identical for every case that still reports. `_KEY_FIELDS` is
+  **not** widened — the published `key.columns` for `studies.csv` is still `(variant_key, pmid)`, and
+  re-keying a shipped authored table is major-only. Note the premise this corrects: two rows sharing a
+  variant and a PMID have always both reached `studies.parquet` — the duplicate is a warning, never a
+  drop — so the capability was there and only the legibility was missing.
+
 - **The 0.7 round's files were closed out.** *(Documentation only — no package changed.)* Four entries
   sat in forward-only files with a `SHIPPED` banner on them, which reads as late rather than done:
   RM126 and RM71 in `ROADMAP_0_7.md`, RM133 and RM134 in ROADMAP.md. All four moved to

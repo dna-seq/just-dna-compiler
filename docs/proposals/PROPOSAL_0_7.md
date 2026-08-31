@@ -35,6 +35,13 @@ additive under Principles 3 and 8, and legality stopped nothing this round.
 *a minor, release undecided*. **Eleven build and one closes into another** — RM83, whose premise stopped
 holding. The succession filed alongside them is RM135 and is not one of the twelve.
 
+**One item was decided after the round closed, and it is [an addendum](#addendum--rm140-decided-2026-08-31-after-the-round-closed)
+rather than a thirteenth.** RM140 arrived on 2026-08-31 as a consumer report (S75) against a `0.7.0`
+that was bumped and not yet cut, so it ships inside the same number. It is recorded here, in this
+file's idiom, because a decision of the same shape as the twelve belongs beside them rather than in a
+thread of its own — and it is dated and set apart because the round itself is closed and the count
+above is a fact about that round. Every "twelve" in this document means the 2026-08-27/28 round.
+
 **RM134 was pulled in on 2026-08-28, after the other eleven were decided**, and it is the largest single
 piece of work here. It also reaches back into two of them: its concordance machinery supersedes RM130's
 record shape, and its new checks are what expose the warnings problem in RM126. Both are amended below
@@ -1241,6 +1248,110 @@ which is the point of choosing this route over the natural-looking one.
 
 ---
 
+# Addendum — RM140, decided 2026-08-31 after the round closed
+
+**Severity** medium · **Owner** format + compiler · **Entry**
+[ROADMAP_HISTORY.md § RM140](../ROADMAP_HISTORY.md#rm140--a-study-rows-p-value-and-effect-size-are-asserted-to-belong-together-and-nothing-recorded-what-either-came-from) ·
+**Motivating case** S75 (just-module-creator)
+
+**Not one of the twelve, and not a reopening.** The round above closed on 2026-08-31 and this arrived
+the same day, against a `0.7.0` whose three `pyproject.toml` files were bumped and whose tag was not
+cut. A new optional column is what sizes a release, and the number was already decided, so there was
+nothing to schedule: it lands inside the batch. What made it worth writing here rather than only in
+ROADMAP_HISTORY is that its shape is this document's shape — a column whose obvious companion gate is
+refused, and a check that had to learn one thing to stay true.
+
+## The problem
+
+A reproducibility benchmark, run by the reporter: two agents, byte-identical prompts, the same three
+DOIs, one module each. They overlapped on exactly one row — `rs117385980` from PMID 41249831 — and
+disagreed, `p_value` 0.36 against 0.75, with the same `effect_size` of 1.42.
+
+**Neither was a misreading.** The paper reports two analyses of one association: an allelic Fisher's
+exact test on the 2×2 allele table (`OR 1.4, p 0.36`) and a univariate logistic regression
+(`OR 1.42, 95% CI 0.18–11.67, p 0.75`), with five adjusted models after it. One run's row was
+internally consistent with the second. The other paired the second's `effect_size` with the first's
+`p_value` — one analysis's estimate beside another's p-value, on a row that asserts the two belong
+together.
+
+**Everything was green**, and that is the item. `validate_module(strict)`, `compile_module(strict)` and
+`audit_module` all passed, and `quotes_found` was satisfied: the provenance quote is verbatim and
+correct, because it grounds the *significance verdict* and contains no statistic at all. A quote cannot
+witness a number it does not contain, so quote verification is structurally blind to this class of
+error — which is worth stating plainly, since the attestation column is the surface a reader would
+expect to catch it.
+
+`StudyRow` had `study_design`, which describes the **study**. Nothing described the **analysis**. So a
+correct row and a mispaired one were byte-indistinguishable, and no check could be written at all: the
+facts it would compare were recorded nowhere.
+
+## Facts established while deciding it
+
+**The reporter's second claim does not reproduce, and the correction matters.** They read
+`key.columns = (variant_key, pmid)` as meaning a paper's several analyses can be represented by exactly
+one, the rest dropped by silent choice. Probed on a real spec: two rows sharing a variant and a PMID
+**both reach `studies.parquet`**, and `duplicate_study_citation` is a *warning* that does not escalate
+under `strict`. So the capability was already there and only the legibility was missing — which
+narrows the item to the column and rules the key change out on the merits as well as on P3.
+
+**But the warning then contradicts itself.** `_cross_validate_studies`'s own docstring calls a repeated
+key *the same claim written twice*. Once `statistical_test` exists, two rows naming two analyses are
+not that, and an author using the column exactly as intended would be warned for it.
+
+## The decision
+
+**One optional free-form column, and one narrowing of the check that would otherwise contradict it.**
+
+- **`StudyRow.statistical_test`** — plain `str | None`, shaped like `study_design`: the test or model,
+  and what it was adjusted for. No vocabulary marker and no `RECOMMENDED_*` set; the space is open and a
+  recommended set is additive later if a corpus ever shows a shape. What the column has to do first is
+  make two rows distinguishable.
+- **`duplicate_study_citation` suppresses only on *both stated and different*.** An absent
+  `statistical_test` is **unknown**, and unknown against a stated value cannot establish that two rows
+  describe separate work. Kleene, not `a != b` — the naive form suppresses on every absent cell and
+  silently retires the check for every module written before the column existed. Neither stated, both
+  the same, or one stated and one blank in either order: warns exactly as before, same code, same bytes.
+- **`_KEY_FIELDS` stays `(variant_key, pmid)`.** The check restates the pair rather than reading the
+  tuple, so the split is contained in one function and reaches nothing else.
+
+## Repairs rejected
+
+- **A validator requiring the pair to come from one analysis.** The reporter argued this against their
+  own ask, and the argument is correct: nothing on either side of the boundary knows what test a number
+  came from until the column exists, and adding the column and the gate in one step would make every
+  existing published row retroactively incomplete. **Column first, and possibly never a gate** — what a
+  gate needs is a second recorded fact per number, not a stricter reading of one.
+- **Widening `_KEY_FIELDS` to carry the analysis.** Scoped out by the reporter, and independently the
+  wrong move: the tuple drives `hints.key_fields` and the `key.columns` an authoring surface publishes,
+  and re-keying a shipped authored table changes what an identity key means — major-only under P3.
+  `@dedup-key-decides-rows` is the other half: the key decides which columns may become several rows,
+  and that is a drafting-wide consequence for a warning-shaped problem.
+- **A `RECOMMENDED_STATISTICAL_TESTS` frozenset.** A recommended set is a claim about what a corpus
+  contains, and one module is not a corpus. Open now, additive whenever there is something to recommend.
+- **A second warning code for the half-stated pair** — one row naming an analysis, the other blank.
+  A permanent key for what is a transient state of an author mid-adoption; the existing message plus the
+  rule in the compiler reference covers it. File it if someone reports being stuck there.
+- **Exercising the column in a reference example.** Moves digests for no gain and manufactures RM139's
+  *one side only* case at the next cut, since no previous release can compile a spec using a column it
+  does not have. Test fixtures only.
+
+## Charter check
+
+P3 — a new optional column: additive, minor-legal, inside the decided `0.7.0`. P8 — optional with
+respect to every published module, pinned by a test asserting that two specs differing only in the
+*presence* of the column hash to the same `content_signature`. P5 — `study_design` and
+`statistical_test` are separate axes, and a future `analysis_covariates` sits beside this one rather
+than inside it. P7 — the round trip carries the value and the digest is a fixed point, watched failing
+on each of the two reverse touch points in turn. P9 — full cost, an authored column, and the answer is
+the one this round gave twice already: the burden is on the rare author, the rare author is the one
+asking, and an unset cell burdens nobody.
+
+The suppression is a loosening of a **warning**, never of validity: nothing that compiled stops
+compiling, nothing silent starts warning, and the message and code are byte-identical for every case
+that still reports.
+
+---
+
 # Filed by this round
 
 Two items the decisions above created. Neither is 0.7 work.
@@ -1312,6 +1423,7 @@ touch, and its release gate is the only piece that lands outside the packages.
 | H | RM85 — the dataset-currency check | enricher |
 | I | RM133 — the registry-owned key and the constant | format |
 | J | **RM134** — `pubmind build`/`publish`, the shared normalizer fix, the N-authority check, `--source pubmind`, the hint | enricher (+ format for the precedence field) |
+| K | **RM140** — `StudyRow.statistical_test` + the analysis-aware dedup check (the addendum; not one of the twelve) | format, compiler |
 
 **B before B1 and B2**, by construction. **C before B1**, because `enrich --rederive` composes with the
 transaction rather than reimplementing staging. **D before the suppression finding lands**, which is
@@ -1324,6 +1436,11 @@ table with ClinVar as its only authority, then add the second. **G before J's se
 new checks inside D's audit**, not after it, since they are emission sites like any other. **A before or
 with J**, because J's checks are what make RM126's warnings axis load-bearing; landing them first means
 retrofitting the release's declaration.
+
+**K is independent of every other lane and was built after them**, on 2026-08-31 — it touches
+`StudyRow` and one function in `compiler.py` that no other lane goes near, and it is sequenced only by
+having arrived last. It is retrofitted into this plan rather than left out of it because a reader
+asking *what was built inside 0.7.0* should find all of it in one table.
 
 ## Shared-file hazards
 

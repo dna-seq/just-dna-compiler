@@ -30,7 +30,8 @@ gotcha book: it is loaded into every session and has a size ceiling.
 edited as routine work: `docs/history/` (the closed record — the pre-0.6 halves of the three history
 files, the round-2 consumer thread, and `ROADMAP_0_7.md`, the 0.7 deferral round closed at that cut),
 `docs/proposals/` (the `PROPOSAL_*` design threads, **all six concluded** — a live one wins over the
-roadmap files until its items land, and `PROPOSAL_0_7` stopped being live when the twelfth landed), `docs/probes/` (the dogfood and VCF audit rounds), `docs/audit/` (the tier
+roadmap files until its items land, and `PROPOSAL_0_7` stopped being live when the twelfth landed —
+it gained a dated addendum on 2026-08-31 and is still a record, because that item landed with it), `docs/probes/` (the dogfood and VCF audit rounds), `docs/audit/` (the tier
 references re-derived from the code on 2026-08-18 — **evidence, never contract**; the maintained
 reference is the one in `docs/` root), `docs/vendor/` (two upstream files kept for reference,
 PharmVar's OpenAPI document and its licence text).
@@ -57,7 +58,7 @@ PharmVar's OpenAPI document and its licence text).
 | [USE_CASES.md](docs/USE_CASES.md) | a use case → enabled / consumer-side / gap. **Start a design task here** | `grep -n '^## ' docs/USE_CASES.md` |
 | [REFERENCE_EXAMPLES.md](docs/REFERENCE_EXAMPLES.md) | how to author each case with today's bricks; indexes `reference_examples/` | `grep -n '^## ' docs/REFERENCE_EXAMPLES.md` |
 | [PUBMIND_ASSESSMENT.md](docs/PUBMIND_ASSESSMENT.md) | the 2026-08-28 assessment of PubMind — what it competes with (little), what it complements (a lot, upstream), what its open channel actually contains, and the four-section adoption design behind RM134: a ClinVar-shaped derived snapshot, a three-way ClinVar concordance check, drafting, and the hint | `grep -n '^## ' docs/PUBMIND_ASSESSMENT.md` |
-| PROPOSAL_[0_4_1\|0_5\|0_5_1\|0_6\|0_6_PT2\|0_7].md | design threads with their charter checks and open questions. **0.6 has two** — PT2 sorted the items that landed behind the first round. **0_7 is the most recent and is now a record, not a plan**: twelve items decided per-item with the maintainer, every one shipped, entries in ROADMAP_HISTORY | `grep -n '^## ' docs/proposals/PROPOSAL_0_7.md` |
+| PROPOSAL_[0_4_1\|0_5\|0_5_1\|0_6\|0_6_PT2\|0_7].md | design threads with their charter checks and open questions. **0.6 has two** — PT2 sorted the items that landed behind the first round. **0_7 is the most recent and is now a record, not a plan**: twelve items decided per-item with the maintainer, every one shipped, entries in ROADMAP_HISTORY. Its **dated addendum** (RM140, 2026-08-31) is a thirteenth decision taken after the round closed, kept there because it has the round's shape and shipped inside the same uncut 0.7.0 — every bare "twelve" in that file means the 2026-08-27/28 round | `grep -n '^## ' docs/proposals/PROPOSAL_0_7.md` |
 | [DOGFOOD_0_6.md](docs/probes/DOGFOOD_0_6.md), [DOGFOOD_0_6_FINDINGS.md](docs/probes/DOGFOOD_0_6_FINDINGS.md), [VCF_4_4_AUDIT.md](docs/probes/VCF_4_4_AUDIT.md) | probe rounds and what they broke | `grep -n '^## ' docs/probes/DOGFOOD_0_6_FINDINGS.md` |
 | [audit/](docs/audit/README.md) | the 2026-08-18 code-first re-derivation of all three tier references, and the instrument that found RM93–RM100. Its durable material is **merged**; what stays there is dated detail (per-parquet columns, per-command flags) that would rot in a maintained doc. Never edit one to record a fact | `grep -rn '<symbol>' docs/audit/` |
 
@@ -188,6 +189,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Never re-run a check whose message embeds a count — the manifest then publishes two numbers. `@no-rerun-with-counts`
 - A check running on both sides dedupes on the message; re-running is the normal case. `@no-rerun-with-counts`
 - The ClinVar `clin_sig` cross-check never escalates under `strict`, deliberately. `@clinsig-never-escalates`
+- Splitting a dedup key on a new optional column: **both stated and different**, and narrow the check rather than the key. `@absent-is-not-different`
 - A check that cannot fail must not report a zero. `@tautology-zero`
 - Ask whether a table-level check's rules are jointly satisfiable. `@jointly-satisfiable`
 - An all-digit genotype is a pasted `GT`; diagnose it before the arity check. `@gt-indices`

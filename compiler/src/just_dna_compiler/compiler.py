@@ -3428,7 +3428,12 @@ def _cross_validate_studies(
     module or a binning bound rather than a locus, and a row referencing nothing cannot reference
     something missing. Its dedup key is `(None, pmid)`, so two subject-less rows citing one paper are
     still a duplicate — deliberately: they are the same claim written twice, and the whole point of
-    the relaxation is that one such row is enough."""
+    the relaxation is that one such row is enough.
+
+    **Since RM140 a stated `statistical_test` splits that key for this check** (S75). One paper often
+    reports several analyses of one association with different statistics, and those rows are not one
+    claim written twice. Only *both stated and different* suppresses: an absent analysis is unknown,
+    and unknown cannot establish distinctness."""
     warnings: list[str] = []
     variant_rsids = {v.rsid for v in variants if v.rsid is not None}
     variant_coords = {
@@ -3450,15 +3455,42 @@ def _cross_validate_studies(
             "study_variant_orphan",
             f"Studies reference variants not in variants.csv: {sorted(set(orphans))}",
         ))
-    seen: set[tuple[str | None, str]] = set()
+    # `(variant_key, pmid)` is the dedup key, and since RM140 a *stated* `statistical_test` splits it
+    # for this check only. One paper routinely reports several analyses of one association — an
+    # allelic Fisher's exact and a univariate logistic regression of the same variant, with different
+    # p-values — and those are two claims, not one claim written twice, which is what the docstring
+    # above says a duplicate is. `StudyRow._KEY_FIELDS` is deliberately NOT widened: it drives
+    # `hints.key_fields` and the `key.columns` an authoring surface publishes, and re-keying a shipped
+    # authored table is a major-only change under P3. This check restates the pair rather than reading
+    # `_KEY_FIELDS`, so the divergence is contained here and is the whole of it.
+    #
+    # **Both stated and different is the only suppressing case, because `None` is not "different".**
+    # An unstated analysis is *unknown*, and unknown against a stated one cannot establish that the two
+    # rows describe separate work — Kleene, not `a != b`, which would suppress on every absent cell and
+    # silently retire the check for every module written before the column existed. So a row whose
+    # analysis is unrecorded, or that repeats an analysis already stated for the same key, warns exactly
+    # as it did; the message is unchanged for every case that still reports.
+    stated: dict[tuple[str | None, str], set[str]] = {}
+    unstated: dict[tuple[str | None, str], int] = {}
     for row in studies:
         key = (row.variant_key, row.pmid)
-        if key in seen:
-            warnings.append(CodedWarning(
-                "duplicate_study_citation",
-                f"Duplicate (variant, pmid): ({row.variant_key}, {row.pmid})",
-            ))
-        seen.add(key)
+        test = row.statistical_test.strip() if row.statistical_test else None
+        if key not in stated:
+            stated[key] = set()
+            unstated[key] = 0
+        else:
+            names_a_new_analysis = (
+                test is not None and test not in stated[key] and unstated[key] == 0
+            )
+            if not names_a_new_analysis:
+                warnings.append(CodedWarning(
+                    "duplicate_study_citation",
+                    f"Duplicate (variant, pmid): ({row.variant_key}, {row.pmid})",
+                ))
+        if test is None:
+            unstated[key] += 1
+        else:
+            stated[key].add(test)
     return [], warnings
 
 
@@ -6953,6 +6985,9 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
                 # the claim.
                 "effect_allele": s.effect_allele,
                 "trait_efo_id": s.trait_efo_id,
+                # RM140 (0.7): which analysis the two numbers above came from. A passthrough like
+                # every column around it — nothing can derive it, and nothing checks it yet.
+                "statistical_test": s.statistical_test,
                 # ── 0.4 provenance columns (RM11/RM12, from the 0.5 scope; docs/USE_CASES.md §4a). ──
                 "doi": s.doi,
                 "provenance_quote": s.provenance_quote,
@@ -6983,6 +7018,7 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
         "effect_measure": pl.Utf8,
         "effect_allele": pl.Utf8,
         "trait_efo_id": pl.Utf8,
+        "statistical_test": pl.Utf8,
         "doi": pl.Utf8,
         "provenance_quote": pl.Utf8,
         "provenance_regex": pl.Utf8,
@@ -7734,6 +7770,8 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
         # right, re-validates, and loses the value. The digest fixed-point assertion is what catches
         # it; a column-presence check does not.
         "stat_significance", "effect_size", "effect_measure", "effect_allele", "trait_efo_id",
+        # 0.7: which analysis produced `p_value`/`effect_size` (RM140, S75)
+        "statistical_test",
         # 0.4 provenance columns (RM11/RM12, from the 0.5 scope), and 0.6's locator beside them (S55)
         "doi", "provenance_quote", "provenance_regex", "curator",
         # 0.5: the authored numeric p-value. `neg_log10_p` is deliberately absent — it is derived on
@@ -7764,6 +7802,7 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
                     "effect_measure": _scalar_cell(row.get("effect_measure")),
                     "effect_allele": _scalar_cell(row.get("effect_allele")),
                     "trait_efo_id": _scalar_cell(row.get("trait_efo_id")),
+                    "statistical_test": _scalar_cell(row.get("statistical_test")),
                     "doi": _scalar_cell(row.get("doi")),
                     "provenance_quote": _scalar_cell(row.get("provenance_quote")),
                     "provenance_regex": _scalar_cell(row.get("provenance_regex")),

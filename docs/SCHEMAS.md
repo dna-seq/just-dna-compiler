@@ -436,13 +436,26 @@ author time — a declarative pattern grammar, Principle 1). 0.5 adds the **quer
 `p_value_num?`, the same number typed, constrained to (0, 1] — an exact `0` is a source's own
 underflow rather than a probability, so it is rejected instead of stored as a confident zero.
 0.6 adds **`curator?`** — who located that passage: a name, handle, or model id resolvable against
-the manifest's `authorship` (S55).
+the manifest's `authorship` (S55). 0.7 adds **`statistical_test?`** — which *analysis* produced this
+row's `p_value`/`effect_size`, free text like `study_design` beside it (RM140).
 
 - **Row-level, because the work is mixed at row granularity.** A human may read a review while an
   agent traverses its citations, in one module, in one pass, and a module-level contributor list
   cannot say which of the two located row 1400. `VariantRow.curator` exists for exactly that reason
   one table over, and the asymmetry it left was backwards: a variant row could name who decided it
   while a quote could not name who located it, though the quote is the attestation.
+
+- **`study_design` describes the study; `statistical_test` describes the analysis, and one study runs
+  several.** The two are separate axes under Principle 5, not two spellings of one. The motivating
+  case is one paper reporting `OR 1.4, p 0.36` from an allelic Fisher's exact test and `OR 1.42,
+  p 0.75` from a univariate logistic regression of the same variant: without the column, a row taking
+  its magnitude from one analysis and its p-value from the other is byte-indistinguishable from a
+  correct one, and no check can reach it — the facts it would compare are not recorded. Free text,
+  open, no `RECOMMENDED_*` set, and **no gate**: requiring the pair to come from one analysis is
+  unwritable until the column exists, and shipping both at once would make every published row
+  retroactively incomplete. Absent means the analysis was not recorded, never that the paper ran one.
+  The one behaviour it does change is the duplicate-citation warning — see
+  [COMPILER § the analysis grain](COMPILER.md#one-paper-several-analyses-and-the-dedup-key-rm140).
 - **Free text, never a `machine_located: bool`.** Two-valued collapses the case that actually occurs
   — a passage an agent found and a human then confirmed — into one of two lies, and it cannot name
   *which* agent or *which* human. `Contribution.who` already reads "a name, handle, or model id".

@@ -694,14 +694,41 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
                 item="RM70",
             ),
             DeclaredChange(
+                axis="parquet_schema",
+                target="studies.parquet:statistical_test",
+                kind="addition",
+                detail=(
+                    "RM140 added the authored `statistical_test` column to `studies.csv`, so the "
+                    "compiled `studies.parquet` gained a column no earlier artifact could have "
+                    "carried. Every module in the corpus leaves the cell unset, so the value was "
+                    "absent rather than wrong — and `content_signature` does not move, because an "
+                    "unset optional cell is omitted from it."
+                ),
+                item="RM140",
+            ),
+            DeclaredChange(
+                axis="parquet_bytes",
+                target="studies.parquet",
+                kind="addition",
+                detail=(
+                    "The column above lands in every `studies.parquet`, so the ten reference modules "
+                    "carrying one move their `artifact.digest`. This is the bulk of the measured "
+                    "parquet movement in this release and it is the cheapest kind: a new column no "
+                    "row fills. RM140 arrived after the round closed and is measured here with it."
+                ),
+                item="RM140",
+            ),
+            DeclaredChange(
                 axis="parquet_bytes",
                 target="clin_sig_concordance.parquet,clin_sig_authority_calls.parquet",
                 kind="addition",
                 detail=(
                     "The two concordance parquets are new files, so a module carrying them lists "
-                    "two more entries in `artifact.files` and its `artifact.digest` moves. This is "
-                    "the release's most visible consequence and it is an addition, not a correction: "
-                    "no value we previously published was wrong."
+                    "two more entries in `artifact.files` and its `artifact.digest` moves. An "
+                    "addition, not a correction: no value we previously published was wrong. (This "
+                    "read `the release's most visible consequence` until RM140 landed after the "
+                    "round and moved ten digests to these four — the claim was measured, so it was "
+                    "corrected rather than kept.)"
                 ),
                 item="RM130",
             ),
@@ -724,7 +751,10 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
         evidence=(
             "15 reference module(s) compiled under 0.6.6 and 0.7.0 from one spec root, so the "
             "compiler is the only variable; modules moved per axis: content_signature 0/15, "
-            "manifest_fields 15/15, parquet_bytes 4/15, parquet_schema 4/15, warnings 3/15. "
+            "manifest_fields 15/15, parquet_bytes 14/15, parquet_schema 14/15, warnings 3/15. "
+            "Re-measured on 2026-08-31 when RM140 landed after the round closed: the two parquet "
+            "axes read 4/15 before it, and its one new `studies.parquet` column moves every module "
+            "carrying that table. `content_signature` stayed at 0/15 through it. "
             "`cyp2c9_warfarin_grch37` is unmeasured rather than unchanged: RM70 added "
             "`requires_callable` to its `pharm_variants.csv`, which 0.6.6 refuses under "
             "`extra=\"forbid\"`, so its authored input is not byte-identical across the interval and "

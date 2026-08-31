@@ -84,6 +84,28 @@ Both spellings work everywhere a `pmid` is accepted (`9545397`, `[PMID: 9545397]
 and every site is checked for existence by the same pass, so a citation written on a bin or a pharm
 row is verified exactly like one written on a study row.
 
+**One paper often reports several analyses of one association — name each one in `statistical_test`.**
+`study_design` says what the *study* was (case-control, GWAS, meta-analysis); `statistical_test` says
+what produced *this row's* numbers, and a paper giving `OR 1.4, p 0.36` from an allelic Fisher's exact
+test and `OR 1.42, p 0.75` from a univariate logistic regression of the same variant needs two rows,
+not a choice. Free text, no fixed vocabulary — write what the paper calls it, adjustments included:
+`Fisher's exact (allelic)`, `logistic regression adjusted for age, sex and BMI`.
+
+Two things follow, and both are easy to get wrong:
+
+- **Never mix analyses on one row.** A `p_value` from one test beside an `effect_size` from another is
+  accepted by every check there is — the two cells assert that they belong together and nothing can
+  contradict them. A provenance quote does not save you either: a quote grounding "not statistically
+  significant" contains no statistic, so it cannot witness the numbers beside it. Take both numbers
+  from the same table of the paper, and say which table it was.
+- **Two rows sharing a variant and a PMID warn as a duplicate unless *both* name an analysis, and the
+  two names differ.** An empty `statistical_test` is *unknown*, not *different*, so filling it on one
+  row and leaving it blank on the other still reports the duplicate. Fill both, or accept the warning.
+
+If the paper's own numbers do not reconstruct from its own counts, that is a finding about the paper —
+record what you can support and leave `effect_size`/`effect_measure`/`effect_allele` empty rather than
+copying a magnitude you cannot ground. An absent cell is honest; a wrong one is checked by nothing.
+
 **A per-genotype or per-context axis belongs in the key, or the rows collide.** These were all learned
 from real corpora rejecting themselves:
 

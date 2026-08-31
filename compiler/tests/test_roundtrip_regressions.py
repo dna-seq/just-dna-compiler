@@ -460,6 +460,7 @@ def test_every_column_the_studies_writer_declares_is_actually_written(tmp_path: 
         "effect_size": "1.4", "effect_measure": "OR", "effect_allele": "A",
         "trait_efo_id": "EFO:0000305", "doi": "10.1000/demo", "provenance_quote": "a passage",
         "provenance_regex": "a[a-z ]+passage", "curator": "claude-opus-5", "p_value_num": "5e-8",
+        "statistical_test": "logistic regression adjusted for age and sex",
     }
     # Derived from the model, so a column added to StudyRow without a value here fails loudly rather
     # than being quietly excluded from the guard.

@@ -391,6 +391,38 @@ untouched by this and stays about *bins*: there is deliberately no equivalent gr
 uncited pharm row, because a drug-response table is not the interpretive-threshold case that check
 exists for.
 
+### One paper, several analyses, and the dedup key (RM140)
+
+The three sites above are about *which row* cites a paper. This one is about what a citing row's
+numbers mean once it has. A `studies.csv` row carries `p_value` and `effect_size` side by side and
+**asserts they belong together**; before 0.7 nothing recorded, and so nothing could check, whether they
+came from the same analysis. `study_design` names the study — case-control, GWAS, meta-analysis — and a
+single study routinely reports several analyses of one association: the motivating module cited a paper
+giving `OR 1.4, p 0.36` from an allelic Fisher's exact test and `OR 1.42, p 0.75` from a univariate
+logistic regression of the same variant, and two agents building from it produced rows that differed
+only in `p_value`, one of them pairing the magnitude of one analysis with the p-value of the other.
+Everything was green — including quote verification, because the quote grounds the *significance
+verdict* and contains no statistic to witness.
+
+**`StudyRow.statistical_test` (0.7) is the column, and it is deliberately not a gate.** Free text like
+`study_design`, no vocabulary, no new check. What it changes is one existing one:
+`duplicate_study_citation` fires on a repeated `(variant_key, pmid)` because the check's own reading of
+that pair is *the same claim written twice* — which two rows naming two analyses are not.
+
+**Only *both stated and different* suppresses the warning.** The rule is Kleene rather than `a != b`:
+an absent `statistical_test` is **unknown**, and unknown against a stated value cannot establish that
+two rows describe separate work. So a pair where neither row names an analysis, where both name the
+same one, or where one names one and the other does not, warns exactly as it did before, with the same
+code and the byte-identical message — every module published before 0.7 behaves as it did. A row
+repeating an analysis already stated for its key still warns however many distinct siblings sit beside
+it.
+
+**`StudyRow._KEY_FIELDS` is not widened**, and the divergence is contained in this check. That tuple
+drives `hints.key_fields` and the `key.columns` an authoring surface publishes; re-keying a shipped
+authored table changes what an identity key means, which is major-only under Principle 3. The check
+restates `(variant_key, pmid)` rather than reading `_KEY_FIELDS`, so splitting it here splits nothing
+else.
+
 ### Three more schema limits, made legible the same way (0.6, the VCF 4.4 audit)
 
 Same class as the bin-boundary gap above — limits of the **schema**, not of the tier — and they are here
