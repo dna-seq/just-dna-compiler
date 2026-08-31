@@ -155,6 +155,7 @@ _G37_ACCESSIONS: dict[str, str] = {
         range(1, 25),
         (10, 11, 11, 11, 9, 11, 13, 10, 11, 10, 9, 11, 10, 8, 9, 9, 10, 9, 9, 10, 8, 10, 10, 9),
         [str(n) for n in range(1, 23)] + ["X", "Y"],
+        strict=True,
     )
 }
 _G38_ACCESSIONS: dict[str, str] = {
@@ -163,6 +164,7 @@ _G38_ACCESSIONS: dict[str, str] = {
         range(1, 25),
         (11, 12, 12, 12, 10, 12, 14, 11, 12, 11, 10, 12, 11, 9, 10, 10, 11, 10, 10, 11, 9, 11, 11, 10),
         [str(n) for n in range(1, 23)] + ["X", "Y"],
+        strict=True,
     )
 }
 assert not (_G37_ACCESSIONS.keys() & _G38_ACCESSIONS.keys()), (
@@ -382,9 +384,10 @@ def build_snapshot(
     """Reduce the CIViC release pair to one parquet plus `release.json`.
 
     Rows are emitted sorted by `(chrom in karyotype order, start, ref, alt, variant_id, evidence_id)`,
-    so a rebuild from the same release is byte-identical (Principle 7). Rows with no parsed GRCh38
-    coordinate sort after the placed ones, by `variant_id` — a deterministic position rather than
-    wherever the dict landed them.
+    so a rebuild from the same release is byte-identical (Principle 7); `release.json`'s `built_at` is
+    the only per-run-varying byte and lives outside the parquet, exactly as in `pubmind_build`. Rows
+    with no parsed GRCh38 coordinate sort after the placed ones, by `variant_id` — a deterministic
+    position rather than wherever the dict landed them.
 
     Every provenance argument defaults to `None` because only a caller that actually fetched can say
     where the bytes came from; a build off local disk records unknown rather than inventing a URL.

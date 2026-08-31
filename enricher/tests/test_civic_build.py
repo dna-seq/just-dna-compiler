@@ -13,7 +13,6 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-
 from just_dna_enricher.civic_build import (
     CIVIC_COLUMNS,
     CIVIC_DIRECTION_MAP,

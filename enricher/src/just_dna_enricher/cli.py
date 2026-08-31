@@ -33,6 +33,7 @@ from just_dna_enricher.assertions import (
     ClinicalAssertionError,
     enrich_clinical_assertions,
 )
+from just_dna_enricher.civic_draft import draft_panel_from_civic
 from just_dna_enricher.clingen import (
     DEFAULT_CLINGEN_URL,
     ClinGenError,
@@ -117,7 +118,6 @@ from just_dna_enricher.pubmind_build import (
     download_pubmind_table,
 )
 from just_dna_enricher.pubmind_build import build_snapshot as build_pubmind_snapshot
-from just_dna_enricher.civic_draft import draft_panel_from_civic
 from just_dna_enricher.pubmind_draft import (
     DEFAULT_MIN_CONFIDENCE,
     PubMindDraftError,

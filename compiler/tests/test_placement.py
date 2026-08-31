@@ -11,7 +11,6 @@ import io
 from pathlib import Path
 
 import pytest
-
 from just_dna_compiler.compiler import _load_csv_rows, validate_spec
 from just_dna_compiler.draft import (
     PartialRow,
