@@ -178,7 +178,7 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Seven, and four of them are not decisions** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a decision* through the three that are, which is why the paragraph under it says to count off the sections rather than off this sentence). The four whose shape is settled:
+**Eight, and four of them are not decisions** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a decision* through the three that are, which is why the paragraph under it says to count off the sections rather than off this sentence). The four whose shape is settled:
 [RM103](#rm103--a-version-with-no-digits-coerces-to-000-which-is-a-real-version-nobody-wrote)
 (the manifest half only),
 [RM108](#rm108--a-clingen-re-curation-appends-a-second-row-and-nothing-marks-the-superseded-one),
@@ -186,8 +186,9 @@ Two consequences worth stating outright:
 and
 [RM117](#rm117--an-outrank-record-exists-and-no-check-reads-it-and-what-a-check-should-do-is-undecided)
 (the observability half only) — all minors, all with the release undecided, all with nothing left in
-them but the typing. **The other three are decisions and say so**: RM136 and RM137 from the RM124
-audit, RM138 from the RM131 review, each carrying its candidate repairs and why each one fails.
+them but the typing. **The other four are decisions and say so**: RM136 and RM137 from the RM124
+audit, RM138 from the RM131 review, and RM146 from a 2026-08-31 consumer report, each carrying its
+candidate repairs and why each one fails.
 **Count them off the sections, not off the sentence**: this line said *three* for as long as it took
 to notice that a narrowed item is still an item, and *not one of them is a decision* for as long as it
 took three decisions to be filed beneath it — the same arithmetic failure recorded two paragraphs
@@ -584,6 +585,93 @@ number stated rather than discovered.
 whether a published manifest should pay ~1.8× on this channel for it. Worth deciding once, with the
 table above, rather than drifting: a fourth encoding after 1.0 is a removal, and removals are
 major-only under Principle 3.
+
+## RM146 — an unknown column and a column newer than the reader are the same finding, and nothing separates them
+
+**Severity** medium · **Status** open — **a minor, release undecided; filed 2026-08-31 from a consumer
+report** · **Owner** format (schema) · **Motivating case**
+[S81](CONSUMER_SUGGESTIONS_HISTORY.md) (just-dna-registry, relaying just-module-creator)
+
+**Filed rather than built, and the reason is the surface it needs.** The shape below is decided; what
+is left is 402 field declarations' worth of typing plus the guard that keeps them honest, and that is
+a change to every authored model in the tier. It is minor-legal and additive, so it waits on
+scheduling rather than on a design question.
+
+### The finding
+
+A module authored on 0.6.6 was sent to a registry deployment running format 0.6.1, which runs our
+`validate_spec` server-side and reports its findings verbatim. It said:
+
+```
+studies.csv line 2 [curator]: Extra inputs are not permitted
+```
+
+`StudyRow.curator` is ours, added in 0.6.5 (RM120). A genuine typo produces the byte-identical shape:
+
+```
+studies.csv line 2 [curatr]: Extra inputs are not permitted
+```
+
+The two differ only in the column name, and they want **opposite actions** from an author: upgrade the
+reader, or fix the cell. Both reproduced by the reporter against the real validator. The finding is
+pydantic's, under `extra="forbid"`, so it cannot be reworded into carrying the distinction — the
+information is not in the model at all.
+
+### What the reporter shipped, and where it stops
+
+Their 0.22.0 attaches the version pair to the report — *this instance validates against 0.6.1, your
+client reports 0.6.6* — derived from the two version strings and never from the findings, which cannot
+carry it. That turns a dead end into a decision and is as far as a consumer can get without modelling
+our schema history, which they decline to do on evidence: they hand-kept a map of our sidecar spellings
+once and it pointed the wrong way for a release. The sentence they cannot produce is the one the author
+needed: **`curator` is a 0.6.5 column.**
+
+### The decision
+
+**A `first_seen` version on the field, declared where the field is declared.** A roster keyed like
+`release_records` was the alternative and loses on the rule this repo keeps relearning: a hand-kept
+list beside a model is a second statement of one fact, and it is the copy that goes stale
+(`@fieldnames-from-model`, `@registry-completeness`). Put it in `json_schema_extra` beside the
+`vocabulary()` marker, which is the existing idiom for a per-field fact an authoring surface reads, and
+it travels with the field through every rename and move.
+
+Three things the implementation owes:
+
+- **A registry-iterating guard asserting an equality over the walked set** — every authored field of
+  every model in `_ALL_MODELS` carries a `first_seen`, so the next column added cannot omit one. A
+  floor or a count is satisfied by the state that produced this report.
+- **A public reader**, so the consumer of it is not parsing `model_fields` themselves: the point is
+  that any tool rendering our findings can answer *when did this column appear* offline.
+- **The backfill is archaeology and must be measured, not recalled.** The tags are in the tree, so each
+  column's first release is `git show <tag>:…` per member — and `curator` is the worked example of why:
+  it is on `VariantRow` at v0.6.1 and gains its `StudyRow` twin at v0.6.5, so the answer is per
+  **(model, field)**, never per name. Measured, not remembered.
+
+### Repairs rejected
+
+- **Reading `release_records`' `parquet_schema` axis.** The reporter argues against their own first
+  instinct here and is right; measured, it is worse than they knew. Its targets are spelled
+  `file:column` and it names **4 of 402** authored columns, because it records what a release *changed
+  about compiled output* — an optional column unset across the interval's corpus, or one no parquet
+  carries, never appears. `curator` happens to be there, which is exactly what makes it dangerous: it
+  gives the right answer for the case in hand and silent wrong answers for 398 others, where absence
+  reads as *this column has always been legal*. It also starts at 0.6.1, so it cannot answer the
+  question for anything older. Asking an output-side record an input-side question is the category
+  error our own docs name about `artifact.digest`.
+- **Rewording the pydantic message.** The distinction is not in the model, so there is nothing to word.
+- **A compatibility handshake covering the authored schema.** Explicitly *not* asked for, and the
+  reporter has already corrected their own side: `contract_compatible` certifies the parquet contract
+  and `artifact.digest` at `0.x` MINOR, which held here and was right to. The authored row schema
+  tightens at PATCH under `extra="forbid"`, and that distinction being unwritten is what let a consumer
+  conclude *every 0.6.x interoperates*. Their correction, their file.
+- **Loosening `extra="forbid"`.** It is the guard that catches the typo half, and the near-miss table
+  name it also catches (`@misspelled-tables`) came from a report of its own.
+
+### What it does not settle
+
+A reader still cannot be told *which* release it is missing without also knowing its own — that pairing
+is the consumer's, shipped, and stays theirs. This item only supplies the half nobody outside this repo
+can compute.
 
 # Not format scope
 
