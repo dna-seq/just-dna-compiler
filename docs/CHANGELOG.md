@@ -139,7 +139,7 @@ arriving rather than drift.
   answers 200 with a generic broken-link page, so every axis is `None`. ClinGen's CC0 grant covers the
   gene-curation surface, not this one. Nothing is redistributed.
   Measurements in [CIVIC_SURVEY.md](probes/CIVIC_SURVEY.md) and
-  [CIVIC_LIFTOVER_NINE.md](probes/CIVIC_LIFTOVER_NINE.md).
+  [CIVIC_UNRESOLVED.md](probes/CIVIC_UNRESOLVED.md).
 
 - **RM152 — CIViC adopted on the axis it can answer, and refused on the one it was proposed for.**
   *(`just-dna-enricher`; **additive**, and there is **no schema change of any kind** — no column, no

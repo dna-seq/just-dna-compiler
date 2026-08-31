@@ -120,7 +120,7 @@ nothing.
 ### Repairs rejected
 
 - **Liftover.** Reopened at the maintainer's instruction with new balance weights and refused on the
-  measurement — the full probe is [CIVIC_LIFTOVER_NINE](probes/CIVIC_LIFTOVER_NINE.md). Its ceiling is
+  measurement — the full probe is [CIVIC_UNRESOLVED](probes/CIVIC_UNRESOLVED.md). Its ceiling is
   **13 evidence rows on 9 variants**, 2.4% of the corpus, and after analysing what those events *are*
   the honest recovery is **at most one variant**. Three are gene-level assertions (`Loss`, `Mutation`)
   that no genotype satisfies on any build. Five are imprecise by the source's own HGVS
@@ -165,6 +165,18 @@ Two smaller residues are sized in the probes and not taken: 26 unresolved varian
 the registry instead, which is why this was not worth a second parser — and 31 carry a `c.` HGVS
 inside their *name* rather than in `hgvs_descriptions`. Whether a name plus a transcript resolves
 through the registry was not measured and is the obvious next question.
+
+**Measured on 2026-09-01, and the answer moves this item's residue a long way.** It does resolve: all
+53 were put through a four-tier identity procedure and **34 of them have an identity**, from the
+fragments CIViC publishes in the variant's own name. The paragraph above understated it by testing a
+per-**gene** fact (which transcript a `c.` fragment is numbered against) as a per-**record** one, so
+29 variants were written off for lacking a `representative_transcript` cell. Adopting the resolutions
+would take coverage from 237/290 to **271/290 variants** and 474/533 to **508/533 rows**; adopting
+them is not decided here, and nothing has entered `civic build`. The "53 carry no identifier" sentence
+above therefore stands only as the state at this item's cut. What survives unchanged is the five that
+can never be reached, plus six more that name a class of event rather than an allele. Class by class,
+with the four wrong CIViC names and three self-duplicates the round also turned up, in
+[CIVIC_UNRESOLVED](probes/CIVIC_UNRESOLVED.md).
 
 ## RM152 — CIViC's germline quarter says almost nothing on the axis we asked it, and a great deal on the one next to it
 

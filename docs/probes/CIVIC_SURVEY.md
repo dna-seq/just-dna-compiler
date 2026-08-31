@@ -640,33 +640,67 @@ does **not** carry the ClinGen registry's answers — the CAID travels, the rs-n
 for it does not. Resolving at draft time is a read; baking those responses into a redistributed file
 would be passing on bytes whose terms nobody has established.
 
-## The 53 variants nothing reaches, characterised
+## The 53 variants nothing reaches — opened, and 34 of them resolved
 
-After every published identifier and the registry, **53 variants (59 evidence rows) carry no
-identifier of any kind** — no rsID, no GRCh38 accession, no CAID:
+**Probed 2026-09-01.** After every published identifier and the registry, 53 variants (59 evidence
+rows) carried no identifier of any kind. All 53 were then put through a four-tier identity procedure —
+the ClinGen Allele Registry by an HGVS expression built from the variant's own name, NCBI E-utilities,
+Ensembl's Variant Recoder, and the papers each evidence row cites. **Thirty-four resolve.**
 
-| Class | Variants | Examples |
-|---|---:|---|
-| Indel by name only | 28 | `N150fs (c.449del)`, `R135FSX177`, `D143fs (c.430delG)` |
-| Protein substitution by name only | 11 | `TP53 R72P`, `D1709N`, `Y371H` |
-| **Has a GRCh37 coordinate** | **9** | the liftover class — see [CIVIC_LIFTOVER_NINE](CIVIC_LIFTOVER_NINE.md) |
-| Splice / cDNA by name only | 3 | `CHEK2 IVS2+1G>A`, `c.151-1G>C` |
-| Other | 2 | `TRUNCATING MUTATION`, `Alu insertion` |
+| Class | Variants | Rows | Outcome |
+|---|---:|---:|---|
+| **Resolved from the name** — a `c.` or protein fragment the source published and never registered | **33** | **33** | rsID and/or CAID plus a GRCh38 coordinate, cross-checked on a second service |
+| **Resolved already** — variant 1770, whose answer the record carried | **1** | **1** | CA020360 / rs794727253 |
+| Liftover-only | 9 | 13 | closed 2026-08-31; ceiling 13 rows, honest recovery at most one |
+| No allele identity exists — the name states a *class* of event | 6 | 8 | correctly dropped |
+| Two readings, nothing to choose between them | 2 | 2 | withheld; needs a curator and a paywalled fulltext |
+| Conjunction-named — two alterations in one record | 2 | 2 | all four alleles identified; the record is not one identity |
 
-Only **5 of the 53** carry any `hgvs_descriptions` cell at all, and only **1** carries a GRCh38
-accession the substitution parser cannot read.
+Per-variant tables, the queries behind each answer and the four wrong-name findings are in
+[CIVIC_UNRESOLVED](CIVIC_UNRESOLVED.md), which holds the residue class by class.
 
-**The one remaining lever is worth 2 variants, not 31.** Thirty-one of the 53 carry a `c.` or `p.`
-fragment inside their *name* rather than in a HGVS column, which reads like a large recoverable class.
-Measured: only **2** carry both a `c.` fragment **and** a `representative_transcript` to anchor it on,
-and both resolve through the registry's HGVS endpoint — `ENST00000256474.2:c.449del` → `CA020360`
-(with `rs794727253`) and `ENST00000256474.2:c.197_220del` → `CA645524685`. The other 29 are
-protein-level or transcript-less, with nothing to build an unambiguous expression from.
+**If the resolutions are adopted, coverage moves to 271/290 variants (93.4%) and 508/533 evidence
+rows (95.3%)** — from 237/290 (81.7%) and 474/533 (88.9%). Adoption is a decision this document does
+not take; nothing here has entered `civic build` or the published snapshot.
 
-**So this is close to a permanent floor rather than a backlog.** Five of the nine coordinate-bearing
-ones can never be reached by any identity pass, because the source states their extent as unknown
-(`c.1-?_340+?del`) and the ClinGen registry refuses to parse such expressions outright — an allele
-registry that cannot hold them is a stronger statement than a count.
+**What this round overturned in the previous one, and what the error cost.** The earlier pass
+concluded that "the one remaining lever is worth 2 variants, not 31" and that the residue was "close
+to a permanent floor rather than a backlog". Both are false. The mistake was one misread requirement:
+it looked for a `representative_transcript` **on the record**, found it on 2 of the 31, and wrote off
+the other 29 as having "nothing to build an unambiguous expression from". But the numbering frame a
+`c.` fragment needs is a property of the **gene**, not of the record — for VHL it was established by
+reading the 114 variants in this same corpus that CIViC *did* resolve, all of which publish both a
+name and an `ENST00000256474.2:c.…` expression that agree; elsewhere from MANE Select, with CDKN2A
+needing the exon table to choose p16 over p14ARF. A per-gene fact tested as a per-record one cost 39
+variants, declared permanently unreachable.
+
+What survives from that pass is the narrower claim, and it is still true: **five of the nine
+coordinate-bearing variants can never be reached by any identity pass**, because the source states
+their extent as unknown (`c.1-?_340+?del`) and the ClinGen registry refuses to parse such expressions
+outright. An allele registry that cannot hold them is a stronger statement than a count.
+
+### Four findings from this round that outweigh the count
+
+- **Two CIViC names are wrong in a way nothing in a lookup can flag.** `TP53 R72P` (4968) has
+  reference and alternate inverted — codon 72 is `CCC` = Pro on GRCh38, so the identity is the
+  reference-identity allele CA178298 (`c.215C=`, rs1042522). `CHEK2 IVS2+1G>A` (788) converts
+  structurally to `c.319+1`, but the true answer is `c.444+1`, because legacy papers number CHEK2
+  exons from the first *coding* exon; both readings are real registered alleles 9 kb apart. Two more
+  names are internally inconsistent: `VHL L178P (c.532C>T)` (2459) pairs a missense protein name with
+  a *synonymous* cDNA change, and `RUNX1 R135FSX177` (804) names a protein consequence where the
+  allele is an intronic splice-donor deletion.
+- **Three unresolved records duplicate CIViC's own resolved entries** — 3743≡1770 (CA020360),
+  2459→1748 (rs5030822), and half of 4210→1739 (rs5030821). The identity was in CIViC's table one row
+  over. The first has a downstream consequence: an identity pass that reaches both maps **two variant
+  ids onto one allele**, which touches camp grouping and the drafter's `already_present` path.
+- **The premise that a name-only record is a famous allele with a forgotten rs-number is false.** Of
+  the 20 VHL indels resolved, only 9 carry an rs-number at all and 9 of the CAIDs carry no external
+  record of any kind. The *identity* exists; the *fame* does not.
+- **A transcript-version story that this survey's companion helped set is wrong.** `NM_000551.3` and
+  `NM_000551.4` have byte-identical CDS, and submitting either returns the same CAID; the
+  `c.197_220del` → `c.198_221del` shift is HGVS 3′-rule renormalization inside a repeat, not a version
+  effect. Believing the version story invites correcting a whole gene's positions by one *and*
+  teaches a reader to wave through a genuine one-base mismatch.
 
 ## What could be done next, each with the number that sizes it
 
@@ -688,12 +722,27 @@ remaining registry rows and took recovery to **237/290 = 82%**.
    multi-valued ontology-CURIE column, an HPO id would sit *beside* the `DOID:` rather than replacing
    it. But mixing a live API into a build forfeits byte-reproducibility, so this belongs as an
    `enrich`-time pass beside the CAID one, never inside `civic build`.
-2. **Decide what a conjunction-named variant is.** CIViC encodes combination genotypes two ways and
-   only one decomposes: 6 profile-level `" AND "` profiles (dropped by count, correctly) and **24
-   variants carrying a conjunction inside their own `name`** (`rs1801270 and rs1059234`). Nothing in
-   the builder looks at a variant's name, so nothing drops or splits them. Currently harmless **by
-   accident** — the two in this release are removed by the identity filter — and the CAID pass is
-   exactly what would let them through.
+2. **Decide what a conjunction-named variant is — the instrument exists, the drafter does not use
+   it.** CIViC encodes combination genotypes two ways and only one decomposes: 6 profile-level
+   `" AND "` profiles (dropped by count, correctly) and **24 variants carrying a conjunction inside
+   their own `name`** (`rs1801270 and rs1059234`). Nothing in the builder looks at a variant's name,
+   so nothing drops or splits them; the two in this release are removed by the identity filter, which
+   is harmless **by accident** — and the CAID pass is exactly what would let them through.
+
+   What the 2026-09-01 round settled is that this needs **no schema change**. A two-alteration record
+   is a haplotype plus a diplotype, which is what `haplotypes.csv` and `diplotypes.csv` have been
+   since 0.4 and what [`hfe_compound_het`](../../reference_examples/hfe_compound_het/) demonstrates.
+   Record 3298 (`VHL P81S and L188V`) was authored that way and compiled: it validates, compiles in
+   both modes to the same digest, and round-trips with `content_signature` intact. Its two alleles are
+   rs104893829 and rs5030824, both fully identified. **Size today: one authorable record** — the other
+   conjunction record, 4210, fails on provenance rather than on identity, because ClinVar attributes
+   only its missense half to the paper CIViC cites. Full working in
+   [CIVIC_UNRESOLVED § class E](CIVIC_UNRESOLVED.md).
+
+   The one thing an author must state rather than derive is **phase**. The paper behind 3298 reports
+   co-segregation through six family members and never uses the word *cis*; cis follows from the
+   co-segregation, and that inference belongs in the row's `conclusion` where a reader can see it, not
+   silently in the choice of haplotype.
 3. **A currency check.** Dated releases appear monthly and are immutable, so "is this snapshot stale?"
    is answerable by asking the download index for a later date, against the source rather than the
    cache. `release.json` already records `dataset` and a sha256 per input file.
@@ -716,7 +765,7 @@ remaining registry rows and took recovery to **237/290 = 82%**.
    error. This cannot change without CIViC altering its schema.
 8. **Lifting the GRCh37 coordinates over.** Refused and sized: 13 evidence rows on 9 variants, honest
    recovery **at most one**, and the one precise event in the class lifts *exactly* to the wrong
-   allele. Full working in [CIVIC_LIFTOVER_NINE](CIVIC_LIFTOVER_NINE.md).
+   allele. Full working in [CIVIC_UNRESOLVED](CIVIC_UNRESOLVED.md).
 
 **One thing to check before trusting anything above.** Every count here is over one dated release, and
 the source is actively curated, so re-derive rather than quote if a decision turns on a margin. What
@@ -748,9 +797,18 @@ What is worth carrying forward in one place:
   every placed row is placed by an identifier the source itself publishes, and 24 of 24 of those
   placements were confirmed against the GRCh38 reference sequence by an unrelated service. The
   liftover-only residue is 9 variants and its honest recovery is at most one.
-- **53 variants carry no identifier at all**, and that is close to a permanent floor: the single
-  remaining lever resolves 2 of them, and 5 of the 9 coordinate-bearing ones state their own extent as
-  unknown, which the allele registry refuses to parse.
+- **The 53 that carried no identifier were opened on 2026-09-01, and 34 of them resolve** — from the
+  `c.` and protein fragments CIViC publishes in the variant's own `name`, against a numbering frame
+  established per *gene* rather than per record. That takes coverage to 271/290 variants and 508/533
+  rows if adopted. The earlier reading of this residue as "close to a permanent floor" was wrong, and
+  wrong for one reason: a per-gene fact was tested as a per-record one. What survives is narrower and
+  still true — 5 of the 9 coordinate-bearing ones state their own extent as unknown, which the allele
+  registry refuses to parse, and 6 more name a class of event rather than an allele.
+- **The round found four wrong names, three self-duplicates and one falsified trap** — `TP53 R72P`
+  has ref and alt inverted; `CHEK2 IVS2+1G>A` converts to the wrong exon; two records pair a protein
+  name with an allele of another kind; three unresolved records duplicate CIViC's own resolved ones;
+  and the "`NM_000551.4` shifts CDS numbering" story is 3′-rule renormalization, not a version effect.
+  Each of these would have survived a lookup that only asked whether an expression resolves.
 - The **status default is `NON_REJECTED`** and most of CIViC is `SUBMITTED`. State the basis or the
   numbers mean nothing.
 - **Disease ids are free and complete**: 533 of 533 direction rows carry a DOID, and `trait_efo_id`

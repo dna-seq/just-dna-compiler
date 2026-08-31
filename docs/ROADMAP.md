@@ -192,7 +192,7 @@ held, and a third route nobody had proposed turned out to be buildable with no s
 was its residue, and it answered its own two questions in opposite directions — the ClinGen CAID pass
 taken, liftover refused with its ceiling measured at 13 evidence rows. Both entries are in
 [ROADMAP_HISTORY](ROADMAP_HISTORY.md); the measurements are in
-[CIVIC_SURVEY](probes/CIVIC_SURVEY.md) and [CIVIC_LIFTOVER_NINE](probes/CIVIC_LIFTOVER_NINE.md).
+[CIVIC_SURVEY](probes/CIVIC_SURVEY.md) and [CIVIC_UNRESOLVED](probes/CIVIC_UNRESOLVED.md).
 RM151, filed on 2026-08-31 the same day RM117's other half shipped, was built the same day. Both items
 the RM124 wave-1 audit filed — RM136 and RM137 — shipped on 2026-08-31, and so did RM117's
 observability half and RM146; RM138 was closed the same day with its numbers measured. RM110, RM103's

@@ -1,4 +1,59 @@
-# The nine CIViC variants nothing but a liftover could reach — measured, one at a time
+# The CIViC variants nothing places — every class, with its disposition
+
+**What this document is.** The residue of CIViC's germline direction corpus: the variants `civic
+build` drops as `unresolvable_identity`, one class at a time, each with the measurement that decided
+it. It began as the working for a single class — the nine that only a liftover could reach — and
+kept that working in full when the rest of the residue was opened on 2026-09-01. The aggregate
+numbers live in [CIVIC_SURVEY](CIVIC_SURVEY.md); the per-variant detail lives here.
+
+**Two probe rounds, both dated.** The liftover class was probed **2026-08-31**; the name-only classes
+**2026-09-01**. Every section says which round it belongs to, because the services move.
+
+
+**This is evidence, never contract.** The decisions live in
+[RM48](../ROADMAP_HISTORY.md#rm48--an-hg19-coordinate-has-no-supported-path-into-a-grch38-module-and-liftover-is-the-wrong-primitive)
+and [RM153](../ROADMAP_HISTORY.md#rm153--the-identity-civic-does-not-publish-recovered-through-the-registry-rather-than-by-lifting-a-coordinate);
+where this document and those disagree, they win.
+
+**Basis for every number here** — the survey's own lesson about the denominator nobody declares.
+Every count is over the **dated `01-Aug-2026` release**, which is **`accepted`-only** (4,878 evidence
+rows) and gives 533 germline direction rows on 290 variants. The API default is `NON_REJECTED` and is
+2.35× larger; a number from one surface is not comparable with a number from the other. Where the API
+was consulted, it is said so on the line.
+
+## Where the residue stands
+
+At the 2026-08-31 cut the builder placed **237 of 290** variants and dropped 53. The 2026-09-01 round
+put all 53 through a four-tier identity procedure — the ClinGen Allele Registry by constructed HGVS,
+NCBI E-utilities, Ensembl's Variant Recoder, then the cited literature — and **34 of them resolve**:
+
+| Class | Variants | Rows | Disposition |
+|---|---:|---:|---|
+| **Resolved by name** — a `c.`/protein fragment the source published but never registered | **33** | **33** | rsID and/or CAID and a GRCh38 coordinate, each cross-checked on a second service |
+| **Resolved already** — variant 1770, whose answer the record carried | **1** | **1** | CA020360 / rs794727253 |
+| Liftover-only (class A) | 9 | 13 | **closed 2026-08-31** — ceiling 13 rows, honest recovery at most one |
+| No allele identity exists (class C) | 6 | 8 | correctly dropped; the name states a *class* of event |
+| Two readings, nothing to choose (class D) | 2 | 2 | withheld; needs a curator and a paywalled paper |
+| Conjunction-named (class E) | 2 | 2 | two alterations each, all four alleles identified; the record is not one identity |
+
+**So coverage moves from 237/290 (81.7%) to 271/290 (93.4%) of variants, and 474/533 (88.9%) to
+508/533 (95.3%) of evidence rows** — if the resolutions are adopted, which is a decision this document
+does not take. Nineteen variants on 25 rows remain, and six of those are unreachable by construction.
+
+**The procedure that did it is written up separately** as a re-runnable protocol, and every
+resolution's exact queries are recorded per variant beside it. What is here is the *disposition* of
+each class, not the method.
+
+**What the earlier round got wrong about this residue, and what the error cost.** The survey's first
+pass concluded that the name-only classes were "close to a permanent floor rather than a backlog" and
+that "the one remaining lever is worth 2 variants, not 31". Both are false. The mistake was a single
+misread requirement: it looked for a `representative_transcript` **on the record**, found one on only
+2 of the 31, and wrote the other 29 off. But the numbering frame a `c.` fragment needs is
+establishable **per gene**, not per record — for VHL by reading the 114 already-resolved siblings in
+the same corpus, elsewhere from MANE Select. A per-gene fact was tested as a per-record one, and 39
+variants were declared permanently unreachable on the strength of it.
+
+## Class A — the nine only a liftover could reach (2026-08-31, closed)
 
 **Probed** 2026-08-31 against four surfaces, each named where it is used: the dated CIViC
 `01-Aug-2026` bulk release (the file `civic build --release` consumes), CIViC's public GraphQL API,
@@ -30,7 +85,11 @@ Companion: [CIVIC_SURVEY.md](CIVIC_SURVEY.md), whose closing section sized this 
 ("after every published identifier is tried the remainder is 157 variants, 102 of which a CAID would
 place instead"). What follows is the other 55, and the nine of them that carry a coordinate.
 
-## How the class was re-derived, with the counts at every stage
+Everything from here to *"Two cheaper recoveries"* is the 2026-08-31 round on this one class, kept in
+full. Its conclusion did not move: **refuse the liftover**, and the residue it left is what the
+2026-09-01 round opened.
+
+### How the class was re-derived, with the counts at every stage
 
 Re-derived here rather than quoted, using the **shipped** parsers (`civic_build.parse_rsids`,
 `parse_grch38_substitution`, `CIVIC_GERMLINE_ORIGINS`, `CIVIC_DIRECTION_MAP`) rather than an ad-hoc
@@ -59,7 +118,7 @@ the re-derivation is reading the same file the builder reads. The last three lin
 That is 2.4% of the 533-row direction corpus, 0.27% of the release's 4,878 accepted rows, and the
 **ceiling** — the most a perfect liftover could recover, before asking whether any of it is usable.
 
-## The nine, and what each of them publishes
+### The nine, and what each of them publishes
 
 Straight from `VariantSummaries` in the dated release. `ref`/`alt` are `reference_bases` and
 `variant_bases`; the CAID column is the raw `allele_registry_id` cell.
@@ -84,7 +143,7 @@ the EPCAM ones. So the class is not low-grade — it is unusable for a different
 was ever offered to the registry.** The other eight have an empty cell, which says nothing at all
 about registrability — `@unreachable-not-absent` in the shape a data cell can take.
 
-### The API surface says exactly the same thing, which is what makes the negative wide enough
+#### The API surface says exactly the same thing, which is what makes the negative wide enough
 
 `@two-surfaces-two-denominators`: a "carries no identifier" finding measured on the bulk file is only
 as wide as the bulk file, and the API carries an enrichment block (`myVariantInfo`) the download does
@@ -103,7 +162,7 @@ not. All nine were queried individually through `civicdb.org/api/graphql`
 `myVariantInfo` being absent for eight of nine is itself informative. MyVariant.info is allele-keyed;
 these records are not alleles, so there is nothing for it to key on.
 
-## Question 1 — is it a genotypable event at all?
+### Question 1 — is it a genotypable event at all?
 
 Answered by measurement, not by reading the names: every endpoint was compared against the named
 transcript's own annotation on GRCh37 (`grch37.rest.ensembl.org/lookup/id/<tx>?expand=1`), and the
@@ -155,7 +214,7 @@ the evidence rows actually make. Scope: these three searches say what ClinVar ho
 terms; they are not a claim that no ClinVar record matches CIViC's records, which is unanswerable
 because CIViC's records name no breakpoints to match on.
 
-## Question 2 — the correct GRCh38 interval, by route, three-valued
+### Question 2 — the correct GRCh38 interval, by route, three-valued
 
 Route (a), Ensembl's assembly map, `rest.ensembl.org/map/human/GRCh37/<region>/GRCh38`, was run for
 all nine. Outcomes recorded in the house vocabulary rather than a new one — the four members of
@@ -211,7 +270,7 @@ re-derived.
 Route (c), web search, was not needed for any of the nine: routes (a) and (b) plus the allele registry
 answered every one of them, and a search result is a weaker source than either.
 
-## Variant 2099, in full — the one precise event, and it contradicts itself
+### Variant 2099, in full — the one precise event, and it contradicts itself
 
 The only member of the class that names a specific allele, and the sharpest exhibit in this document.
 
@@ -265,7 +324,7 @@ keeps the answer honest: `@rsid-not-per-allele`, and `@vkey-precedence`'s rule t
 when minting an identity. A liftover-plus-rsID-recovery pipeline that dropped the anchor would have
 labelled this deletion with an unrelated SNV's rs-number.
 
-## Question 3 — could any of this be expressed once lifted?
+### Question 3 — could any of this be expressed once lifted?
 
 Answered by running the real compiler, not by reading it. A throwaway spec was compiled with four
 rows, each a candidate spelling of a lifted interval (`uv run just-dna-compiler validate` / `compile`
@@ -297,7 +356,7 @@ events, two more — 823 and 1939 — because their extent is defined by an anno
 more (843/845, and 844) could be expressed **only by inventing a length**, and one (2099) can be
 expressed, from a route that has nothing to do with lifting.
 
-## Question 4 — would `pyliftover` help?
+### Question 4 — would `pyliftover` help?
 
 Tried, in a throwaway venv **outside the repo** (`python3 -m venv` + `pip`, never `uv pip`, and
 nothing added to any `pyproject.toml`). Version 0.4.1. Measured, not argued:
@@ -328,7 +387,7 @@ nothing added to any `pyproject.toml`). Version 0.4.1. Measured, not argued:
 exception-translation layer, to reproduce numbers a permitted, already-used REST service returns with
 more structure. And accuracy was never the failing.
 
-## What can actually be recovered, per variant
+### What can actually be recovered, per variant
 
 | id | genotypable event? | best GRCh38 answer, and its route | recoverable identity | verdict |
 |---|---|---|---|---|
@@ -345,7 +404,7 @@ more structure. And accuracy was never the failing.
 **One of nine has a recoverable identity, and the route that recovers it is not liftover.** Lifting
 the coordinate of that same variant produces the wrong allele.
 
-## What the evidence supports
+### What the evidence supports
 
 **Refuse the liftover capability.** Not because it would be inaccurate — measured, it is exact, and
 two independent implementations agree to the base — but because every one of its outputs is either
@@ -381,7 +440,7 @@ looking at:
 - **Five of the nine can never be reached by any identity pass**, because an unambiguous identity does
   not exist for them. That is a permanent floor on CIViC's germline reach, not a gap to close.
 
-## Two cheaper recoveries, found while sizing this one
+### Two cheaper recoveries, found while sizing this one
 
 Both measured over the same 55 residual variants, both reported as sizing rather than as proposals —
 they belong to RM153, which decides them.
@@ -403,6 +462,291 @@ they belong to RM153, which decides them.
   allele registry was **not measured** and is not claimed here; it is stated only because it is the
   obvious next question and it is unanswered.
 
+## Class B — 33 variants whose identity the source published and never registered (2026-09-01)
+
+**Probed** 2026-09-01 against four surfaces: the ClinGen Allele Registry (`reg.genome.network`,
+read-only `GET /allele?hgvs=`), NCBI E-utilities (`esearch`/`esummary`/`elink` over `clinvar`,
+`snp`, `pubmed`), Ensembl's Variant Recoder (`rest.ensembl.org/variant_recoder/human/<hgvs>`), and
+the papers each evidence row cites. No credential anywhere. Every resolution's exact queries are
+recorded per variant in the round's result files; what is reproduced here is the answer and the
+cross-check.
+
+The whole class is one shape: **CIViC's variant `name` carries a `c.` or protein fragment, and the
+identifier columns beside it are empty.** The name is the identity; nothing had to be recovered from
+a coordinate, and nothing was lifted.
+
+### The numbering frame, which is what made the class reachable
+
+A `c.` fragment means nothing without the transcript it is numbered against. The earlier round looked
+for `representative_transcript` **on the record**, found it on 2 of 31, and declared the rest
+unreachable. The frame is a property of the **gene**:
+
+- **VHL** — established empirically from the 114 variants in this same corpus that CIViC *did*
+  resolve. Each publishes both a name and an `ENST00000256474.2:c.…` expression, and they agree
+  throughout: variant 794 is named `E55= (c.165G>A)` and publishes `ENST00000256474.2:c.165G>A`. So
+  CIViC's VHL numbering is `NM_000551.3` / `ENST00000256474.2`, measured rather than assumed.
+- **Everything else** — MANE Select, cross-checked against the numbering the record's own name
+  implies. CDKN2A needed the check: p16 and p14ARF are two MANE transcripts with two CDS numberings,
+  and the exon table picks p16.
+
+**The transcript-version story is a trap, and this document previously helped set it.** A prior
+reading held that `NM_000551.4` shifts VHL CDS numbering by one against `NM_000551.3`, because
+`c.197_220del` submitted against `.3` comes back titled `c.198_221del`. Measured on 2026-09-01, that
+is false: the two CDSes are byte-identical, and submitting either version returns the **same** CAID:
+
+```
+NM_000551.3:c.197_220del  ->  CA645524685   (returned as NM_000551.3:c.198_221del)
+NM_000551.4:c.197_220del  ->  CA645524685   (identical)
+NM_000551.3:c.499C>T      ->  CA020450
+NM_000551.4:c.499C>T      ->  CA020450      (identical)
+```
+
+The shift is HGVS's 3′ rule renormalizing a deletion inside a repeat, not a version effect — c.197
+and c.221 are both T. The illusion persists because the registry titles in the newest version it
+knows *and* independently renormalizes, so the two look causally linked. Believing the version story
+invites "correcting" a whole gene's positions by one and teaches a reader to wave through a genuine
+one-base mismatch as an artefact. Neither failure announces itself. The measurement was repeated
+across nine genes: the CDS *mRNA offset* moves on a version bump (CDKN2A 307→31, DICER1 239→346) but
+`c.` numbering is CDS-relative and is untouched — reading the GenBank `CDS` line and concluding
+"everything shifted" is exactly the trap.
+
+### The 20 VHL indels named by a `c.` fragment
+
+| id | name | rsID | CAID | GRCh38 (VCF-padded) | protein returned |
+|---|---|---|---|---|---|
+| 1768 | `L129Q (c.386insAGA)` | — | CA2586965635 | 3:10146558 `C`>`CAGA` | p.Leu129delinsGlnMet |
+| 1779 | `R167fs (c.502insTTGTCCGT)` | rs398123483 | CA020458 | 3:10149824 `G`>`GTTGTCCGT` | p.Ser168LeufsTer5 |
+| 1844 | `D143fs (c.430delG)` | rs869025651 | CA357015 | 3:10146603 `GG`>`G` | p.Gly144AspfsTer15 |
+| 1893 | `F91* (c.272_273delinsAA)` | — | CA2499307077 | 3:10142119 `TC`>`AA` | p.Phe91Ter |
+| 1948 | `R69fs (c.204insG)` | rs2470158072 | CA913189244 | 3:10142051 `G`>`GG` | p.Arg69AlafsTer? |
+| 1949 | `G144fs (c.432insG)` | — | CA2573106040 | 3:10146604 `G`>`GG` | p.Gln145ThrfsTer29 |
+| 1960 | `L140fs (c.417_418delTC)` | rs869025649 | CA357039 | 3:10146591 `CTC`>`C` | p.Leu140GlnfsTer3 |
+| 2014 | `P61fs (c.183insC)` | — | CA2586965632 | 3:10142030 `C`>`CC` | p.Val62ArgfsTer? |
+| 2023 | `N150fs (c.449_462del)` | — | CA658820719 | 3:10146621 `AATATCACACTGCCA`>`A` | p.Asn150SerfsTer19 |
+| 2091 | `T152fs (c.455insA)` | — | CA2586965646 | 3:10146627 `A`>`AA` | p.Thr152AsnfsTer22 |
+| 2136 | `H125fs (c.374insA)` | — | CA2499307153 | 3:10146547 `A`>`AA` | p.His125GlnfsTer7 |
+| 2447 | `V66Gfs*89 (c.197_209del)` | — | CA2497028944 | 3:10142043 `GTGAACTCGCGCGA`>`G` | p.Val66GlyfsTer? |
+| 2455 | `G114Vfs*45 (c.339delA)` | — | CA645509026 | 3:10142185 `GA`>`G` | p.Gly114ValfsTer? |
+| 2930 | `106insR (c.316insGCC)` | rs869191373 | CA916832608 | 3:10142171 `C`>`CCGC` | p.Arg108dup |
+| 3143 | `F148* (c.443_455delinsA)` | — | CA2573050544 | 3:10146616 `TTGCCAATATCAC`>`A` | p.Phe148Ter |
+| 3184 | `V62Cfs*5 (c.180del)` | rs730882037 | CA020069 | 3:10142026 `GG`>`G` | p.Val62CysfsTer5 |
+| 3245 | `C77fs (c.230del)` | — | CA2573106239 | 3:10142076 `TG`>`T` | p.Cys77SerfsTer? |
+| 3741 | `V87fs (c.255_256insC)` | rs864622545 | CA16602181 | 3:10142105 `C`>`CC` | p.Val87ArgfsTer? |
+| 3743 | `N150fs (c.448delA)` | rs794727253 | CA020360 | 3:10146621 `AA`>`A` | p.Asn150IlefsTer9 |
+| 3744 | `E55fs (c.163delG)` | rs869025615 | CA432536363 | 3:10142009 `GG`>`G` | p.Glu55ArgfsTer12 |
+
+Five of these were re-verified independently against the registry after the fact — CA020360, CA357015,
+CA658820719, CA020069, CA2586965635 — including the 0-based interstitial → 1-based VCF-padded
+conversion. All five matched exactly.
+
+**Only 9 of the 20 carry an rs-number at all.** The premise that a name-only record must be a
+well-known allele with a forgotten rs-number is false: the *identity* exists for all 20, the *fame*
+for fewer than half. Nine of the resolved CAIDs carry no external record of any kind.
+
+### The 13 substitutions, splice and cDNA variants
+
+| id | gene | name | rsID | CAID | GRCh38 |
+|---|---|---|---|---|---|
+| 788 | CHEK2 | `IVS2+1G>A` | rs121908698 | CA288309 | 22:28725242 `C`>`T` |
+| 804 | RUNX1 | `R135FSX177` | rs587776810 | CA248618 | `NC_000021.9:g.34880554del` |
+| 2046 | VHL | `V155L (c.463G>C)` | rs869025659 | CA351754415 | 3:10146636 `G`>`C` |
+| 2051 | DICER1 | `D1709N` | rs1595331264 | CA390865395 | 14:95094127 `C`>`T` |
+| 2195 | DICER1 | `D1709G` | rs1555366979 | CA390865393 | 14:95094126 `T`>`C` |
+| 2196 | DICER1 | `D1709E` | rs1890098663 | CA390865390 | 14:95094125 `A`>`T` |
+| 2459 | VHL | `L178P (c.532C>T)` | rs5030822 | CA351756245 | 3:10149856 `T`>`C` |
+| 2638 | CBL | `Y371H` | rs267606706 | CA123492 | 11:119278181 `T`>`C` |
+| 2851 | SMAD4 | `R361C` | rs80338963 | CA128095 | 18:51065548 `C`>`T` |
+| 2884 | CDKN2A | `c.151-1G>C` | rs730881677 | CA299032 | 9:21971209 `C`>`G` |
+| 2959 | CHEK2 | `R474C c.1420C>T` | rs540635787 | CA288280 | 22:28694073 `G`>`A` |
+| 3002 | NF2 | `c.1396C>T` | rs74315504 | CA021327 | 22:29674891 `C`>`T` |
+| 4968 | TP53 | `R72P` | rs1042522 | CA178298 | `NC_000017.11:g.7676154G=` |
+
+Two rows are deliberately not written as a `ref`>`alt` tuple. **804 is a one-base deletion**, given in
+the registry's own form; the left-anchored VCF row for the same allele is `21:34880553 GT>G`, which is
+what ClinVar VCV000014466 publishes, and the two agree. **4968 is a reference-identity allele** — see
+below. Nineteen of nineteen constructed expressions agreed between the registry and Ensembl's Variant
+Recoder.
+
+### Four names that are wrong, and would corrupt a consumer silently
+
+These are worth more than the count. Each resolved cleanly *at both readings*, so nothing in a lookup
+flags the error; only a discriminator outside the lookup settles it.
+
+- **4968 `TP53 R72P` has reference and alternate inverted.** Codon 72 is `CCC` = **Pro** on GRCh38, so
+  the allele CIViC names is the reference itself: CA178298, `NC_000017.11:g.7676154G=`, `c.215C=`.
+  The clean test is to submit both directions — `c.215C>G` is accepted, `c.215G>C` returns HTTP 400
+  *"reference sequence is incorrect"*. Note the consequence for this format: a schema requiring
+  `ref != alt` cannot represent what CIViC means here. That is a property of the consumer, not of the
+  record.
+- **788 `CHEK2 IVS2+1G>A` cannot be converted structurally.** The exon table gives `c.319+1`; the
+  right answer is `c.444+1`, because legacy papers number CHEK2 exons from the first *coding* exon.
+  Both readings are real registered alleles about 9 kb apart. Only ClinVar's `OtherName` list — one
+  record carrying both `IVS2DS, G-A, +1` and `IVS3+1G>A` — resolves it.
+- **2459 `VHL L178P (c.532C>T)`: the two halves of the name are two different real alleles.**
+  `c.532C>T` is *synonymous* (CTG→TTG); `c.533T>C` gives Pro. Both resolve. A builder trusting the
+  parenthesised cDNA notation would mint a synonymous variant under a missense label. And CIViC
+  already publishes the right allele as its **own variant 1748**, `L178P (c.533T>C)`, with rs5030822
+  filled in.
+- **804 `RUNX1 R135FSX177` names a consequence where the allele is of a different kind.** MANE
+  residue 135 is Gly (legacy RUNX1b numbering, +27), and the allele is an *intronic* splice-donor
+  deletion that ClinVar classifies as `intron variant` with no protein change at all.
+
+### Two rs-numbers that do not identify the allele
+
+`@rsid-not-per-allele`, with instances. **2196 `DICER1 D1709E`**: chr14:95094125 carries both `A>T`
+and `A>C`, both spelling p.Asp1709Glu, and both carry rs1890098663 — so neither the rs-number nor the
+protein name identifies the allele, and the resolution rests on a single line of evidence (ClinVar's
+citation link for the record's own PMID). **4968 `TP53 R72P`**: the position carries exactly two
+alleles, the two halves of CIViC's name, and both carry rs1042522 (CA178298 for Pro, CA000072 for
+Arg). The rs-number cannot say which; the direction test can, and says CIViC means the reference.
+
+### Three records that duplicate CIViC's own resolved entries
+
+The identity was in CIViC's table the whole time, one row over:
+
+| unresolved record | duplicates | shared identity |
+|---|---|---|
+| 3743 `N150fs (c.448delA)` | **1770** `N150fs (c.449del)` | CA020360 / rs794727253 — both normalize to `NC_000003.12:g.10146622del` |
+| 2459 `L178P (c.532C>T)` | **1748** `L178P (c.533T>C)` | rs5030822 / CA351756245 |
+| 4210 (the `R167Q` half) | **1739** `R167Q (c.500G>A)` | rs5030821 / CA020454 |
+
+The 3743≡1770 collision is the one with downstream consequences: an identity pass that reaches both
+maps **two CIViC variant ids onto one allele**, which touches camp grouping (two records that would
+have counted as two subjects become one) and the drafter's `already_present` path. It is stated here
+as a measured collision, not as a repair.
+
+## Class C — six records for which no allele identity exists (2026-09-01)
+
+Dropping these is **correct behaviour**, not a gap. Each names a *class* of event rather than an
+allele, so there is nothing for an allele registry to hold. The useful distinction is *why* the
+identity is absent, and it splits three ways — a source that never measured breakpoints and a source
+that measured them and had them generalised away are different findings.
+
+| id | gene | name | rows | PMID | why no identity exists |
+|---|---|---|---:|---|---|
+| 708 | BRCA2 | `TRUNCATING MUTATION` | 1 | 16088935 | **measured, then generalised away.** Even the specific event is not singular: ClinVar holds three *different* inserted sequences at the same `c.156_157` site, because an Alu insertion's inserted sequence differs per event. Recovering "the" identity would need the paper's own sequence |
+| 709 | BRCA1 | `Alu insertion` | 1 | 16088935 | **measured, coordinates not recoverable** from the accessible record. Not resolved by substituting one of the 25 BRCA1 Alu records — that would be fabrication |
+| 2036 | VHL | `Null (Partial deletion of Exons 2 & 3)` | 1 | 20846682 | **never measured** — evidenced from the paper's own table, not from CIViC's silence. Three families sit under one label |
+| 2182 | VHL | `Null (Large deletion)` | 3 | 8634692, 20660572, 7728151 | **never measured**, three times over — Southern blot, three unrelated cohorts aggregated under one name |
+| 2367 | VHL | `3p26.3-25.3 11Mb del` | 1 | 26365017 | **measured at a resolution that is not allele resolution.** Array-CGH; a probe-bounded interval has no ref/alt. Deliberately not matched to any ClinGen or ClinVar CNV region |
+| 2439 | VHL | `Rearrangement` | 1 | 24132471 | **never measured** — the cited paper is a statistics paper, not a molecular one |
+
+2182 also carries an aggregation defect worth naming on its own: three evidence rows from three
+unrelated cohorts share one variant record, so a consumer counting subjects would count one.
+
+## Class D — two records with two readings and nothing to choose between them (2026-09-01)
+
+Both are VHL frameshifts written in legacy `c.<N>ins<SEQ>` notation, which does not say whether the
+inserted bases go before or after base N. **Both readings exist as separately registered real
+alleles.** This is the one class where the procedure ran to the end of all four tiers and returned
+`not_found` rather than an answer.
+
+| id | name | PMID | reading | HGVS (`NM_000551.3`) | CAID | protein | external |
+|---|---|---|---|---|---|---|---|
+| 1955 | `P71fs (c.211insT)` | 9829912 | after | `c.211_212insT` | CA2501268513 | p.Pro71LeufsTer? | none |
+| | | | before | `c.210_211insT` | CA2586965638 | p.Pro71SerfsTer? | none |
+| 2131 | `Q73fs (c.214insGCCC)` | 17024664 | before (tandem dup) | `c.210_213dup` | CA2573048346 | p.Ser72AlafsTer? | HGMD CI983252 |
+| | | | after | `c.214_215insGCCC` | CA2499307076 | p.Ser72CysfsTer? | COSMIC COSV56563065 |
+
+**1955's discriminator is silent**: CIViC's `P71fs` is satisfied by both readings. **2131's is
+worse than silent**: both readings first change **Ser72**, so `Q73fs` matches *neither*, and a
+resolver trusting the protein name would be misled rather than merely unhelped. Ensembl returns no id
+for either 1955 allele; a ClinVar positional sweep of 3:10142050-10142070 (50 alleles) lists none of
+the four candidates.
+
+The only asymmetry found anywhere in the class is database *kind* — HGMD curates germline literature
+and holds 2131's dup reading, COSMIC is a somatic catalogue and holds the ins reading, and this is a
+germline predisposition row. That is an argument about which database is the right sort, not evidence
+about this allele, so nothing was asserted.
+
+**The trap this class sets.** ClinVar's protein-name searches return neighbours that are one base
+away from a candidate: `"P71fs"` → `c.210_211ins**A**` against the candidate `c.210_211ins**T**`, and
+`"Q73fs"` → `c.219_220del`. Both are real alleles. Substituting either would be indistinguishable
+from a resolution in any output format.
+
+**What would settle them is a paywalled fulltext**, not another service: Olschwang 1998 (Hum Mutat,
+`10.1002/(SICI)1098-1004(1998)12:6<424::AID-HUMU9>3.0.CO;2-H`) and Ong 2007 (Hum Mutat,
+`10.1002/humu.20385`). Neither is in PMC. These are **defective records rather than unfilled ones**,
+and no resolver fixes them; a curator has to return to the papers.
+
+## Class E — two records naming two alterations, and the instrument that already expresses one
+
+CIViC encodes some combination genotypes **inside a single variant's name**. The builder never sees
+them as combinations — nothing reads a variant's name — so they arrive as ordinary single-variant
+records and drop only because their identifier columns are empty. All four alterations resolve:
+
+| record | alteration | rsID | CAID | GRCh38 |
+|---|---|---|---|---|
+| 3298 `P81S (c.241C>T) and L188V (c.562C>G)` | P81S | rs104893829 | CA020148 | 3:10142088 `C`>`T` |
+| | L188V | rs5030824 | CA020488 | 3:10149885 `C`>`G` |
+| 4210 `R167Q(c.500G>A) and c.464-94T>A` | R167Q | rs5030821 | CA020454 | 3:10149823 `G`>`A` |
+| | c.464-94T>A | rs116128787 | CA70052017 | 3:10149693 `T`>`A` |
+
+**The two records are not the same case, and giving them one disposition would be the error.**
+
+### 3298 — a real pair, and the format already expresses it
+
+Weirich et al 2002 (PMID 12414898, JCEM) is titled *"VHL2C phenotype in a German von Hippel-Lindau
+family with concurrent VHL germline mutations P81S and L188V"*, and reports the two **co-segregating
+with disease through six members of one family**. ClinVar's citation link for that PMID returns
+exactly two variations — VCV000002233 (P81S) and VCV000002225 (L188V) — so the curated record agrees
+the paper reports this pair and nothing else.
+
+The paper does not use the words *cis*, *trans* or *haplotype*, and the fulltext is paywalled. But
+co-segregation through a pedigree is the operative evidence: an affected parent transmits one
+homolog, so two variants travelling together through six members are on one chromosome. **Cis is an
+inference from the co-segregation, not the source's own statement**, and it is recorded here as such.
+
+**No schema change is needed to author this.** `haplotypes.csv` says which alleles ride together on
+one chromosome and `diplotypes.csv` pairs two haplotypes — bricks that shipped in 0.4, and the shape
+[`hfe_compound_het`](../../reference_examples/hfe_compound_het/) was written to demonstrate. A
+throwaway spec was compiled to check rather than to argue:
+
+```csv
+# haplotypes.csv
+haplotype_name,rsid,chrom,start,ref,allele,gene
+wt,rs104893829,3,10142088,C,C,VHL
+wt,rs5030824,3,10149885,C,C,VHL
+P81S-L188V,rs104893829,3,10142088,C,T,VHL
+P81S-L188V,rs5030824,3,10149885,C,G,VHL
+
+# diplotypes.csv
+gene,haplotype_a,haplotype_b,phenotype,trait_efo_id,direction,clin_sig,conclusion
+VHL,P81S-L188V,wt,VHL type 2C,DOID:14175,risk,,"Both alterations on one chromosome. …"
+```
+
+Result: `validate` passes with only the closure warning a throwaway spec always gets; `compile` and
+`compile --strict` both succeed and produce the **same digest**; `reverse` → recompile reproduces
+`digest` and `content_signature` exactly (P7), the reversed `haplotypes.csv` differing only by a
+normalized empty `requires_callable` column, which is the documented column-normalization asymmetry
+and not a round-trip loss.
+
+Two properties are worth stating because they are what make the shape honest rather than merely
+legal. `direction` lives on `DiplotypeRow`, so the source's own axis is carried without translation;
+and the trait goes in `trait_efo_id` as `DOID:14175` — CIViC's own disease id, in the column, not in
+prose. Only one diplotype row exists here, so `_cross_validate_phase_ambiguity` has nothing to collide
+with and stays silent; a module that also asserted the trans configuration would make it fire, which
+is the correct outcome for a claim the family evidence does not reach.
+
+**What is sized and not taken.** Teaching a drafter to parse a conjunction name and emit haplotype
+plus diplotype rows is a *drafter* change. Its size today is **one authorable record**, it needs no
+schema change, and it is listed in the survey's open items rather than decided here.
+
+### 4210 — parts resolved, pair unestablished
+
+The same shape and a different verdict, on provenance. PubMed carries **no abstract** for Rocha et al
+2003 (PMID 12624160, J Med Genet electronic letter), and its PMC copy is front matter only — about
+5 kB with no body. Nothing reachable describes the two alterations as cis, trans, a haplotype, or two
+independent findings.
+
+Worse for the pair reading: **ClinVar's citation link for that PMID returns 21 variations including
+the R167Q half and *not* the intronic `c.464-94T>A`.** So the curated record attributes only the
+missense half to this paper, and whether the intronic allele came from it at all is open. The R167Q
+half is also a duplicate of CIViC's own resolved variant 1739.
+
+Both alterations are real and registered. The **pair** is not established, so 4210 is a defective
+conjunction record and belongs beside class D, not beside 3298.
+
 ## Scope of every negative in this document
 
 `@probe-names-the-table`, applied line by line:
@@ -423,3 +767,22 @@ they belong to RM153, which decides them.
   exon boundaries are exactly the thing that moves, which is half of this document's point.
 - The compile results are from the compiler in this worktree, on a spec with four rows. They
   demonstrate what the tool does with each spelling; they are not a claim about any real module.
+
+Added for the **2026-09-01** round (classes B–E):
+
+- The 33 resolutions are over the four services named at the head of class B, **as they stood on
+  2026-09-01**. The registry mints nothing on a `GET`: four arbitrary well-formed VHL alleles were
+  submitted as a control and returned `_:CA` blank nodes, and a re-fetch confirmed the first request
+  registered nothing. Without that control, "all resolved" would be an artefact of asking.
+- A `not_found` in class D is over the four tiers actually run, listed per candidate. It is **not** a
+  claim that no identity exists — both readings of both records *are* registered; what is absent is
+  anything that chooses between them.
+- Class C's "no identity exists" is a statement about the record **as named**, evidenced from each
+  cited paper where the paper was reachable. It is not a claim that ClinVar holds no comparable
+  event; it holds many, and that is the point — a class is not one of its members.
+- "Only one line of evidence" for 2196 and "the citation link returns 21 variations" for 4210 are
+  over NCBI `elink dbfrom=pubmed db=clinvar` on a **single** PMID each. `elink` silently merges
+  citedby links when PMIDs are batched, so both were queried alone.
+- The class E compile results are from the compiler in this worktree on a two-table spec with four
+  haplotype rows and one diplotype row. They demonstrate that the shape validates, compiles in both
+  modes and round-trips; they are not a claim that any module should carry it.
