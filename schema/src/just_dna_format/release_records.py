@@ -708,6 +708,35 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
             ),
             DeclaredChange(
                 axis="manifest_fields",
+                target="gene_validity.superseded_count",
+                kind="addition",
+                detail=(
+                    "RM108 publishes how many gene-validity rows a later curation of the same claim "
+                    "replaced. Derived rather than stored — the row that would carry a `superseded` "
+                    "column is the one already in the file, and merge-not-clobber forbids the pass "
+                    "editing it — so no parquet or signature moves with it. The counter did not "
+                    "exist before, so no earlier artifact could have published it, and 0 is a real "
+                    "answer rather than an absence."
+                ),
+                item="RM108",
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="gene_validity.classifications",
+                kind="correction",
+                detail=(
+                    "The same field now spans the CURRENT rows rather than every row, so a module "
+                    "carrying a re-curated claim publishes one verdict where it published a pair — "
+                    "as far apart as ['definitive', 'refuted'] — with nothing saying which stood. A "
+                    "CORRECTION, not an addition: the list we published named a superseded "
+                    "classification as though it were live. A group nothing can order (a tie on "
+                    "classification_date, or a row stating none) still contributes all of its "
+                    "classifications, so the field is unchanged there."
+                ),
+                item="RM108",
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
                 target="identity.version_coerced_from",
                 kind="addition",
                 detail=(
