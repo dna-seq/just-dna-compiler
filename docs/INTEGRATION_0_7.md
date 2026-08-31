@@ -45,7 +45,16 @@ with 0.6.6 installed in an isolated environment and **re-measured on 2026-08-31*
 | `schema_version` | unchanged, `"1.0"` |
 
 That is the Principle 3 shape for a minor, again: new optional columns and new manifest blocks move
-the *byte* identity of an artifact and leave the *content* identity alone. The parquet movement is
+the *byte* identity of an artifact and leave the *content* identity alone.
+
+**Four more items landed on 2026-08-31 after that sweep was taken**, and one of them changes a *value*
+rather than adding a field, so it is called out here rather than left to § 2: **RM110** normalizes
+`gene_metrics.constraint_flags`, which moves `gene_metrics.signature` and `artifact.digest` on any
+module compiled from the gnomAD v4.1 constraint snapshot — a correction, not drift, and the reference
+corpus carries exactly one such row. The other three are additive: **RM103**
+(`identity.version_coerced_from`), **RM108** (`gene_validity.superseded_count`, plus a narrowed
+`gene_validity.classifications` that is also a correction) and **RM150** (`contested` on
+`VALID_DIRECTIONS`). `content_signature` is untouched by all four. The parquet movement is
 dominated by one cheap thing — RM140's `statistical_test` column lands in every `studies.parquet`, and
 ten of the sixteen examples carry one.
 
@@ -116,7 +125,9 @@ None of them is a schema change, and each is a fix:
 
 ### 2.1 `manifest.json`
 
-Three new fields on `compilation`, two new top-level entries, one new field per verification record:
+Three new fields on `compilation`, two new top-level entries, one new field per verification
+record, and — from the 2026-08-31 batch — one new field on `identity`, one on `gene_validity`, and one
+corrected `gene_validity` facet:
 
 | field | type | what it is |
 | --- | --- | --- |
@@ -126,6 +137,9 @@ Three new fields on `compilation`, two new top-level entries, one new field per 
 | `clin_sig_concordance` | block or absent | summary of the concordance record (RM130): `row_count`, `call_count`, **`opposed_count`**, **`unchecked_count`**, the authorities and datasets consulted, the two signatures, and the value sets present. |
 | `authority_precedence` | `list[str]` | the authorities this module's curator weighted, most-trusted first (RM134 § B). **Nothing computes with it** — no tier, no check, no verdict. Empty means the module has not said, which is not the same as saying they weigh equally. Out of both identity halves. |
 | `verification.checks[].producer` | `str \| null` | tool and version that put **this** check. Read it, not the block-level `producer`, when asking whether a record predates a fix — `merge_records` carries an older run's record across and restamps the block-level one (S71). See § 1 for what it does to an old reader. |
+| `identity.version_coerced_from` | `str \| null` | RM103. The `module.version` the author actually wrote, when the model rewrote it — `"v2"` beside `"2.0.0"`, `"abc"` beside `"0.0.0"`. **Absent means the authored value was already canonical SemVer**, never that nothing was authored. Advisory like `version` itself. |
+| `gene_validity.superseded_count` | `int` | RM108. How many rows a later curation of the same claim replaced. **Derived, not stored** — no column exists — so nothing hashes on it and `gene_validity.signature` did not move. `0` is a real answer. |
+| `gene_validity.classifications` | `list[str]` | **CHANGED, and it is a correction.** It now spans the **current** rows rather than every row, so a module carrying a re-curated claim publishes one verdict where it published a pair as far apart as `["definitive", "refuted"]`. A group nothing can order (a tie on `classification_date`, or a member stating none) still contributes all of its classifications. |
 
 Two counters in the concordance block earn their place and are the ones to render: `opposed_count`
 (the disagreement crosses the pathogenic/benign line) and `unchecked_count` (an authority could not be
@@ -135,6 +149,18 @@ weighting model this format does not have.
 
 The block-level `Verification.producer` description was corrected rather than the field changed: it
 means *who last wrote this file*, and it always did.
+
+**`gene_validity.classifications` is the one manifest field in 0.7 whose existing values change
+meaning**, so it is worth stating plainly: if you render that list, a module whose curating body
+re-curated its own claim will stop showing the superseded verdict. That is the fix arriving, not a
+regression — the old list named a classification nothing anywhere said was stale. The rows are all
+still in `gene_validity.parquet`; only the summary narrowed.
+
+**`identity.version_coerced_from` also changes what `reverse` writes.** `reverse_module` now recovers
+the authored `module.version` from the artifact's own `manifest.json` when no caller supplies one, and
+re-emits the **pre-coercion** string. Two consequences: a reversed spec carries a `version:` key where
+it used to carry none, and the field is a fixed point across `compile → reverse → compile` rather than
+going absent on lap 2. Nothing hashes on `module.version`.
 
 ### 2.2 Parquets
 
@@ -222,9 +248,29 @@ apart — *do the authorities agree with each other* and *where does the module 
 set naming the authority inside its members needed a new member per source and failed a stress test at
 five. Which authority spoke is **data**, in `clin_sig_authority_calls.csv`.
 
-Also new: `VALID_WARNING_CODES` (69 members) and `CARRIED_WARNING_CODES` (9), `VALID_RELEASE_OUTPUT_AXES`
-and `VALID_RELEASE_CHANGE_KINDS`. `VALID_VERIFICATION_CHECKS` gains one member, `dataset_currency`
-(RM85) — if you validate check names against a hard-coded set, add it.
+Also new: `VALID_WARNING_CODES` (71 members) and `CARRIED_WARNING_CODES` (11),
+`VALID_RELEASE_OUTPUT_AXES` and `VALID_RELEASE_CHANGE_KINDS`. `VALID_VERIFICATION_CHECKS` gains one
+member, `dataset_currency` (RM85) — if you validate check names against a hard-coded set, add it.
+
+**`VALID_DIRECTIONS` gains a fifth member, `contested` (RM150)** — the one existing vocabulary that
+grew. `unknown` had been carrying both *nobody assessed the sign* and *the sources disagree about it*,
+which are an absence and a finding. **`unknown` keeps its original meaning**, so nothing a published
+module already says changes and no row newly reports `needs_upgrade`; `contested` is added beside it.
+If you validate `direction` against a hard-coded set, or switch on it exhaustively, add the member.
+`stat_significance` deliberately gains nothing — a disputed *sign* is not a disputed *strength* — and
+`derive.direction_from_state` can never produce it, because no legacy `state` value means it.
+`derive.trimmed_state("contested")` is `"neutral"`, like `unknown`.
+
+**One derived cell changed value, and it is a correction: `GeneMetricsRow.constraint_flags`
+(RM110).** gnomAD's bulk-TSV route had been storing the source's **JSON array literal** verbatim, so
+the published v4.1 snapshot writes `"[]"` on 17,403 of its 18,111 rows and a real literal
+(`["outlier_mis","outlier_syn"]`) on the other 708 — **not one row null**. A consumer writing the
+obvious `if row.constraint_flags:` therefore read **100 %** of snapshot rows as flagged where the true
+figure is 3.9 %, and one splitting on `|` got a single bogus token instead of two flags. The column is
+now pipe-joined-and-sorted when non-empty and **`None` when empty**, normalized on the model itself so
+it reaches tables written before 0.7 as well as new ones. **If you have modules compiled from that
+snapshot, their `gene_metrics.signature` and `artifact.digest` move on the next recompile** — that is
+this fix arriving, not drift. `if row.constraint_flags:` is now the right test.
 
 The registry `reference()` / `authoring_reference()` walks now renders **31 models, up from 28**
 (`OverrideRow` and the two concordance rows). If you snapshot that output, it grew.
@@ -278,6 +324,15 @@ Three properties are worth knowing before you build on it:
    (1.96× on `pathogenic_clinvar`). That is the shape the item decided, not an oversight; three cheaper
    encodings are weighed as **RM138** rather than taken unilaterally. If you ship manifests over a
    wire, budget for it.
+
+**Two more carried codes landed on 2026-08-31 (RM108)**, which is why the counts above read 71/11 and
+not 69/9: `gene_validity_superseded` (a curating body re-curated its own claim, so an earlier row is
+superseded and kept) and `gene_validity_currency_undecidable` (several curations of one claim and
+nothing orders them — a tie on `classification_date`, or a row stating none). Both are carried because
+the only edit available to an author is deleting a true record. They are the first fact-table findings
+`validate` computes as well as `compile`, so a pre-flight now reports them too, and they stay **two
+codes rather than one** on purpose: the archive having moved on and the archive not having said enough
+to tell are different messages to a reader.
 
 New pinned phrase: `SUPPRESSED_PHRASE` (`"suppress override(s) remove"`). The overlay's two other
 warnings — an `update` reaching no row, and an overlay naming a table the module does not carry — are
@@ -351,7 +406,11 @@ Both spellings of a version are accepted — a bare `0.7.0` and the stamped
 2. Add `clin_sig_concordance.csv` and `clin_sig_authority_calls.csv` to the same list — derived, so a
    drop is recoverable by re-running `enrich`, but a re-publish that loses them silently shrinks the
    module.
-3. If you hold module presentation metadata, adopt `short_description` (RM133) as a **registry-held
+3. **`reverse` now writes a `version:` key into `module_spec.yaml` where it wrote none** (RM103). If
+   you round-trip specs, expect the authored `module.version` to survive where it used to be dropped —
+   the pre-coercion spelling, so `v2` comes back as `v2`. Nothing hashes on it, and an explicit
+   argument still wins.
+4. If you hold module presentation metadata, adopt `short_description` (RM133) as a **registry-held
    override** of the card subtitle, bounded by `normalize.SHORT_DESCRIPTION_MAX_CHARS` (120).
    `module.description` remains the authored subtitle and a module with no override shows it,
    unchanged. The point of holding it beside the module is that amending it leaves `module_spec.yaml`'s
@@ -378,6 +437,13 @@ Both spellings of a version are accepted — a bare `0.7.0` and the stamped
 5. Surface `authority_precedence` verbatim where you show `weighting` and `authorship`. **Do not
    compute with it** — nothing here does, and a consensus derived from it would publish a judgement as
    a fact.
+8. **If you render `gene_validity.classifications`, it narrowed** (RM108): a module carrying a
+   re-curated claim now publishes the current verdict instead of the pair. Render
+   `superseded_count` beside it where you show the block — a nonzero value is what tells a reader the
+   drift exists, since the pair used to be what showed it. The superseded rows are all still in
+   `gene_validity.parquet`.
+9. **If you cache `gene_metrics.signature`, expect it to move for snapshot-compiled modules** (RM110).
+   The cell was wrong, not merely differently spelled, so this is a correction; see § 2.4.
 
 **Check**
 
@@ -416,6 +482,14 @@ Both spellings of a version are accepted — a bare `0.7.0` and the stamped
 7. `clin_sig_concordance` gives you contested subjects, joinable on `(variant_key, genotype)`. If you
    badge a clinical call, this is what says the authorities disagreed. Nothing resolves the split, by
    design — do not read the first authority in `authority_precedence` as a winner.
+8. **`gene_metrics.constraint_flags` is now a flag list rather than a JSON array literal** (RM110).
+   `if row.constraint_flags:` is the right test, and it is right for the first time: the published
+   gnomAD v4.1 snapshot carries `"[]"` on 96 % of rows, so that test used to be true for **every**
+   snapshot row where 3.9 % of genes are actually flagged. Splitting on `|` now yields the flags. Any
+   workaround you wrote for `"[]"` should come out.
+9. **`direction` may now read `contested`** (RM150). If you switch on it, add the branch. It means the
+   sources disagree about the *sign*, where `unknown` means nobody assessed it — an absence and a
+   finding, which used to share one member. No existing module's rows change.
 
 ### just-dna-pipelines (compiler / discovery)
 
@@ -445,7 +519,9 @@ Both spellings of a version are accepted — a bare `0.7.0` and the stamped
 
 **Change**
 
-1. The authoring reference grew to **31 models**, three new closed vocabularies, and 69 warning codes.
+1. The authoring reference grew to **31 models**, three new closed vocabularies, and 71 warning codes.
+   `VALID_DIRECTIONS` also gained `contested` (RM150), which is the first *existing* vocabulary in this
+   release to grow — an authoring agent picking `direction` from a stale list will not offer it.
    If you echo member lists to a model, regenerate them — `authoring_reference()` and the
    `RECOMMENDED_*` / `VALID_*` constants remain the replacements for `get_spec_format` / `list_colors`
    / `list_icons`, which drift further out of date again this release.
