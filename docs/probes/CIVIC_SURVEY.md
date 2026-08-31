@@ -754,6 +754,14 @@ remaining registry rows and took recovery to **237/290 = 82%**.
    contested-variant count from 0 to 3. If ever done, `status` belongs on the row as `confidence` with
    `confidence_unit`, unconverted.
 
+   **There is now a worked instance where the basis costs something specific rather than just rows.**
+   Variant 1955, one of the two records nothing resolves, carries a second evidence item — EID 9969,
+   PMID 12202531 (Dollfus 2002) — which is `SUBMITTED`, and is therefore in the API and in no file the
+   builder reads. Unlike the two Hum Mutat papers the accepted item cites, it is **free full text**,
+   so it is the only reachable lead on that record. The status basis is not only a denominator
+   question; here it hides the evidence that could settle an identity. Working in
+   [CIVIC_LEGACY_INSERTIONS](CIVIC_LEGACY_INSERTIONS.md).
+
 **Deliberately not worth doing, each closed on a measurement rather than an opinion:**
 
 5. **A `direction`-axis concordance record.** Genuine `risk`-vs-`protective` opposition is **0** at

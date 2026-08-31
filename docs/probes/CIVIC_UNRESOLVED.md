@@ -671,6 +671,37 @@ from a resolution in any output format.
 `10.1002/humu.20385`). Neither is in PMC. These are **defective records rather than unfilled ones**,
 and no resolver fixes them; a curator has to return to the papers.
 
+### Taken by hand, and what that added
+
+Both records were then worked manually, at sequence level rather than by lookup —
+[CIVIC_LEGACY_INSERTIONS](CIVIC_LEGACY_INSERTIONS.md) is the full working. It does not resolve either
+record, and it is worth reading anyway, because it establishes *why* in terms no service could give:
+
+- **The candidate sets are provably exhaustive.** With the frame pinned at `c.1 = g.10141848` (checked
+  here against UCSC's hg38 sequence and against CIViC 3298's independently registered
+  `g.10142088`), a single T inserted anywhere in the c.210–214 window yields four alleles, of which
+  exactly two are `P71fs`. There is no third reading anyone has missed.
+- **1955's two readings are indistinguishable by anything downstream of the DNA.** Both are +1
+  frameshifts entering the same reading frame and terminating at the same codon —
+  `p.Pro71Serfs*61` and `p.Pro71Leufs*61`, Ter at 131. Truncation length, PVS1 and predicted product
+  are identical, so no functional or ACMG argument can separate them either. `@existence-not-identity`
+  at its sharpest: two registered alleles, one observation, and nothing in biology to choose between.
+- **`Q73fs` is arithmetically impossible for 2131 under either convention**, not merely inconsistent:
+  the only route to codon 73 is `c.216_217insGCCC`, which gives `fs*60` rather than `fs*61`.
+- **2131 has a best reading, and it stays provisional.** `c.210_213dup` — the inserted `GCCC` is
+  identical to the tetramer immediately 5′ of it, which is replication slippage and which HGVS's
+  duplication rule *requires* be spelled as a dup — with the ins reading retained as the alternate.
+  Three converging arguments, none decisive, and one of them (an HGMD accession encoding a 1998
+  citation, where the CIViC row cites 2007) may not be about this report at all. Not adopted.
+- **A hypothesis the document raised was falsified by the check it specified.** It proposed that the
+  dup's four-base left shift hid it from the earlier ClinVar sweep, and asked for the sweep to be
+  re-run at the left-aligned anchor 10,142,056. Run: that window returns four records, so it resolves
+  — and the dup is not among them. ClinVar does not hold the allele; the anchor was never the reason.
+- **1955 carries a second source the accepted-only basis cannot see.** EID **9969** cites PMID
+  12202531 (Dollfus 2002, **free full text**) and is `SUBMITTED`, so it exists in the API and in no
+  file `civic build` reads. It is the one reachable lead on either record, and the status basis is
+  exactly what hides it — a worked instance of the survey's open item on reading `SUBMITTED` items.
+
 ## Class E — two records naming two alterations, and the instrument that already expresses one
 
 CIViC encodes some combination genotypes **inside a single variant's name**. The builder never sees
