@@ -657,7 +657,9 @@ Ensembl's Variant Recoder, and the papers each evidence row cites. **Thirty-four
 | Conjunction-named — two alterations in one record | 2 | 2 | all four alleles identified; the record is not one identity |
 
 Per-variant tables, the queries behind each answer and the four wrong-name findings are in
-[CIVIC_UNRESOLVED](CIVIC_UNRESOLVED.md), which holds the residue class by class.
+[CIVIC_UNRESOLVED](CIVIC_UNRESOLVED.md), which holds the residue class by class; the procedure itself
+is [CIVIC_IDENTITY_PROTOCOL](CIVIC_IDENTITY_PROTOCOL.md), written to be re-run against any source that
+publishes a variant name and no identifier.
 
 **If the resolutions are adopted, coverage moves to 271/290 variants (93.4%) and 508/533 evidence
 rows (95.3%)** — from 237/290 (81.7%) and 474/533 (88.9%). Adoption is a decision this document does

@@ -40,9 +40,11 @@ NCBI E-utilities, Ensembl's Variant Recoder, then the cited literature — and *
 508/533 (95.3%) of evidence rows** — if the resolutions are adopted, which is a decision this document
 does not take. Nineteen variants on 25 rows remain, and six of those are unreachable by construction.
 
-**The procedure that did it is written up separately** as a re-runnable protocol, and every
-resolution's exact queries are recorded per variant beside it. What is here is the *disposition* of
-each class, not the method.
+**The procedure that did it is written up separately** as
+[CIVIC_IDENTITY_PROTOCOL](CIVIC_IDENTITY_PROTOCOL.md) — a re-runnable protocol with the exact request
+shapes, the discriminators ranked by the weight each can carry, the withholding rules each tied to the
+record that forced it, and an explicit section on what it cannot do. What is here is the *disposition*
+of each class, not the method.
 
 **What the earlier round got wrong about this residue, and what the error cost.** The survey's first
 pass concluded that the name-only classes were "close to a permanent floor rather than a backlog" and
