@@ -250,6 +250,30 @@ reason its `source` column is inside its fact set while everywhere else `source`
   so replacement happens one row at a time; and deliberately not `MeasureBinRow.unresolved`, which
   means "no measurement at read time" and is designed to compile — two opposite lifecycles on one
   field would be the overloaded-axis anti-pattern (P5).
+- **`trait_efo_id` is a general ontology-CURIE column, and the name is a misnomer.** It accepts **any**
+  `PREFIX:LOCAL` or `PREFIX_LOCAL` token — `EFO_0004340`, `MONDO:0005265`, `OBA:2040158`,
+  **`HP:0000006`**, **`DOID:1612`** — and the cell is **multi-valued**, comma/semicolon/pipe-separated
+  (`HP:0000006,EFO_0004340`), because a row legitimately carries a disease id and a phenotype id at
+  once. `validate_trait_ids` enforces the CURIE shape and nothing else: it does not check the prefix
+  against a registry, does not resolve the id, and does not prefer one ontology. It appears on
+  `VariantRow`, `StudyRow`, `PgsRow` and the binning tables, with `VariantRow.phenotype` holding the
+  human-readable **label** beside it.
+
+  **The name says EFO because it matches just-prs's column, not because the column is EFO-only.** That
+  is worth stating here rather than leaving to the field description, because reading the name as a
+  restriction is a mistake that has been made in this tree: the CIViC provider withheld a `DOID:` id
+  from the column on the reasoning that "a DOID in an EFO column would be a wrong identifier", and
+  buried it in `conclusion` prose instead — losing a joinable id on **every** row it drafted, since
+  every CIViC germline row carries a DOID. Renaming the column is queued for 1.0, because a rename is
+  a removal-and-add and removal is major-only (P3/P8).
+
+  Two consequences for a provider filling it. **Emit a CURIE, never a bare local id**: sources publish
+  DOIDs as bare integers (`1612`) and HPO ids sometimes as bare labels, and a bare token fails the
+  validator *and* leaves a reader unable to tell which ontology it came from — add the prefix at the
+  boundary. And **a label is not an id**: CIViC's bulk download serves HPO *names*
+  (`Hemangioblastoma`) where its API serves `HP:` CURIEs, so a provider reading the download can fill
+  the disease id and must not invent phenotype ids from names.
+
 - **Reserved namespace (`vocab.RESERVED_NAMES_0_4`).** Only names expected to become real module
   columns later (P5) — today `{reference_db, callable_element, quality_element}`, each with a reason
   in `RESERVED_NAME_REASONS`. It is *not* a catalogue of barred names (`extra="forbid"` already

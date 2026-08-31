@@ -471,6 +471,38 @@ future check: **if a new value-refusal is minor-legal, say so in the Constitutio
 0.6.0 changes were mis-sized.** Whoever picks this up should settle the general rule first and let
 `module.version` fall out of it.
 
+### `trait_efo_id` is named for one ontology and accepts every ontology
+
+**Severity** low · **Status** queued for 1.0 — **filed 2026-08-31 by the maintainer** after the name
+misled a provider in this tree · **Owner** format (+ every consumer reading the column by name)
+
+The column takes any ontology CURIE and always has: `validate_trait_ids` enforces only a
+`PREFIX:LOCAL` / `PREFIX_LOCAL` shape, the cell is multi-valued, and the field's own description reads
+*"EFO/MONDO/OBA/HP trait ontology id(s)"*. `HP:0000006`, `MONDO:0005265`, `DOID:1612` and
+`OBA:2040158` are all legal today, singly or together. The name says EFO because it matches just-prs's
+column, and that is the whole of the reason.
+
+**A name is a claim, and this one is read as a restriction.** The CIViC provider withheld a `DOID:` id
+from the column on the reasoning that a DOID in an EFO column would be a wrong identifier, and put it
+in `conclusion` prose instead — losing a joinable id on **every row it drafted**, since every CIViC
+germline row carries a DOID. That is the same class as an analogy in a field description being taken
+for a rule: the field was doing its job and the label was not. It has been fixed at the provider and
+the rule is now stated in [SCHEMAS.md § Conventions](SCHEMAS.md#conventions-the-idioms-every-model-obeys),
+but the durable repair is the name.
+
+**It is here rather than in a minor because a rename is a removal plus an addition**, and removal is
+what P3/P8 reserve for a major — a consumer selecting `trait_efo_id` by name breaks the moment the old
+name goes. The additive half (a new `trait_id` column) is minor-legal on its own and is deliberately
+**not** proposed: two spellings of one fact is the overloading P5 forbids, and a deprecation window
+that leaves both columns readable is exactly the state this tracker exists to end. So it waits, and
+lands as one rename with the removal.
+
+**Two things for whoever takes it.** The successor name should not encode an ontology at all —
+`trait_id` — and the description should keep naming the accepted prefixes, because the next provider
+will read the name first. And the rename has to move with the reserved-namespace and
+`authoring_reference` surfaces together, since a consumer's column list is generated from the model
+rather than hand-kept.
+
 ### `stats`' scalar counters read `0` where the table is absent, and cannot say "inapplicable"
 
 **Severity** low-medium · **Status** queued for 1.0 — **filed here on 2026-08-24 from S72**, because

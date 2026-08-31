@@ -9,13 +9,13 @@ import csv
 from pathlib import Path
 
 import pytest
-
 from just_dna_enricher.civic_build import build_snapshot
 from just_dna_enricher.civic_draft import (
     CIVIC_WITHHELD_REASONS,
     draft_panel_from_civic,
     identity_refused_by_model,
 )
+from just_dna_format.vocab import validate_trait_ids
 
 SLICE = Path(__file__).resolve().parents[2] / "assets" / "civic_slice"
 
@@ -200,14 +200,40 @@ def test_a_run_that_found_no_snapshot_writes_nothing_and_says_nobody_asked(spec,
     assert not (spec / "variants.csv").exists(), "a pass contributing nothing writes no SourceRow"
 
 
-def test_the_study_row_carries_the_pmid_and_never_a_doid_in_the_efo_column(spec, snapshot):
-    """CIViC names diseases with a DOID; `trait_efo_id` is EFO. A wrong id is worse than none."""
+def test_the_disease_id_lands_in_the_column_and_not_in_prose(spec, snapshot):
+    """`trait_efo_id` takes any ontology CURIE, so a DOID belongs in it — not in `conclusion`.
+
+    This test previously asserted the opposite, on the premise that the column is EFO-only. It is not:
+    its own description says "EFO/MONDO/OBA/HP", the validator accepts any `PREFIX:LOCAL` token, and
+    every CIViC germline direction row carries a DOID — so the earlier behaviour buried a structured
+    id nothing could join on, on every row.
+    """
+    draft_panel_from_civic(spec, snapshot=snapshot)
+    for csv_name in ("studies.csv", "variants.csv"):
+        rows = _rows(spec / csv_name)
+        assert rows, f"{csv_name} must be drafted or this proves nothing"
+        assert any(r["trait_efo_id"].startswith("DOID:") for r in rows)
+        assert all(
+            not r["trait_efo_id"] or validate_trait_ids(r["trait_efo_id"]) for r in rows
+        ), "whatever is written must survive the column's own validator"
+        assert not any("DOID:" in r["conclusion"] for r in rows), "not duplicated into prose"
+
+
+def test_the_study_row_carries_a_real_pmid(spec, snapshot):
+    """Per-record provenance to PubMed is CIViC's strongest feature and the shape studies.csv wants."""
     draft_panel_from_civic(spec, snapshot=snapshot)
     rows = _rows(spec / "studies.csv")
-    assert rows, "every germline direction row cites a real PMID; that is CIViC's best feature"
+    assert rows
     assert all(r["pmid"].isdigit() for r in rows)
-    assert all(not r["trait_efo_id"] for r in rows)
-    assert any("DOID:" in r["conclusion"] for r in rows), "the DOID is kept, in prose, where it is safe"
+
+
+def test_the_variant_row_carries_the_disease_name_beside_its_id(spec, snapshot):
+    """`phenotype` is the label, `trait_efo_id` the id — two columns, and CIViC supplies both."""
+    draft_panel_from_civic(spec, snapshot=snapshot)
+    rows = _rows(spec / "variants.csv")
+    named = [r for r in rows if r["trait_efo_id"]]
+    assert named, "the fixture must carry at least one disease-bearing row"
+    assert all(r["phenotype"] for r in named), "an id with no label beside it is hard to read"
 
 
 def test_the_genotype_is_stubbed_so_the_module_cannot_compile_until_a_human_decides(spec, snapshot):

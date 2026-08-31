@@ -535,6 +535,7 @@ Building the `01-Aug-2026` release and drafting the whole thing into an empty sp
 | **Kept** | **329 rows on 133 variants** |
 | Identity: `rsid` / `both` / `grch38_hgvs` | 305 / 17 / 7 |
 | Drafted into an empty spec | **110** variant rows, **311** study rows |
+| …of those, carrying a `DOID:` in `trait_efo_id` | **110 / 311** — every one |
 
 Two of those are worth reading rather than skimming. **The zeros are measured, not structural** — 209
 multi-variant profiles carrying 547 accepted rows exist in this release, and none of them is germline,
@@ -570,11 +571,15 @@ these has been asked, or will be, and the measurement is what stops it being re-
 
 **Possible, with a real trade-off to decide first:**
 
-4. **Read the API's `myVariantInfo` block to close the identity gap.** It carries `dbsnpRsid` and
-   ClinVar's GRCh38 HGVS, which the bulk file does not, and over the API's 620-variant view it lifts
-   reach from 133-of-290 to 318-of-376. But mixing a live API into a build forfeits byte-reproducibility
-   — the property a snapshot exists to have — so if this is done it belongs as an `enrich`-time pass
-   beside the CAID one, not inside `civic build`.
+4. **Read the API for what the download does not carry — identity, and HPO ids.** Two things sit
+   behind the same trade-off. `myVariantInfo` holds `dbsnpRsid` and ClinVar's GRCh38 HGVS, which lifts
+   reach from 133-of-290 to 318-of-376 over the API's view. And **`phenotypes` carries real `HP:`
+   CURIEs** (`HP:0003621`) where the bulk file gives only labels (`Hemangioblastoma`) — 385 of the 533
+   direction rows have a phenotypes cell, and none of them is an id. Since `trait_efo_id` is a
+   multi-valued ontology-CURIE column, an HPO id would sit beside the disease id rather than replacing
+   it. But mixing a live API into a build forfeits byte-reproducibility — the property a snapshot
+   exists to have — so this belongs as an `enrich`-time pass beside the CAID one, never inside
+   `civic build`.
 5. **Decide what a conjunction-named variant is, before item 1 makes it urgent.** CIViC encodes
    combination genotypes two ways. The profile-level `" AND "` kind is detected and dropped by count,
    correctly. The other kind is a **single variant id whose own `name` names two to four alterations**
@@ -633,3 +638,6 @@ What is worth carrying forward in one place:
   enrichment that the bulk file does not carry.
 - The **status default is `NON_REJECTED`** and most of CIViC is `SUBMITTED`. State the basis or the
   numbers mean nothing.
+- **Disease ids are free and complete**: 533 of 533 direction rows carry a DOID, and `trait_efo_id`
+  takes any ontology CURIE, so `DOID:1612` belongs in the column rather than in prose. HPO ids are
+  **API-only** — the download serves phenotype *labels*, and a label is not an id.

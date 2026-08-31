@@ -42,7 +42,7 @@ from pathlib import Path
 from just_dna_compiler.draft import DraftReport, PartialRow, append_partial_rows
 from just_dna_format.spec import StudyRow, VariantRow
 
-from just_dna_enricher.civic_build import CIVIC_GENOME_BUILD, CIVIC_PARQUET
+from just_dna_enricher.civic_build import CIVIC_PARQUET
 from just_dna_enricher.licensing import CIVIC_TERMS, record_source_terms
 from just_dna_enricher.locations import RELEASE_FILENAME, resolve_civic_reference
 from just_dna_enricher.verification import examples
@@ -191,6 +191,25 @@ def identity_refused_by_model(cells: dict) -> str | None:
 _MATCH_ON: tuple[str, ...] = ("rsid", "chrom", "start", "ref", "alts")
 
 
+def trait_curie(doid: str | None) -> str | None:
+    """CIViC's bare Disease Ontology number as an ontology CURIE, or `None`.
+
+    **`trait_efo_id` is not an EFO-only column**, and reading the name as though it were is a mistake
+    this provider made once. The field takes any ontology CURIE — its own description says
+    "EFO/MONDO/OBA/HP", the validator accepts any `PREFIX:LOCAL` token, and cells are multi-valued —
+    so `DOID:1612` belongs in it. The first version of this provider put the DOID in `conclusion`
+    prose instead, reasoning that a DOID in an EFO column would be a wrong identifier; the premise was
+    false, and the effect was to bury a structured id nothing could join on. Every CIViC germline
+    direction row carries a DOID, so the cost was the whole column.
+
+    CIViC publishes the number bare (`1612`), which is not a CURIE; the prefix is added here rather
+    than stored upstream, because a bare integer in this column would fail the validator and a reader
+    cannot tell which ontology it came from.
+    """
+    doid = (doid or "").strip()
+    return f"DOID:{doid}" if doid else None
+
+
 def _variant_row(row: dict, *, dataset: str | None) -> PartialRow:
     """One snapshot row → the authored cells this provider is willing to state.
 
@@ -211,6 +230,8 @@ def _variant_row(row: dict, *, dataset: str | None) -> PartialRow:
         "gene": row["gene"],
         "direction": row["direction"],
         "state": "risk" if row["direction"] == "risk" else "protective",
+        "phenotype": row["disease"],
+        "trait_efo_id": trait_curie(row["doid"]),
         "conclusion": (
             f"{CIVIC_LABEL}: {row['significance_raw']} / {row['evidence_direction_raw']} "
             f"(evidence level {row['evidence_level']}, rating {row['rating']}; "
@@ -236,17 +257,14 @@ def _study_row(row: dict) -> PartialRow | None:
     """
     if not row["rsid"] or not row["pmid"]:
         return None
-    #: The disease goes in `conclusion` and **not** in `trait_efo_id`: CIViC names diseases with a
-    #: DOID, and EFO and DO are different ontologies. Putting a DOID in a column a consumer reads as
-    #: an EFO id would be a wrong identifier rather than a missing one.
     cells = {
         "rsid": row["rsid"],
         "pmid": row["pmid"],
+        "trait_efo_id": trait_curie(row["doid"]),
         "conclusion": (
             f"{CIVIC_LABEL} evidence {row['evidence_id']}: {row['significance_raw']} / "
             f"{row['evidence_direction_raw']}, level {row['evidence_level']}"
             f"{'; ' + row['disease'] if row['disease'] else ''}"
-            f"{' (DOID:' + row['doid'] + ')' if row['doid'] else ''}"
         ),
     }
     return PartialRow(
