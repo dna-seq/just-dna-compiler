@@ -517,113 +517,166 @@ CAID→GRCh38 resolution to a later pass, where RM48's *report-never-fill* rule 
 
 ## What was built from this, and what it looks like in practice
 
-**CIViC was adopted on 2026-08-31, on the `direction` axis and nowhere else** — `civic build`,
-`draft-panel --source civic`, and a `CIVIC_TERMS` licence row, with **no schema change of any kind**.
-The operative surface is documented in the enricher reference and the authoring skill; what belongs
-*here* is only the numbers a reader should expect to see, so a run that disagrees with them is
-recognisable as a change in the source rather than a bug in the tool.
+**CIViC was adopted on 2026-08-31 on the `direction` axis and nowhere else** (RM152), and the identity
+residue was closed the same day (RM153) — `civic build`, `draft-panel --source civic`, `civic publish`,
+`civic reproduce`, a ClinGen Allele Registry client, and two licence rows, with **no schema change of
+any kind**. The operative surface is documented in the enricher reference and the authoring skill;
+what belongs *here* is the numbers a reader should expect, so a run that disagrees is recognisable as
+the source having moved rather than the tool having broken.
 
-Building the `01-Aug-2026` release and drafting the whole thing into an empty spec:
+### Building the `01-Aug-2026` release
 
 | | |
 |---|---|
 | Evidence rows read | 4,878 |
 | Dropped `non_germline_origin` | 4,067 |
 | Dropped `not_direction_axis` | 278 |
-| Dropped `unresolvable_identity` | 204 |
+| Dropped `unresolvable_identity` | 59 |
 | Dropped `combination_profile` / `no_variant_record` | 0 / 0 |
-| **Kept** | **329 rows on 133 variants** |
-| Identity: `rsid` / `both` / `grch38_hgvs` | 305 / 17 / 7 |
-| Drafted into an empty spec | **110** variant rows, **311** study rows |
-| …of those, carrying a `DOID:` in `trait_efo_id` | **110 / 311** — every one |
+| **Kept** | **474 rows on 237 variants** |
+| Identity: `rsid` / `both` / `grch38_hgvs` / `caid` | 310 / 17 / 7 / 140 |
 
-Two of those are worth reading rather than skimming. **The zeros are measured, not structural** — 209
-multi-variant profiles carrying 547 accepted rows exist in this release, and none of them is germline,
-so `combination_profile` would fire on a source that grew one. And **329 rows collapse to 110 authored
-variants**, because one variant carries several evidence items; the drafter reports the rest as
-`already_present` rather than appending them, which is what makes a re-run a no-op.
+**The zeros are measured, not structural**: 209 multi-variant profiles carrying 547 accepted rows
+exist in this release and none is germline, so `combination_profile` would fire on a source that grew
+one.
+
+### Drafting it into an empty spec
+
+| | Offline | With the registry |
+|---|---:|---:|
+| Variant rows | 115 | **201** |
+| CAID → rs-number | 0 | 88 |
+| CAID → GRCh38 coordinate | 0 | 13 |
+| One-sided indels anchored | 0 | 39 |
+| Withheld `caid_unresolved` | 140 | 0 |
+
+Every drafted row carries a `DOID:` in `trait_efo_id`, and 474 kept rows collapse to 201 authored
+variants because one variant carries several evidence items — the drafter reports the rest as
+`already_present`, which is what makes a re-run a no-op.
+
+### Reproducing and publishing it
+
+```bash
+# build + validate in one command; exits non-zero on any failure, so it is usable in CI
+just-dna-enricher civic reproduce --release 01-Aug-2026
+
+# or the two halves separately
+just-dna-enricher civic build   --release 01-Aug-2026 --out ./civic
+just-dna-enricher civic publish ./civic --dry-run      # then without --dry-run
+```
+
+`civic reproduce` runs five checks, and the third is the only one that needs a network for a reason
+other than fetching:
+
+1. **The release downloads and every file is hashed** — a sha256 per input, so a later disagreement is
+   a finding about the source rather than a mystery.
+2. **Two independent builds are byte-identical** (Principle 7). A parquet has no inherent row order,
+   so this is what proves the sort is load-bearing.
+3. **Every placed coordinate is cross-examined against the GRCh38 reference sequence** through
+   refget/seqrepo. This is the external validation the rest of the pipeline cannot give itself: the
+   positions come from RefSeq accessions inside ClinVar HGVS, and an unrelated service is asked
+   whether the reference base at each is what we wrote. A wrong-build or off-by-one placement fails
+   here and nowhere else. **Measured 2026-08-31: 24 of 24 read, 0 mismatches.**
+4. **The drop registry closes** as an equality over a walked set — `4878 = 474 + 4404`.
+5. **The publish plan is exactly** `data/civic.parquet` + `release.json` + `LICENSE.txt`.
+
+`--offline` skips only the third and says so: a check that could not run is not a check that passed.
+
+**What the published snapshot does and does not contain.** It carries the CIViC derivation, its
+`release.json` (naming the dated release and the `accepted` status basis) and CIViC's own CC0 text. It
+does **not** carry the ClinGen registry's answers — the CAID travels, the rs-number ClinGen returns
+for it does not. Resolving at draft time is a read; baking those responses into a redistributed file
+would be passing on bytes whose terms nobody has established.
+
+## The 53 variants nothing reaches, characterised
+
+After every published identifier and the registry, **53 variants (59 evidence rows) carry no
+identifier of any kind** — no rsID, no GRCh38 accession, no CAID:
+
+| Class | Variants | Examples |
+|---|---:|---|
+| Indel by name only | 28 | `N150fs (c.449del)`, `R135FSX177`, `D143fs (c.430delG)` |
+| Protein substitution by name only | 11 | `TP53 R72P`, `D1709N`, `Y371H` |
+| **Has a GRCh37 coordinate** | **9** | the liftover class — see [CIVIC_LIFTOVER_NINE](CIVIC_LIFTOVER_NINE.md) |
+| Splice / cDNA by name only | 3 | `CHEK2 IVS2+1G>A`, `c.151-1G>C` |
+| Other | 2 | `TRUNCATING MUTATION`, `Alu insertion` |
+
+Only **5 of the 53** carry any `hgvs_descriptions` cell at all, and only **1** carries a GRCh38
+accession the substitution parser cannot read.
+
+**The one remaining lever is worth 2 variants, not 31.** Thirty-one of the 53 carry a `c.` or `p.`
+fragment inside their *name* rather than in a HGVS column, which reads like a large recoverable class.
+Measured: only **2** carry both a `c.` fragment **and** a `representative_transcript` to anchor it on,
+and both resolve through the registry's HGVS endpoint — `ENST00000256474.2:c.449del` → `CA020360`
+(with `rs794727253`) and `ENST00000256474.2:c.197_220del` → `CA645524685`. The other 29 are
+protein-level or transcript-less, with nothing to build an unambiguous expression from.
+
+**So this is close to a permanent floor rather than a backlog.** Five of the nine coordinate-bearing
+ones can never be reached by any identity pass, because the source states their extent as unknown
+(`c.1-?_340+?del`) and the ClinGen registry refuses to parse such expressions outright — an allele
+registry that cannot hold them is a stronger statement than a count.
 
 ## What could be done next, each with the number that sizes it
 
-Sized here, decided elsewhere. Nothing below is a plan — `docs/probes/` is evidence — but every one of
-these has been asked, or will be, and the measurement is what stops it being re-argued from scratch.
+Sized here, decided elsewhere. Nothing below is a plan — `docs/probes/` is evidence.
 
-**Worth doing, in rough order of value per unit of work:**
+**Already taken, and listed so a reader does not re-propose them.** The two largest items this section
+originally carried have shipped: the **ClinGen CAID pass** (RM153 — 64 variants, taking recovery from
+48% to 70%) and **publishing a snapshot** (`civic publish`, CC0, nothing legal in the way). The CAID
+pass then grew a third leg nobody had sized — **anchoring one-sided indels** — which recovered all 35
+remaining registry rows and took recovery to **237/290 = 82%**.
 
-1. **Resolve a ClinGen `allele_registry_id` to a GRCh38 locus.** The largest single recovery available:
-   **102 of the 157 unreachable variants carry a CAID**, and a CAID is build-independent by
-   construction, so this converts most of the `unresolvable_identity` drop into drafted rows *without
-   lifting a coordinate*. It also produces the independent second value resolution cross-examines,
-   which is the property that makes an rsID acceptable and a lifted coordinate not. Costs: a source
-   the enricher does not currently fetch (terms, cache, a place in the chain), and a decision about
-   whether it belongs at `enrich` time — almost certainly yes, since doing it in the builder would
-   forfeit the offline reproducibility that is the whole reason the builder reads a dated file. Tracked
-   as RM153.
-2. **Publish a snapshot.** CC0 permits redistribution outright, and **no CIViC snapshot has been
-   published** — every deployment currently builds its own. This is the one source here where nothing
-   legal stands in the way; what is missing is only a repo and the decision to own the cadence. Note
-   the standing rules that a published snapshot accumulates and that a publisher's allowlist is derived
-   from the artifact's own file list.
+**Still open, with a real trade-off to decide first:**
+
+1. **Read the API for what the download does not carry — identity, and HPO ids.** Two things behind
+   one trade-off. `myVariantInfo` holds `dbsnpRsid` and ClinVar's GRCh38 HGVS, which lifts reach over
+   the API's own view from 133-of-290 to 318-of-376. And **`phenotypes` carries real `HP:` CURIEs**
+   (`HP:0003621`) where the bulk file gives only labels (`Hemangioblastoma`) — 385 of the 533
+   direction rows have a phenotypes cell and none of them is an id. Since `trait_efo_id` is a
+   multi-valued ontology-CURIE column, an HPO id would sit *beside* the `DOID:` rather than replacing
+   it. But mixing a live API into a build forfeits byte-reproducibility, so this belongs as an
+   `enrich`-time pass beside the CAID one, never inside `civic build`.
+2. **Decide what a conjunction-named variant is.** CIViC encodes combination genotypes two ways and
+   only one decomposes: 6 profile-level `" AND "` profiles (dropped by count, correctly) and **24
+   variants carrying a conjunction inside their own `name`** (`rs1801270 and rs1059234`). Nothing in
+   the builder looks at a variant's name, so nothing drops or splits them. Currently harmless **by
+   accident** — the two in this release are removed by the identity filter — and the CAID pass is
+   exactly what would let them through.
 3. **A currency check.** Dated releases appear monthly and are immutable, so "is this snapshot stale?"
-   is answerable by asking the download index for a later date — cheaply, and against the source rather
-   than against the cache it was built from. `release.json` already records `dataset`,
-   `evidence_sha256`, `variant_sha256` and `profile_sha256`, which is everything such a check needs.
+   is answerable by asking the download index for a later date, against the source rather than the
+   cache. `release.json` already records `dataset` and a sha256 per input file.
+4. **Read `SUBMITTED` items.** The bulk file is `accepted`-only, so today's snapshot is the reviewed
+   subset by construction. Including submitted items roughly doubles the corpus, requires the API
+   rather than the download, and changes every number in this document — including taking the
+   contested-variant count from 0 to 3. If ever done, `status` belongs on the row as `confidence` with
+   `confidence_unit`, unconverted.
 
-**Possible, with a real trade-off to decide first:**
+**Deliberately not worth doing, each closed on a measurement rather than an opinion:**
 
-4. **Read the API for what the download does not carry — identity, and HPO ids.** Two things sit
-   behind the same trade-off. `myVariantInfo` holds `dbsnpRsid` and ClinVar's GRCh38 HGVS, which lifts
-   reach from 133-of-290 to 318-of-376 over the API's view. And **`phenotypes` carries real `HP:`
-   CURIEs** (`HP:0003621`) where the bulk file gives only labels (`Hemangioblastoma`) — 385 of the 533
-   direction rows have a phenotypes cell, and none of them is an id. Since `trait_efo_id` is a
-   multi-valued ontology-CURIE column, an HPO id would sit beside the disease id rather than replacing
-   it. But mixing a live API into a build forfeits byte-reproducibility — the property a snapshot
-   exists to have — so this belongs as an `enrich`-time pass beside the CAID one, never inside
-   `civic build`.
-5. **Decide what a conjunction-named variant is, before item 1 makes it urgent.** CIViC encodes
-   combination genotypes two ways. The profile-level `" AND "` kind is detected and dropped by count,
-   correctly. The other kind is a **single variant id whose own `name` names two to four alterations**
-   (`rs1801270 and rs1059234`, `Deletion AND I151S(c.452T>G)`) — 24 of them across the API's 620-variant
-   view, and **nothing in the builder looks at a variant's name**, so nothing would drop or split them.
-
-   Measured on the dated release, the class is currently harmless **by accident**: exactly 2 germline
-   direction rows carry a conjunction-named variant, and **both are dropped as
-   `unresolvable_identity`**, because a compound name carries no single rsID and no single GRCh38
-   substitution. That is the identity filter doing it, not any awareness of conjunction — so **item 1
-   is precisely what would let them through**, since resolving a CAID is exactly the step that supplies
-   the identity they currently lack. A CAID pass should decide this first, or it will quietly begin
-   minting one variant identity for what the source describes as several alterations.
-6. **Read `SUBMITTED` items.** The bulk file is `accepted`-only, so today's snapshot is the reviewed
-   subset by construction. Including submitted items would roughly double the corpus and would require
-   the API rather than the download — and it changes every number in this document, including taking
-   the contested-variant count from 0 to 3. If it is ever done, `status` belongs on the row as
-   `confidence` with `confidence_unit`, unconverted, never folded into anything.
-
-**Deliberately not worth doing, and each is closed on a measurement rather than an opinion:**
-
-7. **A `direction`-axis concordance record.** Genuine `risk`-vs-`protective` opposition is **0** at
+5. **A `direction`-axis concordance record.** Genuine `risk`-vs-`protective` opposition is **0** at
    every scope and status basis, and nothing else in the enricher fills `direction` at all — a
    concordance record needs two authorities and this axis has one. What would reopen it is a *second*
    direction-bearing source appearing, not more CIViC.
-8. **CIViC as a `clin_sig` authority.** Five germline ACMG-tier calls, zero benign-class. Dead on
-   arithmetic, and no amount of growth in the somatic majority changes it.
-9. **Mining the `assertions` table for direction evidence.** Structurally impossible, not merely thin:
+6. **CIViC as a `clin_sig` authority.** Five germline ACMG-tier calls, zero benign-class. Dead on
+   arithmetic, and no growth in the somatic majority changes it.
+7. **Mining `assertions` for direction evidence.** Structurally impossible, not merely thin:
    `AssertionSignificance` has no `PREDISPOSITION` or `PROTECTIVENESS` member, so the query is a type
-   error. This one cannot change without CIViC altering its schema.
-10. **Lifting the GRCh37 coordinates over.** Refused, and now sized rather than argued: after every
-    published identifier is tried the remainder is 157 variants, 102 of which a CAID would place
-    instead. A lifted coordinate would still be the row's sole identity with nothing to check it
-    against.
+   error. This cannot change without CIViC altering its schema.
+8. **Lifting the GRCh37 coordinates over.** Refused and sized: 13 evidence rows on 9 variants, honest
+   recovery **at most one**, and the one precise event in the class lifts *exactly* to the wrong
+   allele. Full working in [CIVIC_LIFTOVER_NINE](CIVIC_LIFTOVER_NINE.md).
 
 **One thing to check before trusting anything above.** Every count here is over one dated release. The
 source is actively curated — the nightly file already disagrees with `01-Aug-2026` on reach (159
 reachable variants against 133) — so re-derive rather than quote if a decision turns on a margin.
 
+
 ## What this survey concludes, and what it deliberately does not
 
 **It concludes nothing.** `docs/probes/` is evidence. The readings the measurements support are
-recorded in [ROADMAP_HISTORY.md § RM152](../ROADMAP_HISTORY.md) and in the 0.7 proposal addendum; if a future reader
-finds those and this document disagreeing, those win and this one is the thing that went stale.
+recorded in [ROADMAP_HISTORY.md](../ROADMAP_HISTORY.md) — RM152 for the adoption, RM153 for the
+identity residue — and in the 0.7 proposal addendum; if a future reader finds those and this document
+disagreeing, those win and this one is the thing that went stale.
 
 What is worth carrying forward in one place:
 
@@ -631,11 +684,20 @@ What is worth carrying forward in one place:
   half is 5 usable calls with **zero** benign-class — the concordance route is dead on arithmetic.
 - Its germline mass sits on the **`direction`** axis, 1,458 rows, every one carrying a stated direction.
 - Genuine `risk`-vs-`protective` opposition is **0**, at every scope probed, under every status basis.
-- The identity obstacle is real and **its size depends on which surface you read**. Over the API's 620
-  variants, 318 of the 376 coordinate-bearing ones carry a build-independent or GRCh38-explicit
-  identifier and only 58 would need anything lifted. Over the **dated bulk file a snapshot must build
-  from**, it is 159 of 290 — because the API's rsID and GRCh38-HGVS columns are MyVariant.info
-  enrichment that the bulk file does not carry.
+- The identity obstacle was real, is now mostly closed, and **its size always depends on which surface
+  you read** — always name the file. Over the dated bulk release a snapshot must build from, recovery
+  went **138 → 202 → 237 of 290 variants (48% → 70% → 82%)**: the builder's own reading of published
+  identifiers, then the ClinGen CAID pass, then anchoring one-sided indels. The API's own view is
+  wider still (318 of 376 coordinate-bearing) because `dbsnpRsid` and `clinvarHgvsGenomic` are
+  MyVariant.info enrichment the download does not carry — but reading it would cost the snapshot its
+  reproducibility.
+- **Nothing is lifted over, and nothing needs to be.** Coordinates are GRCh37 or absent, never GRCh38;
+  every placed row is placed by an identifier the source itself publishes, and 24 of 24 of those
+  placements were confirmed against the GRCh38 reference sequence by an unrelated service. The
+  liftover-only residue is 9 variants and its honest recovery is at most one.
+- **53 variants carry no identifier at all**, and that is close to a permanent floor: the single
+  remaining lever resolves 2 of them, and 5 of the 9 coordinate-bearing ones state their own extent as
+  unknown, which the allele registry refuses to parse.
 - The **status default is `NON_REJECTED`** and most of CIViC is `SUBMITTED`. State the basis or the
   numbers mean nothing.
 - **Disease ids are free and complete**: 533 of 533 direction rows carry a DOID, and `trait_efo_id`
