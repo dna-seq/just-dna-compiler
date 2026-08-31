@@ -59,7 +59,11 @@ from pathlib import Path
 import httpx
 from just_dna_format.normalize import now_utc_iso
 
-from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
+from just_dna_enricher.locations import (
+    RELEASE_FILENAME,
+    SNAPSHOT_DATA_DIRNAME,
+    SNAPSHOT_LICENSE_FILENAME,
+)
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -553,7 +557,42 @@ def build_snapshot(
         dataset=f"civic_{release}" if release else None,
     )
     _write_release_json(out_dir, result, release=release)
+    _write_license(out_dir)
     return result
+
+
+#: Shipped beside the parquet because this snapshot is meant to be published, and a redistributed file
+#: that does not carry its own terms makes the next reader go and establish them again. The text is
+#: the dedication itself rather than a link: a URL is a promise about a page, and pages move.
+CIVIC_LICENSE_TEXT = """CIViC (Clinical Interpretation of Variants in Cancer) — https://civicdb.org
+
+The content of CIViC is released under the Creative Commons Public Domain Dedication
+(CC0 1.0 Universal). https://creativecommons.org/publicdomain/zero/1.0/
+
+To the extent possible under law, the person who associated CC0 with this work has waived all
+copyright and related or neighboring rights to this work. The work is published from the United
+States. No warranty is given.
+
+CIViC requests, but does not require, attribution. Please cite:
+  Griffith M, Spies NC, Krysiak K, et al. CIViC is a community knowledgebase for expert
+  crowdsourcing the clinical interpretation of variants in cancer. Nat Genet. 2017;49(2):170-174.
+
+NOTE ON THIS FILE'S SCOPE. CC0 covers CIViC's *content*. The MIT licence that appears beside it in
+CIViC's own FAQ covers their application source code, which is not what this snapshot contains.
+
+WHAT THIS SNAPSHOT IS. A derivation of one dated CIViC bulk release, not a copy of it: the germline
+rows on the predisposition/protectiveness axis, placed on GRCh38 through identifiers CIViC itself
+publishes. release.json records which release, and that every row is status 'accepted' — the CIViC
+GraphQL API defaults to a wider basis and serves roughly 2.35x as many evidence items, so a count
+taken from here is not comparable with one taken from there.
+"""
+
+
+def _write_license(out_dir: Path) -> Path:
+    """Write the source's own terms beside the data, under the name every sibling snapshot uses."""
+    path = Path(out_dir) / SNAPSHOT_LICENSE_FILENAME
+    path.write_text(CIVIC_LICENSE_TEXT, encoding="utf-8")
+    return path
 
 
 def assert_registry_closes(input_rows: int, kept: int, dropped: dict[str, int]) -> None:

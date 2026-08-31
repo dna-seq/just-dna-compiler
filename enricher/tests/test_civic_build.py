@@ -338,3 +338,49 @@ def test_a_pmid_is_only_read_where_the_source_really_is_pubmed(built):
             assert row["pmid"] == source["citation_id"]
         else:
             assert row["pmid"] is None, "an abstract id filed as a PMID is the @pmid-vs-pmcid class"
+
+
+# ── publishing: the one snapshot here that may be ────────────────────────────────────────────────
+
+
+def test_the_snapshot_carries_its_own_licence(built):
+    """A redistributed file that does not state its terms makes the next reader establish them again.
+
+    This is the snapshot meant to be published — CC0 with no share-alike and no bar on sale — so the
+    dedication ships beside the parquet rather than as a URL, because a link is a promise about a page.
+    """
+    from just_dna_enricher.locations import SNAPSHOT_LICENSE_FILENAME
+
+    text = (built.out_dir / SNAPSHOT_LICENSE_FILENAME).read_text()
+    assert "CC0 1.0 Universal" in text
+    assert "civicdb.org" in text
+    # The scope note is the load-bearing half: CIViC's FAQ names MIT in the same breath, and reading
+    # that as the data terms would attach a licence to bytes it does not cover.
+    assert "MIT" in text and "application source code" in text
+    assert "accepted" in text, "the status basis travels with the bytes, not only with our docs"
+
+
+def test_the_publisher_would_upload_the_data_the_release_and_the_licence(built):
+    """`@publisher-allowlist-derived` — what ships is derived from the artifact's own file list."""
+    from just_dna_enricher.upload import DEFAULT_CIVIC_REPO_ID, plan_reference_snapshot
+
+    # The planner's own default is ClinVar's repo; the civic default lives on the CLI command, which
+    # is what passes it. Asserted the way the command calls it rather than the way it reads.
+    plan = plan_reference_snapshot(built.out_dir, DEFAULT_CIVIC_REPO_ID)
+    assert plan.repo_id == DEFAULT_CIVIC_REPO_ID
+    assert set(plan.files) == {"data/civic.parquet", "release.json", "LICENSE.txt"}
+
+
+def test_the_registrys_answers_are_not_in_the_published_snapshot(built):
+    """The CAID travels; what the registry says about it does not.
+
+    Deliberate rather than an oversight: the ClinGen Allele Registry states no terms, so resolving a
+    CAID at draft time is a read, while baking its responses into a published file would redistribute
+    bytes nobody has established we may pass on.
+    """
+    frame = _frame(built)
+    assert "allele_registry_id" in frame.columns
+    for absent in ("clingen_rsid", "clingen_coordinate", "registry_response"):
+        assert absent not in frame.columns
+    caid_rows = frame.filter(pl.col("identity_derivation") == "caid")
+    assert caid_rows["rsid"].is_null().all(), "a resolved rsID must not be persisted into the snapshot"

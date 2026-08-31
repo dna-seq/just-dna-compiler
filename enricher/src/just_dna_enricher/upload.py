@@ -98,6 +98,10 @@ DEFAULT_CONSTRAINT_REPO_ID = "just-dna-seq/gnomad_constraint"
 # that on, so an unestablished permission stays a refusal.
 DEFAULT_CLINPGX_REPO_ID = "just-dna-seq/clinpgx"
 DEFAULT_CPIC_REPO_ID = "just-dna-seq/cpic"
+#: CIViC's snapshot repo (RM152/RM153). CC0 content, so unlike PubMind's there is nothing to refuse
+#: and unlike PharmVar's nothing to withhold — the only reason none exists yet is that nobody has run
+#: the command.
+DEFAULT_CIVIC_REPO_ID = "just-dna-seq/civic"
 
 
 def _hf_api(repo_id: str, token: str | None = None):

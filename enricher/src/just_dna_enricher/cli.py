@@ -91,6 +91,7 @@ from just_dna_enricher.licensing import (
 )
 from just_dna_enricher.literature import LiteratureEnrichmentError, enrich_literature
 from just_dna_enricher.locations import (
+    resolve_civic_reference,
     CITATIONS_DIRNAME,
     RELEASE_FILENAME,
     resolve_clinpgx_reference,
@@ -1412,6 +1413,10 @@ _CACHES: list[tuple[str, object, object, str]] = [
     ("cpic", resolve_cpic_reference, ensure_cpic_snapshot, "alleles/diplotypes/recommendations (pgx, draft)"),
     ("pharmvar", resolve_pharmvar_reference, None, "star alleles (pgx) — build your own, never published"),
     ("pubmind", resolve_pubmind_reference, None, "literature-derived verdicts — build your own, never published"),
+    # No `ensure_*` for the opposite reason to the two above it: nothing forbids publishing a CIViC
+    # snapshot — CC0 grants it outright — and none exists only because nobody has run `civic publish`.
+    # The absent third column here records a gap, where PharmVar's and PubMind's record a refusal.
+    ("civic", resolve_civic_reference, None, "curated cancer interpretations, direction axis (draft-panel --source civic)"),
 ]
 
 
@@ -1758,6 +1763,222 @@ def civic_build_(
             f"rsID nor a GRCh38 accession; {result.unresolvable_with_caid} of those variants do "
             f"carry a ClinGen CAID, so they stay addressable by a later identity pass."
         )
+
+
+@civic_app.command("publish")
+def civic_publish_(
+    snapshot_dir: Path = typer.Argument(
+        ..., exists=True, file_okay=False, help="Built snapshot directory (data/civic.parquet + release.json).",
+    ),
+    repo_id: str | None = typer.Option(
+        None, "--repo", help="Target HF dataset (owner/name). Default: just-dna-seq/civic.",
+    ),
+    commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would be uploaded without contacting HuggingFace.",
+    ),
+) -> None:
+    """Upload a built CIViC snapshot to a HuggingFace dataset repo (publisher/dev).
+
+    **This one does not refuse, and the contrast with `pubmind publish` is the point.** CIViC's content
+    is CC0 1.0 — a public-domain dedication with no share-alike, no bar on sale and attribution
+    requested rather than required — so there is no permission to establish before passing the bytes
+    on. PubMind's command exists in order to say no because its terms are unstated; PharmVar's cache is
+    unpublishable because its terms forbid it. Nothing here is in either position.
+
+    What the snapshot carries is a *derivation* of CIViC's release, not a copy of it: the germline
+    direction rows, placed on GRCh38 through identifiers CIViC itself publishes. `release.json` records
+    which dated release it came from and the `accepted` status basis, so a consumer can tell what they
+    are looking at without re-deriving it.
+
+    **The ClinGen Allele Registry's answers are NOT in here**, and that is deliberate rather than an
+    oversight: the registry states no terms, and a lookup performed at draft time is a read, while
+    baking its responses into a published file would be redistribution of bytes nobody has established
+    we may pass on. The snapshot carries the CAID; resolving it stays the consumer's own fetch.
+    """
+    from just_dna_enricher.upload import (
+        DEFAULT_CIVIC_REPO_ID,
+        plan_reference_snapshot,
+        publish_reference_snapshot,
+    )
+
+    repo_id = repo_id or DEFAULT_CIVIC_REPO_ID
+    if dry_run:
+        plan = plan_reference_snapshot(snapshot_dir, repo_id)
+        typer.echo(f"Would upload to {plan.repo_id}:")
+        for f in plan.files:
+            typer.echo(f"  • {f}")
+        return
+    try:
+        plan = publish_reference_snapshot(snapshot_dir, repo_id, commit_message=commit_message)
+    except (FileNotFoundError, PermissionError, ImportError) as exc:
+        typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"Published {len(plan.files)} file(s) to {plan.repo_id}", fg=typer.colors.GREEN)
+
+
+
+@civic_app.command("reproduce")
+def civic_reproduce_(
+    release: str = typer.Option(
+        "01-Aug-2026", "--release",
+        help="Dated CIViC release to reproduce, e.g. 01-Aug-2026.",
+    ),
+    out: Path = typer.Option(
+        Path("civic-reproduce"), "--out", file_okay=False,
+        help="Working directory. The release files and two independent builds land here.",
+    ),
+    keep: bool = typer.Option(
+        False, "--keep", help="Leave the downloaded release files in place for inspection.",
+    ),
+    offline: bool = typer.Option(
+        False, "--offline",
+        help="Skip the reference cross-check. The build and determinism checks still run.",
+    ),
+) -> None:
+    """Build the CIViC snapshot from a dated release and check it, end to end.
+
+    **Five checks, and the third is the one worth the network.** The first two are about us; the third
+    is about whether the coordinates we produced are real.
+
+    1. **The release downloads and its bytes are recorded** — a sha256 per file, so a rerun that
+       disagrees is a finding about the source rather than a mystery.
+    2. **Two independent builds are byte-identical** (Principle 7). A parquet has no inherent row
+       order, so this is the check that the sort is doing its job.
+    3. **Every placed coordinate is cross-checked against the GRCh38 reference sequence.** This is the
+       external validation: the snapshot's positions come from RefSeq accessions inside ClinVar HGVS,
+       and this asks an unrelated service (refget/seqrepo) whether the reference base at each of those
+       positions is what we wrote. A wrong-build or off-by-one placement fails here and nowhere else.
+    4. **The drop registry closes** — every input row kept or counted, an equality over a walked set.
+    5. **The published file list is exactly what the publisher would upload.**
+
+    Exits non-zero if any check fails, so it is usable in CI.
+    """
+    from just_dna_format.resolution import ResolutionRow
+    from just_dna_enricher.civic_build import (
+        CIVIC_COLUMNS,
+        CIVIC_EVIDENCE_FILE,
+        CIVIC_PROFILE_FILE,
+        CIVIC_VARIANT_FILE,
+        build_snapshot,
+        civic_release_url,
+        download_civic_file,
+    )
+    from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME
+    from just_dna_enricher.sequences import SequenceProxy, verify_reference_alleles
+    from just_dna_enricher.upload import DEFAULT_CIVIC_REPO_ID, plan_reference_snapshot
+
+    failures: list[str] = []
+
+    def check(ok: bool, label: str, detail: str = "") -> None:
+        typer.secho(
+            f"  {'PASS' if ok else 'FAIL'}  {label}{(' — ' + detail) if detail else ''}",
+            fg=typer.colors.GREEN if ok else typer.colors.RED,
+        )
+        if not ok:
+            failures.append(label)
+
+    out.mkdir(parents=True, exist_ok=True)
+    typer.echo(f"CIViC release {release}")
+
+    # 1 ── the release, with its bytes recorded
+    typer.echo("\n1. Downloading the dated release")
+    paths, shas = [], {}
+    for filename in (CIVIC_EVIDENCE_FILE, CIVIC_VARIANT_FILE, CIVIC_PROFILE_FILE):
+        got = download_civic_file(out / filename, civic_release_url(release, filename))
+        paths.append(got.path)
+        shas[filename] = got.sha256
+        typer.echo(f"     {filename:34s} {got.sha256[:16]}…  {got.path.stat().st_size:>9,} bytes")
+    check(all(shas.values()), "every input file hashed")
+
+    # 2 ── two builds, byte for byte
+    typer.echo("\n2. Building twice")
+    first = build_snapshot(*paths, out / "build-a", release=release,
+                           evidence_sha256=shas[CIVIC_EVIDENCE_FILE],
+                           variant_sha256=shas[CIVIC_VARIANT_FILE],
+                           profile_sha256=shas[CIVIC_PROFILE_FILE])
+    second = build_snapshot(*paths, out / "build-b", release=release)
+    typer.echo(f"     {first.record_count} rows on {first.variants} variants")
+    check(
+        first.parquet_file.read_bytes() == second.parquet_file.read_bytes(),
+        "a rebuild is byte-identical (P7)",
+    )
+
+    # 4 ── the accounting (run before the slow check, so a broken build fails fast)
+    total_dropped = sum(first.dropped.values())
+    check(
+        first.record_count + total_dropped == first.input_rows,
+        "the drop registry accounts for every input row",
+        f"{first.input_rows} = {first.record_count} kept + {total_dropped} dropped",
+    )
+    for reason, count in first.dropped.items():
+        typer.echo(f"     dropped {reason:24s} {count:>6,}")
+
+    # 5 ── what would be published
+    plan = plan_reference_snapshot(first.out_dir, DEFAULT_CIVIC_REPO_ID)
+    expected = {f"data/{first.parquet_file.name}", RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME}
+    check(set(plan.files) == expected, "the publish plan is data + release.json + LICENSE",
+          ", ".join(sorted(plan.files)))
+
+    frame = pl.read_parquet(first.parquet_file) if (pl := _polars()) else None
+    if frame is not None:
+        check(list(frame.columns) == list(CIVIC_COLUMNS), "the emitted column order is the fixed one")
+
+    # 3 ── the external check, and the reason this command needs a network
+    typer.echo("\n3. Cross-checking placed coordinates against the GRCh38 reference")
+    if offline or frame is None:
+        typer.secho("     SKIPPED (--offline) — a check that did not run is not a check that passed",
+                    fg=typer.colors.YELLOW)
+    else:
+        placed = frame.filter(pl.col("chrom").is_not_null() & pl.col("ref").is_not_null())
+        rows = [
+            ResolutionRow(
+                variant_key=f"{r['chrom']}:{r['start']}:{r['ref']}",
+                status="resolved", chrom=r["chrom"], start=r["start"], ref=r["ref"],
+            )
+            for r in placed.iter_rows(named=True)
+        ]
+        result = verify_reference_alleles(rows, sequences=SequenceProxy())
+        if result.not_checked:
+            typer.secho(
+                f"     SKIPPED — {result.not_checked}. A check that could not run is not a check "
+                f"that passed.", fg=typer.colors.YELLOW,
+            )
+        else:
+            # `subjects` rather than `len(rows)`: a row the service answered nothing about is outside
+            # the denominator rather than inside it with a clean bill, and reporting the wider number
+            # would claim coverage the check did not have.
+            check(
+                not result.mismatches,
+                "every placed ref matches the GRCh38 reference sequence",
+                f"{result.subjects} of {len(rows)} coordinate(s) read, "
+                f"{len(result.mismatches)} mismatch(es)",
+            )
+            for m in result.mismatches[:5]:
+                typer.secho(f"     {m}", fg=typer.colors.RED)
+
+    if not keep:
+        for path in paths:
+            path.unlink(missing_ok=True)
+
+    typer.echo("")
+    if failures:
+        typer.secho(f"REPRODUCTION FAILED: {len(failures)} check(s) — {'; '.join(failures)}",
+                    fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    typer.secho(f"Reproduced {release}: {first.record_count} rows, all checks passed",
+                fg=typer.colors.GREEN)
+
+
+def _polars():
+    """polars if the [dev] extra is present, else `None` — the builder needs it, a reader does not."""
+    try:
+        import polars
+
+        return polars
+    except ImportError:  # pragma: no cover - only where [dev] is absent
+        return None
+
 
 
 pubmind_app = typer.Typer(
