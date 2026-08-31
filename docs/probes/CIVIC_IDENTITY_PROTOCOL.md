@@ -4,10 +4,12 @@ Evidence document. Written 2026-09-01 from two probes run against the CIViC `01-
 bulk release, over the residue a shipped builder drops as `unresolvable_identity`:
 
 * **set A** — 22 VHL small indels and frameshifts named only by a `c.` fragment.
-  20 resolved, 2 withheld. 198 verbatim queries in `setA_results.json`.
+  20 resolved, 2 withheld, over 198 recorded queries.
 * **set B** — 21 records across 11 genes: protein substitutions, splice and cDNA variants,
   six class-labels, two combination genotypes. 15 resolved, 6 `no_identity_exists`,
-  0 `not_found`. 115 verbatim queries in `setB_results.json`.
+  0 `not_found`, over 115 recorded queries.
+
+Those query logs were session-local and are gone; see §14. Nothing in this procedure reads them.
 
 Every rule below exists because a record forced it, and the record is named. This states
 what was measured. It does not propose anything.
