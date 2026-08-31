@@ -448,6 +448,68 @@ so its non-null count of 362 overstates real coverage by 153. A consumer reading
 the sentinels would treat "the curator checked and found none" as an id. `openCravatAnnotations` is
 untyped `JSON`.
 
+## The bulk releases, which are a different source from the API
+
+CIViC publishes nightly **and dated** TSV releases — `civicdb.org/downloads/nightly/nightly-*.tsv` and
+`civicdb.org/downloads/01-Aug-2026/01-Aug-2026-*.tsv` (probed: `01-Aug-2026` and `01-Jul-2026` both
+200). A dated release is what a snapshot can pin, so it is the right build input; the API has no
+dated release at all.
+
+**The bulk file is `accepted`-only.** `ClinicalEvidenceSummaries` is 4,903 rows and every one has
+`evidence_status = accepted` — against the API default's 11,518 `NON_REJECTED`. Two published surfaces
+of one source, differing 2.35×, and neither declares its basis. That is the single most important
+methodological fact in this survey: **a number from the TSV and a number from the API are not
+comparable.**
+
+On the bulk (accepted) basis, the direction corpus is:
+
+| | Rows |
+|---|---|
+| Germline evidence rows | 813 |
+| …of which `Predisposing` | 675 |
+| **Direction-axis (`Predisposition` ∪ `Protectiveness`)** | **533** |
+| `Predisposition` / `Supports` | 530 |
+| `Predisposition` / `Does Not Support` | 2 |
+| `Protectiveness` / `Supports` | 1 |
+
+533 matches the API's `ACCEPTED` count for the same slice exactly, which cross-validates both probes.
+
+**The join is clean.** `ClinicalEvidenceSummaries.molecular_profile_id` →
+`VariantSummaries.single_variant_molecular_profile_id` joins **533 of 533** direction rows to **290
+distinct variants**. Multi-variant profiles have no `single_variant_molecular_profile_id`, so they
+drop out by construction — which is correct, since a combination profile is not a single-variant
+identity.
+
+### Identity in the bulk file is thinner than in the API, and this is what a builder gets
+
+`VariantSummaries` carries `chromosome, start, stop, reference_bases, variant_bases,
+representative_transcript, ensembl_version, reference_build, hgvs_descriptions, allele_registry_id,
+clinvar_ids, variant_aliases`. It does **not** carry the API's `myVariantInfo` block, which is where
+`dbsnpRsid` and `clinvarHgvsGenomic` live. So over the 290 joined variants:
+
+| Route | Variants |
+|---|---|
+| GRCh38 `NC_` accession in `hgvs_descriptions` | **40** |
+| GRCh37-only accession | 181 |
+| rsID in `variant_aliases` | **126** |
+| ClinGen `allele_registry_id` (excluding the `unregistered` sentinel) | 235 |
+| **Reachable — a GRCh38 accession *or* an rsID** | **159** |
+| neither | 131 |
+
+**376 of the 533 evidence rows are reachable**; 157 are not.
+
+**Scoring the accession requires the per-chromosome RefSeq map, not a version number.** `NC_000001.11`
+is GRCh38 but `NC_000002.11` is GRCh37 — the version that means "GRCh38" differs per chromosome. A
+first pass here tested `".11:g." or ".12:g."` and reported 208 reachable where the real figure is 40.
+The map is a domain constant and belongs in the builder as one.
+
+`reference_build` over the whole variant file: `GRCh37` 1,283 · empty 715 · `GRCh38` **1**.
+
+**Consequence for a snapshot.** Build from the **dated TSV pair** — that is what makes a rebuild
+byte-reproducible, and mixing in live API enrichment would forfeit exactly that. Carry
+`allele_registry_id` as a snapshot column so the 131 unreachable variants stay addressable, and leave
+CAID→GRCh38 resolution to a later pass, where RM48's *report-never-fill* rule governs it.
+
 ## What this survey concludes, and what it deliberately does not
 
 **It concludes nothing.** `docs/probes/` is evidence. The readings the measurements support are
@@ -460,8 +522,10 @@ What is worth carrying forward in one place:
   half is 5 usable calls with **zero** benign-class — the concordance route is dead on arithmetic.
 - Its germline mass sits on the **`direction`** axis, 1,458 rows, every one carrying a stated direction.
 - Genuine `risk`-vs-`protective` opposition is **0**, at every scope probed, under every status basis.
-- The identity obstacle is real but **much smaller than the coordinates suggest**: 318 of 376
-  coordinate-bearing variants carry a build-independent or GRCh38-explicit identifier, and only **58**
-  would need anything lifted.
+- The identity obstacle is real and **its size depends on which surface you read**. Over the API's 620
+  variants, 318 of the 376 coordinate-bearing ones carry a build-independent or GRCh38-explicit
+  identifier and only 58 would need anything lifted. Over the **dated bulk file a snapshot must build
+  from**, it is 159 of 290 — because the API's rsID and GRCh38-HGVS columns are MyVariant.info
+  enrichment that the bulk file does not carry.
 - The **status default is `NON_REJECTED`** and most of CIViC is `SUBMITTED`. State the basis or the
   numbers mean nothing.
