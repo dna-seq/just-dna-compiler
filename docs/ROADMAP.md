@@ -178,12 +178,11 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Four, and three of them are not decisions** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a decision* through the three that are, which is why the paragraph under it says to count off the sections rather than off this sentence). The one whose shape is settled:
+**Three, and two of them are not decisions** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a decision* through the three that are, which is why the paragraph under it says to count off the sections rather than off this sentence). The one whose shape is settled:
 [RM117](#rm117--an-outrank-record-exists-and-no-check-reads-it-and-what-a-check-should-do-is-undecided)
-(the observability half only) — a minor, release undecided, with nothing left in it but the typing. **The other three are decisions and say so**: RM136 from the RM124 audit,
-RM138 from the RM131 review, and RM146 from a 2026-08-31 consumer report, each carrying its
-candidate repairs and why each one fails. RM137, its neighbour from the same audit, shipped on
-2026-08-31. RM110, RM103's manifest half and RM108 were three more
+(the observability half only) — a minor, release undecided, with nothing left in it but the typing. **The other two are decisions and say so**: RM138 from the RM131 review and
+RM146 from a 2026-08-31 consumer report, each carrying its candidate repairs and why each one fails.
+Both items the RM124 wave-1 audit filed — RM136 and RM137 — shipped on 2026-08-31. RM110, RM103's manifest half and RM108 were three more
 settled ones and all three shipped on 2026-08-31.
 **Count them off the sections, not off the sentence**: this line said *three* for as long as it took
 to notice that a narrowed item is still an item, and *not one of them is a decision* for as long as it
@@ -331,31 +330,6 @@ it is closed rather than parked:
 **Do not answer this by parsing the prose.** The field is freeform because the judgement is not
 formalizable — a grading pyramid exists, but whether a retraction outranks an archive call is a
 natural-language question. Presence is the bit a check may read.
-
-## RM136 — `enrich` re-reads the derived file, so an overlay correction is invisible to the checks
-
-**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
-**Found by** the wave-1 audit of RM124, 2026-08-28
-
-The compiler applies `overrides.csv` before any check reads a row, which is the whole point: a check
-must see what the module asserts. The enricher does not. Its own passes re-read the raw derived file,
-so an author who corrects a `resolution.csv` cell through the overlay — the mechanism RM124 built for
-exactly this — will see `enrich` report the same finding on every subsequent run, forever, with no way
-to clear it and no indication that their correction was recorded and honoured one tier over.
-
-`INTEGRATION_0_6.md` states the asymmetry for *consumers* ("read the derived parquets, not the derived
-CSVs"). It is not stated for the **author**, who meets it first and has no parquet to read at the point
-they are curating.
-
-**What is not the repair.** Teaching every enricher pass to apply the overlay puts a second
-implementation of `apply_overrides` in the tier that fetches, and the two would drift on exactly the
-normalization seam that already produced one silent P7 break in this feature's first week. Nor should
-the enricher *write* through the overlay: an overlay row is the author's answer to a difference, never
-the tier's (RM83's standing refusal).
-
-**The shape worth designing.** Probably the enricher reading the overlay read-only and suppressing a
-finding it has already been answered for — which needs a decision about what "answered" means when the
-overlay corrects a different column than the one the check is about, and that decision is the item.
 
 ## RM138 — `carried` duplicates the message text, so the channel RM131 shrank nearly doubled
 

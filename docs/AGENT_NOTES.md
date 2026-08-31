@@ -2050,6 +2050,20 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   cosmetic: float64 goes subnormal below ~1e-308 and is flatly `0.0` below ~5e-324, so a single float
   column would render a panel's strongest association as its weakest.
 
+- `@overlay-read-at-inputs-never-at-baselines` — **The enricher may READ the author's overlay and may
+  never write through it, and the seam is input-read versus merge-baseline (RM136).** A pass that reads
+  a derived table as an *input to something else* must see what the module asserts, or an author's
+  correction is honoured by the compiler and re-reported by the enricher forever. A pass that reads its
+  **own output file** to merge against it writes that file back, so handing it post-overlay rows bakes
+  the correction into the derived table — the author's answer restated as the tier's, which is RM83's
+  refusal. Read the file you write, and write what you read. **Never a second `apply_overrides`**:
+  `compiler.load_overlay` is public for exactly this, and a copy would drift on the normalization seam
+  that already produced one silent P7 break. **Answered is per FIELD** — the overlay must correct the
+  cell the finding is about, since per-row lets one correction silence findings the author never looked
+  at — and **answered is not agreed**: the pair stays in the denominator with a count beside it, because
+  dropping it reports a cleaner module than there is. Wire a check to the answered set one at a time;
+  *which cells does this comparison read* is a per-check fact, and guessing it silences a real finding.
+
 - `@lap-stable-means-a-property-of-the-module` — **"Report it over the overlay rather than over what
   it reached" has exactly one non-tautological reading, and RM137 is the worked example.** An overlay
   `update` on a row the compiler drops matched on lap 1 and warned on lap 2, so a module disagreed with

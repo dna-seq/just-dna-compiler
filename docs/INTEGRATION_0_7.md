@@ -239,6 +239,7 @@ reports its own no-op**, so a `suppress` with a typo'd subject does nothing and 
 | `layout.atomic_write_text` / `layout.atomic_writer` | format | write a sidecar so a reader sees the whole file or the previous one. Nine writers were routed through these (S66) — if you write a sidecar yourself, use them. |
 | `normalize.PRESENTATION_AUTHORITY_KEYS` / `SHORT_DESCRIPTION_MAX_CHARS` / `PRESENTATION_AUTHORITY_REASONS` | format | the registry-held card subtitle (RM133), and its ~120-character ceiling. Still inject-only: `strip_authority_keys` takes the set *you* pass. |
 | `just_dna_compiler.compiler.load_spec` | compiler | public since S74, ending a private-symbol reach the enricher itself was making. |
+| `just_dna_compiler.compiler.load_overlay` | compiler | public since RM136, for the same reason: the enricher needs the author's overlay to stop re-reporting a finding they have already answered, and a second reader of `overrides.csv` is the drift the overlay's design refuses. |
 | `just_dna_compiler.sweep` | compiler | `read_outputs`, `build_outputs`, `compare_outputs`, `gate_findings`, `measurement_json` — the release measurement behind `sweep`. **`build_outputs` returns `(outputs, failures)`**; a release script calling it directly must unpack. |
 
 **Three new closed vocabularies**, all on the concordance record:

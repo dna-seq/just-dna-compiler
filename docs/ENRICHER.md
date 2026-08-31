@@ -443,6 +443,43 @@ Org limits apply **per member**, not shared. Source of truth:
   a composed `stop_after_attempt(3) | stop_after_delay(60)` means *both*, and raising one term would
   silently change a policy whose author meant the conjunction. None of the nine is composed today.
 
+## The author's overlay, read but never written (RM136, 0.7)
+
+The compiler applies `overrides.csv` before any check reads a row — a check must report on what the
+module **asserts**. Until 0.7 this tier did not, so an author who corrected a `resolution.csv` cell
+through the overlay went on being told the same finding on every run, with no way to clear it and
+nothing saying the correction had been recorded and honoured one tier over.
+
+Three rules, and each has a refused alternative worth knowing:
+
+* **Read-only.** The enricher never *writes* through the overlay. An overlay row is the author's answer
+  to a difference, never this tier's (RM83).
+* **Input reads only.** `licensing.overlaid_input_rows` is called where a pass reads a derived table as
+  an **input to something else** — `frequencies`, `assertions`, and `identifiers`' gene-locus check all
+  read `resolution.csv` that way. **Every merge baseline stays raw**: a pass that reads its own output
+  file to merge against it writes that file back, and post-overlay rows would bake the correction into
+  the derived table. Read the file you write, and write what you read.
+* **Per field.** `licensing.overlay_answers(spec_dir, table)` returns the `(subject, field)` pairs an
+  `update` names. A finding is answered when the overlay corrects the very cell the finding is about,
+  so a coordinate correction silences the coordinate check and leaves an unrelated `clin_sig` finding
+  standing. Per *row* was cheaper and was refused — it would silence findings the author never looked
+  at, which is the silent-suppress hole the overlay's own design calls its worst case.
+
+**There is no second implementation of the overlay**, deliberately: `compiler.load_overlay` is public
+for this, and `overlaid_input_rows` calls the same `apply_overrides` the compiler calls. Two copies
+would drift on the normalization seam that produced a silent P7 break in this feature's first week, and
+a test compares the helper's output against `apply_overrides` directly so a future copy would show.
+
+**Answered is not agreed.** The rsid↔coordinate check is the one wired to this today, and an answered
+pair **leaves `disagreements` while staying inside `subjects`**, counted by `PairCheck.answered` and
+reported as one INFO line naming what happened. The comparison ran and found a difference; removing it
+from the denominator would publish a cleaner module than there is. Only `update` counts — an `insert`
+answers no prior finding, and a `suppress` is already reported in its own right by RM131.
+
+Wiring a further check to the answered set is deliberate rather than automatic, because *which cells
+does this comparison read* is a per-check fact (`resolver._COORDINATE_FIELDS` is the first one written
+down) and guessing it wrong silences a finding nobody answered.
+
 ## `enrich()` — the resolver chain
 
 ```python

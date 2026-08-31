@@ -49,6 +49,7 @@ from tenacity import (
 )
 
 from just_dna_enricher.eutils import EutilsClient, EutilsError, is_missing
+from just_dna_enricher.licensing import overlaid_input_rows
 from just_dna_enricher.net import PacingGate, attempt_floor, dedupe
 from just_dna_enricher.verification import examples, ran, skipped
 
@@ -569,6 +570,14 @@ def _variant_chromosomes(
     rows, errors, _ = load_csv_rows(table, ResolutionRow, table.name)
     if errors:
         return known, f"resolution.csv could not be read ({errors[0]})"
+    # The overlay, so this check reports on what the module asserts (RM136). Read-only, like the
+    # load above, and a broken overlay is a *reason the comparison could not run* rather than a
+    # failure — the same shape every other `gene_loci_not_checked` reason has, and it must stay that
+    # shape: dying on the module's layout would say nothing about its rows.
+    try:
+        rows = overlaid_input_rows(spec_dir, "resolution.csv", rows, error=ValueError)
+    except ValueError as exc:
+        return known, f"overrides.csv could not be applied ({exc})"
     for row in rows:
         if row.chrom and row.variant_key not in known:
             known[row.variant_key] = row.chrom

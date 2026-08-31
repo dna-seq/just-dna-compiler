@@ -42,7 +42,12 @@ from pydantic import ValidationError
 
 from just_dna_enricher.clinvar import lookup_clin_sig
 from just_dna_enricher.download import ensure_clinvar_snapshot
-from just_dna_enricher.licensing import CLINVAR_TERMS, record_source_terms, sidecar_path
+from just_dna_enricher.licensing import (
+    CLINVAR_TERMS,
+    overlaid_input_rows,
+    record_source_terms,
+    sidecar_path,
+)
 from just_dna_enricher.locations import read_release, resolve_clinvar_reference
 
 logger = logging.getLogger(__name__)
@@ -186,6 +191,13 @@ def enrich_clinical_assertions(
     resolution_rows, errors, _ = load_csv_rows(resolution_path, ResolutionRow, resolution_path.name)
     if errors:
         raise ClinicalAssertionError(f"{resolution_path.name} is invalid: {errors[0]}")
+    # **The overlay, before anything reads a coordinate** (RM136). An INPUT read: this pass consumes
+    # `resolution.csv` and writes a different file, so it must see what the module asserts rather than
+    # what the last enrichment wrote. The merge baseline below stays RAW — feeding post-overlay rows
+    # to a pass that writes that same file would bake the correction in (RM83).
+    resolution_rows = overlaid_input_rows(
+        spec_dir, "resolution.csv", resolution_rows, error=ClinicalAssertionError
+    )
 
     existing_rows: list[ClinicalAssertionRow] = []
     if assertions_path.exists():

@@ -44,6 +44,25 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
+- **RM136 — the enricher reads the author's overlay, so a correction stops coming back forever.**
+  *(`just-dna-compiler` + `just-dna-enricher`; **additive** — one loader made public, one new counter
+  on an internal result, no manifest field and no signature moves.)* The compiler applies
+  `overrides.csv` before any check reads a row; the enricher re-read the raw derived file, so an
+  author who corrected a `resolution.csv` cell through the overlay kept being told the same finding on
+  every run, with nothing saying the correction had been recorded and honoured one tier over.
+
+  **Read-only, at input reads, per field.** The enricher never writes through the overlay. Passes that
+  read `resolution.csv` as an *input* (`frequencies`, `assertions`, `identifiers`' gene-locus check)
+  now see the post-overlay rows; every **merge baseline stays raw**, because a pass that reads its own
+  output file writes it back and post-overlay rows would bake the correction into the derived table. A
+  finding is answered only when the overlay updates the very cell it is about.
+
+  **Answered is not agreed**: the pair stays in the denominator and `PairCheck.answered` counts it,
+  with one INFO line saying the correction is recorded. Dropping it would report a cleaner module than
+  there is. New public API: `just_dna_compiler.compiler.load_overlay`, plus
+  `licensing.overlaid_input_rows` / `licensing.overlay_answers` in the enricher — there is deliberately
+  no second implementation of `apply_overrides`.
+
 - **RM137 — the unmatched-overlay warning is now a property of the module, not of the lap.**
   *(`just-dna-format` + `just-dna-compiler`; **one warning code added, one reworded** — no field, no
   parquet, no signature moves.)* An overlay `update` naming a row the compiler drops matched on lap 1

@@ -30,7 +30,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from just_dna_compiler.compiler import load_csv_rows
+from just_dna_compiler.compiler import load_csv_rows, load_overlay
 from just_dna_format.layout import (
     SOURCES_CSV,
     SidecarCollision,
@@ -38,6 +38,7 @@ from just_dna_format.layout import (
     sidecar_write_path,
 )
 from just_dna_format.normalize import now_utc_iso
+from just_dna_format.overrides import VALID_OVERRIDE_TABLES, apply_overrides
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import VALID_DECLARED_USE, check_vocab
 
@@ -665,3 +666,67 @@ def read_sources_file(spec_dir: Path) -> list[SourceRow]:
         logger.warning("%s is invalid (%s); treating it as unrecorded.", path.name, errors[0])
         return []
     return rows
+
+
+def overlaid_input_rows(
+    spec_dir: Path, table: str, rows: list, *, error: type[Exception]
+) -> list:
+    """A derived table as the module **asserts** it, for a pass reading it as an INPUT (RM136).
+
+    The compiler applies `overrides.csv` before any check reads a row, which is the whole point: a
+    check must report on what the module asserts. The enricher did not — its passes re-read the raw
+    derived file — so an author who corrected a `resolution.csv` cell through the overlay went on being
+    told the same finding by the tier that writes it, on every run, forever, with nothing saying their
+    correction had been recorded and honoured one tier over.
+
+    **This is not a second implementation of the overlay, and the distinction is the entry's own.**
+    RM136 refuses "teaching every enricher pass to apply the overlay" on the grounds that a second
+    `apply_overrides` would drift on the normalization seam. This calls *the* `apply_overrides`, the
+    one the compiler calls, through the one loader — so there is nothing to drift from.
+
+    **INPUT reads only, and merge baselines must never come through here.** A pass that reads its own
+    output file to merge against it writes that file back; feeding it post-overlay rows would bake the
+    correction into the derived table, and the enricher would be writing *through* the overlay — the
+    author's answer restated as the tier's, which is RM83's standing refusal. The rule is the one the
+    sidecar rules already state from the other side: read the file you write, and write what you read.
+
+    Errors from the overlay are raised as the caller's own exception rather than swallowed: an overlay
+    that does not apply is a broken module, and a pass that quietly used the raw rows instead would be
+    the silent-success shape this workspace keeps closing.
+    """
+    overrides, overlay_errors, _ = load_overlay(Path(spec_dir))
+    if overlay_errors:
+        raise error(f"overrides.csv is invalid: {overlay_errors[0]}")
+    if not overrides or table not in VALID_OVERRIDE_TABLES:
+        return rows
+    applied, apply_errors, _ = apply_overrides(table, rows, overrides)
+    if apply_errors:
+        raise error(f"overrides.csv could not be applied to {table}: {apply_errors[0]}")
+    return applied
+
+
+def overlay_answers(spec_dir: Path, table: str) -> set[tuple[str, str]]:
+    """The `(subject, field)` pairs this module's overlay has already answered for `table` (RM136).
+
+    **Per field, and that is the decision.** A finding is answered when the overlay `update`s the very
+    cell the finding is about — so correcting a coordinate silences the coordinate check and leaves an
+    unrelated `clin_sig` finding standing. Per *row* was the cheaper rule and was refused: an author
+    correcting one cell would silence findings they never looked at, which is the silent-suppress hole
+    the overlay's own design calls its worst case.
+
+    Only `update` counts. An `insert` supplies a row the source had no answer for, so there was no
+    finding to answer; a `suppress` removes the row, and RM131 already reports that removal in its own
+    right. Returns an empty set when the module has no overlay, which is every module today — a check
+    that consults this must therefore behave exactly as before on one.
+
+    Read-only. Nothing here writes, and a malformed overlay is the caller's problem to raise on
+    through `overlaid_input_rows`; this answers `set()` rather than guessing.
+    """
+    overrides, overlay_errors, _ = load_overlay(Path(spec_dir))
+    if overlay_errors:
+        return set()
+    return {
+        (row.subject, row.field or "")
+        for row in overrides
+        if row.table == table and row.operation == "update" and row.field
+    }

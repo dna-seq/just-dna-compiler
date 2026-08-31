@@ -44,6 +44,61 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM136 — the enricher reads the author's overlay, so a correction stops coming back forever
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-compiler` — one loader made public —
+plus `just-dna-enricher`). **Severity** medium · **Owner** enricher · **Found by** the wave-1 audit of
+RM124, 2026-08-28
+
+### The asymmetry
+
+The compiler applies `overrides.csv` before any check reads a row, which is the whole point: a check
+must report on what the module asserts. The enricher did not — its passes re-read the raw derived file
+— so an author who corrected a `resolution.csv` cell through the overlay went on being told the same
+finding on every subsequent run, forever, with no way to clear it and no indication that the
+correction had been recorded and honoured one tier over. `INTEGRATION_0_6` states the asymmetry for
+*consumers*; it was never stated for the **author**, who meets it first and has no parquet to read at
+the point they are curating.
+
+### The decision, and the line it draws
+
+**Read-only, at INPUT reads, per field.** Three separable choices, and each has a refused alternative:
+
+* **Read-only.** The enricher never *writes* through the overlay: an overlay row is the author's
+  answer to a difference, never the tier's (RM83's standing refusal).
+* **Input reads only, never merge baselines.** A pass that reads its own output file to merge against
+  it writes that file back, so feeding it post-overlay rows would bake the correction into the derived
+  table. The three input sites — `frequencies`, `assertions`, and `identifiers`' gene-locus check —
+  read `resolution.csv` as an input to something else and take the overlay; every merge baseline stays
+  raw. Same rule the sidecar gotchas already state from the other side: read the file you write.
+* **Per field, not per row.** A finding is answered when the overlay `update`s the very cell the
+  finding is about, so correcting a coordinate silences the coordinate check and leaves an unrelated
+  `clin_sig` finding standing. Per row was cheaper and was refused: an author correcting one cell would
+  silence findings they never looked at, which is the silent-suppress hole the overlay's design calls
+  its worst case.
+
+**No second implementation of `apply_overrides`** — the entry's central refusal, on the grounds that
+two copies would drift on exactly the normalization seam that produced a silent P7 break in this
+feature's first week. `compiler.load_overlay` became public (the S74 shape: a private symbol the
+enricher would otherwise reach into) and `licensing.overlaid_input_rows` calls *the* `apply_overrides`.
+A test compares the helper's output against `apply_overrides` directly, so a future copy would be seen.
+
+### Answered is not agreed, and that is what keeps it honest
+
+An answered pair **leaves `disagreements` and stays in `subjects`**, with `PairCheck.answered`
+counting it and one INFO line saying so. The comparison ran and found a difference; dropping it from
+the denominator would report a cleaner module than there is, which is the silent-success shape this
+codebase keeps closing. What changes is only that the difference reads as *settled by the author*
+rather than as work owed — and the author finally gets the acknowledgement that was missing.
+
+### What it does not reach, stated rather than left to be discovered
+
+One check consults the answered set today: the rsid↔coordinate comparison, which is the finding an
+`overrides.csv` row on `resolution.csv` can actually answer. The mechanism is general — `overlay_answers`
+takes a table name — but a check is wired to it deliberately rather than in bulk, because "which cells
+does this comparison read" is a per-check fact and guessing it wrong silences a finding nobody
+answered. `_COORDINATE_FIELDS` is that fact written down for the first one.
+
 ## RM137 — the unmatched-overlay warning is now a property of the module, not of the lap
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format` + `just-dna-compiler`).

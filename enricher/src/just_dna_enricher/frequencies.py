@@ -36,7 +36,11 @@ from just_dna_enricher.gnomad import (
     GnomadError,
     covers_locus,
 )
-from just_dna_enricher.licensing import record_source_terms, sidecar_path
+from just_dna_enricher.licensing import (
+    overlaid_input_rows,
+    record_source_terms,
+    sidecar_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -180,6 +184,14 @@ def enrich_frequencies(
     resolution_rows, errors, _ = load_csv_rows(resolution_path, ResolutionRow, resolution_path.name)
     if errors:
         raise FrequencyEnrichmentError(f"resolution.csv is invalid: {errors[0]}")
+    # **The overlay, before anything reads a coordinate** (RM136). This is an INPUT read: the pass
+    # consumes `resolution.csv` and writes a different file, so it must see what the module *asserts*
+    # — the same rows the compiler's checks see — rather than what the last enrichment happened to
+    # write. Without this an author's correction was honoured one tier over and invisible here, so the
+    # same finding came back on every run with no way to clear it.
+    resolution_rows = overlaid_input_rows(
+        spec_dir, "resolution.csv", resolution_rows, error=FrequencyEnrichmentError
+    )
 
     existing: dict[tuple, FrequencyRow] = {}
     if frequencies_path.exists():

@@ -3691,8 +3691,13 @@ def _check_misspelled_tables(spec_dir: Path) -> list[str]:
     return warnings
 
 
-def _load_overlay(spec_dir: Path) -> tuple[list[OverrideRow], list[str], list[str]]:
+def load_overlay(spec_dir: Path) -> tuple[list[OverrideRow], list[str], list[str]]:
     """Read `overrides.csv` and answer with `(rows, errors, warnings)` (RM124).
+
+    **Public since RM136**, because the enricher needs it: an author who corrects a derived cell
+    through the overlay must not go on being told the same finding by the tier that writes the file.
+    Private, it would have been reached into the way `load_spec` was before S74, or — worse —
+    reimplemented in the enricher, which is the drift the overlay's own design refuses.
 
     One loader for both public entry points, because both have to read it and a second copy is where
     `validate` and `compile` learn to disagree — the parity rule this module keeps re-learning
@@ -3946,7 +3951,7 @@ def _validate_spec(
     # below asks what the module *asserts*, and since 0.7 that is the derived table plus the author's
     # recorded corrections — so a check reading the raw sidecar would report a finding the artifact
     # does not carry, and `compile` would then disagree with its own pre-flight.
-    overrides, overlay_errors, overlay_warnings = _load_overlay(spec_dir)
+    overrides, overlay_errors, overlay_warnings = load_overlay(spec_dir)
     all_errors.extend(overlay_errors)
     all_warnings.extend(overlay_warnings)
     overlaid: set[str] = set()
@@ -4814,7 +4819,7 @@ def compile_module(
     # The authored overlay (RM124), loaded before the first derived table it lies on. `validate_spec`
     # above already reported every finding it has — this pass re-loads its own copy, the way it
     # re-loads `variants.csv`, because the rows themselves are needed to build the artifact.
-    overrides, overlay_errors, overlay_warnings = _load_overlay(spec_dir)
+    overrides, overlay_errors, overlay_warnings = load_overlay(spec_dir)
     if overlay_errors:
         return CompilationResult(success=False, errors=overlay_errors, warnings=all_warnings)
     # De-duplicated on the message like every other check that runs on both sides: the pre-flight

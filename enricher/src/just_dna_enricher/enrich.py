@@ -10,6 +10,7 @@ fails unless every in-scope variant resolves to a position (the network analogue
 
 import csv
 import logging
+from collections.abc import Set as AbstractSet
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -64,6 +65,7 @@ from just_dna_enricher.grch37 import (
 )
 from just_dna_enricher.identifiers import IdentifierUnavailable, RsidStatus, check_rsids
 from just_dna_enricher.licensing import (
+    overlay_answers,
     read_sources_file,
     record_source_terms,
     resolution_authority,
@@ -249,6 +251,7 @@ def _check_authored_pairs(
     reference: Path | None,
     offline: bool,
     unusable: bool = False,
+    answered: AbstractSet[tuple[str, str]] = frozenset(),
 ) -> PairCheck:
     """The rsid↔coordinate pass, with the reason it did not run when it did not (RM45).
 
@@ -280,7 +283,7 @@ def _check_authored_pairs(
     if reference is None or unusable:
         no_snapshot = "offline" if offline and not unusable else "no_reference"
         return PairCheck(not_checked=no_snapshot)
-    check = check_rsid_coordinates(pairs, rsid_loci)
+    check = check_rsid_coordinates(pairs, rsid_loci, answered)
     if check.subjects == 0:
         return PairCheck(
             unknown=check.unknown, undecided=check.undecided, not_checked="no_reference"
@@ -1489,6 +1492,10 @@ def _run_enrichment(
     pair_check = _check_authored_pairs(
         verify_pairs, rsid_to_loci, genome_build=genome_build, reference=reference,
         offline=offline, unusable=snapshot_unusable,
+        # The author's recorded answers, read-only (RM136). The compiler applies the overlay before
+        # any check reads a row; this is the enricher doing the same for the one finding an overlay
+        # row can actually answer, so a correction stops coming back on every run.
+        answered=overlay_answers(spec_dir, "resolution.csv"),
     )
     if pair_check.disagreements:
         # One line for the run, naming them, on the `unreachable_rsids` model: a line per row would be
@@ -1499,6 +1506,17 @@ def _run_enrichment(
             "wrong is not knowable here.",
             len(pair_check.disagreements), pair_check.subjects,
             " ".join(pair_check.disagreements),
+        )
+    if pair_check.answered:
+        # Counted, never silent: the module and the source still differ here, and a run that said
+        # nothing at all would report a cleaner module than there is. What the author gets is the
+        # acknowledgement that was missing — the correction is recorded and honoured, not ignored.
+        logger.info(
+            "rsid↔coordinate: %d authored pair(s) disagree with the snapshot and are already answered "
+            "in overrides.csv, so they are counted rather than reported again. The overlay is applied "
+            "at compile, so the artifact carries your value; delete the overlay row to see the finding "
+            "again.",
+            pair_check.answered,
         )
     if pair_check.unknown:
         logger.info(

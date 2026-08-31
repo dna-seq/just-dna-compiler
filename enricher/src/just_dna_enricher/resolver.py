@@ -12,6 +12,7 @@ import logging
 import re
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -458,6 +459,17 @@ class PairCheck:
     unknown: list[str] = field(default_factory=list)
     undecided: list[str] = field(default_factory=list)
     not_checked: str | None = None
+    #: Pairs that disagree and whose disagreement the author has already answered in `overrides.csv`
+    #: (RM136). **Inside `subjects` and outside `disagreements`**: the comparison ran and found a
+    #: difference, so dropping it from the denominator would report a cleaner module than there is.
+    #: What changes is only that the finding is not put to the author a second time.
+    answered: int = 0
+
+
+#: The `resolution.csv` columns this comparison actually reads. An overlay `update` on one of them is
+#: an answer to a coordinate disagreement; an update on `source` or `status` is not, which is the
+#: per-field rule RM136 chose over the per-row one.
+_COORDINATE_FIELDS: tuple[str, ...] = ("chrom", "start", "ref", "alts")
 
 
 def _place(chrom: str | None, start: int | None) -> str:
@@ -544,6 +556,7 @@ def disagreement_message(
 def check_rsid_coordinates(
     pairs: Sequence[tuple[str, str | None, int | None, str | None]],
     rsid_loci: Mapping[str, Sequence[dict]],
+    answered: AbstractSet[tuple[str, str]] = frozenset(),
 ) -> PairCheck:
     """Compare each authored `(rsid, chrom, start, ref)` pair against the loci that rsid resolves to.
 
@@ -563,11 +576,27 @@ def check_rsid_coordinates(
     ALT is spelled differently from the reference's, which is a false accusation about a row rather
     than a finding. The compiler's `resolution._verify` asks this same single direction over the
     injected table, which is what makes the two halves one question.
+
+    **`answered` is the author's overlay, and a pair it names is counted rather than reported
+    (RM136).** Until 0.7 an author who corrected a `resolution.csv` coordinate through `overrides.csv`
+    — the mechanism RM124 built for exactly this — kept being told the same thing on every run, with no
+    way to clear it and nothing saying the correction had been honoured one tier over. A pair is
+    answered when the overlay `update`s **that row's own coordinate cell**, per field: correcting a
+    coordinate silences this check and leaves an unrelated finding standing. Per *row* was the cheaper
+    rule and was refused — it would silence findings the author never looked at, which is the
+    silent-suppress hole the overlay's own design calls its worst case.
+
+    **Answered is not agreed, and the count is what keeps that honest.** The pair leaves
+    `disagreements` and stays in `subjects`, with `PairCheck.answered` recording how many. A reader
+    still sees that the module and the source differ here; what changes is that the difference reads as
+    *settled by the author* rather than as work owed. Dropping it from the denominator would report a
+    cleaner module than there is — the silent-success shape this codebase keeps closing.
     """
     disagreements: list[str] = []
     unknown: list[str] = []
     undecided: list[str] = []
     subjects = 0
+    answered_count = 0
     for rsid, chrom, start, ref in pairs:
         loci = rsid_loci.get(rsid) or []
         if not loci:
@@ -581,9 +610,18 @@ def check_rsid_coordinates(
             continue
         subjects += 1
         if verdict is False:
+            # The author's own answer to this exact difference, recorded rather than re-reported.
+            # Keyed on the row's `variant_key` — the subject an overlay row names — and on the
+            # coordinate cells this check actually compares, so an overlay correcting some other
+            # column of the same row does not silence it.
+            key = derive_variant_key(rsid, chrom, start, ref)
+            if any((key, column) in answered for column in _COORDINATE_FIELDS):
+                answered_count += 1
+                continue
             disagreements.append(disagreement_message(rsid, chrom, start, loci))
     return PairCheck(
-        disagreements=disagreements, subjects=subjects, unknown=unknown, undecided=undecided
+        disagreements=disagreements, subjects=subjects, unknown=unknown, undecided=undecided,
+        answered=answered_count,
     )
 
 
