@@ -622,6 +622,35 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `status`, `authorship.kind`, the signatures). Adding a check that needs a reference means adding it
   to the **enricher**, not the compiler.
 
+- `@a-recorded-judgement-is-a-fact` — **A judgement another tier already made and RECORDED is a fact
+  the compiler may gate on, and discarding it at the tier boundary is its own defect (S78, RM143).**
+  `strict` means *reproducible*, never *right* — the compiler has no reference and cannot check a
+  coordinate, and that line does not move. But `enrich --strict` refused a GRCh37 coordinate pasted
+  into a GRCh38 module with a diagnosis naming the rs-number to author instead, `enrich` best-effort
+  wrote the table, and `compile --strict` then built it **silently**. The answer existed and had no
+  reader.
+
+  **The gate keys on a record, never on a re-run.** `build_disagreement_error` reads `findings > 0` on
+  `verification.json`'s `genome_build_agreement`; the compiler adds no reference, no network and no
+  opinion, so P2 is untouched. Re-running the check there was the reporter's own preferred repair and
+  is impossible: `resolution.csv` holds **one** coordinate, the one the author wrote, so there is
+  nothing to compare against without fetching.
+
+  **Which check, and the principle that picks it.** Only the one whose findings mean *one authored file
+  contradicts another* — the rows are on a different assembly than the declared `genome_build`. Every
+  other recorded finding is a disagreement with an **outside archive**, where the archive is the stale
+  side often enough that failing a build would have the format arbitrate someone else's dispute. The
+  tempting generalisation — escalate every recorded finding under `strict` — would fail a build over a
+  ClinVar disagreement the cross-check deliberately refuses to fail on. Pin the non-escalation with a
+  parametrized test, `reference_allele` included: it produces this diagnosis's *input* and still must
+  not refuse alone, because a ref mismatch has three causes and one is an assembly.
+
+  **Three silences to test, because each would be worse than the defect.** No attestation (an
+  unverified module is the ordinary case — refusing on absent evidence reads unknown as wrong);
+  `findings=0` (a clean bill — key on findings, never on the record's presence); and `skipped`, which
+  is what `--offline` writes, where nobody asked. And place it **ahead of `output_dir.mkdir()`**, like
+  the licence gate, or the refusal has already written something.
+
 - `@enrichment-is-validation` — **Enrichment is partly validation, by design.** The enricher is the only tier that can compare
   authored data against reality (format/compiler are inject-only). Every such check **reports, never
   repairs** — rewriting an authored value destroys the evidence of an upstream bug — and severity

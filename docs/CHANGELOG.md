@@ -44,6 +44,39 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
+- **RM143 — the enricher diagnosed a wrong-assembly coordinate and `compile --strict` built over it
+  anyway.** *(`just-dna-compiler`.)* Filed and built on 2026-08-31 from a consumer report (S78).
+
+  A GRCh37 coordinate pasted into a GRCh38 module — `rs61849494`, 5.6 Mb and a strand flip away from
+  where the module says it is. `enrich --strict` refuses with a diagnosis naming the rs-number to author
+  instead; `enrich` best-effort reports it and writes the table; and `compile --strict` then succeeded
+  **silently**, over a module internally consistent and about the wrong locus.
+
+  **Two of the reporter's three asks were already shipped**, which is half the answer. Their option (2),
+  re-running the rsid↔coordinate check in the compiler, is refutable on the data: `resolution.csv` holds
+  one coordinate, not both — for a coordinate-authored row the enricher records what the author wrote —
+  so there is nothing to compare without a fetch, and P2 forbids the fetch. Their option (3), a compile
+  warning, is `verification_findings_recorded`, which shipped in this same release and is absent from
+  the 0.6.6 they measured.
+
+  What was missing was the last step of their option (1): the diagnosis reached `verification.json` and
+  **no severity attached to it**. `build_disagreement_error` now refuses a `strict` compile on a recorded
+  `genome_build_agreement` finding, in both `validate_spec` and `compile_module`, with the error equal on
+  both sides and placed ahead of `output_dir.mkdir()` so a refusal writes nothing.
+
+  **The strict line does not move.** `strict` still means reproducible, never right — the compiler has no
+  reference and a file shifted by one base still passes. This one check is the exception on
+  *internal-consistency* grounds: its findings say the rows are on a different assembly than the
+  `genome_build` the module declares, which is one authored file contradicting another rather than the
+  module disagreeing with an outside archive. Every other recorded finding still only warns, pinned over
+  four checks including `reference_allele`, which produces this diagnosis's own input.
+
+  **Consumers:** a `strict` compile refuses a spec whose `verification.json` records a wrong-build
+  finding — new behaviour for anyone compiling one, and the point. Everything else is unchanged: no
+  attestation is silent (an unverified module is the ordinary case), `findings=0` is a clean bill, and a
+  `skipped` record is unknown, which is what `--offline` writes. `best_effort` builds and warns as
+  before. No reference example carries such a finding, so the 0.7.0 release record is unaffected.
+
 - **RM142 — the dosage pass declared a ClinGen obligation for a module ClinGen curates nothing of.**
   *(`just-dna-enricher`.)* Filed and built on 2026-08-31 from a consumer report (S77).
 

@@ -1196,6 +1196,40 @@ the key is canonical*. A VRS allele id names the variant without the coordinate 
 so the coordinate can live in `resolution.csv` where it belongs. Under the older coordinate-first keying
 the coordinate was load-bearing in `variants.csv` and could not be dropped.
 
+### The one recorded finding `strict` acts on (RM143, 0.7)
+
+`strict` means *reproducible*, never *right*, and that is unchanged — the compiler has no reference, so
+it cannot check a coordinate. But when the **enricher** has already checked one and recorded the
+answer, throwing that away at the tier boundary is a separate failure: a GRCh37 coordinate pasted into
+a GRCh38 module was refused by `enrich --strict`, written by `enrich` best-effort, and then built
+**silently** by `compile --strict` into an artifact that is internally consistent and about a locus
+5.6 Mb away.
+
+`build_disagreement_error` refuses a `strict` compile when `verification.json` records a finding on
+`genome_build_agreement`, in `validate_spec` and `compile_module` alike, with the identical error and
+ahead of `output_dir.mkdir()` so a refusal writes nothing.
+
+**Why that check and no other.** Its findings say the module's rows are on a different assembly than
+the `genome_build` it declares — one authored file contradicting another, which is internal
+consistency. Every other recorded finding is the module disagreeing with an **outside archive**, where
+the archive is the stale side often enough that failing a build would have the format arbitrate someone
+else's dispute; that is the same reasoning that keeps the ClinVar cross-check a warning under `strict`,
+and it now has a parametrized test over four checks. `reference_allele` is the one worth naming: it
+produces this diagnosis's own input and still does not refuse alone, because a ref mismatch has three
+causes and only one of them is an assembly.
+
+**Three things it does not do**, each with a test, because each would be a worse defect than the one it
+fixes:
+
+| state of the record | what happens |
+| --- | --- |
+| no `verification.json` at all | **silent** — an unverified module is the ordinary case, and refusing on absent evidence reads unknown as wrong |
+| `genome_build_agreement` with `findings=0` | **silent** — a clean bill; the gate keys on findings, never on the record's presence |
+| `genome_build_agreement` `skipped` (what `--offline` writes) | **silent** — nobody asked, which is not nothing-wrong |
+
+A stale attestation is dropped by the reader before the gate sees it, which is the right order: bytes
+that moved since the check ran are bytes the check did not judge.
+
 ### Coverage is reported by the pre-flight too (RM141, 0.7)
 
 `compile --strict` refuses a module whose variants still have no position after resolution — a partial

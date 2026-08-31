@@ -44,6 +44,89 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM143 — the enricher diagnosed a wrong-assembly coordinate and `compile --strict` built over it anyway
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-compiler`). **Severity** medium ·
+**Owner** compiler · **Motivating case** [S78](CONSUMER_SUGGESTIONS_HISTORY.md) (just-module-creator)
+
+### The measurement
+
+A one-variant spec with a GRCh37 coordinate pasted into a GRCh38 module — the ordinary shape of a paper
+stating its assembly once in the methods and nowhere near the table an author reads. `rs61849494` is
+`10:51613269 G/A` on GRCh37 and `10:45982565 C/T` on GRCh38: 5.6 Mb apart and strand-flipped.
+
+The reporter walked all four gates. `validate` passes, correctly — it is offline and cannot know.
+`enrich(strict)` refuses, with a diagnosis they call better than anything they could have asked for.
+`enrich(best_effort)` reports all three readings and writes the table, which is what best-effort means.
+And `compile_module(strict=True)` **succeeds**, silently, over a module that is internally consistent
+and about the wrong locus.
+
+### Two of the three asks were already shipped, and saying so is half the answer
+
+They offered three repairs in order of preference and asked for our view rather than guessing.
+
+**Their (2) — have the compiler re-run the rsid↔coordinate agreement — is refutable on the data.**
+`resolution.csv` does not hold both coordinates. For a coordinate-authored row the enricher records
+what the author wrote, so there is one coordinate in the table and nothing to compare it against. The
+change is not small, it is impossible without a fetch, and P2 forbids the fetch.
+
+**Their (3) — make the compile warn — shipped in this same release and they could not have seen it.**
+`verification_findings_recorded` (S70/RM130) reports every recorded finding at the author. It is absent
+from 0.6.6, the version they measured. Reproduced: with the diagnosis in `verification.json`, a 0.7
+compile prints *records 2 finding(s) across 2 check(s): genome_build_agreement (1 of 1),
+reference_allele (1 of 1)*.
+
+**Their (1) — record the diagnosis where the compiler can see it — is also mostly shipped**, and the
+`verification.json` record is that place. What was missing is the last step: no severity attached to
+it, so the fact was carried and never acted on.
+
+### What shipped
+
+`build_disagreement_error` refuses a `strict` compile when `verification.json` records a finding on
+`genome_build_agreement`, in both `validate_spec` and `compile_module`, with the error equal on both
+sides and placed ahead of `output_dir.mkdir()` so a refusal writes nothing.
+
+**This does not move the strict line, and that distinction is the item.** `strict` means *reproducible*,
+never *right* — the FAQ says so and it stands. `genome_build_agreement` is the exception on
+**internal-consistency** grounds: a finding there says the module's rows are on a different assembly
+than the `genome_build` it declares, which is one authored file contradicting another, not the module
+disagreeing with an outside archive. Every other recorded finding keeps warning, pinned by a
+parametrized test over four checks — including `reference_allele`, which *produces* this diagnosis's
+input and still does not refuse on its own, because a ref mismatch has three causes and only one is an
+assembly.
+
+**The compiler adds no judgement.** It acts on a record the enricher wrote against a GRCh37 service the
+compiler may never call. What changed is that the answer stops being discarded at the tier boundary.
+
+Three things it must not do, each with its own test: **no attestation is silent** (an unverified module
+is the ordinary case, and refusing on absent evidence reads unknown as wrong); **`findings=0` is a
+clean bill**, so the gate keys on findings and not on the record's presence; and a **`skipped` record
+is unknown**, which is what an `--offline` run writes — refusing there would make offline enrichment
+poison a module.
+
+### Repairs rejected
+
+- **A column on `resolution.csv` marking the row as diagnosed** — their (1) read literally. It is a
+  fact about a *check* in a table of facts about *variants*, the same axis that keeps `fetched_at` out
+  of every fact set, and `verification.json` is the file that already exists for it. Also full cost
+  under P9 for a fact with one reader.
+- **Re-running the check in the compiler** — their (2), refuted above on the data.
+- **Escalating every recorded finding under `strict`.** The obvious generalisation and the wrong one:
+  it would fail a build over a ClinVar disagreement, which the cross-check deliberately refuses to do
+  because the archive is the stale side often enough that the format would be arbitrating someone
+  else's dispute.
+- **Telling authors to always run strict enrichment.** Their own rejected candidate and correct:
+  `best_effort` exists for good reasons, and a module authored under it stays wrong forever with every
+  later gate green. The defect was the discarded diagnosis, not the chosen mode.
+
+### Charter check
+
+P2 — no fetch; the gate reads an injected sidecar. P3/P8 — no schema change, no field, no vocabulary
+member; `BUILD_AGREEMENT_CHECK` names an existing one. P5 — severity and reporting stay separate axes:
+the warning still fires in both modes and the refusal is the ladder's upper rung. Measured: no
+reference example carries a `genome_build_agreement` finding, so nothing in the corpus changes and the
+0.7.0 release record is unaffected.
+
 ## RM142 — the dosage pass declared a ClinGen obligation for a module ClinGen curates nothing of
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-enricher`). **Severity** medium ·

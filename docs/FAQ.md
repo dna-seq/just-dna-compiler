@@ -158,6 +158,15 @@ to check your coordinates against; a whole file shifted by one base passes valid
 `fully_resolved: true`, and mints VRS ids that verify. → [COMPILER § What the compiler can and cannot
 validate](COMPILER.md#what-the-compiler-can-and-cannot-validate).
 
+**One exception since 0.7 (RM143), and it does not move that line.** A `strict` compile refuses when
+`verification.json` records a finding on `genome_build_agreement` — the enricher having established
+that the rows are on a different assembly than the `genome_build` the module declares. That is
+**internal consistency**, one authored file contradicting another, not the compiler checking a
+coordinate: it acts on a record already written and adds no reference of its own. Every other recorded
+finding still only warns, because those are disagreements with an outside archive and the archive is
+the stale side often enough. No attestation means silence, `findings=0` is a clean bill, and a
+`skipped` record — what `--offline` writes — is unknown.
+
 **Why does the ClinVar `clin_sig` cross-check warn even under `--strict`?**
 Deliberate, and not an inconsistency to fix: failing a compile over a clinical disagreement would make
 the format arbitrate a clinical dispute, and a curator who read the primary literature and disagrees

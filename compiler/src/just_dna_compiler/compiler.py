@@ -4102,8 +4102,17 @@ def _validate_spec(
     # step touches, so both passes reach the identical sentence and the dedup on the message below
     # collapses them. The block itself is discarded here; only the staleness warning is wanted, at the
     # point where an author can still re-run the checks before publishing.
-    _, verification_warnings = _verification_block(spec_dir)
+    verification_doc, verification_warnings = _verification_block(spec_dir)
     all_warnings.extend(w for w in verification_warnings if w not in all_warnings)
+    # And the one recorded finding `strict` acts on (S78, RM143), here so the pre-flight refuses what
+    # the compile refuses — the standing parity rule, and this file has now closed that gap four
+    # times. Pure computation over an injected sidecar with no `output_dir`, so it belongs on this
+    # side by the rule's own test; the compile re-runs it because `compile_module` runs the pre-flight
+    # in best_effort whatever its own mode, and only the compile knows the real severity.
+    if strict:
+        build_error = build_disagreement_error(verification_doc)
+        if build_error is not None:
+            all_errors.append(build_error)
 
     # The positional fill (RM43), and then the report of what it could not place. Both run here for
     # the same reason: pure computation over authored + injected bytes with no `output_dir`. The order
@@ -5065,6 +5074,19 @@ def compile_module(
                     f"compile without strict."
                 ],
                 warnings=all_warnings,
+            )
+
+    # The wrong-build gate (S78, RM143), here for the same placement reason as the licence gate below
+    # and one line ahead of it: a refusal must leave nothing written. It reads the attestation the
+    # enricher wrote and acts on one recorded finding — see `build_disagreement_error` for why that
+    # one and no other, and why this does not move the strict line. The block is re-read rather than
+    # carried down from the pre-flight because a stale attestation is dropped by the reader, and the
+    # gate must see what the reader saw.
+    if strict:
+        build_error = build_disagreement_error(_verification_block(spec_dir)[0])
+        if build_error is not None:
+            return CompilationResult(
+                success=False, errors=[build_error], warnings=all_warnings
             )
 
     # Licensing gate. Loaded here rather than with the other fact tables because those are read
@@ -6040,6 +6062,56 @@ def _read_verification_block(spec_dir: Path) -> tuple[Verification | None, list[
             ),
         ]
     return verification_block(doc), list(spelling_warnings)
+
+
+def build_disagreement_error(block: Verification | None) -> str | None:
+    """The one recorded finding `strict` refuses on, or `None` (S78, RM143).
+
+    **This does not move the strict line, and the distinction is the whole item.** `strict` means
+    *reproducible*, never *right* — the compiler has no reference, so it cannot check a coordinate, and
+    a whole file shifted by one base still passes. `genome_build_agreement` is the exception on
+    internal-consistency grounds rather than correctness ones: a recorded finding there says the
+    module's rows are **on a different assembly than the `genome_build` it declares**, which is one
+    authored file contradicting another. Every other recorded finding is a disagreement between the
+    module and an outside archive, where the archive is the stale side often enough that failing a
+    build would have the format arbitrate someone else's dispute — that reasoning is unchanged and
+    covers `clinical_significance`, `reference_allele` and the rest.
+
+    **A fact the toolchain already established, not a check re-run here.** The judgement is the
+    enricher's, made against the GRCh37 service the compiler may never call (Principle 2); what changed
+    is that it stops being discarded at the boundary. So the gate keys on a *record* the enricher
+    wrote — `findings > 0` on that one check — and the compiler adds no reference, no network and no
+    opinion of its own.
+
+    **Silent when no attestation exists, deliberately**, and that is not a hole this leaves open: an
+    unverified module is the ordinary case, `_read_verification_block` says nothing about it on purpose,
+    and refusing there would fail every module that has never been enriched. What this closes is the
+    case where the answer *was* obtained and thrown away.
+
+    A stale attestation is dropped before this sees it, which is the correct order: bytes that moved
+    since the check ran are bytes the check did not judge.
+    """
+    if block is None:
+        return None
+    found = [r for r in block.checks if r.check == BUILD_AGREEMENT_CHECK and r.findings]
+    if not found:
+        return None
+    total = sum(r.findings for r in found)
+    subjects = sum(r.subjects for r in found)
+    return (
+        f"strict compile: verification.json records {total} row(s) of {subjects} whose coordinates "
+        f"the enricher diagnosed as another assembly's ({BUILD_AGREEMENT_CHECK}). The module declares "
+        f"a genome_build its own rows contradict, so the artifact would be internally consistent and "
+        f"about the wrong locus. Read the record's `detail` for which rows and the rs-numbers to "
+        f"author instead, fix the coordinates and re-run the checks — or compile without strict, "
+        f"which builds it and says so."
+    )
+
+
+#: The one verification check whose findings `strict` acts on — see `build_disagreement_error`. Named
+#: rather than inlined because it is the join between two tiers' vocabularies: the enricher writes this
+#: member and the compiler reads it, and a rename on either side must not silently retire the gate.
+BUILD_AGREEMENT_CHECK: str = "genome_build_agreement"
 
 
 #: The authoring phase is not closed (RM73). Named because a consumer can only learn this from the

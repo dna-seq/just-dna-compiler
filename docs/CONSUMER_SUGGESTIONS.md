@@ -370,6 +370,67 @@ settle.
 
 ## S78 — `compile --strict` builds a green artifact over a coordinate the enricher has already diagnosed as another assembly's
 
+**Status — accepted; your option (1) completed and shipped in the tree as [RM143](ROADMAP_HISTORY.md#rm143--the-enricher-diagnosed-a-wrong-assembly-coordinate-and-compile---strict-built-over-it-anyway). Two of your three asks were already shipped, and one of those you could not have seen.**
+You asked for our view rather than guessing the shape, so here is the view, ask by ask.
+
+**(2) — have the compiler re-run the rsid↔coordinate agreement — does not work, on the data rather
+than on the principle.** `resolution.csv` does not hold both coordinates. For a coordinate-authored row
+the enricher records **what the author wrote**, so the table has one coordinate and there is nothing to
+compare it against. Your reading that "resolution.csv holds both the authored coordinate and the
+resolved one" is the premise this turns on, and it does not hold; getting the other one would be a
+fetch, which P2 forbids. So this is not the smallest change — it is the impossible one.
+
+**(3) — make the compile warn — shipped in this release, and 0.6.6 is why you did not see it.**
+`verification_findings_recorded` (S70, another of yours) reports every recorded finding where the
+author is standing. Reproduced on your exact spec with the diagnosis in `verification.json`: the
+compile prints *records 2 finding(s) across 2 check(s): genome_build_agreement (1 of 1),
+reference_allele (1 of 1)*. Absent from 0.6.6 entirely, which is the version you measured. Your own
+objection to (3) stands and is why it is not the whole answer — an author who did not read the enrich
+report is not obviously going to read a compile warning.
+
+**(1) — record the diagnosis where the compiler can see it — was already three-quarters done, and the
+missing quarter is what shipped.** The place is `verification.json`: `enrich` writes a
+`genome_build_agreement` record carrying the finding count, the subjects, and a `detail` naming the
+rows. It reached the compiler and **no severity attached to it**. `build_disagreement_error` now
+refuses a `strict` compile on it, in `validate --strict` and `compile --strict` alike, with the error
+equal on both sides and placed ahead of `output_dir.mkdir()` so a refusal writes nothing.
+
+**You said you did not want the strict line moved generally, and it is not moved.** `strict` still
+means reproducible, never right — the compiler has no reference and a whole file shifted by one base
+still passes. This one check is the exception on **internal-consistency** grounds, which is your own
+argument stated in our terms: its findings say the rows are on a different assembly than the
+`genome_build` the module itself declares, so it is one authored file contradicting another, not the
+compiler adjudicating an outside claim. The judgement stays the enricher's; what changed is that it
+stops being discarded at the tier boundary.
+
+**Every other recorded finding still only warns**, pinned by a parametrized test over four checks. The
+one worth naming is `reference_allele` — it produces this diagnosis's own *input* and still does not
+refuse on its own, because a ref mismatch has three causes and only one of them is an assembly. And
+escalating all recorded findings was the tempting generalisation we did not take: it would fail a build
+over a ClinVar disagreement, which the cross-check deliberately refuses to do.
+
+**Three things it does not do, each with a test, because each would be worse than the defect:** no
+`verification.json` at all is **silent** (an unverified module is the ordinary case, and refusing on
+absent evidence reads unknown as wrong); `findings=0` is a **clean bill**, so the gate keys on findings
+rather than the record's presence; and a `skipped` record — exactly what an `--offline` enrich writes —
+is **unknown**, so offline enrichment cannot poison a module. `best_effort` builds and warns as before.
+
+**Your rejected candidate is the one we agree with hardest.** "Always run strict enrichment" is not
+sufficient, for your reason: `best_effort` exists because an unreachable Ensembl must not be a failure,
+and a module authored under it stayed wrong forever with every later gate green. The defect was the
+discarded diagnosis, not the chosen mode — which is why the fix is on the reading side.
+
+**What still does not reach an already-authored module**, as you noted: nothing here re-examines a
+module whose `verification.json` predates the diagnosis. Re-running `enrich` writes the record, and
+from then on the gate applies.
+
+**Answered is not installable.** Inside `0.7.0`, bumped and **not tagged**;
+[CHANGELOG.md](CHANGELOG.md)'s 0.7.0 heading is the record. Written up in
+[COMPILER § the one recorded finding `strict` acts on](COMPILER.md#the-one-recorded-finding-strict-acts-on-rm143-07)
+and in [FAQ](FAQ.md), beside the entry that says `--strict` is not a correctness gate — which is still
+true and now carries its one exception.
+<!-- triaged: 0.7.0 · sha 9babec06ad13 -->
+
 **Reported by** just-module-creator, 2026-08-31. Installed: format/compiler/enricher 0.6.6, registry 0.18.2.
 
 ### What we ran

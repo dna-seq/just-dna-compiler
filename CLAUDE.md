@@ -186,6 +186,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - The compile-only exemption is *resolved rows*, not the word resolution; share the predicate, copy the error. `@validate-refuses-all`
 - Know the validation ceiling first; a check needing a reference belongs in the enricher. `@validation-ceiling`
 - Enricher checks report, never repair; severity follows the mode. `@enrichment-is-validation`
+- A judgement another tier **recorded** is a fact `strict` may gate on — one check only, the one where two authored files contradict. `@a-recorded-judgement-is-a-fact`
 - Move a check behind resolution when resolution fills its input (`chrom` for ploidy). `@ploidy-behind-resolution`
 - Never re-run a check whose message embeds a count — the manifest then publishes two numbers. `@no-rerun-with-counts`
 - A check running on both sides dedupes on the message; re-running is the normal case. `@no-rerun-with-counts`
