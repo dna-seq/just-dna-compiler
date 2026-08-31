@@ -15,8 +15,8 @@ maintainers = [
 # the 0.5 amendment scoping the network tier + HuggingFace here). This is the only package allowed to
 # fetch; format and compiler stay strictly inject-only.
 dependencies = [
-    "just-dna-format>=0.6.6",
-    "just-dna-compiler>=0.6.6",
+    "just-dna-format>=0.7.0",
+    "just-dna-compiler>=0.7.0",
     "duckdb>=1.1.0",
     "platformdirs>=4.0.0",
     "python-dotenv>=1.0.1",

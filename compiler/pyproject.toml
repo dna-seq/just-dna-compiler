@@ -14,7 +14,7 @@ maintainers = [
 # consumed from an injected resolution.csv; the DuckDB reference path moved to just-dna-enricher (the
 # deprecated ensembl_cache surface routes there via a guarded optional import, retired at 1.0).
 dependencies = [
-    "just-dna-format>=0.6.6",
+    "just-dna-format>=0.7.0",
     "polars>=1.42.0",
     "pyyaml>=6.0.2",
     "typer>=0.12.0",
