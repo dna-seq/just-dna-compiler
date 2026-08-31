@@ -635,6 +635,25 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   normal shape and says nothing, the second means ids the module really carries went unchecked. Only the
   second warns.
 
+  **A widening is not done while a caller still gates on the narrow thing (RM156).** Sweeping this
+  shape across the tier a day later found the roster unreachable from exactly the modules it was
+  widened for: `check_identifiers(spec_dir=)` still loaded `variants.csv` unconditionally and raised
+  `variants.csv is invalid: ... not found`, and the command returned *"no variants.csv — nothing to
+  check"* one call earlier and hid it. That table has never been mandatory, and four of the nine
+  carrying `gene` are the PGx kinds a module is built entirely out of — this repo's own
+  `cyp2c19_star_alleles`, `apoe_epsilon`, `cyp2c9_warfarin_grch37` and `hfe_compound_het` all exited 0
+  having asked nothing about six real symbols. **Reproduce a widening from the corpus, not from a
+  fixture**: a fixture is written to the new roster and cannot show you the gate in front of it.
+
+  Three things the repair fixed in place. A guard becomes **derived** like the roster it protects —
+  nothing to check means *no id-bearing table was read*, never *one named file is missing*. A
+  justification comment is part of the change: the old one asserted such a module "has no `gene`,
+  `trait_efo_id` or row for these checks to have an opinion about", which the widening had made false
+  while the code around it still read as considered. And **follow the rows the widening no longer
+  needs**: `_gene_locus_conflicts` reached `compared=0` with `None` beside it once symbols could arrive
+  without rows — `ran(0, 0)`, the third vacuous pass in two days, in the function whose own docstring
+  forbids writing one.
+
 ## Checks: where they run, and what severity means
 
 - `@parity-by-check` — **Audit `validate`/`compile` parity by CHECK, not by TABLE — that is how the third instance hid.**

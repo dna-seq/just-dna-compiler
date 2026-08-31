@@ -51,13 +51,32 @@ built the same day as RM117's other half, and RM152, a consumer measurement that
 no release class and acquired one when its probe was finally run, and RM154, which arrived from a
 consumer report after the rest were built; all taken in one pass so 0.7 cuts with its own backlog
 cleared rather than carrying it. Eleven are built; **RM138 is closed with its numbers measured and no
-code changed**. **RM155 is dated 2026-09-01 and is deliberately outside that count** — it arrived from
-a consumer the next morning and ships inside the same uncut 0.7.0, so the batch stays the thing it
-describes rather than growing a member whenever another item lands before the tag. Two things a reader should take from them together: `carried` costs
+code changed**. **The items dated 2026-09-01 are deliberately outside that count** — RM155 arrived
+from a consumer the next morning and RM156 from sweeping its shape across the tier, and both ship
+inside the same uncut 0.7.0. The batch stays the thing it describes rather than growing a member
+whenever another item lands before the tag: the count is of the 2026-08-31 round, and the rule for a
+later item is to date it and leave the number alone. Two things a reader should take from them together: `carried` costs
 1.06× gzipped rather than the 1.84× raw the item was filed about, so **serve manifests compressed**;
 and two derived values change — `gene_metrics.constraint_flags` and
 `gene_validity.classifications` — which are **corrections**, so a moved signature there is the fix
 arriving rather than drift.
+
+- **RM156 — the roster RM155 widened was gated behind the one table it had stopped depending on.**
+  *(`just-dna-enricher`; **additive**, and **no schema change** — no column, no vocabulary member, no
+  signature moves. What moves is which modules the check runs on at all.)* Two gates in front of the
+  widened roster were still keyed on `variants.csv`: `check_identifiers(spec_dir=)` loaded that table
+  unconditionally and raised `variants.csv is invalid: ... not found`, and `check-identifiers`
+  returned *"no variants.csv — nothing to check"* one call earlier and hid it. The table has never
+  been mandatory, and **four of the nine tables carrying `gene` are the PGx kinds a module is built
+  entirely out of** — reproduced on this repo's own corpus, where `cyp2c19_star_alleles`,
+  `apoe_epsilon`, `cyp2c9_warfarin_grch37` and `hfe_compound_het` carry no `variants.csv`, name
+  CYP2C19/APOE/CYP2C9/VKORC1/CYP4F2/HFE between them, and all four exited 0 having asked nothing.
+  **S86's unreadable `0`, one level above the function that repaired it.** The command's guard is now
+  the **roster** — nothing to check means no id-bearing table was read, and only then is no
+  attestation written, which is the half of the old guard that was right; an absent `variants.csv` is
+  no rows, a present-and-unparseable one still raises. **A third vacuous pass beneath them**: with
+  symbols in hand and no rows, `_gene_locus_conflicts` returned `compared=0` with `None` beside it,
+  the `ran(0, 0)` its own attestation docstring forbids. *(from the RM155 sweep)*
 
 - **RM155 — the identifier roster read one table while eleven carry the column, and reported its
   blindness as a clean zero.** *(`just-dna-enricher`; **additive**, and **no schema change** — no

@@ -960,13 +960,6 @@ def check_identifiers_(
     the three checks ran and over how many rows, never a value. A consumer holding the artifact has no
     other way to tell "asked and clean" from "never asked" (RM45/RM72).
     """
-    if not (spec_dir / "variants.csv").exists():
-        # No attestation here, and that is the `enrich_clinpgx` rule rather than an omission: a module
-        # carrying no `variants.csv` has no `gene`, `trait_efo_id` or row for these checks to have an
-        # opinion about, so the check does not APPLY — which is not a skip. Recording one would mine a
-        # nonce and create a `verification.json` on a module that never asked for one.
-        typer.secho("no variants.csv — nothing to check", fg=typer.colors.YELLOW)
-        return
     try:
         # `spec_dir=` rather than loading the rows here (RM41). This command was the workspace's own
         # evidence that the row-taking form leaves every caller reaching for a private loader.
@@ -994,6 +987,23 @@ def check_identifiers_(
         )
         typer.secho(f"IDENTIFIER CHECK FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
+    # **The guard is the roster, not a filename.** This command opened with `if not (spec_dir /
+    # "variants.csv").exists(): return "nothing to check"`, on the reasoning that such a module "has no
+    # gene, trait_efo_id or row for these checks to have an opinion about". Nine tables carry each
+    # column and four of them are the PGx kinds a module with no `variants.csv` is built out of, so
+    # that sentence was false and the command exited 0 having asked nothing — S86's unreadable zero
+    # surviving one level above the function that repaired it, on this repo's own
+    # `cyp2c19_star_alleles`, which names CYP2C19 on every row it has.
+    #
+    # No attestation here, which is the one half of the old guard that was right: with no id-bearing
+    # table present there is no question to record having put, and minting a nonce would create a
+    # `verification.json` on a module that never asked for one. Both checks switched off is a
+    # different state and keeps its existing path below, where it is recorded as `not_requested`.
+    if (traits or genes) and not (report.trait_tables_read or report.gene_tables_read):
+        typer.secho(
+            "no table carrying trait ids or gene symbols — nothing to check", fg=typer.colors.YELLOW
+        )
+        return
     # **The count names the tables it is out of (S86).** `traits checked: 0` used to say two things —
     # the module declares no trait, and its traits are in a table the roster never read — and a reader
     # took the second for the first, which is how a retired CURIE ships with every gate green.

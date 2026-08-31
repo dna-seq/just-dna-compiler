@@ -12,12 +12,17 @@ Every test here is offline — the roster is pure table-reading and reaches no r
 
 from pathlib import Path
 
+import httpx
 import pytest
 from just_dna_enricher.identifiers import (
     IdentifierRoster,
+    OntologyClient,
     _id_bearing_tables,
     authored_identifiers,
+    check_identifiers,
 )
+from just_dna_enricher.net import PacingGate
+from typer.testing import CliRunner
 
 _YAML = (
     "schema_version: '1.0'\n"
@@ -192,3 +197,91 @@ def test_the_command_never_reports_a_pass_over_a_question_it_did_not_put(tmp_pat
     assert "no identifiers were checked" in result.output
     # And the count states the tables it is out of, rather than a bare zero.
     assert "traits checked: 0 (from 0 table(s)" in result.output
+
+
+# ── the residue: the widened roster could not be reached from a spec with no `variants.csv` ──────
+
+
+_PGX_YAML = _YAML
+_HAPLOTYPES = (
+    "haplotype_name,rsid,start,allele,gene\n"
+    "*2,rs4244285,94781859,A,CYP2C19\n"
+)
+
+
+def _hgnc(bands: dict[str, str]) -> OntologyClient:
+    """An HGNC that approves exactly `bands`' symbols. Local to this file, which is offline by claim."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        symbol = str(request.url).rsplit("/", 1)[-1]
+        band = bands.get(symbol)
+        if band is None or "prev_symbol" in str(request.url):
+            return httpx.Response(200, json={"response": {"numFound": 0, "docs": []}})
+        return httpx.Response(200, json={"response": {"numFound": 1, "docs": [
+            {"symbol": symbol, "status": "Approved", "hgnc_id": "HGNC:1", "location": band}
+        ]}})
+
+    client = OntologyClient()
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.gate = PacingGate(interval=0.0, clock=lambda: 0.0, sleeper=lambda _s: None)
+    return client
+
+
+def test_a_module_with_no_variants_csv_reaches_the_widened_roster(tmp_path: Path) -> None:
+    """The residue of the widening, and the shape it is worst on.
+
+    `variants.csv` is not mandatory, and the PGx kinds a module can be built entirely out of are among
+    the nine tables that carry `gene`. `check_identifiers(spec_dir=)` nevertheless loaded that table
+    unconditionally and raised `variants.csv is invalid: ... not found`, so the roster this file exists
+    to widen could not be reached from a spec directory at all — the CLI's own filename guard returned
+    first and hid it. This repo ships four such modules.
+    """
+    spec = _spec(tmp_path, haplotypes__csv=_HAPLOTYPES)
+    assert not (spec / "variants.csv").exists()
+    report = check_identifiers(
+        spec_dir=spec, check_traits=False, client=_hgnc({"CYP2C19": "10q23.33"})
+    )
+    assert [g.symbol for g in report.genes] == ["CYP2C19"]
+    assert report.gene_tables_read == ["haplotypes.csv"]
+
+
+def test_no_rows_to_place_a_symbol_against_is_a_reason_and_not_a_silent_zero(tmp_path: Path) -> None:
+    """`compared=0` with nothing beside it is the `ran(0, 0)` the attestation refuses to write.
+
+    The gene/chromosome comparison needs rows; a module with none has symbols in hand and nothing to
+    place them against, which is a question never put rather than an agreement.
+    """
+    spec = _spec(tmp_path, haplotypes__csv=_HAPLOTYPES)
+    report = check_identifiers(
+        spec_dir=spec, check_traits=False, client=_hgnc({"CYP2C19": "10q23.33"})
+    )
+    assert report.gene_loci_compared == 0
+    assert report.gene_loci == []
+    assert report.gene_loci_not_checked is not None
+    assert "no variants.csv rows" in report.gene_loci_not_checked
+
+
+def test_a_variants_csv_that_exists_and_will_not_parse_still_raises(tmp_path: Path) -> None:
+    """Absent is a module shape; present-and-unreadable is the author's to fix, and stays an error."""
+    spec = _spec(tmp_path, haplotypes__csv=_HAPLOTYPES, variants__csv="rsid,genotype\nrs1,\n")
+    with pytest.raises(ValueError, match="variants.csv is invalid"):
+        check_identifiers(spec_dir=spec, check_traits=False, check_genes=False)
+
+
+def test_the_command_guard_is_the_roster_rather_than_a_filename(tmp_path: Path) -> None:
+    """The CLI half. It opened on `variants.csv`'s existence and returned "nothing to check".
+
+    Nine tables carry each column, so that guard skipped modules whose identifiers are entirely real.
+    The replacement asks the roster: it says nothing to check only when no id-bearing table was read,
+    and reaches HGNC on a module that carries one — which is why this half of the test needs no client
+    (the empty case returns before any is built).
+    """
+    from just_dna_enricher.cli import app
+
+    bare = _spec(tmp_path / "bare")
+    result = CliRunner().invoke(app, ["check-identifiers", str(bare)])
+    assert result.exit_code == 0
+    assert "no variants.csv" not in result.output
+    assert "no table carrying trait ids or gene symbols" in result.output
+    # ...and nothing was attested, because no question was put.
+    assert not (bare / "verification.json").exists()

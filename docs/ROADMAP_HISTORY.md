@@ -44,6 +44,46 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM156 — the widened roster was gated behind the one table it had stopped depending on
+
+**Severity** medium · **Status** ✅ shipped 2026-09-01 in the uncut 0.7.0 (`just-dna-enricher`) ·
+**Owner** enricher · **Motivating case** the RM155 sweep, run against this repo's own corpus
+
+RM155 widened `check_identifiers`' rosters from `variants.csv` to the nine authored tables that carry
+each column. Two gates in front of it were still keyed on `variants.csv` alone, so on the module shape
+the widening was most for, the wide roster was never reached: `check_identifiers(spec_dir=)` loaded
+that table unconditionally and raised `variants.csv is invalid: ... not found`, and the command
+returned *"no variants.csv — nothing to check"* one call earlier and hid it.
+
+**The table has never been mandatory (RM2), and four of the nine carrying `gene` are the PGx kinds a
+module is built entirely out of.** Reproduced on this repo's own reference examples rather than a
+fixture: `cyp2c19_star_alleles`, `apoe_epsilon`, `cyp2c9_warfarin_grch37` and `hfe_compound_het` carry
+no `variants.csv` at all, and between them name CYP2C19, APOE, CYP2C9, VKORC1, CYP4F2 and HFE on rows
+the roster now reads. `check-identifiers` printed *"no variants.csv — nothing to check"* and exited 0
+on every one. That is S86's unreadable `0` surviving one level above the function that repaired it,
+which is the more useful half of the lesson: a widening is not done while a caller still gates on the
+narrow thing.
+
+**The old guard's comment is what dated.** It justified writing no attestation on the grounds that such
+a module "has no `gene`, `trait_efo_id` or row for these checks to have an opinion about, so the check
+does not APPLY". The first clause became false the moment the roster walked `DRAFTABLE`; the second —
+no attestation without a question — was right and is kept, now derived: nothing to check means **no
+id-bearing table was read**, which is a fact about the roster rather than about a filename. Both checks
+switched off is a different state and keeps its own path, recorded as `not_requested`.
+
+**A third site, found by following the rows.** With `variants` empty and symbols in hand,
+`_gene_locus_conflicts` returned `compared=0` with `None` beside it — the `ran(0, 0)` its own
+attestation docstring forbids, and the same vacuous pass a third time. It now returns the reason: no
+`variants.csv` rows, so no symbol could be placed against a variant's chromosome. The guard sits
+*before* the "no row names a gene" arm because it is the more specific fact — since the widening, a
+module can reach that code with genes and no rows.
+
+Present-and-unparseable still raises, deliberately: that is a module whose rows exist and cannot be
+read, which is the author's to fix rather than a shape the check should tolerate.
+
+**No schema change**: no column, no vocabulary member, no signature moves. What moves is which modules
+the check runs on at all.
+
 ## RM153 — the identity CIViC does not publish, recovered through the registry rather than by lifting a coordinate
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-enricher`; additive — one new client, one

@@ -639,9 +639,23 @@ def check_identifiers(
             "directory, loaded with the module's declared genome_build)"
         )
     if variants is None:
-        variants, errors, _ = load_spec_variants(Path(spec_dir))
-        if errors:
-            raise ValueError(f"variants.csv is invalid: {errors[0]}")
+        # **An absent `variants.csv` is a module shape, not an error** — the format has never made the
+        # table mandatory, and the four PGx kinds a module can be built entirely out of are among the
+        # nine this pass now reads. Loading unconditionally raised `variants.csv is invalid: ... not
+        # found` on every one of them, so the roster S86 widened could not be reached from a spec
+        # directory at all: the CLI's own guard was returning before this line and hiding it. These
+        # rows are wanted for exactly one thing — placing a gene symbol against the chromosome its
+        # variant resolves to — and a module with none simply has nothing to place, which
+        # `_gene_locus_conflicts` reports as its own reason rather than as a silent zero.
+        #
+        # Present-and-unparseable still raises. That is a module whose rows exist and cannot be read,
+        # which is the author's to fix and not a shape.
+        if (Path(spec_dir) / "variants.csv").exists():
+            variants, errors, _ = load_spec_variants(Path(spec_dir))
+            if errors:
+                raise ValueError(f"variants.csv is invalid: {errors[0]}")
+        else:
+            variants = []
     report = IdentifierReport()
     # **The roster is every authored table carrying the column, not `variants.csv` alone (S86).** It
     # read one table while eleven declare `trait_efo_id`/`gene`, so a module whose traits live in
@@ -773,6 +787,16 @@ def _gene_locus_conflicts(
     pseudoautosomal locus, which is one place on two contigs — `XG` and `SPRY3` straddle a PAR boundary,
     so an X-vs-Y disagreement there is a spelling, not a contradiction.
     """
+    if not variants:
+        # Placed before the gene check because it is the more specific fact. Since the roster widened,
+        # a module carrying no `variants.csv` reaches here with symbols in hand — read off its
+        # `haplotypes.csv` or `diplotypes.csv` — and nothing to place them against. Returning
+        # `compared=0` with `None` beside it would be the `ran(0, 0)` this pass's attestation
+        # explicitly refuses to write.
+        return [], 0, (
+            "the module carries no variants.csv rows, so no gene symbol could be placed against a "
+            "variant's chromosome"
+        )
     if not genes:
         # Named apart from the line below, which is a claim about HGNC: with no authored gene, HGNC
         # was never asked, and reporting it as an unhelpful answer would be the same "the source did

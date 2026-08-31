@@ -3545,6 +3545,19 @@ prints *"all identifiers current"* over an empty roster, which was the same vacu
 A caller passing `variants=` still gets the narrow roster and is told so in `*_tables_not_read`, since
 rows in hand are all that form has.
 
+**And since RM156 a module carrying no `variants.csv` can reach that roster at all.** The widening
+left two gates in front of itself, both keyed on the one table it had stopped depending on:
+`check_identifiers(spec_dir=)` loaded `variants.csv` unconditionally and raised
+`variants.csv is invalid: ... not found`, and the command returned *"no variants.csv — nothing to
+check"* before ever calling it. The table has never been mandatory, and four of the nine that carry
+`gene` are the PGx kinds a module is built entirely out of — this repo ships four such reference
+examples, and `cyp2c19_star_alleles` names CYP2C19 on every row it has. The rows are wanted for one
+thing, placing a symbol against the chromosome its variant sits on, so an absent `variants.csv` is now
+no rows and `gene_loci_not_checked` says why; a `variants.csv` that exists and will not parse still
+raises, because that is a module whose rows exist and cannot be read. The command's guard is the
+roster instead of a filename: nothing to check means **no id-bearing table was read**, and only then
+is no attestation written, since with no question put there is nothing to record having asked.
+
 **`template` is the one command that duplicates the compiler's**, and the other four offline authoring
 commands (`stub`, `requirements`, `describe`, `hint`, `scaffold`) are deliberately *not* mirrored. The
 offline authoring surface has an owner — `just-dna-compiler` — and the single mirror exists so a PGx
