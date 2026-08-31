@@ -593,28 +593,42 @@ genotype while the 0.4 families keep the string) and the `stats` counter retype.
 
 ## 5. Readiness
 
-**Gates, run on this branch on 2026-08-31:**
+**Gates, re-run on this branch on 2026-09-01 at `741ec59`.** The 2026-08-31 sweep this table
+first carried is superseded: nine commits landed after it, two of them from a concurrent session, and
+two of its rows had gone stale in ways that mattered — see the notes under the table.
 
 | gate | result |
 | --- | --- |
-| `uv run pytest` | **3653 passed, 18 skipped, 0 failed** (3610 at this table's own sweep, before the readiness pass that closed the lint gate, added the workspace-floor guard and fixed the CIViC drafter's `trait_efo_id`; 3581 before RM151; 3394 before the 2026-08-31 batch; 2916 at the 2026-08-24 one) |
-| `uv run ruff check` | clean |
+| `uv run pytest` | **3760 passed, 18 skipped, 0 failed** (3653 at the 2026-08-31 sweep; 3610 before the readiness pass that closed the lint gate, added the workspace-floor guard and fixed the CIViC drafter's `trait_efo_id`; 3581 before RM151; 3394 before the 2026-08-31 batch; 2916 at the 2026-08-24 one). Re-run on a **clean checkout** of the same commit: 3742 passed, **36** skipped — the extra 18 are data-dependent tests (the Ensembl cache, a built ClinVar snapshot) whose inputs live under the git-ignored `data/`, so a fresh worktree skips them. Both runs, 0 failed |
+| `uv run ruff check` | clean. **It had gone red**: seven findings accumulated after the 2026-08-31 row was written — four unsorted import blocks, two unused imports and a lambda bound to a name — closed on 2026-09-01. A gate row is a measurement, not a property |
 | Reference corpus under the 0.7 compiler | **16 / 16 compile** |
-| 0.6.6 → 0.7.0 release sweep | 15 measured, gate exit 0 against the shipped record |
-| 0.6.6 client parses 0.7 manifests | **15 / 16** — see § 1 |
-| Open consumer inbox | **empty** — S78 was answered as RM143 and committed; S79–S84 arrived and were answered on 2026-08-31 (RM144, RM145, RM146, RM148, RM152). S76 was withdrawn as a duplicate of S66; S75 and S77 answered as RM140 / RM142. |
-| Open roadmap items in format scope | **RM153 alone**, and it is the residue of RM152 rather than a new proposal. RM152 stood here carrying no release class, since the measurement in it had refuted both candidate adoptions; on 2026-08-31 the probe it named was finally run, both refutations held, and a third route nobody had proposed turned out to be buildable with no schema change — so it acquired a class and **shipped inside this release**. RM153 carries what it left over: CIViC records publishing neither an rsID nor a GRCh38 accession, and whether a ClinGen CAID should be resolved to a locus. Neither blocks the cut. The seven that stood here — RM103, RM108, RM110, RM117, RM136, RM137, RM138 — all landed in the 2026-08-31 batch, six built and RM138 closed with its numbers measured; RM146, RM150 and RM151 landed with them, RM151 built the same day it was filed. |
+| 0.6.6 → 0.7.0 release sweep | 15 measured, **gate exit 0** — *after* RM161. It exited **1** on the first run of this round, on two manifest fields that moved and were not listed; the previous row's `exit 0` was measured before two declarations landed the same morning. Re-run the gate whenever a `DeclaredChange` is added, not only at the cut |
+| 0.6.6 client parses 0.7 manifests | **15 / 16** — see § 1. **Not re-measured on 2026-09-01, and the basis is stated rather than assumed**: nothing under `schema/` or `compiler/` has touched the manifest surface since it was measured. The one format change in between is RM161's release-record field list, which is not a manifest field |
+| Open consumer inbox | **empty** — S85 and S86 arrived on 2026-08-31/09-01 and were answered as RM154 and RM155. S78 was answered as RM143; S79–S84 on 2026-08-31 (RM144, RM145, RM146, RM148, RM152). S76 was withdrawn as a duplicate of S66; S75 and S77 answered as RM140 / RM142 |
+| Open roadmap items in format scope | **RM160 alone**, and it does not block: *the CIViC snapshot reads the reviewed quarter of its source*, open with the maintainer's *worth doing* and a design question (which reproducibility bargain to take) rather than a defect. RM153, which stood here on 2026-08-31, shipped the same day. RM7 sits below it and is marked not format scope |
 
 **The blocker this section carried is gone.** RM143 shipped and S78 was answered, and the 2026-08-31
 batch took the seven roadmap items that stood above with them. Everything here is committed, green and
-measured; what remains before a cut is release management rather than work. Two notes on that:
+measured; what remains before a cut is release management rather than work.
 
-1. The three `pyproject.toml` files already read `0.7.0` while `git tag` stops at `v0.6.6`. Anything
-   published from here must be a real cut; **wipe `dist/` before building**, since `uv publish`
-   uploads everything in it — it still holds the 0.6.6 artifacts. Their **intra-workspace floors** now
-   read `0.7.0` as well: the bump moved only the `version` fields, leaving `just-dna-format>=0.6.6`
-   under a compiler that imports four modules 0.6.6 does not have. Nothing in a checkout can see that
-   — `uv.lock` records those edges as editable with no specifier — so a test walks them now.
+**Two rows had gone stale, and the pair is the reason this section is re-measured rather than read.**
+The lint gate had gone red and the release gate exited 1 — the second on two manifest fields declared
+the morning after the measurement its record's list came from. Neither was visible from the tree: one
+is a gate nobody re-runs between cuts, and the other needs the previous release installed. A readiness
+table is worth exactly as much as the last time somebody ran it, so it carries the commit it was
+measured at. Two notes on the cut itself:
+
+1. The three `pyproject.toml` files read `0.7.0` while `git tag` stops at `v0.6.6`, so anything
+   published from here must be a real cut. **`dist/` was wiped and rebuilt on 2026-09-01** and now
+   holds the six 0.7.0 artifacts and nothing else — it had carried the published 0.6.6 ones, which
+   `uv publish` would have re-uploaded. The build was taken from a **detached worktree at `741ec59`**
+   rather than from the checkout: a second session was working in the same tree, and `uv build` reads
+   the working tree rather than git, so an uncommitted file inside a package directory would have
+   shipped in the wheel. Verified after building: six files, all `0.7.0`, and the three packages
+   import and report their versions from an isolated install. Their **intra-workspace floors** read
+   `0.7.0` as well: the bump moved only the `version` fields, leaving `just-dna-format>=0.6.6` under a
+   compiler that imports four modules 0.6.6 does not have. Nothing in a checkout can see that —
+   `uv.lock` records those edges as editable with no specifier — so a test walks them now.
 2. This release moves all three packages. Format gains models and columns, the compiler gains columns
    and `sweep`, the enricher gains the transaction, the PubMind surface and the currency check. There
    is no partial cut available.
