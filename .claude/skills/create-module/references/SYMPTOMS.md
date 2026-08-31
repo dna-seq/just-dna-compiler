@@ -98,12 +98,31 @@ placed the variant. Offline that is the end of the road. Online it means live En
 GRCh38 locus or could not be reached, and the finding immediately above says which — those are
 different answers, and only the second is worth re-running.
 
+**`cannot host the authored genotype … the authored alleles are the reverse complement`**
+The source **has** your variant. What does not match is the strand your alleles are written on: reading
+the genotype the other way round fits the locus exactly. This is what a supplementary table published
+against an older assembly usually carries, because the submitted strand often differs from GRCh38's.
+Fix the alleles in `variants.csv` — do not go looking for a second variant sharing the rsID, and do not
+conclude the source lacks it. The row is recorded as unresolved meanwhile, which is honest.
+
+**`cannot host the authored genotype … the locus is a substitution or MNV`**
+Same-length alleles have no shared flank, so there is no other spelling of them and the genotype names an
+allele this locus does not offer. Two readings remain and this tier cannot pick between them: a different
+variant sharing the rsID, or alleles transcribed from a record other than this one. One rsID legitimately
+covers several records at a locus (`rs281864532` is `G>GT`, `GT>G` *and* `GTT>G`), so check which record
+your genotype was written from.
+
 **`cannot host the authored genotype … The event sizes differ`**
 A real contradiction, and a decidable one: re-anchoring an indel never changes how many bases it adds or
-removes, so this is a different variant sharing the rsID rather than another spelling of yours. One rsID
-legitimately covers several records at a locus (`rs281864532` is `G>GT`, `GT>G` *and* `GTT>G`), so check
-which record your genotype was written from. Two spellings of *one* indel reconcile automatically —
-ClinVar's `X:634689 CAG>C` and Ensembl's `X:634690 AGAG>AG` are the same 2 bp deletion and both resolve.
+removes, so this is a different variant sharing the rsID rather than another spelling of yours. Two
+spellings of *one* indel reconcile automatically — ClinVar's `X:634689 CAG>C` and Ensembl's
+`X:634690 AGAG>AG` are the same 2 bp deletion and both resolve.
+
+**`N rsID(s) resolved to a locus the authored genotype cannot host`**
+The run's summary of the three above, and worth reading before you debug anything: these are rsIDs the
+source **has**. Their rows say `not_found`, which describes the *lookup* and not the source's knowledge,
+so grepping for it and concluding "the source has never heard of these" is the wrong turn this line
+exists to stop. The rsIDs it names are the ones to fix in `variants.csv`.
 
 **`could not be decided here … the same size but different content`**
 Not a contradiction and not your mistake: the two spellings describe an event of the same size in

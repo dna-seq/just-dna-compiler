@@ -44,6 +44,101 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM153 — the identity CIViC does not publish, recovered through the registry rather than by lifting a coordinate
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-enricher`; additive — one new client, one
+snapshot derivation, two withhold reasons, one licence row. **No schema change.**)
+**Severity** low-medium · **Owner** enricher · **Motivating case** measured while building RM152
+
+The residue RM152 left: CIViC publishes GRCh37 coordinates or none, and after every published
+identifier is read, some variants still have no route to a GRCh38 identity. The item carried two
+questions — should a ClinGen CAID be resolved, and should the remainder be lifted over. **Both are now
+answered, and they answer in opposite directions.**
+
+### What was measured
+
+Over the dated `01-Aug-2026` release, 533 germline direction rows on 290 variants:
+
+| | Variants | |
+|---|---:|---|
+| Recovered by the builder before this item | 138 | 48% |
+| Recoverable through a ClinGen CAID | **+64** | 52 via an rs-number, 12 via a GRCh38 coordinate |
+| **After RM153** | **202** | **70%** |
+| CAID present but the registry holds no placeable identity | 35 | indels it does not express as substitutions |
+| No identifier of any kind | 53 | of which **9** carry a GRCh37 coordinate |
+
+The registry answered all 102 probe requests with **zero failures**, serves both an rs-number and a
+GRCh38 coordinate, and needs no key.
+
+**A correction to this item's own figures.** It said 131 unreachable where the dated release gives
+157: its reach numbers had been taken from the *nightly* download while its row counts came from the
+dated release. Same source, two files, and the collision is the reason
+[CIVIC_SURVEY](probes/CIVIC_SURVEY.md) now labels which file every identity figure is over.
+
+### What shipped
+
+- **`clingen_allele.ClingenAlleleClient`** — CAID → rs-number and/or GRCh38 coordinate, paced, cached
+  per run, with **three outcomes and never two**: `resolved`, `no_identity` (the registry answered and
+  holds none — a 404 is an answer), `unchecked` (a 5xx or a transport failure), plus
+  `skipped_offline`. It raises nothing; the outcome *is* the contract, which is why it joins
+  `Grch37Client` in the exception-contract suite's named exemptions rather than being given an error
+  type to leak.
+- **`identity_derivation="caid"`** — the snapshot now **keeps** a CAID-only row with null coordinate
+  and null rsID, instead of dropping it. It has a *route* to an identity rather than an identity, and
+  dropping it made the recovery invisible to every later pass. `unresolvable_identity` now means no
+  identifier of any kind, and falls from 204 rows to 59.
+- **The pass runs at draft time, not build time.** A build that fetched would forfeit the offline
+  byte-reproducibility that is the whole reason `civic build` reads a dated file. `--offline` is the
+  switch, as it is everywhere in this tier, and a run without the registry withholds those rows as
+  **`caid_unresolved`** — unplaced, never unplaceable.
+- **The rs-number is preferred over the coordinate**, and the reason is the item's central argument:
+  ClinGen supplies it and the ordinary resolution chain verifies it against **Ensembl**. Two
+  authorities, so the check is real — which is precisely the property a lifted coordinate lacks.
+
+Measured end to end, the drafter goes from **115 variant rows offline to 167 online**.
+
+### Repairs rejected
+
+- **Liftover.** Reopened at the maintainer's instruction with new balance weights and refused on the
+  measurement — the full probe is [CIVIC_LIFTOVER_NINE](probes/CIVIC_LIFTOVER_NINE.md). Its ceiling is
+  **13 evidence rows on 9 variants**, 2.4% of the corpus, and after analysing what those events *are*
+  the honest recovery is **at most one variant**. Three are gene-level assertions (`Loss`, `Mutation`)
+  that no genotype satisfies on any build. Five are imprecise by the source's own HGVS
+  (`c.1-?_340+?del`) — the ClinGen registry **refuses those expressions outright**, which is a
+  stronger statement than a count: they have no allele identity on either build. And variant 2099 is
+  the worked instance of RM48's hazard: its own coordinate pair says 15 bp while its name and alias
+  say 24, and lifting CIViC's coordinate exactly yields **a different allele** from the one the source
+  is describing. The format cannot defend itself either — a fabricated `<DEL:340>` and a bare
+  gene-span locus both compile clean in both modes.
+- **`pyliftover` as a dev dependency.** Tried. It agrees with Ensembl on all 18 endpoints, so it buys
+  no accuracy; it downloads an unpinned chain file from UCSC at construction; and the assembly-map
+  endpoint already returns interval *segment structure*, which two point-lifts cannot.
+- **Resolving CAIDs inside `civic build`.** It would make the snapshot depend on a live service and
+  cost the reproducibility the dated input exists to provide.
+- **Inheriting ClinGen's CC0 for the registry.** The gene-curation surface is CC0; this is a different
+  surface, and `reg.clinicalgenome.org/site/terms` answers **HTTP 200 with a generic Genboree
+  "broken link" page** — a soft-404, the same shape as HPO's licence URL. Every axis is recorded
+  `None`: unknown is not permissive. Nothing is redistributed, and reading a public endpoint to place
+  a row is a read rather than an acquisition anyone has gated.
+
+### Charter check
+
+P2 — the fetch is in the enricher, the only tier permitted one. P3/P8 — no column, no table, no
+vocabulary member; a new `identity_derivation` value on a **derived snapshot**, which is not the
+authored surface. P5 — `caid_unresolved` and `caid_no_identity` are two withhold reasons because they
+are two facts, and collapsing them is the S20 defect. P7 — the snapshot stays byte-reproducible
+precisely because this pass is not in it. P9 — zero authored-layer cost.
+
+### What it left open
+
+**53 variants carry no identifier at all**, and five of the nine coordinate-bearing ones can never be
+reached by any identity pass, because an unambiguous identity does not exist for them. That is a
+permanent floor on CIViC's germline reach rather than a gap to close. Three smaller residues are
+sized in the probes and not taken: 26 unresolved variants publish a GRCh38 **deletion** accession the
+substitution-only parser cannot read, 31 carry a `c.` HGVS inside their *name* rather than in
+`hgvs_descriptions`, and whether a name plus a transcript resolves through the registry was not
+measured.
+
 ## RM152 — CIViC's germline quarter says almost nothing on the axis we asked it, and a great deal on the one next to it
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-enricher`; additive — a new snapshot
@@ -603,6 +698,61 @@ the legacy set has no member for it, and `neutral` is where `unknown` already la
 * **Nothing re-points, so nothing drifts.** `upgraded()` stays idempotent and `needs_upgrade` does not
   start reporting existing `unknown` rows, which is the half that makes this an addition rather than a
   retype.
+
+## RM154 — an answered lookup whose alleles were rejected was published as an absence
+
+**Severity** medium · **Status** ✅ shipped 2026-08-31 in the uncut 0.7.0 (`just-dna-format` +
+`just-dna-compiler` + `just-dna-enricher`) · **Owner** enricher · **Motivating case** S85
+(just-module-creator, in CONSUMER_SUGGESTIONS_HISTORY.md)
+
+A 64-variant longevity module authored from a paper whose supplementary is GRCh37/hg19 left five
+subjects unresolved, each written into `resolution.csv` as `status: not_found`, `source: ensembl`.
+Ensembl has all five and returns them immediately. What failed was allele matching: the paper spells
+the submitted strand, so its `G/A` meets GRCh38's `C/T` and the allele-aware filter rejects every
+locus, emptying `loci` and dropping the row through to the `not_found` arm.
+
+**Two states of the world, byte-identical rows.** Reproduced offline against the real `enrich` path: a
+snapshot that *has* the rsID with complemented alleles and one that genuinely lacks it produce the same
+`(rsid, status, chrom, start)`. That is the collapse RM98 repaired one branch over — the reporter cited
+its comments back at us — arriving from a third direction: `unreachable_rsids` means the request failed,
+`unconsulted_rsids` that nobody looked, and this one that the asking **succeeded** and the answer did
+not match. The consumer's own framing is the item: `not_found` sends an author to *does this rsID exist*,
+a question with an obvious answer that is not the problem.
+
+**Both obvious repairs are worse, and the second is worse in a way that had to be measured.** A new
+`VALID_RESOLUTION_STATUS` member changes a wire vocabulary every reader of a published `resolution.csv`
+shares — the reporter argued this themselves. *Deleting* the row looks more honest and is not:
+`variant_key` and `rsid` are `RESOLUTION_FACT_FIELDS` while `status` is provenance and is not, so
+removing the row **moves `resolution_signature`** and changing its status is free. Checked with the real
+function rather than reasoned from the field list. The row was never the untruth — it is honestly
+unresolved either way — so what moved is the reason, not the row.
+
+**Shipped:** `EnrichmentResult.allele_mismatches`, carrying
+`AlleleMismatch(rsid, genotype, loci, offered, strand_flip)` — the shape `ref_mismatches` and
+`stale_rsids` already have, which is the option the reporter proposed. One aggregated run warning in both
+modes, naming the rsIDs and saying the source *has* them, because an author who greps the artifact for
+`not_found` is exactly who this exists to contradict.
+
+**A second defect the report did not file, found in the sentence it quoted.** `hosting_verdict` returns
+a confident `False` from two arms — a substitution/MNV locus (no flank, so no spelling freedom) and an
+event length the locus does not offer — and the warning gave the second arm's reason for both. So a
+strand-flipped SNV was reported as *"The event sizes differ, which re-anchoring cannot change"* about two
+1 bp substitutions: a false claim, and the one that cost the run its largest diagnosis detour.
+`contradiction_reason` is now `undecided_reason`'s twin on the `False` side (five causes there, two
+here), walked by a test asserting the arms' reasons are pairwise distinct — the failure mode is a third
+arm silently inheriting a second's sentence, which raises nothing and reads as a diagnosis.
+
+`strand_flip_explains` and `reverse_complement` landed in **format**, not the enricher: they are pure
+string work over the four bases with no reference access, the compiler's twin reporting site needs them,
+and digest parity between the two resolution paths is a documented guarantee. `reverse_complement`
+withholds on anything that is not four bases — a degenerate code states an uncertainty, and complementing
+it would assert a base the source declined to name. `strand_flip_explains` tests `called <= locus` first,
+because a palindromic SNV (`A/T` at `T>A`) satisfies both readings and would otherwise be reported as a
+flip when it needed no explaining at all.
+
+**No artifact changes**: no column, no vocabulary member, no signature moves, and every existing module
+recompiles byte-identically. The `not_found` rows stay exactly where they were, which is what the
+reporter concluded too — nothing in their data needed editing beyond the five genotypes' strand.
 
 ## RM108 — a re-curation is recognised, and currency is DERIVED rather than marked
 

@@ -466,6 +466,39 @@ class PairCheck:
     answered: int = 0
 
 
+@dataclass(frozen=True)
+class AlleleMismatch:
+    """An rsID the source **has**, whose loci cannot host the authored genotype (S85).
+
+    The state this records is not the one `status="not_found"` describes, and the two were
+    indistinguishable in the artifact until this existed: the source was asked, it answered, and every
+    locus it gave was rejected by the allele-aware filter. `not_found` says the source has no record
+    of the rsID, which is a different fact and — here — a false one. Same distinction
+    `unreachable_rsids` and `unconsulted_rsids` draw one branch over, arriving from a third direction:
+    the asking succeeded and the *answer* did not match.
+
+    Carried as a structured finding rather than spelled as a new `VALID_RESOLUTION_STATUS` member,
+    because that vocabulary is a wire contract every reader of a published `resolution.csv` shares,
+    and because the row itself is honestly unresolved either way — what was wrong was never the row's
+    existence, only the reason it gave. The row therefore stays exactly where it was, which also keeps
+    `resolution_signature` still (`variant_key` and `rsid` are fact fields; `status` is not).
+
+    `strand_flip` is the one cause this tier can settle from the allele strings alone, and it is by
+    far the most common: a paper's supplementary published against hg19 routinely spells the submitted
+    strand, so its `G/A` meets GRCh38's `C/T`. `False` means *not established*, never *established
+    otherwise* — an allele that cannot be complemented withholds it, and a reader must not invert it.
+    """
+
+    rsid: str
+    genotype: str
+    #: Every locus the source returned, `chrom:start ref>alts`, in the order it gave them.
+    loci: tuple[str, ...] = ()
+    #: The allele sets the source published, so the author can see what they were compared against.
+    offered: tuple[str, ...] = ()
+    #: Whether reading the genotype on the other strand is what makes it fit. See the class note.
+    strand_flip: bool = False
+
+
 #: The `resolution.csv` columns this comparison actually reads. An overlay `update` on one of them is
 #: an answer to a coordinate disagreement; an update on `source` or `status` is not, which is the
 #: per-field rule RM136 chose over the per-row one.

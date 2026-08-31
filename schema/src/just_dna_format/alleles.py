@@ -440,3 +440,56 @@ def event_profile(alleles: Iterable[str]) -> frozenset[int] | None:
     if len(reduced) < 2:
         return None
     return frozenset(len(member) for member in reduced)
+
+
+#: Watson-Crick complements, plus the two IUPAC codes that are their own complement (`N`, and the
+#: self-complementary pairs are not listed because a degenerate code is refused below). Uppercase
+#: only: every caller upper-cases first, and a lowercase key would be a second spelling of one rule.
+_COMPLEMENT: dict[str, str] = {"A": "T", "T": "A", "C": "G", "G": "C"}
+
+
+def reverse_complement(allele: str | None) -> str | None:
+    """The reverse complement of a plain nucleotide string, or `None` when there isn't one.
+
+    `None` for anything that is not spelled in the four bases — empty, symbolic (`<DEL:1500>`), `*`,
+    or carrying an IUPAC degenerate code. That is the house algebra rather than a convenience: a
+    degenerate code states an *uncertainty*, and complementing it would assert a definite base the
+    source declined to name, which is the same defect `non_nucleotide_reason` exists to keep apart.
+    A caller gets an honest "cannot say" and must withhold rather than guess.
+    """
+    if not allele:
+        return None
+    token = allele.strip().upper()
+    if not token or any(base not in _COMPLEMENT for base in token):
+        return None
+    return "".join(_COMPLEMENT[base] for base in reversed(token))
+
+
+def strand_flip_explains(genotype: str, ref: str | None, alts: str | None) -> bool:
+    """Whether reading `genotype` on the other strand is what makes it fit this locus.
+
+    The question is asked **only after** `hosting_verdict` has returned a confident `False`, and it
+    exists because that `False` is correct while the sentence a caller reaches for is not: an authored
+    `A/G` at a `C>T` locus really is a contradiction on the strand it is written on, and it is also
+    the single most common way a coordinate paper's supplementary — published against hg19, where the
+    submitted strand often differs — meets a GRCh38 resolver. Diagnosing it as "a different variant
+    sharing the rsID" sends the author to dbSNP for a question dbSNP has already answered.
+
+    True only when **every** called allele complements into the locus's set and the raw call does not
+    already fit. Requiring all of them is what keeps this from firing on a coincidence: a single
+    palindromic SNV (`A/T` at a `T>A` locus) satisfies both readings, so `called <= locus` is tested
+    first and a locus the genotype already fits is never reported as a flip. An allele this tier
+    cannot complement withholds the whole answer — `False` here means *not established*, never
+    *established otherwise*, and the caller's message must not invert it.
+    """
+    if not ref or not alts:
+        return False
+    locus = {ref.strip().upper()} | {a.strip().upper() for a in alts.split(",") if a.strip()}
+    called = {a.upper() for a in split_genotype(genotype)}
+    called = {a for a in called if not is_unobservable_allele(a)}
+    if not called or not locus or called <= locus:
+        return False
+    flipped = {reverse_complement(a) for a in called}
+    if None in flipped:
+        return False
+    return flipped <= locus

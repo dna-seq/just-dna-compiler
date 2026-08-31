@@ -108,6 +108,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S82** a hand-read source that yielded no row — shipped; RM147
 - **S83** `direction` for a trend whose sign is unestablished — RM148
 - **S84** CIViC scored as a source; germline quarter too thin — RM152
+- **S85** `not_found` for an rsID the source has — accepted, RM154
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -7426,3 +7427,92 @@ is the next probe rather than a claim.
 **What we are not asking for.** Not a schema change. Nothing above needs a new column; the question is
 whether a somatic-majority source earns a place beside the four the enricher already reads, and that
 is your call about the enricher's scope, not ours.
+
+# just-module-creator, 2026-08-31 — an absence the source did not report
+
+## S85 — `status: not_found` for an rsID the source has, when what failed was allele matching
+
+**Status — accepted, both halves; shipped in the tree as RM154, uncut at 0.7.0.** Your reading of
+`enrich.py`'s neighbouring arms is exactly right, and it found a second defect you did not file.
+
+Reproduced end to end, offline, against the real `enrich` path: a snapshot carrying `rs61849494` at
+`1:11856378 C>T` with the genotype authored as its complement writes `status="not_found"`,
+`chrom=None` — and a snapshot that genuinely lacks the rsID writes a **byte-identical row**. Two
+different states of the world, indistinguishable in the artifact. That is the collapse RM98 repaired
+one branch over arriving from a third direction: there nobody asked, here the asking *succeeded* and
+the answer did not match.
+
+**We took your second option, and your argument against the cheap one holds — with a sharper reason
+than redundancy.** `EnrichmentResult.allele_mismatches` now carries
+`AlleleMismatch(rsid, genotype, loci, offered, strand_flip)`, the shape `ref_mismatches` and
+`stale_rsids` already have. A new `VALID_RESOLUTION_STATUS` member is a wire change every reader of a
+published `resolution.csv` shares; but *deleting* the row — the other obvious repair, and the one that
+looks most honest — is worse still, and measurably: `variant_key` and `rsid` are
+`RESOLUTION_FACT_FIELDS` while `status` is provenance and is not, so removing the row moves
+`resolution_signature` and changing its status is free. Checked rather than reasoned. The row was never
+the untruth; it is honestly unresolved either way. Only the reason it gave was wrong, so only the reason
+moved.
+
+**The second defect is in the sentence you quoted.** `hosting_verdict` returns a confident `False` from
+two arms — a substitution/MNV locus (no flank, so no spelling freedom) and an event length the locus
+does not offer — and the warning asserted the second arm's reason for both. So your five rows were told
+*"The event sizes differ, which re-anchoring cannot change"* about two 1 bp substitutions, which is a
+false claim and is precisely what sent you to dbSNP. That is `undecided_reason`'s repair arriving on the
+`False` side, so `compiler.resolution.contradiction_reason` is now its twin, walked by a test asserting
+the arms' reasons are pairwise distinct.
+
+Your case is now named where it is established: *"the authored alleles are the reverse complement of
+this locus's — reading A/G on the other strand fits it exactly. The source HAS this variant"*, plus one
+aggregated run line saying the source has them, so an author grepping for `not_found` is contradicted
+rather than confirmed. `strand_flip` is `False` for *not established*, never *established otherwise* —
+an allele that cannot be complemented withholds it — and `strand_flip_explains` tests `called <= locus`
+first, because a palindromic SNV satisfies both readings and would otherwise report a flip for a
+genotype that needed no explaining.
+
+Not changed, deliberately: the rows stay `not_found` in `resolution.csv`, and `unresolved` stays right,
+as you said. Nothing in your data needs editing beyond the five genotypes' strand. The new symptom
+entries are in the authoring skill's guide, so the next author is sent to the strand rather than to
+dbSNP — which is what you did for your own team meanwhile.
+<!-- triaged: 0.7.0 · sha 8d0159ae0d36 -->
+
+Reported by `just-module-creator`, 2026-08-31. Enricher 0.6.6.
+
+**What ran.** A 64-variant longevity module, every subject an rsID authored from a paper whose
+supplementary is GRCh37/hg19. `enrich(mode="best_effort")` on GRCh38 left five unresolved and wrote
+each of them into `resolution.csv` as `status: not_found`, `source: ensembl` — `rs2762745`,
+`rs575564328`, `rs61849494`, `rs61849498`, `rs796389673`.
+
+**Why that reading is wrong.** Ensembl has all five. `lookup_variant` returns each of them
+immediately, and the module now resolves all 64 — same rsIDs, same request path. What actually failed
+is allele-aware matching: the paper's hg19 alleles are the exact reverse complement of GRCh38's at
+those five positions (`rs61849494` is `G/A` in the paper and `C/T` on GRCh38), so the authored
+genotypes are not drawn from the allele set the resolver found.
+
+Those are different facts and the author acts on them differently. `not_found` sends you to *does this
+rsID exist* — a question with an obvious answer that is not the problem. The real answer is *the source
+has this variant and your alleles are on the other strand*, which is one of the highest-value catches
+in the pass: nothing downstream would have found it, and the module would have compiled green and
+matched no VCF. The run spent its single largest diagnosis detour on that misdirection before working
+out what had happened.
+
+**This is your own rule, applied one branch over.** `enrich.py`'s neighbouring arms are explicit about
+it. The unconsulted branch refuses to write `not_found` because that would be *"a negative nobody
+established, about a question never put"*, and names `unconsulted_rsids` separately from
+`unreachable_rsids` because *"'nothing was asked' and 'the asking failed' are two different states of
+the world, and collapsing them would replace one small untruth with another."* The GRCh38 arm at
+`out.append(ResolutionRow(..., status="not_found"))` collapses a third state into the same word: the
+asking succeeded and the answer did not match. `not_found` there asserts the source does not have the
+rsID, which is false and is checkable against the very response that produced the row.
+
+**What we did meanwhile.** Nothing in the data — the rows are legitimately unresolved and the
+`unresolved` list is right. We record the reading in our own symptom guide so the next author is sent
+to the strand rather than to dbSNP.
+
+**A candidate fix, and the argument against the cheap one.** The cheap fix is a distinct status, but
+`VALID_RESOLUTION_STATUS` is a wire vocabulary and `ambiguous` already exists next door, so adding a
+member is a format change with consumers to carry. The alternative that costs no vocabulary is a
+structured diagnosis beside the row — the shape `ref_mismatches` and `stale_rsids` already have — say
+`allele_mismatches: list[AlleleMismatch]` carrying the rsID, the authored alleles and the resolved
+allele set. That keeps the artifact's vocabulary fixed, makes the state legible in the result object
+where a caller can surface it, and leaves the row itself honestly unresolved. If you prefer the status
+member, the one we would want is not `not_found`.

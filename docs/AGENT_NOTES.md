@@ -573,6 +573,38 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   declines to write `not_found` for precisely this reason. Generalize it: **when a function has two ways
   of returning nothing, check whether any caller renders them as one sentence.**
 
+- `@answered-is-not-absent` — **A source that ANSWERED and whose answer did not match is a fourth state,
+  and `not_found` is a false claim about it (S85, 0.7).** The family `@unreachable-not-absent` built has
+  three members — asked-and-failed, nobody-asked, no-position-and-silent-about-why — and the forward
+  resolution loop was collapsing a fourth into the first's word. The allele-aware filter empties `loci`,
+  the branch falls through, and the row goes out as `status="not_found"`: *this source has no record of
+  your rsID*, about an rsID the source demonstrably has. Reported against a 64-variant longevity module
+  where five subjects read as unknown to Ensembl and Ensembl returns all five immediately; the run spent
+  its single largest diagnosis detour on the misdirection. `EnrichmentResult.allele_mismatches` carries
+  it now, as `AlleleMismatch(rsid, genotype, loci, offered, strand_flip)`.
+
+  **The row stays, and that is the finding rather than a compromise.** Both obvious repairs are worse:
+  a new `VALID_RESOLUTION_STATUS` member changes a wire vocabulary every reader of a published
+  `resolution.csv` shares, and *deleting* the row moves `resolution_signature` — `variant_key` and `rsid`
+  are `RESOLUTION_FACT_FIELDS`, `status` is provenance and is not, so a status swap is free and a
+  deletion is not. Measured, not reasoned: `resolution_signature([resolved, row])` differs with the row
+  removed and is identical with its status changed. The row was never the untruth — it is honestly
+  unresolved either way — only the reason it gave.
+
+  **The second defect was in the sentence, and it is the more general lesson.** `hosting_verdict` returns
+  a confident `False` from two arms, and the warning asserted the *event-length* arm's reason for both:
+  a strand-flipped SNV was reported as *"The event sizes differ, which re-anchoring cannot change"* about
+  two 1 bp substitutions. That is `@undecided-reason`'s repair arriving on the `False` side — five causes
+  for `None` there, two for `False` here — so `contradiction_reason` is now its twin, walked by a test
+  that asserts the arms' reasons are pairwise distinct. **A verdict function with several arms owes a
+  reason function with the same arms**, and the way it rots is a later arm inheriting an earlier one's
+  sentence, which raises nothing and reads as a diagnosis.
+
+  The strand half is worth its own line: a paper's supplementary published against GRCh37/hg19 spells the
+  submitted strand, so its `G/A` meets GRCh38's `C/T` routinely. `strand_flip_explains` tests
+  `called <= locus` **first**, because a palindromic SNV (`A/T` at `T>A`) satisfies both readings and
+  would otherwise be reported as a flip when it needed no explaining at all.
+
 ## Checks: where they run, and what severity means
 
 - `@parity-by-check` — **Audit `validate`/`compile` parity by CHECK, not by TABLE — that is how the third instance hid.**

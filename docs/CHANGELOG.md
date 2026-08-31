@@ -44,17 +44,42 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
-**The eleven entries dated 2026-08-31 are a batch of their own and are worth reading as one.** They are
+**The twelve entries dated 2026-08-31 are a batch of their own and are worth reading as one.** They are
 the roadmap items that stood open against this release — RM103, RM108, RM110, RM117, RM136, RM137 and
 RM138 — plus RM146 and RM150 from the same day's consumer reports, and RM151, which was filed and
 built the same day as RM117's other half, and RM152, a consumer measurement that arrived carrying
-no release class and acquired one when its probe was finally run; all taken in one pass so 0.7 cuts
-with its own backlog cleared rather than carrying it. Ten are built; **RM138 is closed with its numbers measured and no
+no release class and acquired one when its probe was finally run, and RM154, which arrived from a
+consumer report after the rest were built; all taken in one pass so 0.7 cuts with its own backlog
+cleared rather than carrying it. Eleven are built; **RM138 is closed with its numbers measured and no
 code changed**. Two things a reader should take from them together: `carried` costs
 1.06× gzipped rather than the 1.84× raw the item was filed about, so **serve manifests compressed**;
 and two derived values change — `gene_metrics.constraint_flags` and
 `gene_validity.classifications` — which are **corrections**, so a moved signature there is the fix
 arriving rather than drift.
+
+- **RM154 — an rsID the source HAS was published as an absence, and the warning explaining it was
+  false.** *(all three packages; **additive**, and **no schema change of any kind** — no column, no
+  vocabulary member, no signature moves, and every existing module recompiles byte-identically.)*
+  `enrich` writes `status: not_found` — *this source has no record of your rsID* — when the source
+  answered and the **allele-aware filter rejected every locus**. Reported over five subjects of a
+  64-variant longevity module authored from a GRCh37/hg19 supplementary: the paper spells the submitted
+  strand, so its `G/A` meets GRCh38's `C/T`, and Ensembl returns all five immediately. Reproduced
+  offline against the real path — a snapshot that has the rsID with complemented alleles and one that
+  genuinely lacks it write **byte-identical rows**. This is the fourth state in the family RM98 built
+  (`unreachable_rsids` = the request failed, `unconsulted_rsids` = nobody looked, `unresolved` = no
+  position and silent about why): here the asking **succeeded** and the answer did not match. New
+  `EnrichmentResult.allele_mismatches`, carrying `AlleleMismatch(rsid, genotype, loci, offered,
+  strand_flip)`, plus one aggregated warning in both modes saying the source *has* them. **The row is
+  deliberately unchanged**: a new `VALID_RESOLUTION_STATUS` member is a wire change, and *deleting* the
+  row moves `resolution_signature` (`variant_key`/`rsid` are fact fields, `status` is not — measured,
+  not reasoned), so what moved is the reason rather than the row. **Second defect, in the sentence the
+  reporter quoted**: `hosting_verdict`'s two `False` arms shared one explanation, so a strand-flipped
+  SNV was diagnosed as *"The event sizes differ, which re-anchoring cannot change"* about two 1 bp
+  substitutions — `compiler.resolution.contradiction_reason` is now `undecided_reason`'s twin on the
+  `False` side, with a test asserting the arms' reasons stay pairwise distinct. `strand_flip_explains`
+  and `reverse_complement` land in **format** (pure string work, and the compiler's twin site needs
+  them); both withhold rather than guess — a degenerate code cannot be complemented, and a palindromic
+  SNV that already fits is never reported as a flip. *(S85)*
 
 - **RM152 — CIViC adopted on the axis it can answer, and refused on the one it was proposed for.**
   *(`just-dna-enricher`; **additive**, and there is **no schema change of any kind** — no column, no

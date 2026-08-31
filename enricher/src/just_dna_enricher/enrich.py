@@ -22,7 +22,12 @@ from just_dna_compiler.compiler import (
     load_csv_rows,
     load_spec,
 )
-from just_dna_compiler.resolution import hosting_verdict, undecided_reason
+from just_dna_compiler.resolution import (
+    contradiction_reason,
+    hosting_verdict,
+    undecided_reason,
+)
+from just_dna_format.alleles import strand_flip_explains
 from just_dna_format.base import derive_variant_key, merge_key
 from just_dna_format.binning import HeteroplasmyRow
 from just_dna_format.layout import atomic_writer
@@ -83,7 +88,12 @@ from just_dna_enricher.locations import (
     resolve_ensembl_reference,
     resolve_pubmind_reference,
 )
-from just_dna_enricher.resolver import PairCheck, check_rsid_coordinates, lookup_loci
+from just_dna_enricher.resolver import (
+    AlleleMismatch,
+    PairCheck,
+    check_rsid_coordinates,
+    lookup_loci,
+)
 from just_dna_enricher.sequences import (
     RefCheck,
     RefMismatch,
@@ -583,6 +593,13 @@ class EnrichmentResult:
     # This one says nobody looked, which is the only one of the three a `not_found` row would be a
     # plain fabrication of — the row used to be written, naming a cache that was never opened.
     unconsulted_rsids: list[str] = field(default_factory=list)
+    # rsIDs the source HAS, whose every locus the allele-aware filter rejected (S85). The fourth state
+    # in this family and the only one whose row is written anyway: `unreachable_rsids` means the
+    # request failed, `unconsulted_rsids` that nobody looked, `unresolved` that a key has no position
+    # and stays silent about why — and this one that the asking *succeeded* and the answer did not
+    # match. The row is honestly unresolved, so it stays; what was wrong was the reason it gave.
+    # Empty is a clean bill only because every branch that writes one appends here.
+    allele_mismatches: list[AlleleMismatch] = field(default_factory=list)
     # What the rsid↔coordinate pass did (`resolver.check_rsid_coordinates`): the pairs it compared,
     # the ones the reference could not place, and the disagreements. Surfaced for the RM40/RM41 reason
     # — the run computes it and a consumer would otherwise recompute it from the log — and because the
@@ -885,6 +902,9 @@ def _run_enrichment(
     # rsIDs the live link could not put a question to at all — a failed request, not an empty answer.
     unreachable_rsids: set[str] = set()
     unconsulted_rsids: set[str] = set()   # nobody looked (RM98) — see the EnrichResult field
+    # The source answered and every locus it gave was rejected by the allele-aware filter (S85). A
+    # list rather than a set: it carries a finding per subject, not a bare id.
+    allele_mismatches: list[AlleleMismatch] = []
     # Reverse (position→rsid) back-fill is allele-aware and keeps ALL candidates per authored allele,
     # so we can take a deterministic pick and flag a genuine multi-rsid allele as ambiguous rather than
     # guessing an allele-blind label (which was the mis-attribution / reverse-round-trip drift).
@@ -1153,13 +1173,43 @@ def _run_enrichment(
                         undecided_reason(v.constraint, lo.get("ref"), lo.get("alts")),
                     )
                 elif verdict is False:
+                    # **The verdict is right and the old sentence was not.** `hosting_verdict` returns
+                    # a confident `False` from two different arms — step 6 (the locus is a substitution
+                    # or MNV, so there is no flank and no spelling freedom) and step 8 (an event length
+                    # the locus does not offer) — and this message asserted step 8's reason for both.
+                    # On the case that actually arrives, a strand-flipped SNV, "the event sizes differ"
+                    # is a false claim about two 1 bp substitutions, and it sends the author to look for
+                    # a second variant sharing the rsID rather than at the strand they authored on.
+                    # `@warning-text-is-api`: the phrase is pinned in the symptom guide, so it moves
+                    # there in the same change.
                     logger.warning(
                         "%s: %s:%s %s>%s cannot host the authored %s %s, and is left out of "
-                        "resolution.csv. The event sizes differ, which re-anchoring cannot change, so "
-                        "this is a different variant sharing the rsID rather than another spelling.",
+                        "resolution.csv. %s",
                         v.rsid, lo.get("chrom"), lo.get("start"), lo.get("ref"), lo.get("alts"),
                         subject, v.constraint,
+                        contradiction_reason(v.constraint, lo.get("ref"), lo.get("alts")),
                     )
+            if all_loci and not loci:
+                # **The source answered and every locus was rejected** — the fourth state (S85). Only
+                # recorded where `all_loci` is non-empty: with nothing returned there was no answer to
+                # reject, and that row is a genuine `not_found` the branches below handle. Built here,
+                # beside the per-locus warnings above, so the finding and the log cannot disagree about
+                # which loci were compared.
+                allele_mismatches.append(AlleleMismatch(
+                    rsid=v.rsid,
+                    genotype=v.constraint or "",
+                    loci=tuple(
+                        f"{lo.get('chrom')}:{lo.get('start')} {lo.get('ref')}>{lo.get('alts')}"
+                        for lo in all_loci
+                    ),
+                    offered=tuple(
+                        f"{lo.get('ref')}>{lo.get('alts')}" for lo in all_loci
+                    ),
+                    strand_flip=v.constraint is not None and any(
+                        strand_flip_explains(v.constraint, lo.get("ref"), lo.get("alts"))
+                        for lo in all_loci
+                    ),
+                ))
             if loci and not keep_par_twin:
                 # One place on two contigs: keep the X spelling every annotation source uses. Runs
                 # after the allele-aware filter above so it only ever sees loci this row can host.
@@ -1639,6 +1689,7 @@ def _run_enrichment(
         stale_rsids=stale_rsids, par_twins_dropped=sorted(par_twins_dropped),
         vrs=mint_result, unreachable_rsids=sorted(unreachable_rsids),
         unconsulted_rsids=sorted(unconsulted_rsids),
+        allele_mismatches=allele_mismatches,
         rsid_coordinates=pair_check,
         rederived=rederived,
         dataset_currency=dataset_currency,
@@ -1655,6 +1706,28 @@ def _run_enrichment(
             "unchecked rather than empty): %s. Re-run before treating these as rsIDs Ensembl does "
             "not have.",
             len(unreachable_rsids), ", ".join(sorted(unreachable_rsids)),
+        )
+
+    if allele_mismatches:
+        # **One aggregated line, not one per subject** — the rule this repo has needed four times, and
+        # the per-locus warnings above already say which locus was dropped and why. What this adds is
+        # the reading of the run: these rsIDs are ones the source HAS, so an author who greps for
+        # `not_found` and concludes "the source has never heard of these" is being misled by the row.
+        # Warned in BOTH modes: `strict` already refuses on `unresolved`, and in `best_effort` this is
+        # the line that stops the author debugging the wrong question.
+        flipped = [m for m in allele_mismatches if m.strand_flip]
+        logger.warning(
+            "%d rsID(s) resolved to a locus the authored genotype cannot host, so they are recorded "
+            "as unresolved: %s. The source HAS these variants — what did not match is the alleles, "
+            "so this is not an rsID the source lacks.%s",
+            len(allele_mismatches),
+            ", ".join(sorted(m.rsid for m in allele_mismatches)),
+            (
+                f" {len(flipped)} of them fit on the other strand ("
+                + ", ".join(sorted(m.rsid for m in flipped))
+                + "), which is what a supplementary table published against an older assembly "
+                  "usually carries: check the strand your alleles are written on."
+            ) if flipped else "",
         )
 
     if unconsulted_rsids:

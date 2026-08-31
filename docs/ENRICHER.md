@@ -802,6 +802,37 @@ and `strict` does not escalate it — no authored edit clears a failed request (
 and VRS-coverage findings are the same class. The argument was already four lines below in the same
 function, where the non-GRCh38 branch declines to write `not_found` for precisely this reason.
 
+**A `not_found` row also says something false when the source ANSWERED and the alleles did not match
+(S85, 0.7).** That is a fourth state, and until it was named the row was byte-identical to a genuine
+absence: `enrich` asked, the source returned loci, the allele-aware filter rejected every one, and the
+row went out as `status="not_found"` — *this source has no record of your rsID* — about an rsID the
+source demonstrably has. The reported case is the common one: a paper's supplementary published against
+GRCh37/hg19 spells the submitted strand, so its `G/A` meets GRCh38's `C/T` and five subjects of a
+64-variant module read as unknown to Ensembl when Ensembl returns all five immediately.
+
+**`EnrichmentResult.allele_mismatches`** carries it, as `AlleleMismatch(rsid, genotype, loci, offered,
+strand_flip)` — the shape `ref_mismatches` and `stale_rsids` already have. It completes the family the
+RM98 round started: `unreachable_rsids` means the request was made and failed, `unconsulted_rsids` that
+nobody looked, `unresolved` that a key has no position while staying silent about why, and this one that
+the asking *succeeded* and the answer did not match. `strand_flip` is the single cause this tier can
+settle from the allele strings alone, and it is `False` for *not established* rather than *established
+otherwise* — an allele that cannot be complemented withholds it.
+
+**The row itself is unchanged, deliberately, and that is not a half-fix.** Adding a
+`VALID_RESOLUTION_STATUS` member would change a wire vocabulary every reader of a published
+`resolution.csv` shares; dropping the row would move `resolution_signature`, since `variant_key` and
+`rsid` are `RESOLUTION_FACT_FIELDS` while `status` is provenance and is not. The row was never the
+untruth — it is honestly unresolved either way — only the reason it gave, so what moved is the reason.
+The run warns once, in both modes, naming the rsIDs and saying the source *has* them: an author who greps
+the artifact for `not_found` is the person this finding exists for.
+
+**The per-locus warning stopped asserting a cause it had not established.** `hosting_verdict` returns a
+confident `False` from two arms — a substitution/MNV locus (no flank, so no spelling freedom) and an
+event length the locus does not offer — and the message gave the second arm's reason for both, so a
+strand-flipped SNV was reported as *"The event sizes differ, which re-anchoring cannot change"* about two
+1 bp substitutions. `compiler.resolution.contradiction_reason` is now the `False` twin of
+`undecided_reason` and supplies *which*, the same repair that function received for `None`'s five causes.
+
 **`EnrichmentResult.vrs` is the `MintResult` this call computed (RM40, 0.5.1).** It carries exactly the
 two counters `compile_module` later stamps into `manifest.compilation.vrs_alleles` /
 `vrs_alleles_identified`, plus `unmintable_reasons` — the grouped-by-reason breakdown that is the

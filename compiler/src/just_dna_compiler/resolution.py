@@ -22,6 +22,7 @@ from just_dna_format.alleles import (
     non_nucleotide_alleles,
     parsimony_reduce,
     split_genotype,
+    strand_flip_explains,
 )
 from just_dna_format.base import derive_variant_key
 from just_dna_format.findings import CodedWarning
@@ -672,6 +673,56 @@ def undecided_reason(genotype: str, ref: str | None, alts: str | None) -> str:
         "the two spellings describe events of the same size but different content, which is either "
         "one indel re-anchored inside a repeat or two different variants, and telling those apart "
         "needs the reference sequence (run the enricher)"
+    )
+
+
+def contradiction_reason(genotype: str, ref: str | None, alts: str | None) -> str:
+    """Why `hosting_verdict` was a confident `False` — `undecided_reason`'s twin, same contract (S85).
+
+    **`False` has two causes and the enricher's message asserted one of them for both.** Step 8 is the
+    event-length arm — a 1 bp insertion cannot be a 2 bp deletion however it is spelled — and *"the
+    event sizes differ, which re-anchoring cannot change"* is its reason. Step 6 is the substitution/MNV
+    arm, where the sizes are identical and what makes the verdict confident is the *absence of a flank*:
+    same-length alleles have no spelling freedom, so a genotype naming alleles the locus does not offer
+    is a real contradiction. Saying "the event sizes differ" there is a false claim about two 1 bp
+    substitutions, and it sends the author hunting a second variant sharing the rsID.
+
+    The case that made this worth splitting is a strand flip: a paper's supplementary published against
+    hg19 spells the submitted strand, so an authored `A/G` meets GRCh38's `C>T`. The verdict is correct
+    — on the strand it is written on, that genotype really cannot be hosted — and the *remedy* is a
+    column the old sentence never mentioned. So the flip is named where it is established, and the
+    step-6 fallback stays honest about what it did not establish rather than inventing a cause.
+
+    Mirrors `hosting_verdict`'s `False` branches in its order, for the reason its twin does: a test
+    walks every `False`-producing shape and asserts the pairing, so a third arm cannot silently inherit
+    a second's explanation.
+    """
+    if strand_flip_explains(genotype, ref, alts):
+        return (
+            f"the authored alleles are the reverse complement of this locus's — reading {genotype} on "
+            "the other strand fits it exactly. The source HAS this variant; what does not match is the "
+            "strand your alleles are written on, which is what a supplementary table published against "
+            "an older assembly usually carries. Check the strand before looking for a second variant"
+        )
+    locus = {a.strip().upper() for a in (ref or "", *(alts or "").split(",")) if a.strip()}
+    called = {a.upper() for a in split_genotype(genotype)}
+    observable_locus = {a for a in locus if not is_unobservable_allele(a)}
+    observable_called = {a for a in called if not is_unobservable_allele(a)}
+    if not _indel_shaped(parsimony_reduce(observable_locus)):
+        return (
+            "the locus is a substitution or MNV, so its alleles have no shared flank to re-anchor on "
+            "and there is no other spelling of them: the genotype names an allele this locus does not "
+            "offer. Either it is a different variant sharing the rsID, or the alleles were transcribed "
+            "from a record this one is not"
+        )
+    if not _indel_shaped(parsimony_reduce(observable_called)):
+        return (
+            "the genotype's alleles are all the same length while the locus's are not, so the two "
+            "describe different events rather than two spellings of one"
+        )
+    return (
+        "the event sizes differ, which re-anchoring cannot change, so this is a different variant "
+        "sharing the rsID rather than another spelling"
     )
 
 

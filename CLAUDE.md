@@ -181,6 +181,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Resolution reaches the positional tables too since 0.6; `authored_ident` is what keeps the fill out of `content_signature`. `@rm43-positional-fill`
 - Unreachable is not absent: write no row, name it separately, warn in both modes. `@unreachable-not-absent`
 - **Nobody-asked is a third state** beside asked-and-failed and asked-and-absent; `--offline` is where it bites. `@unreachable-not-absent`
+- Answered-and-rejected is a fourth: the row stays and the *reason* moves, never the status. `@answered-is-not-absent`
+- A verdict function with several arms owes a reason function with the same arms, pairwise distinct. `@answered-is-not-absent`
 
 ### Checks: placement and severity
 
