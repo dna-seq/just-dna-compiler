@@ -321,7 +321,7 @@ def test_every_recorded_manifest_field_is_a_path_the_manifest_really_has() -> No
 
 
 def test_a_declared_field_ADDITION_is_also_listed_as_one_that_moved() -> None:
-    """A field this release *adds* must appear in `manifest_fields`, and two did not (RM159).
+    """A field this release *adds* must appear in `manifest_fields`, and two did not (RM161).
 
     The two halves of a record are written at different times: `manifest_fields` comes out of a sweep
     (`SweepMeasurement.as_record`, whose `declared` list is empty on purpose) and the declarations are

@@ -679,7 +679,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   forbids writing one.
 
 - `@a-record-written-in-two-passes-drifts-between-them` — **A release record has a measured half and a
-  declared half, written at different times, and the second leaves the first behind (RM159, 0.7).**
+  declared half, written at different times, and the second leaves the first behind (RM161, 0.7).**
   `SweepMeasurement.as_record` writes `axes` and `manifest_fields` from a sweep with `declared`
   deliberately empty, so the gate refuses until a person classifies each movement. That split is the
   mechanism — and it is also the drift: an item landing *after* the measurement adds its

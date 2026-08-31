@@ -118,7 +118,7 @@ has never heard of CIViC.
   every other member through the placed path — but that is now an equality over the vocabulary rather
   than a property nobody checked (`@lookup-with-a-default-hides-a-new-member`).
 
-## RM159 — a release record's two halves are written at different times, and the second left the first behind
+## RM161 — a release record's two halves are written at different times, and the second left the first behind
 
 **Severity** high (a red release gate) · **Status** ✅ shipped 2026-09-01 in the uncut 0.7.0
 (`just-dna-format`) · **Owner** format · **Motivating case** the pre-build gate run for the 0.7.0 cut

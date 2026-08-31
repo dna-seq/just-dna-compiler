@@ -1911,7 +1911,7 @@ list on purpose, so the gate keeps refusing until somebody says whether each mov
 `correction` (the value we published was wrong) or an `addition` (it was absent). That is the whole
 mechanism.
 
-**The two halves are written at different times, and that is where a record drifts (RM159).** An item
+**The two halves are written at different times, and that is where a record drifts (RM161).** An item
 landing after the measurement adds its `DeclaredChange` and leaves `manifest_fields` behind it, which
 turns this gate red at the one moment nobody wants to be debugging a record — 0.7.0 reached its own
 pre-build run missing `gene_validity.superseded_count` and `identity.version_coerced_from`, both

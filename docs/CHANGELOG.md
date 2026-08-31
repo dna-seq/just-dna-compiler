@@ -79,7 +79,7 @@ consumer report after the rest were built; all taken in one pass so 0.7 cuts wit
 cleared rather than carrying it. Eleven are built; **RM138 is closed with its numbers measured and no
 code changed**. **The items dated 2026-09-01 are deliberately outside that count** — RM155 arrived
 from a consumer the next morning, RM156, RM157 and RM158 from sweeping its shape across the
-tier, and RM159 from the pre-build gate run those four preceded; all five ship inside the same uncut
+tier, and RM161 from the pre-build gate run those four preceded; all five ship inside the same uncut
 0.7.0. The batch stays the thing it describes rather than growing a member
 whenever another item lands before the tag: the count is of the 2026-08-31 round, and the rule for a
 later item is to date it and leave the number alone. Two things a reader should take from them together: `carried` costs
@@ -88,7 +88,7 @@ and two derived values change — `gene_metrics.constraint_flags` and
 `gene_validity.classifications` — which are **corrections**, so a moved signature there is the fix
 arriving rather than drift.
 
-- **RM159 — a release record's two halves are written at different times, and the second left the
+- **RM161 — a release record's two halves are written at different times, and the second left the
   first behind.** *(`just-dna-format`; **additive** — two names into an existing list and one new test.
   No column, no vocabulary member, no signature moves.)* The pre-build gate run for this cut exited
   **1**: `gene_validity.superseded_count` and `identity.version_coerced_from` *"moved and the release
