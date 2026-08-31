@@ -487,16 +487,21 @@ representative_transcript, ensembl_version, reference_build, hgvs_descriptions, 
 clinvar_ids, variant_aliases`. It does **not** carry the API's `myVariantInfo` block, which is where
 `dbsnpRsid` and `clinvarHgvsGenomic` live. So over the 290 joined variants:
 
-| Route | Variants |
-|---|---|
-| GRCh38 `NC_` accession in `hgvs_descriptions` | **40** |
-| GRCh37-only accession | 181 |
-| rsID in `variant_aliases` | **126** |
-| ClinGen `allele_registry_id` (excluding the `unregistered` sentinel) | 235 |
-| **Reachable — a GRCh38 accession *or* an rsID** | **159** |
-| neither | 131 |
+| Route | Variants (nightly) | Variants (`01-Aug-2026`) |
+|---|---|---|
+| GRCh38 `NC_` accession in `hgvs_descriptions` | 40 | — |
+| GRCh37-only accession | 181 | — |
+| rsID in `variant_aliases` | 126 | — |
+| ClinGen `allele_registry_id` (excluding the `unregistered` sentinel) | 235 | — |
+| **Reachable — a GRCh38 accession *or* an rsID** | **159** | **133** |
+| neither | 131 | **157**, of which **102 carry a CAID** |
 
-**376 of the 533 evidence rows are reachable**; 157 are not.
+**Name the file, not just the surface.** The left column is the *nightly* download and the right is the
+dated `01-Aug-2026` release the builder actually reads, measured with the shipped `parse_rsids` and
+`parse_grch38_substitution` rather than an ad-hoc regex. They differ because the nightly is later and
+better curated, not because either is wrong — but **the dated figures are the ones a reader should
+compare a built snapshot against**, since that is what `civic build --release` consumes. On the dated
+release, 329 of the 533 evidence rows are reachable and **204 are not**.
 
 **Scoring the accession requires the per-chromosome RefSeq map, not a version number.** `NC_000001.11`
 is GRCh38 but `NC_000002.11` is GRCh37 — the version that means "GRCh38" differs per chromosome. A
@@ -510,10 +515,109 @@ byte-reproducible, and mixing in live API enrichment would forfeit exactly that.
 `allele_registry_id` as a snapshot column so the 131 unreachable variants stay addressable, and leave
 CAID→GRCh38 resolution to a later pass, where RM48's *report-never-fill* rule governs it.
 
+## What was built from this, and what it looks like in practice
+
+**CIViC was adopted on 2026-08-31, on the `direction` axis and nowhere else** — `civic build`,
+`draft-panel --source civic`, and a `CIVIC_TERMS` licence row, with **no schema change of any kind**.
+The operative surface is documented in the enricher reference and the authoring skill; what belongs
+*here* is only the numbers a reader should expect to see, so a run that disagrees with them is
+recognisable as a change in the source rather than a bug in the tool.
+
+Building the `01-Aug-2026` release and drafting the whole thing into an empty spec:
+
+| | |
+|---|---|
+| Evidence rows read | 4,878 |
+| Dropped `non_germline_origin` | 4,067 |
+| Dropped `not_direction_axis` | 278 |
+| Dropped `unresolvable_identity` | 204 |
+| Dropped `combination_profile` / `no_variant_record` | 0 / 0 |
+| **Kept** | **329 rows on 133 variants** |
+| Identity: `rsid` / `both` / `grch38_hgvs` | 305 / 17 / 7 |
+| Drafted into an empty spec | **110** variant rows, **311** study rows |
+
+Two of those are worth reading rather than skimming. **The zeros are measured, not structural** — 209
+multi-variant profiles carrying 547 accepted rows exist in this release, and none of them is germline,
+so `combination_profile` would fire on a source that grew one. And **329 rows collapse to 110 authored
+variants**, because one variant carries several evidence items; the drafter reports the rest as
+`already_present` rather than appending them, which is what makes a re-run a no-op.
+
+## What could be done next, each with the number that sizes it
+
+Sized here, decided elsewhere. Nothing below is a plan — `docs/probes/` is evidence — but every one of
+these has been asked, or will be, and the measurement is what stops it being re-argued from scratch.
+
+**Worth doing, in rough order of value per unit of work:**
+
+1. **Resolve a ClinGen `allele_registry_id` to a GRCh38 locus.** The largest single recovery available:
+   **102 of the 157 unreachable variants carry a CAID**, and a CAID is build-independent by
+   construction, so this converts most of the `unresolvable_identity` drop into drafted rows *without
+   lifting a coordinate*. It also produces the independent second value resolution cross-examines,
+   which is the property that makes an rsID acceptable and a lifted coordinate not. Costs: a source
+   the enricher does not currently fetch (terms, cache, a place in the chain), and a decision about
+   whether it belongs at `enrich` time — almost certainly yes, since doing it in the builder would
+   forfeit the offline reproducibility that is the whole reason the builder reads a dated file. Tracked
+   as RM153.
+2. **Publish a snapshot.** CC0 permits redistribution outright, and **no CIViC snapshot has been
+   published** — every deployment currently builds its own. This is the one source here where nothing
+   legal stands in the way; what is missing is only a repo and the decision to own the cadence. Note
+   the standing rules that a published snapshot accumulates and that a publisher's allowlist is derived
+   from the artifact's own file list.
+3. **A currency check.** Dated releases appear monthly and are immutable, so "is this snapshot stale?"
+   is answerable by asking the download index for a later date — cheaply, and against the source rather
+   than against the cache it was built from. `release.json` already records `dataset`,
+   `evidence_sha256`, `variant_sha256` and `profile_sha256`, which is everything such a check needs.
+
+**Possible, with a real trade-off to decide first:**
+
+4. **Read the API's `myVariantInfo` block to close the identity gap.** It carries `dbsnpRsid` and
+   ClinVar's GRCh38 HGVS, which the bulk file does not, and over the API's 620-variant view it lifts
+   reach from 133-of-290 to 318-of-376. But mixing a live API into a build forfeits byte-reproducibility
+   — the property a snapshot exists to have — so if this is done it belongs as an `enrich`-time pass
+   beside the CAID one, not inside `civic build`.
+5. **Decide what a conjunction-named variant is, before item 1 makes it urgent.** CIViC encodes
+   combination genotypes two ways. The profile-level `" AND "` kind is detected and dropped by count,
+   correctly. The other kind is a **single variant id whose own `name` names two to four alterations**
+   (`rs1801270 and rs1059234`, `Deletion AND I151S(c.452T>G)`) — 24 of them across the API's 620-variant
+   view, and **nothing in the builder looks at a variant's name**, so nothing would drop or split them.
+
+   Measured on the dated release, the class is currently harmless **by accident**: exactly 2 germline
+   direction rows carry a conjunction-named variant, and **both are dropped as
+   `unresolvable_identity`**, because a compound name carries no single rsID and no single GRCh38
+   substitution. That is the identity filter doing it, not any awareness of conjunction — so **item 1
+   is precisely what would let them through**, since resolving a CAID is exactly the step that supplies
+   the identity they currently lack. A CAID pass should decide this first, or it will quietly begin
+   minting one variant identity for what the source describes as several alterations.
+6. **Read `SUBMITTED` items.** The bulk file is `accepted`-only, so today's snapshot is the reviewed
+   subset by construction. Including submitted items would roughly double the corpus and would require
+   the API rather than the download — and it changes every number in this document, including taking
+   the contested-variant count from 0 to 3. If it is ever done, `status` belongs on the row as
+   `confidence` with `confidence_unit`, unconverted, never folded into anything.
+
+**Deliberately not worth doing, and each is closed on a measurement rather than an opinion:**
+
+7. **A `direction`-axis concordance record.** Genuine `risk`-vs-`protective` opposition is **0** at
+   every scope and status basis, and nothing else in the enricher fills `direction` at all — a
+   concordance record needs two authorities and this axis has one. What would reopen it is a *second*
+   direction-bearing source appearing, not more CIViC.
+8. **CIViC as a `clin_sig` authority.** Five germline ACMG-tier calls, zero benign-class. Dead on
+   arithmetic, and no amount of growth in the somatic majority changes it.
+9. **Mining the `assertions` table for direction evidence.** Structurally impossible, not merely thin:
+   `AssertionSignificance` has no `PREDISPOSITION` or `PROTECTIVENESS` member, so the query is a type
+   error. This one cannot change without CIViC altering its schema.
+10. **Lifting the GRCh37 coordinates over.** Refused, and now sized rather than argued: after every
+    published identifier is tried the remainder is 157 variants, 102 of which a CAID would place
+    instead. A lifted coordinate would still be the row's sole identity with nothing to check it
+    against.
+
+**One thing to check before trusting anything above.** Every count here is over one dated release. The
+source is actively curated — the nightly file already disagrees with `01-Aug-2026` on reach (159
+reachable variants against 133) — so re-derive rather than quote if a decision turns on a margin.
+
 ## What this survey concludes, and what it deliberately does not
 
 **It concludes nothing.** `docs/probes/` is evidence. The readings the measurements support are
-recorded in [ROADMAP.md § RM152](../ROADMAP.md) and in the 0.7 proposal addendum; if a future reader
+recorded in [ROADMAP_HISTORY.md § RM152](../ROADMAP_HISTORY.md) and in the 0.7 proposal addendum; if a future reader
 finds those and this document disagreeing, those win and this one is the thing that went stale.
 
 What is worth carrying forward in one place:
