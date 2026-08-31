@@ -164,6 +164,26 @@ arriving rather than drift.
   symbols in hand and no rows, `_gene_locus_conflicts` returned `compared=0` with `None` beside it,
   the `ran(0, 0)` its own attestation docstring forbids. *(from the RM155 sweep)*
 
+- **RM162 — `RM_TOC.md` is an index, and an index is not an allocator.** *(tooling only —
+  `.claude/rm-next.py` plus its test; **no package, no schema change**, nothing a consumer installs.)*
+  The `Sn` loop has allocated ids since it was built, because an id written into a document collides
+  when it is stale. `RMn` had no allocator: the number was read by grepping *"the highest in use"*, and
+  the window between that read and writing the entry is where a second session reads. **Reproduced by
+  this repo on itself** — on 2026-09-01 two sessions sharing one working tree filed different work as
+  **RM159** a minute apart, and `741ec59` renumbered one to RM161. The new tool scans every
+  `docs/**/*.md` and **reserves** the next number in the same locked write; a tool that only *printed*
+  the number would be the same defect with a nicer interface. **The lock is on `docs/`, never on
+  `RM_TOC.md`**: a leftover lockfile would block every later run (`@flock-not-a-lockfile`), and — the
+  half that was measured rather than assumed — `flock` binds an **inode**, so an atomic rename-over
+  leaves the holder locking an unlinked file while a second process acquires immediately. A reservation
+  is a visible `🔷` row in the index rather than a side-car it cannot see, and `--release` leaves a `✖`
+  tombstone because **ids are never reused** — the first cut deleted the row, the number went invisible
+  to the scan, and a released RM10 was handed straight back out. Pinned by a test that runs eight
+  allocators at once **and runs the same eight with `flock` neutered to watch them collide** (5 distinct
+  of 8, one number taken three times). The loop's Step 5 bullet, which told an agent to read the number
+  off the index and named a highest that had been stale for 114 items, is corrected. *(the 2026-09-01
+  collision)*
+
 - **RM155 — the identifier roster read one table while eleven carry the column, and reported its
   blindness as a clean zero.** *(`just-dna-enricher`; **additive**, and **no schema change** — no
   column, no vocabulary member, no signature moves; the new report fields default to empty, so an

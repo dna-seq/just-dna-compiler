@@ -118,6 +118,59 @@ has never heard of CIViC.
   every other member through the placed path — but that is now an equality over the vocabulary rather
   than a property nobody checked (`@lookup-with-a-default-hides-a-new-member`).
 
+## RM162 — `RM_TOC.md` is an index, and an index is not an allocator
+
+**Severity** medium · **Status** ✅ shipped 2026-09-01 in the uncut 0.7.0 (tooling only — no package,
+no schema change) · **Owner** the triage loop · **Motivating case** the 2026-09-01 collision, git
+`741ec59`
+
+The consumer-suggestion loop has had an allocator for `Sn` since it was built (`triage-state.py
+--next`), because the id is written into a document and a stale one collides. `RMn` never got one.
+`docs/RM_TOC.md` is the complete index of every item — that is what it was written for — but reading a
+number out of it *claims* nothing, so the procedure was grep the highest, add one, and write the entry.
+The window between the read and the write is exactly where a second session reads.
+
+**Reproduced rather than hypothesised, and by this loop on itself.** On 2026-09-01 two sessions sharing
+this working tree filed different work as **RM159** a minute apart, and the tree carried two RM159
+entries pointing at different items. `741ec59` renumbered one to RM161, picking the cheaper move: the
+other pair was contiguous and already referenced from three probe documents and the enricher reference.
+
+**Grepping cannot fix this.** Any read-then-write with a gap has the same race, so the claim has to be
+a single atomic write: `.claude/rm-next.py` scans every `docs/**/*.md` and appends the reservation
+inside one critical section. Scanning outside the lock and appending inside it would be the same defect
+with a smaller window, so the scan is in there too.
+
+**The lock is on `docs/`, the directory, and the second reason was measured.** A lockfile left behind by
+exactly the kill this guards against would block every later run, and the staleness rule that repairs
+that is a clock — `@flock-not-a-lockfile`, the idiom `transaction.spec_lock` already uses for `enrich`.
+The sharper reason is that `flock` binds an **inode**: an editor or an atomic writer that renames a new
+file over `RM_TOC.md` leaves the holder locking an unlinked inode while a second process opens the new
+file and acquires immediately. Verified in a sandbox before the tool was written — locking the file
+would have looked correct and excluded nothing.
+
+**A reservation is a visible index row, not a side-car.** `🔷 reserved`, under the open-items heading,
+replaced by the item's real row when the entry is written. A number claimed and abandoned is then
+*visible* rather than silently burned, and a state file the index cannot see is precisely how a number
+goes missing — the failure `RM_TOC.md` exists to prevent. Placement is checked: the file ends in a prose
+section, and a row appended at EOF would read as part of it, which is the furniture hazard the triage
+loop's own §6 records one document over.
+
+**`--release` leaves a tombstone, and the first cut of this shipped the bug it fixes.** Deleting the
+reservation row made the number invisible to the scan, so a released RM10 was immediately re-reserved as
+RM10 — contradicting the rule the tool's own docstring states. Ids are never reused: whatever argued the
+withdrawal refers to the number, and reusing it makes two items answer to one name in the record. The
+tombstone has to contain the number literally, since a scan is all that reads it. Found by running the
+release path rather than by reading it.
+
+**Pinned by a guard watched failing.** `test_rm_allocator.py` runs eight allocators at once and asserts
+eight distinct contiguous numbers — and runs *the same eight with `flock` neutered*, asserting they
+collide. Without that second test the first passes for reasons that have nothing to do with the lock.
+The unlocked run produced 5 distinct of 8, with one number taken three times.
+
+Also corrected: the loop's own Step 5 hygiene bullet said to read the number off `RM_TOC.md`, which is
+the instruction the incident came from, and named `RM47` as the highest — a counter in prose, stale for
+114 items (`@counted-prose-needs-a-fixed-field`).
+
 ## RM161 — a release record's two halves are written at different times, and the second left the first behind
 
 **Severity** high (a red release gate) · **Status** ✅ shipped 2026-09-01 in the uncut 0.7.0

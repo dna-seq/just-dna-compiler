@@ -702,6 +702,39 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   a *note* for the reverse case. Reach for the asymmetric invariant when only one direction is
   entailed.
 
+- `@an-index-is-not-an-allocator` — **A complete index answers *where does RM47 live*; it cannot answer
+  *which number is mine* (RM162, 2026-09-01).** Reading a maximum claims nothing, so the procedure
+  "grep the highest, add one, write the entry" has a window between the read and the write, and that
+  window is exactly where a second session reads. Two sessions in this working tree filed different
+  work as RM159 a minute apart (git `741ec59`, which renumbered one to RM161). `Sn` never had this
+  problem because the loop shipped `--next` with it; `RMn` was the one id nobody allocated.
+
+  **A tool that only prints the next number is the same bug with a nicer interface.** The fix is the
+  *reservation*: `.claude/rm-next.py` scans and appends inside one lock, so the next scan sees the
+  number as taken. Scanning outside the lock and appending inside it is the same race with a smaller
+  window — the whole read-modify-write is the critical section, which is the same shape
+  `@enrich-is-a-transaction` states for a table.
+
+  **Lock the directory, never the file, and the inode reason is the one that bites.**
+  `@flock-not-a-lockfile` already covers the leftover-lockfile half. The sharper half: `flock` binds an
+  **inode**, so any writer that renames a new file over the target leaves the holder locking an
+  unlinked inode while a second process opens the new file and acquires immediately. Measured in a
+  sandbox — locking `RM_TOC.md` itself would have looked right and excluded nothing. Generalize it:
+  **a lock on a path that something rewrites atomically is not a lock.**
+
+  **A reservation must be visible in the thing it reserves in.** A side-car state file the index cannot
+  see is how a number goes missing, which is the failure the index itself exists to prevent, so the
+  claim is a `🔷` row in `RM_TOC.md` and an abandoned number is legible rather than silently burned.
+
+  **Releasing leaves a tombstone, and the first cut shipped the bug it was fixing.** Deleting the row
+  made the number invisible to the scan, so a released RM10 came straight back out — against the rule
+  the tool's own docstring states. Ids are never reused; the tombstone has to *contain* the number,
+  because a scan is all that reads it. Found by running the release path, not by reading it.
+
+  The lock is pinned by running the failing version: eight concurrent allocators with `flock` neutered
+  produced 5 distinct of 8, one number taken three times. Without that companion test the passing one
+  proves nothing about the lock.
+
 ## Checks: where they run, and what severity means
 
 - `@parity-by-check` — **Audit `validate`/`compile` parity by CHECK, not by TABLE — that is how the third instance hid.**

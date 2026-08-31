@@ -41,7 +41,7 @@ PharmVar's OpenAPI document and its licence text).
 | [CONSTITUTION.md](docs/CONSTITUTION.md) | the 9 principles + goals/non-goals. Wins over any plan. **Rules only** — no reasoning lives there | `grep -n '^[0-9]\+\. \*\*' docs/CONSTITUTION.md` |
 | [CONSTITUTION_AMENDMENTS_HISTORY.md](docs/CONSTITUTION_AMENDMENTS_HISTORY.md) | *why* each amendment was made — the reasoning the charter bans from itself | `grep -n '^## ' docs/CONSTITUTION_AMENDMENTS_HISTORY.md` |
 | [AGENT_NOTES.md](docs/AGENT_NOTES.md) | the long-form gotcha book behind this file | `grep -n '^## ' docs/AGENT_NOTES.md`, then the symbol name |
-| [RM_TOC.md](docs/RM_TOC.md) | where any `RMn` lives, status included — the complete list | `grep -n 'RM47' docs/RM_TOC.md` |
+| [RM_TOC.md](docs/RM_TOC.md) | where any `RMn` lives, status included — the complete list. **Claim a new number with `.claude/rm-next.py`** (scan + locked reservation), never by reading the highest off the file — an index is not an allocator, and two sessions once filed the same RM159 | `grep -n 'RM47' docs/RM_TOC.md` |
 | [ROADMAP.md](docs/ROADMAP.md) | open items, the idea-book, the reserved-namespace and 1.0-cleanup trackers | `grep -n '^## RM' docs/ROADMAP.md` |
 | [ROADMAP_HISTORY.md](docs/ROADMAP_HISTORY.md) | shipped items with their rationale, 0.6 onward. Pre-0.6 is in [history/](docs/history/ROADMAP_HISTORY_PRE_0_6.md) — **use RM_TOC rather than guessing the half** | `grep -rn '^## RM' docs/ROADMAP_HISTORY.md docs/history/` |
 | [ROADMAP_0_8.md](docs/ROADMAP_0_8.md) / [ROADMAP_1_0.md](docs/ROADMAP_1_0.md) | deferred items, with the reason for the deferral. **The minor file is named for the release that will decide its contents**, so a cut closes one and opens the next — 0_7 closed on 2026-08-31 into [history/](docs/history/ROADMAP_0_7.md) | `grep -n '^## RM' docs/ROADMAP_1_0.md` |
@@ -351,6 +351,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - An `enrich` run is a transaction: stage the *answer* beside the target, commit the table at the gate. `@enrich-is-a-transaction`
 - A refused `strict` run commits nothing — a written promise now, asserted on the bytes. `@enrich-is-a-transaction`
 - `flock` the directory, never a lockfile: the kill it guards against is what leaves one behind. `@flock-not-a-lockfile`
+- And never lock a path something rewrites atomically — `flock` binds an inode, so a rename-over defeats it. `@an-index-is-not-an-allocator`
+- An index is not an allocator: a number is claimed by a locked write, never by reading the highest. `@an-index-is-not-an-allocator`
 - A progress callback's unit is a contract — subjects, because `total` must be known up front. `@progress-unit-is-subjects`
 - `--rederive` never shortens a table: answered replaces, could-not-ask keeps its rows. `@rederive-never-shortens`
 - A currency check asks the source, never the cache it was drafted from; and a digest label does not compare against a dated one. `@currency-asks-the-source-not-the-cache`

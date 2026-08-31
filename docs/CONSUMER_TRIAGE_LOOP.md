@@ -168,17 +168,54 @@ anywhere else either, so the only way to find out whether an item had been consi
 
 ## 1. Setup
 
-Three scripts, all in `.claude/`, none packaged:
+Four scripts, all in `.claude/`, none packaged. The first three are the `Sn` loop; the fourth allocates
+the `RMn` the loop's route **(a)** files, and is the only one that writes outside the two consumer
+documents:
 
 | | |
 |---|---|
 | `.claude/watch-suggestions.sh` | debounced watcher: one line of stdout when the file stops changing. The only one that is really bash |
 | `.claude/triage-state.py` | the ledger: which sections are new, revised, or already answered. Takes a path, so it reads the history file too; `--next` prints the next unclaimed `Sn`. Also prints `STRUCTURE` lines when a fenced block breaks the section boundaries |
 | `.claude/triage-archive.py` | moves answered sections into the history file and **verifies** each fingerprint survived the move. **Refuses outright** on a `STRUCTURE` finding, since a span that ends at the wrong line moves the wrong bytes and the fingerprint check cannot see it |
+| `.claude/rm-next.py` | the `RMn` allocator: scans `docs/` for every number, and **reserves** the next one by appending a `🔷 reserved` row to [RM_TOC.md](RM_TOC.md) under an advisory `flock`. `--dry-run` reads without claiming, `--list` shows standing reservations, `--release RMn` drops one |
 
-**Run the two Python ones, never `bash` them** — `./.claude/triage-state.py` or
+**Run the three Python ones, never `bash` them** — `./.claude/triage-state.py` or
 `python3 .claude/triage-state.py`. They carried a `.sh` extension until 2026-08-16 and the mismatch had
 a cost; §6 has it.
+
+### `RM_TOC.md` is an index, and an index is not an allocator
+
+**This is a reproduced incident.** `Sn` has had `--next` since the loop was built, because the id is
+written into a document. `RMn` had nothing: the number was read by grepping *"the highest in use"*, and
+the gap between reading it and writing the entry is exactly where another session reads. On 2026-09-01
+two sessions sharing this working tree filed different work as **RM159** a minute apart and the tree
+carried two RM159 entries pointing at different items — git `741ec59` renumbered one to RM161, choosing
+the one that was cheaper to move because the other pair was contiguous and already referenced from
+three probe documents.
+
+**Grepping cannot fix it; the claim has to be an atomic write.** So `rm-next.py` does both halves in
+one critical section: scan, then append the reservation, with the whole window under the lock. Reading
+the maximum outside the lock and appending inside it is the same race with a smaller window.
+
+**The lock is on `docs/`, the directory — never on `RM_TOC.md` itself**, and the second reason is
+measured rather than assumed. A lockfile left behind by exactly the kill it guards against would block
+every later run (`@flock-not-a-lockfile`). And `flock` binds an *inode*: an editor or an atomic writer
+that renames a new file over `RM_TOC.md` leaves the holder locking an unlinked inode while a second
+process locks the new file and acquires immediately — verified in a sandbox before the tool was
+written. The directory is stable across that, and it is the idiom
+`just_dna_enricher.transaction.spec_lock` already uses for `enrich`.
+
+**A reservation is a visible index row, not a side-car.** `🔷 reserved` sits under the open-items
+heading; replace it with the item's real row when you write the entry. A number claimed and abandoned
+is then *visible* rather than silently burned, and a state file the index cannot see is how a number
+goes missing — the failure `RM_TOC.md` exists to prevent. `--release RMn` leaves a `✖` tombstone rather
+than deleting the row, because **ids are never reused**: the first cut deleted it, the number became
+invisible to the scan, and a released RM10 was handed straight back out. Same rule as `Sn`, and the
+tombstone must contain the number literally, since a scan is all that reads it.
+
+The lock is pinned by `schema/tests/test_rm_allocator.py`, which runs eight allocators at once **and
+runs the same eight with `flock` neutered** to show they collide. A guard nobody has watched fail is a
+guess.
 
 Arm the watcher with the `Monitor` tool, which turns each stdout line into a notification that
 re-invokes the agent:
@@ -469,9 +506,13 @@ rejected if one changed. Do this by hand only if the tool cannot (it prints what
 
 ### Step 5 — hygiene
 
-- **Serial, one item at a time.** `RMn` is a shared counter — **RM47 is the highest, so the next is
-  RM48** — and two concurrent triages both claim it. Do not keep this number in your head across a long
-  pass: read it off [RM_TOC.md](RM_TOC.md), which indexes every item in both roadmap files.
+- **Serial, one item at a time, and claim the `RMn` with the allocator** — `.claude/rm-next.py`,
+  which scans and *reserves* in one locked write. Never keep the number in your head across a long
+  pass, and **never read it off [RM_TOC.md](RM_TOC.md) by eye**: this bullet said to do exactly that
+  until 2026-09-01, and it is how two sessions in one tree both filed RM159 (§1 has the incident). The
+  index answers *where does RM47 live*; it cannot answer *which number is mine*, because reading it
+  claims nothing. The number this bullet used to name is deliberately gone — a counter written into
+  prose goes stale the day after, which is `@counted-prose-needs-a-fixed-field` one document over.
 - **Commit as you go, one commit per item** — see the grant in §5 for what that covers and where it
   stops. Stage explicit paths; never `git add -A`. (This bullet read *do not commit* until 2026-08-11,
   when the loop got a permit of its own; the global default followed on 2026-08-21 and now says the
