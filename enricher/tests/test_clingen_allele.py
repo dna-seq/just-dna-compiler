@@ -6,10 +6,8 @@ client against a stub transport. Live lookups are opt-in like every other networ
 
 import httpx
 import pytest
-
 from just_dna_enricher.clingen_allele import (
     VALID_CAID_OUTCOME,
-    AlleleIdentity,
     ClingenAlleleClient,
     _parse,
     anchor_indel,
@@ -119,7 +117,9 @@ def test_anchoring_produces_the_left_aligned_vcf_representation():
     `G` at a position whose reference base is `G`, so the row is `G>GG`. A duplication and an
     insertion of the same base are the same VCF row, which is why that record is the useful control.
     """
-    read = lambda chrom, pos: {10142013: "G", 10142177: "C"}.get(pos)
+    def read(chrom: str, pos: int) -> str | None:
+        return {10142013: "G", 10142177: "C"}.get(pos)
+
     assert anchor_indel(("3", 10142013, "", "G"), read) == ("3", 10142013, "G", "GG")
     assert anchor_indel(("3", 10142177, "A", ""), read) == ("3", 10142177, "CA", "C")
 

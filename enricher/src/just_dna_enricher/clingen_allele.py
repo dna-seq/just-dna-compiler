@@ -31,7 +31,6 @@ reading a public endpoint to place a row is a read rather than an acquisition an
 import json
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 
 import httpx
 from tenacity import retry, retry_if_exception_type, wait_exponential_jitter

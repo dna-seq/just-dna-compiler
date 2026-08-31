@@ -91,9 +91,9 @@ from just_dna_enricher.licensing import (
 )
 from just_dna_enricher.literature import LiteratureEnrichmentError, enrich_literature
 from just_dna_enricher.locations import (
-    resolve_civic_reference,
     CITATIONS_DIRNAME,
     RELEASE_FILENAME,
+    resolve_civic_reference,
     resolve_clinpgx_reference,
     resolve_clinvar_reference,
     resolve_constraint_reference,
@@ -1896,6 +1896,7 @@ def civic_reproduce_(
     Exits non-zero if any check fails, so it is usable in CI.
     """
     from just_dna_format.resolution import ResolutionRow
+
     from just_dna_enricher.civic_build import (
         CIVIC_COLUMNS,
         CIVIC_EVIDENCE_FILE,

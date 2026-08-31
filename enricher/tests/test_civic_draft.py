@@ -10,12 +10,12 @@ from pathlib import Path
 
 import pytest
 from just_dna_enricher.civic_build import build_snapshot
-from just_dna_enricher.clingen_allele import AlleleIdentity
 from just_dna_enricher.civic_draft import (
     CIVIC_WITHHELD_REASONS,
     draft_panel_from_civic,
     identity_refused_by_model,
 )
+from just_dna_enricher.clingen_allele import AlleleIdentity
 from just_dna_format.vocab import validate_trait_ids
 
 SLICE = Path(__file__).resolve().parents[2] / "assets" / "civic_slice"
