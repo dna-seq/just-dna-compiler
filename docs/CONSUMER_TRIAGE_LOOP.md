@@ -117,8 +117,15 @@ write, so a reader who reasonably guesses "run the ledger and copy what it print
 on every reply longer than a paragraph, which is most of them. It went into the gist's Step 3, where the
 stamping actually happens, and the baseline above moved with it.
 
+**One item is owed outward as of 2026-08-31 and has not been pushed** — the duplicate-id entry in §6
+(an id under two top-level headings archives as one section, and the fingerprint check reports it as a
+mutation *after writing*). It is pattern material rather than local tuning: `section_span` and the
+verification are both in the published copy, so the same refusal happens in any tree running this loop,
+and the entry is a hand step plus a *why not fixed in the tools*. It sits here until a push is
+authorized; the digest check on 2026-08-31 read `fd7c3b5e…`, unchanged, so nothing is owed inbound.
+
 **Three items went outward on 2026-08-21, in revision `32967e36…`, with the CDN note following in
-`fd7c3b5e…`, and nothing is owed as of it.**
+`fd7c3b5e…`, and nothing was owed as of it.**
 The gist had the furniture entry for prose moving **in** — a footer swallowed by the last section — and
 no flush-left `#` gotcha at all, in either half; it now carries the joined version, since
 `triage-archive.py` shares the boundary scan and the same line that truncates a *reading* truncates a
@@ -678,6 +685,27 @@ Each of these was a bug in the loop, not a hypothetical:
   The same reasoning removed every bare-path invocation: `triage-archive.py` shells out to the ledger
   through `sys.executable` and `watch-suggestions.sh` through `$PYTHON`, so neither the exec bit nor
   the shebang is load-bearing anywhere any more.
+- **An id under two top-level headings archives as one section, and the fingerprint check reports it
+  as a mutation.** Found on 2026-08-31, when a consumer filed S76 as a withdrawal section plus the
+  original text below it, both at `## S76`. `section_span` resolves an id to the **first** matching
+  heading, so `triage-archive.py S76` moved the withdrawal and left the evidence orphaned in the live
+  file — and the before/after check then compared two different sections and refused with *the prose
+  was not moved verbatim*, **after writing**. That refusal is the guard working rather than a second
+  bug: it cannot tell a duplicate id from a mutated section, and reporting is the safe direction.
+
+  Two things to do, and the first is the whole fix. **Give the second section a distinguishing
+  heading** — `## S76 (original text) — …` is what the reporter used and it is the right shape, since
+  the ledger keys on `## Sn` and folds `###` into the parent (the S9 entry above is the same
+  mechanism). Then move it by hand after the tool run and **verify it against
+  `git show HEAD:docs/CONSUMER_SUGGESTIONS.md`** rather than by eye, which is the check the tool would
+  have done. Put it directly under the section it is evidence for, inside that group heading.
+
+  Not fixed in the tools, deliberately: making `section_span` return every match would make
+  `triage-archive.py S76` move two sections for one argument, which is a worse surprise than a refusal
+  — and the shape is rare enough that a documented hand step beats a flag nobody remembers. What the
+  refusal cost was one careful minute; what a silent partial move costs is an orphaned half-report,
+  which is the S62 failure this file already carries.
+
 - **The archiver verifies the move, not the verdict.** It will archive a section the ledger still calls
   `new` without complaint: it checks that the prose arrived byte-for-byte, not that anyone answered it.
   The lint is the ledger itself pointed at the *history* file — a well-formed archived section reads
