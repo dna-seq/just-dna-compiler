@@ -408,6 +408,35 @@ Both spellings of a version are accepted — a bare `0.7.0` and the stamped
 
 ---
 
+### CIViC — a new source, and none of it is a schema change (RM152)
+
+**Nothing here changes the artifact, the manifest or any model.** No column, no table, no vocabulary
+member, no signature. A consumer that never runs the enricher sees none of it, and a module drafted
+from CIViC is an ordinary module: the rows it writes are `direction`, `state`, `gene`, `rsid`,
+coordinates and `conclusion`, every one an authored column that has existed since 0.3.
+
+| Surface | What it is |
+|---|---|
+| `just-dna-enricher civic build --release <date>` | Builds a snapshot from a **dated** CIViC bulk release into `data/civic.parquet` + `release.json`. Three input files; `--evidence/--variants/--profiles` build offline from local copies. No `--use` flag — CC0 permits every declaration, so a gate there would never gate. |
+| `draft-panel --source civic` | Drafts the **`direction`** axis (`risk`/`protective`), never `clin_sig`. `--clin-sig` is reported inert under it rather than silently ignored. |
+| `--civic-cache` / `$JUST_DNA_CIVIC_CACHE` | Points at a built snapshot. There is no published one to download. |
+| `CIVIC_TERMS` in `licensing.py` | CC0 1.0, permissive on all three axes. A module drafted from CIViC lands `civic` in `sources.csv` and taints nothing. |
+
+**One behaviour change a provider author must know about**, and it is the only thing here that can
+break existing code: `append_partial_rows` now **raises `ValueError`** when the `PartialRow`s in one
+batch do not share a `match_on`. It previously accepted them and silently mismatched — the covered-set
+is built from the first partial's tuple and every signature compared against it, so a mixed batch could
+never match and re-added those rows on every lap. Every in-tree caller already passes one constant
+tuple; an out-of-tree provider computing `match_on` per row was already broken and now finds out.
+
+**Two facts about the source worth carrying**, because a consumer comparing our numbers with CIViC's
+own will otherwise disagree with us. Its GraphQL API defaults to `status: NON_REJECTED` and serves
+11,518 evidence items; the dated bulk TSV is `accepted`-only at 4,903. We build from the TSV, and
+`release.json` records `status_basis` for exactly that reason. And CIViC publishes **no GRCh38
+coordinates** — rows are placed by the rsID and GRCh38 RefSeq accession it publishes beside them, never
+by lifting a coordinate over.
+
+
 ## 3. Per-consumer check / change lists
 
 ### just-dna-registry (spec storage / re-publish)
@@ -574,7 +603,7 @@ genotype while the 0.4 families keep the string) and the `stats` counter retype.
 | 0.6.6 → 0.7.0 release sweep | 15 measured, gate exit 0 against the shipped record |
 | 0.6.6 client parses 0.7 manifests | **15 / 16** — see § 1 |
 | Open consumer inbox | **empty** — S78 was answered as RM143 and committed; S79–S84 arrived and were answered on 2026-08-31 (RM144, RM145, RM146, RM148, RM152). S76 was withdrawn as a duplicate of S66; S75 and S77 answered as RM140 / RM142. |
-| Open roadmap items in format scope | **RM152 alone**, filed on 2026-08-31 and not blocking the cut — and it deliberately carries no release class, since the measurement in it refuted both candidate adoptions. The seven that stood here — RM103, RM108, RM110, RM117, RM136, RM137, RM138 — all landed in the 2026-08-31 batch, six built and RM138 closed with its numbers measured; RM146, RM150 and RM151 landed with them, RM151 built the same day it was filed. |
+| Open roadmap items in format scope | **RM153 alone**, and it is the residue of RM152 rather than a new proposal. RM152 stood here carrying no release class, since the measurement in it had refuted both candidate adoptions; on 2026-08-31 the probe it named was finally run, both refutations held, and a third route nobody had proposed turned out to be buildable with no schema change — so it acquired a class and **shipped inside this release**. RM153 carries what it left over: CIViC records publishing neither an rsID nor a GRCh38 accession, and whether a ClinGen CAID should be resolved to a locus. Neither blocks the cut. The seven that stood here — RM103, RM108, RM110, RM117, RM136, RM137, RM138 — all landed in the 2026-08-31 batch, six built and RM138 closed with its numbers measured; RM146, RM150 and RM151 landed with them, RM151 built the same day it was filed. |
 
 **The blocker this section carried is gone.** RM143 shipped and S78 was answered, and the 2026-08-31
 batch took the seven roadmap items that stood above with them. Everything here is committed, green and

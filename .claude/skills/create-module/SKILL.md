@@ -198,6 +198,27 @@ coordinate and every competing call: several of its records can describe one pos
 between them is your call rather than the tool's. `--min-confidence` (0–3, default 1) is its
 `--min-review-stars`; `--min-review-stars` and `--max-citations` do nothing here and say so.
 
+**`draft-panel --source civic` drafts a different axis, and that is the whole reason to reach for it.**
+CIViC curates variant interpretations in cancer, and its germline part says almost nothing in the
+clinical-significance vocabulary: five ACMG-tier calls in the entire source, none of them benign-class.
+What it does carry is which *way* a variant runs — predisposing or protective — so this source fills
+`direction` (`risk`/`protective`) and never `clin_sig`. `--clin-sig` does nothing here and says so.
+
+Four things to know before running it. Somebody in your deployment has to build the snapshot
+(`just-dna-enricher civic build --release 01-Aug-2026`; there is none to download, and `--civic-cache`
+or `$JUST_DNA_CIVIC_CACHE` points at it), and the release date is part of what the draft records. About
+three quarters of CIViC describes tumour tissue no germline genotype can satisfy, so most of the source
+is dropped — the count is in the build output rather than hidden, and it is not an error. It writes
+**study rows**, because every row it drafts cites a real PubMed id, which is the grounding evidence
+`studies.csv` wants. And it refuses a row where CIViC's own evidence puts a variant in both directions,
+naming the variant: choosing between them is your call, not the tool's.
+
+One reading to get right, because the tool deliberately leaves a blank where you might expect a value.
+Where CIViC records evidence that *does not support* a variant being predisposing, the drafted row has
+**no `direction` at all** — a paper arguing against a risk claim has not shown the variant to be
+protective, and writing the opposite of what a source said would be inventing a finding. Those rows are
+counted and reported, and if you want them in your module you decide what they mean yourself.
+
 **Drafting appends and never rewrites a cell.** A row whose key already exists is reported
 (`already_present` / `differs`), never overwritten — drift on existing rows is `pgx` / `clinpgx check`'s
 job to report, not drafting's to fix. Re-run per gene as the module grows; `--dry-run` first.
