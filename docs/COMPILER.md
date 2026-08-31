@@ -1549,8 +1549,8 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
   `oe_lof_outside_interval`, `oe_lof_disagrees_with_counts`, `clin_sig_contradicts_frequency`,
   `clin_sig_concordance_contested`, `gene_validity_superseded`,
   `gene_validity_currency_undecidable`
-- **the overlay** — `overlay_update_unmatched`, `overlay_targets_missing_table`,
-  `overlay_rows_suppressed`
+- **the overlay** — `overlay_update_unmatched`, `overlay_update_target_unreachable`,
+  `overlay_targets_missing_table`, `overlay_rows_suppressed`
 - **verification and closure** — `verification_two_copies`, `verification_unreadable`,
   `verification_stale`, `verification_findings_recorded`, `module_not_closed`,
   `closure_discarded_unreadable_record`

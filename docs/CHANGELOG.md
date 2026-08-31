@@ -44,6 +44,28 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
+- **RM137 — the unmatched-overlay warning is now a property of the module, not of the lap.**
+  *(`just-dna-format` + `just-dna-compiler`; **one warning code added, one reworded** — no field, no
+  parquet, no signature moves.)* An overlay `update` naming a row the compiler drops matched on lap 1
+  and warned on lap 2, so a module and its own `compile → reverse → compile` disagreed on
+  `manifest.compilation.warnings`. The stable quantity turned out to be a property of the **target** —
+  *could an artifact of this module carry that row at all* — which is computable from data that
+  survives the round trip, so it answers the same on both laps whether or not the row is there to
+  match. The unreachable finding therefore fires **matched or not**; that asymmetry is the fix.
+
+  **Two codes where there was one**, and neither reading is "a typo" — a mistyped PMID is also an
+  uncited one, so a mistake lands in the unreachable bucket:
+  - `overlay_update_target_unreachable` (**new**, actionable) — no artifact of this module can carry
+    the row: mistyped subject, or a correction aimed at a row the compiler drops, which is fine.
+  - `overlay_update_unmatched` (**reworded**, so grep it afresh) — the subject *is* cited or
+    positioned, so the table is short rather than the correction wrong. Re-run the enricher.
+
+  **Scoped to `literature.csv` and `resolution.csv`** (`LOSSY_OVERLAY_TABLES`), the only two a reverse
+  rebuilds from something narrower. The other six rebuild whole, so their warning was lap-stable
+  already and its text is unchanged. `apply_overrides` gains an additive `defer_unmatched` keyword;
+  `update_targets` / `classify_update_targets` are the split, and `cited_pmids` /
+  `literature_target_survives` / `resolution_target_survives` are the predicates.
+
 - **RM150 — `direction` gains `contested`; `unknown` stops meaning two things.**
   *(`just-dna-format`; **additive** — a new member on an existing vocabulary. Nothing re-points, so no
   published module changes meaning and nothing drifts.)* `unknown` had been carrying both *nobody

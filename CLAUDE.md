@@ -191,6 +191,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Move a check behind resolution when resolution fills its input (`chrom` for ploidy). `@ploidy-behind-resolution`
 - Never re-run a check whose message embeds a count — the manifest then publishes two numbers. `@no-rerun-with-counts`
 - A fact-table check the pre-flight also runs arrives twice; dedupe at the extend site. `@first-fact-check-on-both-sides`
+- Lap-stable means a property of the MODULE, fired matched-or-not; assert equality between laps. `@lap-stable-means-a-property-of-the-module`
 - A source re-curating is not a `strict` matter; the two currency findings stay apart, and both edges withhold. `@a-source-recuring-is-not-a-strict-matter`
 - A check running on both sides dedupes on the message; re-running is the normal case. `@no-rerun-with-counts`
 - The ClinVar `clin_sig` cross-check never escalates under `strict`, deliberately. `@clinsig-never-escalates`

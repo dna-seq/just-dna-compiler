@@ -148,9 +148,12 @@ from just_dna_format.manifest import (
 )
 from just_dna_format.normalize import now_utc_iso, parse_p_value, strip_authority_keys
 from just_dna_format.overrides import (
+    LOSSY_OVERLAY_TABLES,
     OVERRIDABLE_TABLES,
     OverrideRow,
     apply_overrides,
+    classify_update_targets,
+    update_targets,
     overlay_coherence_errors,
 )
 from just_dna_format.pgs import PgsRow
@@ -3947,6 +3950,11 @@ def _validate_spec(
     all_errors.extend(overlay_errors)
     all_warnings.extend(overlay_warnings)
     overlaid: set[str] = set()
+    #: RM137: `(table -> unmatched (subject, member) pairs)`, stashed from the loop below and split
+    #: into its two readings once `studies.csv` is loaded. Computed on the PRE-overlay rows, because
+    #: `apply_overrides` rebinds its input and an `insert` earlier in the same overlay would otherwise
+    #: make a later update look matched.
+    deferred_unmatched: dict[str, list[tuple[tuple[str, str], bool]]] = {}
     for csv_name, model in (
         ("resolution.csv", ResolutionRow),
         *((name, model) for name, _parquet, model in _FACT_TABLES),
@@ -3970,8 +3978,18 @@ def _validate_spec(
             # needs rows that parsed, so only that half stays behind the guard.
             overlaid.add(csv_name)
             if not injected_errors:
+                # **Deferred for the two lossy tables, classified where the inputs exist** (RM137).
+                # "Could an artifact of this module carry that row" needs `studies.csv` and the citing
+                # tables, which this function loads further down — the same stash-here/check-later
+                # shape the citation cross-check above already uses. The other six rebuild whole on a
+                # reverse, so their unmatched warning is lap-stable already and takes the old path.
+                lossy = csv_name in LOSSY_OVERLAY_TABLES
+                if lossy:
+                    deferred_unmatched[csv_name] = update_targets(
+                        csv_name, injected_rows, overrides
+                    )
                 injected_rows, apply_errors, apply_warnings = apply_overrides(
-                    csv_name, injected_rows, overrides
+                    csv_name, injected_rows, overrides, defer_unmatched=lossy
                 )
                 all_errors.extend(apply_errors)
                 all_warnings.extend(apply_warnings)
@@ -4194,6 +4212,21 @@ def _validate_spec(
         all_errors.append(
             "studies.csv is missing. Grounding evidence is mandatory; add study rows with PMIDs."
         )
+
+    # RM137, and this is the point the loop above deferred to: `studies` and the citing tables are both
+    # in scope now, so "could an artifact of this module carry that row" is answerable. Split here in
+    # `validate_spec` as well as in `compile_module` because the two must report the same findings
+    # (`@parity-by-check`) — the compile runs this pre-flight and dedupes on the message, so a module
+    # running both sees each line once.
+    all_warnings.extend(
+        _classify_deferred_overlay_updates(
+            deferred_unmatched,
+            studies,
+            loaded_kinds,
+            variants,
+            [row for rows in membership_table.values() for row in rows],
+        )
+    )
 
     # The other half of the same rule: a binning table states clinical thresholds and is exempt from
     # the requirement above, so nothing used to report a module that grounds none of them. Pure
@@ -4789,6 +4822,10 @@ def compile_module(
     # loader gains later cannot go missing from a compile that never runs `validate` separately.
     all_warnings.extend(w for w in overlay_warnings if w not in all_warnings)
     overlaid: set[str] = set()
+    #: RM137, the compile's half of the same stash: unmatched `update` targets for the two tables a
+    #: reverse rebuilds from something narrower, split below once `studies` and the citing tables are
+    #: in scope. Same reason as in `validate_spec`, and the same function does the splitting.
+    compile_deferred: dict[str, list[tuple[tuple[str, str], bool]]] = {}
 
     resolution_rows: list[ResolutionRow] = []
     resolution_table: dict[str, list[ResolutionRow]] = {}
@@ -4813,8 +4850,12 @@ def compile_module(
         # count and `resolution_signature` — reads what the module asserts rather than what the last
         # enrichment happened to write (RM124).
         overlaid.add("resolution.csv")
-        resolution_rows, apply_errors, apply_warnings = apply_overrides(
+        # Deferred and stashed on the PRE-overlay rows (RM137) — see `_classify_deferred_overlay_updates`.
+        compile_deferred["resolution.csv"] = update_targets(
             "resolution.csv", resolution_rows, overrides
+        )
+        resolution_rows, apply_errors, apply_warnings = apply_overrides(
+            "resolution.csv", resolution_rows, overrides, defer_unmatched=True
         )
         if apply_errors:
             return CompilationResult(success=False, errors=apply_errors, warnings=all_warnings)
@@ -5352,7 +5393,12 @@ def compile_module(
         # from the same post-overlay rows.
         if csv_name in OVERRIDABLE_TABLES:
             overlaid.add(csv_name)
-            rows, apply_errors, apply_warnings = apply_overrides(csv_name, rows, overrides)
+            lossy = csv_name in LOSSY_OVERLAY_TABLES
+            if lossy:
+                compile_deferred[csv_name] = update_targets(csv_name, rows, overrides)
+            rows, apply_errors, apply_warnings = apply_overrides(
+                csv_name, rows, overrides, defer_unmatched=lossy
+            )
             if apply_errors:
                 return CompilationResult(success=False, errors=apply_errors, warnings=all_warnings)
             all_warnings.extend(w for w in apply_warnings if w not in all_warnings)
@@ -5385,6 +5431,15 @@ def compile_module(
     # ran this over the same overlay and `all_warnings` was seeded from its result.
     all_warnings.extend(
         w for w in _overlay_targets_missing(overrides, overlaid) if w not in all_warnings
+    )
+    # And RM137's split, deferred from both overlay sites to here — `studies` and the citing tables are
+    # in scope now. De-duplicated on the message for the reason every both-sides check is: the
+    # pre-flight computed the identical sentence from the identical inputs.
+    all_warnings.extend(
+        w for w in _classify_deferred_overlay_updates(
+            compile_deferred, studies, kind_rows, variants, resolution_rows
+        )
+        if w not in all_warnings
     )
 
     # The overlay itself, materialized verbatim and in authored order — it is authored input, so it
@@ -6763,14 +6818,70 @@ def split_cited_literature(
     so lap two discards nothing and the signatures are a fixed point. The rows are recoverable the way
     every derived sidecar's are, by re-running the pass.
     """
-    cited: set[str] = set()
-    for study in studies:
-        cited.update(extract_pmids(study.pmid))
-    cited.update(table_citations(kind_rows or {}))
+    cited = cited_pmids(studies, kind_rows)
     if not cited:
         return list(rows), []
     kept = [r for r in rows if r.pmid in cited]
     return kept, [r for r in rows if r.pmid not in cited]
+
+
+def cited_pmids(studies: list[StudyRow], kind_rows: dict[str, list[Any]] | None = None) -> set[str]:
+    """Every PMID this module cites, from both citation sites, through the one normalizer.
+
+    Extracted so RM137's reachability predicate asks the **same** question `split_cited_literature`
+    answers, rather than a second statement of it. The two would drift silently and in the worst
+    direction: the predicate would call a row unreachable that the drop had kept, so a healthy overlay
+    would report a finding forever.
+
+    **The empty case is the caller's to interpret, and it is not "nothing is cited".** A module citing
+    nothing cannot distinguish a stale sidecar from citations not yet authored, so `split_cited_literature`
+    discards nothing there — and the predicate must mirror that or every literature `update` on such a
+    module reads as unreachable. `literature_target_survives` builds the mirror; nothing should test
+    this set for emptiness on its own.
+    """
+    cited: set[str] = set()
+    for study in studies:
+        cited.update(extract_pmids(study.pmid))
+    cited.update(table_citations(kind_rows or {}))
+    return cited
+
+
+def literature_target_survives(
+    studies: list[StudyRow], kind_rows: dict[str, list[Any]] | None = None
+) -> Callable[[str], bool]:
+    """Can an artifact of this module carry a `literature.csv` row for this PMID? (RM137)
+
+    True when the PMID is cited, because `split_cited_literature` keeps exactly the cited rows — and
+    **True for everything when the module cites nothing at all**, which is that function's own guard
+    reproduced rather than restated. Without the guard a module with no citations would mark every
+    literature correction unreachable: a stable false positive, which is worse than the unstable true
+    one RM137 is about.
+    """
+    cited = cited_pmids(studies, kind_rows)
+    if not cited:
+        return lambda pmid: True
+    return lambda pmid: pmid in cited
+
+
+def resolution_target_survives(
+    variants: list[VariantRow], resolution_rows: list[ResolutionRow]
+) -> Callable[[str], bool]:
+    """Can an artifact of this module carry a `resolution.csv` row for this `variant_key`? (RM137)
+
+    `resolution.csv` has no parquet, so `reverse_module` rebuilds it from the SNP core and
+    `_write_resolution_csv` skips a row with no resolved position — *"rows without a resolved position
+    carry no fact and are skipped"*. So the surviving set is the subjects this module can **place**.
+
+    Computed from the authored coordinates and the injected table together, which is what makes it
+    answer the same on both laps: on lap 1 the unpositioned row is present and its own cells say it is
+    unpositioned; on lap 2 the row is gone and the authored side still says the same thing. Neither
+    reading depends on the row being there to be matched.
+    """
+    placed: set[str] = {
+        row.variant_key for row in resolution_rows if row.chrom and row.start is not None
+    }
+    placed.update(v.variant_key for v in variants if v.chrom and v.start is not None)
+    return lambda subject: subject in placed
 
 
 def _check_quote_counter_is_current(
@@ -6962,6 +7073,32 @@ def _cross_check_gene_metrics(
         "derived_row_orphan",
         f"gene_metrics.csv names {len(orphans)} gene(s) this module never mentions: {orphans}",
     )]
+
+
+def _classify_deferred_overlay_updates(
+    deferred: dict[str, list[tuple[tuple[str, str], bool]]],
+    studies: list[StudyRow],
+    kind_rows: dict[str, list[Any]],
+    variants: list[VariantRow],
+    resolution_rows: list[ResolutionRow],
+) -> list[str]:
+    """Split each deferred unmatched set by whether the artifact could carry the row (RM137).
+
+    One function so `validate_spec` and `compile_module` cannot classify differently — the predicates
+    are the same objects, built from the same inputs, and the message text is the schema tier's.
+    """
+    findings: list[str] = []
+    for table, targets in deferred.items():
+        if not targets:
+            continue
+        if table == "literature.csv":
+            survives = literature_target_survives(studies, kind_rows)
+        elif table == "resolution.csv":
+            survives = resolution_target_survives(variants, resolution_rows)
+        else:  # pragma: no cover - only the lossy tables are ever deferred
+            survives = None
+        findings.extend(classify_update_targets(table, targets, survives))
+    return findings
 
 
 def _check_gene_validity_currency(rows: list[GeneValidityRow]) -> list[str]:

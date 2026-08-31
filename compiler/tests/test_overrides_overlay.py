@@ -353,7 +353,10 @@ def test_an_update_reaching_no_row_warns_once_across_both_passes(tmp_path: Path)
     )
     result = compile_module(spec, tmp_path / "art")
     assert result.success, result.errors
-    phrase = "Three readings and nothing here separates them"
+    # RM137 split this finding, and a fabricated subject lands in the UNREACHABLE half: a mistyped
+    # `variant_key` is also an unpositioned one, so the module could not carry the row either way.
+    # The property under test is unchanged — one sentence, not two.
+    phrase = "no artifact of this module can carry"
     assert len([w for w in result.warnings if phrase in w]) == 1
 
 

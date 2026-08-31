@@ -46,7 +46,7 @@ refusal message names the case rather than advising the impossible.
 Dependency-light like every other module here: pydantic plus the leaf vocabularies, no polars.
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
@@ -467,6 +467,8 @@ def apply_overrides(
     table: str,
     rows: Sequence[BaseModel],
     overrides: Sequence[OverrideRow],
+    *,
+    defer_unmatched: bool = False,
 ) -> tuple[list[BaseModel], list[str], list[str]]:
     """Lay the overlay rows naming `table` over its derived `rows`. Returns `(rows, errors, warnings)`.
 
@@ -496,16 +498,16 @@ def apply_overrides(
     say so — counted over the *overlay's* rows and aggregated by reason, which is what keeps it from
     being the lap-1-only line the paragraph above rules out. `_suppression_warnings` argues both.
 
-    **That is not the same as being stable across both laps, and an earlier version of this docstring
-    claimed it was.** The overlay is stable; the *derived table under it* is not, for the two tables
-    the compiler rebuilds from something narrower than the file it read. `literature.csv` loses its
-    uncited rows before the parquet (so `reverse_module`, which rebuilds it *from* that parquet,
-    cannot carry them), and `resolution.csv` has no parquet at all and is rebuilt from the SNP core.
-    An `update` naming such a row therefore matches on lap 1 and reports on lap 2 — the disagreement
-    this function exists to avoid, arriving through the derivation rather than through the overlay.
-    Not repaired here: applying the overlay after the drop would hide it from the checks that must
-    see what the module asserts, and reverse has no source for rows the artifact does not hold. The
-    warning below names it as the third reading instead of pretending to two.
+    **The overlay is stable; the derived table under it was not, and RM137 is that repair.** For the
+    two tables in `LOSSY_OVERLAY_TABLES` the compiler rebuilds from something narrower than the file
+    it read, so an `update` naming a dropped row matched on lap 1 and reported on lap 2 — the exact
+    disagreement this function exists to avoid, arriving through the derivation rather than the
+    overlay. Applying the overlay after the drop is still refused (the checks must see what the module
+    asserts) and reverse still has no source for rows the artifact does not hold. What changed is the
+    *finding*: `defer_unmatched=True` suppresses the warning here, and the caller splits it with
+    `update_targets` + `classify_update_targets` once it can answer **could this module carry that row
+    at all** — a property of the module, so it says the same thing on both laps. The six other tables
+    rebuild whole and keep the message below unchanged.
     """
     target = OVERRIDABLE_TABLES[table]
     mine = [row for row in overrides if row.table == table]
@@ -596,7 +598,147 @@ def apply_overrides(
             ]
             result.insert(tail[-1] + 1 if tail else len(result), built)
 
-    return result, errors, _unmatched_warnings(table, unmatched) + _suppression_warnings(table, mine)
+    return (
+        result,
+        errors,
+        ([] if defer_unmatched else _unmatched_warnings(table, unmatched))
+        + _suppression_warnings(table, mine),
+    )
+
+
+def update_targets(
+    table: str,
+    rows: Sequence[BaseModel],
+    overrides: Sequence[OverrideRow],
+) -> list[tuple[tuple[str, str], bool]]:
+    """Every `update` target on `table`, with whether it reached a row — the raw finding (RM137).
+
+    **Matched targets are returned too, and that is the whole point.** The unreachable finding has to
+    fire whether or not the row is there today, or it is lap-dependent all over again: on lap 1 an
+    uncited literature row is present and the update *matches*, and on lap 2 the row is gone. Reporting
+    only the unmatched ones reproduces exactly the defect this item is about.
+
+    Exists so a caller can classify the finding **where the inputs to do so are in scope**, which is
+    not where the overlay is applied. `apply_overrides` runs early, before any check reads a row; the
+    question *could the artifact ever have carried this row* needs `studies.csv` and the citing tables,
+    which both `validate_spec` and `compile_module` load later. Pass `defer_unmatched=True` to
+    `apply_overrides` and call this instead, on the **pre-overlay** rows — apply rebinds its input, and
+    an `insert` earlier in the same overlay would otherwise make a later update look matched.
+
+    Matching is `apply_overrides`' own, through the same `_canonical_key_cell`/`_cell` pair rather than
+    restated here: two statements of one rule drift, and this one would drift silently — the caller
+    would report a subject as unreached that the apply had just corrected.
+    """
+    target = OVERRIDABLE_TABLES[table]
+    result = list(rows)
+    targets: list[tuple[tuple[str, str], bool]] = []
+    groups: dict[tuple[str, str], list[OverrideRow]] = {}
+    order: list[tuple[str, str]] = []
+    for row in overrides:
+        if row.table != table:
+            continue
+        key = (row.subject, (row.member or "").strip())
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(row)
+    for key in order:
+        subject, member = key
+        if groups[key][0].operation != "update":
+            continue
+        sample = result[0] if result else None
+        subject_key = _canonical_key_cell(sample, target.subject_field, subject)
+        member_key = _canonical_key_cell(sample, target.member_field, member)
+        matched = any(
+            _cell(row, target.subject_field) == subject_key
+            and (
+                target.member_field is None
+                or not member
+                or _cell(row, target.member_field) == member_key
+            )
+            for row in result
+        )
+        targets.append((key, matched))
+    return targets
+
+
+#: The two overridable tables `reverse_module` rebuilds from something NARROWER than the file the
+#: compiler read, which is the whole of RM137. `literature.csv` loses its uncited rows before the
+#: parquet (`@uncited-literature-dropped`) and is rebuilt *from* that parquet; `resolution.csv` has no
+#: parquet at all and is rebuilt from the SNP core, which re-emits only positioned rows. The other six
+#: rebuild whole, so an `update` reaching nothing there is unmatched on **both** laps already and
+#: needs none of this — the predicate is only defined where the loss is.
+LOSSY_OVERLAY_TABLES: frozenset[str] = frozenset({"literature.csv", "resolution.csv"})
+
+
+def classify_update_targets(
+    table: str,
+    targets: Sequence[tuple[tuple[str, str], bool]],
+    target_survives: Callable[[str], bool] | None = None,
+) -> list[str]:
+    """Split "this correction reached no row" into its two answerable readings (RM137).
+
+    **The problem this solves is that the old single warning was not stable across a round trip.** An
+    `update` naming a row the compiler drops matched on lap 1 and reported on lap 2, so a module and
+    its own `compile → reverse → compile` disagreed on `manifest.compilation.warnings` — a published
+    field, and one RM126 has since made load-bearing.
+
+    **"Count it over the overlay's own rows" is the decision, and this is what that means in code.**
+    Counting the overlay's `update` rows outright is a tautology that fires on every healthy module
+    (`@tautology-zero`); counting the ones that *reached nothing* is the lap-dependent original. The
+    stable quantity is a property of the **target**: can an artifact of this module carry that row at
+    all? That is computable from data which survives the round trip — `studies.csv` for a citation,
+    the positioned rows for a locus — so it answers the same on both laps whether or not the row is
+    there to be matched.
+
+    `target_survives` is the caller's predicate over the subject, and it is **three-valued by absence**:
+    `None` means the caller could not ask, and then this behaves exactly as before — one warning naming
+    every reading, withholding rather than accusing. That is the path the six non-lossy tables take.
+
+    **Neither reading is "a typo", and that is the correction this makes to the entry's own framing.**
+    A mistyped pmid is also an uncited one and a mistyped `variant_key` is also an unpositioned one, so
+    a mistake lands in the *unreachable* bucket rather than the reachable one. What the reachable
+    bucket really means is narrower and more useful: the subject **is** cited or positioned, so the
+    artifact could carry the row, and the sidecar simply does not have it — re-run the enricher.
+    """
+    if not targets:
+        return []
+    if target_survives is None:
+        return _unmatched_warnings(table, [key for key, matched in targets if not matched])
+    # **Unreachable fires matched-or-not; short-table fires only when it also missed.** That
+    # asymmetry is the stability: reachability is a property of the module, so it answers the same on
+    # both laps, while "did it match" is exactly the quantity a reverse moves.
+    unreachable = [key for key, _matched in targets if not target_survives(key[0])]
+    reachable = [
+        key for key, matched in targets if target_survives(key[0]) and not matched
+    ]
+    findings: list[str] = []
+    if reachable:
+        findings.append(CodedWarning(
+            "overlay_update_unmatched",
+            f"overrides.csv: {len(reachable)} update override(s) name a row {table} does not carry, "
+            f"though this module could carry it: {_render_keys(reachable)}. The subject is cited or "
+            f"positioned, so the table is short rather than the correction wrong — re-run the "
+            f"enrichment pass that writes {table}. Neither an insert nor a suppress reports this: an "
+            f"insert creates the row and a suppress is satisfied by its absence."
+        ))
+    if unreachable:
+        findings.append(CodedWarning(
+            "overlay_update_target_unreachable",
+            f"overrides.csv: {len(unreachable)} update override(s) name a {table} row no artifact of "
+            f"this module can carry: {_render_keys(unreachable)}. Two readings and nothing here "
+            f"separates them — the subject may be mistyped, or the correction may be aimed at a row "
+            f"the compiler drops before the parquet (an uncited citation, an unresolved locus), in "
+            f"which case the correction is fine and simply has nothing to reach. Reported the same "
+            f"way whether or not the row is present today, so a module and its own round trip agree."
+        ))
+    return findings
+
+
+def _render_keys(keys: Sequence[tuple[str, str]]) -> str:
+    """A bounded, ordered rendering — the message is a published field, so it must not grow."""
+    shown = ", ".join(f"{subject}" + (f"[{member}]" if member else "") for subject, member in keys[:5])
+    return shown + ("" if len(keys) <= 5 else f" (+{len(keys) - 5} more)")
 
 
 def _unmatched_warnings(table: str, unmatched: Sequence[tuple[str, str]]) -> list[str]:

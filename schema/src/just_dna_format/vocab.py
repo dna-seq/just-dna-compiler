@@ -1415,6 +1415,7 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "gene_validity_currency_undecidable",  # several curations of one claim and nothing orders them
         # ── the overlay (overrides.csv) ──
         "overlay_update_unmatched",         # an `update` naming a row the target table does not carry
+        "overlay_update_target_unreachable",  # an `update` naming a row no artifact of this module can carry
         "overlay_targets_missing_table",    # an overlay correcting a table this module does not carry
         "overlay_rows_suppressed",          # rows removed by a `suppress`, invisible in the build product
         # ── verification and closure ──

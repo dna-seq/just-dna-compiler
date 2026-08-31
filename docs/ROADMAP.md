@@ -178,11 +178,12 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Five, and four of them are not decisions** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a decision* through the three that are, which is why the paragraph under it says to count off the sections rather than off this sentence). The one whose shape is settled:
+**Four, and three of them are not decisions** (the count is the `## RMn` sections below — it read "four as of 2026-08-21" for two rounds after it stopped being four, then read *not one of them is a decision* through the three that are, which is why the paragraph under it says to count off the sections rather than off this sentence). The one whose shape is settled:
 [RM117](#rm117--an-outrank-record-exists-and-no-check-reads-it-and-what-a-check-should-do-is-undecided)
-(the observability half only) — a minor, release undecided, with nothing left in it but the typing. **The other four are decisions and say so**: RM136 and RM137 from the RM124
-audit, RM138 from the RM131 review, and RM146 from a 2026-08-31 consumer report, each carrying its
-candidate repairs and why each one fails. RM110, RM103's manifest half and RM108 were three more
+(the observability half only) — a minor, release undecided, with nothing left in it but the typing. **The other three are decisions and say so**: RM136 from the RM124 audit,
+RM138 from the RM131 review, and RM146 from a 2026-08-31 consumer report, each carrying its
+candidate repairs and why each one fails. RM137, its neighbour from the same audit, shipped on
+2026-08-31. RM110, RM103's manifest half and RM108 were three more
 settled ones and all three shipped on 2026-08-31.
 **Count them off the sections, not off the sentence**: this line said *three* for as long as it took
 to notice that a narrowed item is still an item, and *not one of them is a decision* for as long as it
@@ -355,45 +356,6 @@ the tier's (RM83's standing refusal).
 **The shape worth designing.** Probably the enricher reading the overlay read-only and suppressing a
 finding it has already been answered for — which needs a decision about what "answered" means when the
 overlay corrects a different column than the one the check is about, and that decision is the item.
-
-## RM137 — an overlay `update` on a row the compiler drops warns on the second lap only
-
-**Severity** low-medium · **Status** open — **a minor, release undecided** · **Owner** compiler ·
-**Found by** the wave-1 audit of RM124, 2026-08-28, reproduced end to end
-
-`reverse_module` rebuilds a derived table from the artifact, and two tables are rebuilt from something
-narrower than the file the compiler read: `literature.csv` loses its uncited rows before the parquet
-(`@uncited-literature-dropped`) and is rebuilt *from* that parquet, and `resolution.csv` has no parquet
-at all and is rebuilt from the SNP core. An `update` naming such a row therefore matches on lap 1 and
-warns on lap 2, so a module and its own `compile → reverse → compile` disagree on
-`manifest.compilation.warnings`, a published field. Both hashes hold; only the warning moves.
-
-Reproduced on `reference_examples/hboc_palb2` with one uncited `literature.csv` row under a one-row
-overlay: lap 1 warns zero times, lap 2 once.
-
-**Already done, and it is not the fix**: the message now names the third reading, so it no longer
-tells an author their subject is mistyped when the correction is fine and the table is short.
-
-**Why each obvious repair is wrong.** *Apply the overlay after the drop* — the checks then stop seeing
-what the module asserts, which is the property the apply position exists to hold. *Make reverse emit
-the dropped rows* — there is no source of truth for them; they are not in the artifact at all.
-*Suppress the warning for the two tables* — re-opens the silent-suppress hole the design already calls
-its worst case, and it would hide a genuine typo on the tables most likely to carry one.
-
-The honest framing is that this is the round trip being lossy about **warnings** rather than about
-content, on a channel RM126 has now made load-bearing.
-
-**RM131's `carried` split shipped in 0.7, so the discriminator now exists and this item can be decided
-against it rather than waiting on it.** Two things it settles. `overlay_update_unmatched` is classified
-**actionable**, which is the right answer for the reading the entry is about — a mistyped subject is the
-author's to fix — and it is therefore *not* excused by carried-ness; a sweep will report it as work
-arriving. And RM124's `suppress` record, added in the same release, shows the shape of the repair
-available here: **it counts the overlay's own rows rather than the rows it reached**, so it says the same
-thing on both laps. An `update` cannot borrow that directly — its finding is precisely *this correction
-reached nothing*, which is a fact about the reached set — but the question the repair has to answer is
-now narrow: is a warning that fires only on the second lap better reported over the **overlay** (stable,
-and silent about the one case the author cares about) or left as-is (truthful per lap, and moving a
-published field between a module and its own round trip).
 
 ## RM138 — `carried` duplicates the message text, so the channel RM131 shrank nearly doubled
 

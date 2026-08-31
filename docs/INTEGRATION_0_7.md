@@ -232,6 +232,7 @@ reports its own no-op**, so a `suppress` with a typo'd subject does nothing and 
 | `release_records.ReleaseRecord` / `DeclaredChange` / `RECOMPILE_DRIVING_AXES` | format | the models, and the axis set that actually drives a recompile — `warnings` is deliberately outside it. |
 | `findings.classify(warnings)` | format | `(carried, summary)` from a warning list. **Withholds — an empty pair — rather than part-classifying**, so a caller holding plain prose gets nothing instead of a misleading digest. |
 | `findings.CodedWarning` / `findings.restate` | format | a `str` subclass carrying its code. A `Finding` loses its code at a pydantic field and at any reformat; `restate` is how you reformat without dropping it. |
+| `overrides.update_targets` / `classify_update_targets` / `LOSSY_OVERLAY_TABLES` | format | RM137's split. Only needed if you re-implement the overlay's findings; `apply_overrides(..., defer_unmatched=True)` suppresses the warning so a caller can classify it where the inputs exist. |
 | `overrides.apply_overrides` / `OVERRIDABLE_TABLES` / `VALID_OVERRIDE_TABLES` / `VALID_OVERRIDE_OPERATIONS` / `OverrideRow` | format | the overlay. `OVERRIDABLE_TABLES` maps a table name to its subject/member fields — read it rather than restating the grammar. |
 | `concordance.ClinSigConcordanceRow` / `ClinSigAuthorityCallRow` | format | the two record models, plus `CLIN_SIG_*_FACT_FIELDS`. |
 | `integrity.clin_sig_concordance_signature` / `clin_sig_authority_call_signature` | format | two fact-hashes because they are two tables: a corrected normalization moves the detail rows without moving a verdict. |
@@ -248,7 +249,7 @@ apart — *do the authorities agree with each other* and *where does the module 
 set naming the authority inside its members needed a new member per source and failed a stress test at
 five. Which authority spoke is **data**, in `clin_sig_authority_calls.csv`.
 
-Also new: `VALID_WARNING_CODES` (71 members) and `CARRIED_WARNING_CODES` (11),
+Also new: `VALID_WARNING_CODES` (72 members) and `CARRIED_WARNING_CODES` (11),
 `VALID_RELEASE_OUTPUT_AXES` and `VALID_RELEASE_CHANGE_KINDS`. `VALID_VERIFICATION_CHECKS` gains one
 member, `dataset_currency` (RM85) — if you validate check names against a hard-coded set, add it.
 
@@ -333,6 +334,16 @@ the only edit available to an author is deleting a true record. They are the fir
 `validate` computes as well as `compile`, so a pre-flight now reports them too, and they stay **two
 codes rather than one** on purpose: the archive having moved on and the archive not having said enough
 to tell are different messages to a reader.
+
+**The overlay's unmatched-update warning split in two on 2026-08-31 (RM137), and one of them is
+reworded — re-grep if you match its prose.** `overlay_update_target_unreachable` is new and says no
+artifact of this module can carry the row (a mistyped subject, or a correction aimed at a row the
+compiler drops); `overlay_update_unmatched` now means the narrower and more useful *the subject is
+cited or positioned and the sidecar is short — re-run the enricher*. Only `literature.csv` and
+`resolution.csv` are affected, and the older text still stands verbatim for the other six overridable
+tables. **The point of the split is that both are now stable across `compile → reverse → compile`**,
+where the single warning used to fire on the second lap only — so if you diff a module's warnings
+against its own round trip, that difference is gone.
 
 New pinned phrase: `SUPPRESSED_PHRASE` (`"suppress override(s) remove"`). The overlay's two other
 warnings — an `update` reaching no row, and an overlay naming a table the module does not carry — are

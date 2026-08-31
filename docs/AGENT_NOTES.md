@@ -2050,6 +2050,24 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   cosmetic: float64 goes subnormal below ~1e-308 and is flatly `0.0` below ~5e-324, so a single float
   column would render a panel's strongest association as its weakest.
 
+- `@lap-stable-means-a-property-of-the-module` — **"Report it over the overlay rather than over what
+  it reached" has exactly one non-tautological reading, and RM137 is the worked example.** An overlay
+  `update` on a row the compiler drops matched on lap 1 and warned on lap 2, so a module disagreed with
+  its own round trip on a published field. Counting the overlay's `update` rows outright fires on every
+  healthy module (`@tautology-zero`); counting the ones that reached nothing *is* the lap-dependent
+  original. The stable quantity is a property of the **target** — *could an artifact of this module
+  carry that row at all* — computable from data that survives the trip, so it answers the same on both
+  laps. **The finding must then fire matched-or-not**: an earlier cut classified only the unmatched set
+  and was silently lap-dependent again, because on lap 1 the doomed row is still present and matches.
+  **Assert equality BETWEEN the laps, never "lap 2 warns"** — the latter passes on the broken code.
+  Two traps in the predicate: share the real function the drop uses (`cited_pmids`, extracted from
+  `split_cited_literature`) rather than restating it, and **mirror its guards** — the drop discards
+  nothing when a module cites nothing, and a predicate missing that guard turns an unstable true
+  positive into a **stable false** one, which is worse. Scope it to where the loss actually is
+  (`LOSSY_OVERLAY_TABLES`, asserted as a registry equality); the tables that rebuild whole need none of
+  it. And classify **late, in both callers**: the inputs do not exist where the overlay is applied, and
+  hoisting a load to reach them reorders a published warnings list for no gain.
+
 - `@lookup-with-a-default-hides-a-new-member` — **A `.get(x, default)` over a vocabulary makes the map
   the FIRST edit when the vocabulary grows, not a follow-up (RM150).**
   `derive.trimmed_state` projects a `direction` into the legacy `state` set through

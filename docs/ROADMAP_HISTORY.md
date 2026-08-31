@@ -44,6 +44,83 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM137 — the unmatched-overlay warning is now a property of the module, not of the lap
+
+**Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format` + `just-dna-compiler`).
+**Severity** low-medium · **Owner** compiler · **Found by** the wave-1 audit of RM124, 2026-08-28,
+reproduced end to end
+
+### The defect
+
+`reverse_module` rebuilds a derived table from the artifact, and two of the eight overridable tables
+are rebuilt from something narrower than the file the compiler read: `literature.csv` loses its uncited
+rows before the parquet and is rebuilt *from* that parquet, and `resolution.csv` has no parquet at all
+and is rebuilt from the SNP core, which re-emits only positioned rows. An `update` naming such a row
+matched on lap 1 and warned on lap 2, so a module and its own `compile → reverse → compile` disagreed
+on `manifest.compilation.warnings` — a published field, and one RM126 had made load-bearing.
+
+### What "count it over the overlay's own rows" means in code
+
+The decision was to report the finding the way `suppress` reports its own — over the overlay rather
+than over what it reached. Turning that into code needed one step the entry did not have:
+
+* counting the overlay's `update` rows outright is a **tautology** that fires on every healthy module
+  (`@tautology-zero`);
+* counting the ones that reached nothing is the **lap-dependent original**.
+
+The stable quantity is neither. It is a property of the **target**: *could an artifact of this module
+carry that row at all?* For `literature.csv` that is "is the PMID cited", and for `resolution.csv` it
+is "can the module place that `variant_key`" — both computable from data that survives the round trip,
+so both answer the same on lap 1 and lap 2 whether or not the row is there to be matched.
+
+**The unreachable finding therefore fires matched-or-not, and that asymmetry is the whole fix.** An
+earlier cut of this classified only the *unmatched* set and was silently lap-dependent all over again:
+on lap 1 the uncited row is present and the update matches, so nothing was reported. Caught by
+asserting **equality between the two laps** rather than "lap 2 warns", which would have passed on the
+broken code.
+
+### Two readings, and neither of them is "a typo"
+
+That framing was the original entry's and it is wrong. A mistyped PMID is also an uncited one and a
+mistyped `variant_key` is also an unpositioned one, so a mistake lands in the *unreachable* bucket.
+What the reachable bucket really means is narrower and more useful:
+
+* **`overlay_update_unmatched`** (reworded) — the subject *is* cited or positioned, so the artifact
+  could carry the row and the sidecar simply does not have it. Re-run the enrichment pass.
+* **`overlay_update_target_unreachable`** (new, actionable) — no artifact of this module can carry the
+  row. Two readings, named rather than collapsed: the subject may be mistyped, or the correction may
+  be aimed at a row the compiler drops and be perfectly fine.
+
+### Scope, and why it is not a dodge
+
+Only `literature.csv` and `resolution.csv` — `LOSSY_OVERLAY_TABLES`, asserted as an equality over the
+walked registry. The other six rebuild whole on a reverse, so an `update` reaching nothing there is
+unmatched on **both** laps already and needs none of this. The predicate is defined only where the
+loss is, and a table added to `OVERRIDABLE_TABLES` has to face the question deliberately.
+
+### Two traps the build hit
+
+**The predicate must share the drop's own function, not restate it.** `cited_pmids` was extracted out
+of `split_cited_literature` so both ask one question; two statements would drift, and in the worst
+direction — the predicate would call a row unreachable that the drop had kept, and a healthy overlay
+would report a finding forever.
+
+**And it must mirror the drop's empty-cited guard.** `split_cited_literature` discards *nothing* when
+the module cites nothing at all, on the stated grounds that such a module cannot distinguish a stale
+sidecar from citations not yet authored. Without the mirror, every literature `update` on such a module
+reads as unreachable — a **stable false positive**, which is worse than the unstable true one.
+
+### Where the classification happens, and why it moved
+
+Not at apply time. `apply_overrides` runs before any check reads a row, and the question needs
+`studies.csv` and the citing tables, which `validate_spec` and `compile_module` both load later. So
+`apply_overrides` gained `defer_unmatched=True` (additive, default off), the unmatched set is stashed
+from the **pre-overlay** rows — apply rebinds its input, and an `insert` earlier in the same overlay
+would otherwise make a later update look matched — and one shared helper splits it late in both
+functions, so the two cannot classify differently (`@parity-by-check`). Hoisting the `studies.csv`
+load instead was refused: pre-flight warnings seed the compile's list, so reordering the load reorders
+a published field for no gain.
+
 ## RM150 — `unknown` was carrying an absence and a finding, and `contested` takes the second
 
 **Shipped on 2026-08-31, inside the uncut 0.7.0** (`just-dna-format`). **Severity** low-medium ·
