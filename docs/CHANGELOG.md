@@ -44,11 +44,12 @@ uncut minor and deliberately names no number — there is a version to write dow
 lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
-**The nine entries dated 2026-08-31 are a batch of their own and are worth reading as one.** They are
+**The ten entries dated 2026-08-31 are a batch of their own and are worth reading as one.** They are
 the roadmap items that stood open against this release — RM103, RM108, RM110, RM117, RM136, RM137 and
-RM138 — plus RM146 and RM150 from the same day's consumer reports, taken in one pass so 0.7 cuts with
-its own backlog cleared rather than carrying it. Eight are built; **RM138 is closed with its numbers
-measured and no code changed**. Two things a reader should take from them together: `carried` costs
+RM138 — plus RM146 and RM150 from the same day's consumer reports, and RM151, which was filed and
+built the same day as RM117's other half; all taken in one pass so 0.7 cuts with its own backlog
+cleared rather than carrying it. Nine are built; **RM138 is closed with its numbers measured and no
+code changed**. Two things a reader should take from them together: `carried` costs
 1.06× gzipped rather than the 1.84× raw the item was filed about, so **serve manifests compressed**;
 and two derived values change — `gene_metrics.constraint_flags` and
 `gene_validity.classifications` — which are **corrections**, so a moved signature there is the fix

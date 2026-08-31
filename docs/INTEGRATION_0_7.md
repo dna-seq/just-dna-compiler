@@ -568,7 +568,7 @@ genotype while the 0.4 families keep the string) and the `stats` counter retype.
 
 | gate | result |
 | --- | --- |
-| `uv run pytest` | **3581 passed, 18 skipped, 0 failed** (3394 before the 2026-08-31 batch; 2916 at the 2026-08-24 one) |
+| `uv run pytest` | **3610 passed, 18 skipped, 0 failed** (3581 before RM151; 3394 before the 2026-08-31 batch; 2916 at the 2026-08-24 one) |
 | `uv run ruff check` | clean |
 | Reference corpus under the 0.7 compiler | **16 / 16 compile** |
 | 0.6.6 → 0.7.0 release sweep | 15 measured, gate exit 0 against the shipped record |
