@@ -988,6 +988,30 @@ def _polars_schema() -> dict:
     }
 
 
+def _status_notice(result: CivicBuildResult) -> str:
+    """The basis sentence of `release.json`'s notice, derived from what the build actually read.
+
+    It was a literal declaring `accepted` until RM169 added `--submitted`, at which point a snapshot
+    recording `status_basis="accepted+submitted"` published a notice denying it. A sentence that
+    states a build parameter is derived from that parameter, never restated beside it.
+    """
+    if result.status_basis == CIVIC_BULK_STATUS:
+        return (
+            "It is built from the dated bulk TSV release, every row of which is status 'accepted' — "
+            "the GraphQL API defaults to NON_REJECTED and serves roughly 2.35x as many evidence "
+            "items, so a count here is not comparable with one taken from the API."
+        )
+    accepted = result.status_counts.get("accepted", 0)
+    submitted = result.status_counts.get("submitted", 0)
+    return (
+        f"It is built on the '{result.status_basis}' basis: the dated bulk TSV release joined with "
+        f"the dated accepted-and-submitted VCF of the same release, {accepted} accepted and "
+        f"{submitted} submitted rows, each row carrying its own evidence_status. CIViC's GraphQL "
+        "API serves a wider NON_REJECTED set still, so a count here is not comparable with one "
+        "taken from the API."
+    )
+
+
 def _write_release_json(out_dir: Path, result: CivicBuildResult, *, release: str | None) -> Path:
     """Write `release.json` — the provenance, the status basis, and every count the build made."""
     payload = {
@@ -1015,10 +1039,9 @@ def _write_release_json(out_dir: Path, result: CivicBuildResult, *, release: str
         "redistributable": True,
         "licence": "CC0-1.0",
         "notice": (
-            "CIViC content is CC0 1.0 Universal, so this snapshot may be redistributed. It is built "
-            "from the dated bulk TSV release, every row of which is status 'accepted' — the GraphQL "
-            "API defaults to NON_REJECTED and serves roughly 2.35x as many evidence items, so a "
-            "count here is not comparable with one taken from the API. Coordinates are GRCh38, "
+            "CIViC content is CC0 1.0 Universal, so this snapshot may be redistributed. "
+            + _status_notice(result)
+            + " Coordinates are GRCh38, "
             "derived from the RefSeq accessions CIViC publishes; CIViC's own coordinates are GRCh37 "
             "and are carried only as provenance. Rows marked identity_derivation='curated_name' "
             "are placed from an identity CIViC states in the variant's name and in none of its "

@@ -668,6 +668,27 @@ def test_release_json_states_the_basis_and_what_it_counted(widened):
     assert payload["unjoinable_submitted"] >= 0
 
 
+def test_the_notice_states_the_basis_the_build_actually_read(built, widened):
+    """A published sentence about a build parameter must move with the parameter.
+
+    RM169 added the wider basis and left the notice a literal, so `civic build --submitted` shipped a
+    `release.json` recording `status_basis="accepted+submitted"` beside a notice reading *every row of
+    which is status 'accepted'* — a snapshot contradicting itself in the one field a consumer compares
+    counts against (`@warning-text-is-api`).
+    """
+    narrow = json.loads((built.out_dir / RELEASE_FILENAME).read_text())
+    wide = json.loads((widened.out_dir / RELEASE_FILENAME).read_text())
+
+    assert "every row of which is status 'accepted'" in narrow["notice"]
+    assert "every row of which is status 'accepted'" not in wide["notice"]
+    assert wide["status_basis"] in wide["notice"]
+    for status, count in wide["status_counts"].items():
+        assert f"{count} {status}" in wide["notice"], "the notice quotes what it counted"
+    assert "NON_REJECTED" in narrow["notice"] and "API" in wide["notice"], (
+        "both bases still tell the reader which wider one is not this"
+    )
+
+
 def test_the_drop_registry_still_closes_over_the_wider_basis(widened):
     """The submitted rows join `evidence` before anything walks it, so one accounting covers both."""
     assert widened.input_rows == widened.record_count + sum(widened.dropped.values())
