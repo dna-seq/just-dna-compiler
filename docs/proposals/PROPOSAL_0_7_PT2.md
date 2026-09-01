@@ -28,6 +28,20 @@ the superseded draft.
 | RM167 LitVar2 | BUILDS in 0.8 | **BUILDS in 0.7.0** |
 | RM168 MANE | BUILDS in 0.7.0 | **BUILDS in 0.7.0** |
 
+**Shipped the same day, all of it.** Every decision above landed in the uncut 0.7.0 on 2026-09-01 —
+RM168, RM163, RM165, RM167, RM166 in that order, each with its entry moved to
+[ROADMAP_HISTORY](../ROADMAP_HISTORY.md) and its own CHANGELOG entry — and RM164 parked with RM171
+filed from it. The per-item *Entry* links below therefore point at the history file rather than at
+ROADMAP.
+
+**And the build contradicted four of the five entries again**, which is this document's third round of
+drift and the one it could not have anticipated. RM165's entry proposed drafting four columns
+`RepeatAlleleRow` does not have; RM167's three headline measurements did not reproduce; RM163 offered
+`overrides.csv` as a remedy the overlay cannot reach; RM166's licence motivation was already gone. Only
+RM168 held through all four stages, and it is the one whose questions cost a directory listing and a
+1.1 MB download. The per-item sections below record each contradiction where it belongs, and the
+history file's round preamble carries the count.
+
 **Three of the four overrides run the same direction — a probe that came back better than the entry
 expected is a reason to take the item now, not a reason to feel safer deferring it.** RM165's provider
 was held because a new `DRAFTABLE` lane "should not be rushed into an open cut", and the cut is open
