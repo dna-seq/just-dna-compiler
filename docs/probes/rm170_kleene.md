@@ -119,7 +119,7 @@ One evidence item, two variants (VHL S183L **and** VHL D126N).
 
 **Solves:** the parquet's lie that this is two single-variant rebuttals. `_submitted_evidence_row` stamps `molecular_profile_id` from the variant's single-variant profile, so the item is written as two rows claiming MP 2037 and 2406.
 
-**How:** the finding keys on **evidence_id**, then fans out to authored rows. One finding, two subjects. Text says "combination genotype, profile 5278." Do not wait for [RM174](../ROADMAP.md#rm174--a-combination-genotype-refutation-reaches-the-parquet-as-two-single-variant-rows-and-the-column-that-would-say-so-is-overwritten) to ship the check — but do not count "3 variants, 3 independent refutes." Honest count: **one single-variant pair (2428) + one combo item touching two loci.**
+**How:** the finding keys on **evidence_id**, then fans out to authored rows. One finding, two subjects. Text says "combination genotype, profile 5278." Do not wait for [RM174](../ROADMAP.md#rm174--a-claim-about-two-variants-in-trans-is-written-as-two-single-variant-rows-because-no-brick-holds-the-real-subject) to ship the check — but do not count "3 variants, 3 independent refutes." Honest count: **one single-variant pair (2428) + one combo item touching two loci.**
 
 ### H. Accepted-only snapshot
 

@@ -58,6 +58,23 @@ that was measuring something else, plus the probe round behind RM170.
   three already land it, and **STRchive's is dropped at parse**. Filed **RM174** out of it: a
   combination-genotype refutation reaches the parquet as two single-variant rows because the row
   builder stamps the variant's profile over the evidence item's.
+- **Two probes landed, and each replaced the entry that asked for it.**
+  [MITOMAP_STATUS](probes/MITOMAP_STATUS.md) (RM171): `status` is a **two-token grammar**, not 29 free
+  strings — base × optional bracket covers 568 of 602 — and **both positions are documented**, the
+  bracket explicitly as a **ClinGen mtDNA VCEP rating**. So mapping the bracket is a normalization, not
+  a curation decision; but **120 of the 136 bracketed rows are already in the ClinVar chrMT snapshot,
+  all as `reviewed_by_expert_panel`, 119 agreeing**, leaving 16 new calls. The base half must *not* be
+  mapped: MITOMAP states it is not an assignment of pathogenicity. Also: the sibling `rtmutation` holds
+  both variants of the repo's only mtDNA module, and `mmutation` holds neither.
+  [rm170_kleene](probes/rm170_kleene.md) is RM170's design record.
+- **RM174 rewritten on a phase measurement, and RM28 gains its first corpus entry.** EID 8721's own
+  description reads *"heterozygous compound mutation"* — the two variants are **in trans**, and a
+  haplotype is *cis*, so `HaplotypeRow` would assert the opposite of what the source observed. CIViC's
+  profile grammar is boolean and counted: **209 multi-variant of 1,964 — `AND` 141, `OR` 72, `NOT` 1**,
+  nested. Both of RM28's surviving arguments (economy in trans, open-world negation) appear there with
+  instances. The stamp defect stays RM174's; the representation is RM28's and stays parked.
+- **RM160's shape decided (unbuilt): read `SUBMITTED` at `enrich` time.** `civic build` /
+  `civic reproduce` keep byte-reproducibility and the snapshot does not grow.
 - **RM170 shipped: an authored direction beside a refutation the source published.** `Does Not
   Support` was already withheld rather than negated — but a variant CIViC *supports* and *also* rebuts
   still got a `risk` row drafted, and nothing then said the rebuttal existed. `contested_variants`

@@ -323,7 +323,7 @@ The trackers further down are the other live part of this file: the reserved-nam
 
 ## RM160 — the CIViC snapshot reads the reviewed quarter of its source and says so nowhere a reader acts on
 
-**Severity** medium · **Status** open — **narrowed 2026-09-01**. Its *coverage* half shipped as
+**Severity** medium · **Status** open — **narrowed 2026-09-01, shape decided 2026-09-02 (shape 3, below), unbuilt**. Its *coverage* half shipped as
 [RM169](ROADMAP_HISTORY.md#rm169--the-wider-basis-was-published-as-a-dated-file-all-along-and-nobody-had-looked);
 what remains is the *provenance* half, and the VCF that answered the first cannot answer it ·
 **Owner** enricher · **Motivating case** the 2026-09-01 residue round, variant 1955
@@ -448,6 +448,21 @@ what it meant — **this is not an open three-way choice, and it was mistakenly 
    network reads already live and reproducibility is not claimed. Narrowest, and it does not enlarge
    the published snapshot — which may be the point or may be the missing half.
 
+**DECIDED 2026-09-02 with the maintainer: shape 3.** `civic build` and `civic reproduce` keep their
+byte-reproducibility contract untouched and the published snapshot does not grow; the API read lives
+where network reads already do and where reproducibility is never claimed. The motivating case is an
+enrich-time question anyway — an author resolving one identity, holding one variant, needing the
+citations that variant's record carries. Shape 1 was available and not taken: hashing a capture keeps
+the *word* reproducible while changing what it is reproducible against, and a snapshot that reproduces
+only against itself is a weaker claim than one that reproduces against a dated release.
+
+**Not yet built.** What it needs: a per-variant `evidenceItems(variantId:, status: ALL)` read behind
+the same offline/`check_declared_use` discipline as the other enricher fetches (CIViC is CC0, so no
+gate), the `status` on each returned item carried as `confidence`/`confidence_unit` unconverted, and
+a skip that is `offline`/`unreachable` rather than a silent empty — the pass has to distinguish *the
+API said this variant has nothing more* from *nobody asked*. It is one variant at a time by
+construction, which is why it fits `enrich` and would not fit a build.
+
 **The labelling requirement is settled and half-shipped.** An `accepted` row and a `submitted` row
 must not be indistinguishable once both are in the file, and for the file-built half RM169 did it:
 every row carries `evidence_status`, CIViC's own word, unconverted. Whatever shape this half takes
@@ -551,10 +566,66 @@ note outranks the site default and the licence row must be written as a floor. A
 owed: how RM164 acquired the `pg_dump`. If it came from a mirror rather than mitomap.org, that
 mirror's terms are a separate question this read does not answer.
 
-**So the decision is back where it was, minus the gate.** `status` is 29 free-text strings and mapping
-them onto `clin_sig` is a curation decision, not a normalization. Whether the adoptable part is a
-`clin_sig` mapping or only the identity columns plus the verbatim string carried as evidence is a
-maintainer call, deliberately not pre-empted here.
+### Probed 2026-09-02 — [MITOMAP_STATUS](probes/MITOMAP_STATUS.md), and `status` is not what this entry said
+
+**It is a two-token grammar, not 29 sentences.** A confirmation token (`Reported` 516, `Cfrm` 69,
+`Conflicting reports` 16) followed by an optional bracketed rating (none 466, `VUS` 60, `LP` 44, `P`
+16, `VUS*` 10, `B` 4, `LB` 2). That pair accounts for **568 of 602 rows exactly**, and the two
+positions are not independent — `Cfrm` never takes a benign-side rating, `Reported` never takes
+`P`/`LP`. The prose residue is **34 rows**, of which the two informative groups are
+*combination-only/synergy* (18, a statement about a genotype rather than an allele) and *alternative
+alignment* (3, a statement about identity). This entry's own list was also short: it names four common
+strings and omits **`Reported [VUS]` at 59**, the second most common in the column.
+
+**Both token positions are documented, and the bracket is somebody else's instrument.** Nothing in the
+6.76 M-line dump comments the column — no `COMMENT ON`, no lookup table, and all 131 occurrences of
+`Cfrm` are data cells. But MITOMAP's own wiki legends both: the base token by its literature-count
+criterion, stated explicitly as *"not an assignment of pathogenicity by MITOMAP"*; and the bracket as a
+**ClinGen mtDNA VCEP rating**, scored per McCormick et al. 2020 (`10.1002/humu.24107`), over exactly
+the five classes `VALID_CLIN_SIG` already carries.
+
+**So this entry's premise splits in half, and neither half survives as written.**
+
+* **The bracket is not a curation decision.** It is a published third-party classification in a
+  documented vocabulary — a normalization, and an easy one. But it is **largely already adopted**: of
+  the 136 bracketed rows, **120 are in the on-disk ClinVar chrMT snapshot, all 120 as
+  `reviewed_by_expert_panel`, and 119 agree with the bracket**. It is the same VCEP call arriving by
+  two routes. What adopting it would add is the **16** bracketed rows ClinVar does not carry, plus one
+  currency disagreement (m.3761C>A, MITOMAP `[VUS]` on the newer file against ClinVar
+  `Likely_pathogenic`).
+* **The base half must not be mapped at all** — not because it is hard, but because MITOMAP says in as
+  many words that it is not a pathogenicity assignment. Mapping `Cfrm` onto `pathogenic` would write a
+  judgement the source explicitly declines to make. It is a literature-count criterion, which is a
+  different axis from `clin_sig` and has no column here.
+* And **466 of 602 rows carry no bracket at all**, so on the only axis that is mappable, three quarters
+  of the table is silent.
+
+**Four more things the entry did not know.**
+
+1. **`cfrm_date` is a second free-text column.** 28 of its 114 populated cells are curator prose, 18 of
+   them classification claims (`Reported by paper as VUS` ×14) — and **15 of those sit on rows whose
+   `status` reads a bare `Reported`**. Reading `status` alone misses them.
+2. **A sibling table doubles the corpus and the repo's own module uses *it*.** `mitomap.rtmutation` is
+   494 more curated rRNA/tRNA variants with the identical column and grammar (plus a fourth base token
+   `Unclear`). `reference_examples/mt_heteroplasmy`'s two variants (m.3243A>G, m.3271T>C) are both in
+   `rtmutation` and **neither is in `mmutation`** — the only mtDNA module here would draw nothing from
+   the table this entry names.
+3. **Identity is better than expected and blocked elsewhere.** 573 of 602 rows mint a `variant_key`
+   through this repo's own `derive_variant_key` with no fetch (560 VRS ids, 13 coordinate keys, all
+   distinct); the 24 that do not spell a deletion as `:` and need an rCRS anchor Principle 2 forbids
+   those tiers from fetching. All 602 cite, 3,666 links, mean 6.1 — through `reference.nlmid`, verified
+   as PMIDs on 4 of 4 sampled. But there is **no rsID column**, and **`VariantRow.genotype` is required
+   while MITOMAP publishes none**: `homo`/`hetero` are presence flags over a literature corpus, not a
+   called genotype.
+4. **The acquisition question is closed.** The local dump is byte-identical to what `mitomap.org`
+   serves (`sha256 16f01a96…`), over plain `curl` with no interstitial. Not a mirror, so the CC BY 3.0
+   terms read on the same day are the only terms in play.
+
+**What is left to decide, restated on the measurements.** Not "is `status` mappable" — the bracket is
+and the base is not. The question is whether a source that would contribute **16 new expert-panel
+calls**, no genotype, no rsID and a second sibling table is worth an adoption at all, or whether the
+honest answer is that ClinVar already carries this content with its provenance attached. Deliberately
+not taken here.
 
 **Related** RM164 (where it was found), `@one-normalizer-two-spellings`, `@no-named-licence`,
 `@probe-the-real-file`.
