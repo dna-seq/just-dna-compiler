@@ -229,6 +229,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - One normalizer for a vocabulary two sources spell differently; test **both** sides' raw tokens. `@one-normalizer-two-spellings`
 - A join with two granularities needs two kinds of **subject**, or the coarse answer repeats per fine claim. `@the-tier-is-a-property-of-the-subject`
 - `MULTI_SEP` splits on `,;|`; a source using one writes the other two as data — measure its separator. `@a-shared-separator-constant-is-not-a-sources-separator`
+- A lane-local vocabulary carries the lane's prefix; a reason map only a test reads speaks to nobody. `@a-lane-local-vocabulary-may-not-shadow-a-schema-one`
 
 - A release record's measured half and declared half drift; re-measure when a declaration lands. `@a-record-written-in-two-passes-drifts-between-them`
 - Assert the asymmetric invariant when only one direction is entailed; equality forces false claims. `@a-record-written-in-two-passes-drifts-between-them`
