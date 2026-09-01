@@ -450,6 +450,31 @@ untyped `JSON`.
 
 ## The bulk releases, which are a different source from the API
 
+**The whole download surface, enumerated 2026-09-01** — because the earlier survey named the three
+files the builder reads and stopped there, and one of the unnamed ones turned out to answer a question
+this document had recorded as unanswerable:
+
+| file | rows / size | note |
+|---|---|---|
+| `ClinicalEvidenceSummaries.tsv` | 4,878 | every row `accepted` |
+| `VariantSummaries.tsv` | 1,992 | **also `accepted`-only** — a fact nothing had stated |
+| `MolecularProfileSummaries.tsv` | — | tells a combination genotype from a dangling reference |
+| `AssertionSummaries.tsv` | 145 | not read; the assertions table is structurally incapable of the direction axis |
+| `FeatureSummaries.tsv` | 973 | gene/feature metadata |
+| `GeneSummaries.tsv` | 973 | **byte-identical to `FeatureSummaries.tsv`** — one file, two names |
+| `VariantGroupSummaries.tsv` | 30 | curator groupings |
+| `civic_accepted.vcf` | 2,347 CSQ | the accepted slice, GRCh37 |
+| **`civic_accepted_and_submitted.vcf`** | **5,864 CSQ** | **the wider basis, dated and pinnable** |
+
+No source, therapy, disease or phenotype TSV exists (404). Both VCFs exist for every dated release as
+well as nightly.
+
+**The VCF is a strict subset of the TSV and the subset is not arbitrary.** A VCF record needs a POS,
+so a variant with no GRCh37 coordinate cannot appear: the accepted VCF holds 473 direction rows on 236
+variants against the TSV's 533 on 290, and **52 of the 54 it drops are exactly the
+`unresolvable_identity` class**. It widens the corpus; it cannot replace the TSVs.
+
+
 CIViC publishes nightly **and dated** TSV releases — `civicdb.org/downloads/nightly/nightly-*.tsv` and
 `civicdb.org/downloads/01-Aug-2026/01-Aug-2026-*.tsv` (probed: `01-Aug-2026` and `01-Jul-2026` both
 200). A dated release is what a snapshot can pin, so it is the right build input; the API has no
@@ -764,7 +789,12 @@ remaining registry rows and took recovery to **237/290 = 82%**.
    contested-variant count from 0 to 3. If ever done, `status` belongs on the row as `confidence` with
    `confidence_unit`, unconverted.
 
-   **There is now a worked instance where the basis costs something specific rather than just rows.**
+   **Answered in part on 2026-09-01, and not by the API.** The submitted evidence is published as
+   `<date>-civic_accepted_and_submitted.vcf` in the same dated directory, so the corpus half of this
+   item shipped as RM169 — 507 rows on 270 variants to **1,149 on 397**, byte-reproducibly. What the
+   VCF cannot do is the citation half, because it carries none of the records at issue.
+
+   **There is still a worked instance where the basis costs something specific rather than just rows.**
    Variant 1955, one of the two records nothing resolves, carries a second evidence item — EID 9969,
    PMID 12202531 (Dollfus 2002) — which is `SUBMITTED`, and is therefore in the API and in no file the
    builder reads. Unlike the two Hum Mutat papers the accepted item cites, it is **free full text**,

@@ -34,7 +34,7 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-01 (latest) — CIViC reads the identity stated in a variant's name (RM159)
+## 2026-09-01 (latest) — CIViC: the identity in a variant's name, and the basis in its own VCF (RM159, RM169)
 
 **`just-dna-enricher` only; no schema change, no new column, nothing in `just-dna-format` or
 `just-dna-compiler`.**
@@ -59,6 +59,25 @@ signature, so `just-dna-compiler` took the patch alongside while `just-dna-forma
   provenance on the shipped table, not the source's statement.
 - The procedure behind the identities is `docs/probes/CIVIC_IDENTITY_PROTOCOL.md`; the per-variant
   evidence and the classes that did **not** resolve are `docs/probes/CIVIC_UNRESOLVED.md`.
+
+**RM169 — `civic build --submitted` and `civic reproduce --submitted`.**
+
+- **The unreviewed majority is now readable from the dated release.** CIViC publishes
+  `<date>-civic_accepted_and_submitted.vcf` beside the three TSVs, so no API read and no
+  reproducibility bargain are needed — RM160 was filed believing otherwise. Opt-in:
+  **507 rows on 270 variants → 1,149 on 397**, rebuild still byte-identical, refget cross-check
+  **57 → 129 coordinates with 0 mismatches**.
+- **New parquet column `evidence_status`** — `accepted` / `submitted`, CIViC's own word, unconverted.
+  Present on every row; on the accepted basis it is uniformly `accepted`.
+- **`identity_derivation` gains `vcf_csq`.** `VariantSummaries.tsv` is accepted-only as well, so 112
+  of the 128 new variants have no row in it; their identity comes from the VCF's `CSQ` block through
+  the same parsers and the same published identifiers. The member names the *file*, not the route.
+  A consumer filtering on the vocabulary should add it.
+- **`release.json` gains `status_basis`, `status_counts`, `vcf_evidence` and `unjoinable_submitted`.**
+  `status_basis` is the field to read before comparing any count here with a count from anywhere else.
+- Unchanged: the TSV pair is still primary (the VCF cannot carry a variant with no GRCh37 position,
+  which is exactly the class RM159 resolved by name), and nothing is placed from the VCF's own GRCh37
+  coordinate.
 
 ## 2026-08-28 — 0.7.0: the items PROPOSAL_0_7 decided
 

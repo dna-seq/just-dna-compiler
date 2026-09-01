@@ -965,7 +965,7 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 | **CPIC** 🔒 | `cpic/` | `$JUST_DNA_CPIC_CACHE` | `ensure_cpic_snapshot` | `just-dna-seq/cpic` | alleles / diplotypes / recommendations (`pgx`, `draft`) |
 | **PharmVar** 🔒 | `pharmvar/` | `$JUST_DNA_PHARMVAR_CACHE` | **none, by design** | **never published** | star alleles (`pgx`) |
 | **PubMind** ❓ | `pubmind/` | `$JUST_DNA_PUBMIND_CACHE` | **none, by design** | **never published** | literature-derived verdicts (RM134) |
-| **CIViC** ✅ | `civic/` | `$JUST_DNA_CIVIC_CACHE` | **none yet** | CC0 — publishable, none built | curated cancer interpretations, **`direction` axis only** (RM152) |
+| **CIViC** ✅ | `civic/` | `$JUST_DNA_CIVIC_CACHE` | **none yet** | CC0 — publishable, none built | curated cancer interpretations, **`direction` axis only** (RM152); `--submitted` widens the basis from the release's own VCF (RM169) |
 
 🔒 = licence-gated (`commercial_use=False`). ❓ = terms **unestablished** (`commercial_use=None`), which
 is a different state and not a weaker one: unknown is not permissive. The three 🔒 rows are RM38, new in
@@ -1219,6 +1219,25 @@ four sum to the table, asserted as an equality. `allele_registry_id` stays CIViC
 CAIDs the resolution went through are provenance on the table, never written into the source's column.
 `civic reproduce` then cross-examines every placed coordinate against the GRCh38 reference through
 refget — **57 of 57, 0 mismatches**, up from 24 before the adoption.
+
+**The unreviewed majority is readable without leaving the dated release (RM169).** CIViC publishes
+`<date>-civic_accepted_and_submitted.vcf` beside the TSVs, so `--submitted` widens the basis with no
+API read and no loss of reproducibility: **507 rows on 270 variants → 1,149 on 397**, a rebuild still
+byte-identical, and the refget cross-check going from 57 coordinates to **129, 0 mismatches**. Every
+row carries `evidence_status` — CIViC's own word, unconverted — and `release.json` records
+`status_basis`, `status_counts`, `vcf_evidence` and `unjoinable_submitted`.
+
+**The VCF is joined onto the TSVs, never substituted for them.** A VCF record needs a POS, so the file
+cannot carry a variant with no GRCh37 coordinate — and **52 of the 54 variants it drops are exactly the
+class whose identity had to be read out of its name** (RM159). Reading it as the row source would
+discard the hardest-won half of the snapshot.
+
+**`VariantSummaries.tsv` is accepted-only too**, which is why `identity_derivation="vcf_csq"` exists:
+112 of the 128 variants the submitted evidence introduces have no row in it, so their identity comes
+from the same `CSQ` entry, through the same parsers, on the same published identifiers (57 by CAID, 40
+by rs-number, 14 by a GRCh38 accession, 1 by both). The member names the **file** rather than the
+route, because the route is already visible in the row's own cells. Nothing is placed from the VCF's
+own position: it is GRCh37 and lifting it stays refused.
 
 **A refutation is kept and its direction withheld.** `Does Not Support` removes a claim without
 establishing the opposite one, so the row keeps its raw words and states no `direction` — an unknown

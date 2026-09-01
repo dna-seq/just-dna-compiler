@@ -44,6 +44,85 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+## RM169 — the wider basis was published as a dated file all along, and nobody had looked
+
+**Severity** medium · **Status** ✅ shipped 2026-09-01 in the uncut 0.7.0 (`just-dna-enricher`;
+**no schema change**) · **Owner** enricher · **Motivating case** RM160, whose central premise this
+item falsified
+
+RM160 was filed on the finding that `civic build` reads the `accepted`-only bulk TSV while the API
+serves 2.35× as much, and it stated the tension as a reproducibility bargain: *the API has no dated
+release to pin*, so any wider read costs the snapshot its byte-reproducibility. All three shapes it
+proposed were ways of paying that price.
+
+**The premise was false, and the check was one HTTP request.** CIViC publishes
+`<date>-civic_accepted_and_submitted.vcf` **inside the same dated release directory** the builder
+already reads. It is pinnable, hashable and immutable exactly like the three TSVs. Nobody had probed
+the download surface past the files already in use — the survey named three TSVs and stopped.
+
+### What the file is, and why it is not the input
+
+The whole release surface, enumerated: seven TSVs and two VCFs. (`GeneSummaries.tsv` is
+**byte-identical** to `FeatureSummaries.tsv` — one file under two names.) The VCF carries one `CSQ`
+entry per evidence item, with `CIViC Entity Status` on each.
+
+**But it is a strict subset of the TSV, and the subset is not arbitrary.** A VCF record needs a POS,
+so a variant with no GRCh37 coordinate cannot appear at all. Over `01-Aug-2026` the accepted VCF holds
+473 direction rows on 236 variants against the TSV's 533 on 290 — and **52 of the 54 it drops are
+exactly the `unresolvable_identity` class**, the records whose identity RM159 had to read out of their
+names. Reading the VCF as the row source would silently discard the hardest-won half of the snapshot.
+
+So the TSV pair stays primary and the VCF is joined onto it, behind `--submitted`.
+
+### What it added, measured
+
+| | accepted | accepted+submitted |
+|---|---:|---:|
+| Rows | 507 | **1,149** |
+| Variants | 270 | **397** |
+| refget coordinates cross-checked | 57 | **129**, 0 mismatches |
+
+`release.json` gains `status_basis`, `status_counts`, `vcf_evidence` and `unjoinable_submitted`, and
+every row gains `evidence_status` carrying CIViC's own word. **A rebuild on the wider basis is
+byte-identical**, so Principle 7 survives the join.
+
+### The second accepted-only file, which is why `vcf_csq` exists
+
+`VariantSummaries.tsv` is `accepted`-only **too** — a fact nothing had stated. So 112 of the 128
+variants the submitted evidence introduces have no row there at all: no gene, no aliases, no HGVS, no
+registry id. A first cut kept identity strictly TSV-sourced and recovered only 16 of them.
+
+The same `CSQ` entry carries all four identity cells, so for a variant the TSV cannot describe they
+are read from there instead — through **the same parsers**, on **the same published identifiers** (57
+by ClinGen CAID, 40 by rs-number, 14 by a GRCh38 accession, 1 by both). Those rows are stamped
+`identity_derivation="vcf_csq"`, a member of its own: the routes inside are the ordinary ones, and
+what the member names is the **file**, which is the part a consumer cannot otherwise recover.
+
+**Nothing is placed from the VCF's own position.** It is GRCh37 throughout
+(`##reference=…GRCh37-lite.fa.gz`) and lifting it stays refused (RM48); a CSQ-sourced row leaves the
+`civic_grch37_*` provenance columns empty rather than recording a coordinate whose build this file
+never states, and a test pins it.
+
+### Two guards the round earned
+
+- **The drop registry caught a real accounting error.** A first cut counted submitted items that
+  could not join under a new drop reason — but those rows never entered the evidence list the
+  registry's equality is over, so the input total disagreed with the list the loop walks. The guard
+  raised (`@registry-completeness` working exactly as designed), and the count moved to its own field,
+  `unjoinable_submitted`, outside the registry.
+- **The vocabulary is enumerated, not computed.** The VCF spells members `SCREAMING_CASE` where the
+  TSV uses title case, and a `.title()`-shaped rule gets `RARE_GERMLINE` right and
+  `SENSITIVITYRESPONSE` wrong — the TSV writes it `Sensitivity/Response`, with a separator the VCF
+  drops. Three exceptions in twenty members is a map, and it raises on an unmapped member rather than
+  emitting a mis-spelled token (`@lookup-with-a-default-hides-a-new-member`).
+
+### What this leaves for RM160
+
+Its **coverage** half is answered and closed here. Its **provenance** half is not: the sweep behind it
+found that 10 of the 20 records nothing can place gain citations only a wider basis carries, and the
+VCF reaches **none of them** — it holds 0 of those 10 and 1 of the 53 unresolvable variants, for the
+structural reason above. That half still needs the API or nothing, and RM160 stays open carrying it.
+
 ## RM159 — the identity a source states in a variant's name, adopted rather than left in a probe
 
 **Severity** medium · **Status** ✅ shipped 2026-09-01 in the uncut 0.7.0 (`just-dna-enricher`;

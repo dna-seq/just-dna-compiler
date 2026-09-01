@@ -323,9 +323,22 @@ The trackers further down are the other live part of this file: the reserved-nam
 
 ## RM160 — the CIViC snapshot reads the reviewed quarter of its source and says so nowhere a reader acts on
 
-**Severity** medium · **Status** open — **worth doing** (maintainer, 2026-09-01); the design question
-is which reproducibility bargain to take · **Owner** enricher · **Motivating case** the 2026-09-01
-residue round, variant 1955 ([CIVIC_LEGACY_INSERTIONS](probes/CIVIC_LEGACY_INSERTIONS.md) §7.4)
+**Severity** medium · **Status** open — **narrowed 2026-09-01**. Its *coverage* half shipped as
+[RM169](ROADMAP_HISTORY.md#rm169--the-wider-basis-was-published-as-a-dated-file-all-along-and-nobody-had-looked);
+what remains is the *provenance* half, and the VCF that answered the first cannot answer it ·
+**Owner** enricher · **Motivating case** the 2026-09-01 residue round, variant 1955
+([CIVIC_LEGACY_INSERTIONS](probes/CIVIC_LEGACY_INSERTIONS.md) §7.4)
+
+> **Read this first: the item's original premise was wrong.** It said the API has no dated release to
+> pin, and therefore that any wider basis costs the snapshot its reproducibility. CIViC publishes
+> `<date>-civic_accepted_and_submitted.vcf` **in the same dated directory** as the TSVs, so the wider
+> corpus was pinnable all along and RM169 took it: 507 rows on 270 variants → **1,149 on 397**, with a
+> byte-identical rebuild. The three shapes below are kept as the record of a decision that turned out
+> not to be needed.
+>
+> **What that leaves here is narrower and still real.** The VCF cannot carry a variant with no GRCh37
+> position, so it holds **none of the 10 records** whose hidden citations motivated this item, and 1
+> of the 53 unresolvable variants. The provenance half is API-only or nothing.
 
 `civic build` reads the dated bulk TSV release, and **every row in it is `evidence_status = accepted`**.
 CIViC's own GraphQL API defaults to `NON_REJECTED` and serves 11,518 evidence items against the bulk

@@ -30,6 +30,7 @@ from just_dna_enricher.civic_build import (
     parse_rsids,
     variant_rsids,
 )
+from just_dna_enricher.civic_vcf import CIVIC_EVIDENCE_STATUSES, VCF_DERIVATION
 from just_dna_enricher.civic_identities import (
     CIVIC_CURATION_STATES,
     CIVIC_NAME_IDENTITIES,
@@ -526,3 +527,152 @@ def test_release_json_publishes_what_became_of_every_curated_row(built):
     assert set(payload["curated_identities"]) == set(CIVIC_CURATION_STATES)
     assert sum(payload["curated_identities"].values()) == len(CIVIC_NAME_IDENTITIES)
     assert payload["identity_derivations"][CURATED_DERIVATION] >= 1
+
+
+# ── The submitted basis, from the release's own VCF (RM169) ──────────────────────────────────────
+#
+# The fixture VCF beside the TSVs is a four-line slice of the real dated file, chosen so each path is
+# reachable: an accepted item on a variant the TSV slice carries, a submitted item on the same, a
+# submitted item on a variant the TSV does NOT carry (the `vcf_csq` path, which exists because
+# `VariantSummaries.tsv` is accepted-only too), and one assertion entry, which must be skipped.
+
+VCF = SLICE / "civic_accepted_and_submitted.vcf"
+
+
+@pytest.fixture
+def widened(tmp_path):
+    return build_snapshot(EVIDENCE, VARIANTS, PROFILES, tmp_path / "snap", release="01-Aug-2026",
+                          vcf=VCF)
+
+
+def test_without_the_vcf_the_build_is_exactly_what_it_was(built, widened):
+    """The widening is opt-in. Omitting the VCF must not move a single number."""
+    assert built.status_basis == "accepted"
+    assert built.status_counts == {"accepted": built.record_count}
+    assert built.vcf_evidence == {}
+    assert widened.status_basis == "accepted+submitted"
+
+
+def test_a_submitted_row_joins_the_corpus_carrying_its_own_status(widened):
+    frame = pl.read_parquet(widened.parquet_file)
+    statuses = set(frame["evidence_status"].unique().to_list())
+    assert statuses == {"accepted", "submitted"}, "both bases must be present and distinguishable"
+    assert widened.status_counts["submitted"] >= 1
+    assert sum(widened.status_counts.values()) == widened.record_count
+
+
+def test_the_status_column_is_civics_own_word_not_a_house_grade(widened):
+    """`evidence_status` carries the source's instrument, unconverted (S86-shaped rule, RM169)."""
+    frame = pl.read_parquet(widened.parquet_file)
+    assert set(frame["evidence_status"].unique().to_list()) <= set(CIVIC_EVIDENCE_STATUSES)
+
+
+def test_a_variant_the_accepted_tsv_omits_is_placed_from_the_csq_and_says_so(widened):
+    """`VariantSummaries.tsv` is accepted-only, so most submitted evidence names a variant it lacks.
+
+    The identity then comes from the VCF's own CSQ cells — the same published identifiers, read by the
+    same parsers, from a different file. The stamp is what makes that recoverable.
+    """
+    frame = pl.read_parquet(widened.parquet_file)
+    csq = frame.filter(pl.col("identity_derivation") == VCF_DERIVATION)
+    assert csq.height >= 1, "the fixture carries a submitted row on a TSV-absent variant"
+    for row in csq.iter_rows(named=True):
+        assert row["evidence_status"] == "submitted"
+        assert row["rsid"] or row["chrom"] or row["allele_registry_id"], (
+            "a vcf_csq row must still carry an identity or a route to one"
+        )
+        # Nothing is placed from the VCF's own POS: it is GRCh37 and lifting it stays refused (RM48).
+        assert row["civic_grch37_chrom"] is None and row["civic_grch37_start"] is None
+
+
+def test_nothing_is_placed_from_the_vcfs_grch37_position(widened):
+    """The file is GRCh37 throughout. Every placed coordinate must trace to a GRCh38 identifier."""
+    frame = pl.read_parquet(widened.parquet_file)
+    csq = frame.filter(pl.col("identity_derivation") == VCF_DERIVATION)
+    placed = csq.filter(pl.col("chrom").is_not_null())
+    for row in placed.iter_rows(named=True):
+        # A GRCh38 coordinate is only ever parsed out of a GRCh38 accession, so a placed row proves
+        # the accession was there — the assertion is that the GRCh37 provenance columns stayed empty,
+        # which is what distinguishes "read an identifier" from "kept the record's own position".
+        assert row["civic_grch37_start"] is None
+
+
+def test_the_vcf_vocabulary_is_mapped_rather_than_title_cased():
+    """`SENSITIVITYRESPONSE` is `Sensitivity/Response` in the TSV — a separator no rule recovers."""
+    from just_dna_enricher.civic_vcf import CIVIC_VCF_TO_TSV, CivicVcfError, _title
+
+    assert _title("RARE_GERMLINE") == "Rare Germline"
+    assert _title("SENSITIVITYRESPONSE") == "Sensitivity/Response"
+    assert _title("GAIN_OF_FUNCTION") == "Gain of Function"
+    assert _title("NA") == "N/A"
+    assert _title("") == "", "an absent origin is not the member `Unknown`"
+    # The guard, not the map: a member CIViC adds must raise rather than arrive mis-spelled.
+    with pytest.raises(CivicVcfError, match="no TSV spelling"):
+        _title("SOME_NEW_MEMBER")
+    # Every mapped value is a spelling the TSV actually uses, checked against the fixture's own column.
+    with EVIDENCE.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle, delimiter="\t"))
+    seen = {(r.get("variant_origin") or "").strip() for r in rows}
+    seen |= {(r.get("significance") or "").strip() for r in rows}
+    seen |= {(r.get("evidence_direction") or "").strip() for r in rows}
+    assert seen - {""} <= set(CIVIC_VCF_TO_TSV.values())
+
+
+def test_an_assertion_entry_is_not_read_as_evidence():
+    """The CSQ block carries both. An assertion's status must never stand in for an evidence item's."""
+    from just_dna_enricher.civic_vcf import parse_csq_format, read_vcf_entries
+
+    entries = read_vcf_entries(VCF)
+    assert entries, "the fixture carries evidence entries"
+    # Counted from the file rather than hardcoded: a VCF *line* carries many CSQ entries, so a literal
+    # here would be a number read off a dump (the anti-pattern CLAUDE.md names). The property is that
+    # the reader returns every evidence entry and no assertion entry.
+    text = VCF.read_text()
+    fields = parse_csq_format([ln for ln in text.splitlines() if "ID=CSQ" in ln][0])
+    type_index = fields.index("CIViC Entity Type")
+    raw_types: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("#"):
+            continue
+        info = dict(kv.split("=", 1) for kv in line.split("\t")[7].split(";") if "=" in kv)
+        raw_types += [e.split("|")[type_index] for e in info.get("CSQ", "").split(",") if e]
+    assert raw_types.count("assertion") >= 1, "the fixture must exercise the assertion skip"
+    assert len(entries) == raw_types.count("evidence")
+
+
+def test_the_csq_field_order_is_read_from_the_header_not_assumed(tmp_path):
+    """A generator that adds a field must not shift every column after it, silently."""
+    from just_dna_enricher.civic_vcf import CivicVcfError, parse_csq_format, read_vcf_entries
+
+    header = [line for line in VCF.read_text().splitlines() if "ID=CSQ" in line][0]
+    fields = parse_csq_format(header)
+    assert fields[0] == "Allele" and "CIViC Entity Status" in fields
+    headerless = tmp_path / "no-format.vcf"
+    headerless.write_text(
+        '##fileformat=VCFv4.2\n##INFO=<ID=CSQ,Number=.,Type=String,Description="nope">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(CivicVcfError, match="does not declare its field order"):
+        read_vcf_entries(headerless)
+
+
+def test_release_json_states_the_basis_and_what_it_counted(widened):
+    payload = json.loads((widened.out_dir / RELEASE_FILENAME).read_text())
+    assert payload["status_basis"] == "accepted+submitted"
+    assert sum(payload["status_counts"].values()) == payload["record_count"]
+    assert set(payload["vcf_evidence"]) == set(CIVIC_EVIDENCE_STATUSES)
+    assert payload["unjoinable_submitted"] >= 0
+
+
+def test_the_drop_registry_still_closes_over_the_wider_basis(widened):
+    """The submitted rows join `evidence` before anything walks it, so one accounting covers both."""
+    assert widened.input_rows == widened.record_count + sum(widened.dropped.values())
+    assert set(widened.dropped) == set(CIVIC_DROP_REASONS)
+
+
+def test_a_widened_rebuild_is_byte_identical(tmp_path):
+    """Principle 7 holds across the wider basis too — the VCF join must not depend on dict order."""
+    a = build_snapshot(EVIDENCE, VARIANTS, PROFILES, tmp_path / "a", release="01-Aug-2026", vcf=VCF)
+    b = build_snapshot(EVIDENCE, VARIANTS, PROFILES, tmp_path / "b", release="01-Aug-2026", vcf=VCF)
+    assert a.parquet_file.read_bytes() == b.parquet_file.read_bytes()

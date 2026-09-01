@@ -1738,14 +1738,34 @@ def civic_build_(
         Path("civic"), "--out", file_okay=False,
         help="Output snapshot directory (writes data/civic.parquet + release.json).",
     ),
+    submitted: bool = typer.Option(
+        False, "--submitted",
+        help=(
+            "Also read the release's civic_accepted_and_submitted.vcf, so evidence a curator entered "
+            "but no editor signed off joins the snapshot. Widens the direction corpus from 507 rows "
+            "on 270 variants to 1149 on 397 over 01-Aug-2026, and every row carries the status CIViC "
+            "gave it. Dated and pinnable like the TSVs, so the build stays reproducible."
+        ),
+    ),
+    vcf: Path | None = typer.Option(
+        None, "--vcf", exists=True, dir_okay=False,
+        help="Local civic_accepted_and_submitted.vcf. Use with the local TSV flags to build offline.",
+    ),
 ) -> None:
     """Reduce a dated CIViC release to the parquet snapshot the direction-axis drafter reads.
 
     **The bulk release, not the GraphQL API, and the two are not interchangeable.** Every row of
     `ClinicalEvidenceSummaries.tsv` is status `accepted`; the API defaults to `NON_REJECTED` and
     serves roughly 2.35x as many evidence items. A snapshot has to be reproducible from a pinned
-    input and only the download side is dated, so this reads the TSVs and records the basis in
-    `release.json`.
+    input, so this reads the dated files and records the basis in `release.json`.
+
+    **`--submitted` widens that basis without leaving the dated release (RM169).** CIViC publishes
+    `<date>-civic_accepted_and_submitted.vcf` beside the TSVs, so unreviewed evidence is pinnable too
+    and no API read is needed. The TSVs stay primary — the VCF cannot carry a variant with no GRCh37
+    coordinate, which is exactly the class whose identity had to be read out of its name — and the VCF
+    supplies the curation status, the submitted evidence, and the identity for the 112 variants
+    `VariantSummaries.tsv` (itself accepted-only) does not describe. Those rows are stamped
+    `identity_derivation="vcf_csq"`, and nothing is placed from the VCF's own GRCh37 position.
 
     **There is no `--use` flag.** CIViC is CC0 on every axis, so a declared-use gate would permit
     every build unconditionally, and a flag feeding a gate that never gates is a flag that does
@@ -1755,11 +1775,17 @@ def civic_build_(
         CIVIC_EVIDENCE_FILE,
         CIVIC_PROFILE_FILE,
         CIVIC_VARIANT_FILE,
+        CIVIC_VCF_FILE,
         build_snapshot,
         civic_release_url,
         download_civic_file,
     )
 
+    if vcf is not None and submitted:
+        raise typer.BadParameter(
+            "pass --vcf to read a local VCF or --submitted to download the release's one, not both. "
+            "Two sources for one input is a build whose provenance nothing can state."
+        )
     local = (evidence, variants, profiles)
     if release is None and not all(local):
         raise typer.BadParameter(
@@ -1769,6 +1795,7 @@ def civic_build_(
             "file is what tells a combination genotype from a dangling reference."
         )
     shas: dict[str, str | None] = {}
+    vcf_path = vcf
     if all(local):
         evidence_path, variant_path, profile_path = local
     else:
@@ -1779,6 +1806,10 @@ def civic_build_(
             shas[filename] = got.sha256
             paths.append(got.path)
         evidence_path, variant_path, profile_path = paths
+        if submitted:
+            got = download_civic_file(out / CIVIC_VCF_FILE, civic_release_url(release, CIVIC_VCF_FILE))
+            shas[CIVIC_VCF_FILE] = got.sha256
+            vcf_path = got.path
 
     result = build_snapshot(
         evidence_path, variant_path, profile_path, out,
@@ -1786,8 +1817,13 @@ def civic_build_(
         evidence_sha256=shas.get(CIVIC_EVIDENCE_FILE),
         variant_sha256=shas.get(CIVIC_VARIANT_FILE),
         profile_sha256=shas.get(CIVIC_PROFILE_FILE),
+        vcf=vcf_path,
+        vcf_sha256=shas.get(CIVIC_VCF_FILE),
     )
     typer.echo(f"Wrote {result.parquet_file} ({result.record_count} rows, {result.variants} variants)")
+    typer.echo(f"  status basis: {result.status_basis}")
+    if result.status_counts:
+        typer.echo("  " + " · ".join(f"{k} {v}" for k, v in sorted(result.status_counts.items())))
     typer.echo(f"  dataset: {result.dataset or 'unknown (no --release named)'}")
     typer.echo(f"  read {result.input_rows} evidence rows; dropped:")
     for reason, count in result.dropped.items():
@@ -1876,6 +1912,14 @@ def civic_reproduce_(
         False, "--offline",
         help="Skip the reference cross-check. The build and determinism checks still run.",
     ),
+    submitted: bool = typer.Option(
+        False, "--submitted",
+        help=(
+            "Reproduce the wider basis: also download the release's "
+            "civic_accepted_and_submitted.vcf and build with it, so the submitted rows and their "
+            "coordinates go through every check below rather than only the accepted ones."
+        ),
+    ),
 ) -> None:
     """Build the CIViC snapshot from a dated release and check it, end to end.
 
@@ -1902,6 +1946,7 @@ def civic_reproduce_(
         CIVIC_EVIDENCE_FILE,
         CIVIC_PROFILE_FILE,
         CIVIC_VARIANT_FILE,
+        CIVIC_VCF_FILE,
         build_snapshot,
         civic_release_url,
         download_civic_file,
@@ -1926,21 +1971,31 @@ def civic_reproduce_(
     # 1 ── the release, with its bytes recorded
     typer.echo("\n1. Downloading the dated release")
     paths, shas = [], {}
-    for filename in (CIVIC_EVIDENCE_FILE, CIVIC_VARIANT_FILE, CIVIC_PROFILE_FILE):
+    wanted = [CIVIC_EVIDENCE_FILE, CIVIC_VARIANT_FILE, CIVIC_PROFILE_FILE]
+    if submitted:
+        # Hashed like every other input, because the whole point of reading it from the dated release
+        # rather than the API is that its bytes can be pinned.
+        wanted.append(CIVIC_VCF_FILE)
+    for filename in wanted:
         got = download_civic_file(out / filename, civic_release_url(release, filename))
         paths.append(got.path)
         shas[filename] = got.sha256
-        typer.echo(f"     {filename:34s} {got.sha256[:16]}…  {got.path.stat().st_size:>9,} bytes")
+        typer.echo(f"     {filename:38s} {got.sha256[:16]}…  {got.path.stat().st_size:>9,} bytes")
     check(all(shas.values()), "every input file hashed")
+    vcf_path = paths.pop() if submitted else None
 
     # 2 ── two builds, byte for byte
     typer.echo("\n2. Building twice")
     first = build_snapshot(*paths, out / "build-a", release=release,
                            evidence_sha256=shas[CIVIC_EVIDENCE_FILE],
                            variant_sha256=shas[CIVIC_VARIANT_FILE],
-                           profile_sha256=shas[CIVIC_PROFILE_FILE])
-    second = build_snapshot(*paths, out / "build-b", release=release)
-    typer.echo(f"     {first.record_count} rows on {first.variants} variants")
+                           profile_sha256=shas[CIVIC_PROFILE_FILE],
+                           vcf=vcf_path, vcf_sha256=shas.get(CIVIC_VCF_FILE))
+    second = build_snapshot(*paths, out / "build-b", release=release, vcf=vcf_path)
+    typer.echo(f"     {first.record_count} rows on {first.variants} variants "
+               f"({first.status_basis})")
+    if first.status_counts:
+        typer.echo("     " + " · ".join(f"{k} {v}" for k, v in sorted(first.status_counts.items())))
     check(
         first.parquet_file.read_bytes() == second.parquet_file.read_bytes(),
         "a rebuild is byte-identical (P7)",

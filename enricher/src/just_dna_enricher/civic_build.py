@@ -47,6 +47,7 @@ tested for `".11"` or `".12"` and overcounted reachable records five-fold.
 Builder-only: `polars` is a guarded `[dev]` import, exactly as in the sibling builders.
 """
 
+import collections
 import csv
 import hashlib
 import json
@@ -59,6 +60,16 @@ from pathlib import Path
 import httpx
 from just_dna_format.normalize import now_utc_iso
 
+from just_dna_enricher.civic_vcf import (
+    CIVIC_EVIDENCE_STATUSES,
+    CIVIC_VCF_FILE,
+    VCF_DERIVATION,
+    CivicVcfEntry,
+    assert_vocabulary_covers,
+    read_vcf_entries,
+    status_by_evidence,
+    summarize,
+)
 from just_dna_enricher.civic_identities import (
     CIVIC_CURATION_STATES,
     CIVIC_NAME_IDENTITY_BY_VARIANT,
@@ -98,9 +109,14 @@ CIVIC_PARQUET = "civic.parquet"
 #: and every build confusion in this package began as a literal that read as decoration.
 CIVIC_GENOME_BUILD = "GRCh38"
 
-#: The status every row in the bulk file carries. Named because the API's default basis is a
-#: different one and the two are not comparable.
+#: The status every row in the bulk **TSV** carries. Named because the other published surfaces use a
+#: different basis and the counts are not comparable across them.
 CIVIC_BULK_STATUS = "accepted"
+
+#: The basis a build actually emitted, recorded in `release.json` so a count is never read against the
+#: wrong denominator. `accepted` is the TSV pair alone; `accepted+submitted` means the dated
+#: `civic_accepted_and_submitted.vcf` was joined in as well (RM169).
+CIVIC_STATUS_BASES: tuple[str, ...] = ("accepted", "accepted+submitted")
 
 #: How a kept row's GRCh38 identity was established, so a consumer can exclude a class without
 #: re-deriving why.
@@ -120,8 +136,13 @@ CIVIC_BULK_STATUS = "accepted"
 #:                 folding into `rsid`/`grch38_hgvs`, because those two mean "the source stated this
 #:                 in the column for it" and a consumer must be able to exclude the difference
 #:                 without re-deriving it. See `civic_identities`.
+#: `vcf_csq`     — the identity came from the VCF's `CSQ` block rather than from `VariantSummaries`,
+#:                 because that file is `accepted`-only and does not describe the variant at all. The
+#:                 routes inside are the same published identifiers (rs-number, GRCh38 accession,
+#:                 ClinGen CAID) read by the same parsers; what differs is the *file*, and a consumer
+#:                 must be able to exclude a provenance without re-deriving it (RM169).
 CIVIC_IDENTITY_DERIVATIONS: frozenset[str] = frozenset(
-    {"rsid", "grch38_hgvs", "both", "caid", CURATED_DERIVATION}
+    {"rsid", "grch38_hgvs", "both", "caid", CURATED_DERIVATION, VCF_DERIVATION}
 )
 
 #: Why a source evidence row produced no output row. Walked rather than restated, so
@@ -241,6 +262,19 @@ class CivicBuildResult:
     record_count: int
     #: Keyed by `CIVIC_DROP_REASONS`, every member present so a zero is a measured zero.
     dropped: dict[str, int] = field(default_factory=dict)
+    #: Submitted evidence items the VCF names on a variant the TSV does not describe. Outside the drop
+    #: registry deliberately — those rows never entered the evidence list the registry's equality is
+    #: over — and reported separately so the number is not lost (`@dont-discard-computed`).
+    unjoinable_submitted: int = 0
+    #: Emitted rows per `evidence_status`. Empty on the `accepted` basis, where the answer is the
+    #: record count and a second number would only be able to disagree with it.
+    status_counts: dict[str, int] = field(default_factory=dict)
+    #: Which basis this build read: a member of `CIVIC_STATUS_BASES`. The single most important field
+    #: in `release.json` for anyone comparing a count here with a count from anywhere else.
+    status_basis: str = CIVIC_BULK_STATUS
+    #: Evidence items the VCF holds per status, over the whole file rather than the direction slice —
+    #: the denominator this build's own counts sit inside. Empty when no VCF was read.
+    vcf_evidence: dict[str, int] = field(default_factory=dict)
     #: What became of each curated identity, keyed by `CIVIC_CURATION_STATES` with every member
     #: present. Counted per **variant**, not per row: the table is keyed by variant id, so a variant
     #: carrying three evidence rows is one application. The three sum to the table's length.
@@ -410,7 +444,7 @@ CIVIC_COLUMNS: tuple[str, ...] = (
     "identity_derivation", "direction", "significance_raw", "evidence_direction_raw",
     "variant_id", "variant_name", "gene", "evidence_id", "molecular_profile_id",
     "evidence_level", "rating", "variant_origin", "pmid", "disease", "doid",
-    "civic_grch37_chrom", "civic_grch37_start",
+    "civic_grch37_chrom", "civic_grch37_start", "evidence_status",
 )
 
 
@@ -424,6 +458,8 @@ def build_snapshot(
     evidence_sha256: str | None = None,
     variant_sha256: str | None = None,
     profile_sha256: str | None = None,
+    vcf: Path | None = None,
+    vcf_sha256: str | None = None,
 ) -> CivicBuildResult:
     """Reduce the CIViC release pair to one parquet plus `release.json`.
 
@@ -435,6 +471,13 @@ def build_snapshot(
 
     Every provenance argument defaults to `None` because only a caller that actually fetched can say
     where the bytes came from; a build off local disk records unknown rather than inventing a URL.
+
+    **`vcf` widens the status basis and nothing else (RM169).** Given the dated
+    `civic_accepted_and_submitted.vcf` from the same release, every emitted row gains the
+    `evidence_status` CIViC assigned it, and the submitted evidence items join the corpus. The TSV pair
+    stays primary and every row is still built from TSV columns — the VCF contributes *which* items
+    exist and their status, never an identity: its POS is GRCh37 and lifting it is refused (RM48).
+    Omitted, the build is exactly what it was, on the `accepted` basis.
     """
     if pl is None:  # pragma: no cover - exercised only where the [dev] extra is absent
         raise CivicBuildError(
@@ -444,6 +487,53 @@ def build_snapshot(
     evidence = _read_tsv(Path(evidence_tsv), _EVIDENCE_COLUMNS)
     variants = _read_tsv(Path(variant_tsv), _VARIANT_COLUMNS)
     profiles = _read_tsv(Path(profile_tsv), _PROFILE_COLUMNS)
+
+    # The VCF half. Read before the loop so `evidence` is one list by the time anything walks it: a
+    # submitted row that took a different code path from an accepted one would be a second parser,
+    # and the drop registry could not close over both.
+    dropped = dict.fromkeys(CIVIC_DROP_REASONS, 0)
+    doid_by_disease = _doid_by_disease(evidence)
+    status_basis = CIVIC_BULK_STATUS
+    unjoinable_submitted = 0
+    evidence_statuses: dict[int, str] = {}
+    vcf_statuses: dict[str, int] = {}
+    if vcf is not None:
+        entries = read_vcf_entries(Path(vcf))
+        assert_vocabulary_covers(entries)
+        evidence_statuses = status_by_evidence(entries)
+        vcf_statuses = summarize(entries)
+        status_basis = "accepted+submitted"
+        by_variant_id = {
+            (row.get("variant_id") or "").strip(): row
+            for row in variants
+            if (row.get("variant_id") or "").strip()
+        }
+        known = {int(row["evidence_id"]) for row in evidence if row["evidence_id"].isdigit()}
+        for entry in entries:
+            if entry.status != "submitted" or entry.evidence_id in known:
+                continue
+            variant = by_variant_id.get(str(entry.variant_id))
+            if variant is None and (
+                entry.allele_registry_id or entry.variant_aliases or entry.civic_hgvs
+            ):
+                # `VariantSummaries.tsv` is accepted-only too, so most submitted evidence names a
+                # variant it does not describe. The same CSQ entry carries the four identity cells the
+                # TSV would have supplied, so the row is built from those and stamped `vcf_csq`.
+                variant = _variant_row_from_csq(entry)
+                by_variant_id[str(entry.variant_id)] = variant
+                variants.append(variant)
+            if variant is None:
+                # A submitted item on a variant the TSV does not describe: no gene, no aliases, no
+                # identity route, nothing to build from. Counted here rather than in the main loop
+                # because the row never enters `evidence`, and a drop the walking loop cannot see is a
+                # drop the registry cannot close over.
+                # NOT counted in `dropped`: the registry's equality is over the rows that entered
+                # `evidence`, and this item never did. Counting it there would make the input total
+                # disagree with the list the loop walks — the guard below catches exactly that, and
+                # catching it is what says the two halves are one accounting rather than two.
+                unjoinable_submitted += 1
+                continue
+            evidence.append(_submitted_evidence_row(entry, variant, doid_by_disease))
 
     #: profile id → how many variants it names. A profile naming two is a combination genotype and
     #: is dropped as one; a profile this map has never heard of is a dangling reference.
@@ -459,7 +549,6 @@ def build_snapshot(
         if (row.get("single_variant_molecular_profile_id") or "").strip()
     }
 
-    dropped = dict.fromkeys(CIVIC_DROP_REASONS, 0)
     identity_derivations = dict.fromkeys(sorted(CIVIC_IDENTITY_DERIVATIONS), 0)
     curated = _classify_curated(variants)
     records: list[dict[str, object]] = []
@@ -502,7 +591,13 @@ def build_snapshot(
             dropped["unresolvable_identity"] += 1
             continue
 
-        if curated_row is not None:
+        if variant.get(_CSQ_SOURCED):
+            # Stamped ahead of the published-identifier routes, and deliberately: those name *which*
+            # identifier answered, while this names which **file** it was read from. For a variant the
+            # TSV does not describe at all, the file is the fact a consumer cannot otherwise recover,
+            # and the routes inside are visible in the row's own rsid/chrom/allele_registry_id cells.
+            derivation = VCF_DERIVATION
+        elif curated_row is not None:
             derivation = CURATED_DERIVATION
         elif rsids and coords is not None:
             derivation = "both"
@@ -551,6 +646,11 @@ def build_snapshot(
                 "doid": row.get("doid") or None,
                 "civic_grch37_chrom": _grch37_chrom(variant),
                 "civic_grch37_start": _grch37_start(variant),
+                # CIViC's own curation status, verbatim. On the `accepted` basis every row carries
+                # `accepted` from the TSV's own column; on the wider basis it is what separates a row
+                # an editor signed off from one a curator entered. Never translated into a house
+                # grade: it is the source's instrument and naming it is the point (RM169).
+                "evidence_status": (row.get("evidence_status") or "").strip() or None,
             }
         )
 
@@ -571,6 +671,9 @@ def build_snapshot(
     for record in records:
         if record["direction"] is not None:
             camps.setdefault(int(record["variant_id"]), set()).add(str(record["direction"]))
+    status_counts = dict(collections.Counter(
+        str(r["evidence_status"]) for r in records if r["evidence_status"] is not None
+    ))
     result = CivicBuildResult(
         out_dir=out_dir,
         parquet_file=parquet_file,
@@ -578,6 +681,10 @@ def build_snapshot(
         record_count=len(records),
         dropped=dropped,
         identity_derivations=identity_derivations,
+        status_counts=status_counts,
+        unjoinable_submitted=unjoinable_submitted,
+        status_basis=status_basis,
+        vcf_evidence=vcf_statuses,
         curated_identities=curated,
         variants=len({int(r["variant_id"]) for r in records}),
         withheld_direction=withheld_direction,
@@ -626,6 +733,107 @@ def _write_license(out_dir: Path) -> Path:
     path = Path(out_dir) / SNAPSHOT_LICENSE_FILENAME
     path.write_text(CIVIC_LICENSE_TEXT, encoding="utf-8")
     return path
+
+
+#: Marks a variant row synthesised from the VCF's `CSQ` block. Private to this module and never a
+#: parquet column — what reaches a consumer is `identity_derivation="vcf_csq"`, which is the same fact
+#: in the vocabulary a consumer already reads.
+_CSQ_SOURCED = "_civic_csq_sourced"
+
+
+def _variant_row_from_csq(entry: CivicVcfEntry) -> dict[str, str]:
+    """A `VariantSummaries` row, built from the `CSQ` cells, for a variant that file does not carry.
+
+    Shaped like a TSV row rather than handled specially, for the same reason
+    `_submitted_evidence_row` is: the identity routes downstream then run **unchanged**, so a CSQ-
+    sourced variant is placed by the same `variant_rsids` / `parse_grch38_substitution` /
+    `allele_registry_id` logic as any other, and nothing has to learn that two shapes exist.
+
+    The coordinate columns are deliberately left empty. The VCF's own POS is GRCh37, `_grch37_chrom`
+    would happily record it as provenance, and recording it here would put a coordinate on a row whose
+    build stamp this file never states — `@identity-whole-or-none`, and RM48's refusal of a lifted
+    coordinate as a row's sole identity. Everything these rows are placed by is build-independent or
+    GRCh38-explicit.
+    """
+    return {
+        "variant_id": str(entry.variant_id),
+        # CIViC's own profile id, not a synthesised one: the evidence row built beside this carries
+        # the same value, so the ordinary profile join links them and the parquet publishes the
+        # source's identifier rather than this builder's invention.
+        "single_variant_molecular_profile_id": entry.molecular_profile_id,
+        "gene": entry.gene,
+        "variant": entry.variant_name,
+        "variant_aliases": entry.variant_aliases,
+        "hgvs_descriptions": entry.civic_hgvs,
+        "allele_registry_id": entry.allele_registry_id,
+        "chromosome": "",
+        "start": "",
+        "reference_bases": "",
+        "variant_bases": "",
+        "reference_build": "",
+        # The mark that makes the provenance recoverable at the emit site. A private key rather than a
+        # published column: `_read_tsv` never produces it, so its presence means exactly "this row was
+        # built from the VCF" and nothing else can set it.
+        _CSQ_SOURCED: "1",
+    }
+
+
+def _doid_by_disease(evidence: list[dict[str, str]]) -> dict[str, str]:
+    """`disease` label → DOID, learned from the accepted TSV.
+
+    **The VCF carries a disease label and no ontology id**, while every row this snapshot emits today
+    carries a DOID — so a submitted row would otherwise be the only kind with an empty `doid`, and a
+    consumer filtering on the column would silently lose it. The mapping is *learned from the same
+    release* rather than fetched: CIViC states the pairing on 4,878 accepted rows, and over
+    `01-Aug-2026` all 298 labels map to exactly one DOID each, so there is nothing to adjudicate.
+
+    A label the accepted rows never carry is left unmapped and its row gets a null `doid` — an unknown
+    withheld rather than guessed, which is the house rule and is worth 3 rows on 2 labels here.
+    """
+    pairs: dict[str, set[str]] = {}
+    for row in evidence:
+        disease = (row.get("disease") or "").strip()
+        doid = (row.get("doid") or "").strip()
+        if disease and doid:
+            pairs.setdefault(disease, set()).add(doid)
+    # A label CIViC pairs with two ids is not a mapping and must not be used as one; dropping it
+    # withholds rather than picking, and the count is small enough to name if it ever happens.
+    ambiguous = sorted(label for label, ids in pairs.items() if len(ids) > 1)
+    if ambiguous:
+        logger.warning(
+            "%d CIViC disease label(s) map to more than one DOID in this release and are left "
+            "unmapped for submitted rows: %s",
+            len(ambiguous),
+            ", ".join(ambiguous[:5]),
+        )
+    return {label: next(iter(ids)) for label, ids in pairs.items() if len(ids) == 1}
+
+
+def _submitted_evidence_row(
+    entry: CivicVcfEntry, variant: dict[str, str], doid_by_disease: dict[str, str]
+) -> dict[str, str]:
+    """One VCF submitted evidence item, shaped exactly like a row of the evidence TSV.
+
+    Shaped rather than special-cased on purpose: the row rejoins `evidence` before anything walks it,
+    so a submitted row goes through the same origin filter, the same direction map, the same profile
+    join and the same identity routes as an accepted one. One code path, one set of columns, and the
+    drop registry closes over both bases without knowing there are two.
+    """
+    return {
+        "molecular_profile_id": (variant.get("single_variant_molecular_profile_id") or "").strip(),
+        "evidence_id": str(entry.evidence_id),
+        "evidence_type": "Predisposing",
+        "evidence_direction": entry.direction,
+        "evidence_level": entry.evidence_level,
+        "significance": entry.significance,
+        "citation_id": entry.citation_id,
+        "source_type": entry.source_type,
+        "rating": entry.rating,
+        "evidence_status": entry.status,
+        "variant_origin": entry.variant_origin,
+        "disease": entry.disease,
+        "doid": doid_by_disease.get(entry.disease, ""),
+    }
 
 
 def _curated_for(variant: dict[str, str]) -> CivicNameIdentity | None:
@@ -774,6 +982,7 @@ def _polars_schema() -> dict:
         "evidence_level": pl.Utf8, "rating": pl.Int64, "variant_origin": pl.Utf8,
         "pmid": pl.Utf8, "disease": pl.Utf8, "doid": pl.Utf8,
         "civic_grch37_chrom": pl.Utf8, "civic_grch37_start": pl.Int64,
+        "evidence_status": pl.Utf8,
     }
 
 
@@ -787,7 +996,10 @@ def _write_release_json(out_dir: Path, result: CivicBuildResult, *, release: str
         "variant_sha256": result.variant_sha256,
         "profile_sha256": result.profile_sha256,
         "genome_build": CIVIC_GENOME_BUILD,
-        "status_basis": CIVIC_BULK_STATUS,
+        "status_basis": result.status_basis,
+        "status_counts": result.status_counts,
+        "unjoinable_submitted": result.unjoinable_submitted,
+        "vcf_evidence": result.vcf_evidence,
         "input_rows": result.input_rows,
         "record_count": result.record_count,
         "dropped": result.dropped,
