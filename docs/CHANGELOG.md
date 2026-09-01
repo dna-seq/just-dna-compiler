@@ -34,7 +34,40 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-01 (latest) — the source-adoption round closes: regulator drug labels (RM166)
+## 2026-09-02 (latest) — two records that contradicted themselves, and a header a draft could not write into
+
+**`just-dna-enricher` + `just-dna-compiler`, no schema change.** Three defects, each found by a probe
+that was measuring something else, plus the probe round behind RM170.
+
+- **`release.json` declared the accepted basis while recording the wider one.** RM169 added
+  `--submitted` and every derived field moved with it — `status_basis`, `status_counts`,
+  `vcf_evidence`, the per-row `evidence_status` — but `notice` stayed a literal, so a snapshot built
+  on the wider basis published *"every row of which is status 'accepted'"* beside
+  `status_basis: accepted+submitted` and 642 submitted rows. **A consumer quoting the notice was
+  quoting a false sentence.** Derived from the basis now, with the counts it read.
+- **A partial draft into a header that predates a column crashed.** `append_partial_rows` re-rendered
+  the existing rows against the model's **full** field list and then wrote them under the file's
+  narrower header, so `csv.DictWriter` raised a bare `ValueError: dict contains fields not in
+  fieldnames`. `draft-repeats` into the shipped `htt_repeat_expansion` example hit it on `pmid` and
+  `measure_tiling`. The header now grows by exactly the columns the batch fills, settled before
+  anything is rendered — the rule `append_rows` already had.
+- **[CONTRADICTION_CORPORA](probes/CONTRADICTION_CORPORA.md)**, the RM170 probe: both corpora measured
+  before either is designed against. **No refutation in CIViC that stands against a claim is
+  accepted** — so that finding's subject count is 0 on the accepted basis and 3 on the wider one, and
+  a hint that does not state the basis cannot be honest. Four adopted sources publish this shape,
+  three already land it, and **STRchive's is dropped at parse**. Filed **RM174** out of it: a
+  combination-genotype refutation reaches the parquet as two single-variant rows because the row
+  builder stamps the variant's profile over the evidence item's.
+- **RM173's premise was replaced by its own probe.** ClinPGx `clinicalVariants.zip` is not a third
+  source: **96.3% of its 5,190 rows are already in the archive the lane reads**, its six columns are a
+  subset of that file's fifteen, and its `type` column is `Phenotype Category` with a different
+  separator. What it does show is that **the adopted archive is 13 months older than its sibling**
+  (`CREATED_2025-07-05` against `CREATED_2026-08-05`), with 99 residue rows whose curation has moved.
+- **MITOMAP's terms are read (RM171): CC BY 3.0**, commercial use and redistribution permitted,
+  attribution required. Read from a Wayback capture because the live page is behind a Cloudflare
+  interstitial; the CC BY-NC a search surfaces is the *article's* licence, not the database's.
+
+## 2026-09-01 — the source-adoption round closes: regulator drug labels (RM166)
 
 **`just-dna-enricher`, plus one `VALID_VERIFICATION_CHECKS` member.** Last of the five items
 [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md) decided, and with it **the whole 2026-09-01

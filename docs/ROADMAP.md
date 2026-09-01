@@ -732,6 +732,51 @@ maintainer call, deliberately not pre-empted here.
 **Related** RM164 (where it was found), `@one-normalizer-two-spellings`, `@no-named-licence`,
 `@probe-the-real-file`.
 
+## RM174 — a combination-genotype refutation reaches the parquet as two single-variant rows, and the column that would say so is overwritten
+
+**Severity** medium · **Status** open — **two candidate repairs, neither chosen** · **Owner** enricher
+· **Motivating case** the RM170 probe, which found it while measuring the refutation set
+([CONTRADICTION_CORPORA](probes/CONTRADICTION_CORPORA.md) §2.2)
+
+CIViC evidence item 8721 belongs to molecular profile **5278**, which CIViC publishes as
+`VHL S183L (c.548C>T) AND VHL D126N (c.376G>A)` — one statement about a **two-variant genotype**.
+`_submitted_evidence_row` stamps `molecular_profile_id` from **the variant's**
+`single_variant_molecular_profile_id` rather than from the evidence item's own profile, which the VCF
+CSQ block already carries and `CivicVcfEntry.molecular_profile_id` already parses. So the parquet
+states, twice, that a combination-genotype refutation is a single-variant refutation, and the one
+column that could have said otherwise has been written over.
+
+**Bounded and measured.** 1,149 rows carry 1,144 distinct `evidence_id`s; the five that repeat are
+5634, 6740, 6868, 8721, 8790 — all VHL, all submitted, four of them `Supports`. Across the whole VCF
+the fan-out is 108 evidence ids over 279 CSQ entries; only 5 survive the germline + direction-axis
+filter.
+
+**The overwrite is not gratuitous, which is why this is not a one-line fix.** The row is shaped
+exactly like a TSV evidence row so it rejoins `evidence` and goes through one origin filter, one
+direction map, one profile join and one identity route. `molecular_profile_id` is the join key into
+`by_profile`, so the *true* profile id would not join — and the TSV path already handles that case by
+dropping a multi-variant profile as `combination_profile`, counted. The overwrite is what makes the
+VCF path keep a row the TSV path would drop.
+
+### Two repairs, and the choice is a real one
+
+1. **Carry the entry's own profile and let the existing machinery drop it.** One behaviour on both
+   paths, the drop counted under `combination_profile` like any other. **But it removes exactly the
+   two rows RM170 is about** — 8721 is the rebuttal standing against 2161 and 2533 — so the item that
+   found this defect would lose its motivating case to the repair.
+2. **Keep the fan-out and stop the false claim.** The join key stays the variant's single-variant
+   profile; the evidence item's own profile id and name are published in their own columns. Additive
+   and minor-legal, keeps every row, and makes a combination profile *legible* rather than either
+   silently wrong or silently dropped. Costs a parquet column, which the 0.6 charter amendment prices
+   at approximately free.
+
+Repair 2 is the one this entry would take, on the grounds that dropping a row to fix a mislabelled
+column trades a wrong answer for no answer. It is written down as a recommendation rather than a
+decision because the path asymmetry it leaves — the TSV drops a combination profile, the VCF keeps it
+labelled — is the sort of thing `@parity-by-check` says to audit deliberately rather than inherit.
+
+**Related** RM170 (where it was found), RM169 (which added the VCF path), `@parity-by-check`.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
