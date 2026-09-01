@@ -125,6 +125,7 @@ from just_dna_enricher.pubmind_draft import (
     draft_gene_panel_from_pubmind,
 )
 from just_dna_enricher.sequences import summarize_ref_mismatches
+from just_dna_enricher.strchive import StrchiveError, check_repeat_bands
 from just_dna_enricher.upload import DEFAULT_CLINPGX_REPO_ID, DEFAULT_CPIC_REPO_ID
 from just_dna_enricher.verification import record_verification, skipped
 from just_dna_enricher.vrs import MintResult
@@ -2794,6 +2795,104 @@ def clinvar_citations_(
             f"will not say which citations release it carries",
             fg=typer.colors.YELLOW, err=True,
         )
+
+
+strchive_app = typer.Typer(
+    add_completion=False,
+    help="Build the STRchive repeat-locus snapshot. MIT-licensed, so a deployment may publish it.",
+    no_args_is_help=True,
+)
+app.add_typer(strchive_app, name="strchive")
+
+
+@strchive_app.command("build")
+def strchive_build_(
+    out: Path = typer.Option(
+        Path("strchive"), "--out", file_okay=False,
+        help="Output snapshot directory (writes STRchive-loci.json + release.json).",
+    ),
+    catalogue: Path | None = typer.Option(
+        None, "--catalogue", exists=True, dir_okay=False,
+        help="A STRchive-loci.json you already have. Without it the file is downloaded.",
+    ),
+    release: str | None = typer.Option(
+        None, "--release",
+        help="Upstream release tag to pin, e.g. v2.26.0. Without it, the default branch, unlabelled.",
+    ),
+) -> None:
+    """Fetch (or copy in) the STRchive catalogue and record its provenance beside it.
+
+    Pin a release: the default branch moves, so a comparison whose reference is "whatever was there
+    that afternoon" cannot be re-run, and only a pinned build gets a `dataset` label the verification
+    record can name.
+    """
+    from just_dna_enricher.strchive_build import build_strchive_snapshot
+
+    try:
+        result = build_strchive_snapshot(out, catalogue=catalogue, release=release)
+    except (StrchiveError, OSError) as exc:
+        typer.secho(f"STRCHIVE BUILD FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"built: {result.catalogue_file}", fg=typer.colors.GREEN)
+    typer.echo(f"  {result.locus_count} locus/loci, sha256 {result.source_sha256}")
+    if result.dataset:
+        typer.echo(f"  release {result.dataset}")
+    else:
+        typer.secho(
+            "  no --release was pinned, so this snapshot carries no release label and the check "
+            "will not be able to say which version it compared against",
+            fg=typer.colors.YELLOW, err=True,
+        )
+
+
+@app.command("check-repeat-bands")
+def check_repeat_bands_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    catalogue: Path | None = typer.Option(
+        None, "--catalogue", exists=True,
+        help="Built STRchive snapshot directory (see `strchive build`), or a STRchive-loci.json.",
+    ),
+    strict: bool = typer.Option(
+        False, "--strict/--best-effort",
+        help="Carried into the report. A band difference NEVER fails, in either mode.",
+    ),
+) -> None:
+    """Compare a module's `repeat_alleles.csv` bands against STRchive's, and report the differences.
+
+    **Writes no authored cell and never fails on a difference.** Where a catalogue and an expert
+    author draw a repeat threshold in different places, both are claims by an authority, and a compile
+    that refused would make this format pick the winner — the rule the ClinVar `clin_sig` and PGx
+    allele-function checks already follow. `--strict` is accepted so the flag means one thing across
+    the tier, and it changes nothing here but the mode recorded in the report.
+
+    The catalogue's `pathogenic_max` is reported as its own finding and is never written: it is the
+    longest allele the literature records, not a clinical ceiling, and a module that imported it would
+    silently answer nothing at all for a longer one.
+    """
+    try:
+        result = check_repeat_bands(spec_dir, catalogue=catalogue, mode=_mode(strict))
+    except StrchiveError as exc:
+        typer.secho(f"REPEAT-BAND CHECK FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    for warning in result.warnings:
+        typer.secho(f"  {warning}", fg=typer.colors.YELLOW, err=True)
+    if not result.compared and not result.withheld:
+        # Three different ways to get here and only one of them is "no table": the warnings above
+        # already name the other two (no catalogue was provisioned; the table is only `unresolved`
+        # sentinels), so saying "no repeat_alleles.csv" unconditionally would print a false diagnosis
+        # over a true one.
+        if not result.warnings:
+            typer.secho("no repeat_alleles.csv — nothing to check", fg=typer.colors.YELLOW)
+        raise typer.Exit(code=0)
+    label = f" ({result.dataset})" if result.dataset else ""
+    typer.echo(f"compared {len(result.compared)} bin group(s) against strchive{label}")
+    for _key, reason in result.withheld:
+        typer.secho(f"  withheld: {reason}", fg=typer.colors.CYAN)
+    for finding in result.findings:
+        typer.secho(f"  {finding}", fg=typer.colors.YELLOW, err=True)
+    if result.compared and not result.findings:
+        typer.secho("every compared band matches the catalogue", fg=typer.colors.GREEN)
 
 
 # **Last line of the file, and that is the whole of this fix (RM100).** It used to sit at line 1688,

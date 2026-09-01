@@ -34,6 +34,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Gene symbol currency** | `gene` vs HGNC approved / previous symbols | `identifiers.OntologyClient.gene` (attested by `check-identifiers` since RM72) |
 | **Gene ↔ locus agreement** | the row's `gene` vs the chromosome its variant sits on (0.5.4) | `identifiers.check_identifiers` → `GeneLocusConflict` (attested since RM72) |
 | **ACMG secondary findings** | authored `acmg_sf` vs the published SF gene list (v3.3 via `--sf-list`; the scraped v3.2 page reports `unverifiable`) | `acmg.check_acmg_sf` (attested by `check-acmg` since RM72) |
+| **Repeat bands** | an authored `repeat_alleles.csv` band table vs STRchive's `benign_*`/`intermediate_*`/`pathogenic_*` (0.7, RM165) | `strchive.check_repeat_bands` (**warns in both modes**; the catalogue's `pathogenic_max` is reported and never written) |
 | **Allele function** | authored `function_status` vs PharmVar and CPIC | `pgx.enrich_pgx` (**warns in both modes**) |
 | **Declared use** | the caller's `--use` vs a source's terms | `licensing.check_declared_use` (**refuses in both modes**) |
 | **Drafted vs authored rows** | a source's current row vs the one already in the CSV | `just_dna_compiler.draft.append_rows` (reports `differs`; never rewrites) |
@@ -207,13 +208,15 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
   longer exist. Re-running the pass re-attests. Currency of the *source* is a different question and is
   read off each record's own `release`.
 
-**Which of these attest, and which are recording passes rather than checks.** `VALID_VERIFICATION_CHECKS`
-has eighteen members and sixteen have an emitter — `test_verification_record.py` walks the vocabulary
-and names the two that are reserved without one, so read the count off that test rather than off this
-sentence, which has been wrong twice. `enrich()` attests six (reference allele, wrong build, clinical
+**Which of these attest, and which are recording passes rather than checks.** Every member of
+`VALID_VERIFICATION_CHECKS` either has an emitter or says RESERVED beside itself, and
+`test_verification_record.py` walks the vocabulary and asserts exactly that — **no total is stated
+here**, because the two that used to be were wrong twice each and a number in prose is a registry
+nothing iterates. `enrich()` attests six (reference allele, wrong build, clinical
 significance, rsID currency, rsid↔coordinate, dataset currency), `enrich_literature` three (citation existence,
 identifier agreement, provenance quote), `check-identifiers` three (gene symbol currency, trait
-currency, gene↔locus agreement), and `enrich_clinpgx`, `pgx`, `vrs mint` and `check-acmg` one each.
+currency, gene↔locus agreement), and `enrich_clinpgx`, `pgx`, `vrs mint`, `check-acmg` and
+`check-repeat-bands` one each.
 The last four members were wired in **RM72** (0.6): the two check commands put a real
 authored-versus-source question, reported it to stdout, and let the record die with the process, which
 is the sentence RM45 exists to end. What blocked them was their own printed promise to *write
@@ -341,6 +344,8 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `cpic_build` | **`[dev]`** builder (0.5.1): the whole CPIC PostgREST database → five parquets + `release.json` | `polars` (lazy), `cpic` |
 | `pharmvar_build` | **`[dev]`** builder (0.5.1): `/genes` → alleles + defining variants. Operator-built, never published | `polars` (lazy), `pharmvar` |
 | `pubmind_build` | **`[dev]`** builder (0.7, RM134): the ANNOVAR-distributed PubMind table → one parquet + `release.json`. Operator-built, and `pubmind publish` **refuses** | `polars` (lazy), `httpx`, `clin_sig` |
+| `strchive` | RM165: the STRchive repeat-locus catalogue — the `repeat_alleles.csv` band cross-check (offline, reports only) | format `binning`, compiler `load_csv_rows` |
+| `strchive_build` | RM165 builder: download `STRchive-loci.json` + `release.json`. Core `httpx` only, no parquet and no `[dev]` extra | `httpx` |
 | `ensembl` | live Ensembl: V2 GraphQL → V1 REST fallback, tenacity | `httpx`, `tenacity` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
 | `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar`/`pubmind` builders — `build+publish` for the first four, **`build` only** for `pharmvar` (there is no `pharmvar publish` and there will not be) and `pubmind`, whose `publish` exists and refuses with its reason, `vrs mint` | `typer` |
@@ -2743,6 +2748,105 @@ unrecorded too), not `dosage`'s. The corollary is in the other direction: `acmg_
 `hints.REDUNDANCY_BEARING`, so no lookup or hint may fill it — a cell filled from the list this checks
 against would make the check vacuous.
 
+## Repeat-allele bands against STRchive (`strchive.py` + `strchive_build.py`) — `check-repeat-bands`
+
+`repeat_alleles.csv` was the one binning kind nothing in this tier had ever asked a question about,
+and the corpus behind it is two hand-authored modules. STRchive (`dashnowlab/STRchive`, MIT) publishes
+82 tandem-repeat disease loci with coordinates, motifs, the motif structure and three bands each —
+`benign_*`, `intermediate_*`, `pathogenic_*`.
+
+**The item splits the source by column: the identity half is drafted, and the band half is checked
+and never written.** That split is the whole finding, and it was decided by measuring both corpus
+modules rather than by caution.
+
+```bash
+just-dna-enricher strchive build --out data/interim/strchive --release v2.26.0
+just-dna-enricher check-repeat-bands spec/ --catalogue data/interim/strchive
+```
+
+### What the measurement said
+
+`reference_examples/htt_repeat_expansion` reproduces the catalogue exactly where the catalogue speaks:
+STRchive gives `benign 6–26` and `intermediate 27–35`, and the shipped table gives `6,26` and `27,35`,
+independently authored. `reference_examples/fmr1_cgg_repeat` is where the source is coarser —
+STRchive runs one `intermediate` band from 45 to 200 and the module states `45–54` and `55–200`, and
+**55 is the premutation threshold**, the line between a carrier who is not at risk and the FXTAS/FXPOI
+range. A drafting provider would have written the three bands as the answer and erased it.
+
+Building the check turned up a third thing the item had not measured: **HTT is finer than the
+catalogue too.** The module divides STRchive's single pathogenic band at 40, which is the
+reduced-penetrance / full-penetrance line. So *both* corpus modules refine the catalogue, in two
+different places for two different reasons, which is a stronger argument for the split than the one
+that motivated it.
+
+### `pathogenic_max` is reported and never written
+
+STRchive's HTT `pathogenic_max` is 250 and the module leaves its top band open. A catalogue's
+`pathogenic_max` is the longest allele the literature records — an observation, not a clinical bound.
+Written into `measure_max`, a 300-repeat allele would match **no bin at all**, silently and under
+`--strict` too, which is the exact silence RM55 shipped a loud warning about. It gets its own finding
+kind, `ceiling_only_in_source`, so that "the source states a ceiling the module does not" can never be
+confused with "the two ceilings disagree", and a test asserts the number reaches no cell.
+
+### How the comparison is put
+
+The authored rows are partitioned by `binning._bin_groups` — `_KEY_FIELDS + (trait_efo_id,)`, with
+`unresolved` sentinels dropped — because that is the partition the overlap rule is enforced over, and
+grouping any other way would answer this question against a partition nothing else uses.
+
+A group joins a catalogue locus on `gene` plus the motif, matched against **both** orientations the
+source publishes: `repeat_unit` is one string with no column beside it to say which strand it is
+written on, so a minus-strand locus is legitimately authored either way.
+
+The comparison reads **lower bounds**, which is the one representation both tilings share: adjacent
+bins are `[6,26] [27,35]` under quantised tiling and `[6,26] [26,35]` under continuous
+(`@dense-bin-boundary`), so an upper bound means two things while the next bin's lower bound is the
+division either way. A source division is a closed *window* `[previous.max, next.min]` rather than a
+point, so the same division stated in either spelling matches; `resolve_tiling` decides only which
+endpoint the message names, and whether a cut at a bin's own top edge divides it.
+
+Eight finding kinds, one sentence each, asserted equal to the arms `compare_bands` can emit: a
+boundary only the module has or only the source has, a floor that differs or is open on one side, and
+the same three for the ceiling.
+
+### What it withholds, and what it never does
+
+Three absences get three different sentences, because a reader chasing a skipped locus looks in three
+different places: the catalogue carries no such gene; it carries the gene under no matching motif; or
+it states no bands for it at all (twelve of the 82 loci state none). A `(gene, motif)` key several
+loci claim — `ARX` has two and `HOXA13` three in the published file — is reported as contested and
+compared against nothing, because picking one would make the verdict depend on record order.
+
+**`--strict` never escalates a band difference**, in either direction and on either corpus module.
+Two expert bodies drawing a threshold in different places is a difference between authorities, and a
+compile that refused would have this format pick the winner — the rule the ClinVar `clin_sig` and PGx
+allele-function checks already follow. What `strict` still refuses is structural: a
+`repeat_alleles.csv` that will not load raises in both modes.
+
+**This check records no `SourceRow`**, on `acmg`'s rule rather than as an oversight: `sources.csv`
+exists so a module can account for what it *carries*, and nothing from STRchive lands in the module on
+this path — the bands were authored by a human before it ran. The drafting half does carry the
+source's data and does write one.
+
+It is also **deliberately absent from `provenance.DRAFT_PROJECTIONS`**. That map is for a source that
+drafts a column one of its own checks later compares; the split means the columns this check reads
+were never copies of anything, so a projection over `measure_min`/`measure_max` would let the
+tautology skip fire on cells no drafter ever wrote.
+
+### The snapshot
+
+`strchive build` streams `STRchive-loci.json` and writes it beside a `release.json` carrying
+`source_url`, `source_sha256`, `locus_count`, `dataset`, `license`, `built_at` and `builder_version`.
+The catalogue is copied rather than re-serialized, so `source_sha256` describes bytes a reader can
+verify with `sha256sum`. There is no parquet and no `[dev]` extra: the shape the readers want is the
+shape the source publishes.
+
+**Pin a release.** `--release v2.26.0` builds from the tag and records `dataset=strchive_v2.26.0`,
+which is what the verification record then names. Building from the default branch is allowed and
+records no label at all rather than inventing one out of a date — an unlabelled snapshot is honestly
+unlabelled. There is no `--offline` (the off-switch is passing `--catalogue` instead of downloading)
+and no `--use` (MIT grants the fetch, so the gate would answer the same on every run).
+
 ## Pharmacogenomics and data-source licensing (`pgx.py`, `licensing.py`, `pharmvar.py`, `cpic.py`)
 
 Pass 5 cross-checks a module's star-allele tables against the nomenclature authorities and records
@@ -3469,6 +3573,8 @@ just-dna-enricher pgx spec/ --cpic-cache cpic/ --pharmvar-cache pv/
 just-dna-enricher draft spec/ --gene CYP2C9 --offline --use non-commercial
 just-dna-enricher acmg build assets/acmg_sf_v3.3.xlsx --out acmg/   # once: the SF v3.3 snapshot
 just-dna-enricher check-acmg spec/ --sf-list acmg/  # acmg_sf vs the ACMG SF gene list (offline-capable)
+just-dna-enricher strchive build --out strchive/ --release v2.26.0  # the repeat-locus catalogue
+just-dna-enricher check-repeat-bands spec/ --catalogue strchive/  # repeat_alleles.csv bands vs STRchive (reports only)
 
 # Authoring — templating and drafting (the compiler owns the offline half; see COMPILER.md)
 just-dna-enricher template repeat_alleles.csv       # header + required/one-of/never-empty defaults
@@ -3541,6 +3647,7 @@ directly to compose passes, inject clients, or run in-process.
 | `pgx` | `pgx.enrich_pgx` |
 | `check-identifiers` | `identifiers.check_identifiers` |
 | `check-acmg` | `acmg.verify_acmg_sf` (+ `AcmgReport.by_gene` for the grouped view) |
+| `check-repeat-bands` | `strchive.check_repeat_bands` |
 | `cache status` / `cache pull` | `locations.resolve_*_reference` / `download.ensure_*_snapshot` |
 | `cpic build` / `publish` | `cpic_build.build_snapshot` / `upload.publish_reference_snapshot` |
 | `pharmvar build` | `pharmvar_build.build_snapshot` (no publish — see *The caches*) |
@@ -3549,6 +3656,7 @@ directly to compose passes, inject clients, or run in-process.
 | `draft` | `pgx_draft.draft_gene` |
 | `draft-clinpgx` | `clinpgx_draft.draft_pharm_variants` |
 | `draft-panel` | `clinvar_draft.draft_gene_panel` |
+| `strchive build` | `strchive_build.build_strchive_snapshot` → `strchive.load_strchive_catalogue` |
 | `clinpgx build` / `clinpgx check` | `clinpgx_build.download_clinpgx_zip` + `build_snapshot` / `clinpgx.enrich_clinpgx` |
 | `clinvar build` / `citations` / `publish` | `clinvar_build.download_clinvar_vcf` + `build_snapshot` / `download_var_citations` + `build_citations` / `upload.publish_reference_snapshot` |
 | `gnomad constraint build` / `publish` | `constraint_build.download_constraint_tsv` + `build_snapshot` / `upload.publish_reference_snapshot` |
