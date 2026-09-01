@@ -2716,6 +2716,30 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   against. An unreadable `release.json` is reported and left alone — a provenance failure is not a data
   failure, so the table is still written.
 
+- `@current-discovers-a-version-a-directory-pins` — **A source's `latest` pointer is read to *discover*
+  a version and never to *download* from, and the file that names the version is not the file that names
+  the provenance (RM168).** MANE serves `MANE_human/current/` beside `release_1.5/` … `release_0.5/`,
+  and the whole complaint the item was filed under is a numbering frame pinned in prose that nothing
+  would notice going stale. Pinning `current/` reproduces that in code: the build is reproducible until
+  the day it silently is not. So `discover_current_release()` spends one request on `current/`'s 96-byte
+  `README_versions.txt`, reads `MANE Version`, and everything after that is fetched from
+  `release_<version>/`. The mutable path is named as its own constant, which is what makes "nothing
+  downloads from here" a checkable claim rather than a comment.
+
+  **Two things fall out that are easy to get backwards.** *(1) Deriving the release from a filename is
+  the rejected repair, and the reason is information rather than taste*: every MANE filename carries the
+  version, so parsing one looks free — but `README_versions.txt` also states the NCBI RefSeq annotation
+  release and the Ensembl release, and **neither appears in any filename**. Parsing a name reconstructs
+  *less* than the source hands over (`@probe-the-real-file` run backwards). It is copied label for label,
+  parsed generically, so a fourth line MANE adds travels through instead of being dropped by a reader
+  that knew three names. *(2) A version file handed over on local disk establishes which release the
+  bytes **claim** to be, and not where they came from.* An early cut wrote the versioned directory URL
+  into `source_url` for a build whose inputs never left the operator's laptop — a provenance the build
+  never saw, in the one file whose job is to pin one. `source_url`/`etag`/`last_modified` are per input
+  and null on a local build, `release_url` names the directory actually fetched from, and the CLI refuses
+  a bare `--release` beside local files for the same reason: that would be our claim about somebody
+  else's bytes, where `--versions` is the source's own.
+
 - `@publisher-allowlist-derived` — **The publisher's allowlist is DERIVED from the artifact's own file
   list, never hand-kept — and what it drops, the manifest still attests.** `upload._ALLOW_PATTERNS` was
   `weights`/`annotations`/`studies.parquet` plus the manifest, logo and readme: written when a module
@@ -2868,6 +2892,35 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   questions — the API is current and includes unreviewed items, the download is dated and reviewed —
   and a snapshot needs the dated one while a currency check would want the live one. Naming the basis
   costs a field; choosing for the reader costs the ability to compare at all.
+
+- `@a-one-base-allele-hides-an-off-by-one` — **An interbase coordinate converts by `start + 1`, and a single-base allele cannot tell you whether you got it right.**
+
+
+  ClinGen's Allele Registry is interbase: `start` is the 0-based position before the first affected
+  base and `end` satisfies `end == start + len(referenceAllele)`. `clingen_allele._parse` read `end`,
+  with a comment calling it "the 1-based position of the last affected base, which for a substitution
+  is the VCF POS this format wants". The clause after the comma is doing all the work and was never
+  the constraint: for `len(ref) == 1` the two expressions are the same number, and for anything longer
+  `end` runs `len(ref) - 1` bases too far right — while still being paired with a `ref` string
+  anchored at the left position, so the row is internally inconsistent rather than merely shifted.
+
+  Measured on the live registry: `CA2499307077` (CIViC 1893, `VHL c.272_273delinsAA`) is
+  `start=10142118, end=10142120, ref='TC'`. POS is **10142119**, which is what `civic_identities`
+  states by hand for the same allele, worked out from the source's own `c.` notation and therefore
+  independent of this client. `civic_draft` writes `found.coordinate` straight into `variants.csv`, so
+  every rsID-less CAID of this shape got a wrong `start`.
+
+  **Every test the parser had was a single-base substitution** — three assemblies of one C>T, plus the
+  one-sided indel cases. On all of them the bug is exactly zero, so a green suite meant nothing here.
+  The regression test walks `("A","T")`, `("TC","AA")` and `("TCG","AAA")` and asserts the position
+  is `start + 1` for all three, because the error is a function of `len(ref)` and a test that fixes
+  one length cannot see it. Demonstrated failing on the old code before it was kept: two new tests
+  fail, the seventeen old ones pass either way.
+
+  The generalisable half: **when a conversion is correct for the commonest case by coincidence rather
+  than by construction, the corpus of examples is the thing that is broken, not the assertion.** Ask
+  what length, arity or cardinality every fixture happens to share, and write the one that differs —
+  which is `@probe-uniform-corpus` arriving inside a unit test instead of inside a module corpus.
 
 - `@accession-version-names-no-build` — **The version in a RefSeq accession does not name an assembly — use the per-chromosome map.**
 

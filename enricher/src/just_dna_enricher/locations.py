@@ -113,6 +113,14 @@ PUBMIND_SUBDIR: str = "pubmind"
 #: and adding an `ensure_civic_snapshot` later needs no permission, only a repo.
 CIVIC_SUBDIR: str = "civic"
 
+#: MANE's cache is a reference table rather than an annotation source: one agreed transcript per
+#: protein-coding gene, plus the list of the ones MANE deliberately has no answer for and the list of
+#: the ones whose Select accession has moved. Operator-built like the three above it, and for a fourth
+#: reason again — NCBI states a *policy* rather than a licence, so whether a snapshot of these bytes
+#: may be published is unestablished, and an unestablished permission is not a permission. Build one
+#: with `mane build --download`.
+MANE_SUBDIR: str = "mane"
+
 
 def read_release(reference: Path) -> dict | None:
     """A snapshot's `release.json` as a dict, or `None` when it is absent or unreadable.
@@ -397,5 +405,32 @@ def resolve_pubmind_reference(
     return _resolve_parquet_cache(
         pubmind_cache, "JUST_DNA_PUBMIND_CACHE",
         default_pubmind_cache_dir(load_dotenv_file=load_dotenv_file),
+        load_dotenv_file=load_dotenv_file,
+    )
+
+
+def default_mane_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    """The `<base>/mane` directory — operator-built only (see `MANE_SUBDIR`)."""
+    return _cache_dir(MANE_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
+def resolve_mane_reference(
+    mane_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate an **operator-built** MANE snapshot (`$JUST_DNA_MANE_CACHE`).
+
+    There is deliberately no `download.ensure_mane_snapshot` to pair with this: nothing publishes a
+    MANE snapshot, and NCBI's policy neither grants nor withholds permission to (see `MANE_SUBDIR`).
+    `None` when there is none, and a reader must treat that as nobody-asked rather than as a gene
+    MANE has no transcript for — the snapshot's own negative roster is what answers the second
+    question, and it can only answer it once the snapshot exists (`@unreachable-not-absent`).
+
+    A bare `.parquet` is **not** accepted here, unlike the constraint snapshot: this cache is three
+    tables read by filename, so a single file pointed at directly would be a snapshot missing the
+    currency check and the negative roster.
+    """
+    return _resolve_parquet_cache(
+        mane_cache, "JUST_DNA_MANE_CACHE",
+        default_mane_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )

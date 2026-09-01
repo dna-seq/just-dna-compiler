@@ -274,6 +274,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - The key is `(variant_key, drug, genotype, phenotype_category, annotation_id)` — the bare triple is a bug. `@clinpgx-full-key`
 - A negative finding about a source is only as wide as the table you probed — say which. `@probe-names-the-table`
 - A source publishing both assemblies lists the wrong one first; filter on the assembly field. `@assembly-first-wins`
+- An interbase coordinate is `start + 1`; a single-base allele cannot reveal the off-by-one. `@a-one-base-allele-hides-an-off-by-one`
 - Load a credential where it is read, not as a side effect of some other call. `@credential-where-read`
 - The dedup key decides which columns may become several rows, not the source's dialect. `@dedup-key-decides-rows`
 - `draft --allele` filters all three tables; `*1` is always kept. `@draft-allele-filter`
@@ -341,6 +342,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - The publisher's allowlist is derived from the artifact's file list; what it drops, the manifest still attests. `@publisher-allowlist-derived`
 - The snapshot layout lives in `locations`; a sidecar is a sibling of `data/`. `@snapshot-layout-locations`
 - A second published artifact makes provenance a question — answer it in `release.json`. `@release-json-provenance`
+- A `latest` pointer discovers a version; a versioned directory pins it, and a local file names neither URL. `@current-discovers-a-version-a-directory-pins`
 - Run a knob's **disabling** value; a flag the callee never sees is a flag that does nothing. `@off-switch-needs-a-probe`
 - An `ensure_*` must actually be called; `--offline` is the only switch. `@ensure-must-be-called`
 - Network tests are opt-in: `JUST_DNA_NETWORK_TESTS=1`. `@network-tests-optin`

@@ -34,7 +34,42 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-01 (latest) — CIViC: the identity in a variant's name, and the basis in its own VCF (RM159, RM169)
+## 2026-09-01 (latest) — the source-adoption round: MANE becomes a cache (RM168)
+
+**`just-dna-enricher` only; no schema change, no new authored column, nothing in `just-dna-compiler`.**
+First of the five items [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md) decided, all landing inside
+the uncut 0.7.0.
+
+- **`just-dna-enricher mane build` — MANE is a source now, not a sentence in a probe document.**
+  `CIVIC_IDENTITY_PROTOCOL` § 3b pinned a numbering frame with a file "downloaded once and cited";
+  it is now a cache with a location, a recorded release and a currency check, like every other
+  reference table here. New: `MANE_TERMS`, `$JUST_DNA_MANE_CACHE` / `default_mane_cache_dir` /
+  `resolve_mane_reference`, `mane_build.py`, a `mane` sub-app, a `cache status` row.
+- **Three files, under 1.2 MB together.** The summary (19,437 rows), `changed_select_accessions` (120
+  rows) and `protein_coding_genes_not_in_mane` (222 genes). The second is the currency check and ships
+  in the same pass deliberately — a cache without the thing that notices it going stale is the defect
+  the item was about.
+- **`release.json` is copied from the source's own `README_versions.txt`**, so it carries the MANE
+  version, the NCBI RefSeq annotation release *and* the Ensembl release — two of which appear in no
+  filename.
+- **`MANE_status` is a column and is never collapsed.** 74 of 19,437 rows are MANE Plus Clinical, and
+  CDKN2A carries two rows with different CDS numbering. A consumer reading one row per gene would not
+  see it.
+- **`Update_Affects_CDS` is carried as a tri-state.** Yes on 74 of the 120 changed accessions: a MANE
+  Select change that moves the CDS moves every `c.` and `p.` derived in that frame.
+- **The negative roster keeps its reasons.** 222 genes over a seven-member vocabulary derived from the
+  file, so "MANE has no answer for this gene" is distinguishable from "nobody asked" — and
+  `pending MANE review` is neither.
+- **Terms are `None`, not permissive.** NCBI publishes a policy rather than a licence, so every gating
+  axis is unknown; there is no `--use` flag, because a gate whose every answer is a skip is a flag that
+  does nothing. Only NCBI's side was read — nothing is asserted about EMBL-EBI's terms for the same
+  tables.
+- **Scope is a transcript-identity aid, not HGVS generation**, and the lane documents its own bound:
+  MANE is the default, not the answer. It makes CDKN2A's problem visible and is silent on RUNX1's.
+- Two `--help`-parsing tests that had been failing every PR run since 2026-08-30 are fixed: Typer
+  renders through Rich, CI sets `FORCE_COLOR`, and a coloured flag is not one token.
+
+## 2026-09-01 — CIViC: the identity in a variant's name, and the basis in its own VCF (RM159, RM169)
 
 **`just-dna-enricher` only; no schema change, no new column, nothing in `just-dna-format` or
 `just-dna-compiler`.**

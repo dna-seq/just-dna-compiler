@@ -7,6 +7,7 @@ bottom of `cli.py` exists for.
 """
 
 import json
+import re
 from pathlib import Path
 
 from just_dna_enricher.cli import PUBMIND_PUBLISH_REFUSAL, app
@@ -19,6 +20,21 @@ from typer.testing import CliRunner
 
 _SLICE = Path(__file__).resolve().parents[2] / "assets" / "hg38_pubmind_db_slice.txt.gz"
 _runner = CliRunner()
+
+#: Typer renders `--help` through Rich, and Rich decides whether to colour by asking the environment.
+#: A developer's terminal usually says no; a CI runner with `FORCE_COLOR` set says yes, and then every
+#: flag arrives as ANSI-split fragments — `--pubmind-cache` is emitted as an escape, `-`, an escape,
+#: `-pubmind-cache`, so a substring match finds nothing and `str.split()` yields tokens that begin
+#: with an escape rather than a dash. Two tests below read the rendered help, and both passed locally
+#: and failed on GitHub for exactly that reason. Strip the escapes before reading, rather than
+#: pinning the environment: the help text a user sees is the same either way, and a test that only
+#: works on an uncoloured terminal is testing the terminal.
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def _plain(text: str) -> str:
+    """`text` with terminal escapes removed, so a flag is one token again."""
+    return _ANSI.sub("", text)
 
 
 def test_publish_refuses_and_says_why() -> None:
@@ -87,7 +103,7 @@ def test_build_offers_no_declared_use_flag() -> None:
     assert result.exit_code == 0
     # Read the flags Typer advertises, not the prose: the docstring names `--use` in order to explain
     # why it is absent, and matching on the raw text would find that sentence.
-    flags = {token for token in result.output.split() if token.startswith("--")}
+    flags = {token for token in _plain(result.output).split() if token.startswith("--")}
     assert "--use" not in flags
     # An EQUALITY over the advertised surface, not a floor: `<=` passes unchanged on the day a
     # flag is silently added or one of these three is dropped, which is the only day it matters.
@@ -157,4 +173,4 @@ def test_enrich_takes_the_pubmind_cache_the_check_needs(tmp_path: Path, monkeypa
 
     result = _runner.invoke(app, ["enrich", "--help"])
     assert result.exit_code == 0
-    assert "--pubmind-cache" in result.output
+    assert "--pubmind-cache" in _plain(result.output)

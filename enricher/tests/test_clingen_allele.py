@@ -49,6 +49,74 @@ def test_the_coordinate_is_taken_from_grch38_and_never_from_whichever_came_first
     assert got.coordinate[1] != 29286168, "that is the NCBI36 position"
 
 
+#: CIViC 1893, `VHL c.272_273delinsAA`, as the registry serves it. A **two-base** reference allele,
+#: which is the whole point: every other payload in this file is a single-base substitution, and on
+#: those `end` and `start + 1` are the same number. That coincidence is why reading `end` looked
+#: correct for as long as it did.
+_DELINS_PAYLOAD = {
+    "@id": "http://reg.genome.network/allele/CA2499307077",
+    "genomicAlleles": [
+        {
+            "referenceGenome": "GRCh38",
+            "chromosome": "3",
+            "coordinates": [
+                {"allele": "AA", "end": 10142120, "referenceAllele": "TC", "start": 10142118}
+            ],
+        },
+    ],
+    "externalRecords": {},
+}
+
+
+def test_a_multi_base_reference_allele_is_placed_at_its_first_base_not_its_last():
+    """The registry is interbase, so the POS is `start + 1` — and `end` is `start + len(ref)`.
+
+    On a single-base substitution those two are equal, which is every other payload in this file and
+    was every payload the parser had ever been tested against. On a two-base delins they differ by
+    one, and reading `end` returns a position one base to the right while pairing it with a `ref`
+    string anchored at the left one — a row that is internally inconsistent rather than merely
+    shifted.
+
+    Pinned against a value derived independently of this client: `civic_identities` states
+    `chrom='3', start=10142119, ref='TC', alt='AA'` for CIViC 1893, worked out by hand from the
+    source's own `c.` notation. The registry agrees with it, and the parser now does too.
+    """
+    got = _parse("CA2499307077", _DELINS_PAYLOAD)
+    assert got.coordinate == ("3", 10142119, "TC", "AA")
+    assert got.coordinate[1] != 10142120, "that is `end`, one base past the anchor for a 2-base ref"
+
+
+def test_the_offset_is_the_reference_length_so_a_substitution_cannot_reveal_it():
+    """Why the defect survived: the error is `len(ref) - 1`, which is zero for a substitution.
+
+    Walked over three lengths rather than asserted for one, so a future parser that special-cases
+    the two-base case has to fail here too. The relationship `end == start + len(ref)` is the
+    registry's, measured on live records (CA123643 A>T, CA113795 G>A, CA2499307077 TC>AA).
+    """
+    for ref, alt in (("A", "T"), ("TC", "AA"), ("TCG", "AAA")):
+        start = 10142118
+        payload = {
+            "genomicAlleles": [
+                {
+                    "referenceGenome": "GRCh38",
+                    "chromosome": "3",
+                    "coordinates": [
+                        {
+                            "allele": alt,
+                            "referenceAllele": ref,
+                            "start": start,
+                            "end": start + len(ref),
+                        }
+                    ],
+                }
+            ],
+            "externalRecords": {},
+        }
+        assert _parse("CA0", payload).coordinate[1] == start + 1, (
+            f"a {len(ref)}-base ref must still be placed at its first affected base"
+        )
+
+
 def test_the_registrys_interbase_end_is_this_formats_one_based_start():
     """The registry is interbase: `start` is 0-based, `end` is the 1-based last affected base.
 
