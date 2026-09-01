@@ -7,12 +7,14 @@ names an agency: the number of authorities is a *parameter*, and baking one into
 the mistake RM134 caught in `ClinSigConflict` before it shipped. The attestation key is
 `regulator_label_agreement`, and the fifth agency costs one more row in the index.
 
-**Two join tiers, and they are not the same claim.** A label names a gene, and 15 % of them also name
-a variant or a star allele. So a module's `(gene, allele, drug)` claim is answered at the **allele**
-tier by the labels that name that allele, and at the **gene** tier by the labels that name only the
-gene — each label answering at the finest tier it supports, never at both. Every finding says which
-tier it came from, because *"three agencies disagree about CYP2C19\\*2 and clopidogrel"* and *"three
-agencies disagree about CYP2C19 and clopidogrel"* send an author to different places.
+**Two join tiers, and the tier is a property of the SUBJECT.** A label names a gene, and 15 % of them
+also name a variant or a star allele, so a module's claim is put at two granularities: `(gene, drug)`
+is the gene-tier question and `(gene, allele, drug)` the allele-tier one. A label naming both answers
+**both**, because they are two questions rather than one asked twice. Every finding says which tier it
+came from, because *"three agencies disagree about CYP2C19\\*2 and clopidogrel"* and *"five agencies
+disagree about CYP2C19 and clopidogrel"* send an author to different places — and the alternative,
+scoring every authored allele against whatever the gene-level labels say, reported the EMA's single
+disagreement 34 times on `cyp2c19_star_alleles`, once per star allele the label never mentions.
 
 **A blank `Testing Level` is `unknown` and withholds.** A third of the file states none (472 of 1,433
 on 2026-08-05), and reading a blank as `No Clinical PGx` would turn the largest silence in the source
@@ -23,9 +25,9 @@ never establishes an agreement on its own.
 **Only the two ends of the level axis are placed against an authored claim, deliberately.** The module
 carries no testing-level column, so `Testing Required` → `strong` is a mapping this format would be
 inventing. `No Clinical PGx` needs no mapping — it is the negative claim by its own name — so the one
-authored arm fires when a module ships a prescribing recommendation for a pair every regulator that
-spoke calls `No Clinical PGx`. The three middle levels are stated and *unplaced*: a verdict this check
-declines to reach is reported as such rather than as an agreement.
+authored arm fires when a module ships a prescribing recommendation for a pair every label that stated
+a level calls `No Clinical PGx`. The three middle levels are stated and *unplaced*: a verdict this
+check declines to reach is reported as such rather than as an agreement.
 
 **Never escalates under `--strict`.** Five expert regulators genuinely disagree with each other and
 with a curator — the clopidogrel/CYP2C19 labels are `Actionable PGx` at four agencies and `Informative
@@ -128,7 +130,8 @@ VALID_TESTING_LEVELS: frozenset[str] = frozenset(
 #: the name is the claim.
 NO_CLINICAL_PGX = "No Clinical PGx"
 
-#: The two join tiers, finest first. A label answers a subject at exactly one of them.
+#: The two join tiers, finest first. The tier is a property of the **subject** — see `LabelSubject` —
+#: so a label naming a star allele answers the allele-tier subject and the gene-tier one both.
 LABEL_TIERS: tuple[str, ...] = ("allele", "gene")
 
 #: Do the regulators that spoke at this tier state the same level?
