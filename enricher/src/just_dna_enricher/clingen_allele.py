@@ -120,12 +120,20 @@ def _parse(caid: str, payload: dict) -> AlleleIdentity:
             continue
         chrom = allele.get("chromosome")
         for c in allele.get("coordinates", []) or []:
-            ref, alt, end = c.get("referenceAllele"), c.get("allele"), c.get("end")
+            ref, alt = c.get("referenceAllele"), c.get("allele")
             start = c.get("start")
-            if chrom and ref and alt and isinstance(end, int):
-                # The registry is interbase: `start` is 0-based and `end` is the 1-based position of
-                # the last affected base, which for a substitution is the VCF POS this format wants.
-                coordinate = (str(chrom), int(end), str(ref), str(alt))
+            if chrom and ref and alt and isinstance(start, int):
+                # The registry is interbase: `start` is the 0-based position BEFORE the first
+                # affected base, so the VCF POS this format's `start` column means is `start + 1`
+                # (`@start-1based`). Read from `start`, never from `end`: the payload satisfies
+                # `end == start + len(referenceAllele)`, so `end` is the POS only when `ref` is a
+                # single base — and it silently runs `len(ref) - 1` bases too far right on every MNV
+                # and two-sided delins, pairing a right-shifted position with a `ref` string
+                # anchored at the left one. Measured on the registry: CA2499307077
+                # (`c.272_273delinsAA`) is `start=10142118, end=10142120, ref='TC'`, whose POS is
+                # 10142119 — the value `civic_identities` states by hand for the same allele, and
+                # one base left of what reading `end` returns.
+                coordinate = (str(chrom), int(start) + 1, str(ref), str(alt))
                 break
             if chrom and isinstance(start, int) and (bool(ref) != bool(alt)):
                 # A pure insertion (`ref` empty) or a pure deletion (`alt` empty). Neither is a VCF

@@ -272,6 +272,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - The key is `(variant_key, drug, genotype, phenotype_category, annotation_id)` — the bare triple is a bug. `@clinpgx-full-key`
 - A negative finding about a source is only as wide as the table you probed — say which. `@probe-names-the-table`
 - A source publishing both assemblies lists the wrong one first; filter on the assembly field. `@assembly-first-wins`
+- An interbase coordinate is `start + 1`; a single-base allele cannot reveal the off-by-one. `@a-one-base-allele-hides-an-off-by-one`
 - Load a credential where it is read, not as a side effect of some other call. `@credential-where-read`
 - The dedup key decides which columns may become several rows, not the source's dialect. `@dedup-key-decides-rows`
 - `draft --allele` filters all three tables; `*1` is always kept. `@draft-allele-filter`
