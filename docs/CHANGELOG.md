@@ -34,7 +34,33 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-01 (latest) — the source-adoption round: literature coverage, and the tier that answered (RM167)
+## 2026-09-01 (latest) — the source-adoption round closes: regulator drug labels (RM166)
+
+**`just-dna-enricher`, plus one `VALID_VERIFICATION_CHECKS` member.** Last of the five items
+[PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md) decided, and with it **the whole 2026-09-01
+source-adoption round has landed inside the uncut 0.7.0**: RM163, RM165, RM166, RM167 and RM168 built;
+RM164 parked on a measured negative, spinning off RM171.
+
+- **A `drugLabels.zip` builder beside `clinpgx_build`** — same cache, same payload-read `LICENSE.txt`,
+  and **its own `release.json`** from its own `CREATED_*.txt`. ClinPGx's archives do not refresh in
+  lockstep; `relationships.zip` was once a year newer than `clinicalAnnotations.zip`.
+- **A regulator-label cross-check joining at two tiers.** Star-allele where the file supplies one,
+  gene otherwise, and **the tier is part of the finding** — a gene-level agreement and an allele-level
+  agreement are different claims and a consumer must be able to tell them apart.
+- **It is five regulators**: FDA, Health Canada, EMA, Swissmedic, PMDA. The surface is named for the
+  labels rather than for any agency, so adding a sixth is data rather than a rename.
+- **A blank `Testing Level` is `unknown` and withholds** — about a third of the file states none, and
+  reading that as `No Clinical PGx` would manufacture a negative regulatory claim.
+- **New verification check `regulator_label_agreement`.** Consumers pinning `VerificationRecord.check`
+  should add it; it warns in both modes and never escalates under `--strict`.
+- **What did not ship, and closed instead:** the PGx lane gains no member outside its licence class by
+  this route. ClinPGx is the same CC BY-SA + no-sale gate, and the FDA's own association table is 126
+  rows of HTML with no stated terms. Diversifying that lane needs its own item, choosing candidates
+  for their terms first.
+- Noticed and filed rather than built: ClinPGx publishes at least twelve archives and this tier reads
+  two of them.
+
+## 2026-09-01 — the source-adoption round: literature coverage, and the tier that answered (RM167)
 
 **`just-dna-enricher`, plus one `VALID_VERIFICATION_CHECKS` member. Writes no authored row at all.**
 Fourth of the five items [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md) decided.

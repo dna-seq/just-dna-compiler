@@ -581,39 +581,6 @@ in advance for the same reason RM164 named its own.
 **Related** RM164 (where it was found), `@one-normalizer-two-spellings`, `@no-named-licence`,
 `@probe-the-real-file`.
 
-## RM166 — the whole PGx lane is one licence class, and a second authority exists that is not in it
-
-**Severity** low-medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
-**Motivating case** the 2026-09-01 source-adoption round
-
-**Probed and drafted in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm166--the-whole-pgx-lane-is-one-licence-class-and-a-second-authority-exists-that-is-not-in-it) on 2026-09-01 — proposed SPLITS, the check to 0.8 and the licence half CLOSED; pending the maintainer pass.** The first probe lands as this entry hoped: **`drugLabels.zip` is on the same `api.clinpgx.org` endpoint** as `clinicalAnnotations.zip` — 59 KB, bundling its own CC BY-SA `LICENSE.txt`, 1,433 rows, and **five regulators** rather than one (FDA 533, HCSC 388, EMA 332, Swissmedic 128, PMDA 52). The joinability worry is answered: `Genes` on 1,248/1,433 and `Variants/Haplotypes` on 217, of whose 604 tokens **178 are star-allele-shaped** — `haplotypes.csv`'s key verbatim. **But the licence motivation is refuted**: that route is the same gate, and FDA's own table is 126 associations in an HTML page with no bulk file and no stated copyright status. Licence diversification for the PGx lane wants its own entry, choosing candidates *for their terms first*. **Re-probed 2026-09-01 (the first pass guessed filenames):** enumerating the download endpoint finds **≥12 published archives** — clinicalAnnotations, variantAnnotations, **clinicalVariants**, drugLabels, relationships, variants, genes, drugs, chemicals, phenotypes, occurrences, pathways-tsv — and **`clinpgx_build` reads one**. `clinicalVariants.zip` is 74 KB / **5,190 rows** of `variant, gene, type, level of evidence, chemicals, phenotypes`, i.e. `pharm_variants.csv` territory, with a `type` that comma-combines its six members. The item is *the lane reads 1 of 12 files from an adopted source*, not *add the FDA*.
-
-The PGx lane reads three sources: CPIC (five parquet tables — genes, alleles, diplotypes,
-allele_definitions, recommendations), PharmVar (star-allele definitions and function), and ClinPGx
-(**`clinicalAnnotations.zip` and nothing else** — that is what `clinpgx_build` downloads). All three
-are CC BY-SA + no-sale (`@pgx-research-only`), so the entire lane sits behind one gate and no module
-built from it is sellable. That is a single point of failure on an axis the format gates on.
-
-FDA's pharmacogenetic association tables are a second authority on the same drug–gene claims with a
-different terms profile. Two independent reasons to want one: a **concordance check** in the RM134 § B
-shape — module ↔ authority ↔ authority, which is the apparatus already built for ClinVar × PubMind —
-and a lane member whose terms may not gate at all.
-
-**The first probe is not "does the FDA publish this". It is `@probe-names-the-table`.** ClinPGx
-publishes more downloads than the one we read; if its drug-label archive already carries the FDA
-content, then this is *a second file from a source already adopted* rather than a new source, which is
-a materially cheaper item with a different terms answer and a different owner. Establish that first.
-
-Then the joinability question, which can close the item outright: the FDA tables are gene- and
-drug-level, while this lane's rows are keyed to genotypes and diplotypes
-(`@clinpgx-full-key`, `@clinpgx-per-genotype`). A check with no key to join on is not a check.
-
-**Nothing here asserts the FDA tables' terms.** "US government work is public domain" is a rule with
-exceptions and it has not been established for this table.
-
-**Related** RM134 § B (the concordance shape), RM29b, `@pgx-research-only`,
-`@two-surfaces-two-denominators`.
-
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

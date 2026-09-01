@@ -54,6 +54,89 @@ for is not any one adoption: **five of the six entries said something their own 
 and then four of the six verdicts the proposal drafted were overturned again in the maintainer pass —
 so an unprobed entry is a question, and a probed one is still only a proposal.
 
+**The round closed the same day it was decided**, which is the third drift and the one worth counting:
+of the five items built, **four contradicted their own entry again during the build**. RM165's entry
+proposed drafting four columns `RepeatAlleleRow` does not have. RM167's three headline measurements did
+not reproduce — a gene-node count that conflated two id shapes, a locus count off by 34, and an id
+grammar contradicted by the example printed beside it. RM163 offered `overrides.csv` as the author's
+remedy for a finding the overlay cannot reach. RM166's licence motivation was already gone before the
+build began. **RM168 is the only one of the six that held**, and it is the one whose questions were
+cheapest to ask — a directory listing and a 1.1 MB download.
+
+So the three-stage pattern is: an entry states what it believes, a probe contradicts it, a decision
+overturns the probe's verdict, and a build contradicts the entry again. Each stage was cheaper than the
+one before, and each caught something the previous one asserted. That is an argument for probing early
+and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
+
+## RM166 — the whole PGx lane is one licence class, and a second authority exists that is not in it
+
+**Severity** low-medium · **Status** ✅ **SHIPPED 2026-09-01 in the uncut 0.7.0** — the cross-check
+built, **the licence half closed measured** (`just-dna-enricher`, plus one
+`VALID_VERIFICATION_CHECKS` member; `compiler/` untouched) · **Owner** enricher ·
+**Motivating case** the 2026-09-01 source-adoption round
+
+**The item split, and only one half is code.** What builds is a `drugLabels.zip` builder beside
+`clinpgx_build` — the same cache, the same payload-read `LICENSE.txt` handling, its own
+`CREATED_*.txt` and therefore its own `release.json` — and a regulator-label cross-check joining at
+**two tiers**, the star-allele tier where `Variants/Haplotypes` supplies one and the gene tier
+otherwise, with the tier **distinguishable in the finding** because a gene-level agreement and an
+allele-level agreement are not the same claim.
+
+**The half that closes is the one the item was filed for, and it closes on measurement rather than on
+deferral.** The entry wanted a PGx lane member whose terms may not gate. Both routes refute it: the
+ClinPGx route is CC BY-SA + no-sale, **the same gate**, so it diversifies nothing; and the FDA's own
+Table of Pharmacogenetic Associations is **126 associations in an HTML page** with no bulk download and
+**no copyright or public-domain statement on the page at all**. *"US government work is public domain"*
+is a rule with exceptions, the entry said so, and the page does not settle it. So the direct route
+supplies a quarter of the FDA content ClinPGx already carries, in a shape that must be scraped, on
+terms that are unestablished. Leaving that half open would have left an item riding on a source shown
+not to serve it. **If licence diversification for the PGx lane still matters — and it plausibly does,
+being a single point of failure on the axis the format gates on — it wants its own entry, with
+candidates chosen for their terms first**, which is the opposite of how this one chose.
+
+**It is five regulators, not one, and the surface is named for the labels.** `Source` counts: FDA,
+Health Canada, EMA, Swissmedic, PMDA. The entry asked for the FDA and the file supplies four more at
+no extra cost, which turns the concordance shape from *module ↔ authority ↔ authority* into a lane
+where **the number of authorities is a parameter** — exactly what RM134's vocabulary split was built to
+survive. Naming any one agency in the surface would bake an authority into a published key, the
+mistake RM134 caught in `ClinSigConflict` before it shipped.
+
+**The join key exists, contra the entry's own closing worry.** `Genes` is populated on ~87 % of rows
+and `Variants/Haplotypes` on ~15 %, and the star-allele tokens in the latter are `haplotypes.csv`'s key
+verbatim. So *"a check with no key to join on is not a check"* is answered: a gene-level key for most
+rows, an allele-level key for a sixth, **and the sixth is where this lane's rows actually live**.
+
+**A blank `Testing Level` is `unknown` and withholds.** Roughly a third of the file states none, which
+is an absence and not a *no*: reading it as `No Clinical PGx` would manufacture a negative regulatory
+claim on 472 rows. Kleene, not a default — and the levels the snapshot states that the vocabulary does
+not know are **collected and reported** rather than folded into an "other" bucket
+(`@lookup-with-a-default-hides-a-new-member`).
+
+**It warns in both modes**, like every other cross-check in this round: five expert regulators
+genuinely disagree with each other and with a curator, and failing would make the format arbitrate
+between its own authorities (`@clinsig-never-escalates`).
+
+**The finding that outgrew the item, noticed and not built.** ClinPGx publishes **at least twelve**
+archives and `clinpgx_build` reads one. `clinicalVariants.zip` is the one bearing on a shipped table
+kind — ~5,190 rows of `pharm_variants.csv` territory, whose `type` is a six-member base vocabulary that
+**comma-combines**, so any adoption normalizes the *combination* rather than the token. The honest
+restatement is that the PGx lane reads one of twelve files from a source it has already adopted and
+gated, and the FDA question was a narrow way into a broad finding. It wants its own number.
+
+**`@two-surfaces-two-denominators` is the live rule**: ClinPGx's bulk file and the FDA's web table are
+different sources with different denominators, and any count either produces must say which. And
+`clinpgx_build`'s own docstring records that `relationships.zip` was a year newer than
+`clinicalAnnotations.zip`, so this archive carries its own `CREATED_*.txt` rather than inheriting the
+lane's release.
+
+**Probed and decided in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm166--the-whole-pgx-lane-is-one-licence-class-and-a-second-authority-exists-that-is-not-in-it)**,
+which proposed 0.8 and was overturned: *largest in the batch* and *least urgent* is an argument about
+**order**, not about the release. It was sequenced last so that an early cut would leave one item in
+flight rather than four.
+
+**Related** RM134 § B, RM29b, `@pgx-research-only`, `@two-surfaces-two-denominators`,
+`@clinsig-never-escalates`, `@acquisition-gate-is-not-a-read-gate`.
+
 ## RM167 — LitVar2/PubTator3 answers "which papers name this allele", which is the half PubMind structurally cannot
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-01 in the uncut 0.7.0** (`just-dna-enricher`,
