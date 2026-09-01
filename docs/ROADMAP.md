@@ -391,8 +391,9 @@ what remains is the *provenance* half, and the VCF that answered the first canno
 > pin, and therefore that any wider basis costs the snapshot its reproducibility. CIViC publishes
 > `<date>-civic_accepted_and_submitted.vcf` **in the same dated directory** as the TSVs, so the wider
 > corpus was pinnable all along and RM169 took it: 507 rows on 270 variants → **1,149 on 397**, with a
-> byte-identical rebuild. The three shapes below are kept as the record of a decision that turned out
-> not to be needed.
+> byte-identical rebuild. The three shapes below were framed against the *coverage* half, which RM169
+> then dissolved without using any of them; they are re-scoped rather than retired, because for the
+> half that is left the tension is real.
 >
 > **What that leaves here is narrower and still real.** The VCF cannot carry a variant with no GRCh37
 > position, so it holds **none of the 10 records** whose hidden citations motivated this item, and 1
@@ -477,25 +478,40 @@ whether or not this item is ever taken.
 - The direction slice is 533 rows on the accepted basis and 925 `SUBMITTED` against 533 `ACCEPTED`
   over the wider germline direction set.
 
-### The design question, stated as options rather than settled
+### The design question, re-scoped 2026-09-01 after RM169
 
-**The API has no dated release.** That is the whole tension: `civic build` is byte-reproducible
+**Is the API richer than the files? Yes, on exactly one axis, and it is this one.** The whole dated
+download surface is enumerated in [CIVIC_SURVEY](probes/CIVIC_SURVEY.md) § the bulk releases: seven
+TSVs and two VCFs. Both TSVs the builder reads are `accepted`-only (`ClinicalEvidenceSummaries`, and
+`VariantSummaries` too — a fact nothing had stated before that enumeration), the only two files
+carrying `submitted` at all are the VCFs, and a VCF record needs a POS. So submitted evidence attached
+to a variant with **no GRCh37 coordinate** is published on one surface only, the API. For everything
+that has a coordinate, RM169's dated VCF already carries it, pinnable, no API. Nothing else about the
+API is richer than the files, and the three summaries the builder does not read
+(`AssertionSummaries` 145 rows, `FeatureSummaries`/`GeneSummaries` 973 and byte-identical to each
+other, `VariantGroupSummaries` 30) do not bear on this: none is an evidence table.
+
+**So the reproducibility tension survives, narrowed to this half.** `civic build` is byte-reproducible
 because its input is a pinned dated file pair, and `civic reproduce` proves it by building twice. An
-API read has nothing to pin. Three shapes, none chosen:
+API read still has nothing to pin. Of the original three shapes, two stay live and one stopped meaning
+what it meant — **this is not an open three-way choice, and it was mistakenly re-put as one on
+2026-09-01**:
 
 1. **Snapshot the API response** with a retrieval timestamp and hash it as an input, the way the
    download files are hashed. Reproducible against *that capture*, not against CIViC.
-2. **A second parquet beside the accepted one**, built from the API, with its own `status_basis` and
-   its own provenance — so the reproducible artifact stays reproducible and the wider one is
-   separately labelled. Costs a consumer a decision it did not previously have.
+2. ~~**A second parquet beside the accepted one**, built from the API~~ — **dissolved by RM169.** The
+   wider parquet exists and is built from files; one more from the API would be a *third* basis rather
+   than a second, and the consumer decision this shape was priced against has already been spent.
 3. **Leave the build alone and read `SUBMITTED` at `enrich` time**, beside the CAID pass, where
    network reads already live and reproducibility is not claimed. Narrowest, and it does not enlarge
    the published snapshot — which may be the point or may be the missing half.
 
-**Whatever shape is taken, `status` belongs on the row as `confidence` with `confidence_unit`,
-unconverted** — CIViC's own instrument, named rather than translated into a house grade.
-`ClinSigAuthorityCallRow` already requires a magnitude to name its instrument, and this is that.
-An `accepted` row and a `submitted` row must not be indistinguishable once both are in the file.
+**The labelling requirement is settled and half-shipped.** An `accepted` row and a `submitted` row
+must not be indistinguishable once both are in the file, and for the file-built half RM169 did it:
+every row carries `evidence_status`, CIViC's own word, unconverted. Whatever shape this half takes
+owes the same stamp — and where it lands as a magnitude rather than a column, that is `confidence`
+with `confidence_unit`, named rather than translated into a house grade, the way
+`ClinSigAuthorityCallRow` already requires a magnitude to name its instrument.
 
 **Related** RM152 (the adoption), RM159 (the name-identity table, whose two unresolved records are the
 motivating case), RM153.
