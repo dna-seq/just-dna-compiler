@@ -1,12 +1,18 @@
 """LitVar2/PubTator3 — which papers name this allele, and **at which tier** (RM167).
 
-NCBI's LitVar2 indexes the biomedical literature by variant, and it does so at three tiers that sit
-beside each other as separate nodes. A node id is `litvar@<clingen_id>#<rsid>#<gene_id>` with an
-unfilled slot collapsing to a bare `#`, so `litvar@rs1800562##` is the **position** node — rsID slot
-filled, allele slot empty — and `litvar@CA113795#rs1800562##` is the **allele** node beside it, named
-by a ClinGen canonical allele id. A gene carries one gene-level node (`litvar@#3077#`) as well, and
-a long tail of `litvar@#<gene_id>#<protein_name>` **text mentions**, which are an unnormalized string
-a miner saw rather than an identity. Nothing here treats a mention as a variant.
+NCBI's LitVar2 indexes the biomedical literature by variant, and it does so at several tiers that sit
+beside each other as separate nodes: `litvar@rs1800562##` is the **position** node for an rsID, and
+`litvar@CA113795#rs1800562##` is the **allele** node beside it, named by a ClinGen canonical allele
+id. A gene carries one gene-level node (`litvar@#3077#`, NCBI GeneID 3077 = HFE) and a long tail of
+`litvar@#7428#p.P71fsX` **text mentions**, which are an unnormalized string a miner saw rather than an
+identity. Nothing here treats a mention as a variant.
+
+**The id is `litvar@` plus `#`-separated fields whose count and meaning vary by tier**, which is
+exactly why nothing in this module parses one: an rsID node has three fields with the rsID first, an
+allele node has four with the CAID first, and a gene node has three with the gene id in the middle.
+Read the tier off the source's own `flag_rsid_variant` / `flag_clingen_variant` / `flag_gene_variant`
+booleans, or off which keys a record carries where the endpoint omits them, and echo every id back
+verbatim rather than building one.
 
 **The tier a locus is answerable at is a property of the locus, not of the source**, and that is the
 whole finding this pass exists to make. Measured 2026-09-01: BRAF rs113488022 carries 32,095 papers on
@@ -87,10 +93,14 @@ logger = logging.getLogger(__name__)
 #: not match these; recorded here because two hours went into finding that out.
 LITVAR_API_BASE = "https://www.ncbi.nlm.nih.gov/research/litvar2-api"
 
-#: The name this pass records on its `VerificationRecord`. Not a `licensing.TERMS_BY_SOURCE` member —
-#: see the module docstring: nothing here reaches a module's tables, so nothing here writes a
-#: `SourceRow`, and a terms constant no pass hands to `record_source_terms` would be a registry member
-#: nothing writes (`@registry-completeness`).
+#: The name this pass records on its `VerificationRecord`. Deliberately **not** a
+#: `licensing.TERMS_BY_SOURCE` member: every entry there earns its place either through a pass that
+#: records it into `sources.csv` (`clingen_allele_registry` through `civic_draft`, `pubmind` through
+#: its drafting provider) or through a snapshot that keeps the source's bytes on disk, where the
+#: unknown redistribution axis becomes load-bearing the moment somebody proposes publishing them
+#: (`MANE_TERMS` is that case). This lane has neither — nothing it reads reaches a module's table and
+#: nothing is stored — so an entry would be documentation wearing a registry row. The terms finding is
+#: in the module docstring and the tier reference instead.
 LITVAR_SOURCE = "litvar"
 
 #: The injected table this pass also reads, for the `alts` and `caid` RM153 records there. Spelled the
@@ -232,14 +242,24 @@ class LitvarNode:
 
     @classmethod
     def parse(cls, record: dict) -> "LitvarNode":
+        """One listing record → a node, or `LitvarError` when it is not one.
+
+        Every field is coerced rather than trusted. A record with no `_id` used to raise a bare
+        `KeyError` past every handler in this tier, and a non-string `rsid` an `AttributeError` out of
+        the exact-match filter — two ways for a payload shape to arrive as a crash rather than as
+        this client's own error type.
+        """
+        node_id = record.get("_id")
+        if not node_id:
+            raise LitvarError("a LitVar record carries no `_id`, so it names no node")
         genes = record.get("gene") or []
         count = record.get("pmids_count")
         return cls(
-            node_id=str(record["_id"]),
+            node_id=str(node_id),
             tier=node_tier(record),
-            rsid=record.get("rsid") or None,
-            clingen_id=record.get("clingen_id") or None,
-            name=record.get("name") or None,
+            rsid=str(record["rsid"]) if record.get("rsid") else None,
+            clingen_id=str(record["clingen_id"]) if record.get("clingen_id") else None,
+            name=str(record["name"]) if record.get("name") else None,
             genes=tuple(str(g) for g in genes) if isinstance(genes, list) else (),
             pmid_count=int(count) if isinstance(count, int) else None,
         )
@@ -298,13 +318,33 @@ class LitvarClient:
         return detail or None
 
     def pmids(self, node_id: str) -> frozenset[int]:
-        """Every PubMed id the index holds for this node. An absent node answers with an empty set."""
+        """Every PubMed id the index holds for this node. An absent node answers with an empty set.
+
+        **The payload states its own total and this compares against it** (`@dont-discard-computed`):
+        `publications` carries `pmids_count` beside `pmids`, the two agree on every recorded response,
+        and a paginated or truncated body is otherwise a confidently wrong number with the checker
+        sitting in the same dict. A disagreement warns rather than raising — the ids really were
+        served, and refusing them would turn a partial answer into no answer — but it never passes
+        silently.
+
+        A member that is not a PubMed id is a shape this client cannot read, and it raises: dropping
+        it would report a short list as the node's literature.
+        """
         if node_id not in self._pmids:
             status, body = self._request(
                 f"/variant/get/{urllib.parse.quote(node_id, safe='')}/publications"
             )
-            values = [] if status is None else _as_dict(body).get("pmids") or []
-            self._pmids[node_id] = frozenset(int(p) for p in values if isinstance(p, int))
+            payload = {} if status is None else _as_dict(body)
+            values = payload.get("pmids") or []
+            pmids = frozenset(_as_pmid(value, node_id) for value in values)
+            stated = payload.get("pmids_count")
+            if isinstance(stated, int) and stated != len(pmids):
+                logger.warning(
+                    "LitVar says %s holds %d paper(s) and served %d — the coverage number for this "
+                    "node is the served set, and it is short of what the index claims.",
+                    node_id, stated, len(pmids),
+                )
+            self._pmids[node_id] = pmids
         return self._pmids[node_id]
 
     def gene_nodes(self, gene: str) -> list[LitvarNode]:
@@ -376,6 +416,19 @@ class LitvarClient:
         return None
 
 
+def _as_pmid(value: object, node_id: str) -> int:
+    """One member of a `pmids` array as an integer, or this tier's error.
+
+    Accepts the digit string too, because a JSON field that has always been a number is exactly the
+    kind of thing a service starts quoting; anything else is a payload shape this client cannot read.
+    """
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    raise LitvarError(f"LitVar listed {value!r} among the PMIDs for {node_id}, which is not one")
+
+
 def _detail(response: httpx.Response) -> str:
     """LitVar's `{"detail": …}` sentence, or an empty string when the body is not that shape."""
     try:
@@ -385,15 +438,31 @@ def _detail(response: httpx.Response) -> str:
     return str(payload.get("detail", "")) if isinstance(payload, dict) else ""
 
 
+def _read_json(body: str) -> object:
+    """`json.loads`, with the decode failure translated into this tier's type.
+
+    A 200 carrying a maintenance page, a WAF interstitial or a truncated body is a real thing NCBI
+    serves, and `json.JSONDecodeError` is not a `LitvarError` — so it walked straight through the
+    per-locus handler and took the whole run's report down with it, on a run where every other locus
+    had an answer. `clingen_allele._fetch` catches `ValueError` on this leg for the same reason, and
+    the `.json()` ban one function over gives no cover at all: `httpx`'s `.json()` and `json.loads`
+    raise the identical type, so banning the former moved nothing.
+    """
+    try:
+        return json.loads(body)
+    except ValueError as exc:
+        raise LitvarError(f"LitVar answered with something that is not JSON ({exc})") from exc
+
+
 def _as_list(body: str) -> list[dict]:
-    value = json.loads(body)
+    value = _read_json(body)
     if not isinstance(value, list):
         raise LitvarError("expected a JSON array from LitVar")
     return [record for record in value if isinstance(record, dict)]
 
 
 def _as_dict(body: str) -> dict:
-    value = json.loads(body)
+    value = _read_json(body)
     if not isinstance(value, dict):
         raise LitvarError("expected a JSON object from LitVar")
     return value
@@ -446,7 +515,12 @@ def module_loci(spec_dir: Path) -> LocusRoster:
     **The allele columns come from the model** (`AuthoredModel.ALLELE_COLUMNS`), never from a list
     here: `variants.csv` states an allele in `alts`, `genotype` and `effect_allele`, `haplotypes.csv`
     in `allele`, `diplotypes.csv` in `genotype`, and a hand-kept list would be the roster defect one
-    layer down. `ref` is skipped because it is the locus rather than a claim about an allele.
+    layer down. The `ref` **column** is skipped because it states the locus rather than a claim about
+    an allele — but a `genotype` cell names the reference base too, so the bag is *the alleles the
+    module writes here*, not *the alternates*. That is deliberate and the REF comparison in
+    `_matching_caids` is what keeps it honest: a registry allele whose reference base disagrees with
+    the row's is refused. Where no table at a locus states a `ref` there is nothing to refuse it with,
+    which is a real if narrow way for a reference base to match an alternate.
 
     `resolution.csv` is read too, for its `alts` and `caid` columns — the CAID is the allele identity
     RM153 puts there, and it is the shortest route from a module row to an allele node.
@@ -544,7 +618,10 @@ class LocusCoverage:
     asked_tier: str
     tier: str
     reason: str
-    #: Papers on the position node. `None` where the node was never reached.
+    #: Papers on the position node. `None` only where the position node was never reached — an
+    #: absence, or a run where the index did not answer. A locus whose *tier* could not be settled
+    #: still carries this, because the count was fetched and throwing it away would make every caller
+    #: re-ask for it (`@dont-discard-computed`).
     position_pmids: int | None = None
     #: Papers on the allele node(s) matching the module's allele. `None` unless `tier == "allele"` —
     #: never a zero, because "no allele node" and "an allele node with no papers" differ.
@@ -553,7 +630,13 @@ class LocusCoverage:
     #: discarded (`@dont-discard-computed`): it is 92 % of the literature at APOE rs429358, and a pass
     #: that folded it into the allele answer would be reporting a number about a different thing.
     position_only_pmids: int | None = None
+    #: Every ClinGen id the position node lists, whether or not the index holds a node for it.
     caids_at_locus: tuple[str, ...] = ()
+    #: The subset the index really holds an allele node for — the only ones an allele-level answer
+    #: could come off, and therefore the only ones a reason sentence may claim were consulted. Kept
+    #: beside the full list rather than replacing it: which ids the position node names is a fact
+    #: about the locus, and which of them are answerable is a fact about the index.
+    caids_with_a_node: tuple[str, ...] = ()
     matched_caids: tuple[str, ...] = ()
     node_id: str | None = None
 
@@ -571,7 +654,11 @@ def coverage_reason(coverage: LocusCoverage) -> str:
     which is how a strand-flipped SNV was once reported as an event-size disagreement.
     """
     rsid = coverage.rsid
-    others = ", ".join(coverage.caids_at_locus) or "none"
+    # The ids the index really holds a node for — never the position node's whole `clingen_ids` list.
+    # A sentence that says "the index holds allele nodes (CA1, CA2)" about a CAID it holds nothing for
+    # is a claim about a lookup that never happened, which is the defect this function exists against.
+    answerable = ", ".join(coverage.caids_with_a_node) or "none"
+    listed = ", ".join(coverage.caids_at_locus) or "none"
     return {
         "allele_node_matched": (
             f"{rsid}: the index holds an allele node for the allele this module names "
@@ -586,7 +673,7 @@ def coverage_reason(coverage: LocusCoverage) -> str:
             f"here is not allele-resolved by the source. The count is position-level."
         ),
         "allele_nodes_name_other_alleles": (
-            f"{rsid}: the index holds allele nodes ({others}) and none of them is the allele this "
+            f"{rsid}: the index holds allele nodes ({answerable}) and none of them is the allele this "
             f"module names, so the allele-level answer is withheld and the count is position-level."
         ),
         "no_node_for_rsid": (
@@ -595,16 +682,17 @@ def coverage_reason(coverage: LocusCoverage) -> str:
         ),
         "offline": f"{rsid}: the run was offline, so the index was never asked.",
         "index_unreachable": (
-            f"{rsid}: LitVar could not be reached, so nothing is established about this locus."
+            f"{rsid}: LitVar could not be consulted — unreachable, or an answer this client could "
+            f"not read — so nothing is established about this locus."
         ),
         "registry_unreachable": (
-            f"{rsid}: the ClinGen Allele Registry could not be reached for the CAIDs at this locus "
-            f"({others}), so whether one of them is this module's allele was never asked."
+            f"{rsid}: the ClinGen Allele Registry could not be reached for the allele nodes at this "
+            f"locus ({answerable}), so whether one of them is this module's allele was never asked."
         ),
         "allele_not_comparable": (
-            f"{rsid}: the registry answered for the CAIDs at this locus ({others}) and holds no "
-            f"GRCh38 allele these columns can compare, so whether one of them is this module's "
-            f"allele is undecided rather than settled."
+            f"{rsid}: the registry answered for the allele nodes at this locus ({answerable}) and "
+            f"holds nothing these columns can compare against the allele this module names, so the "
+            f"tier is undecided rather than settled. The position node lists {listed}."
         ),
     }[coverage.reason]
 
@@ -722,6 +810,7 @@ def _one_locus(
         "position_pmids": len(position),
         "position_only_pmids": residue,
         "caids_at_locus": caids,
+        "caids_with_a_node": tuple(allele_pmids),
         "node_id": node.node_id,
     }
     if asked == "position":
@@ -746,14 +835,12 @@ def _one_locus(
         # Nothing matched *and* at least one CAID could not be compared, so *no allele node here is
         # this module's* was never established. Reporting position-level would be the collapse
         # `@answered-is-not-absent` names: an unasked question rendered as an answer.
-        return LocusCoverage(
-            rsid=rsid,
-            asked_tier=asked,
-            tier="unchecked",
-            reason=undecided,
-            caids_at_locus=caids,
-            node_id=node.node_id,
-        )
+        #
+        # **The position counts still travel.** What is unsettled is the tier, not the position node —
+        # that one was reached and read, and dropping its numbers here would have every caller re-ask
+        # for something this run already has (`@dont-discard-computed`). `allele_pmids` stays absent,
+        # which is the half that really is unknown.
+        return LocusCoverage(tier="unchecked", reason=undecided, **common)
     return LocusCoverage(tier="position", reason="allele_nodes_name_other_alleles", **common)
 
 

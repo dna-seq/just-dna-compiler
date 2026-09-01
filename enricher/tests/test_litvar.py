@@ -28,6 +28,7 @@ from just_dna_enricher.litvar import (
     VALID_COVERAGE_REASON,
     VALID_COVERAGE_TIER,
     LitvarClient,
+    LitvarError,
     LitvarUnavailable,
     LocusCoverage,
     check_literature_coverage,
@@ -154,10 +155,14 @@ def test_the_gene_search_tiers_are_derived_from_the_record_rather_than_from_the_
 
 
 def test_nothing_in_this_lane_calls_json_on_a_response() -> None:
-    """The structural half: `httpx`'s `.json()` raises on one of the five endpoints, so it is banned.
+    """The structural half: `httpx`'s `.json()` raises on one of the four endpoints, so it is banned.
 
-    An AST walk rather than a `grep`, and it fails the moment a sixth method reaches for the
+    An AST walk rather than a `grep`, and it fails the moment a fifth method reaches for the
     convenience — which is exactly how the defect would come back.
+
+    **It is not the guard against a bad body**, and saying so here because it reads like one: `.json()`
+    and `json.loads` raise the identical type, so banning the former protects nothing. `_read_json` is
+    what makes an unreadable answer this tier's own error, and the test below is what pins it.
     """
     source = (
         Path(__file__).resolve().parents[1] / "src" / "just_dna_enricher" / "litvar.py"
@@ -214,8 +219,11 @@ def test_an_allele_node_answers_and_the_position_only_residue_is_counted_separat
     assert locus.matched_caids == ("CA127512",)
     assert locus.allele_pmids == len(allele)
     assert locus.position_pmids == len(position)
-    # The residue is a set difference, not a subtraction: the allele node's papers are a subset of the
-    # position node's here, and at other loci they are not.
+    # A set difference rather than a subtraction. In all four recorded loci the allele nodes are
+    # strict subsets of the position node, so the two happen to agree here — the difference is what
+    # makes the arithmetic right when several allele nodes overlap each other, which the multi-CAID
+    # case below is for.
+    assert allele <= position
     assert locus.position_only_pmids == len(position - allele)
     assert locus.allele_pmids < locus.position_pmids, (
         "the fixture no longer exercises the case this test is about"
@@ -357,8 +365,12 @@ def test_an_unreachable_registry_is_unchecked_rather_than_a_position_level_answe
     )
     (locus,) = report.loci
     assert (locus.tier, locus.reason) == ("unchecked", "registry_unreachable")
-    assert locus.allele_pmids is None and locus.position_pmids is None
-    # And it stays out of the denominator: a locus nothing was learned about is not a subject.
+    # The half that is genuinely unknown is withheld; the half that was fetched travels
+    # (`@dont-discard-computed`) — the position node WAS read, it is only the tier that is unsettled.
+    assert locus.allele_pmids is None
+    assert locus.position_pmids == len(_recorded_pmids("litvar@rs429358##"))
+    assert locus.caids_with_a_node == ("CA127512",)
+    # And it stays out of the denominator: a locus whose tier nothing settled is not a subject.
     assert report.answered == []
     assert verification_records(report)[0].skipped == "unreachable"
 
@@ -444,14 +456,35 @@ def test_autocomplete_is_a_prefix_search_so_a_neighbouring_rsid_never_answers() 
     assert node is not None and node.rsid == "rs429358"
 
 
-def test_one_locus_reached_from_two_tables_is_one_request(tmp_path: Path) -> None:
-    """The per-run cache. A module naming the same rsID in three tables must not ask three times."""
+def test_a_locus_asked_about_twice_is_one_request(tmp_path: Path) -> None:
+    """The per-run cache, exercised on the client rather than on the roster's dict.
+
+    An earlier version of this test named one rsID in three tables and asserted no duplicate request —
+    which passes with every cache removed, because `LocusRoster.alleles` is a dict and the rsID has
+    collapsed to one key before anything goes out. Two calls through the client is what actually
+    reaches the cache, so that is what is driven here; the roster's own dedup is asserted below it.
+    """
     seen: list[str] = []
 
     def counting(request: httpx.Request) -> httpx.Response:
         seen.append(str(request.url))
         return _replay(request)
 
+    index, _registry = _clients(handler=counting)
+    first = index.position_node("rs429358")
+    assert first is not None
+    index.node(first.node_id)
+    index.pmids(first.node_id)
+    asked = list(seen)
+    assert len(asked) == 3, asked
+
+    again = index.position_node("rs429358")
+    index.node(first.node_id)
+    index.pmids(first.node_id)
+    assert seen == asked, "a repeated question went back to the network"
+    assert again == first
+
+    # …and the roster half: one rsID in three tables is one subject, so one lap of requests.
     spec = _spec(
         tmp_path,
         variants__csv=(
@@ -461,8 +494,210 @@ def test_one_locus_reached_from_two_tables_is_one_request(tmp_path: Path) -> Non
         studies__csv="rsid,pmid\nrs429358,25741868\n",
         haplotypes__csv="haplotype_name,rsid,chrom,start,ref,allele,gene\ne4,rs429358,19,44908684,T,C,APOE\n",
     )
+    seen.clear()
     _cover(spec, handler=counting)
     assert len(seen) == len(set(seen)), sorted(url for url in seen if seen.count(url) > 1)
+
+
+def test_an_answer_that_is_not_json_arrives_as_this_tiers_own_error() -> None:
+    """NCBI serves HTML sometimes — a maintenance page, an interstitial, a truncated body.
+
+    `json.JSONDecodeError` is not a `LitvarError`, so before `_read_json` it walked straight through
+    the per-locus handler and took the whole run's report with it: every other locus's answer lost to
+    one bad response. All three JSON legs are driven, because each parses its own body.
+    """
+    def html(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html>we are down</html>")
+
+    client = LitvarClient(
+        client=httpx.Client(transport=httpx.MockTransport(html)), gate=_instant_gate()
+    )
+    for call in (
+        lambda: client.autocomplete("rs429358"),
+        lambda: client.node("litvar@rs429358##"),
+        lambda: client.pmids("litvar@rs429358##"),
+    ):
+        with pytest.raises(LitvarError):
+            call()
+
+
+def test_a_bad_body_costs_only_its_own_locus(tmp_path: Path) -> None:
+    """The pass keeps going: one unreadable response is one `unchecked` locus, not a lost report."""
+
+    def half_broken(request: httpx.Request) -> httpx.Response:
+        if "rs9366637" in str(request.url):
+            return httpx.Response(200, text="<html>we are down</html>")
+        return _replay(request)
+
+    spec = _spec(
+        tmp_path,
+        variants__csv=(
+            "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
+            "rs429358,19,44908684,T,C,C/T,risk,c\n"
+            "rs9366637,6,26098474,C,T,C/T,risk,c\n"
+        ),
+    )
+    report = _cover(spec, handler=half_broken)
+    tiers = {locus.rsid: (locus.tier, locus.reason) for locus in report.loci}
+    assert tiers == {
+        "rs429358": ("allele", "allele_node_matched"),
+        "rs9366637": ("unchecked", "index_unreachable"),
+    }
+
+
+def test_a_pmid_that_is_not_one_raises_rather_than_shortening_the_answer() -> None:
+    """Dropping an unreadable member would report a short list as the node's literature."""
+    payload = '{"pmids": [1, "2", null], "pmids_count": 3}'
+    client = LitvarClient(
+        client=httpx.Client(
+            transport=httpx.MockTransport(lambda _r: httpx.Response(200, text=payload))
+        ),
+        gate=_instant_gate(),
+    )
+    with pytest.raises(LitvarError) as caught:
+        client.pmids("litvar@rs1##")
+    assert "which is not one" in str(caught.value)
+
+
+def test_the_served_set_is_checked_against_the_total_the_same_payload_states(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """`publications` carries `pmids_count` beside `pmids`, so the payload checks itself.
+
+    Both directions. On every recorded response the two agree exactly — that is the premise, asserted
+    rather than assumed — and a body that disagrees warns without refusing, because the ids really
+    were served and a partial answer is worth more than none.
+    """
+    for url, entry in INDEX.items():
+        if not url.endswith("/publications"):
+            continue
+        payload = json.loads((SLICE / entry["file"]).read_text(encoding="utf-8"))
+        assert payload["pmids_count"] == len(set(payload["pmids"])), url
+
+    short = '{"pmids": [1, 2], "pmids_count": 9}'
+    client = LitvarClient(
+        client=httpx.Client(
+            transport=httpx.MockTransport(lambda _r: httpx.Response(200, text=short))
+        ),
+        gate=_instant_gate(),
+    )
+    with caplog.at_level("WARNING"):
+        assert client.pmids("litvar@rs1##") == frozenset({1, 2})
+    assert "short of what the index claims" in caplog.text
+
+
+def test_a_listing_record_with_no_id_is_this_tiers_error_not_a_key_error() -> None:
+    """A bare `KeyError` walks past every handler in this tier; the client owes its own type."""
+    client = LitvarClient(
+        client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda _r: httpx.Response(200, text='[{"rsid": "rs1", "pmids_count": 2}]')
+            )
+        ),
+        gate=_instant_gate(),
+    )
+    with pytest.raises(LitvarError):
+        client.autocomplete("rs1")
+
+
+def test_a_non_string_rsid_does_not_crash_the_exact_match_filter() -> None:
+    """`(node.rsid or "").lower()` raised `AttributeError` on a numeric field before it was coerced."""
+    client = LitvarClient(
+        client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda _r: httpx.Response(
+                    200,
+                    text='[{"_id": "litvar@rs1##", "rsid": 1, "flag_rsid_variant": true}]',
+                )
+            )
+        ),
+        gate=_instant_gate(),
+    )
+    # Coerced, so the filter runs — and `1` is not `rs1`, so it correctly answers nothing.
+    assert client.position_node("rs1") is None
+    assert client.autocomplete("rs1")[0].rsid == "1"
+
+
+def test_a_one_sided_indel_is_anchored_with_the_modules_own_base(tmp_path: Path) -> None:
+    """PALB2 rs515726117 — the registry states a deletion with an empty `allele` and no anchor base.
+
+    Neither side of that is a `ref`/`alts` pair, so the comparison needs the reference base
+    immediately before the event, and the module's own row already states it. Anchoring with anything
+    else would put a wrong `ref` on a right position, which is a false match rather than a missing
+    one — so the second half of this test authors a different deleted base and gets no match.
+
+    The chromosome, the interbase position and the deleted base all come off the recorded registry
+    payload; only the anchor base is the module's, which is the whole design.
+    """
+    registry_payload = json.loads(
+        (SLICE / "registry_CA167019.json").read_text(encoding="utf-8")
+    )
+    grch38 = next(
+        allele
+        for allele in registry_payload["genomicAlleles"]
+        if allele.get("referenceGenome") == "GRCh38"
+    )
+    coordinate = grch38["coordinates"][0]
+    chrom, start = grch38["chromosome"], coordinate["start"]
+    deleted = coordinate["referenceAllele"]
+    assert coordinate["allele"] == "", "the fixture is no longer the one-sided shape this is about"
+
+    def row(ref: str, alts: str) -> str:
+        return (
+            "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
+            f"rs515726117,{chrom},{start},{ref},{alts},{alts}/{ref},risk,c\n"
+        )
+
+    # The anchor base is the module's; the deleted base is the registry's.
+    matched = _cover(_spec(tmp_path / "match", variants__csv=row(f"G{deleted}", "G")))
+    (locus,) = matched.loci
+    assert (locus.tier, locus.matched_caids) == ("allele", ("CA167019",))
+    assert locus.allele_pmids == len(_recorded_pmids("litvar@CA167019#rs515726117##"))
+
+    # A row naming a different deleted base is a different allele, and the REF guard refuses it.
+    other = "A" if deleted != "A" else "T"
+    refused = _cover(_spec(tmp_path / "refuse", variants__csv=row(f"G{other}", "G")))
+    (locus,) = refused.loci
+    assert (locus.tier, locus.reason) == ("position", "allele_nodes_name_other_alleles")
+
+
+def test_a_row_with_no_position_cannot_anchor_and_says_so_rather_than_guessing(
+    tmp_path: Path,
+) -> None:
+    """The corpus's own case: `hboc_palb2` authors this locus as a bare `A/AC` genotype.
+
+    With no `chrom`/`start`/`ref` there is no base to anchor on, and a guessed one would be a false
+    match. The tier is undecided — `unchecked`, not `position` — because whether one of the allele
+    nodes is this module's allele was never settled.
+    """
+    spec = _spec(
+        tmp_path,
+        variants__csv="rsid,genotype,state,conclusion\nrs515726117,A/AC,risk,c\n",
+    )
+    (locus,) = _cover(spec).loci
+    assert (locus.tier, locus.reason) == ("unchecked", "allele_not_comparable")
+    # The position node was still read, so its numbers travel.
+    assert locus.position_pmids == len(_recorded_pmids("litvar@rs515726117##"))
+    assert locus.caids_with_a_node == ("CA167019",)
+
+
+def test_a_reason_never_names_a_caid_the_index_holds_no_node_for(tmp_path: Path) -> None:
+    """A sentence that says "the index holds allele nodes (CA1, CA2)" must mean nodes it holds.
+
+    `clingen_ids` on a position node is what the *locus* names; only some of those have a node, and
+    only those were ever consulted. The two lists are kept apart on the record and the sentences read
+    the second.
+    """
+    coverage = LocusCoverage(
+        rsid="rs1",
+        asked_tier="allele",
+        tier="position",
+        reason="allele_nodes_name_other_alleles",
+        caids_at_locus=("CA1", "CA2"),
+        caids_with_a_node=("CA1",),
+    )
+    sentence = coverage_reason(coverage)
+    assert "CA1" in sentence and "CA2" not in sentence
 
 
 # ── the reasons, the roster and the record ──────────────────────────────────────────────────────

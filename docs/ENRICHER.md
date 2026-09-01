@@ -4135,10 +4135,14 @@ than the schema imposing them.
 each CAID goes through RM153's `clingen_allele.ClingenAlleleClient`, and its GRCh38 allele is compared
 against the ones the module names — a real second authority rather than a rename. A `resolution.csv`
 that already carries a `caid` short-circuits that, because the module has then stated its allele
-identity outright. A one-sided indel — the shape the registry states with an empty `referenceAllele` —
-is anchored through `clingen_allele.anchor_indel` using the module's **own** `ref` base at its **own**
-`start`, and withheld anywhere the module does not state one: a guessed anchor puts a wrong `ref` on a
-right position, which is a false match rather than a missing one.
+identity outright. A one-sided indel — the shape the registry states with an empty `referenceAllele`
+or an empty `allele` — is anchored through `clingen_allele.anchor_indel` using the module's **own**
+`ref` base at its **own** `start`, and withheld anywhere the module does not state one: a guessed
+anchor puts a wrong `ref` on a right position, which is a false match rather than a missing one. That
+last leg needed a repair one file over to work at all — `_parse` computed the one-sided allele and
+then dropped it on every record that also carried an rs number, which is most of them, so the registry
+looked as though it held nothing comparable. It is carried now, and the corpus's own
+`hboc_palb2` rows are what the tier verdict turns on.
 
 **The asked tier is a property of the module's rows.** A module that names an allele at a locus asks an
 allele-level question; one that names an rsID and nothing else asks a position-level one, and the
@@ -4268,5 +4272,10 @@ page, which is why `CLINVAR_TERMS` records `public-domain`; **LitVar has no such
 `@no-named-licence` its gating axes are unknown rather than permissive. Recording it as public domain
 by analogy with ClinVar is exactly the move that rule forbids. This is **NCBI's side only** — nothing
 was read about EMBL-EBI's terms for the surfaces EBI co-hosts, and nothing here asserts anything about
-them. There is deliberately no `LITVAR_TERMS` constant: `TERMS_BY_SOURCE` exists to be handed to
-`record_source_terms`, and a member no pass ever hands it would be a registry entry nothing writes.
+them. There is deliberately no `LITVAR_TERMS` constant, and the rule is worth stating because that
+file has two kinds of entry rather than one: a `TERMS_BY_SOURCE` member earns its place either through
+a pass that records it into `sources.csv` — `clingen_allele_registry` through `civic_draft`, `pubmind`
+through its drafting provider — or through a snapshot that keeps the source's bytes on disk, where the
+unknown redistribution axis becomes load-bearing the moment somebody proposes publishing them, which
+is `MANE_TERMS`. This lane has neither: nothing it reads reaches a module's tables and nothing is
+stored. So the finding lives here and in the module docstring, which is where a reader would look.

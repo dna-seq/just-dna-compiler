@@ -136,9 +136,12 @@ CLIENTS = [
     # `ReleaseUnavailable` rather than its parent, for the reason above it: it is the stronger
     # assertion, and every failure of this probe really is "the source could not be asked".
     ("currency", _currency, ReleaseUnavailable),
-    #  rather than its parent, the same stronger assertion as the two above: every
-    # failure leg of this client means the index could not be asked, and  is kept for the
-    # shape failures (a response that is not the JSON or the Python literal it should be).
+    # `LitvarUnavailable` rather than its parent, the same stronger assertion as the two above:
+    # every transport and status leg of this client means the index could not be asked. `LitvarError`
+    # is the parent and covers the *shape* failures — a 200 whose body is neither the JSON nor the
+    # Python literal it should be, or a record with no `_id` — which this file does not drive and
+    # `test_litvar.py` does. The two must not be confused: the JSON-decode leg was leaking untyped
+    # until a review found it, and these three cases could not see it.
     ("litvar", _litvar, LitvarUnavailable),
 ]
 

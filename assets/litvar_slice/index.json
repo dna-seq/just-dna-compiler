@@ -7,6 +7,10 @@
     "file": "registry_CA127512.json",
     "status": 200
   },
+  "https://reg.clinicalgenome.org/allele/CA167019": {
+    "file": "registry_CA167019.json",
+    "status": 200
+  },
   "https://reg.clinicalgenome.org/allele/CA346923": {
     "file": "registry_CA346923.json",
     "status": 200
@@ -21,6 +25,10 @@
   },
   "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/autocomplete/?query=CA127512": {
     "file": "autocomplete_CA127512.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/autocomplete/?query=CA167019": {
+    "file": "autocomplete_CA167019.json",
     "status": 200
   },
   "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/autocomplete/?query=CA346923": {
@@ -43,6 +51,10 @@
     "file": "autocomplete_rs429358.json",
     "status": 200
   },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/autocomplete/?query=rs515726117": {
+    "file": "autocomplete_rs515726117.json",
+    "status": 200
+  },
   "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/autocomplete/?query=rs776994377": {
     "file": "autocomplete_rs776994377.json",
     "status": 200
@@ -57,6 +69,10 @@
   },
   "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40CA127512%23rs429358%23%23/publications": {
     "file": "node_CA127512-rs429358_publications.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40CA167019%23rs515726117%23%23/publications": {
+    "file": "node_CA167019-rs515726117_publications.json",
     "status": 200
   },
   "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40CA346923%23rs146519482%23%23/publications": {
@@ -89,6 +105,14 @@
   },
   "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40rs429358%23%23/publications": {
     "file": "node_rs429358_publications.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40rs515726117%23%23": {
+    "file": "node_rs515726117.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40rs515726117%23%23/publications": {
+    "file": "node_rs515726117_publications.json",
     "status": 200
   },
   "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40rs9366637%23%23": {
