@@ -6,7 +6,7 @@ which variant, which drug, at what evidence level — from a local snapshot, exa
 cross-check does.
 
 **The licence comes out of the snapshot, not out of a table.** `clinpgx_build` extracts the
-`LICENSE.txt` ClinPGx bundles inside `clinicalAnnotations.zip` and records its sha256 in
+`LICENSE.txt` ClinPGx bundles inside `summaryAnnotations.zip` and records its sha256 in
 `release.json`; this pass stamps that hash onto the `SourceRow` it emits. The recorded terms are
 therefore provably the ones shipped with the recorded data, which is the property a static
 source→licence map cannot offer — and two halves of such a map went stale inside one release.

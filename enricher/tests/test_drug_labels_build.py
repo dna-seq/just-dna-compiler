@@ -111,8 +111,9 @@ def test_the_release_label_names_this_archive_and_not_the_annotation_lane(snapsh
     """`clinpgx_drug_labels_<date>`, never `clinpgx_<date>`.
 
     ClinPGx's archives do not refresh in lockstep — `clinpgx_build`'s own docstring records
-    `relationships.zip` a year ahead of `clinicalAnnotations.zip` — so a label that could be confused
-    with the annotation snapshot's would put one archive's date on another's rows.
+    `relationships.zip` a year ahead of `clinicalAnnotations.zip`, an archive RM175 later found had
+    been retired outright — so a label that could be confused with the annotation snapshot's would put
+    one archive's date on another's rows.
     """
     created = next(
         path.name for path in _SLICE.iterdir() if path.name.startswith("CREATED_")

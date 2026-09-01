@@ -195,7 +195,7 @@ declared shipped against a *hand-authored sample*. Run against the actual ClinPG
 hold, in two stages:
 
 1. A clinical annotation is published **per genotype** — the summary table names the variant and drug,
-   a child table gives one row per call, and 4,618 of 5,113 carry exactly three. `PharmVariantRow` had
+   a child table gives one row per call, and the large majority carry exactly three. `PharmVariantRow` had
    no `genotype`, and the compiler deduped on `(variant_key, drug)`, so authoring the real
    SLCO1B1/simvastatin annotation produced `duplicate row for key ('rs4149056', 'simvastatin')`. ~97%
    of the corpus was unauthorable.

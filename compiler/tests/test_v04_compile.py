@@ -139,8 +139,8 @@ def test_pharm_only_module_roundtrips_without_variants(tmp_path: Path) -> None:
 
 # ── Per-genotype PharmGKB clinical annotations (0.5) ─────────────────────────────────────────────
 # Real data, not a constructed shape: PharmGKB clinical annotation 1451356520 (SLCO1B1 rs4149056→
-# simvastatin), whose three genotype rows are the norm rather than an edge case — 4,618 of 5,113
-# annotations in the ClinPGx release carry exactly three. Before `genotype` joined the dedup key
+# simvastatin), whose three genotype rows are the norm rather than an edge case — the large majority
+# of annotations in every ClinPGx release carry exactly three. Before `genotype` joined the dedup key
 # these were rejected as duplicate rows, so the real corpus could not be authored at all.
 _PHARM_PER_GENOTYPE = (
     "rsid,gene,genotype,drug,response,evidence_level,conclusion\n"

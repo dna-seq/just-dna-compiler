@@ -393,7 +393,7 @@ def draft_pharm_variants(
         # source the module cannot account for.
         # **The terms are pinned to the same moment as the data, which is the whole point of
         # `license_sha256` and this call was not doing it (S44).** ClinPGx bundles its `LICENSE.txt`
-        # inside `clinicalAnnotations.zip` and `clinpgx_build` extracts it beside the parquet
+        # inside `summaryAnnotations.zip` and `clinpgx_build` extracts it beside the parquet
         # precisely so a holder of the snapshot can read the terms without the archive — but the row
         # passed only `declared_use` and `dataset`, so a share-alike source was recorded with a null
         # hash and nothing tied the recorded terms to the text that governed the bytes. Read from the

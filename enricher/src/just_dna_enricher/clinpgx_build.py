@@ -1,6 +1,6 @@
-"""Build the ClinPGx clinical-annotation snapshot (`[dev]`).
+"""Build the ClinPGx summary-annotation snapshot (`[dev]`).
 
-Turns the ClinPGx `clinicalAnnotations.zip` bulk download into a flat parquet snapshot the pass reads
+Turns the ClinPGx `summaryAnnotations.zip` bulk download into a flat parquet snapshot the pass reads
 offline, following the ClinVar builder exactly: stream the archive, emit deterministically-sorted
 parquet, and write a `release.json` recording provenance beside it.
 
@@ -12,15 +12,27 @@ strictly stronger than a lookup in a table that was true once. Both halves of su
 inside a single release: `api.pharmgkb.org` was retired on 2026-07-20 and CPIC's licence page moved
 when it merged into ClinPGx.
 
-**The grain is (annotation, genotype), not annotation.** A ClinPGx clinical annotation names a variant
-and a drug in `clinical_annotations.tsv`, then gives one row *per genotype* in
-`clinical_ann_alleles.tsv` — 4,618 of 5,113 carry exactly three, and the calls can be opposed
+**The grain is (annotation, genotype), not annotation.** A ClinPGx summary annotation names a variant
+and a drug in `summary_annotations.tsv`, then gives one row *per genotype* in
+`summary_ann_alleles.tsv` — the large majority carry exactly three, and the calls can be opposed
 (rs4149056/simvastatin reads "decreased response" for CC and CT, "increased" for TT). Flattening to
-the annotation would throw away the axis the module keys on, so the two files are joined here.
+the annotation would throw away the axis the module keys on, so the two files are joined here. How
+many carry three is a property of today's download, so it is counted per build and never written down
+(the count this docstring used to carry outlived the file it was measured on by fourteen months).
+
+**The archive is identified before it is read, and the retired spelling is refused (RM175).** PharmGKB
+became ClinPGx on 2025-07-29 and renamed clinical annotations to *summary annotations*; the archive
+followed, `clinical_ann*` becoming `summary_ann*` and `Clinical Annotation ID` becoming `Summary
+Annotation ID`. `clinicalAnnotations.zip` was last written on 2025-07-05, is on no downloads page, and
+the API still answers it **200** through a 303 to that frozen object — so a stale URL in a config
+cannot be told from a live one at the HTTP layer, and every earlier build of this lane came out of a
+snapshot fourteen months old. `require_current_archive` therefore refuses an archive carrying the old
+member names by name, rather than letting a plausible parquet come out of it.
 
 **`CREATED_*.txt` is the release id.** ClinPGx publishes no version number, and the archives are not
 refreshed in lockstep — `relationships.zip` was a year newer than `clinicalAnnotations.zip` when this
-was written — so the per-archive creation date is the only honest `dataset` label.
+was written, which RM175 later explained: that archive had stopped being rebuilt at all — so the
+per-archive creation date is the only honest `dataset` label.
 """
 
 import csv
@@ -45,7 +57,44 @@ except ImportError:  # pragma: no cover - exercised only where the [dev] extra i
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CLINPGX_URL = "https://api.clinpgx.org/v1/download/file/data/clinicalAnnotations.zip"
+
+class ClinPgxArchiveError(RuntimeError):
+    """The archive handed to the builder is not the one ClinPGx publishes today."""
+
+
+@dataclass(frozen=True)
+class ArchiveVintage:
+    """One published spelling of the annotation archive: its zip name, its members, its id column.
+
+    Two exist because the source renamed all four in one go (RM175), and a reader that knows only the
+    current spelling can say "member missing" but not *why* it is missing.
+    """
+
+    archive: str
+    annotations: str
+    alleles: str
+    id_column: str
+
+
+#: What ClinPGx publishes and rebuilds today. Every name the builder reads comes from here.
+CURRENT_ARCHIVE = ArchiveVintage(
+    archive="summaryAnnotations.zip",
+    annotations="summary_annotations.tsv",
+    alleles="summary_ann_alleles.tsv",
+    id_column="Summary Annotation ID",
+)
+#: The pre-rename spelling. It exists to be **named in a refusal** and is never read from: nothing
+#: returns it, so no parquet can come out of a 2025 archive by any path through this module.
+RETIRED_ARCHIVE = ArchiveVintage(
+    archive="clinicalAnnotations.zip",
+    annotations="clinical_annotations.tsv",
+    alleles="clinical_ann_alleles.tsv",
+    id_column="Clinical Annotation ID",
+)
+
+DEFAULT_CLINPGX_URL = (
+    f"https://api.clinpgx.org/v1/download/file/data/{CURRENT_ARCHIVE.archive}"
+)
 #: The archive member the terms arrive in. A source-format detail, so it stays here — unlike the name
 #: the *snapshot* stores it under, which is `locations.SNAPSHOT_LICENSE_FILENAME` because four other
 #: parties have to agree on it. They are the same string today and are not the same fact.
@@ -94,7 +143,7 @@ def download_clinpgx_zip(dest: Path, url: str = DEFAULT_CLINPGX_URL) -> tuple[Pa
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".part")
     hasher = hashlib.sha256()
-    logger.info("Downloading ClinPGx clinical annotations from %s ...", url)
+    logger.info("Downloading ClinPGx summary annotations from %s ...", url)
     with httpx.stream("GET", url, follow_redirects=True, timeout=None) as response:
         response.raise_for_status()
         with open(tmp, "wb") as handle:
@@ -139,19 +188,52 @@ def _member(archive: zipfile.ZipFile, filename: str) -> str:
     for name in archive.namelist():
         if Path(name).name == filename:
             return name
-    raise ValueError(f"{filename} not found in the ClinPGx archive")
+    raise ClinPgxArchiveError(f"{filename} not found in the ClinPGx archive")
+
+
+def require_current_archive(archive: zipfile.ZipFile) -> ArchiveVintage:
+    """`CURRENT_ARCHIVE` if this zip is the one ClinPGx publishes today, else a refusal that says why.
+
+    Three arms, three diagnoses (`@answered-is-not-absent`): the current spelling, the retired one,
+    and an archive that is neither. The middle arm is the reason this function exists — the retired
+    `clinicalAnnotations.zip` still answers 200 and still parses, so without a check by *name* a stale
+    URL builds a plausible parquet out of the database as it stood before the 2025-07-29 rename
+    (`@specific-rejection`: a generic "member missing" is a dead end where naming the rename is a fix).
+    """
+    members = {Path(name).name for name in archive.namelist()}
+    if CURRENT_ARCHIVE.annotations in members:
+        return CURRENT_ARCHIVE
+    if RETIRED_ARCHIVE.annotations in members:
+        raise ClinPgxArchiveError(
+            f"this archive carries `{RETIRED_ARCHIVE.annotations}`, the member name ClinPGx retired "
+            f"on 2025-07-29 when clinical annotations were renamed to summary annotations. "
+            f"`{RETIRED_ARCHIVE.archive}` is a frozen object last written 2025-07-05 that the API "
+            f"still answers 200, so building from it would publish the database as it stood before "
+            f"the rename. Build from `{CURRENT_ARCHIVE.archive}` instead ({DEFAULT_CLINPGX_URL}), "
+            f"whose members are `{CURRENT_ARCHIVE.annotations}` and "
+            f"`{CURRENT_ARCHIVE.alleles}` and whose id column is `{CURRENT_ARCHIVE.id_column}`."
+        )
+    raise ClinPgxArchiveError(
+        f"no `{CURRENT_ARCHIVE.annotations}` in this archive, and no "
+        f"`{RETIRED_ARCHIVE.annotations}` either, so it is not the ClinPGx annotation archive at "
+        f"all. Expected `{CURRENT_ARCHIVE.archive}` from {DEFAULT_CLINPGX_URL}; it holds "
+        f"{sorted(members)}."
+    )
 
 
 def build_snapshot(
     zip_path: Path, out_dir: Path, *, source_url: str = DEFAULT_CLINPGX_URL,
     source_sha256: str | None = None,
 ) -> ClinPgxBuildResult:
-    """`clinicalAnnotations.zip` → `clinpgx/data/annotations.parquet` + `release.json` + `LICENSE.txt`.
+    """`summaryAnnotations.zip` → `clinpgx/data/annotations.parquet` + `release.json` + `LICENSE.txt`.
 
     Joins the summary table to its per-genotype child so the snapshot's grain is
     (annotation, genotype) — the grain `PharmVariantRow` keys on. Rows are sorted by
     `(annotation_id, genotype)` so a rebuild is byte-identical; `built_at` is the only per-run byte
     and lives in `release.json`, outside the parquet.
+
+    Raises `ClinPgxArchiveError` on the retired `clinicalAnnotations.zip`, which parses fine and is
+    fourteen months stale (RM175) — see `require_current_archive`.
     """
     if pl is None:  # pragma: no cover
         raise ImportError(
@@ -164,21 +246,22 @@ def build_snapshot(
     data_dir.mkdir(parents=True, exist_ok=True)
 
     with zipfile.ZipFile(zip_path) as archive:
+        vintage = require_current_archive(archive)  # refuses the retired 2025 spelling by name
         license_text = read_license(archive)
         created = read_created_date(archive)
-        summaries = _tsv_rows(archive, _member(archive, "clinical_annotations.tsv"))
-        alleles = _tsv_rows(archive, _member(archive, "clinical_ann_alleles.tsv"))
+        summaries = _tsv_rows(archive, _member(archive, vintage.annotations))
+        alleles = _tsv_rows(archive, _member(archive, vintage.alleles))
 
-    by_id = {row["Clinical Annotation ID"]: row for row in summaries}
+    by_id = {row[vintage.id_column]: row for row in summaries}
     records: list[dict] = []
     for allele in alleles:
-        summary = by_id.get(allele["Clinical Annotation ID"])
+        summary = by_id.get(allele[vintage.id_column])
         if summary is None:
             continue  # an orphan child row; the summary is the authority for what exists
         subject = (summary.get("Variant/Haplotypes") or "").strip()
         records.append(
             {
-                "annotation_id": allele["Clinical Annotation ID"],
+                "annotation_id": allele[vintage.id_column],
                 "subject": subject,
                 # Only a single rsID subject is a variant identity. A haplotype subject (`CYP2C19*2`)
                 # or a multi-variant one is left null rather than mangled into a fake rsID.

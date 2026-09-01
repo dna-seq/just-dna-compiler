@@ -19,7 +19,7 @@ Each is stated **per genotype** (`C/C`, `C/T`, `T/T`), so the module has nine ro
 ## Why it looks like this
 
 **Nine rows, not three, and not one.** A PharmGKB clinical annotation is published per genotype —
-4,618 of the 5,113 in the release carry exactly three — and the calls can be opposed: `T/T` has
+the large majority in any release carry exactly three — and the calls can be opposed: `T/T` has
 *lower* myopathy risk where `C/C` has higher. Collapsing them would lose the axis a consumer looks up.
 
 **`phenotype_category` and `annotation_id` are identity, not decoration.** Without the category, the

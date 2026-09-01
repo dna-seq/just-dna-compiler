@@ -13,6 +13,7 @@
 
 import json
 from pathlib import Path
+from urllib.parse import urlparse
 
 import typer
 from just_dna_compiler.compiler import compile_module
@@ -41,7 +42,9 @@ from just_dna_enricher.clingen import (
 )
 from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, enrich_clinpgx
 from just_dna_enricher.clinpgx_build import (
+    CURRENT_ARCHIVE,
     DEFAULT_CLINPGX_URL,
+    ClinPgxArchiveError,
     download_clinpgx_zip,
 )
 from just_dna_enricher.clinpgx_build import (
@@ -800,7 +803,10 @@ app.add_typer(clinpgx_app, name="clinpgx")
 @clinpgx_app.command("build")
 def clinpgx_build_(
     out_dir: Path = typer.Option(..., "--out", help="Snapshot output directory."),
-    zip_path: Path | None = typer.Option(None, "--zip", help="Existing clinicalAnnotations.zip (else downloaded)."),
+    zip_path: Path | None = typer.Option(
+        None, "--zip",
+        help=f"An existing {CURRENT_ARCHIVE.archive} (else downloaded).",
+    ),
     url: str = typer.Option(DEFAULT_CLINPGX_URL, "--url", help="ClinPGx bulk download URL."),
     use: str = typer.Option("unstated", "--use", help="Declared use: unstated | non-commercial | commercial."),
 ) -> None:
@@ -816,9 +822,16 @@ def clinpgx_build_(
         typer.secho(f"SKIPPED: {reason}", fg=typer.colors.YELLOW, err=True)
         raise typer.Exit(code=1)
     source_sha: str | None = None
-    if zip_path is None:
-        zip_path, source_sha = download_clinpgx_zip(Path(out_dir) / "clinicalAnnotations.zip", url)
-    result = build_clinpgx_snapshot(zip_path, out_dir, source_url=url, source_sha256=source_sha)
+    try:
+        if zip_path is None:
+            # Named for what `--url` actually points at, so a mirror or a retired name is visible on
+            # disk rather than filed under whatever this lane used to download.
+            filename = Path(urlparse(url).path).name or CURRENT_ARCHIVE.archive
+            zip_path, source_sha = download_clinpgx_zip(Path(out_dir) / filename, url)
+        result = build_clinpgx_snapshot(zip_path, out_dir, source_url=url, source_sha256=source_sha)
+    except (ClinPgxArchiveError, OSError) as exc:
+        typer.secho(f"CLINPGX BUILD FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
     typer.secho(f"clinpgx snapshot: {result.parquet_path}", fg=typer.colors.GREEN)
     typer.echo(
         f"rows: {result.row_count}  annotations: {result.annotation_count}  "

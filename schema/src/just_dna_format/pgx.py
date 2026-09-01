@@ -368,7 +368,7 @@ class PharmVariantRow(AuthoredModel):
 
     **`genotype` is part of the identity, not decoration (0.5).** A PharmGKB clinical annotation is
     published *per genotype*: the summary row names the variant and drug, and a child table gives one
-    annotation per call — 4,618 of 5,113 annotations carry exactly three. They are not variations on
+    annotation per call, and the large majority carry exactly three. They are not variations on
     one finding but distinct, sometimes opposed, ones: for rs4149056/simvastatin, CC and CT read
     "decreased response" while TT reads "increased". Modelling only (variant, drug) collapsed them,
     and the compiler's duplicate-row check rejected the real data outright — the axis is therefore in

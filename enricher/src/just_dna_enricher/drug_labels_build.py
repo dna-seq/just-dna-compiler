@@ -1,6 +1,6 @@
 """Build the regulator drug-label snapshot the label cross-check reads (`[dev]`, RM166).
 
-ClinPGx publishes `drugLabels.zip` on the same endpoint `clinicalAnnotations.zip` comes from, and
+ClinPGx publishes `drugLabels.zip` on the same endpoint `summaryAnnotations.zip` comes from, and
 `clinpgx_build` downloads exactly one of the twelve archives that endpoint serves. This is the
 second: 59 KB holding `LICENSE.txt`, `README.pdf`, `drugLabels.tsv` (1,433 rows when probed on
 2026-08-05) and `drugLabels.byGene.tsv` (238 rows, a pivot of the same labels by gene symbol — it
@@ -8,7 +8,9 @@ carries no fact the label table does not, so nothing here reads it).
 
 **Its own `release.json`, never the annotation lane's.** `clinpgx_build`'s module docstring records
 that `relationships.zip` was a *year* newer than `clinicalAnnotations.zip`, so assuming ClinPGx's
-archives refresh in lockstep is a mistake this lane has already made once. `drugLabels.zip` carries
+archives refresh in lockstep is a mistake this lane has already made once — and RM175 found the reason
+that particular gap was so wide, which was that ClinPGx had stopped rebuilding the annotation archive
+under that name altogether. `drugLabels.zip` carries
 its own `CREATED_<date>.txt` and it is what labels this snapshot — `clinpgx_drug_labels_<date>`,
 distinct from the annotation lane's `clinpgx_<date>` because the two archives are two surfaces with
 two denominators (`@two-surfaces-two-denominators`).

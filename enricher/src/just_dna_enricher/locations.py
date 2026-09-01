@@ -59,7 +59,7 @@ SNAPSHOT_SIDECAR_DIRNAMES: tuple[str, ...] = (CITATIONS_DIRNAME,)
 RELEASE_FILENAME = "release.json"
 
 #: The terms a snapshot was taken under, kept beside the bytes they govern. ClinPGx bundles a
-#: `LICENSE.txt` inside `clinicalAnnotations.zip`, and the builder extracts it precisely so a holder of
+#: `LICENSE.txt` inside `summaryAnnotations.zip`, and the builder extracts it precisely so a holder of
 #: the snapshot can read the terms without the archive — which only works if the publisher sends it and
 #: the provisioner fetches it. It was in neither: `upload`'s allow-patterns were `data/*.parquet`,
 #: `citations/*.parquet` and `release.json`, so publishing a share-alike snapshot silently dropped the

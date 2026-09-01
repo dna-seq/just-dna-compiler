@@ -1808,8 +1808,9 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## PGx sources: ClinPGx, CPIC, PharmVar
 
-- `@clinpgx-per-genotype` — **PharmGKB clinical annotations are per-genotype — `(variant_key, drug)` is not a key.** 4,618 of
-  5,113 carry exactly three genotype rows, sometimes opposed (rs4149056/simvastatin: CC/CT
+- `@clinpgx-per-genotype` — **PharmGKB clinical annotations (ClinPGx *summary* annotations since the
+  2025-07-29 rename) are per-genotype — `(variant_key, drug)` is not a key.** The large majority
+  carry exactly three genotype rows, sometimes opposed (rs4149056/simvastatin: CC/CT
   "decreased", TT "increased"), so `PharmVariantRow.genotype` is in the dedup key. Its grammar lives
   on `AuthoredModel` — shared with `VariantRow`, so don't re-declare it. Route haplotype-keyed
   annotations (`*1`) to `DiplotypeRow`; skip symbolic alleles (`del/del`, 177 rows) as **RM5** rather

@@ -1,0 +1,5 @@
+Summary Annotation ID	Variant/Haplotypes	Gene	Level of Evidence	Level Override	Level Modifiers	Score	Phenotype Category	PMID Count	Evidence Count	Drug(s)	Phenotype(s)	Latest History Date (YYYY-MM-DD)	URL	Specialty Population
+655386913	CYP2C19*1, CYP2C19*17	CYP2C19	3		Tier 1 VIP	6.0	Toxicity	15	16	clopidogrel	Acute coronary syndrome;Coronary Artery Disease;Hemorrhage;Myocardial Infarction	2021-03-24	https://www.clinpgx.org/clinicalAnnotation/655386913	
+1451356520	rs4149056	SLCO1B1	3		Tier 1 VIP	5.5	Efficacy	14	16	simvastatin		2024-04-05	https://www.clinpgx.org/clinicalAnnotation/1451356520	
+655384011	rs4149056	SLCO1B1	1A		Tier 1 VIP	211.75	Toxicity	9	12	simvastatin	statin-related myopathy	2022-02-14	https://www.clinpgx.org/clinicalAnnotation/655384011	
+1449556772	rs4149056	SLCO1B1	1A		Tier 1 VIP	110.625	Metabolism/PK	9	10	simvastatin;simvastatin acid		2022-02-14	https://www.clinpgx.org/clinicalAnnotation/1449556772	Pediatric

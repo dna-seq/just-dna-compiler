@@ -78,7 +78,7 @@ SOURCE_NAME: str = CLINPGX_TERMS.source
 CHECK_NAME = "regulator_label_agreement"
 LABELS_PARQUET = "drug_labels.parquet"
 
-#: The archive the snapshot is built from, on the endpoint `clinicalAnnotations.zip` already comes
+#: The archive the snapshot is built from, on the endpoint `summaryAnnotations.zip` already comes
 #: from. It lives in the *reader* rather than in the builder so the CLI can offer it as a `--url`
 #: default without importing the `[dev]` builder at start-up (`drug_labels_build` imports it back).
 DEFAULT_DRUG_LABELS_URL = "https://api.clinpgx.org/v1/download/file/data/drugLabels.zip"
