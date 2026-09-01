@@ -413,7 +413,7 @@ subset — using `hint variant` for the values.
 ## 5 — Cross-check what you asserted against what the sources say
 
 ```bash
-just-dna-enricher check-identifiers spec/            # trait CURIEs (OLS4) and gene symbols (HGNC) still current
+just-dna-enricher check-identifiers spec/            # trait CURIEs (OLS4), gene symbols (HGNC), PGS accessions still current
 just-dna-enricher check-acmg spec/ --sf-list acmg/   # acmg_sf vs the ACMG SF list
 just-dna-enricher pgx spec/                          # function_status vs PharmVar and CPIC
 just-dna-enricher clinpgx check spec/ --snapshot cp/ # pharm_variants.csv vs the ClinPGx snapshot
@@ -787,7 +787,7 @@ workaround.
 | `draft <dir> --gene G` | CPIC → the three PGx tables. `--drug`, `--allele`, `--population`, `--use`, `--offline`, `--cpic-cache`, `--dry-run` |
 | `draft-panel <dir> --gene G` | ClinVar → `variants.csv` + `studies.csv`. `--source clinvar\|pubmind`, `--snapshot`, `--pubmind-cache`, `--offline`, `--download/--no-download`, `--clin-sig`, `--min-review-stars`, `--max-citations`, `--min-confidence`, `--use`, `--dry-run` |
 | `draft-clinpgx <dir> --snapshot S` | ClinPGx → `pharm_variants.csv`. `--gene`, `--drug`, `--min-evidence-level`, `--use`, `--dry-run` |
-| `check-identifiers <dir>` | trait CURIEs (OLS4), gene symbols (HGNC). `--no-traits`, `--no-genes` |
+| `check-identifiers <dir>` | trait CURIEs (OLS4), gene symbols (HGNC), `pgs_id` against the PGS Catalog. `--no-traits`, `--no-genes`, `--no-pgs` |
 | `check-acmg <dir>` | `acmg_sf` vs the ACMG SF list. `--sf-list` (strongly preferred), `--offline`, `--url` |
 | `pgx <dir>` | `function_status` vs PharmVar + CPIC. `--no-pharmvar`, `--no-cpic`, `--use` |
 | `clinpgx check <dir> --snapshot S` | `pharm_variants.csv` vs the ClinPGx snapshot, offline-capable |

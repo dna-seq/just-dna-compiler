@@ -805,20 +805,20 @@ VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
         "gene_symbol_currency",       # authored `gene` vs HGNC approved / previous — `check-identifiers`
         "trait_currency",             # authored `trait_efo_id` vs OLS4 (obsolete + replacement) — `check-identifiers`
         "gene_locus_agreement",       # the row's `gene` vs the chromosome its variant sits on — `check-identifiers`
-        # ── RESERVED for the 2026-09-01 source-adoption round (RM163, RM165, RM166, RM167), added
-        #    ahead of their emitters and deliberately: the names are the four passes' published keys,
-        #    and minting a name in the release that needs it is the `withdrawn` precedent above run in
-        #    reverse. Each flips out of this block in the commit that lands its pass.
-        "pgs_accession_currency",     # RESERVED — an authored `pgs_id` vs the PGS Catalog's own record
-                                      #   for it. The Catalog answers 200 with `{}` for a never-assigned
-                                      #   id AND for a malformed one, so the check reads the body; the
-                                      #   verdict is about the accession, never about the HTTP status.
-        "pgs_metadata_agreement",     # RESERVED — authored `training_ancestry`/`training_cohort` vs
-                                      #   the score record's `ancestry_distribution`/`samples_training`.
-                                      #   Its own member rather than a second finding under the line
-                                      #   above: currency asks whether the id still names a score, and
-                                      #   this asks whether two cells beside it still match. Two
-                                      #   questions, two subjects, so two records.
+        "pgs_accession_currency",     # an authored `pgs_id` vs the PGS Catalog's own record for it —
+                                      #   `check-identifiers`. The Catalog answers 200 with `{}` for a
+                                      #   never-assigned id AND for a malformed one, so the check reads
+                                      #   the body; the verdict is about the accession, never the status.
+        "pgs_metadata_agreement",     # authored `training_ancestry`/`training_cohort` vs the score
+                                      #   record's `ancestry_distribution`/`samples_training` —
+                                      #   `check-identifiers`. Its own member rather than a second
+                                      #   finding under the line above: currency asks whether the id
+                                      #   still names a score, and this asks whether two cells beside it
+                                      #   still match. Two questions, two subjects, so two records.
+        # ── RESERVED for the 2026-09-01 source-adoption round (RM165, RM166, RM167), added ahead of
+        #    their emitters and deliberately: the names are those passes' published keys, and minting
+        #    a name in the release that needs it is the `withdrawn` precedent above run in reverse.
+        #    Each flips out of this block in the commit that lands its pass.
         "repeat_band_agreement",      # RESERVED — an authored `repeat_alleles.csv` band table vs a
                                       #   published repeat-locus catalogue's bands. Reports and never
                                       #   repairs: the corpus has one module the catalogue agrees with

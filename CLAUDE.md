@@ -208,6 +208,9 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - The ClinVar `clin_sig` cross-check never escalates under `strict`, deliberately. `@clinsig-never-escalates`
 - Splitting a dedup key on a new optional column: **both stated and different**, and narrow the check rather than the key. `@absent-is-not-different`
 - A check that cannot fail must not report a zero. `@tautology-zero`
+- Two vocabularies that do not fully meet: compute the unmappable half too, and withhold. `@two-vocabularies-that-do-not-meet-withhold`
+- A cell key carries the VALUE when the row key is wider — or a second, differing claim vanishes. `@a-cell-key-carries-the-value-when-two-rows-may-state-two-claims`
+- One registry's outage may not write a skip against another's check. `@one-registrys-outage-may-not-speak-for-another`
 - Ask whether a table-level check's rules are jointly satisfiable. `@jointly-satisfiable`
 - An all-digit genotype is a pasted `GT`; diagnose it before the arity check. `@gt-indices`
 - Check the relationship, not the members — chromosome granularity, repairing nothing. `@gene-locus-relationship`
@@ -243,6 +246,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - It reads bounds only: a key column is not a point on the axis, and letting one vote flips legality. `@measure-tiling`
 - A paywall hides the fulltext, not the record; Crossref covers what PubMed does not index. `@citation-existence`
 - Existence is not identity — a lookup must say *what* it found. `@existence-not-identity`
+- Two readings of one absence are not automatically equal — measure which is likely, and lead with it. `@absence-is-weighted-by-the-base-rate`
 - A quote is an attestation: a sharper refusal than redundancy-bearing. `@quote-attestation`
 - PMID and PMCID are one letter apart — `PMC 3110566` once parsed as a real unrelated PMID. `@pmid-vs-pmcid`
 - A regex timeout needs a killable process; a thread hangs the interpreter at exit. `@regex-timeout-process`
@@ -261,6 +265,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - `declared_use` is a third axis with three states, not a mode. `@declared-use-third-axis`
 - `redistribution` is recorded but not gated — RM27 must design the axis first. `@redistribution-ungated`
 - Literature terms are per **article**; there is deliberately no `pubmed` terms constant. `@per-article-terms`
+- A host's terms are not its contents' terms: write the floor, let each record override it. `@a-hosts-terms-are-not-its-contents-terms`
 - ClinPGx/CPIC/PharmVar are CC BY-SA + no-sale, never a resolution link, and the PharmVar key is personal. `@pgx-research-only`
 - Every gated source has a cache; PharmVar's is unpublishable; `offline` outranks an injected client. `@gated-source-caches`
 - A source may publish no licence at all; unknown commercial terms warn, they never gate. `@no-named-licence`

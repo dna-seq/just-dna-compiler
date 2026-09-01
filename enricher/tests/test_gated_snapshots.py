@@ -453,6 +453,10 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
         "literature.CrossrefClient.exists",
         "literature.EuropePmcClient._get",
         "literature.PmcIdConverterClient._get",
+        # RM163's fourth registry. Same split as `identifiers.OntologyClient` above — the
+        # retried inner paces and returns the response, the outer translates both legs into
+        # `PgsCatalogUnavailable`.
+        "pgs.PgsCatalogClient._request",
         "pharmvar.PharmVarClient._request",
     }, sorted(found)
     assert all(isinstance(p.stop, attempt_floor) for p in found.values()), (
