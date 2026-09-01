@@ -102,15 +102,43 @@ class `licensing.py`'s own comment names as barring redistribution outright — 
 A single `PGS_TERMS` constant would therefore be a **false claim** for 2.4 % of the sampled 250 — a sample rate, not a corpus floor —
 and false in the permissive direction, which is the direction that matters.
 
+**Re-probed 2026-09-01 after the first pass was found to have used two endpoints.** Three things it
+had missed, and one of them corrects a decision below.
+
+**The Catalog publishes its own release record, twice over.** `/rest/info` returns
+`latest_release: {date: 2026-08-26, scores: 6982, publications: 834, traits: 809}` alongside the REST
+API's own version (1.8.6), and `/rest/release/current` returns a full release with
+`released_score_ids` enumerated. So the currency infrastructure this item wanted does not have to be
+built — it has to be read, the same finding as MANE's `README_versions.txt` in RM168.
+
+**`/rest/score/search` gives the trait→score direction**, paginated with a `count`:
+`?trait_id=MONDO_0004989` returns 145 scores. `PgsRow` is keyed `(pgs_id, trait_efo_id)`, so this is
+the key's other half served directly, and `/rest/trait/{id}` carries `trait_synonyms` and
+`trait_mapped_terms` beside it.
+
+**And the id space is sparse, which changes the message.** 6,982 scores across a range reaching
+PGS019960 — about **35 % assigned**. A random sample of 40 well-formed in-range ids returned **12
+assigned and 28 `200 + {}`**. So an unrecognised `pgs_id` is overwhelmingly a *never-assigned* id, not
+a withdrawn one, and the first draft of this section was wrong to require the message to name both
+readings with equal weight. `@rsid-absent-two-readings` earns that treatment because dbSNP's id space
+is densely assigned and merges are a real, frequent event; here the base rate runs the other way, and
+naming withdrawal as a co-equal reading would send an author looking for a retirement notice that
+almost certainly does not exist. **State the absence, state the sparsity, and mention withdrawal as
+the rarer reading rather than the equal one.**
+
 ### The decision
 
 Three pieces, and the third is the one the probe forced.
 
 **A fourth registry in `identifiers.py`**, asking the Catalog about each `pgs_id`. Because the API
-cannot distinguish its own negatives, the check reads the *body*, never the status, and the message
-must name both readings the way `@rsid-absent-two-readings` requires — a typo and a withdrawal are
-opposite instructions to an author. Where the Catalog offers no supersession field at all, that is
-stated as a limit of the source rather than resolved by guessing.
+cannot distinguish its own negatives — `200 + {}` for a never-assigned id and for `PGSXXXX` alike —
+the check reads the *body*, never the status. The message states the absence and is **weighted by the
+measured base rate**: two thirds of the id range is unassigned, so a typo is the likely reading and a
+withdrawal the rare one, both named but not as equals. Where the Catalog offers no supersession field
+at all, that is stated as a limit of the source rather than resolved by guessing.
+
+**Currency comes from `/rest/info` and `/rest/release/current`**, not from a diff — the source
+publishes the release date, the score count and the newly-released ids.
 
 **A two-field drift check** in the `enrich_pgx` shape: `training_ancestry` against
 `ancestry_distribution`, `training_cohort` against `samples_training`. Reports, never repairs
@@ -299,6 +327,28 @@ keying question and not enough to make the answer universal.
 **One more, incidental and worth carrying**: `ref_copies` is fractional — HTT `21.3`, FMR1
 `20.6667`. That is RM55's fractional-measure case appearing in a source rather than in a caller's VCF.
 
+**Re-probed 2026-09-01, and the second candidate is disqualified by category rather than by terms.**
+gnomAD's tandem-repeat release is real and fetchable — `gnomAD_STR_genotypes__2022_01_20.tsv.gz`,
+34.6 MB on the public bucket — and its header settles it: `Id, LocusId, ReferenceRegion, Chrom,
+Start_0based, End, Motif, IsAdjacentRepeat, Population, Sex, Age, PcrProtocol, Genotype, Allele1,
+Allele2, …, ReadvizFilename`. **One row per sample per locus.** That is per-sample genotype data — the
+one category this format does not carry at all — so the question of inheriting `GNOMAD_TERMS` never
+arises. A negative on the category is cheaper and more durable than a negative on the licence, and it
+is the second time in this round that a candidate's most detailed table turned out to be per-sample.
+
+**Two STRchive fields the first pass walked past, and the first is the more important.**
+`evidence` is a **ClinGen-style validity classification on all 82 loci** — Definitive 46, Limited 14,
+Moderate 8, Provisional 6, Strong 4, **Disputed 3, Refuted 1**. This repo already models that axis
+(`gene_validity`), and the `Disputed`/`Refuted` members are precisely the shape **RM170** is about — a
+source that carries a claim and its contradiction. So STRchive is not only a repeat-locus catalogue;
+it is a second instance of the problem RM170 was filed for, in a different domain, which is worth
+knowing before RM170 is designed against CIViC alone.
+
+**And it is a hub, not an island**: cross-references to gnomAD (72/82), TR-atlas (72), WebSTR (63),
+STRipy (58), plus OMIM (78), MedGen (76), MONDO (72), Orphanet (69), GeneReviews (61) and
+`inheritance` (80) and `mechanism` (78). Adopting it brings the joins to the rest of the repeat
+ecosystem with it.
+
 ### The decision
 
 **Adopt STRchive, and split it by column: draft the identity half, check the band half.**
@@ -332,9 +382,12 @@ what could expand one (RM87). Whichever half lands first, that stays on the item
   `@verbatim-except-order` is about not re-encoding a source's values; it is not a licence to import a
   bound the source did not intend as one. The band's meaning is the schema's, not the catalogue's.
 - **Deciding RM66's keying in this round.** The entry asks for the evidence, not the decision.
-- **Inheriting `GNOMAD_TERMS` for gnomAD's tandem-repeat release.** Not probed here. The terms of a
-  different release from an adopted source are checked, never inherited — the entry says so and this
-  file asserts nothing about that release.
+- **Inheriting `GNOMAD_TERMS` for gnomAD's tandem-repeat release.** Moot, and for a better reason
+  than the terms rule: the release is per-sample genotypes, so it is out on category before licensing
+  is reached. The terms rule still stands — a different release is checked, never inherited — it just
+  never gets a turn here.
+- **Deciding RM170 against CIViC alone.** STRchive's `evidence` carries `Disputed` and `Refuted`
+  members on a published corpus; RM170 should see that before it settles its shape.
 
 ### Charter check
 
@@ -392,6 +445,22 @@ and no copyright or public-domain statement on the page at all.** So the direct 
 quarter of the FDA content ClinPGx already carries, in a shape that has to be scraped, on terms that
 are unestablished. *"US government work is public domain"* is a rule with exceptions, the entry said
 so, and the page does not settle it.
+
+**Re-probed 2026-09-01, and the item is larger than "a second file".** The first pass guessed at
+filenames; enumerating properly against `api.clinpgx.org/v1/download/file/data/` (a 303 is a real
+file, a 404 is not) finds at least **twelve** published archives — `clinicalAnnotations`,
+`variantAnnotations`, `clinicalVariants`, `drugLabels`, `relationships`, `variants`, `genes`, `drugs`,
+`chemicals`, `phenotypes`, `occurrences`, `pathways-tsv`. **`clinpgx_build` downloads one of them.**
+
+`clinicalVariants.zip` is the one that bears on a shipped table kind: 74 KB, same `LICENSE.txt` and
+`CREATED_2026-08-05.txt` shape, **5,190 rows** of `variant, gene, type, level of evidence, chemicals,
+phenotypes` — star alleles and rsIDs against PharmGKB evidence levels, which is `pharm_variants.csv`
+territory. Its `type` is a six-member base vocabulary that **comma-combines** (`Efficacy,Toxicity`,
+`Efficacy,Toxicity,Metabolism/PK`), so it is one field carrying a set, and any adoption normalizes the
+combination rather than the token — `@one-normalizer-two-spellings` with an extra axis on it.
+
+So the honest restatement is that **the PGx lane reads one of twelve files from a source it has
+already adopted and gated**, and the FDA question was a narrow way into a broad finding.
 
 ### The decision
 
@@ -540,6 +609,38 @@ outcome and should not be designed away."*
 **`data_clinical_significance` is not adopted in any form.** Position-level, unattributed, undated,
 and eight labels on a position where two alleles disagree.
 
+### The bound, tested on the hardest case in the repository
+
+RM167 must not be sold as an identity-recovery tool, and the way to know that is to run it on the two
+records this workspace could not resolve. [CIVIC_LEGACY_INSERTIONS](../probes/CIVIC_LEGACY_INSERTIONS.md)
+works CIViC 1955 (`VHL P71fs (c.211insT)`) and 2131 (`VHL Q73fs (c.214insGCCC)`) down to four
+candidate alleles with registered CAIDs. Asked of LitVar, 2026-09-01:
+
+| asked | answer |
+| --- | --- |
+| CA2586965638, CA2501268513, CA2573048346, CA2499307076 | **no node for any of the four** |
+| `c.211insT`, `211insT`, `c.214insGCCC` | **no node** |
+| `VHL P71fs` | one node — `litvar@#7428#p.P71fsX`, **1 PMID: 19996202** |
+
+**None of the four source papers.** Not Olschwang 1998 (9829912), not Dollfus 2002 (12202531, the
+free-fulltext lead §5 names), not Ong 2007 (17024664), not Maher 1996 (8730290). The one nominal hit
+is an unrelated paper that happens to write "P71fs" — `@existence-not-identity`, and a fifth id shape
+besides: `litvar@#<gene_id>#<protein_name>`, all three `flag_*` false, an unnormalized text mention
+rather than a variant.
+
+**And the reason is structural, which is what makes it a bound rather than a gap.** PubTator3's
+export for all four papers returns **title and abstract only** — 2 passages, 14–33 disease/gene/species
+annotations, and **zero variant annotations in every one**. None is in the PMC open-access subset;
+Maher 1996 has PMC1050584 and the OA BioC endpoint still refuses it. The alleles live in *Table 3 of a
+paywalled 1996–2007 paper*, and text mining over abstracts cannot reach a table.
+
+That is the same wall §8 of that document went around, and it went around it through **UMD-VHL's
+curated protein column** — a curator's tabulation, one step from the primary. LitVar indexes text.
+**So on precisely the class this workspace built a protocol for — a source that names a variant
+without identifying it, in old literature — LitVar is the wrong instrument, and the build must say
+so.** It answers *which papers discuss an allele that is already identified*; it does not answer
+*which allele this name meant*. Those read as the same question and are not.
+
 ### Repairs rejected
 
 - **Closing the item, as this file first proposed.** The premise was sound; the probe was not. Reading
@@ -557,6 +658,8 @@ and eight labels on a position where two alleles disagree.
 - **Recording NCBI's policy as `public-domain` by analogy with ClinVar.** ClinVar has a page saying
   so and this surface does not. `@no-named-licence`, and the analogy is exactly the move the rule
   forbids.
+- **Selling it as identity recovery.** Measured against the two hardest records in the repository and
+  it returns nothing for any of the four candidate alleles. The bound is above.
 - **Still not running the 423-locus join to decide the item.** It is the right measurement for
   *coverage* — how many module loci have a CAID node at all — and it is the implementation's first
   test. It was never the right measurement for *identity*, which four requests settled.
@@ -623,6 +726,36 @@ reason. `license=None`, `license_url` at the policy, the two operative sentences
 axes `None`. MANE is a joint NCBI/EMBL-EBI product and **only NCBI's side was probed here** — EBI's
 terms for it were not read, and this file asserts nothing about them.
 
+**Re-probed 2026-09-01, and the file that answers this item's own complaint was in the directory
+listing all along.** The entry's objection is *"a version pinned in prose that nothing will notice
+going stale."* MANE ships the staleness list: **`MANE.GRCh38.v1.5.changed_select_accessions.txt.gz`,
+3.6 KB, 120 rows**, columns `NCBI_GeneID, Symbol, Current_MANE_Select_RefSeq,
+Current_MANE_Select_Ensembl, Current_MANE_Version, Old_MANE_Select_RefSeq, Old_MANE_Select_Ensembl,
+Old_MANE_Version, Update_Affects_CDS`.
+
+**`Update_Affects_CDS` is the numbering-frame axis, stated by the source, and it is `Yes` on 74 of
+120.** A MANE Select change that moves the CDS moves every `c.` and `p.` derived in that frame; one
+that does not, does not. This item exists because a numbering frame was recorded in prose — and the
+currency check for it turns out to be *read one small file*, not *diff two releases*. `Old_MANE_Version`
+spans 0.5 through 1.4, so each row also says how long that gene's frame had been stable.
+
+**The negative roster is published too.** `protein_coding_genes_not_in_mane.txt.gz` lists **222**
+genes with a reason, over a seven-member vocabulary: `gene not on assembled chromosomes` 158,
+`non-coding allele on assembled chromosomes` 19, `gene located on mitochondrial genome` 13, `gene in
+false duplication region` 11, `genome error on assembled chromosomes` 9, **`pending MANE review` 8**,
+`gene undergoes ribosomal slippage` 4. So *"MANE has no answer for this gene"* is distinguishable from
+*"nobody asked"*, with the reason attached — `@unreachable-not-absent` served by the source. And
+`pending MANE review` is a third state on its own: not absent, not decided.
+
+**It answers the protocol's own worked case.** VHL is `NM_000551.4` / `ENST00000256474.3`, MANE
+Select — the exact transcript [CIVIC_LEGACY_INSERTIONS](../probes/CIVIC_LEGACY_INSERTIONS.md) pins by
+hand, and the version half of the recorded asymmetry (Variant Recoder rejects `NM_000551.3`, accepts
+`.4`). RUNX1, CDKN2A and VHL are all **absent from `changed_select_accessions`**, so their frames have
+been stable — which is a positive statement the cache can make and a memory cannot.
+
+**Note for RM164 while it is in view**: `gene located on mitochondrial genome` is a MANE exclusion
+class, so the mtDNA lane has no MANE frame by construction.
+
 ### The decision
 
 **Promote MANE from a sentence to a source.** `MANE_TERMS` in `licensing.py` with the axes above; a
@@ -630,6 +763,9 @@ terms for it were not read, and this file asserts nothing about them.
 1.1 MB summary to a parquet with `release.json` written from `README_versions.txt` — the source
 publishes its own provenance and the builder should copy it, not restate it. Pin by the versioned
 directory, not `current/`, and record which was used.
+
+**Three files, not one.** The summary, `changed_select_accessions` (the currency check, free) and
+`protein_coding_genes_not_in_mane` (the reasoned negative roster). Together they are under 1.2 MB.
 
 **`MANE_status` is carried as a column and never collapsed.** The 74 MANE Plus Clinical rows are the
 whole reason this is a table; a builder that kept one row per gene would reintroduce the exact blind
@@ -665,6 +801,19 @@ is the numbering frame RM159's answers were derived in, which is the argument fo
 in another release as prose.
 
 ---
+
+# One pattern that showed up three times
+
+**A source's most detailed table is often per-sample, and per-sample is the one thing that cannot be
+adopted.** MITOMAP's only `tissue` column is on `mitomap.unpublished`, beside `patient` and
+`sample_id`. gnomAD's tandem-repeat release is `Genotype`/`Allele1`/`Allele2`/`Sex`/`Age`, one row per
+sample per locus. PubMind's per-variant channel was already known to be the ANNOVAR bulk table for
+related reasons. In each case the richest file is the one the format is constitutionally barred from
+carrying, and in each case that is a **cheaper and more durable negative than a licence answer** — a
+category exclusion cannot be renegotiated, where terms can.
+
+Worth asking first, before terms and before joinability: **is this table about variants, or about the
+people they were seen in?**
 
 # What this round did not do
 
@@ -719,14 +868,15 @@ this checkout, and the counts are from the files as served that day:
 
 | Source | What was read | Headline |
 | --- | --- | --- |
-| PGS Catalog REST | `/rest/score/PGS000001`, `PGS999999`, `PGSXXXX`, `/rest/score/all?limit=250` | 200+`{}` for every negative; per-score `license`, 3 distinct values in 250 |
+| PGS Catalog REST | the above plus `/rest/info`, `/rest/release/current`, `/rest/trait/`, `/rest/score/search`, and 40 random in-range ids | 200+`{}` for every negative; per-score `license`, 3 values in 250; **only ~35 % of the id range assigned** (12/40); release record published |
 | MITOMAP web | six paths incl. `/Copyright`, `/cgi-bin/*.cgi`, `/robots.txt` | Cloudflare managed JS challenge — 403 to a non-JS client, live in a browser |
 | MITOMAP dump | `mitomap.org/downloads/mitomap.dump.sql.gz`, 2026-08-24, 61 MB, 95 tables (maintainer-supplied; fetch re-verified by `curl`) | reachable by plain `curl` (206, ranges); **one `tissue` column, on `unpublished`**; `mmutation` 602 rows, `homo`/`hetero` are ±/nr flags; no licence text in 6.7 M lines |
-| STRchive | `dashnowlab/STRchive` `data/STRchive-loci.json` (319 KB) | MIT, 82 loci / 79 genes, `locus_structure` on 23 |
-| ClinPGx | `api.clinpgx.org/v1/download/file/data/drugLabels.zip` (59 KB) | 1,433 rows, 5 regulators, CC BY-SA in the payload |
+| STRchive | `data/STRchive-loci.json` (319 KB), all fields | MIT, 82 loci / 79 genes, `locus_structure` on 23; **`evidence` on 82/82 incl. Disputed 3 / Refuted 1**; xrefs to gnomAD 72, TR-atlas 72, WebSTR 63 |
+| gnomAD STR | `gnomAD_STR_genotypes__2022_01_20.tsv.gz` header (34.6 MB) | **per-sample genotypes** — `Sex`, `Age`, `Genotype`, `Allele1/2` — out on category |
+| ClinPGx | `drugLabels.zip` (59 KB) + `clinicalVariants.zip` (74 KB) + name enumeration over the download endpoint | **≥12 published archives, the builder reads 1**; drugLabels 1,433 rows / 5 regulators; clinicalVariants 5,190 rows, comma-combined `type` |
 | FDA | Table of Pharmacogenetic Associations (HTML) | 126 associations, no bulk file, no stated terms |
-| LitVar2 / PubTator3 | all five documented endpoints, over BRAF/HFE/APOE + `search/gene/HFE`; CAIDs resolved against the ClinGen Allele Registry | ids have **slots**: position, allele (CAID) and gene nodes. BRAF's 3 alleles = 31,276 / 99 / 41 PMIDs; APOE is **92 % position-only**. `search/gene/` returns Python `repr()`, not JSON |
-| MANE | `ftp.ncbi.nlm.nih.gov/refseq/MANE/MANE_human/current/` + summary (1.1 MB) | 19,437 rows, 74 MANE Plus Clinical, `README_versions.txt` = 96 bytes |
+| LitVar2 / PubTator3 | all five documented endpoints, the four CIViC-legacy CAIDs, and PubTator3's BioC export for five PMIDs; over BRAF/HFE/APOE + `search/gene/HFE`; CAIDs resolved against the ClinGen Allele Registry | ids have **slots**: position, allele (CAID) and gene nodes. BRAF's 3 alleles = 31,276 / 99 / 41 PMIDs; APOE is **92 % position-only**. `search/gene/` returns Python `repr()`, not JSON |
+| MANE | `current/` + summary (1.1 MB) + `changed_select_accessions` (3.6 KB) + `protein_coding_genes_not_in_mane` + three releases' READMEs | 19,437 rows, 74 MANE Plus Clinical; **120 changed accessions, `Update_Affects_CDS` Yes on 74**; 222 excluded genes over a 7-member reason vocabulary; VHL = `NM_000551.4` |
 | NCBI | `/home/about/policies/` | places no restrictions; declines to grant permission |
 
 The repo-side facts — `PgsRow`'s field descriptions, `RepeatAlleleRow`'s and `HeteroplasmyRow`'s key

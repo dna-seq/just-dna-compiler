@@ -410,3 +410,50 @@ Vega, and no RefSeq accession or transcript. The convention had to be derived fr
 - **2131 stays withheld**, now on a stronger basis than "nothing distinguishes them" — the source
   itself states it does not know the sequence.
 - **Coverage does not move.** 270/290 stands.
+
+---
+
+## 9. Addendum 3 — LitVar2 asked, and it cannot help here (2026-09-01)
+
+RM167 proposes adopting LitVar2/PubTator3 as a variant→literature index. These two records are the
+hardest case this workspace holds, so they are where to find out what that adoption is **not**. It was
+run against them before the item was sized.
+
+### What was asked, and what came back
+
+| asked of LitVar2 | answer |
+|---|---|
+| CA2586965638, CA2501268513 (1955's two readings) | no node |
+| CA2573048346, CA2499307076 (2131's two readings) | no node |
+| `c.211insT` · `211insT` · `c.214insGCCC` | no node |
+| `p.Pro71Leufs` | no node |
+| `VHL P71fs` | **one** node — `litvar@#7428#p.P71fsX`, `pmids_count` 1 |
+
+That single node's one publication is **PMID 19996202**, which is none of the four sources in play:
+not Olschwang 1998 (9829912), not Dollfus 2002 (12202531, §5's free-fulltext lead), not Ong 2007
+(17024664), not Maher 1996 (8730290, §8's true provenance for 2131). It is an unrelated paper that
+writes the string "P71fs". `@existence-not-identity`, and the node is a bare text mention — its
+`_id` fills a gene slot and a protein-name slot with all three `flag_*_variant` booleans false, so
+LitVar itself does not claim it is a normalized variant.
+
+The four bare CAIDs returning nothing is consistent with §7.3 rather than new: the registry entries
+carry no dbSNP and no ClinVar cross-reference, and LitVar's allele tier is keyed on the same
+identifiers.
+
+### Why it cannot help, which is the durable half
+
+PubTator3's BioC export for all four papers returns **title and abstract only** — 2 passages each,
+14–33 disease/gene/species annotations, and **zero variant annotations in every one**. None is in the
+PMC open-access subset: Maher 1996 has PMC1050584 and the OA endpoint still declines it.
+
+The alleles in question live in **Table 3 of a paywalled 1996–2007 paper**. Text mining over
+abstracts cannot reach a table, and that is the same wall §8 met and went around — through UMD-VHL's
+curated protein column, a curator's tabulation one step from the primary observation.
+
+**So the two questions read alike and are not the same question.** LitVar answers *which papers
+discuss an allele that is already identified*. This document exists because an allele was **named and
+not identified**, and no literature index keyed on identity can answer a question asked before the
+identity exists. For legacy-notation recovery the instrument remains a curated database with a
+protein column beside the nucleotide one.
+
+Nothing here moves 1955 or 2131, and coverage does not move: 270/290 stands.
