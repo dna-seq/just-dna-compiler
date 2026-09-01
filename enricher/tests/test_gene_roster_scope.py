@@ -100,6 +100,31 @@ def test_a_table_that_will_not_parse_refuses_rather_than_narrowing_the_scope(tmp
         validity_genes(broken)
 
 
+def test_a_table_present_in_two_places_refuses_rather_than_narrowing_the_scope(
+    tmp_path: Path,
+) -> None:
+    """The other way a table is unreadable, and the one the refusal did not cover.
+
+    A `SidecarCollision` — the same table beside the spec *and* under `derived/` — is recorded in
+    `not_read` and in nothing else, while the refusal above reads `read_errors`, which holds parse
+    failures alone. So a module with two copies of `variants.csv` returned a short gene list with no
+    raise and no log line, and the three passes taking their scope from here reported that the module
+    names no gene: a clean-looking zero over a question nobody put.
+
+    `unreadable` is the line already drawn for exactly this — every table that exists and could not be
+    read — and refusing on it covers both shapes without a second list to keep in step.
+    """
+    spec = _spec(tmp_path, variants__csv="rsid,genotype,state,conclusion,gene\nrs1,A/G,significant,c,RYR1\n")
+    genes = module_genes(spec)
+    assert "RYR1" in genes, "the single-copy module is the baseline this compares against"
+
+    derived = spec / "derived"
+    derived.mkdir()
+    (derived / "variants.csv").write_text((spec / "variants.csv").read_text(), encoding="utf-8")
+    with pytest.raises(GeneMetricsEnrichmentError, match="variants.csv could not be read"):
+        module_genes(spec)
+
+
 def test_the_pgx_cross_checks_own_pair_is_not_this_roster() -> None:
     """`pgx._GENE_TABLES` stays two tables, and that is a different question.
 

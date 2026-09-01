@@ -123,6 +123,15 @@ def module_genes(spec_dir: Path) -> list[str]:
     roster = authored_identifiers(Path(spec_dir), "gene")
     for name, error in sorted(roster.read_errors.items()):
         raise GeneMetricsEnrichmentError(f"{name} is invalid: {error}")
+    # `read_errors` is the PARSE failures alone. A `SidecarCollision` — the same table present both
+    # beside the spec and under `derived/` — lands in `not_read` and in nothing else, so a scope
+    # built from `read_errors` came back short with no raise and no log line: the three passes below
+    # then reported "the module names no gene" and wrote nothing, a clean-looking zero over a
+    # question that was never put. `unreadable` is the line already drawn for this — every table that
+    # EXISTS and could not be read — so refuse on it rather than on the narrower half.
+    for name, why in sorted(roster.unreadable.items()):
+        if name not in roster.read_errors:
+            raise GeneMetricsEnrichmentError(f"{name} could not be read: {why}")
     return roster.ids
 
 
