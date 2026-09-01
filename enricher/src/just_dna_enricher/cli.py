@@ -1207,7 +1207,11 @@ def check_acmg_(
     url: str = typer.Option(DEFAULT_ACMG_URL, "--url", help="ACMG secondary-findings page URL (fallback)."),
     sf_list: Path | None = typer.Option(
         None, "--sf-list", exists=True, file_okay=False,
-        help="Built ACMG SF snapshot (see `acmg build`). Preferred: NCBI's page still serves v3.2.",
+        help=(
+            "Built ACMG SF snapshot (see `acmg build`). Preferred: NCBI's page still serves "
+            "v3.2. Omit it and a snapshot in $JUST_DNA_ACMG_CACHE (or the shared cache base) "
+            "is used; the page is scraped only when neither is there."
+        ),
     ),
 ) -> None:
     """Check each row's `acmg_sf` against the ACMG secondary-findings list (reports only).
@@ -3273,7 +3277,10 @@ def draft_repeats_(
     ),
     catalogue: Path | None = typer.Option(
         None, "--catalogue", exists=True,
-        help="Built STRchive snapshot directory (see `strchive build`), or a STRchive-loci.json.",
+        help=(
+            "Built STRchive snapshot directory (see `strchive build`), or a STRchive-loci.json. "
+            "Omit it and $JUST_DNA_STRCHIVE_CACHE (or the shared cache base) is used."
+        ),
     ),
     use: str = typer.Option(
         "unstated", "--use", help=f"Declared use: one of {sorted(VALID_DECLARED_USE)}.",
@@ -3433,7 +3440,10 @@ def clinpgx_check_labels_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     snapshot: Path | None = typer.Option(
         None, "--snapshot", exists=True, file_okay=False,
-        help="Built drug-label snapshot directory (see `clinpgx build-labels`).",
+        help=(
+            "Built drug-label snapshot directory (see `clinpgx build-labels`). Omit it and "
+            "$JUST_DNA_DRUG_LABELS_CACHE (or the shared cache base) is used."
+        ),
     ),
     strict: bool = typer.Option(
         False, "--strict/--best-effort",

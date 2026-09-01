@@ -66,6 +66,14 @@ RELEASE_FILENAME = "release.json"
 #: one file the pinned-licence design exists for. Fifth party to the layout agreement, same as the rest.
 SNAPSHOT_LICENSE_FILENAME = "LICENSE.txt"
 
+#: The payload of a snapshot that holds no parquet. Two caches are shaped this way and both were
+#: named in the module that *reads* them, which is exactly the split `RELEASE_FILENAME` and
+#: `SNAPSHOT_LICENSE_FILENAME` were pulled up here to stop: a resolver, a builder and a reader each
+#: have to agree on the name, and a resolver living in this module cannot import the reader's copy
+#: without a cycle. One definition, in the module that already owns the layout.
+ACMG_SNAPSHOT_FILENAME = "acmg_sf.csv"
+STRCHIVE_CATALOGUE_FILENAME = "STRchive-loci.json"
+
 ENSEMBL_SUBDIR: str = "ensembl_variations"
 DUCKDB_NAME: str = "ensembl_variations.duckdb"
 # ClinVar reference snapshot — a second, complementary reference beside Ensembl (clinically-curated
@@ -112,6 +120,31 @@ PUBMIND_SUBDIR: str = "pubmind"
 #: this workspace has not built one; the builder and the resolver pair up exactly as the others do,
 #: and adding an `ensure_civic_snapshot` later needs no permission, only a repo.
 CIVIC_SUBDIR: str = "civic"
+
+#: The three caches that had a builder and nothing else (RM176). Each was reachable only by handing
+#: its check an explicit path, so on a deployment that provisions caches centrally the check simply
+#: never ran — the same defect `CLINPGX_SUBDIR` records one paragraph up, three more times. The
+#: shapes differ from every cache above them and that is why they were skipped: two of these snapshots
+#: hold no parquet at all.
+#:
+#: ACMG's is a **CSV**: `acmg_sf.csv` + `release.json`, no `data/`. The list is 81 gene-condition rows
+#: and a parquet for it would be ceremony. Operator-built: ACMG publishes the SF v3.3 list as
+#: Elsevier supplementary material, so the workbook is supplied by whoever holds a copy and the
+#: permission to republish these bytes is unestablished — not refused like PharmVar's, not granted
+#: like STRchive's.
+ACMG_SUBDIR: str = "acmg_sf"
+
+#: STRchive's is a **JSON catalogue**: `STRchive-loci.json` + `release.json`, also no `data/`. It is
+#: the upstream file verbatim beside the provenance of the fetch, because a repeat catalogue is read
+#: whole rather than queried. MIT-licensed, so unlike the two beside it this one may be published.
+STRCHIVE_SUBDIR: str = "strchive"
+
+#: The regulator drug labels are a **second** ClinPGx archive with its own release cadence, so they
+#: get their own cache rather than a table inside `clinpgx/`: `drugLabels.zip` and
+#: `summaryAnnotations.zip` do not refresh in lockstep, and one directory holding both would date the
+#: pair from whichever was built last. Same CC BY-SA terms as the annotation lane, so publishable on
+#: the same grounds, and `LICENSE.txt` travels with it for the same reason.
+DRUG_LABELS_SUBDIR: str = "drug_labels"
 
 #: MANE's cache is a reference table rather than an annotation source: one agreed transcript per
 #: protein-coding gene, plus the list of the ones MANE deliberately has no answer for and the list of
@@ -432,5 +465,105 @@ def resolve_mane_reference(
     return _resolve_parquet_cache(
         mane_cache, "JUST_DNA_MANE_CACHE",
         default_mane_cache_dir(load_dotenv_file=load_dotenv_file),
+        load_dotenv_file=load_dotenv_file,
+    )
+
+
+def _resolve_named_cache(
+    explicit: Path | None,
+    env_var: str,
+    default_dir: Path,
+    payload: str,
+    *,
+    load_dotenv_file: bool = True,
+) -> Path | None:
+    """`_resolve_parquet_cache`'s shape for a snapshot whose payload is one **named** file.
+
+    Two caches hold no parquet at all — ACMG's list is `acmg_sf.csv` and STRchive's catalogue is
+    `STRchive-loci.json`, both at the snapshot root beside `release.json`. The precedence ladder and
+    the `.env` load are the parquet resolver's, verbatim and for its reasons; only the presence test
+    differs, so this is the second predicate rather than a second ladder.
+
+    A caller may point straight at the payload file, because both of these caches were reachable that
+    way before they had a resolver at all (`check-repeat-bands --catalogue STRchive-loci.json`) and
+    withdrawing that would be a break dressed up as a fix. The **directory** is returned when a
+    directory was found, so `release.json` stays readable; a bare file is returned as itself, and its
+    holder gets no release label — which is the honest answer, since a loose file carries none.
+    """
+    if load_dotenv_file:
+        load_env()
+
+    candidate = explicit or os.getenv(env_var)
+    search = Path(candidate) if candidate else default_dir
+
+    if search.is_file() and search.name == payload:
+        return search
+    if search.is_dir() and (search / payload).is_file():
+        return search
+    return None
+
+
+def default_acmg_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    """The `<base>/acmg_sf` directory — operator-built only (see `ACMG_SUBDIR`)."""
+    return _cache_dir(ACMG_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
+def resolve_acmg_reference(
+    acmg_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate a built ACMG SF snapshot (`$JUST_DNA_ACMG_CACHE`), without downloading.
+
+    `None` means nobody provisioned one, and `check-acmg` reads that as leave to fall back to
+    scraping NCBI's page — which serves **v3.2** while ACMG published v3.3 in June 2025, so a
+    correctly authored v3.3 row is reported as wrong by the fallback. That is the whole reason this
+    resolver exists: the snapshot was buildable and unreachable unless a caller passed `--sf-list` by
+    hand, so the accurate list was the one path a deployment never took.
+    """
+    return _resolve_named_cache(
+        acmg_cache, "JUST_DNA_ACMG_CACHE",
+        default_acmg_cache_dir(load_dotenv_file=load_dotenv_file),
+        ACMG_SNAPSHOT_FILENAME, load_dotenv_file=load_dotenv_file,
+    )
+
+
+def default_strchive_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    """The `<base>/strchive` directory — see `STRCHIVE_SUBDIR`."""
+    return _cache_dir(STRCHIVE_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
+def resolve_strchive_reference(
+    strchive_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate a built STRchive catalogue (`$JUST_DNA_STRCHIVE_CACHE`), without downloading.
+
+    `None` is nobody-asked rather than "STRchive lists no such locus", and `check-repeat-bands` says
+    so in those words (`@unreachable-not-absent`). A directory is preferred over a bare
+    `STRchive-loci.json` because only the directory carries `release.json`, and without it the check
+    cannot name the release it compared against.
+    """
+    return _resolve_named_cache(
+        strchive_cache, "JUST_DNA_STRCHIVE_CACHE",
+        default_strchive_cache_dir(load_dotenv_file=load_dotenv_file),
+        STRCHIVE_CATALOGUE_FILENAME, load_dotenv_file=load_dotenv_file,
+    )
+
+
+def default_drug_labels_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    """The `<base>/drug_labels` directory — see `DRUG_LABELS_SUBDIR`."""
+    return _cache_dir(DRUG_LABELS_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
+def resolve_drug_labels_reference(
+    drug_labels_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate a built regulator drug-label snapshot (`$JUST_DNA_DRUG_LABELS_CACHE`).
+
+    A parquet snapshot like ClinPGx's, and a **separate** cache from it on purpose: the two archives
+    are dated from their own `CREATED_*.txt` and do not refresh together (`DRUG_LABELS_SUBDIR`).
+    Provisioning is `download.ensure_drug_labels_snapshot`.
+    """
+    return _resolve_parquet_cache(
+        drug_labels_cache, "JUST_DNA_DRUG_LABELS_CACHE",
+        default_drug_labels_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )

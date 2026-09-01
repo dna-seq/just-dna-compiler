@@ -65,6 +65,11 @@ from just_dna_format.binning import (
 )
 from just_dna_format.manifest import VerificationRecord
 
+from just_dna_enricher.locations import (
+    RELEASE_FILENAME,
+    STRCHIVE_CATALOGUE_FILENAME,
+    resolve_strchive_reference,
+)
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -74,10 +79,8 @@ logger = logging.getLogger(__name__)
 SOURCE_NAME = "strchive"
 
 #: The catalogue file inside a built snapshot, and the name the upstream repository gives it.
-CATALOGUE_FILENAME = "STRchive-loci.json"
 
 #: The provenance file a built snapshot carries beside the catalogue.
-RELEASE_FILENAME = "release.json"
 
 #: The authored table this check reads. One name rather than a `_TABLE_KINDS` lookup, because the
 #: check is *about* this kind: `RepeatAlleleRow` is the only binning kind a repeat catalogue speaks to.
@@ -294,7 +297,7 @@ def load_strchive_catalogue(path: Path) -> StrchiveCatalogue:
     release_path: Path | None = None
     if path.is_dir():
         release_path = path / RELEASE_FILENAME
-        path = path / CATALOGUE_FILENAME
+        path = path / STRCHIVE_CATALOGUE_FILENAME
     else:
         sibling = path.parent / RELEASE_FILENAME
         release_path = sibling if sibling.is_file() else None
@@ -590,6 +593,11 @@ def check_repeat_bands(
     spec_dir = Path(spec_dir)
     result = RepeatBandResult(mode=mode)
 
+    # A provisioned catalogue is used without being named — see `resolve_strchive_reference`. Resolved
+    # here rather than at the `catalogue is None` branch below so that a built snapshot is found
+    # before the *no reference* message is composed, and only after the table has been read: a module
+    # with no band table asks nothing, and looking for a catalogue to answer it would be work done for
+    # a question nobody put.
     rows = load_repeat_alleles(spec_dir)
     if not rows:
         # The check does not *apply*: a module with no band table has posed no question a repeat
@@ -609,6 +617,8 @@ def check_repeat_bands(
             record=skipped("repeat_band_agreement", "nothing_to_check", detail=note, source=SOURCE_NAME),
         )
 
+    if catalogue is None:
+        catalogue = resolve_strchive_reference()
     if catalogue is None:
         note = (
             "repeat-band cross-check skipped: no STRchive catalogue was provisioned. Build one with "

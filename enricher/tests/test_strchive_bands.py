@@ -510,7 +510,7 @@ def test_a_failed_download_is_this_module_error_and_leaves_no_partial_file(
         raise httpx.ConnectError("no route")
 
     monkeypatch.setattr(httpx, "stream", _refuse)
-    dest = tmp_path / strchive.CATALOGUE_FILENAME
+    dest = tmp_path / strchive.STRCHIVE_CATALOGUE_FILENAME
     with pytest.raises(strchive.StrchiveUnavailable, match="could not download"):
         download_catalogue(dest, "https://example.invalid/loci.json")
     assert sorted(p.name for p in tmp_path.iterdir()) == [], "a .part survived the failure"
@@ -530,14 +530,14 @@ def test_a_rebuild_never_leaves_a_release_json_describing_bytes_that_are_gone(
     out = tmp_path / "snap"
     good = build_strchive_snapshot(out, catalogue=_SLICE, release="v0.0.1")
     assert good.dataset == "strchive_v0.0.1"
-    first = (out / strchive.CATALOGUE_FILENAME).read_bytes()
+    first = (out / strchive.STRCHIVE_CATALOGUE_FILENAME).read_bytes()
 
     empty = tmp_path / "empty.json"
     empty.write_text("[]", encoding="utf-8")
     with pytest.raises(strchive.StrchiveError, match="zero loci"):
         build_strchive_snapshot(out, catalogue=empty, release="v0.0.2")
 
-    assert (out / strchive.CATALOGUE_FILENAME).read_bytes() == first, "the good catalogue survived"
+    assert (out / strchive.STRCHIVE_CATALOGUE_FILENAME).read_bytes() == first, "the good catalogue survived"
     assert load_strchive_catalogue(out).dataset == "strchive_v0.0.1"
     assert not list(out.glob("*.incoming")), "the refused bytes were left behind"
 
@@ -579,13 +579,13 @@ def test_a_snapshot_supplies_the_release_label_and_a_bare_file_does_not(tmp_path
     An unlabelled snapshot is honestly unlabelled — the record then says the comparison happened
     against an unnamed release, which is a weaker claim than a fabricated one and a true one.
     """
-    bare = tmp_path / strchive.CATALOGUE_FILENAME
+    bare = tmp_path / strchive.STRCHIVE_CATALOGUE_FILENAME
     shutil.copyfile(_SLICE, bare)
     assert load_strchive_catalogue(bare).dataset is None
 
     snapshot = tmp_path / "snap"
     snapshot.mkdir()
-    shutil.copyfile(_SLICE, snapshot / strchive.CATALOGUE_FILENAME)
+    shutil.copyfile(_SLICE, snapshot / strchive.STRCHIVE_CATALOGUE_FILENAME)
     (snapshot / strchive.RELEASE_FILENAME).write_text(
         json.dumps({"dataset": "strchive_v0.0.0"}), encoding="utf-8"
     )
