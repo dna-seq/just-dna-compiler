@@ -31,12 +31,23 @@ curl -sf "https://api.github.com/gists/$GIST" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["history"][0]["version"])'
 ```
 
-**In sync through gist revision `fd7c3b5e462fcc27c8f597b24f466738c1b42991`**, ours, pushed 2026-08-21,
-so it is in sync by construction. It supersedes `32967e3699c0…` — also ours, the same day, and the
-substantive one, since `fd7c3b5e…` only adds the CDN note below — and before those `fffbcc65653b…`
+**In sync through gist revision `e81d9a18755ea215144518489c52e5c5669b0b25`**, ours, pushed 2026-09-01,
+so it is in sync by construction. It carries **two** things outward: the tracked-item allocator as the
+generic `item-next.py` (§1 here, §2 there) and the duplicate-id entry that had been owed since
+2026-08-31. The three existing scripts went across byte-identical, verified against the previous
+revision — this push adds a file and extends two documents, and touches nothing else. It supersedes
+`fd7c3b5e462fcc27c8f597b24f466738c1b42991` (2026-08-21, ours, which only added the CDN note) and
+`32967e3699c0…` before it, the substantive one of that pair; before those `fffbcc65653b…`
 (2026-08-21), which was a genuine inbound adoption, the first since the channel was built and the one
 that paid for it. Earlier still: `a74366fa6d72…` (2026-08-21, ours), `bd793a8ce98b…` (2026-08-18) and
 `ab7e2a89c48d…` (2026-08-16), the baseline the digest check was first pinned to.
+
+**A published `gh` gotcha found by this push, and it exits 0.** `gh gist edit <id> -f <name>` does not
+read stdin on every version — on 2.4.0 it selects a file for interactive editing, so
+`gh gist edit … -f README.md < README.md` reported success and changed nothing; only the API call
+`gh api -X PATCH /gists/<id> --input <payload.json>` actually wrote. **Verify a push by re-reading the
+version-pinned raw URL and comparing bytes**, never by the command's exit code — `--add` for a new file
+did work, which is what made the partial success look complete.
 
 **The scripts were byte-identical across the inbound revision** — everything that arrived was prose, so
 the auto-adopt gate below was satisfied trivially: with no `fingerprint()` change there was nothing to
@@ -117,12 +128,12 @@ write, so a reader who reasonably guesses "run the ledger and copy what it print
 on every reply longer than a paragraph, which is most of them. It went into the gist's Step 3, where the
 stamping actually happens, and the baseline above moved with it.
 
-**One item is owed outward as of 2026-08-31 and has not been pushed** — the duplicate-id entry in §6
-(an id under two top-level headings archives as one section, and the fingerprint check reports it as a
-mutation *after writing*). It is pattern material rather than local tuning: `section_span` and the
+**Nothing is owed outward as of 2026-09-01.** The duplicate-id entry in §6 — an id under two
+top-level headings archives as one section, and the fingerprint check reports it as a mutation *after
+writing* — was owed from 2026-08-31 and went across in the push above, into the published §5's
+second-repo subsection. It is pattern material rather than local tuning: `section_span` and the
 verification are both in the published copy, so the same refusal happens in any tree running this loop,
-and the entry is a hand step plus a *why not fixed in the tools*. It sits here until a push is
-authorized; the digest check on 2026-08-31 read `fd7c3b5e…`, unchanged, so nothing is owed inbound.
+and the entry is a hand step plus a *why not fixed in the tools*. The allocator went with it.
 
 **Three items went outward on 2026-08-21, in revision `32967e36…`, with the CDN note following in
 `fd7c3b5e…`, and nothing was owed as of it.**
@@ -134,6 +145,12 @@ which read a fixed inbox/history pair while the same document describes splittin
 on a fixture with a split-off half the published copy returned an id five short of the true one, each
 of them already answered. All three were reproduced against the gist's own scripts in a scratch repo
 before being pushed, which is the only way to tell a generic defect from a local one.
+
+**The allocator crossed, but its *placement* here did not.** `.claude/rm-next.py` is published as
+`item-next.py`, parameterized on `INDEX`/`SCAN_DIR`/`ITEM_PREFIX`/`ANCHOR` — this tree's `RM_TOC.md`,
+`docs/` and `RM` are all defaults over there, and the published copy names none of them. What stayed
+local is the reservation *anchor* being `## ⏳ Open, no release decided`, which is this index's own
+heading; the generic default is the first `## ` heading, since a generic copy cannot know one.
 
 **§4 and §5 are deliberately not generalized, decided 2026-08-21 — do not re-raise this.** The published
 copy has never carried a thresholds section or an unattended-permit section, and it should not: the

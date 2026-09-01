@@ -731,9 +731,22 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   the tool's own docstring states. Ids are never reused; the tombstone has to *contain* the number,
   because a scan is all that reads it. Found by running the release path, not by reading it.
 
-  The lock is pinned by running the failing version: eight concurrent allocators with `flock` neutered
-  produced 5 distinct of 8, one number taken three times. Without that companion test the passing one
-  proves nothing about the lock.
+  The lock is pinned by running the failing version — and **the first version of that guard was flaky,
+  which is its own lesson.** Eight real processes with `flock` neutered produced 5 distinct of 8 (one
+  number taken three times) when they overlapped, but each pays its own interpreter startup, so about
+  one run in five they serialized by luck and the guard passed while the property was broken. A
+  probabilistic guard is worse than none: it is the passing side that gets believed. Rewritten to
+  **force the interleave** rather than race it — `allocate` is scan-then-append, so calling the scan
+  twice before either append is the incident, deterministically. 8/8 stable and ~100× faster. Generalize
+  it: **a concurrency test that needs luck to fail needs the window opened by hand.**
+
+  **Published to the gist on 2026-09-01, and the push found a `gh` gotcha that exits 0.**
+  `gh gist edit <id> -f <name> < file` does not read stdin on every version — on 2.4.0 `-f` selects a
+  file for *interactive* editing, so two document pushes reported success and wrote nothing, while the
+  `--add` of the new file worked and made the partial success look complete. Only
+  `gh api -X PATCH /gists/<id> --input <payload.json>` actually wrote. **Verify an outbound push by
+  re-reading the version-pinned raw URL and comparing bytes, never by the exit code** — the same shape
+  as `@off-switch-needs-a-probe`: run the thing, do not read it.
 
 ## Checks: where they run, and what severity means
 

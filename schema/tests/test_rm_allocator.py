@@ -85,15 +85,39 @@ def test_concurrent_allocations_never_take_the_same_number(tmp_path: pathlib.Pat
     assert sorted(int(g.removeprefix("RM")) for g in got) == list(range(3, 11))
 
 
-@pytest.mark.skipif(not hasattr(os, "fork"), reason="POSIX flock only")
 def test_the_same_run_collides_once_the_lock_is_removed(tmp_path: pathlib.Path) -> None:
-    """**The guard, watched failing.** Identical to the test above but for the `flock` call, and it
-    must produce duplicates — otherwise the test above is passing for some other reason and the lock
-    is not what is doing the work. Scheduling decides how many collide, so the assertion is that at
-    least two runs agreed, never an exact count."""
-    repo = _sandbox(tmp_path, lock=False)
-    got = _allocate_concurrently(repo)
-    assert len(set(got)) < len(got), f"expected a collision without the lock, got {got}"
+    """**The guard, watched failing** — the companion without which the test above proves nothing
+    about the lock, since eight distinct ids is also what a correct-by-accident implementation gives.
+
+    **The interleave is forced, not raced.** Eight real processes were the first version of this and
+    it was flaky at roughly one run in five: each pays its own interpreter startup, so they often do
+    not overlap at all and the unlocked code happens to serialize. A probabilistic guard that passes
+    when the property is broken is worse than none — so this drives the two halves by hand instead.
+    `allocate` is scan-then-append; running both scans before either append is exactly the window the
+    lock closes, and it is deterministic.
+    """
+    repo = _sandbox(tmp_path)
+    module = _load(repo)
+    module.DOCS = repo / "docs"
+    module.TOC = repo / "docs" / "RM_TOC.md"
+
+    # Two sessions, both reading before either writes — the shape of the 2026-09-01 incident.
+    first_seen = module.next_free(module.used_numbers())
+    second_seen = module.next_free(module.used_numbers())
+    assert first_seen == second_seen, "both sessions must read the same number for this to be the bug"
+
+    # Each then writes the number it read, which is what the pre-allocator procedure did by hand.
+    for number in (first_seen, second_seen):
+        module.TOC.write_text(module._insert(module.TOC.read_text(), module._row(number, None)))
+    rows = [line for line in module.TOC.read_text().splitlines() if line.startswith("- 🔷")]
+    assert len(rows) == 2 and all(f"RM{first_seen}" in row for row in rows), rows
+
+    # And the allocator, over the same window, cannot do that: the append is inside the read.
+    fresh = _sandbox(tmp_path / "fresh")
+    other = _load(fresh)
+    other.DOCS = fresh / "docs"
+    other.TOC = fresh / "docs" / "RM_TOC.md"
+    assert other.allocate(note=None, dry_run=False) != other.allocate(note=None, dry_run=False)
 
 
 # ── the two properties the repair turns on ──────────────────────────────────────────────────────
