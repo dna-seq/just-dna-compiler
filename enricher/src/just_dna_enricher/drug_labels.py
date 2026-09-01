@@ -774,13 +774,23 @@ def arm_summary(result: DrugLabelResult) -> str:
     nothing speaks: the tokens `single`, `unstated` and `unplaced` reach a reader with no way to tell
     what they claim. Aggregated by arm rather than listed per subject, so the sentence count is
     bounded by the vocabularies and not by the module's size.
+
+    **The two axes are named, not flat-joined.** They answer different questions — *do the labels agree
+    with each other* and *where does the module sit relative to them* — and a reader given
+    `8 discordant; 9 unplaced` cannot tell which is which. The members happen to be disjoint today,
+    so a flat list is unambiguous by accident; a vocabulary gaining a member the other one already has
+    would make it silently wrong, and that is the shape this tree keeps closing rather than relying on.
     """
-    parts: list[str] = []
-    for arm, count in sorted(result.concordance_arms.items()):
-        parts.append(f"{count} {arm} ({_CONCORDANCE_SENTENCES[arm]})")
-    for arm, count in sorted(result.position_arms.items()):
-        parts.append(f"{count} {arm} ({_POSITION_SENTENCES[arm]})")
-    return "; ".join(parts)
+    axes = (
+        ("concordance", result.concordance_arms, _CONCORDANCE_SENTENCES),
+        ("position", result.position_arms, _POSITION_SENTENCES),
+    )
+    return "; ".join(
+        f"{axis}: "
+        + ", ".join(f"{count} {arm} ({sentences[arm]})" for arm, count in sorted(arms.items()))
+        for axis, arms, sentences in axes
+        if arms
+    )
 
 
 def verification_record(result: DrugLabelResult) -> VerificationRecord:

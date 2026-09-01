@@ -4651,6 +4651,13 @@ token two ways: the star alleles run together (`TPMT*3A`) and the DPYD haplotype
 while two regulators named it exactly, which is a false coverage claim rather than a miss. The bare
 spelling is tried last, for an rsID and for an HLA allele already authored with its gene.
 
+**Composition is spelling, never an allele-definition mapping, and the limit is worth stating.** A
+DPYD module authoring `*2A` gets `DPYD*2A` / `DPYD *2A` / `*2A` and matches nothing, because the file
+spells that allele `DPYD c.1905+1G>A (*2A)` — a star name and the variant that defines it are the same
+allele under two naming systems, and knowing that is PharmVar's job rather than this join's. So the
+allele tier answers where the two sides spell the same allele the same way; where they do not, the
+gene-tier subject still answers and the allele is counted as named by no label.
+
 An authored allele no label names is neither withheld nor a finding: the gene-tier subject for the same
 pair is what answers for it, so it is **counted** and reported as a coverage number.
 
