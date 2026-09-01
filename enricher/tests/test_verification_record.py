@@ -853,9 +853,8 @@ def test_every_check_member_has_an_emitter_or_says_it_is_reserved() -> None:
         #: The 2026-09-01 source-adoption round. Each name lands with its comment in
         #: `VALID_VERIFICATION_CHECKS` before its pass exists, and leaves this set in the commit
         #: that lands the pass — so a member that never gains one stays visible here rather than
-        #: disappearing into a floor. RM163's two left in the commit that landed
-        #: `check-identifiers`' fourth registry.
-        "repeat_band_agreement",
+        #: disappearing into a floor. RM163's two left with `check-identifiers`' fourth
+        #: registry, and RM165's with `check-repeat-bands`.
         "literature_coverage",
         "regulator_label_agreement",
     }
