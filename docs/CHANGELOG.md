@@ -58,11 +58,20 @@ that was measuring something else, plus the probe round behind RM170.
   three already land it, and **STRchive's is dropped at parse**. Filed **RM174** out of it: a
   combination-genotype refutation reaches the parquet as two single-variant rows because the row
   builder stamps the variant's profile over the evidence item's.
-- **RM173's premise was replaced by its own probe.** ClinPGx `clinicalVariants.zip` is not a third
-  source: **96.3% of its 5,190 rows are already in the archive the lane reads**, its six columns are a
-  subset of that file's fifteen, and its `type` column is `Phenotype Category` with a different
-  separator. What it does show is that **the adopted archive is 13 months older than its sibling**
-  (`CREATED_2025-07-05` against `CREATED_2026-08-05`), with 99 residue rows whose curation has moved.
+- **RM173 closed, and RM175 opened: the PGx lane reads a retired filename.** The entry's premise was
+  replaced twice in one day. First: `clinicalVariants.zip` is not a third source — **96.3% of its
+  5,190 rows are already in the archive the lane reads**, and its `type` column is
+  `Phenotype Category` with a different separator. Then the maintainer's investigation
+  ([CLINPGX_ARCHIVES](probes/CLINPGX_ARCHIVES.md)) replaced the 13-month gap that finding ended on:
+  the 15-column table was **renamed** to `summaryAnnotations.zip` when PharmGKB became ClinPGx on
+  **2025-07-29**, and `clinicalAnnotations.zip` is a frozen S3 object last written 24 days before that
+  post, on no downloads page, still answering 200 — **and still this lane's default**. So every
+  `annotations.parquet` ever built here came out of the database as it stood 14 months ago.
+  **RM175** is the rebuild: four member renames, one id column, no vocabulary or model change, but
+  8 rows change `Level of Evidence` and every URL rehosts, so the digest moves. **A retired filename
+  that still 200s is indistinguishable from a live one at the HTTP layer**, which is the durable
+  lesson; and a no-JS fetch of any clinpgx.org page is the *Javascript Is Disabled!* shell, so it is
+  no evidence about what the source lists.
 - **MITOMAP's terms are read (RM171): CC BY 3.0**, commercial use and redistribution permitted,
   attribution required. Read from a Wayback capture because the live page is behind a Cloudflare
   interstitial; the CC BY-NC a search surfaces is the *article's* licence, not the database's.

@@ -6243,3 +6243,78 @@ spellings of one unit (`SD units`, `SD`, `s.d.`) and two more of which differ on
 `artifact.digest` moved, correctly, and its **`content_signature` did not** — which corrects the
 prediction written into the plan: neither a derived sidecar nor a manifest-only block is authored row
 content.
+
+## RM173 — closed 2026-09-02, superseded by RM175: the year-old archive was a retired filename, not a stale sibling
+
+**Severity** low-medium · **Status** ✖ **CLOSED 2026-09-02, not shipped** — its premise was replaced
+twice in one day, and the second replacement is a different and much larger item. Closed into
+[RM175](ROADMAP.md#rm175--the-pgx-lanes-default-archive-is-a-retired-filename-and-every-row-it-has-ever-built-came-out-of-a-frozen-2025-object)
+· **Owner** enricher · **Motivating case** RM166's probe, which found it while answering a narrower
+question
+
+> **Read this first: closed because it was right about the number and wrong about what the number
+> meant.** This entry measured a 13-month gap between `clinicalAnnotations.zip` and
+> `clinicalVariants.zip` and read it as two live surfaces of one source refreshing out of lockstep.
+> [CLINPGX_ARCHIVES](probes/CLINPGX_ARCHIVES.md) established that the 15-column table was **renamed**
+> to `summaryAnnotations.zip` when PharmGKB became ClinPGx on 2025-07-29; the old filename is a frozen
+> S3 object the API still answers 200, it is on no downloads page, and **this repo's builder still
+> defaults to it**. So the currency question this entry ended on is not a signal to publish — it is a
+> lane reading a dead file, which is RM175. Everything below is kept as written; §7 of the probe lists
+> the five corrections point by point.
+
+**Filed 2026-09-01, out of RM166's build.** RM166 asked whether the FDA's drug-label content was
+already inside a source this repo has adopted; it is, and enumerating the download endpoint properly
+answered a second question nobody had asked. **ClinPGx publishes at least twelve archives** —
+`clinicalAnnotations`, `variantAnnotations`, `clinicalVariants`, `drugLabels`, `relationships`,
+`variants`, `genes`, `drugs`, `chemicals`, `phenotypes`, `occurrences`, `pathways-tsv` — and after
+RM166 the lane reads **two**. That framing stands. What does not is the sentence that followed it.
+
+### Probed 2026-09-02, and `clinicalVariants` is not a third source
+
+The entry said `clinicalVariants.zip` is "the one that bears on a shipped table kind", and posed the
+`type` column's comma-combining as the design question. Both were wrong, and one join says why.
+
+**96.3% of its rows are already in the archive the lane reads.** Joining all 5,190 rows against
+`clinical_annotations.tsv` on `(variant, gene, drugs, phenotype category, level of evidence)` recovers
+**5,000**; 190 remain, of which only 91 are a `(variant, gene)` pair the adopted archive does not
+carry at all. Its six columns are a strict subset of the other's fifteen — no `Clinical Annotation
+ID`, no `URL`, no `Score`, no PMID or evidence counts, no specialty population. It is a rollup of
+`clinicalAnnotations` published as its own download, and everything it could contribute to
+`pharm_variants.csv` the lane already has a richer version of.
+
+**The `type` question is already answered by the column the lane stores.** `type`'s thirteen observed
+values are `Phenotype Category`'s thirteen observed values, member for member, differing only in the
+separator: `Efficacy;Toxicity` in `clinical_annotations.tsv`, `Efficacy,Toxicity` in
+`clinicalVariants.tsv`. The lane stores that cell verbatim as `phenotype_category` and it is already
+in the ClinPGx dedup key (`@clinpgx-full-key`), so "one cell or several rows" was settled before this
+item existed. The combination is 106 rows, 2.0%, seven combinations over a six-member base
+(`Efficacy`, `Toxicity`, `Metabolism/PK`, `Other`, `Dosage`, `PD`), and the member order is canonical
+— no combination appears in two orders. The separator difference is `@one-normalizer-two-spellings`
+with the *separator* as the spelling, and it is a reason to be careful reading this file, not a reason
+to read it.
+
+### What the probe found instead, and it is worth more than the item it replaces
+
+**The archive the lane reads is 13 months older than the one beside it.** `clinicalAnnotations.zip`
+as served by `api.clinpgx.org` today carries `CREATED_2025-07-05.txt`; `clinicalVariants.zip` carries
+`CREATED_2026-08-05.txt`. Same source, same licence (CC BY-SA 4.0 + no-sale, read out of each
+payload's own `LICENSE.txt`), two archives of substantially the same content a year apart. That is
+`@two-surfaces-two-denominators` with teeth: **99 of the 190 residue rows are subjects the lane
+already holds whose level, category or drug set has moved** — curation drift the lane cannot see,
+because the file it reads has not been rebuilt upstream since 2025-07-05.
+
+**So the open question is a currency one.** Does the lane report that its own ClinPGx archive is
+stale relative to a sibling archive from the same source — and if so is that a check, a `release.json`
+field, or a line in the snapshot's notice? `@currency-asks-the-source-not-the-cache` says the question
+is asked of the source, and here the source answers it in a second file's `CREATED_*.txt`, which is
+about as cheap as the ask gets. Reading `clinicalVariants` **as a dated probe of the lane's own
+staleness** is a different and much smaller thing than adopting it as a table source, and it is the
+only use the measurement supports.
+
+**Not a widening of RM166.** That item is drug labels and it shipped; this is a different file
+answering a different question, and keeping an item open by changing what it is about is how an item
+stops meaning anything. This entry has now changed what it is about *once*, on a measurement that
+refuted its premise — which is the one licit reason, and it is recorded here rather than smoothed.
+
+**Related** RM166 (where it was found), RM29b, `@clinpgx-full-key`, `@one-normalizer-two-spellings`,
+`@two-surfaces-two-denominators`, `@currency-asks-the-source-not-the-cache`, `@pgx-research-only`.
