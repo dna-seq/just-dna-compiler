@@ -1,0 +1,1108 @@
+{
+  "@context": "http://reg.genome.network/schema/allele.jsonld",
+  "@id": "http://reg.genome.network/allele/CA346923",
+  "communityStandardTitle": [
+    "NM_000410.4(HFE):c.502G>T (p.Glu168Ter)"
+  ],
+  "externalRecords": {
+    "ClinVarAlleles": [
+      {
+        "@id": "http://www.ncbi.nlm.nih.gov/clinvar/?term=94503[alleleid]",
+        "alleleId": 94503,
+        "preferredName": "NM_000410.4(HFE):c.502G>T (p.Glu168Ter)"
+      }
+    ],
+    "ClinVarVariations": [
+      {
+        "@id": "http://www.ncbi.nlm.nih.gov/clinvar/variation/88946",
+        "RCV": [
+          "RCV000190906",
+          "RCV001058987"
+        ],
+        "variationId": 88946
+      }
+    ],
+    "MyVariantInfo_hg19": [
+      {
+        "@id": "http://myvariant.info/v1/variant/chr6:g.26091703G>T?assembly=hg19",
+        "id": "chr6:g.26091703G>T"
+      }
+    ],
+    "MyVariantInfo_hg38": [
+      {
+        "@id": "http://myvariant.info/v1/variant/chr6:g.26091475G>T?assembly=hg38",
+        "id": "chr6:g.26091475G>T"
+      }
+    ],
+    "dbSNP": [
+      {
+        "@id": "http://www.ncbi.nlm.nih.gov/snp/146519482",
+        "rs": 146519482
+      }
+    ],
+    "gnomAD_4": [
+      {
+        "@id": "http://gnomad.broadinstitute.org/variant/6-26091475-G-T?dataset=gnomad_r4",
+        "id": "6-26091475-G-T",
+        "variant": "6:26091475 G / T"
+      }
+    ]
+  },
+  "genomicAlleles": [
+    {
+      "chromosome": "6",
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 26091475,
+          "referenceAllele": "G",
+          "start": 26091474
+        }
+      ],
+      "hgvs": [
+        "NC_000006.12:g.26091475G>T",
+        "CM000668.2:g.26091475G>T"
+      ],
+      "referenceGenome": "GRCh38",
+      "referenceSequence": "http://reg.genome.network/refseq/RS000054"
+    },
+    {
+      "chromosome": "6",
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 26091703,
+          "referenceAllele": "G",
+          "start": 26091702
+        }
+      ],
+      "hgvs": [
+        "NC_000006.11:g.26091703G>T",
+        "CM000668.1:g.26091703G>T"
+      ],
+      "referenceGenome": "GRCh37",
+      "referenceSequence": "http://reg.genome.network/refseq/RS000030"
+    },
+    {
+      "chromosome": "6",
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 26199682,
+          "referenceAllele": "G",
+          "start": 26199681
+        }
+      ],
+      "hgvs": [
+        "NC_000006.10:g.26199682G>T"
+      ],
+      "referenceGenome": "NCBI36",
+      "referenceSequence": "http://reg.genome.network/refseq/RS000006"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 9195,
+          "referenceAllele": "G",
+          "start": 9194
+        }
+      ],
+      "hgvs": [
+        "NG_008720.2:g.9195G>T",
+        "LRG_748:g.9195G>T"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS001178"
+    }
+  ],
+  "transcriptAlleles": [
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 512,
+          "referenceAllele": "G",
+          "start": 511
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000485729.2:c.502G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000417534.2:p.Glu168Ter",
+        "hgvsWellDefined": "ENSP00000417534.2:p.Glu168_Phe348delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgPheTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS914146"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 390,
+          "endIntronDirection": "-",
+          "endIntronOffset": 440,
+          "referenceAllele": "C",
+          "start": 390,
+          "startIntronDirection": "-",
+          "startIntronOffset": 441
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004757",
+      "geneNCBI_id": 8347,
+      "geneSymbol": "H2BC4",
+      "hgvs": [
+        "ENST00000707188.1:c.391-441C>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000516775.1:n.391-441C>A"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS914499"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 514,
+          "referenceAllele": "G",
+          "start": 513
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000357618.10:c.502G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000417404.1:p.Glu168Ter",
+        "hgvsWellDefined": "ENSP00000417404.1:p.Glu168_Glu348delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS748965",
+      "MANE": {
+        "maneVersion": "1.3",
+        "maneStatus": "MANE Select",
+        "nucleotide": {
+          "Ensembl": {
+            "hgvs": "ENST00000357618.10:c.502G>T"
+          },
+          "RefSeq": {
+            "hgvs": "NM_000410.4:c.502G>T"
+          }
+        },
+        "protein": {
+          "Ensembl": {
+            "hgvs": "ENSP00000417404.1:p.Glu168Ter"
+          },
+          "RefSeq": {
+            "hgvs": "NP_000401.1:p.Glu168Ter"
+          }
+        }
+      }
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 504,
+          "referenceAllele": "G",
+          "start": 503
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000309234.10:c.502G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000311698.6:p.Glu168Ter",
+        "hgvsWellDefined": "ENSP00000311698.6:p.Glu168_Phe337delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerSerPheTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS256173"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 500,
+          "endIntronDirection": "+",
+          "endIntronOffset": 371,
+          "referenceAllele": "G",
+          "start": 500,
+          "startIntronDirection": "+",
+          "startIntronOffset": 370
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000317896.11:c.340+371G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000313776.7:n.340+371G>T"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS257442"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 384,
+          "endIntronDirection": "+",
+          "endIntronOffset": 371,
+          "referenceAllele": "G",
+          "start": 384,
+          "startIntronDirection": "+",
+          "startIntronOffset": 370
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000336625.12:c.340+371G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000337819.8:n.340+371G>T"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS260334"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 398,
+          "referenceAllele": "G",
+          "start": 397
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000349999.8:c.238G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000259699.6:p.Glu80Ter",
+        "hgvsWellDefined": "ENSP00000259699.6:p.Glu80_Glu260delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS262645"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 236,
+          "endIntronDirection": "-",
+          "endIntronOffset": 1643,
+          "referenceAllele": "G",
+          "start": 236,
+          "startIntronDirection": "-",
+          "startIntronOffset": 1644
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000352392.8:c.77-1644G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000315936.4:n.77-1644G>T"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS262860"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 236,
+          "endIntronDirection": "-",
+          "endIntronOffset": 1209,
+          "referenceAllele": "G",
+          "start": 236,
+          "startIntronDirection": "-",
+          "startIntronOffset": 1210
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000353147.9:c.77-1210G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000312342.5:n.77-1210G>T"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS262933"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 624,
+          "referenceAllele": "G",
+          "start": 623
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000357618.9:c.502G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000417404.1:p.Glu168Ter",
+        "hgvsWellDefined": "ENSP00000417404.1:p.Glu168_Glu348delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS264178"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 593,
+          "referenceAllele": "G",
+          "start": 592
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000397022.7:c.433G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000380217.3:p.Glu145Ter",
+        "hgvsWellDefined": "ENSP00000380217.3:p.Glu145_Glu325delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS277558"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 538,
+          "referenceAllele": "G",
+          "start": 537
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000461397.5:c.502G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000420802.1:p.Glu168Ter",
+        "hgvsWellDefined": "ENSP00000420802.1:p.Glu168_Glu334delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS305916"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 551,
+          "referenceAllele": "G",
+          "start": 550
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000470149.5:c.502G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000419725.1:p.Glu168Ter",
+        "hgvsWellDefined": "ENSP00000419725.1:p.Glu168_Glu345delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnGluGlySerGluSerSerSerLeuProGlyLysValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS312658"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 833,
+          "referenceAllele": "G",
+          "start": 832
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000483782.1:n.833G>T"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS323180"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 383,
+          "endIntronDirection": "+",
+          "endIntronOffset": 371,
+          "referenceAllele": "G",
+          "start": 383,
+          "startIntronDirection": "+",
+          "startIntronOffset": 370
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000486147.1:n.383+371G>T"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS325023"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 274,
+          "referenceAllele": "G",
+          "start": 273
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000488199.5:c.238G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000420559.1:p.Glu80Ter",
+        "hgvsWellDefined": "ENSP00000420559.1:p.Glu80_Glu246delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS326564"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 132,
+          "endIntronDirection": "+",
+          "endIntronOffset": 32298,
+          "referenceAllele": "C",
+          "start": 132,
+          "startIntronDirection": "+",
+          "startIntronOffset": 32297
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004751",
+      "geneNCBI_id": 3018,
+      "geneSymbol": "H2BC3",
+      "hgvs": [
+        "ENST00000629531.1:c.132+32298C>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000486472.1:n.132+32298C>A"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS407236"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA346925",
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 662,
+          "referenceAllele": "G",
+          "start": 661
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_000410.3:c.502G>T",
+        "LRG_748t1:c.502G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_000401.1:p.Glu168Ter",
+        "hgvsWellDefined": "NP_000401.1:p.Glu168_Glu348delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS006472"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2826848299",
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 662,
+          "referenceAllele": "G",
+          "start": 661
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_001300749.1:c.502G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_001287678.1:p.Glu168Ter",
+        "hgvsWellDefined": "NP_001287678.1:p.Glu168_Phe337delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerSerPheTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS024812"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 500,
+          "endIntronDirection": "+",
+          "endIntronOffset": 371,
+          "referenceAllele": "G",
+          "start": 500,
+          "startIntronDirection": "+",
+          "startIntronOffset": 370
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139003.2:c.340+371G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620572.1:n.340+371G>T"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS040939"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 500,
+          "endIntronDirection": "+",
+          "endIntronOffset": 371,
+          "referenceAllele": "G",
+          "start": 500,
+          "startIntronDirection": "+",
+          "startIntronOffset": 370
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139004.2:c.340+371G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620573.1:n.340+371G>T"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS040940"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270210",
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 662,
+          "referenceAllele": "G",
+          "start": 661
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139006.2:c.502G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620575.1:p.Glu168Ter",
+        "hgvsWellDefined": "NP_620575.1:p.Glu168_Glu334delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS040941"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270367",
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 398,
+          "referenceAllele": "G",
+          "start": 397
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139007.2:c.238G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620576.1:p.Glu80Ter",
+        "hgvsWellDefined": "NP_620576.1:p.Glu80_Glu260delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS040942"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA916071724",
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 398,
+          "referenceAllele": "G",
+          "start": 397
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139008.2:c.238G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620577.1:p.Glu80Ter",
+        "hgvsWellDefined": "NP_620577.1:p.Glu80_Glu246delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS040943"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270722",
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 593,
+          "referenceAllele": "G",
+          "start": 592
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139009.2:c.433G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620578.1:p.Glu145Ter",
+        "hgvsWellDefined": "NP_620578.1:p.Glu145_Glu325delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS040944"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 236,
+          "endIntronDirection": "-",
+          "endIntronOffset": 1209,
+          "referenceAllele": "G",
+          "start": 236,
+          "startIntronDirection": "-",
+          "startIntronOffset": 1210
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139010.2:c.77-1210G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620579.1:n.77-1210G>T"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS040945"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 236,
+          "endIntronDirection": "-",
+          "endIntronOffset": 1643,
+          "referenceAllele": "G",
+          "start": 236,
+          "startIntronDirection": "-",
+          "startIntronOffset": 1644
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139011.2:c.77-1644G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620580.1:n.77-1644G>T"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS040946"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 624,
+          "referenceAllele": "G",
+          "start": 623
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "XM_011514543.1:c.502G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "XP_011512845.1:p.Glu168Ter",
+        "hgvsWellDefined": "XP_011512845.1:p.Glu168_Phe348delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgPheTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS081768"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 624,
+          "referenceAllele": "G",
+          "start": 623
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "XM_011514544.1:c.502G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "XP_011512846.1:p.Glu168Ter",
+        "hgvsWellDefined": "XP_011512846.1:p.Glu168_Glu345delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnGluGlySerGluSerSerSerLeuProGlyLysValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS081769"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 624,
+          "referenceAllele": "G",
+          "start": 623
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "XR_241893.2:n.624G>T"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS116153"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 596,
+          "referenceAllele": "G",
+          "start": 595
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "XM_011514543.3:c.502G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "XP_011512845.1:p.Glu168Ter",
+        "hgvsWellDefined": "XP_011512845.1:p.Glu168_Phe348delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgPheTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS543375"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 596,
+          "referenceAllele": "G",
+          "start": 595
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "XR_241893.4:n.596G>T"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS605872"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2826848299",
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 514,
+          "referenceAllele": "G",
+          "start": 513
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_001300749.2:c.502G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_001287678.1:p.Glu168Ter",
+        "hgvsWellDefined": "NP_001287678.1:p.Glu168_Phe337delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerSerPheTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS683155"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 352,
+          "endIntronDirection": "+",
+          "endIntronOffset": 371,
+          "referenceAllele": "G",
+          "start": 352,
+          "startIntronDirection": "+",
+          "startIntronOffset": 370
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139003.3:c.340+371G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620572.1:n.340+371G>T"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS699815"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 352,
+          "endIntronDirection": "+",
+          "endIntronOffset": 371,
+          "referenceAllele": "G",
+          "start": 352,
+          "startIntronDirection": "+",
+          "startIntronOffset": 370
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139004.3:c.340+371G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620573.1:n.340+371G>T"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS699816"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270210",
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 514,
+          "referenceAllele": "G",
+          "start": 513
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139006.3:c.502G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620575.1:p.Glu168Ter",
+        "hgvsWellDefined": "NP_620575.1:p.Glu168_Glu334delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS699817"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270367",
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 250,
+          "referenceAllele": "G",
+          "start": 249
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139007.3:c.238G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620576.1:p.Glu80Ter",
+        "hgvsWellDefined": "NP_620576.1:p.Glu80_Glu260delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS699818"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA916071724",
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 250,
+          "referenceAllele": "G",
+          "start": 249
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139008.3:c.238G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620577.1:p.Glu80Ter",
+        "hgvsWellDefined": "NP_620577.1:p.Glu80_Glu246delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS699819"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270722",
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 445,
+          "referenceAllele": "G",
+          "start": 444
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139009.3:c.433G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620578.1:p.Glu145Ter",
+        "hgvsWellDefined": "NP_620578.1:p.Glu145_Glu325delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS699820"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 88,
+          "endIntronDirection": "-",
+          "endIntronOffset": 1209,
+          "referenceAllele": "G",
+          "start": 88,
+          "startIntronDirection": "-",
+          "startIntronOffset": 1210
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139010.3:c.77-1210G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620579.1:n.77-1210G>T"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS699821"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 88,
+          "endIntronDirection": "-",
+          "endIntronOffset": 1643,
+          "referenceAllele": "G",
+          "start": 88,
+          "startIntronDirection": "-",
+          "startIntronOffset": 1644
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139011.3:c.77-1644G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620580.1:n.77-1644G>T"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS699822"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA346925",
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 514,
+          "referenceAllele": "G",
+          "start": 513
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_000410.4:c.502G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_000401.1:p.Glu168Ter",
+        "hgvsWellDefined": "NP_000401.1:p.Glu168_Glu348delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgGluTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS710831",
+      "MANE": {
+        "maneVersion": "1.3",
+        "maneStatus": "MANE Select",
+        "nucleotide": {
+          "Ensembl": {
+            "hgvs": "ENST00000357618.10:c.502G>T"
+          },
+          "RefSeq": {
+            "hgvs": "NM_000410.4:c.502G>T"
+          }
+        },
+        "protein": {
+          "Ensembl": {
+            "hgvs": "ENSP00000417404.1:p.Glu168Ter"
+          },
+          "RefSeq": {
+            "hgvs": "NP_000401.1:p.Glu168Ter"
+          }
+        }
+      }
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2828939037",
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 514,
+          "referenceAllele": "G",
+          "start": 513
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_001384164.1:c.502G>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_001371093.1:p.Glu168Ter",
+        "hgvsWellDefined": "NP_001371093.1:p.Glu168_Phe348delinsTrpGluArgHisLysIleArgAlaArgGlnAsnArgAlaTyrLeuGluArgAspCysProAlaGlnLeuGlnGlnLeuLeuGluLeuGlyArgGlyValLeuAspGlnGlnValProProLeuValLysValThrHisHisValThrSerSerValThrThrLeuArgCysArgAlaLeuAsnTyrTyrProGlnAsnIleThrMetLysTrpLeuLysAspLysGlnProMetAspAlaLysGluPheGluProLysAspValLeuProAsnGlyAspGlyThrTyrGlnGlyTrpIleThrLeuAlaValProProGlyGluGluGlnArgTyrThrCysGlnValGluHisProGlyLeuAspGlnProLeuIleValIleTrpGluProSerProSerGlyThrLeuValIleGlyValIleSerGlyIleAlaValPheValValIleLeuPheIleGlyIleLeuPheIleIleLeuArgLysArgGlnGlySerArgGlyAlaMetGlyHisTyrValLeuAlaGluArgPheTer"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS722677"
+    }
+  ],
+  "type": "nucleotide"
+}

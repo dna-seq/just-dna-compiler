@@ -1390,6 +1390,53 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   Corollary the docs now state: **merge-not-clobber means a re-run does not back-fill** the new licence
   columns onto rows written before 0.6 — delete the sidecar to re-derive.
 
+- `@the-tier-that-answered-is-part-of-the-answer` — **A coverage number that does not name the
+  granularity it was measured at is two numbers pretending to be one (RM167).** LitVar2 indexes the
+  literature at three tiers that sit beside each other as separate nodes — a position node keyed on an
+  rsID, an allele node keyed on a ClinGen CAID, and a gene node — and **the tier a locus is answerable
+  at is a property of the locus, not of the source**. Measured 2026-09-01: BRAF rs113488022 carries
+  32,095 papers on the position node and 31,276 / 99 / 41 on its three allele nodes, three distinct
+  ALTs at one codon differing by three orders of magnitude; HFE rs1800562 carries 3,053 and 2,693; and
+  APOE rs429358 carries 3,945 and **328**, so 92 % of the literature at that locus is not
+  allele-resolved at all. Report the allele node's count as *the* answer and APOE is understated
+  twelvefold; substitute the position count and an allele-level question has been answered with a
+  position-level fact, which is `@refutation-withholds` — a position-level answer **withholds**, it
+  does not answer approximately. So the finding names its tier, allele-resolved / position-only /
+  absent are three outcomes with `unchecked` as the algebra's fourth, and the **position-only residue**
+  (papers on the position node that no allele node claims) is counted rather than discarded. Take the
+  residue over the **union of every allele node at the locus**, never over the matched one alone: the
+  allele nodes overlap, and BRAF's 801 is a set difference, not 32,095 − 31,416.
+
+  **Two ways the probe of a source like this goes wrong, and both happened here.** An earlier pass read
+  the trailing `##` of `litvar@rs1800562##` as a **suffix on an rsID** rather than as two empty slots
+  in `litvar@<clingen_id>#<rsid>#<gene_id>`, asked only `variant/autocomplete`, and concluded the
+  source had no allele tier — a confident negative about a whole tier, from one misread character and
+  one endpoint. Generalize it: **an id grammar with optional slots must be read from the source's own
+  flags, and a tier is absent only after the endpoint that would list it has been asked.** The second
+  is that `autocomplete` is a **prefix search** — `?query=rs429358` returns `rs42935848`, a real node
+  for a different variant — so `[0]` off that list answers confidently about the wrong thing
+  (`@existence-not-identity`), and every id handed to a follow-up call is echoed from a listing rather
+  than constructed from the grammar.
+
+  **And the bound, which ships with the pass rather than beside it.** LitVar answers *which papers
+  discuss an allele that is already identified*; it does not answer *which allele a name meant*. Those
+  read as the same question and are not. Asked of the two records this workspace could not resolve —
+  CIViC 1955 and 2131, four candidate alleles with registered CAIDs — it returns **no node for any of
+  the four**, and `VHL P71fs` returns one node, `litvar@#7428#p.P71fsX`, 1 PMID, an unrelated paper
+  that happens to write "P71fs". The reason is structural: PubTator3's export for all four source
+  papers is title and abstract only, zero variant annotations, none in the PMC open-access subset, and
+  the alleles live in a table inside a paywalled paper. Text mining over abstracts cannot reach a
+  table. A surface that is excellent at one question and useless at the one next to it has to say so
+  where a user will read it — the module docstring, the command's help, and the tier reference.
+
+  Two smaller pins from the same probe. `variant/search/gene/GENE` serves **line-delimited Python
+  `repr()`**, so `.json()` raises and the reader is `ast.literal_eval` per line — a literal parser,
+  never `eval`, over a payload that is Python source. And that endpoint carries no `flag_*` at all,
+  which is why the tier is derived from whichever evidence a record supplies rather than from one
+  field. Also measured and worth correcting: of 588 HFE nodes, **exactly one** is the gene node
+  (`litvar@#3077#`, 3,285 papers) and the other 298 of that group are `litvar@#<gene_id>#<protein>`
+  text mentions — an unnormalized string a miner saw, not an identity anything should join on.
+
 ## Licensing, sources and the compile gate
 
 - `@sidecar-name-and-place` — **A machine-written sidecar has two legal names and two legal places — never join one onto a spec

@@ -247,6 +247,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - PMID and PMCID are one letter apart — `PMC 3110566` once parsed as a real unrelated PMID. `@pmid-vs-pmcid`
 - A regex timeout needs a killable process; a thread hangs the interpreter at exit. `@regex-timeout-process`
 - Derive the `literature.csv` writer from the model; merge-not-clobber never back-fills. `@literature-writer-derived`
+- A coverage answer names the tier it was measured at; allele-resolved, position-only and absent are three. `@the-tier-that-answered-is-part-of-the-answer`
+- An empty id slot is not a suffix, and a prefix search's first hit is a different variant. `@the-tier-that-answered-is-part-of-the-answer`
 
 ### Licensing, sources, the compile gate
 

@@ -1,0 +1,106 @@
+{
+  "https://reg.clinicalgenome.org/allele/CA113795": {
+    "file": "registry_CA113795.json",
+    "status": 200
+  },
+  "https://reg.clinicalgenome.org/allele/CA127512": {
+    "file": "registry_CA127512.json",
+    "status": 200
+  },
+  "https://reg.clinicalgenome.org/allele/CA346923": {
+    "file": "registry_CA346923.json",
+    "status": 200
+  },
+  "https://reg.clinicalgenome.org/allele/CA354214": {
+    "file": "registry_CA354214.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/autocomplete/?query=CA113795": {
+    "file": "autocomplete_CA113795.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/autocomplete/?query=CA127512": {
+    "file": "autocomplete_CA127512.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/autocomplete/?query=CA346923": {
+    "file": "autocomplete_CA346923.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/autocomplete/?query=CA354214": {
+    "file": "autocomplete_CA354214.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/autocomplete/?query=rs146519482": {
+    "file": "autocomplete_rs146519482.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/autocomplete/?query=rs1800562": {
+    "file": "autocomplete_rs1800562.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/autocomplete/?query=rs429358": {
+    "file": "autocomplete_rs429358.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/autocomplete/?query=rs776994377": {
+    "file": "autocomplete_rs776994377.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/autocomplete/?query=rs9366637": {
+    "file": "autocomplete_rs9366637.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40CA113795%23rs1800562%23%23/publications": {
+    "file": "node_CA113795-rs1800562_publications.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40CA127512%23rs429358%23%23/publications": {
+    "file": "node_CA127512-rs429358_publications.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40CA346923%23rs146519482%23%23/publications": {
+    "file": "node_CA346923-rs146519482_publications.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40CA354214%23rs146519482%23%23/publications": {
+    "file": "node_CA354214-rs146519482_publications.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40rs146519482%23%23": {
+    "file": "node_rs146519482.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40rs146519482%23%23/publications": {
+    "file": "node_rs146519482_publications.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40rs1800562%23%23": {
+    "file": "node_rs1800562.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40rs1800562%23%23/publications": {
+    "file": "node_rs1800562_publications.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40rs429358%23%23": {
+    "file": "node_rs429358.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40rs429358%23%23/publications": {
+    "file": "node_rs429358_publications.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40rs9366637%23%23": {
+    "file": "node_rs9366637.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/get/litvar%40rs9366637%23%23/publications": {
+    "file": "node_rs9366637_publications.json",
+    "status": 200
+  },
+  "https://www.ncbi.nlm.nih.gov/research/litvar2-api/variant/search/gene/HFE": {
+    "file": "gene_HFE.txt",
+    "status": 200
+  }
+}

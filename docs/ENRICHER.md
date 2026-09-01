@@ -343,6 +343,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `pubmind_build` | **`[dev]`** builder (0.7, RM134): the ANNOVAR-distributed PubMind table → one parquet + `release.json`. Operator-built, and `pubmind publish` **refuses** | `polars` (lazy), `httpx`, `clin_sig` |
 | `ensembl` | live Ensembl: V2 GraphQL → V1 REST fallback, tenacity | `httpx`, `tenacity` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
+| `litvar` | RM167: LitVar2/PubTator3 literature coverage per locus, **with the tier that answered** (allele node / position node / absent). Reports only; writes no row and no `SourceRow` | `httpx`, `tenacity`, `clingen_allele` |
 | `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar`/`pubmind` builders — `build+publish` for the first four, **`build` only** for `pharmvar` (there is no `pharmvar publish` and there will not be) and `pubmind`, whose `publish` exists and refuses with its reason, `vrs mint` | `typer` |
 
 ## Rate limits (public APIs)
@@ -3447,6 +3448,9 @@ just-dna-enricher literature spec/                 # pass 4: write spec/literatu
                                                    #   reads studies.csv AND any binning row's pmid
 just-dna-enricher literature spec/ --no-fulltext   # existence + identifiers, skip the quote match
 just-dna-enricher check-identifiers spec/          # trait CURIEs (OLS4) + gene symbols (HGNC) + gene/chromosome agreement
+just-dna-enricher litvar coverage spec/            # RM167: which papers LitVar holds per locus, and at which tier
+just-dna-enricher litvar coverage spec/ --offline   # every locus recorded as unchecked, nothing asked
+just-dna-enricher litvar gene HFE                   # every node under a gene, split by tier (rsID / CAID / gene / mention)
 just-dna-enricher dosage spec/ --offline           # no-op with a warning (ClinGen has no snapshot)
 just-dna-enricher gene-validity spec/              # RM24: ClinGen expert-panel gene-disease assertions
 just-dna-enricher gene-validity spec/ --source gencc  # …or GenCC's aggregate of nineteen submitters
@@ -3537,6 +3541,8 @@ directly to compose passes, inject clients, or run in-process.
 | `frequencies` | `frequencies.enrich_frequencies` |
 | `gene-metrics` | `gene_metrics.enrich_gene_metrics` |
 | `dosage` | `clingen.enrich_dosage_sensitivity` |
+| `litvar coverage` | `litvar.check_literature_coverage` + `litvar.verification_records` |
+| `litvar gene` | `litvar.LitvarClient.gene_nodes` |
 | `literature` | `literature.enrich_literature` |
 | `pgx` | `pgx.enrich_pgx` |
 | `check-identifiers` | `identifiers.check_identifiers` |
@@ -3939,3 +3945,135 @@ terms in prose (read 2026-08-17). `redistribution=True` is directly supported; *
 which for an aggregator of thousands of publications are not established. Unknown is neither permission
 nor refusal — `taints_commercial_use` requires an explicit `False`, so a null warns rather than gating.
 Do not tidy it to `True`; a test pins it.
+## LitVar2 / PubTator3 — literature coverage, and the tier that answered (`litvar.py`, online) — RM167
+
+NCBI's LitVar2 indexes the literature **by variant**, and it does so at three tiers that sit beside
+each other as separate nodes. A node id is `litvar@<clingen_id>#<rsid>#<gene_id>` with an unfilled
+slot collapsing to a bare `#`, so `litvar@rs1800562##` is the **position** node and
+`litvar@CA113795#rs1800562##` is the **allele** node beside it, named by a ClinGen canonical allele
+id. `just-dna-enricher litvar coverage spec/` asks, per module locus, which of those answered.
+
+**The finding is the tier, because the tier a locus is answerable at is a property of the locus and
+not of the source.** Measured 2026-09-01:
+
+| locus | position node | allele node(s) | on the position node and no allele node |
+|---|---|---|---|
+| BRAF rs113488022 | 32,095 | 31,276 + 99 + 41, three CAIDs | 801 (2.5 %) |
+| HFE rs1800562 | 3,053 | 2,693, one CAID | 360 (12 %) |
+| APOE rs429358 | 3,945 | **328**, one CAID | **3,617 (92 %)** |
+
+BRAF's three CAIDs are three distinct ALTs at one codon — V600E, V600G, V600A — and they differ by
+three orders of magnitude, so allele resolution is doing real work. **APOE is the case that decides
+the shape**: 92 % of the literature at that locus is not allele-resolved, so a pass that reported the
+allele node's count as *the* answer would understate it twelvefold, and one that quietly substituted
+the position count would answer an allele-level question with a position-level fact. Allele-resolved,
+position-only and absent are three outcomes, and for once the source supplies the three states rather
+than the schema imposing them.
+
+**How a module locus reaches an allele node.** The position node's own record carries `clingen_ids`;
+each CAID goes through RM153's `clingen_allele.ClingenAlleleClient`, and its GRCh38 allele is compared
+against the ones the module names — a real second authority rather than a rename. A `resolution.csv`
+that already carries a `caid` short-circuits that, because the module has then stated its allele
+identity outright. A one-sided indel — the shape the registry states with an empty `referenceAllele` —
+is anchored through `clingen_allele.anchor_indel` using the module's **own** `ref` base at its **own**
+`start`, and withheld anywhere the module does not state one: a guessed anchor puts a wrong `ref` on a
+right position, which is a false match rather than a missing one.
+
+**The asked tier is a property of the module's rows.** A module that names an allele at a locus asks an
+allele-level question; one that names an rsID and nothing else asks a position-level one, and the
+position node answers it exactly. Without that split a purely positional module would have every locus
+counted as a shortfall. The allele columns come off `AuthoredModel.ALLELE_COLUMNS`, and the rsID roster
+off `DRAFTABLE`, so a table kind added later joins by existing.
+
+**Four outcomes, and the fourth is the house algebra's.** `allele` / `position` / `absent` /
+`unchecked`, each with its own reason and its own sentence (`coverage_reason`, one arm per way of
+getting there, walked by a test):
+
+| tier | reason | what it means |
+|---|---|---|
+| allele | `allele_node_matched` | an allele node for the allele this module names |
+| position | `row_names_no_allele` | the module asked at position level; this is the answer, not a shortfall |
+| position | `no_allele_node_at_locus` | the index holds no allele node here at all |
+| position | `allele_nodes_name_other_alleles` | it holds some, and none of them is this module's |
+| absent | `no_node_for_rsid` | the index holds nothing for this rsID at any tier — an **answered** absence |
+| unchecked | `offline` | nobody asked |
+| unchecked | `index_unreachable` | LitVar could not be reached |
+| unchecked | `registry_unreachable` | the CAIDs at this locus were never resolved, so *none of them is this module's* is not established |
+| unchecked | `allele_not_comparable` | the registry answered and holds no allele these columns can compare |
+
+The last two are the collapse `@answered-is-not-absent` names, one tier out: an empty match is an
+established negative only where every CAID was actually compared.
+
+**The residue is counted, never discarded** (`@dont-discard-computed`). `position_only_pmids` is the
+papers on the position node that **no** allele node at that locus claims — a set difference over the
+union of every allele node, not a subtraction, because the allele nodes overlap each other. It is 92 %
+of APOE and 2.5 % of BRAF, and both numbers are about the locus rather than about the module's allele.
+
+**It writes no row, and that is the whole artifact answer.** A PMID list per variant is not a table
+kind, `literature.csv` is keyed by article, and 32,095 PMIDs for one BRAF locus is a row-writer arguing
+against itself. What lands is `verification.json`: one `literature_coverage` record whose `subjects` is
+the loci the index answered about, whose `findings` is the loci where an allele-level question came
+back position-level, and whose `detail` names the tier breakdown — because a coverage answer that does
+not say which tier answered is the defect this lane is about.
+
+**No `SourceRow` either**, and for the converse of `@write-the-sourcerow`: `sources.csv` travels to the
+registry meaning *this module uses this source*, and nothing here reaches a module's tables.
+`identifiers.py` is the precedent, `civic_draft.py` — which does put registry-derived values into a
+module and does write its `clingen_allele_registry` row — is the contrast. The source is named on the
+`VerificationRecord` instead.
+
+### The bound: it answers which papers discuss an identified allele, not which allele a name meant
+
+**Do not reach for this to recover an identity.** Those two read as the same question and are not, and
+the measurement is on the two hardest records in this repository. [CIVIC_LEGACY_INSERTIONS](probes/CIVIC_LEGACY_INSERTIONS.md)
+works CIViC 1955 (`VHL P71fs (c.211insT)`) and 2131 (`VHL Q73fs (c.214insGCCC)`) down to four candidate
+alleles with registered CAIDs. Asked of LitVar on 2026-09-01:
+
+| asked | answer |
+|---|---|
+| CA2586965638, CA2501268513, CA2573048346, CA2499307076 | **no node for any of the four** |
+| `c.211insT`, `211insT`, `c.214insGCCC` | **no node** |
+| `VHL P71fs` | one node — `litvar@#7428#p.P71fsX`, **1 PMID: 19996202** |
+
+That single hit is **none of the four source papers**; it is an unrelated paper that happens to write
+"P71fs" (`@existence-not-identity`), and its id is the fifth shape — `litvar@#<gene_id>#<protein_name>`,
+all three `flag_*` false, an unnormalized **text mention** rather than a variant. Nothing here treats
+one as an identity, and `litvar gene` prints the mention count precisely so a reader can see how much
+of a gene's tail is text: of 588 HFE nodes, 220 are rsID-only, 69 carry a CAID, **exactly one** is the
+gene node (`litvar@#3077#`, 3,285 papers) and the remaining **298 are mentions**.
+
+**The reason is structural, which is what makes it a bound rather than a gap.** PubTator3's export for
+all four source papers returns title and abstract only — two passages, and zero variant annotations in
+every one. None is in the PMC open-access subset. The alleles live in *Table 3 of a paywalled 1996–2007
+paper*, and text mining over abstracts cannot reach a table. §8 of that probe went around the same wall
+through UMD-VHL's curated protein column — a curator's tabulation, one step from the primary. LitVar
+indexes text.
+
+### Two API facts, and one of them is a defect
+
+* **`variant/search/gene/GENE` returns line-delimited Python `repr()`, not JSON** — single-quoted keys,
+  one dict per line. `httpx`'s `.json()` **raises** on it. The other endpoints return proper JSON.
+  `parse_repr_lines` is a literal parser (`ast.literal_eval`), never `eval`, and a test walks the
+  module's AST to assert nothing in the lane calls `.json()` at all. That endpoint also carries no
+  `flag_*` at all, so the tier there comes from which keys a record has.
+* **`autocomplete` is a prefix search.** `?query=rs429358` returns `rs42935848` as a second hit — a real
+  node for a different variant. Taking `[0]` off that list answers confidently about the wrong thing, so
+  both lookups filter on an exact rsID or CAID. And **node ids are never constructed from the grammar**:
+  every id handed to `get` or `publications` came back from a listing verbatim. The first pass at this
+  source read the trailing `##` as a suffix on an rsID, asked one endpoint, and concluded there was no
+  allele tier at all — a confident negative about a whole tier, from one misread character.
+
+An absent node is an **answer**: `autocomplete` returns `200 []`, and `variant/get` returns `400` with
+a body opening `Variant not found`. The discriminator is the body and never the status, because a
+malformed query is also a 400 — the same rule as Ensembl's 400 on an unresolvable rsID.
+
+**Licensing: NCBI publishes a policy, and a policy is not a licence.** NCBI states it *"places no
+restrictions on the use or distribution"* of molecular data and, in the same passage, that it *"cannot
+provide comment or unrestricted permission concerning the use, copying, or distribution"* because
+submitters may hold rights it cannot assess. ClinVar escapes that through its own `maintenance_use`
+page, which is why `CLINVAR_TERMS` records `public-domain`; **LitVar has no such page**, so under
+`@no-named-licence` its gating axes are unknown rather than permissive. Recording it as public domain
+by analogy with ClinVar is exactly the move that rule forbids. This is **NCBI's side only** — nothing
+was read about EMBL-EBI's terms for the surfaces EBI co-hosts, and nothing here asserts anything about
+them. There is deliberately no `LITVAR_TERMS` constant: `TERMS_BY_SOURCE` exists to be handed to
+`record_source_terms`, and a member no pass ever hands it would be a registry entry nothing writes.

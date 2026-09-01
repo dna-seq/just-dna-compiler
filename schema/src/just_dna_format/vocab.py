@@ -805,6 +805,11 @@ VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
         "gene_symbol_currency",       # authored `gene` vs HGNC approved / previous — `check-identifiers`
         "trait_currency",             # authored `trait_efo_id` vs OLS4 (obsolete + replacement) — `check-identifiers`
         "gene_locus_agreement",       # the row's `gene` vs the chromosome its variant sits on — `check-identifiers`
+        "literature_coverage",        # which papers a variant–literature index holds for a module's
+                                      #   alleles, and AT WHICH TIER — `litvar coverage`. Allele-
+                                      #   resolved, position-only and absent are three outcomes, and a
+                                      #   position-level answer to an allele-level question is recorded
+                                      #   as such rather than reported as the allele's.
         # ── RESERVED for the 2026-09-01 source-adoption round (RM163, RM165, RM166, RM167), added
         #    ahead of their emitters and deliberately: the names are the four passes' published keys,
         #    and minting a name in the release that needs it is the `withdrawn` precedent above run in
@@ -824,11 +829,6 @@ VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
                                       #   repairs: the corpus has one module the catalogue agrees with
                                       #   and one it is a band coarser than, and the format does not
                                       #   arbitrate between its own authorities.
-        "literature_coverage",        # RESERVED — which papers a variant–literature index holds for a
-                                      #   module's alleles, and AT WHICH TIER. Allele-resolved,
-                                      #   position-only and absent are three outcomes, and a
-                                      #   position-level answer to an allele-level question is recorded
-                                      #   as such rather than reported as the allele's.
         "regulator_label_agreement",  # RESERVED — authored PGx claims vs the drug-label annotations
                                       #   five regulators publish. Named for the labels rather than for
                                       #   any one agency, because the file carries five and baking an

@@ -857,7 +857,6 @@ def test_every_check_member_has_an_emitter_or_says_it_is_reserved() -> None:
         "pgs_accession_currency",
         "pgs_metadata_agreement",
         "repeat_band_agreement",
-        "literature_coverage",
         "regulator_label_agreement",
     }
     assert emitted == VALID_VERIFICATION_CHECKS - reserved, sorted(

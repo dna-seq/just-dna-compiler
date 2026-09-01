@@ -32,6 +32,7 @@ from just_dna_enricher.currency import ClinVarReleaseClient, ReleaseUnavailable
 from just_dna_enricher.eutils import EutilsClient, EutilsError, EutilsSettings
 from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadSettings
 from just_dna_enricher.identifiers import IdentifierUnavailable, OntologyClient
+from just_dna_enricher.litvar import LitvarClient, LitvarUnavailable
 from just_dna_enricher.net import PacingGate
 from just_dna_enricher.pharmvar import PharmVarClient, PharmVarError
 
@@ -103,6 +104,16 @@ def _ontology(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[]
     return lambda: client.trait("HP:0000118")
 
 
+def _litvar(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    """RM167. Its *absence* is a return value and every failure is an exception, which is why it is
+    here rather than in the exempt set below: a 400 whose body opens `Variant not found` is the index
+    answering, and there is a real error type for everything else."""
+    client = LitvarClient(
+        client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate()
+    )
+    return lambda: client.autocomplete("rs1800562")
+
+
 def _pharmvar(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
     client = PharmVarClient(
         api_key="test-key",
@@ -125,6 +136,10 @@ CLIENTS = [
     # `ReleaseUnavailable` rather than its parent, for the reason above it: it is the stronger
     # assertion, and every failure of this probe really is "the source could not be asked".
     ("currency", _currency, ReleaseUnavailable),
+    #  rather than its parent, the same stronger assertion as the two above: every
+    # failure leg of this client means the index could not be asked, and  is kept for the
+    # shape failures (a response that is not the JSON or the Python literal it should be).
+    ("litvar", _litvar, LitvarUnavailable),
 ]
 
 
