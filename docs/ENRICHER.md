@@ -353,6 +353,8 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `ensembl` | live Ensembl: V2 GraphQL → V1 REST fallback, tenacity | `httpx`, `tenacity` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
 | `litvar` | RM167: LitVar2/PubTator3 literature coverage per locus, **with the tier that answered** (allele node / position node / absent). Reports only; writes no row and no `SourceRow` | `httpx`, `tenacity`, `clingen_allele` |
+| `drug_labels` | RM166: five regulators' drug labels — the `(gene[, allele], drug)` cross-check at two join tiers (offline, reports only, writes no `SourceRow`) | `duckdb`, format `pgx`, compiler `load_csv_rows` |
+| `drug_labels_build` | **`[dev]`** builder (0.7, RM166): ClinPGx's `drugLabels.zip` → one parquet + `LICENSE.txt` + its own `release.json`, dated from the archive's own `CREATED_*.txt` | `polars` (lazy), `httpx` |
 | `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar`/`pubmind` builders — `build+publish` for the first four, **`build` only** for `pharmvar` (there is no `pharmvar publish` and there will not be) and `pubmind`, whose `publish` exists and refuses with its reason, `mane build` (no publish at all — NCBI grants nothing to refuse or to permit), `vrs mint` | `typer` |
 
 ## Rate limits (public APIs)
