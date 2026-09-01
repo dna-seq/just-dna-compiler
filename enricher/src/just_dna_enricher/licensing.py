@@ -468,6 +468,44 @@ CIVIC_TERMS = SourceTerms(
 )
 
 
+# MANE, read on 2026-09-01. NCBI publishes a **policy**, not a licence, and the two operative
+# sentences sit in the same paragraph of `/home/about/policies/`: *"NCBI itself places no restrictions
+# on the use or distribution of the data contained therein"*, and — because submitters retain whatever
+# rights they hold and NCBI has none to pass on — *"NCBI cannot provide comment or unrestricted
+# permission concerning the use, copying, or distribution of the information contained in the
+# molecular databases."*
+#
+# **A statement that no restriction is imposed is not a grant**, which is why every axis here is `None`
+# rather than `True`. That is the same reading `GWAS_CATALOG_TERMS` gets from EMBL-EBI's much more
+# permissive-sounding sentence, and for the same structural reason: an aggregator can only speak for
+# its own additions. Unknown is neither permission nor refusal — `taints_commercial_use` requires an
+# explicit `False`, so a null warns and never gates (`@no-named-licence`). Do not "tidy" any of the
+# three to `True`.
+#
+# **MANE is a joint NCBI/EMBL-EBI product and only NCBI's side was read.** EMBL-EBI's terms for the
+# same tables were not opened, so nothing here asserts anything about them — a finding about a source
+# is only as wide as what was probed (`@probe-names-the-table`).
+MANE_TERMS = SourceTerms(
+    source="mane",
+    license=None,
+    license_url="https://www.ncbi.nlm.nih.gov/home/about/policies/",
+    attribution=(
+        "MANE (Matched Annotation from NCBI and EMBL-EBI), "
+        "https://www.ncbi.nlm.nih.gov/refseq/MANE/"
+    ),
+    notice=(
+        "NCBI states a policy rather than a licence: it 'places no restrictions on the use or "
+        "distribution of the data contained therein' and, in the same paragraph, 'cannot provide "
+        "comment or unrestricted permission concerning the use, copying, or distribution of the "
+        "information contained in the molecular databases'. No restriction imposed is not permission "
+        "granted, so every axis is unknown. MANE is a joint NCBI/EMBL-EBI product and only NCBI's "
+        "side was read; nothing is asserted about EMBL-EBI's terms for the same tables."
+    ),
+    share_alike=None,
+    commercial_use=None,
+    redistribution=None,
+)
+
 
 TERMS_BY_SOURCE: dict[str, SourceTerms] = {
     terms.source: terms
@@ -484,6 +522,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         PUBMIND_TERMS,
         CIVIC_TERMS,
         CLINGEN_ALLELE_REGISTRY_TERMS,
+        MANE_TERMS,
     )
 }
 

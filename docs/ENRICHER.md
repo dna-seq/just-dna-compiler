@@ -341,9 +341,10 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `cpic_build` | **`[dev]`** builder (0.5.1): the whole CPIC PostgREST database → five parquets + `release.json` | `polars` (lazy), `cpic` |
 | `pharmvar_build` | **`[dev]`** builder (0.5.1): `/genes` → alleles + defining variants. Operator-built, never published | `polars` (lazy), `pharmvar` |
 | `pubmind_build` | **`[dev]`** builder (0.7, RM134): the ANNOVAR-distributed PubMind table → one parquet + `release.json`. Operator-built, and `pubmind publish` **refuses** | `polars` (lazy), `httpx`, `clin_sig` |
+| `mane_build` | **`[dev]`** builder (0.7, RM168): one pinned MANE release → three parquets + `release.json`. Operator-built; there is no `mane publish` because NCBI states a policy rather than a licence | `polars` (lazy), `httpx` |
 | `ensembl` | live Ensembl: V2 GraphQL → V1 REST fallback, tenacity | `httpx`, `tenacity` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
-| `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar`/`pubmind` builders — `build+publish` for the first four, **`build` only** for `pharmvar` (there is no `pharmvar publish` and there will not be) and `pubmind`, whose `publish` exists and refuses with its reason, `vrs mint` | `typer` |
+| `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar`/`pubmind` builders — `build+publish` for the first four, **`build` only** for `pharmvar` (there is no `pharmvar publish` and there will not be) and `pubmind`, whose `publish` exists and refuses with its reason, `mane build` (no publish at all — NCBI grants nothing to refuse or to permit), `vrs mint` | `typer` |
 
 ## Rate limits (public APIs)
 
@@ -950,7 +951,9 @@ a set, which is unreadable in practice.
 
 ## The caches
 
-**Seven parquet snapshots, one base directory, one rule: locate, never download — except where you ask.**
+**Parquet snapshots, one base directory, one rule: locate, never download — except where you ask.**
+(The count used to be stated here and went stale twice while the table below grew; a number in prose
+is a registry nothing iterates, so the table is the roster.)
 Every live source this tier reaches has (or can have) a local copy, and the whole reason is in the rate
 table above: *a shared IP shares one budget.* An author on their own machine can go live for everything;
 a **host** cannot, and for the three licence-gated sources it should not (see *On a host, or in a
@@ -966,10 +969,17 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 | **PharmVar** 🔒 | `pharmvar/` | `$JUST_DNA_PHARMVAR_CACHE` | **none, by design** | **never published** | star alleles (`pgx`) |
 | **PubMind** ❓ | `pubmind/` | `$JUST_DNA_PUBMIND_CACHE` | **none, by design** | **never published** | literature-derived verdicts (RM134) |
 | **CIViC** ✅ | `civic/` | `$JUST_DNA_CIVIC_CACHE` | **none yet** | CC0 — publishable, none built | curated cancer interpretations, **`direction` axis only** (RM152); `--submitted` widens the basis from the release's own VCF (RM169) |
+| **MANE** ❓ | `mane/` | `$JUST_DNA_MANE_CACHE` | **none, by design** | **never published** | the transcript numbering frame — summary, changed Select accessions, excluded genes (RM168) |
 
 🔒 = licence-gated (`commercial_use=False`). ❓ = terms **unestablished** (`commercial_use=None`), which
 is a different state and not a weaker one: unknown is not permissive. The three 🔒 rows are RM38, new in
-0.5.1; the ❓ row is RM134, new in 0.7.
+0.5.1; the PubMind ❓ row is RM134 and the MANE one is RM168, both new in 0.7.
+
+**The two ❓ rows are unestablished for different reasons, and the third column differs with them.**
+PubMind's bytes carry no stated terms at all; MANE's carry a *policy* — NCBI places no restrictions on
+use or distribution and, in the same paragraph, declines to grant unrestricted permission. Neither is
+permission, so both caches are operator-built, but PharmVar's and PubMind's absent `ensure_*` records a
+refusal, CIViC's records a gap, and MANE's records an **unestablished** question nobody has asked NCBI.
 
 **One base, so a single just-dna-lite deployment's cache serves all of them.** Each subdir sits under
 `$JUST_DNA_PIPELINES_CACHE_DIR`, or platformdirs' user cache for `just-dna-pipelines`
@@ -1045,7 +1055,10 @@ Note the `--include`: `data/*.parquet` alone would drag in the stale flat file a
 `from just_dna_enricher.download import ensure_clinvar_snapshot; ensure_clinvar_snapshot()`, which does
 the filtering, the footer check and the atomic rename for you.
 
-### Building the four that are not (fully) published
+### Building the ones that are not (fully) published
+
+(Another count that went stale as the table grew — CIViC's builder, documented in its own section
+below, was already a fifth. The list here is the roster.)
 
 ```bash
 # CPIC — open and unauthenticated, so this is about a host's shared budget, not access.
@@ -1061,6 +1074,10 @@ PHARMVAR_API_KEY=… just-dna-enricher pharmvar build --out ./pharmvar --use non
 
 # PubMind — no key and no `--use` flag; `pubmind publish` exists and refuses (see below).
 just-dna-enricher pubmind build --download --out ./pubmind        # or --table hg38_pubmind_db.txt.gz
+
+# MANE — no key, no `--use`, no publish command. Discovers the newest version from current/ and
+# then pins it to release_<version>/ before fetching anything.
+just-dna-enricher mane build --download --out ./mane              # or --release 1.5 to pin by hand
 ```
 
 Then point at them, or move them under the base directory so the default resolvers find them:
@@ -2292,6 +2309,129 @@ as `null`: unknown rather than absent, and never a default the build did not est
 caller who needs to tell an outage from bad data still can (`@client-exception-contract`; the subclass
 makes a caller's `except` **order** load-bearing). `polars` is a `[dev]`, guarded import.
 
+## MANE snapshot (`mane_build.py`, `[dev]`) — RM168
+
+MANE (Matched Annotation from NCBI and EMBL-EBI) publishes one agreed transcript per protein-coding
+gene, matched base-for-base between a RefSeq and an Ensembl accession. This workspace already leaned on
+it before it was code: the CIViC identity protocol pins a numbering frame with
+`MANE.GRCh38.v1.5.summary.txt.gz`, *"downloaded once and cited"* — a procedure step in a probe document,
+where every other reference table here is a cache with a location and a recorded release. The 33 curated
+name→identity answers that shipped with that protocol were derived in a frame nothing in the code could
+read. This builder is that frame, cached and pinned.
+
+```bash
+just-dna-enricher mane build --download --out ./mane      # discover the newest version, then pin it
+just-dna-enricher mane build --release 1.5 --download --out ./mane
+just-dna-enricher mane build --summary … --changed … --not-in-mane … [--versions README_versions.txt]
+export JUST_DNA_MANE_CACHE=./mane
+```
+
+**MANE is the default, not the answer — and the bound is measured, not asserted.** The summary carries
+**CDKN2A twice** for one GeneID: `NM_000077.5` / `ENST00000304494.10` marked MANE Select beside
+`NM_058195.4` / `ENST00000579755.2` marked MANE Plus Clinical, two CDS numbering frames for one gene.
+Plus Clinical is a fraction of a percent of the rows, which is exactly the argument: a case occurring in
+a third of a percent of genes is precisely the case a remembered accession hides and a table shows. So
+`MANE_status` is carried as a column and **never collapsed** — a builder keeping one row per gene would
+drop those rows and reintroduce the blind spot the item closes.
+
+**RUNX1 is the other half of the bound, and it confirms the protocol rather than fixing it.** RUNX1 is a
+*single* row, and the 27-residue RUNX1c/RUNX1b offset the identity protocol derived by translating each
+isoform's CDS is **not in MANE and cannot be**. The table therefore makes the CDKN2A class of problem
+visible and is **silent** on the RUNX1 class, and a pass that treated it as an oracle would be wrong in a
+way the file itself cannot warn about. That sentence is in the module docstring, in `release.json`'s
+`notice`, and printed by the build command, because it is the one thing a reader of this lane has to
+carry away.
+
+**Scope is a transcript-identity aid.** Generating `c.`/`p.` notation is a separately deferred feature
+with its own unanswered questions, and nothing here proposes it.
+
+### Three files, and the other two are why this is a snapshot rather than a download
+
+| Table (`data/…`) | What it answers |
+|---|---|
+| `summary.parquet` | the frame, and a cross-map: NCBI GeneID, Ensembl gene, HGNC id, symbol, both nuc/prot accession pairs, `MANE_status`, and GRCh38 coordinates on the `NC_` accession |
+| `changed_select_accessions.parquet` | every gene whose MANE Select moved, the release it moved from, and **`Update_Affects_CDS`** — the numbering-frame axis, stated by the source |
+| `protein_coding_genes_not_in_mane.parquet` | the genes MANE deliberately has no answer for, each with a reason |
+
+The second is the **currency check**, and taking it in the same pass as the summary is the point:
+shipping the cache without the thing that notices it going stale is the defect this item is about. A
+MANE Select change that moves the CDS moves every `c.` and `p.` derived in that frame; one that does
+not, does not — and `Update_Affects_CDS` says which. `Old_MANE_Version` spans several releases back, so
+each row also says how long that gene's frame had been stable. **A gene absent from that table has had
+a stable frame**, which is a positive statement the cache can make and a memory cannot; RUNX1, CDKN2A
+and VHL are all absent from it.
+
+The third is `@unreachable-not-absent` served by the source. "MANE has no answer for this gene" becomes
+distinguishable from "nobody asked", with the reason attached — and **`pending MANE review` is a third
+state on its own**, neither absent nor decided. The reason vocabulary is **derived from the file** and
+recorded in `release.json`'s `excluded_reasons`; it is not written down beside it, because a roster
+stated in prose is a registry nothing iterates (`@registry-completeness`). The test asserts the counts
+as an equality against the fixture rather than against a list of strings.
+
+`Update_Affects_CDS` is stored twice, the split `clin_sig` / `clin_sig_raw` established: a nullable
+boolean a consumer queries, and the source's own token so the mapping stays auditable. A cell that is
+neither `Yes` nor `No` withholds the boolean and lands in `unparsable_update_affects_cds` — the source
+said something we cannot hold, which is a different finding from the source saying nothing.
+
+### The version is pinned, and `release.json` copies rather than restates
+
+`release_1.5/` back to `release_0.5/` all exist, so a pin is a URL rather than a hope. **`current/` is
+read exactly once, for 96 bytes, to discover which version is newest** — `discover_current_release()`
+reads its `README_versions.txt`, and everything is then fetched from `release_<version>/`. Pinning the
+mutable path and hoping is what the item is complaining about.
+
+`README_versions.txt` publishes `MANE Version`, `NCBI RefSeq Annotation Release` and `Ensembl Release`,
+and **two of those three appear in no filename**, so the builder copies the file into `release.json`'s
+`versions` block instead of parsing a name — parsing one would reconstruct *less* information than the
+source hands over (`@probe-the-real-file`). It is parsed generically, label by label, so a line MANE
+adds travels through. `dataset` is `mane_grch38_v<version>`, and it is `None` when no
+`README_versions.txt` was read: an unknown release, never one reconstructed.
+
+**A local build asserts no URL it did not fetch.** `source_url`, `source_etag` and
+`source_last_modified` are per input and null on a local build, and `release_url` names the directory
+actually fetched from. A `README_versions.txt` handed over on disk establishes which release the files
+*claim* to be; it does not establish where the bytes came from. `release.json` is written atomically
+(`@atomic-sidecar-write`) — a truncated one parses as valid JSON that is simply missing keys, and
+`locations.read_release` would believe it.
+
+**The source spells its own key two ways** — `GeneID:1029` in the summary, a bare `1029` in the other
+two — so `parse_ncbi_gene_id` normalizes both into one `ncbi_gene_id` integer and the test runs it over
+the raw cells of both dialects (`@one-normalizer-two-spellings`). Without that, the cross-table question
+*has this gene's frame ever moved?* is a string comparison that silently never matches. Everything else
+is verbatim: `MANE_status` keeps its spaces, `GRCh38_chr` stays the `NC_` accession, and the version
+cells stay strings because `0.91` is a MANE release rather than a number.
+
+The parquets are **byte-reproducible** across rebuilds (gene id, then accession — a total order, with
+unreadable ids sorting last because `None` cannot be compared to an `int`); only `release.json`'s
+`built_at` varies. Three schemas share `data/`, on the CPIC precedent — the glob-union hazard
+(`@snapshot-layout-locations`) belongs to readers that union `data/*.parquet` into one view, and this
+snapshot ships no reader, so anything reading it later reads by filename. `resolve_mane_reference`
+deliberately does **not** accept a bare `.parquet` the way the constraint resolver does: one file here
+is a snapshot missing the currency check and the negative roster.
+
+**No `--use` flag and no publish command.** NCBI states a policy rather than a licence: it *"places no
+restrictions on the use or distribution of the data contained therein"* and, in the same paragraph,
+*"cannot provide comment or unrestricted permission concerning the use, copying, or distribution of the
+information contained in the molecular databases."* No restriction imposed is not permission granted, so
+`MANE_TERMS` records `None` on every axis (`@no-named-licence`) — and a declared-use gate fed an unknown
+skips every build unconditionally, which is a flag that does nothing
+(`@acquisition-gate-is-not-a-read-gate`). **MANE is a joint NCBI/EMBL-EBI product and only NCBI's side
+was read**; nothing here asserts anything about EMBL-EBI's terms for the same tables
+(`@probe-names-the-table`). `download_mane_file` translates `httpx` into `ManeUnavailable`, a subclass
+of `ManeBuildError`, so one `except` arm catches an unreachable FTP site as well as a malformed file
+while a caller who needs to tell them apart still can (`@client-exception-contract`). `polars` is a
+`[dev]`, guarded import.
+
+**One thing this lane does not do: it writes no `SourceRow`.** A builder is not a pass over a spec
+directory — nothing here consults MANE *on behalf of a module*, so there is no module to account for
+(`@write-the-sourcerow`, the converse half). The terms constant exists so that the first pass which does
+consult it has one to record.
+
+**Note for anyone reaching for MANE next:** `gene located on mitochondrial genome` is a MANE exclusion
+class, so the mtDNA lane has no MANE frame by construction. And the summary is adjacent to
+`identifiers.py`'s HGNC registry and to the Ensembl lane — worth reading before somebody builds a second
+gene cross-map beside it.
+
 ## Gene–disease validity (`gene_validity.py`, online only) — RM24
 
 `enrich_gene_validity(spec_dir, *, source, mode, offline, write, export_text, url)` takes the `gene`
@@ -3464,6 +3604,7 @@ just-dna-enricher clinpgx publish cp/ --repo org/clinpgx          # LICENSE.txt 
 just-dna-enricher pharmvar build --out pv/ --use non-commercial   # YOUR key; never published
 just-dna-enricher pubmind build --download --out pm/             # literature verdicts; never published
 just-dna-enricher pubmind publish                                # exits 1 and says why (by design)
+just-dna-enricher mane build --download --out mane/               # the transcript numbering frame
 just-dna-enricher pgx spec/ --offline --use non-commercial        # both legs off snapshots
 just-dna-enricher pgx spec/ --cpic-cache cpic/ --pharmvar-cache pv/
 just-dna-enricher draft spec/ --gene CYP2C9 --offline --use non-commercial
@@ -3545,6 +3686,7 @@ directly to compose passes, inject clients, or run in-process.
 | `cpic build` / `publish` | `cpic_build.build_snapshot` / `upload.publish_reference_snapshot` |
 | `pharmvar build` | `pharmvar_build.build_snapshot` (no publish — see *The caches*) |
 | `pubmind build` / `publish` | `pubmind_build.download_pubmind_table` + `build_snapshot` / **refuses**, `cli.PUBMIND_PUBLISH_REFUSAL` |
+| `mane build` | `mane_build.discover_current_release` + `download_mane_file` + `build_snapshot` (no publish — see *The caches*) |
 | `acmg build` | `acmg_build.build_acmg_snapshot` → `acmg.load_acmg_snapshot` |
 | `draft` | `pgx_draft.draft_gene` |
 | `draft-clinpgx` | `clinpgx_draft.draft_pharm_variants` |
