@@ -762,7 +762,7 @@ does not answer which allele a name meant.
 
 ## RM168 — the identity procedure downloads MANE by hand, and nothing in the code knows the file exists
 
-**Severity** medium · **Owner** enricher · **Entry** [ROADMAP.md § RM168](../ROADMAP.md#rm168--the-identity-procedure-downloads-mane-by-hand-and-nothing-in-the-code-knows-the-file-exists)
+**Severity** medium · **Owner** enricher · **Entry** [ROADMAP_HISTORY.md § RM168](../ROADMAP_HISTORY.md#rm168--the-identity-procedure-downloads-mane-by-hand-and-nothing-in-the-code-knows-the-file-exists) — it shipped the same day and left the forward-only file
 
 ### The problem
 
