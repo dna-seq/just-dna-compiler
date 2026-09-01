@@ -581,39 +581,6 @@ in advance for the same reason RM164 named its own.
 **Related** RM164 (where it was found), `@one-normalizer-two-spellings`, `@no-named-licence`,
 `@probe-the-real-file`.
 
-## RM165 — `repeat_alleles.csv` has no source, and RM65/RM66 have been waiting on exactly the corpus one would bring
-
-**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
-**Motivating case** RM65's own stated prerequisite
-
-**Probed and drafted in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm165--repeat_allelescsv-has-no-source-and-rm65rm66-have-been-waiting-on-exactly-the-corpus-one-would-bring) on 2026-09-01 — proposed BUILDS, split, the check half in 0.7.0; pending the maintainer pass.** STRchive is `dashnowlab/STRchive`, **MIT**, 82 loci / 79 genes, 319 KB. It reproduces `htt_repeat_expansion`'s first two bands **exactly** (6–26, 27–35) — and it is **one band coarser** than `fmr1_cgg_repeat`, whose 45–54 / 55–200 split STRchive gives as one 45–200 band, losing the premutation threshold; and its HTT `pathogenic_max: 250` would invent a ceiling where the module leaves `measure_max` open, so a 300-repeat allele would match no bin (`@bin-grounding`). Hence **draft the identity half, check the band half**. RM66's evidence is real and partial: `locus_structure` on **23 of 82** loci, HTT's being `[{CAG, null, pathogenic_repeat}, {CAACAG, 1, interruption}, {CCG, 12, flank_repeat}]` — enough to decide RM66, not enough to make it universal, and **RM66 is not decided in that round**. **Re-probed 2026-09-01:** gnomAD's TR release is fetchable and **disqualified on category, not terms** — `gnomAD_STR_genotypes…tsv.gz` is `Sex`/`Age`/`Genotype`/`Allele1`/`Allele2`, one row per sample per locus. And STRchive's `evidence` is a ClinGen-style validity call on **all 82** loci including **Disputed 3 / Refuted 1**, so it is a second corpus for **RM170**'s shape in another domain; it also cross-references gnomAD (72/82), TR-atlas (72), WebSTR (63), OMIM (78), MedGen (76).
-
-Same measurement as RM164: no drafting provider, no cross-check pass. The corpus is two hand-authored
-modules, `fmr1_cgg_repeat` and `htt_repeat_expansion`, neither of which carries a resolution sidecar.
-
-**What lifts this above a symmetry argument is that two deferred items name its prerequisite.** RM65
-defers repeat/copy-number coordinates in as many words — *"Adding the coordinates waits on a real
-repeat-caller or CNV VCF sample, or a consumer field report. Without one it is scaffolding in thin
-air."* A published repeat-locus catalogue is a third thing that satisfies it, and it satisfies RM66
-better than a caller would: RM66 asks what to do when one locus has several motifs
-(`RepeatAlleleRow` is keyed `(gene, repeat_unit)` and binds one count to one motif, while HTT's
-`(CAG)n(CAA)(CAG)` is several `RUS` entries to a modern caller), and **a catalogue publishes the motif
-structure as data** where a caller emits it per sample. So adopting a source here is not only a
-drafting convenience; it is the evidence two parked items are parked for want of.
-
-Candidates to probe: STRchive, and gnomAD's tandem-repeat release. gnomAD is already adopted and
-carries `GNOMAD_TERMS`, which makes the second cheaper on the licence axis — **but the terms of a
-different release from an adopted source are a thing to check, never to inherit**
-(`@probe-names-the-table`). Neither source's terms are asserted here.
-
-**Probe for the motif structure specifically**, because that is what decides whether RM66's keying
-change — expensive, on a shipped table — is even indicated. And carry RM65's attached obligation
-forward: `_write_resolution_csv`'s positional pass hard-codes `locus_index = 0`, honest only while
-those tables never expand, and coordinates on a repeat table are exactly what could expand one
-(RM87).
-
-**Related** RM65, RM66, RM87, RM164.
-
 ## RM166 — the whole PGx lane is one licence class, and a second authority exists that is not in it
 
 **Severity** low-medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·

@@ -54,6 +54,78 @@ for is not any one adoption: **five of the six entries said something their own 
 and then four of the six verdicts the proposal drafted were overturned again in the maintainer pass —
 so an unprobed entry is a question, and a probed one is still only a proposal.
 
+## RM165 — `repeat_alleles.csv` has no source, and RM65/RM66 have been waiting on exactly the corpus one would bring
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-01 in the uncut 0.7.0** (`just-dna-enricher`,
+plus one `VALID_VERIFICATION_CHECKS` member; `compiler/` untouched) · **Owner** enricher ·
+**Motivating case** RM65's own stated prerequisite
+
+**What shipped, and the split is the finding rather than a caution.** STRchive — `dashnowlab/STRchive`,
+**MIT**, 82 loci across 79 genes — is adopted **by column**: a `check-repeat-bands` cross-check over
+`benign_*`/`intermediate_*`/`pathogenic_*`, and a `draft-repeats` provider over the identity half. Two
+commits, so the check is revertible without the provider.
+
+**The reason the bands are checked and never drafted was measured on both corpus modules, and it is
+one agreement and one disagreement.** STRchive reproduces `htt_repeat_expansion`'s first two bands
+exactly — `benign 6–26`, `intermediate 27–35`, independently authored, about as strong a validation as
+a drafting provider can get before it is written. And it gives FMR1 a single `intermediate 45–200`
+where the module has `45–54` and `55–200`: **the boundary it does not have is 55, the premutation
+threshold**, and the module's own conclusions name what would be lost — the 45–54 grey zone where *"the
+carrier is not at risk, but the allele may be unstable in transmission"*, and the 55–200 FXTAS/POF
+range. Drafting the three bands straight would have erased a clinically load-bearing line in one of the
+corpus's two modules. The finding names the missing boundary rather than reporting that the tables
+differ.
+
+**`pathogenic_max` is emitted nowhere, and this is the second refusal worth keeping.** STRchive gives
+HTT 250 where the module leaves `measure_max` empty. A catalogue's `pathogenic_max` is the largest
+allele the literature reports — an **observation**, not a clinical bound — and written as `measure_max`
+a 300-repeat allele would match **no bin at all**, silently, `--strict` included, which is the exact
+silence RM55 shipped a loud warning about (`@bin-grounding`). It is reported as its own finding kind
+instead. `@verbatim-except-order` is about not re-encoding a source's values; it is not a licence to
+import a bound the source did not intend as one, and **the band's meaning is the schema's, not the
+catalogue's**.
+
+**It warns in both modes.** Two curators disagreeing about a threshold is not a `strict` matter
+(`@clinsig-never-escalates`), and a `strict` run reports exactly what a best-effort run reports.
+
+**Four things the build contradicted, and the first is the most useful.** *The identity half is mostly
+uncarryable*: `RepeatAlleleRow` has no column for coordinates, `locus_structure`, `ref_copies` or the
+OMIM/MONDO disease ids, so a drafted row is gene, motif, trait and a stubbed conclusion. That gap **is**
+RM65/RM87 rather than a shortfall in this provider — the entry proposed drafting columns the schema
+does not have. *No `DRAFT_PROJECTIONS` entry is owed*, because the split means the checked columns were
+never copies, and a test asserts the absence with the reason. *HTT is finer than the catalogue too*,
+dividing the pathogenic band at 40, which the entry named only for FMR1. And drafting into a real
+shipped module exposed a **pre-existing crash** in `just_dna_compiler.draft.append_partial_rows` on any
+table whose header is narrower than its model; it reaches all four existing partial-row providers, was
+reproduced independently of this work, and is left for its own item because `compiler/` was barred this
+round.
+
+**Two things named and deliberately not built.** RM66's evidence is real and partial — `locus_structure`
+is present on **23 of 82** loci, HTT's being the `(CAG)n(CAA)(CAG)` structure RM66 asks about, published
+as typed data with its own three-member vocabulary, while FMR1's is `[]`. That is enough to *decide*
+RM66 and not enough to make the answer universal; naming the evidence and stopping was the whole of
+this round's obligation to it. And STRchive's `evidence` is a ClinGen-style validity classification on
+all 82 loci **including Disputed 3 and Refuted 1** — a second instance of **RM170**'s problem in a
+different domain, worth knowing before RM170 is designed against CIViC alone.
+
+**gnomAD's tandem-repeat release is out on category, not on terms.**
+`gnomAD_STR_genotypes__2022_01_20.tsv.gz` is `Genotype`/`Allele1`/`Allele2`/`Sex`/`Age` — **one row per
+sample per locus**, per-sample genotype data, the one category this format does not carry — so the
+question of inheriting `GNOMAD_TERMS` never arises. A category exclusion is cheaper and more durable
+than a licence answer, because it cannot be renegotiated.
+
+**RM65's attached obligation carries forward**: `_write_resolution_csv`'s positional pass hard-codes
+`locus_index = 0`, honest only while these tables never expand, and repeat coordinates are exactly what
+could expand one (RM87).
+
+**Probed and decided in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm165--repeat_allelescsv-has-no-source-and-rm65rm66-have-been-waiting-on-exactly-the-corpus-one-would-bring)**
+— which drafted the provider as held to 0.8 and was overturned: the deferral assumed a cut about to
+close, and the argument that the split made deferring the larger half cheap reads equally well as an
+argument that the half is cheap.
+
+**Related** RM65, RM66, RM87, RM164, RM170, `@bin-grounding`, `@enrichment-is-validation`,
+`@verbatim-except-order`.
+
 ## RM163 — `pgs.csv` is keyed on a Catalog accession and nothing ever asks the Catalog about it
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-01 in the uncut 0.7.0** (`just-dna-enricher`,

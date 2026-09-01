@@ -338,7 +338,7 @@ reasoned.
 
 ## RM165 — `repeat_alleles.csv` has no source, and RM65/RM66 have been waiting on exactly the corpus one would bring
 
-**Severity** medium · **Owner** enricher · **Entry** [ROADMAP.md § RM165](../ROADMAP.md#rm165--repeat_allelescsv-has-no-source-and-rm65rm66-have-been-waiting-on-exactly-the-corpus-one-would-bring)
+**Severity** medium · **Owner** enricher · **Entry** [ROADMAP_HISTORY.md § RM165](../ROADMAP_HISTORY.md#rm165--repeat_allelescsv-has-no-source-and-rm65rm66-have-been-waiting-on-exactly-the-corpus-one-would-bring) — shipped, so the entry left the forward-only file
 
 ### The problem
 

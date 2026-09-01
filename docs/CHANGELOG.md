@@ -34,7 +34,34 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-01 (latest) — the source-adoption round: the PGS Catalog becomes a registry (RM163)
+## 2026-09-01 (latest) — the source-adoption round: STRchive, checked and drafted by column (RM165)
+
+**`just-dna-enricher`, plus one `VALID_VERIFICATION_CHECKS` member. No authored column, no parquet
+change, `just-dna-compiler` untouched.** Third of the five items
+[PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md) decided.
+
+- **`repeat_alleles.csv` gains a source, split by column.** `just-dna-enricher check-repeat-bands`
+  compares an authored band table against STRchive's and reports; `just-dna-enricher draft-repeats`
+  drafts the identity half. New `STRCHIVE_TERMS` (MIT — the first candidate in this round with terms
+  that are both established and permissive) and a `strchive` snapshot builder.
+- **The bands are checked and never drafted, for a measured reason.** STRchive reproduces
+  `htt_repeat_expansion`'s first two bands exactly, and gives FMR1 one `45–200` band where the module
+  has `45–54` and `55–200` — losing 55, the premutation threshold. The finding names the missing
+  boundary rather than reporting that two tables differ.
+- **`pathogenic_max` is never written as `measure_max`.** A catalogue maximum is an observation, not a
+  clinical bound; imported as one, an allele above it would match no bin at all and nothing would say
+  so. It is reported as its own finding kind.
+- **New verification check `repeat_band_agreement`.** Consumers pinning `VerificationRecord.check`
+  should add it. It warns in both modes and never escalates under `--strict`.
+- **The drafting provider writes no band column at any severity**, and a drafted row is gene, motif,
+  trait and a placeholder conclusion — `RepeatAlleleRow` has no column for the coordinates,
+  `locus_structure` or `ref_copies` the catalogue also publishes. That gap is RM65/RM87.
+- Known and not fixed here: `just_dna_compiler.draft.append_partial_rows` crashes on any table whose
+  header is narrower than its model, which reaches all four existing partial-row providers. Found
+  while drafting into a real module, reproduced independently, filed rather than patched — this round
+  changes nothing in `just-dna-compiler`.
+
+## 2026-09-01 — the source-adoption round: the PGS Catalog becomes a registry (RM163)
 
 **`just-dna-enricher`, plus two `VALID_VERIFICATION_CHECKS` members in `just-dna-format`. No authored
 column, no parquet change, `just-dna-compiler` untouched.** Second of the five items
