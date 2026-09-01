@@ -578,7 +578,7 @@ flight, which is the whole benefit the size argument was reaching for.
 
 ## RM167 — LitVar2/PubTator3 answers "which papers name this allele", which is the half PubMind structurally cannot
 
-**Severity** medium · **Owner** enricher · **Entry** [ROADMAP.md § RM167](../ROADMAP.md#rm167--litvar2pubtator3-answers-which-papers-name-this-allele-which-is-the-half-pubmind-structurally-cannot)
+**Severity** medium · **Owner** enricher · **Entry** [ROADMAP_HISTORY.md § RM167](../ROADMAP_HISTORY.md#rm167--litvar2pubtator3-answers-which-papers-name-this-allele-which-is-the-half-pubmind-structurally-cannot) — shipped, so the entry left the forward-only file
 
 ### The problem
 

@@ -54,6 +54,83 @@ for is not any one adoption: **five of the six entries said something their own 
 and then four of the six verdicts the proposal drafted were overturned again in the maintainer pass —
 so an unprobed entry is a question, and a probed one is still only a proposal.
 
+## RM167 — LitVar2/PubTator3 answers "which papers name this allele", which is the half PubMind structurally cannot
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-01 in the uncut 0.7.0** (`just-dna-enricher`,
+plus one `VALID_VERIFICATION_CHECKS` member; `compiler/` untouched) · **Owner** enricher ·
+**Motivating case** the measured limits of the PubMind adoption (RM134)
+
+**The entry set its own test and the test passes.** [PUBMIND_ASSESSMENT](PUBMIND_ASSESSMENT.md)
+measured that PubMind has *record* identity, not variant identity — 68,744 coordinate keys carry more
+than one PVID, HFE C282Y alone holds eight with four different verdicts — and the entry proposed
+LitVar2 as an independent second vote on exactly that fan-out, *"complements if LitVar's identity is
+genuinely allele-level"*. It is. BRAF rs113488022's three CAIDs resolve to three distinct ALTs at one
+position and carry 31,276 / 99 / 41 papers: allele resolution doing real work, three orders of
+magnitude apart.
+
+**The finding is that the tier a locus is answerable at is a property of the LOCUS, not of the
+source.** APOE rs429358's position node carries 3,945 papers and its single allele node carries 328,
+so **92 % of the literature at that locus is not allele-resolved**. A pass reporting the allele node's
+count as *the* answer would understate it twelvefold. So the shipped pass names which tier answered:
+allele-resolved, position-only, absent — plus `unchecked` as the fourth state the house algebra needs
+— each arm with its own reason sentence, the fall-back to the position node **never silent**
+(`@refutation-withholds`: a position-level answer to an allele-level question withholds rather than
+answering approximately), and the position-only residue counted over the union of every allele node
+rather than folded into the matched one (`@dont-discard-computed`).
+
+**It writes no row, which was pre-authorised and is a complete outcome rather than a half-done one.**
+A PMID list per variant is not a table kind, `literature.csv` is keyed by article, and `sources.csv`
+means *this module uses this source*, which would be false here. What lands is one
+`literature_coverage` attestation.
+
+**The corpus measurement, which the entry made the build's first task.** Over the 11 reference modules
+carrying a `resolution.csv` — **389 loci, of which 180 (46.3 %) have at least one CAID node**: 165
+answered at allele tier, 92 at position tier only, 122 absent, 10 could not be asked. **14,168 papers
+sit on a position node no allele node claims**, 6,700 of them APOE's.
+
+**Three of the proposal's own numbers did not reproduce, and that is the round's shape again.** Its
+*"of 588 HFE nodes … 299 are gene-level"* conflates two id shapes: measured off the recorded payload
+there is **exactly one** gene node (3,285 papers) and **298 text mentions**, which is a fifth shape
+(`litvar@#<gene_id>#<protein_name>`, all three `flag_*` false) and not a variant at all. The
+**423-locus join does not reproduce** — a roster derived from `DRAFTABLE` finds 389 loci and 388
+distinct rsIDs. And the stated id grammar `litvar@<clingen_id>#<rsid>#<gene_id>` is contradicted by the
+proposal's own example: `litvar@rs1800562##` puts the rsID in the ClinGen slot, so the field count
+varies by tier rather than the slots being fixed.
+
+**The bound ships with the pass, in its own documentation.** Measured against the two records this
+workspace could not resolve — CIViC 1955 and 2131, worked down in
+[CIVIC_LEGACY_INSERTIONS](probes/CIVIC_LEGACY_INSERTIONS.md) to four candidate alleles with registered
+CAIDs — LitVar returns **no node for any of the four**, and the one nominal hit for `VHL P71fs` is an
+unrelated paper that happens to write the string. The reason is structural: PubTator3's export for all
+four source papers is title and abstract only, with **zero variant annotations**, and the alleles live
+in a table inside a paywalled paper. So **on precisely the class this workspace built a protocol for,
+LitVar is the wrong instrument** — it answers *which papers discuss an already-identified allele* and
+never *which allele this name meant*. Those read as the same question and are not.
+
+**`data_clinical_significance` is not adopted in any form.** It is populated on position nodes and
+`None` on every allele node measured, so it is position-level, unattributed, undated, and cannot even
+be attributed to the allele it would be voting on.
+
+**Two API facts pinned before anyone writes a second client.** `variant/search/gene/GENE` returns
+**line-delimited Python `repr()`, not JSON** — `.json()` raises on it, so the shipped client parses
+rather than deserializes (`@probe-the-real-file`). And NCBI publishes a **policy, not a licence**: it
+places no restrictions and in the same passage declines to grant permission, so under
+`@no-named-licence` every gating axis is `None`. Recording it as public domain by analogy with ClinVar
+is exactly the move that rule forbids — ClinVar has a page saying so and this surface does not. NCBI's
+side only; nothing is asserted about EMBL-EBI's terms for surfaces EBI co-hosts.
+
+**It also repaired a defect one file over.** `clingen_allele._parse` computed a one-sided allele and
+then discarded it whenever an rs-number arrived, because the rsID alone makes the outcome `resolved` —
+so every PALB2 indel read as incomparable. `unanchored` now travels on a `resolved` result too.
+
+**Probed and decided in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm167--litvar2pubtator3-answers-which-papers-name-this-allele-which-is-the-half-pubmind-structurally-cannot)**,
+which reversed twice: an earlier draft proposed CLOSES on a misread id, the file then proposed BUILDS
+in 0.8, and the maintainer pass took it now — the three stated blockers were a small client, a tiering
+rule that is the item's own result, and an artifact question the entry had already pre-authorised.
+
+**Related** RM134, RM153, `@existence-not-identity`, `@probe-the-real-file`, `@no-named-licence`,
+`@refutation-withholds`, `@dont-discard-computed`.
+
 ## RM165 — `repeat_alleles.csv` has no source, and RM65/RM66 have been waiting on exactly the corpus one would bring
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-01 in the uncut 0.7.0** (`just-dna-enricher`,

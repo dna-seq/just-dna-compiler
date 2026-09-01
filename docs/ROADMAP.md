@@ -614,44 +614,6 @@ exceptions and it has not been established for this table.
 **Related** RM134 § B (the concordance shape), RM29b, `@pgx-research-only`,
 `@two-surfaces-two-denominators`.
 
-## RM167 — LitVar2/PubTator3 answers "which papers name this allele", which is the half PubMind structurally cannot
-
-**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
-**Motivating case** the measured limits of the PubMind adoption (RM134)
-
-**Probed and drafted in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm167--litvar2pubtator3-answers-which-papers-name-this-allele-which-is-the-half-pubmind-structurally-cannot) on 2026-09-01 — proposed BUILDS in 0.8, pending the maintainer pass. This entry's own test PASSES.** A LitVar id has **slots** — `litvar@<clingen_id>#<rsid>#<gene_id>`, unfilled ones collapsing to a bare `#` — so `litvar@rs1800562##` is the *position* node and `litvar@CA113795#rs1800562##` is the **allele** node beside it; `search/gene/HFE` returns all three tiers (220 rsID-only, 69 CAID-bearing, 299 gene-level). **The allele nodes answer differently and the identity is a CAID**, which RM153's `ClingenAlleleClient` already resolves. BRAF rs113488022's three CAIDs are three ALTs at one position — 31,276 (V600E) / 99 (V600G) / 41 (V600A) PMIDs against 32,095 on the position node. **But the answerable tier is a property of the locus**: APOE rs429358 is **92 % position-only** (3,945 vs 328), so a pass must name which tier answered — allele-resolved / position-only / absent, three outcomes from the source itself. Corrections: `data_clinical_significance` is **position-level only** (`None` on every allele node), so it is still a verdict channel this entry says does not exist but is not adoptable as an allele authority; and `variant/search/gene/` returns **line-delimited Python `repr()`, not JSON**, so `.json()` raises. Terms are NCBI's policy, not a licence — gating axes `None`. *(An earlier draft of the proposal proposed CLOSES, having read the trailing `##` as a suffix and queried only `autocomplete`; the maintainer's `variant/get` example found the allele tier.)* **Bound established on the hardest case:** asked of [CIVIC_LEGACY_INSERTIONS](probes/CIVIC_LEGACY_INSERTIONS.md) § 9, LitVar has **no node for any of the four candidate CAIDs** and none for the legacy strings; `VHL P71fs` returns one unnormalized text node whose single PMID is **none of the four source papers**. PubTator3 has **title+abstract only** for all four (zero variant annotations) — none is in the PMC OA subset — so the alleles, which live in a paywalled Table 3, are unreachable by text mining. **LitVar answers which papers discuss an already-identified allele; it cannot answer which allele a name meant.** The build must not be sold as identity recovery.
-
-[PUBMIND_ASSESSMENT](PUBMIND_ASSESSMENT.md) established by measurement that PubMind's only per-variant
-channel is the ANNOVAR-redistributed bulk table, and that **PubMind has record identity, not variant
-identity**: consolidation into a PVID keys on the *text* the model extracted, so 68,744 coordinate keys
-(8.4 %) carry more than one PVID, the worst carries 35, and HFE C282Y alone holds eight with four
-different verdicts. Of 909,224 rows only **342,209** decompose to a joinable `chrom:start:ref:alt` key;
-the other 439,388 assert that some codon change produced an amino acid, which is a statement about a
-protein rather than about a position a consumer can genotype.
-
-LitVar2/PubTator3 is NCBI's variant–literature index, and it is the same domain on a different axis:
-it normalizes a variant to an identity and returns **the PMIDs that mention it**, carrying no
-pathogenicity verdict of any kind. That shape is one the enricher already speaks — `literature.py`
-goes PMID → article, and this goes variant → PMIDs — and a source with no verdict raises none of the
-charter questions RM134 § C had to answer about drafting from an authority.
-
-**The open question is the one that decides the item, and it belongs in the entry rather than in the
-build: does this complement PubMind or duplicate it?** They are complements if LitVar's identity is
-genuinely allele-level where PubMind's is record-level — in which case it is an independent second
-vote on exactly the fan-out the PVIDs create. They are duplicates if it is another aggregation over
-the same extraction with the same text-keying underneath. **That is answerable before writing a
-line**: join both against the corpus the PubMind assessment already measured (11 modules, 423 resolved
-GRCh38 loci, of which PubMind knows 173) and compare the identity behaviour, not the row counts.
-
-**The second question is what a module would carry.** A PMID list per variant is not a table kind, and
-`literature.csv` is keyed by article. Whether the answer is a `studies.csv` drafting provider, a
-currency signal, or nothing that lands in an artifact at all is undecided — **an enrichment surface
-that reports and writes no row is a legitimate outcome** and should not be designed away.
-
-NCBI's terms for this surface are the third thing to establish rather than assume.
-
-**Related** RM134, `@per-article-terms`, `@existence-not-identity`, `@probe-the-real-file`.
-
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

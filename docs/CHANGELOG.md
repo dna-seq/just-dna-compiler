@@ -34,7 +34,30 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-01 (latest) — the source-adoption round: STRchive, checked and drafted by column (RM165)
+## 2026-09-01 (latest) — the source-adoption round: literature coverage, and the tier that answered (RM167)
+
+**`just-dna-enricher`, plus one `VALID_VERIFICATION_CHECKS` member. Writes no authored row at all.**
+Fourth of the five items [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md) decided.
+
+- **`just-dna-enricher litvar coverage` asks LitVar2 which papers name a module's alleles**, and
+  records **which tier could answer**: allele-resolved, position-only, absent, or `unchecked`. The
+  distinction is the point — APOE rs429358's position node carries 3,945 papers and its allele node
+  328, so an answer that did not name its tier would understate that locus twelvefold.
+- **It writes no row.** A PMID list per variant is not a table kind, so the pass reports and attests
+  and changes nothing in the spec directory. That was the entry's pre-authorised outcome.
+- **New verification check `literature_coverage`.** Consumers pinning `VerificationRecord.check`
+  should add it.
+- **The bound ships with it, in the lane's own documentation**: LitVar answers *which papers discuss
+  an already-identified allele*, and does not answer *which allele a name meant*. Measured against the
+  two CIViC legacy insertions, it returns no node for any of their four candidate alleles.
+- **`clingen_allele.AlleleIdentity.unanchored` is now populated on a `resolved` result too.** It was
+  computed and then discarded whenever the registry also served an rs-number, so a caller wanting the
+  allele rather than an identity got nothing — every PALB2 indel read as incomparable. A consumer
+  reading `unanchored` only under `outcome == "needs_anchor"` is unaffected.
+- Terms: NCBI publishes a policy rather than a licence, so every gating axis is `None`. A module
+  carrying LitVar-derived findings records unknown terms rather than permissive ones.
+
+## 2026-09-01 — the source-adoption round: STRchive, checked and drafted by column (RM165)
 
 **`just-dna-enricher`, plus one `VALID_VERIFICATION_CHECKS` member. No authored column, no parquet
 change, `just-dna-compiler` untouched.** Third of the five items
