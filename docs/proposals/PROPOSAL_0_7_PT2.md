@@ -99,7 +99,7 @@ of the Catalog. Over the first 250 of 6,982 scores: **242** carry the generic *"
 with any licensing restrictions set by the authors, see EBI Terms of Use"* string, **6** carry
 *"Freely available to the academic community for research use"* — academic-use-only, which is the
 class `licensing.py`'s own comment names as barring redistribution outright — and **2** are CC0 1.0.
-A single `PGS_TERMS` constant would therefore be a **false claim** for at least 2.4 % of the corpus,
+A single `PGS_TERMS` constant would therefore be a **false claim** for 2.4 % of the sampled 250 — a sample rate, not a corpus floor —
 and false in the permissive direction, which is the direction that matters.
 
 ### The decision
@@ -444,7 +444,8 @@ the use or distribution"* of molecular data and, in the same passage, that it *"
 or unrestricted permission concerning the use, copying, or distribution"* because submitters may hold
 rights it cannot assess. ClinVar escapes this via its own `maintenance_use` page, which is why
 `CLINVAR_TERMS` says `public-domain`; LitVar has no such page. Under `@no-named-licence` the gating
-axes are `None`.
+axes are `None`. **NCBI's side only** — this probe did not read EMBL-EBI's terms for the surfaces EBI
+co-hosts.
 
 ### The decision
 
@@ -533,8 +534,8 @@ second gene cross-map beside it.
 
 **Terms: NCBI publishes a policy, not a licence** — the same finding as RM167, and for the same
 reason. `license=None`, `license_url` at the policy, the two operative sentences in `notice`, gating
-axes `None`. MANE is a joint NCBI/EMBL-EBI product and neither party attaches an SPDX identifier to
-it.
+axes `None`. MANE is a joint NCBI/EMBL-EBI product and **only NCBI's side was probed here** — EBI's
+terms for it were not read, and this file asserts nothing about them.
 
 ### The decision
 
