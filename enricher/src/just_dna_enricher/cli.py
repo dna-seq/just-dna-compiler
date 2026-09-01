@@ -2861,8 +2861,9 @@ def mane_build_(
 
     **There is no `--offline` flag**: the off-switch is passing the local files instead of
     `--download`. And there is no `--use` flag, because NCBI states a policy rather than a licence —
-    every gating axis is unknown, and a declared-use gate fed an unknown refuses every build
-    unconditionally, which is a flag that does nothing (`@acquisition-gate-is-not-a-read-gate`).
+    every gating axis is unknown, and `check_declared_use` returns a *skip* for an unknown whatever
+    the declaration says, so the gate would silently skip every build. A flag feeding a gate that
+    never gates is a flag that does nothing (`@acquisition-gate-is-not-a-read-gate`).
 
     **MANE is the default, not the answer.** A gene with two rows carries two CDS numbering frames
     and `MANE_status` says which; a gene with one row says nothing about the isoforms MANE does not
@@ -2901,6 +2902,12 @@ def mane_build_(
             "--download. To name the release of files you already hold, pass their "
             "README_versions.txt as --versions — that is the source's own statement, where a bare "
             "--release would be ours about somebody else's bytes."
+        )
+    if versions is not None and download:
+        raise typer.BadParameter(
+            "--versions names the release of files you already hold; a --download build fetches the "
+            "release's own README_versions.txt and would ignore yours. Drop one — a flag that is "
+            "silently overwritten is worse than a flag that is refused."
         )
 
     downloads: dict = {}

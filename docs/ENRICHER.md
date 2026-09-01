@@ -2372,6 +2372,19 @@ as an equality against the fixture rather than against a list of strings.
 boolean a consumer queries, and the source's own token so the mapping stays auditable. A cell that is
 neither `Yes` nor `No` withholds the boolean and lands in `unparsable_update_affects_cds` — the source
 said something we cannot hold, which is a different finding from the source saying nothing.
+`unparsable_gene_id` and `unparsable_coordinate` are the same shape for the other two cells that can
+be malformed, and every one of them is in `release.json`.
+
+**A bad cell keeps its row; a bad field count does not.** Everywhere above, a cell the column cannot
+hold withholds its own value and the row survives, because the rest of the row is still the source's
+own statement. A **ragged** row is refused outright (`@ragged-csv-row`): the cells past the break are
+shifted, so a short summary row would enter the numbering frame carrying null accessions and read as
+coverage, and a shifted one would put the wrong accession under the right gene. Whole-file damage is a
+structural failure, and refusing is what a builder may do about one. `_open_table` also translates
+`gzip`/decoding failures into `ManeBuildError`, because the opener is chosen on the `.gz` suffix and a
+file that is named `.gz` and is not one — a proxy that decompressed the download and kept the name —
+otherwise escapes past the CLI's handler as a traceback. `EOFError` is named beside `OSError` there on
+purpose: a truncated gzip raises it and it is not an `OSError`.
 
 ### The version is pinned, and `release.json` copies rather than restates
 
@@ -2393,6 +2406,12 @@ actually fetched from. A `README_versions.txt` handed over on disk establishes w
 *claim* to be; it does not establish where the bytes came from. `release.json` is written atomically
 (`@atomic-sidecar-write`) — a truncated one parses as valid JSON that is simply missing keys, and
 `locations.read_release` would believe it.
+
+The two modes do not mix, and the CLI says so rather than picking: `--release` without `--download`
+is refused (that would be *our* claim about somebody else's bytes, where `--versions` is the source's
+own), and `--versions` *with* `--download` is refused too, because the download fetches the release's
+own copy and would silently overwrite the flag. A flag that is quietly ignored is worse than one that
+is turned away.
 
 **The source spells its own key two ways** — `GeneID:1029` in the summary, a bare `1029` in the other
 two — so `parse_ncbi_gene_id` normalizes both into one `ncbi_gene_id` integer and the test runs it over

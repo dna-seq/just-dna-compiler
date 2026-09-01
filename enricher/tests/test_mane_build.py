@@ -324,6 +324,51 @@ def test_a_snapshot_missing_a_file_is_refused(tmp_path) -> None:
     assert "changed_select_accessions" in str(excinfo.value)
 
 
+def test_a_cell_the_column_cannot_hold_withholds_and_counts_rather_than_crashing(tmp_path) -> None:
+    """A bad *cell* is not a bad *row*, and neither is a traceback.
+
+    Three shapes in one file: a gene id that is not a number, a coordinate that is not (`--5` is the
+    one `lstrip("-")` used to let through into `int()` and raise on), and an `Update_Affects_CDS`
+    token that is neither `Yes` nor `No`. Each withholds its own value, keeps the row, and lands in
+    a counter, so "the source said nothing" stays distinguishable from "the source said something we
+    cannot hold".
+    """
+    raw = _raw_rows(SUMMARY)
+    header = list(raw[0])
+    broken = raw[0] | {"NCBI_GeneID": "GeneID:not-a-number", "chr_start": "--5", "chr_end": ""}
+    summary = tmp_path / "summary.txt"
+    with summary.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=header, delimiter="\t")
+        handle.write("#" + "\t".join(header) + "\n")
+        writer.writerows([broken, *raw[1:]])
+
+    changed_raw = _raw_rows(CHANGED)
+    changed_header = list(changed_raw[0])
+    changed = tmp_path / "changed.txt"
+    with changed.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=changed_header, delimiter="\t")
+        handle.write("#" + "\t".join(changed_header) + "\n")
+        writer.writerows([changed_raw[0] | {"Update_Affects_CDS": "Unknown"}, *changed_raw[1:]])
+
+    result = build_snapshot(
+        {**INPUTS, "summary": summary, "changed_select_accessions": changed}, tmp_path / "snap"
+    )
+    assert result.rows["summary"] == len(raw), "a bad cell must not cost the row"
+    assert result.rows["changed_select_accessions"] == len(changed_raw)
+    assert result.unparsable_gene_id["summary"] == 1
+    # `chr_end` is blank, which is an absence rather than a finding, so the row counts once.
+    assert result.unparsable_coordinate == 1
+    assert result.unparsable_update_affects_cds == 1
+
+    frame = pl.read_parquet(result.parquet_files["summary"])
+    withheld = frame.filter(pl.col("ncbi_gene_id").is_null())
+    assert withheld.height == 1
+    assert withheld.row(0, named=True)["chr_start"] is None
+    assert withheld.row(0, named=True)["symbol"] == broken["symbol"], "the rest of the row survives"
+    # A row with no gene id sorts last, so the order stays total rather than raising on a comparison.
+    assert frame["ncbi_gene_id"].to_list()[-1] is None
+
+
 def test_a_table_with_the_wrong_columns_is_refused_before_any_row(tmp_path) -> None:
     """A header check inside the row loop cannot see an empty table, so it runs on the header."""
     headed = tmp_path / "empty.txt"
@@ -331,6 +376,47 @@ def test_a_table_with_the_wrong_columns_is_refused_before_any_row(tmp_path) -> N
     with pytest.raises(ManeBuildError) as excinfo:
         build_snapshot({**INPUTS, "changed_select_accessions": headed}, tmp_path / "snap")
     assert "Update_Affects_CDS" in str(excinfo.value)
+
+
+def test_a_ragged_row_is_refused_rather_than_shifted_into_the_frame(tmp_path) -> None:
+    """A bad *cell* keeps its row; a bad *field count* does not (`@ragged-csv-row`).
+
+    Both directions, because they arrive by different routes and one of them is invisible to a naive
+    reader: a short row leaves nulls in the columns it never reached, and a long one shifts nothing
+    but proves the header no longer describes the file.
+    """
+    raw = _raw_rows(SUMMARY)
+    header = list(raw[0])
+    for label, line in (
+        ("short", "\t".join(raw[0][name] for name in header[:-3])),
+        ("long", "\t".join([*(raw[0][name] for name in header), "surplus"])),
+    ):
+        broken = tmp_path / f"{label}.txt"
+        rest = "\n".join("\t".join(row[name] for name in header) for row in raw[1:])
+        broken.write_text("#" + "\t".join(header) + "\n" + line + "\n" + rest + "\n", encoding="utf-8")
+        with pytest.raises(ManeBuildError) as excinfo:
+            build_snapshot({**INPUTS, "summary": broken}, tmp_path / label)
+        assert f"header declares {len(header)}" in str(excinfo.value), label
+
+
+def test_a_file_named_gz_that_is_not_one_fails_as_this_tiers_own_error(tmp_path) -> None:
+    """A proxy that decompressed the download and kept the name looks exactly like this.
+
+    Without the translation it escapes as `gzip.BadGzipFile` past the CLI's handler and prints a
+    traceback where the operator wanted one line.
+    """
+    fake = tmp_path / "summary.txt.gz"
+    fake.write_bytes(b"#NCBI_GeneID\tsymbol\nGeneID:1\tA1BG\n")
+    with pytest.raises(ManeBuildError) as excinfo:
+        build_snapshot({**INPUTS, "summary": fake}, tmp_path / "snap")
+    assert "really is gzipped" in str(excinfo.value)
+    result = _runner.invoke(
+        app,
+        ["mane", "build", "--summary", str(fake), "--changed", str(CHANGED),
+         "--not-in-mane", str(NOT_IN_MANE), "--out", str(tmp_path / "cli")],
+    )
+    assert result.exit_code == 1
+    assert "MANE BUILD FAILED" in result.output + (result.stderr or "")
 
 
 def test_unavailable_is_a_subclass_so_one_arm_catches_both() -> None:
@@ -447,6 +533,21 @@ def test_download_and_local_files_together_are_refused(tmp_path) -> None:
     )
     assert result.exit_code != 0
     assert "not both" in result.output + (result.stderr or "")
+
+
+def test_versions_beside_download_is_refused_rather_than_silently_overwritten(tmp_path) -> None:
+    """A download fetches the release's own `README_versions.txt`, so the flag would be ignored.
+
+    Refused for the same reason `--release` without `--download` is: a flag that only means something
+    in the other mode is a flag whose failure is silent, and the guard reaches this before any
+    network call.
+    """
+    result = _runner.invoke(
+        app,
+        ["mane", "build", "--download", "--versions", str(VERSIONS), "--out", str(tmp_path / "snap")],
+    )
+    assert result.exit_code != 0
+    assert "silently overwritten" in result.output + (result.stderr or "")
 
 
 def test_there_is_no_publish_and_no_use_flag() -> None:

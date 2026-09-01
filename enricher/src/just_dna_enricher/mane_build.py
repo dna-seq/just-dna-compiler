@@ -196,6 +196,10 @@ class ManeBuildResult:
     #: verbatim token kept, and the count published so "the source said nothing" and "the source said
     #: something we cannot hold" stay distinguishable.
     unparsable_update_affects_cds: int = 0
+    #: Summary rows carrying a `chr_start` or `chr_end` the integer column cannot hold. The row is
+    #: kept — its accessions are the frame and they are still readable — the coordinate is withheld,
+    #: and the count is published for the same reason as the two above it.
+    unparsable_coordinate: int = 0
     #: `table name -> sha256 of the input file`, plus `README_versions.txt` under its own name.
     source_sha256: dict[str, str | None] = field(default_factory=dict)
 
@@ -288,6 +292,11 @@ def _text(raw: str | None) -> str | None:
     return text or None
 
 
+#: Where `csv.DictReader` parks a long row's surplus fields. A name no MANE header can collide with,
+#: because a collision would make a ragged row invisible to the check that reads this key.
+_RAGGED_EXTRA = "__fields_past_the_header__"
+
+
 def _open_table(path: Path, expected: tuple[str, ...]) -> Iterator[dict[str, str]]:
     """Yield a MANE TSV's rows as dicts, from a `.gz` or a plain text file.
 
@@ -298,24 +307,59 @@ def _open_table(path: Path, expected: tuple[str, ...]) -> Iterator[dict[str, str
     The header is checked against `expected` **before the first row**, so a file with the wrong
     columns and no data rows refuses just as loudly as one with a million: a check that only runs
     inside the loop cannot see an empty table.
+
+    **A ragged row is refused, not counted** (`@ragged-csv-row`). Everywhere else in this builder a
+    bad *cell* withholds its own value and keeps the row, because the rest of the row is still the
+    source's own statement. A row with the wrong number of fields is not that: the cells past the
+    break are shifted, so a short summary row would land in the numbering frame carrying null
+    accessions and read as coverage, and a shifted one would put the wrong accession under the right
+    gene. Whole-file damage is a structural failure, and `strict` or not, a structural failure is the
+    one thing a builder may refuse.
+
+    **Decompression and decoding failures are translated too.** `gzip.open` is chosen on the suffix,
+    so a file that is named `.gz` and is not one — a proxy that decompressed the download and kept
+    the name, or a truncated copy — otherwise escapes as `BadGzipFile` or `EOFError` past the CLI's
+    handler and prints a traceback where the operator wanted one line
+    (`@client-exception-contract`, the same rule one layer in: a caller of this module may not be
+    made to catch `gzip`'s tree to learn that a file could not be read). `EOFError` is deliberately
+    named beside `OSError`: a truncated gzip raises it and it is **not** an `OSError`.
     """
     opener = gzip.open if path.suffix == ".gz" else open
-    with opener(path, "rt", encoding="utf-8", newline="") as handle:  # type: ignore[operator]
-        # `restval=""` so a truncated line yields empty cells rather than `None`: a short row must
-        # land in the unparsable counters, never be kept with a silent hole.
-        reader = csv.DictReader(handle, delimiter="\t", restval="")
-        fieldnames = list(reader.fieldnames or [])
-        if fieldnames:
-            fieldnames = [fieldnames[0].lstrip("#"), *fieldnames[1:]]
-            reader.fieldnames = fieldnames
-        missing = [column for column in expected if column not in fieldnames]
-        if missing:
-            raise ManeBuildError(
-                f"{path} is missing the column(s) {missing}; found {fieldnames}. Refusing rather "
-                f"than guessing — a silently mis-parsed table would put someone else's accessions "
-                f"behind MANE's name, and this snapshot exists to be a numbering frame."
+    try:
+        with opener(path, "rt", encoding="utf-8", newline="") as handle:  # type: ignore[operator]
+            # `restval=None` and a `restkey`, so a ragged row is *visible*: a short row leaves `None`
+            # in the columns it never reached, and a long one parks its surplus under the restkey. A
+            # genuinely empty cell is `""`, so neither is a false positive.
+            reader = csv.DictReader(
+                handle, delimiter="\t", restkey=_RAGGED_EXTRA, restval=None
             )
-        yield from reader
+            fieldnames = list(reader.fieldnames or [])
+            if fieldnames:
+                fieldnames = [fieldnames[0].lstrip("#"), *fieldnames[1:]]
+                reader.fieldnames = fieldnames
+            missing = [column for column in expected if column not in fieldnames]
+            if missing:
+                raise ManeBuildError(
+                    f"{path} is missing the column(s) {missing}; found {fieldnames}. Refusing rather "
+                    f"than guessing — a silently mis-parsed table would put someone else's "
+                    f"accessions behind MANE's name, and this snapshot exists to be a numbering frame."
+                )
+            for number, row in enumerate(reader, start=1):
+                surplus = row.pop(_RAGGED_EXTRA, None) or []
+                absent = [name for name, value in row.items() if value is None]
+                if surplus or absent:
+                    raise ManeBuildError(
+                        f"{path} data row {number} has {len(fieldnames) - len(absent) + len(surplus)}"
+                        f" field(s) where the header declares {len(fieldnames)}. Refusing: the cells "
+                        f"past the break are shifted, so this row would enter the numbering frame "
+                        f"with the wrong accession under the right gene."
+                    )
+                yield row
+    except (OSError, EOFError, UnicodeDecodeError, csv.Error) as exc:
+        raise ManeBuildError(
+            f"could not read {path}: {exc}. If the name ends in .gz, check it really is gzipped — a "
+            f"proxy that decompressed the download and kept the name looks exactly like this."
+        ) from exc
 
 
 # ── the three tables ────────────────────────────────────────────────────────────────────────────
@@ -386,8 +430,14 @@ def _not_in_mane_schema() -> dict:
 
 
 def _int(raw: str | None) -> int | None:
+    """A coordinate cell as an integer, or `None` for anything this cannot read.
+
+    `removeprefix("-")` rather than `lstrip("-")`, which strips *every* leading dash: `"--5"` would
+    then pass the guard and raise inside `int()`. A cell parser in a builder whose rule is
+    withhold-and-count has no business owning a traceback path.
+    """
     text = (raw or "").strip()
-    return int(text) if text.lstrip("-").isdigit() else None
+    return int(text) if text.removeprefix("-").isdigit() else None
 
 
 def _read_summary(path: Path, result: ManeBuildResult) -> list[dict]:
@@ -398,6 +448,10 @@ def _read_summary(path: Path, result: ManeBuildResult) -> list[dict]:
             result.unparsable_gene_id["summary"] += 1
         status = _text(row["MANE_status"])
         result.mane_status_counts[status or ""] = result.mane_status_counts.get(status or "", 0) + 1
+        start, end = _int(row["chr_start"]), _int(row["chr_end"])
+        # A stated cell the integer column cannot hold is a finding; a blank one is a plain absence.
+        if (start is None and row["chr_start"].strip()) or (end is None and row["chr_end"].strip()):
+            result.unparsable_coordinate += 1
         records.append(
             {
                 "ncbi_gene_id": gene_id,
@@ -411,8 +465,8 @@ def _read_summary(path: Path, result: ManeBuildResult) -> list[dict]:
                 "ensembl_prot": _text(row["Ensembl_prot"]),
                 "mane_status": status,
                 "grch38_chr": _text(row["GRCh38_chr"]),
-                "chr_start": _int(row["chr_start"]),
-                "chr_end": _int(row["chr_end"]),
+                "chr_start": start,
+                "chr_end": end,
                 "chr_strand": _text(row["chr_strand"]),
             }
         )
@@ -726,6 +780,7 @@ def _write_release_json(
         "excluded_reasons": result.excluded_reasons,
         "unparsable_gene_id": result.unparsable_gene_id,
         "unparsable_update_affects_cds": result.unparsable_update_affects_cds,
+        "unparsable_coordinate": result.unparsable_coordinate,
         "notice": (
             "MANE is the default transcript, not the answer. A gene with two rows (MANE Select "
             "beside MANE Plus Clinical) has two CDS numbering frames and the column says which; a "
