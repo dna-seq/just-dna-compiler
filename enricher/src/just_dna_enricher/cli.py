@@ -2959,6 +2959,24 @@ def mane_build_(
         + ", ".join(f"{reason} {count}" for reason, count in sorted(result.excluded_reasons.items())),
         fg=typer.colors.YELLOW,
     )
+    # The withheld cells reach the terminal too, not only `release.json`: a residue an operator
+    # cannot see is one nobody looks for. Printed only when there is one — the measured zeros are in
+    # `release.json`, where a reader who wants to know that nothing was withheld can find them.
+    withheld = {
+        **{f"gene id ({table})": n for table, n in result.unparsable_gene_id.items() if n},
+        **({"coordinate": result.unparsable_coordinate} if result.unparsable_coordinate else {}),
+        **(
+            {"Update_Affects_CDS": result.unparsable_update_affects_cds}
+            if result.unparsable_update_affects_cds
+            else {}
+        ),
+    }
+    if withheld:
+        typer.secho(
+            "  withheld cells (the row was kept): "
+            + ", ".join(f"{label} {count}" for label, count in sorted(withheld.items())),
+            fg=typer.colors.YELLOW,
+        )
     typer.secho(
         "  MANE is the default, not the answer: it shows a gene's second clinical transcript where "
         "there is one, and says nothing about isoforms it does not carry.",

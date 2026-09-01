@@ -360,6 +360,11 @@ def test_a_cell_the_column_cannot_hold_withholds_and_counts_rather_than_crashing
     assert result.unparsable_coordinate == 1
     assert result.unparsable_update_affects_cds == 1
 
+    release = json.loads((tmp_path / "snap" / "release.json").read_text(encoding="utf-8"))
+    assert release["unparsable_gene_id"]["summary"] == 1
+    assert release["unparsable_coordinate"] == 1
+    assert release["unparsable_update_affects_cds"] == 1
+
     frame = pl.read_parquet(result.parquet_files["summary"])
     withheld = frame.filter(pl.col("ncbi_gene_id").is_null())
     assert withheld.height == 1
@@ -499,6 +504,11 @@ def test_the_command_builds_from_local_files_and_prints_what_it_measured(tmp_pat
     assert release["dataset"] in result.output
     # The bound the lane exists to state, where an operator will actually see it.
     assert "MANE is the default, not the answer" in result.output
+    # A clean file withholds nothing, so the line that would report a residue stays away rather than
+    # printing three zeros — the measured zeros are in `release.json` for anyone who wants them.
+    assert "withheld cells" not in result.output
+    assert release["unparsable_gene_id"] == dict.fromkeys(MANE_TABLE_NAMES, 0)
+    assert (release["unparsable_coordinate"], release["unparsable_update_affects_cds"]) == (0, 0)
 
 
 def test_two_of_the_three_files_is_not_a_snapshot(tmp_path) -> None:
