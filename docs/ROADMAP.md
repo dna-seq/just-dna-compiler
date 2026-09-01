@@ -282,12 +282,15 @@ is the [RM_TOC.md](RM_TOC.md) failure mode (an item nobody can find) arriving in
 points *at*, and it is why a new item starts here as a `## RMn` section and gets its RM_TOC row in the
 same commit.
 
+**It happened a second time, to RM160, and the repair is the same one line.** Filed 2026-09-01 as
+`open — worth doing` with owner *enricher*, it was appended below the same heading and sat under *Not
+format scope* — a section whose own intro says it lists things "so they are not mistaken for format
+scope" — until the 2026-09-01 source-adoption round moved the boundary back down to RM7. Twice is a
+pattern rather than a slip: **appending an item to this file puts it wherever the last heading left
+you**, so check which `# ` heading you are under before writing the section, not after.
+
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
-
-# Not format scope
-
-Listed so they are not mistaken for format scope, and so nobody re-proposes them.
 
 ## RM160 — the CIViC snapshot reads the reviewed quarter of its source and says so nowhere a reader acts on
 
@@ -396,6 +399,10 @@ An `accepted` row and a `submitted` row must not be indistinguishable once both 
 
 **Related** RM152 (the adoption), RM159 (the name-identity table, whose two unresolved records are the
 motivating case), RM153.
+
+# Not format scope
+
+Listed so they are not mistaken for format scope, and so nobody re-proposes them.
 
 ## RM7 — Evaluation-output / report-card schema
 
