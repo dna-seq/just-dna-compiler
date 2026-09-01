@@ -571,9 +571,23 @@ def append_partial_rows(
     if path.exists() and path.stat().st_size > 0:
         with open(path, encoding="utf-8", newline="") as handle:
             existing_header = next(csv.reader(handle), [])
-    previous = _render_existing(path, fieldnames or existing_header) if existing_header else []
+
+    # The header grows to fit what this batch fills, the same way `append_rows` does. It has to be
+    # settled BEFORE the existing rows are re-rendered: rendering them against the model's full field
+    # list and then writing them under the file's narrower header handed `csv.DictWriter` dicts with
+    # columns the header lacks, and the author saw a raw `ValueError: dict contains fields not in
+    # fieldnames` rather than a diagnosis (`@specific-rejection`). It reproduced on every shipped
+    # example whose CSV predates a column the model has since gained.
+    filled = {
+        name
+        for partial in partials
+        for name, value in ((n, partial.cells.get(n)) for n in (*partial.cells, *partial.stubbed))
+        if name in partial.stubbed or (value is not None and value != [])
+    }
     header = existing_header or fieldnames
-    fieldnames = header
+    extended = [name for name in fieldnames if name in filled and name not in header]
+    fieldnames = header + extended
+    previous = _render_existing(path, fieldnames) if existing_header else []
 
     # The covered-set is built from ONE `match_on`, so every partial in a batch must share it. A
     # provider computing `match_on` per row from whichever identity cells that row happened to carry
@@ -611,7 +625,7 @@ def append_partial_rows(
         to_write.append(partial.rendered(fieldnames, list_fields))
 
     if dry_run or not to_write:
-        return DraftReport(csv_name, path, outcomes, written=False)
+        return DraftReport(csv_name, path, outcomes, written=False, header_extended=extended)
 
     merged, shifted = place_rows(previous, to_write, group_by)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -619,7 +633,7 @@ def append_partial_rows(
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(merged)
-    return DraftReport(csv_name, path, outcomes, written=True, shifted=shifted)
+    return DraftReport(csv_name, path, outcomes, written=True, header_extended=extended, shifted=shifted)
 
 
 # ── Delegated placement (0.5.1) ─────────────────────────────────────────────────────────────────

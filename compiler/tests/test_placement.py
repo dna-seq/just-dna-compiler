@@ -94,6 +94,11 @@ def test_a_grouped_append_still_round_trips(tmp_path: Path) -> None:
 
 # ── partial rows ────────────────────────────────────────────────────────────────────────────────
 
+def _header(path: Path) -> list[str]:
+    with open(path, encoding="utf-8", newline="") as handle:
+        return next(csv.reader(handle), [])
+
+
 def _partial(rsid: str, **extra) -> PartialRow:
     return PartialRow(
         model=VariantRow,
@@ -110,6 +115,53 @@ def test_a_partial_row_is_written_with_its_stub_and_cannot_load(tmp_path: Path) 
     assert cells["rsid"] == "rs1801133"
     rows, errors, _ = _load_csv_rows(tmp_path / "variants.csv", VariantRow, "variants.csv")
     assert rows == [] and errors and TEMPLATE_PLACEHOLDER in errors[0]
+
+
+def test_a_partial_append_into_a_header_that_predates_a_column(tmp_path: Path) -> None:
+    """A shipped module's CSV is as old as the release that drafted it, and the model has moved since.
+
+    The existing rows were re-rendered against the model's **full** field list and then written under
+    the file's narrower header, so `csv.DictWriter` raised a bare
+    `ValueError: dict contains fields not in fieldnames` — `draft-repeats` into any spec whose
+    `repeat_alleles.csv` predates `pmid`/`measure_tiling` died on it. The batch fills none of the
+    newer columns, so the header must stay exactly as the author wrote it.
+    """
+    narrow = ["rsid", "state", "conclusion", "genotype"]
+    path = tmp_path / "variants.csv"
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=narrow)
+        writer.writeheader()
+        writer.writerow({"rsid": "rs1801131", "state": "risk", "conclusion": "c", "genotype": "AA"})
+
+    report = append_partial_rows(tmp_path, "variants.csv", [_partial("rs1801133")])
+
+    assert report.written and report.header_extended == []
+    assert _header(path) == narrow, "an untouched column may not be added to the author's header"
+    rows = _rows(path)
+    assert [row["rsid"] for row in rows] == ["rs1801131", "rs1801133"]
+    assert rows[0]["genotype"] == "AA", "the existing row keeps its cells"
+
+
+def test_a_partial_append_grows_the_header_for_a_column_it_fills(tmp_path: Path) -> None:
+    """The other half of the same rule: a column the batch *does* fill has to reach the file.
+
+    Silently dropping it would be the quiet version of the crash above — the row would be written
+    missing the one cell the provider had an answer for.
+    """
+    narrow = ["rsid", "state", "conclusion", "genotype"]
+    path = tmp_path / "variants.csv"
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=narrow)
+        writer.writeheader()
+        writer.writerow({"rsid": "rs1801131", "state": "risk", "conclusion": "c", "genotype": "AA"})
+
+    report = append_partial_rows(
+        tmp_path, "variants.csv", [_partial("rs1801133", gene="MTHFR")]
+    )
+
+    assert report.header_extended == ["gene"]
+    assert _header(path)[: len(narrow)] == narrow and "gene" in _header(path)
+    assert _rows(path)[1]["gene"] == "MTHFR"
 
 
 def test_a_partial_row_is_not_re_added_once_the_human_fills_the_stub(tmp_path: Path) -> None:
