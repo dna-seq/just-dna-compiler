@@ -428,8 +428,8 @@ failing would make the format arbitrate between expert panels.
 `litvar coverage` reports how much of the literature a variant index holds for each of your loci, and
 **at which tier it could say it**: an allele-resolved answer where the index has a node for the exact
 allele you named, a position-level one where it only has a node for the rsID, and absent where it has
-neither. The two are not interchangeable — one locus in this workspace's own corpus has 3,945 papers at
-its position and 328 on its allele — so the tier is part of every answer. It writes nothing, and it
+neither. The two are not interchangeable — the APOE locus rs429358 has 3,945 papers at its position
+and 328 on its allele — so the tier is part of every answer. It writes nothing, and it
 answers *which papers discuss an allele that is already identified*; it will not tell you which allele
 an old paper's name meant.
 
