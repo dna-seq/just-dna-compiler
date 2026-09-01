@@ -32,6 +32,7 @@ from typing import Any
 
 import duckdb
 from just_dna_compiler.hints import Alteration, Finding
+from just_dna_format.vrs import normalize_chrom
 
 from just_dna_enricher.clinvar import lookup_clin_sig
 from just_dna_enricher.clinvar import lookup_loci as clinvar_lookup_loci
@@ -534,7 +535,18 @@ def _lookup_pubmind(
             )
         )
         return
-    wanted = {(chrom, start, ref, alt) for chrom, start, ref, alt in alleles}
+    # Normalized on BOTH sides, and on every axis the comparison reads. `select_by_positions`
+    # normalizes the chromosome at the query and again at its own filter, so the records come back
+    # for `chr1` as readily as for `1` — and then this filter compared them against the caller's own
+    # spelling, matched nothing, and the branch below reported that as an established absence in
+    # PubMind's corpus. A fabricated negative in the exact case this leg exists for: `hint.loci` is
+    # filled by an rsID lookup, and PubMind's channel is coordinate-keyed with most of its rows
+    # carrying no rs-number, so a coordinate-only query has no normalized locus to fall back on.
+    # Bases are upper-cased for the same reason — a lowercase `ref` is the same allele.
+    wanted = {
+        (normalize_chrom(str(chrom)), start, str(ref).upper(), str(alt).upper())
+        for chrom, start, ref, alt in alleles
+    }
     try:
         found = select_by_positions(reference, [(chrom, start) for chrom, start, _, _ in alleles])
     except (duckdb.Error, PubMindDraftError) as exc:
@@ -549,7 +561,10 @@ def _lookup_pubmind(
         record
         for record in found
         if (
-            str(record["chrom"]), int(record["start"]), str(record["ref"]), str(record["alt"])
+            normalize_chrom(str(record["chrom"])),
+            int(record["start"]),
+            str(record["ref"]).upper(),
+            str(record["alt"]).upper(),
         ) in wanted
     )
     if not hint.pubmind:
