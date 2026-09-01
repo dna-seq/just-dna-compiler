@@ -631,7 +631,7 @@ it. Note also the recorded asymmetry that makes the frame matter: Ensembl's Vari
 `current/` resolves to a dated version a `release.json` can pin, and what the download costs
 (`@probe-the-real-file`, `@currency-asks-the-source-not-the-cache`).
 
-**Related** RM159, RM153, RM152, RM160, `@snapshot-layout-locations`, `@accession-version-names-no-build`.
+**Related** RM159, RM153, RM152, `@snapshot-layout-locations`, `@accession-version-names-no-build`.
 
 # Not format scope
 
