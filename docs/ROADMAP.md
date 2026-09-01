@@ -327,6 +327,8 @@ The trackers further down are the other live part of this file: the reserved-nam
 · **Motivating case** the RM169 widening, which made the first such variants visible in a built
 snapshot
 
+**A second corpus exists, found while probing RM165 (2026-09-01) — design against both, not against CIViC alone.** STRchive's `evidence` field is a ClinGen-style validity call on **all 82** of its repeat loci, and its members include **`Disputed` (3) and `Refuted` (1)** beside Definitive 46 / Limited 14 / Moderate 8 / Provisional 6 / Strong 4. That is this entry's shape in a different domain and on a *published, closed vocabulary* rather than CIViC's per-record assertion/refutation pair — so the two corpora disagree about where the contradiction lives (a field vs. two rows), which is exactly the sort of thing that decides a record shape. Probe both before fixing one.
+
 **The correction this item starts from.** It was reported during the RM169 round that reading
 submitted evidence would make three VHL variants `contested` and so stop them being drafted. That was
 wrong, and the way it was wrong is the item. `contested_variants` counts a variant whose camps include

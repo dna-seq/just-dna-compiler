@@ -55,12 +55,16 @@ the six inside 0.7.0 and holds the rest.
 
 | Item | Probe outcome | Proposed |
 | --- | --- | --- |
-| RM163 PGS Catalog | confirmed, with three corrections | **BUILDS in 0.7.0** |
-| RM164 MITOMAP / heteroplasmy | route closed, twice over | **PARKS**, blockers now measured |
-| RM165 STRchive / repeat alleles | confirmed on identity, refuted on bands | **BUILDS**, split — check half in 0.7.0 |
-| RM166 FDA / the PGx licence class | half confirmed, half refuted | **SPLITS** — check builds in 0.8, licence half closes |
-| RM167 LitVar2 / PubTator3 | premise confirmed once the allele tier was found | **BUILDS in 0.8** |
-| RM168 MANE | confirmed, cheapest item in the round | **BUILDS in 0.7.0** |
+| RM163 PGS Catalog | confirmed; five corrections, incl. a **35 %-dense id space** that reshapes the message | **BUILDS in 0.7.0** |
+| RM164 MITOMAP / heteroplasmy | source **reachable**; the *axis* is the negative, measured on the real schema | **PARKS** to 0.8 |
+| RM165 STRchive / repeat alleles | confirmed on identity, **refuted on bands**; second candidate out on category | **BUILDS**, split — check half in 0.7.0 |
+| RM166 ClinPGx / the PGx licence class | licence half refuted; the real finding is **1 of ≥12 files read** | **SPLITS** — check in 0.8, licence half closes |
+| RM167 LitVar2 / PubTator3 | premise **confirmed** once the allele tier was found; bounded on the hardest case | **BUILDS in 0.8** |
+| RM168 MANE | confirmed; **the source publishes its own staleness list** | **BUILDS in 0.7.0** |
+
+**This table was written before the re-probe round and rewritten after it** — three rows said
+something the second pass contradicted, which is `@a-record-written-in-two-passes-drifts-between-them`
+happening inside the document that names it. The per-item sections below are the authority.
 
 ---
 
@@ -837,9 +841,11 @@ people they were seen in?**
 
 # Implementation ordering, if the three 0.7.0 items are taken
 
-1. **RM168 first.** It is self-contained, it is the smallest download in the workspace, and nothing
-   else in the batch depends on it — but the identity protocol does, and it is the only item here
-   that makes an already-shipped result (RM159's 33 answers) re-derivable.
+1. **RM168 first.** Three files under 1.2 MB total, self-contained, and nothing else in the batch
+   depends on it — but the identity protocol does, and it is the only item here that makes an
+   already-shipped result (RM159's 33 answers) re-derivable. Take `changed_select_accessions` in the
+   same pass as the summary: it is 3.6 KB and it is the currency check, so splitting them would ship
+   the cache without the thing that notices it going stale.
 2. **RM163 second.** `identifiers.py` gains a fourth registry; RM155–RM158 have just finished
    widening the rosters in that file, so this lands on freshly-reworked code and should land before
    memory of it fades.
@@ -848,9 +854,10 @@ people they were seen in?**
    a test that only ran HTT would pass while proving nothing.
 
 **Shared-file hazards.** All three touch `licensing.py` (a new `SourceTerms` each) and two touch
-`locations.py` (a cache dir plus a resolver each). RM163 and RM165 both touch `cli.py`. None of them
-touches `schema/` or `compiler/` at all — if a diff in either appears, the item has grown past what
-this file decided and wants a re-read.
+`locations.py` (a cache dir plus a resolver each). RM163 and RM165 both touch `cli.py`; **RM163 alone
+touches `identifiers.py`**, which RM155–RM158 reworked days ago. None of them touches `schema/` or
+`compiler/` at all — if a diff in either appears, the item has grown past what this file decided and
+wants a re-read.
 
 **Standing requirements, per lane.** Every pass that consults a source writes its `SourceRow`, and one
 that contributes nothing writes none (`@write-the-sourcerow`). Every new builder is atomic
