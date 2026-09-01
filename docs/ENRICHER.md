@@ -35,6 +35,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Gene ↔ locus agreement** | the row's `gene` vs the chromosome its variant sits on (0.5.4) | `identifiers.check_identifiers` → `GeneLocusConflict` (attested since RM72) |
 | **ACMG secondary findings** | authored `acmg_sf` vs the published SF gene list (v3.3 via `--sf-list`; the scraped v3.2 page reports `unverifiable`) | `acmg.check_acmg_sf` (attested by `check-acmg` since RM72) |
 | **Repeat bands** | an authored `repeat_alleles.csv` band table vs STRchive's `benign_*`/`intermediate_*`/`pathogenic_*` (0.7, RM165) | `strchive.check_repeat_bands` (**warns in both modes**; the catalogue's `pathogenic_max` is reported and never written) |
+| **Regulator drug labels** | a `(gene[, allele], drug)` claim vs the `Testing Level` five drug regulators' labels carry, at two join tiers (0.7, RM166) | `drug_labels.check_drug_labels` (**warns in both modes**; a blank level is `unknown` and never `No Clinical PGx`) |
 | **Allele function** | authored `function_status` vs PharmVar and CPIC | `pgx.enrich_pgx` (**warns in both modes**) |
 | **Declared use** | the caller's `--use` vs a source's terms | `licensing.check_declared_use` (**refuses in both modes**) |
 | **Drafted vs authored rows** | a source's current row vs the one already in the CSV | `just_dna_compiler.draft.append_rows` (reports `differs`; never rewrites) |
@@ -352,6 +353,8 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `ensembl` | live Ensembl: V2 GraphQL → V1 REST fallback, tenacity | `httpx`, `tenacity` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
 | `litvar` | RM167: LitVar2/PubTator3 literature coverage per locus, **with the tier that answered** (allele node / position node / absent). Reports only; writes no row and no `SourceRow` | `httpx`, `tenacity`, `clingen_allele` |
+| `drug_labels` | RM166: five regulators' drug labels — the `(gene[, allele], drug)` cross-check at two join tiers (offline, reports only, writes no `SourceRow`) | `duckdb`, format `pgx`, compiler `load_csv_rows` |
+| `drug_labels_build` | **`[dev]`** builder (0.7, RM166): ClinPGx's `drugLabels.zip` → one parquet + `LICENSE.txt` + its own `release.json`, dated from the archive's own `CREATED_*.txt` | `polars` (lazy), `httpx` |
 | `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar`/`pubmind` builders — `build+publish` for the first four, **`build` only** for `pharmvar` (there is no `pharmvar publish` and there will not be) and `pubmind`, whose `publish` exists and refuses with its reason, `mane build` (no publish at all — NCBI grants nothing to refuse or to permit), `vrs mint` | `typer` |
 
 ## Rate limits (public APIs)
@@ -4010,6 +4013,7 @@ directly to compose passes, inject clients, or run in-process.
 | `draft-repeats` | `strchive_draft.draft_repeat_loci` |
 | `strchive build` | `strchive_build.build_strchive_snapshot` → `strchive.load_strchive_catalogue` |
 | `clinpgx build` / `clinpgx check` | `clinpgx_build.download_clinpgx_zip` + `build_snapshot` / `clinpgx.enrich_clinpgx` |
+| `clinpgx build-labels` / `check-labels` | `drug_labels_build.download_drug_labels_zip` + `build_drug_label_snapshot` / `drug_labels.check_drug_labels` |
 | `clinvar build` / `citations` / `publish` | `clinvar_build.download_clinvar_vcf` + `build_snapshot` / `download_var_citations` + `build_citations` / `upload.publish_reference_snapshot` |
 | `gnomad constraint build` / `publish` | `constraint_build.download_constraint_tsv` + `build_snapshot` / `upload.publish_reference_snapshot` |
 | `vrs mint` | `vrs.mint_resolution_rows` |
@@ -4572,3 +4576,152 @@ through its drafting provider — or through a snapshot that keeps the source's 
 unknown redistribution axis becomes load-bearing the moment somebody proposes publishing them, which
 is `MANE_TERMS`. This lane has neither: nothing it reads reaches a module's tables and nothing is
 stored. So the finding lives here and in the module docstring, which is where a reader would look.
+
+## Regulator drug labels (`drug_labels.py` + `drug_labels_build.py`) — `clinpgx check-labels` — RM166
+
+ClinPGx's `drugLabels.zip` annotates the pharmacogenomic content of medicine labels published by
+**five** agencies: FDA, Health Canada (HCSC), EMA, Swissmedic and PMDA. The item asked for the FDA and
+the file supplies four more at no extra cost, which changes the shape from *module ↔ authority ↔
+authority* into a lane where the number of authorities is a parameter — exactly what RM134's
+vocabulary split was built to survive. **Nothing in the surface names an agency.** Baking one into a
+published key is the mistake RM134 caught in `ClinSigConflict` before it shipped, so the check is
+`regulator_label_agreement`, the command is `check-labels`, and the agencies are data in a `regulator`
+column.
+
+```bash
+just-dna-enricher clinpgx build-labels --out data/interim/clinpgx-labels --use non-commercial
+just-dna-enricher clinpgx check-labels spec/ --snapshot data/interim/clinpgx-labels --use non-commercial
+```
+
+### A second archive from a source already adopted, and a broader finding behind it
+
+Enumerating `api.clinpgx.org/v1/download/file/data/` properly — a 303 is a real file, a 404 is not —
+finds at least **twelve** published archives: `clinicalAnnotations`, `variantAnnotations`,
+`clinicalVariants`, `drugLabels`, `relationships`, `variants`, `genes`, `drugs`, `chemicals`,
+`phenotypes`, `occurrences`, `pathways-tsv`. Before this item, `clinpgx_build` downloaded one of them.
+So the honest restatement of RM166 is that the PGx lane reads a fraction of a source it has already
+adopted and gated, and the FDA question was a narrow way into a broad finding. `clinicalVariants.zip`
+is the next one that bears on a shipped table kind and is deliberately **not** built here.
+
+`drugLabels.zip` was 59 KB on 2026-08-05 and holds `LICENSE.txt`, `README.pdf`, `drugLabels.tsv`
+(1,433 rows) and `drugLabels.byGene.tsv` (238 rows). The second is a pivot of the first by gene symbol
+and carries no fact the label table does not, so nothing reads it.
+
+**Its own `release.json`, never the annotation lane's.** `clinpgx_build`'s docstring records
+`relationships.zip` a *year* newer than `clinicalAnnotations.zip`, so the archives do not refresh in
+lockstep. The label snapshot is dated from its own `CREATED_<date>.txt` and labelled
+`clinpgx_drug_labels_<date>` — distinct from `clinpgx_<date>`, because two surfaces have two
+denominators (`@two-surfaces-two-denominators`).
+
+**Every cell is stored verbatim.** Seven of the fifteen columns are flag-shaped — a blank or one
+constant string — and coercing them to booleans would have the builder decide that `Biomarker Flag` is
+one, which it is not: it carries three values, `On FDA Biomarker List` and `Formerly on FDA Biomarker
+List` beside the blank. A blank becomes `None` and the reader decides what a cell means.
+
+### The separator is `;`, and it is not `vocab.MULTI_SEP`
+
+`MULTI_SEP` splits on `,;|`. In this file a comma inside a `Genes` / `Chemicals` /
+`Variants/Haplotypes` cell is **data**: `DPYD c.1129-5923C>G, c.1236G>A (HapB3)` is one haplotype named
+by two variants, and `Ascorbic acid (vitamin C), combinations` is one chemical. Splitting on it reports
+604 variant tokens where the file states 601 and turns three real names into six that match nothing.
+Read with `;`, the cell holds 601 tokens over 189 distinct names, 415 of them rsID-shaped and 178
+star-allele-shaped.
+
+### Two join tiers, because they are not the same claim
+
+`Genes` is populated on 1,248 of 1,433 rows (87 %) and `Variants/Haplotypes` on 217 (15 %). So a
+module's claim is put at two granularities and the **tier is a property of the subject**:
+
+* `(gene, drug)` — the gene tier. *What do the agencies say about this gene and this medicine?*
+* `(gene, allele, drug)` — the allele tier, where the allele is a star allele from `diplotypes.csv` or
+  an rsID from `pharm_variants.csv`.
+
+A label naming `CYP2C19*2` answers **both**, because those are two questions rather than one asked
+twice. The alternative — scoring every authored allele against whatever the gene-level labels say —
+was written first and measured: on `reference_examples/cyp2c19_star_alleles` it reported the EMA's
+single disagreement about clopidogrel **34 times**, once per star allele, none of which the label
+mentions. Under the two-granularity shape the same run reports it once at the gene tier and seven
+times at the allele tier, for the seven alleles the labels actually enumerate.
+
+**The star tokens are not `haplotypes.csv`'s key verbatim**, which the item's entry says they are. The
+file writes `CYP2C19*2`; the module writes `*2` in `haplotype_name` with `CYP2C19` in its own column,
+so the join composes them and tries the bare spelling too, which is what an rsID and an
+already-qualified HLA allele need.
+
+An authored allele no label names is neither withheld nor a finding: the gene-tier subject for the same
+pair is what answers for it, so it is **counted** and reported as a coverage number.
+
+### `Testing Level` is five members and a third of the file states none
+
+`Testing Required` 374, `Actionable PGx` 312, `Informative PGx` 162, `No Clinical PGx` 87, `Testing
+Recommended` 26 — and **472 rows stating none**. A blank is an absence, not a *no*: it is `unknown`, it
+is counted, and it withholds. Kleene, so it cannot un-see a disagreement already witnessed and it never
+establishes an agreement on its own. The vocabulary is derived from the payload and a test asserts the
+equality against the fixture, because a sixth member upstream has to be a visible edit rather than a
+silent `.get(x, default)`.
+
+### Two verdicts, and only the ends of the axis are placed
+
+`classify_labels` is a pure function over an authored action and N calls at one tier, and it answers
+two orthogonal questions the way `classify_concordance` does:
+
+* **`concordance`** — `concordant` / `discordant` / `single` / `unstated` / `none`. Level *equality*,
+  with no ordering at all, so a level ClinPGx adds later still classifies correctly here.
+* **`position`** — `opposed` / `unplaced` / `unchecked` / `absent` / `no_label`.
+
+**The module carries no testing-level column, so most of the axis is deliberately unplaced.** Mapping
+`Testing Required` onto `recommendation_strength=strong` would be this format inventing an equivalence
+between a regulator's testing requirement and CPIC's prescribing strength. `No Clinical PGx` needs no
+mapping — it is the negative claim by its own name — so the one authored arm fires when a module ships
+a prescribing recommendation for a pair every agency that spoke calls `No Clinical PGx`. The three
+middle levels are stated and *unplaced*, which is reported as such rather than as an agreement. The
+reverse direction withholds too: a module declining to recommend for one diplotype is a statement about
+that genotype, not about whether the medicine's label carries pharmacogenomics (`@refutation-withholds`).
+
+`evidence_level` is not read here at all. It is ClinPGx's own metadata about its own annotation and
+`clinpgx check` owns it; treating "there is 1A evidence" as "this module recommends" would put two axes
+in one field.
+
+### What the corpus says
+
+* `cyp2c19_star_alleles` — clopidogrel and CYP2C19 is `Actionable PGx` at four agencies and
+  `Informative PGx` at the EMA. Three of the five name the star alleles and two name only the gene, so
+  the same disagreement is established at both tiers and reported apart.
+* `pgx_slco1b1_simvastatin` — three labels reach SLCO1B1 + simvastatin and **two state no level**. The
+  concordance is `unstated`, the position is `absent`, and the two blanks are counted into the record
+  rather than read as a negative.
+* `cyp2c9_warfarin_grch37` — CYP4F2 + warfarin is a claim no agency labels. Withheld, named in the
+  record, and never reported as an absence of pharmacogenomics.
+
+### Severity, and what is not written
+
+**`--strict` never escalates**, and a test asserts the two modes report the identical list. Five expert
+regulators genuinely disagree with each other and with a curator, and a compile that refused would make
+this format arbitrate between its own authorities — the rule the ClinVar `clin_sig`, PGx
+allele-function and repeat-band checks already follow. What `strict` still refuses is structural: a
+`diplotypes.csv` that will not load raises in both modes.
+
+**This check writes no `SourceRow`, and either of two reasons would settle it.** Nothing from the labels
+lands in the module — it writes no authored cell, and `sources.csv` accounts for what a module *carries*
+(`@write-the-sourcerow`'s converse; `check-repeat-bands` is the shipped precedent). And the row is not
+free: `merge_sources_csv` keys on `(source, layer)`, `clinpgx`/`annotation` is already owned by
+`clinpgx check` and `draft-clinpgx`, and that row's `dataset` is load-bearing — the evidence-level
+check's tautology guard compares it against the *annotation* snapshot's label. Stamping
+`clinpgx_drug_labels_<date>` into that slot would silently disable a shipped check. Every other layer
+sits outside the compiler's orphan-check exemption and would warn `source_row_unused` on every module.
+
+**The licence gate still applies**, at `clinpgx_draft`'s reading rather than a third one: ClinPGx's
+terms are accepted when the data is taken, so `--use commercial` refuses the read as well as the fetch,
+and the skip is `not_permitted` — what clears it is a declaration, not egress.
+
+### What closed with this item
+
+The entry wanted two things from the FDA: this concordance check, and **a PGx lane member whose terms
+may not gate**. The second is refuted by both routes and closed in writing. The ClinPGx route is
+CC BY-SA + no-sale, the same gate the rest of the lane sits behind, so it diversifies nothing. FDA's own
+Table of Pharmacogenetic Associations, probed directly on 2026-09-01, is 126 associations in an HTML
+page with no CSV or XLS download and **no copyright or public-domain statement on the page at all** —
+a quarter of the FDA content ClinPGx already carries, in a shape that has to be scraped, on terms that
+are unestablished. *"US government work is public domain"* is a rule with exceptions and the page does
+not settle it. Licence diversification for this lane is still worth doing, and it wants its own entry
+with candidates chosen for their terms first, which is the opposite of how this one chose.

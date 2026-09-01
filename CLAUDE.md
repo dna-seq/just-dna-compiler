@@ -227,6 +227,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Count a correction's record over the **overlay**, never over what it removed, or lap 2 disagrees with lap 1. `@suppression-counts-the-overlay-not-the-effect`
 - The compiler discards an uncited literature row; `literature.csv` keeps it. `@uncited-literature-dropped`
 - One normalizer for a vocabulary two sources spell differently; test **both** sides' raw tokens. `@one-normalizer-two-spellings`
+- A join with two granularities needs two kinds of **subject**, or the coarse answer repeats per fine claim. `@the-tier-is-a-property-of-the-subject`
+- `MULTI_SEP` splits on `,;|`; a source using one writes the other two as data — measure its separator. `@a-shared-separator-constant-is-not-a-sources-separator`
 
 - A release record's measured half and declared half drift; re-measure when a declaration lands. `@a-record-written-in-two-passes-drifts-between-them`
 - Assert the asymmetric invariant when only one direction is entailed; equality forces false claims. `@a-record-written-in-two-passes-drifts-between-them`
@@ -261,6 +263,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Licensing lives as data in the licence table, never as a table in the compiler. `@licensing-as-data`
 - Every pass that consults a source **writes** its `SourceRow`. `@write-the-sourcerow`
 - And one that **contributes nothing writes none** — key on what this run covered, never on the table or on `not missing`. `@write-the-sourcerow`
+- A second surface of an already-declared source may not claim the lane's `(source, layer)` row. `@write-the-sourcerow`
 - Derive a column list from the model; a hand-kept one loses a column. `@fieldnames-from-model`
 - `source` names the licensed source; only `resolution.csv` also records the link, via `authority`. `@source-vs-authority`
 - A layer with no `source` column to join is structurally exempt from the orphan check. `@orphan-check-exempt`

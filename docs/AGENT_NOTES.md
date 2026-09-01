@@ -1127,6 +1127,34 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `VALID_CLIN_SIG` and nothing else, so a runtime pass reads it without the builders' `[dev]` extra —
   which is the argument for a shared module rather than one builder importing another.
 
+- `@the-tier-is-a-property-of-the-subject` — **A join with two granularities needs two kinds of subject,
+  or the coarse answer is reported once per fine claim (RM166).** ClinPGx's drug labels name a gene on
+  87 % of rows and a variant or star allele on 15 %, so a module's PGx claim is answerable at both. The
+  first version made the subject `(gene, allele, drug)` and let a gene-level label answer it: on
+  `reference_examples/cyp2c19_star_alleles` that reported the EMA's *single* disagreement with four other
+  agencies about clopidogrel **34 times**, once per authored star allele, none of which the label
+  mentions. The verdicts were all correct and the report was still wrong, because the *subject* was
+  finer than the claim being compared. The repair is not a de-duplication pass over the findings —
+  that would drop the allele-tier findings that are genuinely per allele. It is to make the granularity
+  a property of the **subject**: `(gene, drug)` is the gene-tier question and `(gene, allele, drug)` the
+  allele-tier one, a label answers whichever it names, and the same run then reports once at the gene
+  tier and seven times at the allele tier, for the seven alleles the labels actually enumerate. The
+  corollary is that a label naming both answers **both** subjects — they are two questions rather than
+  one asked twice, so "count each label at its finest tier only" is the other wrong repair. And an
+  authored allele no label names is then neither withheld nor a finding: the gene-tier subject answers
+  for it, so it is a coverage **number** (`@dont-discard-computed`), not a silence.
+
+- `@a-shared-separator-constant-is-not-a-sources-separator` — **`vocab.MULTI_SEP` splits on `,;|`, and a
+  source that uses one of the three writes the other two as data (RM166).** ClinPGx's drug labels
+  separate `Genes` / `Chemicals` / `Variants/Haplotypes` with `;` only. Splitting on the shared constant
+  cuts `DPYD c.1129-5923C>G, c.1236G>A (HapB3)` — one haplotype named by two variants — into two names
+  that match nothing, and `Ascorbic acid (vitamin C), combinations` into two chemicals. It also inflates
+  the token count from the 601 the file states to 604, which is how the miscount reaches a design
+  document rather than a traceback: nothing errors, the numbers are merely three too high and three real
+  names have gone missing. `MULTI_SEP` is the *authored* DSL's rule for a multi-valued CSV cell and is
+  right there; a source's own separator is a fact about that source, measured from its payload, and it
+  belongs beside the reader with the counter-example written down.
+
 ## PAR loci and contig ploidy
 
 - `@y-not-haploid` — **`chrom=Y` is NOT "never diploid" — PAR1 and PAR2 are diploid in every karyotype.**
@@ -1599,6 +1627,17 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   **what this run covered**: the table's contents include what an earlier run already recorded, and
   `not missing` inverts it — that would drop a real obligation from any module carrying one uncurated
   gene beside a curated one.
+
+  **A second surface of an already-declared source may not claim the lane's row either (RM166).**
+  `merge_sources_csv` keys on `(source, layer)` and takes the row already there, so `clinpgx`/`annotation`
+  is one slot with one occupant. `clinpgx check` and `draft-clinpgx` own it, and its `dataset` is
+  load-bearing rather than decorative: the evidence-level check's tautology guard compares that recorded
+  label against the *annotation* snapshot's. A drug-label pass writing `clinpgx_drug_labels_<date>` into
+  it would put one archive's release date on another archive's rows and silently disable a shipped check
+  — `@two-surfaces-two-denominators` arriving in `sources.csv`. Nor is another layer the way out: only
+  `annotation` and `literature` are exempt from the compiler's orphan check, so any other spelling warns
+  `source_row_unused` on every module that runs the pass. The check writes no row, which is also what the
+  converse above already required of it, and the module docstring says so where a reader would look.
 
 - `@fieldnames-from-model` — **A column list written by hand will lose a column — derive it from the model.** `SOURCES_FIELDNAMES`
   was a literal and omitted `redistribution`, so every `sources.csv` ever written recorded *unknown* for

@@ -847,16 +847,14 @@ def test_every_check_member_has_an_emitter_or_says_it_is_reserved() -> None:
 
     #: Named rather than silently subtracted, so each one is a decision a reader can dispute — and
     #: each says RESERVED beside itself in `VALID_VERIFICATION_CHECKS`, with the reason.
+    #: The 2026-09-01 source-adoption round put five names here ahead of their passes and every one
+    #: of them has now left: RM163's two with `check-identifiers`' fourth registry, RM165's with
+    #: `check-repeat-bands`, RM167's with `litvar coverage`, and RM166's `regulator_label_agreement`
+    #: with `clinpgx check-labels`. What remains are the two long-standing members, both of which say
+    #: RESERVED beside themselves in `VALID_VERIFICATION_CHECKS` with the reason.
     reserved = {
         "gene_disease_validity",
         "dosage_sensitivity",
-        #: The 2026-09-01 source-adoption round. Each name lands with its comment in
-        #: `VALID_VERIFICATION_CHECKS` before its pass exists, and leaves this set in the commit
-        #: that lands the pass — so a member that never gains one stays visible here rather than
-        #: disappearing into a floor. RM163's two left with `check-identifiers`' fourth registry,
-        #: RM165's with `check-repeat-bands`, and RM167's with `litvar coverage` — so what is left
-        #: here is RM166's, the one pass of the round still to land.
-        "regulator_label_agreement",
     }
     assert emitted == VALID_VERIFICATION_CHECKS - reserved, sorted(
         emitted.symmetric_difference(VALID_VERIFICATION_CHECKS - reserved)
