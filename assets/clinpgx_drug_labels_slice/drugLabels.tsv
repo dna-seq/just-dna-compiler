@@ -1,0 +1,29 @@
+PharmGKB ID	Name	Source	Biomarker Flag	Testing Level	Has Prescribing Info	Has Dosing Info	Has Alternate Drug	Has Other Prescribing Guidance	Cancer Genome	Prescribing	Chemicals	Genes	Variants/Haplotypes	Latest History Date (YYYY-MM-DD)
+PA166184114	Annotation of Swissmedic Label for capecitabine and DPYD	Swissmedic		Actionable PGx	Prescribing Info	Dosing Info	Alternate Drug			Prescribing	capecitabine	DPYD		2023-02-28
+PA166272701	Annotation of EMA Label for rimegepant and CYP2C9	EMA		No Clinical PGx							rimegepant	CYP2C9		2023-08-24
+PA166184125	Annotation of Swissmedic Label for clopidogrel and CYP2C19	Swissmedic		Actionable PGx	Prescribing Info	Dosing Info				Prescribing	clopidogrel	CYP2C19	CYP2C19*1; CYP2C19*2; CYP2C19*3; CYP2C19*4; CYP2C19*5; CYP2C19*6; CYP2C19*7; CYP2C19*8	2019-11-05
+PA166184500	Annotation of Swissmedic Label for simvastatin and SLCO1B1	Swissmedic		Testing Recommended	Prescribing Info					Prescribing	simvastatin	SLCO1B1	rs4149056	2023-02-28
+PA166104841	Annotation of EMA Label for clopidogrel and CYP2C19	EMA		Informative PGx							clopidogrel	CYP2C19	CYP2C19*2; CYP2C19*3; CYP2C19*4; CYP2C19*5; CYP2C19*6; CYP2C19*7; CYP2C19*8	2024-07-17
+PA166104905	Annotation of EMA Label for capecitabine and DPYD	EMA		Testing Recommended	Prescribing Info		Alternate Drug			Prescribing	capecitabine	DPYD	DPYD c.1129-5923C>G, c.1236G>A (HapB3); DPYD c.1679T>G (*13); DPYD c.1905+1G>A (*2A); DPYD c.2846A>T	2022-06-03
+PA166121251	Annotation of EMA Label for mercaptopurine and NUDT15, TPMT	EMA		Testing Recommended	Prescribing Info	Dosing Info				Prescribing	mercaptopurine	NUDT15; TPMT	rs116855232	2024-07-24
+PA166104777	Annotation of FDA Label for clopidogrel and CYP2C19	FDA	On FDA Biomarker List	Actionable PGx	Prescribing Info		Alternate Drug			Prescribing	clopidogrel	CYP2C19		2024-07-17
+PA166104808	Annotation of FDA Label for nelfinavir and CYP2C19, CYP3A4, CYP3A5	FDA	Formerly on FDA Biomarker List								nelfinavir	CYP2C19; CYP3A4; CYP3A5		2024-08-29
+PA166104810	Annotation of FDA Label for mercaptopurine and NUDT15, TPMT	FDA	On FDA Biomarker List	Testing Recommended	Prescribing Info	Dosing Info				Prescribing	mercaptopurine	NUDT15; TPMT	NUDT15*3; TPMT*2; TPMT*3A; TPMT*3C	2024-06-06
+PA166104802	Annotation of FDA Label for capecitabine and DPYD	FDA	On FDA Biomarker List	Testing Required	Prescribing Info	Dosing Info	Alternate Drug			Prescribing	capecitabine	DPYD	DPYD c.1129-5923C>G, c.1236G>A (HapB3); rs115232898; rs3918290; rs55886062; rs67376798; rs75017182	2025-10-08
+PA166127644	Annotation of HCSC Label for capecitabine and DPYD	HCSC		Testing Recommended	Prescribing Info		Alternate Drug			Prescribing	capecitabine	DPYD	DPYD c.1905+1G>A (*2A)	2024-09-18
+PA166123531	Annotation of PMDA Label for capecitabine and DPYD	PMDA		Actionable PGx							capecitabine	DPYD		
+PA166123535	Annotation of PMDA Label for clopidogrel and CYP2C19	PMDA		Actionable PGx							clopidogrel	CYP2C19		
+PA166127732	Annotation of HCSC Label for warfarin and CYP2C9, VKORC1	HCSC		Actionable PGx	Prescribing Info	Dosing Info				Prescribing	warfarin	CYP2C9; VKORC1	CYP2C9*2; CYP2C9*3; rs9923231	2024-11-21
+PA166127653	Annotation of HCSC Label for clopidogrel and CYP2C19	HCSC		Actionable PGx	Prescribing Info		Alternate Drug			Prescribing	clopidogrel	CYP2C19	CYP2C19*2; CYP2C19*3; CYP2C19*4; CYP2C19*5; CYP2C19*6; CYP2C19*7; CYP2C19*8	2024-07-17
+PA166127690	Annotation of HCSC Label for mercaptopurine and NUDT15, TPMT	HCSC		Testing Recommended	Prescribing Info	Dosing Info				Prescribing	mercaptopurine	NUDT15; TPMT	rs116855232; TPMT*2; TPMT*3A; TPMT*3C	2024-07-25
+PA166104776	Annotation of FDA Label for warfarin and CYP2C9, VKORC1	FDA	On FDA Biomarker List	Actionable PGx	Prescribing Info	Dosing Info				Prescribing	warfarin	CYP2C9; VKORC1	CYP2C9*1; CYP2C9*2; CYP2C9*3; rs9923231	2024-11-21
+PA166184430	Annotation of Swissmedic Label for fenofibrate, simvastatin and SLCO1B1	Swissmedic		Actionable PGx							fenofibrate; simvastatin	SLCO1B1	rs4149056	
+PA166183781	Annotation of Swissmedic Label for mercaptopurine and NUDT15, TPMT	Swissmedic		Actionable PGx	Prescribing Info					Prescribing	mercaptopurine	NUDT15; TPMT	TPMT*2; TPMT*3A; TPMT*3C	
+PA166225042	Annotation of FDA Label for rimegepant and CYP2C9	FDA	On FDA Biomarker List	No Clinical PGx							rimegepant	CYP2C9		2024-12-04
+PA166273021	Annotation of FDA Label for mavacamten and CYP2C19	FDA	On FDA Biomarker List	Informative PGx							mavacamten	CYP2C19	CYP2C19*2; CYP2C19*3	2023-12-20
+PA166400362	Annotation of FDA Label for deuruxolitinib and CYP2C9	FDA	On FDA Biomarker List	Testing Recommended	Prescribing Info		Alternate Drug			Prescribing	deuruxolitinib	CYP2C9		2026-03-13
+PA166317641	Annotation of EMA Label for mavacamten and CYP2C19	EMA		Testing Required	Prescribing Info	Dosing Info				Prescribing	mavacamten	CYP2C19	CYP2C19*1; CYP2C19*2; CYP2C19*3	2024-07-24
+PA166317948	Annotation of HCSC Label for rimegepant and CYP2C9	HCSC		No Clinical PGx							rimegepant	CYP2C9	CYP2C9*2; CYP2C9*3	2024-12-04
+PA166317981	Annotation of HCSC Label for mavacamten and CYP2C19	HCSC		Informative PGx							mavacamten	CYP2C19		2023-12-20
+PA166416941	Annotation of HCSC Label for simvastatin and SLCO1B1	HCSC									simvastatin	SLCO1B1		
+PA166234761	Annotation of FDA Label for simvastatin and SLCO1B1	FDA									simvastatin	SLCO1B1		2025-08-29

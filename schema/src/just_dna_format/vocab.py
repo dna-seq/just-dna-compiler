@@ -825,16 +825,13 @@ VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
                                       #   resolved, position-only and absent are three outcomes, and a
                                       #   position-level answer to an allele-level question is recorded
                                       #   as such rather than reported as the allele's.
-        # ── RESERVED for the 2026-09-01 source-adoption round, added ahead of their emitters and
-        #    deliberately: these are the round's published check keys, and minting a name in the
-        #    release that needs it is the `withdrawn` precedent above run in reverse. Each flips out
-        #    of this block, with its comment, in the commit that lands its pass — so the members left
-        #    here are the passes still to land, and no count or item list is kept beside them.
-        "regulator_label_agreement",  # RESERVED — authored PGx claims vs the drug-label annotations
-                                      #   five regulators publish. Named for the labels rather than for
-                                      #   any one agency, because the file carries five and baking an
-                                      #   authority into a published key is the mistake RM134 caught in
-                                      #   `ClinSigConflict` before it shipped.
+        "regulator_label_agreement",  # authored gene/allele/drug claims vs the drug-label annotations
+                                      #   five regulators publish — `clinpgx check-labels`. Named for
+                                      #   the labels rather than for any one agency, because the file
+                                      #   carries five and baking an authority into a published key is
+                                      #   the mistake RM134 caught in `ClinSigConflict` before it
+                                      #   shipped. Reports at two join tiers, allele and gene, and
+                                      #   never escalates under `strict`.
         # ── RESERVED: no emitter, deliberately. Adding one later is legal; adding the *name* late
         #    would leave the release that needs it with nothing to write (the `withdrawn` precedent).
         "gene_disease_validity",      # RESERVED — see the bullet above: `enrich_gene_validity` RECORDS

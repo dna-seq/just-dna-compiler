@@ -417,13 +417,22 @@ just-dna-enricher check-identifiers spec/            # trait CURIEs (OLS4), gene
 just-dna-enricher check-acmg spec/ --sf-list acmg/   # acmg_sf vs the ACMG SF list
 just-dna-enricher pgx spec/                          # function_status vs PharmVar and CPIC
 just-dna-enricher clinpgx check spec/ --snapshot cp/ # pharm_variants.csv vs the ClinPGx snapshot
+just-dna-enricher clinpgx check-labels spec/ --snapshot dl/  # gene/allele/drug claims vs five regulators' drug labels
 just-dna-enricher litvar coverage spec/              # which papers the literature index holds per locus, and at which tier
 ```
 
 Every check **reports, never repairs** — rewriting an authored value would destroy the evidence of the
 upstream mistake. `--strict` escalates a finding to a refusal; `--best-effort` (the default) warns and
-carries on. Two deliberately never escalate — the `clin_sig` and allele-function cross-checks — because
-failing would make the format arbitrate between expert panels.
+carries on. **A check that compares two expert judgements rather than an authored value against a fact
+never escalates**, in either mode — `clin_sig`, allele function, repeat bands and the regulator labels
+are all in that class — because failing would make the format arbitrate between expert panels.
+
+`clinpgx check-labels` compares what your module says about a gene, an allele and a medicine against
+the pharmacogenomic content of the labels five drug regulators publish. It answers at **two join
+tiers** and says which: the gene tier, where a label names only the gene, and the allele tier, where it
+names your star allele or rsID. The two are not the same claim, and the agencies disagree with each
+other often enough that a single answer would be a fiction. A label that states no testing level is
+reported as unknown and counted — never as "no clinical relevance". It writes nothing.
 
 `litvar coverage` reports how much of the literature a variant index holds for each of your loci, and
 **at which tier it could say it**: an allele-resolved answer where the index has a node for the exact
@@ -802,13 +811,15 @@ workaround.
 | `litvar gene G` | every node the index holds under a gene, split by tier. Writes nothing |
 | `pgx <dir>` | `function_status` vs PharmVar + CPIC. `--no-pharmvar`, `--no-cpic`, `--use` |
 | `clinpgx check <dir> --snapshot S` | `pharm_variants.csv` vs the ClinPGx snapshot, offline-capable |
+| `clinpgx check-labels <dir> --snapshot S` | gene/allele/drug claims vs five regulators' drug labels, at two join tiers. `--strict/--best-effort`, `--use`. Writes nothing, never escalates |
 | `hint variant\|citation\|trait\|gene` | look up one identifier. Writes nothing. `--json`, `--offline`, `--ambiguity`, `--frequencies`, `--pubmind-cache` |
 | `vrs mint <dir>` | stamp `ga4gh:VA.…` ids onto `resolution.csv` (substitutions offline, indels online) |
 | `enrich-and-compile <dir> <out>` | steps 4 + 6. `--frequencies`, `--gene-metrics` |
 | `template <kind>` | the compiler's, mirrored |
 
 Snapshot builders (dev/publisher surface, mostly needing the `polars` extra):
-`clinvar build|citations|publish`, `clinpgx build|check|publish`, `cpic build|publish`, `pharmvar build`,
+`clinvar build|citations|publish`, `clinpgx build|build-labels|check|check-labels|publish`,
+`cpic build|publish`, `pharmvar build`,
 `acmg build`, `gnomad constraint build|publish`, `pubmind build`, `civic build`, `mane build`,
 `cache status|pull`, `upload`.
 Some of those never publish, and the reasons differ. `pharmvar build` and `pubmind build` write a local

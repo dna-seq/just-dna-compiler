@@ -65,6 +65,11 @@ from just_dna_enricher.download import (
     ensure_cpic_snapshot,
     ensure_snapshot,
 )
+from just_dna_enricher.drug_labels import (
+    DEFAULT_DRUG_LABELS_URL,
+    DrugLabelError,
+    check_drug_labels,
+)
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
 from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, enrich_gene_metrics
@@ -785,7 +790,7 @@ def pgx_(
 
 clinpgx_app = typer.Typer(
     add_completion=False,
-    help="Build the ClinPGx clinical-annotation snapshot, and cross-check against it.",
+    help="Build the ClinPGx clinical-annotation and drug-label snapshots, and cross-check against them.",
     no_args_is_help=True,
 )
 app.add_typer(clinpgx_app, name="clinpgx")
@@ -3345,6 +3350,129 @@ def check_repeat_bands_(
         typer.secho(f"  {finding}", fg=typer.colors.YELLOW, err=True)
     if result.compared and not result.findings:
         typer.secho("every compared band matches the catalogue", fg=typer.colors.GREEN)
+
+
+@clinpgx_app.command("build-labels")
+def clinpgx_build_labels_(
+    out_dir: Path = typer.Option(..., "--out", file_okay=False, help="Snapshot output directory."),
+    zip_path: Path | None = typer.Option(
+        None, "--zip", exists=True, dir_okay=False,
+        help="A drugLabels.zip you already have. Without it the archive is downloaded.",
+    ),
+    url: str = typer.Option(DEFAULT_DRUG_LABELS_URL, "--url", help="ClinPGx bulk download URL."),
+    use: str = typer.Option(
+        "unstated", "--use", help=f"Declared use: one of {sorted(VALID_DECLARED_USE)}.",
+    ),
+) -> None:
+    """Download + build the regulator drug-label snapshot (dev surface; needs polars).
+
+    A **second** archive from a source this tier already adopted, with its own `release.json`: ClinPGx
+    publishes at least twelve downloads on this endpoint and they do not refresh in lockstep, so the
+    label snapshot is dated from its own `CREATED_*.txt` rather than from the annotation lane's.
+
+    There is no `--offline`: a builder's off-switch is passing `--zip` instead of downloading.
+    """
+    from just_dna_enricher.drug_labels_build import (
+        build_drug_label_snapshot,
+        download_drug_labels_zip,
+    )
+
+    declared = _use(use)
+    try:
+        # The terms are accepted when the data is TAKEN, so the gate runs before the download.
+        reason = check_declared_use(CLINPGX_TERMS, declared)
+    except LicenseRefusal as exc:
+        typer.secho(f"REFUSED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if reason is not None:
+        typer.secho(f"SKIPPED: {reason}", fg=typer.colors.YELLOW, err=True)
+        raise typer.Exit(code=1)
+
+    source_sha: str | None = None
+    try:
+        if zip_path is None:
+            zip_path, source_sha = download_drug_labels_zip(Path(out_dir) / "drugLabels.zip", url)
+        result = build_drug_label_snapshot(
+            zip_path, out_dir, source_url=url, source_sha256=source_sha
+        )
+    except (DrugLabelError, OSError) as exc:
+        typer.secho(f"DRUG-LABEL BUILD FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.secho(f"drug-label snapshot: {result.parquet_path}", fg=typer.colors.GREEN)
+    typer.echo(
+        f"labels: {result.label_count}  regulators: {', '.join(result.regulators)}  "
+        f"release: {result.created_date or 'undated'}"
+    )
+    typer.echo(f"testing levels stated: {', '.join(result.testing_levels)}")
+    typer.echo(f"licence pinned: {result.license_sha256}")
+    if result.dataset is None:
+        typer.secho(
+            "  the archive carried no CREATED_<date>.txt, so this snapshot has no release label and "
+            "the check will not be able to say which version it compared against",
+            fg=typer.colors.YELLOW, err=True,
+        )
+
+
+@clinpgx_app.command("check-labels")
+def clinpgx_check_labels_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    snapshot: Path | None = typer.Option(
+        None, "--snapshot", exists=True, file_okay=False,
+        help="Built drug-label snapshot directory (see `clinpgx build-labels`).",
+    ),
+    strict: bool = typer.Option(
+        False, "--strict/--best-effort",
+        help="Carried into the report. A label difference NEVER fails, in either mode.",
+    ),
+    use: str = typer.Option(
+        "unstated", "--use", help=f"Declared use: one of {sorted(VALID_DECLARED_USE)}.",
+    ),
+) -> None:
+    """Compare a module's gene/allele/drug claims against the drug labels five regulators publish.
+
+    **Two join tiers, reported apart.** A label that names a star allele or an rsID answers at the
+    allele tier; one that names only the gene answers at the gene tier, and no label answers at both.
+    A gene-level agreement and an allele-level agreement are not the same claim.
+
+    **Writes no authored cell and never fails on a difference.** Five agencies genuinely disagree with
+    each other — clopidogrel and CYP2C19 is `Actionable PGx` at four of them and `Informative PGx` at
+    the EMA — and a compile that refused would make this format pick the winner. A blank `Testing
+    Level` is a third of the file and is reported as unknown, never as `No Clinical PGx`.
+    """
+    try:
+        result = check_drug_labels(
+            spec_dir, snapshot=snapshot, mode=_mode(strict), declared_use=_use(use),
+        )
+    except LicenseRefusal as exc:
+        typer.secho(f"REFUSED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    except DrugLabelError as exc:
+        typer.secho(f"DRUG-LABEL CHECK FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    for warning in result.warnings:
+        typer.secho(f"  {warning}", fg=typer.colors.YELLOW, err=True)
+    if not result.compared and not result.withheld:
+        raise typer.Exit(code=0)
+    label = f" ({result.dataset})" if result.dataset else ""
+    tiers = ", ".join(f"{count} at the {tier} tier" for tier, count in result.tier_subjects.items())
+    typer.echo(
+        f"compared {len(result.compared)} claim(s) against {len(result.regulators)} regulator(s)"
+        f"{label} — {tiers}"
+    )
+    if result.unstated_calls:
+        typer.secho(
+            f"  {result.unstated_calls} label(s) state no testing level: counted as unknown, never "
+            f"as a negative",
+            fg=typer.colors.CYAN,
+        )
+    for _subject, note in result.withheld:
+        typer.secho(f"  withheld: {note}", fg=typer.colors.CYAN)
+    for finding in result.findings:
+        typer.secho(f"  {finding}", fg=typer.colors.YELLOW, err=True)
+    if result.compared and not result.findings:
+        typer.secho("every compared claim agrees with the labels that reached it", fg=typer.colors.GREEN)
 
 
 # **Last line of the file, and that is the whole of this fix (RM100).** It used to sit at line 1688,
