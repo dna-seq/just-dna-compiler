@@ -500,42 +500,6 @@ An `accepted` row and a `submitted` row must not be indistinguishable once both 
 **Related** RM152 (the adoption), RM159 (the name-identity table, whose two unresolved records are the
 motivating case), RM153.
 
-## RM163 — `pgs.csv` is keyed on a Catalog accession and nothing ever asks the Catalog about it
-
-**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
-**Motivating case** the 2026-09-01 source-adoption round
-
-**Probed and drafted in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm163--pgscsv-is-keyed-on-a-catalog-accession-and-nothing-ever-asks-the-catalog-about-it) on 2026-09-01 — proposed BUILDS in 0.7.0, pending the maintainer pass. Three corrections to what this entry says.** The drift check is over **two** fields, not four — `match_rate_floor` is `Field`-described as author-set and `research_tier` is a curator judgement, and the Catalog publishes neither. The REST surface answers **HTTP 200 with `{}`** for a never-assigned id *and* for a malformed one, so existence cannot be read from the status. And **the licence is per score and varies** (242/250 the generic EBI string, 6 academic-use-only, 2 CC0), so a single `PGS_TERMS` constant would be a false claim in the permissive direction — it becomes a floor, overridden per score from the payload. **Re-probed 2026-09-01 (the first pass used two endpoints):** the Catalog publishes its own release record — `/rest/info` (6,982 scores, 2026-08-26) and `/rest/release/current` with `released_score_ids` — so currency is *read*, not built; `/rest/score/search?trait_id=` serves the key's other half. And **only ~35 % of the id range is assigned** (12 of 40 random in-range ids resolve), so an unknown `pgs_id` is overwhelmingly a typo, not a withdrawal — the message names both readings but **not as equals**, unlike `@rsid-absent-two-readings` where the id space is dense.
-
-`PgsRow` is a **manifest** of PGS Catalog ids — RM16 is the other thing, authored per-variant weights,
-and stays deferred on a missing consumer. The manifest is keyed `(pgs_id, trait_efo_id)`, and beside
-the accession it carries four authored copies of facts the Catalog itself publishes:
-`training_ancestry`, `training_cohort`, `match_rate_floor`, `research_tier`.
-
-**Measured against the code rather than recalled.** `identifiers.py` asks three registries — dbSNP for
-`rsid`, OLS4 for `trait_efo_id`, HGNC for `gene`. Since S86 the trait roster is *derived* from
-`DRAFTABLE` rather than hand-listed, so `pgs.csv`'s `trait_efo_id` is covered **by construction**, and
-this item does not re-open that. `pgs_id` is covered by nothing: there is no fourth registry, and
-`PgsRow` declares no `gene` column, so the accession the table is keyed on is the one authored
-identifier in the format that no pass asks about.
-
-Two questions, each already having a shape in this repo:
-
-- **Currency**, the `identifiers.py` shape — does `PGS001234` still exist, has it been superseded or
-  withdrawn. A retired score is `@rsid-absent-two-readings` again: *typo* and *withdrawn* are opposite
-  instructions to an author, so the message must name both readings unless the API separates them.
-- **Drift**, the `pgx.enrich_pgx` shape — the four authored copies against what the Catalog serves
-  today. Reports, never repairs (`@enrichment-is-validation`), and a drifted cell is the author's to
-  fix or to answer in `overrides.csv`.
-
-**The first step is the probe, not the pass.** What the EBI REST surface actually returns for a
-retired id, whether a supersession is distinguishable from a never-assigned id, and the Catalog's
-published terms (`@probe-the-real-file`). **Nothing about those terms is established here** —
-`licensing.py` names no PGS `SourceTerms` and this entry asserts none.
-
-**Related** RM16 (explicitly *not* this item), S86 (the roster widening that already covers the trait
-half), `@registry-completeness`.
-
 ## RM164 — `heteroplasmy.csv` is a shipped table kind with no source behind it
 
 **Severity** medium · **Status** open — **PARKED to 0.8, decided 2026-09-01** · **Owner** enricher ·

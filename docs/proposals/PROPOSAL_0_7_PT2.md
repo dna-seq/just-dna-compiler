@@ -111,7 +111,7 @@ authority**, and where a section's own closing *Release:* line disagrees it is t
 
 ## RM163 — `pgs.csv` is keyed on a Catalog accession and nothing ever asks the Catalog about it
 
-**Severity** medium · **Owner** enricher · **Entry** [ROADMAP.md § RM163](../ROADMAP.md#rm163--pgscsv-is-keyed-on-a-catalog-accession-and-nothing-ever-asks-the-catalog-about-it)
+**Severity** medium · **Owner** enricher · **Entry** [ROADMAP_HISTORY.md § RM163](../ROADMAP_HISTORY.md#rm163--pgscsv-is-keyed-on-a-catalog-accession-and-nothing-ever-asks-the-catalog-about-it) — shipped, so the entry left the forward-only file
 
 ### The problem
 

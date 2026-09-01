@@ -34,7 +34,37 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-01 (latest) — the source-adoption round: MANE becomes a cache (RM168)
+## 2026-09-01 (latest) — the source-adoption round: the PGS Catalog becomes a registry (RM163)
+
+**`just-dna-enricher`, plus two `VALID_VERIFICATION_CHECKS` members in `just-dna-format`. No authored
+column, no parquet change, `just-dna-compiler` untouched.** Second of the five items
+[PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md) decided.
+
+- **`check-identifiers` asks a fourth registry.** `pgs_id` was the one authored identifier in the
+  format nothing checked, on the column `PgsRow` is keyed by. New `pgs.py` client; the roster derives
+  from `DRAFTABLE` the same way the other three do.
+- **The verdict is read off the response body, never the HTTP status.** The Catalog answers `200` with
+  `{}` for a never-assigned accession *and* for a malformed one, so the status carries no existence
+  information. A consumer relying on `raise_for_status` to mean "this id is real" would be wrong.
+- **The absence message names the typo reading first.** Only about a third of the accession range is
+  assigned, so an unrecognised id is overwhelmingly never-assigned rather than withdrawn — the
+  opposite weighting to the dbSNP message, and stated for the measured reason.
+- **Two new verification checks**, `pgs_accession_currency` and `pgs_metadata_agreement`. Consumers
+  validating `VerificationRecord.check` against a pinned vocabulary should add both.
+- **`PGS_TERMS` is a floor, not the terms.** Each score record carries its own `license`, and the
+  values are not variations on one licence: most generic, some academic-research-use-only, some CC0.
+  The per-score string overrides the constant in that score's `SourceRow`. **A module naming an
+  academic-use-only score is now refused by the compile gate by name** — if you have such a module, it
+  will stop compiling under a commercial `declared_use`, and that refusal is correct.
+- **Drift is checked over `training_ancestry` and `training_cohort` only.** `match_rate_floor` and
+  `research_tier` are author judgements the Catalog does not publish, so there is nothing to compare
+  them against.
+- **Currency comes from `/rest/info`**, added as `currency.default_probes`' second member, so
+  `--verify-datasets` now covers this source.
+- Known gap, recorded rather than fixed: a `pgs.csv` drift finding **cannot** be answered in
+  `overrides.csv` — the overlay applies to derived tables and `pgs.csv` is authored.
+
+## 2026-09-01 — the source-adoption round: MANE becomes a cache (RM168)
 
 **`just-dna-enricher` only; no schema change, no new authored column, nothing in `just-dna-compiler`.**
 First of the five items [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md) decided, all landing inside

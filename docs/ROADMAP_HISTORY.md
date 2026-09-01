@@ -54,6 +54,79 @@ for is not any one adoption: **five of the six entries said something their own 
 and then four of the six verdicts the proposal drafted were overturned again in the maintainer pass —
 so an unprobed entry is a question, and a probed one is still only a proposal.
 
+## RM163 — `pgs.csv` is keyed on a Catalog accession and nothing ever asks the Catalog about it
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-01 in the uncut 0.7.0** (`just-dna-enricher`,
+plus two `VALID_VERIFICATION_CHECKS` members in `just-dna-format`; `compiler/` untouched) ·
+**Owner** enricher · **Motivating case** the 2026-09-01 source-adoption round
+
+**What shipped.** A fourth registry in `identifiers.py` and a `pgs.py` client asking the PGS Catalog
+about every authored `pgs_id`, `PGS_TERMS` as a per-score licence **floor**, and `pgs_catalog` as the
+second member of `currency.default_probes`. It attests under **two** names — `pgs_accession_currency`
+and `pgs_metadata_agreement` — because currency asks whether the id still names a score and drift asks
+whether two cells beside it still match: different questions, different subjects, different
+denominators, and one record over two populations publishes a findings count that means nothing.
+
+**The verdict is read off the body, never the status.** `GET /rest/score/PGS999999` — a never-assigned
+id — returns **HTTP 200 and `{}`**, and so does `GET /rest/score/PGSXXXX`, which is not a well-formed
+accession at all. So the status code carries no existence information and a withdrawn score, a typo and
+a malformed id are indistinguishable *by construction*. `@existence-not-identity`, and RM153's warning
+about a 200 that is not an answer arriving in a second source.
+
+**And the absence message is weighted by a measured base rate, which is `@rsid-absent-two-readings`
+run backwards.** About 35 % of the accession range is assigned, so an unrecognised `pgs_id` is
+overwhelmingly a *never-assigned* one. dbSNP earns its equal-weight treatment because its id space is
+densely assigned and merges are a frequent, real event; here the base rate runs the other way, and
+naming withdrawal as a co-equal reading would send an author looking for a retirement notice that
+almost certainly does not exist. The message states the absence, states the sparsity, and names
+withdrawal as the rarer reading — and where the Catalog offers no supersession field at all, that is
+stated as a limit of the source rather than resolved by guessing.
+
+**Drift is over two fields, not the four the entry named.** Reading the model rather than recalling
+it: `match_rate_floor` is described in its own `Field` as *"Author-set variant-match floor"* and
+`research_tier` is a two-member curator judgement. **The Catalog publishes neither**, so there is
+nothing to drift them against, and a check with no source-side value is a check that cannot fail
+(`@tautology-zero`). The reason is written down where somebody would otherwise add them later. What
+is checked is `training_ancestry` against `ancestry_distribution` and `training_cohort` against
+`samples_training`, reporting and never repairing.
+
+**The licence half is the one that had to be right, and it is a correctness requirement rather than an
+optimisation.** `license` is a field on each **score record**, not a property of the Catalog: over the
+first 250 of ~6,982 scores, most carry the generic *"used in accordance with any licensing restrictions
+set by the authors"* string, a handful are academic-research-use-only — the class `licensing.py`'s own
+comments name as barring redistribution outright — and a couple are CC0. So `PGS_TERMS` is written as
+the **floor**, with EBI's terms-of-use URL and every gating axis `None`, and each score's own `license`
+string overrides it in that score's `SourceRow`. `@licensing-as-data`, the shape ClinPGx's bundled
+`LICENSE.txt` already uses, and `@per-article-terms` one source over: the Catalog is a **host** for
+scores licensed by their authors. **The consequence is visible rather than theoretical** — a module
+naming a single academic-use-only score is now refused by the compile gate *by name*, where one flat
+constant would only have warned, and would have been a false claim in the permissive direction.
+
+**Currency is read, not built.** `/rest/info` publishes the release date, the score count and the
+trait and publication totals, so the infrastructure this item wanted did not have to be written — the
+same finding as MANE's `README_versions.txt` in RM168, and the second time in one round that a source
+turned out to publish its own release record.
+
+**Four things the build contradicted, all of them recorded.** The section's e2e recipe wanted one spec
+directory carrying a malformed accession beside a live one; `PgsRow` refuses `PGSXXXX` at load, so it
+never reaches the Catalog and the malformed case has to be probed at the client. *"A drifted cell is
+the author's to fix or to answer in `overrides.csv`"* is **impossible** for these cells — the overlay
+is derived-tables-only and `pgs.csv` is authored, so the sentence names a remedy that does not exist
+and the finding has no silencing route. `PgsRow` disagrees with itself about which ancestry
+`training_ancestry` means: the name says training, the description says *"validated in"*. And
+`/rest/release/current` bought nothing over `/rest/info`, so it is not read.
+
+**Severity is deliberately split.** An unrecognised accession escalates under `--strict`; a metadata
+disagreement never does, because the Catalog and a curator are two authorities and the format does not
+arbitrate between them (`@clinsig-never-escalates`).
+
+**Probed and decided in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm163--pgscsv-is-keyed-on-a-catalog-accession-and-nothing-ever-asks-the-catalog-about-it).**
+**RM16 is not re-opened** — that is authored per-variant weights and stays deferred on a missing
+consumer; `PgsRow` is a manifest of Catalog ids and this item touched only the manifest.
+
+**Related** RM16, S86, RM153, `@existence-not-identity`, `@licensing-as-data`, `@tautology-zero`,
+`@rsid-absent-two-readings`.
+
 ## RM168 — the identity procedure downloads MANE by hand, and nothing in the code knows the file exists
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-01 in the uncut 0.7.0** (`just-dna-enricher` only;
