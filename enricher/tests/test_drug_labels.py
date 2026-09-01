@@ -504,14 +504,19 @@ def test_the_reason_maps_reach_the_record_rather_than_only_the_test_file(
 
     summary = arm_summary(result)
     assert result.concordance_arms and result.position_arms
-    assert sum(result.concordance_arms.values()) == len(result.compared)
-    assert sum(result.position_arms.values()) == len(result.compared)
-    for arm, count in {**result.concordance_arms, **result.position_arms}.items():
-        assert f"{count} {arm}" in summary
-    for arm in result.concordance_arms:
-        assert _CONCORDANCE_SENTENCES[arm] in summary
-    for arm in result.position_arms:
-        assert _POSITION_SENTENCES[arm] in summary
+    # Each axis checked against its OWN map. Merging the two into one dict would let a member the
+    # vocabularies later share drop half the assertion silently — the same accident the axis labels
+    # in the sentence exist to survive.
+    for axis, arms, sentences in (
+        ("concordance", result.concordance_arms, _CONCORDANCE_SENTENCES),
+        ("position", result.position_arms, _POSITION_SENTENCES),
+    ):
+        assert sum(arms.values()) == len(result.compared)
+        assert set(arms) <= set(sentences)
+        assert f"{axis}: " in summary
+        for arm, count in arms.items():
+            assert f"{count} {arm}" in summary
+            assert sentences[arm] in summary
     assert summary in (_records(spec)[-1]["detail"] or "")
 
 
