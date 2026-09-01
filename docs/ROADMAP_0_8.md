@@ -154,6 +154,25 @@ the injected-cofactor half closed, the predicate half stays here · **Owner** fo
 most of it, and the 0.6 review removed the rest of the cofactor axis. What is left is genuinely small
 and genuinely unsolved.
 
+**The corpus this was parked waiting for has its first real entry (2026-09-02, [RM174](ROADMAP.md#rm174--a-claim-about-two-variants-in-trans-is-written-as-two-single-variant-rows-because-no-brick-holds-the-real-subject)).**
+Not an argument — an adopted source whose grammar was counted. CIViC publishes molecular profiles as
+boolean expressions over variants: of 1,964 profiles, **209 are multi-variant** — `AND` 141, `OR` 72,
+`NOT` 1 — and they nest (`BRAF Amplification AND ( BRAF V600E OR BRAF V600K )`). Both halves of this
+entry's surviving case appear there, with instances:
+
+* **Economy, and it is this entry's own phrase.** Evidence item 8721 is a claim about
+  `VHL S183L AND VHL D126N` whose description reads *"heterozygous compound mutation"* — two variants
+  **in trans**, observed, cited. `HaplotypeRow` cannot hold it: a haplotype is same-strand co-location,
+  so drafting it there asserts *cis* where the source says *trans*, silently, because no column carries
+  phase for anything to contradict.
+* **Open-world negation.** `MET Amplification AND NOT KRAS Mutation` quantifies over a set no module
+  can close, on a class term rather than an enumerable allele.
+
+The 72 disjunctions are the half that is **already expressible** — rows are a disjunction — which is
+where this entry drew the line and it holds. **This is evidence for the corpus, not a reason to
+unpark**: one source, one observed trans instance, one negation. RM174 carries the measurement; the
+decision stays here.
+
 ### What dissolved, so it is not re-proposed
 
 - **No operator is missing.** Rows are a disjunction and columns are a conjunction, so the existing
