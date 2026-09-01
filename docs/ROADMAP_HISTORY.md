@@ -44,6 +44,87 @@ optional column is what sizes a release and the number was already decided.
 [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) carries its decision as a dated addendum, in the file's own
 idiom, so the reasoning sits beside the twelve rather than in a thread of its own.
 
+**And a second round joined the same uncut release on 2026-09-01: the source-adoption batch,
+RM163–RM168.** Six items filed out of one sweep, every one gated on a probe that had not been run;
+[PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md) is its record. It is a *round* rather than an
+addendum — six items decided together against a shared sort rule — which is why it has its own file
+rather than joining RM140 and RM152 as a third dated note on the first thread. Five of the six build
+here and RM164 parks on a measured negative, having spun off RM171. What the round is worth remembering
+for is not any one adoption: **five of the six entries said something their own probe contradicted**,
+and then four of the six verdicts the proposal drafted were overturned again in the maintainer pass —
+so an unprobed entry is a question, and a probed one is still only a proposal.
+
+## RM168 — the identity procedure downloads MANE by hand, and nothing in the code knows the file exists
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-01 in the uncut 0.7.0** (`just-dna-enricher` only;
+no schema change, no authored column, `compiler/` untouched) · **Owner** enricher ·
+**Motivating case** [CIVIC_IDENTITY_PROTOCOL](probes/CIVIC_IDENTITY_PROTOCOL.md) § 3b
+
+**What shipped.** `MANE_TERMS` in `licensing.py`, a `mane/` cache with `$JUST_DNA_MANE_CACHE` and the
+`default_mane_cache_dir` / `resolve_mane_reference` pair, `mane_build.py`, a `mane build` sub-app, a
+`_CACHES` row, and an `ENRICHER.md` lane section. **Three files in one pass**, together under 1.2 MB:
+the summary, `changed_select_accessions` and `protein_coding_genes_not_in_mane`. Splitting them was
+refused for a reason worth keeping — the second file *is* the currency check, so shipping the cache
+without it would ship the thing this item complains about (a version pinned in prose that nothing will
+notice going stale) with a cache wrapped round it.
+
+**The source publishes its own staleness list, and its own provenance.** `README_versions.txt` is 96
+bytes and states the MANE version, the NCBI RefSeq annotation release and the Ensembl release; the
+builder **copies** it rather than parsing a filename, because two of those three are in no filename and
+reconstructing less information than the source hands over is `@probe-the-real-file` backwards.
+`changed_select_accessions` carries `Update_Affects_CDS` — **the numbering-frame axis, stated by the
+source**: a MANE Select change that moves the CDS moves every `c.` and `p.` derived in that frame, and
+one that does not, does not. So the currency check for a numbering frame turns out to be *read one
+small file*, not *diff two releases*.
+
+**`MANE_status` is a column and is never collapsed**, which is the decision the item exists for. 74 of
+19,437 rows are MANE Plus Clinical (0.38 %), and CDKN2A is the case: two rows for GeneID 1029 with
+different CDS numbering, `NM_000077.5` MANE Select beside `NM_058195.4` MANE Plus Clinical. A builder
+keeping one row per gene would drop them and reintroduce the exact blind spot the table can see and a
+remembered accession cannot.
+
+**And the negative roster is a third state served by the source.**
+`protein_coding_genes_not_in_mane` lists 222 genes **with a reason** over a seven-member vocabulary —
+`gene not on assembled chromosomes`, `gene located on mitochondrial genome`, `pending MANE review` and
+four others — so *"MANE has no answer for this gene"* is distinguishable from *"nobody asked"*
+(`@unreachable-not-absent`), and `pending MANE review` is neither absent nor decided. The vocabulary is
+**derived from the file and asserted as an equality against it**, so a reason MANE adds is counted
+rather than joining an "other" bucket (`@registry-completeness`).
+
+**The bound ships with it: MANE is the default, not the answer.** RUNX1 is a single row, and the
+27-residue RUNX1c/RUNX1b offset § 3b derived by translating each isoform's CDS is **not in MANE and
+cannot be**. The table makes the CDKN2A class of problem visible and is *silent* on the RUNX1 class, so
+a pass treating it as an oracle would be wrong in a way the file itself cannot warn about. Said in the
+lane's documentation rather than left for a reader to rediscover.
+
+**Terms: NCBI publishes a policy, not a licence.** `license=None`, `license_url` at the policy, the two
+operative sentences in `notice`, every gating axis `None` (`@no-named-licence`). *No restriction
+imposed* is not *permission granted*. MANE is a joint NCBI/EMBL-EBI product and **only NCBI's side was
+read** — the terms constant says so, and asserts nothing about EMBL-EBI's. Consequently there is no
+`--use` flag on the build and no `ensure_mane_snapshot`: a declared-use gate whose every answer is a
+skip is a flag that does nothing (`@acquisition-gate-is-not-a-read-gate`), and nothing publishes a MANE
+snapshot to ensure.
+
+**Pinned by the versioned directory, never `current/`.** One 96-byte request reads `current/` to
+*discover* the newest version, and the answer is resolved to a `release_<v>/` URL before anything is
+downloaded — so a build is pinnable after the fact. That distinction became its own gotcha,
+`@current-discovers-a-version-a-directory-pins`.
+
+**Why it went first.** Nothing else in the round depends on it and the identity protocol does: it is
+the only item that makes an already-shipped result re-derivable — RM159's 33 curated name→identity
+answers were derived in this frame, and the frame was recorded nowhere a re-derivation could read.
+
+**Probed and decided in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm168--the-identity-procedure-downloads-mane-by-hand-and-nothing-in-the-code-knows-the-file-exists).**
+Worth recording: of the round's six items this is **the only one whose probe the build did not move**.
+Every fact was re-measured live against NCBI while building — 19,437 rows, 74 MANE Plus Clinical, 120
+changed accessions with `Update_Affects_CDS` Yes on 74, 222 excluded genes over exactly 7 reasons,
+CDKN2A two rows, RUNX1 one, VHL `NM_000551.4` — and none of them contradicted the entry. In a round
+whose keeper is that five of six entries said something their own probe contradicted, the one that held
+is the one whose questions were cheapest to ask.
+
+**Related** RM159, RM153, RM152, `@snapshot-layout-locations`, `@release-json-provenance`,
+`@current-discovers-a-version-a-directory-pins`, `@accession-version-names-no-build`.
+
 ## RM169 — the wider basis was published as a dated file all along, and nobody had looked
 
 **Severity** medium · **Status** ✅ shipped 2026-09-01 in the uncut 0.7.0 (`just-dna-enricher`;

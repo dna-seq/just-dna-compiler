@@ -721,46 +721,6 @@ NCBI's terms for this surface are the third thing to establish rather than assum
 
 **Related** RM134, `@per-article-terms`, `@existence-not-identity`, `@probe-the-real-file`.
 
-## RM168 — the identity procedure downloads MANE by hand, and nothing in the code knows the file exists
-
-**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
-**Motivating case** [CIVIC_IDENTITY_PROTOCOL](probes/CIVIC_IDENTITY_PROTOCOL.md) § 3b
-
-**Probed and drafted in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm168--the-identity-procedure-downloads-mane-by-hand-and-nothing-in-the-code-knows-the-file-exists) on 2026-09-01 — proposed BUILDS in 0.7.0, the cheapest item in that round; pending the maintainer pass.** All three questions this entry asks are cheap. `current/` is **not opaque**: every filename carries the version, `release_1.5/` … `release_0.5/` exist so a pin is a URL, and `README_versions.txt` is **96 bytes** publishing MANE 1.5 / RefSeq `GCF_000001405.40-RS_2025_08` / Ensembl 116 — a `release.json` the source already writes. The download is **1.1 MB**, 19,437 rows. **CDKN2A's two rows are in the table and separated by `MANE_status`**, which has only **74 MANE Plus Clinical** rows in 19,437 — the argument for a table over a remembered accession. **RUNX1 is a single row**, so MANE is silent on that class and *"the default, not the answer"* is now measured. Terms: NCBI's policy is not a licence, gating axes `None`. **Re-probed 2026-09-01, and the file answering this entry's own complaint was in the listing:** `changed_select_accessions.txt.gz` is **3.6 KB / 120 rows** with `Old_MANE_Select_RefSeq`, `Old_MANE_Version` and **`Update_Affects_CDS` — `Yes` on 74 of 120**, which is exactly the numbering-frame axis. So the currency check is *read one small file*, not *diff two releases*. `protein_coding_genes_not_in_mane` adds a **reasoned negative roster** — 222 genes over 7 statuses including `pending MANE review` (8) and `gene located on mitochondrial genome` (13, which is why the mtDNA lane has no MANE frame). VHL resolves to `NM_000551.4` — the transcript the identity protocol pins by hand — and RUNX1/CDKN2A/VHL are absent from the changed list, so their frames are stable.
-
-A `c.` or `p.` name means nothing until a transcript is named, and § 3b answers that with
-`MANE.GRCh38.v1.5.summary.txt.gz` from the NCBI FTP site, *"downloaded once and cited"*. That is a
-**procedure step in a probe document**, not a source: no `SourceTerms`, no entry in `locations`, no
-builder, no `release.json`, and a version pinned in prose that nothing will notice going stale. Every
-other reference table this workspace leans on — Ensembl, ClinVar, gnomAD constraint, CPIC, ClinPGx,
-PharmVar, PubMind, CIViC — is a cache with a location and a recorded release. MANE is the one that is
-a sentence.
-
-Two reasons to promote it, and the second is the stronger:
-
-1. **RM159 shipped 33 curated name→identity answers as data**, precisely so that `civic build` stays
-   offline and byte-reproducible. The numbering frame those answers were derived in is MANE plus the
-   source's own convention, and it is recorded nowhere a re-derivation could read.
-2. **The protocol's own finding is that MANE is not sufficient** — *"MANE is the default, not the
-   answer"* — and that is what makes it a source rather than a constant. Two of eleven set-B genes
-   needed more: **RUNX1**, where MANE `NM_001754.5` is RUNX1c numbering and the name was RUNX1b, the
-   27-residue offset **derived by translating each isoform's CDS** and never remembered; and
-   **CDKN2A**, which has MANE Select `NM_000077.5` *and* MANE Plus Clinical `NM_058195.4` with
-   different CDS numbering. A table with `MANE_status` in it is what lets a pass **see** the second
-   case. A remembered accession is what hides it.
-
-**Scope, stated so it is not widened by accident.** This is a transcript-identity aid, not HGVS
-generation. Generating `c.`/`p.` notation is its own deferred feature with its own argument (which
-transcript, which reference, how to present ambiguity — the 0.5 idea-book), and nothing here proposes
-it. Note also the recorded asymmetry that makes the frame matter: Ensembl's Variant Recoder rejects
-`NM_000551.3` outright while accepting `.4`, so which version a pass submits is a real decision.
-
-**Probe first**: the file's own terms (a joint NCBI/EBI product — **not established here**), whether
-`current/` resolves to a dated version a `release.json` can pin, and what the download costs
-(`@probe-the-real-file`, `@currency-asks-the-source-not-the-cache`).
-
-**Related** RM159, RM153, RM152, `@snapshot-layout-locations`, `@accession-version-names-no-build`.
-
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
