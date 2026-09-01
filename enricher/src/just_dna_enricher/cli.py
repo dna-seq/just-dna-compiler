@@ -126,6 +126,7 @@ from just_dna_enricher.pubmind_draft import (
 )
 from just_dna_enricher.sequences import summarize_ref_mismatches
 from just_dna_enricher.strchive import StrchiveError, check_repeat_bands
+from just_dna_enricher.strchive_draft import StrchiveDraftError, draft_repeat_loci
 from just_dna_enricher.upload import DEFAULT_CLINPGX_REPO_ID, DEFAULT_CPIC_REPO_ID
 from just_dna_enricher.verification import record_verification, skipped
 from just_dna_enricher.vrs import MintResult
@@ -2842,6 +2843,57 @@ def strchive_build_(
             "  no --release was pinned, so this snapshot carries no release label and the check "
             "will not be able to say which version it compared against",
             fg=typer.colors.YELLOW, err=True,
+        )
+
+
+@app.command("draft-repeats")
+def draft_repeats_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    genes: list[str] = typer.Option(
+        [], "--gene", "-g", help="Restrict to these genes. Repeatable; omit for every catalogue locus.",
+    ),
+    catalogue: Path | None = typer.Option(
+        None, "--catalogue", exists=True,
+        help="Built STRchive snapshot directory (see `strchive build`), or a STRchive-loci.json.",
+    ),
+    use: str = typer.Option(
+        "unstated", "--use", help=f"Declared use: one of {sorted(VALID_DECLARED_USE)}.",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be added; write nothing."),
+) -> None:
+    """Draft repeat_alleles.csv identity rows from STRchive — appends, never overwrites a row.
+
+    **The bands are not drafted, and that is the design rather than a limitation.** A drafted row
+    carries the gene, the motif as the catalogue spells it, the trait CURIE where the locus names
+    exactly one disease, and a `conclusion` placeholder — so the table cannot compile until a human
+    has filled in what each band means. `measure_min`/`measure_max` stay empty: run
+    `check-repeat-bands` once you have written them and it will report where the catalogue disagrees.
+
+    The catalogue's coordinates, `ref_copies` and `locus_structure` have no authored column to land
+    in; the run counts them and says so rather than dropping them silently.
+    """
+    try:
+        result = draft_repeat_loci(
+            spec_dir, genes, catalogue=catalogue, declared_use=_use(use), dry_run=dry_run,
+        )
+    except (StrchiveError, StrchiveDraftError, DraftError) as exc:
+        typer.secho(f"DRAFT FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    for warning in result.warnings:
+        typer.secho(f"  {warning}", fg=typer.colors.YELLOW, err=True)
+    if result.skipped:
+        raise typer.Exit(code=1)
+    label = f" ({result.dataset})" if result.dataset else ""
+    verb = "would add" if dry_run else "added"
+    typer.secho(
+        f"{verb} {result.drafted} row(s) from {result.candidates} strchive locus/loci{label}",
+        fg=typer.colors.GREEN,
+    )
+    if result.drafted:
+        typer.echo(
+            "  every drafted row needs its bands and its conclusion written; the placeholder is "
+            "what stops the module compiling until they are"
         )
 
 

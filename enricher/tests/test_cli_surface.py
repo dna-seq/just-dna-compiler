@@ -270,7 +270,7 @@ def test_every_drafting_command_declares_the_same_dry_run_flag() -> None:
         for command in app.registered_commands
         if command.callback.__name__.startswith("draft")
     }
-    assert set(drafting) == {"draft", "draft-panel", "draft-clinpgx"}, (
+    assert set(drafting) == {"draft", "draft-panel", "draft-clinpgx", "draft-repeats"}, (
         "a new drafting command has to join this guard, not be exempted by it"
     )
 

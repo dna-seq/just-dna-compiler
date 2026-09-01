@@ -346,6 +346,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `pubmind_build` | **`[dev]`** builder (0.7, RM134): the ANNOVAR-distributed PubMind table → one parquet + `release.json`. Operator-built, and `pubmind publish` **refuses** | `polars` (lazy), `httpx`, `clin_sig` |
 | `strchive` | RM165: the STRchive repeat-locus catalogue — the `repeat_alleles.csv` band cross-check (offline, reports only) | format `binning`, compiler `load_csv_rows` |
 | `strchive_build` | RM165 builder: download `STRchive-loci.json` + `release.json`. Core `httpx` only, no parquet and no `[dev]` extra | `httpx` |
+| `strchive_draft` | RM165: STRchive → `repeat_alleles.csv` **partial** rows — identity only, bands left to a human | `strchive`, compiler `draft` |
 | `ensembl` | live Ensembl: V2 GraphQL → V1 REST fallback, tenacity | `httpx`, `tenacity` |
 | `upload` | publisher surface — push a compiled module or a reference snapshot to HF (`[dev]`) | `huggingface_hub` (lazy) |
 | `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar`/`pubmind` builders — `build+publish` for the first four, **`build` only** for `pharmvar` (there is no `pharmvar publish` and there will not be) and `pubmind`, whose `publish` exists and refuses with its reason, `vrs mint` | `typer` |
@@ -2847,6 +2848,52 @@ records no label at all rather than inventing one out of a date — an unlabelle
 unlabelled. There is no `--offline` (the off-switch is passing `--catalogue` instead of downloading)
 and no `--use` (MIT grants the fetch, so the gate would answer the same on every run).
 
+### Drafting the identity half (`strchive_draft.py`) — `draft-repeats`
+
+```bash
+just-dna-enricher draft-repeats spec/ --catalogue data/interim/strchive --gene HTT
+```
+
+**A drafted row is thinner than the item that ordered it expected, and that is this module's own
+finding.** The proposal listed `chrom`/`start_hg38`/`stop_hg38`, `locus_structure`, `ref_copies` and
+the disease identifiers as the identity half. `RepeatAlleleRow` has a column for exactly one of them:
+`trait_efo_id`. Repeat coordinates are RM65 and the motif structure is RM66, both deferred, so what a
+row can actually carry is the gene, the motif as the catalogue spells it, the trait CURIE and the
+fixed `measure_kind`, with `conclusion` left as `<<REPLACE>>`.
+
+The rest is **counted and reported**, not dropped: how many loci state a fractional `ref_copies` (a
+reference allele that is not a whole number of motif copies — RM55's case arriving in a source rather
+than in a caller's VCF), and how many publish a `locus_structure`. Neither is rounded into a cell and
+neither is silently discarded.
+
+What the thin row is still worth is the part an author cannot get from anywhere else: the list of
+loci, the motif in the orientation the catalogue publishes, and the MONDO id. On HTT the provider
+derives `MONDO_0007739` from `mondo` and the shipped module's human author wrote the same value —
+independent agreement, which is the strongest evidence a drafting provider gets. On FMR1 the
+catalogue names **three** MONDO ids (fragile X syndrome, FXTAS, FXPOI) and the provider writes none,
+which is what the shipped module does too.
+
+**Never drafted: the band columns.** `measure_min`, `measure_max`, `measure_tiling` and the per-band
+`direction`/`clin_sig`/`phenotype`. The withheld set is *derived* from the drafted one, so a column
+added to the kind later is withheld by default rather than silently written empty, and a test asserts
+the two partition the model's authored fields.
+
+A `(gene, repeat_unit)` key several loci claim is drafted for none of them — `ARX` and `HOXA13` are
+the published cases — and contestation is decided over the whole admitted set before the gene filter
+runs, so a filter cannot leave one claimant looking uncontested. The skip guard for a locus with no
+usable identity is read out of `authoring_requirements`, not restated beside the model.
+
+Rows match on `(gene, repeat_unit)` and go at the end. `trait_efo_id` is deliberately outside the
+match key even though the bin-group key includes it: it is a cell the author may clear, and a re-draft
+after they did would otherwise append the locus twice. A re-draft after the human has written the
+bands and split one drafted row into four still reports `already_present`.
+
+`STRCHIVE_TERMS` is MIT — `share_alike=False`, `commercial_use=True`, `redistribution=True`, all facts
+rather than the `None` every other axis in this round had to say — so a module drafted from it stays
+sellable and `check_declared_use` answers `None` on every declaration. The row is written at the
+`annotation` layer with the snapshot's release in `dataset`, because this half does carry the source's
+data into the module.
+
 ## Pharmacogenomics and data-source licensing (`pgx.py`, `licensing.py`, `pharmvar.py`, `cpic.py`)
 
 Pass 5 cross-checks a module's star-allele tables against the nomenclature authorities and records
@@ -3579,6 +3626,7 @@ just-dna-enricher check-repeat-bands spec/ --catalogue strchive/  # repeat_allel
 # Authoring — templating and drafting (the compiler owns the offline half; see COMPILER.md)
 just-dna-enricher template repeat_alleles.csv       # header + required/one-of/never-empty defaults
 just-dna-enricher draft spec/ --gene CYP2C19        # CPIC → haplotypes/allele_function/diplotypes
+just-dna-enricher draft-repeats spec/ --catalogue strchive/  # STRchive → repeat_alleles.csv identity rows
 just-dna-enricher draft spec/ --gene CYP2D6 --allele '*1' --allele '*4' --allele '*10'  # 21 not 16,290
 just-dna-enricher draft spec/ --gene CYP2C19 --drug clopidogrel   # + every clinical context, as rows
 just-dna-enricher draft spec/ --gene CYP2C19 --drug clopidogrel --population NVI  # one context only
@@ -3656,6 +3704,7 @@ directly to compose passes, inject clients, or run in-process.
 | `draft` | `pgx_draft.draft_gene` |
 | `draft-clinpgx` | `clinpgx_draft.draft_pharm_variants` |
 | `draft-panel` | `clinvar_draft.draft_gene_panel` |
+| `draft-repeats` | `strchive_draft.draft_repeat_loci` |
 | `strchive build` | `strchive_build.build_strchive_snapshot` → `strchive.load_strchive_catalogue` |
 | `clinpgx build` / `clinpgx check` | `clinpgx_build.download_clinpgx_zip` + `build_snapshot` / `clinpgx.enrich_clinpgx` |
 | `clinvar build` / `citations` / `publish` | `clinvar_build.download_clinvar_vcf` + `build_snapshot` / `download_var_citations` + `build_citations` / `upload.publish_reference_snapshot` |

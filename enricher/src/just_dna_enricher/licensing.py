@@ -469,6 +469,29 @@ CIVIC_TERMS = SourceTerms(
 
 
 
+# STRchive, the tandem-repeat locus catalogue (RM165, read 2026-09-01). **The only permissive source
+# in the 2026-09-01 adoption round**: an SPDX identifier on a repository rather than a policy page
+# that declines to grant anything, so every axis below is a fact rather than a `None`.
+#
+# MIT grants sale and redistribution outright and imposes no share-alike, on the single condition that
+# the copyright notice travels with the material — which is what `attribution` carries. So a module
+# drafted from this stays sellable, and `check_declared_use` answers `None` on every declaration.
+STRCHIVE_TERMS = SourceTerms(
+    source="strchive",
+    license="MIT",
+    license_url="https://github.com/dashnowlab/STRchive/blob/main/LICENSE",
+    attribution="STRchive (dashnowlab/STRchive) — MIT License, Copyright (c) 2023 Harriet Dashnow",
+    notice=(
+        "MIT License. Use, copying, modification, publication, distribution, sublicensing and sale "
+        "are granted, on the condition that the copyright notice and the permission notice travel "
+        "with the material — which is why the attribution above is recorded rather than optional."
+    ),
+    share_alike=False,
+    commercial_use=True,
+    redistribution=True,
+)
+
+
 TERMS_BY_SOURCE: dict[str, SourceTerms] = {
     terms.source: terms
     for terms in (
@@ -484,6 +507,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         PUBMIND_TERMS,
         CIVIC_TERMS,
         CLINGEN_ALLELE_REGISTRY_TERMS,
+        STRCHIVE_TERMS,
     )
 }
 
