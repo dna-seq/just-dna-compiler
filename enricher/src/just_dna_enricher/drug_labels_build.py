@@ -61,9 +61,9 @@ except ImportError:  # pragma: no cover - exercised only where the [dev] extra i
 
 logger = logging.getLogger(__name__)
 
-#: The archive member this builder reads, and the one it deliberately does not.
+#: The archive member this builder reads. `drugLabels.byGene.tsv` is the other one and is deliberately
+#: not read — see the module docstring — so it gets a sentence rather than a constant nothing calls.
 LABELS_MEMBER = "drugLabels.tsv"
-BY_GENE_MEMBER = "drugLabels.byGene.tsv"
 
 #: Source column → snapshot column. A hand-kept parallel list is how `SOURCES_FIELDNAMES` lost a
 #: column, so the snapshot's column order is derived from this mapping and asserted against

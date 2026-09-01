@@ -314,9 +314,9 @@ def test_one_agency_with_two_labels_keeps_both_and_no_winner_is_picked(
 
 def test_an_unstated_level_never_establishes_an_agreement_on_its_own() -> None:
     """Kleene at the level of the classifier: `discordant` survives a silent agency, `concordant` does not."""
-    stated = LabelRow("PA1", None, "A", "Actionable PGx", ("G",), ("d",), ())
-    other = LabelRow("PA2", None, "B", "Informative PGx", ("G",), ("d",), ())
-    silent = LabelRow("PA3", None, "C", None, ("G",), ("d",), ())
+    stated = LabelRow("PA1", "A", "Actionable PGx", ("G",), ("d",), ())
+    other = LabelRow("PA2", "B", "Informative PGx", ("G",), ("d",), ())
+    silent = LabelRow("PA3", "C", None, ("G",), ("d",), ())
     call = lambda row: LabelCall(row=row, matched_on="G")  # noqa: E731
 
     assert classify_labels("absent", [call(stated), call(other), call(silent)]).concordance == (
@@ -334,7 +334,7 @@ def test_only_the_negative_level_is_placed_against_an_authored_recommendation() 
     """The three middle levels are stated and unplaced — no invented ladder."""
     def _row(level: str | None) -> LabelCall:
         return LabelCall(
-            row=LabelRow("PA1", None, "A", level, ("G",), ("d",), ()), matched_on="G"
+            row=LabelRow("PA1", "A", level, ("G",), ("d",), ()), matched_on="G"
         )
 
     assert classify_labels("recommends", [_row(NO_CLINICAL_PGX)]).position == "opposed"

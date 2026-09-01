@@ -66,9 +66,11 @@ from just_dna_enricher.verification import examples, ran, record_verification, s
 
 logger = logging.getLogger(__name__)
 
-#: The licensed source, spelled the way `licensing.CLINPGX_TERMS` spells it. The *agencies* are data
-#: in the `regulator` column and are never named by this module.
-SOURCE_NAME = "clinpgx"
+#: The licensed source, taken from the terms constant rather than re-spelled: this string reaches
+#: `verification.json` beside a record `clinpgx check` also writes, and two spellings of one source
+#: would split a consumer's grouping. The *agencies* are data in the `regulator` column and are never
+#: named by this module.
+SOURCE_NAME: str = CLINPGX_TERMS.source
 
 #: The check key, and the parquet the snapshot stores the labels in.
 CHECK_NAME = "regulator_label_agreement"
@@ -202,13 +204,13 @@ class DrugLabelUnavailable(DrugLabelError):
 class LabelRow:
     """One regulator's label annotation, reduced to what this check reads.
 
-    Deliberately not the whole record. `biomarker_flag`, the prescribing flags and the history date
-    are in the snapshot and are not parsed here, because nothing in this check emits them — a field
-    carried and never used is dead weight.
+    Deliberately not the whole record. `label_name`, `biomarker_flag`, the prescribing flags and the
+    history date are in the snapshot and are not parsed here, because nothing in this check emits
+    them — a field carried and never used is dead weight. A reader who wants the label's title has
+    its `label_id`, which is ClinPGx's own accession for it.
     """
 
     label_id: str
-    label_name: str | None
     regulator: str
     testing_level: str | None
     genes: tuple[str, ...]
@@ -395,7 +397,6 @@ def load_drug_labels(reference: Path) -> DrugLabelIndex:
     labels = tuple(
         LabelRow(
             label_id=record["label_id"],
-            label_name=record["label_name"],
             regulator=record["regulator"] or "",
             testing_level=record["testing_level"],
             genes=_split(record["genes"]),
