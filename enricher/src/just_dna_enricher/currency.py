@@ -29,10 +29,12 @@ the VCF header, and `clinvar_sha256:…` for a snapshot built from a VCF whose h
 The two name the same release space and cannot be tested for equality across forms, so a recorded
 digest against a live date is *uncomparable*, not *behind*. Withheld, and named.
 
-**One probe ships, deliberately.** ClinVar is the source the whole item is about and the only one this
-tier can ask for a release label in the same namespace it records — `PROBE_SOURCES` is the registry,
-and every source outside it is honestly `unsupported` rather than quietly current. Adding a probe is
-adding a member; nothing else here changes.
+**Two probes ship.** ClinVar is the source the whole item is about; the PGS Catalog joined it in
+RM163 because that source *publishes its own release record* — `/rest/info` states the date and the
+score count outright, so the label to compare against was already there and needed reading rather than
+building. Every source outside `PROBE_SOURCES` is honestly `unsupported` rather than quietly current,
+and the registry is what a reader consults. Adding a probe is adding a member; nothing else here
+changes.
 """
 
 import logging
@@ -47,6 +49,12 @@ from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
 from just_dna_enricher.clinvar import CLINVAR_DATASET_PREFIX
 from just_dna_enricher.clinvar_build import DEFAULT_CLINVAR_URL, file_date_from_header
 from just_dna_enricher.net import PacingGate, attempt_floor
+from just_dna_enricher.pgs import (
+    PGS_SOURCE,
+    PgsCatalogClient,
+    PgsCatalogUnavailable,
+    dataset_label,
+)
 from just_dna_enricher.verification import examples
 
 logger = logging.getLogger(__name__)
@@ -188,19 +196,49 @@ def _gunzip_prefix(raw: bytes) -> str:
 ReleaseProbe = Callable[[], str | None]
 
 
-def default_probes(*, clinvar: ClinVarReleaseClient | None = None) -> dict[str, ReleaseProbe]:
+def _pgs_release(client: PgsCatalogClient) -> str | None:
+    """The PGS Catalog's current release, as a `ReleaseProbe`.
+
+    **Read, not built** (RM163). `/rest/info` publishes `latest_release.date` outright, so the label
+    this compares against costs one request and no snapshot — the same shape MANE's
+    `README_versions.txt` has. `dataset_label` spells it, and the pass that stamps
+    `SourceRow.dataset` calls the same function, which is `clinvar_dataset_label`'s rule: two
+    spellings of one release make the check quietly never match.
+
+    The translation is the reason this is a function rather than a bound method. `PgsCatalogClient`
+    owes its callers `PgsCatalogUnavailable`, and `_ask` reads the *reason* off `ReleaseProbeError`'s
+    subclass — so a probe leaking the client's own type would abort the whole run instead of marking
+    one leg unreachable.
+    """
+    try:
+        return dataset_label(client.release())
+    except PgsCatalogUnavailable as exc:
+        raise ReleaseUnavailable(f"the PGS Catalog could not be asked: {exc}") from exc
+
+
+def default_probes(
+    *,
+    clinvar: ClinVarReleaseClient | None = None,
+    pgs_catalog: PgsCatalogClient | None = None,
+) -> dict[str, ReleaseProbe]:
     """The probes this tier ships, keyed by the `SourceRow.source` they answer for.
 
     A registry rather than a chain of `if source == …`: what a reader needs is the set of sources that
     *can* be asked, and `PROBE_SOURCES` below is derived from this function so the two cannot disagree.
     """
-    client = clinvar if clinvar is not None else ClinVarReleaseClient()
-    return {"clinvar": client.current_release}
+    clinvar_client = clinvar if clinvar is not None else ClinVarReleaseClient()
+    pgs_client = pgs_catalog if pgs_catalog is not None else PgsCatalogClient()
+    return {
+        "clinvar": clinvar_client.current_release,
+        PGS_SOURCE: lambda: _pgs_release(pgs_client),
+    }
 
 
 #: The sources this tier can ask, derived from `default_probes` rather than restated beside it — a
 #: second list is a registry that goes stale the first time a probe is added (`@registry-completeness`).
-PROBE_SOURCES: frozenset[str] = frozenset(default_probes(clinvar=ClinVarReleaseClient()))
+PROBE_SOURCES: frozenset[str] = frozenset(
+    default_probes(clinvar=ClinVarReleaseClient(), pgs_catalog=PgsCatalogClient())
+)
 
 
 @dataclass(frozen=True)

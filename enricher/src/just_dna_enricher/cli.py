@@ -77,7 +77,12 @@ from just_dna_enricher.gene_validity import (
 )
 from just_dna_enricher.grch37 import GRCH37_BUILD, summarize_build_diagnoses
 from just_dna_enricher.gwas import GwasError, enrich_gwas
-from just_dna_enricher.identifiers import IdentifierUnavailable, check_identifiers
+from just_dna_enricher.identifiers import (
+    IdentifierCheckError,
+    IdentifierUnavailable,
+    check_identifiers,
+)
+from just_dna_enricher.identifiers import pgs_withheld_sentences as identifier_pgs_withheld
 from just_dna_enricher.identifiers import unreachable_records as identifier_unreachable
 from just_dna_enricher.identifiers import verification_records as identifier_records
 from just_dna_enricher.licensing import (
@@ -951,20 +956,31 @@ def check_identifiers_(
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Exit 1 if any identifier is stale."),
     traits: bool = typer.Option(True, "--traits/--no-traits", help="Check trait_efo_id against OLS4."),
     genes: bool = typer.Option(True, "--genes/--no-genes", help="Check gene symbols against HGNC."),
+    pgs: bool = typer.Option(
+        True, "--pgs/--no-pgs",
+        help="Check pgs_id against the PGS Catalog, and the two authored cells beside it.",
+    ),
 ) -> None:
-    """Report obsolete trait ontology terms and retired gene symbols (online, reports only).
+    """Report obsolete trait terms, retired gene symbols and unrecognised PGS accessions (online).
 
     **Writes no authored cell, and records that the question was put.** Unlike the rsID check (whose
     verdict lands on resolution.csv), these are module-level identifiers with no sidecar column to
     record, and filling one from the registry being asked about it would make the comparison vacuous
     — see `hints.REDUNDANCY_BEARING`. What this does write is `verification.json`: an attestation that
-    the three checks ran and over how many rows, never a value. A consumer holding the artifact has no
+    the five checks ran and over how many rows, never a value. A consumer holding the artifact has no
     other way to tell "asked and clean" from "never asked" (RM45/RM72).
+
+    The PGS leg also writes `sources.csv` (RM163), and that is not an exception to the sentence above:
+    the Catalog's `license` is a field on each score record and it varies, so a module carrying an
+    academic-research-use-only score must not compile claiming the generic terms. The rows are the
+    terms, never a value in an authored cell.
     """
     try:
         # `spec_dir=` rather than loading the rows here (RM41). This command was the workspace's own
         # evidence that the row-taking form leaves every caller reaching for a private loader.
-        report = check_identifiers(spec_dir=spec_dir, check_traits=traits, check_genes=genes)
+        report = check_identifiers(
+            spec_dir=spec_dir, check_traits=traits, check_genes=genes, check_pgs=pgs
+        )
     except ValueError as exc:
         # A module whose rows will not load: nothing is attested, because there are no bytes for an
         # attestation to bind to and no question was reached.
@@ -983,10 +999,25 @@ def check_identifiers_(
         # the comment above says needs it most. The comment already named the right shape one clause
         # over; the type now matches it.
         _attest_on_the_way_out(
-            identifier_unreachable(check_traits=traits, check_genes=genes, detail=str(exc)),
+            identifier_unreachable(
+                check_traits=traits, check_genes=genes, check_pgs=pgs, detail=str(exc)
+            ),
             spec_dir,
         )
         typer.secho(f"IDENTIFIER CHECK FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    except IdentifierCheckError as exc:
+        # **After the `IdentifierUnavailable` arm, and the order is load-bearing** — that class is a
+        # subclass of this one, so catching the parent first would swallow every unreachable-registry
+        # run into this message (`@client-exception-contract`). What reaches here is the PGS leg's
+        # licence write failing on the module's own layout, which is neither a stale identifier nor a
+        # source that would not answer.
+        #
+        # Nothing is attested, and that is deliberate rather than an omission: the registries *did*
+        # answer, so `unreachable` would be a false record, and the attestation is written through the
+        # same sidecar resolver that has just refused — so it would fail again for the same reason and
+        # replace this sentence with a worse one.
+        typer.secho(f"CHECKED, BUT THE TERMS WERE NOT RECORDED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     # **The guard is the roster, not a filename.** This command opened with `if not (spec_dir /
     # "variants.csv").exists(): return "nothing to check"`, on the reasoning that such a module "has no
@@ -1000,9 +1031,26 @@ def check_identifiers_(
     # table present there is no question to record having put, and minting a nonce would create a
     # `verification.json` on a module that never asked for one. Both checks switched off is a
     # different state and keeps its existing path below, where it is recorded as `not_requested`.
-    if (traits or genes) and not (report.trait_tables_read or report.gene_tables_read):
+    #
+    # **And it must not fire while a table was present and unreadable.** That is the same defect one
+    # step further out: a module whose only id-bearing table will not parse read *nothing*, so both
+    # halves of the condition were true and the command exited 0 with "nothing to check" — never
+    # printing the unreadable-table warning below, and never attesting. The reason a question was not
+    # put is exactly what a reader needs on that run.
+    #
+    # **`and`, not `or`, across the three flags** — a check the author switched off is a record they
+    # asked for, and `not_requested` is written on the path below. The guard is for the module that
+    # carries no identifier at all, which is a different absence from one the author chose.
+    if (
+        traits
+        and genes
+        and pgs
+        and not (report.trait_tables_read or report.gene_tables_read or report.pgs_tables_read)
+        and not report.unreadable_tables
+    ):
         typer.secho(
-            "no table carrying trait ids or gene symbols — nothing to check", fg=typer.colors.YELLOW
+            "no table carrying trait ids, gene symbols or PGS accessions — nothing to check",
+            fg=typer.colors.YELLOW,
         )
         return
     # **The count names the tables it is out of (S86).** `traits checked: 0` used to say two things —
@@ -1013,7 +1061,20 @@ def check_identifiers_(
         f" (from {len(report.trait_tables_read)} table(s): {', '.join(report.trait_tables_read) or 'none'})"
         f"  genes checked: {len(report.genes)}"
         f" (from {len(report.gene_tables_read)} table(s): {', '.join(report.gene_tables_read) or 'none'})"
+        f"  PGS accessions checked: {len(report.pgs)}"
+        f" (from {len(report.pgs_tables_read)} table(s): {', '.join(report.pgs_tables_read) or 'none'})"
     )
+    if report.pgs:
+        # The comparison's own three numbers, never recomputed here: compared, drifted, withheld. A
+        # count beside a check is one that can disagree with it, and then the terminal and the
+        # attestation give two accounts of one run.
+        comparison = report.pgs_metadata
+        typer.echo(
+            f"  PGS metadata cells compared: {len(comparison.compared)} of "
+            f"{len(comparison.authored)} authored"
+            f" ({len(comparison.drift)} disagree, {len(comparison.withheld)} withheld)"
+            + (f"  [PGS Catalog release {report.pgs_release}]" if report.pgs_release else "")
+        )
     for name, why in sorted(report.unreadable_tables.items()):
         # Only the tables that exist and would not parse. An absent optional table is every module's
         # normal shape and would bury this line in noise.
@@ -1022,8 +1083,19 @@ def check_identifiers_(
             fg=typer.colors.YELLOW,
             err=True,
         )
-    for finding in [*report.stale_traits, *report.stale_genes, *report.gene_loci]:
+    for finding in [
+        *report.stale_traits,
+        *report.stale_genes,
+        *report.gene_loci,
+        *report.stale_pgs,
+        *report.pgs_metadata.drift,
+    ]:
         typer.secho(f"  {finding}", fg=typer.colors.YELLOW, err=True)
+    for sentence in identifier_pgs_withheld(report.pgs_metadata):
+        # Never silently, for `gene_loci_not_checked`'s reason one axis over: a cell this check looked
+        # at and could not settle is neither a finding nor a clean comparison, and a reader who cannot
+        # see it reads the agreement count as covering every authored cell.
+        typer.secho(f"  {sentence}", fg=typer.colors.YELLOW)
     if report.gene_loci_not_checked:
         # Never silently: an empty conflict list means "nothing disagreed" and "never compared", and
         # a reader who cannot tell them apart is being told a check passed that was never put (S24).
@@ -1031,13 +1103,13 @@ def check_identifiers_(
             f"  gene/chromosome agreement not checked: {report.gene_loci_not_checked}",
             fg=typer.colors.YELLOW,
         )
-    # One call for all three records: the proof-of-work binds the whole document, so a per-check write
-    # would pay it three times for one guarantee. Before the strict exit below, because the check DID
+    # One call for all five records: the proof-of-work binds the whole document, so a per-check write
+    # would pay it five times for one guarantee. Before the strict exit below, because the check DID
     # run — the exit code is presentation, and an attestation withheld on it would make the record
     # depend on which flag the author passed.
     try:
         record_verification(
-            identifier_records(report, check_traits=traits, check_genes=genes),
+            identifier_records(report, check_traits=traits, check_genes=genes, check_pgs=pgs),
             spec_dir,
             error=EnrichmentError,
         )
@@ -1050,15 +1122,30 @@ def check_identifiers_(
         # **"Current" out of nothing is the same unreadable zero one level up (S86).** With both
         # checks off, or with every id-bearing table absent, `report.clean` is vacuously true and the
         # green line asserted a pass over a question nobody put. It says what it read instead.
-        looked_at = len(report.trait_tables_read) + len(report.gene_tables_read)
-        if not report.traits and not report.genes:
+        looked_at = (
+            len(report.trait_tables_read)
+            + len(report.gene_tables_read)
+            + len(report.pgs_tables_read)
+        )
+        if not report.traits and not report.genes and not report.pgs:
             typer.secho(
                 "no identifiers were checked"
                 + (
-                    f" — {looked_at} table(s) read and none carries a trait id or gene symbol"
+                    f" — {looked_at} table(s) read and none carries a trait id, gene symbol or PGS "
+                    f"accession"
                     if looked_at
                     else " — no table carrying identifiers was read"
                 ),
+                fg=typer.colors.YELLOW,
+            )
+        elif report.metadata_disagrees:
+            # **Checked, and something differs — but the exit code stays 0 even under `--strict`.**
+            # Every identifier the registries were asked about is current; what disagrees is a
+            # curated cell against a source's own summary, which is the shape the strict gate
+            # deliberately does not arbitrate (`@a-source-recuring-is-not-a-strict-matter`). The
+            # green line is withheld all the same, because a difference was reported above.
+            typer.secho(
+                "all identifiers current, but a source disagrees with an authored cell above",
                 fg=typer.colors.YELLOW,
             )
         else:

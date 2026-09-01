@@ -33,6 +33,7 @@ from just_dna_enricher.eutils import EutilsClient, EutilsError, EutilsSettings
 from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadSettings
 from just_dna_enricher.identifiers import IdentifierUnavailable, OntologyClient
 from just_dna_enricher.net import PacingGate
+from just_dna_enricher.pgs import PgsCatalogClient, PgsCatalogUnavailable
 from just_dna_enricher.pharmvar import PharmVarClient, PharmVarError
 
 
@@ -103,6 +104,20 @@ def _ontology(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[]
     return lambda: client.trait("HP:0000118")
 
 
+def _pgs(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    """The PGS Catalog (RM163), and it is the counter-example to the 404 row below.
+
+    OLS4 and HGNC answer 404 for "no such term", so `identifiers` reads one as an answer. This service
+    says "no such score" with an **empty body on a 200**, so a 404 from it means the request went
+    somewhere unexpected — and reading that as an absence would turn an infrastructure problem into a
+    permanent negative about an author's accession.
+    """
+    client = PgsCatalogClient(
+        client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate()
+    )
+    return lambda: client.score("PGS000001")
+
+
 def _pharmvar(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
     client = PharmVarClient(
         api_key="test-key",
@@ -125,6 +140,10 @@ CLIENTS = [
     # `ReleaseUnavailable` rather than its parent, for the reason above it: it is the stronger
     # assertion, and every failure of this probe really is "the source could not be asked".
     ("currency", _currency, ReleaseUnavailable),
+    # `PgsCatalogUnavailable` rather than its parent, for the reason above it. Every failure of this
+    # client really is "the Catalog could not be asked": its own negative is a 200 with an empty
+    # body, which never reaches an exception at all.
+    ("pgs", _pgs, PgsCatalogUnavailable),
 ]
 
 

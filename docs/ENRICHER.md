@@ -313,7 +313,8 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `net` | shared HTTP politeness: `PacingGate`, `batched`, `dedupe` | stdlib |
 | `eutils` | NCBI E-utilities client (esummary), shared by the literature and rsID checks | `httpx`, `tenacity` |
 | `literature` | pass 4: a module's citations (`studies.csv` + binning `pmid`s) → `literature.csv` (PubMed + Europe PMC), fulltext quote match, per-article licence, PMCID→PMID | `httpx`, `tenacity` |
-| `identifiers` | rsID / trait-CURIE / gene-symbol currency (dbSNP, OLS4, HGNC) | `httpx`, `tenacity` |
+| `identifiers` | rsID / trait-CURIE / gene-symbol / PGS-accession currency (dbSNP, OLS4, HGNC, PGS Catalog) | `httpx`, `tenacity` |
+| `pgs` | **0.7** (RM163): the PGS Catalog REST client, its release record, and the per-score shape `identifiers` compares against | `httpx`, `tenacity` |
 | `licensing` | per-source terms + the declared-use gate; emits `SourceRow` | format `SourceRow` |
 | `clingen` | ClinGen dosage sensitivity → `gene_metrics.csv` rows (CC0, so a module stays sellable) | `httpx`, format |
 | `gene_validity` | RM24: curated gene–disease assertions → `gene_validity.csv` (ClinGen expert panels, GenCC's aggregate; both CC0) | `httpx`, format |
@@ -375,6 +376,7 @@ really sleeping.
 | **Europe PMC** | `literature.EuropePmcClient` (OA fulltext + abstracts + per-article licence) | no durable official figure on the developer pages (community reports vary) | `min_request_interval=0.5` (2/s), batches of **25** on `search` | none |
 | **PMC ID converter** | `literature.PmcIdConverterClient` (PMCID → PMID, reporting only) | no published figure; the service documents a **200-id** batch ceiling | `min_request_interval=0.5` (2/s), batches of **200** | `tool=just-dna-enricher`; `email` from `JUST_DNA_CONTACT_EMAIL` when set |
 | **OLS4 + HGNC** | `identifiers.OntologyClient` | neither publishes a documented limit | `min_request_interval=0.2` (courtesy — GET-per-id, unbatched) | `Accept: application/json` |
+| **PGS Catalog REST** (`www.pgscatalog.org/rest`) | `pgs.PgsCatalogClient` → identifier currency + the release probe | none published | `_REQUEST_INTERVAL=0.2` (courtesy — GET-per-accession, unbatched; one extra request for `/rest/info`) | `Accept: application/json` |
 | **Ensembl REST** (`rest.ensembl.org`) | `ensembl` V1 fallback | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | **no `PacingGate`** — live path is the last link after cache/snapshot, so volume stays low; tenacity on transport only | none |
 | **Ensembl GraphQL** (`beta.ensembl.org`) | `ensembl` V2 first try | unpublished (beta) | **no `PacingGate`**; 5xx falls through to REST | none |
 | **CPIC** (`api.cpicpgx.org`) | `cpic` / `pgx_draft` | unpublished | **no `PacingGate`** — coarse PostgREST GETs (gene-scoped), not per-allele loops | none |
@@ -2721,8 +2723,8 @@ ask whether "yes" could be true of the wrong thing.
 ## Identifier currency (`identifiers.py`, online)
 
 The generalization of COMPILER.md's *"is the source stale?"* blind spot from datasets to identifiers.
-A dbSNP merge, an EFO retirement and an HGNC rename all leave a module perfectly well-formed and quietly
-out of date.
+A dbSNP merge, an EFO retirement, an HGNC rename and a PGS accession that was never issued all leave a
+module perfectly well-formed and quietly out of date.
 
 - **rsIDs** run inside `enrich()` (`--verify-rsids`), because the verdict lands on `resolution.csv`'s
   `rsid_current`/`rsid_status` columns. Three states from `esummary db=snp`: **live** (`snp_id` ==
@@ -2734,6 +2736,10 @@ out of date.
   `ABRAXAS1`.
 - **Gene ↔ locus agreement** (0.5.4) rides on the same command and is the first check here about a
   *relationship* between two identifiers rather than the currency of one. See below.
+- **PGS accessions** (0.7, RM163) are the fourth registry and ride on the same command, under
+  `--pgs/--no-pgs`. They put two questions — does the accession still name a score, and do the two
+  authored cells beside it still match the record — and the command writes the Catalog's per-score
+  terms into `licensing.csv` while it is there. See below.
 
 **NCBI is the oracle, not Ensembl.** Ensembl REST resolves *some* merges (`rs77121243` → `rs334`) and
 returns HTTP 400 on others (`rs3216883`, which dbSNP reports as merged into `rs3051860`), so Ensembl
@@ -2795,6 +2801,136 @@ wrong is not something this tier can know. Four design points:
 `IdentifierReport.gene_loci_not_checked` carries the reason when the comparison could not run, for the
 reason `EnrichmentResult.clin_sig_not_checked` exists — an empty conflict list otherwise says both
 "compared everything, nothing disagreed" and "never compared". The CLI prints it.
+
+### The PGS Catalog — the fourth registry, and a licence that is per score (0.7, RM163)
+
+`pgs.csv` is a manifest of PGS Catalog accessions and `PgsRow` is *keyed* on `pgs_id`, so until 0.7
+the one authored identifier the format keys a whole table on was the one nothing ever asked its
+registry about. `check-identifiers` now asks, under `--pgs/--no-pgs`, and it puts **two** questions
+rather than one.
+
+**`pgs_accession_currency` — does the accession still name a score?** Three outcomes, and the shape of
+the source decides how they are reached.
+
+- **The verdict is read off the body, never off the status.** `GET /rest/score/PGS000001` returns the
+  record; `GET /rest/score/PGS999999`, a never-assigned accession, returns **HTTP 200 with `{}`**; and
+  `GET /rest/score/PGSXXXX`, which is not an accession at all, returns **HTTP 200 with `{}`** too. So
+  the status code carries no existence information, and a 404 from this service means the request went
+  somewhere unexpected rather than that the score is absent. That is the opposite of `OntologyClient`'s
+  rule, where OLS4's and HGNC's 404 *is* the answer, and the per-client fact is why
+  `test_client_exception_contract.py` keeps a 404 table rather than a tier-wide rule.
+- **The absence is weighted by the measured base rate, and it is the other way round from dbSNP's.**
+  The accession range is sparsely assigned — roughly a third of it, measured over a random sample —
+  so an unrecognised accession is overwhelmingly one that was never issued. `@rsid-absent-two-readings`
+  gives typo and withdrawal equal weight because dbSNP's id space is dense and merges are frequent;
+  here the message names the typo reading first and withdrawal as the rarer one. The Catalog publishes
+  **no supersession field**, which is stated as a limit of the source rather than resolved by guessing.
+- **A malformed accession is settled before any request.** `PgsRow`'s own `PGS<digits>` grammar
+  answers it, and asking would have established nothing — the Catalog's reply is byte-identical to a
+  never-assigned one. In practice the schema refuses such a row at load, so the state is reached only
+  by a caller holding an id from somewhere other than a parsed table; the arm exists so the message
+  can say *spelling* rather than offering a withdrawal that almost certainly did not happen.
+- **A recognised accession says what it found** — name, release date, variant count, traits
+  (`@existence-not-identity`). A PGS accession is exactly the shape of identifier where a
+  wrong-but-real id resolves cleanly to somebody else's score.
+
+**`pgs_metadata_agreement` — do the two authored cells beside it still match?** `training_ancestry`
+against the score's `ancestry_distribution`, `training_cohort` against its `samples_training`. Reports,
+never repairs. Its own vocabulary member rather than a second finding under the line above, because the
+subject is a *cell* and not an id: a module with three accessions can put six cells, settle two and
+withhold four, and none of those numbers fits a denominator counted in accessions.
+
+- **Only the `dev` and `eval` stages are compared.** The Catalog publishes three — `gwas` is the
+  ancestry of the discovery study the effect sizes came from, `dev` the samples the score was built on,
+  `eval` the ones it was evaluated in. `training_ancestry` exists so a consumer can refuse an
+  out-of-ancestry application, which is a question about where the score was built and tested; folding
+  `gwas` in would widen the published set until nothing could disagree.
+- **The two vocabularies do not meet, and the gap is withheld rather than reported.**
+  `VALID_TRAINING_ANCESTRY` is 1000G superpopulations plus `multi`; the Catalog's categories add `NR`
+  (not reported), `ASN`, `GME` and `OTH`, which no member covers. A score whose distribution names one
+  of those has an ancestry this tier cannot spell, so an authored code the published set does not carry
+  might be exactly that one — and a difference nobody can stand behind is not a finding.
+  `PGS_ANCESTRY_CATEGORIES` is total over the categories the service serves, with the unmappable ones
+  written out rather than left to a `.get` default, and a category the Catalog invents later is logged.
+- **`MAE` and `MAO` are bags, and the two directions are not symmetric.** *Multi-ancestry excluding
+  European* and *multi-ancestry including European* each stand for two or more superpopulations the
+  Catalog did not break down, so both map to `multi` for a **positive** answer and both block a
+  **negative**: an authored code the rest of the distribution does not name may be inside the bag.
+  Without that, `MAO` reported a false drift against an authored `EUR` — a population it includes by
+  definition. `_UNENUMERABLE_CATEGORIES` is that half, kept apart from the `None` entries because the
+  two are different facts: a `None` category has no member at all, these have one and still cannot be
+  exhausted.
+- **The comparison is one-directional.** An authored cell *narrower* than the published set is not
+  flagged: a score the Catalog evaluated in eight ancestries at a percent each is not thereby validated
+  in all eight, and claiming fewer is the conservative direction.
+- **`training_cohort` is free text, so the disagreement bar is high.** The cell agrees when any
+  non-structural word of it appears anywhere in the record's own account of its training samples —
+  cohort names, and the per-sample ancestry prose beside them, because `FIN` and `Ashkenazi` are the
+  field's own examples and are ancestries rather than cohorts. Matching is substring rather than whole
+  word, so `FIN` is vouched for by `Finnish`. Words that describe *what* a cohort is (`cohort`,
+  `study`, `project`) are dropped: they match almost every record, and letting one vouch would make the
+  check unable to fail while looking like one that passes.
+- **`match_rate_floor` and `research_tier` are deliberately not checked**, and the reason is written
+  into the skip's own `detail` so nobody adds them on the symmetry. `match_rate_floor` is described in
+  its own `Field` as an author-set floor and `research_tier` is a two-member curator judgement; the
+  Catalog publishes neither, so a check over them could not fail (`@tautology-zero`).
+- **The overlay has nothing to say here**, and that is structural. `overrides.csv` corrects *derived*
+  rows and `OVERRIDABLE_TABLES` is built from the derived registry; `pgs.csv` is authored, so a
+  disagreeing cell is edited in place rather than answered. There is no suppression path to wire and
+  none is missing.
+- **One accession on two rows is one claim only while the two rows agree.** `PgsRow` is keyed
+  `(pgs_id, trait_efo_id)`, so a pleiotropic score is two rows; the cell key carries the authored
+  *value*, which collapses identical claims and keeps differing ones apart. Keying on the pair alone
+  dropped whichever row came second, so whether a stale value was caught depended on row order.
+- **A drift never fails `--strict`.** An accession the Catalog does not hold is a broken identifier
+  and does, exactly like a retired HGNC symbol; a cell two authorities disagree about is not, and the
+  finding's own message tells the author to leave it if the curation is deliberate. Failing a build on
+  that would be a gate with no way to clear it — the shape `@clinsig-never-escalates` keeps out. The
+  green line is withheld all the same, so a clean exit never reads as agreement.
+- **A Catalog outage reaches only these two records.** The leg records `unreachable` on the report
+  rather than raising: `check_identifiers` puts questions to four registries and the command writes one
+  record per check, so an exception here would stamp `unreachable` against `trait_currency` and
+  `gene_symbol_currency` for registries that answered. The ontology legs run first for the mirror
+  reason — an OLS4 failure aborts before this leg spends requests and writes a licence table the run is
+  about to discard. Called with `variants=` rather than a spec directory the record is `unsupported`,
+  because no row model a caller can hold carries a `pgs_id` at all.
+
+**Currency is read, not built.** `/rest/info` publishes `latest_release` — date, score count,
+publication and trait counts — beside the REST API's own version, so `pgs_catalog` joins
+`currency.PROBE_SOURCES` as the second shipped probe with no builder and no snapshot behind it.
+`pgs.dataset_label` spells the release for the probe *and* for the `SourceRow.dataset` the check
+stamps, which is `clinvar_dataset_label`'s rule: two spellings of one release make the comparison
+quietly never match, and never-matches renders as unreadable rather than as a bug. A release record
+that cannot be read leaves `pgs_release` at `None` and the accession verdicts standing — it is a fact
+about the Catalog, not about any accession. The floor row's `dataset` is paired with
+`withdraw_stale_dataset`, exactly as the two drafting providers pair theirs: `merge_sources_csv` never
+clobbers, so without it a row written under an older release would hold that label forever and
+`verify_datasets` would report it behind on every run with the pass that owns it unable to refresh it.
+It only ever blanks — one column cannot name two releases.
+
+**The terms are per score, and this is a correctness requirement rather than thoroughness.** `license`
+is a field on the score record. Measured over the first 250 of the corpus: most carry the Catalog's
+generic sentence deferring to *"any licensing restrictions set by the authors"*, a handful are *"freely
+available to the academic community for research use"* — academic-use-only, the class this workspace
+already classifies as barring redistribution outright — and a couple are CC0. So `PGS_TERMS` is
+written as a **floor** in `GWAS_CATALOG_TERMS`' shape (EBI's terms-of-use URL, every gating axis
+`None`), and the pass writes one further `SourceRow` per score, `source=pgs_catalog:PGS000013`, with
+that score's own licence string in `notice` and hashed into `license_sha256`; `license` itself carries
+a short **name** (`CC0-1.0`, `Academic research use only`, or null for the generic sentence) because
+the compiler compares that column against `module_spec.yaml`'s declared licence by equality, and a
+250-character sentence there would put a paragraph into `manifest.sources.licenses` and into a warning
+the author cannot act on. All rows sit at the `annotation` layer, which is where
+`taints_commercial_use` reads them, and most-restrictive-wins does the rest. Measured end to end: a
+module naming one academic-use-only score **fails the compile licence gate by name** until its author
+records a non-commercial declaration, where a single generic row would only have warned. A single constant covering the source would be a false claim for a measured minority in the
+permissive direction, which is the direction that matters — the same shape as `@per-article-terms` and
+as the SpliceAI note inside `GNOMAD_TERMS`. A licence string the classifier has not read is unknown on
+all three axes and logged; unknown is not permission.
+
+**No `--use` flag and no `check_declared_use` call**, for `pubmind_draft`'s reason: every gating axis
+on the floor is `None`, so the gate would refuse every run unconditionally, and reading a public
+endpoint to check an identifier is a read rather than an acquisition anyone has gated
+(`@acquisition-gate-is-not-a-read-gate`).
 
 ## ACMG secondary findings (`acmg.py` + `acmg_build.py`) — `just-dna-enricher check-acmg`
 

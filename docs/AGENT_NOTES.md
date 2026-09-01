@@ -1341,6 +1341,89 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `LiteratureRow`: that table records what was *checked*, not bibliography. Generalize it: when a check
   answers a yes/no about an identifier, ask whether "yes" could be true of the wrong thing.
 
+- `@absence-is-weighted-by-the-base-rate` — **Two readings of one absence are not automatically equal — measure which
+  one is likely, and word the message for it (RM163, 0.7).** `@rsid-absent-two-readings` names typo and
+  withdrawal side by side and asserts neither, and that is right *for dbSNP*, whose id space is densely
+  assigned and whose merges are a frequent real event. The first draft of the PGS Catalog check copied the
+  rule across on the symmetry and was wrong: the Catalog holds ~6,982 scores across a range reaching
+  ~PGS019960, and a random sample of 40 well-formed in-range accessions came back **12 assigned, 28 empty**.
+  So an unrecognised `pgs_id` is overwhelmingly one that was never issued, the Catalog publishes **no
+  supersession field at all**, and naming withdrawal as a co-equal reading would send an author looking for a
+  retirement notice that almost certainly does not exist. The message states the absence, names the typo
+  reading first, mentions withdrawal as the rarer one, and says the source cannot separate them. The rule to
+  carry: *both readings named* is the floor, and which one leads is a measurement, not a symmetry. The
+  sparsity itself stays qualitative in the message — computing it live would spend a request per run and put
+  a moving number into prose (`@no-rerun-with-counts`' cousin).
+
+- `@a-hosts-terms-are-not-its-contents-terms` — **When a service hosts works licensed by other people, one `SourceTerms`
+  constant for the service is a false claim — write the floor and let each record override it (RM163, 0.7).**
+  `license` on a PGS Catalog score record is a field on the *score*, not a property of the Catalog. Over the
+  first 250 of the corpus: most carry the generic *"used in accordance with any licensing restrictions set by
+  the authors"* sentence, a handful are *"freely available to the academic community for research use"* —
+  academic-use-only, which `licensing.py`'s own comments already classify as barring redistribution outright —
+  and a couple are CC0 1.0. A single `PGS_TERMS` row would therefore have been wrong for a measured minority
+  **in the permissive direction**, which is the direction that matters, so a module carrying an
+  academic-use-only score would have compiled claiming terms nobody granted. The shape: `PGS_TERMS` is the
+  floor (`GWAS_CATALOG_TERMS`' shape, every gating axis `None`), and the pass writes one further `SourceRow`
+  per score under `source=pgs_catalog:PGS000013` carrying that score's licence string **verbatim in
+  `notice`** and hashed into `license_sha256`, with a short *name* in `license` (`CC0-1.0`,
+  `Academic research use only`, or null for the generic sentence) — the compiler compares that column
+  against the module's declared licence by equality, and a 250-character sentence there would put a
+  paragraph into `manifest.sources.licenses` and into a warning the author cannot act on. All of them sit at the `annotation` layer, because that is the only layer
+  `taints_commercial_use` reads and the whole point is that the restrictive ones gate; the namespaced `source`
+  costs nothing because `PgsRow` has no `source` column to join and the annotation layer is structurally
+  exempt from the orphan check (`@orphan-check-exempt`). Same shape as `@per-article-terms` and as the
+  SpliceAI note inside `GNOMAD_TERMS`; the generalization is *ask whether the service owns what it serves*.
+  A licence string the classifier has not read is unknown on all three axes **and logged** — unknown is not
+  permission, and a silent default would hide the day the Catalog starts publishing a fourth class.
+
+- `@two-vocabularies-that-do-not-meet-withhold` — **Comparing an authored value against a source's requires a mapping,
+  and where the mapping is partial the difference is withheld rather than reported (RM163, 0.7).**
+  `VALID_TRAINING_ANCESTRY` is 1000G superpopulations plus `multi`; the PGS Catalog's `ancestry_distribution`
+  adds `NR` (not reported), `ASN`, `GME` and `OTH`, which no member of the format's vocabulary covers. Five map
+  straight across and the two multi-ancestry categories both land on `multi`, so a naive comparison looks
+  clean — and then reports an authored `AFR` as absent from a distribution whose unmapped `NR` stratum may be
+  exactly it. The rule: compute the mapped set **and** the unmappable one, and when an authored code is
+  missing from the first while the second is non-empty, withhold. Two more decisions ride with it and both
+  are about not manufacturing a finding: only the `dev` and `eval` stages are compared (`gwas` is the
+  discovery study's ancestry, and folding it in widens the published set until nothing can disagree —
+  `@tautology-zero`), and the comparison is one-directional, since an authored cell *narrower* than the
+  published set is a curation decision rather than drift. The free-text half has the same shape one grain
+  finer: `training_cohort` agrees on any non-structural word, and words describing *what* a cohort is
+  (`cohort`, `study`, `project`) are dropped from the match because they hit every record — a token that
+  matches by accident is a clean bill nobody earned. **And a category can be nameable and still
+  unenumerable**: `MAE`/`MAO` (multi-ancestry excluding / including European) are *bags* of
+  superpopulations the source did not break down, so they answer `multi` in the positive direction and
+  block a negative in the other — without that split, `MAO` reported a false drift against an authored
+  `EUR`, a population it includes by definition. Keep the two halves apart: a category with no member is
+  a different fact from one whose members cannot be listed, and folding them loses the positive answer.
+
+- `@a-cell-key-carries-the-value-when-two-rows-may-state-two-claims` — **A per-cell dedupe keyed on
+  (subject, field) drops a second, differing claim silently, and row order decides which survives
+  (RM163, 0.7).** `PgsRow` is keyed `(pgs_id, trait_efo_id)`, so one accession legitimately appears on
+  two rows — a pleiotropic score reported against two traits — and a curator who corrected
+  `training_ancestry` on one of them leaves two *different* claims under one accession. The drift
+  check's dedupe existed for a real reason (counting one claim twice inflates both halves of the
+  attestation), and keying it on the pair alone turned that into "whichever row the loader reached
+  first wins". The fix is one word wide: put the authored **value** in the key, so identical claims
+  still collapse and differing ones are both put. Generalize it: whenever a check dedupes per cell, ask
+  what the row key is — if the row key is wider than the cell key, two rows can disagree under one
+  cell, and the dedupe is quietly picking a winner (`@filter-before-the-group-picks-a-winner` one grain
+  finer).
+
+- `@one-registrys-outage-may-not-speak-for-another` — **A pass that asks several sources must not let one
+  source's failure write a skip against the others (RM163, 0.7).** `check-identifiers` puts questions to
+  four registries and writes one `VerificationRecord` per check, and the command's failure path maps a
+  raised `IdentifierUnavailable` onto **every** record. So the fourth registry raising would have
+  stamped `unreachable` against `trait_currency` and `gene_symbol_currency` for services that answered
+  perfectly well — a false record on precisely the run a reader most needs an accurate one. The PGS leg
+  records `(reason, sentence)` on the report instead and only its own two records read it, keeping
+  whatever was answered before the failure rather than discarding it. Two ordering consequences follow
+  and both are deliberate: the raising legs run **first**, so an OLS4 outage aborts before the
+  non-raising leg spends requests and writes a licence table the run is about to throw away; and a
+  calling form that cannot reach a roster at all records `unsupported`, not `nothing_to_check` — "no row
+  carries a `pgs_id`" asserts a fact about the module that a `variants=` call never established.
+
 - `@quote-attestation` — **A quote is an ATTESTATION, which is a sharper refusal than a spent comparison (S11, 0.5.4).**
   `provenance_quote`/`provenance_regex` were missing from `hints.REDUNDANCY_BEARING` although
   `literature._study_quote_found` compares both against the fulltext — exactly the drift that map's

@@ -26,6 +26,7 @@ policy when the two merged. A recorded `license_sha256` turns the next such chan
 import csv
 import hashlib
 import logging
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -507,6 +508,166 @@ MANE_TERMS = SourceTerms(
 )
 
 
+# The PGS Catalog, read on 2026-09-01. **This constant is a FLOOR, not the terms — `license` is a
+# field on each score record, and the three values measured over the first 250 of 6,982 scores are not
+# variations on one licence.** Most carry the generic sentence below, a handful are academic-research-
+# use-only (the class this file's own comments name as barring redistribution outright), and a couple
+# are CC0. So the Catalog is a **host** for scores licensed by their authors, the same shape as
+# `@per-article-terms` and as the SpliceAI note inside `GNOMAD_TERMS`, and a single constant covering
+# the source would be a false claim for a measured minority *in the permissive direction*, which is the
+# direction that matters. `pgs_score_terms` below writes the per-score row; this one records what is
+# true of the service itself.
+#
+# Every axis is `None` and that is the finding rather than a gap. The Catalog's own generic sentence
+# defers to "any licensing restrictions set by the authors", who are not named there, so nothing about
+# sale, sharing or copyleft is established by reading it. Unknown is not permissive
+# (`@no-named-licence`): a module carrying PGS values compiles, records `pgs_catalog` in
+# `manifest.sources.unknown_terms_sources`, and drives the module-wide verdict to undetermined.
+#
+# `license` stays null for `GWAS_CATALOG_TERMS`' reason — EBI states terms in prose rather than by
+# naming a licence — and the URL is the same EBI page, which `/rest/info` itself points at under
+# `terms_of_use` rather than this workspace assuming it.
+PGS_TERMS = SourceTerms(
+    source="pgs_catalog",
+    license=None,
+    license_url="https://www.ebi.ac.uk/about/terms-of-use",
+    attribution=(
+        "PGS Catalog (https://www.pgscatalog.org), EMBL-EBI and the University of Cambridge; "
+        "Lambert et al, Nat Genet 2021, doi:10.1038/s41588-021-00783-5"
+    ),
+    notice=(
+        "The Catalog hosts scores licensed by their authors and states no terms of its own beyond "
+        "EBI's: each score record carries its own `license` string, and this row is the floor those "
+        "override. Scores in one module may be under different terms; read the per-score rows."
+    ),
+    share_alike=None,
+    commercial_use=None,
+    redistribution=None,
+)
+
+
+@dataclass(frozen=True)
+class ScoreRights:
+    """The three rights one PGS Catalog score's own `license` string grants.
+
+    A separate shape from `SourceTerms` for `ArticleTerms`' reason: this describes one licensed work
+    inside a hosting service rather than the service. `pgs_score_terms` folds it back into a
+    `SourceTerms` so the row is written by the one constructor every other pass uses.
+    """
+
+    share_alike: bool | None = None
+    commercial_use: bool | None = None
+    redistribution: bool | None = None
+
+
+#: Licence class → `(pattern, the name `SourceRow.license` records, the rights)`, matched on a phrase
+#: the Catalog's own strings carry rather than on the whole string. Ordered, first match wins, and the
+#: phrases are the distinguishing clause of each class rather than a prefix, so a reworded preamble
+#: does not silently reclassify a score.
+#:
+#: **The name is short and the published prose is not in it.** `SourceRow.license` is a licence
+#: *identifier or name*, and the compiler compares it by equality against `module_spec.yaml`'s
+#: declared licence — so a 250-character sentence there would put a paragraph into
+#: `manifest.sources.licenses` and into a warning the author cannot act on, since the row is
+#: machine-written and never clobbered. The published string travels in `notice`, and it is what
+#: `license_sha256` hashes, which is what actually pins the terms to the moment they were read.
+#:
+#: An unrecognised string maps to nothing at all — all three axes `None`, the honest answer — and is
+#: **logged**, because the distinction between "this is the generic sentence" and "the Catalog has
+#: started publishing a class we have not read" is exactly the one a silent default would hide
+#: (`@lookup-with-a-default-hides-a-new-member`).
+PGS_LICENSE_CLASSES: tuple[tuple[str, re.Pattern[str], str | None, ScoreRights], ...] = (
+    (
+        # The Catalog's generic sentence. It grants nothing itself — it points at restrictions the
+        # authors may have set, which are not stated anywhere this tier can read — so every axis is
+        # unknown and the name stays null, which is this file's spelling for terms that could not be
+        # established. Recorded as a class rather than left unrecognised so the log stays quiet about
+        # the overwhelming majority and speaks up about a genuinely new one.
+        "catalog_generic",
+        re.compile(r"licensing restrictions set by the authors", re.IGNORECASE),
+        None,
+        ScoreRights(),
+    ),
+    (
+        # Academic-use-only. `redistribution=False` follows this file's own classification of the
+        # class: an academic-use-only source permits neither sale nor passing the data on, which is
+        # strictly more than `commercial_use=False` says. `share_alike` stays unknown — the sentence
+        # imposes no copyleft obligation and states none either, and inventing a `False` here would
+        # claim to have read something that is not written. The name is a name rather than an SPDX id
+        # because no SPDX id covers this, and the column is open for exactly that case.
+        "academic_research_only",
+        re.compile(r"academic community for research use", re.IGNORECASE),
+        "Academic research use only",
+        ScoreRights(share_alike=None, commercial_use=False, redistribution=False),
+    ),
+    (
+        # CC0 1.0, spelled by name. Not matched on a bare "CC0" substring: the whole point of the
+        # phrase list is that a licence this tier has not read stays unknown. This one does have an
+        # SPDX id and uses it, so a consumer filtering on `CC0-1.0` finds it beside gnomAD's and
+        # CIViC's rather than as a fourth spelling of one licence.
+        "cc0",
+        re.compile(r"CC0 1\.0 Universal", re.IGNORECASE),
+        "CC0-1.0",
+        ScoreRights(share_alike=False, commercial_use=True, redistribution=True),
+    ),
+)
+
+
+def pgs_license_class(license_text: str | None) -> tuple[str | None, str | None, ScoreRights]:
+    """`(class name, the licence name to record, the rights)` for one score's `license` string.
+
+    All three are empty for a string this tier has not read — unknown on every axis, withheld rather
+    than guessed in either direction, and logged so a new class becomes visible instead of being
+    absorbed into the permissive-looking default.
+    """
+    text = (license_text or "").strip()
+    if not text:
+        return None, None, ScoreRights()
+    for name, pattern, licence, rights in PGS_LICENSE_CLASSES:
+        if pattern.search(text):
+            return name, licence, rights
+    logger.warning(
+        "A PGS Catalog score states a licence this tier has not read (%r); its terms are recorded "
+        "verbatim with every right left unknown. Unknown is not permission.", text,
+    )
+    return None, None, ScoreRights()
+
+
+def pgs_score_terms(pgs_id: str, license_text: str | None) -> SourceTerms:
+    """The terms for ONE score: `PGS_TERMS` as the floor, the score's own `license` on top.
+
+    The row's `source` namespaces the accession under the service (`pgs_catalog:PGS000013`) because
+    `SourceRow` is keyed `(source, layer)` and the terms genuinely differ per score — one row per
+    service would have to pick one of them, and picking the majority is picking the permissive answer
+    for the minority. Nothing joins this value: `PgsRow` carries no `source` column, and the
+    `annotation` layer is structurally exempt from the compiler's orphan check
+    (`@orphan-check-exempt`), so the namespaced name costs nothing and says which score it is about.
+
+    **The published string goes in `notice`; a short name goes in `license`.** `license_sha256` is
+    computed over the verbatim text by the caller, and that is what pins the terms to the moment they
+    were read — putting the sentence itself into `license` would push a paragraph into
+    `manifest.sources.licenses` and into the compiler's declared-licence comparison, which is an
+    equality test the author would then have no way to satisfy.
+    """
+    name, licence, rights = pgs_license_class(license_text)
+    text = " ".join((license_text or "").split()) or None
+    return SourceTerms(
+        source=f"{PGS_TERMS.source}:{pgs_id}",
+        license=licence,
+        license_url=PGS_TERMS.license_url,
+        attribution=PGS_TERMS.attribution,
+        notice=(
+            f"Terms for PGS Catalog score {pgs_id}, read from the score record's own `license` field "
+            f"and classified as {name or 'unrecognised'}. The Catalog hosts scores licensed by their "
+            f"authors, so these terms are the score's and not the service's. As published: "
+            f"{text or '(the record states no licence)'}"
+        ),
+        share_alike=rights.share_alike,
+        commercial_use=rights.commercial_use,
+        redistribution=rights.redistribution,
+    )
+
+
 TERMS_BY_SOURCE: dict[str, SourceTerms] = {
     terms.source: terms
     for terms in (
@@ -523,6 +684,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         CIVIC_TERMS,
         CLINGEN_ALLELE_REGISTRY_TERMS,
         MANE_TERMS,
+        PGS_TERMS,
     )
 }
 

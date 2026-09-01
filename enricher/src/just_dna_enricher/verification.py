@@ -20,8 +20,9 @@ in one document instead of overwriting each other.
 **Which commands actually call this — seven of them, covering every member of
 `vocab.VALID_VERIFICATION_CHECKS` except the ones whose comment there says RESERVED.** `enrich` (six:
 reference allele, wrong build, clinical significance, rsID currency, rsid↔coordinate, dataset
-currency), `literature` (three), `check-identifiers` (three: gene symbol currency, trait currency,
-gene↔locus agreement), `clinpgx check`, `pgx`, `vrs mint` and `check-acmg` (one each).
+currency), `literature` (three), `check-identifiers` (five: gene symbol currency, trait currency,
+gene↔locus agreement, PGS accession currency, PGS metadata agreement), `clinpgx check`, `pgx`,
+`vrs mint` and `check-acmg` (one each).
 
 **Count the call sites before you edit that paragraph, and edit it whenever you add one.** The
 sentence it replaces said *"`enrich` (four checks), `literature` (three) and `clinpgx` (one)"* and was

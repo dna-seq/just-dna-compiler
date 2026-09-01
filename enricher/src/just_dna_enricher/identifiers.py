@@ -1,8 +1,13 @@
 """Identifier currency — are the labels a module keys on still the ones its registries serve?
 
-Three registries, one shape: ask whether an authored identifier is current, and report what the
+Four registries, one shape: ask whether an authored identifier is current, and report what the
 registry says instead. **Nothing here repairs anything**, and for rsIDs that is not a stylistic
 preference but a hard requirement — see `check_rsids`.
+
+The fourth is the PGS Catalog (RM163), and it arrived last for a reason worth keeping: `pgs_id` is the
+column `PgsRow` is *keyed* on, so it was the one authored identifier in the format that no pass ever
+put to its registry. Its client and its source-shape knowledge live in `pgs.py`; the statuses, the
+comparison and the two attestations are here, beside the other three.
 
 This is the generalization of COMPILER.md's *"is the source stale?"* blind spot from datasets to
 identifiers. The compiler cannot see the world move; a dbSNP merge, an EFO term retirement and an HGNC
@@ -41,7 +46,9 @@ from just_dna_compiler.draft import DRAFTABLE
 from just_dna_format.base import AuthoredModel
 from just_dna_format.layout import SidecarCollision, resolve_sidecar
 from just_dna_format.manifest import VerificationRecord
+from just_dna_format.pgs import PGS_ID_PATTERN
 from just_dna_format.resolution import ResolutionRow
+from just_dna_format.sources import SourceRow
 from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import MULTI_SEP
 from pydantic import BaseModel
@@ -52,8 +59,25 @@ from tenacity import (
 )
 
 from just_dna_enricher.eutils import EutilsClient, EutilsError, is_missing
-from just_dna_enricher.licensing import overlaid_input_rows
+from just_dna_enricher.licensing import (
+    PGS_TERMS,
+    merge_sources_file,
+    overlaid_input_rows,
+    pgs_score_terms,
+    withdraw_stale_dataset,
+)
 from just_dna_enricher.net import PacingGate, attempt_floor, dedupe
+from just_dna_enricher.pgs import (
+    PGS_SOURCE,
+    CatalogRelease,
+    PgsCatalogClient,
+    PgsCatalogUnavailable,
+    ancestry_agrees,
+    cohort_agrees,
+    dataset_label,
+    score_ancestries,
+    score_cohort_names,
+)
 from just_dna_enricher.verification import examples, ran, skipped
 
 logger = logging.getLogger(__name__)
@@ -254,6 +278,104 @@ class GeneLocusConflict:
 
 
 @dataclass
+class PgsStatus:
+    """What the PGS Catalog currently says about one authored `pgs_id` (RM163).
+
+    Three states, and the first of them is settled **before** any request goes out. The REST surface
+    answers HTTP 200 with an empty body for a never-assigned accession and for a malformed one alike,
+    so the service itself cannot separate them — but the format's own grammar can, and asking the
+    Catalog about a string that is not an accession would spend a request to learn nothing.
+    """
+
+    pgs_id: str
+    state: str                      # known | unrecognised | malformed
+    #: What the Catalog holds, when it holds something. Carried because `@existence-not-identity`: a
+    #: lookup answering "does this exist" has to say *what* it found, and a PGS accession is exactly
+    #: the shape of identifier where a wrong-but-real id resolves to somebody else's score.
+    name: str | None = None
+    date_release: str | None = None
+    trait_efo_ids: tuple[str, ...] = ()
+    variants_number: int | None = None
+    #: The score's own `license` string as the record states it. The terms are per score and not
+    #: per Catalog, and this is what `pgs_score_terms` classifies and `license_sha256` hashes.
+    license: str | None = None
+
+    @property
+    def is_current(self) -> bool:
+        return self.state == "known"
+
+    def __str__(self) -> str:
+        if self.state == "malformed":
+            return (
+                f"{self.pgs_id} is not a well-formed PGS Catalog accession (PGS followed by digits), "
+                f"so the Catalog was not asked about it. Fix the spelling: the REST surface answers "
+                f"200 with an empty body for a malformed id exactly as it does for a never-assigned "
+                f"one, so asking would have established nothing about it either way."
+            )
+        if self.state == "unrecognised":
+            return (
+                f"The PGS Catalog holds no score under {self.pgs_id}. The accession range is only "
+                f"sparsely assigned — most well-formed ids inside it were never issued — so the "
+                f"likely reading is a mistyped or invented accession; check it against the "
+                f"publication you took it from. A withdrawal is the rarer reading and the Catalog "
+                f"publishes no supersession field, so nothing here can tell the two apart. The "
+                f"verdict is read off the empty body: this service answers 200 whatever it holds."
+            )
+        traits = ", ".join(self.trait_efo_ids) or "no trait recorded"
+        variants = "an unstated number of" if self.variants_number is None else self.variants_number
+        return (
+            f"{self.pgs_id} is a current PGS Catalog score: {self.name or 'unnamed'}, released "
+            f"{self.date_release or 'on an unstated date'}, {variants} variants, {traits}"
+        )
+
+
+@dataclass
+class PgsDrift:
+    """An authored cell beside a `pgs_id` that the score's own Catalog record contradicts (RM163).
+
+    Reported, never repaired (`@enrichment-is-validation`): which of the two is right is not something
+    this tier can know, and both `training_ancestry` and `training_cohort` are authored judgements a
+    curator may have made deliberately against the Catalog's own summary.
+    """
+
+    pgs_id: str
+    field_name: str                 # training_ancestry | training_cohort
+    authored: str
+    published: str
+
+    def __str__(self) -> str:
+        return (
+            f"{self.pgs_id}: authored {self.field_name}={self.authored!r}, but the Catalog's record "
+            f"for that score says {self.published}. Reported, never rewritten — edit the cell if the "
+            f"Catalog is right, and leave it if your curation is deliberate."
+        )
+
+
+@dataclass
+class PgsComparison:
+    """What the two-field drift check compared, what it withheld, and why — the denominator (RM163).
+
+    `withheld` is the point of the type, and it is the `@dont-discard-computed` rule: a cell this
+    check looked at and could not settle is neither a finding nor a clean comparison, and folding it
+    into either would publish a coverage figure larger or smaller than the question that was put.
+    """
+
+    drift: list[PgsDrift] = field(default_factory=list)
+    #: `(pgs_id, field, the authored value)` for every cell actually compared — the denominator
+    #: `drift` is out of. **The value is in the key**, because `PgsRow` is keyed
+    #: `(pgs_id, trait_efo_id)` and one accession may legitimately appear on two rows: identical
+    #: cells are one claim and collapse, while *differing* ones are two claims and must both be put.
+    #: Keying on the pair alone silently dropped the second, and which of the two survived depended on
+    #: row order in the file.
+    compared: list[tuple[str, str, str]] = field(default_factory=list)
+    #: The same key → why, for a cell that was authored beside a recognised score and still could not
+    #: be settled. Grouped by reason when it reaches a message, never listed per row.
+    withheld: dict[tuple[str, str, str], str] = field(default_factory=dict)
+    #: Every authored cell in scope, compared or not.
+    authored: list[tuple[str, str, str]] = field(default_factory=list)
+
+
+@dataclass
 class IdentifierReport:
     rsids: list[RsidStatus] = field(default_factory=list)
     traits: list[TraitStatus] = field(default_factory=list)
@@ -282,6 +404,27 @@ class IdentifierReport:
     #: was filed with it: a `gene` on a binning or PGx row was never checked either.
     gene_tables_read: list[str] = field(default_factory=list)
     gene_tables_not_read: dict[str, str] = field(default_factory=dict)
+    #: The fourth registry (RM163). One `PgsStatus` per authored accession, in first-occurrence order.
+    pgs: list[PgsStatus] = field(default_factory=list)
+    #: The two-field drift comparison beside those accessions, with its own denominator.
+    pgs_metadata: PgsComparison = field(default_factory=PgsComparison)
+    #: The same read/not-read pair as the two rosters above, for the `pgs_id`-bearing tables.
+    pgs_tables_read: list[str] = field(default_factory=list)
+    pgs_tables_not_read: dict[str, str] = field(default_factory=dict)
+    #: Which Catalog release answered, spelled the way `SourceRow.dataset` records it. `None` when the
+    #: Catalog stated none — read rather than assumed, so a release record that moves is visible.
+    pgs_release: str | None = None
+    #: `(a VALID_VERIFICATION_SKIPS member, the sentence)` when the PGS leg could not be put, `None`
+    #: when it was. **It does not raise, and that is the decision**: this leg asks a different registry
+    #: from the ontology legs, so an outage at the Catalog must not mark OLS4 and HGNC unreachable —
+    #: they answered. `gene_loci_not_checked` carries the same shape one check over, and for the same
+    #: reason: an empty result otherwise says both "nothing disagreed" and "never asked".
+    pgs_not_checked: tuple[str, str] | None = None
+    #: The licence table's **PGS rows as they now stand** — the floor plus one per score whose licence
+    #: was read. After a write it is the merged file filtered back to this source, not the rows this
+    #: run happened to build: existing rows win the merge, so a hand-edited one is what a caller must
+    #: see. Empty when nothing was asked, which is `@write-the-sourcerow`'s other half.
+    pgs_sources: list[SourceRow] = field(default_factory=list)
 
     @property
     def unreadable_tables(self) -> dict[str, str]:
@@ -292,7 +435,9 @@ class IdentifierReport:
         """
         return {
             name: why
-            for source in (self.trait_tables_not_read, self.gene_tables_not_read)
+            for source in (
+                self.trait_tables_not_read, self.gene_tables_not_read, self.pgs_tables_not_read
+            )
             for name, why in source.items()
             if why != "not present"
         }
@@ -310,8 +455,39 @@ class IdentifierReport:
         return [g for g in self.genes if g.state != "approved"]
 
     @property
+    def stale_pgs(self) -> list[PgsStatus]:
+        return [p for p in self.pgs if p.state != "known"]
+
+    @property
     def clean(self) -> bool:
-        return not (self.stale_rsids or self.stale_traits or self.stale_genes or self.gene_loci)
+        """Whether every identifier this pass put to a registry is one the registry still serves.
+
+        **`pgs_metadata.drift` is deliberately NOT in here**, and `stale_pgs` deliberately is. The CLI
+        gates `--strict`'s exit code on this property, and the two findings are different kinds: an
+        accession the Catalog does not hold is a broken identifier, exactly like a retired HGNC symbol;
+        a `training_ancestry` the Catalog's own summary disagrees with is two authorities differing
+        about a curated judgement, and `PgsDrift.__str__` tells the author in as many words to leave it
+        if their curation is deliberate. Failing a build on that would make the format arbitrate
+        between its own sources with no way for the author to clear it — the reason
+        `@clinsig-never-escalates` and `@a-source-recuring-is-not-a-strict-matter` keep the same shape
+        out of the strict gate. It is reported in both modes; see `metadata_disagrees`.
+        """
+        return not (
+            self.stale_rsids
+            or self.stale_traits
+            or self.stale_genes
+            or self.gene_loci
+            or self.stale_pgs
+        )
+
+    @property
+    def metadata_disagrees(self) -> bool:
+        """Whether a source disagreed with an authored cell — reported, never gated.
+
+        Separate from `clean` so a caller can say *checked, and something differs* without the exit
+        code claiming the module is broken. The CLI uses it to withhold the green line.
+        """
+        return bool(self.pgs_metadata.drift)
 
 
 # ── dbSNP ───────────────────────────────────────────────────────────────────────────────────────
@@ -596,7 +772,19 @@ def authored_identifiers(spec_dir: Path, column: str) -> IdentifierRoster:
     Multi-valued cells are split on `MULTI_SEP` for **both** columns. A `gene` cell is single-valued in
     practice, and splitting it costs nothing and cannot mis-read one: a symbol contains no separator.
     """
+    return authored_rows(spec_dir, column)[1]
+
+
+def authored_rows(spec_dir: Path, column: str) -> tuple[list[BaseModel], IdentifierRoster]:
+    """The rows behind that roster, in table-then-file order, beside the roster itself.
+
+    One loader for both shapes. RM163's drift check needs the **rows** rather than the ids — an
+    accession's `training_ancestry` and `training_cohort` sit on the same row as its `pgs_id` — and
+    walking the same tables a second time would be a second place for the read / not-read bookkeeping
+    to go wrong, which is precisely the bookkeeping S86 exists to keep honest.
+    """
     roster = IdentifierRoster()
+    kept: list[BaseModel] = []
     for name, model in sorted(_id_bearing_tables(column).items()):
         try:
             table = resolve_sidecar(spec_dir, name) or spec_dir / name
@@ -614,13 +802,314 @@ def authored_identifiers(spec_dir: Path, column: str) -> IdentifierRoster:
             roster.read_errors[name] = errors[0]
             continue
         roster.read.append(name)
+        kept.extend(rows)
         for row in rows:
             value = getattr(row, column, None)
             if not value:
                 continue
             roster.ids.extend(part.strip() for part in MULTI_SEP.split(value) if part.strip())
     roster.ids = dedupe(roster.ids)
-    return roster
+    return kept, roster
+
+
+# ── the PGS Catalog, the fourth registry (RM163) ────────────────────────────────────────────────
+
+
+def classify_pgs_accession(pgs_id: str, payload: dict) -> PgsStatus:
+    """One accession plus whatever the Catalog served for it → `known` / `unrecognised` / `malformed`.
+
+    Pure and split out from the request, so the state machine is testable against a recorded payload
+    the way `classify_rsid` is. **The grammar arm comes first and is settled without a request:** the
+    Catalog answers 200 with `{}` for `PGSXXXX` exactly as it does for `PGS999999`, so its answer
+    about a malformed id carries no information, and spending a request to learn nothing would also
+    let the message read the absence as a possible withdrawal. Callers pass `{}` for an id they did
+    not ask about.
+    """
+    accession = (pgs_id or "").strip()
+    if not PGS_ID_PATTERN.match(accession):
+        return PgsStatus(pgs_id=pgs_id, state="malformed")
+    if not payload:
+        # The Catalog's own negative, read off the body because the status is 200 either way.
+        return PgsStatus(pgs_id=accession, state="unrecognised")
+    traits = tuple(
+        str(t.get("id")) for t in payload.get("trait_efo") or [] if isinstance(t, dict) and t.get("id")
+    )
+    number = payload.get("variants_number")
+    return PgsStatus(
+        pgs_id=accession,
+        state="known",
+        name=payload.get("name") or None,
+        date_release=payload.get("date_release") or None,
+        trait_efo_ids=traits,
+        variants_number=number if isinstance(number, int) else None,
+        license=payload.get("license") or None,
+    )
+
+
+def _compare_ancestry(
+    pgs_id: str, authored: list[str], payload: dict
+) -> tuple[PgsDrift | None, str | None]:
+    """`training_ancestry` against the score's dev/eval `ancestry_distribution`. Three outcomes.
+
+    `(None, None)` agrees, `(drift, None)` disagrees, `(None, reason)` withholds. The withhold arm is
+    the one the item turns on, and `score_ancestries` supplies its input: the two vocabularies are not
+    the same list — `VALID_TRAINING_ANCESTRY` is 1000G superpopulations plus `multi`, the Catalog's
+    categories include `NR`, `GME`, `ASN` and `OTH`, and its two multi-ancestry categories are bags of
+    populations it did not break down. Either way an authored code the published set does not carry
+    might be behind one of them, and reporting that would be a difference we cannot stand behind.
+
+    The comparison is one-directional on purpose. An authored cell **narrower** than the published
+    set is not flagged: claiming a score is validated in fewer populations than the Catalog lists is
+    the conservative direction, and it is a curation decision (a score the Catalog evaluated in eight
+    ancestries at 1.5 % each is not thereby validated in all eight).
+    """
+    published, unresolved = score_ancestries(payload)
+    if not published and not unresolved:
+        return None, (
+            "the score record publishes no development or evaluation ancestry distribution, so "
+            "there was nothing to compare the authored value against"
+        )
+    missing = [code for code in authored if not ancestry_agrees(code, published)]
+    if not missing:
+        return None, None
+    if unresolved:
+        return None, (
+            "the score's ancestry distribution names "
+            + examples(sorted(unresolved))
+            + ", which this format either has no training_ancestry member for or cannot enumerate "
+            "(the multi-ancestry categories stand for populations the Catalog did not break down) — "
+            "so an authored code the published set does not carry may be behind one of them, and "
+            "the difference is withheld"
+        )
+    return (
+        PgsDrift(
+            pgs_id=pgs_id,
+            field_name="training_ancestry",
+            authored=",".join(authored),
+            published=(
+                "its development and evaluation samples are "
+                + (", ".join(sorted(published)) or "unstated")
+            ),
+        ),
+        None,
+    )
+
+
+def _compare_cohort(pgs_id: str, authored: str, payload: dict) -> tuple[PgsDrift | None, str | None]:
+    """`training_cohort` against the score's `samples_training`. Same three outcomes, same shape."""
+    names = score_cohort_names(payload)
+    if not names:
+        return None, (
+            "the score record lists no training samples, so there was no cohort description to "
+            "compare the authored value against"
+        )
+    verdict = cohort_agrees(authored, names)
+    if verdict is None:
+        return None, (
+            "the authored cohort carries no word long enough to match on, and a short token matches "
+            "by accident — a clean bill nobody earned"
+        )
+    if verdict:
+        return None, None
+    return (
+        PgsDrift(
+            pgs_id=pgs_id,
+            field_name="training_cohort",
+            authored=authored,
+            published="its training samples are described as " + examples(names),
+        ),
+        None,
+    )
+
+
+def compare_pgs_metadata(rows: list[BaseModel], records: dict[str, dict]) -> PgsComparison:
+    """The two-field drift check over the authored rows, against the records the Catalog served.
+
+    **Two fields, and the other two authored columns beside them are deliberately not checked.**
+    `match_rate_floor` is described in its own `Field` as an author-set floor and `research_tier` is a
+    two-member curator judgement — the Catalog publishes neither, so there is nothing to drift them
+    against, and a check with no source-side value is a check that cannot fail (`@tautology-zero`).
+    Written down here so nobody adds them later on the symmetry.
+
+    A row whose accession the Catalog does not hold is out of scope entirely: `pgs_accession_currency`
+    has already said so, and a second finding about the same absence would count one problem twice
+    under two denominators.
+    """
+    comparison = PgsComparison()
+    seen: set[tuple[str, str, str]] = set()
+    for row in rows:
+        pgs_id = (getattr(row, "pgs_id", "") or "").strip()
+        payload = records.get(pgs_id)
+        if not payload:
+            continue
+        ancestry = getattr(row, "training_ancestry", None) or []
+        cohort = (getattr(row, "training_cohort", "") or "").strip()
+        # `(field, the authored value as written, the comparison)`. An absent cell is skipped rather
+        # than withheld: no authored value is no claim to disagree with, and putting a cell nobody
+        # wrote into the could-not-settle denominator would overstate what this check could not do.
+        legs = []
+        if ancestry:
+            legs.append(
+                ("training_ancestry", ",".join(ancestry), _compare_ancestry(pgs_id, ancestry, payload))
+            )
+        if cohort:
+            legs.append(("training_cohort", cohort, _compare_cohort(pgs_id, cohort, payload)))
+        for field_name, authored, (drift, reason) in legs:
+            cell = (pgs_id, field_name, authored)
+            if cell in seen:
+                # The same accession stating the same value on two rows — a pleiotropic score reported
+                # against two traits is two `PgsRow`s under one `pgs_id` — is one claim to this check,
+                # and counting it twice would inflate both halves of the record. Two rows stating
+                # *different* values are two claims and both are put: keying on the accession alone
+                # dropped the second silently, and which one survived depended on row order.
+                continue
+            seen.add(cell)
+            comparison.authored.append(cell)
+            if reason is not None:
+                comparison.withheld[cell] = reason
+                continue
+            comparison.compared.append(cell)
+            if drift is not None:
+                comparison.drift.append(drift)
+    return comparison
+
+
+def _pgs_source_rows(
+    statuses: list[PgsStatus], release: str | None, asked: bool
+) -> list[SourceRow]:
+    """The `sources.csv` rows this run owes: the floor, plus one per score whose licence was read.
+
+    **`@write-the-sourcerow`, and the per-score half is a correctness requirement rather than
+    thoroughness.** `license` is a field on the score record and it varies — most scores carry the
+    Catalog's generic sentence, a handful are academic-research-use-only and a couple are CC0 — so one
+    row claiming the source's terms would be a false claim for the minority, in the permissive
+    direction. A score whose licence bars sale must not compile into a module claiming otherwise, and
+    the `annotation` layer is where `taints_commercial_use` reads it.
+
+    A run that asked nothing writes nothing: the floor row is keyed on the Catalog having actually
+    been consulted, never on `pgs.csv` being present. `dataset` sits on the floor row alone — a
+    release is a fact about the Catalog, and stamping it on every score row would put N identical
+    unchecked legs into `verify_datasets` for one fact.
+    """
+    if not asked:
+        return []
+    rows = [PGS_TERMS.row("annotation", declared_use="unstated", dataset=release)]
+    for status in statuses:
+        if status.state != "known" or status.license is None:
+            continue
+        rows.append(
+            pgs_score_terms(status.pgs_id, status.license).row(
+                "annotation", declared_use="unstated", license_text=status.license
+            )
+        )
+    return rows
+
+
+def _catalog_release(catalog: PgsCatalogClient) -> CatalogRelease | None:
+    """The Catalog's own release record, or `None` when it could not be read.
+
+    **A failure here is not a failure of the check.** The release is a fact about the Catalog rather
+    than about any accession, so an unreadable one leaves `pgs_release` unknown and every accession
+    verdict standing. Its own function so `_check_pgs` keeps one `try` — a nested one hides which of
+    two very different failures actually happened.
+    """
+    try:
+        return catalog.release()
+    except PgsCatalogUnavailable as exc:
+        logger.info(
+            "The PGS Catalog's release record could not be read (%s); the accessions were still "
+            "checked, and no release is recorded for them.", exc,
+        )
+        return None
+
+
+def _check_pgs(
+    report: IdentifierReport,
+    spec_dir: Path,
+    *,
+    client: PgsCatalogClient | None,
+    write: bool,
+) -> None:
+    """Fill the report's PGS half: the accession verdicts, the drift comparison and the source rows.
+
+    **It does not raise when the Catalog will not answer**, and that is the decision rather than an
+    omission. `check_identifiers` puts questions to four registries, and the command records one skip
+    per check — so a `PgsCatalogUnavailable` escaping here would make the CLI write `unreachable`
+    against `trait_currency` and `gene_symbol_currency` too, for registries that answered perfectly
+    well. The failure lands on `report.pgs_not_checked` and reaches exactly the two records it is
+    about. Whatever was answered before the failure is **kept**: those accessions really were checked,
+    and discarding them would be `@dont-discard-computed` in the direction that hurts.
+    """
+    rows, roster = authored_rows(spec_dir, "pgs_id")
+    report.pgs_tables_read = roster.read
+    report.pgs_tables_not_read = roster.not_read
+    for name, why in sorted(roster.unreadable.items()):
+        logger.warning(
+            "%s carries pgs_id and could not be read (%s), so its accessions were not checked. "
+            "The counts below are out of the tables that were.", name, why,
+        )
+    if not roster.ids:
+        return
+
+    owned = client is None
+    catalog = client or PgsCatalogClient()
+    records: dict[str, dict] = {}
+    asked = False
+    try:
+        report.pgs_release = dataset_label(_catalog_release(catalog))
+        for accession in roster.ids:
+            if not PGS_ID_PATTERN.match(accession.strip()):
+                # Settled by the format's own grammar, with no request spent. See
+                # `classify_pgs_accession`.
+                report.pgs.append(classify_pgs_accession(accession, {}))
+                continue
+            try:
+                payload = catalog.score(accession)
+            except PgsCatalogUnavailable as exc:
+                report.pgs_not_checked = (
+                    "unreachable",
+                    f"the PGS Catalog could not be reached ({exc}); {len(report.pgs)} of "
+                    f"{len(roster.ids)} authored accession(s) had been answered when it stopped",
+                )
+                logger.warning("%s", report.pgs_not_checked[1])
+                break
+            asked = True
+            status = classify_pgs_accession(accession, payload)
+            report.pgs.append(status)
+            if status.state == "known":
+                records[status.pgs_id] = payload
+    finally:
+        if owned:
+            catalog.close()
+
+    report.pgs_metadata = compare_pgs_metadata(rows, records)
+    report.pgs_sources = _pgs_source_rows(report.pgs, report.pgs_release, asked)
+    if write and report.pgs_sources:
+        # **The release is withdrawn before the merge, never re-stamped over it.** `merge_sources_csv`
+        # is never-clobber, so a floor row written under an older release would otherwise hold that
+        # label forever and `verify_datasets` would report it behind on every run, with the pass that
+        # owns the row unable to refresh it. `withdraw_stale_dataset` is the one sanctioned overwrite
+        # and it only ever blanks: one column cannot name two releases, so the honest value for a row
+        # whose terms were read across a release boundary is unknown (`@rm4-dataset-marker`).
+        withdrawn = withdraw_stale_dataset(
+            spec_dir, PGS_SOURCE, "annotation", report.pgs_release, error=IdentifierCheckError
+        )
+        if withdrawn:
+            logger.warning(
+                "The recorded PGS Catalog release %s is not the one that answered this run (%s); it "
+                "is withdrawn rather than re-labelled, because one column cannot name two releases.",
+                withdrawn, report.pgs_release or "none",
+            )
+        # **Filtered back down to this source's own rows**, because `merge_sources_file` returns the
+        # whole merged file and a module that also records ClinVar or gnomAD would otherwise put
+        # those on a field whose name says PGS. Existing rows win the merge, so this is the PGS half
+        # of the table **as it now stands** rather than the rows this run happened to build — which
+        # is the honest reading of the field and the one a caller can act on.
+        merged = merge_sources_file(report.pgs_sources, spec_dir, error=IdentifierCheckError)
+        report.pgs_sources = [
+            row for row in merged
+            if row.source == PGS_SOURCE or row.source.startswith(f"{PGS_SOURCE}:")
+        ]
 
 
 def check_identifiers(
@@ -629,12 +1118,22 @@ def check_identifiers(
     spec_dir: Path | None = None,
     check_traits: bool = True,
     check_genes: bool = True,
+    check_pgs: bool = True,
     client: OntologyClient | None = None,
+    pgs_client: PgsCatalogClient | None = None,
+    write: bool = True,
 ) -> IdentifierReport:
-    """Ontology-term and gene-symbol currency for one module's authored identifiers.
+    """Ontology-term, gene-symbol and PGS-accession currency for one module's authored identifiers.
 
     rsIDs are deliberately **not** done here: they are checked inside `enrich()`, because their verdict
     lands on `resolution.csv` columns rather than being a standalone report. See `check_rsids`.
+
+    The PGS leg (RM163) needs a spec directory and is a no-op without one, for a structural reason
+    rather than a policy: `pgs_id` lives on `PgsRow` and `VariantRow` has no such column, so a caller
+    holding `variants` rows has no accession to put. It is also the one leg here that **writes** —
+    `sources.csv`, because the Catalog's terms are per score and a module carrying an
+    academic-use-only score must not compile claiming the generic ones. `write=False` turns that off
+    for a caller that only wants the report.
 
     **Pass either `variants` or `spec_dir` (RM41)** — the row-taking form is right for an in-process
     caller that already holds the rows, and `spec_dir=` is the shape every other pass in this tier has.
@@ -713,23 +1212,40 @@ def check_identifiers(
                 "%s carries %s and could not be read (%s), so its identifiers were not checked. "
                 "The counts below are out of the tables that were.", name, column, why,
             )
-    if not traits and not genes:
-        return report
+    # **The ontology legs run first, and the early return became a guard rather than a return.** The
+    # PGS leg reads a different roster from a different registry, so returning before it would leave a
+    # module whose only identifiers are accessions — `pgs.csv` and nothing else — having asked nothing,
+    # which is S86's unreadable zero arriving in a fourth column. And this order is the one that keeps
+    # a registry outage local: `OntologyClient` raises, so an OLS4 failure must abort before the PGS
+    # leg spends requests and writes a licence table the run is about to discard.
+    if traits or genes:
+        owned = client is None
+        ontology = client or OntologyClient()
+        try:
+            report.traits = [ontology.trait(curie) for curie in traits]
+            report.genes = [ontology.gene(symbol) for symbol in genes]
+        finally:
+            if owned:
+                ontology.close()
+        if check_genes:
+            (
+                report.gene_loci,
+                report.gene_loci_compared,
+                report.gene_loci_not_checked,
+            ) = _gene_locus_conflicts(variants, report.genes, Path(spec_dir) if spec_dir else None)
 
-    owned = client is None
-    ontology = client or OntologyClient()
-    try:
-        report.traits = [ontology.trait(curie) for curie in traits]
-        report.genes = [ontology.gene(symbol) for symbol in genes]
-    finally:
-        if owned:
-            ontology.close()
-    if check_genes:
-        (
-            report.gene_loci,
-            report.gene_loci_compared,
-            report.gene_loci_not_checked,
-        ) = _gene_locus_conflicts(variants, report.genes, Path(spec_dir) if spec_dir else None)
+    if check_pgs and spec_dir is not None:
+        _check_pgs(report, Path(spec_dir), client=pgs_client, write=write)
+    elif check_pgs:
+        # **`unsupported`, never `nothing_to_check`.** With rows passed in there is no `pgs_id`-bearing
+        # table to read at all — `VariantRow` has no such column — so saying "no row carries a pgs_id"
+        # would assert a fact about the module that this call never established. Same distinction
+        # `IdentifierRoster.not_read` draws one level down.
+        report.pgs_not_checked = (
+            "unsupported",
+            "rows were passed in rather than a spec directory, and no row model a caller can hold "
+            "carries a pgs_id — pass spec_dir= to check accessions",
+        )
     return report
 
 
@@ -841,14 +1357,25 @@ def _gene_locus_conflicts(
 
 
 def verification_records(
-    report: IdentifierReport, *, check_traits: bool, check_genes: bool
+    report: IdentifierReport,
+    *,
+    check_traits: bool,
+    check_genes: bool,
+    check_pgs: bool = True,
 ) -> list[VerificationRecord]:
-    """The three checks this pass puts, as records `verification.json` can carry (RM72).
+    """The five checks this pass puts, as records `verification.json` can carry (RM72, RM163).
 
-    Three records rather than one, because they are three questions over three different subject
-    sets: the trait CURIEs the module names, the gene symbols it names, and the rows where a symbol
-    and a chromosome could both be established. One record averaging them would be a number nothing
-    could act on — the same argument `literature._verification_records` makes for its own three.
+    Five records rather than one, because they are five questions over five different subject
+    sets: the trait CURIEs the module names, the gene symbols it names, the rows where a symbol
+    and a chromosome could both be established, the PGS accessions it keys on, and the authored cells
+    beside those accessions. One record averaging them would be a number nothing could act on — the
+    same argument `literature._verification_records` makes for its own three.
+
+    **The two PGS records are two and not one, deliberately.** `pgs_accession_currency` asks whether
+    an id still names a score and `pgs_metadata_agreement` asks whether two cells beside it still
+    match: different questions, different subjects, and therefore different denominators. Folding
+    them would publish a single findings count over two populations, which is a number that means
+    nothing.
 
     **Every count is read off `report`, and nothing is recounted here.** The denominator belongs to
     the check that produced it; a count recomputed beside a check is one that can disagree with it,
@@ -866,13 +1393,15 @@ def verification_records(
     """
     records = [_trait_record(report, check_traits), _gene_symbol_record(report, check_genes)]
     records.append(_gene_locus_record(report, check_genes))
+    records.append(_pgs_accession_record(report, check_pgs))
+    records.append(_pgs_metadata_record(report, check_pgs))
     return records
 
 
 def unreachable_records(
-    *, check_traits: bool, check_genes: bool, detail: str
+    *, check_traits: bool, check_genes: bool, check_pgs: bool = True, detail: str
 ) -> list[VerificationRecord]:
-    """The same three checks, for a run whose registry never answered.
+    """The same five checks, for a run whose registry never answered.
 
     A request that failed is `unreachable`, never an absence — S20's distinction, and the reason the
     twin command records it too. Without this the command would advertise *records that the question
@@ -887,7 +1416,10 @@ def unreachable_records(
         record if record.skipped == "not_requested"
         else skipped(record.check, "unreachable", detail=detail, source=record.source)
         for record in verification_records(
-            IdentifierReport(), check_traits=check_traits, check_genes=check_genes
+            IdentifierReport(),
+            check_traits=check_traits,
+            check_genes=check_genes,
+            check_pgs=check_pgs,
         )
     ]
 
@@ -1014,3 +1546,149 @@ def _gene_locus_record(report: IdentifierReport, check_genes: bool) -> Verificat
         source="hgnc",
         detail=detail,
     )
+
+
+def _pgs_accession_record(report: IdentifierReport, check_pgs: bool) -> VerificationRecord:
+    """`pgs_accession_currency` — does each authored `pgs_id` still name a score in the Catalog?
+
+    The denominator is every authored accession, including the malformed ones: a malformed accession
+    was examined and answered, just not by a request. Excluding it would leave a real finding out of
+    the count it is a finding in, which is the opposite mistake from `_trait_record`'s `unchecked`
+    prefixes — those were never *examined* by this check at all, because no route existed to put them.
+    """
+    if not check_pgs:
+        return skipped(
+            "pgs_accession_currency", "not_requested", detail="--no-pgs", source=PGS_SOURCE
+        )
+    if report.pgs_not_checked is not None:
+        # The Catalog was asked and did not answer, or there was no route to ask it. Either way this
+        # record says so and the ontology records beside it are untouched — four registries, four
+        # separate histories, and one outage may not speak for all of them.
+        reason, detail = report.pgs_not_checked
+        return skipped("pgs_accession_currency", reason, detail=detail, source=PGS_SOURCE)
+    if not report.pgs:
+        return skipped(
+            "pgs_accession_currency", "nothing_to_check",
+            detail=(
+                "no row carries a pgs_id, so there was no accession to ask the PGS Catalog about"
+                if not report.pgs_tables_not_read
+                else "no readable table carries a pgs_id, so there was no accession to ask about"
+            ),
+            source=PGS_SOURCE,
+        )
+    stale = report.stale_pgs
+    if stale:
+        # Grouped by state rather than listed per row, because the two states want different actions
+        # — one is a spelling, the other is an accession the Catalog does not hold — and a flat list
+        # would leave a reader sorting them by eye.
+        by_state: dict[str, list[str]] = {}
+        for status in stale:
+            by_state.setdefault(status.state, []).append(status.pgs_id)
+        detail = "; ".join(
+            f"{len(by_state[state])} of {len(report.pgs)} authored accession(s) are {state}: "
+            + examples(by_state[state])
+            for state in sorted(by_state)
+        )
+    else:
+        detail = (
+            f"the PGS Catalog holds a score for every one of {len(report.pgs)} authored accession(s)"
+        )
+    return ran(
+        "pgs_accession_currency",
+        subjects=len(report.pgs),
+        findings=len(stale),
+        source=PGS_SOURCE,
+        release=report.pgs_release,
+        detail=detail,
+    )
+
+
+def _pgs_metadata_record(report: IdentifierReport, check_pgs: bool) -> VerificationRecord:
+    """`pgs_metadata_agreement` — do `training_ancestry` and `training_cohort` still match the record?
+
+    Its own member rather than a second finding under the accession check, because the subject is a
+    *cell* and not an id: a module with three accessions can put six cells, settle two of them and
+    withhold four, and none of those numbers is expressible in a record whose denominator is the
+    accession count.
+
+    Five arms, and each has its own reason: switched off, the Catalog unreachable (or unaskable from
+    this calling form), no accession at all, accessions but no authored cell beside a recognised one,
+    and cells that were all withheld. The last two are the pair that matters — `nothing_to_check` is
+    the module carrying no claim, `no_reference` is the Catalog carrying nothing to check the claim
+    against, and they are cleared by opposite actions.
+    """
+    if not check_pgs:
+        return skipped(
+            "pgs_metadata_agreement", "not_requested",
+            detail="--no-pgs: the comparison reads the score records, which were not fetched",
+            source=PGS_SOURCE,
+        )
+    if report.pgs_not_checked is not None:
+        reason, detail = report.pgs_not_checked
+        return skipped("pgs_metadata_agreement", reason, detail=detail, source=PGS_SOURCE)
+    if not report.pgs:
+        return skipped(
+            "pgs_metadata_agreement", "nothing_to_check",
+            detail="no row carries a pgs_id, so there was no score record to compare anything against",
+            source=PGS_SOURCE,
+        )
+    comparison = report.pgs_metadata
+    if not comparison.authored:
+        return skipped(
+            "pgs_metadata_agreement", "nothing_to_check",
+            detail=(
+                "no row beside a recognised accession states a training_ancestry or a "
+                "training_cohort, so the module makes no claim for the Catalog to disagree with. "
+                "match_rate_floor and research_tier are not in this check's scope: the Catalog "
+                "publishes neither, so there is nothing to compare them against"
+            ),
+            source=PGS_SOURCE,
+        )
+    withheld = pgs_withheld_sentences(comparison)
+    if not comparison.compared:
+        return skipped(
+            "pgs_metadata_agreement", "no_reference",
+            detail=(
+                f"all {len(comparison.authored)} authored cell(s) were withheld rather than "
+                "compared: " + "; ".join(withheld)
+            ),
+            source=PGS_SOURCE,
+        )
+    if comparison.drift:
+        detail = (
+            f"{len(comparison.drift)} of {len(comparison.compared)} compared cell(s) disagree with "
+            "the Catalog's record: "
+            + examples([f"{d.pgs_id}/{d.field_name}" for d in comparison.drift])
+        )
+    else:
+        detail = (
+            f"all {len(comparison.compared)} compared cell(s) agree with the Catalog's record"
+        )
+    if withheld:
+        # The shortfall travels with the finding rather than beside it — a coverage figure whose
+        # denominator is stated somewhere else is the defect `_vrs_coverage` exists for.
+        detail += "; " + "; ".join(withheld)
+    return ran(
+        "pgs_metadata_agreement",
+        subjects=len(comparison.compared),
+        findings=len(comparison.drift),
+        source=PGS_SOURCE,
+        release=report.pgs_release,
+        detail=detail,
+    )
+
+
+def pgs_withheld_sentences(comparison: PgsComparison) -> list[str]:
+    """One sentence per *reason* for the cells that could not be settled — never one per cell.
+
+    `@dont-discard-computed`: these were counted by the comparison and would otherwise vanish, and a
+    reader who cannot see them reads `2 of 2 agree` as a clean bill over six cells.
+    """
+    by_reason: dict[str, list[str]] = {}
+    for (pgs_id, field_name, _authored), reason in comparison.withheld.items():
+        by_reason.setdefault(reason, []).append(f"{pgs_id}/{field_name}")
+    return [
+        f"{len(by_reason[reason])} cell(s) withheld because {reason}: "
+        + examples(sorted(by_reason[reason]))
+        for reason in sorted(by_reason)
+    ]

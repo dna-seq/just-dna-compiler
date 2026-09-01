@@ -282,6 +282,6 @@ def test_the_command_guard_is_the_roster_rather_than_a_filename(tmp_path: Path) 
     result = CliRunner().invoke(app, ["check-identifiers", str(bare)])
     assert result.exit_code == 0
     assert "no variants.csv" not in result.output
-    assert "no table carrying trait ids or gene symbols" in result.output
+    assert "no table carrying trait ids, gene symbols or PGS accessions" in result.output
     # ...and nothing was attested, because no question was put.
     assert not (bare / "verification.json").exists()
