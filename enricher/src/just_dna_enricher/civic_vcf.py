@@ -17,13 +17,14 @@ So the TSV pair stays primary and this file is joined onto it for two things it 
 
 1. **`evidence_status` per evidence item**, which is what makes an accepted row and a submitted row
    distinguishable once both are in the parquet.
-2. **The submitted evidence itself** — 128 further direction variants on 202 rows over `01-Aug-2026`.
+2. **The submitted evidence itself** — 642 further direction rows on 247 variants over `01-Aug-2026`,
+   of which **127 variants are new** to the snapshot. The whole build goes 507 rows on 270 variants to
+   **1,149 on 397**.
 
-**Every one of those 128 places on a published identifier**, measured: 66 by ClinGen CAID, 47 by
-rs-number, 14 by a GRCh38 accession, 1 by both. Zero need a coordinate, which matters because the
-VCF's own POS is **GRCh37** (`##reference=…GRCh37-lite.fa.gz`) and lifting it is refused on
-measurement (RM48, and the class-A working in `docs/probes/CIVIC_UNRESOLVED.md`). This module reads
-identity out of the `CSQ` block and never out of the record's POS.
+**Nothing is placed from a coordinate this file states.** Its POS is **GRCh37**
+(`##reference=…GRCh37-lite.fa.gz`), and lifting it is refused on measurement (RM48, and the class-A
+working in `docs/probes/CIVIC_UNRESOLVED.md`). Every row is placed from a published identifier read out
+of the `CSQ` block, through the same parsers the TSV path uses.
 
 **The `CSQ` block is one entry per evidence item, not per variant.** A single VCF record carries a
 comma-separated list, each entry naming a variant *and* the evidence item asserting something about
@@ -95,16 +96,18 @@ class CivicVcfEntry:
     only source.
 
     **And so is the variant-level half, for the variants the TSV omits.** `VariantSummaries.tsv` is
-    accepted-only as well, so 112 of the 128 variants the submitted evidence introduces have no row
+    accepted-only as well, so **112 of the 127 variants** the submitted evidence introduces have no row
     there at all: no gene, no aliases, no HGVS, no registry id. The same `CSQ` entry carries all four,
     so they are read from here **only when the TSV cannot answer**, and the resulting rows are stamped
     `vcf_csq` rather than folded into the TSV-derived derivations — a row whose identity came from a
     different file is a different provenance claim, and a consumer must be able to see which
-    (`@source-vs-authority`, applied to two files of one release).
+    (`@source-vs-authority`, applied to two files of one release). The other 15 join the TSV normally
+    and take an ordinary derivation, which is why the stamp counts rows rather than the whole widening.
 
     Nothing here is read from the record's POS. The VCF is GRCh37 and lifting it stays refused
-    (RM48); every one of the 112 places on a published identifier — 57 by ClinGen CAID, 40 by
-    rs-number, 14 by a GRCh38 accession, 1 by both — through the same parsers the TSV path uses.
+    (RM48); all 112 place on a published identifier — **57 by ClinGen CAID, 40 by rs-number, 14 by a
+    GRCh38 accession, 1 by both** — through the same parsers the TSV path uses, measured over the
+    emitted parquet rather than over the file.
 
     The vocabulary differs from the TSV's: the VCF is `SCREAMING_CASE` (`RARE_GERMLINE`,
     `PREDISPOSITION`, `SUPPORTS`) where the TSV is title case (`Rare Germline`, `Predisposition`,

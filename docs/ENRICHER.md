@@ -1233,7 +1233,7 @@ class whose identity had to be read out of its name** (RM159). Reading it as the
 discard the hardest-won half of the snapshot.
 
 **`VariantSummaries.tsv` is accepted-only too**, which is why `identity_derivation="vcf_csq"` exists:
-112 of the 128 variants the submitted evidence introduces have no row in it, so their identity comes
+112 of the 127 variants the submitted evidence introduces have no row in it, so their identity comes
 from the same `CSQ` entry, through the same parsers, on the same published identifiers (57 by CAID, 40
 by rs-number, 14 by a GRCh38 accession, 1 by both). The member names the **file** rather than the
 route, because the route is already visible in the row's own cells. Nothing is placed from the VCF's

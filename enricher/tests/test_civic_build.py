@@ -541,7 +541,10 @@ VCF = SLICE / "civic_accepted_and_submitted.vcf"
 
 @pytest.fixture
 def widened(tmp_path):
-    return build_snapshot(EVIDENCE, VARIANTS, PROFILES, tmp_path / "snap", release="01-Aug-2026",
+    # A directory of its own, NOT `tmp_path / "snap"`: pytest hands both fixtures the same `tmp_path`,
+    # so sharing the name makes the second build silently overwrite the first, and a test that asks
+    # for both then compares a snapshot with itself.
+    return build_snapshot(EVIDENCE, VARIANTS, PROFILES, tmp_path / "widened", release="01-Aug-2026",
                           vcf=VCF)
 
 
@@ -676,3 +679,32 @@ def test_a_widened_rebuild_is_byte_identical(tmp_path):
     a = build_snapshot(EVIDENCE, VARIANTS, PROFILES, tmp_path / "a", release="01-Aug-2026", vcf=VCF)
     b = build_snapshot(EVIDENCE, VARIANTS, PROFILES, tmp_path / "b", release="01-Aug-2026", vcf=VCF)
     assert a.parquet_file.read_bytes() == b.parquet_file.read_bytes()
+
+
+def test_the_recorded_widening_figures_are_what_the_build_produces(built, widened):
+    """The numbers the docs and the CLI help quote, asserted as relationships over the real build.
+
+    Not a count copied off a dump: each is derived here from the two builds the fixtures already
+    made. It exists because the first cut of this item recorded a pre-build figure that never matched
+    the shipped result, and nothing in a checkout could notice — the docs are prose and the CLI help
+    is a string (`@warning-text-is-api`, applied to a help line a user reads before running anything).
+    """
+    frame = pl.read_parquet(widened.parquet_file)
+    accepted = pl.read_parquet(built.parquet_file)
+
+    # The widening only ever adds.
+    assert widened.record_count > built.record_count
+    assert widened.variants > built.variants
+    assert set(accepted["variant_id"].to_list()) <= set(frame["variant_id"].to_list())
+
+    # The submitted half accounts for exactly the difference in rows.
+    submitted = frame.filter(pl.col("evidence_status") == "submitted")
+    assert submitted.height == widened.status_counts["submitted"]
+    assert built.record_count + submitted.height == widened.record_count
+
+    # Every `vcf_csq` row is submitted, and its variant is genuinely absent from the accepted build —
+    # which is the whole justification for reading identity out of the VCF at all.
+    csq = frame.filter(pl.col("identity_derivation") == VCF_DERIVATION)
+    assert csq.height >= 1
+    assert set(csq["evidence_status"].unique().to_list()) == {"submitted"}
+    assert not (set(csq["variant_id"].to_list()) & set(accepted["variant_id"].to_list()))

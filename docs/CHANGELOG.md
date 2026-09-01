@@ -70,7 +70,7 @@ signature, so `just-dna-compiler` took the patch alongside while `just-dna-forma
 - **New parquet column `evidence_status`** — `accepted` / `submitted`, CIViC's own word, unconverted.
   Present on every row; on the accepted basis it is uniformly `accepted`.
 - **`identity_derivation` gains `vcf_csq`.** `VariantSummaries.tsv` is accepted-only as well, so 112
-  of the 128 new variants have no row in it; their identity comes from the VCF's `CSQ` block through
+  of the 127 new variants have no row in it; their identity comes from the VCF's `CSQ` block through
   the same parsers and the same published identifiers. The member names the *file*, not the route.
   A consumer filtering on the vocabulary should add it.
 - **`release.json` gains `status_basis`, `status_counts`, `vcf_evidence` and `unjoinable_submitted`.**

@@ -79,8 +79,10 @@ So the TSV pair stays primary and the VCF is joined onto it, behind `--submitted
 | | accepted | accepted+submitted |
 |---|---:|---:|
 | Rows | 507 | **1,149** |
-| Variants | 270 | **397** |
+| …of which `submitted` | 0 | 642 |
+| Variants | 270 | **397** — 127 of them new |
 | refget coordinates cross-checked | 57 | **129**, 0 mismatches |
+| `input_rows` the drop registry closes over | 4,878 | 8,328 |
 
 `release.json` gains `status_basis`, `status_counts`, `vcf_evidence` and `unjoinable_submitted`, and
 every row gains `evidence_status` carrying CIViC's own word. **A rebuild on the wider basis is
@@ -88,15 +90,25 @@ byte-identical**, so Principle 7 survives the join.
 
 ### The second accepted-only file, which is why `vcf_csq` exists
 
-`VariantSummaries.tsv` is `accepted`-only **too** — a fact nothing had stated. So 112 of the 128
+`VariantSummaries.tsv` is `accepted`-only **too** — a fact nothing had stated. So **112 of the 127**
 variants the submitted evidence introduces have no row there at all: no gene, no aliases, no HGVS, no
-registry id. A first cut kept identity strictly TSV-sourced and recovered only 16 of them.
+registry id. A first cut kept identity strictly TSV-sourced and recovered only 15 of them.
 
 The same `CSQ` entry carries all four identity cells, so for a variant the TSV cannot describe they
-are read from there instead — through **the same parsers**, on **the same published identifiers** (57
-by ClinGen CAID, 40 by rs-number, 14 by a GRCh38 accession, 1 by both). Those rows are stamped
-`identity_derivation="vcf_csq"`, a member of its own: the routes inside are the ordinary ones, and
-what the member names is the **file**, which is the part a consumer cannot otherwise recover.
+are read from there instead — through **the same parsers**, on **the same published identifiers**:
+
+| route | variants |
+|---|---:|
+| ClinGen CAID only | 57 |
+| rs-number only | 40 |
+| GRCh38 accession only | 14 |
+| both an rs-number and a coordinate | 1 |
+| **total** | **112** |
+
+Those rows are stamped `identity_derivation="vcf_csq"`, a member of its own: the routes inside are the
+ordinary ones, and what the member names is the **file**, which is the part a consumer cannot
+otherwise recover. Measured over the emitted parquet, not over the input — 172 rows on those 112
+variants, and the other 15 new variants join the TSV normally and take an ordinary derivation.
 
 **Nothing is placed from the VCF's own position.** It is GRCh37 throughout
 (`##reference=…GRCh37-lite.fa.gz`) and lifting it stays refused (RM48); a CSQ-sourced row leaves the

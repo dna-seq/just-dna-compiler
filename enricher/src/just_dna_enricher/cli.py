@@ -1742,9 +1742,10 @@ def civic_build_(
         False, "--submitted",
         help=(
             "Also read the release's civic_accepted_and_submitted.vcf, so evidence a curator entered "
-            "but no editor signed off joins the snapshot. Widens the direction corpus from 507 rows "
-            "on 270 variants to 1149 on 397 over 01-Aug-2026, and every row carries the status CIViC "
-            "gave it. Dated and pinnable like the TSVs, so the build stays reproducible."
+            "but no editor signed off joins the snapshot. Over 01-Aug-2026 that widens the direction "
+            "corpus from 507 rows on 270 variants to 1149 on 397, adding 642 submitted rows and 127 "
+            "variants, and every row carries the status CIViC gave it. Dated and pinnable like the "
+            "TSVs, so the build stays reproducible."
         ),
     ),
     vcf: Path | None = typer.Option(
