@@ -361,6 +361,54 @@ The subject is **an authored row whose variant a source both asserts and refutes
 regardless of how the row got there: a hand-authored module gets the same warning as a drafted one,
 which is the point. Muddy water is a property of the variant, not of the provenance.
 
+### Probed 2026-09-02 — [CONTRADICTION_CORPORA](probes/CONTRADICTION_CORPORA.md)
+
+Both corpora measured before designing against either, as this entry asked. It answered both open
+questions and corrected the entry on the one that mattered.
+
+**The weight question is answered, and this entry had it backwards.** It said only 2428 has a
+refutation an editor signed off. 2428's *claim* is accepted; its refutation (EID 10949) is
+`SUBMITTED`. **No refutation anywhere in CIViC that stands against a claim is accepted** — both
+accepted refutations in the whole database (CHEK2 788 / EID 1854, TP53 4968 / EID 1302) are
+refutation-**only**, with no claim beside them. So the subject count is not merely basis-dependent, it
+is **0 on `accepted` and 3 on `accepted+submitted`**: the class does not exist on the basis the
+builder read before RM169, and exists entirely on the strength of unreviewed content. A hint that
+states the basis alongside the disagreement is now the *only* shape that can be honest, rather than
+the preferred one. (TP53 4968 never enters the snapshot at all — dropped `unresolvable_identity`, and
+absent from the VCF for want of a GRCh37 position. One of the two accepted refutations in the database
+is invisible to every consumer of this artifact.)
+
+**The three instances are one pair plus one combination-profile item counted twice.** EID 8721 belongs
+to molecular profile 5278, which CIViC publishes as `VHL S183L (c.548C>T) AND VHL D126N (c.376G>A)` —
+one statement about a two-variant genotype. `_submitted_evidence_row` stamps `molecular_profile_id`
+from the *variant's* single-variant profile, so the parquet writes it as two rows claiming MP 2037 and
+2406 and the column that would say "combination" is overwritten. Bounded and measured: 5 evidence ids
+on 2 parquet rows each, 108 fanning out across the whole VCF. Note the path asymmetry — a combination
+profile arriving via the TSV is dropped `combination_profile`, via the VCF it is fanned out and kept.
+
+**The scope question is answered from the adopted set rather than guessed, and STRchive is not a new
+axis.** A walk of all 26 `VALID_*` frozensets finds refuting members in exactly two source-facing
+vocabularies: `VALID_GENE_VALIDITY` (`disputed`/`refuted`/`no_known_disease_relationship`, for
+ClinGen+GenCC) and `VALID_CLIN_SIG` (`conflicting`, for ClinVar). Four adopted sources carry this
+shape and three already land it somewhere — `gene_validity` even publishes an unorderable
+`["definitive","refuted"]` group as a **set, not a verdict**, which is this item's machinery already
+built one grain up. **STRchive's is the one that lands nowhere**: `StrchiveLocus` drops `evidence` at
+parse, and a real `draft-repeats --gene DMD` run (DMD is the single `Refuted` locus) writes a row
+indistinguishable from HD_HTT's and says nothing — the field is not even in the read-and-not-written
+accounting.
+
+**But the two corpora do not share a subject, so one check cannot be both.** CIViC's contradiction is
+*inter-row, post-join, per variant*: neither row is contradictory alone, and the subject exists only
+after an authored row is matched to a snapshot variant. STRchive's is *intra-record, pre-join, per
+locus*, and is not a contradiction in CIViC's sense at all — nothing asserts the locus is pathogenic
+and then denies it; one field grades the association `Refuted` while the same record still publishes a
+pathogenic band the drafter writes. That is a self-inconsistent record, closer to a grade the drafter
+drops than to a disagreement. Its vocabulary is also **open**, not closed: the published schema uses
+`examples` + `combobox: true`, and carries `Provisional` (6 loci), which the schema's own text defines
+as *not yet curated* — a nobody-asked, not a grade, and it has no house member. The two corpora
+overlap on **one gene (`CBL`) and zero loci**, and no reference example authors any of the six genes,
+so zero corpus modules would fire either finding today.
+
 ### What has to be decided, and what is already settled
 
 - **The subject set is per authored row, not per snapshot row.** A check that counted snapshot rows
@@ -368,14 +416,18 @@ which is the point. Muddy water is a property of the variant, not of the provena
 - **Severity: warn in both modes, never gate.** Its two nearest neighbours both say so
   (`@clinsig-never-escalates`, and `@a-source-recuring-is-not-a-strict-matter`), and for the same
   reason: a source disagreeing with itself is not an authoring error.
-- **Open — does a refutation from `submitted` evidence carry the same weight as one from `accepted`?**
-  Of the three, only 2428 has a refutation an editor signed off; the other two are submitted on both
-  sides. A hint that states the status basis alongside the disagreement can carry both without
-  choosing, which is the preferred shape, but it makes the check's subject count basis-dependent and
-  that has to be said in the record rather than discovered.
-- **Open — scope.** The three found here are CIViC's, but the shape is not: any source publishing both
-  a claim and its rebuttal produces it. Whether the check reads one snapshot or every snapshot a
-  module drew from decides whether it is a CIViC check or a general one.
+- **Settled by the probe — the hint must state the status basis**, because every pair rests on
+  submitted content and a check that did not say so would publish a finding whose subject count
+  silently depends on a build flag.
+- **Open, and reshaped — one check or two?** The measured answer to "CIViC-scoped or general" is that
+  the *shape* is general (four adopted sources) but the *subject* is not shared: a per-variant
+  post-join contradiction and a per-locus published grade are two different findings that would only
+  look like one in a vocabulary. Deciding this is deciding whether STRchive's `evidence` is adopted at
+  all — today it is dropped at parse, so the STRchive half is a **source-adoption** question wearing a
+  check's clothes.
+- **Open — the combination-profile stamp is a defect, not a design question.** `molecular_profile_id`
+  overwritten with the variant's own profile is wrong regardless of what this item decides; it belongs
+  to whoever fixes it first, and it makes 8721 look like two independent refutations.
 
 **Related** RM169 (which made these visible), RM152, RM160.
 
@@ -562,44 +614,68 @@ established before that is a plan, and neither is:**
 **Related** RM165 (the same shape on the other uncovered binning kind), RM171 (the spin-off),
 `@probe-uniform-corpus`.
 
-## RM173 — the PGx lane reads two of at least twelve ClinPGx archives, and `clinicalVariants` is the one that lands on a shipped table
+## RM173 — `clinicalVariants` is a column-poorer rollup of the archive the lane already reads, and the archive the lane reads is 13 months stale
 
-**Severity** low-medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
-**Motivating case** RM166's probe, which found it while answering a narrower question
+**Severity** low-medium · **Status** open — **premise replaced 2026-09-02 by its own probe**; what is
+left is a currency question, not an adoption · **Owner** enricher · **Motivating case** RM166's probe,
+which found it while answering a narrower question
 
 **Filed 2026-09-01, out of RM166's build.** RM166 asked whether the FDA's drug-label content was
 already inside a source this repo has adopted; it is, and enumerating the download endpoint properly
 answered a second question nobody had asked. **ClinPGx publishes at least twelve archives** —
 `clinicalAnnotations`, `variantAnnotations`, `clinicalVariants`, `drugLabels`, `relationships`,
 `variants`, `genes`, `drugs`, `chemicals`, `phenotypes`, `occurrences`, `pathways-tsv` — and after
-RM166 the lane reads **two**. So the honest framing of the PGx lane is not *which new source do we
-adopt* but *which of the twelve files from the source we have already adopted and gated do we read*.
+RM166 the lane reads **two**. That framing stands. What does not is the sentence that followed it.
 
-**`clinicalVariants.zip` is the one that bears on a shipped table kind.** ~74 KB, ~5,190 rows of
-`variant, gene, type, level of evidence, chemicals, phenotypes` — star alleles and rsIDs against
-PharmGKB evidence levels, which is `pharm_variants.csv` territory rather than a new kind.
+### Probed 2026-09-02, and `clinicalVariants` is not a third source
 
-**What blocks it is one column, and it is not the usual normalizer problem.** `type` is a six-member
-base vocabulary that **comma-combines**: `Efficacy,Toxicity`, `Efficacy,Toxicity,Metabolism/PK`. So one
-field carries a **set**, and an adoption must normalize the *combination* rather than the token —
-`@one-normalizer-two-spellings` with an extra axis on it. Deciding whether the combination is a set to
-split into rows, a set to carry in one cell, or a vocabulary of its own is the design question, and it
-is exactly the shape `@dedup-key-decides-rows` is about: the dedup key decides which columns may become
-several rows, never the source's dialect.
+The entry said `clinicalVariants.zip` is "the one that bears on a shipped table kind", and posed the
+`type` column's comma-combining as the design question. Both were wrong, and one join says why.
 
-**The terms are already established and already gated**, which makes this cheaper than any item in the
-2026-09-01 round: same source, same CC BY-SA + no-sale licence read out of the payload's own
-`LICENSE.txt`, same cache, and `clinpgx_build`'s machinery for all of it. **But its release is its
-own** — `clinpgx_build`'s docstring records `relationships.zip` arriving a year newer than
-`clinicalAnnotations.zip`, so this archive gets its own `CREATED_*.txt` and its own `release.json`
-rather than inheriting the lane's (`@two-surfaces-two-denominators`).
+**96.3% of its rows are already in the archive the lane reads.** Joining all 5,190 rows against
+`clinical_annotations.tsv` on `(variant, gene, drugs, phenotype category, level of evidence)` recovers
+**5,000**; 190 remain, of which only 91 are a `(variant, gene)` pair the adopted archive does not
+carry at all. Its six columns are a strict subset of the other's fifteen — no `Clinical Annotation
+ID`, no `URL`, no `Score`, no PMID or evidence counts, no specialty population. It is a rollup of
+`clinicalAnnotations` published as its own download, and everything it could contribute to
+`pharm_variants.csv` the lane already has a richer version of.
+
+**The `type` question is already answered by the column the lane stores.** `type`'s thirteen observed
+values are `Phenotype Category`'s thirteen observed values, member for member, differing only in the
+separator: `Efficacy;Toxicity` in `clinical_annotations.tsv`, `Efficacy,Toxicity` in
+`clinicalVariants.tsv`. The lane stores that cell verbatim as `phenotype_category` and it is already
+in the ClinPGx dedup key (`@clinpgx-full-key`), so "one cell or several rows" was settled before this
+item existed. The combination is 106 rows, 2.0%, seven combinations over a six-member base
+(`Efficacy`, `Toxicity`, `Metabolism/PK`, `Other`, `Dosage`, `PD`), and the member order is canonical
+— no combination appears in two orders. The separator difference is `@one-normalizer-two-spellings`
+with the *separator* as the spelling, and it is a reason to be careful reading this file, not a reason
+to read it.
+
+### What the probe found instead, and it is worth more than the item it replaces
+
+**The archive the lane reads is 13 months older than the one beside it.** `clinicalAnnotations.zip`
+as served by `api.clinpgx.org` today carries `CREATED_2025-07-05.txt`; `clinicalVariants.zip` carries
+`CREATED_2026-08-05.txt`. Same source, same licence (CC BY-SA 4.0 + no-sale, read out of each
+payload's own `LICENSE.txt`), two archives of substantially the same content a year apart. That is
+`@two-surfaces-two-denominators` with teeth: **99 of the 190 residue rows are subjects the lane
+already holds whose level, category or drug set has moved** — curation drift the lane cannot see,
+because the file it reads has not been rebuilt upstream since 2025-07-05.
+
+**So the open question is a currency one.** Does the lane report that its own ClinPGx archive is
+stale relative to a sibling archive from the same source — and if so is that a check, a `release.json`
+field, or a line in the snapshot's notice? `@currency-asks-the-source-not-the-cache` says the question
+is asked of the source, and here the source answers it in a second file's `CREATED_*.txt`, which is
+about as cheap as the ask gets. Reading `clinicalVariants` **as a dated probe of the lane's own
+staleness** is a different and much smaller thing than adopting it as a table source, and it is the
+only use the measurement supports.
 
 **Not a widening of RM166.** That item is drug labels and it shipped; this is a different file
-answering a different question about a different table kind, and keeping an item open by changing what
-it is about is how an item stops meaning anything.
+answering a different question, and keeping an item open by changing what it is about is how an item
+stops meaning anything. This entry has now changed what it is about *once*, on a measurement that
+refuted its premise — which is the one licit reason, and it is recorded here rather than smoothed.
 
-**Related** RM166 (where it was found), RM29b, `@one-normalizer-two-spellings`, `@dedup-key-decides-rows`,
-`@two-surfaces-two-denominators`, `@pgx-research-only`.
+**Related** RM166 (where it was found), RM29b, `@clinpgx-full-key`, `@one-normalizer-two-spellings`,
+`@two-surfaces-two-denominators`, `@currency-asks-the-source-not-the-cache`, `@pgx-research-only`.
 
 ## RM171 — MITOMAP's `mmutation` is a curated mtDNA variant table behind 29 free-text status strings
 
@@ -623,15 +699,35 @@ stops being enough at the point where one side is prose. A provider that mapped 
 strings and dropped the tail would be writing a judgement the source did not make; one that mapped
 every string would be inventing 25 of them.
 
-**And its terms are unread, exactly as RM164 left them.** The dump carries no licence text in 6.7
-million lines, and MITOMAP's terms live on a web page a browser reaches and that probe did not open.
-Unread is not unestablishable and is not `None` — the page has to be read before anything is drafted
-from this table (`@no-named-licence`).
+**Its terms were unread, exactly as RM164 left them. They are read now (2026-09-02), and they are
+permissive.** The dump carries no licence text in 6.7 million lines; MITOMAP states its terms on
+`MITOWIKI/HelpTerms`, linked from `CitingMitomap` as *Terms of Use for data content and figures*:
 
-**The first step is therefore not code.** Read the terms; then decide whether `status` is adoptable at
-all, and if it is, whether the adoptable part is a `clin_sig` mapping or only the identity columns plus
-the verbatim string carried as evidence. A negative on the terms closes it outright, and that is named
-in advance for the same reason RM164 named its own.
+> All content on MITOWeb (including MITOMAP, MITOMASTER, & MITOWIKI) except where otherwise noted, is
+> made available under a **Creative Commons Attribution 3.0 License**. Authors retain ownership of the
+> copyright of their contributions, while allowing anyone to download, reuse, reprint, modify,
+> distribute, and/or copy content, so long as **the original authors and source are cited**. No
+> permissions are required from the authors or publishers to use the work in these terms.
+
+CC BY 3.0: commercial use permitted, redistribution permitted, attribution required, no separate
+agreement. **So the terms negative that would have closed this item outright does not fire** — the
+item survives on its `status` column alone.
+
+**How that was read, because the scope matters (`@probe-names-the-table`).** The live page returns
+**403** to both `curl` and the fetch tool — a Cloudflare interstitial, not a paywall — so the text
+above is the Wayback capture of **2026-04-17**, of a page whose own last revision is **r4,
+2019-07-30**. It is not a live read and should be re-read from a browser before anything is published
+from this table. Two traps found while reading: a search for MITOMAP's licence surfaces **CC BY-NC**,
+which is the *NAR article's* licence and not the database's; and **"except where otherwise noted"** is
+the floor-plus-per-record-override shape (`@a-hosts-terms-are-not-its-contents-terms`), so a per-record
+note outranks the site default and the licence row must be written as a floor. Also unrecorded, and
+owed: how RM164 acquired the `pg_dump`. If it came from a mirror rather than mitomap.org, that
+mirror's terms are a separate question this read does not answer.
+
+**So the decision is back where it was, minus the gate.** `status` is 29 free-text strings and mapping
+them onto `clin_sig` is a curation decision, not a normalization. Whether the adoptable part is a
+`clin_sig` mapping or only the identity columns plus the verbatim string carried as evidence is a
+maintainer call, deliberately not pre-empted here.
 
 **Related** RM164 (where it was found), `@one-normalizer-two-spellings`, `@no-named-licence`,
 `@probe-the-real-file`.
