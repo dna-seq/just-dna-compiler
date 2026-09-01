@@ -68,6 +68,121 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM175 — the PGx lane's default archive was a retired filename, and every row it had ever built came out of a frozen 2025 object
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-09-02 in the uncut 0.7.0** — the rebuild onto
+`summaryAnnotations.zip` plus the guard that refuses the retired one (`just-dna-enricher`; no schema,
+no vocabulary, no parquet column) · **Owner** enricher · **Motivating case** the maintainer's
+2026-09-02 investigation ([CLINPGX_ARCHIVES](probes/CLINPGX_ARCHIVES.md)), which started from RM173's
+canary and found what it was a canary of · **Supersedes** RM173
+
+**PharmGKB renamed the table on 2025-07-29** ([the ClinPGx launch
+post](https://blog.clinpgx.org/pharmgkb-is-now-clinpgx/)): *"Clinical annotations … are now called
+**summary annotations**."* The archive followed. `clinicalAnnotations.zip` was last written to S3 on
+**2025-07-05, twenty-four days before that post**, and has not been rebuilt since; it is on no
+downloads page; and the API still answers it **200** through a 303 to the frozen object.
+`clinpgx_build.DEFAULT_CLINPGX_URL` named it.
+
+**So this was not a stale cache and not a slow source.** Every `annotations.parquet` this lane had
+built, every PGx row drafted from it and every check that read one rested on a snapshot of the database
+as it stood **fourteen months ago**, and nothing in the response said so — a retired filename that
+still 200s is indistinguishable from a live one at the HTTP layer. RM173 measured the 13-month gap
+correctly and diagnosed it as two live surfaces refreshing out of lockstep. It was one live surface and
+one leftover.
+
+### What shipped
+
+`summaryAnnotations.zip`, `CREATED_2026-08-05`, is the same 15-column table under new names:
+
+| 2025 archive | 2026 archive |
+|---|---|
+| `clinical_annotations.tsv` | `summary_annotations.tsv` |
+| `clinical_ann_alleles.tsv` | `summary_ann_alleles.tsv` |
+| `clinical_ann_evidence.tsv` | `summary_ann_evidence.tsv` |
+| `clinical_ann_history.tsv` | `summary_ann_history.tsv` |
+| `Clinical Annotation ID` | `Summary Annotation ID` |
+
+The other fourteen column names are identical and in the same order, and `Phenotype Category` has the
+same values with the same `;` separator, so **no vocabulary moved and no model changed**. The builder
+reads two of the four members; the evidence and history siblings are renamed upstream and named
+nowhere in this tier, so they cost nothing. What changed is the URL, two member names, the id column,
+the numbers derived from the old file — and the guard.
+
+**The guard is the item.** An archive carrying the old member names parses perfectly and yields a
+plausible parquet, so `require_current_archive` reads the member names *before* anything else and
+answers in three arms (`@answered-is-not-absent`): the current spelling builds; the retired one is
+refused with the rename, its date, the retired filename and the URL to build from instead
+(`@specific-rejection` — a generic "member missing" is a dead end where naming the rename is a fix);
+an archive that is neither says so separately, listing what it holds. `clinpgx build` prints
+`CLINPGX BUILD FAILED: …` and exits 1, matching `build-labels`.
+
+Both spellings live in **one table** the reader takes its member names and its id column from, so the
+guard cannot drift from what the builder reads (`@suppression-from-merge-key` has the same shape).
+`RETIRED_ARCHIVE` is returned by nothing: no path through the module can read a 2025 archive, which is
+stronger than refusing to. No compatibility layer was built, deliberately — a reader that parses both
+vintages is a reader that can still publish 2025 data.
+
+**It was not a rename-only patch, because the data moved.** Re-derived against both archives on
+2026-09-02: over the 5,179 ids in both, 7 annotations gone, 11 new, **8 rows change `Level of
+Evidence`**, 2 `Variant/Haplotypes`, 40 `Drug(s)`, 14 `Score`, 68 `Level Modifiers`, and every `URL`
+rehosts `pharmgkb.org` → `clinpgx.org` on a path that still reads `/clinicalAnnotation/`. At the
+snapshot's own grain the rebuild is 16,087 → **16,117 rows** across 5,186 → **5,190 annotations**,
+1,086 → 1,087 genes: 22 (annotation, genotype) keys gone, 52 new, and among the 16,065 shared keys
+30 rows change `evidence_level`, 120 `drugs`, 47 `annotation_text`, 38 `phenotypes` and 4 `subject`.
+The parquet digest moves, and a module drafted from this lane can see an evidence level change under
+it — which is correct, and is the first thing this lane has ever had to say about currency.
+
+**And one recorded number was wrong twice.** `clinpgx_build`'s docstring said *"4,618 of 5,113 carry
+exactly three"* genotype rows. 4,618 is the 2025 file's three-genotype count and 5,113 is neither
+file's annotation count (5,186 then, 5,190 now) — it is the *distinct-key* count of the
+`clinicalVariants` rollup. The pair appeared in five live files. It is gone from all of them, replaced
+by the relationship ("the large majority carry exactly three") rather than by a fresh count: a number
+measured off one download is exactly what this item is about. The fixture-bearing measurements that
+are *dated but true* — 396 of 16,087 rows with a multi-gene cell (RM74), 15,331 of 16,087 with a gene,
+1,199 of 17,380 colliding triples (RM29b) — were left as the release-time evidence they are.
+
+**The fixture is real bytes now.** `assets/clinpgx_annotations_slice/` is cut verbatim from the
+2026-08-05 archive: the real `LICENSE.txt` and `CREATED_*.txt`, the three rs4149056/simvastatin
+annotations that disagree with each other, and a real CYP2C19 haplotype annotation replacing an
+invented id the old in-memory fixture carried. Every expected value is computed from it at runtime, and
+the retired-vintage archive the guard is tested against is **the same rows under the old member names
+and the old header** — one copy of the data, two spellings, so the refusal is proved against an archive
+that would otherwise have built.
+
+### The general half, which is why this was severity high and RM173 was not
+
+A filename can retire while its bytes keep serving, and **nothing in this lane could have noticed**:
+the download succeeded, the members parsed, the licence read, the row count was plausible, and
+`release.json` recorded a `CREATED_*.txt` nobody compared against anything. Three candidate guards were
+listed when the item was sized, and **none was built** — the item is a rebuild, and each of the three
+is a design in its own right:
+
+- **Audit every default URL in the lane against what the source lists.** ClinPGx serves 19 zips;
+  `drugLabels.zip`, `relationships.zip` and `clinicalVariants.zip` are all on the page and
+  `clinicalAnnotations.zip` is not. A one-off read, not machinery — and one that needs a browser, per
+  the trap below.
+- **Record the S3 `Last-Modified` beside the `CREATED_*.txt`** in `release.json`, so an archive that
+  stops being rebuilt is visible in the artifact rather than only in the source.
+- **Fire when one archive of a multi-archive source is much older than its siblings** — the shape
+  RM173 stumbled into, generalised. `@two-surfaces-two-denominators` is the neighbour, and
+  `@currency-asks-the-source-not-the-cache` says the question goes to the source.
+
+The name check that shipped is narrower than any of them on purpose: it catches *this* failure — a
+retired name still serving — at the only moment the lane can see it, without claiming to detect
+staleness in general. Nothing built here would notice `summaryAnnotations.zip` itself going quiet, and
+that gap is the honest remainder.
+
+**A trap that cost the investigation real time, and belongs in the record.** Every ClinPGx HTML route
+— `/downloads`, every help page — serves the same JS shell whose no-JS body is *"Javascript Is
+Disabled!"*. `curl` and `WebFetch` therefore **cannot** answer "is this file listed?", and both return
+200 while telling you nothing. The downloads listing in the probe is a rendered-DOM capture from a
+browser. Treat a no-JS fetch of this host as no evidence at all (`@probe-the-real-file`, one host
+further on).
+
+**Related** RM173 (closed into this), RM166 and RM29b (both built on the lane this rebuilds), RM164,
+`@two-surfaces-two-denominators`, `@currency-asks-the-source-not-the-cache`, `@probe-the-real-file`,
+`@pgx-research-only`.
+
 ## RM166 — the whole PGx lane is one licence class, and a second authority exists that is not in it
 
 **Severity** low-medium · **Status** ✅ **SHIPPED 2026-09-01 in the uncut 0.7.0** — the cross-check
@@ -6248,7 +6363,7 @@ content.
 
 **Severity** low-medium · **Status** ✖ **CLOSED 2026-09-02, not shipped** — its premise was replaced
 twice in one day, and the second replacement is a different and much larger item. Closed into
-[RM175](ROADMAP.md#rm175--the-pgx-lanes-default-archive-is-a-retired-filename-and-every-row-it-has-ever-built-came-out-of-a-frozen-2025-object)
+[RM175](ROADMAP_HISTORY.md#rm175--the-pgx-lanes-default-archive-was-a-retired-filename-and-every-row-it-had-ever-built-came-out-of-a-frozen-2025-object)
 · **Owner** enricher · **Motivating case** RM166's probe, which found it while answering a narrower
 question
 

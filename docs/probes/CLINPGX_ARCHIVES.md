@@ -11,7 +11,7 @@ ran (downloads, summary-annotations help, clinical-variants help); and the
 
 **This is evidence, never contract**, the standing rule for everything under `docs/probes/`. Nothing
 here proposes a design. Every number below was re-derived from the bytes named in §1; where a figure
-disagrees with [ROADMAP.md § RM173](../ROADMAP.md#rm173--clinicalvariants-is-a-column-poorer-rollup-of-the-archive-the-lane-already-reads-and-the-archive-the-lane-reads-is-13-months-stale),
+disagrees with [ROADMAP_HISTORY.md § RM173](../ROADMAP_HISTORY.md#rm173--closed-2026-09-02-superseded-by-rm175-the-year-old-archive-was-a-retired-filename-not-a-stale-sibling),
 the entry is quoted and the disagreement is stated rather than smoothed.
 
 **The single most load-bearing measurement:** `clinicalAnnotations.zip` is still a 200 from the API

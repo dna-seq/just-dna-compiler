@@ -65,13 +65,31 @@ that was measuring something else, plus the probe round behind RM170.
   ([CLINPGX_ARCHIVES](probes/CLINPGX_ARCHIVES.md)) replaced the 13-month gap that finding ended on:
   the 15-column table was **renamed** to `summaryAnnotations.zip` when PharmGKB became ClinPGx on
   **2025-07-29**, and `clinicalAnnotations.zip` is a frozen S3 object last written 24 days before that
-  post, on no downloads page, still answering 200 — **and still this lane's default**. So every
+  post, on no downloads page, still answering 200 — **and, until the rebuild two bullets down, this
+  lane's default**. So every
   `annotations.parquet` ever built here came out of the database as it stood 14 months ago.
   **RM175** is the rebuild: four member renames, one id column, no vocabulary or model change, but
   8 rows change `Level of Evidence` and every URL rehosts, so the digest moves. **A retired filename
   that still 200s is indistinguishable from a live one at the HTTP layer**, which is the durable
   lesson; and a no-JS fetch of any clinpgx.org page is the *Javascript Is Disabled!* shell, so it is
   no evidence about what the source lists.
+- **RM175 shipped the same day: the PGx lane builds from `summaryAnnotations.zip` now, and refuses
+  the retired archive by name.** The default URL, two member names and the id column moved
+  (`summary_annotations.tsv`, `summary_ann_alleles.tsv`, `Summary Annotation ID`) with **no
+  vocabulary member, no model field and no parquet column changed** — the other fourteen columns and
+  `Phenotype Category`'s values are identical. **The guard is the item**: an archive carrying the old
+  member names parses perfectly and yields a plausible fourteen-month-old parquet, so the builder
+  reads the member names first and refuses the retired spelling with the rename, its date and the URL
+  to use instead; a third arm answers for an archive that is neither. Both spellings live in one table
+  the reader takes its names from, and the retired one is returned by nothing, so no path through the
+  module can read a 2025 archive. **The data moved and the digest with it**: 16,087 → 16,117 snapshot
+  rows over 5,190 annotations, 22 (annotation, genotype) keys gone and 52 new, 30 rows changing
+  `evidence_level`, 120 `drugs`, and every shared row rehosting its `URL` — so a module drafted from
+  this lane can see an evidence level move under it, which is the check working. The builder
+  docstring's *"4,618 of 5,113"* is gone from all five live files, restated as a relationship rather
+  than swapped for a fresh count. **Left unbuilt on purpose**: the three currency canaries the entry
+  listed, each of which is its own design — nothing here would notice `summaryAnnotations.zip` itself
+  going quiet.
 - **MITOMAP's terms are read (RM171): CC BY 3.0**, commercial use and redistribution permitted,
   attribution required. Read from a Wayback capture because the live page is behind a Cloudflare
   interstitial; the CC BY-NC a search surfaces is the *article's* licence, not the database's.

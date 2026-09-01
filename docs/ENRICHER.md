@@ -332,7 +332,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `pharmvar` | star-allele definitions + function (`Api-Key` header, 2 rps) | `httpx`, `tenacity` |
 | `cpic` | allele function, diplotype→phenotype, defining variants (PostgREST) | `httpx`, `tenacity` |
 | `pgx` | pass 5: cross-check star-allele tables, write the licence table | the three above |
-| `clinpgx_build` | `[dev]`: `clinicalAnnotations.zip` → snapshot parquet + pinned `LICENSE.txt` | `polars`, `httpx` |
+| `clinpgx_build` | `[dev]`: `summaryAnnotations.zip` → snapshot parquet + pinned `LICENSE.txt`; refuses the retired `clinicalAnnotations.zip` by name | `polars`, `httpx` |
 | `clinpgx` | pass 6: evidence-level cross-check over the snapshot (offline) | `duckdb` (core, not polars) |
 | `clinvar_build` | **`[dev]`** builder: ClinVar VCF → per-chromosome parquet snapshot + `release.json` | `polars` (lazy), `httpx` |
 | `gnomad` | live gnomAD GraphQL: batched + paced rsid resolution, frequency, gene constraint | `httpx`, `tenacity` |
@@ -3742,26 +3742,49 @@ separate step.
   `recommendation_strength` is still CPIC's and `evidence_level` still PharmGKB's; a provider fills
   only its own.
 
-### Pass 6 — ClinPGx clinical annotations (`clinpgx.py`, offline capable)
+### Pass 6 — ClinPGx summary annotations (`clinpgx.py`, offline capable)
 
 `pgx.py` asks the nomenclature authorities about star alleles over the network; this pass asks
-ClinPGx about *clinical annotations* — which variant, which drug, at what evidence level — from a
+ClinPGx about *summary annotations* — which variant, which drug, at what evidence level — from a
 local snapshot, exactly as the ClinVar cross-check does. `clinpgx_build` is the `[dev]` builder.
+ClinPGx called these **clinical annotations** until 2025-07-29 and both names are still in use on its
+own site; the archive, the members and the id column all say *summary* now.
 
 The snapshot is read with **duckdb**, not polars, and that is deliberate: polars is a `[dev]`
 dependency here (only the builders need it) while duckdb is core, so reading with polars would leave
 this runtime pass unusable on a plain `pip install just-dna-enricher`. `clinvar.py` reads its snapshot
 the same way for the same reason — the builder may be dev-only, the pass may not.
 
-**The snapshot pins its own licence.** ClinPGx ships a `LICENSE.txt` inside `clinicalAnnotations.zip`,
+**The snapshot pins its own licence.** ClinPGx ships a `LICENSE.txt` inside `summaryAnnotations.zip`,
 so the builder extracts it, records its sha256 in `release.json`, and the pass stamps that hash onto
 the `SourceRow`. The recorded terms are provably the ones shipped with the recorded data — the
 property a static source→licence map cannot offer.
 
-**The snapshot's grain is (annotation, genotype)**, joining `clinical_annotations.tsv` to its
-per-genotype child `clinical_ann_alleles.tsv`. `CREATED_<date>.txt` is the release id, because
+**The snapshot's grain is (annotation, genotype)**, joining `summary_annotations.tsv` to its
+per-genotype child `summary_ann_alleles.tsv`. `CREATED_<date>.txt` is the release id, because
 ClinPGx publishes no version number and does not refresh its archives in lockstep —
-`relationships.zip` was a year newer than `clinicalAnnotations.zip` when this was written.
+`relationships.zip` was a year newer than `clinicalAnnotations.zip` when this was written, which
+RM175 later explained: that archive had stopped being rebuilt at all.
+
+**The archive is identified before it is read, and the retired spelling is refused (RM175).** ClinPGx
+renamed clinical annotations to summary annotations on 2025-07-29 and the archive followed —
+`clinical_annotations.tsv` → `summary_annotations.tsv`, `clinical_ann_alleles.tsv` →
+`summary_ann_alleles.tsv`, `Clinical Annotation ID` → `Summary Annotation ID`, with the evidence and
+history siblings renamed the same way (this builder reads neither). `clinicalAnnotations.zip` was last
+written on 2025-07-05, is on no downloads page, and the API still answers it **200** through a 303 to
+that frozen object — so until this item every snapshot the lane built came out of a database fourteen
+months old, and nothing in the download said so. `require_current_archive` therefore reads the
+archive's member names first and answers in three arms: the current spelling builds, the retired one
+is refused with the rename, its date, the retired filename and the URL to use instead, and an archive
+that is neither says *that* instead. `just-dna-enricher clinpgx build` prints the refusal as
+`CLINPGX BUILD FAILED: …` and exits 1.
+
+Nothing about the table itself moved: the other fourteen columns are identical in name and order, and
+`Phenotype Category` carries the same values with the same `;` separator, so no vocabulary member, no
+model field and no parquet column changed. The **data** moved, which is the point — 16,087 → 16,117
+snapshot rows, 22 (annotation, genotype) keys gone and 52 new, 30 rows changing `evidence_level` and
+every shared row rehosting its `URL` from `pharmgkb.org` to `clinpgx.org` — so a module drafted from
+this lane can now see an evidence level move under it. That is the check working, not a regression.
 
 **The cross-check keys on the annotation, not the triple, and that is a bug fix rather than a
 nicety.** `(rsid, drug, genotype)` is *not* unique: rs4149056 + simvastatin is Metabolism/PK at 1A,
@@ -4609,7 +4632,8 @@ and carries no fact the label table does not, so nothing reads it.
 
 **Its own `release.json`, never the annotation lane's.** `clinpgx_build`'s docstring records
 `relationships.zip` a *year* newer than `clinicalAnnotations.zip`, so the archives do not refresh in
-lockstep. The label snapshot is dated from its own `CREATED_<date>.txt` and labelled
+lockstep — and RM175 later found the reason that gap was so wide, which was that ClinPGx had retired
+the annotation archive under that name. The label snapshot is dated from its own `CREATED_<date>.txt` and labelled
 `clinpgx_drug_labels_<date>` — distinct from `clinpgx_<date>`, because two surfaces have two
 denominators (`@two-surfaces-two-denominators`).
 

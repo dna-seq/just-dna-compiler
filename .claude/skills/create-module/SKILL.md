@@ -636,9 +636,12 @@ The house algebra is **three-valued: true / false / unknown**, and `None` is nev
 
 ## PGx and star alleles
 
-- **A clinical annotation's key is `(variant_key, drug, genotype, phenotype_category, annotation_id)`**
+- **A summary annotation's key is `(variant_key, drug, genotype, phenotype_category, annotation_id)`**
   — not the bare triple. One variant+drug carries several distinct annotations (rs4149056+simvastatin
-  is Metabolism/PK 1A, Efficacy 3 *and* Toxicity 1A).
+  is Metabolism/PK 1A, Efficacy 3 *and* Toxicity 1A). ClinPGx renamed these from *clinical
+  annotations* on 2025-07-29 and both names are still in use on its site; the download is
+  `summaryAnnotations.zip`, and `clinpgx build` refuses the retired `clinicalAnnotations.zip` because
+  it still serves 2025 data.
 - **Annotations are per genotype, and can oppose each other** — rs4149056/simvastatin is "decreased"
   for CC/CT and "increased" for TT. Genotype is in the key for that reason.
 - **CPIC recommendations are keyed by (phenotype, drug, *population*)**, and the populations disagree —
