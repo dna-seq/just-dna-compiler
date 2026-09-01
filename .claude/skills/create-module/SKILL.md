@@ -798,10 +798,13 @@ workaround.
 
 Snapshot builders (dev/publisher surface, mostly needing the `polars` extra):
 `clinvar build|citations|publish`, `clinpgx build|check|publish`, `cpic build|publish`, `pharmvar build`,
-`acmg build`, `gnomad constraint build|publish`, `pubmind build`, `cache status|pull`, `upload`.
-Two of those never publish and say so when asked: `pharmvar build` and `pubmind build` write a local
+`acmg build`, `gnomad constraint build|publish`, `pubmind build`, `civic build`, `mane build`,
+`cache status|pull`, `upload`.
+Some of those never publish, and the reasons differ. `pharmvar build` and `pubmind build` write a local
 snapshot only, because a bulk file arriving under terms nobody has established is not a file this
-workspace may pass on.
+workspace may pass on — ask `pubmind publish` and it says so. `mane build` has no publish command at
+all: NCBI states a policy rather than a licence, placing no restriction and granting no permission, so
+there is nothing to relay either way.
 
 Every pass takes `--strict` / `--best-effort`, and every pass that can degrade takes `--offline`.
 `--offline` is the only switch; an explicit `--*-cache` path is the inject-only escape hatch and is
