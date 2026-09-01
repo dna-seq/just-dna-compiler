@@ -178,11 +178,40 @@ Two consequences worth stating outright:
 
 # Active items
 
-**None, and that is a real state rather than a gap** (the count is the `## RMn` sections below — it
+**Seven** (the count is the `## RMn` sections below — it
 read "four as of 2026-08-21" for two rounds after it stopped being four, then *not one of them is a
 decision* through the three that are, then *three* for the hour it took a fourth to be filed, then
-*two* until RM151 shipped, then *one* naming RM152, then *one* naming RM153, and now none — which is
-why the paragraph under it says to count off the sections rather than off this sentence).
+*two* until RM151 shipped, then *one* naming RM152, then *one* naming RM153, then none, and now
+seven — which is why the paragraph under it says to count off the sections rather than off this
+sentence).
+
+**Six of the seven are one round: the 2026-09-01 source-adoption round, RM163–RM168.** They were asked
+for as a batch — *what else should we adopt as enrichment sources, besides CIViC and PubMind* — and are
+filed together because they share a shape and a discipline rather than a mechanism. Three of them
+(RM163, RM164, RM165) come out of one measurement: a drafting **provider** exists for four of the nine
+table kinds, and `heteroplasmy.csv`, `repeat_alleles.csv`, `copynumbers.csv`, `pgs.csv` and
+`activity_phenotype.csv` have no source behind them at all. The other three each name a source that a
+*procedure* already leans on without the code knowing (RM168), a second authority on a lane that is
+currently a single licence class (RM166), or an axis a source we did adopt structurally cannot serve
+(RM167).
+
+**Not one of the six has been probed, and every entry says so in its own words.** Each separates what
+is *measured* — a table kind with no provider, a snapshot's actual contents, a number from a probe
+already run — from what is merely *candidate*, and **none asserts a licence**. That split is the whole
+discipline of the round: the failure it is most likely to cause is a remembered licence or a remembered
+API hardening into a permanent false constraint in these files (`@probe-names-the-table`), so each
+item's **first step is the probe**, and a negative closes the item rather than leaving it open. Two of
+them, RM164 and RM166, name in advance the finding that would close them.
+
+**RM166 may not be a new source at all** — if ClinPGx's own drug-label download already carries the FDA
+content, it is a second file from a source already adopted, which is a cheaper item with a different
+terms answer and a different owner. That question is its first line of work for exactly that reason.
+
+The candidates deliberately **not** filed are not restated here: the predictor tier is RM23, authored
+PRS weights are RM16, and Google Scholar, OpenAlex/Unpaywall fulltext and an offline gnomAD frequency
+snapshot are dispositioned in the 0.5 idea-book below. Academic-only sources (OMIM, dbNSFP) and
+subscription-gated ones (HGMD) are out on terms; callers (PharmCAT, Cyrius, PyPGx) are out on scope,
+which is *Annotating core, not format scope* further down.
 
 **RM152 and RM153 both arrived and both shipped on 2026-08-31**, which is the sequence worth keeping.
 RM152 stood here carrying **no release class**, on the stated grounds that both its candidate
@@ -399,6 +428,210 @@ An `accepted` row and a `submitted` row must not be indistinguishable once both 
 
 **Related** RM152 (the adoption), RM159 (the name-identity table, whose two unresolved records are the
 motivating case), RM153.
+
+## RM163 — `pgs.csv` is keyed on a Catalog accession and nothing ever asks the Catalog about it
+
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
+**Motivating case** the 2026-09-01 source-adoption round
+
+`PgsRow` is a **manifest** of PGS Catalog ids — RM16 is the other thing, authored per-variant weights,
+and stays deferred on a missing consumer. The manifest is keyed `(pgs_id, trait_efo_id)`, and beside
+the accession it carries four authored copies of facts the Catalog itself publishes:
+`training_ancestry`, `training_cohort`, `match_rate_floor`, `research_tier`.
+
+**Measured against the code rather than recalled.** `identifiers.py` asks three registries — dbSNP for
+`rsid`, OLS4 for `trait_efo_id`, HGNC for `gene`. Since S86 the trait roster is *derived* from
+`DRAFTABLE` rather than hand-listed, so `pgs.csv`'s `trait_efo_id` is covered **by construction**, and
+this item does not re-open that. `pgs_id` is covered by nothing: there is no fourth registry, and
+`PgsRow` declares no `gene` column, so the accession the table is keyed on is the one authored
+identifier in the format that no pass asks about.
+
+Two questions, each already having a shape in this repo:
+
+- **Currency**, the `identifiers.py` shape — does `PGS001234` still exist, has it been superseded or
+  withdrawn. A retired score is `@rsid-absent-two-readings` again: *typo* and *withdrawn* are opposite
+  instructions to an author, so the message must name both readings unless the API separates them.
+- **Drift**, the `pgx.enrich_pgx` shape — the four authored copies against what the Catalog serves
+  today. Reports, never repairs (`@enrichment-is-validation`), and a drifted cell is the author's to
+  fix or to answer in `overrides.csv`.
+
+**The first step is the probe, not the pass.** What the EBI REST surface actually returns for a
+retired id, whether a supersession is distinguishable from a never-assigned id, and the Catalog's
+published terms (`@probe-the-real-file`). **Nothing about those terms is established here** —
+`licensing.py` names no PGS `SourceTerms` and this entry asserts none.
+
+**Related** RM16 (explicitly *not* this item), S86 (the roster widening that already covers the trait
+half), `@registry-completeness`.
+
+## RM164 — `heteroplasmy.csv` is a shipped table kind with no source behind it
+
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
+**Motivating case** the 2026-09-01 source-adoption round
+
+**The measurement, taken over `_TABLE_KINDS` and the enricher's providers.** Every table kind is in
+`DRAFTABLE` by construction, so *structurally* all nine are draftable. A **provider** exists for four:
+`haplotypes`/`allele_function`/`diplotypes` (`pgx_draft` ← CPIC), `pharm_variants` (`clinpgx_draft` ←
+ClinPGx), and `variants` (`clinvar_draft`, `civic_draft`, `pubmind_draft`). `heteroplasmy.csv`,
+`repeat_alleles.csv`, `copynumbers.csv`, `pgs.csv` and `activity_phenotype.csv` have **none**, and no
+enrichment pass reads them for a cross-check either. `enrich()` does resolve heteroplasmy rows — it is
+the third table that can ask, and the one that keys *with* `alts` — but resolution is not a source.
+
+The corpus behind the kind is one module: `reference_examples/mt_heteroplasmy`, two MT-TL1 variants of
+one gene, hand-authored from the literature. That is the `@probe-uniform-corpus` shape exactly — the
+schema generalized from a single case, and nothing since has taken a second one.
+
+MITOMAP is the canonical mtDNA variant table and the obvious candidate. **Two things must be
+established before that is a plan, and neither is:**
+
+1. **The terms.** MITOMAP is not CC0, and this entry states nothing further about its licence.
+   Whether it is expressible as a `SourceTerms` at all, and whether it lands as a **draft** source or
+   only as a **check**, is decided by reading its published terms. RM153 is the standing reminder that
+   a source's terms page can answer HTTP 200 with something that is not terms, and that the honest
+   record of an unestablished axis is `None` (`@no-named-licence`).
+2. **Whether it carries the axis at all.** `HeteroplasmyRow` binds a *level band* per
+   `(gene, reference_sequence, tissue, variant_key)`. A per-variant pathogenicity table with no tissue
+   and no threshold fills the identity columns and none of the binding ones — it would draft rows that
+   say nothing the kind exists to say. Probe the real file and name the table probed
+   (`@probe-the-real-file`, `@probe-names-the-table`); a negative here is as useful as a positive and
+   closes the item cleanly rather than leaving it open forever.
+
+**Related** RM165 (the same shape on the other uncovered binning kind), `@probe-uniform-corpus`.
+
+## RM165 — `repeat_alleles.csv` has no source, and RM65/RM66 have been waiting on exactly the corpus one would bring
+
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
+**Motivating case** RM65's own stated prerequisite
+
+Same measurement as RM164: no drafting provider, no cross-check pass. The corpus is two hand-authored
+modules, `fmr1_cgg_repeat` and `htt_repeat_expansion`, neither of which carries a resolution sidecar.
+
+**What lifts this above a symmetry argument is that two deferred items name its prerequisite.** RM65
+defers repeat/copy-number coordinates in as many words — *"Adding the coordinates waits on a real
+repeat-caller or CNV VCF sample, or a consumer field report. Without one it is scaffolding in thin
+air."* A published repeat-locus catalogue is a third thing that satisfies it, and it satisfies RM66
+better than a caller would: RM66 asks what to do when one locus has several motifs
+(`RepeatAlleleRow` is keyed `(gene, repeat_unit)` and binds one count to one motif, while HTT's
+`(CAG)n(CAA)(CAG)` is several `RUS` entries to a modern caller), and **a catalogue publishes the motif
+structure as data** where a caller emits it per sample. So adopting a source here is not only a
+drafting convenience; it is the evidence two parked items are parked for want of.
+
+Candidates to probe: STRchive, and gnomAD's tandem-repeat release. gnomAD is already adopted and
+carries `GNOMAD_TERMS`, which makes the second cheaper on the licence axis — **but the terms of a
+different release from an adopted source are a thing to check, never to inherit**
+(`@probe-names-the-table`). Neither source's terms are asserted here.
+
+**Probe for the motif structure specifically**, because that is what decides whether RM66's keying
+change — expensive, on a shipped table — is even indicated. And carry RM65's attached obligation
+forward: `_write_resolution_csv`'s positional pass hard-codes `locus_index = 0`, honest only while
+those tables never expand, and coordinates on a repeat table are exactly what could expand one
+(RM87).
+
+**Related** RM65, RM66, RM87, RM164.
+
+## RM166 — the whole PGx lane is one licence class, and a second authority exists that is not in it
+
+**Severity** low-medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
+**Motivating case** the 2026-09-01 source-adoption round
+
+The PGx lane reads three sources: CPIC (five parquet tables — genes, alleles, diplotypes,
+allele_definitions, recommendations), PharmVar (star-allele definitions and function), and ClinPGx
+(**`clinicalAnnotations.zip` and nothing else** — that is what `clinpgx_build` downloads). All three
+are CC BY-SA + no-sale (`@pgx-research-only`), so the entire lane sits behind one gate and no module
+built from it is sellable. That is a single point of failure on an axis the format gates on.
+
+FDA's pharmacogenetic association tables are a second authority on the same drug–gene claims with a
+different terms profile. Two independent reasons to want one: a **concordance check** in the RM134 § B
+shape — module ↔ authority ↔ authority, which is the apparatus already built for ClinVar × PubMind —
+and a lane member whose terms may not gate at all.
+
+**The first probe is not "does the FDA publish this". It is `@probe-names-the-table`.** ClinPGx
+publishes more downloads than the one we read; if its drug-label archive already carries the FDA
+content, then this is *a second file from a source already adopted* rather than a new source, which is
+a materially cheaper item with a different terms answer and a different owner. Establish that first.
+
+Then the joinability question, which can close the item outright: the FDA tables are gene- and
+drug-level, while this lane's rows are keyed to genotypes and diplotypes
+(`@clinpgx-full-key`, `@clinpgx-per-genotype`). A check with no key to join on is not a check.
+
+**Nothing here asserts the FDA tables' terms.** "US government work is public domain" is a rule with
+exceptions and it has not been established for this table.
+
+**Related** RM134 § B (the concordance shape), RM29b, `@pgx-research-only`,
+`@two-surfaces-two-denominators`.
+
+## RM167 — LitVar2/PubTator3 answers "which papers name this allele", which is the half PubMind structurally cannot
+
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
+**Motivating case** the measured limits of the PubMind adoption (RM134)
+
+[PUBMIND_ASSESSMENT](PUBMIND_ASSESSMENT.md) established by measurement that PubMind's only per-variant
+channel is the ANNOVAR-redistributed bulk table, and that **PubMind has record identity, not variant
+identity**: consolidation into a PVID keys on the *text* the model extracted, so 68,744 coordinate keys
+(8.4 %) carry more than one PVID, the worst carries 35, and HFE C282Y alone holds eight with four
+different verdicts. Of 909,224 rows only **342,209** decompose to a joinable `chrom:start:ref:alt` key;
+the other 439,388 assert that some codon change produced an amino acid, which is a statement about a
+protein rather than about a position a consumer can genotype.
+
+LitVar2/PubTator3 is NCBI's variant–literature index, and it is the same domain on a different axis:
+it normalizes a variant to an identity and returns **the PMIDs that mention it**, carrying no
+pathogenicity verdict of any kind. That shape is one the enricher already speaks — `literature.py`
+goes PMID → article, and this goes variant → PMIDs — and a source with no verdict raises none of the
+charter questions RM134 § C had to answer about drafting from an authority.
+
+**The open question is the one that decides the item, and it belongs in the entry rather than in the
+build: does this complement PubMind or duplicate it?** They are complements if LitVar's identity is
+genuinely allele-level where PubMind's is record-level — in which case it is an independent second
+vote on exactly the fan-out the PVIDs create. They are duplicates if it is another aggregation over
+the same extraction with the same text-keying underneath. **That is answerable before writing a
+line**: join both against the corpus the PubMind assessment already measured (11 modules, 423 resolved
+GRCh38 loci, of which PubMind knows 173) and compare the identity behaviour, not the row counts.
+
+**The second question is what a module would carry.** A PMID list per variant is not a table kind, and
+`literature.csv` is keyed by article. Whether the answer is a `studies.csv` drafting provider, a
+currency signal, or nothing that lands in an artifact at all is undecided — **an enrichment surface
+that reports and writes no row is a legitimate outcome** and should not be designed away.
+
+NCBI's terms for this surface are the third thing to establish rather than assume.
+
+**Related** RM134, `@per-article-terms`, `@existence-not-identity`, `@probe-the-real-file`.
+
+## RM168 — the identity procedure downloads MANE by hand, and nothing in the code knows the file exists
+
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
+**Motivating case** [CIVIC_IDENTITY_PROTOCOL](probes/CIVIC_IDENTITY_PROTOCOL.md) § 3b
+
+A `c.` or `p.` name means nothing until a transcript is named, and § 3b answers that with
+`MANE.GRCh38.v1.5.summary.txt.gz` from the NCBI FTP site, *"downloaded once and cited"*. That is a
+**procedure step in a probe document**, not a source: no `SourceTerms`, no entry in `locations`, no
+builder, no `release.json`, and a version pinned in prose that nothing will notice going stale. Every
+other reference table this workspace leans on — Ensembl, ClinVar, gnomAD constraint, CPIC, ClinPGx,
+PharmVar, PubMind, CIViC — is a cache with a location and a recorded release. MANE is the one that is
+a sentence.
+
+Two reasons to promote it, and the second is the stronger:
+
+1. **RM159 shipped 33 curated name→identity answers as data**, precisely so that `civic build` stays
+   offline and byte-reproducible. The numbering frame those answers were derived in is MANE plus the
+   source's own convention, and it is recorded nowhere a re-derivation could read.
+2. **The protocol's own finding is that MANE is not sufficient** — *"MANE is the default, not the
+   answer"* — and that is what makes it a source rather than a constant. Two of eleven set-B genes
+   needed more: **RUNX1**, where MANE `NM_001754.5` is RUNX1c numbering and the name was RUNX1b, the
+   27-residue offset **derived by translating each isoform's CDS** and never remembered; and
+   **CDKN2A**, which has MANE Select `NM_000077.5` *and* MANE Plus Clinical `NM_058195.4` with
+   different CDS numbering. A table with `MANE_status` in it is what lets a pass **see** the second
+   case. A remembered accession is what hides it.
+
+**Scope, stated so it is not widened by accident.** This is a transcript-identity aid, not HGVS
+generation. Generating `c.`/`p.` notation is its own deferred feature with its own argument (which
+transcript, which reference, how to present ambiguity — the 0.5 idea-book), and nothing here proposes
+it. Note also the recorded asymmetry that makes the frame matter: Ensembl's Variant Recoder rejects
+`NM_000551.3` outright while accepting `.4`, so which version a pass submits is a real decision.
+
+**Probe first**: the file's own terms (a joint NCBI/EBI product — **not established here**), whether
+`current/` resolves to a dated version a `release.json` can pin, and what the download costs
+(`@probe-the-real-file`, `@currency-asks-the-source-not-the-cache`).
+
+**Related** RM159, RM153, RM152, RM160, `@snapshot-layout-locations`, `@accession-version-names-no-build`.
 
 # Not format scope
 
