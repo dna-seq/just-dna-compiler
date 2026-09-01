@@ -35,6 +35,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Gene ↔ locus agreement** | the row's `gene` vs the chromosome its variant sits on (0.5.4) | `identifiers.check_identifiers` → `GeneLocusConflict` (attested since RM72) |
 | **ACMG secondary findings** | authored `acmg_sf` vs the published SF gene list (v3.3 via `--sf-list`; the scraped v3.2 page reports `unverifiable`) | `acmg.check_acmg_sf` (attested by `check-acmg` since RM72) |
 | **Repeat bands** | an authored `repeat_alleles.csv` band table vs STRchive's `benign_*`/`intermediate_*`/`pathogenic_*` (0.7, RM165) | `strchive.check_repeat_bands` (**warns in both modes**; the catalogue's `pathogenic_max` is reported and never written) |
+| **Regulator drug labels** | a `(gene[, allele], drug)` claim vs the `Testing Level` five drug regulators' labels carry, at two join tiers (0.7, RM166) | `drug_labels.check_drug_labels` (**warns in both modes**; a blank level is `unknown` and never `No Clinical PGx`) |
 | **Allele function** | authored `function_status` vs PharmVar and CPIC | `pgx.enrich_pgx` (**warns in both modes**) |
 | **Declared use** | the caller's `--use` vs a source's terms | `licensing.check_declared_use` (**refuses in both modes**) |
 | **Drafted vs authored rows** | a source's current row vs the one already in the CSV | `just_dna_compiler.draft.append_rows` (reports `differs`; never rewrites) |
@@ -4013,6 +4014,7 @@ directly to compose passes, inject clients, or run in-process.
 | `draft-repeats` | `strchive_draft.draft_repeat_loci` |
 | `strchive build` | `strchive_build.build_strchive_snapshot` → `strchive.load_strchive_catalogue` |
 | `clinpgx build` / `clinpgx check` | `clinpgx_build.download_clinpgx_zip` + `build_snapshot` / `clinpgx.enrich_clinpgx` |
+| `clinpgx build-labels` / `check-labels` | `drug_labels_build.download_drug_labels_zip` + `build_drug_label_snapshot` / `drug_labels.check_drug_labels` |
 | `clinvar build` / `citations` / `publish` | `clinvar_build.download_clinvar_vcf` + `build_snapshot` / `download_var_citations` + `build_citations` / `upload.publish_reference_snapshot` |
 | `gnomad constraint build` / `publish` | `constraint_build.download_constraint_tsv` + `build_snapshot` / `upload.publish_reference_snapshot` |
 | `vrs mint` | `vrs.mint_resolution_rows` |
