@@ -267,8 +267,12 @@ def test_an_archive_of_neither_vintage_gets_its_own_diagnosis(tmp_path: Path) ->
         build_snapshot(_archive(tmp_path, RETIRED_ARCHIVE), tmp_path / "snap2")
 
     assert str(unknown.value) != str(retired.value)
-    assert RETIRED_ARCHIVE.archive not in str(unknown.value).split("either")[0]
+    # It names both spellings — it looked for both and found neither, which is what makes it the
+    # third answer rather than a vaguer version of the second.
     assert CURRENT_ARCHIVE.annotations in str(unknown.value)
+    assert RETIRED_ARCHIVE.annotations in str(unknown.value)
+    # And it does not reach for the retired archive's remedy, which is the second arm's answer.
+    assert RETIRED_ARCHIVE.archive not in str(unknown.value)
 
 
 def test_the_default_url_names_the_archive_clinpgx_publishes(tmp_path: Path) -> None:
