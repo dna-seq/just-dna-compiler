@@ -1144,6 +1144,30 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   authored allele no label names is then neither withheld nor a finding: the gene-tier subject answers
   for it, so it is a coverage **number** (`@dont-discard-computed`), not a silence.
 
+- `@a-ref-that-reads-as-landed-may-not-be` — **`git fetch origin <branch>` writes FETCH_HEAD and
+  leaves `refs/remotes/origin/<branch>` where it was; and an empty `A..B` means either *absorbed* or
+  *B does not exist*.**
+
+
+  Two incidents, one in each direction, on the same day. A worker ran `git fetch origin 0.7`, then
+  `git log origin/0.7`, and read the tracking ref — untouched by that form of fetch — as proof that
+  nine fixes it had pushed were missing from a branch that already carried them; it nearly re-opened a
+  PR for landed work. The coordinator ran `git diff --stat 0.7..origin/rm166-axis-labels`, got nothing,
+  and read it as fully absorbed; the branch had never been pushed, and an empty range against a
+  nonexistent ref is byte-identical to an empty range against an identical one.
+
+  The two cheap guards: **`git ls-remote origin <branch>`** reads what the remote actually holds
+  without touching any local ref, and **`git rev-parse --verify <ref>`** before trusting a range says
+  whether the far side exists at all. A bare `git fetch origin` does update the tracking refs; the
+  single-branch form is the one that does not.
+
+  **The half worth carrying beyond git** is what happened next: both sides proposed a repair before
+  establishing the defect it was for — a `git update-ref` for a ref that was not stuck, and a narrowed
+  `remote.origin.fetch` refspec for a repo whose refspec turned out to be the plain wildcard. One
+  `git config --get-all` and one `git ls-remote` settled both, and neither would have been needed if
+  either of us had run them before explaining. That is `@argue-from-incidents-not-mechanisms` arriving
+  in a place with no code in it.
+
 - `@a-lane-local-vocabulary-may-not-shadow-a-schema-one` — **Two closed sets with the same name and
   different members is a wrong answer waiting for the first module that imports both (RM166).** The
   drug-label check shipped a `VALID_AUTHORED_POSITION` holding `{opposed, unplaced, unchecked, absent,

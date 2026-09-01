@@ -546,6 +546,45 @@ established before that is a plan, and neither is:**
 **Related** RM165 (the same shape on the other uncovered binning kind), RM171 (the spin-off),
 `@probe-uniform-corpus`.
 
+## RM173 — the PGx lane reads two of at least twelve ClinPGx archives, and `clinicalVariants` is the one that lands on a shipped table
+
+**Severity** low-medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
+**Motivating case** RM166's probe, which found it while answering a narrower question
+
+**Filed 2026-09-01, out of RM166's build.** RM166 asked whether the FDA's drug-label content was
+already inside a source this repo has adopted; it is, and enumerating the download endpoint properly
+answered a second question nobody had asked. **ClinPGx publishes at least twelve archives** —
+`clinicalAnnotations`, `variantAnnotations`, `clinicalVariants`, `drugLabels`, `relationships`,
+`variants`, `genes`, `drugs`, `chemicals`, `phenotypes`, `occurrences`, `pathways-tsv` — and after
+RM166 the lane reads **two**. So the honest framing of the PGx lane is not *which new source do we
+adopt* but *which of the twelve files from the source we have already adopted and gated do we read*.
+
+**`clinicalVariants.zip` is the one that bears on a shipped table kind.** ~74 KB, ~5,190 rows of
+`variant, gene, type, level of evidence, chemicals, phenotypes` — star alleles and rsIDs against
+PharmGKB evidence levels, which is `pharm_variants.csv` territory rather than a new kind.
+
+**What blocks it is one column, and it is not the usual normalizer problem.** `type` is a six-member
+base vocabulary that **comma-combines**: `Efficacy,Toxicity`, `Efficacy,Toxicity,Metabolism/PK`. So one
+field carries a **set**, and an adoption must normalize the *combination* rather than the token —
+`@one-normalizer-two-spellings` with an extra axis on it. Deciding whether the combination is a set to
+split into rows, a set to carry in one cell, or a vocabulary of its own is the design question, and it
+is exactly the shape `@dedup-key-decides-rows` is about: the dedup key decides which columns may become
+several rows, never the source's dialect.
+
+**The terms are already established and already gated**, which makes this cheaper than any item in the
+2026-09-01 round: same source, same CC BY-SA + no-sale licence read out of the payload's own
+`LICENSE.txt`, same cache, and `clinpgx_build`'s machinery for all of it. **But its release is its
+own** — `clinpgx_build`'s docstring records `relationships.zip` arriving a year newer than
+`clinicalAnnotations.zip`, so this archive gets its own `CREATED_*.txt` and its own `release.json`
+rather than inheriting the lane's (`@two-surfaces-two-denominators`).
+
+**Not a widening of RM166.** That item is drug labels and it shipped; this is a different file
+answering a different question about a different table kind, and keeping an item open by changing what
+it is about is how an item stops meaning anything.
+
+**Related** RM166 (where it was found), RM29b, `@one-normalizer-two-spellings`, `@dedup-key-decides-rows`,
+`@two-surfaces-two-denominators`, `@pgx-research-only`.
+
 ## RM171 — MITOMAP's `mmutation` is a curated mtDNA variant table behind 29 free-text status strings
 
 **Severity** low-medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
