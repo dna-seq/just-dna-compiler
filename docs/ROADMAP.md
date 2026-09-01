@@ -538,10 +538,19 @@ half), `@registry-completeness`.
 
 ## RM164 — `heteroplasmy.csv` is a shipped table kind with no source behind it
 
-**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
+**Severity** medium · **Status** open — **PARKED to 0.8, decided 2026-09-01** · **Owner** enricher ·
 **Motivating case** the 2026-09-01 source-adoption round
 
-**Probed and drafted in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm164--heteroplasmycsv-is-a-shipped-table-kind-with-no-source-behind-it) on 2026-09-01 — proposed PARKS to 0.8, pending the maintainer pass.** **Answered by reading the source, after the maintainer supplied the 2026-08-24 `pg_dump` (61 MB, 95 tables).** MITOMAP is **reachable** — plain `curl` gets the dump at `mitomap.org/downloads/`, HTTP 206 with ranges; the Cloudflare challenge is on the *web* surface only, and two earlier readings of this entry (a "refusal", then "unreachable by the machinery") were both a 403 from a path that was not the data path. **The axis answer is a measured no.** The schema has **exactly one `tissue` column**, on `mitomap.unpublished` — per-patient submissions beside `sample_id` and `ethnicity`, i.e. sample data this format does not carry. `mitomap.mmutation` is **602 rows** whose `homo`/`hetero` are *presence flags* (`+` 286/270, `-` 216/238, `nr` 90/89, plus `.`/`na`/NULL), with no threshold, no band and no tissue — the only levels in the table are two rows where a percentage was typed into a flag column. The only heteroplasmy numbers anywhere are re-hosted blood-cohort data (`mitomap.gnomad` 18,164 rows, `mitomap.helix` 14,104), where `max_observed_heteroplasmy` is a cohort observation, not a clinical threshold. So `HeteroplasmyRow`'s binding columns have **no source-side value in MITOMAP**. Terms are **unread**, not unestablishable — the dump carries no licence text in 6.7 M lines and the page a browser reaches was not opened. Parks, not closed. **Separately noticed and not part of this entry**: `mmutation` is a plausible mtDNA `variants.csv` source, blocked on `status` being 29 free-text strings rather than a vocabulary — its own item when taken.
+**Decided 2026-09-01 with the maintainer: parks, on the measured negative below.** The candidate field
+anyone has named is MITOMAP and the population callsets it re-hosts, and none of them publishes the
+axis the kind binds; that is a fact about what exists, not about how hard anyone looked, which is what
+makes the deferral honest rather than indefinite. It stays **open and visible** rather than closed,
+because a kind with a one-module corpus is exactly what `@probe-uniform-corpus` says to keep in view —
+and if a source that bands heteroplasmy by tissue appears, this entry is where it is checked against.
+**Reopen it with a source, never with an argument.** The spin-off it noticed is now
+[RM171](#rm171--mitomaps-mmutation-is-a-curated-mtdna-variant-table-behind-29-free-text-status-strings).
+
+**Probed and drafted in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm164--heteroplasmycsv-is-a-shipped-table-kind-with-no-source-behind-it) on 2026-09-01 — proposed PARKS to 0.8; the maintainer pass took it as proposed.** **Answered by reading the source, after the maintainer supplied the 2026-08-24 `pg_dump` (61 MB, 95 tables).** MITOMAP is **reachable** — plain `curl` gets the dump at `mitomap.org/downloads/`, HTTP 206 with ranges; the Cloudflare challenge is on the *web* surface only, and two earlier readings of this entry (a "refusal", then "unreachable by the machinery") were both a 403 from a path that was not the data path. **The axis answer is a measured no.** The schema has **exactly one `tissue` column**, on `mitomap.unpublished` — per-patient submissions beside `sample_id` and `ethnicity`, i.e. sample data this format does not carry. `mitomap.mmutation` is **602 rows** whose `homo`/`hetero` are *presence flags* (`+` 286/270, `-` 216/238, `nr` 90/89, plus `.`/`na`/NULL), with no threshold, no band and no tissue — the only levels in the table are two rows where a percentage was typed into a flag column. The only heteroplasmy numbers anywhere are re-hosted blood-cohort data (`mitomap.gnomad` 18,164 rows, `mitomap.helix` 14,104), where `max_observed_heteroplasmy` is a cohort observation, not a clinical threshold. So `HeteroplasmyRow`'s binding columns have **no source-side value in MITOMAP**. Terms are **unread**, not unestablishable — the dump carries no licence text in 6.7 M lines and the page a browser reaches was not opened. Parks, not closed. **Separately noticed and not part of this entry**: `mmutation` is a plausible mtDNA `variants.csv` source, blocked on `status` being 29 free-text strings rather than a vocabulary — its own item when taken.
 
 **The measurement, taken over `_TABLE_KINDS` and the enricher's providers.** Every table kind is in
 `DRAFTABLE` by construction, so *structurally* all nine are draftable. A **provider** exists for four:
@@ -570,7 +579,43 @@ established before that is a plan, and neither is:**
    (`@probe-the-real-file`, `@probe-names-the-table`); a negative here is as useful as a positive and
    closes the item cleanly rather than leaving it open forever.
 
-**Related** RM165 (the same shape on the other uncovered binning kind), `@probe-uniform-corpus`.
+**Related** RM165 (the same shape on the other uncovered binning kind), RM171 (the spin-off),
+`@probe-uniform-corpus`.
+
+## RM171 — MITOMAP's `mmutation` is a curated mtDNA variant table behind 29 free-text status strings
+
+**Severity** low-medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
+**Motivating case** RM164's probe, which found it while answering a different question
+
+**Filed 2026-09-01, out of RM164's decision rather than out of a sweep.** RM164 read MITOMAP's full
+`pg_dump` to answer whether the source carries a heteroplasmy *level* per tissue — it does not — and
+found, beside that negative, a table that is not about heteroplasmy at all. **`mitomap.mmutation` is
+602 curated mtDNA disease variants with a confirmation status**, which is `variants.csv` territory and
+a different table kind from the one RM164 is about. It is filed separately for that reason: widening an
+item by changing what it is about is how an item stops meaning anything, and RM164's negative would
+have been kept artificially alive by a positive that has nothing to do with it.
+
+**What blocks it is one column.** `status` is **29 distinct free-text strings**, not a vocabulary —
+`Reported` 419, `Cfrm [LP]` 42, `Conflicting reports` 16, `Cfrm [P]` 16, and a long tail of one-offs
+like *"Reported: individually neutral variants causing LHON in combination"* and *"Reported; hg D1 D2
+M33 R30 marker"*. Mapping that onto `clin_sig` is **a curation decision, not a normalization**:
+`@one-normalizer-two-spellings` is the rule for a vocabulary two sources spell differently, and it
+stops being enough at the point where one side is prose. A provider that mapped the four common
+strings and dropped the tail would be writing a judgement the source did not make; one that mapped
+every string would be inventing 25 of them.
+
+**And its terms are unread, exactly as RM164 left them.** The dump carries no licence text in 6.7
+million lines, and MITOMAP's terms live on a web page a browser reaches and that probe did not open.
+Unread is not unestablishable and is not `None` — the page has to be read before anything is drafted
+from this table (`@no-named-licence`).
+
+**The first step is therefore not code.** Read the terms; then decide whether `status` is adoptable at
+all, and if it is, whether the adoptable part is a `clin_sig` mapping or only the identity columns plus
+the verbatim string carried as evidence. A negative on the terms closes it outright, and that is named
+in advance for the same reason RM164 named its own.
+
+**Related** RM164 (where it was found), `@one-normalizer-two-spellings`, `@no-named-licence`,
+`@probe-the-real-file`.
 
 ## RM165 — `repeat_alleles.csv` has no source, and RM65/RM66 have been waiting on exactly the corpus one would bring
 

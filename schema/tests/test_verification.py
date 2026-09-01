@@ -434,6 +434,11 @@ def test_every_check_name_is_a_verification_question() -> None:
         "gene_disease_validity",
         "genome_build_agreement",
         "dataset_currency",
+        "pgs_accession_currency",
+        "pgs_metadata_agreement",
+        "repeat_band_agreement",
+        "literature_coverage",
+        "regulator_label_agreement",
     } == VALID_VERIFICATION_CHECKS
 
 

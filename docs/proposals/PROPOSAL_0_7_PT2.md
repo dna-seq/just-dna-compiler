@@ -13,11 +13,39 @@ RM140 and RM152 sit there rather than here. Six items decided together against a
 is a *round*, not an addendum, and [PROPOSAL_0_6_PT2](PROPOSAL_0_6_PT2.md) is the precedent for
 giving a second round of the same line its own file. Nothing below re-opens any of the twelve.
 
-**Status.** **Drafted 2026-09-01, on the `0.7` branch. Nothing here has been decided with the
-maintainer and nothing has shipped.** The 0.7 round was decided per item, in conversation, and two of
-this batch's neighbours (RM160, RM170) carry maintainer verdicts dated the same day; this file is the
-material for that pass, not a record of it. Where it and a ROADMAP entry disagree, **the ROADMAP still
-wins until an item here is taken.**
+**Status. Decided 2026-09-01 with the maintainer, and this file now wins over ROADMAP.** It was
+drafted earlier the same day as material for that pass; the pass happened, item by item, and **four of
+the six verdicts below are not the ones the draft proposed**. Where a per-item section still reads as a
+proposal, the *Decided* line under this heading is the authority and the section's own release call is
+the superseded draft.
+
+| Item | Drafted | **Decided** |
+| --- | --- | --- |
+| RM163 PGS Catalog | BUILDS in 0.7.0 | **BUILDS in 0.7.0** |
+| RM164 MITOMAP | PARKS to 0.8 | **PARKS — and the `mmutation` spin-off is filed as RM171** |
+| RM165 STRchive | check half in 0.7.0, provider held | **both halves in 0.7.0** |
+| RM166 ClinPGx drug labels | 0.8 | **taken, sequenced last** |
+| RM167 LitVar2 | BUILDS in 0.8 | **BUILDS in 0.7.0** |
+| RM168 MANE | BUILDS in 0.7.0 | **BUILDS in 0.7.0** |
+
+**Three of the four overrides run the same direction — a probe that came back better than the entry
+expected is a reason to take the item now, not a reason to feel safer deferring it.** RM165's provider
+was held because a new `DRAFTABLE` lane "should not be rushed into an open cut", and the cut is open
+precisely because nothing has been tagged; RM167 reversed from *closes* to *builds in 0.8* on the
+strength of the allele-tier finding and then to *builds now* on the same strength; RM166's licence
+motivation is gone but its cross-check is not, and sequencing it last is what the size argument
+actually bought. RM164 is the one verdict the draft got right, and it is the one where the probe came
+back worse.
+
+**One decision this file did not anticipate, recorded here rather than discovered later.** The
+*Shared-file hazards* paragraph below says none of these items touches `schema/`, and that **a diff in
+`schema/` or `compiler/` means the item has grown past what this file decided.** Four of the five
+passes attest, and `VALID_VERIFICATION_CHECKS` is a closed vocabulary in `just-dna-format` — so five
+members land there, and the prediction is wrong rather than the items being overgrown. It is additive
+and minor-legal (P3, P6), it costs zero on the authored layer (P9), and a published check name is a
+one-way door, which is why the names were fixed before any of the passes were written rather than
+minted by whichever landed first. The paragraph stands as a hazard list; this is its one recorded
+exception. `compiler/` is still untouched, and that half of the prediction holds.
 
 **Same convention as the two rounds before it**: each item records the problem in plain terms, **the
 facts established while deciding it**, the proposed decision, the repairs rejected and why, and the
@@ -53,18 +81,29 @@ batch is legal in it, and that is precisely why the release class cannot do the 
 per-item release call below is made on **size and blast radius**, not legality, and it puts three of
 the six inside 0.7.0 and holds the rest.
 
-| Item | Probe outcome | Proposed |
-| --- | --- | --- |
-| RM163 PGS Catalog | confirmed; five corrections, incl. a **35 %-dense id space** that reshapes the message | **BUILDS in 0.7.0** |
-| RM164 MITOMAP / heteroplasmy | source **reachable**; the *axis* is the negative, measured on the real schema | **PARKS** to 0.8 |
-| RM165 STRchive / repeat alleles | confirmed on identity, **refuted on bands**; second candidate out on category | **BUILDS**, split — check half in 0.7.0 |
-| RM166 ClinPGx / the PGx licence class | licence half refuted; the real finding is **1 of ≥12 files read** | **SPLITS** — check in 0.8, licence half closes |
-| RM167 LitVar2 / PubTator3 | premise **confirmed** once the allele tier was found; bounded on the hardest case | **BUILDS in 0.8** |
-| RM168 MANE | confirmed; **the source publishes its own staleness list** | **BUILDS in 0.7.0** |
+**The maintainer pass kept the rule and moved the line: five of the six go in, one parks.** The rule
+is that legality does not size a release, and it survives — what changed is the judgement it feeds,
+because the cut is still open and each item is a self-contained lane in the tier that fetches. The
+sizing that remains is **ordering**, not exclusion: RM168, RM163, RM165 and RM167 are built together
+and RM166 — the largest, and the one whose motivation the probe removed — is sequenced behind them, so
+if the cut has to happen early it is the one item still in flight rather than four.
+
+| Item | Probe outcome | Proposed | **Decided** |
+| --- | --- | --- | --- |
+| RM163 PGS Catalog | confirmed; five corrections, incl. a **35 %-dense id space** that reshapes the message | **BUILDS in 0.7.0** | as proposed |
+| RM164 MITOMAP / heteroplasmy | source **reachable**; the *axis* is the negative, measured on the real schema | **PARKS** to 0.8 | as proposed; spin-off filed as RM171 |
+| RM165 STRchive / repeat alleles | confirmed on identity, **refuted on bands**; second candidate out on category | **BUILDS**, split — check half in 0.7.0 | **both halves in 0.7.0** |
+| RM166 ClinPGx / the PGx licence class | licence half refuted; the real finding is **1 of ≥12 files read** | **SPLITS** — check in 0.8, licence half closes | **check taken now, sequenced last**; licence half still closes |
+| RM167 LitVar2 / PubTator3 | premise **confirmed** once the allele tier was found; bounded on the hardest case | **BUILDS in 0.8** | **BUILDS in 0.7.0** |
+| RM168 MANE | confirmed; **the source publishes its own staleness list** | **BUILDS in 0.7.0** | as proposed, and first |
 
 **This table was written before the re-probe round and rewritten after it** — three rows said
 something the second pass contradicted, which is `@a-record-written-in-two-passes-drifts-between-them`
-happening inside the document that names it. The per-item sections below are the authority.
+happening inside the document that names it. It has now drifted a **third** time, in the maintainer
+pass, which is why the *Decided* column sits beside the *Proposed* one rather than overwriting it: a
+record of a decision that erases what was proposed cannot show that four verdicts moved. The per-item
+sections below carry the reasoning; **the Decided column and the Status table are the release
+authority**, and where a section's own closing *Release:* line disagrees it is the superseded draft.
 
 ---
 
@@ -178,6 +217,14 @@ withholds, and the floor constant's gating axes are `None` rather than `True`.
 
 **Release: inside 0.7.0.** One registry, one two-column check, one terms constant; no schema change.
 
+**Decided 2026-09-01 — as proposed, and it attests under two names rather than one.**
+`pgs_accession_currency` and `pgs_metadata_agreement` are separate members of
+`VALID_VERIFICATION_CHECKS`: currency asks whether the id still names a score and drift asks whether
+two cells beside it still match, which are different questions with different subjects and therefore
+different denominators. Folding them into one record would publish a single findings count over two
+populations. The "no schema change" line above is the one thing that did not survive — see the
+exception recorded under **Status**.
+
 ---
 
 ## RM164 — `heteroplasmy.csv` is a shipped table kind with no source behind it
@@ -280,6 +327,12 @@ a reminder of the data-agnostic line from the other side: a source may hold per-
 and a module may not, whatever the terms say.
 
 **Release: none.** Defer to 0.8 with the blockers restated.
+
+**Decided 2026-09-01 — as proposed, and the spin-off is now a number rather than a paragraph.**
+`mmutation` as a `variants.csv` source is **RM171**, claimed through `.claude/rm-next.py` at the moment
+the item was taken, which is what the closing note below asked for. Nothing about `heteroplasmy.csv`
+changed: it is still the kind with no source behind it, and the negative is still measured rather than
+reasoned.
 
 ---
 
@@ -405,6 +458,14 @@ reuses the binning machinery; the provider is a new `DRAFTABLE` lane with its ow
 own placeholder guard and its own tests, and it is the kind of thing that should not be rushed into an
 open cut. Maintainer's call, and the split is what makes deferring the larger half cheap.
 
+**Decided 2026-09-01 — both halves in 0.7.0.** The split stands as a *design* — the band columns are
+still checked and never drafted, which is the finding that made this item worth taking — and it is the
+*deferral* that is overturned. Holding the provider assumed the cut was about to close; it is not, and
+the argument for the split ("what makes deferring the larger half cheap") reads equally well as an
+argument that the half is cheap. The two land as separate commits so the check is revertible without
+the provider. The refusals below all survive: `pathogenic_max` is never emitted as `measure_max`, the
+three bands are never drafted, and RM66's keying question is still not decided here.
+
 ---
 
 ## RM166 — the whole PGx lane is one licence class, and a second authority exists that is not in it
@@ -505,6 +566,13 @@ denominators, and any count either produces must say which.
 
 **Release: 0.8.** A new builder plus a two-tier cross-check is the largest item in this batch, and it
 is the one with the least urgency behind it now that its licence motivation has gone.
+
+**Decided 2026-09-01 — taken now, sequenced last.** *Largest in the batch* and *least urgent* are an
+argument about **order**, not about the release: they say build it after the other four, which is what
+happens. The half that closes still closes — the lane gains no member outside its licence class by this
+route — so what is being built is the cross-check alone, on its own merits, with the licence motivation
+gone rather than replaced. If the cut has to happen before this lands, this is the one item still in
+flight, which is the whole benefit the size argument was reaching for.
 
 ---
 
@@ -679,6 +747,17 @@ them: allele-resolved, position-only, absent.
 artifact question, and the coverage measurement over the 11-module corpus is its first task rather
 than a prerequisite that is already done.
 
+**Decided 2026-09-01 — 0.7.0.** The deferral rested on three things and none of them is a release
+blocker. The *client* is small and the id grammar is fully mapped above, down to the endpoint that
+returns Python `repr()`. The *tiering rule* is the item's finding, not an unknown — allele-resolved,
+position-only, absent, with the tier named in the finding. And the *undecided artifact question* is
+already answered in the permissive direction: the entry pre-authorised a surface that reports and
+writes no row, so an item that lands as exactly that is complete rather than half-done. The coverage
+measurement stays the build's first task, as written. The bound above is not softened by taking the
+item sooner — it ships **with** the pass, in the pass's own documentation: LitVar answers which papers
+discuss an already-identified allele, and the two CIViC legacy insertions are the worked proof that it
+does not answer which allele a name meant.
+
 ---
 
 ## RM168 — the identity procedure downloads MANE by hand, and nothing in the code knows the file exists
@@ -804,6 +883,10 @@ and byte-reproducible while their *frame* becomes readable. P3/P8 ✓. P9: zero 
 is the numbering frame RM159's answers were derived in, which is the argument for not letting it sit
 in another release as prose.
 
+**Decided 2026-09-01 — as proposed, and first.** It depends on nothing else in the batch and the
+identity protocol depends on it, which is the ordering the implementation section below already
+argues.
+
 ---
 
 # One pattern that showed up three times
@@ -834,12 +917,20 @@ people they were seen in?**
   task, and it answers coverage, not the identity question four requests settled.
 - **RM164's `variants.csv` spin-off is not designed here**, only noticed — `mmutation`'s 29 free-text
   status strings are the reason it is not a one-liner.
-- **No number is claimed for RM164's spin-off.** `.claude/rm-next.py` allocates it when the item is
-  taken — an index is not an allocator, and this file is not one either.
+- ~~**No number is claimed for RM164's spin-off.**~~ **Claimed in the maintainer pass: it is RM171**,
+  allocated by `.claude/rm-next.py` in the same locked write that reserved it. The rule the line stated
+  is intact — this file did not claim it by reading the highest number off an index — and the line is
+  struck rather than deleted so the sequence stays legible.
 
 ---
 
-# Implementation ordering, if the three 0.7.0 items are taken
+# Implementation ordering
+
+**Written as *"if the three 0.7.0 items are taken"*; five were.** The three-item order below is
+unchanged and correct, and two more sit around it: RM165's **drafting provider** lands after its check
+half — separate commits, so the check is revertible without the provider — and **RM166 is last**, after
+everything else has merged, on the sequencing argument in its own section.
+
 
 1. **RM168 first.** Three files under 1.2 MB total, self-contained, and nothing else in the batch
    depends on it — but the identity protocol does, and it is the only item here that makes an
@@ -858,6 +949,16 @@ people they were seen in?**
 touches `identifiers.py`**, which RM155–RM158 reworked days ago. None of them touches `schema/` or
 `compiler/` at all — if a diff in either appears, the item has grown past what this file decided and
 wants a re-read.
+
+**Two corrections from the build, and the second is the recorded exception.** With five items rather
+than three, *all five* touch `licensing.py` and four touch `locations.py` and `cli.py` — the hazard is
+the same one, wider. And the `schema/` prediction is **wrong**: five `VALID_VERIFICATION_CHECKS`
+members land in `just-dna-format`, because four of the five passes attest and that vocabulary is
+closed. The items did not grow; the prediction missed that attestation has a schema surface. The rule
+the sentence is reaching for still holds in the form that matters — **`compiler/` is untouched**, and a
+diff there would still mean an item had grown. The names are fixed before any pass is written, because
+a published check name is a one-way door and minting one per-pass makes the last writer's spelling the
+contract.
 
 **Standing requirements, per lane.** Every pass that consults a source writes its `SourceRow`, and one
 that contributes nothing writes none (`@write-the-sourcerow`). Every new builder is atomic

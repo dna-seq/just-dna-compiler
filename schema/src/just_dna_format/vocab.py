@@ -805,6 +805,35 @@ VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
         "gene_symbol_currency",       # authored `gene` vs HGNC approved / previous — `check-identifiers`
         "trait_currency",             # authored `trait_efo_id` vs OLS4 (obsolete + replacement) — `check-identifiers`
         "gene_locus_agreement",       # the row's `gene` vs the chromosome its variant sits on — `check-identifiers`
+        # ── RESERVED for the 2026-09-01 source-adoption round (RM163, RM165, RM166, RM167), added
+        #    ahead of their emitters and deliberately: the names are the four passes' published keys,
+        #    and minting a name in the release that needs it is the `withdrawn` precedent above run in
+        #    reverse. Each flips out of this block in the commit that lands its pass.
+        "pgs_accession_currency",     # RESERVED — an authored `pgs_id` vs the PGS Catalog's own record
+                                      #   for it. The Catalog answers 200 with `{}` for a never-assigned
+                                      #   id AND for a malformed one, so the check reads the body; the
+                                      #   verdict is about the accession, never about the HTTP status.
+        "pgs_metadata_agreement",     # RESERVED — authored `training_ancestry`/`training_cohort` vs
+                                      #   the score record's `ancestry_distribution`/`samples_training`.
+                                      #   Its own member rather than a second finding under the line
+                                      #   above: currency asks whether the id still names a score, and
+                                      #   this asks whether two cells beside it still match. Two
+                                      #   questions, two subjects, so two records.
+        "repeat_band_agreement",      # RESERVED — an authored `repeat_alleles.csv` band table vs a
+                                      #   published repeat-locus catalogue's bands. Reports and never
+                                      #   repairs: the corpus has one module the catalogue agrees with
+                                      #   and one it is a band coarser than, and the format does not
+                                      #   arbitrate between its own authorities.
+        "literature_coverage",        # RESERVED — which papers a variant–literature index holds for a
+                                      #   module's alleles, and AT WHICH TIER. Allele-resolved,
+                                      #   position-only and absent are three outcomes, and a
+                                      #   position-level answer to an allele-level question is recorded
+                                      #   as such rather than reported as the allele's.
+        "regulator_label_agreement",  # RESERVED — authored PGx claims vs the drug-label annotations
+                                      #   five regulators publish. Named for the labels rather than for
+                                      #   any one agency, because the file carries five and baking an
+                                      #   authority into a published key is the mistake RM134 caught in
+                                      #   `ClinSigConflict` before it shipped.
         # ── RESERVED: no emitter, deliberately. Adding one later is legal; adding the *name* late
         #    would leave the release that needs it with nothing to write (the `withdrawn` precedent).
         "gene_disease_validity",      # RESERVED — see the bullet above: `enrich_gene_validity` RECORDS
