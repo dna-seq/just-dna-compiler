@@ -34,6 +34,7 @@ objection to a drafter and it is correct: a filter whose scope is narrower than 
 removed. The snapshot already counted the somatic majority; this counts what it withholds on top.
 """
 
+import json
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -44,6 +45,7 @@ from just_dna_format.spec import StudyRow, VariantRow
 from just_dna_format.vrs import UnsupportedBuildError, refget_accession
 
 from just_dna_enricher.civic_build import CIVIC_PARQUET
+from just_dna_enricher.civic_refutation import CIVIC_REFUTES
 from just_dna_enricher.clingen_allele import ClingenAlleleClient, anchor_indel
 from just_dna_enricher.licensing import (
     CIVIC_TERMS,
@@ -109,6 +111,15 @@ class CivicDraftResult:
     caid_anchored_indels: int = 0
     dataset: str | None = None
     skipped: bool = False
+    #: RM170 — rows this run **wrote** whose variant the same snapshot also refutes, as
+    #: `(variant name, supporting EIDs, refuting EIDs with their statuses)`. Not a `withheld` member:
+    #: nothing was withheld, and the accounting equality over `withheld` counts rows that were not
+    #: written. The author is told, and the row stands.
+    refuted_beside_claim: list[tuple[str, str, str]] = field(default_factory=list)
+    #: The basis the snapshot was built on. Part of the warning rather than beside it: every
+    #: assert-and-refute pair in CIViC rests on submitted content, so on the `accepted` basis this list
+    #: is empty by construction and a silent run would read as clear water.
+    refutation_basis: str | None = None
 
     @property
     def added(self) -> int:
@@ -163,22 +174,34 @@ def _snapshot_rows(reference: Path) -> list[dict]:
         return pq.read_table(parquet).to_pylist()
 
 
+def _release_payload(reference: Path | None) -> dict:
+    """A snapshot's own `release.json`, or `{}` when there is none or it cannot be read.
+
+    One reader for both keys this module wants — `dataset` and `status_basis` — because the path rule
+    (a directory means the snapshot root, a file means the parquet two levels down) is the sort of
+    thing that gets copied and then diverges.
+    """
+    if reference is None:
+        return {}
+    release = (
+        reference / RELEASE_FILENAME if reference.is_dir()
+        else reference.parent.parent / RELEASE_FILENAME
+    )
+    if not release.exists():
+        return {}
+    try:
+        payload = json.loads(release.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def civic_dataset_label(reference: Path | None) -> str | None:
     """The snapshot's `dataset`, or `None` when there is no snapshot or it names none.
 
     `None` is an unknown release, never a fabricated one — the same answer the sibling labels give.
     """
-    if reference is None:
-        return None
-    release = reference / RELEASE_FILENAME if reference.is_dir() else reference.parent.parent / RELEASE_FILENAME
-    if not release.exists():
-        return None
-    import json
-
-    try:
-        return json.loads(release.read_text()).get("dataset")
-    except (OSError, ValueError):
-        return None
+    return _release_payload(reference).get("dataset")
 
 
 def identity_refused_by_model(cells: dict) -> str | None:
@@ -296,6 +319,60 @@ def _study_row(row: dict) -> PartialRow | None:
         stubbed=(),
         match_on=("rsid", "pmid"),
     )
+
+
+def _snapshot_status_basis(reference: Path) -> str | None:
+    """`status_basis` from the snapshot's own `release.json`, or `None` when it states none."""
+    return _release_payload(reference).get("status_basis")
+
+
+def _note_refuted(
+    result: "CivicDraftResult", row: dict, refuting: dict[int, list[str]]
+) -> None:
+    """Record a written row whose variant this snapshot also refutes, once per variant.
+
+    Once per variant rather than once per row: a variant with three supporting items and one
+    refutation is one thing an author has to weigh, not three.
+    """
+    name = str(row["variant_name"] or row["variant_id"])
+    if any(existing[0] == name for existing in result.refuted_beside_claim):
+        return
+    result.refuted_beside_claim.append(
+        (name, f"EID {row['evidence_id']}", ", ".join(refuting[int(row["variant_id"])]))
+    )
+
+
+def _refuted_warning(
+    refuted: Sequence[tuple[str, str, str]], basis: str | None
+) -> list[str]:
+    """The RM170 sign: rows this run WROTE whose variant the same snapshot also rebuts.
+
+    Not a withholding line, which is why it is not in `_withheld_warnings`: every row it names was
+    drafted, and drafting them is correct — the source supports the direction and this provider writes
+    what the source said. What was missing was that nothing then told the author the same source also
+    published a rebuttal, so a `risk` row could be authored over one of these with every gate green.
+
+    Named subjects rather than a bare count, the treatment `contested_variant` already gets: a count
+    with no names is not actionable, and the author's next move is to read two specific papers.
+    `examples` caps the list so a wide draft cannot turn this into a per-row dump (the CPIC lesson).
+
+    The basis rides in the sentence because it decides what the sentence means. Every assert-and-refute
+    pair in CIViC rests on a submitted rebuttal, so on the `accepted` basis this line never appears —
+    and its absence there is not evidence that the water is clear.
+    """
+    if not refuted:
+        return []
+    named = examples([
+        f"{name} (supporting {supporting} vs {refuting})" for name, supporting, refuting in refuted
+    ])
+    stated = f" Snapshot basis `{basis}`." if basis else ""
+    return [
+        f"{len(refuted)} variant(s) were drafted with a direction the same snapshot also REFUTES, "
+        f"and the rows were written: {named}. A refutation withholds a claim rather than "
+        f"establishing its opposite, so nothing here says the direction is wrong — it says the "
+        f"source both asserts and rebuts it, and only a reader of both can weigh that. Keep the row "
+        f"or drop it; either way the choice is now yours rather than invisible.{stated}"
+    ]
 
 
 def _withheld_warnings(withheld: dict[str, int], contested: Sequence[str]) -> list[str]:
@@ -427,6 +504,22 @@ def draft_panel_from_civic(
          if int(r["variant_id"]) in contested_ids}
     )
 
+    # RM170 — the same group-first rule, one slot over. A refutation is **not** a camp: it withholds a
+    # claim rather than making the opposite one, so it never enters `camps` and `contested_ids` is
+    # correctly blind to it. What an author still needs to know is that the variant they are about to
+    # be handed a `risk` row for is one the same snapshot also rebuts, so the pair is computed here,
+    # over the whole admitted group, before any per-row filter can remove either side of it.
+    refuting_evidence: dict[int, list[str]] = {}
+    for row in admitted:
+        if row["evidence_direction_raw"] == CIVIC_REFUTES:
+            status = row.get("evidence_status")
+            refuting_evidence.setdefault(int(row["variant_id"]), []).append(
+                f"EID {row['evidence_id']}" + (f" ({status})" if status else "")
+            )
+    claimed_ids = {int(row["variant_id"]) for row in admitted if row["direction"] is not None}
+    refuted_beside_claim = set(refuting_evidence) & claimed_ids
+    result.refutation_basis = _snapshot_status_basis(Path(reference))
+
     # One client for the run, so its cache and its pacing gate are shared: a CAID appearing on several
     # evidence rows is looked up once, and the registry sees one paced stream rather than N.
     registry = registry if registry is not None else ClingenAlleleClient(offline=offline)
@@ -456,6 +549,12 @@ def draft_panel_from_civic(
         if row["direction"] is None:
             result.withheld["refutation_states_no_direction"] += 1
             continue
+        if int(row["variant_id"]) in refuted_beside_claim:
+            # The row IS drafted — the source supports this direction and the drafter writes what the
+            # source said. Recorded, not withheld: withholding would be the tier choosing a winner
+            # between two of the source's own statements, and the accounting equality over `withheld`
+            # counts rows that were not written.
+            _note_refuted(result, row, refuting_evidence)
         if _needs_the_registry(row):
             # The snapshot kept this row because it has a *route* to an identity rather than one.
             # Walking that route is what turns it into a drafted row, and the three outcomes stay
@@ -511,6 +610,7 @@ def draft_panel_from_civic(
             append_partial_rows(spec_dir, "studies.csv", study_partials, dry_run=dry_run)
         )
     result.warnings.extend(_withheld_warnings(result.withheld, contested_names))
+    result.warnings.extend(_refuted_warning(result.refuted_beside_claim, result.refutation_basis))
 
     # A pass that consults a source writes its `SourceRow`, and this one consulted CIViC even where it
     # drafted nothing from it — the gate and `manifest.sources` read `sources.csv` and nothing else

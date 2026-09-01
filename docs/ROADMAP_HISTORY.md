@@ -6433,3 +6433,145 @@ refuted its premise — which is the one licit reason, and it is recorded here r
 
 **Related** RM166 (where it was found), RM29b, `@clinpgx-full-key`, `@one-normalizer-two-spellings`,
 `@two-surfaces-two-denominators`, `@currency-asks-the-source-not-the-cache`, `@pgx-research-only`.
+
+## RM170 — a source that both asserts and refutes a claim is muddy water, and nothing tells an author
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-02 in the uncut 0.7.0** (`just-dna-enricher`
+plus one `VALID_VERIFICATION_CHECKS` member; **no model, no parquet column, no authored surface, and
+no new `VALID_WARNING_CODES`** — that vocabulary is the compiler's and its guard asserts every member
+is built by a compiler check, so the two finding codes stay this pass's own and a compile restates
+them as `verification_findings_recorded`) · **Owner** enricher · **Motivating case** the RM169 widening, which
+made the first such variants visible in a built snapshot
+
+> **What shipped.** Two surfaces, one shape. `draft-panel --source civic` names the variants it *wrote*
+> a direction for that the same snapshot also rebuts — the variant, both evidence ids, their statuses
+> and the `status_basis` — where before it only counted the refuting rows it had withheld, which is a
+> different fact and never mentioned the rows it went on to write. `enrich` folds in
+> `published_refutation` whenever a CIViC snapshot resolves, so a hand-authored module that never ran
+> the drafter meets the same sign; the record states its basis on every run **including the empty
+> one**, because on the `accepted` basis this class is empty by construction. Two warning codes:
+> `refutation_beside_claim` and `refutation_without_claim`, both keys of this pass rather than of the
+> compiler's vocabulary. Warns in both modes, escalates in neither, repairs nothing.
+>
+> **The finding keys on the refuting evidence item and fans out to the rows it touches**, so EID
+> 8721 — one statement about the combination genotype `VHL S183L AND VHL D126N`, which the snapshot
+> writes as two single-variant rows — is reported as one refutation over two subjects. That stays true
+> whichever way RM174 is repaired.
+>
+> **`comparison_plan` gained an `authored` selector rather than a second copy**: both authorities are
+> asked about the same alleles, and a private copy is how the second caller stops finding the first.
+>
+> **The design record is [rm170_kleene.md](probes/rm170_kleene.md)** — the case-by-case advocacy (A–J)
+> the build follows, and the two refusals it turns on: no new `VALID_DIRECTIONS` member, and no sum of
+> camps into a point. The measurements are [CONTRADICTION_CORPORA](probes/CONTRADICTION_CORPORA.md).
+>
+> **Two holes the design record did not cover, closed in the build rather than left to be discovered.**
+> The *join* is the `clin_sig` route — resolved `(chrom, start, ref, alt)`, never rsID — so the two
+> authorities are asked about the same alleles. And an authored row **disagreeing** with the supported
+> sign is still a subject: the finding is that the variant is muddy, not that the author picked the
+> wrong side, so it fires on any authored `direction`. Source-versus-author on a *settled* variant
+> stays out of it, which is case B and still nobody's item.
+
+**A second corpus exists, found while probing RM165 (2026-09-01) — design against both, not against CIViC alone.** STRchive's `evidence` field is a ClinGen-style validity call on **all 82** of its repeat loci, and its members include **`Disputed` (3) and `Refuted` (1)** beside Definitive 46 / Limited 14 / Moderate 8 / Provisional 6 / Strong 4. That is this entry's shape in a different domain and on a *published, closed vocabulary* rather than CIViC's per-record assertion/refutation pair — so the two corpora disagree about where the contradiction lives (a field vs. two rows), which is exactly the sort of thing that decides a record shape. Probe both before fixing one.
+
+**The correction this item starts from.** It was reported during the RM169 round that reading
+submitted evidence would make three VHL variants `contested` and so stop them being drafted. That was
+wrong, and the way it was wrong is the item. `contested_variants` counts a variant whose camps include
+**both** `risk` and `protective` — genuine opposition — and a `Does Not Support` row does not enter a
+camp at all: `CIVIC_DIRECTION_MAP` maps it to `None`, because a refutation removes a claim without
+establishing the opposite one. So `contested_variants` is **0 on both bases**, correctly, and the
+drafter withholds nothing new.
+
+But the three variants are real, and an author has no way to learn about them:
+
+| variant | claim | refutation |
+|---|---|---|
+| 2161 `VHL S183L (c.548C>T)` | 2 supporting items | ev 8721 `DOES_NOT_SUPPORT` |
+| 2428 `VHL G104V (c.311G>T)` | 1 supporting item | ev 10949 `DOES_NOT_SUPPORT` |
+| 2533 `VHL D126N (c.376G>A)` | 1 supporting item | ev 8721 `DOES_NOT_SUPPORT` |
+
+Each carries a claim **and** a published rebuttal of that claim. The snapshot keeps both rows — the
+refutation with its raw words and a null `direction`, which is the three-valued rule working — and
+then nothing downstream ever mentions it. A module can author a `risk` row over one of these and every
+gate stays green.
+
+### Why a check rather than a filter
+
+`enrich`-tier checks report and never repair (`@enrichment-is-validation`), and this is squarely that
+shape: a fact about the world an author should weigh, not a defect to fix. The natural home is a new
+`VALID_VERIFICATION_CHECKS` member — the vocabulary already holds sixteen of exactly this kind, each
+comparing something authored against something external.
+
+The subject is **an authored row whose variant a source both asserts and refutes**, so it fires
+regardless of how the row got there: a hand-authored module gets the same warning as a drafted one,
+which is the point. Muddy water is a property of the variant, not of the provenance.
+
+### Probed 2026-09-02 — [CONTRADICTION_CORPORA](probes/CONTRADICTION_CORPORA.md)
+
+Both corpora measured before designing against either, as this entry asked. It answered both open
+questions and corrected the entry on the one that mattered.
+
+**The weight question is answered, and this entry had it backwards.** It said only 2428 has a
+refutation an editor signed off. 2428's *claim* is accepted; its refutation (EID 10949) is
+`SUBMITTED`. **No refutation anywhere in CIViC that stands against a claim is accepted** — both
+accepted refutations in the whole database (CHEK2 788 / EID 1854, TP53 4968 / EID 1302) are
+refutation-**only**, with no claim beside them. So the subject count is not merely basis-dependent, it
+is **0 on `accepted` and 3 on `accepted+submitted`**: the class does not exist on the basis the
+builder read before RM169, and exists entirely on the strength of unreviewed content. A hint that
+states the basis alongside the disagreement is now the *only* shape that can be honest, rather than
+the preferred one. (TP53 4968 never enters the snapshot at all — dropped `unresolvable_identity`, and
+absent from the VCF for want of a GRCh37 position. One of the two accepted refutations in the database
+is invisible to every consumer of this artifact.)
+
+**The three instances are one pair plus one combination-profile item counted twice.** EID 8721 belongs
+to molecular profile 5278, which CIViC publishes as `VHL S183L (c.548C>T) AND VHL D126N (c.376G>A)` —
+one statement about a two-variant genotype. `_submitted_evidence_row` stamps `molecular_profile_id`
+from the *variant's* single-variant profile, so the parquet writes it as two rows claiming MP 2037 and
+2406 and the column that would say "combination" is overwritten. Bounded and measured: 5 evidence ids
+on 2 parquet rows each, 108 fanning out across the whole VCF. Note the path asymmetry — a combination
+profile arriving via the TSV is dropped `combination_profile`, via the VCF it is fanned out and kept.
+
+**The scope question is answered from the adopted set rather than guessed, and STRchive is not a new
+axis.** A walk of all 26 `VALID_*` frozensets finds refuting members in exactly two source-facing
+vocabularies: `VALID_GENE_VALIDITY` (`disputed`/`refuted`/`no_known_disease_relationship`, for
+ClinGen+GenCC) and `VALID_CLIN_SIG` (`conflicting`, for ClinVar). Four adopted sources carry this
+shape and three already land it somewhere — `gene_validity` even publishes an unorderable
+`["definitive","refuted"]` group as a **set, not a verdict**, which is this item's machinery already
+built one grain up. **STRchive's is the one that lands nowhere**: `StrchiveLocus` drops `evidence` at
+parse, and a real `draft-repeats --gene DMD` run (DMD is the single `Refuted` locus) writes a row
+indistinguishable from HD_HTT's and says nothing — the field is not even in the read-and-not-written
+accounting.
+
+**But the two corpora do not share a subject, so one check cannot be both.** CIViC's contradiction is
+*inter-row, post-join, per variant*: neither row is contradictory alone, and the subject exists only
+after an authored row is matched to a snapshot variant. STRchive's is *intra-record, pre-join, per
+locus*, and is not a contradiction in CIViC's sense at all — nothing asserts the locus is pathogenic
+and then denies it; one field grades the association `Refuted` while the same record still publishes a
+pathogenic band the drafter writes. That is a self-inconsistent record, closer to a grade the drafter
+drops than to a disagreement. Its vocabulary is also **open**, not closed: the published schema uses
+`examples` + `combobox: true`, and carries `Provisional` (6 loci), which the schema's own text defines
+as *not yet curated* — a nobody-asked, not a grade, and it has no house member. The two corpora
+overlap on **one gene (`CBL`) and zero loci**, and no reference example authors any of the six genes,
+so zero corpus modules would fire either finding today.
+
+### What has to be decided, and what is already settled
+
+- **The subject set is per authored row, not per snapshot row.** A check that counted snapshot rows
+  would publish a number about CIViC; this one is about the module.
+- **Severity: warn in both modes, never gate.** Its two nearest neighbours both say so
+  (`@clinsig-never-escalates`, and `@a-source-recuring-is-not-a-strict-matter`), and for the same
+  reason: a source disagreeing with itself is not an authoring error.
+- **Settled by the probe — the hint must state the status basis**, because every pair rests on
+  submitted content and a check that did not say so would publish a finding whose subject count
+  silently depends on a build flag.
+- **Open, and reshaped — one check or two?** The measured answer to "CIViC-scoped or general" is that
+  the *shape* is general (four adopted sources) but the *subject* is not shared: a per-variant
+  post-join contradiction and a per-locus published grade are two different findings that would only
+  look like one in a vocabulary. Deciding this is deciding whether STRchive's `evidence` is adopted at
+  all — today it is dropped at parse, so the STRchive half is a **source-adoption** question wearing a
+  check's clothes.
+- **Open — the combination-profile stamp is a defect, not a design question.** `molecular_profile_id`
+  overwritten with the variant's own profile is wrong regardless of what this item decides; it belongs
+  to whoever fixes it first, and it makes 8721 look like two independent refutations.
+
+**Related** RM169 (which made these visible), RM152, RM160.

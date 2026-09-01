@@ -1272,6 +1272,39 @@ own position: it is GRCh37 and lifting it stays refused.
 establishing the opposite one, so the row keeps its raw words and states no `direction` — an unknown
 is withheld, never negated. The drafter reports how many it held back and why.
 
+**And an authored direction beside a refutation is a finding, on two surfaces (RM170).** Withholding
+the refuting row was never the whole answer: a variant CIViC *supports* and *also* rebuts still gets a
+`risk` row drafted — correctly, because the provider writes what the source said — and until 0.7
+nothing then told the author the rebuttal existed. `contested_variants` cannot see it: that counts a
+variant whose camps hold **both** `risk` and `protective`, and a refutation enters no camp at all, so
+the counter is correctly 0 on every basis and the muddy variants are invisible to it.
+
+* **`draft-panel --source civic`** names them at the point the row is written: the variant, the
+  supporting evidence id, the refuting one with its status, and the snapshot's `status_basis`. The row
+  is still written.
+* **`enrich`** folds in the `published_refutation` check whenever a CIViC snapshot resolves
+  (`$JUST_DNA_CIVIC_CACHE`), so a hand-authored module that never ran the drafter meets it too. Two
+  finding codes, because they are two sentences: `refutation_beside_claim` (the source asserts and
+  rebuts) and `refutation_without_claim` (the module asserts a direction the source has only denied).
+  They are this pass's own keys and travel in the record's `detail` — deliberately **not**
+  `VALID_WARNING_CODES` members, which is the compiler's vocabulary and whose guard asserts every
+  member is built by a compiler check. A compile restates them as `verification_findings_recorded`.
+
+**Warns in both modes and escalates in neither** — a source disagreeing with itself is not an
+authoring error, the same call `clin_sig` makes. Nothing is repaired: a refutation withholds a claim
+rather than establishing its opposite, so there is no opposite value to write even if the tier were
+allowed to write one.
+
+**The finding keys on the refuting evidence item, then fans out to the rows it touches.** CIViC
+evidence item 8721 is one statement about the two-variant genotype `VHL S183L AND VHL D126N`, which
+the snapshot writes as two single-variant rows (RM174) — so keying on the variant would report one
+rebuttal as two independent ones.
+
+**The record states its basis on every run, including the empty one.** Every assert-and-refute pair in
+CIViC rests on a *submitted* rebuttal: both accepted refutations in the whole database stand against
+nothing at all (`probes/CONTRADICTION_CORPORA.md`). So on the `accepted` basis this class is empty by
+construction, and `findings: 0` without the basis beside it would read as clear water.
+
 **Every drop is counted, and the somatic majority is the point of that.** Roughly three quarters of
 CIViC describes tumour tissue no germline genotype can satisfy. A filter whose scope is narrower than
 its name is what this adoption was designed against, so `input_rows == record_count + sum(dropped)` is

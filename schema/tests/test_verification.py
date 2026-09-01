@@ -439,6 +439,7 @@ def test_every_check_name_is_a_verification_question() -> None:
         "repeat_band_agreement",
         "literature_coverage",
         "regulator_label_agreement",
+        "published_refutation",
     } == VALID_VERIFICATION_CHECKS
 
 

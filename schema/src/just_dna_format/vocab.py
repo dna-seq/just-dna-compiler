@@ -832,6 +832,15 @@ VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
                                       #   the mistake RM134 caught in `ClinSigConflict` before it
                                       #   shipped. Reports at two join tiers, allele and gene, and
                                       #   never escalates under `strict`.
+        "published_refutation",       # an authored `direction` against the refutations CIViC publishes
+                                      #   — `enrich`, folded in when a CIViC snapshot is available, the
+                                      #   same way the ClinVar `clin_sig` leg is. Two findings under one
+                                      #   record because they share a subject *set*: the source asserts
+                                      #   and refutes, or the source has only ever refuted and the module
+                                      #   asserts anyway. Never escalates under `strict` — a source
+                                      #   disagreeing with itself is not an authoring error — and the
+                                      #   record names its `status_basis`, because on the `accepted`
+                                      #   basis the class is empty by construction.
         # ── RESERVED: no emitter, deliberately. Adding one later is legal; adding the *name* late
         #    would leave the release that needs it with nothing to write (the `withdrawn` precedent).
         "gene_disease_validity",      # RESERVED — see the bullet above: `enrich_gene_validity` RECORDS

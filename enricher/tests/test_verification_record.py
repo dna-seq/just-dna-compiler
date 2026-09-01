@@ -309,6 +309,12 @@ def _records_for(ref_check, build, **over):
         "pairs": PairCheck(not_checked="nothing_to_check"),
         "ensembl_ref": None,
         "currency": None,
+        "refutation_findings": [],
+        "refutation_subjects": None,
+        "refutation_skip": "no_reference",
+        "refutation_detail": "no_snapshot",
+        "refutation_basis": None,
+        "civic_ref": None,
         **over,
     }
     return {r.check: r for r in _verification_records(**kwargs)}

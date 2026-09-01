@@ -58,6 +58,18 @@ that was measuring something else, plus the probe round behind RM170.
   three already land it, and **STRchive's is dropped at parse**. Filed **RM174** out of it: a
   combination-genotype refutation reaches the parquet as two single-variant rows because the row
   builder stamps the variant's profile over the evidence item's.
+- **RM170 shipped: an authored direction beside a refutation the source published.** `Does Not
+  Support` was already withheld rather than negated — but a variant CIViC *supports* and *also* rebuts
+  still got a `risk` row drafted, and nothing then said the rebuttal existed. `contested_variants`
+  cannot see it (a refutation enters no camp, so that counter is correctly 0 on every basis). Now
+  `draft-panel --source civic` names the variants it wrote such a row for, and `enrich` folds in the
+  new **`published_refutation`** check whenever a CIViC snapshot resolves, so a hand-authored module
+  meets the same sign. Two finding codes — `refutation_beside_claim`, `refutation_without_claim` —
+  because they are two sentences; they key the record's `detail` rather than joining the compiler's
+  `VALID_WARNING_CODES`, which a compile restates as `verification_findings_recorded`. **Warns in both modes, escalates in neither, repairs nothing.**
+  Consumers pinning `VerificationRecord.check` should add the member. The record names its
+  `status_basis` on every run including the empty one: every such pair in CIViC rests on submitted
+  content, so on the `accepted` basis the class is empty by construction.
 - **RM173 closed, and RM175 opened: the PGx lane reads a retired filename.** The entry's premise was
   replaced twice in one day. First: `clinicalVariants.zip` is not a third source — **96.3% of its
   5,190 rows are already in the archive the lane reads**, and its `type` column is

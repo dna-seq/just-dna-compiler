@@ -321,116 +321,6 @@ you**, so check which `# ` heading you are under before writing the section, not
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
-## RM170 — a source that both asserts and refutes a claim is muddy water, and nothing tells an author
-
-**Severity** medium · **Status** open — **worth doing** (maintainer, 2026-09-01) · **Owner** enricher
-· **Motivating case** the RM169 widening, which made the first such variants visible in a built
-snapshot
-
-**A second corpus exists, found while probing RM165 (2026-09-01) — design against both, not against CIViC alone.** STRchive's `evidence` field is a ClinGen-style validity call on **all 82** of its repeat loci, and its members include **`Disputed` (3) and `Refuted` (1)** beside Definitive 46 / Limited 14 / Moderate 8 / Provisional 6 / Strong 4. That is this entry's shape in a different domain and on a *published, closed vocabulary* rather than CIViC's per-record assertion/refutation pair — so the two corpora disagree about where the contradiction lives (a field vs. two rows), which is exactly the sort of thing that decides a record shape. Probe both before fixing one.
-
-**The correction this item starts from.** It was reported during the RM169 round that reading
-submitted evidence would make three VHL variants `contested` and so stop them being drafted. That was
-wrong, and the way it was wrong is the item. `contested_variants` counts a variant whose camps include
-**both** `risk` and `protective` — genuine opposition — and a `Does Not Support` row does not enter a
-camp at all: `CIVIC_DIRECTION_MAP` maps it to `None`, because a refutation removes a claim without
-establishing the opposite one. So `contested_variants` is **0 on both bases**, correctly, and the
-drafter withholds nothing new.
-
-But the three variants are real, and an author has no way to learn about them:
-
-| variant | claim | refutation |
-|---|---|---|
-| 2161 `VHL S183L (c.548C>T)` | 2 supporting items | ev 8721 `DOES_NOT_SUPPORT` |
-| 2428 `VHL G104V (c.311G>T)` | 1 supporting item | ev 10949 `DOES_NOT_SUPPORT` |
-| 2533 `VHL D126N (c.376G>A)` | 1 supporting item | ev 8721 `DOES_NOT_SUPPORT` |
-
-Each carries a claim **and** a published rebuttal of that claim. The snapshot keeps both rows — the
-refutation with its raw words and a null `direction`, which is the three-valued rule working — and
-then nothing downstream ever mentions it. A module can author a `risk` row over one of these and every
-gate stays green.
-
-### Why a check rather than a filter
-
-`enrich`-tier checks report and never repair (`@enrichment-is-validation`), and this is squarely that
-shape: a fact about the world an author should weigh, not a defect to fix. The natural home is a new
-`VALID_VERIFICATION_CHECKS` member — the vocabulary already holds sixteen of exactly this kind, each
-comparing something authored against something external.
-
-The subject is **an authored row whose variant a source both asserts and refutes**, so it fires
-regardless of how the row got there: a hand-authored module gets the same warning as a drafted one,
-which is the point. Muddy water is a property of the variant, not of the provenance.
-
-### Probed 2026-09-02 — [CONTRADICTION_CORPORA](probes/CONTRADICTION_CORPORA.md)
-
-Both corpora measured before designing against either, as this entry asked. It answered both open
-questions and corrected the entry on the one that mattered.
-
-**The weight question is answered, and this entry had it backwards.** It said only 2428 has a
-refutation an editor signed off. 2428's *claim* is accepted; its refutation (EID 10949) is
-`SUBMITTED`. **No refutation anywhere in CIViC that stands against a claim is accepted** — both
-accepted refutations in the whole database (CHEK2 788 / EID 1854, TP53 4968 / EID 1302) are
-refutation-**only**, with no claim beside them. So the subject count is not merely basis-dependent, it
-is **0 on `accepted` and 3 on `accepted+submitted`**: the class does not exist on the basis the
-builder read before RM169, and exists entirely on the strength of unreviewed content. A hint that
-states the basis alongside the disagreement is now the *only* shape that can be honest, rather than
-the preferred one. (TP53 4968 never enters the snapshot at all — dropped `unresolvable_identity`, and
-absent from the VCF for want of a GRCh37 position. One of the two accepted refutations in the database
-is invisible to every consumer of this artifact.)
-
-**The three instances are one pair plus one combination-profile item counted twice.** EID 8721 belongs
-to molecular profile 5278, which CIViC publishes as `VHL S183L (c.548C>T) AND VHL D126N (c.376G>A)` —
-one statement about a two-variant genotype. `_submitted_evidence_row` stamps `molecular_profile_id`
-from the *variant's* single-variant profile, so the parquet writes it as two rows claiming MP 2037 and
-2406 and the column that would say "combination" is overwritten. Bounded and measured: 5 evidence ids
-on 2 parquet rows each, 108 fanning out across the whole VCF. Note the path asymmetry — a combination
-profile arriving via the TSV is dropped `combination_profile`, via the VCF it is fanned out and kept.
-
-**The scope question is answered from the adopted set rather than guessed, and STRchive is not a new
-axis.** A walk of all 26 `VALID_*` frozensets finds refuting members in exactly two source-facing
-vocabularies: `VALID_GENE_VALIDITY` (`disputed`/`refuted`/`no_known_disease_relationship`, for
-ClinGen+GenCC) and `VALID_CLIN_SIG` (`conflicting`, for ClinVar). Four adopted sources carry this
-shape and three already land it somewhere — `gene_validity` even publishes an unorderable
-`["definitive","refuted"]` group as a **set, not a verdict**, which is this item's machinery already
-built one grain up. **STRchive's is the one that lands nowhere**: `StrchiveLocus` drops `evidence` at
-parse, and a real `draft-repeats --gene DMD` run (DMD is the single `Refuted` locus) writes a row
-indistinguishable from HD_HTT's and says nothing — the field is not even in the read-and-not-written
-accounting.
-
-**But the two corpora do not share a subject, so one check cannot be both.** CIViC's contradiction is
-*inter-row, post-join, per variant*: neither row is contradictory alone, and the subject exists only
-after an authored row is matched to a snapshot variant. STRchive's is *intra-record, pre-join, per
-locus*, and is not a contradiction in CIViC's sense at all — nothing asserts the locus is pathogenic
-and then denies it; one field grades the association `Refuted` while the same record still publishes a
-pathogenic band the drafter writes. That is a self-inconsistent record, closer to a grade the drafter
-drops than to a disagreement. Its vocabulary is also **open**, not closed: the published schema uses
-`examples` + `combobox: true`, and carries `Provisional` (6 loci), which the schema's own text defines
-as *not yet curated* — a nobody-asked, not a grade, and it has no house member. The two corpora
-overlap on **one gene (`CBL`) and zero loci**, and no reference example authors any of the six genes,
-so zero corpus modules would fire either finding today.
-
-### What has to be decided, and what is already settled
-
-- **The subject set is per authored row, not per snapshot row.** A check that counted snapshot rows
-  would publish a number about CIViC; this one is about the module.
-- **Severity: warn in both modes, never gate.** Its two nearest neighbours both say so
-  (`@clinsig-never-escalates`, and `@a-source-recuring-is-not-a-strict-matter`), and for the same
-  reason: a source disagreeing with itself is not an authoring error.
-- **Settled by the probe — the hint must state the status basis**, because every pair rests on
-  submitted content and a check that did not say so would publish a finding whose subject count
-  silently depends on a build flag.
-- **Open, and reshaped — one check or two?** The measured answer to "CIViC-scoped or general" is that
-  the *shape* is general (four adopted sources) but the *subject* is not shared: a per-variant
-  post-join contradiction and a per-locus published grade are two different findings that would only
-  look like one in a vocabulary. Deciding this is deciding whether STRchive's `evidence` is adopted at
-  all — today it is dropped at parse, so the STRchive half is a **source-adoption** question wearing a
-  check's clothes.
-- **Open — the combination-profile stamp is a defect, not a design question.** `molecular_profile_id`
-  overwritten with the variant's own profile is wrong regardless of what this item decides; it belongs
-  to whoever fixes it first, and it makes 8721 look like two independent refutations.
-
-**Related** RM169 (which made these visible), RM152, RM160.
-
 ## RM160 — the CIViC snapshot reads the reviewed quarter of its source and says so nowhere a reader acts on
 
 **Severity** medium · **Status** open — **narrowed 2026-09-01**. Its *coverage* half shipped as
@@ -669,50 +559,94 @@ maintainer call, deliberately not pre-empted here.
 **Related** RM164 (where it was found), `@one-normalizer-two-spellings`, `@no-named-licence`,
 `@probe-the-real-file`.
 
-## RM174 — a combination-genotype refutation reaches the parquet as two single-variant rows, and the column that would say so is overwritten
+## RM174 — a claim about two variants **in trans** is written as two single-variant rows, because no brick holds the real subject
 
-**Severity** medium · **Status** open — **two candidate repairs, neither chosen** · **Owner** enricher
-· **Motivating case** the RM170 probe, which found it while measuring the refutation set
+**Severity** medium · **Status** open — **measured 2026-09-02, and the reading changed**: the stamp is
+a defect, the shape underneath it is [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half)
+· **Owner** enricher (the stamp) / unassigned (the shape) · **Motivating case** the RM170 probe, which
+found it while measuring the refutation set
 ([CONTRADICTION_CORPORA](probes/CONTRADICTION_CORPORA.md) §2.2)
 
-CIViC evidence item 8721 belongs to molecular profile **5278**, which CIViC publishes as
-`VHL S183L (c.548C>T) AND VHL D126N (c.376G>A)` — one statement about a **two-variant genotype**.
-`_submitted_evidence_row` stamps `molecular_profile_id` from **the variant's**
-`single_variant_molecular_profile_id` rather than from the evidence item's own profile, which the VCF
-CSQ block already carries and `CivicVcfEntry.molecular_profile_id` already parses. So the parquet
-states, twice, that a combination-genotype refutation is a single-variant refutation, and the one
-column that could have said otherwise has been written over.
+CIViC evidence item 8721 belongs to molecular profile **5278**, published as
+`VHL S183L (c.548C>T) AND VHL D126N (c.376G>A)`. `_submitted_evidence_row` stamps
+`molecular_profile_id` from **the variant's** `single_variant_molecular_profile_id` rather than from
+the evidence item's own profile — which the VCF CSQ block already carries and
+`CivicVcfEntry.molecular_profile_id` already parses — so the parquet states, twice, that a
+two-variant claim is a single-variant one.
 
 **Bounded and measured.** 1,149 rows carry 1,144 distinct `evidence_id`s; the five that repeat are
 5634, 6740, 6868, 8721, 8790 — all VHL, all submitted, four of them `Supports`. Across the whole VCF
 the fan-out is 108 evidence ids over 279 CSQ entries; only 5 survive the germline + direction-axis
 filter.
 
-**The overwrite is not gratuitous, which is why this is not a one-line fix.** The row is shaped
-exactly like a TSV evidence row so it rejoins `evidence` and goes through one origin filter, one
-direction map, one profile join and one identity route. `molecular_profile_id` is the join key into
-`by_profile`, so the *true* profile id would not join — and the TSV path already handles that case by
-dropping a multi-variant profile as `combination_profile`, counted. The overwrite is what makes the
-VCF path keep a row the TSV path would drop.
+### The phase measurement, which is why the obvious repair is wrong
 
-### Two repairs, and the choice is a real one
+The first reading of this entry was that a two-variant genotype is already expressible — `HaplotypeRow`
+is a junction table, and `reference_examples/apoe_epsilon` builds ε haplotypes from two SNPs with 0.4
+bricks — so the defect was a row in the wrong table. **Measured, that is false.** EID 8721's own
+description reads:
 
-1. **Carry the entry's own profile and let the existing machinery drop it.** One behaviour on both
-   paths, the drop counted under `combination_profile` like any other. **But it removes exactly the
-   two rows RM170 is about** — 8721 is the rebuttal standing against 2161 and 2533 — so the item that
-   found this defect would lose its motivating case to the repair.
-2. **Keep the fan-out and stop the false claim.** The join key stays the variant's single-variant
-   profile; the evidence item's own profile id and name are published in their own columns. Additive
-   and minor-legal, keeps every row, and makes a combination profile *legible* rather than either
-   silently wrong or silently dropped. Costs a parquet column, which the 0.6 charter amendment prices
-   at approximately free.
+> A 2 month old male was found with **heterozygous compound mutation** in the VHL gene …
 
-Repair 2 is the one this entry would take, on the grounds that dropping a row to fix a mislabelled
-column trades a wrong answer for no answer. It is written down as a recommendation rather than a
-decision because the path asymmetry it leaves — the TSV drops a combination profile, the VCF keeps it
-labelled — is the sort of thing `@parity-by-check` says to audit deliberately rather than inherit.
+Compound heterozygous means the two variants sit on **different copies** — *in trans*. A haplotype is
+same-strand co-location, *in cis*. Writing this as a `HaplotypeRow` would assert the opposite of what
+the source observed, and would do it silently, because no column carries phase for a checker to
+contradict. **There is no brick for a claim about two variants in trans**, and that is the finding.
 
-**Related** RM170 (where it was found), RM169 (which added the VCF path), `@parity-by-check`.
+Note where the phase lives: in the evidence item's free text, not in any structured field. CIViC's
+`molecularProfile` carries `name`, `parsedName` and `variants` and **no phase at all**. So even a
+consumer willing to read the composite cannot learn cis from trans without parsing prose
+(`@one-side-only-has-two-causes`: a thing a gate must act on is a field, never a sentence in
+`evidence`).
+
+### The grammar, enumerated — and it is RM28's, both halves
+
+`01-Aug-2026-MolecularProfileSummaries.tsv`, 1,964 profiles, **209 multi-variant**:
+
+| operator | profiles |
+|---|---:|
+| `AND` | 141 |
+| `OR` | 72 |
+| `NOT` | 1 |
+
+and they nest: `BRAF Amplification AND ( BRAF V600E OR BRAF V600K )`,
+`EZH2 Y646S OR EZH2 Y646F OR …` (seven terms), `MET Amplification AND NOT KRAS Mutation`.
+
+That is a boolean expression over variants, which is exactly the surface RM28 parked. And both of the
+arguments RM28 *survived* on show up in this one source, with counts rather than as hypotheticals:
+
+* **Economy.** RM28's own stated case is "any two pathogenic variants **in trans**" — the phrase, not
+  an analogy. 8721 is one, observed, with a citation.
+* **Open-world negation.** `AND NOT KRAS Mutation` quantifies over a set the module cannot close, and
+  `Mutation` is a class term rather than an enumerable allele. RM28 names this as the half that no
+  amount of row-enumeration reaches.
+
+The disjunctions are the half that *is* already expressible — rows are a disjunction, so `OR` over
+enumerable alleles is 72 profiles' worth of row-writing, not a missing operator. The split is exactly
+where RM28 drew it.
+
+### So this entry is two things, and only one of them is a bug
+
+1. **The stamp is a defect and stays here.** `molecular_profile_id` overwritten with the variant's own
+   profile is wrong whatever the format can express, and it is the column a reader would use to notice
+   the composite at all. The narrow repair — publish the evidence item's own profile id and name in
+   their own columns, keep the join key as it is — is additive, minor-legal, and does not require the
+   format to hold the claim. It makes the composite **legible** rather than either silently wrong or
+   silently dropped, which is all a snapshot can honestly do here.
+2. **The representation is RM28's and is not repairable in this tier.** Dropping the row (matching the
+   TSV path, which counts a multi-variant profile as `combination_profile`) trades a wrong answer for
+   no answer, and would also delete two of RM170's three subjects. Writing it as a haplotype asserts
+   cis where the source says trans. Neither is available, so the honest state is: the snapshot carries
+   the rows, labels the composite, and the format does not yet claim to represent it.
+
+**Do not widen RM28 from here, and do not fold this into it.** What this adds to that item is
+*evidence* — an observed instance of both surviving arguments in one adopted source, with a
+grammar counted rather than imagined — which is exactly the corpus RM28 was parked waiting for. The
+note belongs on RM28; the decision stays parked until the corpus is worth deciding on.
+
+**Related** RM170 (where it was found, and whose check keys on the evidence id precisely so this stays
+one finding over two subjects), RM169 (which added the VCF path), RM28 (the shape),
+`@parity-by-check`, `@one-side-only-has-two-causes`.
 
 # Not format scope
 

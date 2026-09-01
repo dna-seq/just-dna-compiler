@@ -23,7 +23,7 @@ and `review_stars` is carried into the message so a reader can weigh the disagre
 """
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -310,12 +310,22 @@ class PlannedComparison:
 
 
 def comparison_plan(
-    variants: list[VariantRow], resolution_rows: list[ResolutionRow]
+    variants: list[VariantRow],
+    resolution_rows: list[ResolutionRow],
+    *,
+    authored: Callable[[VariantRow], str | None] = lambda variant: variant.effective_clin_sig,
 ) -> tuple[list[PlannedComparison], list[tuple[str, int, str, str]], int]:
     """`(plan, alleles to ask about, rows resolved with no ALT to ask about)`.
 
     Needs no snapshot and consults nothing, which is the point: every authority's leg is asked about
     the same alleles, and a leg that could not run does not change what a leg that did run was asked.
+
+    `authored` selects the cell being cross-examined and so decides which rows are subjects at all —
+    `effective_clin_sig` for the ClinVar leg, `direction` for the CIViC refutation leg (RM170). It is
+    a parameter rather than a second copy of this function because the *plan* is the thing both legs
+    must share: two authorities asked about different allele sets cannot be compared with each other,
+    and a private copy is how the second caller stops finding the first
+    (`@roster-is-as-wide-as-the-tables-it-reads`).
 
     The allele list is in first-occurrence order and deduplicated, so a batch look-up and the findings
     that come out of it are deterministic (Principle 7). The third element is a count rather than a
@@ -332,8 +342,8 @@ def comparison_plan(
     plan: list[PlannedComparison] = []
     no_record = 0
     for variant in variants:
-        authored = variant.effective_clin_sig
-        if not authored or variant.variant_key not in resolved:
+        cell = authored(variant)
+        if not cell or variant.variant_key not in resolved:
             continue
         for row in resolved[variant.variant_key]:
             alts = [a.strip() for a in (row.alts or "").split(",") if a.strip()]
@@ -350,7 +360,7 @@ def comparison_plan(
                 plan.append(
                     PlannedComparison(
                         variant=variant,
-                        authored=authored,
+                        authored=cell,
                         targets=tuple(targets),
                         locus_wide=chosen is None,
                     )

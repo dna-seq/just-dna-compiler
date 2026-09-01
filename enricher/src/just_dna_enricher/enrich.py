@@ -39,6 +39,12 @@ from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import normalize_chrom, par_partner
 
 from just_dna_enricher import clinvar
+from just_dna_enricher.civic_refutation import (
+    REFUTATION_BESIDE_CLAIM,
+    REFUTATION_WITHOUT_CLAIM,
+    RefutationFinding,
+    compare_refutations,
+)
 from just_dna_enricher.clinical import (
     ClinSigComparison,
     ClinSigConflict,
@@ -86,6 +92,7 @@ from just_dna_enricher.locations import (
     read_release,
     resolve_clinvar_reference,
     resolve_ensembl_reference,
+    resolve_civic_reference,
     resolve_pubmind_reference,
 )
 from just_dna_enricher.resolver import (
@@ -542,6 +549,15 @@ class EnrichmentResult:
     # drafted-from-this-release tautology, which is the one that used to report a confident zero, and
     # `unusable_snapshot` for a reference that is present but not queryable.
     clin_sig_not_checked: str | None = None
+    # RM170. Authored `direction` values a CIViC snapshot publishes a refutation of — the source
+    # asserting and rebutting one claim, or having only ever rebutted what the module asserts. Warnings
+    # in BOTH modes and escalated in neither (`@a-source-recuring-is-not-a-strict-matter`): a source
+    # disagreeing with itself is a fact about the field, not an authoring error. Empty when no CIViC
+    # snapshot was provisioned, which is what `refutation_not_checked` says.
+    refutation_findings: list[RefutationFinding] = field(default_factory=list)
+    # Why the check above did not run, or `None` when it did. An empty `refutation_findings` says
+    # nothing on its own, exactly as an empty `clin_sig_conflicts` does not.
+    refutation_not_checked: str | None = None
     # The per-row split behind that tautology, and **only** there: `strict` over a module whose licence
     # row says it was drafted from this very snapshot looks every value up and reports how many are
     # still copies, how many a human wrote, and how many conflict (RM4). `None` — never an audit of
@@ -645,6 +661,7 @@ def enrich(
     ensembl_cache: Path | None = None,
     clinvar_cache: Path | None = None,
     pubmind_cache: Path | None = None,
+    civic_cache: Path | None = None,
     use_clinvar: bool = True,
     use_gnomad: bool = True,
     download: bool = True,
@@ -751,7 +768,7 @@ def enrich(
         return _run_enrichment(
             spec_dir,
             mode=mode, offline=offline, ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache,
-            pubmind_cache=pubmind_cache,
+            pubmind_cache=pubmind_cache, civic_cache=civic_cache,
             use_clinvar=use_clinvar, use_gnomad=use_gnomad, download=download,
             genome_build=genome_build, write=write, mint_vrs=mint_vrs, verify_ref=verify_ref,
             verify_clinsig=verify_clinsig, verify_rsids=verify_rsids,
@@ -770,6 +787,7 @@ def _run_enrichment(
     ensembl_cache: Path | None,
     clinvar_cache: Path | None,
     pubmind_cache: Path | None,
+    civic_cache: Path | None,
     use_clinvar: bool,
     use_gnomad: bool,
     download: bool,
@@ -1451,6 +1469,32 @@ def _run_enrichment(
         logger.warning("ClinVar clin_sig %s — %s",
                        "conflict" if conflict.opposed else "difference", conflict)
 
+    # RM170 — the CIViC refutation leg. Folded in here rather than given its own command for the
+    # reason the `clin_sig` leg is: a hand-authored module that never ran `civic_draft` has to meet
+    # this somewhere, and `enrich` is the one pass everybody runs. It reads an operator-built snapshot
+    # and fetches nothing, so `--offline` does not gate it; a missing snapshot is `no_reference`, which
+    # is not a pass (`@unreachable-not-absent`).
+    refutation_findings: list[RefutationFinding] = []
+    refutation_not_checked: str | None = None
+    refutation_skip: str | None = None
+    refutation_subjects: int | None = None
+    refutation_basis: str | None = None
+    civic_ref = resolve_civic_reference(civic_cache)
+    refutation = compare_refutations(variants, out, reference=civic_ref)
+    if refutation is None:
+        refutation_not_checked = "no_snapshot" if civic_ref is None else "unusable_snapshot"
+        refutation_skip = "no_reference"
+    else:
+        refutation_findings = refutation.findings
+        refutation_subjects = refutation.subjects
+        refutation_basis = refutation.status_basis
+    for finding in refutation_findings:
+        # Warned in both modes, escalated in neither. The neighbours say so for the same reason
+        # (`@clinsig-never-escalates`), and the row is deliberately left exactly as authored: a
+        # refutation withholds a claim rather than establishing its opposite, so there is nothing here
+        # for the tier to write even if it were allowed to.
+        logger.warning("CIViC %s — %s", finding.code, finding.restate())
+
     # The concordance record (RM130's sidecar, widened to N authorities by RM134 § B). Built from the
     # comparison that already ran rather than from a second pass over the snapshot: re-asking would
     # cost the whole look-up again, and a second implementation of the record-selection rule is a
@@ -1685,6 +1729,7 @@ def _run_enrichment(
         rows=out, unresolved=sorted(set(unresolved)), sources=sources, mode=mode,
         ref_mismatches=ref_mismatches, clin_sig_conflicts=clin_sig_conflicts,
         clin_sig_not_checked=clin_sig_not_checked, clin_sig_comparison=clin_sig_comparison,
+        refutation_findings=refutation_findings, refutation_not_checked=refutation_not_checked,
         build_diagnoses=build.diagnoses, build_not_diagnosed=build.not_checked,
         stale_rsids=stale_rsids, par_twins_dropped=sorted(par_twins_dropped),
         vrs=mint_result, unreachable_rsids=sorted(unreachable_rsids),
@@ -1849,6 +1894,12 @@ def _run_enrichment(
                 clin_sig_skip=clin_sig_skip,
                 clin_sig_detail=clin_sig_not_checked,
                 clinvar_ref=clinvar_ref,
+                refutation_findings=refutation_findings,
+                refutation_subjects=refutation_subjects,
+                refutation_skip=refutation_skip,
+                refutation_detail=refutation_not_checked,
+                refutation_basis=refutation_basis,
+                civic_ref=civic_ref,
                 verify_rsids=verify_rsids,
                 rsid_subjects=rsid_subjects,
                 stale_rsids=stale_rsids,
@@ -1909,6 +1960,40 @@ def _clin_sig_detail(conflicts: Sequence[ClinSigConflict]) -> str | None:
     return "; ".join(parts)
 
 
+def _civic_release(reference: Path | None) -> str | None:
+    """The CIViC snapshot's own release label, or `None` when it names none. Same rule as the rest."""
+    return _snapshot_release(reference)
+
+
+def _refutation_detail(
+    findings: Sequence[RefutationFinding], basis: str | None
+) -> str | None:
+    """What the refutation check found, and **on which basis** — the basis on every run.
+
+    The basis is not decoration here the way a release label is elsewhere. On the `accepted` basis
+    this class is empty by construction: every refutation in CIViC that stands against a claim is
+    submitted content, and both accepted refutations in the database stand against nothing
+    (`docs/probes/CONTRADICTION_CORPORA.md`). So `findings: 0` with no basis beside it says "clear
+    water" when what happened was "looked in the half where it cannot appear". A run that found
+    nothing still writes the sentence.
+
+    Grouped by code, because the two are different sentences: a source contradicting itself, and a
+    module asserting what the source only ever denied.
+    """
+    stated = f"basis {basis}" if basis else "basis unstated by the snapshot"
+    if not findings:
+        return f"no authored direction sits beside a published refutation ({stated})"
+    parts = []
+    for code in (REFUTATION_BESIDE_CLAIM, REFUTATION_WITHOUT_CLAIM):
+        group = [f for f in findings if f.code == code]
+        if group:
+            named = examples([
+                subject.variant_key for finding in group for subject in finding.subjects
+            ])
+            parts.append(f"{len(group)} {code}: {named}")
+    return "; ".join(parts) + f" ({stated})"
+
+
 def _verification_records(
     *,
     offline: bool,
@@ -1921,6 +2006,12 @@ def _verification_records(
     clin_sig_skip: str | None,
     clin_sig_detail: str | None,
     clinvar_ref: Path | None,
+    refutation_findings: list[RefutationFinding],
+    refutation_subjects: int | None,
+    refutation_skip: str | None,
+    refutation_detail: str | None,
+    refutation_basis: str | None,
+    civic_ref: Path | None,
     verify_rsids: bool,
     rsid_subjects: int,
     stale_rsids: list[RsidStatus],
@@ -2063,6 +2154,39 @@ def _verification_records(
                 source="clinvar",
                 release=clinvar_release,
                 detail=_clin_sig_detail(clin_sig_conflicts),
+            )
+        )
+
+    # RM170 — the CIViC refutation leg. No `not_requested` arm: there is no flag, because the check
+    # fetches nothing and costs a local read. A missing snapshot is `no_reference` and stays visibly
+    # different from a run that looked and found nothing.
+    if refutation_skip is not None:
+        records.append(
+            skipped(
+                "published_refutation",
+                refutation_skip,
+                detail=(
+                    "no CIViC snapshot was provisioned this run, so no authored direction was "
+                    "compared against a published refutation. Build one with `civic build "
+                    "--release <date> --submitted`"
+                    if refutation_detail == "no_snapshot"
+                    else "a CIViC snapshot was located but could not be read"
+                ),
+                source="civic",
+            )
+        )
+    else:
+        # The basis is in `detail` on every run including the empty one, and that is the point: on the
+        # `accepted` basis this class is empty **by construction** — every refutation standing against
+        # a claim in CIViC is submitted content — so a bare `findings=0` would read as clear water.
+        records.append(
+            ran(
+                "published_refutation",
+                subjects=refutation_subjects,
+                findings=len(refutation_findings),
+                source="civic",
+                release=_civic_release(civic_ref),
+                detail=_refutation_detail(refutation_findings, refutation_basis),
             )
         )
 
