@@ -68,6 +68,7 @@ from just_dna_enricher.download import (
 from just_dna_enricher.drug_labels import (
     DEFAULT_DRUG_LABELS_URL,
     DrugLabelError,
+    arm_summary,
     check_drug_labels,
 )
 from just_dna_enricher.enrich import EnrichmentError, enrich
@@ -3431,9 +3432,10 @@ def clinpgx_check_labels_(
 ) -> None:
     """Compare a module's gene/allele/drug claims against the drug labels five regulators publish.
 
-    **Two join tiers, reported apart.** A label that names a star allele or an rsID answers at the
-    allele tier; one that names only the gene answers at the gene tier, and no label answers at both.
-    A gene-level agreement and an allele-level agreement are not the same claim.
+    **Two join tiers, reported apart, and the tier belongs to the question.** *What do the agencies
+    say about this gene and this medicine* is the gene-tier subject; *…and this star allele or rsID*
+    is the allele-tier one. A label naming both answers both, because they are two questions rather
+    than one asked twice, and a gene-level agreement is not an allele-level agreement.
 
     **Writes no authored cell and never fails on a difference.** Five agencies genuinely disagree with
     each other — clopidogrel and CYP2C19 is `Actionable PGx` at four of them and `Informative PGx` at
@@ -3461,12 +3463,14 @@ def clinpgx_check_labels_(
         f"compared {len(result.compared)} claim(s) against {len(result.regulators)} regulator(s)"
         f"{label} — {tiers}"
     )
-    if result.unstated_calls:
+    if result.unstated_labels:
         typer.secho(
-            f"  {result.unstated_calls} label(s) state no testing level: counted as unknown, never "
+            f"  {len(result.unstated_labels)} label(s) state no testing level: counted as unknown, never "
             f"as a negative",
             fg=typer.colors.CYAN,
         )
+    if result.verdicts:
+        typer.secho(f"  {arm_summary(result)}", fg=typer.colors.CYAN)
     for _subject, note in result.withheld:
         typer.secho(f"  withheld: {note}", fg=typer.colors.CYAN)
     for finding in result.findings:
