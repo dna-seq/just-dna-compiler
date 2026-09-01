@@ -95,6 +95,13 @@ from just_dna_enricher.licensing import (
     sources_path,
 )
 from just_dna_enricher.literature import LiteratureEnrichmentError, enrich_literature
+from just_dna_enricher.litvar import (
+    LitvarClient,
+    LitvarError,
+    check_literature_coverage,
+    coverage_reason,
+)
+from just_dna_enricher.litvar import verification_records as litvar_records
 from just_dna_enricher.locations import (
     CITATIONS_DIRNAME,
     RELEASE_FILENAME,
@@ -2888,6 +2895,124 @@ def clinvar_citations_(
             f"will not say which citations release it carries",
             fg=typer.colors.YELLOW, err=True,
         )
+
+
+# ── LitVar2 / PubTator3 (RM167) ─────────────────────────────────────────────────────────────────
+
+litvar_app = typer.Typer(
+    help=(
+        "Which papers a variant-literature index holds for a module's alleles, and at which tier. "
+        "Reports only; writes no authored cell and no table row."
+    )
+)
+app.add_typer(litvar_app, name="litvar")
+
+
+@litvar_app.command("coverage")
+def litvar_coverage_(
+    spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    offline: bool = typer.Option(False, "--offline", help="No network; every locus is recorded as unchecked."),
+    quiet: bool = typer.Option(False, "--quiet", help="Only the tier summary, not a line per locus."),
+) -> None:
+    """Report LitVar's literature coverage per locus, naming the tier that answered.
+
+    **It answers *which papers discuss an allele that is already identified*. It does not answer
+    *which allele a name meant*** — those read as the same question and are not. Measured against the
+    two hardest records in this repository (CIViC 1955 and 2131, four candidate alleles with
+    registered CAIDs), the index returns no node for any of them, because PubTator3 mines titles and
+    abstracts and those alleles live in a table inside a paywalled paper. Do not reach for this to
+    recover an identity.
+
+    Writes no row and no `sources.csv` entry: nothing here reaches a module's tables, so the module
+    does not *use* this source. What it does write is `verification.json` — an attestation that the
+    question was put, over how many loci, and at which tier each was answered.
+    """
+    try:
+        report = check_literature_coverage(spec_dir, offline=offline)
+    except (ValueError, LitvarError) as exc:
+        typer.secho(f"LITERATURE COVERAGE FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if not report.loci:
+        # No attestation, for `check-identifiers`' reason: with no rsID-bearing row there is no
+        # question to record having put, and minting a nonce would create a `verification.json` on a
+        # module that never asked for one.
+        typer.secho(
+            "no authored table names an rsID — nothing to ask LitVar about", fg=typer.colors.YELLOW
+        )
+        return
+    typer.echo(
+        f"loci: {len(report.loci)}"
+        f" (from {len(report.tables_read)} table(s): {', '.join(report.tables_read) or 'none'})"
+    )
+    for name, why in sorted(report.tables_not_read.items()):
+        if why != "not present":
+            typer.secho(
+                f"  {name} names rsIDs and could not be read ({why}) — its loci were NOT asked about",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
+    if not quiet:
+        for locus in report.loci:
+            typer.echo(f"  {coverage_reason(locus)}")
+            if locus.tier == "allele":
+                # Both numbers, side by side and labelled. 328 and 3,945 are both true about
+                # rs429358 and only one of them is about the allele in the module.
+                typer.echo(
+                    f"    allele-resolved: {locus.allele_pmids} paper(s); position node: "
+                    f"{locus.position_pmids}; on the position node and no allele node: "
+                    f"{locus.position_only_pmids}"
+                )
+            elif locus.tier == "position":
+                typer.echo(
+                    f"    position node: {locus.position_pmids} paper(s); of those, "
+                    f"{locus.position_only_pmids} sit on no allele node"
+                )
+    for tier in ("allele", "position", "absent", "unchecked"):
+        typer.echo(f"{tier}: {len(report.at(tier))}")
+    typer.echo(
+        f"papers on a position node that no allele node claims: {report.position_only_residue}"
+    )
+    if report.degraded:
+        typer.secho(
+            f"allele-level questions answered position-level: "
+            f"{', '.join(locus.rsid for locus in report.degraded)}",
+            fg=typer.colors.YELLOW,
+        )
+    try:
+        record_verification(litvar_records(report), spec_dir, error=EnrichmentError)
+    except EnrichmentError as exc:
+        typer.secho(f"CHECKED, BUT NOT ATTESTED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+
+@litvar_app.command("gene")
+def litvar_gene_(
+    gene: str = typer.Argument(..., help="Gene symbol, e.g. HFE"),
+) -> None:
+    """List every node LitVar holds under a gene symbol, grouped by tier. Writes nothing.
+
+    This is the endpoint that serves line-delimited Python `repr()` rather than JSON, and the tier
+    split is the reason to look: of 588 HFE nodes on 2026-09-01, 220 are rsID-only, 69 carry a
+    ClinGen allele id, exactly one is the gene node, and the remaining 298 are unnormalized protein
+    strings — text a miner saw, not an identity anything should join on.
+    """
+    try:
+        nodes = LitvarClient().gene_nodes(gene)
+    except LitvarError as exc:
+        typer.secho(f"LITVAR GENE LOOKUP FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if not nodes:
+        typer.secho(f"LitVar holds no node under {gene}", fg=typer.colors.YELLOW)
+        return
+    for tier in ("clingen", "rsid", "gene", "mention"):
+        at_tier = [node for node in nodes if node.tier == tier]
+        papers = sum(node.pmid_count or 0 for node in at_tier)
+        typer.echo(f"{tier}: {len(at_tier)} node(s), {papers} paper-node link(s)")
+    typer.secho(
+        "a `mention` node is an unnormalized protein string under a gene id — it names no allele, "
+        "and nothing here should be joined on as an identity",
+        fg=typer.colors.YELLOW,
+    )
 
 
 # ── MANE snapshot (build, publisher/dev surface) — RM168 ───────────────────────────────────────

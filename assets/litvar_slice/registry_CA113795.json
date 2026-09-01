@@ -1,0 +1,1114 @@
+{
+  "@context": "http://reg.genome.network/schema/allele.jsonld",
+  "@id": "http://reg.genome.network/allele/CA113795",
+  "communityStandardTitle": [
+    "NM_000410.4(HFE):c.845G>A (p.Cys282Tyr)"
+  ],
+  "externalRecords": {
+    "ClinVarAlleles": [
+      {
+        "@id": "http://www.ncbi.nlm.nih.gov/clinvar/?term=15048[alleleid]",
+        "alleleId": 15048,
+        "preferredName": "NM_000410.4(HFE):c.845G>A (p.Cys282Tyr)"
+      }
+    ],
+    "ClinVarVariations": [
+      {
+        "@id": "http://www.ncbi.nlm.nih.gov/clinvar/variation/9",
+        "RCV": [
+          "RCV000000019",
+          "RCV000178096",
+          "RCV000210820",
+          "RCV000308358",
+          "RCV000414811",
+          "RCV001248830",
+          "RCV001270034",
+          "RCV001731264",
+          "RCV002280089",
+          "RCV002512585",
+          "RCV003224084",
+          "RCV003493406"
+        ],
+        "variationId": 9
+      }
+    ],
+    "ExAC": [
+      {
+        "@id": "http://exac.broadinstitute.org/variant/6-26093141-G-A",
+        "id": "6-26093141-G-A",
+        "variant": "6:26093141 G / A"
+      }
+    ],
+    "MyVariantInfo_hg19": [
+      {
+        "@id": "http://myvariant.info/v1/variant/chr6:g.26093141G>A?assembly=hg19",
+        "id": "chr6:g.26093141G>A"
+      }
+    ],
+    "MyVariantInfo_hg38": [
+      {
+        "@id": "http://myvariant.info/v1/variant/chr6:g.26092913G>A?assembly=hg38",
+        "id": "chr6:g.26092913G>A"
+      }
+    ],
+    "dbSNP": [
+      {
+        "@id": "http://www.ncbi.nlm.nih.gov/snp/1800562",
+        "rs": 1800562
+      }
+    ],
+    "gnomAD_2": [
+      {
+        "@id": "http://gnomad.broadinstitute.org/variant/6-26093141-G-A?dataset=gnomad_r2_1",
+        "id": "6-26093141-G-A",
+        "variant": "6:26093141 G / A"
+      }
+    ],
+    "gnomAD_3": [
+      {
+        "@id": "http://gnomad.broadinstitute.org/variant/6-26092913-G-A?dataset=gnomad_r3",
+        "id": "6-26092913-G-A",
+        "variant": "6:26092913 G / A"
+      }
+    ],
+    "gnomAD_4": [
+      {
+        "@id": "http://gnomad.broadinstitute.org/variant/6-26092913-G-A?dataset=gnomad_r4",
+        "id": "6-26092913-G-A",
+        "variant": "6:26092913 G / A"
+      }
+    ]
+  },
+  "genomicAlleles": [
+    {
+      "chromosome": "6",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 26092913,
+          "referenceAllele": "G",
+          "start": 26092912
+        }
+      ],
+      "hgvs": [
+        "NC_000006.12:g.26092913G>A",
+        "CM000668.2:g.26092913G>A"
+      ],
+      "referenceGenome": "GRCh38",
+      "referenceSequence": "http://reg.genome.network/refseq/RS000054"
+    },
+    {
+      "chromosome": "6",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 26093141,
+          "referenceAllele": "G",
+          "start": 26093140
+        }
+      ],
+      "hgvs": [
+        "NC_000006.11:g.26093141G>A",
+        "CM000668.1:g.26093141G>A"
+      ],
+      "referenceGenome": "GRCh37",
+      "referenceSequence": "http://reg.genome.network/refseq/RS000030"
+    },
+    {
+      "chromosome": "6",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 26201120,
+          "referenceAllele": "G",
+          "start": 26201119
+        }
+      ],
+      "hgvs": [
+        "NC_000006.10:g.26201120G>A"
+      ],
+      "referenceGenome": "NCBI36",
+      "referenceSequence": "http://reg.genome.network/refseq/RS000006"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 10633,
+          "referenceAllele": "G",
+          "start": 10632
+        }
+      ],
+      "hgvs": [
+        "NG_008720.2:g.10633G>A",
+        "LRG_748:g.10633G>A"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS001178"
+    }
+  ],
+  "transcriptAlleles": [
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 855,
+          "referenceAllele": "G",
+          "start": 854
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000485729.2:c.845G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000417534.2:p.Cys282Tyr",
+        "hgvsWellDefined": "ENSP00000417534.2:p.Cys282Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS914146"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 390,
+          "endIntronDirection": "-",
+          "endIntronOffset": 1878,
+          "referenceAllele": "C",
+          "start": 390,
+          "startIntronDirection": "-",
+          "startIntronOffset": 1879
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004757",
+      "geneNCBI_id": 8347,
+      "geneSymbol": "H2BC4",
+      "hgvs": [
+        "ENST00000707188.1:c.391-1879C>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000516775.1:n.391-1879C>T"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS914499"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 857,
+          "referenceAllele": "G",
+          "start": 856
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000357618.10:c.845G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000417404.1:p.Cys282Tyr",
+        "hgvsWellDefined": "ENSP00000417404.1:p.Cys282Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS748965",
+      "MANE": {
+        "maneVersion": "1.3",
+        "maneStatus": "MANE Select",
+        "nucleotide": {
+          "Ensembl": {
+            "hgvs": "ENST00000357618.10:c.845G>A"
+          },
+          "RefSeq": {
+            "hgvs": "NM_000410.4:c.845G>A"
+          }
+        },
+        "protein": {
+          "Ensembl": {
+            "hgvs": "ENSP00000417404.1:p.Cys282Tyr"
+          },
+          "RefSeq": {
+            "hgvs": "NP_000401.1:p.Cys282Tyr"
+          }
+        }
+      }
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 847,
+          "referenceAllele": "G",
+          "start": 846
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000309234.10:c.845G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000311698.6:p.Cys282Tyr",
+        "hgvsWellDefined": "ENSP00000311698.6:p.Cys282Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS256173"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 729,
+          "referenceAllele": "G",
+          "start": 728
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000317896.11:c.569G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000313776.7:p.Cys190Tyr",
+        "hgvsWellDefined": "ENSP00000313776.7:p.Cys190Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS257442"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 571,
+          "referenceAllele": "G",
+          "start": 570
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000336625.12:c.527G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000337819.8:p.Cys176Tyr",
+        "hgvsWellDefined": "ENSP00000337819.8:p.Cys176Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS260334"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 741,
+          "referenceAllele": "G",
+          "start": 740
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000349999.8:c.581G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000259699.6:p.Cys194Tyr",
+        "hgvsWellDefined": "ENSP00000259699.6:p.Cys194Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS262645"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 236,
+          "endIntronDirection": "-",
+          "endIntronOffset": 205,
+          "referenceAllele": "G",
+          "start": 236,
+          "startIntronDirection": "-",
+          "startIntronOffset": 206
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000352392.8:c.77-206G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000315936.4:n.77-206G>A"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS262860"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 465,
+          "referenceAllele": "G",
+          "start": 464
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000353147.9:c.305G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000312342.5:p.Cys102Tyr",
+        "hgvsWellDefined": "ENSP00000312342.5:p.Cys102Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS262933"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 967,
+          "referenceAllele": "G",
+          "start": 966
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000357618.9:c.845G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000417404.1:p.Cys282Tyr",
+        "hgvsWellDefined": "ENSP00000417404.1:p.Cys282Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS264178"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 936,
+          "referenceAllele": "G",
+          "start": 935
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000397022.7:c.776G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000380217.3:p.Cys259Tyr",
+        "hgvsWellDefined": "ENSP00000380217.3:p.Cys259Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS277558"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 839,
+          "referenceAllele": "G",
+          "start": 838
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000461397.5:c.803G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000420802.1:p.Cys268Tyr",
+        "hgvsWellDefined": "ENSP00000420802.1:p.Cys268Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS305916"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 885,
+          "referenceAllele": "G",
+          "start": 884
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000470149.5:c.836G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000419725.1:p.Cys279Tyr",
+        "hgvsWellDefined": "ENSP00000419725.1:p.Cys279Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS312658"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 1176,
+          "referenceAllele": "G",
+          "start": 1175
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000483782.1:n.1176G>A"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS323180"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 688,
+          "referenceAllele": "G",
+          "start": 687
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000486147.1:n.688G>A"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS325023"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 575,
+          "referenceAllele": "G",
+          "start": 574
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "ENST00000488199.5:c.539G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000420559.1:p.Cys180Tyr",
+        "hgvsWellDefined": "ENSP00000420559.1:p.Cys180Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS326564"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "T",
+          "end": 132,
+          "endIntronDirection": "+",
+          "endIntronOffset": 30860,
+          "referenceAllele": "C",
+          "start": 132,
+          "startIntronDirection": "+",
+          "startIntronOffset": 30859
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004751",
+      "geneNCBI_id": 3018,
+      "geneSymbol": "H2BC3",
+      "hgvs": [
+        "ENST00000629531.1:c.132+30860C>T"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000486472.1:n.132+30860C>T"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS407236"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA105043",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 1005,
+          "referenceAllele": "G",
+          "start": 1004
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_000410.3:c.845G>A",
+        "LRG_748t1:c.845G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_000401.1:p.Cys282Tyr",
+        "hgvsWellDefined": "NP_000401.1:p.Cys282Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS006472"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA916018925",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 1005,
+          "referenceAllele": "G",
+          "start": 1004
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_001300749.1:c.845G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_001287678.1:p.Cys282Tyr",
+        "hgvsWellDefined": "NP_001287678.1:p.Cys282Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS024812"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830269852",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 687,
+          "referenceAllele": "G",
+          "start": 686
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139003.2:c.527G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620572.1:p.Cys176Tyr",
+        "hgvsWellDefined": "NP_620572.1:p.Cys176Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS040939"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270075",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 729,
+          "referenceAllele": "G",
+          "start": 728
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139004.2:c.569G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620573.1:p.Cys190Tyr",
+        "hgvsWellDefined": "NP_620573.1:p.Cys190Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS040940"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270289",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 963,
+          "referenceAllele": "G",
+          "start": 962
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139006.2:c.803G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620575.1:p.Cys268Tyr",
+        "hgvsWellDefined": "NP_620575.1:p.Cys268Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS040941"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270449",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 741,
+          "referenceAllele": "G",
+          "start": 740
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139007.2:c.581G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620576.1:p.Cys194Tyr",
+        "hgvsWellDefined": "NP_620576.1:p.Cys194Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS040942"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270598",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 699,
+          "referenceAllele": "G",
+          "start": 698
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139008.2:c.539G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620577.1:p.Cys180Tyr",
+        "hgvsWellDefined": "NP_620577.1:p.Cys180Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS040943"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270811",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 936,
+          "referenceAllele": "G",
+          "start": 935
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139009.2:c.776G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620578.1:p.Cys259Tyr",
+        "hgvsWellDefined": "NP_620578.1:p.Cys259Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS040944"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270928",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 465,
+          "referenceAllele": "G",
+          "start": 464
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139010.2:c.305G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620579.1:p.Cys102Tyr",
+        "hgvsWellDefined": "NP_620579.1:p.Cys102Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS040945"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 236,
+          "endIntronDirection": "-",
+          "endIntronOffset": 205,
+          "referenceAllele": "G",
+          "start": 236,
+          "startIntronDirection": "-",
+          "startIntronOffset": 206
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139011.2:c.77-206G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620580.1:n.77-206G>A"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS040946"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 967,
+          "referenceAllele": "G",
+          "start": 966
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "XM_011514543.1:c.845G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "XP_011512845.1:p.Cys282Tyr",
+        "hgvsWellDefined": "XP_011512845.1:p.Cys282Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS081768"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 958,
+          "referenceAllele": "G",
+          "start": 957
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "XM_011514544.1:c.836G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "XP_011512846.1:p.Cys279Tyr",
+        "hgvsWellDefined": "XP_011512846.1:p.Cys279Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS081769"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 967,
+          "referenceAllele": "G",
+          "start": 966
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "XR_241893.2:n.967G>A"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS116153"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 939,
+          "referenceAllele": "G",
+          "start": 938
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "XM_011514543.3:c.845G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "XP_011512845.1:p.Cys282Tyr",
+        "hgvsWellDefined": "XP_011512845.1:p.Cys282Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS543375"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 939,
+          "referenceAllele": "G",
+          "start": 938
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "XR_241893.4:n.939G>A"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS605872"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA916018925",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 857,
+          "referenceAllele": "G",
+          "start": 856
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_001300749.2:c.845G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_001287678.1:p.Cys282Tyr",
+        "hgvsWellDefined": "NP_001287678.1:p.Cys282Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS683155"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830269852",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 539,
+          "referenceAllele": "G",
+          "start": 538
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139003.3:c.527G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620572.1:p.Cys176Tyr",
+        "hgvsWellDefined": "NP_620572.1:p.Cys176Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS699815"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270075",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 581,
+          "referenceAllele": "G",
+          "start": 580
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139004.3:c.569G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620573.1:p.Cys190Tyr",
+        "hgvsWellDefined": "NP_620573.1:p.Cys190Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS699816"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270289",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 815,
+          "referenceAllele": "G",
+          "start": 814
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139006.3:c.803G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620575.1:p.Cys268Tyr",
+        "hgvsWellDefined": "NP_620575.1:p.Cys268Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS699817"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270449",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 593,
+          "referenceAllele": "G",
+          "start": 592
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139007.3:c.581G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620576.1:p.Cys194Tyr",
+        "hgvsWellDefined": "NP_620576.1:p.Cys194Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS699818"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270598",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 551,
+          "referenceAllele": "G",
+          "start": 550
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139008.3:c.539G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620577.1:p.Cys180Tyr",
+        "hgvsWellDefined": "NP_620577.1:p.Cys180Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS699819"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270811",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 788,
+          "referenceAllele": "G",
+          "start": 787
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139009.3:c.776G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620578.1:p.Cys259Tyr",
+        "hgvsWellDefined": "NP_620578.1:p.Cys259Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS699820"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2830270928",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 317,
+          "referenceAllele": "G",
+          "start": 316
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139010.3:c.305G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620579.1:p.Cys102Tyr",
+        "hgvsWellDefined": "NP_620579.1:p.Cys102Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS699821"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 88,
+          "endIntronDirection": "-",
+          "endIntronOffset": 205,
+          "referenceAllele": "G",
+          "start": 88,
+          "startIntronDirection": "-",
+          "startIntronOffset": 206
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_139011.3:c.77-206G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_620580.1:n.77-206G>A"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS699822"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA105043",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 857,
+          "referenceAllele": "G",
+          "start": 856
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_000410.4:c.845G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_000401.1:p.Cys282Tyr",
+        "hgvsWellDefined": "NP_000401.1:p.Cys282Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS710831",
+      "MANE": {
+        "maneVersion": "1.3",
+        "maneStatus": "MANE Select",
+        "nucleotide": {
+          "Ensembl": {
+            "hgvs": "ENST00000357618.10:c.845G>A"
+          },
+          "RefSeq": {
+            "hgvs": "NM_000410.4:c.845G>A"
+          }
+        },
+        "protein": {
+          "Ensembl": {
+            "hgvs": "ENSP00000417404.1:p.Cys282Tyr"
+          },
+          "RefSeq": {
+            "hgvs": "NP_000401.1:p.Cys282Tyr"
+          }
+        }
+      }
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2580240077",
+      "coordinates": [
+        {
+          "allele": "A",
+          "end": 857,
+          "referenceAllele": "G",
+          "start": 856
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN004886",
+      "geneNCBI_id": 3077,
+      "geneSymbol": "HFE",
+      "hgvs": [
+        "NM_001384164.1:c.845G>A"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_001371093.1:p.Cys282Tyr",
+        "hgvsWellDefined": "NP_001371093.1:p.Cys282Tyr"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS722677"
+    }
+  ],
+  "type": "nucleotide"
+}

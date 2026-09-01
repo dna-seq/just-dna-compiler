@@ -447,6 +447,10 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
         "gnomad.GnomadClient._request",
         "grch37.Grch37Client._get",
         "gwas.GwasCatalogClient._get",
+        # RM167. Same split as the registry leg above: the retried inner fetches, the outer
+        # separates LitVar's answered absence (a 400 whose body opens `Variant not found`) from
+        # every failure, which it translates.
+        "litvar.LitvarClient._fetch",
         # `_request`, not `_get`, since RM101: the retried inner and the translating outer are
         # now split here the way `cpic`, `eutils` and `gnomad` already split them.
         "identifiers.OntologyClient._request",

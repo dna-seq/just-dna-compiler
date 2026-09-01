@@ -32,6 +32,7 @@ from just_dna_enricher.currency import ClinVarReleaseClient, ReleaseUnavailable
 from just_dna_enricher.eutils import EutilsClient, EutilsError, EutilsSettings
 from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadSettings
 from just_dna_enricher.identifiers import IdentifierUnavailable, OntologyClient
+from just_dna_enricher.litvar import LitvarClient, LitvarUnavailable
 from just_dna_enricher.net import PacingGate
 from just_dna_enricher.pgs import PgsCatalogClient, PgsCatalogUnavailable
 from just_dna_enricher.pharmvar import PharmVarClient, PharmVarError
@@ -117,6 +118,15 @@ def _pgs(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], obj
     )
     return lambda: client.score("PGS000001")
 
+def _litvar(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    """RM167. Its *absence* is a return value and every failure is an exception, which is why it is
+    here rather than in the exempt set below: a 400 whose body opens `Variant not found` is the index
+    answering, and there is a real error type for everything else."""
+    client = LitvarClient(
+        client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate()
+    )
+    return lambda: client.autocomplete("rs1800562")
+
 
 def _pharmvar(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
     client = PharmVarClient(
@@ -144,6 +154,14 @@ CLIENTS = [
     # client really is "the Catalog could not be asked": its own negative is a 200 with an empty
     # body, which never reaches an exception at all.
     ("pgs", _pgs, PgsCatalogUnavailable),
+
+    # `LitvarUnavailable` rather than its parent, the same stronger assertion as the two above:
+    # every transport and status leg of this client means the index could not be asked. `LitvarError`
+    # is the parent and covers the *shape* failures — a 200 whose body is neither the JSON nor the
+    # Python literal it should be, or a record with no `_id` — which this file does not drive and
+    # `test_litvar.py` does. The two must not be confused: the JSON-decode leg was leaking untyped
+    # until a review found it, and these three cases could not see it.
+    ("litvar", _litvar, LitvarUnavailable),
 ]
 
 

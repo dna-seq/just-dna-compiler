@@ -417,12 +417,21 @@ just-dna-enricher check-identifiers spec/            # trait CURIEs (OLS4), gene
 just-dna-enricher check-acmg spec/ --sf-list acmg/   # acmg_sf vs the ACMG SF list
 just-dna-enricher pgx spec/                          # function_status vs PharmVar and CPIC
 just-dna-enricher clinpgx check spec/ --snapshot cp/ # pharm_variants.csv vs the ClinPGx snapshot
+just-dna-enricher litvar coverage spec/              # which papers the literature index holds per locus, and at which tier
 ```
 
 Every check **reports, never repairs** — rewriting an authored value would destroy the evidence of the
 upstream mistake. `--strict` escalates a finding to a refusal; `--best-effort` (the default) warns and
 carries on. Two deliberately never escalate — the `clin_sig` and allele-function cross-checks — because
 failing would make the format arbitrate between expert panels.
+
+`litvar coverage` reports how much of the literature a variant index holds for each of your loci, and
+**at which tier it could say it**: an allele-resolved answer where the index has a node for the exact
+allele you named, a position-level one where it only has a node for the rsID, and absent where it has
+neither. The two are not interchangeable — the APOE locus rs429358 has 3,945 papers at its position
+and 328 on its allele — so the tier is part of every answer. It writes nothing, and it
+answers *which papers discuss an allele that is already identified*; it will not tell you which allele
+an old paper's name meant.
 
 `check-acmg` needs `--sf-list` to give a real answer: NCBI's page serves SF **v3.2** while ACMG has
 published **v3.3**, so without a snapshot every disagreement comes back `unverifiable` rather than as a
@@ -789,6 +798,8 @@ workaround.
 | `draft-clinpgx <dir> --snapshot S` | ClinPGx → `pharm_variants.csv`. `--gene`, `--drug`, `--min-evidence-level`, `--use`, `--dry-run` |
 | `check-identifiers <dir>` | trait CURIEs (OLS4), gene symbols (HGNC), `pgs_id` against the PGS Catalog. `--no-traits`, `--no-genes`, `--no-pgs` |
 | `check-acmg <dir>` | `acmg_sf` vs the ACMG SF list. `--sf-list` (strongly preferred), `--offline`, `--url` |
+| `litvar coverage <dir>` | literature coverage per locus, naming the tier that answered. `--offline`, `--quiet`. Writes nothing |
+| `litvar gene G` | every node the index holds under a gene, split by tier. Writes nothing |
 | `pgx <dir>` | `function_status` vs PharmVar + CPIC. `--no-pharmvar`, `--no-cpic`, `--use` |
 | `clinpgx check <dir> --snapshot S` | `pharm_variants.csv` vs the ClinPGx snapshot, offline-capable |
 | `hint variant\|citation\|trait\|gene` | look up one identifier. Writes nothing. `--json`, `--offline`, `--ambiguity`, `--frequencies`, `--pubmind-cache` |

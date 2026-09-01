@@ -275,3 +275,36 @@ def test_a_blank_caid_is_an_absence_and_never_a_request(caid):
         raise AssertionError("a blank CAID must not be looked up")
 
     assert _client(boom).resolve(caid).outcome == "no_identity"
+def test_a_one_sided_allele_travels_even_when_an_rs_number_already_settled_the_outcome():
+    """`unanchored` was parsed and then dropped on every record that also carried a dbSNP id.
+
+    The registry answers with an rs-number for most one-sided indels, so `rsid` alone made the outcome
+    `resolved` and the `return` for that arm never passed `unanchored` on. A caller that wants the
+    *allele* — RM167's coverage pass compares a registry allele against the one a module names — then
+    saw `coordinate=None` with nothing to anchor, and could not tell that from a record holding no
+    allele at all. Real shape, from the ClinGen payload for PALB2 CA167019: an rs number beside a
+    deletion the registry states with an empty `allele`.
+
+    Demonstrated on the reachable consequence rather than on the field alone: both halves of the
+    identity are asserted, so a repair that dropped the rsID to carry the allele would fail too.
+    """
+    payload = {
+        "externalRecords": {"dbSNP": [{"rs": 515726117}]},
+        "genomicAlleles": [
+            {
+                "referenceGenome": "GRCh38",
+                "chromosome": "16",
+                "coordinates": [
+                    {"allele": "", "referenceAllele": "C", "start": 23603658, "end": 23603659}
+                ],
+            }
+        ],
+    }
+    identity = _parse("CA167019", payload)
+    assert identity.outcome == "resolved"
+    assert identity.rsid == "rs515726117"
+    assert identity.coordinate is None, "a one-sided allele is not a substitution this column holds"
+    assert identity.unanchored == ("16", 23603658, "C", "")
+    # Still not placeable: an allele that needs an anchor is not a position (`@identity-whole-or-none`).
+    assert identity.placeable, "the rs number places it; the allele is what says which allele it is"
+    assert anchor_indel(identity.unanchored, lambda _c, _p: "G") == ("16", 23603658, "GC", "G")

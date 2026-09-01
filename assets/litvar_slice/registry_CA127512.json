@@ -1,0 +1,517 @@
+{
+  "@context": "http://reg.genome.network/schema/allele.jsonld",
+  "@id": "http://reg.genome.network/allele/CA127512",
+  "communityStandardTitle": [
+    "NM_000041.4(APOE):c.388T>C (p.Cys130Arg)"
+  ],
+  "externalRecords": {
+    "COSMIC": [
+      {
+        "active": false,
+        "id": "COSM3749517"
+      }
+    ],
+    "ClinVarAlleles": [
+      {
+        "@id": "http://www.ncbi.nlm.nih.gov/clinvar/?term=32903[alleleid]",
+        "alleleId": 32903,
+        "preferredName": "NM_000041.4(APOE):c.388T>C (p.Cys130Arg)"
+      }
+    ],
+    "ClinVarVariations": [
+      {
+        "@id": "http://www.ncbi.nlm.nih.gov/clinvar/variation/17864",
+        "RCV": [
+          "RCV000019448",
+          "RCV000292119",
+          "RCV000826089",
+          "RCV000845581",
+          "RCV000991302",
+          "RCV001262791",
+          "RCV001195807"
+        ],
+        "variationId": 17864
+      }
+    ],
+    "ExAC": [
+      {
+        "@id": "http://exac.broadinstitute.org/variant/19-45411941-T-C",
+        "id": "19-45411941-T-C",
+        "variant": "19:45411941 T / C"
+      }
+    ],
+    "MyVariantInfo_hg19": [
+      {
+        "@id": "http://myvariant.info/v1/variant/chr19:g.45411941T>C?assembly=hg19",
+        "id": "chr19:g.45411941T>C"
+      }
+    ],
+    "MyVariantInfo_hg38": [
+      {
+        "@id": "http://myvariant.info/v1/variant/chr19:g.44908684T>C?assembly=hg38",
+        "id": "chr19:g.44908684T>C"
+      }
+    ],
+    "dbSNP": [
+      {
+        "@id": "http://www.ncbi.nlm.nih.gov/snp/429358",
+        "rs": 429358
+      }
+    ],
+    "gnomAD_2": [
+      {
+        "@id": "http://gnomad.broadinstitute.org/variant/19-45411941-T-C?dataset=gnomad_r2_1",
+        "id": "19-45411941-T-C",
+        "variant": "19:45411941 T / C"
+      }
+    ],
+    "gnomAD_3": [
+      {
+        "@id": "http://gnomad.broadinstitute.org/variant/19-44908684-T-C?dataset=gnomad_r3",
+        "id": "19-44908684-T-C",
+        "variant": "19:44908684 T / C"
+      }
+    ],
+    "gnomAD_4": [
+      {
+        "@id": "http://gnomad.broadinstitute.org/variant/19-44908684-T-C?dataset=gnomad_r4",
+        "id": "19-44908684-T-C",
+        "variant": "19:44908684 T / C"
+      }
+    ]
+  },
+  "genomicAlleles": [
+    {
+      "chromosome": "19",
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 44908684,
+          "referenceAllele": "T",
+          "start": 44908683
+        }
+      ],
+      "hgvs": [
+        "NC_000019.10:g.44908684T>C",
+        "CM000681.2:g.44908684T>C"
+      ],
+      "referenceGenome": "GRCh38",
+      "referenceSequence": "http://reg.genome.network/refseq/RS000067"
+    },
+    {
+      "chromosome": "19",
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 45411941,
+          "referenceAllele": "T",
+          "start": 45411940
+        }
+      ],
+      "hgvs": [
+        "NC_000019.9:g.45411941T>C",
+        "CM000681.1:g.45411941T>C"
+      ],
+      "referenceGenome": "GRCh37",
+      "referenceSequence": "http://reg.genome.network/refseq/RS000043"
+    },
+    {
+      "chromosome": "19",
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 50103781,
+          "referenceAllele": "T",
+          "start": 50103780
+        }
+      ],
+      "hgvs": [
+        "NC_000019.8:g.50103781T>C"
+      ],
+      "referenceGenome": "NCBI36",
+      "referenceSequence": "http://reg.genome.network/refseq/RS000019"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 7903,
+          "referenceAllele": "T",
+          "start": 7902
+        }
+      ],
+      "hgvs": [
+        "NG_007084.2:g.7903T>C"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS000464"
+    }
+  ],
+  "transcriptAlleles": [
+    {
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 457,
+          "referenceAllele": "T",
+          "start": 456
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN000613",
+      "geneNCBI_id": 348,
+      "geneSymbol": "APOE",
+      "hgvs": [
+        "ENST00000252486.9:c.388T>C"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000252486.3:p.Cys130Arg",
+        "hgvsWellDefined": "ENSP00000252486.3:p.Cys130Arg"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS741532",
+      "MANE": {
+        "maneVersion": "1.3",
+        "maneStatus": "MANE Select",
+        "nucleotide": {
+          "Ensembl": {
+            "hgvs": "ENST00000252486.9:c.388T>C"
+          },
+          "RefSeq": {
+            "hgvs": "NM_000041.4:c.388T>C"
+          }
+        },
+        "protein": {
+          "Ensembl": {
+            "hgvs": "ENSP00000252486.3:p.Cys130Arg"
+          },
+          "RefSeq": {
+            "hgvs": "NP_000032.1:p.Cys130Arg"
+          }
+        }
+      }
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 499,
+          "referenceAllele": "T",
+          "start": 498
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN000613",
+      "geneNCBI_id": 348,
+      "geneSymbol": "APOE",
+      "hgvs": [
+        "ENST00000252486.8:c.388T>C"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000252486.3:p.Cys130Arg",
+        "hgvsWellDefined": "ENSP00000252486.3:p.Cys130Arg"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS249822"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 653,
+          "referenceAllele": "T",
+          "start": 652
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN000613",
+      "geneNCBI_id": 348,
+      "geneSymbol": "APOE",
+      "hgvs": [
+        "ENST00000425718.1:c.388T>C"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000410423.1:p.Cys130Arg",
+        "hgvsWellDefined": "ENSP00000410423.1:p.Cys130Arg"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS288891"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 523,
+          "referenceAllele": "T",
+          "start": 522
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN000613",
+      "geneNCBI_id": 348,
+      "geneSymbol": "APOE",
+      "hgvs": [
+        "ENST00000434152.5:c.466T>C"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000413653.2:p.Cys156Arg",
+        "hgvsWellDefined": "ENSP00000413653.2:p.Cys156Arg"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS292892"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 477,
+          "referenceAllele": "T",
+          "start": 476
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN000613",
+      "geneNCBI_id": 348,
+      "geneSymbol": "APOE",
+      "hgvs": [
+        "ENST00000446996.5:c.388T>C"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000413135.1:p.Cys130Arg",
+        "hgvsWellDefined": "ENSP00000413135.1:p.Cys130Arg"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS299003"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA091552",
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 504,
+          "referenceAllele": "T",
+          "start": 503
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN000613",
+      "geneNCBI_id": 348,
+      "geneSymbol": "APOE",
+      "hgvs": [
+        "NM_000041.3:c.388T>C"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_000032.1:p.Cys130Arg",
+        "hgvsWellDefined": "NP_000032.1:p.Cys130Arg"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS006106"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA916019318",
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 586,
+          "referenceAllele": "T",
+          "start": 585
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN000613",
+      "geneNCBI_id": 348,
+      "geneSymbol": "APOE",
+      "hgvs": [
+        "NM_001302688.1:c.466T>C"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_001289617.1:p.Cys156Arg",
+        "hgvsWellDefined": "NP_001289617.1:p.Cys156Arg"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS025324"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2826873243",
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 435,
+          "referenceAllele": "T",
+          "start": 434
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN000613",
+      "geneNCBI_id": 348,
+      "geneSymbol": "APOE",
+      "hgvs": [
+        "NM_001302689.1:c.388T>C"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_001289618.1:p.Cys130Arg",
+        "hgvsWellDefined": "NP_001289618.1:p.Cys130Arg"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS025325"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2826873498",
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 535,
+          "referenceAllele": "T",
+          "start": 534
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN000613",
+      "geneNCBI_id": 348,
+      "geneSymbol": "APOE",
+      "hgvs": [
+        "NM_001302690.1:c.388T>C"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_001289619.1:p.Cys130Arg",
+        "hgvsWellDefined": "NP_001289619.1:p.Cys130Arg"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS025326"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2826873659",
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 519,
+          "referenceAllele": "T",
+          "start": 518
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN000613",
+      "geneNCBI_id": 348,
+      "geneSymbol": "APOE",
+      "hgvs": [
+        "NM_001302691.1:c.388T>C"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_001289620.1:p.Cys130Arg",
+        "hgvsWellDefined": "NP_001289620.1:p.Cys130Arg"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS025327"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA091552",
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 457,
+          "referenceAllele": "T",
+          "start": 456
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN000613",
+      "geneNCBI_id": 348,
+      "geneSymbol": "APOE",
+      "hgvs": [
+        "NM_000041.4:c.388T>C"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_000032.1:p.Cys130Arg",
+        "hgvsWellDefined": "NP_000032.1:p.Cys130Arg"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS662297",
+      "MANE": {
+        "maneVersion": "1.3",
+        "maneStatus": "MANE Select",
+        "nucleotide": {
+          "Ensembl": {
+            "hgvs": "ENST00000252486.9:c.388T>C"
+          },
+          "RefSeq": {
+            "hgvs": "NM_000041.4:c.388T>C"
+          }
+        },
+        "protein": {
+          "Ensembl": {
+            "hgvs": "ENSP00000252486.3:p.Cys130Arg"
+          },
+          "RefSeq": {
+            "hgvs": "NP_000032.1:p.Cys130Arg"
+          }
+        }
+      }
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA916019318",
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 539,
+          "referenceAllele": "T",
+          "start": 538
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN000613",
+      "geneNCBI_id": 348,
+      "geneSymbol": "APOE",
+      "hgvs": [
+        "NM_001302688.2:c.466T>C"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_001289617.1:p.Cys156Arg",
+        "hgvsWellDefined": "NP_001289617.1:p.Cys156Arg"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS683478"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2826873243",
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 435,
+          "referenceAllele": "T",
+          "start": 434
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN000613",
+      "geneNCBI_id": 348,
+      "geneSymbol": "APOE",
+      "hgvs": [
+        "NM_001302689.2:c.388T>C"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_001289618.1:p.Cys130Arg",
+        "hgvsWellDefined": "NP_001289618.1:p.Cys130Arg"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS683479"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2826873659",
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 472,
+          "referenceAllele": "T",
+          "start": 471
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN000613",
+      "geneNCBI_id": 348,
+      "geneSymbol": "APOE",
+      "hgvs": [
+        "NM_001302691.2:c.388T>C"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_001289620.1:p.Cys130Arg",
+        "hgvsWellDefined": "NP_001289620.1:p.Cys130Arg"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS683480"
+    },
+    {
+      "@id": "http://reg.genome.network/allele/PA2826873498",
+      "coordinates": [
+        {
+          "allele": "C",
+          "end": 535,
+          "referenceAllele": "T",
+          "start": 534
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN000613",
+      "geneNCBI_id": 348,
+      "geneSymbol": "APOE",
+      "hgvs": [
+        "NM_001302690.2:c.388T>C"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_001289619.1:p.Cys130Arg",
+        "hgvsWellDefined": "NP_001289619.1:p.Cys130Arg"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS716994"
+    }
+  ],
+  "type": "nucleotide"
+}

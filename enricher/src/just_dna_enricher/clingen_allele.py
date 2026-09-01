@@ -81,6 +81,10 @@ class AlleleIdentity:
     #: `(chrom, interbase_start, reference_allele, allele)` with exactly one of the two alleles empty.
     #: Kept separate from `coordinate` because it is **not yet placeable** — it needs one reference
     #: base to become a VCF row, and a caller with no sequence access must not mistake it for one.
+    #:
+    #: **Set under `resolved` as well as under `needs_anchor`.** The registry serves an rs-number for
+    #: most such alleles, which makes the outcome `resolved` on the rsID alone; the allele itself is
+    #: still the only thing that says *which* allele, so it is carried rather than discarded.
     unanchored: tuple[str, int, str, str] | None = None
 
     @property
@@ -150,7 +154,16 @@ def _parse(caid: str, payload: dict) -> AlleleIdentity:
         # Only a one-sided indel: real, and not yet a row. `no_identity` would be wrong (the registry
         # holds a perfectly good allele) and `resolved` would be wrong too, so the outcome waits.
         return AlleleIdentity(caid=caid, outcome="needs_anchor", unanchored=unanchored)
-    return AlleleIdentity(caid=caid, outcome="resolved", rsid=rsid, coordinate=coordinate)
+    # **`unanchored` travels on a `resolved` result too, and dropping it was a real loss.** The
+    # registry answers with an rs-number for most one-sided indels, so `rsid` alone made the outcome
+    # `resolved` while the one-sided allele this function had just parsed was discarded — leaving a
+    # caller that wants the allele (rather than an identity to place a row by) with `coordinate=None`
+    # and nothing to anchor, and no way to tell that from a registry record holding no allele at all.
+    # The two consumers are unaffected either way: `civic_draft` reads `unanchored` only under
+    # `outcome == "needs_anchor"`, and `placeable` is about `rsid`/`coordinate`. `@dont-discard-computed`.
+    return AlleleIdentity(
+        caid=caid, outcome="resolved", rsid=rsid, coordinate=coordinate, unanchored=unanchored
+    )
 
 
 def anchor_indel(

@@ -254,6 +254,13 @@ def test_every_pass_taking_an_injected_client_is_covered() -> None:
         "cpic_build.build_snapshot",
         "pharmvar_build.build_snapshot",
         "pgx_draft.draft_gene",
+        # RM167. Same shape as `enrich.enrich` and the two `grch37` entries above: it catches
+        # `LitvarError` per locus and records that locus as `unchecked` with its reason, which is the
+        # withhold rather than a leak. There is no pass-level type for a caller to catch because a
+        # caller is never asked to — the four tiers ARE the contract, and a run where the index is
+        # down still returns a complete report saying so. `LitvarClient` itself is covered in
+        # `test_client_exception_contract.py`, where the translation really does happen.
+        "litvar.check_literature_coverage",
     }
     uncovered = discovered - covered
     assert uncovered == exempt, sorted(uncovered.symmetric_difference(exempt))

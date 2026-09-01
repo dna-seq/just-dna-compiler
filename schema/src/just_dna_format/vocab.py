@@ -820,16 +820,16 @@ VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
                                       #   Reports and never repairs: the corpus has one module the
                                       #   catalogue agrees with and one it is a band coarser than, and
                                       #   the format does not arbitrate between its own authorities.
+        "literature_coverage",        # which papers a variant–literature index holds for a module's
+                                      #   alleles, and AT WHICH TIER — `litvar coverage`. Allele-
+                                      #   resolved, position-only and absent are three outcomes, and a
+                                      #   position-level answer to an allele-level question is recorded
+                                      #   as such rather than reported as the allele's.
         # ── RESERVED for the 2026-09-01 source-adoption round, added ahead of their emitters and
         #    deliberately: these are the round's published check keys, and minting a name in the
         #    release that needs it is the `withdrawn` precedent above run in reverse. Each flips out
         #    of this block, with its comment, in the commit that lands its pass — so the members left
         #    here are the passes still to land, and no count or item list is kept beside them.
-        "literature_coverage",        # RESERVED — which papers a variant–literature index holds for a
-                                      #   module's alleles, and AT WHICH TIER. Allele-resolved,
-                                      #   position-only and absent are three outcomes, and a
-                                      #   position-level answer to an allele-level question is recorded
-                                      #   as such rather than reported as the allele's.
         "regulator_label_agreement",  # RESERVED — authored PGx claims vs the drug-label annotations
                                       #   five regulators publish. Named for the labels rather than for
                                       #   any one agency, because the file carries five and baking an

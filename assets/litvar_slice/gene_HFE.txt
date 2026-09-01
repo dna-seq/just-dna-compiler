@@ -1,0 +1,588 @@
+{'_id': 'litvar@rs978229077##', 'pmids_count': 1, 'rsid': 'rs978229077'}
+{'_id': 'litvar@rs969895415##', 'pmids_count': 1, 'rsid': 'rs969895415'}
+{'_id': 'litvar@rs9366637##', 'pmids_count': 19, 'rsid': 'rs9366637'}
+{'_id': 'litvar@rs915739411##', 'pmids_count': 2, 'rsid': 'rs915739411'}
+{'_id': 'litvar@rs899673013##', 'pmids_count': 1, 'rsid': 'rs899673013'}
+{'_id': 'litvar@rs897206619##', 'pmids_count': 4, 'rsid': 'rs897206619'}
+{'_id': 'litvar@rs894796712##', 'pmids_count': 1, 'rsid': 'rs894796712'}
+{'_id': 'litvar@rs866667406##', 'pmids_count': 1, 'rsid': 'rs866667406'}
+{'_id': 'litvar@rs866376221##', 'pmids_count': 1, 'rsid': 'rs866376221'}
+{'_id': 'litvar@rs866353489##', 'pmids_count': 2, 'rsid': 'rs866353489'}
+{'_id': 'litvar@rs807209##', 'pmids_count': 4, 'rsid': 'rs807209'}
+{'_id': 'litvar@rs797045145##', 'pmids_count': 7, 'rsid': 'rs797045145'}
+{'_id': 'litvar@rs79220007##', 'pmids_count': 28, 'rsid': 'rs79220007'}
+{'_id': 'litvar@rs781516027##', 'pmids_count': 6, 'rsid': 'rs781516027'}
+{'_id': 'litvar@rs781034120##', 'pmids_count': 4, 'rsid': 'rs781034120'}
+{'_id': 'litvar@rs780575699##', 'pmids_count': 2, 'rsid': 'rs780575699'}
+{'_id': 'litvar@rs780563614##', 'pmids_count': 4, 'rsid': 'rs780563614'}
+{'_id': 'litvar@rs780246573##', 'pmids_count': 2, 'rsid': 'rs780246573'}
+{'_id': 'litvar@rs780188535##', 'pmids_count': 2, 'rsid': 'rs780188535'}
+{'_id': 'litvar@rs778399184##', 'pmids_count': 3, 'rsid': 'rs778399184'}
+{'_id': 'litvar@rs777622145##', 'pmids_count': 2, 'rsid': 'rs777622145'}
+{'_id': 'litvar@rs776741897##', 'pmids_count': 11, 'rsid': 'rs776741897'}
+{'_id': 'litvar@rs775728624##', 'pmids_count': 1, 'rsid': 'rs775728624'}
+{'_id': 'litvar@rs774677262##', 'pmids_count': 1, 'rsid': 'rs774677262'}
+{'_id': 'litvar@rs774304096##', 'pmids_count': 2, 'rsid': 'rs774304096'}
+{'_id': 'litvar@rs773624350##', 'pmids_count': 1, 'rsid': 'rs773624350'}
+{'_id': 'litvar@rs772818312##', 'pmids_count': 4, 'rsid': 'rs772818312'}
+{'_id': 'litvar@rs771912764##', 'pmids_count': 5, 'rsid': 'rs771912764'}
+{'_id': 'litvar@rs771784900##', 'pmids_count': 6, 'rsid': 'rs771784900'}
+{'_id': 'litvar@rs771163697##', 'pmids_count': 1, 'rsid': 'rs771163697'}
+{'_id': 'litvar@rs771135070##', 'pmids_count': 2, 'rsid': 'rs771135070'}
+{'_id': 'litvar@rs770203573##', 'pmids_count': 3, 'rsid': 'rs770203573'}
+{'_id': 'litvar@rs769080664##', 'pmids_count': 2, 'rsid': 'rs769080664'}
+{'_id': 'litvar@rs768801919##', 'pmids_count': 2, 'rsid': 'rs768801919'}
+{'_id': 'litvar@rs768786535##', 'pmids_count': 1, 'rsid': 'rs768786535'}
+{'_id': 'litvar@rs768426111##', 'pmids_count': 6, 'rsid': 'rs768426111'}
+{'_id': 'litvar@rs767411177##', 'pmids_count': 2, 'rsid': 'rs767411177'}
+{'_id': 'litvar@rs766992720##', 'pmids_count': 6, 'rsid': 'rs766992720'}
+{'_id': 'litvar@rs766754409##', 'pmids_count': 1, 'rsid': 'rs766754409'}
+{'_id': 'litvar@rs766458695##', 'pmids_count': 1, 'rsid': 'rs766458695'}
+{'_id': 'litvar@rs766064714##', 'pmids_count': 1, 'rsid': 'rs766064714'}
+{'_id': 'litvar@rs765545512##', 'pmids_count': 5, 'rsid': 'rs765545512'}
+{'_id': 'litvar@rs765114087##', 'pmids_count': 4, 'rsid': 'rs765114087'}
+{'_id': 'litvar@rs764907847##', 'pmids_count': 1, 'rsid': 'rs764907847'}
+{'_id': 'litvar@rs764713081##', 'pmids_count': 2, 'rsid': 'rs764713081'}
+{'_id': 'litvar@rs763692495##', 'pmids_count': 1, 'rsid': 'rs763692495'}
+{'_id': 'litvar@rs763506636##', 'pmids_count': 2, 'rsid': 'rs763506636'}
+{'_id': 'litvar@rs763120100##', 'pmids_count': 1, 'rsid': 'rs763120100'}
+{'_id': 'litvar@rs761203501##', 'pmids_count': 3, 'rsid': 'rs761203501'}
+{'_id': 'litvar@rs760685317##', 'pmids_count': 1, 'rsid': 'rs760685317'}
+{'_id': 'litvar@rs759524388##', 'pmids_count': 6, 'rsid': 'rs759524388'}
+{'_id': 'litvar@rs758663135##', 'pmids_count': 5, 'rsid': 'rs758663135'}
+{'_id': 'litvar@rs757281653##', 'pmids_count': 1, 'rsid': 'rs757281653'}
+{'_id': 'litvar@rs757276126##', 'pmids_count': 1, 'rsid': 'rs757276126'}
+{'_id': 'litvar@rs756070473##', 'pmids_count': 2, 'rsid': 'rs756070473'}
+{'_id': 'litvar@rs755930448##', 'pmids_count': 1, 'rsid': 'rs755930448'}
+{'_id': 'litvar@rs755284374##', 'pmids_count': 6, 'rsid': 'rs755284374'}
+{'_id': 'litvar@rs754619799##', 'pmids_count': 1, 'rsid': 'rs754619799'}
+{'_id': 'litvar@rs754323879##', 'pmids_count': 2, 'rsid': 'rs754323879'}
+{'_id': 'litvar@rs753732462##', 'pmids_count': 2, 'rsid': 'rs753732462'}
+{'_id': 'litvar@rs753507029##', 'pmids_count': 2, 'rsid': 'rs753507029'}
+{'_id': 'litvar@rs753420857##', 'pmids_count': 3, 'rsid': 'rs753420857'}
+{'_id': 'litvar@rs753179816##', 'pmids_count': 2, 'rsid': 'rs753179816'}
+{'_id': 'litvar@rs752497474##', 'pmids_count': 1, 'rsid': 'rs752497474'}
+{'_id': 'litvar@rs751707198##', 'pmids_count': 5, 'rsid': 'rs751707198'}
+{'_id': 'litvar@rs749701561##', 'pmids_count': 2, 'rsid': 'rs749701561'}
+{'_id': 'litvar@rs749553271##', 'pmids_count': 1, 'rsid': 'rs749553271'}
+{'_id': 'litvar@rs748693003##', 'pmids_count': 4, 'rsid': 'rs748693003'}
+{'_id': 'litvar@rs748266596##', 'pmids_count': 1, 'rsid': 'rs748266596'}
+{'_id': 'litvar@rs747739169##', 'pmids_count': 6, 'rsid': 'rs747739169'}
+{'_id': 'litvar@rs747277009##', 'pmids_count': 2, 'rsid': 'rs747277009'}
+{'_id': 'litvar@rs746127216##', 'pmids_count': 4, 'rsid': 'rs746127216'}
+{'_id': 'litvar@rs746034358##', 'pmids_count': 2, 'rsid': 'rs746034358'}
+{'_id': 'litvar@rs745534497##', 'pmids_count': 1, 'rsid': 'rs745534497'}
+{'_id': 'litvar@rs745423589##', 'pmids_count': 2, 'rsid': 'rs745423589'}
+{'_id': 'litvar@rs707889##', 'pmids_count': 24, 'rsid': 'rs707889'}
+{'_id': 'litvar@rs6918586##', 'pmids_count': 27, 'rsid': 'rs6918586'}
+{'_id': 'litvar@rs62626261##', 'pmids_count': 1, 'rsid': 'rs62626261'}
+{'_id': 'litvar@rs62625357##', 'pmids_count': 3, 'rsid': 'rs62625357'}
+{'_id': 'litvar@rs62625356##', 'pmids_count': 3, 'rsid': 'rs62625356'}
+{'_id': 'litvar@rs62625351##', 'pmids_count': 2, 'rsid': 'rs62625351'}
+{'_id': 'litvar@rs62625350##', 'pmids_count': 3, 'rsid': 'rs62625350'}
+{'_id': 'litvar@rs62625349##', 'pmids_count': 1, 'rsid': 'rs62625349'}
+{'_id': 'litvar@rs62625346##', 'pmids_count': 6, 'rsid': 'rs62625346'}
+{'_id': 'litvar@rs62625330##', 'pmids_count': 3, 'rsid': 'rs62625330'}
+{'_id': 'litvar@rs62625323##', 'pmids_count': 2, 'rsid': 'rs62625323'}
+{'_id': 'litvar@rs62625322##', 'pmids_count': 1, 'rsid': 'rs62625322'}
+{'_id': 'litvar@rs62625321##', 'pmids_count': 1, 'rsid': 'rs62625321'}
+{'_id': 'litvar@rs62625319##', 'pmids_count': 1, 'rsid': 'rs62625319'}
+{'_id': 'litvar@rs62625309##', 'pmids_count': 1, 'rsid': 'rs62625309'}
+{'_id': 'litvar@rs62396165##', 'pmids_count': 4, 'rsid': 'rs62396165'}
+{'_id': 'litvar@rs61472021##', 'pmids_count': 8, 'rsid': 'rs61472021'}
+{'_id': 'litvar@rs573745685##', 'pmids_count': 1, 'rsid': 'rs573745685'}
+{'_id': 'litvar@rs56275179##', 'pmids_count': 1, 'rsid': 'rs56275179'}
+{'_id': 'litvar@rs558658016##', 'pmids_count': 1, 'rsid': 'rs558658016'}
+{'_id': 'litvar@rs557062229##', 'pmids_count': 3, 'rsid': 'rs557062229'}
+{'_id': 'litvar@rs544604880##', 'pmids_count': 1, 'rsid': 'rs544604880'}
+{'_id': 'litvar@rs4986950##', 'pmids_count': 10, 'rsid': 'rs4986950'}
+{'_id': 'litvar@rs41266793##', 'pmids_count': 1, 'rsid': 'rs41266793'}
+{'_id': 'litvar@rs3799374##', 'pmids_count': 2, 'rsid': 'rs3799374'}
+{'_id': 'litvar@rs377254261##', 'pmids_count': 1, 'rsid': 'rs377254261'}
+{'_id': 'litvar@rs373020944##', 'pmids_count': 1, 'rsid': 'rs373020944'}
+{'_id': 'litvar@rs372856303##', 'pmids_count': 1, 'rsid': 'rs372856303'}
+{'_id': 'litvar@rs369354634##', 'pmids_count': 1, 'rsid': 'rs369354634'}
+{'_id': 'litvar@rs368895240##', 'pmids_count': 3, 'rsid': 'rs368895240'}
+{'_id': 'litvar@rs368122334##', 'pmids_count': 6, 'rsid': 'rs368122334'}
+{'_id': 'litvar@rs35201683##', 'pmids_count': 8, 'rsid': 'rs35201683'}
+{'_id': 'litvar@rs34555420##', 'pmids_count': 6, 'rsid': 'rs34555420'}
+{'_id': 'litvar@rs28934889##', 'pmids_count': 25, 'rsid': 'rs28934889'}
+{'_id': 'litvar@rs28934597##', 'pmids_count': 13, 'rsid': 'rs28934597'}
+{'_id': 'litvar@rs28934596##', 'pmids_count': 13, 'rsid': 'rs28934596'}
+{'_id': 'litvar@rs28934595##', 'pmids_count': 19, 'rsid': 'rs28934595'}
+{'_id': 'litvar@rs2858996##', 'pmids_count': 19, 'rsid': 'rs2858996'}
+{'_id': 'litvar@rs2858993##', 'pmids_count': 11, 'rsid': 'rs2858993'}
+{'_id': 'litvar@rs2794720##', 'pmids_count': 11, 'rsid': 'rs2794720'}
+{'_id': 'litvar@rs2794719##', 'pmids_count': 20, 'rsid': 'rs2794719'}
+{'_id': 'litvar@rs2794717##', 'pmids_count': 3, 'rsid': 'rs2794717'}
+{'_id': 'litvar@rs2242956##', 'pmids_count': 2, 'rsid': 'rs2242956'}
+{'_id': 'litvar@rs2071303##', 'pmids_count': 56, 'rsid': 'rs2071303'}
+{'_id': 'litvar@rs2071302##', 'pmids_count': 1, 'rsid': 'rs2071302'}
+{'_id': 'litvar@rs2032451##', 'pmids_count': 17, 'rsid': 'rs2032451'}
+{'_id': 'litvar@rs202068193##', 'pmids_count': 9, 'rsid': 'rs202068193'}
+{'_id': 'litvar@rs201310322##', 'pmids_count': 2, 'rsid': 'rs201310322'}
+{'_id': 'litvar@rs201262562##', 'pmids_count': 1, 'rsid': 'rs201262562'}
+{'_id': 'litvar@rs200706856##', 'pmids_count': 3, 'rsid': 'rs200706856'}
+{'_id': 'litvar@rs2006736##', 'pmids_count': 8, 'rsid': 'rs2006736'}
+{'_id': 'litvar@rs199916850##', 'pmids_count': 7, 'rsid': 'rs199916850'}
+{'_id': 'litvar@rs199879669##', 'pmids_count': 3, 'rsid': 'rs199879669'}
+{'_id': 'litvar@rs1971509##', 'pmids_count': 4, 'rsid': 'rs1971509'}
+{'_id': 'litvar@rs1971508##', 'pmids_count': 6, 'rsid': 'rs1971508'}
+{'_id': 'litvar@rs1800758##', 'pmids_count': 14, 'rsid': 'rs1800758'}
+{'_id': 'litvar@rs1800730##', 'pmids_count': 357, 'rsid': 'rs1800730'}
+{'_id': 'litvar@rs1800708##', 'pmids_count': 17, 'rsid': 'rs1800708'}
+{'_id': 'litvar@rs1800702##', 'pmids_count': 8, 'rsid': 'rs1800702'}
+{'_id': 'litvar@rs1800562##', 'pmids_count': 3053, 'rsid': 'rs1800562'}
+{'_id': 'litvar@rs1799945##', 'pmids_count': 2105, 'rsid': 'rs1799945'}
+{'_id': 'litvar@rs17596719##', 'pmids_count': 20, 'rsid': 'rs17596719'}
+{'_id': 'litvar@rs1572982##', 'pmids_count': 39, 'rsid': 'rs1572982'}
+{'_id': 'litvar@rs150716212##', 'pmids_count': 2, 'rsid': 'rs150716212'}
+{'_id': 'litvar@rs150402693##', 'pmids_count': 4, 'rsid': 'rs150402693'}
+{'_id': 'litvar@rs149342416##', 'pmids_count': 13, 'rsid': 'rs149342416'}
+{'_id': 'litvar@rs148632352##', 'pmids_count': 2, 'rsid': 'rs148632352'}
+{'_id': 'litvar@rs1485517690##', 'pmids_count': 2, 'rsid': 'rs1485517690'}
+{'_id': 'litvar@rs148307737##', 'pmids_count': 2, 'rsid': 'rs148307737'}
+{'_id': 'litvar@rs1482080398##', 'pmids_count': 1, 'rsid': 'rs1482080398'}
+{'_id': 'litvar@rs1482029594##', 'pmids_count': 2, 'rsid': 'rs1482029594'}
+{'_id': 'litvar@rs148161858##', 'pmids_count': 7, 'rsid': 'rs148161858'}
+{'_id': 'litvar@rs1479851385##', 'pmids_count': 1, 'rsid': 'rs1479851385'}
+{'_id': 'litvar@rs147519426##', 'pmids_count': 1, 'rsid': 'rs147519426'}
+{'_id': 'litvar@rs147426902##', 'pmids_count': 12, 'rsid': 'rs147426902'}
+{'_id': 'litvar@rs146519482##', 'pmids_count': 30, 'rsid': 'rs146519482'}
+{'_id': 'litvar@rs146508927##', 'pmids_count': 1, 'rsid': 'rs146508927'}
+{'_id': 'litvar@rs1462619607##', 'pmids_count': 1, 'rsid': 'rs1462619607'}
+{'_id': 'litvar@rs145475682##', 'pmids_count': 2, 'rsid': 'rs145475682'}
+{'_id': 'litvar@rs145172249##', 'pmids_count': 1, 'rsid': 'rs145172249'}
+{'_id': 'litvar@rs1450662478##', 'pmids_count': 1, 'rsid': 'rs1450662478'}
+{'_id': 'litvar@rs144797937##', 'pmids_count': 11, 'rsid': 'rs144797937'}
+{'_id': 'litvar@rs1442779129##', 'pmids_count': 1, 'rsid': 'rs1442779129'}
+{'_id': 'litvar@rs1441986565##', 'pmids_count': 2, 'rsid': 'rs1441986565'}
+{'_id': 'litvar@rs1438910999##', 'pmids_count': 1, 'rsid': 'rs1438910999'}
+{'_id': 'litvar@rs143846467##', 'pmids_count': 2, 'rsid': 'rs143846467'}
+{'_id': 'litvar@rs143662783##', 'pmids_count': 4, 'rsid': 'rs143662783'}
+{'_id': 'litvar@rs143175221##', 'pmids_count': 16, 'rsid': 'rs143175221'}
+{'_id': 'litvar@rs1431315635##', 'pmids_count': 4, 'rsid': 'rs1431315635'}
+{'_id': 'litvar@rs1430881888##', 'pmids_count': 1, 'rsid': 'rs1430881888'}
+{'_id': 'litvar@rs141542804##', 'pmids_count': 1, 'rsid': 'rs141542804'}
+{'_id': 'litvar@rs141229562##', 'pmids_count': 2, 'rsid': 'rs141229562'}
+{'_id': 'litvar@rs1410129605##', 'pmids_count': 1, 'rsid': 'rs1410129605'}
+{'_id': 'litvar@rs140957442##', 'pmids_count': 1, 'rsid': 'rs140957442'}
+{'_id': 'litvar@rs140664305##', 'pmids_count': 2, 'rsid': 'rs140664305'}
+{'_id': 'litvar@rs1406437385##', 'pmids_count': 1, 'rsid': 'rs1406437385'}
+{'_id': 'litvar@rs1406109123##', 'pmids_count': 1, 'rsid': 'rs1406109123'}
+{'_id': 'litvar@rs1403385321##', 'pmids_count': 1, 'rsid': 'rs1403385321'}
+{'_id': 'litvar@rs140080192##', 'pmids_count': 24, 'rsid': 'rs140080192'}
+{'_id': 'litvar@rs139523708##', 'pmids_count': 5, 'rsid': 'rs139523708'}
+{'_id': 'litvar@rs138993448##', 'pmids_count': 3, 'rsid': 'rs138993448'}
+{'_id': 'litvar@rs1387626186##', 'pmids_count': 1, 'rsid': 'rs1387626186'}
+{'_id': 'litvar@rs138378000##', 'pmids_count': 2, 'rsid': 'rs138378000'}
+{'_id': 'litvar@rs1352793260##', 'pmids_count': 1, 'rsid': 'rs1352793260'}
+{'_id': 'litvar@rs1348485687##', 'pmids_count': 2, 'rsid': 'rs1348485687'}
+{'_id': 'litvar@rs1345032097##', 'pmids_count': 1, 'rsid': 'rs1345032097'}
+{'_id': 'litvar@rs1343171395##', 'pmids_count': 2, 'rsid': 'rs1343171395'}
+{'_id': 'litvar@rs1340349543##', 'pmids_count': 1, 'rsid': 'rs1340349543'}
+{'_id': 'litvar@rs1337916669##', 'pmids_count': 2, 'rsid': 'rs1337916669'}
+{'_id': 'litvar@rs13210399##', 'pmids_count': 6, 'rsid': 'rs13210399'}
+{'_id': 'litvar@rs13196986##', 'pmids_count': 4, 'rsid': 'rs13196986'}
+{'_id': 'litvar@rs1309004246##', 'pmids_count': 3, 'rsid': 'rs1309004246'}
+{'_id': 'litvar@rs1302552911##', 'pmids_count': 1, 'rsid': 'rs1302552911'}
+{'_id': 'litvar@rs1301760573##', 'pmids_count': 1, 'rsid': 'rs1301760573'}
+{'_id': 'litvar@rs1293837185##', 'pmids_count': 1, 'rsid': 'rs1293837185'}
+{'_id': 'litvar@rs1283503303##', 'pmids_count': 1, 'rsid': 'rs1283503303'}
+{'_id': 'litvar@rs1272137037##', 'pmids_count': 1, 'rsid': 'rs1272137037'}
+{'_id': 'litvar@rs1266453187##', 'pmids_count': 1, 'rsid': 'rs1266453187'}
+{'_id': 'litvar@rs1256311452##', 'pmids_count': 2, 'rsid': 'rs1256311452'}
+{'_id': 'litvar@rs1251987376##', 'pmids_count': 2, 'rsid': 'rs1251987376'}
+{'_id': 'litvar@rs1247804923##', 'pmids_count': 1, 'rsid': 'rs1247804923'}
+{'_id': 'litvar@rs1243157617##', 'pmids_count': 1, 'rsid': 'rs1243157617'}
+{'_id': 'litvar@rs12346##', 'pmids_count': 10, 'rsid': 'rs12346'}
+{'_id': 'litvar@rs1229681839##', 'pmids_count': 1, 'rsid': 'rs1229681839'}
+{'_id': 'litvar@rs1227507479##', 'pmids_count': 1, 'rsid': 'rs1227507479'}
+{'_id': 'litvar@rs1221576286##', 'pmids_count': 3, 'rsid': 'rs1221576286'}
+{'_id': 'litvar@rs1214213770##', 'pmids_count': 2, 'rsid': 'rs1214213770'}
+{'_id': 'litvar@rs1192141992##', 'pmids_count': 1, 'rsid': 'rs1192141992'}
+{'_id': 'litvar@rs1190491989##', 'pmids_count': 1, 'rsid': 'rs1190491989'}
+{'_id': 'litvar@rs1187279903##', 'pmids_count': 1, 'rsid': 'rs1187279903'}
+{'_id': 'litvar@rs1183193280##', 'pmids_count': 1, 'rsid': 'rs1183193280'}
+{'_id': 'litvar@rs118079331##', 'pmids_count': 1, 'rsid': 'rs118079331'}
+{'_id': 'litvar@rs1179459507##', 'pmids_count': 2, 'rsid': 'rs1179459507'}
+{'_id': 'litvar@rs1177377262##', 'pmids_count': 2, 'rsid': 'rs1177377262'}
+{'_id': 'litvar@rs1156920296##', 'pmids_count': 2, 'rsid': 'rs1156920296'}
+{'_id': 'litvar@rs1150658##', 'pmids_count': 10, 'rsid': 'rs1150658'}
+{'_id': 'litvar@rs11465177##', 'pmids_count': 1, 'rsid': 'rs11465177'}
+{'_id': 'litvar@rs114038675##', 'pmids_count': 4, 'rsid': 'rs114038675'}
+{'_id': 'litvar@rs111033563##', 'pmids_count': 28, 'rsid': 'rs111033563'}
+{'_id': 'litvar@rs111033558##', 'pmids_count': 9, 'rsid': 'rs111033558'}
+{'_id': 'litvar@rs111033557##', 'pmids_count': 16, 'rsid': 'rs111033557'}
+{'_id': 'litvar@rs1061482##', 'pmids_count': 6, 'rsid': 'rs1061482'}
+{'_id': 'litvar@rs1045537##', 'pmids_count': 12, 'rsid': 'rs1045537'}
+{'_id': 'litvar@rs1045533##', 'pmids_count': 3, 'rsid': 'rs1045533'}
+{'_id': 'litvar@rs1039625685##', 'pmids_count': 1, 'rsid': 'rs1039625685'}
+{'_id': 'litvar@CA3666817#rs35201683##', 'pmids_count': 1, 'rsid': 'rs35201683', 'clingen_id': 'CA3666817'}
+{'_id': 'litvar@CA3666816#rs368122334##', 'pmids_count': 1, 'rsid': 'rs368122334', 'clingen_id': 'CA3666816'}
+{'_id': 'litvar@CA3666814#rs751707198##', 'pmids_count': 4, 'rsid': 'rs751707198', 'clingen_id': 'CA3666814'}
+{'_id': 'litvar@CA3666805#rs1572982##', 'pmids_count': 2, 'rsid': 'rs1572982', 'clingen_id': 'CA3666805'}
+{'_id': 'litvar@CA3666792#rs765545512##', 'pmids_count': 1, 'rsid': 'rs765545512', 'clingen_id': 'CA3666792'}
+{'_id': 'litvar@CA3666791#rs765545512##', 'pmids_count': 1, 'rsid': 'rs765545512', 'clingen_id': 'CA3666791'}
+{'_id': 'litvar@CA3666790#rs138993448##', 'pmids_count': 2, 'rsid': 'rs138993448', 'clingen_id': 'CA3666790'}
+{'_id': 'litvar@CA3666781#rs768426111##', 'pmids_count': 2, 'rsid': 'rs768426111', 'clingen_id': 'CA3666781'}
+{'_id': 'litvar@CA3666772#rs755284374##', 'pmids_count': 1, 'rsid': 'rs755284374', 'clingen_id': 'CA3666772'}
+{'_id': 'litvar@CA3666766#rs1800708##', 'pmids_count': 1, 'rsid': 'rs1800708', 'clingen_id': 'CA3666766'}
+{'_id': 'litvar@CA3666752#rs143175221##', 'pmids_count': 7, 'rsid': 'rs143175221', 'clingen_id': 'CA3666752'}
+{'_id': 'litvar@CA3666747#rs763692495##', 'pmids_count': 1, 'rsid': 'rs763692495', 'clingen_id': 'CA3666747'}
+{'_id': 'litvar@CA3666745#rs140080192##', 'pmids_count': 11, 'rsid': 'rs140080192', 'clingen_id': 'CA3666745'}
+{'_id': 'litvar@CA3666741#rs748693003##', 'pmids_count': 1, 'rsid': 'rs748693003', 'clingen_id': 'CA3666741'}
+{'_id': 'litvar@CA3666739#rs768801919##', 'pmids_count': 1, 'rsid': 'rs768801919', 'clingen_id': 'CA3666739'}
+{'_id': 'litvar@CA3666737#rs780246573##', 'pmids_count': 1, 'rsid': 'rs780246573', 'clingen_id': 'CA3666737'}
+{'_id': 'litvar@CA3666736#rs770203573##', 'pmids_count': 2, 'rsid': 'rs770203573', 'clingen_id': 'CA3666736'}
+{'_id': 'litvar@CA3666732#rs202068193##', 'pmids_count': 5, 'rsid': 'rs202068193', 'clingen_id': 'CA3666732'}
+{'_id': 'litvar@CA3666731#rs777622145##', 'pmids_count': 1, 'rsid': 'rs777622145', 'clingen_id': 'CA3666731'}
+{'_id': 'litvar@CA3666728#rs764713081##', 'pmids_count': 1, 'rsid': 'rs764713081', 'clingen_id': 'CA3666728'}
+{'_id': 'litvar@CA3666726#rs753420857##', 'pmids_count': 2, 'rsid': 'rs753420857', 'clingen_id': 'CA3666726'}
+{'_id': 'litvar@CA3666720#rs763506636##', 'pmids_count': 2, 'rsid': 'rs763506636', 'clingen_id': 'CA3666720'}
+{'_id': 'litvar@CA3666718#rs758663135##', 'pmids_count': 4, 'rsid': 'rs758663135', 'clingen_id': 'CA3666718'}
+{'_id': 'litvar@CA3666716#rs746127216##', 'pmids_count': 1, 'rsid': 'rs746127216', 'clingen_id': 'CA3666716'}
+{'_id': 'litvar@CA3666713#rs62625346##', 'pmids_count': 2, 'rsid': 'rs62625346', 'clingen_id': 'CA3666713'}
+{'_id': 'litvar@CA3666712#rs144797937##', 'pmids_count': 4, 'rsid': 'rs144797937', 'clingen_id': 'CA3666712'}
+{'_id': 'litvar@CA3666709#rs4986950##', 'pmids_count': 6, 'rsid': 'rs4986950', 'clingen_id': 'CA3666709'}
+{'_id': 'litvar@CA3666708#rs778399184##', 'pmids_count': 1, 'rsid': 'rs778399184', 'clingen_id': 'CA3666708'}
+{'_id': 'litvar@CA3666675#rs771784900##', 'pmids_count': 1, 'rsid': 'rs771784900', 'clingen_id': 'CA3666675'}
+{'_id': 'litvar@CA3666671#rs199916850##', 'pmids_count': 5, 'rsid': 'rs199916850', 'clingen_id': 'CA3666671'}
+{'_id': 'litvar@CA3666664#rs753179816##', 'pmids_count': 2, 'rsid': 'rs753179816', 'clingen_id': 'CA3666664'}
+{'_id': 'litvar@CA3666659#rs145475682##', 'pmids_count': 1, 'rsid': 'rs145475682', 'clingen_id': 'CA3666659'}
+{'_id': 'litvar@CA3666655#rs199879669##', 'pmids_count': 3, 'rsid': 'rs199879669', 'clingen_id': 'CA3666655'}
+{'_id': 'litvar@CA3666643#rs200706856##', 'pmids_count': 3, 'rsid': 'rs200706856', 'clingen_id': 'CA3666643'}
+{'_id': 'litvar@CA3666642#rs754323879##', 'pmids_count': 1, 'rsid': 'rs754323879', 'clingen_id': 'CA3666642'}
+{'_id': 'litvar@CA3666624#rs749701561##', 'pmids_count': 2, 'rsid': 'rs749701561', 'clingen_id': 'CA3666624'}
+{'_id': 'litvar@CA3666612#rs759524388##', 'pmids_count': 6, 'rsid': 'rs759524388', 'clingen_id': 'CA3666612'}
+{'_id': 'litvar@CA3666609#rs772818312##', 'pmids_count': 3, 'rsid': 'rs772818312', 'clingen_id': 'CA3666609'}
+{'_id': 'litvar@CA3666608#rs771912764##', 'pmids_count': 3, 'rsid': 'rs771912764', 'clingen_id': 'CA3666608'}
+{'_id': 'litvar@CA3666607#rs747739169##', 'pmids_count': 3, 'rsid': 'rs747739169', 'clingen_id': 'CA3666607'}
+{'_id': 'litvar@CA3666602#rs765114087##', 'pmids_count': 4, 'rsid': 'rs765114087', 'clingen_id': 'CA3666602'}
+{'_id': 'litvar@CA3666571#rs761203501##', 'pmids_count': 1, 'rsid': 'rs761203501', 'clingen_id': 'CA3666571'}
+{'_id': 'litvar@CA3666564#rs143662783##', 'pmids_count': 1, 'rsid': 'rs143662783', 'clingen_id': 'CA3666564'}
+{'_id': 'litvar@CA3666561#rs781034120##', 'pmids_count': 2, 'rsid': 'rs781034120', 'clingen_id': 'CA3666561'}
+{'_id': 'litvar@CA3666541#rs138378000##', 'pmids_count': 2, 'rsid': 'rs138378000', 'clingen_id': 'CA3666541'}
+{'_id': 'litvar@CA354214#rs146519482##', 'pmids_count': 20, 'rsid': 'rs146519482', 'clingen_id': 'CA354214'}
+{'_id': 'litvar@CA348885#rs147426902##', 'pmids_count': 11, 'rsid': 'rs147426902', 'clingen_id': 'CA348885'}
+{'_id': 'litvar@CA346926#rs797045145##', 'pmids_count': 7, 'rsid': 'rs797045145', 'clingen_id': 'CA346926'}
+{'_id': 'litvar@CA346923#rs146519482##', 'pmids_count': 11, 'rsid': 'rs146519482', 'clingen_id': 'CA346923'}
+{'_id': 'litvar@CA339778#rs1800730##', 'pmids_count': 320, 'rsid': 'rs1800730', 'clingen_id': 'CA339778'}
+{'_id': 'litvar@CA338954#rs149342416##', 'pmids_count': 4, 'rsid': 'rs149342416', 'clingen_id': 'CA338954'}
+{'_id': 'litvar@CA280949#rs111033563##', 'pmids_count': 15, 'rsid': 'rs111033563', 'clingen_id': 'CA280949'}
+{'_id': 'litvar@CA280947#rs111033558##', 'pmids_count': 3, 'rsid': 'rs111033558', 'clingen_id': 'CA280947'}
+{'_id': 'litvar@CA280945#rs28934595##', 'pmids_count': 12, 'rsid': 'rs28934595', 'clingen_id': 'CA280945'}
+{'_id': 'litvar@CA280943#rs28934597##', 'pmids_count': 5, 'rsid': 'rs28934597', 'clingen_id': 'CA280943'}
+{'_id': 'litvar@CA280941#rs28934596##', 'pmids_count': 7, 'rsid': 'rs28934596', 'clingen_id': 'CA280941'}
+{'_id': 'litvar@CA153080#rs2071303##', 'pmids_count': 5, 'rsid': 'rs2071303', 'clingen_id': 'CA153080'}
+{'_id': 'litvar@CA136294239#rs915739411##', 'pmids_count': 1, 'rsid': 'rs915739411', 'clingen_id': 'CA136294239'}
+{'_id': 'litvar@CA136294204#rs368122334##', 'pmids_count': 1, 'rsid': 'rs368122334', 'clingen_id': 'CA136294204'}
+{'_id': 'litvar@CA136293490#rs150716212##', 'pmids_count': 1, 'rsid': 'rs150716212', 'clingen_id': 'CA136293490'}
+{'_id': 'litvar@CA136293354#rs897206619##', 'pmids_count': 1, 'rsid': 'rs897206619', 'clingen_id': 'CA136293354'}
+{'_id': 'litvar@CA136292908#rs780188535##', 'pmids_count': 1, 'rsid': 'rs780188535', 'clingen_id': 'CA136292908'}
+{'_id': 'litvar@CA136292027#rs780563614##', 'pmids_count': 3, 'rsid': 'rs780563614', 'clingen_id': 'CA136292027'}
+{'_id': 'litvar@CA136287916#rs1003175962##', 'pmids_count': 1, 'rsid': 'rs1003175962', 'clingen_id': 'CA136287916'}
+{'_id': 'litvar@CA113804#rs111033557##', 'pmids_count': 11, 'rsid': 'rs111033557', 'clingen_id': 'CA113804'}
+{'_id': 'litvar@CA113801#rs28934889##', 'pmids_count': 15, 'rsid': 'rs28934889', 'clingen_id': 'CA113801'}
+{'_id': 'litvar@CA113800#rs1800758##', 'pmids_count': 1, 'rsid': 'rs1800758', 'clingen_id': 'CA113800'}
+{'_id': 'litvar@CA113797#rs1799945##', 'pmids_count': 1823, 'rsid': 'rs1799945', 'clingen_id': 'CA113797'}
+{'_id': 'litvar@CA113795#rs1800562##', 'pmids_count': 2693, 'rsid': 'rs1800562', 'clingen_id': 'CA113795'}
+{'_id': 'litvar@#3077#p.Y643A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.Y52fsX', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.Y52X', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.Y342C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.Y245X', 'pmids_count': 4}
+{'_id': 'litvar@#3077#p.Y240C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.Y231X', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.Y230F', 'pmids_count': 2}
+{'_id': 'litvar@#3077#p.Y138X', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.W81A', 'pmids_count': 3}
+{'_id': 'litvar@#3077#p.W641A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.W267fsX', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.W169X', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.W164X', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.W163X', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.V88M', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.V6M', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.V68fsX', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.V59M', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.V53M', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.V212V', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.V1W', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.V174A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.V162del', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.V119M', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.T281M', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.T281K', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.T1405N', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.T1012C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.S88T', 'pmids_count': 3}
+{'_id': 'litvar@#3077#p.S85P', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.S65D', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.S65C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.S654C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.S60R', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.S60I', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.S56C', 'pmids_count': 2}
+{'_id': 'litvar@#3077#p.S335M', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.S205R', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.S1C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R74X', 'pmids_count': 2}
+{'_id': 'litvar@#3077#p.R69C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R68C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R67V', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R67C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R67A', 'pmids_count': 2}
+{'_id': 'litvar@#3077#p.R66C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R66A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R65C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R64C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R63A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R639Q', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R62A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R629A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R61C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R60C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R5C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R59A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R58A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R57C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R56C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R55C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R54del', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R54A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R543Q', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R534Q', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R52A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R51Q', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R51C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R50C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R506Q', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R49C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R48A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R47C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R46A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R45C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R435X', 'pmids_count': 2}
+{'_id': 'litvar@#3077#p.R41C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R40A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R39C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R38C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R37C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R36A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R35C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R34C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R33A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R32C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R31A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R30C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R29A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R28A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R259GfsX', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R24A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R22C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R21C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R20A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R19A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R18C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R17A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R176C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R16C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R14C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R13C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R12C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R116W', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.R105del', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.Q685P', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.Q640A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.Q317X', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.Q312X', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.Q277K', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.Q248H', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.Q238P', 'pmids_count': 2}
+{'_id': 'litvar@#3077#p.Q127H', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.Q-408_-406del', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.P564L', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.P528S', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.P160fsX', 'pmids_count': 2}
+{'_id': 'litvar@#3077#p.N72D', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.N370S', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.M239Q', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.M20A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.M167K', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.L72M', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.L68P', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.L619A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.L50fsX', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.L46W', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.L444P', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.L320P', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.L30L', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.L107F', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.K92N', 'pmids_count': 2}
+{'_id': 'litvar@#3077#p.K135R', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.K129del', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.I83T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.I113M', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.I106F', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.H6M', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.H67D', 'pmids_count': 30}
+{'_id': 'litvar@#3077#p.H65D', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.H63F', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.H63A', 'pmids_count': 3}
+{'_id': 'litvar@#3077#p.H62D', 'pmids_count': 3}
+{'_id': 'litvar@#3077#p.H600L', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.H53D', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.H49R', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.H36D', 'pmids_count': 7}
+{'_id': 'litvar@#3077#p.H341X', 'pmids_count': 2}
+{'_id': 'litvar@#3077#p.G93fsX', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.G86S', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.G845A', 'pmids_count': 3}
+{'_id': 'litvar@#3077#p.G490D', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.G48D', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.G336X', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.G258S', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.G138E', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.F508del', 'pmids_count': 3}
+{'_id': 'litvar@#3077#p.F21L', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.F200X', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.F170S', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.E64S', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.E60del', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.E60X', 'pmids_count': 2}
+{'_id': 'litvar@#3077#p.E264V', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.E22G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.E168del', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.E168X', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.E168Q', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.E122G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.E114K', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.D63D', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.D62H', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.D519G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.D249H', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.D242D', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.D141Y', 'pmids_count': 2}
+{'_id': 'litvar@#3077#p.D129N', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.D102G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.C89R', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.C82Y', 'pmids_count': 5}
+{'_id': 'litvar@#3077#p.C828Y', 'pmids_count': 3}
+{'_id': 'litvar@#3077#p.C677T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.C550S', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.C500S', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.C34T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.C326S', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.C294Y', 'pmids_count': 6}
+{'_id': 'litvar@#3077#p.C292Y', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.C28Y', 'pmids_count': 3}
+{'_id': 'litvar@#3077#p.C283Y', 'pmids_count': 2}
+{'_id': 'litvar@#3077#p.C2828Y', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.C2822Y', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.C262Y', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.C260Y', 'pmids_count': 3}
+{'_id': 'litvar@#3077#p.C228Y', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.C199G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.C187G', 'pmids_count': 5}
+{'_id': 'litvar@#3077#p.C12N', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.C119F', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.C112R', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.A80P', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.A77D', 'pmids_count': 2}
+{'_id': 'litvar@#3077#p.A424G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.A314A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.A271VfsX25', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.A193T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.A176V', 'pmids_count': 2}
+{'_id': 'litvar@#3077#p.A158fsX', 'pmids_count': 1}
+{'_id': 'litvar@#3077#p.A154T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.981646C>T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.88452941T>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.6700G>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.5807A>G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.5795T>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.5728G>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.5636T>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.5569G>A', 'pmids_count': 2}
+{'_id': 'litvar@#3077#g.42987963T>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.42935188C>T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.3828T>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.3671T>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.33951658C>G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.18G>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.172660374C>T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.16189T>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.16012590C>T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#g.109466682C>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.IVS5+1G>A', 'pmids_count': 9}
+{'_id': 'litvar@#3077#c.IVS5#1G>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.IVS3+1G>T', 'pmids_count': 2}
+{'_id': 'litvar@#3077#c.IVS2+4T>C', 'pmids_count': 5}
+{'_id': 'litvar@#3077#c.IVS2+4C>T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.IVS1.6T>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.HFE845G>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.CODON169G>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.CODON168G>T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.967-1G>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.942T>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.882G>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.881G>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.847C>T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.845dup', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.81delG', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.794dupA', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.794dup', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.77_688C>G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.77_206G>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.775delA', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.76_663A>G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.76_112T>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.691_693del', 'pmids_count': 4}
+{'_id': 'litvar@#3077#c.61G>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.619del-', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.616-48delC', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.5G>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.527C>T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.523_524del', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.506-1G>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.478del', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.471del', 'pmids_count': 3}
+{'_id': 'litvar@#3077#c.452-2A>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.40A>G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.3ACATGGTTAA>GGCCTGTTGC', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.37A>G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.36C>G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.32G>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.32G>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.324T>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.322A>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.2T>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.2C>G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.2A>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.293-13C>G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.277del', 'pmids_count': 2}
+{'_id': 'litvar@#3077#c.242C>T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.221C>T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.203del', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.1A>C', 'pmids_count': 3}
+{'_id': 'litvar@#3077#c.187dup', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.184insA', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.174G>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.16C>T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.166_718G>T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.1601G>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.149_170del', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.1447+5G>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.1396dupG', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.10C>T', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.1022_1034del13', 'pmids_count': 2}
+{'_id': 'litvar@#3077#c.1010dup', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.-81-176G>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.-604G>A', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.-3506A>G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.-24C>G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.-187G>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.+4T>C', 'pmids_count': 1}
+{'_id': 'litvar@#3077#c.*800A>G', 'pmids_count': 1}
+{'_id': 'litvar@#3077#', 'pmids_count': 3285}

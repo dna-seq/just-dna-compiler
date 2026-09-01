@@ -1,0 +1,837 @@
+{
+  "@context": "http://reg.genome.network/schema/allele.jsonld",
+  "@id": "http://reg.genome.network/allele/CA167019",
+  "communityStandardTitle": [
+    "NM_024675.4(PALB2):c.3362del (p.Gly1121ValfsTer3)"
+  ],
+  "externalRecords": {
+    "ClinVarAlleles": [
+      {
+        "@id": "http://www.ncbi.nlm.nih.gov/clinvar/?term=132249[alleleid]",
+        "alleleId": 132249,
+        "preferredName": "NM_024675.4(PALB2):c.3362del (p.Gly1121fs)"
+      }
+    ],
+    "ClinVarVariations": [
+      {
+        "@id": "http://www.ncbi.nlm.nih.gov/clinvar/variation/126739",
+        "RCV": [
+          "RCV000114624",
+          "RCV000235614",
+          "RCV000130740",
+          "RCV001355561",
+          "RCV001798300",
+          "RCV001193463"
+        ],
+        "variationId": 126739
+      }
+    ],
+    "ExAC": [
+      {
+        "@id": "http://exac.broadinstitute.org/variant/16-23614978-AC-A",
+        "id": "16-23614978-AC-A",
+        "variant": "16:23614978 AC / A"
+      }
+    ],
+    "MyVariantInfo_hg19": [
+      {
+        "@id": "http://myvariant.info/v1/variant/chr16:g.23614979del?assembly=hg19",
+        "id": "chr16:g.23614979del"
+      }
+    ],
+    "MyVariantInfo_hg38": [
+      {
+        "@id": "http://myvariant.info/v1/variant/chr16:g.23603659del?assembly=hg38",
+        "id": "chr16:g.23603659del"
+      },
+      {
+        "@id": "http://myvariant.info/v1/variant/chr16:g.23603658del?assembly=hg38",
+        "id": "chr16:g.23603658del"
+      }
+    ],
+    "dbSNP": [
+      {
+        "@id": "http://www.ncbi.nlm.nih.gov/snp/515726117",
+        "rs": 515726117
+      }
+    ],
+    "gnomAD_2": [
+      {
+        "@id": "http://gnomad.broadinstitute.org/variant/16-23614978-AC-A?dataset=gnomad_r2_1",
+        "id": "16-23614978-AC-A",
+        "variant": "16:23614978 AC / A"
+      }
+    ],
+    "gnomAD_3": [
+      {
+        "@id": "http://gnomad.broadinstitute.org/variant/16-23603657-AC-A?dataset=gnomad_r3",
+        "id": "16-23603657-AC-A",
+        "variant": "16:23603657 AC / A"
+      }
+    ],
+    "gnomAD_4": [
+      {
+        "@id": "http://gnomad.broadinstitute.org/variant/16-23603657-AC-A?dataset=gnomad_r4",
+        "id": "16-23603657-AC-A",
+        "variant": "16:23603657 AC / A"
+      }
+    ]
+  },
+  "genomicAlleles": [
+    {
+      "chromosome": "16",
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 23603659,
+          "referenceAllele": "C",
+          "start": 23603658
+        }
+      ],
+      "hgvs": [
+        "NC_000016.10:g.23603659del",
+        "CM000678.2:g.23603659del"
+      ],
+      "referenceGenome": "GRCh38",
+      "referenceSequence": "http://reg.genome.network/refseq/RS000064"
+    },
+    {
+      "chromosome": "16",
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 23614980,
+          "referenceAllele": "C",
+          "start": 23614979
+        }
+      ],
+      "hgvs": [
+        "NC_000016.9:g.23614980del",
+        "CM000678.1:g.23614980del"
+      ],
+      "referenceGenome": "GRCh37",
+      "referenceSequence": "http://reg.genome.network/refseq/RS000040"
+    },
+    {
+      "chromosome": "16",
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 23522481,
+          "referenceAllele": "C",
+          "start": 23522480
+        }
+      ],
+      "hgvs": [
+        "NC_000016.8:g.23522481del"
+      ],
+      "referenceGenome": "NCBI36",
+      "referenceSequence": "http://reg.genome.network/refseq/RS000016"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 42700,
+          "referenceAllele": "G",
+          "start": 42699
+        }
+      ],
+      "hgvs": [
+        "NG_007406.1:g.42700del",
+        "LRG_308:g.42700del"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS000571"
+    }
+  ],
+  "transcriptAlleles": [
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 4367,
+          "referenceAllele": "G",
+          "start": 4366
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000561514.3:c.3368del"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000460666.3:p.Gly1123ValfsTer3",
+        "hgvsWellDefined": "ENSP00000460666.3:p.[Gly1123_Asp1124del;Lys1126_Leu1134del;Ser1136_Leu1152del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS914287"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 1137,
+          "referenceAllele": "G",
+          "start": 1136
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000565038.2:c.*847del"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000459882.2:n.*847del"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS914301"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3352,
+          "referenceAllele": "G",
+          "start": 3351
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000566069.6:c.3213del"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000459237.2:p.Arg1071SerfsTer?",
+        "hgvsWellDefined": "ENSP00000459237.2:p.Arg1071delinsSerAspValLysAspHisCysAlaAlaAlaIleLeuThrSerGlyThrIleAlaIleTrpAspLeuLeuLeuGlyGlnCysThrAlaLeu"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS914305"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3599,
+          "referenceAllele": "G",
+          "start": 3598
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000697377.2:c.3206del"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000513286.2:p.Gly1069ValfsTer3",
+        "hgvsWellDefined": "ENSP00000513286.2:p.[Gly1069_Asp1070del;Lys1072_Leu1080del;Ser1082_Leu1098del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS914472"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3667,
+          "referenceAllele": "G",
+          "start": 3666
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000697379.2:c.3368del"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000513287.2:p.Gly1123ValfsTer3",
+        "hgvsWellDefined": "ENSP00000513287.2:p.[Gly1123_Asp1124del;Lys1126_Leu1134del;Ser1136_Leu1152del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS914473"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 4367,
+          "referenceAllele": "G",
+          "start": 4366
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000561514.2:c.2477del"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000460666.2:p.Gly826ValfsTer3",
+        "hgvsWellDefined": "ENSP00000460666.2:p.[Gly826_Asp827del;Lys829_Leu837del;Ser839_Leu855del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS905930"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3885,
+          "referenceAllele": "G",
+          "start": 3884
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000697374.1:c.2477del"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000513284.1:p.Gly826ValfsTer3",
+        "hgvsWellDefined": "ENSP00000513284.1:p.[Gly826_Asp827del;Lys829_Leu837del;Ser839_Leu855del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS908744"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 4709,
+          "referenceAllele": "G",
+          "start": 4708
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000697375.1:n.4709del"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS908745"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3515,
+          "referenceAllele": "G",
+          "start": 3514
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000697376.1:c.2328del"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000513285.1:p.Arg776SerfsTer?",
+        "hgvsWellDefined": "ENSP00000513285.1:p.Arg776delinsSerAspValLysAspHisCysAlaAlaAlaIleLeuThrSerGlyThrIleAlaIleTrpAspLeuLeuLeuGlyGlnCysThrAlaLeu"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS908746"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3599,
+          "referenceAllele": "G",
+          "start": 3598
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000697377.1:c.2315del"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000513286.1:p.Gly772ValfsTer3",
+        "hgvsWellDefined": "ENSP00000513286.1:p.[Gly772_Asp773del;Lys775_Leu783del;Ser785_Leu801del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS908747"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3882,
+          "referenceAllele": "G",
+          "start": 3881
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000697378.1:n.3882del"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS908748"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3667,
+          "referenceAllele": "G",
+          "start": 3666
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000697379.1:c.2477del"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000513287.1:p.Gly826ValfsTer3",
+        "hgvsWellDefined": "ENSP00000513287.1:p.[Gly826_Asp827del;Lys829_Leu837del;Ser839_Leu855del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS908749"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 2566,
+          "referenceAllele": "G",
+          "start": 2565
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000697380.1:n.2566del"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS908750"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 2057,
+          "referenceAllele": "G",
+          "start": 2056
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000697381.1:n.2057del"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS908751"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 4302,
+          "referenceAllele": "G",
+          "start": 4301
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000697382.1:c.*139del"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000513288.1:n.*139del"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS908752"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 1060,
+          "referenceAllele": "G",
+          "start": 1059
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000697383.1:c.896del"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000513289.1:p.Gly299ValfsTer3",
+        "hgvsWellDefined": "ENSP00000513289.1:p.[Gly299_Asp300del;Lys302_Leu310del;Ser312_Leu328del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS908753"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3515,
+          "referenceAllele": "G",
+          "start": 3514
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000261584.9:c.3362del"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000261584.4:p.Gly1121ValfsTer3",
+        "hgvsWellDefined": "ENSP00000261584.4:p.[Gly1121_Asp1122del;Lys1124_Leu1132del;Ser1134_Leu1150del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS742164",
+      "MANE": {
+        "maneVersion": "1.3",
+        "maneStatus": "MANE Select",
+        "nucleotide": {
+          "Ensembl": {
+            "hgvs": "ENST00000261584.9:c.3362del"
+          },
+          "RefSeq": {
+            "hgvs": "NM_024675.4:c.3362del"
+          }
+        },
+        "protein": {
+          "Ensembl": {
+            "hgvs": "ENSP00000261584.4:p.Gly1121ValfsTer3"
+          },
+          "RefSeq": {
+            "hgvs": "NP_078951.2:p.Gly1121ValfsTer3"
+          }
+        }
+      }
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3515,
+          "referenceAllele": "G",
+          "start": 3514
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000261584.8:c.3362del"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000261584.4:p.Gly1121ValfsTer3",
+        "hgvsWellDefined": "ENSP00000261584.4:p.[Gly1121_Asp1122del;Lys1124_Leu1132del;Ser1134_Leu1150del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS250784"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 128,
+          "referenceAllele": "G",
+          "start": 127
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000566069.5:c.128del"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS379166"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3473,
+          "referenceAllele": "G",
+          "start": 3472
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "ENST00000568219.5:c.2477del"
+      ],
+      "proteinEffect": {
+        "hgvs": "ENSP00000454703.2:p.Gly826ValfsTer3",
+        "hgvsWellDefined": "ENSP00000454703.2:p.[Gly826_Asp827del;Lys829_Leu837del;Ser839_Leu855del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS380628"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3562,
+          "referenceAllele": "G",
+          "start": 3561
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "NM_024675.3:c.3362del",
+        "LRG_308t1:c.3362del"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_078951.2:p.Gly1121ValfsTer3",
+        "hgvsWellDefined": "NP_078951.2:p.[Gly1121_Asp1122del;Lys1124_Leu1132del;Ser1134_Leu1150del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS037924"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 4157,
+          "referenceAllele": "G",
+          "start": 4156
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "XM_011545946.1:c.3368del"
+      ],
+      "proteinEffect": {
+        "hgvs": "XP_011544248.1:p.Gly1123ValfsTer3",
+        "hgvsWellDefined": "XP_011544248.1:p.[Gly1123_Asp1124del;Lys1126_Leu1134del;Ser1136_Leu1152del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS112826"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 4009,
+          "referenceAllele": "G",
+          "start": 4008
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "XM_011545947.1:c.3219del"
+      ],
+      "proteinEffect": {
+        "hgvs": "XP_011544249.1:p.Arg1073SerfsTer?",
+        "hgvsWellDefined": "XP_011544249.1:p.Arg1073delinsSerAspValLysAspHisCysAlaAlaAlaIleLeuThrSerGlyThrIleAlaIleTrpAspLeuLeuLeuGlyGlnCysThrAlaLeu"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS112827"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3618,
+          "referenceAllele": "G",
+          "start": 3617
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "XM_011545948.1:c.2477del"
+      ],
+      "proteinEffect": {
+        "hgvs": "XP_011544250.1:p.Gly826ValfsTer3",
+        "hgvsWellDefined": "XP_011544250.1:p.[Gly826_Asp827del;Lys829_Leu837del;Ser839_Leu855del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS112828"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 4070,
+          "referenceAllele": "G",
+          "start": 4069
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "XR_950851.1:n.4070del"
+      ],
+      "referenceSequence": "http://reg.genome.network/refseq/RS143781"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 4367,
+          "referenceAllele": "G",
+          "start": 4366
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "XM_011545946.2:c.3368del"
+      ],
+      "proteinEffect": {
+        "hgvs": "XP_011544248.1:p.Gly1123ValfsTer3",
+        "hgvsWellDefined": "XP_011544248.1:p.[Gly1123_Asp1124del;Lys1126_Leu1134del;Ser1136_Leu1152del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS556315"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 4183,
+          "referenceAllele": "G",
+          "start": 4182
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "XM_011545947.2:c.3219del"
+      ],
+      "proteinEffect": {
+        "hgvs": "XP_011544249.1:p.Arg1073SerfsTer?",
+        "hgvsWellDefined": "XP_011544249.1:p.Arg1073delinsSerAspValLysAspHisCysAlaAlaAlaIleLeuThrSerGlyThrIleAlaIleTrpAspLeuLeuLeuGlyGlnCysThrAlaLeu"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS556316"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3654,
+          "referenceAllele": "G",
+          "start": 3653
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "XM_011545948.2:c.2477del"
+      ],
+      "proteinEffect": {
+        "hgvs": "XP_011544250.1:p.Gly826ValfsTer3",
+        "hgvsWellDefined": "XP_011544250.1:p.[Gly826_Asp827del;Lys829_Leu837del;Ser839_Leu855del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS556317"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 4095,
+          "referenceAllele": "G",
+          "start": 4094
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "XM_017023671.1:c.3131del"
+      ],
+      "proteinEffect": {
+        "hgvs": "XP_016879160.1:p.Gly1044ValfsTer3",
+        "hgvsWellDefined": "XP_016879160.1:p.[Gly1044_Asp1045del;Lys1047_Leu1055del;Ser1057_Leu1073del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS574393"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3305,
+          "referenceAllele": "G",
+          "start": 3304
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "XM_017023672.2:c.3125del"
+      ],
+      "proteinEffect": {
+        "hgvs": "XP_016879161.1:p.Gly1042ValfsTer3",
+        "hgvsWellDefined": "XP_016879161.1:p.[Gly1042_Asp1043del;Lys1045_Leu1053del;Ser1055_Leu1071del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS574394"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3393,
+          "referenceAllele": "G",
+          "start": 3392
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "XM_017023673.2:c.3213del"
+      ],
+      "proteinEffect": {
+        "hgvs": "XP_016879162.1:p.Arg1071SerfsTer?",
+        "hgvsWellDefined": "XP_016879162.1:p.Arg1071delinsSerAspValLysAspHisCysAlaAlaAlaIleLeuThrSerGlyThrIleAlaIleTrpAspLeuLeuLeuGlyGlnCysThrAlaLeu"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS574395"
+    },
+    {
+      "coordinates": [
+        {
+          "allele": "",
+          "end": 3515,
+          "referenceAllele": "G",
+          "start": 3514
+        }
+      ],
+      "gene": "http://reg.genome.network/gene/GN026144",
+      "geneNCBI_id": 79728,
+      "geneSymbol": "PALB2",
+      "hgvs": [
+        "NM_024675.4:c.3362del"
+      ],
+      "proteinEffect": {
+        "hgvs": "NP_078951.2:p.Gly1121ValfsTer3",
+        "hgvsWellDefined": "NP_078951.2:p.[Gly1121_Asp1122del;Lys1124_Leu1132del;Ser1134_Leu1150del]"
+      },
+      "referenceSequence": "http://reg.genome.network/refseq/RS698739",
+      "MANE": {
+        "maneVersion": "1.3",
+        "maneStatus": "MANE Select",
+        "nucleotide": {
+          "Ensembl": {
+            "hgvs": "ENST00000261584.9:c.3362del"
+          },
+          "RefSeq": {
+            "hgvs": "NM_024675.4:c.3362del"
+          }
+        },
+        "protein": {
+          "Ensembl": {
+            "hgvs": "ENSP00000261584.4:p.Gly1121ValfsTer3"
+          },
+          "RefSeq": {
+            "hgvs": "NP_078951.2:p.Gly1121ValfsTer3"
+          }
+        }
+      }
+    }
+  ],
+  "type": "nucleotide"
+}
