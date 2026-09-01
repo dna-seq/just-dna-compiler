@@ -503,6 +503,8 @@ motivating case), RM153.
 **Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
 **Motivating case** the 2026-09-01 source-adoption round
 
+**Probed and drafted in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm163--pgscsv-is-keyed-on-a-catalog-accession-and-nothing-ever-asks-the-catalog-about-it) on 2026-09-01 — proposed BUILDS in 0.7.0, pending the maintainer pass. Three corrections to what this entry says.** The drift check is over **two** fields, not four — `match_rate_floor` is `Field`-described as author-set and `research_tier` is a curator judgement, and the Catalog publishes neither. The REST surface answers **HTTP 200 with `{}`** for a never-assigned id *and* for a malformed one, so existence cannot be read from the status. And **the licence is per score and varies** (242/250 the generic EBI string, 6 academic-use-only, 2 CC0), so a single `PGS_TERMS` constant would be a false claim in the permissive direction — it becomes a floor, overridden per score from the payload.
+
 `PgsRow` is a **manifest** of PGS Catalog ids — RM16 is the other thing, authored per-variant weights,
 and stays deferred on a missing consumer. The manifest is keyed `(pgs_id, trait_efo_id)`, and beside
 the accession it carries four authored copies of facts the Catalog itself publishes:
@@ -536,6 +538,8 @@ half), `@registry-completeness`.
 
 **Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
 **Motivating case** the 2026-09-01 source-adoption round
+
+**Probed and drafted in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm164--heteroplasmycsv-is-a-shipped-table-kind-with-no-source-behind-it) on 2026-09-01 — proposed PARKS to 0.8, pending the maintainer pass.** Two negatives, both measured. **MITOMAP answers HTTP 403 on every path tried** — including its own `/Copyright` page, with and without a browser user-agent — so the terms cannot be read and the axis cannot be tested; it is blocked on *access*, upstream of where it was blocked before. And the axis question has a reasoned negative for the candidate class: `tissue` is in `HeteroplasmyRow`'s key and the shipped module's content is about the tissue, while a per-variant pathogenicity table has none and gnomAD's mtDNA callset is blood only. Not closed — one candidate probed, one reasoned about, which is not a survey.
 
 **The measurement, taken over `_TABLE_KINDS` and the enricher's providers.** Every table kind is in
 `DRAFTABLE` by construction, so *structurally* all nine are draftable. A **provider** exists for four:
@@ -571,6 +575,8 @@ established before that is a plan, and neither is:**
 **Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
 **Motivating case** RM65's own stated prerequisite
 
+**Probed and drafted in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm165--repeat_allelescsv-has-no-source-and-rm65rm66-have-been-waiting-on-exactly-the-corpus-one-would-bring) on 2026-09-01 — proposed BUILDS, split, the check half in 0.7.0; pending the maintainer pass.** STRchive is `dashnowlab/STRchive`, **MIT**, 82 loci / 79 genes, 319 KB. It reproduces `htt_repeat_expansion`'s first two bands **exactly** (6–26, 27–35) — and it is **one band coarser** than `fmr1_cgg_repeat`, whose 45–54 / 55–200 split STRchive gives as one 45–200 band, losing the premutation threshold; and its HTT `pathogenic_max: 250` would invent a ceiling where the module leaves `measure_max` open, so a 300-repeat allele would match no bin (`@bin-grounding`). Hence **draft the identity half, check the band half**. RM66's evidence is real and partial: `locus_structure` on **23 of 82** loci, HTT's being `[{CAG, null, pathogenic_repeat}, {CAACAG, 1, interruption}, {CCG, 12, flank_repeat}]` — enough to decide RM66, not enough to make it universal, and **RM66 is not decided in that round**.
+
 Same measurement as RM164: no drafting provider, no cross-check pass. The corpus is two hand-authored
 modules, `fmr1_cgg_repeat` and `htt_repeat_expansion`, neither of which carries a resolution sidecar.
 
@@ -602,6 +608,8 @@ those tables never expand, and coordinates on a repeat table are exactly what co
 **Severity** low-medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
 **Motivating case** the 2026-09-01 source-adoption round
 
+**Probed and drafted in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm166--the-whole-pgx-lane-is-one-licence-class-and-a-second-authority-exists-that-is-not-in-it) on 2026-09-01 — proposed SPLITS, the check to 0.8 and the licence half CLOSED; pending the maintainer pass.** The first probe lands as this entry hoped: **`drugLabels.zip` is on the same `api.clinpgx.org` endpoint** as `clinicalAnnotations.zip` — 59 KB, bundling its own CC BY-SA `LICENSE.txt`, 1,433 rows, and **five regulators** rather than one (FDA 533, HCSC 388, EMA 332, Swissmedic 128, PMDA 52). The joinability worry is answered: `Genes` on 1,248/1,433 and `Variants/Haplotypes` on 217, of whose 604 tokens **178 are star-allele-shaped** — `haplotypes.csv`'s key verbatim. **But the licence motivation is refuted**: that route is the same gate, and FDA's own table is 126 associations in an HTML page with no bulk file and no stated copyright status. Licence diversification for the PGx lane wants its own entry, choosing candidates *for their terms first*.
+
 The PGx lane reads three sources: CPIC (five parquet tables — genes, alleles, diplotypes,
 allele_definitions, recommendations), PharmVar (star-allele definitions and function), and ClinPGx
 (**`clinicalAnnotations.zip` and nothing else** — that is what `clinpgx_build` downloads). All three
@@ -632,6 +640,8 @@ exceptions and it has not been established for this table.
 
 **Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
 **Motivating case** the measured limits of the PubMind adoption (RM134)
+
+**Probed and drafted in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm167--litvar2pubtator3-answers-which-papers-name-this-allele-which-is-the-half-pubmind-structurally-cannot) on 2026-09-01 — proposed CLOSES as filed, with a narrower successor; pending the maintainer pass.** This entry set the test — *complements if LitVar's identity is genuinely allele-level* — and **it fails on the first call**, at the cost of one HTTP request rather than the 423-locus join scheduled here. Every id is `litvar@rs…##` with `flag_rsid_variant: true`; **rs429358, where the APOE call depends on the allele, is one id with 3,945 PMIDs**. So it is `@rsid-not-per-allele` in a source. Two more corrections: it **does** carry a verdict channel (`data_clinical_significance`, eight unattributed labels on that one position), so RM134 § C's questions *are* raised; and NCBI publishes a policy, not a licence — it places no restrictions and in the same passage declines to grant permission, so the gating axes are `None` (`@no-named-licence`). What survives is a literature **coverage** signal at rsID granularity, reporting and writing no row.
 
 [PUBMIND_ASSESSMENT](PUBMIND_ASSESSMENT.md) established by measurement that PubMind's only per-variant
 channel is the ANNOVAR-redistributed bulk table, and that **PubMind has record identity, not variant
@@ -668,6 +678,8 @@ NCBI's terms for this surface are the third thing to establish rather than assum
 
 **Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
 **Motivating case** [CIVIC_IDENTITY_PROTOCOL](probes/CIVIC_IDENTITY_PROTOCOL.md) § 3b
+
+**Probed and drafted in [PROPOSAL_0_7_PT2](proposals/PROPOSAL_0_7_PT2.md#rm168--the-identity-procedure-downloads-mane-by-hand-and-nothing-in-the-code-knows-the-file-exists) on 2026-09-01 — proposed BUILDS in 0.7.0, the cheapest item in that round; pending the maintainer pass.** All three questions this entry asks are cheap. `current/` is **not opaque**: every filename carries the version, `release_1.5/` … `release_0.5/` exist so a pin is a URL, and `README_versions.txt` is **96 bytes** publishing MANE 1.5 / RefSeq `GCF_000001405.40-RS_2025_08` / Ensembl 116 — a `release.json` the source already writes. The download is **1.1 MB**, 19,437 rows. **CDKN2A's two rows are in the table and separated by `MANE_status`**, which has only **74 MANE Plus Clinical** rows in 19,437 — the argument for a table over a remembered accession. **RUNX1 is a single row**, so MANE is silent on that class and *"the default, not the answer"* is now measured. Terms: NCBI's policy is not a licence, gating axes `None`.
 
 A `c.` or `p.` name means nothing until a transcript is named, and § 3b answers that with
 `MANE.GRCh38.v1.5.summary.txt.gz` from the NCBI FTP site, *"downloaded once and cited"*. That is a
