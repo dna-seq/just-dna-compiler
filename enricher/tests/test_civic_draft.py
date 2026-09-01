@@ -6,6 +6,7 @@ would be a second thing to update.
 """
 
 import csv
+import json
 from pathlib import Path
 
 import pytest
@@ -505,6 +506,20 @@ def test_a_caid_only_csq_row_reaches_the_registry_rather_than_being_refused(tmp_
         if (row["allele_registry_id"] or "").strip() == "CA9999999"
     ]
     assert caid_only, "the synthetic CSQ row did not survive the build"
+    # The same row, counted. `unresolvable_with_caid` sizes the class a later identity pass can
+    # recover, and the accrual sat in the derivation ladder's final `else` — which a `vcf_csq` row
+    # never reaches, so the published number understated exactly the class it exists to size.
+    recoverable = [
+        row
+        for row in frame.iter_rows(named=True)
+        if (row["allele_registry_id"] or "").strip()
+        and row["rsid"] is None
+        and row["chrom"] is None
+    ]
+    caids = {(row["allele_registry_id"] or "").strip() for row in recoverable}
+    assert json.loads((out / "release.json").read_text())["unresolvable_with_caid"] == len(caids), (
+        "the count must cover every CAID-only row, whichever file it was read from"
+    )
     for row in caid_only:
         assert row["rsid"] is None and row["chrom"] is None, "the fixture row must be unplaced"
         assert _needs_the_registry(row), (

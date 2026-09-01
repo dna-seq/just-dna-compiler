@@ -592,6 +592,13 @@ def build_snapshot(
             # TSV does not describe at all, the file is the fact a consumer cannot otherwise recover,
             # and the routes inside are visible in the row's own rsid/chrom/allele_registry_id cells.
             derivation = VCF_DERIVATION
+            if caid and not rsids and coords is None:
+                # A CAID-only row is one a later identity pass can recover, whichever file it came
+                # from — so it belongs in this count. Accrued here as well as in the `else` branch
+                # below, because taking the `vcf_csq` label first means such a row never reaches it,
+                # and `unresolvable_with_caid` then understates exactly the class the number exists
+                # to size (`@dont-discard-computed`).
+                unresolvable_caids.add(caid)
         elif curated_row is not None:
             derivation = CURATED_DERIVATION
         elif rsids and coords is not None:
