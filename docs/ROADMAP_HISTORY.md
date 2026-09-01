@@ -123,6 +123,26 @@ kind — ~5,190 rows of `pharm_variants.csv` territory, whose `type` is a six-me
 restatement is that the PGx lane reads one of twelve files from a source it has already adopted and
 gated, and the FDA question was a narrow way into a broad finding. It wants its own number.
 
+**What the code review found after the item was written, and it is a shape rather than a slip.** The
+lane shipped a `VALID_AUTHORED_POSITION` holding five members while `just_dna_format.vocab` already had
+that **exact name** holding five different ones — the clinical-significance concordance axis. Nothing
+broke, because one test file imported one and another the other, which is precisely what made it
+dangerous: the collision is invisible until a third caller imports both and the later `from … import`
+wins silently, and two members are shared so even a spot-check passes. A lane-local vocabulary carries
+the lane's prefix, and the rule is now `@a-lane-local-vocabulary-may-not-shadow-a-schema-one`. Its
+related half: **a reason map only a test reads is a map nothing speaks** — the equality guard over the
+sentence maps passed while every actual reader still met a bare token with no statement of what it
+claims.
+
+The same pass corrected two measurements this entry would otherwise have preserved. An allele claim
+whose gene-tier sibling was never answered had been counted as *no label names this allele*, when the
+truth is that nothing was asked about its gene either; it is withheld, and the three buckets are now
+asserted as a partition rather than checked one at a time. And the gene-qualified join composes a token
+**two ways**, because the file spells it two ways — the star alleles run together (`TPMT*3A`) and the
+DPYD haplotypes are spaced (`DPYD c.2846A>T`) — so trying only the concatenation told a DPYD module its
+allele was named by no label while two regulators named it exactly. A false coverage claim, which is
+worse than a miss.
+
 **`@two-surfaces-two-denominators` is the live rule**: ClinPGx's bulk file and the FDA's web table are
 different sources with different denominators, and any count either produces must say which. And
 `clinpgx_build`'s own docstring records that `relationships.zip` was a year newer than
