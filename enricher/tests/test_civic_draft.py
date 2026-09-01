@@ -406,29 +406,107 @@ def test_a_curated_identity_drafts_like_a_published_one(spec, snapshot):
     assert drafted[0]["direction"] == "risk"
 
 
-def test_every_identity_derivation_arrives_placed_or_is_the_one_the_drafter_dispatches_on(snapshot):
-    """An equality over the vocabulary, not a spot check on the member that happened to be added.
+def test_an_unplaced_row_goes_to_the_registry_whatever_its_derivation_says(snapshot):
+    """The invariant restated over the CELLS, because the label stopped answering the question.
 
-    The drafter special-cases exactly one member — `caid`, which carries a *route* to an identity
-    rather than an identity — and lets every other fall through to the placed path. That is correct
-    only while every other member really does arrive placed. A new member arriving unplaced would
-    fall through silently and draft a row with no coordinate
-    (`@lookup-with-a-default-hides-a-new-member`), so the property is checked over the vocabulary
-    rather than over the member someone remembered to add a case for.
+    This test used to read: every derivation but `caid` arrives placed, and `caid` arrives unplaced.
+    Both halves were true when `identity_derivation` named which *identifier* answered. RM169 added
+    `vcf_csq`, which names which **file** the row was read from and is stamped ahead of the identifier
+    routes — so a CSQ-sourced variant whose only identity is a registry id arrives labelled `vcf_csq`
+    and unplaced, and the old assertion's `else` branch would have failed on it. It did not fail,
+    because the fixture built without a VCF and no `vcf_csq` row ever reached it: the test asserting
+    exactly the violated property could not see the violation.
+
+    What actually matters is not the label but the routing: **an unplaced row carrying a CAID must
+    reach the registry, and nothing else may.** Asserted over the vocabulary so a new member is
+    covered on arrival, and over a snapshot that really does carry the CSQ tier.
     """
     import polars as pl
     from just_dna_enricher.civic_build import CIVIC_IDENTITY_DERIVATIONS, CIVIC_PARQUET
+    from just_dna_enricher.civic_draft import _needs_the_registry
     from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
 
     frame = pl.read_parquet(snapshot / SNAPSHOT_DATA_DIRNAME / CIVIC_PARQUET)
-    present = set(frame["identity_derivation"].unique().to_list())
-    assert present <= CIVIC_IDENTITY_DERIVATIONS
-    for derivation in sorted(present):
-        rows = frame.filter(pl.col("identity_derivation") == derivation)
-        placed = rows.filter(pl.col("rsid").is_not_null() | pl.col("chrom").is_not_null())
-        if derivation == "caid":
-            assert placed.height == 0, "a caid row states a route, never a position"
-        else:
-            assert placed.height == rows.height, (
-                f"{derivation} rows reach the drafter's placed path but are not placed"
-            )
+    assert set(frame["identity_derivation"].unique().to_list()) <= CIVIC_IDENTITY_DERIVATIONS
+    for row in frame.iter_rows(named=True):
+        placed = row["rsid"] is not None or row["chrom"] is not None
+        has_caid = bool((row["allele_registry_id"] or "").strip())
+        # Three states, and the predicate must agree with all three: placed rows are drafted as they
+        # stand, unplaced rows with a CAID are the registry's, and an unplaced row with neither is
+        # not in the snapshot at all (`unresolvable_identity` drops it at build time).
+        assert placed or has_caid, "a row with no identity and no route should never be emitted"
+        assert _needs_the_registry(row) == (not placed and has_caid), (
+            f"{row['identity_derivation']} row routed on its label rather than its cells"
+        )
+
+
+def test_a_caid_only_csq_row_reaches_the_registry_rather_than_being_refused(tmp_path, spec):
+    """The regression: a `vcf_csq` row whose sole identity is a CAID must not be withheld.
+
+    Before the dispatch moved off `identity_derivation`, this row fell through to `_variant_row`,
+    which drops every `None` cell and then refuses what is left as `identity_refused_by_model` —
+    a warning that blames "a coordinate missing its chromosome", which is not what happened. Measured
+    on the real release by `civic_vcf`'s own docstring: 57 of 112 CSQ-sourced variants are placed by
+    ClinGen CAID, and every one of them was withheld with zero lookups.
+
+    Built by appending one synthetic CSQ entry carrying a CAID and nothing else, because the shipped
+    four-line fixture VCF has no such row — which is the same reason this went unnoticed.
+    """
+    import polars as pl
+    from just_dna_enricher.civic_build import CIVIC_PARQUET, build_snapshot
+    from just_dna_enricher.civic_draft import _needs_the_registry
+    from just_dna_enricher.civic_vcf import parse_csq_format
+    from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
+
+    lines = [line for line in
+             (SLICE / "civic_accepted_and_submitted.vcf").read_text().splitlines() if line.strip()]
+    fields = parse_csq_format(next(line for line in lines if "ID=CSQ" in line))
+    template = next(line for line in lines if not line.startswith("#"))
+    columns = template.split("\t")
+
+    # Built from the file's OWN declared field order rather than a hand-written pipe string: the
+    # block has 28 fields and the reader checks the header's order rather than assuming one, so a
+    # positional guess produces a row that silently parses wrong.
+    example = dict(zip(fields, columns[7].split("CSQ=")[1].split("|"), strict=False))
+    entry = dict.fromkeys(fields, "")
+    entry.update(example)
+    entry.update({
+        "CIViC Variant ID": "999901",          # a variant id the TSV pair does not describe
+        "CIViC Entity ID": "999902",           # ... and an evidence id it does not either
+        # The CSQ synthesis runs on SUBMITTED items only — an accepted one is expected in the TSV
+        # pair, and a row naming a variant that is not there is dropped as `unresolvable_identity`
+        # rather than built from the block. So the tier this test is about is reachable only through
+        # the wider basis, which is the same reason the shipped fixture has no such row.
+        "CIViC Entity Status": "submitted",
+        "Allele Registry ID": "CA9999999",     # the row's only identity
+        "CIViC Variant Aliases": "",           # no rsID alias, so the rsID route finds nothing
+        "CIViC HGVS": "",                      # and no g. HGVS, so the coordinate route finds none
+        "CIViC Variant Name": "P71fs (c.211insT)",
+    })
+    columns[2] = "999901"
+    columns[7] = "GN=VHL;CSQ=" + "|".join(entry[name] for name in fields)
+
+    vcf = tmp_path / "with_caid_only.vcf"
+    vcf.write_text("\n".join([*lines, "\t".join(columns)]) + "\n")
+
+    out = build_snapshot(
+        SLICE / "ClinicalEvidenceSummaries.tsv",
+        SLICE / "VariantSummaries.tsv",
+        SLICE / "MolecularProfileSummaries.tsv",
+        tmp_path / "snap_vcf",
+        release="01-Aug-2026",
+        vcf=vcf,
+    ).out_dir
+
+    frame = pl.read_parquet(out / SNAPSHOT_DATA_DIRNAME / CIVIC_PARQUET)
+    caid_only = [
+        row
+        for row in frame.iter_rows(named=True)
+        if (row["allele_registry_id"] or "").strip() == "CA9999999"
+    ]
+    assert caid_only, "the synthetic CSQ row did not survive the build"
+    for row in caid_only:
+        assert row["rsid"] is None and row["chrom"] is None, "the fixture row must be unplaced"
+        assert _needs_the_registry(row), (
+            f"a CAID-only row stamped {row['identity_derivation']!r} was routed past the registry"
+        )

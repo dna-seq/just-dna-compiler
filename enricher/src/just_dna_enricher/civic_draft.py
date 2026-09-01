@@ -348,6 +348,29 @@ def _withheld_warnings(withheld: dict[str, int], contested: Sequence[str]) -> li
     return lines
 
 
+
+def _needs_the_registry(row: dict) -> bool:
+    """Whether this row's only route to an identity is its CAID.
+
+    Asked of the **cells**, not of `identity_derivation`. That column answers a different question:
+    since RM169 a CSQ-sourced row is stamped `vcf_csq` — which names the *file* the row was read
+    from — ahead of the routes naming which identifier answered, so a variant whose sole identity is
+    a registry id arrives labelled `vcf_csq` and never `caid`. Dispatching on the label therefore
+    sent every one of those straight past the registry into `_variant_row`, which strips the empty
+    identity cells and refuses the row as `identity_refused_by_model` — a warning whose text blames
+    "a coordinate missing its chromosome", which is not what happened. Measured by `civic_vcf`'s own
+    docstring at 57 of the 112 CSQ-sourced variants on the 01-Aug-2026 release, withheld with zero
+    lookups.
+
+    The general shape: **a provenance label is not a dispatch key.** `identity_derivation` is
+    published for a consumer to read, and a second axis landing in it (which file, beside which
+    identifier) is legal precisely because nothing was supposed to branch on it.
+    """
+    if not (row.get("allele_registry_id") or "").strip():
+        return False
+    return not (row.get("rsid") or "").strip() and row.get("chrom") is None
+
+
 def draft_panel_from_civic(
     spec_dir: Path,
     genes: Sequence[str] = (),
@@ -433,7 +456,7 @@ def draft_panel_from_civic(
         if row["direction"] is None:
             result.withheld["refutation_states_no_direction"] += 1
             continue
-        if row["identity_derivation"] == "caid":
+        if _needs_the_registry(row):
             # The snapshot kept this row because it has a *route* to an identity rather than one.
             # Walking that route is what turns it into a drafted row, and the three outcomes stay
             # three: placed, established-absence, and nobody-asked.
