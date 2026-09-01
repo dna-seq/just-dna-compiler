@@ -16,8 +16,8 @@ on both. Section 7 below is a later addendum: the checks this document asked for
 
 | CIViC | legacy string | candidate readings | resolvable? |
 |---|---|---|---|
-| 1955 | `c.211insT` | exactly 2 | **No** — no sequence-level, protein-level or database discriminator exists. Carry both. |
-| 2131 | `c.214insGCCC` | exactly 2 | **Provisionally yes** — `c.210_213dup` on parsimony + HGVS duplication rule + independent HGMD call. |
+| 1955 | `c.211insT` | exactly 2 | **Yes, on a second pass** — the curated UMD-VHL record pairs the observation with a protein consequence, and only one reading produces it. `c.211_212insT` / CA2501268513. See §8. |
+| 2131 | `c.214insGCCC` | exactly 2 | **No, and now closed** — the curated source records the insertion's sequence as unknown (`c.214ins4 ?`), so the ambiguity is upstream of every database. The `c.210_213dup` reading below stays provisional and unadopted. See §8. |
 
 Both CIViC records are empty shells: no coordinates, no HGVS, no ClinVar ID, no CAID, no aliases. The name string is the entire record, so there is nothing upstream to inherit.
 
@@ -179,7 +179,10 @@ Patient handles for the other two sources:
 
 ## 6. Recommended handling until a table surfaces
 
-- **1955** — carry both readings as an explicit pair. Do not silently pick one. Emit both `g.10142057_10142058insT` and `g.10142058_10142059insT` with a flag indicating unresolved legacy notation. Note in any downstream annotation that the two are protein-equivalent in length and identical in consequence class (PVS1, Ter131), so clinical interpretation is unaffected by the ambiguity even though the allele identity is.
+- **1955** — **superseded by §8: resolved to `c.211_212insT` / CA2501268513.** The guidance below was
+  written before the curated database was consulted and is kept as the reasoning that was correct on
+  the evidence then available.
+- **1955, as originally recommended** — carry both readings as an explicit pair. Do not silently pick one. Emit both `g.10142057_10142058insT` and `g.10142058_10142059insT` with a flag indicating unresolved legacy notation. Note in any downstream annotation that the two are protein-equivalent in length and identical in consequence class (PVS1, Ter131), so clinical interpretation is unaffected by the ambiguity even though the allele identity is.
 - **2131** — normalize provisionally to `c.210_213dup` / `g.10142057_10142060dup`, flagged as provisional, with `c.214_215insGCCC` retained as an alternate. **Correct the protein label from Q73fs to Ser72Alafs\*61.**
 - Re-run the coordinate sweep for 2131 at the **left-aligned** position 10,142,056 before recording the allele as novel.
 
@@ -307,3 +310,103 @@ untested here.
   reading of `214insGCCC` reaches codon 73 under either convention, and the only route to it,
   `c.216_217insGCCC`, gives `fs*60` rather than `fs*61`.
 - **Coverage does not move.** 270/290 stands (RM159); neither of these two is adopted.
+
+---
+
+## 8. Addendum 2 — the curated database settles 1955, and closes 2131 the other way (2026-09-01)
+
+Both papers are unreachable, and it did not matter: the **UMD-VHL database** (Béroud/Richard) carries
+the same observations with a protein column beside the nucleotide one, which is what neither paper
+could be made to yield. It is live at `http://www.umd.be/VHL/` (HTTP only; 443 refuses).
+
+**Why this source has standing here rather than being one more database.** Richard S. is a co-author
+of Olschwang 1998 *and* a UMD-VHL curator, and the record below cites that paper by PMID and names its
+patient. This is the curator's own tabulation of the observation CIViC transcribed — one step from the
+primary, where an allele registry is several.
+
+### 1955 `P71fs (c.211insT)` — **resolved**
+
+`http://www.umd.be/VHL/4DACTION/WV/605` (HTTP 200), re-fetched and read directly rather than taken on
+report. The record, verbatim:
+
+```
+c.212insT   p.Pro71LeufsX61   Heterozygous Mutation
+wt codon CCC   wt aa Pro   mutational event ins1b   mutation type Fs.   Stop at 131
+Reference 30 · PubMed 9829912 · Olschwang S., Richard S., Boisson C., Giraud S., …
+```
+
+The list view adds the sample: **`605 V96`** — the same patient handle the earlier round recorded for
+CIViC's own evidence item (`Olschwang 1998, patient V96`). Same paper, same patient, same allele.
+
+**The protein column decides it, and the arithmetic is checkable in three lines.** Codon 71 is `CCC`
+(verified above at `c.211-213`, §7.1). Inserting one `T`:
+
+| reading | codon 71 becomes | residue | matches UMD's `Pro71Leu…`? |
+|---|---|---|---|
+| after 211 — `c.211_212insT` | `CTC` | **Leu** | **yes** |
+| before 211 — `c.210_211insT` | `TCC` | Ser | no |
+
+> **1955 is `NM_000551.3:c.211_212insT`, p.Pro71Leufs\*61, CA2501268513** —
+> `NC_000003.12:g.10142058_10142059insT`, VCF `chr3 10142058 . C CT`.
+
+`Stop at 131` agrees with `fs*61` (71 + 61 − 1 = 131) but does **not** discriminate: both candidates
+stop there. Only the residue does.
+
+**One caveat, stated because it is the trap this document exists to name.** UMD writes `c.212insT`
+where CIViC writes `c.211insT` — UMD's `c.NinsX` means the inserted base *becomes* position N, i.e.
+`c.(N−1)_N insX`. Read as a coordinate, UMD's string would name the **other** allele. The protein
+column is the better evidence precisely because it is tied to the wild-type codon and is independent
+of whose offset convention is in force, which is `@one-normalizer-two-spellings` in the shape a
+legacy database takes.
+
+### 2131 `Q73fs (c.214insGCCC)` — **closed as unresolvable at source**
+
+UMD record 46, from the same listing:
+
+```
+p.72_Ser72dup   c.214ins4 ?   codon 72   Coil 1b   Small rearrangement   Fr.   Ins
+```
+
+**The `?` is UMD's own.** It records a four-base insertion whose sequence the source does not state —
+a marker class shared with `c.118ins1 ?`, `c.230ins3 ?`, `c.499ins8 ?` — with no mutant codon, no
+mutant aa, and, unlike every resolved frameshift row in the table, **no `Stop at N`**. So the curator
+closest to the observation recorded it as sequence-unknown.
+
+That closes the question rather than leaving it open: **the ambiguity originates in the primary
+literature**, and no database can be blamed for failing to resolve it. UMD also confirms the label is
+wrong — `codon 72`, `wt aa Ser`, against CIViC's `Q73`.
+
+A tempting inference is quarantined here rather than used: applying UMD's offset convention to
+`c.214insGCCC` would give `c.213_214insGCCC` ≡ `c.210_213dup`, the dup reading. That applies a
+convention to a string **UMD never wrote** — CIViC's, not theirs — so it is not evidence, and 2131
+stays withheld.
+
+**And its provenance is older than the record says.** UMD cites reference 15 = **PMID 8730290**
+(Maher ER et al., *J Med Genet* 1996;33:328-332), sample `Kind46`. Ong 2007 shares Maher as an author
+and re-tabulates the same Birmingham cohort, so `c.214insGCCC` is Ong's re-rendering of a 1996
+observation — which is also why chasing the 2007 fulltext was never going to settle it.
+
+### Routes that failed, so nobody re-runs them
+
+| target | route | result |
+|---|---|---|
+| Dollfus 2002 | ARVO article page | **403** |
+| | legacy `www.iovs.org/cgi/content/full/43/9/3067` | **403** after redirect |
+| | Wayback | `{"archived_snapshots": {}}` — no snapshot exists |
+| | Europe PMC `fullTextXML` | **404**, despite the "free after 12 months" listing |
+| Ong 2007 | Wiley | **403** |
+| | Europe PMC | **404** |
+
+**Neither `c.211insT` nor `c.214insGCCC` appears anywhere in UMD-VHL as literally written**, and the
+database publishes no numbering footnote at all — its gene page names HGNC, Ensembl, HPRD, MIM and
+Vega, and no RefSeq accession or transcript. The convention had to be derived from rows, which is
+§01 of the protocol arriving from a direction it did not anticipate.
+
+### What moves, and what does not
+
+- **1955 gains an identity** and leaves class D. It is **not** adopted into the builder: the class-D
+  records were never in the snapshot to begin with, and adopting one on the strength of a curated
+  third-party database is a decision, not a measurement. Recorded here; sized for the maintainer.
+- **2131 stays withheld**, now on a stronger basis than "nothing distinguishes them" — the source
+  itself states it does not know the sequence.
+- **Coverage does not move.** 270/290 stands.

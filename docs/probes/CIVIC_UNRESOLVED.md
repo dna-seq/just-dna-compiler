@@ -651,7 +651,7 @@ denotes are basis-independent: a class label stays a class label however many pa
 were read, and a wider read could in principle move a record from that arm of the split to another.
 Sized in RM160; not a reason to hold the class.
 
-## Class D — two records with two readings and nothing to choose between them (2026-09-01)
+## Class D — two records with two readings, one since settled (2026-09-01)
 
 Both are VHL frameshifts written in legacy `c.<N>ins<SEQ>` notation, which does not say whether the
 inserted bases go before or after base N. **Both readings exist as separately registered real
@@ -687,6 +687,20 @@ from a resolution in any output format.
 and no resolver fixes them; a curator has to return to the papers.
 
 ### Taken by hand, and what that added
+
+**1955 was settled on a second pass and is no longer in this class.** The curated UMD-VHL database —
+the Béroud/Richard lineage, one of whose curators co-authored the paper CIViC cites — records the same
+observation for the same patient with a **protein** column beside the nucleotide one:
+`c.212insT · p.Pro71LeufsX61 · wt codon CCC · PMID 9829912 · sample V96`. Codon 71 is `CCC`, and only
+inserting after base 211 gives `CTC` = Leu; the other reading gives `TCC` = Ser. So 1955 is
+`c.211_212insT`, **CA2501268513**. Not adopted into the builder — these records were never in the
+snapshot, and taking one on a third-party database's word is a decision rather than a measurement —
+but it is no longer unresolved. Full working in [CIVIC_LEGACY_INSERTIONS](CIVIC_LEGACY_INSERTIONS.md) §8.
+
+**2131 stays withheld, on a better basis than before.** The same database records it as
+`c.214ins4 ?` — a four-base insertion whose sequence *the source does not state*, with no mutant codon
+and no stop position. The ambiguity originates in the primary literature, so no database can resolve
+it, and its provenance turns out to be Maher 1996 rather than the Ong 2007 the record cites.
 
 Both records were then worked manually, at sequence level rather than by lookup —
 [CIVIC_LEGACY_INSERTIONS](CIVIC_LEGACY_INSERTIONS.md) is the full working. It does not resolve either
