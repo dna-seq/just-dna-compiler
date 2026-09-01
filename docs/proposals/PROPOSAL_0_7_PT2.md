@@ -160,37 +160,44 @@ one gene, hand-authored from the literature. That is `@probe-uniform-corpus` exa
 
 ### The facts, and both of them are negatives
 
-**MITOMAP cannot be fetched.** Probed 2026-09-01 on three paths — `/MITOMAP/WebHome`, the Foswiki
-`/foswiki/bin/view/MITOMAP/WebHome`, and its own `/Copyright` page — with and without a browser
-user-agent. **Every one answers HTTP 403.** Not a 404, not a redirect to terms: a refusal. So the
-entry's first prerequisite ("the terms … decided by reading its published terms") cannot be met, and
-its second ("whether it carries the axis at all") cannot be tested, because the file is not
-reachable from a programmatic client at all. The honest record of the terms axis is `None`, and the
-honest record of the item is that it is blocked on **access**, upstream of everything it was blocked
-on before.
-
-**And the axis question has a reasoned negative for the whole candidate class, not only for
-MITOMAP.** `HeteroplasmyRow` keys on `(gene, reference_sequence, tissue, variant_key)` and the shipped
+**The axis question has a reasoned negative for the whole candidate class, and it is the durable
+blocker.** `HeteroplasmyRow` keys on `(gene, reference_sequence, tissue, variant_key)` and the shipped
 module's content is *about* the tissue: its own conclusion column reads *"Blood systematically
 under-represents the burden in post-mitotic tissue, so a low blood fraction does not exclude disease
 — measure urine or muscle before reassuring."* A per-variant pathogenicity table has no tissue axis.
 gnomAD's mitochondrial callset — the obvious second candidate, and one whose adopted sibling already
 carries `GNOMAD_TERMS` — publishes population heteroplasmy distributions **in blood**, which is one
 tissue and a frequency rather than a clinical band. Neither fills the columns the kind exists for.
+This holds whatever any candidate's terms turn out to be, which is why it leads.
+
+**MITOMAP is behind a Cloudflare managed challenge, which is a fetch problem and not a refusal.**
+Probed 2026-09-01 on six paths — `/MITOMAP`, the Foswiki `/foswiki/bin/view/MITOMAP/WebHome` and
+`/Copyright`, `/cgi-bin/disease.cgi`, `/cgi-bin/polymorphisms.cgi` and `/robots.txt` — bare and with
+full browser headers. All answer **HTTP 403**, and the body is Cloudflare's *"Just a moment…"*
+interstitial (`_cf_chl_opt`, `cType: 'managed'`), i.e. a JavaScript challenge, not a server saying no.
+**The site is live and a browser reaches it**; `httpx` does not.
+
+Two things follow, and the first draft of this section got both wrong by calling the 403 a refusal.
+The terms **are** readable — by a human, in a browser — so nothing here licenses recording them as
+unestablishable, and this file has simply not read them. What is genuinely blocked is an *enricher
+pass*: the tier fetches with `httpx` and no builder here solves a JS challenge, so even a source with
+perfect terms and the right axis could not be reached by the machinery that would consume it. That is
+an access question with a human answer — ask MITOMAP for a data route, as PubMind's entry already
+models for a question only the owner can settle — and not a property of the data.
 
 ### The decision
 
-**Park, with the blockers recorded as measured rather than unexamined**, and do not close. The entry
-invited a clean close on a negative, and one of the two negatives here would justify it; but a 403 is
-evidence about a *server*, not about a *table*, and this round probed one candidate seriously and one
-by reasoning. Closing on that would manufacture the permanent false constraint that
-`@probe-names-the-table` exists to prevent.
+**Park, and do not close.** The entry invited a clean close on a negative and the axis argument is a
+real one, but it was reached by reasoning over one shipped module's key rather than by probing a
+corpus of candidates. A 403 is evidence about a *server*, not about a *table*, and the tissue
+argument is evidence about a *schema*, not about the mtDNA literature. Closing on either would
+manufacture the permanent false constraint `@probe-names-the-table` exists to prevent.
 
-What goes into the entry so the next session does not re-run this: MITOMAP answers 403 to a plain
-client on every path tried, including its own copyright page; the terms are therefore unestablished
-and unestablishable by fetch; and the tissue axis in the key is a structural filter that any
-candidate must pass, which is a cheaper first question than terms and should be asked first next
-time. The unblock action is a human one — write to MITOMAP, as PubMind's entry already models for a
+What goes into the entry so the next session does not re-run this: the tissue axis in the key is a
+structural filter any candidate must pass, it is cheaper to ask than terms are, and it should be
+asked first — this round asked it second and that is the ordering mistake worth inheriting. MITOMAP
+itself returns Cloudflare's managed challenge to every programmatic path including `/robots.txt`, so
+its terms are **unread here rather than unestablishable**, and a browser settles them in a minute. The unblock action is a human one — write to MITOMAP, as PubMind's entry already models for a
 source whose terms nobody but the owner can settle.
 
 **gnomAD's mtDNA release is named as the next candidate and explicitly not inherited.** Its terms are
@@ -199,9 +206,9 @@ inherited, and this file checks nothing about it.
 
 ### Repairs rejected
 
-- **Scraping MITOMAP past the 403.** A source that refuses a programmatic client has said something,
-  and routing around it is not a probe result. It is also the wrong thing to do to a source whose
-  terms we cannot read.
+- **Solving the Cloudflare challenge to scrape MITOMAP.** A host that has deployed bot mitigation has
+  expressed a preference, and defeating it is not a probe result. The route to a source that wants to
+  be asked is to ask it.
 - **Drafting identity columns only, from any mtDNA table.** It would write rows that fill
   `gene`/`variant_key`/`reference_sequence` and none of `tissue`/`measure_min`/`measure_max` — rows
   that say nothing the kind exists to say, which is the entry's own objection and it is right.
@@ -588,8 +595,8 @@ in another release as prose.
 - **RM27's redistribution axis is not designed.** RM166's closed half points at it and does not
   attempt it.
 - **No terms are asserted that a probe did not read.** Where a source publishes a policy rather than a
-  licence (MANE, LitVar2) the gating axes are `None`; where it could not be reached at all (MITOMAP)
-  every axis is `None`; and where the licence is per record (PGS Catalog) no constant claims to cover
+  licence (MANE, LitVar2) the gating axes are `None`; where a JS challenge stopped this client (MITOMAP) the terms are recorded as
+  **unread**, which is not the same as unestablishable; and where the licence is per record (PGS Catalog) no constant claims to cover
   the corpus.
 - **No number is claimed for RM167's successor.** `.claude/rm-next.py` allocates it when the item is
   taken — an index is not an allocator, and this file is not one either.
@@ -630,7 +637,7 @@ this checkout, and the counts are from the files as served that day:
 | Source | What was read | Headline |
 | --- | --- | --- |
 | PGS Catalog REST | `/rest/score/PGS000001`, `PGS999999`, `PGSXXXX`, `/rest/score/all?limit=250` | 200+`{}` for every negative; per-score `license`, 3 distinct values in 250 |
-| MITOMAP | three paths incl. `/Copyright`, with and without a browser UA | HTTP 403 on all |
+| MITOMAP | six paths incl. `/Copyright`, `/cgi-bin/*.cgi` and `/robots.txt`, bare and with full browser headers | Cloudflare managed JS challenge on all — 403 to a non-JS client, live in a browser |
 | STRchive | `dashnowlab/STRchive` `data/STRchive-loci.json` (319 KB) | MIT, 82 loci / 79 genes, `locus_structure` on 23 |
 | ClinPGx | `api.clinpgx.org/v1/download/file/data/drugLabels.zip` (59 KB) | 1,433 rows, 5 regulators, CC BY-SA in the payload |
 | FDA | Table of Pharmacogenetic Associations (HTML) | 126 associations, no bulk file, no stated terms |
