@@ -33,7 +33,6 @@ Its field order is declared in the header rather than assumed — see `parse_csq
 """
 
 import collections
-import csv
 import logging
 import re
 from dataclasses import dataclass

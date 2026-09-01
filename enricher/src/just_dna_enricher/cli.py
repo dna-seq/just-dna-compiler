@@ -1776,11 +1776,11 @@ def civic_build_(
         CIVIC_EVIDENCE_FILE,
         CIVIC_PROFILE_FILE,
         CIVIC_VARIANT_FILE,
-        CIVIC_VCF_FILE,
         build_snapshot,
         civic_release_url,
         download_civic_file,
     )
+    from just_dna_enricher.civic_vcf import CIVIC_VCF_FILE
 
     if vcf is not None and submitted:
         raise typer.BadParameter(
@@ -1947,11 +1947,11 @@ def civic_reproduce_(
         CIVIC_EVIDENCE_FILE,
         CIVIC_PROFILE_FILE,
         CIVIC_VARIANT_FILE,
-        CIVIC_VCF_FILE,
         build_snapshot,
         civic_release_url,
         download_civic_file,
     )
+    from just_dna_enricher.civic_vcf import CIVIC_VCF_FILE
     from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME
     from just_dna_enricher.sequences import SequenceProxy, verify_reference_alleles
     from just_dna_enricher.upload import DEFAULT_CIVIC_REPO_ID, plan_reference_snapshot

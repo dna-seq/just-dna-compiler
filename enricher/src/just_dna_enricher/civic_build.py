@@ -60,21 +60,18 @@ from pathlib import Path
 import httpx
 from just_dna_format.normalize import now_utc_iso
 
-from just_dna_enricher.civic_vcf import (
-    CIVIC_EVIDENCE_STATUSES,
-    CIVIC_VCF_FILE,
-    VCF_DERIVATION,
-    CivicVcfEntry,
-    assert_vocabulary_covers,
-    read_vcf_entries,
-    status_by_evidence,
-    summarize,
-)
 from just_dna_enricher.civic_identities import (
     CIVIC_CURATION_STATES,
     CIVIC_NAME_IDENTITY_BY_VARIANT,
     CURATED_DERIVATION,
     CivicNameIdentity,
+)
+from just_dna_enricher.civic_vcf import (
+    VCF_DERIVATION,
+    CivicVcfEntry,
+    assert_vocabulary_covers,
+    read_vcf_entries,
+    summarize,
 )
 from just_dna_enricher.locations import (
     RELEASE_FILENAME,
@@ -495,12 +492,10 @@ def build_snapshot(
     doid_by_disease = _doid_by_disease(evidence)
     status_basis = CIVIC_BULK_STATUS
     unjoinable_submitted = 0
-    evidence_statuses: dict[int, str] = {}
     vcf_statuses: dict[str, int] = {}
     if vcf is not None:
         entries = read_vcf_entries(Path(vcf))
         assert_vocabulary_covers(entries)
-        evidence_statuses = status_by_evidence(entries)
         vcf_statuses = summarize(entries)
         status_basis = "accepted+submitted"
         by_variant_id = {

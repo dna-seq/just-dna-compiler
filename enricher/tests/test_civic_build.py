@@ -30,13 +30,13 @@ from just_dna_enricher.civic_build import (
     parse_rsids,
     variant_rsids,
 )
-from just_dna_enricher.civic_vcf import CIVIC_EVIDENCE_STATUSES, VCF_DERIVATION
 from just_dna_enricher.civic_identities import (
     CIVIC_CURATION_STATES,
     CIVIC_NAME_IDENTITIES,
     CIVIC_NAME_IDENTITY_BY_VARIANT,
     CURATED_DERIVATION,
 )
+from just_dna_enricher.civic_vcf import CIVIC_EVIDENCE_STATUSES, VCF_DERIVATION
 from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
 
 SLICE = Path(__file__).resolve().parents[2] / "assets" / "civic_slice"
