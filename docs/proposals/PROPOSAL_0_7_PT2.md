@@ -59,7 +59,7 @@ the six inside 0.7.0 and holds the rest.
 | RM164 MITOMAP / heteroplasmy | route closed, twice over | **PARKS**, blockers now measured |
 | RM165 STRchive / repeat alleles | confirmed on identity, refuted on bands | **BUILDS**, split — check half in 0.7.0 |
 | RM166 FDA / the PGx licence class | half confirmed, half refuted | **SPLITS** — check builds in 0.8, licence half closes |
-| RM167 LitVar2 / PubTator3 | premise refuted on the first call | **CLOSES**, narrower successor filed |
+| RM167 LitVar2 / PubTator3 | premise confirmed once the allele tier was found | **BUILDS in 0.8** |
 | RM168 MANE | confirmed, cheapest item in the round | **BUILDS in 0.7.0** |
 
 ---
@@ -447,32 +447,69 @@ alone holds eight with four different verdicts. The entry proposed LitVar2 as an
 vote on exactly that fan-out, and set the test itself: *"They are complements if LitVar's identity is
 genuinely allele-level where PubMind's is record-level."*
 
-### The facts — the test fails on the first call, and the entry priced it at a 423-locus join
+### The facts — the entry's test passes, and the first draft of this section failed it by misreading an id
 
-**Every LitVar identity is an rsID.** `variant/autocomplete/?query=rs1800562` returns
-`_id: "litvar@rs1800562##"`, `flag_rsid_variant: true`, `pmids_count: 3053`. The id *is* the rsID with
-a marker appended. Queried by gene, the same: CDKN2A returns five ids, all `litvar@rs…##`, all
-`flag_rsid_variant: true`. And the decisive case — **rs429358, the APOE position where the ε4 call
-depends on which allele you carry, is one id with 3,945 PMIDs**, not one id per allele.
+**The id grammar has slots, and `##` is an empty one.** A LitVar id is
+`litvar@<clingen_id>#<rsid>#<gene_id>`, with unfilled slots collapsing to a bare `#`. So
+`litvar@rs1800562##` is the **position** node — rsID slot filled, allele slot empty — and
+`litvar@CA113795#rs1800562##` is the **allele** node beside it. `variant/search/gene/HFE` returns all
+three tiers together: of 588 HFE nodes, **220 are rsID-only, 69 carry a CAID, and 299 are gene-level**
+(`litvar@#3077#`, NCBI GeneID 3077 = HFE, 3,285 PMIDs). The `flag_rsid_variant` /
+`flag_clingen_variant` / `flag_gene_variant` booleans say which tier a node is.
 
-So LitVar's identity is **position-level**, which is `@rsid-not-per-allele` appearing in a source. It
-is not allele-level, the entry's own complement test returns false, and the answer cost one HTTP call
-rather than the join against 11 modules and 423 resolved loci the entry had scheduled. That is the
-`@probe-the-real-file` payoff in its cheapest form.
+An earlier draft of this section read the trailing `##` as a suffix on an rsID, queried only
+`variant/autocomplete`, and concluded the source has no allele tier at all. It has one, it is a
+separate node, and `autocomplete` returns whichever tier matches the query — `?query=CA123643`
+returns `litvar@CA123643#rs113488022##` with `flag_clingen_variant: true`.
 
-**It carries a verdict channel, which the entry says it does not.** Each record carries
-`data_clinical_significance` — for rs429358: `['other', 'uncertain-significance', 'drug-response',
-'likely-pathogenic', 'risk-factor', 'protective', 'association', 'pathogenic']`, eight labels on one
-position, unattributed and unresolved. The entry's *"carrying no pathogenicity verdict of any kind"*
-and its conclusion that this *"raises none of the charter questions RM134 § C had to answer"* are both
-false. It raises them, and it raises them in the worst form: a verdict list with no allele, no
-submitter and no date.
+**The allele nodes answer differently, and the entry's test is what they pass.** Measured
+2026-09-01, BRAF rs113488022 — three CAIDs which the ClinGen Allele Registry resolves to three
+distinct ALTs at one position, `A>T` p.Val600Glu, `A>G` p.Val600Ala, `A>C` p.Val600Gly:
 
-**PubTator3's entity layer has PubMind's own confusion.** `pubtator3-api/entity/autocomplete/?query=
-rs1800562` returns `_id: "@VARIANT_p.C282Y_HFE_human"` carrying `"name": "p.L282R"` and
-`"match": "Multiple matches"` — the name on the record disagrees with the identity in the record's own
-id. That is the name-versus-identity failure CIVIC_IDENTITY_PROTOCOL was written for, in NCBI's own
-index.
+| node | PMIDs |
+| --- | --- |
+| `litvar@rs113488022##` (position) | 32,095 |
+| `litvar@CA123643#…` V600E | 31,276 |
+| `litvar@CA281998#…` V600G | 99 |
+| `litvar@CA16602736#…` V600A | 41 |
+| on the position node and **no** allele node | 801 |
+
+That is allele-resolved literature, and the resolution is doing real work: the three alleles of one
+codon differ by three orders of magnitude. **RM167's own complement test — *"complements if LitVar's
+identity is genuinely allele-level"* — passes.**
+
+**But the tier a locus is answerable at is a property of the locus, not of the source.** The same
+measurement over two more:
+
+| locus | position node | allele node(s) | position-only |
+| --- | --- | --- | --- |
+| BRAF rs113488022 | 32,095 | 31,276 + 99 + 41, 3 CAIDs | 801 (2.5 %) |
+| HFE rs1800562 | 3,053 | 2,693, 1 CAID | 360 (12 %) |
+| APOE rs429358 | 3,945 | **328**, 1 CAID | **3,617 (92 %)** |
+
+APOE is the case that matters: the position carries 3,945 papers and its single allele node carries
+328, so **92 % of the literature at that locus is not allele-resolved**. A pass that reported the
+allele node's count as *the* answer would understate APOE by twelvefold. Allele-resolved,
+position-only and absent are three outcomes, and this is the house algebra arriving from a source
+rather than being imposed on one.
+
+**The allele identity is a CAID, which this package already resolves.** RM153 shipped
+`clingen_allele.ClingenAlleleClient` and an `identity_derivation="caid"` snapshot row on 2026-08-31.
+The join from a LitVar allele node to a module's `variant_key` is machinery that exists, which makes
+this materially cheaper than the entry assumed.
+
+**Two corrections to this file's own earlier draft, and one that survives.** The verdict channel is
+**position-level only**: `data_clinical_significance` is populated on position nodes (rs429358 carries
+eight labels) and is `None` on every allele node measured. So the entry's *"carries no pathogenicity
+verdict"* is still wrong, but the verdict is not per-allele and is therefore not adoptable as an
+allele authority — which is the same conclusion by a better route. And PubTator3's
+`entity/autocomplete` name/id mismatch stands as measured.
+
+**One real API defect, worth pinning before anyone writes a client.**
+`variant/search/gene/GENE_NAME` returns **line-delimited Python `repr()`, not JSON** — single-quoted
+keys, one dict per line. `httpx`'s `.json()` raises on it. The other four endpoints return proper
+JSON. `@probe-the-real-file`, and the reason a builder for this needs a parser rather than a
+deserializer.
 
 **Terms are NCBI's policy, and a policy is not a licence.** NCBI states it *"places no restrictions on
 the use or distribution"* of molecular data and, in the same passage, that it *"cannot provide comment
@@ -484,42 +521,56 @@ co-hosts.
 
 ### The decision
 
-**Close RM167 as filed.** The premise it was filed under — an allele-level second vote on PubMind's
-record-level fan-out — is refuted by measurement, and an entry left open under a refuted premise is
-worse than no entry, because the next reader inherits the claim rather than the finding.
+**Reversed from this file's first draft: RM167 BUILDS.** The entry set a test, the test passes, and
+the earlier "closes" verdict was an artefact of querying one endpoint and misreading an id.
 
-**File the narrower thing that survives as its own item**, with a number claimed from
-`.claude/rm-next.py` when it is taken rather than guessed here: **LitVar as a literature coverage
-signal at rsID granularity.** `pmids_count` per module rsID, from the cheap autocomplete call, plus
-the PMID list from `variant/get/{id}/publications` where an author wants it. The granularity goes in
-the record — *this is what the literature says about this position, not about your allele* — and the
-entry's own pre-authorisation applies: *"an enrichment surface that reports and writes no row is a
-legitimate outcome and should not be designed away."* That is very likely what this is.
+**A literature-coverage pass keyed at the tier the locus supports, with the tier recorded.** For each
+module rsID: resolve the allele node via the CAID that RM153's registry client already returns for the
+module's `variant_key`, take that node's PMIDs when it exists, and fall back to the position node —
+**never silently.** The finding names which tier answered, because 328 and 3,945 are both true
+statements about rs429358 and only one of them is about the allele in the module. Three outcomes,
+Kleene, and the position-only residue counted rather than discarded (`@dont-discard-computed`).
 
-`data_clinical_significance` is **not** adopted in any form. An unattributed list of eight labels on
-one position is not a verdict this workspace can hold, and RM134's precedence question — which the
-repo has refused to invent an answer to three times — would have to be answered before it could be.
+**What lands in an artifact is still open, and deliberately.** A PMID list per variant is not a table
+kind and `literature.csv` is keyed by article. Whether this becomes a `studies.csv` drafting provider,
+a coverage signal, or a check that writes no row is the implementation's call; the entry's
+pre-authorisation stands — *"an enrichment surface that reports and writes no row is a legitimate
+outcome and should not be designed away."*
+
+**`data_clinical_significance` is not adopted in any form.** Position-level, unattributed, undated,
+and eight labels on a position where two alleles disagree.
 
 ### Repairs rejected
 
-- **Running the 423-locus join anyway.** The identity question it was meant to settle is settled. A
-  bigger denominator does not change what `litvar@rs429358##` is.
-- **Keeping RM167 open with a narrowed scope.** The entry's title, its motivating case and its whole
-  argument are the refuted premise. A successor with the finding in its first paragraph is what a
-  later reader needs.
-- **Taking `data_clinical_significance` as a fourth authority for the concordance check.** No allele,
-  no submitter, no date, and eight labels on a position where two alleles disagree.
+- **Closing the item, as this file first proposed.** The premise was sound; the probe was not. Reading
+  `##` as a suffix instead of an empty slot, and asking only `autocomplete`, produced a confident
+  negative about a tier that is one endpoint away.
+- **Reporting the allele node's count as the locus's answer.** It understates APOE twelvefold. The
+  tier that answered is part of the finding, not an implementation detail.
+- **Falling back to the position node silently.** Same defect, quieter. `@refutation-withholds` — a
+  position-level answer to an allele-level question withholds, it does not answer approximately.
+- **Taking `data_clinical_significance` as a fourth authority for the concordance check.** Position-
+  level, unattributed, undated, and `None` on every allele node — so it cannot even be attributed to
+  the allele it would be voting on.
+- **Calling `.json()` on `variant/search/gene/`.** It is line-delimited Python `repr()`. Pinned here
+  so it is found before a client raises on it.
 - **Recording NCBI's policy as `public-domain` by analogy with ClinVar.** ClinVar has a page saying
   so and this surface does not. `@no-named-licence`, and the analogy is exactly the move the rule
   forbids.
+- **Still not running the 423-locus join to decide the item.** It is the right measurement for
+  *coverage* — how many module loci have a CAID node at all — and it is the implementation's first
+  test. It was never the right measurement for *identity*, which four requests settled.
 
 ### Charter check
 
-Nothing of the original item is built. For the successor: enricher-only, reports and writes no
-artifact row, no schema change, gating axes `None`. The three-valued rule decides the shape — a
-position-level answer to an allele-level question **withholds**, it does not answer approximately.
+Enricher-only; no schema change decided here, and the "writes no row" outcome stays available. P2 ✓ —
+the fetch is in the only tier permitted one. P3/P8 ✓. P9: zero authored cost. The three-valued rule
+decides the shape, and for once the source supplies the three states rather than the schema imposing
+them: allele-resolved, position-only, absent.
 
-**Release: RM167 closes now; the successor is 0.8.**
+**Release: 0.8.** It reverses to a build, but it is a new client plus a tiering rule plus an undecided
+artifact question, and the coverage measurement over the 11-module corpus is its first task rather
+than a prerequisite that is already done.
 
 ---
 
@@ -626,9 +677,11 @@ in another release as prose.
   licence (MANE, LitVar2) the gating axes are `None`; where the terms were not opened at all (MITOMAP — they are on a page a
   browser reaches) they are recorded as **unread**, which is not the same as unestablishable; and where the licence is per record (PGS Catalog) no constant claims to cover
   the corpus.
+- **RM167's coverage measurement over the 11-module corpus is not done** — it is the build's first
+  task, and it answers coverage, not the identity question four requests settled.
 - **RM164's `variants.csv` spin-off is not designed here**, only noticed — `mmutation`'s 29 free-text
   status strings are the reason it is not a one-liner.
-- **No number is claimed for either successor.** `.claude/rm-next.py` allocates it when the item is
+- **No number is claimed for RM164's spin-off.** `.claude/rm-next.py` allocates it when the item is
   taken — an index is not an allocator, and this file is not one either.
 
 ---
@@ -672,7 +725,7 @@ this checkout, and the counts are from the files as served that day:
 | STRchive | `dashnowlab/STRchive` `data/STRchive-loci.json` (319 KB) | MIT, 82 loci / 79 genes, `locus_structure` on 23 |
 | ClinPGx | `api.clinpgx.org/v1/download/file/data/drugLabels.zip` (59 KB) | 1,433 rows, 5 regulators, CC BY-SA in the payload |
 | FDA | Table of Pharmacogenetic Associations (HTML) | 126 associations, no bulk file, no stated terms |
-| LitVar2 / PubTator3 | `variant/autocomplete`, `variant/get/…/publications`, `entity/autocomplete` | every id is `litvar@rs…##`; rs429358 is one id, 3,945 PMIDs |
+| LitVar2 / PubTator3 | all five documented endpoints, over BRAF/HFE/APOE + `search/gene/HFE`; CAIDs resolved against the ClinGen Allele Registry | ids have **slots**: position, allele (CAID) and gene nodes. BRAF's 3 alleles = 31,276 / 99 / 41 PMIDs; APOE is **92 % position-only**. `search/gene/` returns Python `repr()`, not JSON |
 | MANE | `ftp.ncbi.nlm.nih.gov/refseq/MANE/MANE_human/current/` + summary (1.1 MB) | 19,437 rows, 74 MANE Plus Clinical, `README_versions.txt` = 96 bytes |
 | NCBI | `/home/about/policies/` | places no restrictions; declines to grant permission |
 
