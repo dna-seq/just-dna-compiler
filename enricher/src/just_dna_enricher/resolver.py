@@ -108,9 +108,10 @@ def resolve_variants(
     merge/build difference — never fatal, matching the resolver's best-effort stance).
     """
     if genome_build != "GRCh38":
-        msg = (
+        msg = CodedWarning(
+            "resolution_skipped_cross_build",
             f"Ensembl resolution skipped: compiler is GRCh38-bound, module genome_build is "
-            f"{genome_build!r} — positions are not re-resolved cross-build (RM15)."
+            f"{genome_build!r} — positions are not re-resolved cross-build (RM15).",
         )
         logger.warning(msg)
         return variants, [msg]
@@ -126,9 +127,10 @@ def resolve_variants(
 
     reference = resolve_ensembl_reference(ensembl_cache)
     if reference is None:
-        msg = (
+        msg = CodedWarning(
+            "resolution_not_injected",
             "Ensembl resolution skipped: no reference cache found "
-            "(set JUST_DNA_PIPELINES_CACHE_DIR or JUST_DNA_ENSEMBL_CACHE, or pass ensembl_cache)"
+            "(set JUST_DNA_PIPELINES_CACHE_DIR or JUST_DNA_ENSEMBL_CACHE, or pass ensembl_cache)",
         )
         logger.warning(msg)
         return variants, [msg]
@@ -136,7 +138,7 @@ def resolve_variants(
     try:
         con = _connect(reference)
     except EnsemblReferenceError as exc:
-        msg = f"Ensembl resolution skipped: {exc}"
+        msg = CodedWarning("resolution_not_injected", f"Ensembl resolution skipped: {exc}")
         logger.warning(msg)
         return variants, [msg]
 

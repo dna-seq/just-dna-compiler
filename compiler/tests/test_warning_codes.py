@@ -15,6 +15,7 @@ slips through, which is the only day it matters.
 
 import ast
 import csv
+import functools
 import io
 from pathlib import Path
 
@@ -145,6 +146,87 @@ def _channel_receivers() -> set[str]:
     return found
 
 
+
+@functools.cache
+def _channel_slots() -> dict[str, int]:
+    """For a function returning a tuple, which slot is the warnings channel.
+
+    Read off the **unpack at every call site** rather than declared: `rows, errors, warnings =
+    load_csv_rows(...)` says slot 2 is the channel and slot 1 is not, and `variants, resolve_warnings
+    = _legacy_resolve(...)` says slot 1 is. A name is recorded only when every unpack of it agrees,
+    so a function two callers destructure differently is left out rather than guessed at — the guard
+    then falls back to seeing no emission there, which is the direction that fails loudly the moment
+    somebody codes one of its siblings.
+
+    Scanned over the same modules `_emission_sites` walks plus the compiler, because the caller and
+    the producer are often in different files — and **through the import alias**, because the one
+    cross-file case is exactly that: `resolve_variants` lives in the enricher and `compiler.py`
+    unpacks it as `_legacy_resolve`. Keying on the name at the call site alone would record a slot
+    nothing looks up, which is how the first version of this widening passed while still not seeing
+    the defect it was written for.
+    """
+    agreed: dict[str, set[int]] = {}
+    for path in {*_participating_modules(), *_coded_calls()}:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        #: `asname -> real name`, so a slot learned at an aliased call site is filed under the name
+        #: the defining module actually uses.
+        aliases = {
+            alias.asname: alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            for alias in node.names
+            if alias.asname
+        }
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Tuple)
+                and isinstance(node.value, ast.Call)
+            ):
+                continue
+            func = node.value.func
+            name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+            if name is None:
+                continue
+            name = aliases.get(name, name)
+            for index, element in enumerate(node.targets[0].elts):
+                if not isinstance(element, ast.Name):
+                    continue
+                local = element.id
+                if local in _CHANNEL_LOCALS or "warning" in local or "finding" in local:
+                    agreed.setdefault(name, set()).add(index)
+    return {name: next(iter(slots)) for name, slots in agreed.items() if len(slots) == 1}
+
+
+
+def _binding(function: ast.FunctionDef, node: ast.AST, *, before: int) -> ast.AST:
+    """`node`, or the assignment to it that is in effect at line `before`.
+
+    An emission site does not have to be written inline. `resolve_variants` builds its message into
+    `msg` and returns `[msg]`, and a walk recognising only a literal inside the returned list saw
+    nothing there.
+
+    **The nearest PRECEDING assignment, not the first one found.** `resolve_variants` rebinds `msg`
+    at each of its three early exits, so taking the first match credits every one of them with
+    whatever the first happens to hold — which made an uncoded site look coded because a sibling
+    twelve lines up was coded. A guard that reads one site's evidence off another is worse than no
+    guard: it is one that reports green for the wrong reason.
+    """
+    if not isinstance(node, ast.Name):
+        return node
+    candidates = [
+        candidate.value
+        for candidate in ast.walk(function)
+        if isinstance(candidate, ast.Assign)
+        and candidate.lineno <= before
+        and any(
+            isinstance(target, ast.Name) and target.id == node.id for target in candidate.targets
+        )
+    ]
+    return max(candidates, key=lambda value: value.lineno, default=node)
+
+
 def _participating_modules() -> list[Path]:
     """Modules that import `CodedWarning`, i.e. the ones that emit into this channel.
 
@@ -236,7 +318,13 @@ def _emission_sites() -> list[tuple[Path, int, str]]:
     sites: list[tuple[Path, int, str]] = []
     for path in _participating_modules():
         tree = ast.parse(path.read_text(encoding="utf-8"))
-        producers = _warning_producers(tree)
+        channel_slots = _channel_slots()
+        # `_warning_producers` reads one module at a time, so it can only see a function whose result
+        # is put into a channel **in the same file**. `resolve_variants` is the one that is not: it
+        # lives here and is unpacked in `compiler.py`, so it was in nobody's producer set and its
+        # returns were never walked — which is the second half of why three uncoded early exits
+        # shipped. The cross-file unpack is already recorded by `_channel_slots`, so seed from it too.
+        producers = _warning_producers(tree) | set(channel_slots)
         for function in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]:
             for node in ast.walk(function):
                 if (
@@ -248,15 +336,40 @@ def _emission_sites() -> list[tuple[Path, int, str]]:
                     and node.args
                 ):
                     sites.append((path, node.lineno, ast.unparse(node.args[0])))
-                elif (
-                    function.name in producers
-                    and isinstance(node, ast.Return)
-                    and isinstance(node.value, ast.List)
-                    and any(
-                        isinstance(e, (ast.JoinedStr, ast.Constant)) for e in node.value.elts
-                    )
-                ):
-                    sites.append((path, node.lineno, ast.unparse(node.value)))
+                elif function.name in producers and isinstance(node, ast.Return):
+                    # A producer may return the channel bare (`return [msg]`) or beside something
+                    # else (`return variants, [msg]`), and only the first shape was matched — which
+                    # is how `resolve_variants` shipped three early exits returning plain strings
+                    # into a channel whose every in-loop append had already been coded. `compile
+                    # --ensembl-cache <bad path>` then raised out of `classify` where the design
+                    # promises a warning, and this guard could not see it.
+                    #
+                    # Unwrapping a tuple needs the SLOT, not just the shape: `load_csv_rows` returns
+                    # `(rows, errors, warnings)`, so matching every list element in a returned tuple
+                    # reports its two early `return [], [msg], []` sites as uncoded warnings when
+                    # they are errors, a different channel with a different rule. The slot is read
+                    # off the unpack that names a channel local at the call site, so it stays derived
+                    # rather than hardcoded per function.
+                    if isinstance(node.value, ast.Tuple):
+                        slot = channel_slots.get(function.name)
+                        returned = (
+                            [node.value.elts[slot]]
+                            if slot is not None and slot < len(node.value.elts)
+                            else []
+                        )
+                    else:
+                        returned = [node.value]
+                    for value in returned:
+                        if not isinstance(value, ast.List):
+                            continue
+                        for element in value.elts:
+                            # A returned element is often a local bound a few lines up
+                            # (`msg = (...)` then `return variants, [msg]`), so match the shape
+                            # after resolving the binding — matching only inline literals is how a
+                            # message assigned to a name first stayed invisible.
+                            resolved = _binding(function, element, before=node.lineno)
+                            if isinstance(resolved, (ast.JoinedStr, ast.Constant, ast.Call)):
+                                sites.append((path, node.lineno, ast.unparse(resolved)))
     return sites
 
 
