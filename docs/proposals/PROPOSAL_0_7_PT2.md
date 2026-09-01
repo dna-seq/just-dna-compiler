@@ -470,7 +470,7 @@ three bands are never drafted, and RM66's keying question is still not decided h
 
 ## RM166 — the whole PGx lane is one licence class, and a second authority exists that is not in it
 
-**Severity** low-medium · **Owner** enricher · **Entry** [ROADMAP.md § RM166](../ROADMAP.md#rm166--the-whole-pgx-lane-is-one-licence-class-and-a-second-authority-exists-that-is-not-in-it)
+**Severity** low-medium · **Owner** enricher · **Entry** [ROADMAP_HISTORY.md § RM166](../ROADMAP_HISTORY.md#rm166--the-whole-pgx-lane-is-one-licence-class-and-a-second-authority-exists-that-is-not-in-it) — shipped, so the entry left the forward-only file
 
 ### The problem
 
