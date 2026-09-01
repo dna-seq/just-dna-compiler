@@ -4022,6 +4022,38 @@ registry meaning *this module uses this source*, and nothing here reaches a modu
 module and does write its `clingen_allele_registry` row — is the contrast. The source is named on the
 `VerificationRecord` instead.
 
+### What the corpus actually gets, measured 2026-09-01
+
+Run over the **11 reference modules carrying a `resolution.csv`** — 389 loci, one rsID shared by two
+modules — with one shared client so a locus two modules name is one request:
+
+| | loci |
+|---|---|
+| answered at **allele** tier | 165 |
+| answered at **position** tier only | 92 |
+| **absent** from the index at any tier | 122 |
+| could not be asked | 10 |
+| **with at least one CAID node at the locus** | **180 (46.3 %)** |
+
+Every locus in this corpus asks an allele-level question — no module names an rsID and no allele — so
+all 92 position-tier answers are the finding rather than the question. Of the 180 loci that carry a
+CAID node, 165 resolve to the module's own allele; the other 15 split three ways, and each keeps its
+own reason: 10 `allele_not_comparable` (the registry holds a one-sided indel this module's row cannot
+anchor), 3 `allele_nodes_name_other_alleles`, and 2 where the position node lists a CAID the index has
+no node for.
+
+**14,168 papers across the corpus sit on a position node that no allele node claims**, and APOE is
+most of the top of that list: rs429358 contributes 3,617 of 3,945 and rs7412 3,083 of 3,597. The PGx
+loci run about half — rs4149056 is 575 of 1,342, rs1057910 606 of 1,093. A pass that reported the
+allele node's count as the locus's answer would have been quietly wrong by those margins on nine of
+the eleven modules.
+
+The 122 absences concentrate where you would expect a literature index to hold nothing — 105 of them
+are in `pathogenic_clinvar`, a panel of rare ClinVar variants. What the measurement establishes is that
+the index holds no node for those rsIDs; whether that is because no paper names them or because
+nothing indexed the paper that does is a question this surface does not answer, and it is recorded as
+`absent` rather than as either reading.
+
 ### The bound: it answers which papers discuss an identified allele, not which allele a name meant
 
 **Do not reach for this to recover an identity.** Those two read as the same question and are not, and
