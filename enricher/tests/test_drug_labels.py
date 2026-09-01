@@ -345,6 +345,17 @@ def test_only_the_negative_level_is_placed_against_an_authored_recommendation() 
     assert classify_labels("declines", [_row("Testing Required")]).position == "unplaced"
     assert classify_labels("absent", [_row(NO_CLINICAL_PGX)]).position == "absent"
 
+    # Kleene, in the direction that matters: an opposition already witnessed is not un-witnessed by a
+    # label that stated no level (`unknown AND false` is `false`). But with nobody stating one at all
+    # there is no opposition to witness, and the answer is `unchecked` rather than either verdict.
+    assert classify_labels("recommends", [_row(NO_CLINICAL_PGX), _row(None)]).position == "opposed"
+    assert classify_labels("recommends", [_row(None), _row(None)]).position == "unchecked"
+    # And a second agency stating something else takes the opposition back to unplaced, because
+    # "every label that stated a level" is then false.
+    assert classify_labels(
+        "recommends", [_row(NO_CLINICAL_PGX), _row("Testing Required")]
+    ).position == "unplaced"
+
 
 def test_a_recommendation_against_a_wholly_negative_pair_is_the_one_authored_finding(
     index: DrugLabelIndex, tmp_path: Path
