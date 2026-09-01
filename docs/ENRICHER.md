@@ -4645,8 +4645,11 @@ times at the allele tier, for the seven alleles the labels actually enumerate.
 
 **The star tokens are not `haplotypes.csv`'s key verbatim**, which the item's entry says they are. The
 file writes `CYP2C19*2`; the module writes `*2` in `haplotype_name` with `CYP2C19` in its own column,
-so the join composes them and tries the bare spelling too, which is what an rsID and an
-already-qualified HLA allele need.
+so the join composes them. It composes them **two ways**, because the file spells a gene-qualified
+token two ways: the star alleles run together (`TPMT*3A`) and the DPYD haplotypes are spaced
+(`DPYD c.2846A>T`). Trying only the concatenation told a DPYD module its allele was named by no label
+while two regulators named it exactly, which is a false coverage claim rather than a miss. The bare
+spelling is tried last, for an rsID and for an HLA allele already authored with its gene.
 
 An authored allele no label names is neither withheld nor a finding: the gene-tier subject for the same
 pair is what answers for it, so it is **counted** and reported as a coverage number.
@@ -4687,11 +4690,16 @@ in one field.
 * `cyp2c19_star_alleles` — clopidogrel and CYP2C19 is `Actionable PGx` at four agencies and
   `Informative PGx` at the EMA. Three of the five name the star alleles and two name only the gene, so
   the same disagreement is established at both tiers and reported apart.
-* `pgx_slco1b1_simvastatin` — three labels reach SLCO1B1 + simvastatin and **two state no level**. The
-  concordance is `unstated`, the position is `absent`, and the two blanks are counted into the record
-  rather than read as a negative.
-* `cyp2c9_warfarin_grch37` — CYP4F2 + warfarin is a claim no agency labels. Withheld, named in the
-  record, and never reported as an absence of pharmacogenomics.
+* `pgx_slco1b1_simvastatin` — **four** labels reach SLCO1B1 + simvastatin and **two of them state no
+  level**. The two that do are both Swissmedic's, at different levels: one covers simvastatin and one
+  the fenofibrate/simvastatin combination, and both name `rs4149056`. So the pair is `discordant`, one
+  agency disagrees with itself, and neither of its rows is picked as its opinion
+  (`@multiplicity-is-a-finding`). The two blanks are counted into the record and named in the sentence
+  as stating no level, never folded into the count of labels that stated one.
+* `cyp2c9_warfarin_grch37` — CYP4F2 + warfarin is a claim no agency labels, at **either** tier.
+  Withheld at both, named in the record, and never reported as an absence of pharmacogenomics. It is
+  also what keeps the coverage number honest: an allele only counts as "answered at the gene tier" when
+  the gene tier actually answered, and CYP4F2's did not.
 
 ### Severity, and what is not written
 

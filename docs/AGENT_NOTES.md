@@ -1144,6 +1144,22 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   authored allele no label names is then neither withheld nor a finding: the gene-tier subject answers
   for it, so it is a coverage **number** (`@dont-discard-computed`), not a silence.
 
+- `@a-lane-local-vocabulary-may-not-shadow-a-schema-one` — **Two closed sets with the same name and
+  different members is a wrong answer waiting for the first module that imports both (RM166).** The
+  drug-label check shipped a `VALID_AUTHORED_POSITION` holding `{opposed, unplaced, unchecked, absent,
+  no_label}` while `just_dna_format.vocab.VALID_AUTHORED_POSITION` holds `{matches_all, matches_some,
+  matches_none, absent, unchecked}` — the clinical-significance concordance axis. Nothing broke,
+  because one test file imported one and another the other, which is exactly what makes it dangerous:
+  the collision is invisible until a third caller imports both and the later `from … import` wins
+  silently. `absent` and `unchecked` are members of *both*, so even a spot-check passes. A lane-local
+  vocabulary carries the lane's prefix — `VALID_LABEL_POSITION`, `VALID_LABEL_ACTION`, beside the
+  `VALID_LABEL_CONCORDANCE` that was already distinct from `VALID_AUTHORITY_CONCORDANCE`. **The related
+  half is that a reason map only a test reads is a map nothing speaks**: the same review found
+  `_CONCORDANCE_SENTENCES`/`_POSITION_SENTENCES` referenced by the test file alone, so the equality
+  guard passed while every reader still met the bare token `single` with no statement of what it
+  claims. The repair is to publish the arms a run reached, aggregated by arm, in the record and in the
+  CLI — bounded by the vocabularies rather than by the module's size.
+
 - `@a-shared-separator-constant-is-not-a-sources-separator` — **`vocab.MULTI_SEP` splits on `,;|`, and a
   source that uses one of the three writes the other two as data (RM166).** ClinPGx's drug labels
   separate `Genes` / `Chemicals` / `Variants/Haplotypes` with `;` only. Splitting on the shared constant

@@ -140,12 +140,19 @@ VALID_LABEL_CONCORDANCE: frozenset[str] = frozenset(
 )
 
 #: Where the module's own claim sits relative to them.
-VALID_AUTHORED_POSITION: frozenset[str] = frozenset(
+#:
+#: **`VALID_LABEL_POSITION`, not `VALID_AUTHORED_POSITION`**, which is a *different* closed vocabulary
+#: in `just_dna_format.vocab` with different members — `matches_all` / `matches_some` / `matches_none`
+#: / `absent` / `unchecked`, the clinical-significance concordance axis. Two names that shadow each
+#: other on import and disagree about their members is a silent wrong answer waiting for the first
+#: module that reads both, so this one carries the lane's prefix the way `VALID_LABEL_CONCORDANCE`
+#: does beside `VALID_AUTHORITY_CONCORDANCE`.
+VALID_LABEL_POSITION: frozenset[str] = frozenset(
     {"opposed", "unplaced", "unchecked", "absent", "no_label"}
 )
 
 #: What the module says about the pair, read from `recommendation_strength` alone.
-VALID_AUTHORED_ACTION: frozenset[str] = frozenset({"recommends", "declines", "absent"})
+VALID_LABEL_ACTION: frozenset[str] = frozenset({"recommends", "declines", "absent"})
 
 #: The authored tables this check reads. `pharm_variants.csv` contributes subjects keyed on an rsID —
 #: 415 of the 601 variant tokens in the file are rsID-shaped, so the allele tier is not the star
@@ -184,13 +191,19 @@ _POSITION_SENTENCES: dict[str, str] = {
 #: Swissmedic states `Testing Recommended` for simvastatin + SLCO1B1 and `Actionable PGx` for the
 #: fenofibrate/simvastatin combination, both naming `rs4149056`. Both rows are kept and neither is
 #: picked as the agency's opinion (`@multiplicity-is-a-finding`), so the count is of labels.
+#:
+#: **`{count}` is the labels that STATED a level, never every label reached.** The first version
+#: counted all of them and produced *"4 label(s) … state ['Actionable PGx', 'Testing Recommended']"*
+#: over a set of four that included two stating nothing — and on the `opposed` arm that sentence would
+#: have read a blank cell as `No Clinical PGx`, which is the one reading this whole module forswears.
+#: The silent ones are named by `{silent}` instead, so nothing about them is dropped.
 _FINDING_SENTENCES: dict[str, str] = {
     "regulators_disagree": (
-        "{count} label(s) reach this pair at the {tier} tier and state {levels}"
+        "{count} label(s) reaching this pair at the {tier} tier state {levels}{silent}"
     ),
     "recommendation_without_label_pgx": (
         "the module recommends here, and {count} label(s) reaching this pair at the {tier} "
-        f"tier state {NO_CLINICAL_PGX!r}"
+        f"tier state {NO_CLINICAL_PGX!r}" + "{silent}"
     ),
 }
 
@@ -300,9 +313,13 @@ class LabelFinding:
         return self.subject.tier
 
     def __str__(self) -> str:
-        levels = sorted({call.row.testing_level for call in self.calls if call.stated})
+        spoke = [call for call in self.calls if call.stated]
+        silent = len(self.calls) - len(spoke)
         sentence = _FINDING_SENTENCES[self.kind].format(
-            count=len(self.calls), tier=self.tier, levels=levels
+            count=len(spoke),
+            tier=self.tier,
+            levels=sorted({call.row.testing_level for call in spoke}),
+            silent=f", and {silent} more state no level" if silent else "",
         )
         who = ", ".join(str(call.row) for call in self.calls)
         return f"{self.subject}: {sentence} — {who}"
@@ -440,7 +457,7 @@ def classify_labels(action: str, calls: Sequence[LabelCall]) -> LabelVerdict:
     level stated; `unplaced` is the deliberate withholding — a stated level this check does not rank
     against a recommendation strength.
     """
-    if action not in VALID_AUTHORED_ACTION:
+    if action not in VALID_LABEL_ACTION:
         raise DrugLabelError(f"not an authored action: {action!r}")
     spoke = [call for call in calls if call.stated]
     silent = [call for call in calls if not call.stated]
@@ -494,13 +511,23 @@ class DrugLabelResult:
     verdicts: dict[LabelSubject, LabelVerdict] = field(default_factory=dict)
     #: Subjects answered at each tier — the two join tiers, counted rather than merged.
     tier_subjects: dict[str, int] = field(default_factory=dict)
-    #: Allele claims no label names. Not withheld and not a finding: the gene-tier subject for the
-    #: same pair is what answers for them, so this is a coverage number rather than a silence
-    #: (`@dont-discard-computed`).
+    #: Allele claims no label names **whose gene-tier sibling WAS answered**. Not withheld and not a
+    #: finding: the gene-tier subject for the same pair is what answers for them, so this is a coverage
+    #: number rather than a silence (`@dont-discard-computed`). An allele whose gene-tier sibling is
+    #: itself unlabelled has no such answer and goes to `withheld` instead — the first version put it
+    #: here and the attestation then said, of one `cyp2c9_warfarin_grch37` claim, both that it was
+    #: answered at the gene tier and that no regulator labels the pair.
     unnamed_alleles: list[LabelSubject] = field(default_factory=list)
-    #: Calls whose regulator stated no testing level. A third of the file, so it is published rather
-    #: than dropped (`@dont-discard-computed`).
-    unstated_calls: int = 0
+    #: Label ids reached whose `Testing Level` is blank — a third of the file, so it is published
+    #: rather than dropped (`@dont-discard-computed`). **Label ids and not a running count**, because a
+    #: blank label naming both a gene and one of its alleles is reached by two subjects and is still
+    #: one label; incrementing per call reported it twice under a sentence that says "label(s)".
+    unstated_labels: set[str] = field(default_factory=set)
+
+    #: `verdict arm -> how many subjects landed in it`, per axis. The arms a run actually reached,
+    #: which is what lets the record publish the reason map instead of only the bare token.
+    concordance_arms: dict[str, int] = field(default_factory=dict)
+    position_arms: dict[str, int] = field(default_factory=dict)
     #: Levels the snapshot states that `VALID_TESTING_LEVELS` does not know.
     unknown_levels: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -521,15 +548,21 @@ def _allele_keys(gene: str, allele: str) -> tuple[str, ...]:
 
     **The star tokens are NOT `haplotypes.csv`'s key verbatim**, which the item's own entry says they
     are. The file writes `CYP2C19*2`; the module writes `*2` in `haplotype_name` with `CYP2C19` in a
-    separate `gene` column, so the join has to compose them. Both spellings are tried because an
-    rsID subject carries no gene prefix and an HLA allele is authored either way.
+    separate `gene` column, so the join has to compose them.
+
+    **And it composes them two ways, because the file spells a gene-qualified token two ways.** The
+    star alleles run together (`CYP2C19*2`, `TPMT*3A`) but the DPYD haplotypes are spaced
+    (`DPYD c.1905+1G>A (*2A)`, `DPYD c.1129-5923C>G, c.1236G>A (HapB3)`). Trying only the concatenation
+    told a DPYD module its allele was named by no label while two regulators named it exactly, which is
+    a false coverage claim rather than a miss. The bare spelling is tried last, for an rsID subject
+    that carries no gene prefix and an HLA allele already authored with one.
     """
     stripped = allele.strip()
     if not stripped:
         return ()
     if stripped.casefold().startswith(gene.casefold()):
         return (stripped,)
-    return (f"{gene}{stripped}", stripped)
+    return (f"{gene}{stripped}", f"{gene} {stripped}", stripped)
 
 
 def _authored_action(strengths: Sequence[str | None]) -> str:
@@ -689,9 +722,10 @@ def check_drug_labels(
     for subject, action in subjects.items():
         calls = calls_for(index, subject)
         if not calls:
-            if subject.allele:
-                # Not a silence and not a finding: the gene-tier subject for the same pair is what
-                # answers here, and the labels simply do not enumerate this allele.
+            # **An allele is only "covered by the gene tier" when the gene tier has an answer.** The
+            # question is asked of the index rather than of what this loop has recorded so far, so
+            # the verdict does not depend on the order the subjects happen to arrive in.
+            if subject.allele and index.by_gene(subject.gene, subject.drug):
                 result.unnamed_alleles.append(subject)
             else:
                 result.withheld.append(
@@ -700,9 +734,15 @@ def check_drug_labels(
             continue
         result.compared.append(subject)
         result.tier_subjects[subject.tier] += 1
-        result.unstated_calls += sum(1 for call in calls if not call.stated)
+        result.unstated_labels.update(
+            call.row.label_id for call in calls if not call.stated
+        )
         verdict = classify_labels(action, calls)
         result.verdicts[subject] = verdict
+        result.concordance_arms[verdict.concordance] = (
+            result.concordance_arms.get(verdict.concordance, 0) + 1
+        )
+        result.position_arms[verdict.position] = result.position_arms.get(verdict.position, 0) + 1
         if verdict.concordance == "discordant":
             result.findings.append(LabelFinding("regulators_disagree", subject, calls))
         if verdict.position == "opposed":
@@ -724,6 +764,23 @@ def check_drug_labels(
         logger.info("%s", note)
 
     return _attest(result, spec_dir, write=write)
+
+
+def arm_summary(result: DrugLabelResult) -> str:
+    """Which verdict arms this run reached, how many subjects each holds, and what each one means.
+
+    **This is what the two reason maps are for.** A verdict function with five arms owes a reason
+    function with five arms (`@answered-is-not-absent`), and a map that only a test reads is a map
+    nothing speaks: the tokens `single`, `unstated` and `unplaced` reach a reader with no way to tell
+    what they claim. Aggregated by arm rather than listed per subject, so the sentence count is
+    bounded by the vocabularies and not by the module's size.
+    """
+    parts: list[str] = []
+    for arm, count in sorted(result.concordance_arms.items()):
+        parts.append(f"{count} {arm} ({_CONCORDANCE_SENTENCES[arm]})")
+    for arm, count in sorted(result.position_arms.items()):
+        parts.append(f"{count} {arm} ({_POSITION_SENTENCES[arm]})")
+    return "; ".join(parts)
 
 
 def verification_record(result: DrugLabelResult) -> VerificationRecord:
@@ -753,7 +810,9 @@ def verification_record(result: DrugLabelResult) -> VerificationRecord:
             source=SOURCE_NAME,
             release=result.dataset,
             detail=(
-                " ".join(note for _subject, note in result.withheld)
+                # `examples()`, like every other path on this function: a panel module stating a
+                # hundred unlabelled pairs must not write a hundred sentences into a hashed record.
+                examples([note for _subject, note in result.withheld])
                 or "no authored claim could be matched to a label"
             ),
         )
@@ -763,10 +822,11 @@ def verification_record(result: DrugLabelResult) -> VerificationRecord:
         f"{len(result.regulators)} regulator(s) in {SOURCE_NAME}'s drug labels"
         f"{f' ({result.dataset})' if result.dataset else ''} — {tiers}"
     )
-    if result.unstated_calls:
+    detail += ". " + arm_summary(result)
+    if result.unstated_labels:
         detail += (
-            f". {result.unstated_calls} label(s) reached state no testing level and are counted as "
-            f"unknown rather than as {NO_CLINICAL_PGX!r}"
+            f". {len(result.unstated_labels)} label(s) reached state no testing level and are "
+            f"counted as unknown rather than as {NO_CLINICAL_PGX!r}"
         )
     if result.unnamed_alleles:
         detail += (

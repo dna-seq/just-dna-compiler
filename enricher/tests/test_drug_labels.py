@@ -6,8 +6,13 @@ corpus rather than by inventing a case:
 * `cyp2c19_star_alleles` — the disagreement. Five agencies label clopidogrel against CYP2C19 and one
   of them states a different level from the other four, at **both** join tiers: three of the five name
   the star alleles and two name only the gene.
-* `pgx_slco1b1_simvastatin` — the blank. Two of the three labels reaching SLCO1B1 + simvastatin state
-  no `Testing Level` at all, which is the third-of-the-file case the whole tri-state exists for.
+* `pgx_slco1b1_simvastatin` — the blank, and the multiplicity. **Four** labels reach SLCO1B1 +
+  simvastatin, two of which state no `Testing Level` at all — the third-of-the-file case the whole
+  tri-state exists for. The other two are both Swissmedic's, at two different levels, one for
+  simvastatin and one for the fenofibrate combination, so the pair is `discordant` rather than the
+  `unstated` an earlier reading of this fixture claimed. The `unstated` arm is pinned by
+  `test_an_unstated_level_never_establishes_an_agreement_on_its_own` instead, at the classifier,
+  where it can be exercised without waiting for a corpus module to grow one.
 * `cyp2c9_warfarin_grch37` — the miss. It states a CYP4F2 + warfarin claim no agency labels, which is
   withheld rather than reported as an absence of pharmacogenomics.
 
@@ -34,9 +39,9 @@ from just_dna_enricher.drug_labels import (
     LABEL_TIERS,
     NO_CLINICAL_PGX,
     SOURCE_NAME,
-    VALID_AUTHORED_ACTION,
-    VALID_AUTHORED_POSITION,
+    VALID_LABEL_ACTION,
     VALID_LABEL_CONCORDANCE,
+    VALID_LABEL_POSITION,
     VALID_TESTING_LEVELS,
     DrugLabelError,
     DrugLabelIndex,
@@ -44,6 +49,8 @@ from just_dna_enricher.drug_labels import (
     LabelRow,
     LabelSubject,
     _authored_action,
+    arm_summary,
+    authored_subjects,
     check_drug_labels,
     classify_labels,
     load_drug_labels,
@@ -55,6 +62,7 @@ from just_dna_enricher.drug_labels_build import (
     download_drug_labels_zip,
 )
 from just_dna_enricher.licensing import LicenseRefusal
+from just_dna_enricher.verification import DETAIL_LIMIT
 from just_dna_format.layout import VERIFICATION_JSON
 from just_dna_format.vocab import VALID_VERIFICATION_CHECKS, VALID_VERIFICATION_SKIPS
 
@@ -125,7 +133,7 @@ def test_the_testing_levels_this_release_knows_are_the_ones_the_file_states(
 def test_every_verdict_arm_owes_a_distinct_sentence() -> None:
     """`@answered-is-not-absent`: a verdict function with N arms owes a reason function with N arms."""
     assert set(_CONCORDANCE_SENTENCES) == VALID_LABEL_CONCORDANCE
-    assert set(_POSITION_SENTENCES) == VALID_AUTHORED_POSITION
+    assert set(_POSITION_SENTENCES) == VALID_LABEL_POSITION
     for sentences in (_CONCORDANCE_SENTENCES, _POSITION_SENTENCES, _FINDING_SENTENCES):
         assert len(set(sentences.values())) == len(sentences)
 
@@ -280,8 +288,9 @@ def test_a_blank_testing_level_is_unknown_and_is_neither_a_negative_nor_a_silenc
     stated = {row["Testing Level"] for row in _labels_for(gene, drug) if row["Testing Level"].strip()}
     assert (verdict.concordance == "discordant") == (len(stated) > 1)
 
-    # Counted, and in the record rather than only in the log.
-    assert result.unstated_calls == len(blanks)
+    # Counted once per LABEL, not once per subject reached, and in the record rather than only in
+    # the log.
+    assert result.unstated_labels == {row["PharmGKB ID"] for row in blanks}
     assert str(len(blanks)) in (verification_record(result).detail or "")
 
 
@@ -390,6 +399,120 @@ def test_a_recommendation_against_a_wholly_negative_pair_is_the_one_authored_fin
 
 
 # ── Withholding, severity, and what is not written ──────────────────────────────────────────────
+
+
+def test_a_gene_qualified_token_is_matched_in_both_spellings_the_file_uses(
+    index: DrugLabelIndex, tmp_path: Path
+) -> None:
+    """ClinPGx runs the star alleles together (`TPMT*3A`) and spaces the DPYD ones.
+
+    Composing only the concatenation told a DPYD module its allele was named by no label while two
+    regulators named it exactly — a false coverage claim, not a miss. Both spellings are cut from the
+    fixture at runtime rather than typed in.
+    """
+    # Gene-space-allele tokens whose allele half a module could actually author: `haplotype_a` bans
+    # whitespace, so `c.1905+1G>A (*2A)` is unauthorable and only the unsuffixed spellings can be the
+    # subject of a real claim.
+    spaced: list[tuple[str, str, str]] = []
+    for row in _fixture_rows():
+        for gene in (token.strip() for token in row["Genes"].split(CELL_SEPARATOR)):
+            for token in (t.strip() for t in row["Variants/Haplotypes"].split(CELL_SEPARATOR)):
+                allele_half = token.removeprefix(f"{gene} ")
+                if token.startswith(f"{gene} ") and " " not in allele_half:
+                    for chemical in row["Chemicals"].split(CELL_SEPARATOR):
+                        spaced.append((gene, allele_half, chemical.strip().lower()))
+    assert spaced, "the slice must keep a label whose variant token is gene-space-allele"
+    gene, allele, drug = min(spaced)
+
+    spec = tmp_path / "spaced_allele"
+    spec.mkdir()
+    (spec / "diplotypes.csv").write_text(
+        "gene,haplotype_a,haplotype_b,phenotype,conclusion,drug,recommendation_strength\n"
+        f'{gene},"{allele}","{allele}",Poor Metabolizer,'
+        f'"{gene} {allele}/{allele} on {drug}: reduce the dose",{drug},strong\n',
+        encoding="utf-8",
+    )
+    result = check_drug_labels(spec, snapshot=index, declared_use="non_commercial", write=False)
+    matched = [subject for subject in result.compared if subject.allele == allele]
+    assert matched, f"{gene} {allele} is named by a label and must reach the allele tier"
+    assert not any(subject.allele == allele for subject in result.unnamed_alleles)
+
+
+def test_an_allele_whose_gene_tier_sibling_is_also_unlabelled_is_withheld_not_counted(
+    index: DrugLabelIndex, tmp_path: Path
+) -> None:
+    """The coverage number claims the gene tier answered, so it may only hold alleles it answered for.
+
+    On `cyp2c9_warfarin_grch37` the first version put CYP4F2's rsID in `unnamed_alleles` while the
+    CYP4F2 gene-tier subject was itself withheld, so one `verification.json` detail said both that the
+    claim was answered at the gene tier and that no regulator labels the pair.
+    """
+    spec = _module(tmp_path, "cyp2c9_warfarin_grch37")
+    result = check_drug_labels(spec, snapshot=index, declared_use="non_commercial", write=False)
+
+    withheld_pairs = {(subject.gene, subject.drug) for subject, _note in result.withheld}
+    assert withheld_pairs, "the corpus must state a pair the slice does not label"
+    # No allele may be reported as gene-tier-covered when its own gene tier was withheld.
+    assert not any(
+        (subject.gene, subject.drug) in withheld_pairs for subject in result.unnamed_alleles
+    )
+    # And the alleles of a withheld pair are withheld too, rather than silently dropped: every
+    # authored subject lands in exactly one of the three buckets.
+    buckets = (
+        {str(s) for s in result.compared}
+        | {str(s) for s, _n in result.withheld}
+        | {str(s) for s in result.unnamed_alleles}
+    )
+    assert buckets == {str(s) for s in authored_subjects(spec)}
+
+
+def test_a_finding_counts_the_labels_that_stated_a_level_and_names_the_silent_ones(
+    index: DrugLabelIndex, tmp_path: Path
+) -> None:
+    """A sentence that says N labels "state" a level may not count the ones stating nothing.
+
+    Reported as *"4 label(s) … state ['Actionable PGx', 'Testing Recommended']"* over a set of four
+    that included two stating nothing — and on the `opposed` arm the same shape would have read a
+    blank cell as `No Clinical PGx`, which is the reading this module exists to refuse.
+    """
+    gene, drug = _CORPUS["pgx_slco1b1_simvastatin"]
+    reaching = _labels_for(gene, drug)
+    stated = [row for row in reaching if row["Testing Level"].strip()]
+    blanks = [row for row in reaching if not row["Testing Level"].strip()]
+    assert stated and blanks, "the pair must mix stated and blank levels, or this proves nothing"
+
+    spec = _module(tmp_path, "pgx_slco1b1_simvastatin")
+    result = check_drug_labels(spec, snapshot=index, declared_use="non_commercial", write=False)
+    sentence = str(next(f for f in result.findings if f.subject == LabelSubject(gene, None, drug)))
+    assert f"{len(stated)} label(s)" in sentence
+    assert f"{len(blanks)} more state no level" in sentence
+    # The silent labels are still named in the roll-call, so nothing about them is dropped.
+    for row in blanks:
+        assert row["PharmGKB ID"] in sentence
+
+
+def test_the_reason_maps_reach_the_record_rather_than_only_the_test_file(
+    index: DrugLabelIndex, tmp_path: Path
+) -> None:
+    """A verdict token published bare tells a reader nothing about what the arm claims.
+
+    `_CONCORDANCE_SENTENCES` and `_POSITION_SENTENCES` were read only by
+    `test_every_verdict_arm_owes_a_distinct_sentence`, so that equality guarded a map nothing spoke.
+    """
+    spec = _module(tmp_path, "cyp2c19_star_alleles")
+    result = check_drug_labels(spec, snapshot=index, declared_use="non_commercial", write=True)
+
+    summary = arm_summary(result)
+    assert result.concordance_arms and result.position_arms
+    assert sum(result.concordance_arms.values()) == len(result.compared)
+    assert sum(result.position_arms.values()) == len(result.compared)
+    for arm, count in {**result.concordance_arms, **result.position_arms}.items():
+        assert f"{count} {arm}" in summary
+    for arm in result.concordance_arms:
+        assert _CONCORDANCE_SENTENCES[arm] in summary
+    for arm in result.position_arms:
+        assert _POSITION_SENTENCES[arm] in summary
+    assert summary in (_records(spec)[-1]["detail"] or "")
 
 
 def test_a_pair_no_agency_labels_is_withheld_rather_than_called_clear(
@@ -504,6 +627,37 @@ def test_no_snapshot_is_a_skip_that_says_so(tmp_path: Path) -> None:
     assert "build-labels" in record["detail"]
 
 
+def test_a_module_nothing_reaches_aggregates_its_withheld_notes(
+    index: DrugLabelIndex, tmp_path: Path
+) -> None:
+    """`ran(subjects=0)` is still a record, and a record is not a place to write one line per claim.
+
+    The `subjects=0` path built its detail by joining every withheld note, bypassing the `examples()`
+    aggregation every other path on the same function uses — so a panel module stating many unlabelled
+    pairs wrote one sentence per pair into `manifest.verification`.
+    """
+    pairs = [(f"NOSUCHGENE{n}", f"nosuchdrug{n}") for n in range(DETAIL_LIMIT + 4)]
+    spec = tmp_path / "unlabelled"
+    spec.mkdir()
+    (spec / "diplotypes.csv").write_text(
+        "gene,haplotype_a,haplotype_b,phenotype,conclusion,drug,recommendation_strength\n"
+        + "".join(
+            f"{gene},*1,*2,Intermediate Metabolizer,{gene} *1/*2 on {drug}: no change,{drug},optional\n"
+            for gene, drug in pairs
+        ),
+        encoding="utf-8",
+    )
+    result = check_drug_labels(spec, snapshot=index, declared_use="non_commercial", write=True)
+    assert not result.compared
+    assert len(result.withheld) > DETAIL_LIMIT
+
+    record = _records(spec)[-1]
+    assert record["subjects"] == 0 and record["findings"] == 0
+    assert record["skipped"] is None, "the check ran and had nothing in scope; it did not skip"
+    assert f"and {len(result.withheld) - DETAIL_LIMIT} more" in record["detail"]
+    assert record["detail"].count("no regulator in this snapshot labels") == DETAIL_LIMIT
+
+
 def test_a_module_with_no_pgx_table_is_not_attested_at_all(
     index: DrugLabelIndex, tmp_path: Path
 ) -> None:
@@ -540,7 +694,7 @@ def test_re_running_the_check_is_idempotent_over_what_it_reports(
     second = check_drug_labels(spec, snapshot=index, declared_use="non_commercial", write=True)
     assert [str(f) for f in first.findings] == [str(f) for f in second.findings]
     assert first.tier_subjects == second.tier_subjects
-    assert first.unstated_calls == second.unstated_calls
+    assert first.unstated_labels == second.unstated_labels
     assert len(_records(spec)) == 1, "the record is replaced, never appended twice"
 
 
@@ -550,7 +704,7 @@ def test_the_authored_action_vocabulary_is_the_one_the_classifier_accepts() -> N
     assert _authored_action(["no_recommendation"]) == "declines"
     assert _authored_action(["no_recommendation", "strong"]) == "recommends"
     assert {_authored_action(v) for v in ([], ["no_recommendation"], ["strong"])} == (
-        VALID_AUTHORED_ACTION
+        VALID_LABEL_ACTION
     )
     with pytest.raises(DrugLabelError):
         classify_labels("maybe", [])
