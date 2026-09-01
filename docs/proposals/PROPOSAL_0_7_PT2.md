@@ -158,66 +158,94 @@ Nine table kinds, providers for four. `heteroplasmy.csv` has none, no cross-chec
 corpus behind the kind is one module — `reference_examples/mt_heteroplasmy`, two MT-TL1 variants of
 one gene, hand-authored from the literature. That is `@probe-uniform-corpus` exactly.
 
-### The facts, and both of them are negatives
+### The facts, read off the real schema
 
-**The axis question has a reasoned negative for the whole candidate class, and it is the durable
-blocker.** `HeteroplasmyRow` keys on `(gene, reference_sequence, tissue, variant_key)` and the shipped
-module's content is *about* the tissue: its own conclusion column reads *"Blood systematically
-under-represents the burden in post-mitotic tissue, so a low blood fraction does not exclude disease
-— measure urine or muscle before reassuring."* A per-variant pathogenicity table has no tissue axis.
-gnomAD's mitochondrial callset — the obvious second candidate, and one whose adopted sibling already
-carries `GNOMAD_TERMS` — publishes population heteroplasmy distributions **in blood**, which is one
-tissue and a frequency rather than a clinical band. Neither fills the columns the kind exists for.
-This holds whatever any candidate's terms turn out to be, which is why it leads.
+**The source is reachable, and two earlier drafts of this section said otherwise.** The maintainer
+supplied `mitomap.org/downloads/mitomap.dump.sql.gz` — a 61 MB `pg_dump` of the whole MITOMAP schema,
+dated 2026-08-24 — and plain `curl` fetches it: **HTTP 206, range requests honoured,
+`application/x-gzip`.** The Cloudflare managed challenge is on the *web* surface only. What this file
+first recorded as a refusal was a JavaScript interstitial, and what it then recorded as
+"unreachable by the machinery that would consume it" came from probing `/downloads/` — the
+**directory**, whose 199-byte Apache 403 is a listing denial — instead of a file one level down.
+An enricher builder could fetch this today with `httpx` and no special handling. The lesson is
+narrow and worth keeping: **a 403 is about the path you asked for, and generalising one to a source
+is how two wrong findings get written from one lazy probe.**
 
-**MITOMAP is behind a Cloudflare managed challenge, which is a fetch problem and not a refusal.**
-Probed 2026-09-01 on six paths — `/MITOMAP`, the Foswiki `/foswiki/bin/view/MITOMAP/WebHome` and
-`/Copyright`, `/cgi-bin/disease.cgi`, `/cgi-bin/polymorphisms.cgi` and `/robots.txt` — bare and with
-full browser headers. All answer **HTTP 403**, and the body is Cloudflare's *"Just a moment…"*
-interstitial (`_cf_chl_opt`, `cType: 'managed'`), i.e. a JavaScript challenge, not a server saying no.
-**The site is live and a browser reaches it**; `httpx` does not.
+**And with the schema in hand the axis question gets a measured negative, which is what the entry
+actually asked for.** 95 tables. **Exactly one `tissue` column in the whole schema**, and it is on
+`mitomap.unpublished` (16,537 rows) beside `patient`, `sample_id`, `ethnicity` and
+`lab_chief_email` — a table of unpublished per-patient submissions, which is sample data and the one
+category this format does not carry at all.
 
-Two things follow, and the first draft of this section got both wrong by calling the 403 a refusal.
-The terms **are** readable — by a human, in a browser — so nothing here licenses recording them as
-unestablishable, and this file has simply not read them. What is genuinely blocked is an *enricher
-pass*: the tier fetches with `httpx` and no builder here solves a JS challenge, so even a source with
-perfect terms and the right axis could not be reached by the machinery that would consume it. That is
-an access question with a human answer — ask MITOMAP for a data route, as PubMind's entry already
-models for a question only the owner can settle — and not a property of the data.
+**The disease table has flags where the kind needs levels.** `mitomap.mmutation` is **602 rows**, and
+its heteroplasmy columns are `homo` and `hetero` — *presence*, not fraction: `+` on 286/270 rows, `-`
+on 216/238, `nr` on 90/89, plus `.`, `na` and NULL, which is four spellings of unknown in two columns.
+There is no threshold column, no band, and no tissue. The only place in the table where a heteroplasmy
+*level* appears at all is **two rows where somebody typed one into the flag column** (`homo=96%`,
+`homo=99%`), which is a good illustration of the column not being for that.
+
+**The only heteroplasmy numbers in the schema are re-hosted population data.**
+`mitomap.gnomad` (18,164 rows: `ac_hom`, `ac_het`, `af_hom`, `af_het`, `an`,
+`max_observed_heteroplasmy`) and `mitomap.helix` (14,104) are copies of two blood-cohort callsets. A
+maximum heteroplasmy *observed* in a cohort is not a clinical threshold and is not per tissue — it is
+the same shape gnomAD serves directly, which is why inheriting it here would add nothing.
+
+So `HeteroplasmyRow`'s binding columns — `tissue`, `measure_min`, `measure_max` — have **no
+source-side value anywhere in MITOMAP**. The entry's question 2 is answered, by reading the file
+rather than by reasoning about the class, and the answer is no.
+
+**Terms are still unread.** The dump contains no licence text of any kind; the only match in 6.7
+million lines is a GenomeTools mention inside a cited abstract. MITOMAP's terms live on the website,
+which a browser reaches and this probe did not.
+
+### What the dump changes that is not RM164
+
+`mitomap.mmutation` is 602 curated mtDNA disease variants with a confirmation status, and that is a
+plausible **`variants.csv`** source — a different table kind, and not what this entry is about. It
+would need work before it is a proposal: `status` is **29 distinct free-text strings**, not a
+vocabulary — `Reported` 419, `Cfrm [LP]` 42, `Conflicting reports` 16, `Cfrm [P]` 16, and a long tail
+of one-offs like *"Reported: individually neutral variants causing LHON in combination"* and
+*"Reported; hg D1 D2 M33 R30 marker"* — so normalizing it is itself a curation decision rather than a
+mapping (`@one-normalizer-two-spellings` at a scale where the rule stops being enough). It is filed
+as its own item, with a number claimed from `.claude/rm-next.py` when it is taken, rather than
+widening this one to keep it alive.
 
 ### The decision
 
-**Park, and do not close.** The entry invited a clean close on a negative and the axis argument is a
-real one, but it was reached by reasoning over one shipped module's key rather than by probing a
-corpus of candidates. A 403 is evidence about a *server*, not about a *table*, and the tissue
-argument is evidence about a *schema*, not about the mtDNA literature. Closing on either would
-manufacture the permanent false constraint `@probe-names-the-table` exists to prevent.
+**Park RM164, and now on a measured negative rather than a reasoned one.** `heteroplasmy.csv` stays
+the kind with no source behind it, and after reading the canonical mtDNA database's full schema that
+is a fact about what is published rather than about how hard anyone looked. The two hand-authored
+MT-TL1 rows in `reference_examples/mt_heteroplasmy` are tissue-banded because a curator read the
+literature and made a judgement; no table this probe found makes that judgement, and a drafting
+provider cannot invent one.
 
-What goes into the entry so the next session does not re-run this: the tissue axis in the key is a
-structural filter any candidate must pass, it is cheaper to ask than terms are, and it should be
-asked first — this round asked it second and that is the ordering mistake worth inheriting. MITOMAP
-itself returns Cloudflare's managed challenge to every programmatic path including `/robots.txt`, so
-its terms are **unread here rather than unestablishable**, and a browser settles them in a minute. The unblock action is a human one — write to MITOMAP, as PubMind's entry already models for a
-source whose terms nobody but the owner can settle.
-
-**gnomAD's mtDNA release is named as the next candidate and explicitly not inherited.** Its terms are
-a different release from an adopted source, which `@probe-names-the-table` says is checked and never
-inherited, and this file checks nothing about it.
+Do not close it. The negative is now well-supported for MITOMAP specifically and for the population
+callsets it re-hosts, which is the whole of the candidate field anyone has named — but a kind with a
+one-module corpus should stay visible, and `@probe-names-the-table` is the reason the entry says
+which table was read rather than "the source".
 
 ### Repairs rejected
 
-- **Solving the Cloudflare challenge to scrape MITOMAP.** A host that has deployed bot mitigation has
-  expressed a preference, and defeating it is not a probe result. The route to a source that wants to
-  be asked is to ask it.
-- **Drafting identity columns only, from any mtDNA table.** It would write rows that fill
+- **Drafting identity columns only, from `mmutation`.** It would write rows filling
   `gene`/`variant_key`/`reference_sequence` and none of `tissue`/`measure_min`/`measure_max` — rows
-  that say nothing the kind exists to say, which is the entry's own objection and it is right.
-- **Closing the item.** One candidate probed, one reasoned about. Not a survey.
+  that say nothing the kind exists to say. The entry's own objection, and the schema confirms it.
+- **Taking `max_observed_heteroplasmy` as `measure_max`.** A cohort maximum is an observation; the
+  column is a clinical band. Same error as RM165's `pathogenic_max`, and worth naming twice in one
+  round because it arrived from two unrelated sources.
+- **Reading `homo`/`hetero` as a tri-state and calling that the axis.** They are presence flags with
+  four spellings of unknown between them, and the kind binds a *level* per tissue.
+- **Widening RM164 to cover `mmutation` as a `variants.csv` source.** A different table kind wants a
+  different entry; keeping this one open by changing what it is about is how an item stops meaning
+  anything.
+- **Solving the Cloudflare challenge.** Never needed — the data surface was never behind it.
 
 ### Charter check
 
-Nothing is built, so nothing is checked. Recording `None` for MITOMAP's terms is the three-valued rule
-behaving correctly: unknown is not refusal and it is certainly not permission.
+Nothing is built, so nothing is checked. Two things are worth recording anyway. MITOMAP's terms are
+**unread**, not `None` — this probe did not open the page a browser opens, and the distinction is the
+three-valued rule applied to our own knowledge rather than to the data. And `mitomap.unpublished` is
+a reminder of the data-agnostic line from the other side: a source may hold per-patient sample rows,
+and a module may not, whatever the terms say.
 
 **Release: none.** Defer to 0.8 with the blockers restated.
 
@@ -595,10 +623,12 @@ in another release as prose.
 - **RM27's redistribution axis is not designed.** RM166's closed half points at it and does not
   attempt it.
 - **No terms are asserted that a probe did not read.** Where a source publishes a policy rather than a
-  licence (MANE, LitVar2) the gating axes are `None`; where a JS challenge stopped this client (MITOMAP) the terms are recorded as
-  **unread**, which is not the same as unestablishable; and where the licence is per record (PGS Catalog) no constant claims to cover
+  licence (MANE, LitVar2) the gating axes are `None`; where the terms were not opened at all (MITOMAP — they are on a page a
+  browser reaches) they are recorded as **unread**, which is not the same as unestablishable; and where the licence is per record (PGS Catalog) no constant claims to cover
   the corpus.
-- **No number is claimed for RM167's successor.** `.claude/rm-next.py` allocates it when the item is
+- **RM164's `variants.csv` spin-off is not designed here**, only noticed — `mmutation`'s 29 free-text
+  status strings are the reason it is not a one-liner.
+- **No number is claimed for either successor.** `.claude/rm-next.py` allocates it when the item is
   taken — an index is not an allocator, and this file is not one either.
 
 ---
@@ -637,7 +667,8 @@ this checkout, and the counts are from the files as served that day:
 | Source | What was read | Headline |
 | --- | --- | --- |
 | PGS Catalog REST | `/rest/score/PGS000001`, `PGS999999`, `PGSXXXX`, `/rest/score/all?limit=250` | 200+`{}` for every negative; per-score `license`, 3 distinct values in 250 |
-| MITOMAP | six paths incl. `/Copyright`, `/cgi-bin/*.cgi` and `/robots.txt`, bare and with full browser headers | Cloudflare managed JS challenge on all — 403 to a non-JS client, live in a browser |
+| MITOMAP web | six paths incl. `/Copyright`, `/cgi-bin/*.cgi`, `/robots.txt` | Cloudflare managed JS challenge — 403 to a non-JS client, live in a browser |
+| MITOMAP dump | `mitomap.org/downloads/mitomap.dump.sql.gz`, 2026-08-24, 61 MB, 95 tables (maintainer-supplied; fetch re-verified by `curl`) | reachable by plain `curl` (206, ranges); **one `tissue` column, on `unpublished`**; `mmutation` 602 rows, `homo`/`hetero` are ±/nr flags; no licence text in 6.7 M lines |
 | STRchive | `dashnowlab/STRchive` `data/STRchive-loci.json` (319 KB) | MIT, 82 loci / 79 genes, `locus_structure` on 23 |
 | ClinPGx | `api.clinpgx.org/v1/download/file/data/drugLabels.zip` (59 KB) | 1,433 rows, 5 regulators, CC BY-SA in the payload |
 | FDA | Table of Pharmacogenetic Associations (HTML) | 126 associations, no bulk file, no stated terms |
