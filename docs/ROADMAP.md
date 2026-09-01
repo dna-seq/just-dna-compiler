@@ -321,6 +321,62 @@ you**, so check which `# ` heading you are under before writing the section, not
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
+## RM170 — a source that both asserts and refutes a claim is muddy water, and nothing tells an author
+
+**Severity** medium · **Status** open — **worth doing** (maintainer, 2026-09-01) · **Owner** enricher
+· **Motivating case** the RM169 widening, which made the first such variants visible in a built
+snapshot
+
+**The correction this item starts from.** It was reported during the RM169 round that reading
+submitted evidence would make three VHL variants `contested` and so stop them being drafted. That was
+wrong, and the way it was wrong is the item. `contested_variants` counts a variant whose camps include
+**both** `risk` and `protective` — genuine opposition — and a `Does Not Support` row does not enter a
+camp at all: `CIVIC_DIRECTION_MAP` maps it to `None`, because a refutation removes a claim without
+establishing the opposite one. So `contested_variants` is **0 on both bases**, correctly, and the
+drafter withholds nothing new.
+
+But the three variants are real, and an author has no way to learn about them:
+
+| variant | claim | refutation |
+|---|---|---|
+| 2161 `VHL S183L (c.548C>T)` | 2 supporting items | ev 8721 `DOES_NOT_SUPPORT` |
+| 2428 `VHL G104V (c.311G>T)` | 1 supporting item | ev 10949 `DOES_NOT_SUPPORT` |
+| 2533 `VHL D126N (c.376G>A)` | 1 supporting item | ev 8721 `DOES_NOT_SUPPORT` |
+
+Each carries a claim **and** a published rebuttal of that claim. The snapshot keeps both rows — the
+refutation with its raw words and a null `direction`, which is the three-valued rule working — and
+then nothing downstream ever mentions it. A module can author a `risk` row over one of these and every
+gate stays green.
+
+### Why a check rather than a filter
+
+`enrich`-tier checks report and never repair (`@enrichment-is-validation`), and this is squarely that
+shape: a fact about the world an author should weigh, not a defect to fix. The natural home is a new
+`VALID_VERIFICATION_CHECKS` member — the vocabulary already holds sixteen of exactly this kind, each
+comparing something authored against something external.
+
+The subject is **an authored row whose variant a source both asserts and refutes**, so it fires
+regardless of how the row got there: a hand-authored module gets the same warning as a drafted one,
+which is the point. Muddy water is a property of the variant, not of the provenance.
+
+### What has to be decided, and what is already settled
+
+- **The subject set is per authored row, not per snapshot row.** A check that counted snapshot rows
+  would publish a number about CIViC; this one is about the module.
+- **Severity: warn in both modes, never gate.** Its two nearest neighbours both say so
+  (`@clinsig-never-escalates`, and `@a-source-recuring-is-not-a-strict-matter`), and for the same
+  reason: a source disagreeing with itself is not an authoring error.
+- **Open — does a refutation from `submitted` evidence carry the same weight as one from `accepted`?**
+  Of the three, only 2428 has a refutation an editor signed off; the other two are submitted on both
+  sides. A hint that states the status basis alongside the disagreement can carry both without
+  choosing, which is the preferred shape, but it makes the check's subject count basis-dependent and
+  that has to be said in the record rather than discovered.
+- **Open — scope.** The three found here are CIViC's, but the shape is not: any source publishing both
+  a claim and its rebuttal produces it. Whether the check reads one snapshot or every snapshot a
+  module drew from decides whether it is a CIViC check or a general one.
+
+**Related** RM169 (which made these visible), RM152, RM160.
+
 ## RM160 — the CIViC snapshot reads the reviewed quarter of its source and says so nowhere a reader acts on
 
 **Severity** medium · **Status** open — **narrowed 2026-09-01**. Its *coverage* half shipped as
