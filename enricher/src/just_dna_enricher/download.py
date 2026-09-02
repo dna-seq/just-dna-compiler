@@ -31,6 +31,7 @@ from just_dna_enricher.locations import (
     default_drug_labels_cache_dir,
     default_ensembl_cache_dir,
     default_strchive_cache_dir,
+    load_env,
 )
 from just_dna_enricher.resolver import EnsemblReferenceError
 
@@ -191,6 +192,10 @@ def _provision_snapshot(
         ) from exc
 
     data_dir.mkdir(parents=True, exist_ok=True)
+    # A token is optional on the read side and doubles the per-IP rate allowance, so the `.env`
+    # is loaded here for the same reason the publisher loads it (`@credential-where-read`):
+    # anonymous traffic sleeping on a 429 looks exactly like a hung download.
+    load_env()
     fs = HfFileSystem(token=get_token())
     try:
         listing = fs.ls(hf_repo_prefix, detail=False)
@@ -434,6 +439,10 @@ def _provision_root_file_snapshot(
         ) from exc
 
     cache_dir.mkdir(parents=True, exist_ok=True)
+    # A token is optional on the read side and doubles the per-IP rate allowance, so the `.env`
+    # is loaded here for the same reason the publisher loads it (`@credential-where-read`):
+    # anonymous traffic sleeping on a 429 looks exactly like a hung download.
+    load_env()
     fs = HfFileSystem(token=get_token())
     tmp_path = target.with_suffix(target.suffix + ".part")
     try:

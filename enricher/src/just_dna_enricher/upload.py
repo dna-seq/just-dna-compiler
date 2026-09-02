@@ -34,6 +34,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_LICENSE_FILENAME,
     SNAPSHOT_SIDECAR_DIRNAMES,
+    load_env,
 )
 
 # Named once because two things now have to agree about it: the allowlist that uploads the file, and
@@ -117,6 +118,14 @@ DEFAULT_DRUG_LABELS_REPO_ID = "just-dna-seq/clinpgx_drug_labels"
 def _hf_api(repo_id: str, token: str | None = None):
     """Resolve a write token and return an authenticated ``HfApi``.
 
+    **`load_env()` first, because `HF_TOKEN` is a credential like any other.** `get_token()` reads the
+    real environment and `~/.cache/huggingface/token`, and neither is a `.env` — so a workspace that
+    keeps its token there, as this one does, got *"No HuggingFace token found"* from a publish while
+    every other credential path in the tier read the same file without being asked. The load happens
+    where the credential is read rather than as a side effect of some other call
+    (`@credential-where-read`), and an exported variable still wins: `load_env` uses
+    ``override=False``.
+
     Raises PermissionError if no token is available and ImportError if huggingface_hub is absent
     (a guarded lazy import, so a download-only install that somehow lacks the wheel fails clearly).
     """
@@ -127,6 +136,7 @@ def _hf_api(repo_id: str, token: str | None = None):
             "huggingface_hub is required to publish to HuggingFace; install just-dna-enricher "
             "(or just-dna-enricher[dev] for the publisher surface)"
         ) from exc
+    load_env()
     resolved_token = token or get_token()
     if not resolved_token:
         raise PermissionError(

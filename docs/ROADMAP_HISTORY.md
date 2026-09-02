@@ -152,6 +152,19 @@ unconditionally, which RM169 made opt-in because it *widens the status basis* �
 have built two different snapshots depending on which caller asked, the exact fork this endpoint
 exists to prevent.
 
+**And two more the maintainer's question found, both `@credential-where-read`.** Asked whether the
+endpoint handles credentials kept in a `.env`, it did not — for `$PHARMVAR_API_KEY` and `$HF_TOKEN`,
+the two the operator actually holds. The PharmVar one is the worse of the pair and is this round's own
+tri-state repair turned against it: the guard deciding *no key configured* versus *a key that failed*
+read `os.environ` directly, while `PharmVarClient.__init__` calls `load_env()` before reading the same
+variable — so the key was visible to the builder and invisible to the check standing in front of it,
+and the lane claimed the designed third state on exactly the machine most likely to have a key. **A
+pre-check that answers differently from the code it guards is worse than no pre-check.** `$HF_TOKEN`
+failed honestly by comparison: `_hf_api` called `get_token()`, which reads the real environment and
+`~/.cache/huggingface/token`, so a publish refused. Both load where the credential is read now, and
+the probes run in subprocesses with the real variables stripped and `HF_HOME` redirected — otherwise
+they pass on any laptop that has ever run `hf auth login`.
+
 **Left undone on purpose.** The three new repos — `just-dna-seq/civic`, `just-dna-seq/strchive`,
 `just-dna-seq/clinpgx_drug_labels` — do not exist on HuggingFace; the first publish creates each, and
 until then both `ensure_*` and `cache pull` say so rather than failing obscurely. No lane's snapshot

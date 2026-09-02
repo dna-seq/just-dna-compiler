@@ -1848,6 +1848,25 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   PharmVar API key" on a machine that had one. `load_env()` now runs in `__init__`, `override=False`, so
   a real environment variable and a test's neutralizing `""` both still win.
 
+
+  **The follow-up is a guard that stood in front of a loader (RM176, 0.7).** `cache rebuild`'s
+  PharmVar adapter decides *not run* (no key configured — the designed third state, since the key is
+  personal and non-transferable) from *failed* (a key that broke), and it cannot read that off the
+  exception: PharmVar's 401 is identical for an absent, a malformed and an unrecognised key and
+  `PharmVarError` is flat. So it checked `os.environ` before the request — and
+  `PharmVarClient.__init__` calls `load_env()` *before* reading the same variable. A key living only
+  in a `.env`, which is where this workspace's lives, was therefore visible to the builder and
+  invisible to the check guarding it: the lane reported "no `$PHARMVAR_API_KEY` is set" and never
+  built, on the machine most likely to have one. **A pre-check that answers differently from the code
+  it guards is worse than no pre-check** — it converts a working lane into a silent, permanent skip
+  with a message telling the operator to set something already set. `$HF_TOKEN` was the same omission
+  failing honestly: `upload._hf_api` called `get_token()`, which reads the real environment and
+  `~/.cache/huggingface/token` and neither is a `.env`, so a publish refused outright rather than
+  quietly doing nothing. Both load at the point of use now. Two things about the probes: they run in
+  **subprocesses**, because `load_env` mutates `os.environ` for the rest of the process and an
+  in-process test leaks the repository's own `.env` into whatever runs next; and the child's
+  environment strips the real variables **and redirects `HF_HOME`**, or the HuggingFace half passes on
+  any laptop where someone has once run `hf auth login` — green on the machine, silent about the bug.
 - `@absent-is-not-different` — **A new optional column that splits a dedup key suppresses only when
   BOTH rows state it and the two values differ — and it is the CHECK that learns the column, never the
   key** (RM140, S75). `studies.csv` is keyed `(variant_key, pmid)`, and `duplicate_study_citation`

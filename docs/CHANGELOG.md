@@ -71,6 +71,14 @@ four-tuple list inside `cli.py` rather than something a test could walk.
   blanket handler — so the command that provisions a deployment exited 1 on a fresh machine because
   a snapshot had never been uploaded. `SnapshotNotPublished` is its own type now, printed in yellow
   and not counted; a download that *breaks* still fails and still exits 1.
+- **Two credentials were not being read from the `.env`,** found by an operator asking whether the
+  new endpoint handles one. `$PHARMVAR_API_KEY`: the rebuild guard read `os.environ` directly to
+  decide *no key configured* versus *a key that failed*, while `PharmVarClient` loads the file before
+  reading the same variable — so a key living only in a `.env` was visible to the builder and
+  invisible to the guard, and the lane reported "no key" and never built. `$HF_TOKEN`:
+  `upload._hf_api` called `get_token()`, which reads the real environment and the hub's own token
+  file and neither is a `.env`, so a publish refused outright. Both load at the point the credential
+  is read now; an exported variable still wins.
 - **Consumer-visible:** `cache status` output gains three rows and names each lane's real build
   command (it composed `f"{name} build"`, which named two commands that do not exist), and
   `cache pull`'s exit code no longer reflects an unpublished repo. No parquet column, model field or

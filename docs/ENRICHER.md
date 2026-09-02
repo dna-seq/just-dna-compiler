@@ -1061,7 +1061,9 @@ Four things worth knowing before you run it on a server:
 
 - **Set `HF_TOKEN`.** Anonymous traffic shares a per-IP pool (500 API / 3,000 resolver calls per 5-minute
   window); a free token roughly doubles it. The usual symptom of not having one is an `ensure_*` that
-  looks hung — the client is sleeping on a 429, not stuck.
+  looks hung — the client is sleeping on a 429, not stuck. A `.env` beside the working directory is
+  enough: both provisioners and the publisher call `load_env()` before `get_token()`, which otherwise
+  reads only the real environment and `~/.cache/huggingface/token`.
 - **`--use` is required for the gated pair, and it is not ceremony.** ClinPGx and CPIC forbid sale, and
   under a data-usage policy the terms are accepted when the data is **taken** — so downloading is the
   act being gated. `unstated` skips them with a reason, `commercial` refuses, `non-commercial`
@@ -1163,6 +1165,13 @@ Three things about it are worth reading before a deployment runs it nightly.
   built by just-dna-pipelines. Each prints its own reason — taken from the registry field, not composed
   here — and the exit code counts only real failures, so a nightly run does not alarm on four lanes
   behaving exactly as designed.
+- **Credentials come from the `.env` too, and until RM176's follow-up two of them did not.**
+  `$PHARMVAR_API_KEY` and `$HF_TOKEN` are read through `load_env()` at the point they are used
+  (`@credential-where-read`), so a workspace that keeps them in a `.env` beside the working directory
+  needs nothing exported. An exported variable still wins — `load_env` uses `override=False`. The two
+  that were missing it failed in opposite directions: the PharmVar guard read `os.environ` in front of
+  a builder that *does* load the file, so the lane reported "no key" and never built on the machine
+  most likely to have one; `_hf_api` refused a publish outright.
 - **`--source lane=path` is the offline off-switch** for clinvar, constraint, clinpgx, drug_labels,
   pubmind and strchive, and the *only* route for acmg. `mane` and `civic` refuse it: each takes three
   input files, two of three is not a build for either, and a flag that can supply one would be a flag
