@@ -114,6 +114,9 @@ from just_dna_enricher.litvar import verification_records as litvar_records
 from just_dna_enricher.locations import (
     CITATIONS_DIRNAME,
     RELEASE_FILENAME,
+    SNAPSHOT_LICENSE_FILENAME,
+    STRCHIVE_CATALOGUE_FILENAME,
+    read_release,
     resolve_civic_reference,
     resolve_clinpgx_reference,
     resolve_clinvar_reference,
@@ -149,7 +152,12 @@ from just_dna_enricher.pubmind_draft import (
 from just_dna_enricher.sequences import summarize_ref_mismatches
 from just_dna_enricher.strchive import StrchiveError, check_repeat_bands
 from just_dna_enricher.strchive_draft import StrchiveDraftError, draft_repeat_loci
-from just_dna_enricher.upload import DEFAULT_CLINPGX_REPO_ID, DEFAULT_CPIC_REPO_ID
+from just_dna_enricher.upload import (
+    DEFAULT_CLINPGX_REPO_ID,
+    DEFAULT_CPIC_REPO_ID,
+    DEFAULT_DRUG_LABELS_REPO_ID,
+    DEFAULT_STRCHIVE_REPO_ID,
+)
 from just_dna_enricher.verification import record_verification, skipped
 from just_dna_enricher.vrs import MintResult
 
@@ -3269,6 +3277,55 @@ def strchive_build_(
         )
 
 
+@strchive_app.command("publish")
+def strchive_publish_(
+    snapshot_dir: Path = typer.Argument(
+        ..., exists=True, file_okay=False,
+        help="Built snapshot directory (STRchive-loci.json + release.json).",
+    ),
+    repo: str = typer.Option(
+        DEFAULT_STRCHIVE_REPO_ID, "--repo", help="Target HuggingFace dataset repo (owner/name).",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be uploaded; send nothing."),
+    commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
+) -> None:
+    """Create-or-update the dataset repo and upload the built STRchive catalogue (publisher/dev).
+
+    Publishable on the source's own terms: STRchive is MIT, which grants redistribution outright.
+    This lane had no publish command because it grew from a check rather than from a cache, not
+    because anything withheld the permission — the same distinction the roster draws between CIViC's
+    absent `ensure_*` (a gap) and PharmVar's (a refusal).
+
+    **Publish a pinned build.** An unlabelled snapshot carries no `dataset`, so whoever pulls it can
+    run the comparison and cannot say which release they compared against — build with `--release`
+    first, and this refuses nothing but says so.
+    """
+    from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
+
+    if not (read_release(snapshot_dir) or {}).get("dataset"):
+        typer.secho(
+            "  this snapshot carries no release label, so everyone who pulls it inherits a "
+            "comparison that cannot name its own reference. Rebuild with `strchive build --release`.",
+            fg=typer.colors.YELLOW, err=True,
+        )
+    try:
+        if dry_run:
+            plan = plan_reference_snapshot(
+                snapshot_dir, repo, payload=STRCHIVE_CATALOGUE_FILENAME
+            )
+            typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
+            return
+        plan = publish_reference_snapshot(
+            snapshot_dir, repo, commit_message=commit_message, payload=STRCHIVE_CATALOGUE_FILENAME,
+        )
+    except (FileNotFoundError, PermissionError, ImportError) as exc:
+        typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(
+        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN,
+    )
+
+
 @app.command("draft-repeats")
 def draft_repeats_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
@@ -3509,3 +3566,47 @@ def clinpgx_check_labels_(
 # module fully and then calls `app()`, and wrong for anyone invoking the module directly.
 if __name__ == "__main__":
     app()
+
+
+@clinpgx_app.command("publish-labels")
+def clinpgx_publish_labels_(
+    snapshot_dir: Path = typer.Argument(
+        ..., exists=True, file_okay=False,
+        help="Built snapshot directory (data/drug_labels.parquet + LICENSE.txt + release.json).",
+    ),
+    repo: str = typer.Option(
+        DEFAULT_DRUG_LABELS_REPO_ID, "--repo", help="Target HuggingFace dataset repo (owner/name).",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be uploaded; send nothing."),
+    commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
+) -> None:
+    """Publish a built drug-label snapshot so `clinpgx check-labels` can provision it (publisher/dev).
+
+    A **second** repo rather than a second table in `just-dna-seq/clinpgx`, for the reason the builder
+    already gives its own `release.json`: the two ClinPGx archives do not refresh in lockstep, and one
+    repo holding both would date the pair from whichever was published last.
+
+    Same grounds as `clinpgx publish` — CC BY-SA permits redistribution, forbids sale, and requires
+    attribution, which `sources.csv` carries. `LICENSE.txt` travels with the parquet: a share-alike
+    snapshot whose terms did not travel pins nothing for whoever downloads it.
+    """
+    from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
+
+    try:
+        if dry_run:
+            plan = plan_reference_snapshot(snapshot_dir, repo)
+            typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
+            return
+        plan = publish_reference_snapshot(snapshot_dir, repo, commit_message=commit_message)
+    except (FileNotFoundError, PermissionError, ImportError) as exc:
+        typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if SNAPSHOT_LICENSE_FILENAME not in plan.files:
+        typer.secho(
+            f"  no {SNAPSHOT_LICENSE_FILENAME} in this snapshot, so `license_sha256` pins nothing "
+            f"for whoever pulls it. Rebuild with `clinpgx build-labels`.",
+            fg=typer.colors.YELLOW, err=True,
+        )
+    typer.secho(
+        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN,
+    )

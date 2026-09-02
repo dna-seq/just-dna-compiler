@@ -41,8 +41,10 @@ class _FakeFS:
         self.tree = tree                     # dirname -> {filename: column name (its schema)}
         self.release = release               # the repo-root release.json body, or None
         self.fetched: list[str] = []
+        self.asked: list[str] = []           # the repo prefixes listed, so a lane cannot ask another's
 
     def ls(self, prefix: str, detail: bool = True):
+        self.asked.append(prefix)
         dirname = prefix.rstrip("/").rsplit("/", 1)[-1]
         if dirname not in self.tree:
             raise FileNotFoundError(prefix)
@@ -273,3 +275,69 @@ def test_a_present_citations_file_is_not_refetched(fake_hub, tmp_path: Path) -> 
     _write_parquet(cache / CITATIONS_DIRNAME / "citations.parquet", "variation_id")
     dl.ensure_clinvar_snapshot(cache)                        # data/ is empty, so it does provision
     assert "citations/citations.parquet" not in fs.fetched
+
+
+# ── the three lanes that were publishable and unfetchable (RM176) ───────────────────────────────
+
+
+def test_the_two_new_parquet_lanes_join_the_one_download_body(fake_hub, tmp_path: Path) -> None:
+    """CIViC and the drug labels are parameterizations, not new machinery — same assertion shape.
+
+    Their globs are `*.parquet` rather than a name pattern, so what separates them here is the repo
+    prefix each asks. A lane pointed at the wrong repo would fetch the other's files and pass any
+    test that only counted them.
+    """
+    for ensure, prefix in (
+        (dl.ensure_civic_snapshot, dl._CIVIC_HF_PREFIX),
+        (dl.ensure_drug_labels_snapshot, dl._DRUG_LABELS_HF_PREFIX),
+    ):
+        fs = fake_hub({"table.parquet": "variant_key"})
+        cache = tmp_path / prefix.rsplit("/", 2)[-2]
+        ensure(cache)
+        # The first listing is the snapshot's own; anything after it is the optional sidecar probe,
+        # which every lane makes and every lane but ClinVar comes back empty from.
+        assert fs.asked[0] == prefix, f"{ensure.__name__} asked {fs.asked}"
+        assert (cache / "data" / "table.parquet").is_file()
+
+
+def test_a_catalogue_snapshot_is_fetched_whole_or_not_at_all(monkeypatch, tmp_path: Path) -> None:
+    """STRchive holds one JSON file, so the parquet footer check has nothing to check.
+
+    The guarantee has to be the same one all the same — an interrupted download must never land under
+    the real name — so the file is parsed before the rename. Demonstrated by handing the fetch a
+    truncated body: the catalogue must be absent afterwards, not present and unreadable.
+    """
+    import huggingface_hub
+
+    class _Truncated:
+        asked: list[str] = []
+
+        def get(self, remote: str, local: str) -> None:
+            _Truncated.asked.append(remote)
+            if remote.endswith(RELEASE_FILENAME):
+                raise FileNotFoundError(remote)
+            Path(local).write_text('[{"id": "AB', encoding="utf-8")
+
+    monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda token=None: _Truncated())
+    monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)
+    cache = tmp_path / "strchive"
+    with pytest.raises(dl.OpenSnapshotError, match="not readable JSON"):
+        dl.ensure_strchive_snapshot(cache)
+    assert not (cache / "STRchive-loci.json").exists()
+    assert not list(cache.glob("*.part")), "and nothing is left behind for the next run to trust"
+
+
+def test_a_present_catalogue_is_trusted_without_touching_the_network(
+    monkeypatch, tmp_path: Path,
+) -> None:
+    """The populated-cache skip the parquet lanes get, with `json.loads` standing in for the footer."""
+    import huggingface_hub
+
+    def _explode(token=None):
+        raise AssertionError("the network was reached for a catalogue already on disk")
+
+    monkeypatch.setattr(huggingface_hub, "HfFileSystem", _explode)
+    cache = tmp_path / "strchive"
+    cache.mkdir()
+    (cache / "STRchive-loci.json").write_text('[{"id": "AB"}]', encoding="utf-8")
+    assert dl.ensure_strchive_snapshot(cache) == cache

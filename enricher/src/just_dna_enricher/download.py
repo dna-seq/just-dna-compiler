@@ -12,6 +12,7 @@ format + compiler). The download logic (footer-checked, atomic `.part` rename) i
 just-dna-lite's pipelines byte-for-byte so no drift is born.
 """
 
+import json
 import logging
 from fnmatch import fnmatch
 from pathlib import Path
@@ -21,11 +22,15 @@ from just_dna_enricher.locations import (
     RELEASE_FILENAME,
     SNAPSHOT_LICENSE_FILENAME,
     SNAPSHOT_SIDECAR_DIRNAMES,
+    STRCHIVE_CATALOGUE_FILENAME,
+    default_civic_cache_dir,
     default_clinpgx_cache_dir,
     default_clinvar_cache_dir,
     default_constraint_cache_dir,
     default_cpic_cache_dir,
+    default_drug_labels_cache_dir,
     default_ensembl_cache_dir,
+    default_strchive_cache_dir,
 )
 from just_dna_enricher.resolver import EnsemblReferenceError
 
@@ -61,6 +66,23 @@ _CPIC_FILES = "*.parquet"
 _CLINPGX_HF_PREFIX = "datasets/just-dna-seq/clinpgx/data"
 _CPIC_HF_PREFIX = "datasets/just-dna-seq/cpic/data"
 
+# The three lanes that had a builder and a licence permitting publication, and no way to fetch the
+# result (RM176). CIViC's absent `ensure_*` was recorded in the cache roster as a *gap* rather than a
+# refusal — CC0 grants redistribution outright — and STRchive's MIT and the drug labels' CC BY-SA say
+# the same thing on their own terms. What was missing in all three cases was plumbing, not permission.
+#
+# The drug labels are a **second** ClinPGx archive with its own cadence, so they get their own repo
+# rather than a table inside `clinpgx/`: `summaryAnnotations.zip` and `drugLabels.zip` do not refresh
+# together, and one repo holding both would date the pair from whichever was published last.
+_CIVIC_HF_PREFIX = "datasets/just-dna-seq/civic/data"
+_DRUG_LABELS_HF_PREFIX = "datasets/just-dna-seq/clinpgx_drug_labels/data"
+_CIVIC_FILES = "*.parquet"
+_DRUG_LABELS_FILES = "*.parquet"
+
+#: STRchive's repo root, not a `data/` prefix: this snapshot is the upstream catalogue verbatim beside
+#: its provenance, and it holds no parquet at all.
+_STRCHIVE_HF_REPO = "datasets/just-dna-seq/strchive"
+
 
 class ConstraintReferenceError(FileNotFoundError):
     """Raised when the gnomAD constraint snapshot cannot be provisioned or has no usable parquet."""
@@ -72,6 +94,17 @@ class GatedSnapshotError(FileNotFoundError):
     One class for both because a caller's recovery is identical — build it locally, or point at a
     cache — and because the two are the same act: reaching a source that forbids sale through bytes the
     operator took once instead of live per request.
+    """
+
+
+class OpenSnapshotError(FileNotFoundError):
+    """Raised when an openly-licensed snapshot (CIViC, STRchive) cannot be provisioned.
+
+    `GatedSnapshotError`'s counterpart, and one class for both of these for its reason: the caller's
+    recovery is identical — build it locally, or point at a cache. What separates the two classes is
+    not the failure but the *question a reader asks next*. A gated snapshot failing may mean the
+    operator never accepted the terms; these two are CC0 and MIT, so nothing here is ever a licence
+    problem and a reader chasing one would be chasing nothing.
     """
 
 
@@ -291,3 +324,120 @@ def ensure_cpic_snapshot(cpic_cache: Path | None = None) -> Path:
         cache_dir, _CPIC_HF_PREFIX, label="CPIC", error_cls=GatedSnapshotError,
         filename_glob=_CPIC_FILES,
     )
+
+
+def ensure_civic_snapshot(civic_cache: Path | None = None) -> Path:
+    """Provision the CIViC snapshot from HuggingFace Hub (RM176).
+
+    The cache roster recorded this one's absence as a **gap**, in those words, beside PharmVar's and
+    PubMind's refusals: CIViC is CC0 on every axis, so nothing ever barred publishing a snapshot and
+    none existed only because nobody had run `civic publish`. Closing it needed a repo, not a
+    permission — so the first `civic publish` is what makes this function find anything.
+    """
+    cache_dir = Path(civic_cache) if civic_cache is not None else default_civic_cache_dir()
+    return _provision_snapshot(
+        cache_dir, _CIVIC_HF_PREFIX, label="CIViC", error_cls=OpenSnapshotError,
+        filename_glob=_CIVIC_FILES,
+    )
+
+
+def ensure_drug_labels_snapshot(drug_labels_cache: Path | None = None) -> Path:
+    """Provision the regulator drug-label snapshot from HuggingFace Hub (RM176).
+
+    Publishable on the annotation lane's grounds and gated on its terms — ClinPGx's CC BY-SA permits
+    redistribution and forbids sale, which is why the error type is `GatedSnapshotError` and why
+    `cache pull` puts this lane through `check_declared_use` before fetching. `LICENSE.txt` rides
+    along with the parquet, because a share-alike snapshot whose terms did not travel pins nothing
+    for whoever holds the bytes.
+    """
+    cache_dir = (
+        Path(drug_labels_cache) if drug_labels_cache is not None else default_drug_labels_cache_dir()
+    )
+    return _provision_snapshot(
+        cache_dir, _DRUG_LABELS_HF_PREFIX, label="ClinPGx drug labels",
+        error_cls=GatedSnapshotError, filename_glob=_DRUG_LABELS_FILES,
+    )
+
+
+def ensure_strchive_snapshot(strchive_cache: Path | None = None) -> Path:
+    """Provision the STRchive catalogue from HuggingFace Hub (RM176).
+
+    **Not `_provision_snapshot`, and the difference is the snapshot rather than the plumbing.** That
+    body is parquet all the way down — it globs `data/*.parquet`, trusts a populated directory, and
+    re-fetches anything failing the `PAR1` footer check. This snapshot is one JSON catalogue at the
+    repo root: there is no `data/`, no footer to check, and no way to tell a truncated JSON file from
+    a short one without parsing it. So the catalogue is fetched to a `.part` path and parsed before it
+    is renamed into place, which is the same guarantee the footer check gives the parquet lanes —
+    an interrupted download never lands under the real name.
+    """
+    cache_dir = (
+        Path(strchive_cache) if strchive_cache is not None else default_strchive_cache_dir()
+    )
+    return _provision_root_file_snapshot(
+        cache_dir, _STRCHIVE_HF_REPO, payload=STRCHIVE_CATALOGUE_FILENAME, label="STRchive",
+        error_cls=OpenSnapshotError,
+    )
+
+
+def _provision_root_file_snapshot(
+    cache_dir: Path,
+    hf_repo: str,
+    *,
+    payload: str,
+    label: str,
+    error_cls: type[Exception],
+) -> Path:
+    """Fetch a snapshot whose payload is one named file at the repo root, plus `release.json`.
+
+    A present, parseable payload is trusted without touching the network, exactly as a populated
+    parquet cache is. `release.json` is fetched even when the payload was already there: it is what
+    lets a reader name the release it compared against, and a cache carrying the catalogue without it
+    is the honest-but-useless state where the check runs and cannot say against what.
+    """
+    target = cache_dir / payload
+    if _json_parses(target):
+        return cache_dir
+
+    logger.info("Provisioning the %s snapshot from HuggingFace Hub ...", label)
+    try:
+        from huggingface_hub import HfFileSystem, get_token
+    except ImportError as exc:  # the one guarded optional import (CLAUDE.md)
+        raise error_cls(
+            f"huggingface_hub is required to download the {label} snapshot; install "
+            f"just-dna-enricher (which depends on it) or point at a local cache"
+        ) from exc
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    fs = HfFileSystem(token=get_token())
+    tmp_path = target.with_suffix(target.suffix + ".part")
+    try:
+        fs.get(f"{hf_repo}/{payload}", str(tmp_path))
+    except Exception as exc:  # noqa: BLE001 - the transport's type is not this caller's contract
+        tmp_path.unlink(missing_ok=True)
+        raise error_cls(
+            f"no {payload} in {hf_repo} — nothing has been published there yet. Build your own with "
+            f"`just-dna-enricher {label.lower()} build --out <dir>`."
+        ) from exc
+    if not _json_parses(tmp_path):
+        tmp_path.unlink(missing_ok=True)
+        raise error_cls(f"Downloaded {payload} is not readable JSON (interrupted download?)")
+    tmp_path.replace(target)
+
+    try:
+        fs.get(f"{hf_repo}/{RELEASE_FILENAME}", str(cache_dir / RELEASE_FILENAME))
+    except Exception as exc:  # noqa: BLE001 - absence is not an error; a nameless release is honest
+        logger.info("No %s in the %s repo (%s); the snapshot carries no release label.",
+                    RELEASE_FILENAME, label, type(exc).__name__)
+    logger.info("Download complete: %s", cache_dir)
+    return cache_dir
+
+
+def _json_parses(path: Path) -> bool:
+    """A JSON payload's equivalent of the parquet footer check: does it read whole?"""
+    if not path.is_file() or path.stat().st_size == 0:
+        return False
+    try:
+        json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return False
+    return True

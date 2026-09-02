@@ -14,6 +14,7 @@ from just_dna_enricher.upload import (
     _ALLOW_PATTERNS,
     DEFAULT_CLINVAR_REPO_ID,
     DEFAULT_REPO_ID,
+    DEFAULT_STRCHIVE_REPO_ID,
     PublishCollisionError,
     UploadPlan,
     plan_reference_snapshot,
@@ -514,9 +515,11 @@ def test_publish_reference_snapshot_creates_repo_then_uploads(tmp_path: Path) ->
     assert kwargs["path_in_repo"] == ""
     assert kwargs["repo_id"] == "just-dna-seq/clinvar"
     assert kwargs["repo_type"] == "dataset"
-    assert kwargs["allow_patterns"] == [
-        "data/*.parquet", "citations/*.parquet", "release.json", "LICENSE.txt",
-    ]
+    # The allowlist IS the plan's file list, not a parallel pattern list that has to agree with it
+    # (`@publisher-allowlist-derived`). The two were separate statements of one thing, so a dry run
+    # could print a file the upload then dropped — which is how `citations/` and `LICENSE.txt` each
+    # went a release unpublished.
+    assert kwargs["allow_patterns"] == plan.files
     assert plan.repo_id == "just-dna-seq/clinvar"
 
 
@@ -700,3 +703,51 @@ def test_a_local_module_with_no_readable_digest_is_not_gated(tmp_path: Path) -> 
     _upload(module_dir, api, published)
 
     api.file_exists.assert_not_called()
+
+
+def test_the_dry_run_promises_exactly_what_the_upload_sends(tmp_path: Path) -> None:
+    """The property the derived allowlist buys, over a snapshot carrying every optional part.
+
+    Pinned on a snapshot with a sidecar *and* a licence because that is where the two lists used to
+    diverge: a pattern list covering `data/*.parquet` and `release.json` silently dropped the other
+    two, and the dry run — which reads the plan — said otherwise.
+    """
+    snap = _snapshot(tmp_path / "everything")
+    (snap / "citations").mkdir()
+    (snap / "citations" / "citations.parquet").write_bytes(b"PAR1payloadPAR1")
+    (snap / "LICENSE.txt").write_text("CC BY-SA 4.0", encoding="utf-8")
+    promised = plan_reference_snapshot(snap, "just-dna-seq/clinpgx").files
+
+    mock_api = MagicMock()
+    with (
+        patch("huggingface_hub.HfApi", return_value=mock_api),
+        patch("huggingface_hub.get_token", return_value="hf_test_token"),
+    ):
+        publish_reference_snapshot(snap, "just-dna-seq/clinpgx")
+    assert mock_api.upload_folder.call_args.kwargs["allow_patterns"] == promised
+    assert set(promised) >= {"citations/citations.parquet", "LICENSE.txt"}
+
+
+# ── a snapshot whose payload is one root file (STRchive; ACMG is the shape's second member) ─────
+
+
+def test_a_payload_snapshot_publishes_the_named_file_and_its_provenance(tmp_path: Path) -> None:
+    """STRchive holds no parquet at all, so the publisher's `data/*.parquet` premise refused it."""
+    snap = tmp_path / "strchive"
+    snap.mkdir()
+    (snap / "STRchive-loci.json").write_text("[]", encoding="utf-8")
+    (snap / "release.json").write_text('{"dataset": "strchive_v2.26.0"}', encoding="utf-8")
+    plan = plan_reference_snapshot(snap, DEFAULT_STRCHIVE_REPO_ID, payload="STRchive-loci.json")
+    assert plan.repo_id == DEFAULT_STRCHIVE_REPO_ID
+    assert plan.files == ["STRchive-loci.json", "release.json"]
+
+
+def test_a_payload_snapshot_with_nothing_built_is_refused_like_an_empty_parquet_one(
+    tmp_path: Path,
+) -> None:
+    """Same claim in both shapes: there is nothing built here to publish."""
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    (empty / "release.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(FileNotFoundError, match="no STRchive-loci.json"):
+        plan_reference_snapshot(empty, DEFAULT_STRCHIVE_REPO_ID, payload="STRchive-loci.json")
