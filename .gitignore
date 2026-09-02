@@ -222,8 +222,8 @@ __marimo__/
 .streamlit/secrets.toml
 
 # just-dna data conventions (CLAUDE.md): generated/sample data never travels with the repo or the
-# package. Fixtures that must travel live in assets/ (committed), not here.
+# package. Fixtures that must travel live in assets/ (committed), not here. `data/repro/` is where a
+# reproduction run's working directory goes — `civic reproduce` defaults there, which is why there is
+# no longer a `/civic-reproduce/` line beside this one: a command writing three and a half megabytes
+# into the repository root needed its own rule, and one that writes under `data/` needs none.
 /data/
-
-# `civic reproduce --out` default: two full builds plus the downloaded release, in the cwd
-/civic-reproduce/

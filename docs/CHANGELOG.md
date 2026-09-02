@@ -57,7 +57,7 @@ four-tuple list inside `cli.py` rather than something a test could walk.
   `ensure_drug_labels_snapshot`. **The three repos do not exist on HuggingFace yet** — the first
   publish creates each, and until then `cache pull` says so.
 - **`cache rebuild` is the one endpoint over eleven builders**, with a driver at
-  `.claude/rebuild-caches.sh`. It calls the same `download_*`/`build_*` the per-lane commands call, so
+  `scripts/rebuild-caches.sh`. It calls the same `download_*`/`build_*` the per-lane commands call, so
   those stay and nothing forks. Its outcome is **three-valued**: ACMG needs an Elsevier workbook,
   PharmVar a personal key, CIViC a pinned release, Ensembl is built by just-dna-pipelines — all print
   as *not run* with a reason, and the exit code counts only real failures. Every lane builds into

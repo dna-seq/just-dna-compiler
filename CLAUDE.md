@@ -537,7 +537,14 @@ questions vs answers. A blocker is never a dead end: dissolved, closed additivel
 ## Data & assets conventions
 
 - Generated and sample data lives under `data/`, **git-ignored and build-ignored**: `data/input/`,
-  `data/interim/` (code-generated intermediates), `data/output/`.
+  `data/interim/` (code-generated intermediates), `data/output/`, `data/repro/<name>/` (a
+  reproduction run's working directory — `civic reproduce` defaults to `data/repro/civic/`).
+- **Nothing a command generates goes in the repository root.** `civic reproduce` wrote
+  `civic-reproduce/` there and needed its own `.gitignore` line to say so; a default under `data/`
+  needs none. Check where a new `--out` default lands before shipping it.
+- **`scripts/` is the operator-facing drivers, `.claude/` is agent tooling** — the split is by
+  audience, not by file type. A deployment runs `scripts/rebuild-caches.sh`; nothing but a Claude
+  session runs `.claude/rm-next.py`. [scripts/README.md](scripts/README.md) states the rule.
 - Data that must **travel with the project** (a fixture a test or example needs) lives in `assets/`.
 - Any asset over **~5 MB** that must travel goes through **Git LFS**: `git lfs install`,
   `git lfs track "<path>"`, commit the **pointer** — never the raw blob.

@@ -1143,7 +1143,7 @@ just-dna-enricher cache rebuild --out ./caches-2026-09-02 --use non-commercial
 just-dna-enricher cache rebuild --out ./c --only strchive --only mane --pin mane=1.5
 just-dna-enricher cache rebuild --out ./c --only acmg --source acmg=./acmg_sf_v3.3.xlsx
 just-dna-enricher cache rebuild --out ./c --publish --dry-run        # rehearse the uploads
-.claude/rebuild-caches.sh ./caches-2026-09-02                        # the driver, all lanes
+scripts/rebuild-caches.sh ./caches-2026-09-02                        # the driver, all lanes
 ```
 
 Three things about it are worth reading before a deployment runs it nightly.

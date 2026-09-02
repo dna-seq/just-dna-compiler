@@ -18,8 +18,8 @@
 # rebuild takes minutes, and an `enrich` reading a half-written snapshot sees a real but incomplete
 # table — a short parquet still has a footer, so no resolver can catch it.
 #
-#   .claude/rebuild-caches.sh /srv/just-dna/caches-2026-09-02
-#   JUST_DNA_USE=non-commercial .claude/rebuild-caches.sh /srv/... --publish
+#   scripts/rebuild-caches.sh /srv/just-dna/caches-2026-09-02
+#   JUST_DNA_USE=non-commercial scripts/rebuild-caches.sh /srv/... --publish
 #
 # Every argument after the output directory is passed through to `cache rebuild`, so a partial run
 # is `--only clinvar --only cpic` and a rehearsal is `--publish --dry-run`.
@@ -53,6 +53,8 @@ PINS=()
 SOURCES=()
 [[ -n "${JUST_DNA_ACMG_WORKBOOK:-}" ]] && SOURCES+=(--source "acmg=$JUST_DNA_ACMG_WORKBOOK")
 
+# `..` from scripts/ is the workspace root, which is what `--project` wants. It is the only line
+# here that knows where this file lives, so moving the file means editing this and nothing else.
 RUNNER=(uv run --project "$(dirname "$0")/.." just-dna-enricher)
 command -v uv >/dev/null 2>&1 || RUNNER=(just-dna-enricher)
 

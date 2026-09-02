@@ -46,10 +46,10 @@ sha256sum 01-Aug-2026-ClinicalEvidenceSummaries.tsv \
 # e199494202de177145c17527bb3e84b488382c8a47b501e91fa971b38038aa98  evidence
 # 72332619da175be97b5f2f02573169ccab214bb1688b5d3fb582a12944a0e9a3  profiles
 # 6b09215639ed80f1f0617c887e4f48ac727bbea237ee83f1ac85de2cfa3b9db2  variants
-python3 -c "import json;r=json.load(open('civic-reproduce/build-a/release.json'));print({k:v for k,v in r.items() if 'sha' in k})"
+python3 -c "import json;r=json.load(open('data/repro/civic/build-a/release.json'));print({k:v for k,v in r.items() if 'sha' in k})"
 ```
 
-All three match `civic-reproduce/build-a/release.json`. That build is `status_basis:
+All three match `data/repro/civic/build-a/release.json`. That build is `status_basis:
 "accepted+submitted"`, 1,149 rows on 397 variants; `build-b` is the same basis and the same numbers,
 which is RM169's byte-identical-rebuild claim holding.
 
@@ -150,7 +150,7 @@ confirmed exactly as written.
 ```bash
 uv run python -c "
 import polars as pl
-df = pl.read_parquet('civic-reproduce/build-a/data/civic.parquet')
+df = pl.read_parquet('data/repro/civic/build-a/data/civic.parquet')
 print(df.filter(pl.col('evidence_direction_raw')=='Does Not Support'))"
 ```
 
@@ -203,7 +203,7 @@ every gate silently. That is the gap the entry describes, and it is confirmed.
 ### 2.4 Incidental: the release record contradicts itself
 
 `_write_release_json` builds `notice` from an unconditional literal (civic_build.py:1017). The shipped
-`civic-reproduce/build-a/release.json` therefore says
+`data/repro/civic/build-a/release.json` therefore says
 
 > "It is built from the dated bulk TSV release, **every row of which is status 'accepted'**"
 
@@ -477,7 +477,7 @@ Per `@probe-names-the-table`, every negative here is scoped.
   2026-09-01, which is not the `01-Aug-2026` release. It agrees with the dated files here; a later
   read may not. It is a claim about `significance: PREDISPOSITION|PROTECTIVENESS` +
   `evidenceDirection: DOES_NOT_SUPPORT` only, and about evidence items — assertions were not queried.
-* *Parquet figures* — over `civic-reproduce/build-a/data/civic.parquet`, `status_basis
+* *Parquet figures* — over `data/repro/civic/build-a/data/civic.parquet`, `status_basis
   accepted+submitted`, builder 0.7.0. Not a claim about what an `accepted`-basis build of the same
   release would emit; that build was not produced here, and the accepted-basis statements above come
   from the TSVs directly.
@@ -613,7 +613,7 @@ curl -s https://civicdb.org/api/graphql -H 'content-type: application/json' -d '
  "{ evidenceItems(significance: PREDISPOSITION, evidenceDirection: DOES_NOT_SUPPORT, status: ALL, first: 50) { totalCount nodes { id status molecularProfile { id name variants { id } } } } }"}'
 
 # the parquet
-uv run python -c "import polars as pl; df=pl.read_parquet('civic-reproduce/build-a/data/civic.parquet'); \
+uv run python -c "import polars as pl; df=pl.read_parquet('data/repro/civic/build-a/data/civic.parquet'); \
   print(df.group_by(['significance_raw','evidence_direction_raw','evidence_status']).len())"
 
 # STRchive

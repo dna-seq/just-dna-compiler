@@ -90,9 +90,9 @@ from just_dna_enricher.licensing import (
 )
 from just_dna_enricher.locations import (
     read_release,
+    resolve_civic_reference,
     resolve_clinvar_reference,
     resolve_ensembl_reference,
-    resolve_civic_reference,
     resolve_pubmind_reference,
 )
 from just_dna_enricher.resolver import (

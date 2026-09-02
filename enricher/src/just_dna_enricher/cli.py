@@ -2158,8 +2158,11 @@ def civic_reproduce_(
         help="Dated CIViC release to reproduce, e.g. 01-Aug-2026.",
     ),
     out: Path = typer.Option(
-        Path("civic-reproduce"), "--out", file_okay=False,
-        help="Working directory. The release files and two independent builds land here.",
+        Path("data/repro/civic"), "--out", file_okay=False,
+        help=(
+            "Working directory. The release files and two independent builds land here. The default "
+            "is under data/, which this workspace git-ignores wholesale."
+        ),
     ),
     keep: bool = typer.Option(
         False, "--keep", help="Leave the downloaded release files in place for inspection.",
