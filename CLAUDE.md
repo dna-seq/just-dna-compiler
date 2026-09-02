@@ -288,6 +288,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - An interbase coordinate is `start + 1`; a single-base allele cannot reveal the off-by-one. `@a-one-base-allele-hides-an-off-by-one`
 - Load a credential where it is read, not as a side effect of some other call. `@credential-where-read`
 - A guard in front of a loader must load too, or it answers differently from what it guards. `@credential-where-read`
+- `export FOO=` outranks a `.env` where `unset FOO` does not; diagnose the two absences apart. `@credential-where-read`
 - The dedup key decides which columns may become several rows, not the source's dialect. `@dedup-key-decides-rows`
 - `draft --allele` filters all three tables; `*1` is always kept. `@draft-allele-filter`
 - An incidental call must not be able to discard finished work. `@incidental-call-isolated`

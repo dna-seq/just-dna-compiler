@@ -1172,6 +1172,15 @@ Three things about it are worth reading before a deployment runs it nightly.
   that were missing it failed in opposite directions: the PharmVar guard read `os.environ` in front of
   a builder that *does* load the file, so the lane reported "no key" and never built on the machine
   most likely to have one; `_hf_api` refused a publish outright.
+- **`export FOO=` is stronger than `unset FOO`, and both messages now say so.** `override=False`
+  keeps a variable that is *present*, and an empty string is present — so a shell that ran a snippet
+  whose placeholder was edited out reports *no key* for the rest of the session while the `.env` holds
+  a working one. Absent and exported-empty are named separately, with different remedies: add it, or
+  `unset` it. The same trap the tier's own tests exploit deliberately, from the other side.
+- **A `--source` path is checked before the run starts.** Typer's `exists=True` cannot reach a value
+  embedded in a `lane=value` string, so a mistyped one used to travel to the lane's builder and
+  surface as a bare `[Errno 2]` — and `acmg` is last in the registry, so that was after everything
+  else had downloaded. `~` is expanded, because no shell expands it inside an assignment.
 - **`--source lane=path` is the offline off-switch** for clinvar, constraint, clinpgx, drug_labels,
   pubmind and strchive, and the *only* route for acmg. `mane` and `civic` refuse it: each takes three
   input files, two of three is not a build for either, and a flag that can supply one would be a flag

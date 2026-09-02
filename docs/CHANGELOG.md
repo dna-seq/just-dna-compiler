@@ -79,6 +79,13 @@ four-tuple list inside `cli.py` rather than something a test could walk.
   `upload._hf_api` called `get_token()`, which reads the real environment and the hub's own token
   file and neither is a `.env`, so a publish refused outright. Both load at the point the credential
   is read now; an exported variable still wins.
+- **Absent and exported-empty are two states.** `load_env` uses `override=False`, so `export FOO=`
+  is strictly stronger than `unset FOO` — an empty variable is *present* and the `.env` cannot
+  replace it. Both credential refusals name which state they are in and give the matching remedy;
+  the empty one says `unset`.
+- **`cache rebuild --source lane=path` is validated up front** and expands `~`. A mistyped path used
+  to reach the lane's builder as a bare `[Errno 2]`, and `acmg` is the last lane in the registry, so
+  that arrived after every other lane had already downloaded.
 - **Consumer-visible:** `cache status` output gains three rows and names each lane's real build
   command (it composed `f"{name} build"`, which named two commands that do not exist), and
   `cache pull`'s exit code no longer reflects an unpublished repo. No parquet column, model field or

@@ -1584,8 +1584,15 @@ def _selected(only: list[str]) -> tuple[set[str], list[CacheLane]]:
     return wanted, [lane for lane in CACHE_LANES if not wanted or lane.name in wanted]
 
 
-def _pairs(values: list[str], flag: str) -> dict[str, str]:
-    """`lane=value` pairs for the per-lane flags, checked against the registry as they are read."""
+def _pairs(values: list[str], flag: str, *, must_exist: bool = False) -> dict[str, str]:
+    """`lane=value` pairs for the per-lane flags, checked against the registry as they are read.
+
+    `must_exist` is for `--source`, whose values are paths. Typer checks `exists=True` on a plain
+    `Path` option and cannot on one embedded in a `lane=value` string, so the check moves here — a
+    mistyped path otherwise reaches the lane's builder and surfaces as a bare `[Errno 2] No such file
+    or directory` **after** everything before it in the run has already downloaded, which is a long
+    way to travel for a typo (`@specific-rejection`).
+    """
     out: dict[str, str] = {}
     for item in values:
         name, sep, value = item.partition("=")
@@ -1593,6 +1600,11 @@ def _pairs(values: list[str], flag: str) -> dict[str, str]:
             raise typer.BadParameter(f"{flag} takes lane=value, got {item!r}")
         if name not in LANES_BY_NAME:
             raise typer.BadParameter(f"{flag} names no known cache: {name!r}. Known: {_lane_names()}")
+        if must_exist and not Path(value).expanduser().is_file():
+            raise typer.BadParameter(
+                f"{flag} {name}={value} is not a readable file. This is an input you supply, so "
+                f"nothing will fetch it — check the path before the run starts."
+            )
         out[name] = value
     return out
 
@@ -1742,7 +1754,7 @@ def cache_rebuild_(
     declared = _use(use)
     _, lanes = _selected(only)
     pins = _pairs(pin, "--pin")
-    sources = _pairs(source, "--source")
+    sources = _pairs(source, "--source", must_exist=True)
 
     outcomes: list[RebuildOutcome] = []
     for lane in lanes:
@@ -1750,7 +1762,7 @@ def cache_rebuild_(
             out_dir=out / lane.name,
             declared_use=declared,
             pin=pins.get(lane.name),
-            source=Path(sources[lane.name]) if lane.name in sources else None,
+            source=Path(sources[lane.name]).expanduser() if lane.name in sources else None,
         )
         outcome = rebuild_lane(lane, request)
         outcomes.append(outcome)

@@ -185,6 +185,34 @@ def load_env(override: bool = False) -> str | None:
     return None
 
 
+def missing_credential_reason(var: str) -> str:
+    """Why `$var` is unusable — **absent** and **exported empty** are two states, not one.
+
+    `load_env` uses ``override=False``, so a variable that is *present* is kept whatever the `.env`
+    says — and an empty string is present. That makes `export FOO=` strictly stronger than deleting
+    the variable, which is the opposite of what anyone expects and is the same edge the tier's own
+    tests exploit deliberately (a test neutralizes a credential with `""` precisely because `delenv`
+    would let the developer's `.env` refill it).
+
+    It bites for real: a shell that ran a snippet whose placeholder was edited out — `export
+    PHARMVAR_API_KEY=` — reports *no key* for the rest of the session on a machine whose `.env` holds
+    a working one, and nothing in the message says why. So the two readings are named separately and
+    the empty one carries its own remedy, because `unset` and "go and get a key" are different
+    actions (`@rsid-absent-two-readings` is the same rule about a different absence).
+    """
+    value = os.getenv(var)
+    if value is None:
+        return (
+            f"no ${var} is set. A `.env` beside the working directory is read automatically, so "
+            f"either add it there or export it"
+        )
+    return (
+        f"${var} is set but EMPTY, and an empty exported variable outranks a `.env`: the loader uses "
+        f"override=False, so it keeps a variable that is present. Run `unset {var}` — deleting it is "
+        f"what lets the file supply the real one"
+    )
+
+
 def default_ensembl_cache_dir(*, load_dotenv_file: bool = True) -> Path:
     """The `<base>/ensembl_variations` directory, matching just-dna-lite's convention."""
     return _cache_dir(ENSEMBL_SUBDIR, load_dotenv_file=load_dotenv_file)

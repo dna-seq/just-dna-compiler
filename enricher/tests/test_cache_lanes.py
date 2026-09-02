@@ -46,6 +46,13 @@ def _builder_modules() -> set[str]:
     return {p.name.removesuffix("_build.py") for p in _SRC.glob("*_build.py")}
 
 
+
+def _unwrapped(result) -> str:
+    """A Typer/Rich result's text with its box drawing and line wrapping collapsed to single spaces."""
+    raw = result.output + (result.stderr if result.stderr_bytes else "")
+    stripped = "".join(" " if ch in "\u2502\u2500\u256d\u256e\u256f\u2570\n" else ch for ch in raw)
+    return " ".join(stripped.split())
+
 def test_every_builder_module_has_a_lane_and_every_lane_but_one_has_a_builder() -> None:
     """The equality the old list could not state, in both directions.
 
@@ -316,3 +323,51 @@ def test_the_civic_adapter_takes_the_same_three_files_the_per_lane_command_does(
     source = inspect.getsource(caches._rebuild_civic)
     assert "CIVIC_VCF_FILE" not in source
     assert "status_basis" in source, "and the outcome prints the basis, so a divergence is visible"
+
+
+def test_a_source_path_that_does_not_exist_is_refused_before_anything_downloads(
+    tmp_path: Path,
+) -> None:
+    """A typo in an operator-supplied path must not cost a full run first.
+
+    `--source acmg=<workbook>` is a path, and typer's `exists=True` cannot reach a value embedded in
+    a `lane=value` string — so a mistyped one used to travel all the way to the lane's builder and
+    surface as a bare `[Errno 2] No such file or directory` **after** every lane before it had
+    downloaded. ACMG is last in the registry, so that is the whole run (`@specific-rejection`: a
+    generic rejection is a dead end where a specific one is a fix).
+    """
+    result = CliRunner().invoke(
+        app,
+        ["cache", "rebuild", "--out", str(tmp_path), "--only", "acmg",
+         "--source", f"acmg={tmp_path / 'nope.xlsx'}"],
+    )
+    assert result.exit_code != 0
+    # Rich wraps the refusal inside a box, so a phrase is split across lines by border characters at
+    # a width nobody chose. The text is normalized before it is matched — pinning a message against
+    # its own line-wrapping tests the terminal width, not the message (`@warning-text-is-api` is
+    # about the words).
+    printed = _unwrapped(result)
+    assert "not a readable file" in printed
+    assert "nothing will fetch it" in printed
+
+
+def test_a_source_path_may_be_written_with_a_tilde(tmp_path: Path) -> None:
+    """`--source acmg=~/x.xlsx` puts the tilde inside an assignment, where no shell expands it.
+
+    So the CLI expands it, at the check and again where the path is used — a validation that
+    expanded and a build that did not would refuse a good path or accept a bad one, depending which
+    way round the omission fell.
+    """
+    workbook = Path(__file__).resolve().parents[2] / "assets" / "acmg_sf_v3.3.xlsx"
+    staged = tmp_path / "home" / "acmg.xlsx"
+    staged.parent.mkdir()
+    staged.write_bytes(workbook.read_bytes())
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["cache", "rebuild", "--out", str(tmp_path / "out"), "--only", "acmg",
+         "--source", "acmg=~/acmg.xlsx"],
+        env={"HOME": str(staged.parent)},
+    )
+    assert "not a readable file" not in _unwrapped(result), result.output

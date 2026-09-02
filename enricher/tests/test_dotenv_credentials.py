@@ -161,3 +161,78 @@ def test_an_exported_variable_still_outranks_the_dotenv(workspace: Path) -> None
         cwd=workspace, env=env, capture_output=True, text=True, check=True,
     )
     assert done.stdout.strip() == "hf_exported_wins"
+
+
+# ── absent and exported-empty are two states, and the second is stronger than deleting ──────────
+
+
+_REASON = """
+import sys
+from just_dna_enricher.locations import missing_credential_reason
+print(missing_credential_reason(sys.argv[1] if len(sys.argv) > 1 else "PHARMVAR_API_KEY"))
+"""
+
+
+def test_an_exported_empty_variable_is_diagnosed_as_itself(workspace: Path) -> None:
+    """`export FOO=` is strictly stronger than `unset FOO`, which is the opposite of the intuition.
+
+    `load_env` uses `override=False`, so it keeps a variable that is **present** — and an empty
+    string is present. A shell that ran a snippet whose placeholder was edited out therefore reports
+    *no key* for the rest of the session on a machine whose `.env` holds a working one, and the old
+    message said only "no $PHARMVAR_API_KEY is set", which is the one reading that is false.
+    """
+    env = {k: v for k, v in os.environ.items() if k not in _STRIPPED}
+    env["HF_HOME"] = str(workspace / "empty-hf-home")
+    env["PHARMVAR_API_KEY"] = ""
+    done = subprocess.run(
+        [sys.executable, "-c", _REASON], cwd=workspace, env=env,
+        capture_output=True, text=True, check=True,
+    )
+    assert "EMPTY" in done.stdout
+    assert "unset PHARMVAR_API_KEY" in done.stdout, "the remedy differs from the absent case's"
+
+
+def test_an_absent_variable_is_diagnosed_as_absent(workspace: Path) -> None:
+    """The other arm, and its remedy is a different action — add it, rather than remove something."""
+    out = _run(_REASON, workspace)
+    assert "no $PHARMVAR_API_KEY is set" in out
+    assert "unset" not in out
+    assert ".env" in out
+
+
+def test_the_empty_variable_really_does_beat_the_dotenv(workspace: Path) -> None:
+    """The mechanism, demonstrated rather than asserted about — this is why the arms differ at all."""
+    probe = (
+        "from just_dna_enricher.locations import load_env\n"
+        "load_env()\n"
+        "import os; print(repr(os.environ.get('PHARMVAR_API_KEY')))"
+    )
+    env = {k: v for k, v in os.environ.items() if k not in _STRIPPED}
+    env["HF_HOME"] = str(workspace / "empty-hf-home")
+
+    absent = subprocess.run([sys.executable, "-c", probe], cwd=workspace, env=env,
+                            capture_output=True, text=True, check=True)
+    assert "a-key-from-the-dotenv" in absent.stdout, "deleting it lets the file supply one"
+
+    empty = subprocess.run([sys.executable, "-c", probe], cwd=workspace,
+                           env={**env, "PHARMVAR_API_KEY": ""},
+                           capture_output=True, text=True, check=True)
+    assert empty.stdout.strip() == "''", "and setting it empty stops the file supplying one"
+
+
+def test_the_hf_refusal_names_the_same_two_states(workspace: Path) -> None:
+    """One diagnosis, both credentials: the loader's semantics are what produce it, not the variable."""
+    probe = (
+        "import just_dna_enricher.upload as upload\n"
+        "try:\n"
+        "    upload._hf_api('just-dna-seq/strchive')\n"
+        "    print('resolved')\n"
+        "except PermissionError as exc:\n"
+        "    print(str(exc))"
+    )
+    env = {k: v for k, v in os.environ.items() if k not in _STRIPPED}
+    env["HF_HOME"] = str(workspace / "empty-hf-home")
+    env["HF_TOKEN"] = ""
+    done = subprocess.run([sys.executable, "-c", probe], cwd=workspace, env=env,
+                          capture_output=True, text=True, check=True)
+    assert "EMPTY" in done.stdout and "unset HF_TOKEN" in done.stdout, done.stdout

@@ -83,6 +83,7 @@ from just_dna_enricher.locations import (
     PUBMIND_SUBDIR,
     STRCHIVE_SUBDIR,
     load_env,
+    missing_credential_reason,
     resolve_acmg_reference,
     resolve_civic_reference,
     resolve_clinpgx_reference,
@@ -309,8 +310,8 @@ def _rebuild_pharmvar(request: RebuildRequest) -> RebuildOutcome:
     if not os.environ.get(pharmvar.API_KEY_ENV):
         return RebuildOutcome(
             "pharmvar", None,
-            f"no ${pharmvar.API_KEY_ENV} is set, and PharmVar's terms §2 make the key personal and "
-            f"non-transferable — there is nothing to fall back to",
+            f"{missing_credential_reason(pharmvar.API_KEY_ENV)}. PharmVar's terms §2 make the key "
+            f"personal and non-transferable, so there is nothing to fall back to",
         )
     try:
         result = pharmvar_build.build_snapshot(request.out_dir)

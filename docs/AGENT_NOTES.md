@@ -1867,6 +1867,21 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   in-process test leaks the repository's own `.env` into whatever runs next; and the child's
   environment strips the real variables **and redirects `HF_HOME`**, or the HuggingFace half passes on
   any laptop where someone has once run `hf auth login` — green on the machine, silent about the bug.
+
+  **And the follow-up's own follow-up: `export FOO=` is stronger than `unset FOO`.** The repair above
+  was shipped, verified against a real key, and then reported by the maintainer as still failing — the
+  lane said *no `$PHARMVAR_API_KEY` is set* on a machine whose `.env` held one, with `load_env()` right
+  there in front of the check. The cause is `override=False`, which keeps a variable that is
+  **present**, and an empty string is present. The shell had run a setup snippet whose `…` placeholder
+  was edited out, leaving `PHARMVAR_API_KEY=` exported for the session. So *deleting* a variable is
+  what lets the file supply it and *emptying* it is what stops the file supplying it, which is the
+  opposite of the intuition and is the same edge this tier's tests exploit on purpose from the other
+  side (`@test-no-credential` neutralizes with `""` precisely because `delenv` would let a developer's
+  `.env` refill it). Two absences, two remedies, so `missing_credential_reason` names them apart:
+  absent says *add it to a `.env` or export it*, empty says *`unset` it*. **Reported by an operator
+  rather than by the suite**, because the fixture writes a `.env` and controls the child's
+  environment — it never produced the one state that breaks it. A snippet handed to a human is an
+  interface too: an ellipsis placeholder in an `export` line is a defect waiting for a paste.
 - `@absent-is-not-different` — **A new optional column that splits a dedup key suppresses only when
   BOTH rows state it and the two values differ — and it is the CHECK that learns the column, never the
   key** (RM140, S75). `studies.csv` is keyed `(variant_key, pmid)`, and `duplicate_study_citation`

@@ -35,6 +35,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_LICENSE_FILENAME,
     SNAPSHOT_SIDECAR_DIRNAMES,
     load_env,
+    missing_credential_reason,
 )
 
 # Named once because two things now have to agree about it: the allowlist that uploads the file, and
@@ -140,8 +141,8 @@ def _hf_api(repo_id: str, token: str | None = None):
     resolved_token = token or get_token()
     if not resolved_token:
         raise PermissionError(
-            "No HuggingFace token found. Authenticate first (e.g. `hf auth login`, or set HF_TOKEN) "
-            f"with write access to {repo_id}."
+            f"No HuggingFace token found: {missing_credential_reason('HF_TOKEN')}. Or authenticate "
+            f"with `hf auth login`. Whichever route, it needs write access to {repo_id}."
         )
     return HfApi(token=resolved_token)
 
