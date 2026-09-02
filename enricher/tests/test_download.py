@@ -341,3 +341,57 @@ def test_a_present_catalogue_is_trusted_without_touching_the_network(
     cache.mkdir()
     (cache / "STRchive-loci.json").write_text('[{"id": "AB"}]', encoding="utf-8")
     assert dl.ensure_strchive_snapshot(cache) == cache
+
+
+def test_a_repo_nobody_has_created_is_absent_rather_than_failed(monkeypatch, tmp_path: Path) -> None:
+    """Both provisioners, both shapes — and the type is the point, not the message.
+
+    Three lanes gained an `ensure_*` before anyone created their HuggingFace repos, and the bare
+    `fs.ls` failure reached `cache pull`'s blanket `except Exception` as a failure. So the default
+    provisioning command exited 1 on a fresh machine because a snapshot had never been published,
+    which is the state of the world rather than an error (`@unreachable-not-absent`). A caller has to
+    be able to tell it from a download that broke, and a message cannot carry that
+    (`@client-exception-contract`).
+    """
+    import huggingface_hub
+
+    class _EmptyHub:
+        def ls(self, prefix: str, detail: bool = True):
+            raise FileNotFoundError(prefix)
+
+        def get(self, remote: str, local: str) -> None:
+            raise FileNotFoundError(remote)
+
+    monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda token=None: _EmptyHub())
+    monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)
+
+    with pytest.raises(dl.SnapshotNotPublished):
+        dl.ensure_civic_snapshot(tmp_path / "civic")
+    with pytest.raises(dl.SnapshotNotPublished):
+        dl.ensure_strchive_snapshot(tmp_path / "strchive")
+
+
+def test_cache_pull_reports_an_unpublished_lane_without_exiting_one(monkeypatch, tmp_path: Path) -> None:
+    """The behaviour the type buys, at the command an operator actually runs first."""
+    import huggingface_hub
+    from just_dna_enricher.cli import app
+    from typer.testing import CliRunner
+
+    class _EmptyHub:
+        def ls(self, prefix: str, detail: bool = True):
+            raise FileNotFoundError(prefix)
+
+        def get(self, remote: str, local: str) -> None:
+            raise FileNotFoundError(remote)
+
+    monkeypatch.setattr(huggingface_hub, "HfFileSystem", lambda token=None: _EmptyHub())
+    monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)
+    monkeypatch.setenv("JUST_DNA_PIPELINES_CACHE_DIR", str(tmp_path))
+
+    result = CliRunner().invoke(app, ["cache", "pull", "--only", "civic", "--only", "strchive"])
+    # `result.output` already carries this runner's stderr, so it is read alone here — concatenating
+    # `result.stderr` onto it counts every line twice, which is invisible to an `in` assertion and
+    # fatal to a counted one.
+    assert result.exit_code == 0, result.output
+    assert result.output.count("not published yet") == 2
+    assert "FAILED" not in result.output

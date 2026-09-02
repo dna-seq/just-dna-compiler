@@ -66,10 +66,15 @@ four-tuple list inside `cli.py` rather than something a test could walk.
   list were two statements of one thing, which is how `citations/` and `LICENSE.txt` each went a
   release printed-in-the-dry-run and dropped-on-upload. `plan_reference_snapshot` also takes a
   `payload` filename now, because two snapshots hold no parquet at all.
+- **A repo nobody has created yet is absent, not failed.** Five of the snapshot repos have never
+  been published, and both provisioners were letting the transport's own error reach `cache pull`'s
+  blanket handler — so the command that provisions a deployment exited 1 on a fresh machine because
+  a snapshot had never been uploaded. `SnapshotNotPublished` is its own type now, printed in yellow
+  and not counted; a download that *breaks* still fails and still exits 1.
 - **Consumer-visible:** `cache status` output gains three rows and names each lane's real build
-  command (it composed `f"{name} build"`, which named two commands that do not exist). No parquet
-  column, model field or vocabulary member changed, and builder-only dependencies were already
-  `[dev]`-only.
+  command (it composed `f"{name} build"`, which named two commands that do not exist), and
+  `cache pull`'s exit code no longer reflects an unpublished repo. No parquet column, model field or
+  vocabulary member changed, and builder-only dependencies were already `[dev]`-only.
 
 ## 2026-09-02 — two records that contradicted themselves, and a header a draft could not write into
 

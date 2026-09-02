@@ -137,6 +137,21 @@ names two commands that do not exist — there is no `drug_labels build` and no 
 (`polars`, `openpyxl`) is in the `[dev]` extra behind a guarded import, and no runtime check reads
 either. Nothing moved.
 
+**Four defects its own probe found, after the round looked finished**, and three of them are the
+item's own shapes turned back on it. *One:* the default `cache pull` exited 1 on a fresh machine,
+because three lanes gained an `ensure_*` before anyone created their repos and the transport's error
+reached the blanket handler as a failure — nobody-published is the same third state as nobody-asked,
+so `SnapshotNotPublished` is its own type and is printed rather than counted. *Two:*
+`Path("./x.xlsx").as_uri()` raises, so `--source acmg=./workbook.xlsx` — the *documented*
+invocation — produced a traceback instead of an outcome. *Three:* the PharmVar adapter reported every
+exception as *not run*, folding a lane that broke into a lane that opted out; the split is decided
+before the request now, from whether a key is configured at all, because the service's 401 is
+identical for an absent, a malformed and an unrecognised key and a flat `PharmVarError` cannot carry
+the difference (`@answered-is-not-absent`). *Four:* the CIViC adapter fetched the release VCF
+unconditionally, which RM169 made opt-in because it *widens the status basis* — so one release would
+have built two different snapshots depending on which caller asked, the exact fork this endpoint
+exists to prevent.
+
 **Left undone on purpose.** The three new repos — `just-dna-seq/civic`, `just-dna-seq/strchive`,
 `just-dna-seq/clinpgx_drug_labels` — do not exist on HuggingFace; the first publish creates each, and
 until then both `ensure_*` and `cache pull` say so rather than failing obscurely. No lane's snapshot

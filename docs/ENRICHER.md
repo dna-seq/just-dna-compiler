@@ -1066,9 +1066,14 @@ Four things worth knowing before you run it on a server:
   under a data-usage policy the terms are accepted when the data is **taken** — so downloading is the
   act being gated. `unstated` skips them with a reason, `commercial` refuses, `non-commercial`
   proceeds. Same three states as everywhere else; the tool will not assert a purpose for you.
-- **`just-dna-seq/cpic` and `just-dna-seq/clinpgx` have to exist first.** They are new with 0.5.1, so
-  until somebody publishes them `cache pull` reports `repository not found` for those two — which is
-  honest rather than a bug. Build and publish them once (below), or point at a locally built directory.
+- **Five of the repos have to exist first, and a missing one is not an error.** `just-dna-seq/cpic`
+  and `just-dna-seq/clinpgx` are new with 0.5.1; `civic`, `strchive` and `clinpgx_drug_labels` with
+  RM176 — none of the five has been published yet. Each provisioner raises `SnapshotNotPublished`
+  when the repo or its `data/` does not exist, and `cache pull` prints that in yellow **without
+  counting it as a failure**: nobody-published is the same third state as nobody-asked, and the
+  command that provisions a deployment must not exit 1 on a fresh machine because a snapshot has
+  never been uploaded. A download that *breaks* is still a failure and still exits 1. Build and
+  publish them once (below), or point at a locally built directory.
 - **A published dataset accumulates.** Each `ensure_*` fetches only the files its own snapshot is made
   of, because the ClinVar repo still carries a 159 MB `clinvar.parquet` from the single-file era whose
   columns are raw VCF INFO fields. The readers glob `data/*.parquet`, so one foreign file puts two
@@ -1156,6 +1161,20 @@ Three things about it are worth reading before a deployment runs it nightly.
   pubmind and strchive, and the *only* route for acmg. `mane` and `civic` refuse it: each takes three
   input files, two of three is not a build for either, and a flag that can supply one would be a flag
   that cannot do its job.
+
+**The CIViC adapter fetches the three TSVs and no VCF, which is `civic build`'s own default.** RM169
+made `--submitted` opt-in precisely because the release VCF *widens the status basis* — it admits
+submitted-but-not-accepted evidence — so a rebuild that fetched it unconditionally would build a
+different snapshot from the same release than the per-lane command does. Two callers, one release, two
+artifacts is the fork this endpoint exists to prevent; widening the basis is a curation decision, and
+`civic build --release <date> --submitted` is where it is taken. The rebuild's outcome line prints
+`status_basis` so the two are distinguishable at a glance.
+
+**PharmVar's *not run* is decided before the request, not from the failure.** The service returns an
+identical 401 for an absent, a malformed and an unrecognised key, and `PharmVarError` is flat, so an
+adapter reading the message would be parsing prose. `$PHARMVAR_API_KEY` unset is the designed third
+state — the key is personal and non-transferable, so a machine without one is a machine PharmVar never
+meant to serve — while a key that is configured and then fails is **asked-and-failed** and counts.
 
 Then point at them, or move them under the base directory so the default resolvers find them:
 

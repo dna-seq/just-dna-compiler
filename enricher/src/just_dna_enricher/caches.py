@@ -32,6 +32,7 @@ lie. It is printed, never silently skipped.
 """
 
 import logging
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -39,13 +40,13 @@ from pathlib import Path
 from just_dna_enricher import (
     acmg_build,
     civic_build,
-    civic_vcf,
     clinpgx_build,
     clinvar_build,
     constraint_build,
     cpic_build,
     drug_labels_build,
     mane_build,
+    pharmvar,
     pharmvar_build,
     pubmind_build,
     strchive_build,
@@ -290,13 +291,23 @@ def _rebuild_pharmvar(request: RebuildRequest) -> RebuildOutcome:
     refused = _gate(PHARMVAR_TERMS, request.declared_use, "pharmvar")
     if refused is not None:
         return refused
+    # **The no-key case is decided before the request, not from the failure.** PharmVar has one flat
+    # `PharmVarError` and its 401 is identical for an absent, a malformed and an unrecognised key, so
+    # the exception cannot tell them apart and a caller reading the message would be parsing prose.
+    # The distinction still matters: no key at all is the designed third state — the key is personal
+    # and non-transferable, so a machine without one is a machine PharmVar never meant to serve —
+    # while a configured key that then fails is asked-and-failed, and folding that into *not run*
+    # would have a nightly rebuild stay quiet about a lane that broke (`@answered-is-not-absent`).
+    if not os.environ.get(pharmvar.API_KEY_ENV):
+        return RebuildOutcome(
+            "pharmvar", None,
+            f"no ${pharmvar.API_KEY_ENV} is set, and PharmVar's terms §2 make the key personal and "
+            f"non-transferable — there is nothing to fall back to",
+        )
     try:
         result = pharmvar_build.build_snapshot(request.out_dir)
-    except (ImportError, OSError, RuntimeError) as exc:
-        # A missing key is the expected way to land here, and it is not a failure of this run: the
-        # key is personal and non-transferable, so a machine without one is a machine PharmVar never
-        # meant to serve. Reported as could-not-run, with the reason the exception carries.
-        return RebuildOutcome("pharmvar", None, f"not rebuilt: {exc}")
+    except (ImportError, OSError, pharmvar.PharmVarError) as exc:
+        return RebuildOutcome("pharmvar", False, str(exc))
     return RebuildOutcome(
         "pharmvar", True,
         f"{result.allele_count} alleles over {result.gene_count} genes on {result.genome_build}",
@@ -318,11 +329,16 @@ def _rebuild_civic(request: RebuildRequest) -> RebuildOutcome:
             "a local build goes through `civic build` — two of the three is not a build",
         )
     request.out_dir.mkdir(parents=True, exist_ok=True)
+    # **The three TSVs and no VCF, which is `civic build`'s own default.** RM169 made `--submitted`
+    # opt-in because the release VCF *widens the status basis* — it admits submitted-but-not-accepted
+    # evidence — so a rebuild that fetched it unconditionally would produce a different snapshot from
+    # the same release than the per-lane command does. Two callers, one release, two artifacts is
+    # exactly the fork this endpoint exists to prevent, and the wider basis is a curation decision
+    # rather than a build option.
     names = (
         civic_build.CIVIC_EVIDENCE_FILE,
         civic_build.CIVIC_VARIANT_FILE,
         civic_build.CIVIC_PROFILE_FILE,
-        civic_vcf.CIVIC_VCF_FILE,
     )
     try:
         got = {
@@ -337,14 +353,13 @@ def _rebuild_civic(request: RebuildRequest) -> RebuildOutcome:
             evidence_sha256=got[names[0]].sha256,
             variant_sha256=got[names[1]].sha256,
             profile_sha256=got[names[2]].sha256,
-            vcf=got[names[3]].path,
-            vcf_sha256=got[names[3]].sha256,
         )
     except (civic_build.CivicBuildError, ImportError, OSError) as exc:
         return RebuildOutcome("civic", False, str(exc))
     return RebuildOutcome(
         "civic", True,
-        f"{result.record_count} rows over {result.variants} variants, dataset {result.dataset}",
+        f"{result.record_count} rows over {result.variants} variants, dataset {result.dataset}, "
+        f"status basis {result.status_basis}",
         result.parquet_file.parent.parent,
     )
 
@@ -465,8 +480,12 @@ def _rebuild_acmg(request: RebuildRequest) -> RebuildOutcome:
             "material, so the operator supplies their own copy and nothing is fetched here",
         )
     try:
+        # `.resolve()` first: `Path("./x.xlsx").as_uri()` raises on a relative path, and a
+        # relative path is what an operator types — `--source acmg=./acmg_sf_v3.3.xlsx` is the
+        # documented invocation, so the documented one was the one that produced a traceback.
+        workbook = request.source.resolve()
         sf_list = acmg_build.build_acmg_snapshot(
-            request.source, request.out_dir, source_url=request.source.as_uri()
+            workbook, request.out_dir, source_url=workbook.as_uri()
         )
     except (acmg_build.AcmgSfError, ImportError, OSError) as exc:
         return RebuildOutcome("acmg", False, str(exc))

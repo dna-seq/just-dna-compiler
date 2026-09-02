@@ -69,6 +69,7 @@ from just_dna_enricher.cpic import DEFAULT_CPIC_ENDPOINT, CpicError
 from just_dna_enricher.cpic_build import CpicBuildError
 from just_dna_enricher.cpic_build import build_snapshot as build_cpic_snapshot
 from just_dna_enricher.currency import unchecked_sentences
+from just_dna_enricher.download import SnapshotNotPublished
 from just_dna_enricher.drug_labels import (
     DEFAULT_DRUG_LABELS_URL,
     DrugLabelError,
@@ -1670,6 +1671,13 @@ def cache_pull_(
                 continue
         try:
             path = lane.ensure()
+        except SnapshotNotPublished as exc:
+            # Asked, and absent. Not a failure and not counted as one: three lanes gained an
+            # `ensure_*` before anyone created their repos, and a provisioning command that exits 1
+            # on a fresh machine because a snapshot has never been published is reporting the state
+            # of the world, not an error (`@unreachable-not-absent`).
+            typer.secho(f"  {lane.name}: not published yet — {exc}", fg=typer.colors.YELLOW, err=True)
+            continue
         except Exception as exc:  # noqa: BLE001 - one snapshot failing must not sink the rest
             typer.secho(f"  {lane.name}: FAILED — {exc}", fg=typer.colors.RED, err=True)
             failures += 1

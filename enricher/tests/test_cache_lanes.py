@@ -17,7 +17,7 @@ import inspect
 from pathlib import Path
 
 import pytest
-from just_dna_enricher import caches, locations
+from just_dna_enricher import caches, locations, pharmvar
 from just_dna_enricher.caches import (
     CACHE_LANES,
     LANES_BY_NAME,
@@ -160,15 +160,6 @@ def test_a_lane_that_cannot_run_unattended_is_not_a_failure(tmp_path: Path) -> N
         assert expected in printed, printed
 
 
-def test_the_out_base_gives_each_lane_its_own_directory(tmp_path: Path) -> None:
-    """A rebuild never writes into the resolved cache, because a half-built snapshot is still a
-    readable one — a short parquet has a footer and an `enrich` mid-flight would believe it."""
-    for lane in CACHE_LANES:
-        request = RebuildRequest(out_dir=tmp_path / lane.name)
-        assert request.out_dir.parent == tmp_path
-        assert request.out_dir.name == lane.name
-
-
 def test_an_unknown_cache_name_is_refused_by_every_flag_that_takes_one(tmp_path: Path) -> None:
     """`--only`, `--pin` and `--source` all name a lane, so all three check the same registry.
 
@@ -257,3 +248,71 @@ def test_the_three_file_lanes_refuse_a_single_source_rather_than_half_using_it(
     )
     assert outcome.built is None
     assert "three" in outcome.detail
+
+
+def test_a_relative_source_path_builds_rather_than_raising(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`Path("./x.xlsx").as_uri()` raises, and a relative path is what an operator types.
+
+    The documented invocation is `--source acmg=./acmg_sf_v3.3.xlsx`, so the documented one was the
+    one that produced a traceback instead of an outcome. Run from a directory holding the workbook,
+    which is the shape of the failure rather than a reconstruction of it.
+    """
+    pytest.importorskip("openpyxl")
+    workbook = Path(__file__).resolve().parents[2] / "assets" / "acmg_sf_v3.3.xlsx"
+    staged = tmp_path / workbook.name
+    staged.write_bytes(workbook.read_bytes())
+    monkeypatch.chdir(tmp_path)
+
+    outcome = rebuild_lane(
+        LANES_BY_NAME["acmg"],
+        RebuildRequest(out_dir=Path("out") / "acmg", source=Path("./" + workbook.name)),
+    )
+    assert outcome.built is True, outcome.detail
+    assert (tmp_path / "out" / "acmg" / locations.ACMG_SNAPSHOT_FILENAME).is_file()
+
+
+def test_pharmvar_separates_no_key_from_a_key_that_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No key is the designed third state; a configured key that then fails is asked-and-failed.
+
+    PharmVar has one flat error class and its 401 is identical for an absent, a malformed and an
+    unrecognised key, so the split cannot come from the exception — it is decided before the request.
+    Folding the second case into *not run* would leave a nightly rebuild quiet about a broken lane
+    (`@answered-is-not-absent`). The empty string rather than `delenv`, because a `.env` refills a
+    deleted variable and a real one still wins (`@test-no-credential`).
+    """
+    monkeypatch.setenv(pharmvar.API_KEY_ENV, "")
+    no_key = rebuild_lane(
+        LANES_BY_NAME["pharmvar"],
+        RebuildRequest(out_dir=tmp_path / "p", declared_use="non-commercial"),
+    )
+    assert no_key.built is None
+    assert pharmvar.API_KEY_ENV in no_key.detail
+
+    monkeypatch.setenv(pharmvar.API_KEY_ENV, "a-key-that-will-not-work")
+    monkeypatch.setattr(
+        caches.pharmvar_build, "build_snapshot",
+        lambda *a, **k: (_ for _ in ()).throw(pharmvar.PharmVarError("PharmVar rejected the key")),
+    )
+    with_key = rebuild_lane(
+        LANES_BY_NAME["pharmvar"],
+        RebuildRequest(out_dir=tmp_path / "q", declared_use="non-commercial"),
+    )
+    assert with_key.built is False, "a key that fails is a failure, not a lane opting out"
+
+
+def test_the_civic_adapter_takes_the_same_three_files_the_per_lane_command_does() -> None:
+    """One release must not build two different snapshots depending on which caller asked.
+
+    RM169 made `--submitted` opt-in because the release VCF *widens the status basis*: it admits
+    submitted-but-not-accepted evidence. An adapter fetching it unconditionally would make
+    `cache rebuild --pin civic=X` and `civic build --release X` two artifacts from one release, which
+    is the fork this endpoint exists to prevent. Asserted on the source rather than by running a
+    build, because the alternative is four network fetches.
+    """
+    source = inspect.getsource(caches._rebuild_civic)
+    assert "CIVIC_VCF_FILE" not in source
+    assert "status_basis" in source, "and the outcome prints the basis, so a divergence is visible"

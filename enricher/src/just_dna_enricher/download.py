@@ -108,6 +108,24 @@ class OpenSnapshotError(FileNotFoundError):
     """
 
 
+class SnapshotNotPublished(FileNotFoundError):
+    """The repo or prefix a lane publishes to does not exist yet — asked, and absent.
+
+    A distinct type because it is a distinct *answer*, and the two were folded into one until the
+    default `cache pull` started exiting 1 on a fresh machine. Three new lanes gained an `ensure_*`
+    in RM176 whose repos nobody has created, and the bare `fs.ls` failure reached `cache pull`'s
+    blanket `except Exception` as a failure — so the command that provisions a deployment reported
+    an error for a snapshot that simply has not been published. Nobody-published is the same third
+    state as nobody-asked (`@unreachable-not-absent`), and a caller has to be able to tell it from a
+    download that broke, which means a class rather than a message (`@client-exception-contract`:
+    the transport's own exception type is not this module's contract).
+
+    It subclasses `FileNotFoundError` and not `GatedSnapshotError`/`OpenSnapshotError`, deliberately:
+    a caller that catches either of those to mean "this lane is unusable" still catches this, and one
+    that wants to distinguish asks for this type by name.
+    """
+
+
 def _parquet_footer_ok(path: Path) -> bool:
     """A complete parquet begins and ends with the `PAR1` magic. A truncated/interrupted download —
     the common cache-corruption mode — is missing its footer, which is what makes DuckDB blow up with
@@ -174,7 +192,14 @@ def _provision_snapshot(
 
     data_dir.mkdir(parents=True, exist_ok=True)
     fs = HfFileSystem(token=get_token())
-    remote_parquet = [f for f in fs.ls(hf_repo_prefix, detail=False) if f.endswith(".parquet")]
+    try:
+        listing = fs.ls(hf_repo_prefix, detail=False)
+    except Exception as exc:  # noqa: BLE001 - the transport's type is not this module's contract
+        raise SnapshotNotPublished(
+            f"nothing is published at {hf_repo_prefix} — the repo or its data/ does not exist. "
+            f"Build the snapshot locally (`cache rebuild --only …`), or publish one."
+        ) from exc
+    remote_parquet = [f for f in listing if f.endswith(".parquet")]
     remote_files = [f for f in remote_parquet if fnmatch(f.rsplit("/", 1)[-1], filename_glob)]
     ignored = sorted(f.rsplit("/", 1)[-1] for f in remote_parquet if f not in remote_files)
     if ignored:
@@ -389,10 +414,11 @@ def _provision_root_file_snapshot(
 ) -> Path:
     """Fetch a snapshot whose payload is one named file at the repo root, plus `release.json`.
 
-    A present, parseable payload is trusted without touching the network, exactly as a populated
-    parquet cache is. `release.json` is fetched even when the payload was already there: it is what
-    lets a reader name the release it compared against, and a cache carrying the catalogue without it
-    is the honest-but-useless state where the check runs and cannot say against what.
+    A present, parseable payload is trusted without touching the network — the whole cache, provenance
+    included, exactly as a populated parquet cache is trusted whole. A snapshot that arrived without a
+    `release.json` therefore stays without one until it is re-provisioned from scratch, which is the
+    parquet lanes' behaviour too and is why it is not repaired here: a catalogue with no release label
+    is honestly unlabelled, and the check says so rather than claiming a release it cannot name.
     """
     target = cache_dir / payload
     if _json_parses(target):
@@ -414,7 +440,7 @@ def _provision_root_file_snapshot(
         fs.get(f"{hf_repo}/{payload}", str(tmp_path))
     except Exception as exc:  # noqa: BLE001 - the transport's type is not this caller's contract
         tmp_path.unlink(missing_ok=True)
-        raise error_cls(
+        raise SnapshotNotPublished(
             f"no {payload} in {hf_repo} — nothing has been published there yet. Build your own with "
             f"`just-dna-enricher {label.lower()} build --out <dir>`."
         ) from exc
