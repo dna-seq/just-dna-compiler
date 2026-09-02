@@ -18,6 +18,7 @@ from pathlib import Path
 
 import pytest
 from just_dna_enricher import caches, locations, pharmvar
+from just_dna_enricher.acmg import load_acmg_snapshot
 from just_dna_enricher.caches import (
     CACHE_LANES,
     LANES_BY_NAME,
@@ -148,13 +149,21 @@ def test_every_build_command_the_registry_names_is_one_the_cli_answers_to() -> N
 # ── the rebuild endpoint ────────────────────────────────────────────────────────────────────────
 
 
-def test_a_lane_that_cannot_run_unattended_is_not_a_failure(tmp_path: Path) -> None:
-    """Three lanes land in the third state for three different reasons, and none of them is an error.
+def test_a_lane_that_cannot_run_unattended_is_not_a_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Four lanes land in the third state for four different reasons, and none of them is an error.
 
     Run through the real CLI rather than the adapters, because the thing under test is the exit code:
     a nightly rebuild that exited 1 because PharmVar needs a personal key would be reporting the
     licence working as designed.
+
+    `_checkout_assets` is emptied because this suite runs *inside* the checkout, which now supplies
+    the ACMG workbook by default — so without this the lane builds and the case under test is one
+    short. That is the state a plain `pip install` is in, and the one this lane's message is written
+    for.
     """
+    monkeypatch.setattr(caches, "_checkout_assets", list)
     result = CliRunner().invoke(
         app,
         ["cache", "rebuild", "--out", str(tmp_path), "--only", "acmg", "--only", "civic",
@@ -371,3 +380,77 @@ def test_a_source_path_may_be_written_with_a_tilde(tmp_path: Path) -> None:
         env={"HOME": str(staged.parent)},
     )
     assert "not a readable file" not in _unwrapped(result), result.output
+
+
+# ── the ACMG workbook the checkout already carries ──────────────────────────────────────────────
+
+
+def test_the_checkouts_own_workbook_is_used_when_nobody_names_one(tmp_path: Path) -> None:
+    """The lane's input ships in `assets/`, so a checkout should not have to be told where it is.
+
+    Asserted on the built snapshot rather than on the message: the point is that a real workbook was
+    read, and the version comes off the file rather than out of this test.
+    """
+    outcome = rebuild_lane(LANES_BY_NAME["acmg"], RebuildRequest(out_dir=tmp_path / "acmg"))
+    assert outcome.built is True, outcome.detail
+    listed = load_acmg_snapshot(tmp_path / "acmg")
+    assert listed.version and listed.genes
+    assert listed.version in outcome.detail
+
+
+def test_a_named_workbook_still_outranks_the_checkouts(tmp_path: Path) -> None:
+    """`--source` is explicit and explicit always wins — the default fills the *unset* case only."""
+    workbook = Path(__file__).resolve().parents[2] / "assets" / "acmg_sf_v3.3.xlsx"
+    copied = tmp_path / "mine.xlsx"
+    copied.write_bytes(workbook.read_bytes())
+    outcome = rebuild_lane(
+        LANES_BY_NAME["acmg"], RebuildRequest(out_dir=tmp_path / "acmg", source=copied),
+    )
+    assert outcome.built is True, outcome.detail
+    assert "mine.xlsx" in outcome.detail
+
+
+def test_two_workbooks_are_reported_rather_than_ordered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A directory with v3.3 and v3.4 has two answers and nothing orders them.
+
+    "The highest version" is an ordering somebody would have to define, and filename sort is not it —
+    a v3.10 would sort below v3.4. So several is reported like none, naming them, and the operator
+    says which (`@multiplicity-is-a-finding`).
+    """
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    real = Path(__file__).resolve().parents[2] / "assets" / "acmg_sf_v3.3.xlsx"
+    for name in ("acmg_sf_v3.3.xlsx", "acmg_sf_v3.4.xlsx"):
+        (assets / name).write_bytes(real.read_bytes())
+    monkeypatch.setattr(caches, "_checkout_assets", lambda: [assets])
+
+    outcome = rebuild_lane(LANES_BY_NAME["acmg"], RebuildRequest(out_dir=tmp_path / "acmg"))
+    assert outcome.built is None, "picking one would be an ordering nobody defined"
+    assert "acmg_sf_v3.3.xlsx" in outcome.detail and "acmg_sf_v3.4.xlsx" in outcome.detail
+
+
+def test_no_checkout_falls_back_to_the_operator_supplied_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`assets/` is deliberately not in the wheel, so a plain install must still say what it needs.
+
+    The workbook is ACMG/Elsevier supplementary material and shipping it in a published package is
+    the redistribution question this lane's registry entry records as unestablished — so the default
+    is a convenience for a checkout and never a promise the package makes.
+    """
+    monkeypatch.setattr(caches, "_checkout_assets", list)
+    outcome = rebuild_lane(LANES_BY_NAME["acmg"], RebuildRequest(out_dir=tmp_path / "acmg"))
+    assert outcome.built is None
+    assert "--source acmg=" in outcome.detail
+
+
+def test_the_glob_is_not_pinned_to_one_version() -> None:
+    """v3.2 → v3.3 happened in June 2025 and v3.4 will happen too.
+
+    A constant naming today's file stops finding the asset the day the next one lands, silently, and
+    the silence falls in the direction that scrapes NCBI's stale page.
+    """
+    assert "v*" in caches.ACMG_WORKBOOK_GLOB
+    assert caches.ACMG_WORKBOOK_GLOB.endswith(".xlsx")

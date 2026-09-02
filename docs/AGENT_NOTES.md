@@ -1868,20 +1868,26 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   environment strips the real variables **and redirects `HF_HOME`**, or the HuggingFace half passes on
   any laptop where someone has once run `hf auth login` — green on the machine, silent about the bug.
 
-  **And the follow-up's own follow-up: `export FOO=` is stronger than `unset FOO`.** The repair above
-  was shipped, verified against a real key, and then reported by the maintainer as still failing — the
-  lane said *no `$PHARMVAR_API_KEY` is set* on a machine whose `.env` held one, with `load_env()` right
-  there in front of the check. The cause is `override=False`, which keeps a variable that is
-  **present**, and an empty string is present. The shell had run a setup snippet whose `…` placeholder
-  was edited out, leaving `PHARMVAR_API_KEY=` exported for the session. So *deleting* a variable is
-  what lets the file supply it and *emptying* it is what stops the file supplying it, which is the
-  opposite of the intuition and is the same edge this tier's tests exploit on purpose from the other
-  side (`@test-no-credential` neutralizes with `""` precisely because `delenv` would let a developer's
-  `.env` refill it). Two absences, two remedies, so `missing_credential_reason` names them apart:
-  absent says *add it to a `.env` or export it*, empty says *`unset` it*. **Reported by an operator
-  rather than by the suite**, because the fixture writes a `.env` and controls the child's
-  environment — it never produced the one state that breaks it. A snippet handed to a human is an
-  interface too: an ellipsis placeholder in an `export` line is a defect waiting for a paste.
+  **And a second, real trap found while misdiagnosing the first: `export FOO=` is stronger than
+  `unset FOO`.** `override=False` keeps a variable that is **present**, and an empty string is
+  present — so *deleting* a variable is what lets the file supply it and *emptying* it is what stops
+  the file supplying it, which is the opposite of the intuition and the same edge this tier's tests
+  exploit on purpose from the other side (`@test-no-credential` neutralizes with `""` precisely
+  because `delenv` would let a developer's `.env` refill it). Two absences, two remedies, so
+  `missing_credential_reason` names them apart: absent says *add it to a `.env` or export it*, empty
+  says *`unset` it*.
+
+  **Read the second paragraph for the method, not the mechanism.** The trap above is real and was
+  demonstrated with a runnable probe — but it was **not** what the maintainer had hit, and this entry
+  said for one commit that it was. The evidence was on disk the whole time: the run's own
+  `release.json` carried `built_at`, and it is **nine minutes earlier than the commit that fixed the
+  actual bug**. The run had simply used pre-fix code. A hypothesis was formed, a mechanism was
+  reproduced in a sandbox, the reproduction was mistaken for a diagnosis, and the user was told to
+  `unset` two variables that were fine. **A reproduced mechanism is not a diagnosis** — it says the
+  symptom *can* be produced that way, never that it *was* (`@argue-from-incidents-not-mechanisms`, the
+  same rule one register up). Every snapshot this tier writes carries `built_at`; check it against the
+  fix before explaining a report, because "which code did this run" is a question with an answer and
+  not one to reason about.
 - `@absent-is-not-different` — **A new optional column that splits a dedup key suppresses only when
   BOTH rows state it and the two values differ — and it is the CHECK that learns the column, never the
   key** (RM140, S75). `studies.csv` is keyed `(variant_key, pmid)`, and `duplicate_study_citation`

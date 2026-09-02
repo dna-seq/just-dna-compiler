@@ -1177,6 +1177,17 @@ Three things about it are worth reading before a deployment runs it nightly.
   whose placeholder was edited out reports *no key* for the rest of the session while the `.env` holds
   a working one. Absent and exported-empty are named separately, with different remedies: add it, or
   `unset` it. The same trap the tier's own tests exploit deliberately, from the other side.
+- **The ACMG lane uses the checkout's own workbook when nobody names one.** `assets/acmg_sf_v*.xlsx`
+  travels with this repository, so a rebuild run from a checkout needs no `--source` — it is found by
+  walking up from the working directory and, for an editable install run elsewhere, relative to the
+  package. A **pinned filename is deliberately not used**: the list is versioned, v3.2 became v3.3 in
+  June 2025, and a constant naming one version stops finding the asset the day the next lands —
+  silently, in the direction that falls back to scraping NCBI's stale page. Two matching workbooks are
+  reported rather than ordered, because "the highest version" is an ordering nobody defined and
+  filename sort is not it. **`assets/` is not in the wheel**, so a `pip install` still supplies its own
+  copy and gets the operator-supplied message: the workbook is ACMG/Elsevier supplementary material,
+  and shipping it in a published package is exactly the redistribution question this lane's registry
+  entry records as unestablished.
 - **A `--source` path is checked before the run starts.** Typer's `exists=True` cannot reach a value
   embedded in a `lane=value` string, so a mistyped one used to travel to the lane's builder and
   surface as a bare `[Errno 2]` — and `acmg` is last in the registry, so that was after everything

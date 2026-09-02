@@ -33,6 +33,7 @@ lie. It is printed, never silently skipped.
 
 import logging
 import os
+import pathlib
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -481,13 +482,73 @@ def _rebuild_drug_labels(request: RebuildRequest) -> RebuildOutcome:
     )
 
 
+#: Where a checkout keeps the ACMG SF workbook, and the pattern rather than a pinned filename: the
+#: list is versioned (v3.2 → v3.3 in June 2025) and a constant naming one version would stop finding
+#: the asset the day the next one lands, silently, in the direction that scrapes NCBI's stale page.
+ACMG_WORKBOOK_GLOB = "acmg_sf_v*.xlsx"
+
+
+def _checkout_assets() -> list[pathlib.Path]:
+    """Every `assets/` directory this process can plausibly be running out of, nearest first.
+
+    Two, because `cache rebuild` is run both ways: from the checkout root (walk up from the working
+    directory, which is what an operator's shell is in) and through an editable workspace install
+    from somewhere else (relative to this module). A non-editable install resolves the second to a
+    path inside site-packages that does not exist, and falls through — which is correct rather than
+    unlucky: **`assets/` is deliberately not in the wheel.** The workbook is ACMG/Elsevier
+    supplementary material, and shipping it in a published package is the redistribution question the
+    registry records as unestablished for this lane. A checkout may use its own copy; a `pip install`
+    supplies its own.
+    """
+    here = pathlib.Path(__file__).resolve()
+    candidates = [parent / "assets" for parent in pathlib.Path.cwd().resolve().parents]
+    candidates.insert(0, pathlib.Path.cwd().resolve() / "assets")
+    candidates.extend(parent / "assets" for parent in here.parents)
+    seen: set[pathlib.Path] = set()
+    out: list[pathlib.Path] = []
+    for path in candidates:
+        if path not in seen and path.is_dir():
+            seen.add(path)
+            out.append(path)
+    return out
+
+
+def _acmg_workbook_in_the_checkout() -> tuple[pathlib.Path | None, str | None]:
+    """The checkout's workbook, or `None` and the reason there is not exactly one.
+
+    **Never picks between two.** A directory holding `acmg_sf_v3.3.xlsx` and `acmg_sf_v3.4.xlsx` has
+    two answers and no stated ordering between them — "the highest version" is an ordering somebody
+    would have to define, and filename sort is not it. So several is reported like none, naming them,
+    and the operator says which with `--source` (`@multiplicity-is-a-finding`).
+    """
+    for assets in _checkout_assets():
+        found = sorted(assets.glob(ACMG_WORKBOOK_GLOB))
+        if len(found) == 1:
+            return found[0], None
+        if found:
+            return None, (
+                f"{assets} holds {len(found)} ACMG workbooks ({', '.join(p.name for p in found)}) "
+                f"and nothing orders them — name one with --source acmg=<file.xlsx>"
+            )
+    return None, None
+
+
 def _rebuild_acmg(request: RebuildRequest) -> RebuildOutcome:
-    if request.source is None:
+    source, ambiguous = (request.source, None)
+    if source is None:
+        source, ambiguous = _acmg_workbook_in_the_checkout()
+    if source is None:
         return RebuildOutcome(
             "acmg", None,
-            "needs the ACMG SF workbook (--source acmg=<file.xlsx>): it is Elsevier supplementary "
-            "material, so the operator supplies their own copy and nothing is fetched here",
+            ambiguous or (
+                "needs the ACMG SF workbook (--source acmg=<file.xlsx>): it is Elsevier "
+                "supplementary material, so nothing fetches it. A checkout's own "
+                f"assets/{ACMG_WORKBOOK_GLOB} is used when there is one and this is not a checkout"
+            ),
         )
+    request = RebuildRequest(
+        out_dir=request.out_dir, declared_use=request.declared_use, pin=request.pin, source=source,
+    )
     try:
         # `.resolve()` first: `Path("./x.xlsx").as_uri()` raises on a relative path, and a
         # relative path is what an operator types — `--source acmg=./acmg_sf_v3.3.xlsx` is the
@@ -500,7 +561,8 @@ def _rebuild_acmg(request: RebuildRequest) -> RebuildOutcome:
         return RebuildOutcome("acmg", False, str(exc))
     return RebuildOutcome(
         "acmg", True,
-        f"SF v{sf_list.version}: {len(sf_list.genes)} genes over {len(sf_list.findings)} rows",
+        f"SF v{sf_list.version}: {len(sf_list.genes)} genes over {len(sf_list.findings)} rows, "
+        f"from {workbook.name}",
         request.out_dir,
     )
 

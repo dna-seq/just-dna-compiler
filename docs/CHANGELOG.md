@@ -83,6 +83,11 @@ four-tuple list inside `cli.py` rather than something a test could walk.
   is strictly stronger than `unset FOO` — an empty variable is *present* and the `.env` cannot
   replace it. Both credential refusals name which state they are in and give the matching remedy;
   the empty one says `unset`.
+- **`cache rebuild --only acmg` needs no `--source` from a checkout.** `assets/acmg_sf_v*.xlsx`
+  travels with the repository and is found by walking up from the working directory; a glob rather
+  than a pinned filename, because the list is versioned and a constant would stop finding it the day
+  v3.4 lands. `assets/` stays out of the wheel, so a `pip install` is unaffected and still supplies
+  its own copy — the workbook is Elsevier supplementary material.
 - **`cache rebuild --source lane=path` is validated up front** and expands `~`. A mistyped path used
   to reach the lane's builder as a bare `[Errno 2]`, and `acmg` is the last lane in the registry, so
   that arrived after every other lane had already downloaded.
