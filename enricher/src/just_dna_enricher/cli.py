@@ -34,6 +34,14 @@ from just_dna_enricher.assertions import (
     ClinicalAssertionError,
     enrich_clinical_assertions,
 )
+from just_dna_enricher.caches import (
+    CACHE_LANES,
+    LANES_BY_NAME,
+    CacheLane,
+    RebuildOutcome,
+    RebuildRequest,
+    rebuild_lane,
+)
 from just_dna_enricher.civic_draft import draft_panel_from_civic
 from just_dna_enricher.clingen import (
     DEFAULT_CLINGEN_URL,
@@ -61,13 +69,6 @@ from just_dna_enricher.cpic import DEFAULT_CPIC_ENDPOINT, CpicError
 from just_dna_enricher.cpic_build import CpicBuildError
 from just_dna_enricher.cpic_build import build_snapshot as build_cpic_snapshot
 from just_dna_enricher.currency import unchecked_sentences
-from just_dna_enricher.download import (
-    ensure_clinpgx_snapshot,
-    ensure_clinvar_snapshot,
-    ensure_constraint_snapshot,
-    ensure_cpic_snapshot,
-    ensure_snapshot,
-)
 from just_dna_enricher.drug_labels import (
     DEFAULT_DRUG_LABELS_URL,
     DrugLabelError,
@@ -117,15 +118,6 @@ from just_dna_enricher.locations import (
     SNAPSHOT_LICENSE_FILENAME,
     STRCHIVE_CATALOGUE_FILENAME,
     read_release,
-    resolve_civic_reference,
-    resolve_clinpgx_reference,
-    resolve_clinvar_reference,
-    resolve_constraint_reference,
-    resolve_cpic_reference,
-    resolve_ensembl_reference,
-    resolve_mane_reference,
-    resolve_pharmvar_reference,
-    resolve_pubmind_reference,
 )
 from just_dna_enricher.lookup import (
     as_report_rows,
@@ -1562,35 +1554,46 @@ def clinvar_publish_(
     )
 
 
-# ── the caches (pre-provision, and say what is where) ───────────────────────────────────────────
+# ── the caches (pre-provision, rebuild, and say what is where) ──────────────────────────────────
+#
+# The roster this chapter reads is `caches.CACHE_LANES`, not a table here. It was a four-tuple list in
+# this file, and a list is only as complete as whoever last edited it: three lanes were missing from
+# it, so `cache status` reported nine caches on a machine that has twelve and `cache pull` could not
+# be asked about the other three at all. The registry is walked by a test against the `*_build`
+# modules on disk, which a table in a CLI module never was (`@registry-completeness`).
 
 cache_app = typer.Typer(
     add_completion=False,
-    help="Pre-provision the parquet snapshots, and report which are present.",
+    help="Pre-provision, rebuild and report the snapshot caches.",
     no_args_is_help=True,
 )
 app.add_typer(cache_app, name="cache")
 
-#: `name -> (resolve, ensure or None, what it serves)`. One table, because the whole point of a cache
-#: chapter is that a deployment can see all of them at once — and because the *shape* of the row is the
-#: licensing story: PharmVar has no `ensure_*` and never will (personal, non-transferable key).
-_CACHES: list[tuple[str, object, object, str]] = [
-    ("ensembl", resolve_ensembl_reference, ensure_snapshot, "rsID → coordinate (enrich)"),
-    ("clinvar", resolve_clinvar_reference, ensure_clinvar_snapshot, "clinical records (enrich, draft-panel)"),
-    ("constraint", resolve_constraint_reference, ensure_constraint_snapshot, "gnomAD v4.1 gene constraint (gene-metrics)"),
-    ("clinpgx", resolve_clinpgx_reference, ensure_clinpgx_snapshot, "clinical annotations (clinpgx check)"),
-    ("cpic", resolve_cpic_reference, ensure_cpic_snapshot, "alleles/diplotypes/recommendations (pgx, draft)"),
-    ("pharmvar", resolve_pharmvar_reference, None, "star alleles (pgx) — build your own, never published"),
-    ("pubmind", resolve_pubmind_reference, None, "literature-derived verdicts — build your own, never published"),
-    # No `ensure_*` for the opposite reason to the two above it: nothing forbids publishing a CIViC
-    # snapshot — CC0 grants it outright — and none exists only because nobody has run `civic publish`.
-    # The absent third column here records a gap, where PharmVar's and PubMind's record a refusal.
-    ("civic", resolve_civic_reference, None, "curated cancer interpretations, direction axis (draft-panel --source civic)"),
-    # A fourth reason for an absent `ensure_*`, distinct from the three above: NCBI states a policy
-    # rather than a licence, so whether a snapshot of these bytes may be published is unestablished
-    # — not granted like CIViC's, and not refused like PharmVar's and PubMind's.
-    ("mane", resolve_mane_reference, None, "MANE transcripts, the numbering frame (mane build)"),
-]
+
+def _lane_names() -> list[str]:
+    return [lane.name for lane in CACHE_LANES]
+
+
+def _selected(only: list[str]) -> tuple[set[str], list[CacheLane]]:
+    """Resolve `--only` against the registry, refusing a name nothing answers to."""
+    wanted = {n.strip().lower() for n in only if n.strip()}
+    unknown = sorted(wanted - set(LANES_BY_NAME))
+    if unknown:
+        raise typer.BadParameter(f"unknown cache(s) {unknown}. Known: {_lane_names()}")
+    return wanted, [lane for lane in CACHE_LANES if not wanted or lane.name in wanted]
+
+
+def _pairs(values: list[str], flag: str) -> dict[str, str]:
+    """`lane=value` pairs for the per-lane flags, checked against the registry as they are read."""
+    out: dict[str, str] = {}
+    for item in values:
+        name, sep, value = item.partition("=")
+        if not sep or not value:
+            raise typer.BadParameter(f"{flag} takes lane=value, got {item!r}")
+        if name not in LANES_BY_NAME:
+            raise typer.BadParameter(f"{flag} names no known cache: {name!r}. Known: {_lane_names()}")
+        out[name] = value
+    return out
 
 
 @cache_app.command("status")
@@ -1600,21 +1603,27 @@ def cache_status_() -> None:
     Reads only: nothing is downloaded, so this is safe on a machine with no network and it is the first
     thing to run when a pass reports that a source was skipped.
     """
-    for name, resolve, ensure, serves in _CACHES:
-        path = resolve()
+    for lane in CACHE_LANES:
+        path = lane.resolve()
         if path is None:
-            how = "`cache pull`" if ensure is not None else f"`{name} build`"
-            typer.secho(f"  {name:11} absent   — {serves}; provision with {how}", fg=typer.colors.YELLOW)
+            # The lane's own command, taken from the registry rather than composed from its name:
+            # two lanes are not `<name> build` (`clinpgx build-labels`, `gnomad constraint build`)
+            # and a convention that holds for ten of twelve prints two commands nobody can run.
+            how = "`cache pull`" if lane.ensure is not None else f"`{lane.build_command}`"
+            typer.secho(
+                f"  {lane.name:11} absent   — {lane.serves}; provision with {how}",
+                fg=typer.colors.YELLOW,
+            )
             continue
-        release = path / RELEASE_FILENAME
         label = ""
-        if release.is_file():
-            try:
-                label = json.loads(release.read_text()).get("dataset") or ""
-            except (OSError, json.JSONDecodeError):
-                # A provenance failure is not a data failure — the snapshot is still usable.
-                label = "(unreadable release.json)"
-        typer.secho(f"  {name:11} present  {path}  {label}", fg=typer.colors.GREEN)
+        release = read_release(path)
+        if release is not None:
+            label = release.get("dataset") or ""
+        elif (path / RELEASE_FILENAME).exists():
+            # Present and unreadable is not the same as absent, and a provenance failure is not a
+            # data failure — the snapshot is still usable, so this says so instead of hiding it.
+            label = "(unreadable release.json)"
+        typer.secho(f"  {lane.name:11} present  {path}  {label}", fg=typer.colors.GREEN)
 
 
 @cache_app.command("pull")
@@ -1625,8 +1634,8 @@ def cache_pull_(
     use: str = typer.Option(
         "unstated", "--use",
         help=(
-            "Declared use for the licence-gated snapshots (clinpgx, cpic). They forbid sale, so they "
-            "are SKIPPED when unstated and REFUSED when commercial — downloading is taking the data."
+            "Declared use for the licence-gated snapshots. They forbid sale, so they are SKIPPED "
+            "when unstated and REFUSED when commercial — downloading is taking the data."
         ),
     ),
 ) -> None:
@@ -1636,49 +1645,155 @@ def cache_pull_(
     request. Already-complete caches are trusted without touching the network, so this is re-runnable
     and cheap; a truncated file is removed and refetched.
 
-    PharmVar is deliberately not here: its bulk data is pulled under a personal, non-transferable key,
-    so there is nothing published to pull. Build it with `pharmvar build --out <dir>`.
+    A lane with nothing published says so and names its reason, which is a field on the registry
+    rather than a comment: PharmVar's and PubMind's are refusals, ACMG's and MANE's are permissions
+    nobody has established. Build those with `cache rebuild`.
     """
     declared = _use(use)
-    wanted = {n.strip().lower() for n in only if n.strip()}
-    known = {name for name, _, ensure, _ in _CACHES if ensure is not None}
-    unknown = sorted(wanted - {name for name, *_ in _CACHES})
-    if unknown:
-        raise typer.BadParameter(f"unknown cache(s) {unknown}. Known: {sorted(n for n, *_ in _CACHES)}")
-
-    gated = {"clinpgx": CLINPGX_TERMS, "cpic": CPIC_TERMS}
+    wanted, lanes = _selected(only)
     failures = 0
-    for name, _resolve, ensure, _serves in _CACHES:
-        if wanted and name not in wanted:
+    for lane in lanes:
+        if lane.ensure is None:
+            if lane.name in wanted:   # asked for by name, so say why it is not coming
+                typer.secho(f"  {lane.name}: {lane.unpublished}", fg=typer.colors.YELLOW, err=True)
             continue
-        if ensure is None:
-            if name in wanted:   # asked for by name, so say why it is not coming
-                typer.secho(
-                    f"  {name}: nothing published to pull — build it with `{name} build --out <dir>`.",
-                    fg=typer.colors.YELLOW, err=True,
-                )
-            continue
-        if name in gated:
+        if lane.terms is not None:
             # The terms are accepted when the data is TAKEN, and a download is taking it.
             try:
-                reason = check_declared_use(gated[name], declared)
+                reason = check_declared_use(lane.terms, declared)
             except LicenseRefusal as exc:
-                typer.secho(f"  {name}: REFUSED — {exc}", fg=typer.colors.RED, err=True)
+                typer.secho(f"  {lane.name}: REFUSED — {exc}", fg=typer.colors.RED, err=True)
                 failures += 1
                 continue
             if reason is not None:
-                typer.secho(f"  {name}: skipped — {reason}", fg=typer.colors.YELLOW, err=True)
+                typer.secho(f"  {lane.name}: skipped — {reason}", fg=typer.colors.YELLOW, err=True)
                 continue
         try:
-            path = ensure()
+            path = lane.ensure()
         except Exception as exc:  # noqa: BLE001 - one snapshot failing must not sink the rest
-            typer.secho(f"  {name}: FAILED — {exc}", fg=typer.colors.RED, err=True)
+            typer.secho(f"  {lane.name}: FAILED — {exc}", fg=typer.colors.RED, err=True)
             failures += 1
             continue
-        typer.secho(f"  {name}: {path}", fg=typer.colors.GREEN)
+        typer.secho(f"  {lane.name}: {path}", fg=typer.colors.GREEN)
     if failures:
         raise typer.Exit(code=1)
-    typer.echo(f"caches available: {', '.join(sorted(known))}. Run `cache status` to confirm.")
+    pullable = sorted(lane.name for lane in CACHE_LANES if lane.ensure is not None)
+    typer.echo(f"caches available: {', '.join(pullable)}. Run `cache status` to confirm.")
+
+
+@cache_app.command("rebuild")
+def cache_rebuild_(
+    out: Path = typer.Option(
+        ..., "--out", file_okay=False,
+        help="Base directory. Each lane is built into <base>/<lane>/, never in place.",
+    ),
+    only: list[str] = typer.Option(
+        [], "--only", help="Rebuild just these caches (repeatable). Default: every one that can be.",
+    ),
+    use: str = typer.Option(
+        "unstated", "--use", help=f"Declared use: one of {sorted(VALID_DECLARED_USE)}.",
+    ),
+    pin: list[str] = typer.Option(
+        [], "--pin", help="lane=release, repeatable. e.g. --pin mane=1.5 --pin civic=2026-08-01.",
+    ),
+    source: list[str] = typer.Option(
+        [], "--source",
+        help=(
+            "lane=path, repeatable: build from a file you already hold instead of downloading. "
+            "Required for acmg; the offline off-switch for clinvar, constraint, clinpgx, "
+            "drug_labels, pubmind and strchive. mane and civic take three files each and refuse it."
+        ),
+    ),
+    publish: bool = typer.Option(
+        False, "--publish", help="Also upload each rebuilt snapshot to its HuggingFace repo.",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="With --publish: show what would be uploaded, send nothing.",
+    ),
+) -> None:
+    """Rebuild every cache this tier builds — acquire, convert, and optionally publish (RM176).
+
+    **The one endpoint over eleven builders.** Each per-lane `X build` command stays, and this calls
+    the same `download_*`/`build_*` functions they do, so there is one conversion algorithm with two
+    callers rather than two that have to agree. What differs is only flag plumbing: a per-lane command
+    offers the local-file inputs an operator holds, and a rebuild pass by definition holds none.
+
+    **Every lane is built into `<base>/<lane>/`, never in place over a resolved cache.** A rebuild
+    takes minutes and an `enrich` reading a half-written snapshot mid-flight would see a real but
+    incomplete table — the failure a resolver cannot detect, because a short parquet is still a
+    parquet. Point the caches at the new base when the run is done, or copy each directory across.
+
+    **An outcome is three-valued.** ACMG needs a workbook that is Elsevier supplementary material,
+    PharmVar a personal key, CIViC a release date to pin — none of those is a failure, and a nightly
+    rebuild reporting errors for them would be reporting the licences working as designed. They are
+    printed as *not run*, with the reason, and the exit code counts only real failures.
+    """
+    declared = _use(use)
+    _, lanes = _selected(only)
+    pins = _pairs(pin, "--pin")
+    sources = _pairs(source, "--source")
+
+    outcomes: list[RebuildOutcome] = []
+    for lane in lanes:
+        request = RebuildRequest(
+            out_dir=out / lane.name,
+            declared_use=declared,
+            pin=pins.get(lane.name),
+            source=Path(sources[lane.name]) if lane.name in sources else None,
+        )
+        outcome = rebuild_lane(lane, request)
+        outcomes.append(outcome)
+        colour = {
+            True: typer.colors.GREEN, False: typer.colors.RED, None: typer.colors.YELLOW,
+        }[outcome.built]
+        typer.secho(
+            f"  {lane.name:11} {outcome.label:8} {outcome.detail}",
+            fg=colour, err=outcome.built is not True,
+        )
+        if outcome.built and publish:
+            _publish_rebuilt(lane, outcome, dry_run=dry_run)
+
+    built = [o for o in outcomes if o.built is True]
+    failed = [o for o in outcomes if o.built is False]
+    not_run = [o for o in outcomes if o.built is None]
+    typer.echo(
+        f"rebuilt {len(built)}, failed {len(failed)}, not run {len(not_run)} "
+        f"of {len(outcomes)} lane(s) into {out}"
+    )
+    if failed:
+        raise typer.Exit(code=1)
+
+
+def _publish_rebuilt(lane: CacheLane, outcome: RebuildOutcome, *, dry_run: bool) -> None:
+    """Upload one rebuilt snapshot, or say why this lane has nothing to upload to.
+
+    A lane with no repo is not an error here: `--publish` means *publish what may be published*, and
+    the registry's `unpublished` is the answer to why one is skipped. Refusing the whole run because
+    PharmVar cannot be published would make the flag unusable on the set it was written for.
+    """
+    from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
+
+    if lane.publish_repo is None:
+        typer.secho(f"    not published — {lane.unpublished}", fg=typer.colors.YELLOW, err=True)
+        return
+    snapshot_dir = outcome.out_dir
+    if snapshot_dir is None:
+        typer.secho(
+            f"    not published — {lane.name} named no output directory",
+            fg=typer.colors.RED, err=True,
+        )
+        return
+    payload = STRCHIVE_CATALOGUE_FILENAME if lane.name == "strchive" else None
+    try:
+        if dry_run:
+            plan = plan_reference_snapshot(snapshot_dir, lane.publish_repo, payload=payload)
+            typer.echo(f"    would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
+            return
+        plan = publish_reference_snapshot(snapshot_dir, lane.publish_repo, payload=payload)
+    except (FileNotFoundError, PermissionError, ImportError) as exc:
+        typer.secho(f"    PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
+        return
+    typer.secho(f"    published → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN)
 
 
 # ── the licence-gated snapshots (build + publish, publisher/dev surface) — RM38 ─────────────────
@@ -3564,10 +3679,6 @@ def clinpgx_check_labels_(
 # `python -m just_dna_enricher.cli` ran `app()` before those registrations executed and exposed 23 of
 # the 26 top-level commands. Harmless through the `[project.scripts]` entry point, which imports the
 # module fully and then calls `app()`, and wrong for anyone invoking the module directly.
-if __name__ == "__main__":
-    app()
-
-
 @clinpgx_app.command("publish-labels")
 def clinpgx_publish_labels_(
     snapshot_dir: Path = typer.Argument(
@@ -3610,3 +3721,7 @@ def clinpgx_publish_labels_(
     typer.secho(
         f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN,
     )
+
+
+if __name__ == "__main__":
+    app()
