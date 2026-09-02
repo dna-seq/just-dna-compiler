@@ -356,6 +356,9 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A `latest` pointer discovers a version; a versioned directory pins it, and a local file names neither URL. `@current-discovers-a-version-a-directory-pins`
 - Run a knob's **disabling** value; a flag the callee never sees is a flag that does nothing. `@off-switch-needs-a-probe`
 - An `ensure_*` must actually be called; `--offline` is the only switch. `@ensure-must-be-called`
+- A cache lane has three stages; a hand-kept roster names none of them as missing. `@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing`
+- Every stage a lane lacks carries its reason as a **field**, and a rebuild's outcome is tri-state. `@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing`
+- A rebuild writes to `<base>/<lane>/`, never in place: a short parquet still has a footer. `@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing`
 - Network tests are opt-in: `JUST_DNA_NETWORK_TESTS=1`. `@network-tests-optin`
 - A flag must mean the same thing in every function that takes one. `@flag-means-same`
 - Don't compute a number and discard it — every consumer then recomputes it. `@dont-discard-computed`

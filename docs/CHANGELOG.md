@@ -34,7 +34,44 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-02 (latest) — two records that contradicted themselves, and a header a draft could not write into
+## 2026-09-02 (latest) — a cache roster that could not be walked, and the three lanes it lost
+
+**`just-dna-enricher` only, no schema change.** [RM176](ROADMAP_HISTORY.md#rm176--eleven-builders-three-stages-each-and-the-roster-that-was-supposed-to-name-them-was-a-list),
+from the maintainer's question: do all the caches we build have a common rebuild endpoint, and does
+each have download, build and upload? No — and the three gaps were one defect, a roster that was a
+four-tuple list inside `cli.py` rather than something a test could walk.
+
+- **`cache status` reported nine caches on a machine that has twelve.** `acmg_build`,
+  `strchive_build` and `drug_labels_build` existed with no roster entry, and `cache pull` refused all
+  three as unknown names. The roster is `caches.CACHE_LANES` now, walked against the `*_build`
+  modules on disk in both directions.
+- **The same three had no resolver, so the flagless path never found them.** ACMG's fell through to
+  scraping NCBI's page, which serves **v3.2** while the built snapshot holds v3.3 — a correctly
+  authored row reported as wrong. The other two skipped themselves with `no_reference` about a
+  snapshot sitting in the cache directory. Each now resolves through
+  `$JUST_DNA_ACMG_CACHE` / `$JUST_DNA_STRCHIVE_CACHE` / `$JUST_DNA_DRUG_LABELS_CACHE` or the shared
+  base, and the tests assert the **call** rather than the resolver.
+- **Three lanes had the licence to publish and no way to.** New: `strchive publish` (MIT),
+  `clinpgx publish-labels` (CC BY-SA, its own repo because the two ClinPGx archives do not refresh in
+  lockstep), and `ensure_civic_snapshot` / `ensure_strchive_snapshot` /
+  `ensure_drug_labels_snapshot`. **The three repos do not exist on HuggingFace yet** — the first
+  publish creates each, and until then `cache pull` says so.
+- **`cache rebuild` is the one endpoint over eleven builders**, with a driver at
+  `.claude/rebuild-caches.sh`. It calls the same `download_*`/`build_*` the per-lane commands call, so
+  those stay and nothing forks. Its outcome is **three-valued**: ACMG needs an Elsevier workbook,
+  PharmVar a personal key, CIViC a pinned release, Ensembl is built by just-dna-pipelines — all print
+  as *not run* with a reason, and the exit code counts only real failures. Every lane builds into
+  `<base>/<lane>/`, never in place over a live cache.
+- **`publish_reference_snapshot` derives its allowlist from the plan.** The pattern list and the file
+  list were two statements of one thing, which is how `citations/` and `LICENSE.txt` each went a
+  release printed-in-the-dry-run and dropped-on-upload. `plan_reference_snapshot` also takes a
+  `payload` filename now, because two snapshots hold no parquet at all.
+- **Consumer-visible:** `cache status` output gains three rows and names each lane's real build
+  command (it composed `f"{name} build"`, which named two commands that do not exist). No parquet
+  column, model field or vocabulary member changed, and builder-only dependencies were already
+  `[dev]`-only.
+
+## 2026-09-02 — two records that contradicted themselves, and a header a draft could not write into
 
 **`just-dna-enricher` + `just-dna-compiler`, no schema change.** Three defects, each found by a probe
 that was measuring something else, plus the probe round behind RM170.

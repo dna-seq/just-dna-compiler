@@ -509,7 +509,8 @@ page, which is a release behind — it does not carry `ABCD1`, `CYP27A1` or `PLN
 lists. Every disagreement is withheld rather than reported, and `--strict` will not fail on one. To get
 an answer, build the snapshot from ACMG's published workbook
 (`just-dna-enricher acmg build <workbook.xlsx> --out acmg/`) and re-run with `--sf-list acmg/`, which
-also works `--offline`.
+also works `--offline`. To stop passing the flag, point `$JUST_DNA_ACMG_CACHE` at that directory — the
+check reads a provisioned snapshot before it ever reaches for the page.
 
 **A note saying a gene is listed and `acmg_sf` is blank**
 Informational, never a defect, and `--strict` does not escalate it. Blank is a legitimate answer.

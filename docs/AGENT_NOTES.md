@@ -3306,6 +3306,33 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   words and writes the row with nulls; unknown terms warn and never gate (`@no-named-licence`), and what
   the unknown answer really governs is *publishing* a module carrying those bytes.
 
+- `@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing` — **Every snapshot this tier
+  builds has three stages — acquire, build, publish — and a roster that is a hand-kept list can name
+  none of them as missing (RM176, 0.7).** The cache roster was a four-tuple list inside `cli.py`, and
+  three lanes with builders were simply not in it: `cache status` reported nine caches on a machine
+  that has twelve, and `cache pull` refused the other three as unknown names. Nothing anywhere could
+  have noticed, because nothing compared the list to the set of things it was a list *of*. The same
+  three also had no resolver, so each check took an explicit path and looked nowhere else — and the
+  route a deployment actually takes is the flagless one. For ACMG that route fell through to scraping
+  NCBI's page, which serves **v3.2** while the built snapshot holds v3.3, so a correctly authored row
+  came back reported as wrong; the other two skipped themselves with `no_reference` about a snapshot
+  sitting in the cache directory. **Three consequences worth carrying forward.** *One:* the roster is
+  `caches.CACHE_LANES`, walked in both directions against the `*_build` modules on disk — the same
+  repair `@registry-completeness` records for `_ALL_MODELS`, and the third time this shape has bitten.
+  *Two:* every stage a lane lacks carries **its reason as a field**, because the four reasons are
+  genuinely different (PharmVar's and PubMind's refusals, ACMG's and MANE's unestablished permissions,
+  CIViC's plain gap, Ensembl's built-elsewhere) and a comment saying so speaks to whoever opens the
+  file rather than to the operator asking `cache status`. *Three:* a rebuild's outcome is **tri-state**
+  — a lane needing an Elsevier workbook, a personal key or a pinned release is *not run*, never
+  *failed*, or a nightly pass alarms on four lanes behaving exactly as their licences intend. Two
+  premises had to be generalized on the way: `plan_reference_snapshot` takes the payload filename from
+  its **caller** (two snapshots hold no parquet at all, and a roster of lane filenames in the publisher
+  would make it the fourth place a new snapshot kind must be taught about), while the *provisioner*
+  deliberately was **not** — `_provision_snapshot` is parquet all the way down and a JSON file has no
+  footer to check, so the same guarantee comes from parsing before the rename. And a rebuild writes to
+  `<base>/<lane>/`, never in place: a short parquet still has a `PAR1` footer, so an `enrich` reading a
+  half-written snapshot mid-flight sees a real but incomplete table and no resolver can catch it.
+
 - `@no-named-licence` — **A source may state its terms in prose and name no licence, and unknown commercial
   terms warn rather than gate (RM90).** `GWAS_CATALOG_TERMS` is the first entry in `licensing.py` with
   `license=None`: EBI's terms-of-use page says *"EMBL-EBI itself places no additional restrictions on the use
