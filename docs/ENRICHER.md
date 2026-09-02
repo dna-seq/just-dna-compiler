@@ -355,7 +355,8 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `litvar` | RM167: LitVar2/PubTator3 literature coverage per locus, **with the tier that answered** (allele node / position node / absent). Reports only; writes no row and no `SourceRow` | `httpx`, `tenacity`, `clingen_allele` |
 | `drug_labels` | RM166: five regulators' drug labels — the `(gene[, allele], drug)` cross-check at two join tiers (offline, reports only, writes no `SourceRow`) | `duckdb`, format `pgx`, compiler `load_csv_rows` |
 | `drug_labels_build` | **`[dev]`** builder (0.7, RM166): ClinPGx's `drugLabels.zip` → one parquet + `LICENSE.txt` + its own `release.json`, dated from the archive's own `CREATED_*.txt` | `polars` (lazy), `httpx` |
-| `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`, `upload`, `cache status`/`pull`, `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`pharmvar`/`pubmind` builders — `build+publish` for the first four, **`build` only** for `pharmvar` (there is no `pharmvar publish` and there will not be) and `pubmind`, whose `publish` exists and refuses with its reason, `mane build` (no publish at all — NCBI grants nothing to refuse or to permit), `vrs mint` | `typer` |
+| `caches` | The cache registry (`CACHE_LANES`) and the rebuild adapters behind `cache rebuild` — one entry per lane carrying its three stages and, for each stage it lacks, the reason as a field. Walked by a test against the `*_build` modules on disk (RM176) | — |
+| `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`, `upload`, `cache status`/`pull`/`rebuild`, and the eleven builders — `build+publish` for `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`clinpgx build-labels`/`civic`/`strchive`, **`build` only** for `pharmvar` (there is no `pharmvar publish` and there will not be), `pubmind` (whose `publish` exists and refuses with its reason), `mane` and `acmg` (NCBI and ACMG/Elsevier grant nothing to refuse or to permit), `vrs mint` | `typer` |
 
 ## Rate limits (public APIs)
 
@@ -965,7 +966,10 @@ a set, which is unreadable in practice.
 
 **Parquet snapshots, one base directory, one rule: locate, never download — except where you ask.**
 (The count used to be stated here and went stale twice while the table below grew; a number in prose
-is a registry nothing iterates, so the table is the roster.)
+is a registry nothing iterates. **Since RM176 the roster is `caches.CACHE_LANES`** — a walked registry
+with one entry per lane, compared by a test against the `*_build` modules on disk, so this table is a
+rendering of it rather than a third copy. Three lanes were missing from the previous list and nothing
+could have noticed: `cache status` reported nine caches on a machine that has twelve.)
 Every live source this tier reaches has (or can have) a local copy, and the whole reason is in the rate
 table above: *a shared IP shares one budget.* An author on their own machine can go live for everything;
 a **host** cannot, and for the three licence-gated sources it should not (see *On a host, or in a
@@ -980,8 +984,11 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 | **CPIC** 🔒 | `cpic/` | `$JUST_DNA_CPIC_CACHE` | `ensure_cpic_snapshot` | `just-dna-seq/cpic` | alleles / diplotypes / recommendations (`pgx`, `draft`) |
 | **PharmVar** 🔒 | `pharmvar/` | `$JUST_DNA_PHARMVAR_CACHE` | **none, by design** | **never published** | star alleles (`pgx`) |
 | **PubMind** ❓ | `pubmind/` | `$JUST_DNA_PUBMIND_CACHE` | **none, by design** | **never published** | literature-derived verdicts (RM134) |
-| **CIViC** ✅ | `civic/` | `$JUST_DNA_CIVIC_CACHE` | **none yet** | CC0 — publishable, none built | curated cancer interpretations, **`direction` axis only** (RM152); `--submitted` widens the basis from the release's own VCF (RM169) |
+| **CIViC** ✅ | `civic/` | `$JUST_DNA_CIVIC_CACHE` | `ensure_civic_snapshot` | `just-dna-seq/civic` — CC0, repo not created yet | curated cancer interpretations, **`direction` axis only** (RM152); `--submitted` widens the basis from the release's own VCF (RM169) |
 | **MANE** ❓ | `mane/` | `$JUST_DNA_MANE_CACHE` | **none, by design** | **never published** | the transcript numbering frame — summary, changed Select accessions, excluded genes (RM168) |
+| **ClinPGx drug labels** 🔒 | `drug_labels/` | `$JUST_DNA_DRUG_LABELS_CACHE` | `ensure_drug_labels_snapshot` | `just-dna-seq/clinpgx_drug_labels` — repo not created yet | what five regulators say about a gene/drug pair (`clinpgx check-labels`) |
+| **STRchive** ✅ | `strchive/` | `$JUST_DNA_STRCHIVE_CACHE` | `ensure_strchive_snapshot` | `just-dna-seq/strchive` — MIT, repo not created yet | repeat-locus bands (`check-repeat-bands`, `draft-repeats`) |
+| **ACMG SF** ❓ | `acmg_sf/` | `$JUST_DNA_ACMG_CACHE` | **none, by design** | **never published** | the secondary-findings list (`check-acmg`) |
 
 🔒 = licence-gated (`commercial_use=False`). ❓ = terms **unestablished** (`commercial_use=None`), which
 is a different state and not a weaker one: unknown is not permissive. The three 🔒 rows are RM38, new in
@@ -1022,7 +1029,19 @@ publisher uploads, provisioner fetches, reader queries — and every past disagr
   data/*.parquet          # the records; the readers glob exactly this
   citations/*.parquet     # optional sidecar, a SIBLING of data/ (ClinVar only)
   release.json            # which release this is — what reference_sha256 pins against (RM4)
-  LICENSE.txt             # the terms, for a snapshot that ships its own (ClinPGx)
+  LICENSE.txt             # the terms, for a snapshot that ships its own (ClinPGx and its labels)
+```
+
+**Two caches hold no parquet at all**, and that is a second layout rather than a defect in this one:
+ACMG's list is `acmg_sf.csv` and STRchive's catalogue is `STRchive-loci.json`, each at the snapshot
+root beside `release.json`. Both are read whole rather than queried, and a parquet for eighty-one rows
+would be ceremony. This is why they had no resolver until RM176 — every predicate in `locations` tested
+for `data/*.parquet` — and why `plan_reference_snapshot` takes a `payload` filename from its caller
+rather than assuming one shape for every lane.
+
+```
+<base>/acmg_sf/acmg_sf.csv + release.json
+<base>/strchive/STRchive-loci.json + release.json
 ```
 
 ### Pre-caching the published snapshots from HuggingFace
@@ -1047,9 +1066,14 @@ Four things worth knowing before you run it on a server:
   under a data-usage policy the terms are accepted when the data is **taken** — so downloading is the
   act being gated. `unstated` skips them with a reason, `commercial` refuses, `non-commercial`
   proceeds. Same three states as everywhere else; the tool will not assert a purpose for you.
-- **`just-dna-seq/cpic` and `just-dna-seq/clinpgx` have to exist first.** They are new with 0.5.1, so
-  until somebody publishes them `cache pull` reports `repository not found` for those two — which is
-  honest rather than a bug. Build and publish them once (below), or point at a locally built directory.
+- **Five of the repos have to exist first, and a missing one is not an error.** `just-dna-seq/cpic`
+  and `just-dna-seq/clinpgx` are new with 0.5.1; `civic`, `strchive` and `clinpgx_drug_labels` with
+  RM176 — none of the five has been published yet. Each provisioner raises `SnapshotNotPublished`
+  when the repo or its `data/` does not exist, and `cache pull` prints that in yellow **without
+  counting it as a failure**: nobody-published is the same third state as nobody-asked, and the
+  command that provisions a deployment must not exit 1 on a fresh machine because a snapshot has
+  never been uploaded. A download that *breaks* is still a failure and still exits 1. Build and
+  publish them once (below), or point at a locally built directory.
 - **A published dataset accumulates.** Each `ensure_*` fetches only the files its own snapshot is made
   of, because the ClinVar repo still carries a 159 MB `clinvar.parquet` from the single-file era whose
   columns are raw VCF INFO fields. The readers glob `data/*.parquet`, so one foreign file puts two
@@ -1090,7 +1114,67 @@ just-dna-enricher pubmind build --download --out ./pubmind        # or --table h
 # MANE — no key, no `--use`, no publish command. Discovers the newest version from current/ and
 # then pins it to release_<version>/ before fetching anything.
 just-dna-enricher mane build --download --out ./mane              # or --release 1.5 to pin by hand
+
+# The regulator drug labels — a SECOND ClinPGx archive with its own cadence, so its own cache and
+# its own repo. Same CC BY-SA terms as the annotation lane, so publishable on the same grounds.
+just-dna-enricher clinpgx build-labels --out ./drug_labels --use non-commercial
+just-dna-enricher clinpgx publish-labels ./drug_labels
+
+# STRchive — MIT, so publishable. Pin a release: the default branch moves, and only a pinned build
+# gets a `dataset` label the comparison can name.
+just-dna-enricher strchive build --out ./strchive --release v2.26.0
+just-dna-enricher strchive publish ./strchive
+
+# ACMG SF — nothing is fetched. The workbook is ACMG/Elsevier supplementary material, so you supply
+# your own copy; there is no publish command, because nothing grants redistribution of those bytes.
+just-dna-enricher acmg build ./acmg_sf_v3.3.xlsx --out ./acmg_sf
 ```
+
+### One endpoint over every builder (`cache rebuild`, RM176)
+
+Eleven builders, three stages each — acquire, build, publish — and until RM176 the only way to run them
+all was eleven commands with eleven different flag shapes. `cache rebuild` is the single endpoint, and
+it calls the same `download_*`/`build_*` functions the per-lane commands call, so there is one
+conversion algorithm with two callers rather than two that have to agree. The per-lane commands stay:
+they offer the local-file inputs an operator holds, which a rebuild pass by definition does not.
+
+```bash
+just-dna-enricher cache rebuild --out ./caches-2026-09-02 --use non-commercial
+just-dna-enricher cache rebuild --out ./c --only strchive --only mane --pin mane=1.5
+just-dna-enricher cache rebuild --out ./c --only acmg --source acmg=./acmg_sf_v3.3.xlsx
+just-dna-enricher cache rebuild --out ./c --publish --dry-run        # rehearse the uploads
+.claude/rebuild-caches.sh ./caches-2026-09-02                        # the driver, all lanes
+```
+
+Three things about it are worth reading before a deployment runs it nightly.
+
+- **Every lane builds into `<base>/<lane>/`, never in place over a resolved cache.** A rebuild takes
+  minutes, and a short parquet still has a `PAR1` footer — so an `enrich` reading a half-written
+  snapshot mid-flight sees a real but incomplete table and no resolver can catch it. Moving the result
+  into the live caches is a separate, deliberate step.
+- **The outcome is three-valued, and *not run* is not a failure.** ACMG needs a workbook that is
+  Elsevier supplementary material, PharmVar a personal key, CIViC a release date to pin, and Ensembl is
+  built by just-dna-pipelines. Each prints its own reason — taken from the registry field, not composed
+  here — and the exit code counts only real failures, so a nightly run does not alarm on four lanes
+  behaving exactly as designed.
+- **`--source lane=path` is the offline off-switch** for clinvar, constraint, clinpgx, drug_labels,
+  pubmind and strchive, and the *only* route for acmg. `mane` and `civic` refuse it: each takes three
+  input files, two of three is not a build for either, and a flag that can supply one would be a flag
+  that cannot do its job.
+
+**The CIViC adapter fetches the three TSVs and no VCF, which is `civic build`'s own default.** RM169
+made `--submitted` opt-in precisely because the release VCF *widens the status basis* — it admits
+submitted-but-not-accepted evidence — so a rebuild that fetched it unconditionally would build a
+different snapshot from the same release than the per-lane command does. Two callers, one release, two
+artifacts is the fork this endpoint exists to prevent; widening the basis is a curation decision, and
+`civic build --release <date> --submitted` is where it is taken. The rebuild's outcome line prints
+`status_basis` so the two are distinguishable at a glance.
+
+**PharmVar's *not run* is decided before the request, not from the failure.** The service returns an
+identical 401 for an absent, a malformed and an unrecognised key, and `PharmVarError` is flat, so an
+adapter reading the message would be parsing prose. `$PHARMVAR_API_KEY` unset is the designed third
+state — the key is personal and non-transferable, so a machine without one is a machine PharmVar never
+meant to serve — while a key that is configured and then fails is **asked-and-failed** and counts.
 
 Then point at them, or move them under the base directory so the default resolvers find them:
 
@@ -1157,11 +1241,15 @@ A pass that could run *neither* way is a third state, never a silent pass: `PgxR
 and `ClinGenResult.skipped_offline` carry the reason, distinct both from "ran and found nothing" and
 from a failure.
 
-### Two caches that are not in the table
+### The one cache that is not in the table
 
-- **The ACMG secondary-findings snapshot** (`acmg build` → `check-acmg --sf-list`) is inject-only and
-  has no `locations` entry: it is a single small CSV an author points at, not a shared reference. It is
-  also the one list with no machine-readable upstream — see the ACMG section.
+The ACMG snapshot used to be listed here, and the reason given was that it is "a single small CSV an
+author points at, not a shared reference". That reasoning was wrong in the way a design note is wrong
+when nobody re-checks it: an author points at it *because* nothing could find it otherwise, and the
+consequence was that the flagless path fell through to scraping NCBI's page — which serves v3.2 while
+ACMG published v3.3 in June 2025, so a correctly authored row came back reported as wrong. It has a
+resolver and a roster row since RM176.
+
 - **No response cache for the live clients.** NCBI, PharmVar's live path, gnomAD GraphQL, Crossref,
   Europe PMC, OLS4, HGNC and live Ensembl are **paced only**. Persistence is the authored sidecars
   (`resolution.csv`, `frequencies.csv`, …) — delete a sidecar to force a refetch, because `enrich()`

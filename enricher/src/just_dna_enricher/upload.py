@@ -80,12 +80,12 @@ _EXPECTED_WITH_WEIGHTS = ("annotations.parquet", "studies.parquet")
 # snapshot can read what governs the bytes without going back to the archive — the whole pinned-licence
 # design (`license_sha256`) rests on that file travelling with them. It was not in these patterns, so
 # publishing a share-alike snapshot dropped it silently. Absent is normal (only ClinPGx has one).
-_SNAPSHOT_ALLOW_PATTERNS = [
-    f"{SNAPSHOT_DATA_DIRNAME}/*.parquet",
-    *(f"{name}/*.parquet" for name in SNAPSHOT_SIDECAR_DIRNAMES),
-    RELEASE_FILENAME,
-    SNAPSHOT_LICENSE_FILENAME,
-]
+#
+# **These patterns are no longer a constant, and that is the third repair in the same family.** The
+# list and `plan_reference_snapshot`'s file list were two statements of one thing, so `--dry-run`
+# could promise a file the upload then dropped — which is exactly how the two gaps above went
+# unnoticed for a release each. `publish_reference_snapshot` now derives the allowlist from the plan
+# it just computed, so there is one list and a dry run is a promise (`@publisher-allowlist-derived`).
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +102,16 @@ DEFAULT_CPIC_REPO_ID = "just-dna-seq/cpic"
 #: and unlike PharmVar's nothing to withhold — the only reason none exists yet is that nobody has run
 #: the command.
 DEFAULT_CIVIC_REPO_ID = "just-dna-seq/civic"
+#: STRchive's snapshot repo (RM176). MIT, so redistribution is granted outright — the reason there was
+#: no publish command is that this lane grew from a check rather than from a cache, not that anything
+#: barred one. Its snapshot holds no parquet, which is why `plan_reference_snapshot` had to learn about
+#: a payload before this constant could mean anything.
+DEFAULT_STRCHIVE_REPO_ID = "just-dna-seq/strchive"
+#: The regulator drug labels — a **second** ClinPGx archive, and so a second repo rather than a table
+#: inside `clinpgx/`. The two downloads do not refresh in lockstep and each is dated from its own
+#: `CREATED_*.txt`, so one repo holding both would date the pair from whichever was published last.
+#: Same CC BY-SA terms as the annotation lane, hence the same grounds and the same `LICENSE.txt`.
+DEFAULT_DRUG_LABELS_REPO_ID = "just-dna-seq/clinpgx_drug_labels"
 
 
 def _hf_api(repo_id: str, token: str | None = None):
@@ -455,9 +465,36 @@ class SnapshotPlan(BaseModel):
     files: list[str] = Field(description="Repo-relative paths that will be uploaded")
 
 
-def plan_reference_snapshot(snapshot_dir: Path, repo_id: str | None = None) -> SnapshotPlan:
-    """Resolve a snapshot publish plan and validate the built artifacts are present."""
+def plan_reference_snapshot(
+    snapshot_dir: Path,
+    repo_id: str | None = None,
+    *,
+    payload: str | None = None,
+) -> SnapshotPlan:
+    """Resolve a snapshot publish plan and validate the built artifacts are present.
+
+    `payload` names a snapshot whose content is **one file at the root** rather than
+    `data/*.parquet` — STRchive's `STRchive-loci.json` is the case, and ACMG's `acmg_sf.csv` is the
+    shape's second member. The parameter is the caller's, deliberately: a lane knows the name of the
+    file it builds, and putting a roster of lane filenames in the publisher would make this function
+    the fourth place that has to learn about a new snapshot kind.
+
+    A `payload` snapshot is refused when the file is missing, exactly as a parquet one is when
+    `data/` is empty — the refusal is the same claim either way, that there is nothing built here to
+    publish.
+    """
     resolved_repo = repo_id or DEFAULT_CLINVAR_REPO_ID
+    if payload is not None:
+        if not (snapshot_dir / payload).is_file():
+            raise FileNotFoundError(
+                f"no {payload} in {snapshot_dir} — build the snapshot first "
+                f"(e.g. `just-dna-enricher strchive build`)"
+            )
+        files = [payload]
+        for name in (RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME):
+            if (snapshot_dir / name).is_file():
+                files.append(name)
+        return SnapshotPlan(repo_id=resolved_repo, files=files)
     data_dir = snapshot_dir / SNAPSHOT_DATA_DIRNAME
     parquet = sorted(p.name for p in data_dir.glob("*.parquet")) if data_dir.is_dir() else []
     if not parquet:
@@ -483,6 +520,8 @@ def publish_reference_snapshot(
     repo_id: str | None = None,
     token: str | None = None,
     commit_message: str | None = None,
+    *,
+    payload: str | None = None,
 ) -> SnapshotPlan:
     """Create-or-update a dataset repo and upload a built reference snapshot to its root.
 
@@ -491,14 +530,18 @@ def publish_reference_snapshot(
     built one is — PMIDs included, which is what a drafted gene panel needs to compile.
     Raises PermissionError if no token is available and ImportError if huggingface_hub is absent.
     """
-    plan = plan_reference_snapshot(snapshot_dir, repo_id)
+    plan = plan_reference_snapshot(snapshot_dir, repo_id, payload=payload)
     api = ensure_repo(plan.repo_id, token)
     api.upload_folder(
         folder_path=str(snapshot_dir),
         path_in_repo="",
         repo_id=plan.repo_id,
         repo_type="dataset",
-        allow_patterns=_SNAPSHOT_ALLOW_PATTERNS,
+        # Derived from the plan rather than restated as a pattern list. The two had to agree and did
+        # not: `--dry-run` printed a file the patterns then dropped, which is the failure mode that
+        # lost `citations/` and `LICENSE.txt` in the first place. One list, computed once, so what a
+        # dry run promises is exactly what an upload sends (`@publisher-allowlist-derived`).
+        allow_patterns=list(plan.files),
         commit_message=commit_message or f"Publish reference snapshot ({len(plan.files)} files)",
     )
     return plan

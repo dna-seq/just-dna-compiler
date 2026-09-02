@@ -73,6 +73,11 @@ from just_dna_format.manifest import VerificationRecord
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.spec import VariantRow
 
+from just_dna_enricher.locations import (
+    ACMG_SNAPSHOT_FILENAME,
+    RELEASE_FILENAME,
+    resolve_acmg_reference,
+)
 from just_dna_enricher.verification import examples, ran, skipped
 
 logger = logging.getLogger(__name__)
@@ -87,8 +92,6 @@ KNOWN_LATEST_SF_VERSION = "3.3"
 #: The snapshot layout, owned by the **reader** rather than the builder: `load_acmg_snapshot` is the
 #: contract a snapshot has to satisfy, and `acmg_build` imports these to conform. The other direction
 #: would make the runtime module import the `[dev]` builder to learn its own file names.
-SNAPSHOT_CSV = "acmg_sf.csv"
-SNAPSHOT_RELEASE = "release.json"
 
 #: The four column labels the table has carried since NCBI adapted it. A change here means the page
 #: was re-laid-out and every offset below is suspect, so it is a refusal rather than a best guess.
@@ -482,11 +485,11 @@ def load_acmg_snapshot(snapshot_dir: Path) -> AcmgSfList:
     The `release.json` version is authoritative and must agree with nothing else — the CSV carries no
     version column, precisely so the two cannot drift.
     """
-    release_path = snapshot_dir / SNAPSHOT_RELEASE
-    csv_path = snapshot_dir / SNAPSHOT_CSV
+    release_path = snapshot_dir / RELEASE_FILENAME
+    csv_path = snapshot_dir / ACMG_SNAPSHOT_FILENAME
     if not release_path.exists() or not csv_path.exists():
         raise AcmgListUnavailable(
-            f"{snapshot_dir} is not an ACMG SF snapshot ({SNAPSHOT_RELEASE} + {SNAPSHOT_CSV} "
+            f"{snapshot_dir} is not an ACMG SF snapshot ({RELEASE_FILENAME} + {ACMG_SNAPSHOT_FILENAME} "
             f"expected) — build one with `just-dna-enricher acmg build <workbook.xlsx> <dir>`",
             skip="no_reference",
         )
@@ -585,6 +588,12 @@ def verify_acmg_sf(
     It does **not** escalate an `unverifiable` — see `_disagreement`.
     """
     variants = _resolve_variants(variants, spec_dir)
+    # A provisioned snapshot is used without being named. The builder shipped before the cache did,
+    # so the accurate list was reachable only by passing `--sf-list` on every invocation — and the
+    # path a deployment actually takes is the one with no flags, which fell through to scraping a
+    # page that still serves v3.2. An explicit argument still wins: this fills the *unset* case.
+    if snapshot_dir is None:
+        snapshot_dir = resolve_acmg_reference()
     if snapshot_dir is not None:
         sf_list = load_acmg_snapshot(snapshot_dir)
     elif offline and page_text is None:

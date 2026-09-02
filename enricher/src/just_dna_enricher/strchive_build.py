@@ -27,9 +27,8 @@ import httpx
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
 
+from just_dna_enricher.locations import RELEASE_FILENAME, STRCHIVE_CATALOGUE_FILENAME
 from just_dna_enricher.strchive import (
-    CATALOGUE_FILENAME,
-    RELEASE_FILENAME,
     SOURCE_NAME,
     StrchiveError,
     StrchiveUnavailable,
@@ -50,7 +49,7 @@ def catalogue_url(release: str | None = None) -> str:
     if not release:
         return DEFAULT_STRCHIVE_URL
     return (
-        f"https://raw.githubusercontent.com/dashnowlab/STRchive/{release}/data/{CATALOGUE_FILENAME}"
+        f"https://raw.githubusercontent.com/dashnowlab/STRchive/{release}/data/{STRCHIVE_CATALOGUE_FILENAME}"
     )
 
 
@@ -132,14 +131,14 @@ def build_strchive_snapshot(
     """
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    target = out_dir / CATALOGUE_FILENAME
+    target = out_dir / STRCHIVE_CATALOGUE_FILENAME
     # **The incoming bytes land beside the snapshot, never on it, until they have parsed.** Writing
     # the catalogue first and validating after would let a bad rebuild leave new bytes under the
     # previous run's `release.json`, whose `source_sha256`, `locus_count` and `dataset` then describe
     # a file that is gone — and `check-repeat-bands` would attest the new catalogue under the old
     # release label. The stale `release.json` is removed before the rename, so the only window a
     # reader can see is *catalogue with no provenance*, which reads honestly as an unlabelled release.
-    incoming = out_dir / (CATALOGUE_FILENAME + ".incoming")
+    incoming = out_dir / (STRCHIVE_CATALOGUE_FILENAME + ".incoming")
 
     if catalogue is not None:
         source = Path(catalogue)

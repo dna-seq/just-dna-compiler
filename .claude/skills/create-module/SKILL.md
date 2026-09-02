@@ -442,10 +442,12 @@ and 328 on its allele — so the tier is part of every answer. It writes nothing
 answers *which papers discuss an allele that is already identified*; it will not tell you which allele
 an old paper's name meant.
 
-`check-acmg` needs `--sf-list` to give a real answer: NCBI's page serves SF **v3.2** while ACMG has
+`check-acmg` needs a built list to give a real answer: NCBI's page serves SF **v3.2** while ACMG has
 published **v3.3**, so without a snapshot every disagreement comes back `unverifiable` rather than as a
 finding. Build it once from ACMG's workbook — `just-dna-enricher acmg build <workbook.xlsx> --out
-acmg/` — and the check also stops needing the network.
+acmg/` — and the check also stops needing the network. **You only have to name it once**: put the
+directory in `$JUST_DNA_ACMG_CACHE`, or under the shared cache base as `acmg_sf/`, and every later run
+finds it with no flag. `--sf-list` still wins where you pass it.
 
 ## 6 — Close, compile, verify, publish
 
@@ -821,10 +823,17 @@ workaround.
 | `template <kind>` | the compiler's, mirrored |
 
 Snapshot builders (dev/publisher surface, mostly needing the `polars` extra):
-`clinvar build|citations|publish`, `clinpgx build|build-labels|check|check-labels|publish`,
+`clinvar build|citations|publish`,
+`clinpgx build|build-labels|check|check-labels|publish|publish-labels`,
 `cpic build|publish`, `pharmvar build`,
-`acmg build`, `gnomad constraint build|publish`, `pubmind build`, `civic build`, `mane build`,
-`cache status|pull`, `upload`.
+`acmg build`, `gnomad constraint build|publish`, `pubmind build`, `civic build|publish`,
+`mane build`, `strchive build|publish`,
+`cache status|pull|rebuild`, `upload`.
+`cache rebuild --out <dir>` runs every one of those builders in a single pass — acquire, build, and
+with `--publish` upload — writing each into `<dir>/<lane>/` rather than over a cache something may be
+reading. A lane it cannot run unattended says so and is not counted as a failure: `--source
+acmg=<workbook.xlsx>` supplies the one input nothing may fetch for you, `--pin civic=<date>` names a
+release that has no moving default, and PharmVar needs your own key.
 Some of those never publish, and the reasons differ. `pharmvar build` and `pubmind build` write a local
 snapshot only, because a bulk file arriving under terms nobody has established is not a file this
 workspace may pass on — ask `pubmind publish` and it says so. `mane build` has no publish command at

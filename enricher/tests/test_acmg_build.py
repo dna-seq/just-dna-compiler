@@ -18,10 +18,10 @@ from pathlib import Path
 
 import pytest
 from just_dna_enricher.acmg import (
+    ACMG_SNAPSHOT_FILENAME,
     KNOWN_LATEST_SF_VERSION,
     MIN_GENES,
-    SNAPSHOT_CSV,
-    SNAPSHOT_RELEASE,
+    RELEASE_FILENAME,
     AcmgSfError,
     check_acmg_sf,
     load_acmg_snapshot,
@@ -244,7 +244,7 @@ def test_the_release_pins_the_bytes_it_was_built_from(tmp_path):
 
     workbook = _workbook(tmp_path, _enough_rows())
     build_acmg_snapshot(workbook, tmp_path / "snap", source_url="https://example.invalid/wb.xlsx")
-    release = json.loads((tmp_path / "snap" / SNAPSHOT_RELEASE).read_text())
+    release = json.loads((tmp_path / "snap" / RELEASE_FILENAME).read_text())
 
     assert release["source_sha256"] == "sha256:" + hashlib.sha256(workbook.read_bytes()).hexdigest()
     assert release["sf_version"] == "3.3"
@@ -259,14 +259,14 @@ def test_a_snapshot_directory_that_is_not_one_says_so(tmp_path):
 
 def test_a_release_with_no_version_refuses(tmp_path):
     build_acmg_snapshot(_workbook(tmp_path, _enough_rows()), tmp_path / "snap")
-    (tmp_path / "snap" / SNAPSHOT_RELEASE).write_text(json.dumps({"gene_count": 55}))
+    (tmp_path / "snap" / RELEASE_FILENAME).write_text(json.dumps({"gene_count": 55}))
     with pytest.raises(AcmgSfError, match="records no sf_version"):
         load_acmg_snapshot(tmp_path / "snap")
 
 
 def test_a_truncated_snapshot_csv_trips_the_floor(tmp_path):
     build_acmg_snapshot(_workbook(tmp_path, _enough_rows()), tmp_path / "snap")
-    csv_path = tmp_path / "snap" / SNAPSHOT_CSV
+    csv_path = tmp_path / "snap" / ACMG_SNAPSHOT_FILENAME
     lines = csv_path.read_text().splitlines()
     csv_path.write_text("\n".join(lines[:5]) + "\n")
     with pytest.raises(AcmgSfError, match=f"below the {MIN_GENES}"):

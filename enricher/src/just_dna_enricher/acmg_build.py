@@ -49,13 +49,12 @@ from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.acmg import (
     MIN_GENES,
-    SNAPSHOT_CSV,
-    SNAPSHOT_RELEASE,
     AcmgSfError,
     AcmgSfList,
     SecondaryFinding,
     parse_sf_version,
 )
+from just_dna_enricher.locations import ACMG_SNAPSHOT_FILENAME, RELEASE_FILENAME
 
 try:  # the one guarded optional import (CLAUDE.md): openpyxl is builder-only ([dev] extra)
     import openpyxl
@@ -267,7 +266,7 @@ def build_acmg_snapshot(
     sf_list = parse_acmg_workbook(workbook)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    csv_path = out_dir / SNAPSHOT_CSV
+    csv_path = out_dir / ACMG_SNAPSHOT_FILENAME
     with csv_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=_SNAPSHOT_FIELDS)
         writer.writeheader()
@@ -289,7 +288,7 @@ def build_acmg_snapshot(
         "built_at": sf_list.retrieved_at,
         "builder": "just_dna_enricher.acmg_build",
     }
-    (out_dir / SNAPSHOT_RELEASE).write_text(json.dumps(release, indent=2) + "\n", encoding="utf-8")
+    (out_dir / RELEASE_FILENAME).write_text(json.dumps(release, indent=2) + "\n", encoding="utf-8")
     logger.info(
         "wrote ACMG SF v%s snapshot to %s (%d genes, %d rows)",
         sf_list.version, out_dir, release["gene_count"], release["row_count"],

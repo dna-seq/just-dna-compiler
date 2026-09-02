@@ -63,7 +63,11 @@ from just_dna_format.manifest import VerificationRecord
 from just_dna_format.pgx import DiplotypeRow, PharmVariantRow
 
 from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use
-from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
+from just_dna_enricher.locations import (
+    RELEASE_FILENAME,
+    SNAPSHOT_DATA_DIRNAME,
+    resolve_drug_labels_reference,
+)
 from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
@@ -695,6 +699,10 @@ def check_drug_labels(
         result.not_checked = "nothing_to_check"
         return _attest(result, spec_dir, write=write)
 
+    if snapshot is None:
+        # A provisioned snapshot is used without being named — the same repair the ClinPGx annotation
+        # lane got when `resolve_clinpgx_reference` landed, one archive later.
+        snapshot = resolve_drug_labels_reference()
     if snapshot is None:
         note = (
             "drug-label cross-check skipped: no snapshot was provisioned. Build one with "

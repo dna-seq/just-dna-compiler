@@ -68,6 +68,98 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM176 — eleven builders, three stages each, and the roster that was supposed to name them was a list
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-09-02 in the uncut 0.7.0** — the cache registry, three
+missing resolvers, three new publish/provision pairs, and `cache rebuild` (`just-dna-enricher`; no
+schema, no vocabulary, no parquet column) · **Owner** enricher · **Motivating case** the maintainer's
+2026-09-02 question — *do all the caches we build have a common rebuild endpoint, and does each have
+download, build and upload?* — asked of every lane except Ensembl
+
+**The answer was no, and the three gaps were one defect wearing three faces.** Every one was a fact
+about a lane that no code anywhere asserted, because the roster was a four-tuple list inside `cli.py`.
+
+- **Three lanes were not in it at all.** `acmg_build`, `strchive_build` and `drug_labels_build`
+  existed and had no roster entry, so `cache status` reported nine caches on a machine that has
+  twelve and `cache pull` refused the other three as unknown names.
+- **Those same three had no resolver.** Each check took an explicit path and looked nowhere else, so
+  the only way to run one against a built snapshot was to name it on every invocation. The path a
+  deployment actually takes is the flagless one, and for all three it did something worse than fail:
+  ACMG's fell through to scraping NCBI's page, which serves **v3.2** while the snapshot holds v3.3, so
+  a correctly authored row came back reported as wrong; the other two skipped themselves with
+  `no_reference` about a catalogue sitting in the cache directory.
+- **Three lanes had the licence to publish and no way to.** The roster's own comment called CIViC's
+  absent `ensure_*` a *gap* rather than a refusal — CC0 grants redistribution outright — and STRchive's
+  MIT and the drug labels' CC BY-SA say the same on their own terms. What was missing was plumbing.
+
+**What shipped.** `caches.CACHE_LANES` is a registry: one entry per lane, carrying its three stages
+(acquire, build, publish) and, for each stage it lacks, **the reason as a field rather than a
+comment**. `test_cache_lanes.py` walks it against the `*_build` modules on disk in both directions,
+which is the check a list could never have (`@registry-completeness`). Resolvers and cache
+subdirectories for acmg, strchive and drug_labels, each wired into the *flagless* branch of its own
+check, and the tests assert the **call** rather than the resolver — a resolver nothing calls passes
+its own unit test while leaving the defect exactly where it was (`@ensure-must-be-called`). Publish
+and provision for CIViC, STRchive and the drug labels, with `strchive publish` and
+`clinpgx publish-labels` as new commands. And `cache rebuild`, the endpoint the question asked for:
+one command over eleven builders, calling the same `download_*`/`build_*` the per-lane commands call,
+so there is one conversion algorithm with two callers rather than two that have to agree.
+
+**Two shapes had to be generalized to get there, and both were premises rather than bugs.** The
+publisher assumed every snapshot is `data/*.parquet`; ACMG's is `acmg_sf.csv` and STRchive's is
+`STRchive-loci.json`, each at the snapshot root. `plan_reference_snapshot` now takes the payload
+filename **from its caller** — a lane knows what it builds, and a roster of lane filenames inside the
+publisher would make it the fourth place a new snapshot kind has to be taught about. The provisioner
+could *not* be generalized the same way and is not: `_provision_snapshot` is parquet all the way down
+and a JSON file has no footer to check, so `_provision_root_file_snapshot` gives the same guarantee by
+parsing before the rename.
+
+**`publish_reference_snapshot` now derives its allowlist from the plan** instead of restating it as
+patterns. The two were separate statements of one thing that had to agree and twice did not — that is
+how `citations/` and `LICENSE.txt` each went a release printed-in-the-dry-run and dropped-on-upload
+(`@publisher-allowlist-derived`). One list, so a dry run is a promise.
+
+**The rebuild outcome is three-valued, and the third state is the item's most load-bearing decision.**
+ACMG needs a workbook that is Elsevier supplementary material, PharmVar a personal key, CIViC a release
+date to pin, Ensembl is built by just-dna-pipelines. Folding those into *failed* would have a nightly
+rebuild alarm on four lanes behaving exactly as their licences intend; folding them into *built* would
+be a lie. They print as **not run** with the registry's own reason, and the exit code counts only real
+failures. Each lane builds into `<base>/<lane>/`, **never in place** — a rebuild takes minutes and a
+short parquet still has a `PAR1` footer, so an `enrich` reading a half-written snapshot sees a real but
+incomplete table and no resolver can catch it.
+
+**Two defects the suite caught rather than review**, and both are the repository's own recorded
+shapes. `clinpgx publish-labels` had landed *after* the `__main__` guard, where nothing registers it.
+And `cache status` composed its instruction as `f"{name} build"`, which is right for ten lanes and
+names two commands that do not exist — there is no `drug_labels build` and no `constraint build` — so
+`build_command` is a field the guard invokes against the real Typer tree (`@warning-text-is-api`).
+
+**The dependency question the item also asked was already answered**: every builder-only dependency
+(`polars`, `openpyxl`) is in the `[dev]` extra behind a guarded import, and no runtime check reads
+either. Nothing moved.
+
+**Four defects its own probe found, after the round looked finished**, and three of them are the
+item's own shapes turned back on it. *One:* the default `cache pull` exited 1 on a fresh machine,
+because three lanes gained an `ensure_*` before anyone created their repos and the transport's error
+reached the blanket handler as a failure — nobody-published is the same third state as nobody-asked,
+so `SnapshotNotPublished` is its own type and is printed rather than counted. *Two:*
+`Path("./x.xlsx").as_uri()` raises, so `--source acmg=./workbook.xlsx` — the *documented*
+invocation — produced a traceback instead of an outcome. *Three:* the PharmVar adapter reported every
+exception as *not run*, folding a lane that broke into a lane that opted out; the split is decided
+before the request now, from whether a key is configured at all, because the service's 401 is
+identical for an absent, a malformed and an unrecognised key and a flat `PharmVarError` cannot carry
+the difference (`@answered-is-not-absent`). *Four:* the CIViC adapter fetched the release VCF
+unconditionally, which RM169 made opt-in because it *widens the status basis* — so one release would
+have built two different snapshots depending on which caller asked, the exact fork this endpoint
+exists to prevent.
+
+**Left undone on purpose.** The three new repos — `just-dna-seq/civic`, `just-dna-seq/strchive`,
+`just-dna-seq/clinpgx_drug_labels` — do not exist on HuggingFace; the first publish creates each, and
+until then both `ensure_*` and `cache pull` say so rather than failing obscurely. No lane's snapshot
+was rebuilt or uploaded as part of this. And the PGS/PRS parquets under `just-dna-seq` are **out of
+scope by decision**, not by oversight: `pgs-catalog`, `prs-percentiles`, `prs-sample-scores` and
+`polygenic_risk_scores` are built by `just-prs`'s Dagster pipeline, and pulling them into this tier
+would cross the dependency-tier rule the charter's Goal 2 states.
+
 ## RM175 — the PGx lane's default archive was a retired filename, and every row it had ever built came out of a frozen 2025 object
 
 **Severity** high · **Status** ✅ **SHIPPED 2026-09-02 in the uncut 0.7.0** — the rebuild onto
