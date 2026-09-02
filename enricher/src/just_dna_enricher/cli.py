@@ -1692,8 +1692,11 @@ def cache_pull_(
 @cache_app.command("rebuild")
 def cache_rebuild_(
     out: Path = typer.Option(
-        ..., "--out", file_okay=False,
-        help="Base directory. Each lane is built into <base>/<lane>/, never in place.",
+        Path("data/caches"), "--out", file_okay=False,
+        help=(
+            "Base directory. Each lane is built into <base>/<lane>/, never in place. The default is "
+            "under data/, which this workspace git-ignores wholesale."
+        ),
     ),
     only: list[str] = typer.Option(
         [], "--only", help="Rebuild just these caches (repeatable). Default: every one that can be.",

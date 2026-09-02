@@ -1098,36 +1098,36 @@ below, was already a fifth. The list here is the roster.)
 
 ```bash
 # CPIC — open and unauthenticated, so this is about a host's shared budget, not access.
-just-dna-enricher cpic build --out ./cpic --use non-commercial      # 132 genes, ~120k rows, ~256 KB
-just-dna-enricher cpic publish ./cpic --repo <org>/cpic             # optional; redistribution is granted
+just-dna-enricher cpic build --out data/caches/cpic --use non-commercial      # 132 genes, ~120k rows, ~256 KB
+just-dna-enricher cpic publish data/caches/cpic --repo <org>/cpic             # optional; redistribution is granted
 
 # ClinPGx — the bulk archive; its LICENSE.txt is extracted and travels with the parquet.
-just-dna-enricher clinpgx build --out ./clinpgx --use non-commercial
-just-dna-enricher clinpgx publish ./clinpgx --repo <org>/clinpgx
+just-dna-enricher clinpgx build --out data/caches/clinpgx --use non-commercial
+just-dna-enricher clinpgx publish data/caches/clinpgx --repo <org>/clinpgx
 
 # PharmVar — needs YOUR key, and there is no publish command.
-PHARMVAR_API_KEY=… just-dna-enricher pharmvar build --out ./pharmvar --use non-commercial
+PHARMVAR_API_KEY=… just-dna-enricher pharmvar build --out data/caches/pharmvar --use non-commercial
 
 # PubMind — no key and no `--use` flag; `pubmind publish` exists and refuses (see below).
-just-dna-enricher pubmind build --download --out ./pubmind        # or --table hg38_pubmind_db.txt.gz
+just-dna-enricher pubmind build --download --out data/caches/pubmind        # or --table hg38_pubmind_db.txt.gz
 
 # MANE — no key, no `--use`, no publish command. Discovers the newest version from current/ and
 # then pins it to release_<version>/ before fetching anything.
-just-dna-enricher mane build --download --out ./mane              # or --release 1.5 to pin by hand
+just-dna-enricher mane build --download --out data/caches/mane              # or --release 1.5 to pin by hand
 
 # The regulator drug labels — a SECOND ClinPGx archive with its own cadence, so its own cache and
 # its own repo. Same CC BY-SA terms as the annotation lane, so publishable on the same grounds.
-just-dna-enricher clinpgx build-labels --out ./drug_labels --use non-commercial
-just-dna-enricher clinpgx publish-labels ./drug_labels
+just-dna-enricher clinpgx build-labels --out data/caches/drug_labels --use non-commercial
+just-dna-enricher clinpgx publish-labels data/caches/drug_labels
 
 # STRchive — MIT, so publishable. Pin a release: the default branch moves, and only a pinned build
 # gets a `dataset` label the comparison can name.
-just-dna-enricher strchive build --out ./strchive --release v2.26.0
-just-dna-enricher strchive publish ./strchive
+just-dna-enricher strchive build --out data/caches/strchive --release v2.26.0
+just-dna-enricher strchive publish data/caches/strchive
 
 # ACMG SF — nothing is fetched. The workbook is ACMG/Elsevier supplementary material, so you supply
 # your own copy; there is no publish command, because nothing grants redistribution of those bytes.
-just-dna-enricher acmg build ./acmg_sf_v3.3.xlsx --out ./acmg_sf
+just-dna-enricher acmg build ./acmg_sf_v3.3.xlsx --out data/caches/acmg_sf
 ```
 
 ### One endpoint over every builder (`cache rebuild`, RM176)
@@ -1139,11 +1139,12 @@ conversion algorithm with two callers rather than two that have to agree. The pe
 they offer the local-file inputs an operator holds, which a rebuild pass by definition does not.
 
 ```bash
-just-dna-enricher cache rebuild --out ./caches-2026-09-02 --use non-commercial
-just-dna-enricher cache rebuild --out ./c --only strchive --only mane --pin mane=1.5
-just-dna-enricher cache rebuild --out ./c --only acmg --source acmg=./acmg_sf_v3.3.xlsx
-just-dna-enricher cache rebuild --out ./c --publish --dry-run        # rehearse the uploads
-scripts/rebuild-caches.sh ./caches-2026-09-02                        # the driver, all lanes
+just-dna-enricher cache rebuild --use non-commercial              # → data/caches/<lane>/
+just-dna-enricher cache rebuild --only strchive --only mane --pin mane=1.5
+just-dna-enricher cache rebuild --only acmg --source acmg=./acmg_sf_v3.3.xlsx
+just-dna-enricher cache rebuild --publish --dry-run               # rehearse the uploads
+scripts/rebuild-caches.sh data/caches                             # the driver, all lanes
+just-dna-enricher cache rebuild --out /srv/just-dna/caches-$(date +%F)   # a deployment's own path
 ```
 
 Three things about it are worth reading before a deployment runs it nightly.
@@ -1152,6 +1153,11 @@ Three things about it are worth reading before a deployment runs it nightly.
   minutes, and a short parquet still has a `PAR1` footer — so an `enrich` reading a half-written
   snapshot mid-flight sees a real but incomplete table and no resolver can catch it. Moving the result
   into the live caches is a separate, deliberate step.
+- **`--out` defaults to `data/caches/`, and every example above writes under `data/`.** That is not
+  cosmetic: run from a checkout, `--out ./cpic` drops an untracked snapshot directory in the
+  repository root, which is exactly the state `civic reproduce` needed its own `.gitignore` line to
+  paper over. `data/` is ignored wholesale, so a default there needs no rule and no rule has to grow
+  a line per lane. A deployment passes its own absolute path and none of this applies.
 - **The outcome is three-valued, and *not run* is not a failure.** ACMG needs a workbook that is
   Elsevier supplementary material, PharmVar a personal key, CIViC a release date to pin, and Ensembl is
   built by just-dna-pipelines. Each prints its own reason — taken from the registry field, not composed
@@ -1179,8 +1185,8 @@ meant to serve — while a key that is configured and then fails is **asked-and-
 Then point at them, or move them under the base directory so the default resolvers find them:
 
 ```bash
-export JUST_DNA_CPIC_CACHE=./cpic
-export JUST_DNA_PHARMVAR_CACHE=./pharmvar
+export JUST_DNA_CPIC_CACHE=data/caches/cpic
+export JUST_DNA_PHARMVAR_CACHE=data/caches/pharmvar
 just-dna-enricher pgx spec/ --offline --use non-commercial   # zero egress, both legs answered
 ```
 
@@ -1269,8 +1275,8 @@ resolver and a roster row since RM176.
 ## CIViC — the direction axis, and a source whose coordinates are all on the wrong build (RM152)
 
 ```bash
-just-dna-enricher civic build --release 01-Aug-2026 --out ./civic
-just-dna-enricher draft-panel spec/ --gene VHL --source civic --civic-cache ./civic
+just-dna-enricher civic build --release 01-Aug-2026 --out data/caches/civic
+just-dna-enricher draft-panel spec/ --gene VHL --source civic --civic-cache data/caches/civic
 ```
 
 **It writes `direction`, never `clin_sig`, and the inversion is the finding.** CIViC was proposed as a
@@ -2453,10 +2459,10 @@ name→identity answers that shipped with that protocol were derived in a frame 
 read. This builder is that frame, cached and pinned.
 
 ```bash
-just-dna-enricher mane build --download --out ./mane      # discover the newest version, then pin it
-just-dna-enricher mane build --release 1.5 --download --out ./mane
+just-dna-enricher mane build --download --out data/caches/mane      # discover the newest version, then pin it
+just-dna-enricher mane build --release 1.5 --download --out data/caches/mane
 just-dna-enricher mane build --summary … --changed … --not-in-mane … [--versions README_versions.txt]
-export JUST_DNA_MANE_CACHE=./mane
+export JUST_DNA_MANE_CACHE=data/caches/mane
 ```
 
 **MANE is the default, not the answer — and the bound is measured, not asserted.** The summary carries

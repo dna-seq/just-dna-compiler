@@ -6,7 +6,7 @@ itself would be a second source of truth nothing tests.
 
 | Script | What it drives |
 |---|---|
-| [`rebuild-caches.sh`](rebuild-caches.sh) | `just-dna-enricher cache rebuild` over every lane the registry carries — acquire, build, and with `--publish` upload. Writes each lane into `<base>/<lane>/`, never over a live cache. |
+| [`rebuild-caches.sh`](rebuild-caches.sh) | `just-dna-enricher cache rebuild` over every lane the registry carries — acquire, build, and with `--publish` upload. Writes each lane into `<base>/<lane>/`, never over a live cache; from a checkout, pass `data/caches`. |
 
 **This is not `.claude/`, and the split is by audience rather than by file type.** `.claude/` holds
 **agent tooling** — the `RMn` allocator, the consumer-suggestion ledger and archiver, the suggestion

@@ -18,7 +18,8 @@
 # rebuild takes minutes, and an `enrich` reading a half-written snapshot sees a real but incomplete
 # table — a short parquet still has a footer, so no resolver can catch it.
 #
-#   scripts/rebuild-caches.sh /srv/just-dna/caches-2026-09-02
+#   scripts/rebuild-caches.sh data/caches                     # ignored by this workspace
+#   scripts/rebuild-caches.sh /srv/just-dna/caches-$(date +%F)
 #   JUST_DNA_USE=non-commercial scripts/rebuild-caches.sh /srv/... --publish
 #
 # Every argument after the output directory is passed through to `cache rebuild`, so a partial run
@@ -29,7 +30,8 @@ set -euo pipefail
 OUT="${1:-}"
 if [[ -z "$OUT" ]]; then
     echo "usage: $0 <output-base> [extra args for 'cache rebuild']" >&2
-    echo "  e.g. $0 /srv/just-dna/caches-\$(date +%F) --publish --dry-run" >&2
+    echo "  e.g. $0 data/caches                    # under data/, which this repo ignores" >&2
+    echo "       $0 /srv/just-dna/caches-\$(date +%F) --publish --dry-run" >&2
     exit 2
 fi
 shift
