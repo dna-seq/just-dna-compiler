@@ -40,6 +40,7 @@ from just_dna_enricher.caches import (
     CacheLane,
     RebuildOutcome,
     RebuildRequest,
+    prepare_caches,
     rebuild_lane,
 )
 from just_dna_enricher.civic_draft import draft_panel_from_civic
@@ -1699,6 +1700,69 @@ def cache_pull_(
         raise typer.Exit(code=1)
     pullable = sorted(lane.name for lane in CACHE_LANES if lane.ensure is not None)
     typer.echo(f"caches available: {', '.join(pullable)}. Run `cache status` to confirm.")
+
+
+@cache_app.command("prepare")
+def cache_prepare_(
+    only: list[str] = typer.Option(
+        [], "--only", help="Prepare just these caches (repeatable). Default: every one.",
+    ),
+    use: str = typer.Option(
+        "unstated", "--use", help=f"Declared use: one of {sorted(VALID_DECLARED_USE)}.",
+    ),
+    pin: list[str] = typer.Option(
+        [], "--pin", help="lane=release, repeatable, for the lanes that are built rather than pulled.",
+    ),
+    source: list[str] = typer.Option(
+        [], "--source", help="lane=path, repeatable: build from a file you already hold.",
+    ),
+) -> None:
+    """Leave this machine with every cache it can have — pull what is published, build what is not.
+
+    **The complement of `cache pull`, and the one command a deployment actually wants.** `pull`
+    fetches the published snapshots and stops; four lanes are not published *for recorded reasons* —
+    PharmVar's personal key, PubMind's absent terms, NCBI's policy over MANE, ACMG's supplementary
+    material — so a machine that only pulled is missing four caches and the checks that read them
+    skip themselves. This runs each lane by the route it has.
+
+    **The route is a property of the lane, never a flag.** A published lane pulls, because building
+    it would spend an operator's bandwidth re-deriving bytes somebody already made; an unpublished
+    one builds, because that is the only route there will ever be. Asking for the choice would be
+    asking an operator to restate the licensing story.
+
+    **A cache that is already present is left alone**, exactly as `cache pull` leaves one alone, so
+    this is idempotent and cheap to re-run. Re-cutting a snapshot that exists is `cache rebuild`,
+    which writes somewhere else on purpose — a build straight into a live cache is visible half-done
+    to anything reading it, and a short parquet still has a footer.
+
+    The Python counterpart is `just_dna_enricher.caches.prepare_caches`, which this calls.
+    """
+    _, lanes = _selected(only)
+    outcomes = prepare_caches(
+        lanes,
+        declared_use=_use(use),
+        pins=_pairs(pin, "--pin"),
+        sources={k: Path(v).expanduser() for k, v in _pairs(source, "--source", must_exist=True).items()},
+    )
+    for outcome in outcomes:
+        colour = {
+            True: typer.colors.GREEN, False: typer.colors.RED, None: typer.colors.YELLOW,
+        }[outcome.ready]
+        typer.secho(
+            f"  {outcome.lane:11} {outcome.label:10} {outcome.detail}",
+            fg=colour, err=outcome.ready is not True,
+        )
+    ready = [o for o in outcomes if o.ready is True]
+    failed = [o for o in outcomes if o.ready is False]
+    typer.echo(
+        f"{len(ready)} of {len(outcomes)} cache(s) ready "
+        f"({sum(o.route == 'pulled' for o in ready)} pulled, "
+        f"{sum(o.route == 'built' for o in ready)} built, "
+        f"{sum(o.route == 'present' for o in ready)} already there). "
+        f"Run `cache status` to confirm."
+    )
+    if failed:
+        raise typer.Exit(code=1)
 
 
 @cache_app.command("rebuild")

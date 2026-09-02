@@ -238,6 +238,13 @@ reports its own no-op**, so a `suppress` with a typo'd subject does nothing and 
 | `integrity.clin_sig_concordance_signature` / `clin_sig_authority_call_signature` | format | two fact-hashes because they are two tables: a corrected normalization moves the detail rows without moving a verdict. |
 | `layout.atomic_write_text` / `layout.atomic_writer` | format | write a sidecar so a reader sees the whole file or the previous one. Nine writers were routed through these (S66) — if you write a sidecar yourself, use them. |
 | `normalize.PRESENTATION_AUTHORITY_KEYS` / `SHORT_DESCRIPTION_MAX_CHARS` / `PRESENTATION_AUTHORITY_REASONS` | format | the registry-held card subtitle (RM133), and its ~120-character ceiling. Still inject-only: `strip_authority_keys` takes the set *you* pass. |
+| **`caches.CACHE_LANES` / `CacheLane`** | enricher | RM176. The cache registry: one entry per lane carrying its three stages (`resolve`, `rebuild`, `ensure`), where it lives (`subdir`, `default_dir`), its licence terms, its publish repo, and — for each stage it lacks — **the reason as a field** (`unpublished`, `unbuilt`). Read it instead of hard-coding which snapshots exist; a hand-kept list is what this replaced, and it had drifted by three lanes. |
+| **`caches.prepare_caches(lanes=None, *, declared_use, pins, sources)`** | enricher | provisions every lane by its own route and returns one `PrepareOutcome` per lane, in registry order. `ready` is tri-state and `route` is `present` / `pulled` / `built` / `none` — a deployment auditing its caches has to tell a snapshot it *fetched* from one it *made*, and `release.json` names the release but not the route. This is what `cache prepare` calls. |
+| **`caches.rebuild_caches(lanes=None, *, out, declared_use, pins, sources)`** | enricher | the rebuild loop, returning `RebuildOutcome` per lane. Tri-state: `built is None` means the lane cannot run unattended (an Elsevier workbook, a personal key, a release to pin, or built elsewhere) and is **not** a failure. |
+| **`caches.prepare_lane` / `rebuild_lane` / `RebuildRequest`** | enricher | the single-lane forms, if you drive your own loop. |
+| **`download.SnapshotNotPublished`** | enricher | a repo that does not exist yet, distinguished from a download that broke. Subclasses `FileNotFoundError`, so a handler catching that still catches this. |
+| **`locations.resolve_acmg_reference` / `resolve_strchive_reference` / `resolve_drug_labels_reference`** | enricher | three new caches, with `default_*_cache_dir` beside each and `$JUST_DNA_ACMG_CACHE` / `$JUST_DNA_STRCHIVE_CACHE` / `$JUST_DNA_DRUG_LABELS_CACHE`. |
+| **`locations.missing_credential_reason(var)`** | enricher | why a credential is unusable, distinguishing **absent** from **exported empty** — `override=False` means `export FOO=` outranks a `.env` where `unset FOO` does not, and the two want different remedies. |
 | `just_dna_compiler.compiler.load_spec` | compiler | public since S74, ending a private-symbol reach the enricher itself was making. |
 | `base.since` / `base.field_first_seen` | format | RM146. Which release each authored column first appeared in, declared on the field and read back as `{field: release}`. **This is what tells an "Extra inputs are not permitted" finding apart from a typo**: `[curator]` is a 0.6.5 column, `[curatr]` is a mistake, and the two want opposite actions. Per `(model, field)` — `curator` is on `VariantRow` from 0.2.0 and on `StudyRow` only from 0.6.5. |
 | `just_dna_compiler.compiler.load_overlay` | compiler | public since RM136, for the same reason: the enricher needs the author's overlay to stop re-reporting a finding they have already answered, and a second reader of `overrides.csv` is the drift the overlay's design refuses. |
@@ -280,7 +287,7 @@ The registry `reference()` / `authoring_reference()` walks now renders **31 mode
 
 ### 2.5 CLI
 
-One new compiler command, one new enricher command group, four new `enrich` flags. Nothing was removed
+One new compiler command, several new enricher commands, four new `enrich` flags. Nothing was removed
 or retyped.
 
 | command | what it does |
@@ -288,6 +295,9 @@ or retyped.
 | `just-dna-compiler sweep BEFORE AFTER [--spec-root DIR] [--release V] [--json]` | measures what a release changed about compiled output, and with `--release` runs the **release gate** — a measured movement no `ReleaseRecord` declares exits 1. It needs the previous release actually installed, so it is a release-sequence command rather than a test. Under `--json` stdout is one JSON document and the gate's prose goes to stderr. |
 | `just-dna-enricher pubmind build` | reduces the ANNOVAR-distributed PubMind table to the snapshot the checks read |
 | `just-dna-enricher pubmind publish` | refuses to publish it, and says why — the snapshot is operator-built and inject-only |
+| **`just-dna-enricher cache prepare`** | RM176. **The one a deployment wants.** Leaves the machine with every cache it can have: pulls the published snapshots, builds the four that are unpublished for recorded reasons (PharmVar, PubMind, MANE, ACMG). A present cache is left alone, so it is idempotent. |
+| **`just-dna-enricher cache rebuild`** | RM176. Re-derives every lane into `<base>/<lane>/` (default `data/caches`), **never in place**, with `--publish` to upload each. The complement of `prepare`: rebuild cuts a fresh set, prepare fills in what is missing. |
+| **`just-dna-enricher strchive publish`** / **`clinpgx publish-labels`** / **`acmg build`** / **`mane build`** / **`strchive build`** / **`clinpgx build-labels`** | RM176 and RM168. Three lanes gained a publish command; three gained a cache and a resolver. |
 
 | `enrich` flag | default | note |
 | --- | --- | --- |
@@ -295,6 +305,18 @@ or retyped.
 | `--rederive` | off | re-asks every source about every subject and reports which answers changed. An ordinary run gap-fills and never re-asks. **`--verify-datasets` is its cheap neighbour — put it first.** It never shortens a table: answered replaces, could-not-ask keeps its rows. |
 | `--keep-staging` | off | leaves the staged answers after a successful commit |
 | `--pubmind-cache PATH` | `$JUST_DNA_PUBMIND_CACHE` | the second authority in the concordance check. With neither, PubMind's leg reads `unchecked` rather than agreement. |
+
+**Three caches became reachable without a flag, which changes what a no-flag run does.** `check-acmg`,
+`check-repeat-bands` and `clinpgx check-labels` each took an explicit path and looked nowhere else; each
+now reads a provisioned snapshot first (`$JUST_DNA_ACMG_CACHE`, `$JUST_DNA_STRCHIVE_CACHE`,
+`$JUST_DNA_DRUG_LABELS_CACHE`, or the shared cache base). **`check-acmg` is the one to look at**: with
+no snapshot it fell through to scraping NCBI's page, which serves SF **v3.2** while ACMG published
+v3.3, so a correctly authored v3.3 row came back `unverifiable`. A consumer that provisions caches
+centrally will see that check start answering. An explicit flag still wins everywhere.
+
+`cache pull`'s **exit code changed**: a repo that has never been published is reported and no longer
+counted as a failure, so `pull` on a fresh machine exits 0 where it used to exit 1. A download that
+breaks still fails and still exits 1.
 
 `draft-panel` gains `--source clinvar|pubmind` and `--min-confidence`, and `hint variant` reports
 PubMind's reading beside the rest (RM134 §§ C and D). PubMind is an LLM's reading of the literature and
@@ -503,6 +525,14 @@ by lifting a coordinate over.
 
 **Change**
 
+0. **Swap `cache pull` for `cache prepare` in provisioning** (RM176). `pull` fetches the published
+   snapshots and stops, and four lanes are not published for recorded reasons — so a deployment that
+   only pulled has been running with four caches absent and the checks reading them skipping
+   themselves. `prepare` pulls what is published and builds the rest; it leaves a present cache alone,
+   so it is safe to run on every deploy. In Python it is `caches.prepare_caches()`. Two smaller
+   consequences: `cache pull` no longer exits 1 for a repo that has never been published, and three
+   checks (`check-acmg`, `check-repeat-bands`, `clinpgx check-labels`) now find a provisioned snapshot
+   with no flag — `check-acmg` in particular stops falling back to a page that serves SF v3.2.
 1. **Stop substring-matching warning prose.** `warnings_summary` gives you the kinds and `carried`
    gives you actionability. The rule that used to need prose — *is this finding the author's problem?*
    — is now one membership test.

@@ -13,6 +13,7 @@ have to be edited every time the registry grew correctly — the exact counted-p
 the resolver family in `locations`.
 """
 
+import dataclasses
 import inspect
 from pathlib import Path
 
@@ -76,6 +77,19 @@ def test_every_lane_resolves_through_the_locations_family() -> None:
     for lane in CACHE_LANES:
         assert lane.resolve is getattr(locations, f"resolve_{lane.name}_reference"), lane.name
     assert len({lane.resolve for lane in CACHE_LANES}) == len(CACHE_LANES)
+
+
+def test_every_lane_pairs_its_resolver_with_the_matching_default_directory() -> None:
+    """`prepare` *writes* to `default_dir`, so a lane pointing at another's would provision over it.
+
+    `resolve` cannot answer this question — it returns `None` for an absent cache, and an absent
+    cache is exactly the case provisioning exists for — so the directory is its own field and is
+    checked the way the resolver already is: identity against the `locations` function, and
+    distinctness across the registry.
+    """
+    for lane in CACHE_LANES:
+        assert lane.default_dir is getattr(locations, f"default_{lane.name}_cache_dir"), lane.name
+    assert len({lane.default_dir for lane in CACHE_LANES}) == len(CACHE_LANES)
 
 
 def test_every_lane_names_a_distinct_cache_subdirectory() -> None:
@@ -454,3 +468,186 @@ def test_the_glob_is_not_pinned_to_one_version() -> None:
     """
     assert "v*" in caches.ACMG_WORKBOOK_GLOB
     assert caches.ACMG_WORKBOOK_GLOB.endswith(".xlsx")
+
+
+# ── prepare: pull what is published, build what is not ──────────────────────────────────────────
+
+
+def test_prepare_picks_each_lanes_route_from_the_registry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The routing rule, asserted over the whole registry rather than sampled.
+
+    A lane with an `ensure` pulls; one without it builds, because it is unpublished for a recorded
+    reason and building is the only route there will ever be. Neither leg is exercised here — both
+    are stubbed — because the thing under test is *which* one each lane takes, and running them would
+    make this a network test that also happens to check the routing.
+    """
+    pulled: list[str] = []
+    built: list[str] = []
+    def stub_build(lane, req):
+        built.append(lane.name)
+        req.out_dir.mkdir(parents=True, exist_ok=True)   # a real builder writes; so does this one
+        return caches.RebuildOutcome(lane.name, True, "stub", req.out_dir)
+
+    monkeypatch.setattr(caches, "rebuild_lane", stub_build)
+    lanes = []
+    for lane in CACHE_LANES:
+        base = tmp_path / lane.name
+        stub_ensure = None
+        if lane.ensure is not None:
+            def stub_ensure(_name=lane.name, _base=base):  # noqa: ANN001 - bound per lane
+                pulled.append(_name)
+                _base.mkdir(parents=True, exist_ok=True)
+                return _base
+        lanes.append(dataclasses.replace(
+            lane,
+            ensure=stub_ensure,
+            resolve=lambda: None,
+            default_dir=lambda _base=base: _base,
+            terms=None,
+        ))
+    outcomes = caches.prepare_caches(lanes)
+
+    by_name = {o.lane: o for o in outcomes}
+    for lane in CACHE_LANES:
+        expected = "pulled" if lane.ensure is not None else ("built" if lane.rebuild else "none")
+        assert by_name[lane.name].route == expected, lane.name
+    assert set(pulled) == {x.name for x in CACHE_LANES if x.ensure is not None}
+    assert set(built) == {
+        x.name for x in CACHE_LANES if x.ensure is None and x.rebuild is not None
+    }
+
+
+def test_prepare_leaves_a_present_cache_alone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Idempotent and cheap to re-run, like `cache pull` — and for a sharper reason.
+
+    Re-deriving a snapshot something may be reading is how a resolver comes to see a half-written
+    table, and a short parquet still has a footer. Re-cutting one is `cache rebuild`, which writes
+    somewhere else on purpose.
+    """
+    touched: list[str] = []
+    lane = dataclasses.replace(
+        LANES_BY_NAME["strchive"],
+        resolve=lambda: tmp_path / "already-here",
+        ensure=lambda: touched.append("pulled") or tmp_path,
+        default_dir=lambda: tmp_path / "already-here",
+    )
+    monkeypatch.setattr(caches, "rebuild_lane", lambda *a, **k: touched.append("built"))
+    outcome = caches.prepare_lane(lane, RebuildRequest(out_dir=tmp_path))
+    assert outcome.route == "present" and outcome.ready is True
+    assert touched == [], "a present cache must cost neither a download nor a build"
+
+
+def test_a_built_lane_is_staged_and_moved_rather_than_written_in_place(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The build target is never the live directory while the build is running.
+
+    The resolvers read by globbing, so a build writing straight into the cache is visible half-done —
+    and unlike a truncated download there is no footer check to catch it, because the file is real.
+    Asserted on where the builder was *pointed*, which is the property; the move is then observable
+    from the outside.
+    """
+    target = tmp_path / "acmg_sf"
+    pointed: list[Path] = []
+
+    def fake_rebuild(lane, request):
+        pointed.append(request.out_dir)
+        request.out_dir.mkdir(parents=True, exist_ok=True)
+        (request.out_dir / "acmg_sf.csv").write_text("gene\n", encoding="utf-8")
+        return caches.RebuildOutcome(lane.name, True, "stub", request.out_dir)
+
+    monkeypatch.setattr(caches, "rebuild_lane", fake_rebuild)
+    lane = dataclasses.replace(
+        LANES_BY_NAME["acmg"], resolve=lambda: None, default_dir=lambda: target,
+    )
+    outcome = caches.prepare_lane(lane, RebuildRequest(out_dir=target))
+
+    assert pointed == [target.parent / "acmg_sf.incoming"], "built into the live directory"
+    assert outcome.ready is True and outcome.route == "built"
+    assert (target / "acmg_sf.csv").is_file()
+    assert not (target.parent / "acmg_sf.incoming").exists(), "the staging directory is not left behind"
+
+
+def test_a_failed_build_leaves_no_half_snapshot_behind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lane that fails must not leave a directory a later `cache status` calls present."""
+    target = tmp_path / "acmg_sf"
+
+    def failing(lane, request):
+        request.out_dir.mkdir(parents=True, exist_ok=True)
+        (request.out_dir / "acmg_sf.csv").write_text("half\n", encoding="utf-8")
+        return caches.RebuildOutcome(lane.name, False, "the source went away")
+
+    monkeypatch.setattr(caches, "rebuild_lane", failing)
+    lane = dataclasses.replace(
+        LANES_BY_NAME["acmg"], resolve=lambda: None, default_dir=lambda: target,
+    )
+    outcome = caches.prepare_lane(lane, RebuildRequest(out_dir=target))
+    assert outcome.ready is False
+    assert not target.exists()
+    assert not (target.parent / "acmg_sf.incoming").exists()
+
+
+def test_a_repo_nobody_has_published_is_unavailable_rather_than_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`prepare`'s job is to leave the machine usable, and an unpublished repo is a fact about the
+    world that no retry changes — so it is the third state, and the exit code stays clean."""
+    def unpublished():
+        raise caches.SnapshotNotPublished("nothing at datasets/x/data")
+
+    lane = dataclasses.replace(
+        LANES_BY_NAME["civic"], resolve=lambda: None, ensure=unpublished,
+        default_dir=lambda: tmp_path / "civic",
+    )
+    outcome = caches.prepare_lane(lane, RebuildRequest(out_dir=tmp_path / "civic"))
+    assert outcome.ready is None
+    assert "nothing published yet" in outcome.detail
+
+
+def test_a_gated_lane_is_skipped_when_no_use_is_declared(tmp_path: Path) -> None:
+    """Downloading is taking the data, so the terms are accepted here exactly as in `cache pull`."""
+    lane = dataclasses.replace(
+        LANES_BY_NAME["cpic"], resolve=lambda: None,
+        ensure=lambda: pytest.fail("the gate did not run before the download"),
+        default_dir=lambda: tmp_path / "cpic",
+    )
+    outcome = caches.prepare_lane(lane, RebuildRequest(out_dir=tmp_path / "cpic"))
+    assert outcome.ready is None and "skipped" in outcome.detail
+
+
+def test_rebuild_caches_and_prepare_caches_are_the_cli_loops(tmp_path: Path) -> None:
+    """Both commands call these, so a caller in Python gets the routing rather than re-deriving it.
+
+    Walked over the registry: the pairing that matters is one outcome per lane, in registry order, so
+    a caller can zip the result against `CACHE_LANES` without matching on names.
+    """
+    prepared = caches.prepare_caches([LANES_BY_NAME["ensembl"]])
+    assert [o.lane for o in prepared] == ["ensembl"]
+
+    rebuilt = caches.rebuild_caches([LANES_BY_NAME["ensembl"]], out=tmp_path)
+    assert [o.lane for o in rebuilt] == ["ensembl"]
+    assert rebuilt[0].built is None, "ensembl is built by just-dna-pipelines, not here"
+
+
+def test_a_builder_that_writes_nothing_is_a_failure_not_a_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`built is True` has to mean a snapshot exists, and this is where that is established.
+
+    Without the check the move raises a raw `FileNotFoundError` naming a staging path the operator
+    has never heard of — a generic rejection where a specific one is a fix.
+    """
+    monkeypatch.setattr(
+        caches, "rebuild_lane",
+        lambda lane, req: caches.RebuildOutcome(lane.name, True, "claimed success", req.out_dir),
+    )
+    lane = dataclasses.replace(
+        LANES_BY_NAME["acmg"], resolve=lambda: None, default_dir=lambda: tmp_path / "acmg_sf",
+    )
+    outcome = caches.prepare_lane(lane, RebuildRequest(out_dir=tmp_path / "acmg_sf"))
+    assert outcome.ready is False
+    assert "wrote nothing" in outcome.detail

@@ -83,6 +83,18 @@ four-tuple list inside `cli.py` rather than something a test could walk.
   is strictly stronger than `unset FOO` — an empty variable is *present* and the `.env` cannot
   replace it. Both credential refusals name which state they are in and give the matching remedy;
   the empty one says `unset`.
+- **`cache prepare` is the command a deployment wants,** and the complement of `cache pull`. It
+  leaves the machine with every cache it can have: pulls what is published, **builds the four that
+  are not** — PharmVar, PubMind, MANE and ACMG, each unpublished for a recorded reason — so a machine
+  that only pulled is no longer four caches short with the checks reading them silently skipping. The
+  route is a property of the lane, never a flag. A present cache is left alone, so it is idempotent
+  and cheap to re-run; a built lane is staged beside its target and moved across, never written into
+  a live cache directory.
+- **A Python counterpart for both loops:** `caches.prepare_caches()` and `caches.rebuild_caches()`,
+  returning one outcome per lane in registry order. `PrepareOutcome.route` says **which route
+  answered** — `present` / `pulled` / `built` — because a deployment auditing its caches has to tell
+  a snapshot it fetched from one it made, and `release.json` names the release but not the route.
+  `caches.CACHE_LANES` is the registry itself: read it instead of hard-coding which snapshots exist.
 - **`cache rebuild --only acmg` needs no `--source` from a checkout.** `assets/acmg_sf_v*.xlsx`
   travels with the repository and is found by walking up from the working directory; a glob rather
   than a pinned filename, because the list is versioned and a constant would stop finding it the day

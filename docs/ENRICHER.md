@@ -1132,6 +1132,35 @@ just-dna-enricher strchive publish data/caches/strchive
 just-dna-enricher acmg build ./acmg_sf_v3.3.xlsx --out data/caches/acmg_sf
 ```
 
+### `cache prepare` — the whole set, by whichever route each lane has (RM176)
+
+```bash
+just-dna-enricher cache prepare --use non-commercial        # the deployment's one provisioning step
+just-dna-enricher cache prepare --only mane --only acmg     # or a subset
+```
+
+`cache pull` fetches the published snapshots and stops, and four lanes are not published *for
+recorded reasons* — PharmVar's personal key, PubMind's absent terms, NCBI's policy over MANE, ACMG's
+supplementary material. A machine that only pulled is therefore four caches short, and the checks that
+read them skip themselves with `no_reference`. `prepare` runs each lane by the route it has: pull if
+published, build if not.
+
+- **The route is a property of the lane, never a flag.** A published lane pulls, because building it
+  would spend an operator's bandwidth re-deriving bytes somebody already made; an unpublished one
+  builds, because that is the only route there will ever be. `PrepareOutcome.route` records which
+  answered — `present`, `pulled`, `built` — because a deployment auditing its own caches has to tell a
+  snapshot it *fetched* from one it *made*, and `release.json` names the release but not the route.
+- **A present cache is left alone**, exactly as `cache pull` leaves one alone, so this is idempotent.
+  Re-cutting a snapshot that already exists is `cache rebuild`, which writes somewhere else on
+  purpose — a build straight into a live cache is visible half-done to anything reading it, and unlike
+  a truncated download there is no footer check to catch it because the file is real.
+- **A built lane is staged and moved.** It builds into `<cache>.incoming` and renames across only once
+  the build finished; a failure removes the staging directory rather than leaving a half snapshot a
+  later `cache status` would call present.
+- **In Python:** `caches.prepare_caches(...)`, which the command calls. `caches.rebuild_caches(...)` is
+  its sibling. Both return one outcome per lane in registry order, so a caller can zip against
+  `CACHE_LANES` without matching on names.
+
 ### One endpoint over every builder (`cache rebuild`, RM176)
 
 Eleven builders, three stages each — acquire, build, publish — and until RM176 the only way to run them

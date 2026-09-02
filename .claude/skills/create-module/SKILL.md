@@ -828,8 +828,8 @@ Snapshot builders (dev/publisher surface, mostly needing the `polars` extra):
 `cpic build|publish`, `pharmvar build`,
 `acmg build`, `gnomad constraint build|publish`, `pubmind build`, `civic build|publish`,
 `mane build`, `strchive build|publish`,
-`cache status|pull|rebuild`, `upload`.
-`cache rebuild --out <dir>` runs every one of those builders in a single pass — acquire, build, and
+`cache status|pull|prepare|rebuild`, `upload`.
+`cache prepare` is the one to run first: it leaves the machine with every cache it can have, pulling the published snapshots and building the four that nothing publishes (PharmVar, PubMind, MANE, ACMG), and it leaves a cache that is already there alone. `cache rebuild --out <dir>` runs every one of those builders in a single pass — acquire, build, and
 with `--publish` upload — writing each into `<dir>/<lane>/` rather than over a cache something may be
 reading. A lane it cannot run unattended says so and is not counted as a failure: `--source
 acmg=<workbook.xlsx>` supplies the one input nothing may fetch for you, `--pin civic=<date>` names a

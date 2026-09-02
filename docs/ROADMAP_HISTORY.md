@@ -104,6 +104,17 @@ and provision for CIViC, STRchive and the drug labels, with `strchive publish` a
 one command over eleven builders, calling the same `download_*`/`build_*` the per-lane commands call,
 so there is one conversion algorithm with two callers rather than two that have to agree.
 
+**And `cache prepare` beside it, which is the command a deployment actually wanted.** `cache pull`
+fetches the published snapshots and stops, so a machine that only pulled is short exactly the four
+lanes nothing publishes — and those four are unpublished *for recorded reasons*, which means the gap
+was permanent rather than pending. `prepare` runs each lane by the route it has, pulling or building,
+and the route is a property of the lane rather than a flag: asking an operator to choose would be
+asking them to restate the licensing story. It leaves a present cache alone, like `pull`, and stages a
+built one beside its target rather than writing into a live cache directory — a build there is visible
+half-done, and unlike a truncated download no footer check catches it because the file is real.
+`prepare_caches` and `rebuild_caches` are the Python halves, returning one outcome per lane in
+registry order.
+
 **Two shapes had to be generalized to get there, and both were premises rather than bugs.** The
 publisher assumed every snapshot is `data/*.parquet`; ACMG's is `acmg_sf.csv` and STRchive's is
 `STRchive-loci.json`, each at the snapshot root. `plan_reference_snapshot` now takes the payload

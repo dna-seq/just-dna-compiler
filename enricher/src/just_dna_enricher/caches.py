@@ -34,6 +34,7 @@ lie. It is printed, never silently skipped.
 import logging
 import os
 import pathlib
+import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,6 +54,7 @@ from just_dna_enricher import (
     strchive_build,
 )
 from just_dna_enricher.download import (
+    SnapshotNotPublished,
     ensure_civic_snapshot,
     ensure_clinpgx_snapshot,
     ensure_clinvar_snapshot,
@@ -83,6 +85,18 @@ from just_dna_enricher.locations import (
     PHARMVAR_SUBDIR,
     PUBMIND_SUBDIR,
     STRCHIVE_SUBDIR,
+    default_acmg_cache_dir,
+    default_civic_cache_dir,
+    default_clinpgx_cache_dir,
+    default_clinvar_cache_dir,
+    default_constraint_cache_dir,
+    default_cpic_cache_dir,
+    default_drug_labels_cache_dir,
+    default_ensembl_cache_dir,
+    default_mane_cache_dir,
+    default_pharmvar_cache_dir,
+    default_pubmind_cache_dir,
+    default_strchive_cache_dir,
     load_env,
     missing_credential_reason,
     resolve_acmg_reference,
@@ -175,6 +189,11 @@ class CacheLane:
     #: the command is declared, not from a naming convention two lanes do not follow.
     build_command: str | None
     resolve: Callable[..., Path | None]
+    #: Where this lane's snapshot lives when nobody points anywhere — the directory `resolve`
+    #: looks in last. `prepare` needs it because it *writes* there, which `resolve` cannot say:
+    #: a resolver returns `None` for an absent cache and an absent cache is exactly the case
+    #: provisioning is for.
+    default_dir: Callable[..., Path]
     rebuild: RebuildAdapter | None
     ensure: Callable[..., Path] | None
     #: The repo **this tier** publishes to. Ensembl's snapshot is on HuggingFace and this field is
@@ -581,6 +600,7 @@ CACHE_LANES: list[CacheLane] = [
         subdir=ENSEMBL_SUBDIR,
         serves="rsID → coordinate (enrich)",
         resolve=resolve_ensembl_reference,
+        default_dir=default_ensembl_cache_dir,
         rebuild=None,
         ensure=ensure_snapshot,
         publish_repo=None,
@@ -596,6 +616,7 @@ CACHE_LANES: list[CacheLane] = [
         subdir=CLINVAR_SUBDIR,
         serves="clinical records (enrich, draft-panel)",
         resolve=resolve_clinvar_reference,
+        default_dir=default_clinvar_cache_dir,
         rebuild=_rebuild_clinvar,
         ensure=ensure_clinvar_snapshot,
         publish_repo=DEFAULT_CLINVAR_REPO_ID,
@@ -607,6 +628,7 @@ CACHE_LANES: list[CacheLane] = [
         subdir=CONSTRAINT_SUBDIR,
         serves="gnomAD v4.1 gene constraint (gene-metrics)",
         resolve=resolve_constraint_reference,
+        default_dir=default_constraint_cache_dir,
         rebuild=_rebuild_constraint,
         ensure=ensure_constraint_snapshot,
         publish_repo=DEFAULT_CONSTRAINT_REPO_ID,
@@ -618,6 +640,7 @@ CACHE_LANES: list[CacheLane] = [
         subdir=CLINPGX_SUBDIR,
         serves="clinical annotations (clinpgx check)",
         resolve=resolve_clinpgx_reference,
+        default_dir=default_clinpgx_cache_dir,
         rebuild=_rebuild_clinpgx,
         ensure=ensure_clinpgx_snapshot,
         publish_repo=DEFAULT_CLINPGX_REPO_ID,
@@ -629,6 +652,7 @@ CACHE_LANES: list[CacheLane] = [
         subdir=CPIC_SUBDIR,
         serves="alleles/diplotypes/recommendations (pgx, draft)",
         resolve=resolve_cpic_reference,
+        default_dir=default_cpic_cache_dir,
         rebuild=_rebuild_cpic,
         ensure=ensure_cpic_snapshot,
         publish_repo=DEFAULT_CPIC_REPO_ID,
@@ -640,6 +664,7 @@ CACHE_LANES: list[CacheLane] = [
         subdir=DRUG_LABELS_SUBDIR,
         serves="regulator drug labels (clinpgx check-labels)",
         resolve=resolve_drug_labels_reference,
+        default_dir=default_drug_labels_cache_dir,
         rebuild=_rebuild_drug_labels,
         ensure=ensure_drug_labels_snapshot,
         publish_repo=DEFAULT_DRUG_LABELS_REPO_ID,
@@ -651,6 +676,7 @@ CACHE_LANES: list[CacheLane] = [
         subdir=PHARMVAR_SUBDIR,
         serves="star alleles (pgx)",
         resolve=resolve_pharmvar_reference,
+        default_dir=default_pharmvar_cache_dir,
         rebuild=_rebuild_pharmvar,
         ensure=None,
         publish_repo=None,
@@ -667,6 +693,7 @@ CACHE_LANES: list[CacheLane] = [
         subdir=PUBMIND_SUBDIR,
         serves="literature-derived verdicts (pubmind checks)",
         resolve=resolve_pubmind_reference,
+        default_dir=default_pubmind_cache_dir,
         rebuild=_rebuild_pubmind,
         ensure=None,
         publish_repo=None,
@@ -682,6 +709,7 @@ CACHE_LANES: list[CacheLane] = [
         subdir=CIVIC_SUBDIR,
         serves="curated cancer interpretations (draft-panel --source civic)",
         resolve=resolve_civic_reference,
+        default_dir=default_civic_cache_dir,
         rebuild=_rebuild_civic,
         ensure=ensure_civic_snapshot,
         publish_repo=DEFAULT_CIVIC_REPO_ID,
@@ -693,6 +721,7 @@ CACHE_LANES: list[CacheLane] = [
         subdir=STRCHIVE_SUBDIR,
         serves="repeat-locus bands (check-repeat-bands, draft-repeats)",
         resolve=resolve_strchive_reference,
+        default_dir=default_strchive_cache_dir,
         rebuild=_rebuild_strchive,
         ensure=ensure_strchive_snapshot,
         publish_repo=DEFAULT_STRCHIVE_REPO_ID,
@@ -704,6 +733,7 @@ CACHE_LANES: list[CacheLane] = [
         subdir=MANE_SUBDIR,
         serves="MANE transcripts, the numbering frame",
         resolve=resolve_mane_reference,
+        default_dir=default_mane_cache_dir,
         rebuild=_rebuild_mane,
         ensure=None,
         publish_repo=None,
@@ -720,6 +750,7 @@ CACHE_LANES: list[CacheLane] = [
         subdir=ACMG_SUBDIR,
         serves="ACMG secondary findings (check-acmg)",
         resolve=resolve_acmg_reference,
+        default_dir=default_acmg_cache_dir,
         rebuild=_rebuild_acmg,
         ensure=None,
         publish_repo=None,
@@ -746,3 +777,159 @@ def rebuild_lane(lane: CacheLane, request: RebuildRequest) -> RebuildOutcome:
         return RebuildOutcome(lane.name, None, lane.unbuilt or "no builder in this tier")
     logger.info("Rebuilding the %s snapshot into %s ...", lane.name, request.out_dir)
     return lane.rebuild(request)
+
+
+@dataclass(frozen=True)
+class PrepareOutcome:
+    """One lane's provisioning result, and **which route answered** — not merely whether it worked.
+
+    `ready` is the tri-state: `True` the snapshot is on disk and usable, `False` the attempt failed,
+    `None` this lane offers no route on this machine and that is by design rather than an error.
+
+    `route` is the half a caller cannot reconstruct from `ready`, and it is the whole point of the
+    command: `present` (already there, nothing touched), `pulled` (downloaded from HuggingFace),
+    `built` (built locally because nothing publishes it), `none`. A deployment auditing its own
+    caches has to be able to tell a snapshot it *fetched* from one it *made* — they are different
+    artifacts with different provenance, and `release.json` says which release but not which route.
+    """
+
+    lane: str
+    ready: bool | None
+    route: str
+    detail: str
+    path: Path | None = None
+
+    @property
+    def label(self) -> str:
+        return {True: self.route, False: "FAILED", None: "unavailable"}[self.ready]
+
+
+def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
+    """Provision one lane by whichever route it has: pull it, or build it, or say why neither.
+
+    **The route is a property of the lane, never a flag.** A lane with an `ensure` is published, so
+    pulling is right and building would spend an operator's bandwidth re-deriving bytes somebody
+    already made. A lane without one is unpublished *for a recorded reason* — PharmVar's personal
+    key, PubMind's absent terms, NCBI's policy, ACMG's supplementary material — and building locally
+    is the only route there will ever be. Asking the caller to choose would be asking them to restate
+    the licensing story as a flag.
+
+    **A present cache is left alone**, exactly as `cache pull` leaves one alone: provisioning is
+    idempotent and cheap to re-run, and re-deriving a snapshot somebody is reading is how a resolver
+    comes to see a half-written table. Re-cutting one is `cache rebuild`, which writes somewhere else
+    on purpose.
+    """
+    existing = lane.resolve()
+    if existing is not None:
+        return PrepareOutcome(lane.name, True, "present", f"already provisioned at {existing}", existing)
+
+    if lane.ensure is not None:
+        if lane.terms is not None:
+            # The terms are accepted when the data is TAKEN, and a download is taking it.
+            try:
+                reason = check_declared_use(lane.terms, request.declared_use)
+            except LicenseRefusal as exc:
+                return PrepareOutcome(lane.name, False, "pulled", f"refused: {exc}")
+            if reason is not None:
+                return PrepareOutcome(lane.name, None, "none", f"skipped: {reason}")
+        try:
+            path = lane.ensure()
+        except Exception as exc:  # noqa: BLE001 - one lane failing must not sink the rest
+            # Not an error here either, and for a sharper reason than in `cache pull`: this command's
+            # job is to leave the machine with a usable cache, and a repo nobody has created yet is a
+            # fact about the world that no amount of retrying changes. Caught by TYPE — the name is
+            # not the contract, and a string compare here would survive a rename that broke it
+            # (`@client-exception-contract`).
+            if isinstance(exc, SnapshotNotPublished):
+                return PrepareOutcome(lane.name, None, "none", f"nothing published yet: {exc}")
+            return PrepareOutcome(lane.name, False, "pulled", str(exc))
+        return PrepareOutcome(lane.name, True, "pulled", f"downloaded to {path}", path)
+
+    if lane.rebuild is None:
+        return PrepareOutcome(lane.name, None, "none", lane.unbuilt or "no route in this tier")
+
+    # Built locally, because nothing publishes it. Into a staging directory beside the target and
+    # moved across only once the build has finished: the resolvers read the target by globbing, so a
+    # build writing straight into it would be visible half-done, and a short parquet still has a
+    # footer. The target is absent here (checked above), so the move is a plain rename.
+    target = lane.default_dir()
+    staging = target.parent / f"{target.name}.incoming"
+    if staging.exists():
+        shutil.rmtree(staging)
+    outcome = rebuild_lane(lane, RebuildRequest(
+        out_dir=staging, declared_use=request.declared_use, pin=request.pin, source=request.source,
+    ))
+    if outcome.built is not True:
+        shutil.rmtree(staging, ignore_errors=True)
+        return PrepareOutcome(
+            lane.name, outcome.built, "built" if outcome.built is False else "none", outcome.detail,
+        )
+    if not staging.is_dir():
+        # A builder that reports success and writes nothing. Not reachable through today's adapters,
+        # and guarded anyway because the alternative is a raw `FileNotFoundError` out of `replace()`
+        # naming a staging path the operator has never heard of — a generic rejection where a
+        # specific one is a fix (`@specific-rejection`). It also keeps the contract on the visible
+        # side: `built is True` means a snapshot exists, and this is where that is established.
+        return PrepareOutcome(
+            lane.name, False, "built",
+            f"the {lane.name} builder reported success but wrote nothing to {staging}",
+        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging.replace(target)
+    return PrepareOutcome(lane.name, True, "built", f"{outcome.detail} → {target}", target)
+
+
+def prepare_caches(
+    lanes: list[CacheLane] | None = None,
+    *,
+    declared_use: str = "unstated",
+    pins: dict[str, str] | None = None,
+    sources: dict[str, Path] | None = None,
+) -> list[PrepareOutcome]:
+    """Provision every cache by its own route — the Python half of `cache prepare`.
+
+    The counterpart to `rebuild_caches`, and a real API rather than a loop the CLI happens to own: a
+    deployment's own provisioning step is Python far more often than it is a shell script, and the
+    alternative is every caller re-deriving *which lane pulls and which builds* from the licensing
+    story. That derivation is the command.
+    """
+    pins = pins or {}
+    sources = sources or {}
+    outcomes = []
+    for lane in lanes if lanes is not None else CACHE_LANES:
+        outcomes.append(prepare_lane(lane, RebuildRequest(
+            out_dir=lane.default_dir(),
+            declared_use=declared_use,
+            pin=pins.get(lane.name),
+            source=sources.get(lane.name),
+        )))
+    return outcomes
+
+
+def rebuild_caches(
+    lanes: list[CacheLane] | None = None,
+    *,
+    out: Path,
+    declared_use: str = "unstated",
+    pins: dict[str, str] | None = None,
+    sources: dict[str, Path] | None = None,
+) -> list[RebuildOutcome]:
+    """Rebuild every lane into `out/<lane>/` — the Python half of `cache rebuild`.
+
+    Separate from `prepare_caches` because the two answer different questions and a flag joining them
+    would hide that. **Rebuild re-derives**, into a directory nothing is reading, so a deployment can
+    cut a new set and adopt it deliberately. **Prepare provisions**, into the live cache locations,
+    and leaves a lane that already has a snapshot alone. A caller wanting "make sure every cache
+    exists" wants prepare; one wanting "cut a fresh set from today's sources" wants rebuild.
+    """
+    pins = pins or {}
+    sources = sources or {}
+    return [
+        rebuild_lane(lane, RebuildRequest(
+            out_dir=out / lane.name,
+            declared_use=declared_use,
+            pin=pins.get(lane.name),
+            source=sources.get(lane.name),
+        ))
+        for lane in (lanes if lanes is not None else CACHE_LANES)
+    ]
