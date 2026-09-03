@@ -2572,6 +2572,28 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   it. And classify **late, in both callers**: the inputs do not exist where the overlay is applied, and
   hoisting a load to reach them reorders a published warnings list for no gain.
 
+- `@a-withhold-cannot-be-delegated-to-a-default-that-is-a-definite-answer` — **`normalize_clin_sig`
+  answers `other` for a token it does not model, and `other` is a member of the vocabulary (RM171,
+  0.7).** MITOMAP publishes the ClinGen mtDNA VCEP's five classes as bracketed abbreviations, so the
+  five became keys in the one shared normalizer — the `@one-normalizer-two-spellings` repair, a third
+  spelling of one vocabulary. It also publishes `[VUS*]`, undocumented anywhere, plus `[VUS+]`/`[VUS-]`
+  leaking from a seven-tier in-silico predictor that shares three letters. Passing those to the
+  normalizer and expecting the fall-through to withhold is the trap: the fall-through is `other`, a
+  **definite** call, so an undocumented token would have been recorded as a confident classification
+  rather than as an unknown. The membership test therefore runs *before* the normalizer
+  (`mitomap.vcep_clin_sig`), and the withheld tokens are counted in the snapshot's own provenance
+  instead of folded into the class they resemble. Same shape as
+  `@lookup-with-a-default-hides-a-new-member`, one step further: it is not only that the map is the
+  first edit, it is that a total function cannot be the place a three-valued answer is decided.
+
+  **The two halves of one source's judgement column can sit on different axes, and only one may be
+  mapped.** MITOMAP's `status` is a confirmation token followed by an optional bracket. The bracket is
+  somebody else's instrument and normalizes cleanly; the token is MITOMAP's own literature-count
+  criterion, and the source states in as many words that it is *not* an assignment of pathogenicity, so
+  mapping `Cfrm` onto `pathogenic` would write a judgement the publisher declines to make. Read a
+  source's own legend before folding its column into a house vocabulary, and split the column where the
+  legend splits it.
+
 - `@lookup-with-a-default-hides-a-new-member` — **A `.get(x, default)` over a vocabulary makes the map
   the FIRST edit when the vocabulary grows, not a follow-up (RM150).**
   `derive.trimmed_state` projects a `direction` into the legacy `state` set through
@@ -3372,6 +3394,43 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   footer to check, so the same guarantee comes from parsing before the rename. And a rebuild writes to
   `<base>/<lane>/`, never in place: a short parquet still has a `PAR1` footer, so an `enrich` reading a
   half-written snapshot mid-flight sees a real but incomplete table and no resolver can catch it.
+
+- `@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result` — **A cache lane may be
+  computed from two others, and every wrong answer available to it is silent (RM171, 0.7).**
+  `mitomap_miss` is the increment MITOMAP publishes over the ClinVar cache: not a download, its acquire
+  stage is *both parents on disk*. `CacheLane.parents` is a tuple of lane names, empty for every lane
+  that fetches its own bytes, and **three things read it, only one of which is the join**. The guard in
+  `rebuild_lane` is registry-driven rather than adapter-local, so a second derived lane inherits it, and
+  its outcome is `built=None` naming the missing parent — because both alternatives look like an
+  answer: a `False` files another lane's absence as *this* lane breaking, and an empty increment is the
+  strongest claim the lane can make (*this source publishes nothing the cache lacks*) derived from a
+  comparison that never ran. The registry **order** is load-bearing for the same reason `prepare` walks
+  it top to bottom, so a parent precedes its child and a test asserts it. And `cache rebuild` hands the
+  child the parents *it just cut*, under `out/<parent>/`, or a fresh set is internally inconsistent —
+  one derivation, two callers.
+
+  **A derived artifact's identity is the pair it came from.** The child's `release.json` pins both
+  parents on whatever identifying keys each publishes, so a ClinVar rebuild without a child rebuild is
+  *detectable*; `stale_parents` re-reads them and names the one that moved, and the drafter **reports
+  rather than refuses** — a stale increment is the increment against the older parent, which is a fact
+  worth stating and not an authoring error. A parent that is **gone** is deliberately not reported as
+  one that moved: "provision the parent" and "rebuild the child" are different instructions. Its
+  `dataset` label is `<parent A>+<parent B>` and is **withheld entirely when either half is unknown**,
+  because half a label is not a shorter label — it is one nothing can compare against. Publishing it was
+  refused on a fourth kind of reason, neither a licence refusal nor an unestablished permission: both
+  parents are redistributable, but a pulled copy would carry a currency check its holder cannot run.
+
+- `@a-label-read-in-band-beats-one-read-off-the-transfer` — **A snapshot's release label has to come
+  from the bytes, or the off-switch produces something nothing can compare against (RM171, 0.7).** The
+  MITOMAP lane was first built to take `dataset` from the download's HTTP `Last-Modified`, which is what
+  its design note asked for — and the same note named ClinVar as the precedent, where the label is
+  `##fileDate`, a statement the *file* makes about itself. The two do not agree, and the precedent is
+  right: every builder here offers a local-file route as its no-network switch, and a header-derived
+  label makes every such build unlabelled and therefore incomparable with a downloaded one. The dump
+  carries per-table curation dates in an `edit_date` table; the label is those, and the header and the
+  sha256 stay in `release.json`, where provenance of the *fetch* belongs. **Two adopted tables means two
+  dates in the label**, joined, rather than the later of the two — which would state that a table
+  curated in August applies as of October.
 
 - `@no-named-licence` — **A source may state its terms in prose and name no licence, and unknown commercial
   terms warn rather than gate (RM90).** `GWAS_CATALOG_TERMS` is the first entry in `licensing.py` with

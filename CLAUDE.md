@@ -336,6 +336,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Derived-not-stored is the pattern for a convenience number. `@derived-not-stored`
 - Before adding a column to a merge-not-clobber sidecar, ask which run writes it. `@currency-cannot-be-a-column`
 - A vocabulary read through `.get(x, default)` makes the map the first edit, and the guard an equality. `@lookup-with-a-default-hides-a-new-member`
+- A total function cannot decide a three-valued answer: withhold BEFORE a normalizer whose default is a member. `@a-withhold-cannot-be-delegated-to-a-default-that-is-a-definite-answer`
+- Split a judgement column where the source's own legend splits it; map only the half it calls a classification. `@a-withhold-cannot-be-delegated-to-a-default-that-is-a-definite-answer`
 - Store a source's value verbatim except when the encoding lies about its own order. `@verbatim-except-order`
 - The 0.3 axes are a passthrough — never fill `direction` from `state` at compile. `@axes-passthrough`
 - `annotations.parquet` carries **and keys on** `genotype`. `@annotations-keys-genotype`
@@ -360,6 +362,10 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Run a knob's **disabling** value; a flag the callee never sees is a flag that does nothing. `@off-switch-needs-a-probe`
 - An `ensure_*` must actually be called; `--offline` is the only switch. `@ensure-must-be-called`
 - A cache lane has three stages; a hand-kept roster names none of them as missing. `@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing`
+- A derived lane's parents are a **field**; an absent parent is could-not-run, never an empty result. `@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`
+- A derived artifact's identity is the pair it came from, and half a label is withheld. `@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`
+- A parent that MOVED and a parent that is GONE are different instructions; report the first, never the second as it. `@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`
+- Take a snapshot's release label from the bytes, not from the transfer — or the off-switch build is incomparable. `@a-label-read-in-band-beats-one-read-off-the-transfer`
 - Every stage a lane lacks carries its reason as a **field**, and a rebuild's outcome is tri-state. `@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing`
 - A rebuild writes to `<base>/<lane>/`, never in place: a short parquet still has a footer. `@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing`
 - Network tests are opt-in: `JUST_DNA_NETWORK_TESTS=1`. `@network-tests-optin`
