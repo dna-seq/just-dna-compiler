@@ -286,10 +286,22 @@ def _provision_snapshot(
     # are pinned by `license_sha256`, and a consumer that holds the bytes must be able to read what
     # governs them without going back to the source archive. The publisher was dropping it; fetching it
     # here is the other half, so a *provisioned* snapshot is the same artifact a *built* one is.
+    # **Staged through `.part` like every other download here, because a failed one is not a no-op.**
+    # `HfFileSystem.get` creates the local file before it discovers the remote path is missing, so
+    # fetching straight to the real name left a 0-byte `LICENSE.txt` in the cache of every snapshot
+    # whose repo publishes none — four of them today. An empty licence file is worse than no licence
+    # file: the readers guard on `is_file()`, so an absent one withholds (`license_sha256` stays
+    # `None`, with a warning) while an empty one pins the terms to the hash of the empty string. The
+    # same staging also stops a re-pull whose repo has since dropped the file from truncating a good
+    # local copy.
     for optional in (RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME):
+        target = cache_dir / optional
+        tmp_path = target.with_suffix(target.suffix + ".part")
         try:
-            fs.get(f"{repo_root}/{optional}", str(cache_dir / optional))
+            fs.get(f"{repo_root}/{optional}", str(tmp_path))
+            tmp_path.replace(target)
         except Exception as exc:
+            tmp_path.unlink(missing_ok=True)
             logger.info("No %s in the %s repo (%s); the cache carries data only.",
                         optional, label, type(exc).__name__)
     logger.info("Download complete: %s", cache_dir)

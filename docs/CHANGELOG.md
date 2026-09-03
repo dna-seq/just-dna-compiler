@@ -122,6 +122,20 @@ four-tuple list inside `cli.py` rather than something a test could walk.
   keeps `data/caches/`, named the same way. **`civic reproduce` moved** from `data/repro/civic` to
   `data/repro/civic_reproduce`, since `civic build` now takes the plain name. Callers passing `--out`
   are unaffected.
+- **A failed optional fetch no longer leaves a 0-byte `LICENSE.txt` in the cache, and a blank licence
+  pins nothing**
+  ([RM178](ROADMAP_HISTORY.md#rm178--a-failed-optional-fetch-left-a-0-byte-licence-in-every-pulled-cache-and-an-empty-licence-pins-the-empty-string),
+  `just-dna-enricher` only, no schema change). `HfFileSystem.get` opens the destination for writing
+  before it resolves the remote path, so `cache pull` created a phantom licence file for every snapshot
+  whose repo publishes none — **four of the nine published ones** (clinvar, gnomad_constraint, cpic,
+  mitomap) — and a re-pull of a repo that had dropped the file **truncated a good local copy**. Both
+  verified against the live hub. The fetch now stages through `.part` like every other download in that
+  function. **An empty licence file is not a smaller absence**: absence leaves `license_sha256` null and
+  warns, while an empty file used to pin `sha256:e3b0c442…b855`, the hash of the empty string — so blank
+  now normalizes to `None` at the sink (`SourceTerms.row`), with `read_license` answering `None` for a
+  present-but-blank archive member and `clinpgx_draft` keeping its own check for the warning it owes.
+  **Consumer-visible:** none — no parquet column, model field or vocabulary member changed. An existing
+  cache's 0-byte `LICENSE.txt` is inert and is not deleted for you.
 - **MITOMAP is two more lanes, and one of them is derived from the other two**
   ([RM171](ROADMAP_HISTORY.md#rm171--mitomaps-curated-mtdna-tables-adopted-as-the-increment-they-carry-over-clinvar),
   `just-dna-enricher` only, no schema change). `mitomap build` cuts the source's published `pg_dump`

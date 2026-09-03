@@ -3233,6 +3233,36 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   shape as `@write-the-sourcerow` and `@fieldnames-from-model`: when a rule has to be repeated per
   member, make it a function of the registry and test the registry.
 
+- `@a-failed-fetch-is-not-a-no-op` — **A download that fails still wrote a file, and an empty file is
+  a definite answer where absence is a withhold (RM178, 2026-09-03).** `_provision_snapshot` fetched
+  `release.json` and `LICENSE.txt` straight to their real names inside a `try`, on the assumption that
+  a failure changes nothing. `HfFileSystem.get` opens the destination for writing *before* it resolves
+  the remote path, so a repo that publishes neither file left a 0-byte one behind on every pull —
+  measured on four of the nine published snapshots (clinvar, gnomad_constraint, cpic, mitomap) — and a
+  re-pull of a repo that had dropped the file **truncated a good local copy from 36 bytes to 0**. Both
+  halves were verified against the live hub before the repair, not reasoned about.
+
+  **Why an empty licence is worse than no licence.** Every reader guards on `is_file()`, which cannot
+  tell the two apart, and the two answers are not neighbours: an absent `LICENSE.txt` leaves
+  `license_sha256` null and warns, while an empty one records
+  `sha256:e3b0c442…b855` — the hash of the empty string — as a pin a consumer is invited to check.
+  That is the tri-state rule at a file boundary: the unknown must withhold, and a total function over
+  bytes will happily answer it.
+
+  **Two repairs, at the two ends.** The write end stages through `.part` and renames on success, the
+  idiom the parquet and sidecar loops in that same function already used — so a failure leaves nothing
+  and cannot overwrite what is already there. The read end normalizes at the **sink**:
+  `SourceTerms.row` treats a blank or whitespace-only `license_text` as `None`, because there are four
+  callers (`clinpgx_build.read_license`, `drug_labels_build`, `clinpgx_draft`, and a registry's status
+  field) and a rule restated per caller is a rule three callers drift from. `read_license` answers
+  `None` for a present-but-blank archive member for the same reason, one level up. The drafter keeps
+  its own blank check only because it owes a *warning*, which the sink cannot emit.
+
+  **The test had to model the transport honestly.** A fake that raised without touching the
+  destination passes against the buggy code, which is the whole anti-pattern: the fake writes an empty
+  file and then raises, exactly as the real client does, and both regression tests were run against
+  the pre-fix loop and observed to fail.
+
 ## Dogfooding, adversarial probing, and how a finding gets filed
 
 - `@dogfood-lacks-are-results` — **Dogfooding means using the shipped surface to do real work — and a capability the tool LACKS is

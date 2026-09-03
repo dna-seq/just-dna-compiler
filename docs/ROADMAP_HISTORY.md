@@ -68,6 +68,47 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM178 — a failed optional fetch left a 0-byte licence in every pulled cache, and an empty licence pins the empty string
+
+**Severity** medium · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-enricher` only —
+one download loop, one normalization in `SourceTerms.row`, one archive reader; no schema, no parquet
+column, no vocabulary member) · **Owner** enricher · **Motivating case** an audit of the published
+HuggingFace artifacts on 2026-09-03, which pulled every publishable lane into a scratch cache and found
+`LICENSE.txt` at 0 bytes in four of them
+
+**The transport does not behave the way the `try` assumed.** `_provision_snapshot` ends by fetching the
+two optional root files, `release.json` and `LICENSE.txt`, inside a `try/except` that logs "the cache
+carries data only" — written on the assumption that a failed fetch changes nothing. It does not:
+`HfFileSystem.get` opens the destination for writing *before* it resolves the remote path, so a repo
+publishing neither file leaves a 0-byte one behind. Four of the nine published snapshots publish no
+`LICENSE.txt` (clinvar, gnomad_constraint, cpic, mitomap), so every `cache pull` on a hosted deployment
+created four phantom licence files. The same call **truncated an existing local copy from 36 bytes to
+0** — verified against the live hub, both halves, before anything was changed.
+
+**An empty licence is not a smaller absence, it is a different answer.** The readers guard on
+`is_file()`, which cannot separate the two, and the answers diverge: an absent `LICENSE.txt` leaves
+`license_sha256` null and warns, while an empty one records `sha256:e3b0c442…b855`, the hash of the
+empty string, as a pin — a definite claim about terms nobody read, in a field whose only purpose is to
+tie recorded terms to the text that governed the bytes (S44's whole point). Nothing had noticed because
+the one lane that reads the file, ClinPGx, publishes a real one.
+
+**Repaired at both ends, and the read end at the sink.** The write end stages through `.part` and
+renames on success — the idiom the parquet and sidecar loops of that same function already used — so a
+failure leaves nothing and cannot overwrite what is there. The read end normalizes in
+`SourceTerms.row`: blank or whitespace-only `license_text` is `None`. At the sink because there are
+four callers (`clinpgx_build.read_license`, `drug_labels_build`, `clinpgx_draft`, and a registry's
+status field), and a rule restated per caller is a rule three callers drift from; `read_license`
+answers `None` for a present-but-blank archive member for the same reason one level up. `clinpgx_draft`
+keeps a blank check of its own only because it owes a *warning*, which the sink cannot emit.
+
+**Refused: deleting the phantom files from operator caches.** `_provision_snapshot` already reports a
+foreign parquet rather than removing it — someone else's cache directory is not ours to clean — and the
+same rule holds here. A 0-byte `LICENSE.txt` in an existing cache is now inert (nothing pins it, and the
+next pull replaces or leaves it), and an operator who wants it gone can delete it.
+
+· *from* the 2026-09-03 published-artifact audit · *related* RM176, S44 · *also in* CHANGELOG,
+AGENT_NOTES `@a-failed-fetch-is-not-a-no-op`
+
 ## RM177 — nine builders wrote their snapshot beside `pyproject.toml`, because the rule that forbade it was prose
 
 **Severity** medium · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-enricher` only —

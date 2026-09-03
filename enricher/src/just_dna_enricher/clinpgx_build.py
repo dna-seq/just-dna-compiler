@@ -161,10 +161,17 @@ def read_license(archive: zipfile.ZipFile) -> str | None:
 
     Read from the archive rather than fetched separately on purpose: the terms that govern *these*
     bytes are the ones shipped alongside them.
+
+    A member that is present and blank answers `None`, the same as no member at all: both builders
+    hash whatever this returns into `license_sha256` and write it beside the data, and an empty file
+    would pin the terms to the hash of the empty string and hand the drafter a licence to read that
+    says nothing. Decided here rather than in the two callers, so the rule cannot hold in one build
+    and not the other.
     """
     for name in archive.namelist():
         if Path(name).name == ARCHIVE_LICENSE_MEMBER:
-            return archive.read(name).decode("utf-8", errors="replace")
+            text = archive.read(name).decode("utf-8", errors="replace")
+            return text if text.strip() else None
     return None
 
 

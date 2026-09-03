@@ -402,15 +402,20 @@ def draft_pharm_variants(
         # value it does not have. Absent stays `None` (the tri-state rule) — an older snapshot built
         # before the extractor has no licence file, and inventing a hash for it would be worse than
         # the null this fixes.
+        # Present-but-blank reads as absent here too, and the warning is the reason this arm is not
+        # left to `SourceTerms.row`'s normalization alone: an empty file is what a provisioning run
+        # used to leave behind, and a drafter that silently recorded no hash for it would say nothing
+        # about a snapshot whose terms cannot be pinned.
         license_path = Path(snapshot) / SNAPSHOT_LICENSE_FILENAME
         license_text = (
             license_path.read_text(encoding="utf-8") if license_path.is_file() else None
         )
-        if license_text is None:
+        if not (license_text or "").strip():
+            license_text = None
             warnings.append(
-                f"no {SNAPSHOT_LICENSE_FILENAME} in the snapshot, so the recorded ClinPGx terms are "
-                f"not pinned to the text that governed them (license_sha256 stays empty). Rebuild "
-                f"the snapshot with `just-dna-enricher clinpgx build` to extract it."
+                f"no readable {SNAPSHOT_LICENSE_FILENAME} in the snapshot, so the recorded ClinPGx "
+                f"terms are not pinned to the text that governed them (license_sha256 stays empty). "
+                f"Rebuild the snapshot with `just-dna-enricher clinpgx build` to extract it."
             )
         merge_sources_file(
             [

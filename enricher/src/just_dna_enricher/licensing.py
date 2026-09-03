@@ -80,15 +80,25 @@ class SourceTerms:
 
         `license_text`, when the pass could read the terms out of the payload, is hashed into
         `license_sha256` — pinning the terms to the same moment as the data.
+
+        **Blank is absent, and the normalization lives here rather than at the four call sites.** A
+        licence file that exists and says nothing is not terms, and hashing it produces
+        `sha256:e3b0c442…b855` — a definite answer to a question nobody answered, indistinguishable
+        from a real pin once it is in `sources.csv`. Whitespace-only counts as blank: the readers
+        upstream guard on `is_file()`, so an empty file reached this far, and the tri-state rule says
+        an unknown withholds rather than takes a default that is itself an answer. One normalizer
+        because there are four sinks (two archive readers, the ClinPGx drafter, and a registry's
+        status field) and a rule restated per caller is a rule three callers will drift from.
         """
+        pinned = license_text if (license_text or "").strip() else None
         return SourceRow(
             source=self.source,
             layer=layer,
             license=self.license,
             license_url=self.license_url,
             license_sha256=(
-                "sha256:" + hashlib.sha256(license_text.encode("utf-8")).hexdigest()
-                if license_text is not None
+                "sha256:" + hashlib.sha256(pinned.encode("utf-8")).hexdigest()
+                if pinned is not None
                 else None
             ),
             attribution=self.attribution,

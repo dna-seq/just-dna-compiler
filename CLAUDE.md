@@ -277,6 +277,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - ClinPGx/CPIC/PharmVar are CC BY-SA + no-sale, never a resolution link, and the PharmVar key is personal. `@pgx-research-only`
 - Every gated source has a cache; PharmVar's is unpublishable; `offline` outranks an injected client. `@gated-source-caches`
 - A source may publish no licence at all; unknown commercial terms warn, they never gate. `@no-named-licence`
+- A licence file that is present and blank is not terms; normalize at the sink, never per caller. `@a-failed-fetch-is-not-a-no-op`
 - `check_declared_use` gates a fetch; reading a snapshot the operator built is not one. `@acquisition-gate-is-not-a-read-gate`
 
 ### PGx sources
@@ -377,6 +378,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - The run with nothing to do is a path: re-run a merge pass over a table it already filled. `@empty-work-is-a-path`
 - Probe a source's real file before modelling it; the docs lie by omission. `@probe-the-real-file`
 - A sidecar writer is atomic or it leaves a valid short file a merge believes. `@atomic-sidecar-write`
+- A failed fetch is not a no-op: it creates the file and truncates one already there — stage through `.part`. `@a-failed-fetch-is-not-a-no-op`
 - An `enrich` run is a transaction: stage the *answer* beside the target, commit the table at the gate. `@enrich-is-a-transaction`
 - A refused `strict` run commits nothing — a written promise now, asserted on the bytes. `@enrich-is-a-transaction`
 - `flock` the directory, never a lockfile: the kill it guards against is what leaves one behind. `@flock-not-a-lockfile`
