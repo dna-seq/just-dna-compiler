@@ -33,6 +33,8 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Trait currency** | `trait_efo_id` vs OLS4 (obsolete + replacement) | `identifiers.OntologyClient.trait` (attested by `check-identifiers` since RM72) |
 | **Gene symbol currency** | `gene` vs HGNC approved / previous symbols | `identifiers.OntologyClient.gene` (attested by `check-identifiers` since RM72) |
 | **Gene ↔ locus agreement** | the row's `gene` vs the chromosome its variant sits on (0.5.4) | `identifiers.check_identifiers` → `GeneLocusConflict` (attested since RM72) |
+| **PGS accession currency** | an authored `pgs_id` vs the PGS Catalog's own record for it (0.7, RM163) — the Catalog answers 200 with `{}` for a never-assigned id and for a malformed one, so the check reads the body | `identifiers._check_pgs` (attested by `check-identifiers`; `--no-pgs` records `not_requested`) |
+| **PGS metadata agreement** | authored `training_ancestry` / `training_cohort` vs the score record's `ancestry_distribution` / `samples_training` (0.7, RM163) — its own member, because currency asks whether the id still names a score and this asks whether two cells beside it still match | `identifiers._check_pgs` (attested by `check-identifiers`) |
 | **ACMG secondary findings** | authored `acmg_sf` vs the published SF gene list (v3.3 via `--sf-list`; the scraped v3.2 page reports `unverifiable`) | `acmg.check_acmg_sf` (attested by `check-acmg` since RM72) |
 | **Repeat bands** | an authored `repeat_alleles.csv` band table vs STRchive's `benign_*`/`intermediate_*`/`pathogenic_*` (0.7, RM165) | `strchive.check_repeat_bands` (**warns in both modes**; the catalogue's `pathogenic_max` is reported and never written) |
 | **Regulator drug labels** | a `(gene[, allele], drug)` claim vs the `Testing Level` five drug regulators' labels carry, at two join tiers (0.7, RM166) | `drug_labels.check_drug_labels` (**warns in both modes**; a blank level is `unknown` and never `No Clinical PGx`) |
@@ -391,6 +393,11 @@ really sleeping.
 | **PMC ID converter** | `literature.PmcIdConverterClient` (PMCID → PMID, reporting only) | no published figure; the service documents a **200-id** batch ceiling | `min_request_interval=0.5` (2/s), batches of **200** | `tool=just-dna-enricher`; `email` from `JUST_DNA_CONTACT_EMAIL` when set |
 | **OLS4 + HGNC** | `identifiers.OntologyClient` | neither publishes a documented limit | `min_request_interval=0.2` (courtesy — GET-per-id, unbatched) | `Accept: application/json` |
 | **PGS Catalog REST** (`www.pgscatalog.org/rest`) | `pgs.PgsCatalogClient` → identifier currency + the release probe | none published | `_REQUEST_INTERVAL=0.2` (courtesy — GET-per-accession, unbatched; one extra request for `/rest/info`) | `Accept: application/json` |
+| **LitVar2 / PubTator3** (`ncbi.nlm.nih.gov/research/litvar2-api`) | `litvar` → literature coverage (0.7, RM167) | NCBI's shared **3 req/s** courtesy figure | `_REQUEST_INTERVAL=0.34` | none |
+| **CIViC GraphQL** (`civicdb.org/api/graphql`) | `civic_api` → `civic citations`, evidence-status currency (0.7, RM160) | none published | `_REQUEST_INTERVAL=0.34` (courtesy) | none |
+| **ClinGen Allele Registry** (`reg.clinicalgenome.org/allele`) | `clingen_allele` → the identity-from-a-name procedure (0.7, RM153) | none published | `_REQUEST_INTERVAL=0.1` (courtesy) | none |
+| **Ensembl GRCh37 REST** (`grch37.rest.ensembl.org`) | `grch37.diagnose_wrong_build` (0.6) | the same **15 req/s** as the GRCh38 host | `_REQUEST_INTERVAL=0.1` | none |
+| **ClinVar release probe** | `currency.ClinVarReleaseClient` — one `HEAD` for the VCF's date header per `--verify-datasets` run (0.7) | n/a (one request) | `CLINVAR_MIN_INTERVAL=0.5` | none |
 | **Ensembl REST** (`rest.ensembl.org`) | `ensembl` V1 fallback | **15 req/s** per IP, **~55 000 / rolling hour**; 429 + `Retry-After` / `X-RateLimit-*` | **no `PacingGate`** — live path is the last link after cache/snapshot, so volume stays low; tenacity on transport only | none |
 | **Ensembl GraphQL** (`beta.ensembl.org`) | `ensembl` V2 first try | unpublished (beta) | **no `PacingGate`**; 5xx falls through to REST | none |
 | **CPIC** (`api.cpicpgx.org`) | `cpic` / `pgx_draft` | unpublished | **no `PacingGate`** — coarse PostgREST GETs (gene-scoped), not per-allele loops | none |
@@ -435,9 +442,10 @@ Org limits apply **per member**, not shared. Source of truth:
   published ceilings make one-id-per-request unusable; PharmVar is the opposite — 2 rps forces
   gene-scoped endpoints, never per-allele.
 - **No response cache for the live clients.** NCBI / PharmVar / gnomAD GraphQL / Crossref / Europe PMC
-  / OLS4 / HGNC / live Ensembl are paced only. Persistence is the authored sidecars
-  (`resolution.csv`, `frequencies.csv`, …) and the HF parquet snapshots (Ensembl, ClinVar, gnomAD
-  constraint) — delete a sidecar to force a refetch. Note which entries in that list are also the
+  / OLS4 / HGNC / PGS Catalog / LitVar2 / the CIViC API / the ClinGen Allele Registry / GRCh37 Ensembl /
+  the ClinVar release probe / live Ensembl are paced only. Persistence is the authored sidecars
+  (`resolution.csv`, `frequencies.csv`, …) and the published snapshots `cache pull` fetches (the
+  `CACHE_LANES` rows with a repo — see "The caches") — delete a sidecar to force a refetch. Note which entries in that list are also the
   **licence-gated** ones: CPIC and PharmVar are paced-only *and* forbid sale, so they are the two RM38
   gives a snapshot (see *On a host, or in a service* below).
 - **A shared IP shares one budget.** Every figure above is per-IP or per-token, never per caller, so a
@@ -459,7 +467,9 @@ Org limits apply **per member**, not shared. Source of truth:
   raise precisely because every gated client paces *before* it retries: an extra attempt spends a slot
   of the published budget rather than bursting past it. Only a bare `stop_after_attempt` is replaced —
   a composed `stop_after_attempt(3) | stop_after_delay(60)` means *both*, and raising one term would
-  silently change a policy whose author meant the conjunction. None of the nine is composed today.
+  silently change a policy whose author meant the conjunction. None is composed today — and the number
+  of policies is deliberately not stated here: `net.py` deleted *"the nine"* from its own comments after
+  the tree carried twelve, because a count in prose is a registry nothing iterates.
 
 ## The author's overlay, read but never written (RM136, 0.7)
 
@@ -1058,7 +1068,8 @@ the enricher's own tests follow. Every resolver and every `default_*_cache_dir` 
 before that it reached none of the six, because the default directory is computed as an *argument* and
 loaded the file on its own way in (S39). The credential paths — `net`, `eutils`, `literature`,
 `pharmvar` — call `load_env()` with no flag at all, so a caller who wants nothing loaded anywhere still
-has to neutralize the loader; **RM102** is the open item for the whole question.
+has to neutralize the loader; **RM102** carried the whole question and closed on 2026-08-21 as a
+decision not to act, after the half of it that was a real defect had shipped.
 
 Inside a cache the layout is fixed, because **four parties have to agree on it** — builder writes,
 publisher uploads, provisioner fetches, reader queries — and every past disagreement was silent:
@@ -1087,7 +1098,7 @@ rather than assuming one shape for every lane.
 
 ```bash
 just-dna-enricher cache status                       # what is present, where, which release
-just-dna-enricher cache pull                         # the ungated three
+just-dna-enricher cache pull                         # every published lane with no `--use` gate
 just-dna-enricher cache pull --use non-commercial    # …and the gated ones you may hold
 just-dna-enricher cache pull --only clinvar --only cpic --use non-commercial
 ```
@@ -1139,36 +1150,37 @@ below, was already a fifth. The list here is the roster.)
 
 ```bash
 # CPIC — open and unauthenticated, so this is about a host's shared budget, not access.
-just-dna-enricher cpic build --out data/caches/cpic --use non-commercial      # 132 genes, ~120k rows, ~256 KB
-just-dna-enricher cpic publish data/caches/cpic --repo <org>/cpic             # optional; redistribution is granted
+# Every builder writes data/repro/<lane>/ unless --out names somewhere else (RM177).
+just-dna-enricher cpic build --use non-commercial                             # 132 genes, ~120k rows, ~256 KB
+just-dna-enricher cpic publish data/repro/cpic --repo <org>/cpic              # optional; redistribution is granted
 
 # ClinPGx — the bulk archive; its LICENSE.txt is extracted and travels with the parquet.
-just-dna-enricher clinpgx build --out data/caches/clinpgx --use non-commercial
-just-dna-enricher clinpgx publish data/caches/clinpgx --repo <org>/clinpgx
+just-dna-enricher clinpgx build --use non-commercial
+just-dna-enricher clinpgx publish data/repro/clinpgx --repo <org>/clinpgx
 
 # PharmVar — needs YOUR key, and there is no publish command.
-PHARMVAR_API_KEY=… just-dna-enricher pharmvar build --out data/caches/pharmvar --use non-commercial
+PHARMVAR_API_KEY=… just-dna-enricher pharmvar build --use non-commercial
 
 # PubMind — no key and no `--use` flag; `pubmind publish` exists and refuses (see below).
-just-dna-enricher pubmind build --download --out data/caches/pubmind        # or --table hg38_pubmind_db.txt.gz
+just-dna-enricher pubmind build --download                                  # or --table hg38_pubmind_db.txt.gz
 
 # MANE — no key, no `--use`, no publish command. Discovers the newest version from current/ and
 # then pins it to release_<version>/ before fetching anything.
-just-dna-enricher mane build --download --out data/caches/mane              # or --release 1.5 to pin by hand
+just-dna-enricher mane build --download                                     # or --release 1.5 to pin by hand
 
 # The regulator drug labels — a SECOND ClinPGx archive with its own cadence, so its own cache and
 # its own repo. Same CC BY-SA terms as the annotation lane, so publishable on the same grounds.
-just-dna-enricher clinpgx build-labels --out data/caches/drug_labels --use non-commercial
-just-dna-enricher clinpgx publish-labels data/caches/drug_labels
+just-dna-enricher clinpgx build-labels --use non-commercial                 # → data/repro/drug_labels
+just-dna-enricher clinpgx publish-labels data/repro/drug_labels
 
 # STRchive — MIT, so publishable. Pin a release: the default branch moves, and only a pinned build
 # gets a `dataset` label the comparison can name.
-just-dna-enricher strchive build --out data/caches/strchive --release v2.26.0
-just-dna-enricher strchive publish data/caches/strchive
+just-dna-enricher strchive build --release v2.26.0
+just-dna-enricher strchive publish data/repro/strchive
 
 # ACMG SF — nothing is fetched. The workbook is ACMG/Elsevier supplementary material, so you supply
 # your own copy; there is no publish command, because nothing grants redistribution of those bytes.
-just-dna-enricher acmg build ./acmg_sf_v3.3.xlsx --out data/caches/acmg_sf
+just-dna-enricher acmg build ./acmg_sf_v3.3.xlsx                            # → data/repro/acmg_sf
 ```
 
 ### `cache prepare` — the whole set, by whichever route each lane has (RM176)
@@ -1178,9 +1190,11 @@ just-dna-enricher cache prepare --use non-commercial        # the deployment's o
 just-dna-enricher cache prepare --only mane --only acmg     # or a subset
 ```
 
-`cache pull` fetches the published snapshots and stops, and four lanes are not published *for
+`cache pull` fetches the published snapshots and stops, and five lanes are not published *for
 recorded reasons* — PharmVar's personal key, PubMind's absent terms, NCBI's policy over MANE, ACMG's
-supplementary material. A machine that only pulled is therefore four caches short, and the checks that
+supplementary material, and `mitomap_miss`, which is derived from two parents on the pulling machine
+and would only pin somebody else's ClinVar if it travelled. A machine that only pulled is therefore
+five caches short, and the checks that
 read them skip themselves with `no_reference`. `prepare` runs each lane by the route it has: pull if
 published, build if not.
 
@@ -1202,8 +1216,9 @@ published, build if not.
 
 ### One endpoint over every builder (`cache rebuild`, RM176)
 
-Eleven builders, three stages each — acquire, build, publish — and until RM176 the only way to run them
-all was eleven commands with eleven different flag shapes. `cache rebuild` is the single endpoint, and
+Thirteen builders today — eleven when RM176 shipped, plus `mitomap` and `mitomap_miss` from RM171 the
+next day — three stages each — acquire, build, publish — and until RM176 the only way to run them all
+was one command per lane, each with its own flag shape. `cache rebuild` is the single endpoint, and
 it calls the same `download_*`/`build_*` functions the per-lane commands call, so there is one
 conversion algorithm with two callers rather than two that have to agree. The per-lane commands stay:
 they offer the local-file inputs an operator holds, which a rebuild pass by definition does not.
@@ -1236,8 +1251,9 @@ Three things about it are worth reading before a deployment runs it nightly.
   the CLI asserts it, so the tenth builder inherits the rule instead of repeating the defect. A
   deployment passes its own absolute path and none of this applies.
 - **The outcome is three-valued, and *not run* is not a failure.** ACMG needs a workbook that is
-  Elsevier supplementary material, PharmVar a personal key, CIViC a release date to pin, and Ensembl is
-  built by just-dna-pipelines. Each prints its own reason — taken from the registry field, not composed
+  Elsevier supplementary material, PharmVar a personal key, CIViC a release date to pin, Ensembl is
+  built by just-dna-pipelines, and a derived lane whose parents are not on disk (`mitomap_miss`, RM171)
+  names the parent it lacks rather than reporting an empty result. Each prints its own reason — taken from the registry field, not composed
   here — and the exit code counts only real failures, so a nightly run does not alarm on four lanes
   behaving exactly as designed.
 - **Credentials come from the `.env` too, and until RM176's follow-up two of them did not.**
@@ -1268,7 +1284,8 @@ Three things about it are worth reading before a deployment runs it nightly.
   surface as a bare `[Errno 2]` — and `acmg` is last in the registry, so that was after everything
   else had downloaded. `~` is expanded, because no shell expands it inside an assignment.
 - **`--source lane=path` is the offline off-switch** for clinvar, constraint, clinpgx, drug_labels,
-  pubmind and strchive, and the *only* route for acmg. `mane` and `civic` refuse it: each takes three
+  pubmind, strchive and mitomap (a `pg_dump` you already hold; the snapshot is then honestly
+  unlabelled), and the *only* route for acmg. `mane` and `civic` refuse it: each takes three
   input files, two of three is not a build for either, and a flag that can supply one would be a flag
   that cannot do its job.
 
@@ -3297,8 +3314,8 @@ Two things changed, and the `--sf-list` half is the one to use:
 
 ```bash
 # once, from ACMG's supplementary workbook (assets/acmg_sf_v3.3.xlsx, or your own download)
-just-dna-enricher acmg build assets/acmg_sf_v3.3.xlsx --out data/interim/acmg
-just-dna-enricher check-acmg spec/ --sf-list data/interim/acmg --offline
+just-dna-enricher acmg build assets/acmg_sf_v3.3.xlsx            # → data/repro/acmg_sf
+just-dna-enricher check-acmg spec/ --sf-list data/repro/acmg_sf --offline
 ```
 
 * **The list can be injected.** `acmg build` turns ACMG's workbook into `acmg_sf.csv` + `release.json`
@@ -3398,8 +3415,8 @@ and never written.** That split is the whole finding, and it was decided by meas
 modules rather than by caution.
 
 ```bash
-just-dna-enricher strchive build --out data/interim/strchive --release v2.26.0
-just-dna-enricher check-repeat-bands spec/ --catalogue data/interim/strchive
+just-dna-enricher strchive build --release v2.26.0               # → data/repro/strchive
+just-dna-enricher check-repeat-bands spec/ --catalogue data/repro/strchive
 ```
 
 ### What the measurement said
@@ -3488,7 +3505,7 @@ and no `--use` (MIT grants the fetch, so the gate would answer the same on every
 ### Drafting the identity half (`strchive_draft.py`) — `draft-repeats`
 
 ```bash
-just-dna-enricher draft-repeats spec/ --catalogue data/interim/strchive --gene HTT
+just-dna-enricher draft-repeats spec/ --catalogue data/repro/strchive --gene HTT
 ```
 
 **A drafted row is thinner than the item that ordered it expected, and that is this module's own
@@ -4331,8 +4348,8 @@ just-dna-enricher assertions spec/ --offline       # snapshot only; no snapshot 
 
 # Caches — provision once, then every gated pass runs with zero egress. See "The caches".
 just-dna-enricher cache status                     # what is present, where, which release
-just-dna-enricher cache pull                       # the ungated three, from HuggingFace
-just-dna-enricher cache pull --use non-commercial  # …and ClinPGx + CPIC, which forbid sale
+just-dna-enricher cache pull                       # the ungated published lanes, from HuggingFace
+just-dna-enricher cache pull --use non-commercial  # …and ClinPGx, CPIC and the drug labels, which forbid sale
 just-dna-enricher cache pull --only clinvar
 just-dna-enricher cpic build --use non-commercial                 # whole CPIC → data/repro/cpic ([dev])
 just-dna-enricher cpic publish cpic/ --repo org/cpic              # redistribution is granted
@@ -4366,8 +4383,8 @@ just-dna-enricher draft-panel spec/ --gene BRCA1 --source pubmind --min-confiden
 just-dna-enricher mitomap build                 # MITOMAP's pg_dump → both curated mtDNA tables (data/repro/mitomap)
 just-dna-enricher mitomap miss                  # the join against ClinVar chrMT; both parents required
 just-dna-enricher draft-panel spec/ --source mitomap-miss   # the increment only; --gene filters, never required
-just-dna-enricher clinvar citations --out cv/ --download   # add PMIDs so a panel can compile
-just-dna-enricher clinvar publish cv/                     # data/ + citations/ + release.json
+just-dna-enricher clinvar citations --out data/repro/clinvar --download   # add PMIDs so a panel can compile (--out names the EXISTING snapshot)
+just-dna-enricher clinvar publish data/repro/clinvar                     # data/ + citations/ + release.json
 
 # Authoring — lookups. These WRITE NOTHING: every answer comes back advisory, with a reason.
 just-dna-enricher hint variant --rsid rs1801133              # validity, loci, ref/alts
@@ -4392,17 +4409,18 @@ just-dna-enricher clinvar publish data/repro/clinvar            # create-or-upda
 `--clinvar-cache`), the per-link toggles (`--clinvar/--no-clinvar`, `--gnomad/--no-gnomad`,
 `--vrs/--no-vrs`), the four verify toggles above (`--verify-ref`, `--verify-clinsig`, `--verify-rsids`,
 `--verify-datasets`), `--pubmind-cache`, `--keep-par-twin`, and the two transaction flags
-`--rederive` / `--keep-staging`. **`enrich-and-compile` takes the mode, cache and link flags and none
-of the rest** — it is the offline convenience wrapper, so the verify toggles and the transaction flags
-are `enrich`'s alone. That distinction is the rule worth writing down; the enumeration is not, because
+`--rederive` / `--keep-staging`. **`enrich-and-compile` takes the mode and cache flags, the ClinVar and
+gnomAD link toggles, and the `--frequencies` / `--gene-metrics` pass toggles — not `--vrs`, not the
+verify toggles, not the transaction flags** — it is the offline convenience wrapper, so those are
+`enrich`'s alone. That distinction is the rule worth writing down; the enumeration is not, because
 a flag list restated in prose rots the moment a flag is added, and **`--help` is the authority**.
 `literature` takes
 `--strict/--best-effort`, `--offline`, `--fulltext/--no-fulltext`; `check-identifiers` takes
-`--strict`, `--traits/--no-traits`, `--genes/--no-genes` and, like `check-acmg`, **writes no authored
+`--strict`, `--traits/--no-traits`, `--genes/--no-genes`, `--pgs/--no-pgs` (RM163) and, like `check-acmg`, **writes no authored
 cell and records that the question was put**: there is no sidecar column for a module-level identifier
 and filling one from the registry being asked about it would make the comparison vacuous
 (`hints.REDUNDANCY_BEARING`), so the report is the whole output *apart from* the `verification.json`
-attestation — three records for `check-identifiers`, one for `check-acmg`, unconditional, and an
+attestation — five records for `check-identifiers` (the two PGS ones since RM163), one for `check-acmg`, unconditional, and an
 attestation rather than a value; `upload` takes `--repo`, `--name`, `--message`,
 `--dry-run`; `clinvar build` takes `--vcf`/`--download`/`--out`; `clinvar publish` takes `--repo`,
 `--message`, `--dry-run`. `enrich-and-compile` runs `enrich` then `compile_module(..., ensembl_cache=None,
@@ -4427,7 +4445,7 @@ directly to compose passes, inject clients, or run in-process.
 | `check-identifiers` | `identifiers.check_identifiers` |
 | `check-acmg` | `acmg.verify_acmg_sf` (+ `AcmgReport.by_gene` for the grouped view) |
 | `check-repeat-bands` | `strchive.check_repeat_bands` |
-| `cache status` / `cache pull` | `locations.resolve_*_reference` / `download.ensure_*_snapshot` |
+| `cache status` / `cache pull` / `prepare` / `rebuild` | `locations.resolve_*_reference` / `download.ensure_*_snapshot` / `caches.prepare_caches` / `caches.rebuild_lane` (+ `publish_reference_snapshot` under `--publish`) |
 | `cpic build` / `publish` | `cpic_build.build_snapshot` / `upload.publish_reference_snapshot` |
 | `pharmvar build` | `pharmvar_build.build_snapshot` (no publish — see *The caches*) |
 | `pubmind build` / `publish` | `pubmind_build.download_pubmind_table` + `build_snapshot` / **refuses**, `cli.PUBMIND_PUBLISH_REFUSAL` |
@@ -4441,7 +4459,7 @@ directly to compose passes, inject clients, or run in-process.
 | `strchive build` | `strchive_build.build_strchive_snapshot` → `strchive.load_strchive_catalogue` |
 | `clinpgx build` / `clinpgx check` | `clinpgx_build.download_clinpgx_zip` + `build_snapshot` / `clinpgx.enrich_clinpgx` |
 | `clinpgx build-labels` / `check-labels` | `drug_labels_build.download_drug_labels_zip` + `build_drug_label_snapshot` / `drug_labels.check_drug_labels` |
-| `civic build` / `citations` / `reproduce` | `civic_build.build_snapshot` / `civic_citations.draft_civic_citations` (+ `check_evidence_status_currency`, folded into `enrich`) / the CLI's own five checks |
+| `civic build` / `citations` / `publish` / `reproduce` | `civic_build.build_snapshot` / `civic_citations.draft_civic_citations` (+ `check_evidence_status_currency`, folded into `enrich`) / `upload.publish_reference_snapshot` (CC0; RM176) / the CLI's own five checks |
 | `clinvar build` / `citations` / `publish` | `clinvar_build.download_clinvar_vcf` + `build_snapshot` / `download_var_citations` + `build_citations` / `upload.publish_reference_snapshot` |
 | `gnomad constraint build` / `publish` | `constraint_build.download_constraint_tsv` + `build_snapshot` / `upload.publish_reference_snapshot` |
 | `vrs mint` | `vrs.mint_resolution_rows` |
@@ -4663,9 +4681,9 @@ shipped in 0.7: see *The run is a transaction* above.
 ## `resolution.csv` is provisional (0.5)
 
 The table's shape (`ResolutionRow` — columns, keying, the `status` vocabulary, how one-to-many expansion
-is encoded) is **new in unreleased 0.5** and **not yet frozen**: no 0.4 module carries it, so the
-additive-within-a-major / digest obligations have not engaged. It is free to be refactored wholesale
-during 0.5 development and is expected to take a few passes before it settles. See
+is encoded) arrived in 0.5 and is **still not frozen** at 0.7: SCHEMAS.md carries it as provisional,
+and the additive-within-a-major / digest obligations have deliberately not been engaged for it. It is
+free to be refactored wholesale while that status stands, and has taken several passes already. See
 [SCHEMAS.md § the resolution table](SCHEMAS.md#the-resolution-table-05-provisional). The compiler's
 *consumption* contract (digest parity between the resolution.csv path and the DuckDB path, offline
 round-trip) holds regardless of the table's internal shape.
@@ -5017,8 +5035,8 @@ published key is the mistake RM134 caught in `ClinSigConflict` before it shipped
 column.
 
 ```bash
-just-dna-enricher clinpgx build-labels --out data/interim/clinpgx-labels --use non-commercial
-just-dna-enricher clinpgx check-labels spec/ --snapshot data/interim/clinpgx-labels --use non-commercial
+just-dna-enricher clinpgx build-labels --use non-commercial                       # → data/repro/drug_labels
+just-dna-enricher clinpgx check-labels spec/ --snapshot data/repro/drug_labels --use non-commercial
 ```
 
 ### A second archive from a source already adopted, and a broader finding behind it
