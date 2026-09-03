@@ -52,8 +52,10 @@ module can carry it, and no stored value became wrong.
 
 Unusually, it **adds a permission and an obligation together**. The permission was already being
 exercised before anyone wrote it down; only the obligation is new. The declaration mechanism itself is
-[RM126](ROADMAP_HISTORY.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output) and
-does not exist yet, so the charter currently requires a channel that is still to be built.
+[RM126](ROADMAP_HISTORY.md#rm126--nothing-tells-a-consumer-what-a-release-changed-about-compiled-output);
+when this amendment was written it did not exist, so the charter briefly required a channel that was
+still to be built. It shipped in 0.7 (2026-08-28) as the `ReleaseRecord` a release declares and the
+`sweep` gate that measures a movement against it.
 
 **0.5 amendment — the network tier.** Goal 2, the two Non-goals on dependencies and network, and
 Principle 2 were amended to introduce `just-dna-enricher`: a third, network-capable tier that

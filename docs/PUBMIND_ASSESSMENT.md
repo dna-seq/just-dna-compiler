@@ -4,10 +4,13 @@
 [PROPOSAL_0_7 § RM134](proposals/PROPOSAL_0_7.md#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check),
 which is authoritative where the two disagree.** This document stays the **evidence** — what was probed,
 measured and read — and is not rewritten to match the decisions; where a decision changed something
-below, an inline note says so and names it. Three such notes exist: the significance mapping, the
-`clin_sig` column names, and the concordance outcome table. Written 2026-08-28 against the paper's
-accepted version and against the database's own bytes, both probed the same day. The open item is
-[RM134](ROADMAP_HISTORY.md#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check).
+below, an inline note says so and names it, marked *Note (date)*. Written 2026-08-28 against the
+paper's accepted version and against the database's own bytes, both probed the same day. The item was
+[RM134](ROADMAP_HISTORY.md#rm134--pubmind-as-a-literature-derived-annotation-authority-and-a-clinvar-concordance-check),
+all four sections of which shipped in 0.7 on 2026-08-28; the complement this assessment kept asking
+for arrived as
+[RM167](ROADMAP_HISTORY.md#rm167--litvar2pubtator3-answers-which-papers-name-this-allele-which-is-the-half-pubmind-structurally-cannot)
+on 2026-09-01.
 
 PubMind (Wang & Wang, *Nat Commun*, 20 August 2026, doi:10.1038/s41467-026-76834-4) runs a fine-tuned
 DistilBERT triage stage over 41.7 M PubMed abstracts and 5.4 M PMC full texts, hands the surviving
@@ -99,6 +102,13 @@ a statement about the protein, not about a position a consumer can genotype.
 This is the deepest structural difference and it is worth stating precisely, because it is the reason
 a PubMind row can never be adopted as a fact without a check in front of it.
 
+*Note (2026-09-01).* The half this limit leaves open — *which papers name this allele* — is what
+LitVar2/PubTator3 answers, and RM167 adopted it as `litvar coverage`: the identity there is
+genuinely allele-level (BRAF rs113488022's three ClinGen allele ids carry 31,276 / 99 / 41 papers),
+and the answer is recorded with the tier that gave it, allele-resolved, position-only or absent. The
+measurement in this section stands; what changed is that the fan-out is no longer an unanswered
+structural limit but the reason two sources are adopted for two questions.
+
 Consolidation into a PVID is keyed on the **text** the model extracted — gene symbol plus cDNA change,
 protein change or rsID — never on a coordinate. So one physical variant fragments into many PVIDs.
 68,744 coordinate keys (8.4 %) carry more than one PVID; the worst carries 35. At chr6:26092913 G>A —
@@ -124,6 +134,11 @@ Joined against every GRCh38 `resolution.csv` in `reference_examples/` (11 module
 sidecar):
 
 - **173 of 423 loci (40.9 %) are known to PubMind** at position level.
+
+  *Note (2026-09-01).* The 423-locus denominator did not reproduce when RM167 re-derived the roster
+  from the `DRAFTABLE` registry over the same eleven modules: it found **389 loci** and 388 distinct
+  rsIDs. The percentages on this page keep their original denominator as the evidence they were, and
+  the comparable figure for a re-run is RM167's.
 - **190 of 589 authored ALTs (32.3 %) match a PubMind row exactly.** The gap between the two numbers
   is the usual one: an rsID is position-level and a verdict is allele-level (`@rsid-not-per-allele`).
 - Over every `variants.csv` in the corpus that authored a `clin_sig` and resolved to a GRCh38

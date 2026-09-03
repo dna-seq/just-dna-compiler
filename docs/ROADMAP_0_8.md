@@ -261,7 +261,7 @@ legal. **Its grain is deliberately undefined**: per table matches how the decisi
 stance on a whole disorder), per row is more expressive and nobody has demonstrated the need.
 
 **The prerequisite is a real caller VCF**, so the vocabulary is fixed against what callers emit rather
-than against a guess. Same gate as RM65 and RM66.
+than against a guess. Same gate as RM65; RM66's evidence arrived separately (see its entry).
 
 **Never** widen the measurement into an interval on the row (`measure_min_observed` and friends): that
 puts a *measurement* in the module, which the data-agnostic north star forbids outright.
@@ -290,7 +290,7 @@ a line whoever implements it must clear.
 
 ## RM66 — one repeat locus, several motifs
 
-**Severity** medium · **Status** deferred here with RM65, same prerequisite · **Owner** format (schema)
+**Severity** medium · **Status** deferred here; filed beside RM65, but **its evidence has since arrived on its own** (below) · **Owner** format (schema)
 
 §5.7: a `<CNV:TR>` allele *"can encode multiple different repeat motifs in a single allele"* (`RN=3`,
 `RUS=CAG,TG,CAGG`). `RepeatAlleleRow` is keyed `(gene, repeat_unit)` and binds one count to one motif.
@@ -299,8 +299,14 @@ For HTT the interruption structure `(CAG)n(CAA)(CAG)` is exactly what a modern c
 on age of onset. The key cannot say which count the thresholds are about, and two motifs for one gene
 read as two unrelated groups rather than components of one allele.
 
-A keying change on a shipped table, which is the expensive kind. Filed beside RM65 so both arrive with
-the same evidence.
+A keying change on a shipped table, which is the expensive kind. Filed beside RM65 so both would
+arrive with the same evidence — **and they no longer will (2026-09-01,
+[RM165](ROADMAP_HISTORY.md#rm165--repeat_allelescsv-has-no-source-and-rm65rm66-have-been-waiting-on-exactly-the-corpus-one-would-bring)).**
+STRchive publishes `locus_structure` on 23 of 82 loci as typed data with its own three-member
+vocabulary, HTT's being exactly the `(CAG)n(CAA)(CAG)` structure above; that is enough to *decide* this
+item and not enough to make the answer universal. RM65's prerequisite — a real repeat-caller or CNV
+VCF — is still missing, so the two items now wait on different evidence and this one is decidable
+first.
 
 ## RM67 — polyploid and partially-phased genotypes
 

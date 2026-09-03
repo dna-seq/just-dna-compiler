@@ -313,11 +313,14 @@ the value it justifies, which is a column this format does not have and a change
 surface. Act on the message when you see it.
 
 **Can I get the same check for `frequencies.csv` or `resolution.csv`?**
-No, and the reason is worth knowing rather than working around. `clin_sig_authority_calls.csv` is the
-only derived table here that records what a source said *at the time* — its `clin_sig`, the verbatim
-token, and the release it came from. Every other sidecar holds the source's current answer, so there is
-no prior value to compare against and a general "the value moved" check would be answerable for one
-table and silently absent for the rest. The finding names its table for exactly that reason.
+No, and the reason is worth knowing rather than working around. A currency check needs a value
+recorded *at the time* to compare against, and only two tables carry one: `clin_sig_authority_calls.csv`
+(derived — the `clin_sig`, the verbatim token, and the release it came from) and, since RM160,
+`studies.csv`'s authored `confidence`/`confidence_unit` pair (the citing source's own review state,
+re-asked by `evidence_status_currency`). Every other sidecar holds the source's current answer, so
+there is no prior value and a general "the value moved" check would be answerable for two tables and
+silently absent for the rest. Each finding names its table for exactly that reason
+([RM160](ROADMAP_HISTORY.md#rm160--the-citations-ten-civic-records-carry-are-published-on-one-surface-and-it-is-the-one-nothing-read)).
 
 **A message cites an `RMn` — is that a bug?**
 No, it means known and deliberate. Leave the data honest and note the limitation rather than inventing
@@ -347,6 +350,47 @@ a smaller binding. → [ROADMAP § RM133](ROADMAP_HISTORY.md#rm133--a-card-subti
 Because the derived sidecars carry a `fetched_at` per row, so binding to them would perish the
 attestation on a re-enrichment that changed nothing anyone claimed. Read source currency off each
 record's own `release`, never off the binding. → SCHEMAS § the verification attestation.
+
+**MITOMAP marks a variant `[VUS*]` — why is that withheld instead of drafted as `uncertain_significance`?**
+Because the withhold has to happen *before* the normalizer: `normalize_clin_sig`'s own default is
+`other`, a definite member, so an unmapped token falling through would have become a confident call.
+The bracket's five VCEP abbreviations are mapped; `VUS*` is MITOMAP's own asterisk and the row is
+counted, never drafted ([RM171](ROADMAP_HISTORY.md#rm171--mitomaps-curated-mtdna-tables-adopted-as-the-increment-they-carry-over-clinvar)).
+
+**`mitomap miss` says `built=None` naming ClinVar — why not `False`, and why not an empty result?**
+A derived lane's absent parent is could-not-run, not failed and not "no misses": `False` would file
+another lane's absence as this one breaking, and an empty miss is the strongest possible claim, from a
+comparison that never ran. The reason names the parent it lacks ([RM171](ROADMAP_HISTORY.md#rm171--mitomaps-curated-mtdna-tables-adopted-as-the-increment-they-carry-over-clinvar); the tri-state is
+[RM176](ROADMAP_HISTORY.md#rm176--eleven-builders-three-stages-each-and-the-roster-that-was-supposed-to-name-them-was-a-list)'s).
+
+**A MITOMAP-drafted module will not compile until I write every `genotype` — why does ClinVar's fill and this one not?**
+The stub is not about the contig. On chrMT the compiler fills the sole expressible genotype for a
+ClinVar row because that record is a claim about an allele; MITOMAP's is a claim about a literature
+corpus, some of it reported only heteroplasmically, so the cell is a curator's decision and the
+placeholder protects it ([RM171](ROADMAP_HISTORY.md#rm171--mitomaps-curated-mtdna-tables-adopted-as-the-increment-they-carry-over-clinvar)).
+
+**CIViC says two variants are pathogenic *together* — why is that not a `HaplotypeRow`, and why not just drop the row?**
+The source's own description says *heterozygous compound mutation*: the two are **in trans**, and a
+haplotype is *cis*, so the brick would assert the opposite of what was observed. Dropping the row was
+refused because it deletes two of RM170's three subjects; the row stays, keyed on the variant's own
+profile, with the composite profile beside it. The representation is RM28's, parked
+([RM174](ROADMAP_HISTORY.md#rm174--a-claim-about-two-variants-in-trans-is-written-as-two-single-variant-rows-because-no-brick-holds-the-real-subject)).
+
+**ClinPGx's old `clinicalAnnotations.zip` still downloads — why does `clinpgx build` refuse it instead of reading both?**
+Because a retired filename that still answers 200 is a frozen 2025 object, and a reader that parses
+both vintages is a reader that can still publish 2025 data. The builder refuses the old member names
+and says which archive to fetch ([RM175](ROADMAP_HISTORY.md#rm175--the-pgx-lanes-default-archive-was-a-retired-filename-and-every-row-it-had-ever-built-came-out-of-a-frozen-2025-object)).
+
+**`check-repeat-bands` reports STRchive's `pathogenic_max` but never writes it — is that a gap?**
+No. An upper bound on pathogenicity is not a claim the band table makes, and the check reports and
+never repairs; the catalogue's own boundaries are compared, and the one it lacks (FMR1's premutation
+threshold) is a disagreement the author keeps ([RM165](ROADMAP_HISTORY.md#rm165--repeat_allelescsv-has-no-source-and-rm65rm66-have-been-waiting-on-exactly-the-corpus-one-would-bring)).
+
+**`cache rebuild` printed *not run* for four lanes — did it fail?**
+No. The outcome is three-valued: ACMG needs an Elsevier workbook, PharmVar a personal key, CIViC a
+pinned release date, Ensembl is built elsewhere, and a derived lane without its parents names them.
+Each prints the reason from the registry field, and the exit code counts only real failures
+([RM176](ROADMAP_HISTORY.md#rm176--eleven-builders-three-stages-each-and-the-roster-that-was-supposed-to-name-them-was-a-list)).
 
 **The consumer-suggestions inbox is empty — were my notes lost?**
 No. An answered item moves byte-for-byte to
