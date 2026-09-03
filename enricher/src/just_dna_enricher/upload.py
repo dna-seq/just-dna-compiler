@@ -22,6 +22,9 @@ Extracted from ``just_dna_pipelines.v1_port.publish`` (just-dna-lite); ``create_
 
 import json
 import logging
+from collections.abc import Iterable
+from dataclasses import dataclass
+from fnmatch import fnmatch
 from pathlib import Path
 
 from just_dna_compiler.compiler import ARTIFACT_PARQUETS, LEAD_PARQUETS
@@ -163,6 +166,105 @@ def ensure_repo(repo_id: str, token: str | None = None):
     api = _hf_api(repo_id, token)
     api.create_repo(repo_id=repo_id, repo_type="dataset", exist_ok=True)
     return api
+
+
+@dataclass(frozen=True)
+class LayoutShift:
+    """A retirement declared by the commit that causes it, so the publish carries out the migration.
+
+    **The rule (maintainer, 2026-09-03).** A change that retires one published file and introduces
+    another must also carry a *conditioned* update to the publication procedure: if the new file is
+    absent from the repo and the old one is present, upload the new and delete the old. The condition
+    is a predicate over the **remote**, so it fires exactly once per repo and is a no-op forever after
+    — nothing is deleted on a repo that has already moved, and re-running a publish cannot re-delete.
+
+    This is the *only* deletion a publish performs. General cleanup is `cache prune`, which prints
+    what it would remove and asks; a deletion nobody declared is not a side effect a publish may have.
+    What makes this one safe is not that it is small but that it is *named*: the pair is in the commit
+    that changed the layout, where a reviewer sees both halves at once.
+
+    Deleting is recoverable in a way this repository's `@snapshot-accumulates` note did not credit —
+    a HuggingFace dataset repo is git-backed, and a superseded revision still resolves (three of them
+    were read off the hub while auditing this on 2026-09-03). The reason to declare rather than sweep
+    is not that bytes are lost; it is that a retired file goes on answering 200 to whoever still asks
+    for it, which is how a lane's default archive stayed frozen for a year (`CLINPGX_ARCHIVES`).
+    """
+
+    #: The repo this is about. Keyed on the repo rather than on the lane name, because the publisher
+    #: is handed a `repo_id` and knows nothing about lanes — a lane→repo map here would be a second
+    #: copy of `CacheLane.publish_repo`, and `caches` already imports this module, so it cannot be
+    #: imported back.
+    repo_id: str
+    #: Repo-relative path of the file being retired. One name, never a glob: a migration that deletes
+    #: a *pattern* is a prune wearing a declaration.
+    retires: str
+    #: A repo-relative glob the new layout writes. The migration fires only when the remote has none
+    #: of these — that absence is what makes "this repo has not moved yet" a fact rather than a guess.
+    introduces: str
+    #: Why, in one line, for the operator who sees the deletion in a commit message.
+    reason: str
+
+
+#: Every declared shift, oldest first. Empty is the normal state: an entry is written by the change
+#: that retires a file and stays afterwards, because a repo re-created or cloned later is exactly the
+#: state it exists for.
+#:
+#: **The known one is already past its own condition, and it stays literal rather than widened.**
+#: `just-dna-seq/clinvar` carries the single-file-era `data/clinvar.parquet` *and* today's
+#: `data/clinvar-chr*.parquet`, because the publish that introduced the per-chromosome layout predated
+#: this rule — so this entry will not fire against that repo, and the 159 MB remnant is `cache prune`'s
+#: to remove. Loosening the predicate to "retire the old whenever the new is present" would sweep it,
+#: and would also make every publish a prune until the file is gone, which is the thing deletion-by-
+#: declaration exists not to be.
+LAYOUT_SHIFTS: tuple[LayoutShift, ...] = (
+    LayoutShift(
+        repo_id=DEFAULT_CLINVAR_REPO_ID,
+        retires="data/clinvar.parquet",
+        introduces="data/clinvar-chr*.parquet",
+        reason=(
+            "the single-file snapshot was replaced by one parquet per chromosome; the flat file's "
+            "columns are the raw VCF INFO fields, so a reader globbing data/*.parquet gets two "
+            "schemas under one relation"
+        ),
+    ),
+)
+
+
+def layout_shifts_to_apply(repo_files: Iterable[str], repo_id: str) -> list[LayoutShift]:
+    """The declared shifts whose condition the remote currently satisfies. Reads; decides nothing else.
+
+    Separate from the publish so it can be asserted directly: the whole safety of this mechanism is
+    that the predicate is false the moment it has run once, and that is a property of this function
+    rather than of the caller that acts on it.
+    """
+    remote = list(repo_files)
+    due: list[LayoutShift] = []
+    for shift in LAYOUT_SHIFTS:
+        if shift.repo_id != repo_id:
+            continue
+        if shift.retires not in remote:
+            continue                                   # already retired, or never there
+        if any(fnmatch(name, shift.introduces) for name in remote):
+            continue                                   # the repo has already moved: not this one's job
+        due.append(shift)
+    return due
+
+
+class OrphanedSidecarError(RuntimeError):
+    """The publish would overwrite a `release.json` describing sidecars it is not carrying (RM185).
+
+    Its own type for the reason `PublishCollisionError` is one: the CLI has to tell it from the
+    refusals `plan_*` raises. Those say the local snapshot is not publishable; this one says the local
+    snapshot is fine and the *remote* holds bytes this publish would silently stop describing.
+
+    **The incident.** A ClinVar snapshot is two halves on two cadences — the per-chromosome parquet and
+    `citations/citations.parquet` — and `release.json` describes both because `build_citations` merges
+    a block into it. A rebuild that built only the VCF half published a citations-free `release.json`
+    over a repo whose sidecar it had not replaced, and the publisher adds without deleting: the
+    sidecar outlived its own description, and the published artifact carried records from one ClinVar
+    release beside citations from another while saying nothing. RM179 fixed the lane; this is the
+    general shape, refused at the boundary where any lane could repeat it.
+    """
 
 
 class PublishCollisionError(RuntimeError):
@@ -532,6 +634,150 @@ def plan_reference_snapshot(
     return SnapshotPlan(repo_id=resolved_repo, files=files)
 
 
+def check_publish_orphans_no_sidecar(plan: SnapshotPlan, api=None, token: str | None = None) -> None:
+    """Refuse a publish that would leave a remote sidecar undescribed. Reads the repo; writes nothing.
+
+    **The remote tree, not the remote `release.json`.** The block is a *description* of the bytes and
+    the bytes are what a puller gets, so the description is the half that can already be missing —
+    which is exactly the state `just-dna-seq/clinvar` was found in on 2026-09-03: the citations parquet
+    present, the block gone. A guard reading the block would have passed the second bad publish as
+    happily as the first.
+
+    Scoped to publishes that carry `release.json`, because a publish that carries none overwrites no
+    provenance. A repo that does not exist yet lists nothing and passes — that is a first publish, not
+    an orphan.
+
+    `api` is the caller's when it has one (a publish has just built an authenticated client and there
+    is no reason to build a second); a dry run passes none and gets an anonymous reader, since listing
+    a public repo needs no token and a dry run must not require write access to say what a publish
+    would do.
+    """
+    if RELEASE_FILENAME not in plan.files:
+        return
+    if api is None:
+        try:
+            from huggingface_hub import HfApi, get_token
+        except ImportError as exc:
+            raise ImportError(
+                "huggingface_hub is required to check a publish against the published repo"
+            ) from exc
+        load_env()
+        api = HfApi(token=get_token())
+    try:
+        remote = list(api.list_repo_files(repo_id=plan.repo_id, repo_type="dataset"))
+    except Exception as exc:  # noqa: BLE001 - the transport's type is not this module's contract
+        # Nobody has published here yet, or the listing failed. Neither is an orphan, and a publish
+        # that cannot read the repo will fail on its own terms a moment later with a better message.
+        logger.info("Could not list %s (%s); publishing without the sidecar check.",
+                    plan.repo_id, type(exc).__name__)
+        return
+    carried = {path.split("/", 1)[0] for path in plan.files if "/" in path}
+    for sidecar in SNAPSHOT_SIDECAR_DIRNAMES:
+        if sidecar in carried:
+            continue
+        orphaned = sorted(
+            f for f in remote if f.startswith(f"{sidecar}/") and f.endswith(".parquet")
+        )
+        if not orphaned:
+            continue
+        raise OrphanedSidecarError(
+            f"{plan.repo_id} carries {', '.join(orphaned)}, and this publish would replace "
+            f"{RELEASE_FILENAME} without carrying {sidecar}/ — so the published artifact would hold "
+            f"two vintages and describe one. Build the missing half into the snapshot before "
+            f"publishing (for ClinVar: `just-dna-enricher clinvar citations --out <snapshot>`), or "
+            f"publish from a directory that has it."
+        )
+
+
+class PruneCandidate(BaseModel):
+    """One remote file `cache prune` would remove, and the reason it is nameable as removable."""
+
+    path: str = Field(description="Repo-relative path")
+    size: int | None = Field(default=None, description="Bytes, when the listing stated one")
+    reason: str = Field(description="Why this file is not part of the snapshot the lane publishes")
+
+
+class PrunePlan(BaseModel):
+    """What a prune would delete from one repo. The dry run and the deletion read the same object."""
+
+    repo_id: str
+    candidates: list[PruneCandidate] = Field(default_factory=list)
+
+    @property
+    def total_bytes(self) -> int:
+        return sum(c.size or 0 for c in self.candidates)
+
+
+def plan_prune(repo_id: str, filename_glob: str, api=None) -> PrunePlan:
+    """What the published repo carries that this lane's snapshot is not made of. Reads; deletes nothing.
+
+    **Two sources of a name, and neither is a guess.** A file under `data/` that the lane's own glob
+    excludes is not part of the snapshot by the same definition provisioning uses — `_provision_snapshot`
+    already refuses to download it and warns when it finds one locally. And a file a `LayoutShift`
+    declares retired is nameable even where the glob cannot see it: for the four lanes whose glob is
+    `*.parquet` the exclusion set is empty by construction, so declaration is the only way a retired
+    file there is ever identified.
+
+    Everything else is left alone, including files this tier never wrote — `README.md`,
+    `.gitattributes`, `release.json`, `LICENSE.txt`, and any sidecar directory. A pruner that removed
+    what it did not recognise would be the sweep this design exists to avoid.
+    """
+    if api is None:
+        try:
+            from huggingface_hub import HfApi, get_token
+        except ImportError as exc:
+            raise ImportError("huggingface_hub is required to inspect a published repo") from exc
+        load_env()
+        api = HfApi(token=get_token())
+    entries = list(api.list_repo_tree(repo_id=repo_id, repo_type="dataset", recursive=True,
+                                      expand=True))
+    sizes = {getattr(e, "path", ""): getattr(e, "size", None) for e in entries}
+    remote = [path for path in sizes if path]
+
+    candidates: dict[str, PruneCandidate] = {}
+    prefix = f"{SNAPSHOT_DATA_DIRNAME}/"
+    for path in sorted(remote):
+        if not (path.startswith(prefix) and path.endswith(".parquet")):
+            continue
+        if fnmatch(path[len(prefix):], filename_glob):
+            continue
+        candidates[path] = PruneCandidate(
+            path=path, size=sizes.get(path),
+            reason=f"under {SNAPSHOT_DATA_DIRNAME}/ but outside this snapshot ({filename_glob})",
+        )
+    for shift in LAYOUT_SHIFTS:
+        if shift.repo_id != repo_id or shift.retires not in sizes:
+            continue
+        # A declared retirement wins the reason slot: it says *when* and *why* the file stopped being
+        # part of the snapshot, which "outside the glob" does not.
+        candidates[shift.retires] = PruneCandidate(
+            path=shift.retires, size=sizes.get(shift.retires),
+            reason=f"declared retired — {shift.reason}",
+        )
+    return PrunePlan(repo_id=repo_id, candidates=[candidates[k] for k in sorted(candidates)])
+
+
+def prune_repo(plan: PrunePlan, token: str | None = None, commit_message: str | None = None) -> int:
+    """Delete a prune plan's files. Called only after the caller has shown the plan and been told yes.
+
+    Returns the number of paths deleted. Deleting is a commit on a git-backed repo, so a superseded
+    revision still resolves — but that is a reason to be able to undo a mistake, never a reason to
+    remove something nobody looked at, which is why this takes a plan rather than a repo id.
+    """
+    if not plan.candidates:
+        return 0
+    api = _hf_api(plan.repo_id, token)
+    api.delete_files(
+        repo_id=plan.repo_id,
+        delete_patterns=[c.path for c in plan.candidates],
+        repo_type="dataset",
+        commit_message=commit_message or (
+            f"Prune {len(plan.candidates)} file(s) that are not part of this snapshot"
+        ),
+    )
+    return len(plan.candidates)
+
+
 def publish_reference_snapshot(
     snapshot_dir: Path,
     repo_id: str | None = None,
@@ -549,16 +795,40 @@ def publish_reference_snapshot(
     """
     plan = plan_reference_snapshot(snapshot_dir, repo_id, payload=payload)
     api = ensure_repo(plan.repo_id, token)
+    check_publish_orphans_no_sidecar(plan, api)
+    # A declared retirement rides in the same commit as the upload that replaces it (RM186). Listed
+    # once and reused: `check_publish_orphans_no_sidecar` has already read the repo, but its answer is
+    # about sidecars, and a second listing is cheaper to reason about than a shared cache of a remote
+    # state two checks disagree about the meaning of.
+    try:
+        remote = list(api.list_repo_files(repo_id=plan.repo_id, repo_type="dataset"))
+    except Exception as exc:  # noqa: BLE001 - a repo nobody has published to lists nothing
+        logger.info("Could not list %s (%s); no declared retirement can apply.",
+                    plan.repo_id, type(exc).__name__)
+        remote = []
+    due = layout_shifts_to_apply(remote, plan.repo_id)
+    if due:
+        logger.info(
+            "Retiring %s from %s in this commit: %s",
+            ", ".join(shift.retires for shift in due), plan.repo_id,
+            "; ".join(shift.reason for shift in due),
+        )
     api.upload_folder(
         folder_path=str(snapshot_dir),
         path_in_repo="",
         repo_id=plan.repo_id,
         repo_type="dataset",
+        # The retirement is a `delete_patterns` on the same call, so the new file arriving and the old
+        # one leaving are one commit rather than a window in which the repo has neither or both.
+        delete_patterns=[shift.retires for shift in due] or None,
         # Derived from the plan rather than restated as a pattern list. The two had to agree and did
         # not: `--dry-run` printed a file the patterns then dropped, which is the failure mode that
         # lost `citations/` and `LICENSE.txt` in the first place. One list, computed once, so what a
         # dry run promises is exactly what an upload sends (`@publisher-allowlist-derived`).
         allow_patterns=list(plan.files),
-        commit_message=commit_message or f"Publish reference snapshot ({len(plan.files)} files)",
+        commit_message=commit_message or (
+            f"Publish reference snapshot ({len(plan.files)} files)"
+            + (f", retiring {', '.join(s.retires for s in due)}" if due else "")
+        ),
     )
     return plan

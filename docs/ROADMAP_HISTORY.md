@@ -207,6 +207,107 @@ consumer's own argument against their fix, and the shape README already has; sta
 the maintainer's observation on the resulting picture — byte digest moved, every signature intact,
 *what* moved unstated — is [RM181](ROADMAP_0_8.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker).
 
+## RM185 — a publish could replace a `release.json` describing bytes it was not carrying
+
+**Severity** high · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-enricher` only —
+one guard in the publisher, wired into three publish paths; no schema change) · **Owner** enricher ·
+**Motivating case** RM179's own entry, which fixed the ClinVar lane and left the general shape to the
+maintainer; decided with them the same day
+
+**The general form of RM179.** A snapshot's `release.json` describes every half the artifact carries,
+because a builder merges its block in rather than writing a file of its own. A publish that carries
+one half replaces the whole description — and the publisher adds without deleting, so the other half
+survives as bytes nothing describes. ClinVar is the lane it happened to, and RM179 stopped that lane
+from producing the input; nothing stopped a publish from *accepting* it, and any lane that grows a
+sidecar could repeat it.
+
+**It reads the remote tree, not the remote `release.json`, and that is the load-bearing choice.** The
+intuitive guard — compare the incoming description against the published one — would have passed the
+second bad publish exactly as it passed the first, because by then the block was already gone from the
+published file while `citations/citations.parquet` was still there. The bytes are what a puller gets,
+so the bytes are what the guard asks about. Scoped to publishes that carry `release.json`, since one
+that carries none overwrites no provenance; a repo that does not exist yet lists nothing and passes,
+because that is a first publish and not an orphan.
+
+**`OrphanedSidecarError`, its own type**, for the reason `PublishCollisionError` is one: the CLI has to
+tell it from the refusals `plan_*` raises. Those say the local snapshot is unpublishable; this one says
+the local snapshot is fine and the remote holds bytes this publish would stop describing. The message
+names the file and the command that builds the missing half. **The dry run runs it too** — a rehearsal
+that skips what the real thing refuses on is the same defect as an allowlist that drops a file the dry
+run promised (`@publisher-allowlist-derived`), so `--dry-run` reads the repo and exits non-zero with
+`WOULD BE REFUSED`.
+
+**The state it was written against was repaired while it was being written**, which is worth recording
+rather than smoothing over: `just-dna-seq/clinvar` was republished on 2026-09-03 with the citations
+block restored (`clinvar_file_date` 2026-08-29, 3,925,275 links, 30 files), so the mixed-vintage
+artifact this guard refuses no longer exists on that repo. The guard was verified against the live
+tree as it stands — carrying the sidecar and a matching description, it passes — and against the found
+state as a fixture. That the repair and the guard landed the same day is not a reason to trust the
+repair alone: RM179 stopped the lane producing the input, this stops any lane's publish accepting it.
+
+· *from* RM179's deferred half · *related* RM179, RM186 · *also in* CHANGELOG, AGENT_NOTES
+`@a-publish-may-not-orphan-the-bytes-it-stops-describing`
+
+## RM186 — deletion on a published repo, by declaration or by asking, never as a side effect
+
+**Severity** medium · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-enricher` only —
+`LayoutShift` + `cache prune`; no schema change) · **Owner** enricher · **Motivating case** the
+159 MB single-file `data/clinvar.parquet` from the pre-2026 layout, still at HEAD in
+`just-dna-seq/clinvar` beside the 25 `clinvar-chr*.parquet` that replaced it
+
+**The policy is the maintainer's, and it corrects a premise of this repository's own.**
+`@snapshot-accumulates` had been read as *never delete*, and the audit that produced this round
+inherited that reading and reported the remnant as a human's job. The maintainer's correction: a
+HuggingFace dataset repo is git-backed, so a delete is a commit and a superseded revision still
+resolves — three of them were read off the hub while auditing this. Deletion is therefore recoverable,
+and the reason to be careful is not lost bytes. It is that a retired file **goes on answering 200** to
+whoever still asks for it, which is how a lane's default archive stayed frozen for a year
+(`CLINPGX_ARCHIVES`), and that a sweep deletes what nobody looked at.
+
+**So there are exactly two ways a published file goes away, and neither is a side effect of a
+publish.**
+
+1. **A declared retirement — `LayoutShift`.** A change that retires one published file and introduces
+   another carries the migration with it: *if the new spelling is absent from the repo and the old one
+   is present, upload the new and delete the old.* The predicate is over the **remote**, so it fires
+   once per repo and is a no-op forever after; it rides in the upload's own commit as
+   `delete_patterns`, so the arrival and the removal are one commit rather than a window in which the
+   repo has both or neither, and the retired name appears in the commit message. What makes it safe is
+   not that it is small but that it is *named*, in the commit that changed the layout, where a reviewer
+   sees both halves at once.
+2. **`cache prune`, which asks.** It names two kinds of file and nothing else: one under `data/` that
+   the lane's own glob excludes — not part of the snapshot by the same definition provisioning uses,
+   which already refuses to download it — and one a `LayoutShift` declares retired. `README.md`,
+   `.gitattributes`, `release.json`, `LICENSE.txt` and sidecar directories are never candidates.
+   Without `--yes` it reads, prints each file with its size and the reason it is nameable, and stops.
+
+**The declared entry is already past its own condition, and it stays literal.**
+`just-dna-seq/clinvar` carries the old file *and* the new, because the publish that introduced the
+per-chromosome layout predated this rule — so the shift will not fire there, and the remnant is
+`cache prune`'s. Loosening the predicate to *retire the old whenever the new is present* would sweep
+it, and would also make every publish a prune until the file was gone, which is what
+deletion-by-declaration exists not to be. The entry stays for the repo cloned or re-created later,
+which is the state it is actually for.
+
+**Second reader of the per-lane globs, so they became a registry.** `cache prune` asks *what does this
+repo carry that this lane is not made of*, which can only be asked by lane; `SNAPSHOT_FILE_GLOBS` is
+now the one place each lane's file pattern is spelled and the `ensure_*` closures read it, so the
+provisioner and the pruner cannot come to disagree about what a snapshot is. Walked by test against
+the publishable lanes, with STRchive the one enumerated exclusion — its snapshot is a single JSON at
+the repo root, so there is no `data/` for a file to be outside of, and `cache prune` says *n/a* rather
+than *clean*, because "found nothing" and "cannot look" are different answers.
+
+**Measured, read-only, against the live repos**: one candidate in `clinvar` (159.5 MB, declared),
+`constraint`/`clinpgx`/`cpic`/`drug_labels`/`civic`/`mitomap` clean, `strchive` n/a, and every
+unpublishable lane skipped with the registry's own reason. Re-measured after that repo was republished
+mid-session and unchanged, which is the predicate behaving as designed: the republish restored the
+citations half and did not touch the legacy file, so the shift still does not fire and prune still
+names it. **Nothing was deleted** — publishing and deleting on HuggingFace remain the maintainer's to
+run.
+
+· *from* the 2026-09-03 published-artifact audit · *related* RM185, RM178 · *also in* CHANGELOG,
+AGENT_NOTES `@a-publish-may-not-orphan-the-bytes-it-stops-describing`
+
 ## RM179 — the ClinVar rebuild built one half of a two-half artifact, and published its provenance over the other
 
 **Severity** high · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-enricher` only —

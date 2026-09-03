@@ -351,6 +351,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A default computed as an argument runs before the callee's setup. `@default-arg-before-setup`
 - Dogfood data is git-ignored, and 0.5.0's published digests are frozen. `@dogfood-data-ignored`
 - A published snapshot accumulates — provision only your own files. `@snapshot-accumulates`
+- …but a delete is a commit on a git-backed repo: deletion is by **declaration** (once-firing, in the publish) or by `cache prune` (asks), never a side effect. `@a-publish-may-not-orphan-the-bytes-it-stops-describing`
+- A publish may not replace a `release.json` describing bytes it is not carrying — and the guard asks the remote **tree**, not the remote description. `@a-publish-may-not-orphan-the-bytes-it-stops-describing`
 - A snapshot built in two halves is described by one `release.json`, and a publish of one half overwrites the other's provenance. `@a-lane-with-two-halves-publishes-the-provenance-of-one`
 - A lane's release label belongs on the lane; a reporter that composes one blanks the lane that spells it differently. `@the-reporter-cannot-compose-a-lanes-label`
 - The publisher's allowlist is derived from the artifact's file list; what it drops, the manifest still attests. `@publisher-allowlist-derived`
