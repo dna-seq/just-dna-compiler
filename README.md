@@ -1,6 +1,6 @@
 # just-dna-format
 
-[![CI](https://github.com/dna-seq/just-dna-compiler/actions/workflows/ci.yml/badge.svg)](https://github.com/dna-seq/just-dna-compiler/actions/workflows/ci.yml)
+[![CI](https://github.com/dna-seq/just-dna-format/actions/workflows/ci.yml/badge.svg)](https://github.com/dna-seq/just-dna-format/actions/workflows/ci.yml)
 
 The **module format** for just-dna annotation modules — the declarative schema/contract, its
 reference compiler, and the network tier that feeds them — as a uv workspace publishing three
@@ -10,7 +10,7 @@ packages, in dependency tiers (`enricher → compiler → format`):
 |---|---|---|---|
 | [`just-dna-format`](schema) | `schema/` | The schema + integrity contract: the authored DSL spec, the compiled `manifest.json`, digests, identity/versioning. | pydantic + cryptography |
 | [`just-dna-compiler`](compiler) | `compiler/` | The transform: a composed spec directory → a parquet artifact + `manifest.json`. Pure-Python and duckdb-free since 0.5. | + polars, pyyaml, typer |
-| [`just-dna-enricher`](enricher) | `enricher/` | The network tier: produces the injected `resolution.csv` the compiler consumes, and carries the drafting/publishing surface. The **only** package that fetches. | + httpx, tenacity, huggingface-hub, duckdb, ga4gh.vrs |
+| [`just-dna-enricher`](enricher) | `enricher/` | The network tier: produces the injected `resolution.csv` the compiler consumes, and carries the drafting/publishing surface. The **only** package that fetches. | + httpx, tenacity, huggingface-hub, duckdb, ga4gh.vrs, platformdirs, python-dotenv |
 
 **Why three packages, one repo.** `just-dna-format` stays dependency-light so *anyone* — a thin API,
 a webui client, a downloader that only verifies a digest — can depend on it for the cost of
@@ -52,14 +52,35 @@ naming what it exercises.
 
 ## Design docs
 
-- [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md) — the durable charter: goals, non-goals, and the
-  invariants every release upholds (declarative-not-code, no-network, backward-compat-within-a-major,
-  integrity). Amended only deliberately.
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — forward-only and active-only: the open `RMn` items, the
-  freeform idea-book, the reserved namespace, and the 1.0-cleanup tracker. Revised often.
-  [`docs/RM_TOC.md`](docs/RM_TOC.md) indexes every item, active and shipped.
-- [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — release history, newest first.
+Start with the charter, then the roadmap, then the tier your task touches. `CLAUDE.md` carries the
+full map of `docs/` with a grep hint per file.
+
+- [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md) — the durable charter: nine principles, goals and
+  non-goals, rules only. Wins over any plan; the reasoning behind each amendment is in
+  [`CONSTITUTION_AMENDMENTS_HISTORY.md`](docs/CONSTITUTION_AMENDMENTS_HISTORY.md).
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — open items only, plus the idea-book and the reserved-namespace
+  and 1.0-cleanup trackers. Deferred items sit in [`ROADMAP_0_8.md`](docs/ROADMAP_0_8.md) and
+  [`ROADMAP_1_0.md`](docs/ROADMAP_1_0.md), shipped ones with their rationale in
+  [`ROADMAP_HISTORY.md`](docs/ROADMAP_HISTORY.md); [`RM_TOC.md`](docs/RM_TOC.md) indexes every item.
+- [`docs/CHANGELOG.md`](docs/CHANGELOG.md) — what shipped, newest first.
 - [`docs/SCHEMAS.md`](docs/SCHEMAS.md), [`docs/COMPILER.md`](docs/COMPILER.md),
   [`docs/ENRICHER.md`](docs/ENRICHER.md) — one reference per tier.
-- [`docs/REFERENCE_EXAMPLES.md`](docs/REFERENCE_EXAMPLES.md) — the worked modules under
+- [`docs/MODULE_LIFECYCLE.md`](docs/MODULE_LIFECYCLE.md) — origin → publish → a consumer's join, and
+  what a second pass moves.
+- [`docs/INTEGRATION_0_7.md`](docs/INTEGRATION_0_7.md) — the surface delta a consumer upgrading from
+  0.6.6 checks against (0.5.4 → 0.6 is [`INTEGRATION_0_6.md`](docs/INTEGRATION_0_6.md)).
+- [`docs/FAQ.md`](docs/FAQ.md) — settled questions, most of them a repair somebody proposed that was
+  checked and refused.
+- [`docs/USE_CASES.md`](docs/USE_CASES.md) → [`docs/REFERENCE_EXAMPLES.md`](docs/REFERENCE_EXAMPLES.md)
+  — the same use cases as questions and as answers; the latter indexes the worked modules under
   [`reference_examples/`](reference_examples), each with a README naming what building it broke.
+- [`docs/AGENT_NOTES.md`](docs/AGENT_NOTES.md) — the long-form gotcha book behind `CLAUDE.md`'s one-line
+  rules.
+- [`docs/CONSUMER_SUGGESTIONS.md`](docs/CONSUMER_SUGGESTIONS.md) — the open inbox for consumer repos
+  (empty means nothing is owed); answered items and the runbook sit beside it.
+- `docs/proposals/`, `docs/probes/`, `docs/history/`, `docs/audit/` — closed design threads, probe
+  rounds, the pre-0.6 halves of the history files, and a dated code-first re-derivation. Records,
+  not contracts.
+
+Operator drivers live in [`scripts/`](scripts/README.md); everything a command generates lands under
+`data/`, which is git-ignored whole.
