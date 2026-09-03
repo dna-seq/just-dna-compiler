@@ -69,6 +69,35 @@ compiled output — not this one, what an *edit* changed about a module.
 **What would close it.** A consumer asking *what moved* and getting the wrong answer from the family
 as it stands; or the 0.8 review deciding the family is complete and this becomes a FAQ entry.
 
+## RM188 — the competitor survey — run Calwbio's and genomi's pipelines, read their reports, and re-fold the logic into module mechanics
+
+**Severity** medium · **Status** open — **scoped into 0.8 by the maintainer on 2026-09-03** · **Owner**
+format (the survey), then whichever tier the findings land in · **Motivating case** the maintainer's
+direction, not a consumer report
+
+**What it is.** A survey of the consumer-genomics competitors, with two named first — **Calwbio** and
+**genomi** — done the way PUBMIND_ASSESSMENT was done and not the way a feature comparison is: run
+their pipelines end to end on real input, obtain the reports they produce, and read the logic *back*
+out of the reports — which annotations they join, at what grain, which rules turn a genotype into a
+sentence, and where a number comes from. Then re-fold what survives into the module mechanics here:
+a table kind, a bounded rule, a vocabulary member, or a use case in USE_CASES.md that names the gap.
+
+**What it is not.** Not a marketing comparison and not a licence to copy a rule: a competitor's
+inference is evidence about what a report *needs*, and the charter's non-goals still hold — no
+gene–disease inference in the format, annotation tables only. Where a competitor's logic is an
+inference, the outcome here is the *table that would let a consumer make it*, never the inference.
+
+**Method, so it can be repeated.** One document per competitor under `docs/probes/`, the shape of
+PUBMIND_ASSESSMENT: what was run, on what input, what came back, what it competes with, what it
+complements, and the adoption design if any. Real data, the tool turned on its own output
+(`@adversarial-role`, `@probe-uniform-corpus`), and every claim about a competitor pinned to an
+artifact obtained rather than a page read — the ClinPGx rounds showed a documented surface and the
+real one disagreeing.
+
+**Exit.** Each competitor's probe filed, and its findings either dissolved (already enabled), closed
+additively (an RM with a motivating report in hand), or parked with the reason — the
+USE_CASES → PROPOSAL loop, entered at the top.
+
 ## RM122 — the measure lookup is specified and nothing anywhere implements it
 
 **Severity** medium · **Status** **parked on demand, moved here 2026-08-21** — additive and
