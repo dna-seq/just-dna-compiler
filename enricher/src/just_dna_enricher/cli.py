@@ -40,6 +40,7 @@ from just_dna_enricher.caches import (
     CacheLane,
     RebuildOutcome,
     RebuildRequest,
+    lane_name,
     prepare_caches,
     rebuild_lane,
 )
@@ -1580,11 +1581,24 @@ def _lane_names() -> list[str]:
 
 
 def _selected(only: list[str]) -> tuple[set[str], list[CacheLane]]:
-    """Resolve `--only` against the registry, refusing a name nothing answers to."""
-    wanted = {n.strip().lower() for n in only if n.strip()}
-    unknown = sorted(wanted - set(LANES_BY_NAME))
+    """Resolve `--only` against the registry, refusing a name nothing answers to.
+
+    A hyphen is accepted where the declared member has an underscore and the **declared** member is
+    what comes back — `drug-labels` and `mitomap-miss` are both spellings an operator writes, and the
+    second is the one this repository's own design note uses.
+    """
+    wanted: set[str] = set()
+    unknown: list[str] = []
+    for raw in only:
+        if not raw.strip():
+            continue
+        resolved = lane_name(raw)
+        if resolved is None:
+            unknown.append(raw.strip())
+            continue
+        wanted.add(resolved)
     if unknown:
-        raise typer.BadParameter(f"unknown cache(s) {unknown}. Known: {_lane_names()}")
+        raise typer.BadParameter(f"unknown cache(s) {sorted(unknown)}. Known: {_lane_names()}")
     return wanted, [lane for lane in CACHE_LANES if not wanted or lane.name in wanted]
 
 
@@ -1602,8 +1616,10 @@ def _pairs(values: list[str], flag: str, *, must_exist: bool = False) -> dict[st
         name, sep, value = item.partition("=")
         if not sep or not value:
             raise typer.BadParameter(f"{flag} takes lane=value, got {item!r}")
-        if name not in LANES_BY_NAME:
+        resolved = lane_name(name)
+        if resolved is None:
             raise typer.BadParameter(f"{flag} names no known cache: {name!r}. Known: {_lane_names()}")
+        name = resolved
         if must_exist and not Path(value).expanduser().is_file():
             raise typer.BadParameter(
                 f"{flag} {name}={value} is not a readable file. This is an input you supply, so "
@@ -1830,6 +1846,9 @@ def cache_rebuild_(
             declared_use=declared,
             pin=pins.get(lane.name),
             source=Path(sources[lane.name]).expanduser() if lane.name in sources else None,
+            # A derived lane joins what this run already cut, where it cut it. `--only <child>`
+            # names no parent here and falls back to the registry's resolvers inside `rebuild_lane`.
+            parents={name: out / name for name in lane.parents if (out / name).is_dir()},
         )
         outcome = rebuild_lane(lane, request)
         outcomes.append(outcome)
@@ -3706,6 +3725,88 @@ def mitomap_build_(
             "  the dump carried no Last-Modified, so this snapshot has no release label and the "
             "miss lane built from it cannot name the MITOMAP release it compared",
             fg=typer.colors.YELLOW, err=True,
+        )
+
+
+@mitomap_app.command("miss")
+def mitomap_miss_(
+    out: Path = typer.Option(
+        Path("mitomap_miss"), "--out", file_okay=False,
+        help="Output snapshot directory (writes data/mitomap_miss.parquet + release.json).",
+    ),
+    mitomap_cache: Path | None = typer.Option(
+        None, "--mitomap-cache", exists=True, file_okay=False,
+        help="Built MITOMAP snapshot (see `mitomap build`). Omit it and $JUST_DNA_MITOMAP_CACHE is used.",
+    ),
+    clinvar_cache: Path | None = typer.Option(
+        None, "--clinvar-cache", exists=True, file_okay=False,
+        help="Built ClinVar snapshot (see `clinvar build`). Omit it and $JUST_DNA_CLINVAR_CACHE is used.",
+    ),
+) -> None:
+    """Join MITOMAP against the ClinVar chrMT parquet and write the increment (RM171).
+
+    **A derived lane, not a download.** Its acquire stage is both parents being on disk, and a parent
+    that is absent is reported as could-not-run rather than as an empty increment — a miss set
+    computed without ClinVar would say MITOMAP publishes a thousand alleles nobody else has, from a
+    comparison that never ran.
+
+    Exact `(start, ref, alt)` on chrMT, upper-cased both sides, no position-level fallback. Four
+    buckets, and `draft-panel --source mitomap-miss` writes only one of them.
+    """
+    from just_dna_enricher.mitomap_miss_build import build_miss_snapshot
+
+    parents = {}
+    missing = []
+    for name, explicit in (("mitomap", mitomap_cache), ("clinvar", clinvar_cache)):
+        found = explicit or LANES_BY_NAME[name].resolve()
+        if found is None:
+            missing.append(name)
+        else:
+            parents[name] = found
+    if missing:
+        typer.secho(
+            f"MITOMAP MISS NOT RUN: derived from mitomap and clinvar, and "
+            f"{', '.join(missing)} {'is' if len(missing) == 1 else 'are'} not on disk. Provision "
+            f"with `cache prepare --only {' --only '.join(missing)}`, or name one with "
+            f"--mitomap-cache/--clinvar-cache. An increment computed without a parent is not an "
+            f"empty increment.",
+            fg=typer.colors.YELLOW, err=True,
+        )
+        raise typer.Exit(code=2)
+    try:
+        result = build_miss_snapshot(parents["mitomap"], parents["clinvar"], out)
+    except (MitomapError, ImportError, OSError) as exc:
+        typer.secho(f"MITOMAP MISS FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"built: {result.parquet_file}", fg=typer.colors.GREEN)
+    for table, counts in result.buckets_by_table.items():
+        typer.echo(f"  {table}: " + ", ".join(f"{k} {v}" for k, v in counts.items()))
+    typer.echo(
+        f"  against {result.clinvar_keys} distinct ClinVar chrMT alleles "
+        f"({result.parents['clinvar'].get('clinvar_file_date') or 'an undated snapshot'})"
+    )
+    if result.rated_miss_by_class:
+        typer.echo(
+            "  rated misses by class: "
+            + ", ".join(f"{k} {v}" for k, v in result.rated_miss_by_class.items())
+        )
+    if result.rated_miss_indels:
+        typer.secho(
+            f"  {result.rated_miss_indels} of {result.rated_misses} rated miss(es) key on an indel. "
+            f"The join is exact and neither side is left-aligned here, so one of those is an "
+            f"absence or a difference of anchor and this lane cannot tell you which.",
+            fg=typer.colors.YELLOW, err=True,
+        )
+    if result.withheld_in_miss:
+        typer.secho(
+            "  missing rows whose only rating is an undocumented bracket, counted and never mapped: "
+            + ", ".join(f"{k} {v}" for k, v in result.withheld_in_miss.items()),
+            fg=typer.colors.YELLOW,
+        )
+    if result.unmintable:
+        typer.echo(
+            "  rows the join has no key for (Principle 2 forbids fetching the rCRS anchor): "
+            + ", ".join(f"{k} {v}" for k, v in result.unmintable.items())
         )
 
 

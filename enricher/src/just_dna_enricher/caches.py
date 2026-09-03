@@ -42,7 +42,7 @@ import os
 import pathlib
 import shutil
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from just_dna_enricher import (
@@ -56,6 +56,7 @@ from just_dna_enricher import (
     mane_build,
     mitomap,
     mitomap_build,
+    mitomap_miss_build,
     pharmvar,
     pharmvar_build,
     pubmind_build,
@@ -91,6 +92,7 @@ from just_dna_enricher.locations import (
     DRUG_LABELS_SUBDIR,
     ENSEMBL_SUBDIR,
     MANE_SUBDIR,
+    MITOMAP_MISS_SUBDIR,
     MITOMAP_SUBDIR,
     PHARMVAR_SUBDIR,
     PUBMIND_SUBDIR,
@@ -105,6 +107,7 @@ from just_dna_enricher.locations import (
     default_ensembl_cache_dir,
     default_mane_cache_dir,
     default_mitomap_cache_dir,
+    default_mitomap_miss_cache_dir,
     default_pharmvar_cache_dir,
     default_pubmind_cache_dir,
     default_strchive_cache_dir,
@@ -119,6 +122,7 @@ from just_dna_enricher.locations import (
     resolve_drug_labels_reference,
     resolve_ensembl_reference,
     resolve_mane_reference,
+    resolve_mitomap_miss_reference,
     resolve_mitomap_reference,
     resolve_pharmvar_reference,
     resolve_pubmind_reference,
@@ -140,7 +144,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class RebuildRequest:
-    """What one lane's rebuild is given. The same four for every lane, so the loop has no branches.
+    """What one lane's rebuild is given. The same fields for every lane, so the loop has no branches.
 
     `pin` is the release to build — a MANE version, a CIViC release date, a STRchive tag. A lane that
     has no notion of one ignores it; a lane that *needs* one and did not get it reports
@@ -154,12 +158,20 @@ class RebuildRequest:
     `@off-switch-needs-a-probe` asks for. **MANE and CIViC take three input files each and accept no
     `source`**: two of three is not a build for either of them, and a flag that can only ever supply
     one would be a flag that cannot do its job.
+
+    `parents` is where each parent lane's snapshot is, for the one lane that has any (RM171). Filled
+    by the caller rather than resolved inside the adapter, because a rebuild run has an answer the
+    registry cannot give: `cache rebuild` writes every lane into `out/<lane>/`, so the ClinVar the
+    miss lane should join against is the one *this run* just cut, not whatever is in the live cache.
+    A parent the caller does not name falls back to that lane's own resolver, which is what
+    `cache prepare` and a bare `--only mitomap_miss` want.
     """
 
     out_dir: Path
     declared_use: str = "unstated"
     pin: str | None = None
     source: Path | None = None
+    parents: dict[str, Path] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -223,6 +235,17 @@ class CacheLane:
     #: Why there is no `rebuild` adapter. Ensembl is the only member, and its reason is that the
     #: snapshot is built by just-dna-pipelines rather than here.
     unbuilt: str | None = None
+    #: The lanes this one is **derived from** (RM171). Empty for every lane that acquires its own
+    #: bytes, which is all of them but `mitomap_miss`.
+    #:
+    #: A field rather than knowledge inside the adapter, because three things follow from it and only
+    #: one is the adapter's: the rebuild guard below (a child whose parents are not on disk reports
+    #: *could not run*, never an empty result and never a failure attributed to the parent), the
+    #: registry ordering (`prepare` walks this list top to bottom, so a parent has to precede its
+    #: child or the first provisioning run builds the child from caches that arrive a moment later),
+    #: and `cache status`, where an operator asking why an increment is empty needs to be told what it
+    #: is derived from.
+    parents: tuple[str, ...] = ()
 
 
 # ── the adapters ────────────────────────────────────────────────────────────────────────────────
@@ -626,6 +649,28 @@ def _rebuild_mitomap(request: RebuildRequest) -> RebuildOutcome:
     )
 
 
+def _rebuild_mitomap_miss(request: RebuildRequest) -> RebuildOutcome:
+    """The derived lane. `rebuild_lane`'s parent guard has already run, so both are on disk here.
+
+    That split is deliberate: the adapter never answers "the parents are missing", because that
+    answer is the same for every derived lane and belongs where `lane.parents` is read. What is left
+    here is the join itself.
+    """
+    request.out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        result = mitomap_miss_build.build_miss_snapshot(
+            request.parents["mitomap"], request.parents["clinvar"], request.out_dir,
+        )
+    except (mitomap.MitomapError, ImportError, OSError) as exc:
+        return RebuildOutcome("mitomap_miss", False, str(exc))
+    return RebuildOutcome(
+        "mitomap_miss", True,
+        ", ".join(f"{name} {count}" for name, count in result.buckets.items())
+        + f" against {result.clinvar_keys} ClinVar chrMT alleles",
+        result.out_dir,
+    )
+
+
 # ── the registry ────────────────────────────────────────────────────────────────────────────────
 #
 # A list rather than a dict, because the order is what `cache status` prints and a deployment reads
@@ -785,6 +830,32 @@ CACHE_LANES: list[CacheLane] = [
         terms=None,
     ),
     CacheLane(
+        name="mitomap_miss",
+        build_command="mitomap miss",
+        subdir=MITOMAP_MISS_SUBDIR,
+        serves="the MITOMAP-minus-ClinVar increment (draft-panel --source mitomap-miss)",
+        resolve=resolve_mitomap_miss_reference,
+        default_dir=default_mitomap_miss_cache_dir,
+        rebuild=_rebuild_mitomap_miss,
+        ensure=None,
+        publish_repo=None,
+        terms=None,
+        # **A fourth reason, and it is neither a refusal nor an unestablished permission.** Both
+        # parents are redistributable — ClinVar is public domain, MITOMAP is CC BY 3.0 — so nothing
+        # in the licensing bars publishing this. What bars it is what the artifact *is*: its
+        # `release.json` pins two parent digests, and a puller who holds neither parent cannot run
+        # the currency check that pin exists for, so they would be handed an increment they cannot
+        # tell from a stale one. Rebuilding it locally is seconds of work against caches the machine
+        # already has, and it cannot be stale by construction.
+        unpublished=(
+            "derived, not downloaded: this snapshot is the join of the mitomap and clinvar caches "
+            "and pins both their digests, so a pulled copy would carry a currency check its holder "
+            "cannot run. Rebuild it from the parents with `mitomap miss` — the licences permit "
+            "publishing it, the pin is what makes it pointless"
+        ),
+        parents=("mitomap", "clinvar"),
+    ),
+    CacheLane(
         name="mane",
         build_command="mane build",
         subdir=MANE_SUBDIR,
@@ -823,15 +894,82 @@ CACHE_LANES: list[CacheLane] = [
 LANES_BY_NAME: dict[str, CacheLane] = {lane.name: lane for lane in CACHE_LANES}
 
 
+def lane_name(spelling: str) -> str | None:
+    """A lane name as the registry declares it, or `None` when nothing answers to that spelling.
+
+    Accepts a hyphen where the declared member has an underscore and **returns the declared member**,
+    never the caller's spelling — the rule every closed vocabulary in this workspace follows, and the
+    reason it is a function is that a caller who merely *calls* a normalizer and keeps its own string
+    has done nothing (`@vocab-separator-slip`). `drug_labels` and `mitomap_miss` are the two members
+    it matters for: both are commonly written with a hyphen, and `mitomap-miss` is the spelling the
+    design note and `draft-panel --source` use.
+    """
+    folded = spelling.strip().lower().replace("-", "_")
+    return folded if folded in LANES_BY_NAME else None
+
+
+def parent_snapshots(
+    lane: CacheLane, request: RebuildRequest
+) -> tuple[dict[str, Path], list[str]]:
+    """Where each parent's snapshot is, and the parents that are not anywhere.
+
+    The caller's `request.parents` wins, then the parent lane's own resolver. Both halves are needed
+    and they answer different questions: a `cache rebuild` run has just cut a fresh ClinVar into
+    `out/clinvar` and the child must join *that* one, while a lone `--only mitomap_miss` has no such
+    run behind it and means the caches on this machine.
+    """
+    found: dict[str, Path] = {}
+    missing: list[str] = []
+    for name in lane.parents:
+        supplied = request.parents.get(name)
+        if supplied is not None and Path(supplied).is_dir():
+            found[name] = Path(supplied)
+            continue
+        parent = LANES_BY_NAME.get(name)
+        resolved = parent.resolve() if parent is not None else None
+        if resolved is None:
+            missing.append(name)
+            continue
+        found[name] = resolved
+    return found, missing
+
+
 def rebuild_lane(lane: CacheLane, request: RebuildRequest) -> RebuildOutcome:
     """Run one lane's three stages, or say why it did not run.
 
     A lane with no adapter is a `None` outcome carrying `unbuilt` — Ensembl is the only one, and its
     snapshot is provisioned rather than rebuilt, so the honest answer to "rebuild everything" is that
     this one is somebody else's build.
+
+    **A derived lane whose parents are not on disk is the third state too, and naming the parent is
+    the whole point** (RM171). The two wrong answers are both available and both silent: an empty miss
+    set reads as "MITOMAP publishes nothing ClinVar lacks", which is a claim about the world derived
+    from a comparison that never ran, and a `False` would file the absence as this lane failing when
+    what is absent belongs to another one. The guard is here rather than in the adapter because it is
+    registry-driven — it is `lane.parents` that decides, so a second derived lane inherits it.
     """
     if lane.rebuild is None:
         return RebuildOutcome(lane.name, None, lane.unbuilt or "no builder in this tier")
+    resolved: dict[str, Path] = {}
+    if lane.parents:
+        resolved, missing = parent_snapshots(lane, request)
+        if missing:
+            how = "; ".join(
+                f"{name} (`{LANES_BY_NAME[name].build_command}`, or `cache pull --only {name}`)"
+                if LANES_BY_NAME.get(name) is not None and LANES_BY_NAME[name].build_command
+                else name
+                for name in missing
+            )
+            return RebuildOutcome(
+                lane.name, None,
+                f"derived from {', '.join(lane.parents)} and {'is' if len(missing) == 1 else 'are'} "
+                f"not on disk: {how}. A miss set computed without a parent would be an increment "
+                f"measured against a comparison that never ran, not an empty one",
+            )
+        request = RebuildRequest(
+            out_dir=request.out_dir, declared_use=request.declared_use, pin=request.pin,
+            source=request.source, parents=resolved,
+        )
     logger.info("Rebuilding the %s snapshot into %s ...", lane.name, request.out_dir)
     return lane.rebuild(request)
 
@@ -915,6 +1053,7 @@ def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
         shutil.rmtree(staging)
     outcome = rebuild_lane(lane, RebuildRequest(
         out_dir=staging, declared_use=request.declared_use, pin=request.pin, source=request.source,
+        parents=request.parents,
     ))
     if outcome.built is not True:
         shutil.rmtree(staging, ignore_errors=True)
@@ -981,12 +1120,20 @@ def rebuild_caches(
     """
     pins = pins or {}
     sources = sources or {}
+    # **A derived lane joins the snapshots THIS run cut, where this run cut them** (RM171). Every lane
+    # is written into `out/<lane>/`, so by the time the child's turn comes its parents are siblings on
+    # disk — and joining the live cache instead would produce a child whose `release.json` pins two
+    # parents that are not the ones beside it. A parent this run did not build falls back to the
+    # registry's resolver inside `rebuild_lane`, which is the `--only <child>` case.
     return [
         rebuild_lane(lane, RebuildRequest(
             out_dir=out / lane.name,
             declared_use=declared_use,
             pin=pins.get(lane.name),
             source=sources.get(lane.name),
+            parents={
+                name: out / name for name in lane.parents if (out / name).is_dir()
+            },
         ))
         for lane in (lanes if lanes is not None else CACHE_LANES)
     ]

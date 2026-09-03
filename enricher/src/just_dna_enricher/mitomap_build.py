@@ -69,7 +69,7 @@ REFERENCES_PARQUET = "mitomap-references.parquet"
 #: `mmutation`'s amino-acid change and `rna` is `rtmutation`'s RNA feature — one column each, null on
 #: the other table, because folding two differently-named source columns into one would state that
 #: they are the same fact.
-_VARIANT_COLUMNS: tuple[str, ...] = (
+VARIANT_COLUMNS: tuple[str, ...] = (
     "table", "record_id", "locus", "gene", "disease", "allele", "start", "ref", "alt",
     "aa", "rna", "conservation", "controls", "homoplasmy", "heteroplasmy",
     "status", "status_confirmation", "status_bracket", "status_qualifier",
@@ -354,7 +354,7 @@ def build_snapshot(
 
 def _variant_schema() -> dict:
     return {
-        name: (pl.Int64 if name == "start" else pl.Utf8) for name in _VARIANT_COLUMNS
+        name: (pl.Int64 if name == "start" else pl.Utf8) for name in VARIANT_COLUMNS
     }
 
 

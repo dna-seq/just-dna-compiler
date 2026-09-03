@@ -58,6 +58,16 @@ _VALID_CHROMS = frozenset([str(i) for i in range(1, 23)] + ["X", "Y", "MT"])
 _CHROM_ORDER = [str(i) for i in range(1, 23)] + ["X", "Y", "MT"]
 
 
+def chrom_parquet_name(chrom: str) -> str:
+    """The snapshot's filename for one chromosome — `clinvar-chrMT.parquet` and its 24 siblings.
+
+    A function rather than an f-string at the write site, because since RM171 there is a **second**
+    reader: the derived MITOMAP-miss lane opens the chrMT parquet by name, and a naming convention
+    two modules spell independently is one rename away from a lane that silently finds nothing.
+    """
+    return f"clinvar-chr{chrom}.parquet"
+
+
 def _empty_schema() -> dict:
     """The parquet schema (column order + dtypes) — fixed so a rebuild is byte-identical (Principle
     7). The resolver link reads only chrom/start/ref/alt; the rest is annotation the parquet carries
@@ -518,7 +528,7 @@ def build_snapshot(
         df = pl.DataFrame(by_chrom[chrom], schema=schema).sort(
             ["start", "ref", "alt", "rsid", "variation_id"], nulls_last=True
         )
-        path = data_dir / f"clinvar-chr{chrom}.parquet"
+        path = data_dir / chrom_parquet_name(chrom)
         df.write_parquet(path)
         parquet_files.append(path)
         record_count += df.height
