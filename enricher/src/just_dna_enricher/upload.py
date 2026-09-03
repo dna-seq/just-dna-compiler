@@ -488,7 +488,7 @@ def _versioned_digest_conflict(api, plan: "UploadPlan", local_digest: str | None
             token=api.token,
         )
         published = json.loads(Path(local_copy).read_text(encoding="utf-8"))
-    except Exception as exc:  # noqa: BLE001 — every failure here is the same unknown; see the docstring
+    except Exception as exc:
         logger.warning(
             "Could not read the published manifest at %s (%s); publishing without the "
             "already-published check. Nothing established a collision, so nothing asserts one.",
@@ -665,7 +665,7 @@ def check_publish_orphans_no_sidecar(plan: SnapshotPlan, api=None, token: str | 
         api = HfApi(token=get_token())
     try:
         remote = list(api.list_repo_files(repo_id=plan.repo_id, repo_type="dataset"))
-    except Exception as exc:  # noqa: BLE001 - the transport's type is not this module's contract
+    except Exception as exc:
         # Nobody has published here yet, or the listing failed. Neither is an orphan, and a publish
         # that cannot read the repo will fail on its own terms a moment later with a better message.
         logger.info("Could not list %s (%s); publishing without the sidecar check.",
@@ -802,7 +802,7 @@ def publish_reference_snapshot(
     # state two checks disagree about the meaning of.
     try:
         remote = list(api.list_repo_files(repo_id=plan.repo_id, repo_type="dataset"))
-    except Exception as exc:  # noqa: BLE001 - a repo nobody has published to lists nothing
+    except Exception as exc:
         logger.info("Could not list %s (%s); no declared retirement can apply.",
                     plan.repo_id, type(exc).__name__)
         remote = []

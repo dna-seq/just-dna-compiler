@@ -230,7 +230,7 @@ def _provision_snapshot(
     fs = HfFileSystem(token=get_token())
     try:
         listing = fs.ls(hf_repo_prefix, detail=False)
-    except Exception as exc:  # noqa: BLE001 - the transport's type is not this module's contract
+    except Exception as exc:
         raise SnapshotNotPublished(
             f"nothing is published at {hf_repo_prefix} — the repo or its data/ does not exist. "
             f"Build the snapshot locally (`cache rebuild --only …`), or publish one."
@@ -506,7 +506,7 @@ def _provision_root_file_snapshot(
     tmp_path = target.with_suffix(target.suffix + ".part")
     try:
         fs.get(f"{hf_repo}/{payload}", str(tmp_path))
-    except Exception as exc:  # noqa: BLE001 - the transport's type is not this caller's contract
+    except Exception as exc:
         tmp_path.unlink(missing_ok=True)
         raise SnapshotNotPublished(
             f"no {payload} in {hf_repo} — nothing has been published there yet. Build your own with "
@@ -519,7 +519,7 @@ def _provision_root_file_snapshot(
 
     try:
         fs.get(f"{hf_repo}/{RELEASE_FILENAME}", str(cache_dir / RELEASE_FILENAME))
-    except Exception as exc:  # noqa: BLE001 - absence is not an error; a nameless release is honest
+    except Exception as exc:
         logger.info("No %s in the %s repo (%s); the snapshot carries no release label.",
                     RELEASE_FILENAME, label, type(exc).__name__)
     logger.info("Download complete: %s", cache_dir)

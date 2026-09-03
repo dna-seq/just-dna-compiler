@@ -1139,7 +1139,7 @@ def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
                 return PrepareOutcome(lane.name, None, "none", f"skipped: {reason}")
         try:
             path = lane.ensure()
-        except Exception as exc:  # noqa: BLE001 - one lane failing must not sink the rest
+        except Exception as exc:
             # Not an error here either, and for a sharper reason than in `cache pull`: this command's
             # job is to leave the machine with a usable cache, and a repo nobody has created yet is a
             # fact about the world that no amount of retrying changes. Caught by TYPE — the name is

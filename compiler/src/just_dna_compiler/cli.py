@@ -113,7 +113,7 @@ def validate(
 
 
 @app.command()
-def compile(  # noqa: A001 — the verb is the command name; shadowing builtins.compile is fine in a CLI module
+def compile(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     output_dir: Path = typer.Argument(..., file_okay=False, help="Output dir for parquet + manifest.json"),
     strict: bool = typer.Option(

@@ -512,7 +512,7 @@ def test_a_result_supplying_one_derived_half_and_not_the_other_is_refused() -> N
     meant to own is not knowable from inside the validator — so it refuses rather than half-derives.
     Both together is the legitimate case (a result rebuilt from a dump of itself) and stands.
     """
-    from just_dna_compiler.models import ValidationResult  # noqa: PLC0415 — one call site
+    from just_dna_compiler.models import ValidationResult
 
     rebuilt = ValidationResult(
         valid=True, warnings=["prose"], carried=[], warnings_summary={"module_not_closed": 1}
@@ -531,7 +531,7 @@ def test_a_consumer_passing_plain_prose_still_gets_a_result_it_can_build() -> No
     withhold. The withheld answer is an empty pair, which reads as *not classified* rather than as a
     complete-and-short digest.
     """
-    from just_dna_compiler.models import (  # noqa: PLC0415 — one call site
+    from just_dna_compiler.models import (
         ClosureResult,
         CompilationResult,
         ValidationResult,
@@ -556,7 +556,7 @@ def test_a_supplied_pair_that_disagrees_with_the_channel_is_refused() -> None:
     a different number of findings than the channel carries (the digest would look complete and be
     short). An empty pair stays legal throughout — that is the withheld answer.
     """
-    from just_dna_compiler.models import ValidationResult  # noqa: PLC0415 — one call site
+    from just_dna_compiler.models import ValidationResult
 
     with pytest.raises(ValueError, match="not in warnings"):
         ValidationResult(valid=True, warnings=["a"], carried=["b"], warnings_summary={})
@@ -630,8 +630,8 @@ def test_a_finding_survives_being_copied_and_pickled() -> None:
     building, so the list outlives the function and a caller is entitled to `copy.deepcopy` it. Both
     routes reconstruct through `__new__`, and both raised `TypeError` until `__getnewargs__` existed.
     """
-    import copy  # noqa: PLC0415 — test-local
-    import pickle  # noqa: PLC0415 — test-local
+    import copy
+    import pickle
 
     built = CodedWarning("vrs_id_unverifiable", "a carried finding")
     for made in (copy.deepcopy(built), pickle.loads(pickle.dumps(built))):
@@ -648,8 +648,8 @@ def test_an_uncoded_bin_finding_is_not_filed_as_a_bin_overlap_refusal() -> None:
     the codes exist to make loud. The scopes are separate now, and this drives the checker directly
     because reaching it through a spec would need a deliberately broken emitter.
     """
-    from just_dna_compiler.compiler import _validate_table_kind  # noqa: PLC0415 — one call site
-    from just_dna_format.binning import RepeatAlleleRow  # noqa: PLC0415 — one call site
+    from just_dna_compiler.compiler import _validate_table_kind
+    from just_dna_format.binning import RepeatAlleleRow
 
     overlapping = [
         RepeatAlleleRow(
@@ -801,7 +801,7 @@ def test_a_suppression_is_reported_once_per_reason_with_a_count(tmp_path: Path) 
             )
             subject += 1
 
-    from just_dna_format.overrides import OverrideRow  # noqa: PLC0415 — test-local, one call site
+    from just_dna_format.overrides import OverrideRow
 
     overlay = [OverrideRow.model_validate(r) for r in overlay_rows]
     after, errors, warnings = apply_overrides("resolution.csv", rows, overlay)
@@ -825,7 +825,7 @@ def test_a_suppression_record_survives_the_compile_reverse_compile_lap(tmp_path:
     vanish on lap 2, moving a published manifest field between a module and its own round trip. This
     one is counted over the overlay, so both laps publish the identical line.
     """
-    from just_dna_compiler.compiler import reverse_module  # noqa: PLC0415 — one call site
+    from just_dna_compiler.compiler import reverse_module
 
     spec = tmp_path / "spec"
     spec.mkdir()
@@ -919,7 +919,7 @@ def test_the_two_derived_manifest_fields_are_routed_to_the_warnings_axis() -> No
     A release that reworded one message would otherwise fire `manifest_fields` three times over on
     every module in a catalogue, which is the failure `EXCLUDED_MANIFEST_FIELDS` exists to prevent.
     """
-    from just_dna_format.release_records import EXCLUDED_MANIFEST_FIELDS  # noqa: PLC0415
+    from just_dna_format.release_records import EXCLUDED_MANIFEST_FIELDS
 
     for path in ("compilation.carried", "compilation.warnings_summary"):
         assert "routed" in EXCLUDED_MANIFEST_FIELDS[path].lower()
@@ -933,7 +933,7 @@ def test_a_stored_manifest_reads_its_channel_back_without_reclassifying_it(tmp_p
     same model is how a consumer loads a stored artifact, and a validator there would either raise on
     every published manifest or silently rewrite what the consumer holds.
     """
-    from just_dna_format.manifest import read_manifest  # noqa: PLC0415 — one call site
+    from just_dna_format.manifest import read_manifest
 
     spec = tmp_path / "spec"
     spec.mkdir()
@@ -957,7 +957,7 @@ def test_the_summary_keys_accept_the_other_separator_and_store_the_declared_one(
     `check_vocab` is RETURNED, not merely called, so `module-not-closed` lands as `module_not_closed`
     rather than surviving as a second spelling of one code inside a published field.
     """
-    from just_dna_format.manifest import Compilation  # noqa: PLC0415 — one call site
+    from just_dna_format.manifest import Compilation
 
     block = Compilation(warnings_summary={"module-not-closed": 2, "module_not_closed": 1})
     assert block.warnings_summary == {"module_not_closed": 3}, "two spellings are one count"
@@ -1022,7 +1022,7 @@ def test_no_two_codes_share_an_identical_message_across_the_corpus(tmp_path: Pat
     summary would then depend on which side ran first — a published field decided by evaluation
     order. Checked over every message the whole reference corpus actually produces.
     """
-    from just_dna_compiler.compiler import _validate_spec  # noqa: PLC0415 — one call site
+    from just_dna_compiler.compiler import _validate_spec
 
     by_message: dict[str, set[str]] = {}
     for spec in _every_example():

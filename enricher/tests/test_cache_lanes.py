@@ -544,7 +544,7 @@ def test_prepare_picks_each_lanes_route_from_the_registry(
         base = tmp_path / lane.name
         stub_ensure = None
         if lane.ensure is not None:
-            def stub_ensure(_name=lane.name, _base=base):  # noqa: ANN001 - bound per lane
+            def stub_ensure(_name=lane.name, _base=base):
                 pulled.append(_name)
                 _base.mkdir(parents=True, exist_ok=True)
                 return _base

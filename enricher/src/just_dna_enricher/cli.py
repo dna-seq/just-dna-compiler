@@ -1733,7 +1733,7 @@ def cache_pull_(
             # of the world, not an error (`@unreachable-not-absent`).
             typer.secho(f"  {lane.name}: not published yet — {exc}", fg=typer.colors.YELLOW, err=True)
             continue
-        except Exception as exc:  # noqa: BLE001 - one snapshot failing must not sink the rest
+        except Exception as exc:
             typer.secho(f"  {lane.name}: FAILED — {exc}", fg=typer.colors.RED, err=True)
             failures += 1
             continue
@@ -1851,7 +1851,7 @@ def cache_prune_(
             continue
         try:
             plan = plan_prune(lane.publish_repo, glob)
-        except Exception as exc:  # noqa: BLE001 - the transport's type is not this module's contract
+        except Exception as exc:
             typer.secho(f"  {lane.name:13} FAILED   — could not read {lane.publish_repo}: {exc}",
                         fg=typer.colors.RED, err=True)
             continue

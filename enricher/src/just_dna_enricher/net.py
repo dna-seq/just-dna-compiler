@@ -148,7 +148,7 @@ def retry_attempts(default: int) -> int:
     return max(default, configured)
 
 
-class attempt_floor(stop_base):  # noqa: N801 - a tenacity `stop_*` object, named like its siblings
+class attempt_floor(stop_base):
     """`stop_after_attempt(default)`, resolved per call so a deployment can raise it (RM42).
 
     Drop-in for the `stop_after_attempt(n)` it replaces, and deliberately **only** for a bare one: a

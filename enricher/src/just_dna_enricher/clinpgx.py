@@ -216,7 +216,7 @@ def enrich_clinpgx(
         # a finding about the module.
         try:
             reference = ensure_clinpgx_snapshot()
-        except Exception as exc:  # noqa: BLE001 - the next step is the same whatever failed
+        except Exception as exc:
             logger.info("Could not provision the ClinPGx snapshot (%s).", exc)
             reference = None
     if reference is None:

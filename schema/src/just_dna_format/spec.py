@@ -51,7 +51,7 @@ from just_dna_format.normalize import normalize_version, reject_authority_keys
 from just_dna_format.vocab import (
     ACTIONABILITY_SEED,
     ALLELE_PATTERN,  # noqa: F401 — re-exported for backward compat (genotype grammar moved to base)
-    RECOMMENDED_EFFECT_MEASURES,  # noqa: F401 — re-exported; moved to vocab in 0.6 so gwas.py can bind it
+    RECOMMENDED_EFFECT_MEASURES,
     VALID_CLIN_SIG,  # noqa: F401 — re-exported for backward compat (see note below)
     VALID_DIRECTIONS,  # noqa: F401 — re-exported for backward compat
     VALID_SIGNIFICANCE,  # noqa: F401 — re-exported for backward compat
