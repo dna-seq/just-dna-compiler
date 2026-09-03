@@ -12,10 +12,11 @@ copy at `/data/downloads/mitomap.dump.sql.gz`; four Wayback captures named in §
 
 **This is evidence, never contract**, the standing rule for everything under `docs/probes/`. Nothing
 here proposes a design; the adoption call on `status` is deliberately left where
-[ROADMAP.md § RM171](../ROADMAP.md#rm171--mitomaps-mmutation-is-a-curated-mtdna-variant-table-behind-29-free-text-status-strings)
-leaves it. Every number below was re-derived from the bytes named in §1 rather than quoted from the
-entry; where a figure disagrees with the entry, the entry is quoted and the disagreement is stated
-rather than smoothed.
+[ROADMAP_HISTORY.md § RM171](../ROADMAP_HISTORY.md#rm171--mitomaps-curated-mtdna-tables-adopted-as-the-increment-they-carry-over-clinvar)
+leaves it. A later proposed shape, written against these measurements, lives in
+[rm171_diff_strategy](rm171_diff_strategy.md). Every number below was re-derived from the bytes named
+in §1 rather than quoted from the entry; where a figure disagrees with the entry, the entry is quoted
+and the disagreement is stated rather than smoothed.
 
 **The single most load-bearing measurement:** `status` is **not 29 unrelated sentences**. It is a
 **two-token grammar** — a confirmation token (`Reported` | `Cfrm` | `Conflicting reports`) followed
