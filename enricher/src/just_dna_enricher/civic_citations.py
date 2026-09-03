@@ -57,6 +57,7 @@ from pathlib import Path
 
 from just_dna_compiler.compiler import _restamp_for_build, load_csv_rows
 from just_dna_compiler.draft import DraftReport, PartialRow, append_partial_rows
+from just_dna_format.base import derive_variant_key
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.sources import SourceRow
 from just_dna_format.spec import StudyRow, VariantRow
@@ -151,13 +152,34 @@ class CivicSubject:
     civic_name: str | None = None
 
     @property
-    def signature(self) -> tuple[str, str, str, str]:
-        """The four identity cells as the drafted row spells them — the canary's join key too."""
-        return (
-            (self.rsid or "").strip(),
-            (self.chrom or "").strip(),
-            "" if self.start is None else str(self.start),
-            (self.ref or "").strip(),
+    def identity_cells(self) -> dict[str, object]:
+        """The identity a drafted citation carries — **rsID, or the coordinate, never both**.
+
+        A study row must carry the *same* identity its variant row got, which is the rule
+        `clinvar_draft` states in its own comment after the compiler's orphan check found it on the
+        first real panel. It matters twice here. A row written with rsID *and* coordinate has a
+        different `match_on` signature from the rsID-only rows `civic_draft` and `clinvar_draft`
+        write, so one lane's citation would not recognise the other's and the file would grow a
+        second row under the same `(variant_key, pmid)` — `duplicate_study_citation` on every module
+        that ran both. And the pair would state a locus twice where the model already derives one.
+        """
+        if self.rsid:
+            return {"rsid": self.rsid}
+        return {"chrom": self.chrom, "start": self.start, "ref": self.ref}
+
+    @property
+    def study_key(self) -> str | None:
+        """The `variant_key` a citation drafted for this subject will carry, or `None`.
+
+        The same derivation `StudyRow.variant_key` runs, over the same cells, so the canary joins on
+        what the model computes rather than on a tuple of raw cells this module spells its own way.
+        `None` for a `requested` subject: it names no variant, so its citations ground the module.
+        """
+        cells = self.identity_cells
+        if not (cells.get("rsid") or cells.get("chrom")):
+            return None
+        return derive_variant_key(
+            cells.get("rsid"), cells.get("chrom"), cells.get("start"), cells.get("ref")
         )
 
     def restate(self) -> str:
@@ -312,7 +334,7 @@ def plan_subjects(
     from_snapshot = _snapshot_variant_ids(reference)
     curated = _curated_variant_ids()
     subjects: list[CivicSubject] = []
-    seen: set[tuple[int, tuple[str, str, str, str]]] = set()
+    seen: set[tuple[int, str | None]] = set()
     unmapped = 0
     # Every authored row that resolves to a locus is a candidate: a citation is about the variant, not
     # about any one cell of it, so there is no authored column to cross-examine here.
@@ -339,7 +361,7 @@ def plan_subjects(
                     ref=entry.variant.ref,
                     civic_name=name,
                 )
-                key = (variant_id, subject.signature)
+                key = (variant_id, subject.study_key)
                 if key not in seen:
                     seen.add(key)
                     subjects.append(subject)
@@ -352,7 +374,7 @@ def plan_subjects(
         # module — the shape `StudyRow` has permitted since RM47, and the only route that reaches a
         # variant neither the snapshot nor the curated table can place.
         subject = CivicSubject(variant_id=int(variant_id), route="requested")
-        key = (subject.variant_id, subject.signature)
+        key = (subject.variant_id, subject.study_key)
         if key not in seen:
             seen.add(key)
             subjects.append(subject)
@@ -433,10 +455,7 @@ def _study_partial(citation: RecoveredCitation) -> PartialRow:
     subject = citation.subject
     status = citation.status
     cells: dict[str, object] = {
-        "rsid": subject.rsid,
-        "chrom": subject.chrom,
-        "start": subject.start,
-        "ref": subject.ref,
+        **subject.identity_cells,
         "pmid": citation.pmid,
         "conclusion": citation.conclusion(),
     }
@@ -639,25 +658,61 @@ class EvidenceStatusCheck:
         return "; ".join(parts)
 
 
-def recorded_civic_citations(studies: Sequence[StudyRow]) -> dict[tuple[str, str, str, str], dict[str, str]]:
-    """`identity signature` → `{pmid: recorded status}` for every row this lane wrote.
+def recorded_civic_citations(studies: Sequence[StudyRow]) -> dict[str, dict[str, str]]:
+    """`variant_key` → `{pmid: recorded status}` for every row **this lane** wrote.
 
     Keyed on `confidence_unit`, which is the instrument name and therefore the only cell that says a
     status came from CIViC. A row whose confidence was withheld carries no unit and is not a subject:
     there is no recorded judgement to compare against, and inventing one would be the check answering
     its own question.
+
+    Joined on `StudyRow.variant_key` — the model's own derivation over the same cells — rather than on
+    a tuple of raw columns this module spells its own way. A row may legitimately name its variant by
+    rsID where another names it by coordinate, and a raw compare would read those as two subjects.
     """
-    out: dict[tuple[str, str, str, str], dict[str, str]] = {}
+    out: dict[str, dict[str, str]] = {}
     for row in studies:
         if (row.confidence_unit or "") != CIVIC_STATUS_UNIT or not row.confidence:
             continue
-        signature = (
-            (row.rsid or "").strip(),
-            (row.chrom or "").strip(),
-            "" if row.start is None else str(row.start),
-            (row.ref or "").strip(),
-        )
-        out.setdefault(signature, {})[row.pmid.strip()] = row.confidence.strip()
+        if row.variant_key is None:
+            # A module-level citation names no variant, so nothing can map it back to a CIViC id.
+            # `grounding_civic_citations` counts these, and the caller publishes the count as
+            # not-re-askable rather than joining them to something or dropping them silently.
+            continue
+        out.setdefault(row.variant_key, {})[row.pmid.strip()] = row.confidence.strip()
+    return out
+
+
+def grounding_civic_citations(studies: Sequence[StudyRow]) -> int:
+    """How many rows this lane wrote that name **no variant** — the `--variant-id` route's output.
+
+    They ground the module rather than a variant, which is the only shape that reaches a record CIViC
+    publishes no identity for. The cost is that no later run can map one back to a CIViC variant id,
+    and that is a fact about the check's reach: counted and published, never read as agreement.
+    """
+    return len([
+        row for row in studies
+        if row.variant_key is None
+        and (row.confidence_unit or "") == CIVIC_STATUS_UNIT
+        and row.confidence
+    ])
+
+
+def cited_pmids(studies: Sequence[StudyRow]) -> dict[str, set[str]]:
+    """`variant_key` → every PMID the module cites there, **whatever wrote the row**.
+
+    Deliberately wider than `recorded_civic_citations`, and the width is the whole point: the
+    added-a-citation arm asks whether the module has a row for a paper CIViC now returns, and a row
+    written by `draft-panel`, by hand, or by this lane with its confidence withheld is a row all the
+    same. Keying that arm on the narrow set would report *CIViC now carries PMID X and this module has
+    no row for it* about a citation sitting in the file, on every lap
+    (`@a-set-that-silences-is-narrower-than-one-that-raises`).
+    """
+    out: dict[str, set[str]] = {}
+    for row in studies:
+        if row.variant_key is None:
+            continue
+        out.setdefault(row.variant_key, set()).add(row.pmid.strip())
     return out
 
 
@@ -685,8 +740,10 @@ def check_evidence_status_currency(
     comparison of zeros — a check that could not run is not a check that passed.
     """
     recorded = recorded_civic_citations(studies)
-    check = EvidenceStatusCheck(recorded=len(recorded))
-    if not recorded:
+    grounding = grounding_civic_citations(studies)
+    everything_cited = cited_pmids(studies)
+    check = EvidenceStatusCheck(recorded=len(recorded) + grounding)
+    if not check.recorded:
         check.skip = "nothing_to_check"
         return check
     if offline or (client is not None and client.offline):
@@ -696,16 +753,16 @@ def check_evidence_status_currency(
         check.skip = "offline"
         return check
     subjects, _unmapped = plan_subjects(variants, resolution_rows, reference=reference)
-    by_signature = {subject.signature: subject for subject in subjects}
-    askable = {
-        signature: by_signature[signature] for signature in recorded if signature in by_signature
-    }
-    check.not_re_askable = len(recorded) - len(askable)
+    by_key = {subject.study_key: subject for subject in subjects if subject.study_key}
+    askable = {key: by_key[key] for key in recorded if key in by_key}
+    # Both halves of the reach this run does not have: a recorded subject no route placed, and every
+    # module-level row, which by construction no route can place.
+    check.not_re_askable = (len(recorded) - len(askable)) + grounding
     if not askable:
         check.skip = "no_reference"
         return check
     api = client if client is not None else CivicApiClient(offline=offline)
-    for signature, subject in askable.items():
+    for key, subject in askable.items():
         try:
             items = api.evidence_items(subject.variant_id)
         except CivicApiUnavailable:
@@ -719,7 +776,11 @@ def check_evidence_status_currency(
         check.subjects += 1
         citations, _withheld = _citations(subject, items)
         current = {citation.pmid: citation for citation in citations}
-        held = recorded[signature]
+        held = recorded[key]
+        # The narrow set decides which statuses are compared; the wide one decides what counts as
+        # *already cited*, so a hand-written or snapshot-drafted row for the same paper silences the
+        # added-a-citation arm instead of being re-reported every lap.
+        cited = everything_cited.get(key, set())
         for pmid, was in held.items():
             citation = current.get(pmid)
             if citation is None:
@@ -735,7 +796,7 @@ def check_evidence_status_currency(
                     MovedCitation(CIVIC_STATUS_MOVED, subject, pmid, was, citation.status)
                 )
         for pmid, citation in current.items():
-            if pmid not in held:
+            if pmid not in cited:
                 check.findings.append(
                     MovedCitation(
                         CIVIC_CITATION_ADDED, subject, pmid, None, citation.status or "unstated"

@@ -495,8 +495,10 @@ def test_a_variant_with_no_published_identity_reaches_one_through_the_curated_ta
         (identity.variant_id, "curated_name_identity")
     ]
 
-    # And a drafted citation off that route carries the module's own identity cells, so a re-run
-    # matches on the same signature.
+    # And a drafted citation off that route carries the SAME identity the variant row got — rsID
+    # where there is one, the coordinate otherwise, never both. A row carrying both has a different
+    # `match_on` signature from the rsID-only rows `draft-panel` writes, so the two lanes would each
+    # append a row under one `(variant_key, pmid)` and the compiler would call them duplicates.
     subject = subjects[0]
     result = draft_civic_citations(
         spec, variants=variants, resolution_rows=resolution, reference=snapshot,
@@ -504,9 +506,11 @@ def test_a_variant_with_no_published_identity_reaches_one_through_the_curated_ta
     )
     assert result.added
     drafted = [row for row in read_studies(spec) if row.confidence]
-    assert {(row.rsid, row.chrom, row.start, row.ref) for row in drafted} == {
-        (identity.rsid, identity.chrom, identity.start, identity.ref)
-    }
+    assert {row.variant_key for row in drafted} == {variants[0].variant_key}
+    if identity.rsid:
+        assert {(row.rsid, row.chrom, row.start, row.ref) for row in drafted} == {
+            (identity.rsid, None, None, None)
+        }
 
 
 # ── the canary ──────────────────────────────────────────────────────────────────────────────────
@@ -592,6 +596,85 @@ def test_a_citation_added_since_the_draft_is_its_own_finding(snapshot, tmp_path)
     added = [f for f in check.findings if f.code == CIVIC_CITATION_ADDED]
     assert len(added) == 1
     assert "civic citations" in added[0].restate()
+
+
+def test_a_citation_another_lane_already_wrote_is_neither_re_added_nor_re_reported(
+    snapshot, tmp_path
+) -> None:
+    """Two lanes, one file, one `(variant_key, pmid)` — and neither half may fire on the other's row.
+
+    `draft-panel --source civic` and a hand author both write a citation as `rsid,pmid`. Drafting a
+    second row for the same paper under the same variant would be `duplicate_study_citation` at
+    compile, and the canary reporting *CIViC now carries PMID X and this module has no row for it*
+    about a row sitting in the file would fire on every lap. Both were live before the identity cells
+    and the canary's join were narrowed: the drafted row carried rsID **and** coordinate, so its
+    `match_on` signature missed the rsID-only row, and the added-a-citation arm was keyed on the
+    unit-bearing rows alone.
+    """
+    placed = {
+        (str(r["chrom"]), int(r["start"]), str(r["ref"]), str(r["alt"]))
+        for r in civic_snapshot_rows(snapshot)
+        if r.get("chrom") and r.get("start") is not None and r.get("ref") and r.get("alt")
+    }
+    identity = next(
+        row for row in CIVIC_NAME_IDENTITIES
+        if (row.chrom, row.start, row.ref, row.alt) not in placed and row.rsid
+    )
+    # One citation the payload really returns, written the way the other lanes write one.
+    already = next(
+        node["source"]["citationId"] for node in _nodes(WIDE_VARIANT)
+        if node["source"]["sourceType"] == "PUBMED"
+    )
+    variants_csv, resolution_csv = _authored(
+        identity.chrom, identity.start, identity.ref, identity.alt, rsid=identity.rsid
+    )
+    spec = _spec(
+        tmp_path / "spec", variants=variants_csv, resolution=resolution_csv,
+        studies=f"rsid,pmid\n{identity.rsid},{already}\n",
+    )
+    variants, resolution = read_module(spec, genome_build="GRCh38")
+    result = draft_civic_citations(
+        spec, variants=variants, resolution_rows=resolution, reference=snapshot,
+        client=_client({identity.variant_id: _body(WIDE_VARIANT)}),
+    )
+    outcomes = [outcome.status for report in result.reports for outcome in report.outcomes]
+    assert outcomes.count("already_present") == 1, (
+        "the pre-existing row must be recognised, or the file grows a duplicate key"
+    )
+    # One row per PMID, whichever lane wrote it.
+    studies = read_studies(spec)
+    assert len({(row.variant_key, row.pmid) for row in studies}) == len(studies)
+
+    check = check_evidence_status_currency(
+        variants, resolution, studies, reference=snapshot,
+        client=_client({identity.variant_id: _body(WIDE_VARIANT)}),
+    )
+    assert [f.pmid for f in check.findings if f.code == CIVIC_CITATION_ADDED] == []
+
+
+def test_a_row_whose_confidence_was_withheld_is_still_a_row(snapshot, tmp_path) -> None:
+    """A citation this lane wrote with no status is cited all the same.
+
+    The confidence is withheld where CIViC's live items disagree, which leaves the row with no
+    `confidence_unit` — so it is not a *subject* of the status comparison, correctly. It must still
+    silence the added-a-citation arm, or the check reports a paper the module cites as one it does
+    not. The silencing set is per row and the raising set is per subject, which is the asymmetry
+    `@a-set-that-silences-is-narrower-than-one-that-raises` names, taken the other way round.
+    """
+    spec, variant_id = _drafted_module(tmp_path, snapshot)
+    text = (spec / "studies.csv").read_text()
+    blanked = text.replace(f",accepted,{CIVIC_STATUS_UNIT}", ",,", 1)
+    assert blanked != text, "the fixture must have written at least one accepted row"
+    (spec / "studies.csv").write_text(blanked)
+
+    variants, resolution = read_module(spec, genome_build="GRCh38")
+    studies = read_studies(spec)
+    assert any(row.confidence is None for row in studies)
+    check = check_evidence_status_currency(
+        variants, resolution, studies, reference=snapshot,
+        client=_client({variant_id: _body(WIDE_VARIANT)}),
+    )
+    assert [f.restate() for f in check.findings if f.code == CIVIC_CITATION_ADDED] == []
 
 
 def test_offline_skips_the_canary_rather_than_reporting_a_clean_run(snapshot, tmp_path) -> None:

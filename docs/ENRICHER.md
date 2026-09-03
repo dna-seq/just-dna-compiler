@@ -1515,6 +1515,14 @@ reaches 1955 — it is one of the two records that round could **not** resolve �
 asks about an id directly and writes a **module-level** citation row, which `StudyRow` has permitted
 since RM47.
 
+**A recovered citation carries the same identity its variant row got — rsID where there is one, the
+coordinate otherwise, never both.** That is `clinvar_draft`'s rule, learned from the compiler's orphan
+check on the first real panel, and it is load-bearing twice here: a row carrying both has a different
+`match_on` signature from the rsID-only rows `draft-panel --source civic` writes, so the two lanes
+would each append a row under one `(variant_key, pmid)` and the compiler would call them duplicates.
+The canary joins on `StudyRow.variant_key` for the same reason — the model's own derivation over those
+cells, rather than a tuple of raw columns this lane spells its own way.
+
 **A recovered citation lands in `studies.csv` and nowhere else.** `literature.csv` is the *derived*
 article table, filled by the `literature` command from the PMIDs `studies.csv` names, and an article
 row nothing cites is dropped from the artifact. Writing one here would either duplicate that pass or
@@ -1555,6 +1563,14 @@ Its four skip reasons are cleared by four different things, and none of them is 
 | `nothing_to_check` | the module records no citation from this lane — a `civic_draft` row carries no `confidence_unit`, so it is not re-asked against itself |
 | `offline` | the run had no egress. Never `ran, findings=0`: nobody-asked and the-source-has-nothing-more are different facts |
 | `no_reference` | no recorded citation could be mapped back to a variant id this run — no snapshot, or rows that ground the module rather than a variant. Published with its count rather than silently passed |
+
+**The two sets the canary reads are deliberately different widths.** Which citations have a *recorded
+status to compare* is the narrow one — rows carrying `confidence_unit = civic_evidence_status`, so a
+`civic_draft` row is never re-asked against itself and a row whose confidence was withheld is not a
+subject. Which papers the module *already cites* is the wide one, over every `studies.csv` row
+whatever wrote it, because the added-a-citation arm asks whether there is a row for this paper at all;
+keying that on the narrow set would report a citation sitting in the file as one CIViC has added,
+every lap (`@a-set-that-silences-is-narrower-than-one-that-raises`, taken the other way round).
 | `unreachable` | CIViC answered for none of the variants asked about |
 
 
