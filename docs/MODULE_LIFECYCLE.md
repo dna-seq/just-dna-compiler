@@ -17,8 +17,9 @@ rules stated for other reasons, scattered across five documents and three reposi
 So this document does two things:
 
 1. **States pass one explicitly** as a sequence of stages, naming the surface each stage touches.
-   The *procedure* is not here — that is `create-module` in `just-module-creator`, which is the one
-   copy and stays it. What is here is the **map**: actor, tier, inputs, outputs, and the identity
+   The *procedure* is not here — that is the `create-module` skill at
+   `.claude/skills/create-module/` in this repository, which is the one copy and stays it (the MCP
+   surface ships a copy of it; this one is the source). What is here is the **map**: actor, tier, inputs, outputs, and the identity
    consequences, for a reader who needs to reason about the pipeline rather than walk it.
 2. **Describes pass two onward**, which no document currently covers.
 
@@ -35,10 +36,10 @@ The dependency arrow points inward and only one tier fetches.
 | Surface | Repo / package | Owns | Never |
 |---|---|---|---|
 | **schema** | `just-dna-format` | the models, vocabularies, the hash family, `layout`, signing/verification helpers, the generated authoring reference | fetches; ships a CLI |
-| **transform** | `just-dna-compiler` | spec → parquet + `manifest.json`; `validate`, `reverse`, `close`, `signature`, scaffolding/templates, `hints`, the authoring-reference CLI | fetches; creates a row no curator wrote |
+| **transform** | `just-dna-compiler` | spec → parquet + `manifest.json`; `validate`, `reverse`, `close`, `signature`, scaffolding/templates, `hint`, the authoring-reference CLI | fetches; creates a row no curator wrote |
 | **network** | `just-dna-enricher` | resolution, VRS minting, the derived sidecars, the drafting providers, every cross-check, snapshot build/publish | decides what a variant *means*; repairs an authored cell |
 | **catalog** | `just-dna-registry` (checkout: `../just-dna-marketplace`) | accounts, namespaces, publish, search, download, the module card, recompilation server-side | authors anything |
-| **agent surface** | `just-module-creator` | the MCP tool set and the `create-module` skill — the procedure, and the refusals that keep an agent from filling a checked cell | own a schema fact |
+| **agent surface** | `just-module-creator` | the MCP tool set, carrying a copy of the `create-module` skill whose source is this repository — the procedure, and the refusals that keep an agent from filling a checked cell | own a schema fact |
 | **consumer** | `just-dna-lite` and any other reader | joining the module's annotation against a sample's measurement | supply the annotation |
 
 Two of those are outside this repository's control and are described here as consumers of what we
@@ -88,7 +89,7 @@ Which of those a given edit invalidates is §6.
 | 0 | origin | human + agent | registry search; literature search | the catalog, the sources | nothing | — |
 | 1 | scaffold | agent | compiler `scaffold`/`template`/`stub`/`requirements`/`describe`; format `reference` | the models | `module_spec.yaml`, empty/stubbed CSVs | never overwrites |
 | 2 | draft | agent | enricher drafting providers (over compiler `draft.append_rows`) | a source or its snapshot | authored CSV rows + a licence-table row | licence gate at acquisition |
-| 3 | curate | the author — an agent, a human, or both | compiler `hints`, enricher `lookup`/`literature` — all report-only | the drafted rows, papers | the cells nothing else may fill | — |
+| 3 | curate | the author — an agent, a human, or both | compiler `hint`, enricher `hint`/`literature` — all report-only | the drafted rows, papers | the cells nothing else may fill | — |
 | 4 | enrich | agent | enricher passes | authored tables + caches/snapshots/live | the derived sidecars | `strict` refuses unresolved |
 | 5 | cross-check | agent | enricher checks | authored cells vs sources | findings, `verification.json` | `strict` escalates most findings |
 | 6 | compile | anyone | compiler `validate`/`compile`/`verify`/`sign`/`close` | the whole spec dir | the artifact + `manifest.json` | the licence gate, the mode ladder |
@@ -100,7 +101,8 @@ Which of those a given edit invalidates is §6.
 ### Stage 0 — origin
 
 Four honest starting points, and they differ in what pass two will look like. A module drafted from
-a source (ClinVar, CPIC, ClinPGx) inherits that source's release cadence and will need a
+a source (ClinVar, CPIC, ClinPGx, CIViC, PubMind, STRchive, MITOMAP — `draft`, `draft-clinpgx`,
+`draft-panel --source …`, `draft-repeats`) inherits that source's release cadence and will need a
 **source-refresh pass**; a module built from one paper the author read inherits the *literature's*
 cadence and will need an **evidence pass** when the preprint is published or a replication lands.
 That is the first thing this document can say that nothing else does: **the origin picks the shape
@@ -158,7 +160,13 @@ overridden it. The consequence for pass two is large enough to have its own sect
 Every check **reports and never repairs** — rewriting an authored value destroys the evidence of the
 upstream mistake. Severity follows the mode, with named exceptions that never escalate because
 escalating would make the format arbitrate a dispute it has no standing in (the ClinVar `clin_sig`
-comparison, the allele-function comparison, the article-licence warning).
+comparison, the allele-function comparison, the article-licence warning, and since 0.7 the repeat-band
+comparison against STRchive, the regulator-label comparison, the published-refutation finding and the
+evidence-status currency finding — a source disagreeing with itself or re-curating is not an authoring
+error). The roster of checks is the table at the top of ENRICHER.md and the
+`VALID_VERIFICATION_CHECKS` vocabulary behind it; it grew by seven members in the 2026-09 adoption
+round (PGS accession and metadata, repeat bands, literature coverage, regulator labels, published
+refutation, evidence-status currency), and this document does not restate it.
 
 Since 0.6 the outcome of this stage can outlive the run: `verification.json` records, per check, what
 was checked, how many subjects, how many findings, and — when a check did **not** run — the reason.
@@ -346,7 +354,7 @@ what moved, what has to be regenerated, what claims were invalidated, and what a
 | **Review** | appended an `authorship` entry; changed no data | somebody — a specialist, a second agent — read the module |
 | **Evidence** | added/replaced citations, quotes, `studies.csv` rows | the preprint was published; a replication landed |
 | **Data** | edited or added annotation rows | a call was wrong, a genotype was missing, scope grew |
-| **Source refresh** | re-drafted from a newer snapshot | ClinVar/CPIC/ClinPGx published a release |
+| **Source refresh** | re-drafted from a newer snapshot | the drafting source (ClinVar, CPIC, ClinPGx, CIViC, STRchive, MITOMAP, …) published a release |
 | **Rebuild** | changed nothing; recompiled under a newer toolchain | a contract tightened, or the catalog asked |
 
 They are not stages and they compose. What separates them is which of the four consequences each
@@ -712,10 +720,11 @@ Stated plainly, because each of these is currently an absence a reader has to in
   enricher check rather than the tempting column (refused on RM71's argument — it restates `dataset`
   and rots where `dataset` is maintained): `enrich --verify-datasets` compares each recorded
   `SourceRow.dataset` against the release its source publishes now, and it is the cheap question to put
-  before `--rederive`. **What remains is the reach.** Only ClinVar has a live release label this tier
-  can read in the namespace it records, so every other source reports `unchecked` with `unsupported`
-  beside it — which is the honest state, not a clean bill, but it does mean a CPIC- or ClinPGx-drafted
-  module still relies on its author knowing. Adding a probe is adding a registry member.
+  before `--rederive`. **What remains is the reach.** Only ClinVar and, since RM163, the PGS Catalog
+  have a live release label this tier can read in the namespace it records, so every other source
+  reports `unchecked` with `unsupported` beside it — which is the honest state, not a clean bill, but
+  it does mean a CPIC- or ClinPGx-drafted module still relies on its author knowing. Adding a probe is
+  adding a member to `currency.default_probes`, which is how the second one arrived.
 - **Nothing re-asked a question already answered — closed in 0.7.** Merge-not-clobber still means an
   ordinary re-run re-asks nothing, so a source that revised a row it already gave us moves no signature
   at all; what changed is that `enrich --rederive` now re-asks every recorded subject and reports what

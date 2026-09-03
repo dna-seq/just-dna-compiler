@@ -1,7 +1,8 @@
 # Use cases & dogfooding — feasibility and blocker analysis
 
-For each real or desired use case: **is it enabled by the format as it stands (0.4), and if not, what
-is missing?** The point is to separate three things that get conflated —
+For each real or desired use case: **is it enabled by the format as it stands, and if not, what is
+missing?** (The verdicts were first written against 0.4 and are revised in place as items ship; the
+tree is at 0.7.) The point is to separate three things that get conflated —
 
 - work the format **already enables** (author it today),
 - work that is a **consumer** concern the format deliberately does not own (the data-agnostic north
@@ -23,9 +24,9 @@ The design docs are stages of **one loop**; an idea moves left-to-right as it ma
 2. **Usage → blockers → solvability** — run each use case against the current bricks: is it *enabled*,
    *consumer-side*, or a *gap*; and is the gap closable **additively**? → **this doc**
 3. **Means → draft schema → decision** — for a gap worth closing, the proposed shape + a charter check
-   + the open questions to settle it. → [`PROPOSAL_0_5.md`](proposals/PROPOSAL_0_5.md) (0.5),
-   [`PROPOSAL_0_4_1.md`](proposals/PROPOSAL_0_4_1.md) (the 0.4.1 patch). *(0.4's shipped decisions →
-   [`CHANGELOG.md`](CHANGELOG.md).)*
+   + the open questions to settle it. → the `PROPOSAL_*` thread for the release under
+   [`proposals/`](proposals/) (eight so far, 0.4.1 through 0.7 PT3, every one now a record).
+   *(Shipped decisions → [`CHANGELOG.md`](CHANGELOG.md).)*
 4. **Conclusion — "how to do it now, with these bricks"** — the distilled worked example once the shape
    is settled. → [`REFERENCE_EXAMPLES.md`](REFERENCE_EXAMPLES.md)
 5. **Terminal**, one of two:
@@ -37,13 +38,12 @@ The design docs are stages of **one loop**; an idea moves left-to-right as it ma
 So **this doc and `REFERENCE_EXAMPLES.md` are the same use cases at two points in the loop** — here
 they are *questions* (what blocks?), there they are *answers* (author it like this). An **ENABLED** /
 schema-ready row here graduates to a `REFERENCE_EXAMPLES` entry; a **GAP** row graduates to the
-current proposal (`PROPOSAL_0_5` / `PROPOSAL_0_4_1`, if being closed now) or an `RMn` roadmap item
-(if deferred). The loop is why a
+release's proposal thread (if being closed now) or an `RMn` roadmap item (if deferred). The loop is why a
 "blocker" is never a dead end: it is either dissolved (it was consumer-side all along), closed
 additively, or explicitly parked.
 
 **Verdict legend**
-- **ENABLED** — authorable/usable on 0.4 now, no format change.
+- **ENABLED** — authorable/usable now, no format change.
 - **CONSUMER-SIDE** — a consumer (runner/app) feature; the format correctly owns nothing here (per the
   north star). No format change — often no blocker at all.
 - **SCHEMA-READY / COMPILER-PENDING** — the schema models express it; only the deferred compiler
@@ -87,8 +87,9 @@ genotype (PER3 span, DAT1 motif-path, MAOA half-repeat) as a synthetic VCF recor
 same `source_field=REPCN` path as ExpansionHunter. The format does not invent a representation — it
 *binds to* the VCF one. Producing the augmented VCF is the caller's job (consumer-side). The only
 format touch-point (`source_field`) shipped in 0.4. Consuming **symbolic** alleles (`<STR n>`,
-`<CNV>`) at the *count/dosage* layer is enabled via the binning tables; representing a symbolic allele
-inside a `VariantRow.genotype` is not (see §3b) `→ RM5`.
+`<CNV>`) at the *count/dosage* layer is enabled via the binning tables, and since 0.6 a symbolic
+allele is expressible inside a `VariantRow.genotype` too — VCF's five types with the length in the
+token, `<CNV:TR:30>` included (see §3b; RM5, shipped).
 
 ### 1c. Callability three-state, phasing-aware panels, trio/multi-sample (round-2 §3d)
 
@@ -126,14 +127,15 @@ inside a `VariantRow.genotype` is not (see §3b) `→ RM5`.
 
 ### 2a. ClinVar gene-panel (flag pathogenic variants in a gene set)
 
-**Verdict: SCHEMA-READY (interface) / GAP (native materialization).** `GenePanelSpec` (`source`,
-`reference`, `reference_sha256`, `genes`, `significance`) already declares the panel and is recorded
-verbatim in the manifest. Today an *app-side* adapter (`just-dna-lite`) enumerates the matching ClinVar
-pathogenic/likely-pathogenic variants into `variants.csv`; the compiler does **not** resolve the panel
-itself. **Missing:** native compile-time materialization (gene set + significance predicate →
-`weights.parquet`) gated on a working, content-pinned ClinVar reference mixin `→ RM4`. Until then the
-use case is fully reachable *through the app-side adapter* — so it is enabled in practice, with the
-native path a convenience/quality follow-up.
+**Verdict: ENABLED — and the materialization moved off the compiler (RM4, closed).** The surface is
+`just-dna-enricher draft-panel --source clinvar --gene …`: the enricher drafts the matching ClinVar
+rows into `variants.csv` from a pinned snapshot, and the author's no-op over the drafted subset is the
+authorial act, so the compiler never resolves a panel and never needs a reference mixin. Worked end to
+end in `reference_examples/hfe_hemochromatosis` (REFERENCE_EXAMPLES §9b). The `panel:` block
+`GenePanelSpec` declared is deprecated, removal at 1.0. The earlier verdict here — *schema-ready, gap
+on native compile-time materialization gated on a content-pinned ClinVar mixin* — was the 0.4 reading;
+what closed it was deciding that a drafted, curated row is the right subject, not a predicate the
+compiler evaluates.
 
 ### 2b. PharmGKB drug-response annotation (item 9)
 
@@ -231,11 +233,12 @@ host one table. This is the human-authorable half of the `RM2` work.*
 
 **Verdict: ENABLED for small ACGT indels; GAP for structural/symbolic.** `VariantRow` alleles are
 `^[ACGT]+$` **multi-base**, so a small insertion/deletion is expressible today (`ref=A, alts=AT`,
-genotype `A/AT`) on the same `variants.csv` as SNPs — a mixed SNP+indel panel is authorable now. What
-is *not* expressible: **symbolic/large structural** alleles (`<DEL>`, `<INS>`, `<DUP>`, repeat
-expansions as `<STR>`) — there is no symbolic-allele genotype. Those route through the copy-number /
-repeat binning tables (dosage/count, not sequence) or await a symbolic-allele representation
-`→ RM5`. So: everyday SNP+indel modules need nothing; SV-scale variation is the recognised gap.
+genotype `A/AT`) on the same `variants.csv` as SNPs — a mixed SNP+indel panel is authorable now.
+**Symbolic/large structural** alleles shipped in 0.6 (RM5): VCF's five closed first-level types with
+the length inside the token (`<DEL:4977>`, `<CNV:TR:30>`), worked on a real module in
+`reference_examples/mt_common_deletion`. A lengthless token is dropped with a warning and refused under
+`strict`. Dosage and count still route through the copy-number / repeat binning tables; the earlier
+"recognised gap" here is closed, and what stays unexpressible is deliberate (CPIC's IUPAC codes).
 
 ### 3c. SNP + PRS + PGx + CNV in one "personal panel"
 
@@ -251,11 +254,14 @@ harness (§1a) wants — and RM1/RM2 are what unlocked it.
 
 ### 4a. `just-module-validator` — deterministic source-checks + provenance enrichment against public sources
 
-**Verdict: the validator is CONSUMER-SIDE (Principle 2 keeps it out of these libs); the two additive
-format anchors it needs shipped in 0.4 (RM11/RM12), and one requiredness fix waits for 1.0.**
+**Verdict: CONSUMER-SIDE of the format and compiler (Principle 2 keeps it out of those two tiers) —
+and the sibling it proposed exists: it is `just-dna-enricher` (RM13, realized).** The two additive
+format anchors it needed shipped in 0.4 (RM11/RM12), and one requiredness fix waits for 1.0.
 
-A proposed sibling library that is **network-first**: given a module it checks the authored claims
-against public sources and enriches them —
+The sibling library as proposed, **network-first**: given a module it checks the authored claims
+against public sources and enriches them — every one of these is now an enricher check with a
+`VALID_VERIFICATION_CHECKS` member (`citation_existence`, `rsid_currency` and
+`rsid_coordinate_agreement`, `citation_identifier`, `provenance_quote`) —
 
 - validate every `pmid` resolves in PubMed, and every `rsid` resolves in dbSNP at the authored
   `chrom:start` (flag coord/liftover drift);
@@ -484,8 +490,8 @@ consumer-side one is recorded so it is not mistaken for a format task.
 | RM20 | ✅ **shipped in 0.5** — **PharmGKB annotations are per-genotype and per-category**: `genotype`, `phenotype_category` (closed vocab) and `annotation_id` on `PharmVariantRow`; duplicate key `(variant_key, drug, genotype, phenotype_category, annotation_id)`. Corrects RM3, which was validated against a sample rather than the corpus. | format (schema + compiler) | 2b, the real ClinPGx corpus | done |
 | RM21 | ✅ **shipped in 0.5** — **Data-source licensing as data** (`sources.csv` + `manifest.sources`): per (source, layer) licence, attribution, pinned `license_sha256`, tri-state `share_alike`/`commercial_use`, and the acquirer's `declared_use`. Compiler refuses annotation-layer content that forbids sale when no declaration is recorded; enricher refuses at acquisition. | format (schema + compiler) + enricher | 2c, marketplace redistribution | done |
 | RM22 | ✅ **shipped in 0.5** — **PGx tables join resolution**: `enrich()` reads `pharm_variants.csv` and `haplotypes.csv`, so a module with no `variants.csv` gets coordinates (it previously enriched to an empty `resolution.csv`). | enricher | 2c, 3c | done |
-| RM4 | **Native ClinVar gene-panel materialization** + content-pinned reference mixin (item 7 follow-up) | format (compiler) + consumer ref | 2a (native path) | medium |
-| RM5 | **Symbolic/structural alleles** (`<S>`/`<L>`/`<DEL>`/`<INS>`/`<DUP>`/`<STR>`; large indels) — a representation beyond `^[ACGT]+$`. **Motivating case: 5-HTTLPR** (S/L not nucleotides → rejected today) | format (schema) | 3b (SV), 1b (symbolic consume), 5-HTTLPR | medium |
+| RM4 | ✅ **closed — off the compiler**: `just-dna-enricher draft-panel --source clinvar` drafts the panel's rows and the author curates them; the `panel:` block is deprecated for removal at 1.0 | enricher | 2a | — |
+| RM5 | ✅ **shipped in 0.6** — **symbolic/structural alleles**: VCF's five closed first-level types with the length inside the token (`<DEL:1500>`, `<CNV:TR:30>`); a lengthless token is dropped, refused under `strict`. 5-HTTLPR, the motivating case, turned out to be a plain indel `ref`/`alts` state directly | format (schema) | 3b (SV), 1b (symbolic consume), 5-HTTLPR | medium |
 | RM6 | Promote `requires_callable` to a typed boolean column; reserve/build `callable_from` (DP,GQ,FT three-state) | format (schema) | 1c callability | low-medium |
 | RM7 | **Evaluation-output / report-card schema** for the verification harness | **consumer** (`just-dna-lite`), NOT the format | 1a | — (not a format task) |
 | RM8 | ✅ **shipped in 0.4 sample** — `reference.authoring_reference()` + `json_schemas()`, generated from the live models | format (schema) | 1d drift | done |
@@ -501,8 +507,9 @@ consumer-side one is recorded so it is not mistaken for a format task.
 **Takeaway.** The two load-bearing items — **RM1 + RM2** (compiler materialization + composed
 modules) — are now **shipped**: the frozen 0.4 shapes are runnable artifacts, and every
 composite/personal module compiles with lossless round-trip. What remains open is small and clearly
-scoped: RM3-adjacent extensions, RM5 (symbolic alleles / 5-HTTLPR), RM6/RM10 refinements, and the two
-provenance anchors RM11/RM12 (`doi` + fulltext locator) that let a network-first validator scrutinise
-a module without the format ever fetching. Notably,
+scoped: RM3-adjacent extensions and the two provenance anchors RM11/RM12 (`doi` + fulltext locator)
+that let a network-first validator scrutinise a module without the format ever fetching — and those
+two shipped in 0.4, RM5 in 0.6, RM6 before 0.6, and RM10 folded into RM28, so this paragraph is a
+record of where the 0.4 round stood rather than a list of open work; the open list is ROADMAP.md. Notably,
 the format's *purpose expansion* (the verification harness) still needs **no format change** — it rides
 on the properties already frozen, now with the tables materialized under it.
