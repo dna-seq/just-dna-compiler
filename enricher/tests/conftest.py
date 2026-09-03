@@ -67,6 +67,10 @@ RTMUTATION = [
     "18\tMT-TF\tclinical lab\tT578C\t578\tT\tC\ttRNA Phe\t91.11%\t0\tnr\t+\tReported [VUS-]\t\\N",
     "19\tMT-RNR1\tdeafness\tA1555G\t1555\tA\tG\t12S rRNA\t.\t0\t+\t+\tUnclear\t\\N",
     "20\tMT-TS1 precursor\thearing loss\tT7511C\t7511\tT\tC\ttRNA Ser\t.\t0\tnr\t+\tReported [B] in hg K,U\t\\N",
+    # The one row in the real 1,096 whose allele NAME states a variable number of copies while the
+    # allele COLUMNS state one definite pair — the source disagreeing with itself about definiteness.
+    # Verbatim, because the point is the shape rather than an invented example.
+    "104\tMT-RNR1\tDEAF / AD-associated\tT961delT+ / -C(n)ins\t961\tT\tCC\t12S rRNA\t+\tnd\t+\t+\tReported [LB]\t\\N",
 ]
 MMUTATION_REFERENCE = ["1\t100", "1\t101", "2\t100", "3\t102", "6\t103"]
 RTMUTATION_REFERENCE = ["16\t100", "17\t101", "19\t102"]

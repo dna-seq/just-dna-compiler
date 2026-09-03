@@ -1,10 +1,19 @@
 # RM171 — adopt the increment, never the photocopies
 
-**Subject:** the adoption shape for [ROADMAP.md § RM171](../ROADMAP.md#rm171--mitomaps-mmutation-is-a-curated-mtdna-variant-table-behind-29-free-text-status-strings).
+**Subject:** the adoption shape for [ROADMAP_HISTORY.md § RM171](../ROADMAP_HISTORY.md#rm171--mitomaps-curated-mtdna-tables-adopted-as-the-increment-they-carry-over-clinvar).
 **Measurements:** [MITOMAP_STATUS](MITOMAP_STATUS.md). Every number this note leans on was measured there; this file does not re-derive them.
 **Date:** 2026-09-03.
 
-This is a **design record of a proposed shape**, not a decision and not a contract. The live item stays in ROADMAP. If a sentence here and the entry disagree, the entry wins until someone edits it.
+**Built the same day, and this file became its specification rather than a proposal.** RM171 shipped on
+2026-09-03; the record is ROADMAP_HISTORY § RM171 and the five places the build departed from the plan
+are a dated addendum on PROPOSAL_0_7_PT3. **§7's open list is superseded by that entry** — items 1, 2,
+5, 6, 8 and 9 are closed by the build, and 3, 4 and 7 survive as what the entry still names as open.
+**§1's motivating sixteen is six on a rejoin**: all sixteen bracketed-and-absent rows reproduce, but
+thirteen of them are the `:` deletions §6 puts in the unmintable count, which is the sharpest available
+argument for the rule this note ends on.
+
+The body below is left as written. It is a **design record of a proposed shape**, and where a sentence
+here and the shipped entry disagree, the entry wins.
 
 **The proposal this note records.** Adopt MITOMAP's unique increment against the ClinVar cache that is already on disk, never the rows ClinVar already publishes. Derive that increment every rebuild. Do not hardcode "16". Do not map MITOMAP's confirmation token onto `clin_sig`. Do not invent a meaning for `VUS*`.
 

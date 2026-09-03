@@ -137,6 +137,25 @@ def test_state_is_folded_where_the_shared_map_has_an_answer_and_stubbed_where_it
     assert folded and unfolded, "the fixture must exercise both arms"
 
 
+def test_a_row_whose_allele_name_states_a_variable_length_is_written_and_named(
+    spec_dir: Path, mitomap_miss_snapshot: Path
+) -> None:
+    """Kept with MITOMAP's own ref/alt, and reported — the source disagreeing with itself.
+
+    The two repairs are both wrong: dropping the row discards a published expert-panel-adjacent call,
+    and rewriting `T`→`CC` into something that expresses `(n)` invents a rule the source has not
+    given. So the row is drafted as published, and the author is told on a row they must curate by
+    hand anyway (`@multiplicity-is-a-finding`, `@fix-vs-surface`).
+    """
+    result = draft_panel_from_mitomap_miss(spec_dir, snapshot=mitomap_miss_snapshot)
+    written = {(int(r["start"]), r["ref"], r["alts"]) for r in _rows(spec_dir / "variants.csv")}
+    assert (961, "T", "CC") in written, "the published alleles, verbatim"
+    notes = [n for n in result.warnings if "variable number of copies" in n]
+    assert len(notes) == 1
+    assert "MT:961" in notes[0] and "(n)" in notes[0]
+    assert len(result.indefinite_alleles) == 1
+
+
 def test_a_second_run_adds_nothing(spec_dir: Path, mitomap_miss_snapshot: Path) -> None:
     """Drafting appends and matches on the coordinate identity (`@draft-appends`)."""
     first = draft_panel_from_mitomap_miss(spec_dir, snapshot=mitomap_miss_snapshot)

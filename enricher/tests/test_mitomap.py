@@ -30,6 +30,7 @@ from just_dna_enricher.mitomap import (
     MitomapError,
     allele_defect,
     allele_key,
+    indefinite_length,
     nlmid_pmid,
     parse_status,
     read_dump_tables,
@@ -164,6 +165,21 @@ def test_only_a_bare_digit_run_is_read_as_a_pmid() -> None:
     assert nlmid_pmid("01930224-202601000-00006") is None, "an Ovid id, not a PMID"
     assert nlmid_pmid("") is None
     assert nlmid_pmid(None) is None
+
+
+def test_an_allele_name_stating_a_variable_number_of_copies_is_flagged_not_repaired() -> None:
+    """MITOMAP's two encodings of one record disagree about definiteness, on exactly one row.
+
+    `T961delT+ / -C(n)ins` describes a deletion plus a variable-length insertion; the allele *columns*
+    on the same record flatten it to `T`→`CC`. Neither repair is available — dropping the row discards
+    a published call, and rewriting it needs a rule for what `(n)` means that MITOMAP has not given —
+    so the predicate exists to let a caller say so (`@multiplicity-is-a-finding`).
+    """
+    assert indefinite_length("T961delT+ / -C(n)ins") is True
+    assert indefinite_length("961_962ins(n)") is True
+    assert indefinite_length("m.3460G>A") is False, "a plain substitution is not a family"
+    assert indefinite_length("m.5367_5385del") is False
+    assert indefinite_length(None) is False
 
 
 def test_a_locus_that_is_not_one_gene_withholds_rather_than_picking() -> None:
