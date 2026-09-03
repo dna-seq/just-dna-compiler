@@ -207,6 +207,79 @@ consumer's own argument against their fix, and the shape README already has; sta
 the maintainer's observation on the resulting picture — byte digest moved, every signature intact,
 *what* moved unstated — is [RM181](ROADMAP_0_8.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker).
 
+## RM187 — eleven bulk downloads carried one body in eleven copies, four of them leaking the transport
+
+**Severity** high · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-enricher` only —
+one shared helper, eleven call sites, two adapter handlers; no schema, no parquet column, no CLI
+flag) · **Owner** enricher · **Motivating case** a real failure during RM179's republish: NCBI closed
+the connection **180,927,542 bytes into a 193,427,450-byte** ClinVar VCF on 2026-09-03 and the run
+died with a raw `httpx.RemoteProtocolError` traceback
+
+**The leak is the item; the missing retry is what made it likely.** `_rebuild_clinvar` catches
+`ClinVarBuildError`, and `download_clinvar_vcf` raised `httpx`'s own type — so the lane could not
+report `built=False`, and the exception escaped `rebuild_lane` as well. In a full `cache rebuild` that
+aborts **every lane after the flaky one**, which is precisely the rule that loop was written to hold
+("one snapshot failing must not sink the rest"), defeated one level below where it is stated. Four of
+the eleven builder downloads were in that state — `clinvar_build`'s two, `constraint_build`'s and
+`clinpgx_build`'s — and the other seven translated correctly.
+
+**All eleven had no retry, which is the part worth pausing on.** Every *live client* in this tier has
+had `attempt_floor` since RM42, and the requests without it were the largest ones the tier makes: a
+~190 MB VCF and a ~95 MB TSV over public mirrors, exactly the fetches most likely to be cut short. The
+asymmetry had a cause rather than being an oversight — `net.py` was documented as pacing for live API
+clients and `download.py` as HuggingFace provisioning, so each builder reached for neither and wrote
+its own fifteen lines. Eleven copies of a body nobody owned.
+
+**One helper, and the eleven public signatures unchanged.** `net.stream_to_file` returns a
+`StreamedFile` (path, sha256, etag, last_modified) and each downloader builds its own return type from
+it, so no caller moved — the five different return shapes (`Path`, `tuple[Path, str]`, and three
+per-lane dataclasses) are all still there. Four properties, each of which had been a defect somewhere:
+atomic through `.part`, retried on transport failure, translated at the boundary, and **restarted from
+zero on each attempt** — the hasher and the file handle are created *inside* the attempt, because a
+retry that appended would produce a file whose digest is real and whose contents are nonsense, which
+neither a footer check nor `raise_for_status` would catch.
+
+**Retried only where retrying is honest.** `httpx.TransportError` is the predicate:
+`RemoteProtocolError` subclasses it, so the motivating incident is covered, and a second attempt
+genuinely fixes a cut connection. A **status** error is deliberately not retried — a 404 from a
+mistyped release tag is the same 404 four times over, and three backoffs only delay telling the caller
+what the first response already said. That matches the tier's dominant predicate rather than gnomAD's
+wider one, which retries `HTTPStatusError` because its own rate limiting arrives that way.
+
+**`constraint_build` had no error type at all**, which is *why* its download leaked: there was nothing
+to translate into, and `_rebuild_constraint` therefore caught `(FileNotFoundError, ImportError,
+OSError)`. A lane without its own type cannot be caught as that lane. It gains one, and
+`ClinVarUnavailable` / `ClinPgxUnavailable` / `ConstraintUnavailable` are **subclasses** of their
+lane's error so a caller catching the build error still catches them, while one that wants to tell *the
+source was unreachable* from *the bytes were unreadable* can ask by name — the distinction that decides
+whether retrying is even the right response.
+
+**Third appearance of `@client-exception-contract`, and the guard is shaped by the second one's
+failure.** RM97 found the leak in the clients, RM101 one layer up in the passes, and the builder
+downloads were never swept. RM101's own coverage guard **hand-kept eight module names and missed
+`identifiers`**, leaving `OntologyClient` leaking raw `httpx` for a release — so this guard walks the
+package by AST, and twice: no `download_*` may open a stream, and `httpx.stream` appears nowhere
+outside `net.py`. The second walk exists because the first is keyed on a naming convention, and a new
+bulk fetch called `fetch_dump` would satisfy it by not matching.
+
+**Two defects found by the sweep rather than reported.** `pubmind_build` was the one handler of eleven
+that did **not** unlink its `.part` on failure, so a failed fetch there left a partial behind
+(`@a-failed-fetch-is-not-a-no-op`). And four of the eleven computed a sha256 while streaming and only
+logged it, so a caller recording the provenance of bytes it had just fetched had to hash the file again
+— two lanes had already grown a `tuple[Path, str]` return for exactly that reason, one at a time
+(`@dont-discard-computed`). The shared body returns it to all eleven.
+
+**The old behaviour is demonstrated on the old arrangement**, not asserted about the new one: a test
+restores `download_clinvar_vcf` to raising the transport type and watches the exception come back out
+of `rebuild_lane`. Without that, the claim that this repair fixes something is a claim about code
+nobody ran.
+
+**What it does not do.** No downloader gains a resume — a retry re-fetches from byte zero, so a
+connection that dies at 180 MB costs the whole 190 MB again. Range requests would fix that and are not
+free: the mirrors' `Accept-Ranges` support is unmeasured, and a resumed body needs the digest computed
+across two responses, which is a different design from this one. Worth an item if the incident
+recurs; not worth guessing at now.
+
 ## RM185 — a publish could replace a `release.json` describing bytes it was not carrying
 
 **Severity** high · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-enricher` only —

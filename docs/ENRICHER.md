@@ -319,7 +319,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `clinvar` | the DuckDB ClinVar resolver link (`lookup_loci`) + the annotation reader (`lookup_clin_sig`) | `duckdb`, format |
 | `clinical` | the `clin_sig` cross-check over the ClinVar snapshot (offline, reports only) | format |
 | `clin_sig` | **0.7**: the one raw-significance → `VALID_CLIN_SIG` normalizer, shared by every source that reports one. Dependency-free on purpose, so a runtime pass reads it without the `[dev]` extra | format `VALID_CLIN_SIG` |
-| `net` | shared HTTP politeness: `PacingGate`, `batched`, `dedupe` | stdlib |
+| `net` | shared HTTP politeness: `PacingGate`, `batched`, `dedupe`, `attempt_floor`, and **`stream_to_file`** — the one body every bulk download in this package uses, atomic, translated and retried (RM187) | `httpx`, `tenacity` |
 | `eutils` | NCBI E-utilities client (esummary), shared by the literature and rsID checks | `httpx`, `tenacity` |
 | `literature` | pass 4: a module's citations (`studies.csv` + binning `pmid`s) → `literature.csv` (PubMed + Europe PMC), fulltext quote match, per-article licence, PMCID→PMID | `httpx`, `tenacity` |
 | `identifiers` | rsID / trait-CURIE / gene-symbol / PGS-accession currency (dbSNP, OLS4, HGNC, PGS Catalog) | `httpx`, `tenacity` |
@@ -1218,6 +1218,19 @@ published, build if not.
 - **In Python:** `caches.prepare_caches(...)`, which the command calls. `caches.rebuild_caches(...)` is
   its sibling. Both return one outcome per lane in registry order, so a caller can zip against
   `CACHE_LANES` without matching on names.
+
+**Every bulk download goes through one body, and a failed one is a failed lane (RM187).** Each
+builder streams its source's file through `net.stream_to_file`, which is atomic (`.part`, renamed only
+on success), retries a **transport** failure — a connection cut mid-body, the failure that produced
+this item — and translates everything else into the lane's own error type. A status error is not
+retried, because a 404 from a mistyped release tag is the same 404 four times over.
+
+That last part is what a caller notices. Before RM187 four of the eleven downloads raised `httpx`'s
+own exception, and each lane adapter catches its own builder's type — so a truncated download was a
+traceback rather than a `built=False`, and it escaped `rebuild_lane` too, aborting every lane after it.
+**If you catch `httpx.HTTPError` around one of these builders, catch the lane's error instead**; the
+`httpx` exception is kept as `__cause__`. A retry re-fetches from byte zero: there is no resume, so a
+190 MB download that dies at 180 MB costs the full 190 MB again.
 
 ### One endpoint over every builder (`cache rebuild`, RM176)
 

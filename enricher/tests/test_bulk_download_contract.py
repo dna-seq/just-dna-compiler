@@ -27,7 +27,6 @@ from contextlib import contextmanager
 
 import httpx
 import pytest
-
 from just_dna_enricher import net
 from just_dna_enricher.net import RETRY_ATTEMPTS_ENV, StreamedFile, stream_to_file
 

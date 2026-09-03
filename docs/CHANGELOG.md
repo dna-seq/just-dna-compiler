@@ -34,7 +34,32 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-03 (latest) — what a publish may delete, and what it may stop describing
+## 2026-09-03 (latest) — a download that could not fail politely, and one body for eleven of them
+
+**`just-dna-enricher` only, no schema change.** [RM187](ROADMAP_HISTORY.md#rm187--eleven-bulk-downloads-carried-one-body-in-eleven-copies-four-of-them-leaking-the-transport),
+found by a real failure rather than an audit: NCBI closed the connection 180,927,542 bytes into a
+193,427,450-byte ClinVar VCF during RM179's republish.
+
+- **A flaky download was a traceback, not an outcome.** `download_clinvar_vcf` raised `httpx`'s own
+  exception and `_rebuild_clinvar` catches `ClinVarBuildError`, so the lane could not report
+  `built=False` — and it escaped `rebuild_lane` too, which in a full `cache rebuild` aborts every lane
+  after the flaky one. Four of eleven builder downloads leaked; the other seven translated.
+- **None of the eleven retried**, on the largest requests this tier makes, while every live client has
+  had `attempt_floor` since RM42. They now share `net.stream_to_file`: atomic through `.part`,
+  translated at the boundary, retried on `TransportError` (a status error is not retried — a 404 from
+  a mistyped tag is the same 404 four times over), and restarted from byte zero per attempt.
+- **Eleven public signatures are unchanged.** Each downloader builds its own return type from the
+  `StreamedFile` it gets back, so the five existing return shapes all stay.
+- **`constraint_build` gains the error type it never had** — the reason its download had nothing to
+  translate into. `ClinVarUnavailable`, `ClinPgxUnavailable` and `ConstraintUnavailable` subclass
+  their lane's error, so an existing `except` still catches them.
+- **Two defects the sweep found:** `pubmind_build` was the one handler of eleven that left its `.part`
+  behind on failure, and four of them computed a sha256 while streaming and only logged it.
+- **Consumer-visible:** a failed bulk download now raises the lane's own type rather than an `httpx`
+  one. If you catch `httpx.HTTPError` around these builders, catch the lane's error instead — the
+  `httpx` exception is kept as `__cause__`.
+
+## 2026-09-03 — what a publish may delete, and what it may stop describing
 
 **`just-dna-enricher` only, no schema change.** Two policy decisions taken with the maintainer after
 the published-artifact audit, and the code that enforces them. The premise being corrected is this

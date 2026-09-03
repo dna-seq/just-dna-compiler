@@ -292,6 +292,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Test the contract over every client, not the method on one. `@client-exception-contract`
 - A **pass** owes its own type too; translate to an `*Unavailable` subclass, never a flat one. `@client-exception-contract`
 - Before retyping a leak, grep for handlers catching the leaked type — some are load-bearing. `@client-exception-contract`
+- A builder's bulk download owes the same contract; one body, retried on transport only. `@client-exception-contract`
+- A lane with no error type of its own cannot be caught as that lane — the type comes before the handler. `@client-exception-contract`
 - A subclass makes a caller's `except` **order** load-bearing; enumerate handler shapes, and guard with an AST walk. `@client-exception-contract`
 
 ### Drafting and the authoring surfaces

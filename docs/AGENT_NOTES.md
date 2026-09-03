@@ -2046,6 +2046,34 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
 ## Drafting and the authoring surfaces
 
+
+  **Third appearance, in the builders, and this one was reported by a failure rather than an audit
+  (RM187, 0.7).** RM97 fixed the clients and RM101 the passes; the eleven *builder* downloads were
+  never swept, and four of them raised `httpx` at their callers. NCBI closed a connection 180,927,542
+  bytes into a 193,427,450-byte ClinVar VCF, `_rebuild_clinvar` catches `ClinVarBuildError`, and the
+  raw `RemoteProtocolError` **escaped `rebuild_lane`** — so in a full `cache rebuild` one flaky
+  download aborts every lane after it, defeating "one snapshot failing must not sink the rest" one
+  level below where that rule is written. **A leak is not untidiness; it is a lane that cannot report
+  its own failure.**
+
+  Three things worth carrying forward. *One:* `constraint_build` had **no error type at all**, which
+  is *why* it leaked — there was nothing to translate into, so the adapter caught
+  `(FileNotFoundError, ImportError, OSError)` and hoped. A lane without its own type cannot be caught
+  as that lane, and the fix is a type before it is a handler. *Two:* the eleven bodies were fifteen
+  identical lines copied eleven times, and the drift was invisible **because every copy worked** —
+  four leaked, one (`pubmind_build`) forgot to unlink its `.part`, and four computed a sha256 only to
+  log it. A copied body drifts in the direction nobody tests. *Three:* the guard walks the package by
+  AST **twice** — no `download_*` may open a stream, and `httpx.stream` appears nowhere outside
+  `net.py` — because the first walk is keyed on a naming convention and a new `fetch_dump` would pass
+  it by not matching. That second walk exists specifically because RM101's guard hand-kept eight
+  module names and missed `identifiers`.
+
+  **And retry only where retrying is honest.** `TransportError` is retried because a second attempt
+  fixes a cut connection; a status error is not, because a 404 from a mistyped release tag is the same
+  404 four times over and three backoffs only delay the answer. The hasher and the file handle are
+  created *inside* the attempt: a retry that appended to a partial body would produce a file whose
+  digest is real and whose contents are nonsense, and neither a parquet footer check nor
+  `raise_for_status` would catch it.
 - `@draft-appends` — **Drafting appends, it never mutates — that word is the whole line.** `just_dna_compiler.draft`
   appends rows into an authored CSV at **row** granularity (a file-level "refuse if it exists" rule
   self-defuses after the first gene and makes a multi-gene module unbuildable). A row whose key exists
