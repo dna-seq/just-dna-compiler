@@ -1550,21 +1550,35 @@ def clinvar_publish_(
     ),
     commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
     dry_run: bool = typer.Option(
-        False, "--dry-run", help="Show what would be uploaded without contacting HuggingFace.",
+        False, "--dry-run",
+        help="Show what would be uploaded. Reads the repo's file list; uploads nothing.",
     ),
 ) -> None:
     """Create-or-update the dataset repo and upload the built ClinVar snapshot (publisher/dev)."""
-    from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
+    from just_dna_enricher.upload import (
+        OrphanedSidecarError,
+        check_publish_orphans_no_sidecar,
+        plan_reference_snapshot,
+        publish_reference_snapshot,
+    )
 
     if dry_run:
         plan = plan_reference_snapshot(snapshot_dir, repo_id)
+        # A rehearsal that skips the check the real thing refuses on is a different operation. This
+        # is the one command that can reach the published ClinVar repo from a snapshot built without
+        # its citations half, so the dry run reads the repo rather than promising a refused publish.
+        try:
+            check_publish_orphans_no_sidecar(plan)
+        except OrphanedSidecarError as exc:
+            typer.secho(f"WOULD BE REFUSED: {exc}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=1) from exc
         typer.echo(f"Would upload to {plan.repo_id}:")
         for f in plan.files:
             typer.echo(f"  • {f}")
         return
     try:
         plan = publish_reference_snapshot(snapshot_dir, repo_id, commit_message=commit_message)
-    except (FileNotFoundError, PermissionError, ImportError) as exc:
+    except (FileNotFoundError, PermissionError, ImportError, OrphanedSidecarError) as exc:
         typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     typer.secho(
@@ -1793,6 +1807,74 @@ def cache_prepare_(
         raise typer.Exit(code=1)
 
 
+@cache_app.command("prune")
+def cache_prune_(
+    only: list[str] = typer.Option(
+        [], "--only", help="Prune just these caches (repeatable). Default: every published one.",
+    ),
+    yes: bool = typer.Option(
+        False, "--yes", help="Delete without asking. Without it this prints the plan and stops.",
+    ),
+) -> None:
+    """Say what a published snapshot repo carries that its lane is not made of, and offer to delete it.
+
+    **Deletion is never a side effect of publishing, and this is the command that makes that
+    affordable** (RM186). A published repo accumulates: the publisher adds and does not remove, so a
+    layout change leaves the old spelling in place, and `just-dna-seq/clinvar` still carries the
+    159 MB single-file `clinvar.parquet` from before the per-chromosome split. Provisioning already
+    refuses to download it — the glob is what defends this tier — but any consumer globbing
+    `data/*.parquet`, the dataset viewer included, still gets two schemas under one relation.
+
+    **Nothing here is a sweep.** A file is a candidate only if the lane's own glob excludes it or a
+    `LayoutShift` declares it retired; `README.md`, `.gitattributes`, `release.json`, `LICENSE.txt`
+    and sidecar directories are never touched. Without `--yes` this reads and prints and does nothing
+    else, which is the mode to run first.
+    """
+    from just_dna_enricher.download import SNAPSHOT_FILE_GLOBS
+    from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
+    from just_dna_enricher.upload import plan_prune, prune_repo
+
+    _, lanes = _selected(only)
+    planned = 0
+    for lane in lanes:
+        if lane.publish_repo is None:
+            typer.secho(f"  {lane.name:13} skipped  — {lane.unpublished or 'published elsewhere'}",
+                        fg=typer.colors.YELLOW)
+            continue
+        glob = SNAPSHOT_FILE_GLOBS.get(lane.name)
+        if glob is None:
+            # STRchive's snapshot is one JSON at the repo root: there is no `data/` for a file to be
+            # outside of, so there is nothing this command can name. Said rather than skipped
+            # silently, because "prune found nothing" and "prune cannot look" are different answers.
+            typer.secho(f"  {lane.name:13} n/a      — this snapshot has no {SNAPSHOT_DATA_DIRNAME}/ "
+                        f"to be made of anything", fg=typer.colors.YELLOW)
+            continue
+        try:
+            plan = plan_prune(lane.publish_repo, glob)
+        except Exception as exc:  # noqa: BLE001 - the transport's type is not this module's contract
+            typer.secho(f"  {lane.name:13} FAILED   — could not read {lane.publish_repo}: {exc}",
+                        fg=typer.colors.RED, err=True)
+            continue
+        if not plan.candidates:
+            typer.secho(f"  {lane.name:13} clean    {lane.publish_repo}", fg=typer.colors.GREEN)
+            continue
+        planned += len(plan.candidates)
+        typer.secho(
+            f"  {lane.name:13} {len(plan.candidates)} file(s), {plan.total_bytes / 1e6:.1f} MB in "
+            f"{lane.publish_repo}", fg=typer.colors.YELLOW,
+        )
+        for candidate in plan.candidates:
+            size = "" if candidate.size is None else f" ({candidate.size / 1e6:.1f} MB)"
+            typer.echo(f"      • {candidate.path}{size} — {candidate.reason}")
+        if not yes:
+            continue
+        deleted = prune_repo(plan)
+        typer.secho(f"      deleted {deleted} file(s) from {lane.publish_repo}",
+                    fg=typer.colors.GREEN)
+    if planned and not yes:
+        typer.echo("Nothing was deleted. Re-run with --yes to remove the files listed above.")
+
+
 @cache_app.command("rebuild")
 def cache_rebuild_(
     out: Path = typer.Option(
@@ -1887,7 +1969,12 @@ def _publish_rebuilt(lane: CacheLane, outcome: RebuildOutcome, *, dry_run: bool)
     the registry's `unpublished` is the answer to why one is skipped. Refusing the whole run because
     PharmVar cannot be published would make the flag unusable on the set it was written for.
     """
-    from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
+    from just_dna_enricher.upload import (
+        OrphanedSidecarError,
+        check_publish_orphans_no_sidecar,
+        plan_reference_snapshot,
+        publish_reference_snapshot,
+    )
 
     if lane.publish_repo is None:
         typer.secho(f"    not published — {lane.unpublished}", fg=typer.colors.YELLOW, err=True)
@@ -1903,10 +1990,14 @@ def _publish_rebuilt(lane: CacheLane, outcome: RebuildOutcome, *, dry_run: bool)
     try:
         if dry_run:
             plan = plan_reference_snapshot(snapshot_dir, lane.publish_repo, payload=payload)
+            # The remote check runs here too: a dry run that skips what a publish refuses on is the
+            # same defect as an allowlist that drops a file the dry run promised — it makes the
+            # rehearsal a different operation from the thing (`@publisher-allowlist-derived`).
+            check_publish_orphans_no_sidecar(plan)
             typer.echo(f"    would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
             return
         plan = publish_reference_snapshot(snapshot_dir, lane.publish_repo, payload=payload)
-    except (FileNotFoundError, PermissionError, ImportError) as exc:
+    except (FileNotFoundError, PermissionError, ImportError, OrphanedSidecarError) as exc:
         typer.secho(f"    PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
         return
     typer.secho(f"    published → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN)

@@ -34,7 +34,50 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-03 (latest) — a recompile question with no lower bound, and a registry missing one attribute
+## 2026-09-03 (latest) — what a publish may delete, and what it may stop describing
+
+**`just-dna-enricher` only, no schema change.** Two policy decisions taken with the maintainer after
+the published-artifact audit, and the code that enforces them. The premise being corrected is this
+repository's own: `@snapshot-accumulates` had been read as *never delete*, and a HuggingFace dataset
+repo is git-backed — a delete is a commit and a superseded revision still resolves. The risk was never
+lost bytes; it is that a retired file goes on answering 200 to whoever still asks for it, and that a
+sweep removes what nobody looked at.
+
+- **A publish refuses to leave a sidecar undescribed**
+  ([RM185](ROADMAP_HISTORY.md#rm185--a-publish-could-replace-a-releasejson-describing-bytes-it-was-not-carrying)).
+  The general form of RM179: a snapshot's `release.json` describes every half the artifact carries, so
+  a publish carrying one half replaces the whole description while add-never-delete leaves the other
+  half as bytes nothing describes. `OrphanedSidecarError` now refuses that publish and names the file
+  and the command that builds the missing half. **The guard reads the remote tree, not the remote
+  `release.json`** — by the second bad publish the block was already gone while the sidecar was still
+  there, so a guard interrogating the description would have passed it. `--dry-run` runs the same
+  check and exits non-zero, because a rehearsal that skips what the publish refuses on is a different
+  operation.
+- **`cache prune` is new, and it is the only unnamed deletion route**
+  ([RM186](ROADMAP_HISTORY.md#rm186--deletion-on-a-published-repo-by-declaration-or-by-asking-never-as-a-side-effect)).
+  It names two kinds of remote file — one under `data/` that the lane's own glob excludes, and one a
+  `LayoutShift` declares retired — and nothing else: `README.md`, `.gitattributes`, `release.json`,
+  `LICENSE.txt` and sidecar directories are never candidates. Without `--yes` it reads, prints each
+  file with its size and why it is nameable, and stops. Against the live repos it finds one candidate
+  (`just-dna-seq/clinvar`'s 159 MB single-file `clinvar.parquet`, from before the per-chromosome
+  split), six lanes clean, STRchive *n/a* — its snapshot is one JSON at the repo root, so there is no
+  `data/` to be outside of, and "cannot look" is not "found nothing".
+- **A layout change now carries its own migration** (same item). A change that retires a published
+  file and introduces another declares a `LayoutShift`: *if the new spelling is absent from the repo
+  and the old one is present, upload the new and delete the old.* The predicate is over the remote, so
+  it fires once per repo and is a no-op afterwards, and it rides the upload's own commit as
+  `delete_patterns` — the arrival and the removal are one commit, with the retired name in the commit
+  message. This is the only deletion a publish performs.
+- **The per-lane file globs became a registry** (same item). `cache prune` asks what a repo carries
+  that its lane is not made of, which can only be asked by lane, so `SNAPSHOT_FILE_GLOBS` is now the
+  one place each pattern is spelled and the `ensure_*` closures read it — the provisioner and the
+  pruner cannot come to disagree about what a snapshot is. Walked by test against the publishable
+  lanes.
+- **Operator-visible:** one new command (`cache prune`), and a publish can now refuse where it used to
+  proceed. No parquet column, model field or vocabulary member changed. Nothing was deleted from any
+  published repo by this work.
+
+## 2026-09-03 — a recompile question with no lower bound, and a registry missing one attribute
 
 Two consumer reports from the same preview build against the uncut 0.7, both answered the day they
 arrived; no schema, parquet or manifest change in either.

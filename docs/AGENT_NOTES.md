@@ -3360,6 +3360,51 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   until rebuilt — and it makes a second writer of a label that function owns. Additive later; not the
   fix.
 
+- `@a-publish-may-not-orphan-the-bytes-it-stops-describing` — **What a publish may delete, and what it
+  may stop describing (RM185, RM186, 2026-09-03; maintainer's policy).**
+
+  **First, a premise of this file was wrong.** `@snapshot-accumulates` says the publisher adds and
+  never deletes, and that had hardened into *never delete*. A HuggingFace dataset repo is git-backed:
+  a delete is a commit, and a superseded revision still resolves — three of them were read off the hub
+  while auditing this, which is how the ClinVar citations block was dated. So deletion is recoverable,
+  and the reason for care is not lost bytes. It is that a **retired file goes on answering 200** to
+  whoever still asks for it (`CLINPGX_ARCHIVES`, where that kept a lane's default archive frozen for a
+  year), and that a sweep removes what nobody looked at. Only a history squash actually loses
+  anything.
+
+  **A publish may not replace a description of bytes it is not carrying.** `release.json` describes
+  every half of a snapshot, because each builder merges its block in. A publish carrying one half
+  replaces the whole file, and add-never-delete leaves the other half present and undescribed —
+  RM179's ClinVar bug, refused generically at the publisher by `OrphanedSidecarError`. **Ask the
+  remote tree, never the remote description**: by the second bad publish the block was already gone
+  while the sidecar was still there, so a guard comparing descriptions would have passed it exactly as
+  the first one passed. The bytes are what a puller gets, so the bytes are what the predicate is over.
+  And the **dry run runs the check** — a rehearsal that skips what the real thing refuses on is
+  `@publisher-allowlist-derived`'s defect wearing a different hat.
+
+  **Deletion has exactly two routes, and neither is a side effect.** A **declared retirement**
+  (`LayoutShift`): the change that retires a published file and introduces another carries the
+  migration — *new absent and old present*, a predicate over the **remote**, so it fires once per repo
+  and is a no-op forever after, riding the upload's own commit as `delete_patterns` so arrival and
+  removal are one commit with the retired name in the message. What makes it safe is that it is
+  *named*, in the commit that changed the layout, where a reviewer sees both halves at once. And
+  **`cache prune`**, which names only a `data/` file the lane's glob excludes (not part of the
+  snapshot by the same definition provisioning already uses) or a declared retirement, and prints and
+  stops without `--yes`.
+
+  **Keep a stale declaration literal rather than widening it to catch a case it missed.**
+  `just-dna-seq/clinvar` carries the old flat parquet *and* the new per-chromosome set, because the
+  publish that moved the layout predated the rule — so the declared shift does not fire there, and the
+  remnant is prune's. Loosening the predicate to *retire the old whenever the new is present* would
+  sweep it, and would also make every publish a prune until the file was gone. A declaration that has
+  been overtaken stays for the repo cloned or re-created later; the cleanup tool handles the repo in
+  front of you.
+
+  **A second reader turns a per-closure constant into a registry.** The download globs were arguments
+  to eight `ensure_*` closures; `cache prune` needs them keyed by lane, so they became
+  `SNAPSHOT_FILE_GLOBS` and the closures read it — otherwise the provisioner and the pruner are two
+  statements of what a snapshot is (`@publisher-allowlist-derived` again, one layer down).
+
 ## Dogfooding, adversarial probing, and how a finding gets filed
 
 - `@dogfood-lacks-are-results` — **Dogfooding means using the shipped surface to do real work — and a capability the tool LACKS is
