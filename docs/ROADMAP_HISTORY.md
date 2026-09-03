@@ -68,6 +68,48 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM183 — `needs_recompile` crashed on the one input a registry is most likely to hand it, an unstamped compiler version
+
+**Severity** medium · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-format` only:
+one early return in `needs_recompile`, one re-raise in `release_version`, two `str | None` widenings on
+`RecompileAnswer`; no schema, parquet or manifest change) · **Owner** format · **Motivating case** S88
+(just-module-creator, in CONSUMER_SUGGESTIONS_HISTORY.md), found while reading INTEGRATION_0_7 § 2.8 to
+decide whether to adopt the call
+
+**What it reproduced.** The consumer's table, row for row. `Compilation.compiler_version` is
+`str | None` with a `None` default, so a manifest carrying nothing there is well-formed and comes back
+through `read_manifest` as `None`; `needs_recompile(None, "0.7.0")` then died in
+`release_version`'s `.strip()` with `AttributeError`, an error no caller can catch by type or act on
+by reading. `""` raised `ValueError` instead — the same fact, nobody stamped, answering two different
+ways. And a stamp with a trailing note, `just-dna-compiler 0.6.6 (marketplace-server)`, was refused as
+`'(marketplace-server)'`, the last token, which names nothing the caller wrote.
+
+**Why this input is the one that matters.** INTEGRATION_0_7 § 3 tells the marketplace to adopt this
+call for `revalidate`/`needs_upgrade`, and the obvious implementation is a loop over stored manifests
+it did not produce. One unstamped manifest took that loop down. The three-valued axis is the whole
+point of the surface — `None` is *unknown*, `complete=False` over a span with no record — and an
+unstamped version is the purest unknown provenance it can be asked about. It already answered
+all-`None` for a release it had no record of; `None` deserved the same answer for a stronger reason.
+
+**The line, and the consumer's doubt.** They worried the unknown answer was *too* quiet — a `None`
+passed by accident gets a valid answer instead of a crash. Weighed, and the line is drawn one row down
+rather than at the whole table: `None`, `""` and whitespace are **absent** and answer unknown
+(`compiled_under=None`, `span=(None, current)`, every axis `None`, `complete=False`); a stamp that is
+**present and unreadable** — `"0.7"`, `"v0.7.0"`, `"0.6.6+local"`, the trailing note — is asked-and-
+cannot-be-read, a caller's bug, and still raises `ValueError`, now quoting the whole stamp. That is
+`@unreachable-not-absent` read onto an input: nobody-stamped is a third state beside stamped-and-
+readable and stamped-and-malformed, and only the last is a refusal. The package prefix stays
+unchecked on purpose — one version across the workspace is the rule since 2026-08-11, so
+`just-dna-format 0.6.6` names the same release and refusing it would invent a distinction the
+workspace does not make.
+
+**Two type widenings, additively.** `RecompileAnswer.compiled_under` and `span[0]` are `str | None`;
+`None` appears only where the call used to raise, so no reader that worked before sees a new value.
+Pinned by three tests: the three blank spellings answer identically (`is None` per axis, never
+truthiness), the four malformed spellings raise with the whole stamp in the message, and absent and
+uncovered — both unknown — are asserted **not** to collapse into one object, because a consumer
+grouping unknowns by cause reads `compiled_under`.
+
 ## RM180 — an overlay row's provenance was inside `content_signature`, and rewording a reason minted a new content identity
 
 **Severity** medium · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-format` — one

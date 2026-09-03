@@ -2627,6 +2627,14 @@ reach, and a **downgrade** — an artifact compiled under something newer than t
 answers `None` throughout, because the union is not symmetric. Without that, the surface would be worse
 than nothing: a consumer would stop recompiling on the strength of a silence.
 
+**An unstamped `compiled_under` is the same arm (S88, RM183).** `Compilation.compiler_version` is
+`str | None`, so a manifest that stamped nothing is well-formed, and `needs_recompile(None, current)` —
+or `""`, or whitespace — answers every axis `None` with `complete=False`, `compiled_under=None` and
+`span=(None, current)`: an interval with no lower bound. It used to raise `AttributeError` from a
+`.strip()`, which a registry walking manifests it did not produce cannot catch by type. A stamp that is
+present and unreadable is a different state and still raises `ValueError`, quoting the whole stamp:
+absent is unknown, malformed is a caller's bug.
+
 A record must answer **every** axis (the validator asserts an equality over the vocabulary, not a
 subset), and may answer `None` where a release could not measure one — which is how an axis added
 later stays honest about the intervals before it.

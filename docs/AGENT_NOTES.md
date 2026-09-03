@@ -2739,6 +2739,25 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   example could catch any of this: all eleven use `defaults:`, so an externally authored module found it
   — the same corpus-uniformity lesson as RM36, on the axis "where the author chose to write it".
 
+- `@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal` — **A tri-state function handed
+  `None` for the thing it is asked about answers unknown; handed something present and unreadable, it
+  refuses, quoting all of it** (S88, RM183, 2026-09-03).
+  `needs_recompile` had three arms — self-interval, uncovered, backwards — and every one of them was
+  reached through `release_version(compiled_under).strip()`. `Compilation.compiler_version` is
+  `str | None`, so the one input a registry walking foreign manifests is most likely to hold, `None`,
+  crashed with `AttributeError` before any arm was reached, while `""` — the same fact — raised
+  `ValueError`. The consumer found it reading the integration guide, not running a fuzzer. The repair is
+  `@unreachable-not-absent` applied to an *input*: nobody-stamped is a third state beside readable and
+  malformed. Absent (`None`, blank) is the unknown arm — `compiled_under=None`, `span=(None, current)`,
+  every axis `None` — the answer the table already gives for a release it has no record of. Malformed
+  stays a refusal, because quietly answering unknown there would hide a typo behind the silence a real
+  gap uses; but the refusal now names the **whole** stamp, since `rsplit(" ", 1)[-1]` had been quoting
+  `'(marketplace-server)'` at a caller who wrote `just-dna-compiler 0.6.6 (marketplace-server)`. Two
+  things to carry: check the guard at the function that answers, not in the parser other callers share
+  (`sweep.py` and `cli.py` call `release_version` on strings they built, and want it strict); and when
+  two arms both withhold, assert they are **different objects** — absent and uncovered are both
+  `complete=False`, and a consumer grouping unknowns by cause reads `compiled_under`.
+
 ## Snapshots, caches and network clients
 
 - `@atomic-sidecar-write` — **A writer that truncates in place leaves a valid short file, and a

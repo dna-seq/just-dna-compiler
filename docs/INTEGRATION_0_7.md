@@ -452,6 +452,11 @@ Both spellings of a version are accepted — a bare `0.7.0` and the stamped
   across a whole catalogue for a message change.
 - **`unmeasured` is not `unchanged`.** `0.7.0` names `cyp2c9_warfarin_grch37` there, for the reason in
   § 1.
+- **An unstamped `compiler_version` is unknown, not a crash (S88, RM183).** `needs_recompile(None,
+  current)` — and `""` — answers every axis `None` with `complete=False` and `compiled_under=None`, so a
+  loop over stored manifests survives one that stamped nothing. A present but unreadable stamp
+  (`"0.7"`, `"v0.7.0"`, a trailing note) still raises `ValueError`, now quoting the whole stamp. Two
+  fields widened to `str | None`: `RecompileAnswer.compiled_under` and `span[0]`.
 
 ---
 

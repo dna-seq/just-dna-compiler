@@ -239,10 +239,22 @@ def release_version(stamp: str) -> str:
     Raises on anything else — `just-dna-compiler unknown` included. A malformed version is a caller
     bug, not an unknown *fact*: the tri-state in this module is about whether the table covers an
     interval, and quietly answering `unknown` here would hide a typo behind the same silence a real
-    gap uses.
+    gap uses. An **absent** stamp is not a malformed one — `needs_recompile` answers unknown for
+    `None`/blank before it reaches here (S88), so this function only ever sees a stamp somebody wrote.
+
+    The refusal quotes the **whole** stamp, not the last token: `just-dna-compiler 0.6.6
+    (marketplace-server)` used to be refused as `'(marketplace-server)'`, which names nothing the
+    caller wrote. The package name is deliberately not checked — one version across the workspace
+    is the rule, so `just-dna-format 0.6.6` names the same release.
     """
     token = stamp.strip().rsplit(" ", 1)[-1]
-    parse_version(token)
+    try:
+        parse_version(token)
+    except ValueError as exc:
+        raise ValueError(
+            f"a compiler version stamp must end in MAJOR.MINOR.PATCH "
+            f"(`0.7.0` or `just-dna-compiler 0.7.0`), got: {stamp!r}"
+        ) from exc
     return token
 
 
@@ -255,7 +267,8 @@ class RecompileAnswer:
     release in the interval was measured and none of them moved.
     """
 
-    compiled_under: str
+    compiled_under: str | None
+    """`None` when the manifest stamped no compiler version (S88): the interval has no lower bound."""
     current: str
     axes: dict[str, bool | None]
     manifest_fields: tuple[str, ...]
@@ -266,8 +279,9 @@ class RecompileAnswer:
     """The releases whose records were folded in, newest first. Empty for a self-interval."""
     complete: bool
     """Whether the chain covered `(compiled_under, current]` exactly, with no gap and no overshoot."""
-    span: tuple[str, str]
-    """The interval the answer actually describes, which an overshooting link makes wider than asked."""
+    span: tuple[str | None, str]
+    """The interval the answer actually describes, which an overshooting link makes wider than asked.
+    `(None, current)` for an unstamped `compiled_under` — an interval with no lower bound."""
     out_of_span_manifest_fields: tuple[str, ...] = ()
     """Fields a link covering a WIDER span reports, which may have moved outside the asked one."""
     out_of_span_declared: tuple[DeclaredChange, ...] = ()
@@ -327,7 +341,7 @@ def _blunt_to_unknown(axes: dict[str, bool | None]) -> dict[str, bool | None]:
 
 
 def needs_recompile(
-    compiled_under: str,
+    compiled_under: str | None,
     current: str,
     records: dict[str, ReleaseRecord] | None = None,
 ) -> RecompileAnswer:
@@ -337,6 +351,18 @@ def needs_recompile(
     is holding. **Both are explicit and neither is defaulted** — this module lives in the format
     tier, which cannot know which compiler is installed, and defaulting to its own version would
     answer with the wrong package's number.
+
+    **An absent stamp is the unknown arm, not a crash (S88).** `Compilation.compiler_version` is
+    `str | None`, so a manifest that stamped nothing is well-formed and comes back through
+    `read_manifest` as `None`; a registry walking manifests it did not produce will be handed one.
+    `None`, `""` and whitespace are one fact — nobody stamped — and answer alike: every axis `None`,
+    `complete=False`, `compiled_under=None`, `span=(None, current)`. That is the purest *unknown
+    provenance* this table can be asked about, and the answer it already gives for a release it has
+    no record of. A stamp that is **present and unreadable** (`"0.7"`, `"v0.7.0"`,
+    `"0.6.6+local"`, a trailing note in parentheses) is a different state and still raises: it was
+    asked and cannot be read, which is a caller's bug to fix, and the `ValueError` names the whole
+    stamp so they can. Absent, malformed, uncovered: three states, two answers, and the middle one
+    is the only refusal.
 
     Composition is a **union over the releases in `(a, b]`**, walked along each record's `previous`
     link. Storage is therefore linear in releases rather than quadratic, and *moved-and-moved-back
@@ -357,8 +383,19 @@ def needs_recompile(
       *did*, not what undoing it would do.
     """
     table = RELEASE_RECORDS if records is None else records
-    compiled_under = release_version(compiled_under)
     current = release_version(current)
+    if compiled_under is None or not compiled_under.strip():
+        return RecompileAnswer(
+            compiled_under=None,
+            current=current,
+            axes=_unknown_axes(),
+            manifest_fields=(),
+            declared=(),
+            covered=(),
+            complete=False,
+            span=(None, current),
+        )
+    compiled_under = release_version(compiled_under)
     low = parse_version(compiled_under)
     high = parse_version(current)
 

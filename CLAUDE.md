@@ -333,6 +333,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A vocabulary read through `.get(x, default)` makes the map the first edit, and the guard an equality. `@lookup-with-a-default-hides-a-new-member`
 - A total function cannot decide a three-valued answer: withhold BEFORE a normalizer whose default is a member. `@a-withhold-cannot-be-delegated-to-a-default-that-is-a-definite-answer`
 - Split a judgement column where the source's own legend splits it; map only the half it calls a classification. `@a-withhold-cannot-be-delegated-to-a-default-that-is-a-definite-answer`
+- `None` for the thing asked about is the unknown arm; present-and-unreadable is the refusal, quoting all of it. Guard at the answerer, not the shared parser. `@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal`
 - Store a source's value verbatim except when the encoding lies about its own order. `@verbatim-except-order`
 - The 0.3 axes are a passthrough — never fill `direction` from `state` at compile. `@axes-passthrough`
 - `annotations.parquet` carries **and keys on** `genotype`. `@annotations-keys-genotype`

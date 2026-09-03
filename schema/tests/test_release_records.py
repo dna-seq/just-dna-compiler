@@ -488,3 +488,61 @@ def test_a_record_may_answer_an_axis_unknown_without_answering_it_false() -> Non
     assert answer.axes["parquet_schema"] is None
     assert answer.axes["parquet_bytes"] is False
     assert answer.output_differs is None
+
+
+# ── an absent stamp (S88) ────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("stamp", [None, "", "   "])
+def test_an_unstamped_compiler_version_is_the_unknown_arm_rather_than_a_crash(
+    stamp: str | None,
+) -> None:
+    """`Compilation.compiler_version` is `str | None`, so a manifest stamping nothing is well-formed
+    and `read_manifest` hands it back as `None`. A registry walking manifests it did not produce
+    will meet one, and `NoneType.strip` is not an answer it can catch by type or act on.
+
+    `None`, `""` and whitespace are one fact — nobody stamped — and must agree; before S88 the
+    first raised `AttributeError` and the other two `ValueError`. The answer is the one the table
+    already gives for a release it has no record of, asserted `is None` per axis.
+    """
+    answer = needs_recompile(stamp, "0.7.0")
+
+    assert answer.compiled_under is None
+    assert answer.span == (None, "0.7.0")
+    assert set(answer.axes) == set(VALID_RELEASE_OUTPUT_AXES)
+    for axis, moved in answer.axes.items():
+        assert moved is None, axis
+    assert answer.output_differs is None
+    assert answer.complete is False
+    assert answer.covered == ()
+    assert answer.declared == () and answer.manifest_fields == ()
+
+
+@pytest.mark.parametrize(
+    "stamp",
+    ["0.7", "v0.7.0", "0.6.6+local", "just-dna-compiler 0.6.6 (marketplace-server)"],
+)
+def test_a_present_but_unreadable_stamp_is_refused_and_the_refusal_quotes_all_of_it(
+    stamp: str,
+) -> None:
+    """Absent and malformed are two states (`@unreachable-not-absent`): the first is unknown, the
+    second is a caller bug and stays a refusal. The message names the whole stamp — the old one
+    quoted only the last token, so a trailing note was refused as `'(marketplace-server)'`, which
+    names nothing the caller wrote.
+    """
+    with pytest.raises(ValueError, match="MAJOR.MINOR.PATCH") as caught:
+        needs_recompile(stamp, "0.7.0")
+    assert repr(stamp) in str(caught.value)
+
+
+def test_absent_and_uncovered_are_both_unknown_but_not_the_same_answer() -> None:
+    """Both withhold on every axis; only one of them names a lower bound. A consumer grouping
+    unknowns by cause reads `compiled_under`, and the two must not collapse into one object."""
+    absent = needs_recompile(None, "0.7.0", {})
+    uncovered = needs_recompile("2.0.0", "2.0.1", {})
+
+    assert absent.axes == uncovered.axes
+    assert absent.complete is False and uncovered.complete is False
+    assert absent.compiled_under is None
+    assert uncovered.compiled_under == "2.0.0"
+    assert absent.span[0] is None and uncovered.span[0] == "2.0.0"

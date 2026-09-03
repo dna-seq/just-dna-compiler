@@ -8,9 +8,9 @@ which carries an index of every one and where it landed; the runbook for answeri
 **This file is the inbox, so an empty one means nothing is owed** — which is the property the split
 exists for, and the reason answered items do not stay here.
 
-## The next item is S88
+## The next item is S90
 
-**Claim ids from here, never from what this file shows.** S1–S87 are all answered and live in the
+**Claim ids from here, never from what this file shows.** S1–S88 are all answered and live in the
 history file, so an empty inbox says nothing about how many ids are taken — number from the corpus, or
 the next report is a second S1. The number is computed rather than remembered:
 
@@ -51,67 +51,6 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
-
----
-
-## S88 — `needs_recompile` raises `AttributeError` on the one input it is most likely to be handed: a manifest that stamped no compiler version
-
-Reported from `just-module-creator`, 2026-09-03, 0.7 branch at `f4a9b14`, installed editable.
-
-**What we ran.** The call your own § 2.8 recommends, on a manifest read back through `read_manifest`:
-
-```python
-mf = read_manifest(out / "manifest.json")     # parses fine
-mf.compilation.compiler_version               # None
-needs_recompile(mf.compilation.compiler_version, "0.7.0")
-# AttributeError: 'NoneType' object has no attribute 'strip'
-```
-
-`Compilation.compiler_version` is `str | None` with a `None` default, so a manifest carrying nothing
-there is well-formed and round-trips through your own reader. We produced one by editing a real
-compiled manifest and re-reading it — no private API, no constructed model.
-
-**Why this is the input that matters rather than a fuzzing result.** The consumer you named for this
-API is a registry's `revalidate` / `needs_upgrade`, which walks manifests it did not produce.
-`INTEGRATION_0_7 § 3` tells `just-dna-marketplace` to "adopt `needs_recompile` for the
-`revalidate` / `needs_upgrade` derivation", and the obvious implementation is a loop over stored
-manifests. One manifest with an unstamped `compiler_version` takes that loop down with a
-`NoneType.strip`, which is not an error a caller can catch by type or act on by reading.
-
-**And the answer it should give already exists in the design.** The three-valued axis is the whole
-point of this API — `None` is *unknown*, `complete` is False over a span you have no record for. An
-unstamped version is the purest possible "unknown provenance", and it is the one case that raises
-instead of blunting. `needs_recompile("1.0.0", "0.7.0")` already answers all-`None` /
-`complete=False` for a version you have no record of; `None` deserves the same answer for a stronger
-reason.
-
-**Adjacent inputs, for whoever fixes it.** We tried the spellings a real manifest or a `compiled_by`
-tag can carry:
-
-| input | result |
-| --- | --- |
-| `"just-dna-compiler 0.6.6"` | correct |
-| `"just-dna-format 0.6.6"` | accepted — the prefix is not checked, which may be deliberate |
-| `"1.0.0"` | all-`None`, `complete=False` — the good shape |
-| `None` | **`AttributeError`** |
-| `""` | `ValueError: version must be MAJOR.MINOR.PATCH, got: ''` |
-| `"0.7"` / `"v0.7.0"` / `"0.6.6+local"` | `ValueError`, same message |
-| `"just-dna-compiler 0.6.6 (marketplace-server)"` | `ValueError` on `'(marketplace-server)'` |
-
-`""` and `None` are the same fact — nothing was stamped — and answer differently, which is the pair
-we would most like to see agree.
-
-**Candidate fix, and our doubt about it.** Treat `None` (and plausibly `""`) as unknown: return the
-all-`None`, `complete=False` answer rather than raising. The doubt is whether that is *too* quiet —
-a caller who passes `None` by accident, from a field they meant to read as a string, gets a valid
-answer instead of a crash. We think unknown is still right, because this API's contract is that an
-unknown answer is safe and a caller has `complete` to test; but if you disagree, a typed
-`ValueError` naming the field would still be a large improvement over `NoneType.strip`, and the
-`ValueError` messages you already emit are good ones.
-
-**What we did meanwhile.** Nothing — we do not call `needs_recompile` yet. We found it while reading
-§ 2.8 to decide whether our `module-revise` and `compare_to_published` surfaces should adopt it, and
-we would rather ask before building on it.
 
 ---
 

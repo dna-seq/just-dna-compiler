@@ -34,7 +34,22 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-03 (latest) — the published artifacts, audited: two lanes that could not describe themselves
+## 2026-09-03 (latest) — a recompile question with no lower bound
+
+**`just-dna-format` only, no schema, parquet or manifest change.** [RM183](ROADMAP_HISTORY.md#rm183--needs_recompile-crashed-on-the-one-input-a-registry-is-most-likely-to-hand-it-an-unstamped-compiler-version),
+from [S88](CONSUMER_SUGGESTIONS_HISTORY.md#s88--needs_recompile-raises-attributeerror-on-the-one-input-it-is-most-likely-to-be-handed-a-manifest-that-stamped-no-compiler-version) — a consumer reading § 2.8 before adopting it.
+
+- **`needs_recompile(None, current)` answers unknown instead of raising `AttributeError`.**
+  `Compilation.compiler_version` is `str | None`, so a manifest stamping nothing is well-formed and a
+  registry walking manifests it did not produce will meet one. `None`, `""` and whitespace now answer
+  alike: every axis `None`, `complete=False`, `compiled_under=None`, `span=(None, current)`.
+- **A present but unreadable stamp still raises, and the refusal quotes the whole stamp.**
+  `just-dna-compiler 0.6.6 (marketplace-server)` was refused as `'(marketplace-server)'`; it is refused
+  as itself now. Absent is unknown, malformed is a caller's bug — two states, not one.
+- **Two fields widened**: `RecompileAnswer.compiled_under` and `span[0]` are `str | None`, `None`
+  only where the call used to crash.
+
+## 2026-09-03 — the published artifacts, audited: two lanes that could not describe themselves
 
 **`just-dna-enricher` only, no schema change.** An audit of every artifact this project publishes to
 HuggingFace — nine snapshot repos and the module repo — pulled each publishable lane into a scratch

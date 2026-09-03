@@ -68,7 +68,9 @@ only deleting the sidecar re-stamps. → S7. (The *name* is wrong and the rename
 **Would recompiling my stored artifact produce different output than the one I am holding?**
 Ask `just_dna_format.release_records.needs_recompile(compiled_under, current)` — the interval-keyed
 record of what each release changed about compiled output. It answers per axis and tri-state, so an
-interval it does not cover reads `unknown` rather than *nothing changed*.
+interval it does not cover reads `unknown` rather than *nothing changed* — and so does a manifest that
+stamped no `compiler_version` at all (`None` or blank), since RM183; a stamp that is present but
+unreadable still raises, quoting all of it.
 → [SCHEMAS § The release record](SCHEMAS.md#the-release-record-07-rm126--what-a-release-changed-about-compiled-output).
 
 **Then does it tell me whether to rebuild?**

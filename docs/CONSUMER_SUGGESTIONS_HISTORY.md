@@ -111,6 +111,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S85** `not_found` for an rsID the source has — accepted, RM154
 - **S86** identifier roster read only variants.csv — accepted, RM155
 - **S87** overlay `reason` inside `content_signature` — accepted, RM180
+- **S88** `needs_recompile` crashed on an unstamped version — accepted, RM183
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -7684,3 +7685,83 @@ considered them separately.
 
 **What we did meanwhile.** Nothing — we have no module carrying an overlay yet, and our adoption of
 `overrides.csv` is the work this probe was opening.
+
+# just-module-creator, 2026-09-03 — a recompile question with no lower bound
+
+## S88 — `needs_recompile` raises `AttributeError` on the one input it is most likely to be handed: a manifest that stamped no compiler version
+
+**Status — accepted and shipped 2026-09-03 in the uncut 0.7.0 as
+[RM183](ROADMAP_HISTORY.md#rm183--needs_recompile-crashed-on-the-one-input-a-registry-is-most-likely-to-hand-it-an-unstamped-compiler-version).** Your table reproduced row for row. `None`, `""` and whitespace now
+answer alike and answer the way you argued: every axis `None`, `complete=False`, `compiled_under=None`,
+`span=(None, current)` — the unknown arm, the same answer the table gives for a release it has no
+record of, and a stronger case for it. Your doubt was weighed and the line is drawn one row down: a
+stamp that is **present and unreadable** (`"0.7"`, `"v0.7.0"`, `"0.6.6+local"`, a trailing note) is a
+different state — asked and cannot be read, a caller's bug to fix — and still raises `ValueError`, now
+quoting the **whole** stamp rather than its last token, so `(marketplace-server)` is named beside the
+version it followed. Absent, malformed, uncovered: three states, two answers, one refusal. The prefix
+is deliberately unchecked — one version across the workspace is the rule, so `just-dna-format 0.6.6`
+names the same release. Two type widenings a reader of `RecompileAnswer` should know:
+`compiled_under` and `span[0]` are `str | None` now, `None` only where the call used to crash. **What
+to do now:** adopt it — loop over stored manifests and group the `complete=False` answers by whether
+`compiled_under` is `None` (nobody stamped) or a version (no record covers it); nothing else about the
+call changed. <!-- triaged: 0.7.0 · sha 24a374c07f0f -->
+
+
+Reported from `just-module-creator`, 2026-09-03, 0.7 branch at `f4a9b14`, installed editable.
+
+**What we ran.** The call your own § 2.8 recommends, on a manifest read back through `read_manifest`:
+
+```python
+mf = read_manifest(out / "manifest.json")     # parses fine
+mf.compilation.compiler_version               # None
+needs_recompile(mf.compilation.compiler_version, "0.7.0")
+# AttributeError: 'NoneType' object has no attribute 'strip'
+```
+
+`Compilation.compiler_version` is `str | None` with a `None` default, so a manifest carrying nothing
+there is well-formed and round-trips through your own reader. We produced one by editing a real
+compiled manifest and re-reading it — no private API, no constructed model.
+
+**Why this is the input that matters rather than a fuzzing result.** The consumer you named for this
+API is a registry's `revalidate` / `needs_upgrade`, which walks manifests it did not produce.
+`INTEGRATION_0_7 § 3` tells `just-dna-marketplace` to "adopt `needs_recompile` for the
+`revalidate` / `needs_upgrade` derivation", and the obvious implementation is a loop over stored
+manifests. One manifest with an unstamped `compiler_version` takes that loop down with a
+`NoneType.strip`, which is not an error a caller can catch by type or act on by reading.
+
+**And the answer it should give already exists in the design.** The three-valued axis is the whole
+point of this API — `None` is *unknown*, `complete` is False over a span you have no record for. An
+unstamped version is the purest possible "unknown provenance", and it is the one case that raises
+instead of blunting. `needs_recompile("1.0.0", "0.7.0")` already answers all-`None` /
+`complete=False` for a version you have no record of; `None` deserves the same answer for a stronger
+reason.
+
+**Adjacent inputs, for whoever fixes it.** We tried the spellings a real manifest or a `compiled_by`
+tag can carry:
+
+| input | result |
+| --- | --- |
+| `"just-dna-compiler 0.6.6"` | correct |
+| `"just-dna-format 0.6.6"` | accepted — the prefix is not checked, which may be deliberate |
+| `"1.0.0"` | all-`None`, `complete=False` — the good shape |
+| `None` | **`AttributeError`** |
+| `""` | `ValueError: version must be MAJOR.MINOR.PATCH, got: ''` |
+| `"0.7"` / `"v0.7.0"` / `"0.6.6+local"` | `ValueError`, same message |
+| `"just-dna-compiler 0.6.6 (marketplace-server)"` | `ValueError` on `'(marketplace-server)'` |
+
+`""` and `None` are the same fact — nothing was stamped — and answer differently, which is the pair
+we would most like to see agree.
+
+**Candidate fix, and our doubt about it.** Treat `None` (and plausibly `""`) as unknown: return the
+all-`None`, `complete=False` answer rather than raising. The doubt is whether that is *too* quiet —
+a caller who passes `None` by accident, from a field they meant to read as a string, gets a valid
+answer instead of a crash. We think unknown is still right, because this API's contract is that an
+unknown answer is safe and a caller has `complete` to test; but if you disagree, a typed
+`ValueError` naming the field would still be a large improvement over `NoneType.strip`, and the
+`ValueError` messages you already emit are good ones.
+
+**What we did meanwhile.** Nothing — we do not call `needs_recompile` yet. We found it while reading
+§ 2.8 to decide whether our `module-revise` and `compare_to_published` surfaces should adopt it, and
+we would rather ask before building on it.
+
+---
