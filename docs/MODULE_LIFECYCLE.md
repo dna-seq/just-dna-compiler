@@ -18,8 +18,9 @@ So this document does two things:
 
 1. **States pass one explicitly** as a sequence of stages, naming the surface each stage touches.
    The *procedure* is not here — that is the `create-module` skill at
-   `.claude/skills/create-module/` in this repository, which is the one copy and stays it (the MCP
-   surface ships a copy of it; this one is the source). What is here is the **map**: actor, tier, inputs, outputs, and the identity
+   `.claude/skills/create-module/` in this repository, which is the one copy and stays it. (The
+   MCP plugin has a same-named `create-module` skill; it is a router into that plugin's stage
+   skills, not a copy of this one.) What is here is the **map**: actor, tier, inputs, outputs, and the identity
    consequences, for a reader who needs to reason about the pipeline rather than walk it.
 2. **Describes pass two onward**, which no document currently covers.
 
@@ -39,7 +40,7 @@ The dependency arrow points inward and only one tier fetches.
 | **transform** | `just-dna-compiler` | spec → parquet + `manifest.json`; `validate`, `reverse`, `close`, `signature`, scaffolding/templates, `hint`, the authoring-reference CLI | fetches; creates a row no curator wrote |
 | **network** | `just-dna-enricher` | resolution, VRS minting, the derived sidecars, the drafting providers, every cross-check, snapshot build/publish | decides what a variant *means*; repairs an authored cell |
 | **catalog** | `just-dna-registry` (checkout: `../just-dna-marketplace`) | accounts, namespaces, publish, search, download, the module card, recompilation server-side | authors anything |
-| **agent surface** | `just-module-creator` | the MCP tool set, carrying a copy of the `create-module` skill whose source is this repository — the procedure, and the refusals that keep an agent from filling a checked cell | own a schema fact |
+| **agent surface** | `just-module-creator` | the MCP tool set and its stage skills, entered through a router that shares this repository's skill name and nothing else — the refusals that keep an agent from filling a checked cell | own a schema fact |
 | **consumer** | `just-dna-lite` and any other reader | joining the module's annotation against a sample's measurement | supply the annotation |
 
 Two of those are outside this repository's control and are described here as consumers of what we
