@@ -1,9 +1,11 @@
 # Reference examples — worked module drafts
 
-These are **hand-authored sketches** of how modules are expressed with the 0.3/0.4 features (see
+These are **hand-authored sketches** of how modules are expressed with the format's bricks (see
 [ROADMAP.md](ROADMAP.md), [CHANGELOG.md](CHANGELOG.md)). They are **ideas and drafts for module
-authors and consumers** — a picture of the intended shapes. The 0.4 shapes are now shipped and frozen;
-rsIDs / coordinates / effect sizes are illustrative.
+authors and consumers** — a picture of the intended shapes. The sections were first written against the
+0.3/0.4 shapes, which are shipped and frozen; where a later release added a source, a check or a
+drafting provider to a shape, the section says so in place, with the item that brought it. rsIDs /
+coordinates / effect sizes are illustrative.
 
 **Some examples are not sketches but real, compiled modules** — every directory under
 [`reference_examples/`](../reference_examples), rebuilt by the commands in its own README. Read those
@@ -12,9 +14,12 @@ sections below stay as the *shape* argument. Each README names **what building i
 point of having them: the module is the regression test and the README is the evidence. Highlights:
 `pathogenic_clinvar/` (the SNP core from a real ClinVar snapshot), `pgx_slco1b1_simvastatin/` (the PGx
 path — no `variants.csv`, and a `licensing.csv` recording that the module is not sellable),
-`htt_repeat_expansion/` (the binning path, §7), `mt_heteroplasmy/` (§4 — two variants in one gene, two
-tissues, and the key that had to widen for it), `shox_par1/` + `par_boundary/` (pseudoautosomal
-selection, RM32) and `grch37_build/` (§11 — the non-GRCh38 case). Do not maintain a count here; the
+`htt_repeat_expansion/` (the binning path, §7) and `fmr1_cgg_repeat/` (the cited bin boundary, RM47),
+`mt_heteroplasmy/` (§4 — two variants in one gene, two tissues, and the key that had to widen for it)
+and `mt_common_deletion/` (§4 — a `<DEL:4977>` symbolic allele through every tier, RM5),
+`cyp2d6_structural/` (§6 — `copynumbers.csv` and `activity_phenotype.csv` on the gene that motivates
+them), `hboc_palb2/` (the whole enricher pipeline on one module), `shox_par1/` + `par_boundary/`
+(pseudoautosomal selection, RM32) and `grch37_build/` (§11 — the non-GRCh38 case). Do not maintain a count here; the
 directory is the list, and `compiler/tests/test_reference_examples_roundtrip.py` sweeps all of them for
 the Principle 7 fixed point by discovery rather than by a second inventory.
 
@@ -149,6 +154,15 @@ MT-TL1,NC_012920.1,blood,AF,allele_fraction,,,,,,,"caller artifact rejected — 
 ```
 A two-allele genotype on `MT` still raises the item-5b guardrail warning (MT is not diploid).
 
+**Drafting the mtDNA calls, since 0.7 (RM171).** MITOMAP's curated tables are a cache lane, and the
+draft source is *the increment over ClinVar*, not the photocopy: `just-dna-enricher mitomap build`,
+then `mitomap miss` (which needs a ClinVar snapshot too and pins both), then
+`draft-panel spec/ --source mitomap-miss` (`--gene` filters, never required). Every drafted row's
+`genotype` and `conclusion` are stubs a human writes — MITOMAP's record is a claim about a literature
+corpus, some of it heteroplasmic, so the compiler will not fill the allele the way it does for ClinVar
+on chrMT — and MITOMAP's `[VUS*]` bracket is withheld rather than mapped. A symbolic mtDNA allele is
+its own worked module: `reference_examples/mt_common_deletion/` carries `<DEL:4977>` (RM5).
+
 ---
 
 ## 5. SMN1 — whole-gene copy-number dosage (0.4 `copynumbers.csv`)
@@ -246,6 +260,18 @@ count is only comparable within its motif definition. The count is a **consumer*
 binds the measure to an ExpansionHunter VCF (`INFO/RU` → `repeat_unit`, `FORMAT/REPCN` → the count) —
 consumable with zero glue. **Author the reference (`≤26 normal`) bin** so every count hits exactly one
 bin; `validate_bins()` rejects overlaps and warns on interior gaps.
+
+**A catalogue stands behind the bands since 0.7 (RM165).** `just-dna-enricher strchive build
+--release v2.26.0` cuts STRchive into a cache lane; `check-repeat-bands spec/` compares an authored
+band table against its `benign_*` / `intermediate_*` / `pathogenic_*` columns and **reports, never
+repairs** — the catalogue's `pathogenic_max` (250 for HTT) is reported as its own finding and never
+written, because an upper bound on pathogenicity is not a claim this table makes. STRchive reproduces
+this module's first two bands (`benign 6–26`, `intermediate 27–35`) independently. It also shows what a
+catalogue cannot decide: for `reference_examples/fmr1_cgg_repeat/` it publishes one
+`intermediate 45–200` where the module splits `45–54` / `55–200` at the premutation threshold — a
+boundary the catalogue does not have, so the check reports the disagreement and the author keeps the
+split. `draft-repeats spec/ --gene HTT` drafts the identity row (`gene`, `repeat_unit`, coordinates)
+and leaves every band to the author.
 ```csv
 gene,repeat_unit,source_field,measure_kind,measure_min,measure_max,direction,clin_sig,phenotype,trait_efo_id,conclusion,unresolved
 HTT,CAG,REPCN,repeat_count,40,,risk,pathogenic,Huntington disease (full penetrance),MONDO_0007739,"≥40 CAG — fully penetrant",false
@@ -260,12 +286,13 @@ Notes: **`repeat_unit` is free-form** (large composite VNTR motifs like DRD4 exo
 (`TH01 9.3` = "9 repeats + 3 bases", not decimal 9.3) is an allele-*name* convention, not a binning
 bound — for pathogenic-threshold loci (HTT) it never matters; for forensic STRs, carry the exact
 allele string in the reserved motif-path escape hatch, not the float bound. **5-HTTLPR does not belong
-here — and does not fit 0.4 at all yet.** It is a biallelic **S/L structural indel** (a ~43 bp
-insertion), not a repeat *count*; and its `S`/`L` alleles are **not nucleotides**, so neither
-`VariantRow.genotype` nor `HaplotypeRow.allele` (both `^[ACGT]+$`) can express them. This is the
-concrete motivating case for **RM5 (symbolic alleles**, `<S>`/`<L>`/`<DEL>`) — a deferred gap, not a
-today-authorable shape. (It is usually read phased with `rs25531`, so it is really a mini-diplotype
-over a symbolic allele.)
+here.** It is a biallelic **S/L structural indel** (a ~43 bp insertion), not a repeat *count*. It was
+the motivating case for **RM5 (symbolic alleles)**, which shipped in 0.6 with VCF's five closed
+first-level types and the length inside the token (`<DEL:1500>`, `<CNV:TR:30>`; worked in
+`reference_examples/mt_common_deletion/`) — and the case itself dissolved on the way: 5-HTTLPR is a
+plain indel whose `ref`/`alts` state the two alleles directly, so `S`/`L` are names for sequences
+`variants.csv` already carries. (It is usually read phased with `rs25531`, so it is really a
+mini-diplotype.) What stays unexpressible after RM5 is deliberate: CPIC's IUPAC ambiguity codes.
 The complex-VNTR motif-path form (DAT1 `A-A-B-C-D-…`) is reserved as the home for the sanctioned
 declarative-grammar escape hatch (a regex over an allele string) if a plain count proves too coarse.
 
@@ -287,6 +314,15 @@ optional `training_cohort` (sub-superpop precision) let a consumer withhold or c
 off-population; **`match_rate_floor`** is the author-set variant-match floor below which the score is
 invalid. The *observed* per-sample match rate is a measurement — it lives consumer-side, never in the
 module (the data-agnostic north star).
+
+**The Catalog is asked about the row since 0.7 (RM163).** `just-dna-enricher check-identifiers spec/`
+now carries a PGS leg (`--pgs/--no-pgs`): `pgs_accession_currency` asks whether each `pgs_id` still
+names a score, and `pgs_metadata_agreement` asks whether `training_ancestry` / `training_cohort`
+still match the record's `ancestry_distribution` / `samples_training` — two records, because they
+are two questions. The leg writes the `sources.csv` row for the Catalog with `PGS_TERMS` as a
+per-score licence floor, and `enrich --verify-datasets` can probe the Catalog's release the way it
+probes ClinVar's. A drift finding here cannot be silenced through `overrides.csv`, because the
+overlay reaches derived tables and `pgs.csv` is authored: the author edits the row.
 
 ---
 
@@ -342,6 +378,16 @@ grading of the evidence, the other points at it. **`provenance_quote` does not t
 cites, and `studies.csv`/`literature.csv` describe. The enricher's literature pass reads this site
 exactly as it reads `studies.csv`, so a citation written here is checked for existence and identifiers
 the same way, and a module whose only citations are pharm pointers is enriched rather than refused.
+
+Two more checks reach this table since 0.7. **Regulator drug labels (RM166)**: `just-dna-enricher
+clinpgx build-labels --use non-commercial` cuts ClinPGx's second archive, and `clinpgx check-labels
+spec/` compares a `(gene[, allele], drug)` claim against the *Testing Level* five regulators publish
+(FDA, Health Canada, EMA, Swissmedic, PMDA) — at the star-allele tier where the row has one and the
+gene tier otherwise, reporting and never escalating under `strict`. **Literature coverage (RM167)**:
+`just-dna-enricher litvar coverage spec/` asks LitVar2 which papers name each of the module's
+alleles and records the answer *with the tier that answered* — allele-resolved, position-only or
+absent — as a `literature_coverage` attestation, writing no row; a position-level answer never
+stands in for an allele-level one.
 
 ---
 
@@ -439,9 +485,9 @@ suppresses one. It is derivable from the two tables, so it became a compiler war
 in sync by hand. Compiling this module emits exactly one, and the other six rows are clean.
 
 The conclusions are deliberately hedged — HFE penetrance is incomplete and heavily modified by sex,
-age, alcohol and blood loss — and no row claims secondary-findings reportability, because ACMG SF v3.2
-scopes HFE to *"c.845G>A; p.C282Y homozygotes only"*, narrower than the gene and narrower than this
-module.
+age, alcohol and blood loss — and no row claims secondary-findings reportability, because ACMG SF
+v3.3 (the workbook `acmg build` reads; v3.2 is what NCBI's page still serves) scopes HFE to
+*"c.845G>A; p.C282Y homozygotes only"*, narrower than the gene and narrower than this module.
 
 ## 9c. CYP2C19 — star alleles drafted from CPIC, curated by removal
 
