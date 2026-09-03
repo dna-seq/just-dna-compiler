@@ -35,6 +35,40 @@ decisions that touched these items are in [PROPOSAL_0_6.md](proposals/PROPOSAL_0
 
 ---
 
+## RM181 — a byte digest that moves beside intact signatures says something changed and not what, and provenance has no shift tracker
+
+**Severity** low · **Status** open — **filed 2026-09-03 for the 0.8 review of what the hash family
+covers, and a candidate for the 1.0 one if it turns out to want a manifest field per domain** ·
+**Owner** format · **Motivating case** the maintainer's decision on S87 (RM180), in
+CONSUMER_SUGGESTIONS_HISTORY.md
+
+**The observation.** With RM180, an author rewording an overlay `reason` produces: `content_signature`
+unchanged, every fact signature unchanged, `resolution_signature` unchanged, `artifact.digest` moved.
+Read from outside, that says *something changed* and nothing more — the byte digest is a canary, not a
+locator. Before RM180 the same edit moved `content_signature` too, which was wrong for the opposite
+reason: a provenance edit read as a content one. Either way there is no hash whose movement means *the
+provenance moved*, and the maintainer's words for the gap were that metadata has no dedicated shift
+tracker.
+
+**The shape named: digest by domain.** One identity per concern — content (have), facts per sidecar
+(have), bytes (have), and a provenance or metadata one (do not have) — so a consumer holding two
+manifests can say which domain moved by diffing the hash family rather than diffing parquets. That is a
+separation of concerns, not a new axis on an existing hash, and it is why this is not a repair to
+RM180.
+
+**Why it waits.** Three questions before it is an item. What the provenance domain *contains* — the
+overlay's three cells only, or also `sources.csv`'s `fetched_at`, `verification.json`'s `checked_at`,
+the README bytes and `module_spec.yaml`'s display half, each of which is outside some hash today for
+its own reason. Whether it is a manifest field (additive, minor-legal) or a member of the
+`*_signature` family, whose roster rule in SCHEMAS is *one per derived sidecar* — and this is not a
+sidecar. And whether `manifest.inputs` already answers it: the raw-bytes entry for `overrides.csv`
+moves on a reason edit, so per file the answer exists, and what may be missing is the *reading* rather
+than a hash. RM126's release record answers the neighbouring question — what a *release* changed about
+compiled output — not this one, what an *edit* changed about a module.
+
+**What would close it.** A consumer asking *what moved* and getting the wrong answer from the family
+as it stands; or the 0.8 review deciding the family is complete and this becomes a FAQ entry.
+
 ## RM122 — the measure lookup is specified and nothing anywhere implements it
 
 **Severity** medium · **Status** **parked on demand, moved here 2026-08-21** — additive and
