@@ -182,7 +182,7 @@ conflicts) and `--max-citations 3` drafts study rows from ClinVar's literature l
 makes the panel compilable, since a variant row needs grounding evidence.
 
 `draft-clinpgx` is inject-only and downloads nothing: build the snapshot first with
-`just-dna-enricher clinpgx build --out cp/ --use non-commercial`.
+`just-dna-enricher clinpgx build --use non-commercial` (it writes `data/repro/clinpgx/` unless you pass `--out`).
 
 **`draft-panel --source pubmind` drafts the same table from a literature-derived authority instead**,
 where somebody in your deployment has built that snapshot (`just-dna-enricher pubmind build`; there is
@@ -221,8 +221,9 @@ under the wrong name. This source drafts only the rows that are **absent** from 
 sentences, how many it left behind and why: already in ClinVar, absent but with no class the schema can
 express, or an allele the source spells in a form no VCF pair can state.
 
-Five things to know. Two snapshots have to exist first (`just-dna-enricher mitomap build --out mm/`,
-then `just-dna-enricher mitomap miss --out mm-miss/`, which needs a ClinVar snapshot too); the second
+Five things to know. Two snapshots have to exist first (`just-dna-enricher mitomap build`, then
+`just-dna-enricher mitomap miss`, which needs a ClinVar snapshot too — both default under
+`data/repro/`); the second
 one **pins both**, so if ClinVar is rebuilt without it, the draft tells you the increment is against the
 older ClinVar rather than quietly using it. `--gene` filters here but is not required, unlike the other
 three sources — the increment is the query. Every drafted row's `genotype` **and** `conclusion` are

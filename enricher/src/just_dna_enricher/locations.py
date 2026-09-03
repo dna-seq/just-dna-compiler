@@ -41,6 +41,30 @@ APPNAME: str = "just-dna-pipelines"
 #: The records: what the readers glob.
 SNAPSHOT_DATA_DIRNAME = "data"
 
+#: Where a build writes when the operator names nowhere. **Never the repository root**, which is the
+#: rule this constant exists to make impossible to forget: nine `--out` defaults were bare relative
+#: names (`civic`, `clinvar`, `mitomap`, …), so running any of them from a checkout dropped a snapshot
+#: directory beside `pyproject.toml` — the exact defect `civic reproduce` was corrected for once
+#: already, and it came back nine times because the rule lived in prose and every new builder wrote its
+#: own literal. `/data/` is git-ignored and build-ignored whole, so a default under it needs no
+#: `.gitignore` line and can never be committed by a blind `git add`.
+REPRO_DIRNAME = "data/repro"
+
+#: Where `cache rebuild` writes the lanes it cuts. A different concept from a repro build — a cache
+#: base rather than one snapshot — and named here for the same reason: so no command spells it inline.
+CACHES_DIRNAME = "data/caches"
+
+
+def repro_out(name: str) -> Path:
+    """The default `--out` for a builder, under `data/repro/<name>/`.
+
+    Derived rather than restated, because a rule spelled out once per command is a rule that holds
+    until somebody adds the tenth command. An AST guard over the CLI asserts every `--out` default
+    resolves under `data/`, so a new builder that writes its own literal fails the suite rather than
+    the operator's working tree.
+    """
+    return Path(REPRO_DIRNAME) / name
+
 #: ClinVar's literature links. A **sibling of** `data/`, never inside it: the readers build their view
 #: from `data/*.parquet`, so a two-column citations file dropped in there unions with the 17-column
 #: variant parquet and every query breaks. (Learned the direct way — and again, from the other end, when

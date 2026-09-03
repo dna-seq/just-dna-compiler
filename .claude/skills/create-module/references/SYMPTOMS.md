@@ -580,7 +580,7 @@ space and cannot be equated.
 The cache was found and could not be read — usually a file the current builder would not have written
 sitting in its `data/` directory, which puts two schemas under one query. Nothing was compared, and the
 run says so rather than reporting an empty conflict list that reads as a pass. Rebuild it
-(`just-dna-enricher clinvar build --download --out cv/`) or re-provision a clean cache.
+(`just-dna-enricher clinvar build --download`, which writes `data/repro/clinvar/`) or re-provision a clean cache.
 
 **`clin_sig cross-check not run: no ClinVar snapshot this run`**
 Different sentence, different meaning: nothing was compared because there was nothing to compare

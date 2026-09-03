@@ -117,11 +117,13 @@ from just_dna_enricher.litvar import (
 )
 from just_dna_enricher.litvar import verification_records as litvar_records
 from just_dna_enricher.locations import (
+    CACHES_DIRNAME,
     CITATIONS_DIRNAME,
     RELEASE_FILENAME,
     SNAPSHOT_LICENSE_FILENAME,
     STRCHIVE_CATALOGUE_FILENAME,
     read_release,
+    repro_out,
 )
 from just_dna_enricher.lookup import (
     as_report_rows,
@@ -816,7 +818,9 @@ app.add_typer(clinpgx_app, name="clinpgx")
 
 @clinpgx_app.command("build")
 def clinpgx_build_(
-    out_dir: Path = typer.Option(..., "--out", help="Snapshot output directory."),
+    out_dir: Path = typer.Option(
+        repro_out("clinpgx"), "--out", file_okay=False, help="Snapshot output directory."
+    ),
     zip_path: Path | None = typer.Option(
         None, "--zip",
         help=f"An existing {CURRENT_ARCHIVE.archive} (else downloaded).",
@@ -1456,7 +1460,7 @@ def acmg_build_(
         ..., exists=True, dir_okay=False, help="ACMG SF supplementary workbook (.xlsx), downloaded by you.",
     ),
     out: Path = typer.Option(
-        Path("acmg_sf"), "--out", file_okay=False,
+        repro_out("acmg_sf"), "--out", file_okay=False,
         help="Output snapshot directory (writes acmg_sf.csv + release.json).",
     ),
     source_url: str | None = typer.Option(
@@ -1508,7 +1512,7 @@ def clinvar_build_(
         False, "--download", help="Download the NCBI ClinVar GRCh38 VCF into --out first.",
     ),
     out: Path = typer.Option(
-        Path("clinvar"), "--out", file_okay=False,
+        repro_out("clinvar"), "--out", file_okay=False,
         help="Output snapshot directory (writes data/*.parquet + release.json).",
     ),
 ) -> None:
@@ -1795,7 +1799,7 @@ def cache_prepare_(
 @cache_app.command("rebuild")
 def cache_rebuild_(
     out: Path = typer.Option(
-        Path("data/caches"), "--out", file_okay=False,
+        Path(CACHES_DIRNAME), "--out", file_okay=False,
         help=(
             "Base directory. Each lane is built into <base>/<lane>/, never in place. The default is "
             "under data/, which this workspace git-ignores wholesale."
@@ -1930,7 +1934,9 @@ app.add_typer(cpic_app, name="cpic")
 
 @cpic_app.command("build")
 def cpic_build_(
-    out_dir: Path = typer.Option(..., "--out", file_okay=False, help="Snapshot output directory."),
+    out_dir: Path = typer.Option(
+        repro_out("cpic"), "--out", file_okay=False, help="Snapshot output directory."
+    ),
     endpoint: str = typer.Option(DEFAULT_CPIC_ENDPOINT, "--endpoint", help="CPIC PostgREST base URL."),
     use: str = typer.Option("unstated", "--use", help="Declared use: unstated | non-commercial | commercial."),
 ) -> None:
@@ -2027,7 +2033,9 @@ app.add_typer(pharmvar_app, name="pharmvar")
 
 @pharmvar_app.command("build")
 def pharmvar_build_(
-    out_dir: Path = typer.Option(..., "--out", file_okay=False, help="Snapshot output directory."),
+    out_dir: Path = typer.Option(
+        repro_out("pharmvar"), "--out", file_okay=False, help="Snapshot output directory."
+    ),
     use: str = typer.Option("unstated", "--use", help="Declared use: unstated | non-commercial | commercial."),
 ) -> None:
     """Fetch PharmVar whole into `data/*.parquet` + release.json (dev surface; needs polars + a key).
@@ -2097,7 +2105,7 @@ def civic_build_(
         help="Local MolecularProfileSummaries.tsv.",
     ),
     out: Path = typer.Option(
-        Path("civic"), "--out", file_okay=False,
+        repro_out("civic"), "--out", file_okay=False,
         help="Output snapshot directory (writes data/civic.parquet + release.json).",
     ),
     submitted: bool = typer.Option(
@@ -2357,7 +2365,7 @@ def civic_reproduce_(
         help="Dated CIViC release to reproduce, e.g. 01-Aug-2026.",
     ),
     out: Path = typer.Option(
-        Path("data/repro/civic"), "--out", file_okay=False,
+        repro_out("civic_reproduce"), "--out", file_okay=False,
         help=(
             "Working directory. The release files and two independent builds land here. The default "
             "is under data/, which this workspace git-ignores wholesale."
@@ -2569,7 +2577,7 @@ def pubmind_build_(
         False, "--download", help="Download the ANNOVAR-distributed PubMind table into --out first.",
     ),
     out: Path = typer.Option(
-        Path("pubmind"), "--out", file_okay=False,
+        repro_out("pubmind"), "--out", file_okay=False,
         help="Output snapshot directory (writes data/pubmind.parquet + release.json).",
     ),
 ) -> None:
@@ -2663,7 +2671,7 @@ def constraint_build_(
         False, "--download", help="Download the gnomAD v4.1 constraint TSV (95.5 MB) into --out first.",
     ),
     out: Path = typer.Option(
-        Path("gnomad_constraint"), "--out", file_okay=False,
+        repro_out("gnomad_constraint"), "--out", file_okay=False,
         help="Output snapshot directory (writes data/gnomad_constraint.parquet + release.json).",
     ),
 ) -> None:
@@ -3479,7 +3487,7 @@ def mane_build_(
         ),
     ),
     out: Path = typer.Option(
-        Path("mane"), "--out", file_okay=False,
+        repro_out("mane"), "--out", file_okay=False,
         help="Output snapshot directory (writes data/*.parquet + release.json).",
     ),
 ) -> None:
@@ -3627,7 +3635,7 @@ app.add_typer(strchive_app, name="strchive")
 @strchive_app.command("build")
 def strchive_build_(
     out: Path = typer.Option(
-        Path("strchive"), "--out", file_okay=False,
+        repro_out("strchive"), "--out", file_okay=False,
         help="Output snapshot directory (writes STRchive-loci.json + release.json).",
     ),
     catalogue: Path | None = typer.Option(
@@ -3727,7 +3735,7 @@ app.add_typer(mitomap_app, name="mitomap")
 @mitomap_app.command("build")
 def mitomap_build_(
     out: Path = typer.Option(
-        Path("mitomap"), "--out", file_okay=False,
+        repro_out("mitomap"), "--out", file_okay=False,
         help="Output snapshot directory (writes data/mitomap-*.parquet + release.json).",
     ),
     dump: Path | None = typer.Option(
@@ -3800,7 +3808,7 @@ def mitomap_build_(
 @mitomap_app.command("miss")
 def mitomap_miss_(
     out: Path = typer.Option(
-        Path("mitomap_miss"), "--out", file_okay=False,
+        repro_out("mitomap_miss"), "--out", file_okay=False,
         help="Output snapshot directory (writes data/mitomap_miss.parquet + release.json).",
     ),
     mitomap_cache: Path | None = typer.Option(
@@ -4026,7 +4034,9 @@ def check_repeat_bands_(
 
 @clinpgx_app.command("build-labels")
 def clinpgx_build_labels_(
-    out_dir: Path = typer.Option(..., "--out", file_okay=False, help="Snapshot output directory."),
+    out_dir: Path = typer.Option(
+        repro_out("drug_labels"), "--out", file_okay=False, help="Snapshot output directory."
+    ),
     zip_path: Path | None = typer.Option(
         None, "--zip", exists=True, dir_okay=False,
         help="A drugLabels.zip you already have. Without it the archive is downloaded.",

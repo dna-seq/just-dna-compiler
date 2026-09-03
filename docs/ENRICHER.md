@@ -1223,11 +1223,16 @@ Three things about it are worth reading before a deployment runs it nightly.
   minutes, and a short parquet still has a `PAR1` footer — so an `enrich` reading a half-written
   snapshot mid-flight sees a real but incomplete table and no resolver can catch it. Moving the result
   into the live caches is a separate, deliberate step.
-- **`--out` defaults to `data/caches/`, and every example above writes under `data/`.** That is not
-  cosmetic: run from a checkout, `--out ./cpic` drops an untracked snapshot directory in the
+- **Every `--out` default is under `data/`, and none of them is written by hand.** `cache rebuild`
+  takes `data/caches/`; every *builder* takes `data/repro/<lane>/` from `locations.repro_out`. That is
+  not cosmetic: run from a checkout, `--out ./cpic` drops an untracked snapshot directory in the
   repository root, which is exactly the state `civic reproduce` needed its own `.gitignore` line to
-  paper over. `data/` is ignored wholesale, so a default there needs no rule and no rule has to grow
-  a line per lane. A deployment passes its own absolute path and none of this applies.
+  paper over. **The rule was prose for a release and nine defaults drifted past it** — `civic`,
+  `clinvar`, `pubmind`, `gnomad_constraint`, `mane`, `strchive`, `acmg_sf`, `mitomap`, `mitomap_miss`
+  — with four more builders requiring `--out` and no default at all, which is how the docs came to
+  tell an operator to write `--out ./clinpgx` into the root. It is derived now and an AST walk over
+  the CLI asserts it, so the tenth builder inherits the rule instead of repeating the defect. A
+  deployment passes its own absolute path and none of this applies.
 - **The outcome is three-valued, and *not run* is not a failure.** ACMG needs a workbook that is
   Elsevier supplementary material, PharmVar a personal key, CIViC a release date to pin, and Ensembl is
   built by just-dna-pipelines. Each prints its own reason — taken from the registry field, not composed
@@ -4327,19 +4332,19 @@ just-dna-enricher cache status                     # what is present, where, whi
 just-dna-enricher cache pull                       # the ungated three, from HuggingFace
 just-dna-enricher cache pull --use non-commercial  # …and ClinPGx + CPIC, which forbid sale
 just-dna-enricher cache pull --only clinvar
-just-dna-enricher cpic build --out cpic/ --use non-commercial     # whole CPIC → parquet ([dev])
+just-dna-enricher cpic build --use non-commercial                 # whole CPIC → data/repro/cpic ([dev])
 just-dna-enricher cpic publish cpic/ --repo org/cpic              # redistribution is granted
 just-dna-enricher clinpgx publish cp/ --repo org/clinpgx          # LICENSE.txt travels with it
-just-dna-enricher pharmvar build --out pv/ --use non-commercial   # YOUR key; never published
-just-dna-enricher pubmind build --download --out pm/             # literature verdicts; never published
+just-dna-enricher pharmvar build --use non-commercial             # YOUR key; never published
+just-dna-enricher pubmind build --download                       # literature verdicts; never published
 just-dna-enricher pubmind publish                                # exits 1 and says why (by design)
-just-dna-enricher mane build --download --out mane/               # the transcript numbering frame
+just-dna-enricher mane build --download                           # the transcript numbering frame
 just-dna-enricher pgx spec/ --offline --use non-commercial        # both legs off snapshots
 just-dna-enricher pgx spec/ --cpic-cache cpic/ --pharmvar-cache pv/
 just-dna-enricher draft spec/ --gene CYP2C9 --offline --use non-commercial
-just-dna-enricher acmg build assets/acmg_sf_v3.3.xlsx --out acmg/   # once: the SF v3.3 snapshot
+just-dna-enricher acmg build assets/acmg_sf_v3.3.xlsx               # once: the SF v3.3 snapshot
 just-dna-enricher check-acmg spec/ --sf-list acmg/  # acmg_sf vs the ACMG SF gene list (offline-capable)
-just-dna-enricher strchive build --out strchive/ --release v2.26.0  # the repeat-locus catalogue
+just-dna-enricher strchive build --release v2.26.0                  # the repeat-locus catalogue
 just-dna-enricher check-repeat-bands spec/ --catalogue strchive/  # repeat_alleles.csv bands vs STRchive (reports only)
 
 # Authoring — templating and drafting (the compiler owns the offline half; see COMPILER.md)

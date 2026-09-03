@@ -546,8 +546,9 @@ questions vs answers. A blocker is never a dead end: dissolved, closed additivel
 ## Data & assets conventions
 
 - Generated and sample data lives under `data/`, **git-ignored and build-ignored**: `data/input/`,
-  `data/interim/` (code-generated intermediates), `data/output/`, `data/repro/<name>/` (a
-  reproduction run's working directory — `civic reproduce` defaults to `data/repro/civic/`).
+  `data/interim/` (code-generated intermediates), `data/output/`, `data/repro/<name>/` (where **every builder** writes when the operator names nowhere — one
+  `locations.repro_out`, guarded by an AST walk over the CLI, because this rule was prose for a
+  release and nine `--out` defaults drifted past it).
 - **Nothing a command generates goes in the repository root.** `civic reproduce` wrote
   `civic-reproduce/` there and needed its own `.gitignore` line to say so; a default under `data/`
   needs none. Check where a new `--out` default lands before shipping it.
