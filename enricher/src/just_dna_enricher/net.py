@@ -15,6 +15,7 @@ Two of these look trivial and are not:
 """
 
 import dataclasses
+import hashlib
 import itertools
 import logging
 import os
@@ -22,7 +23,10 @@ import threading
 import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
+from pathlib import Path
 
+import httpx
+from tenacity import retry, retry_if_exception_type, wait_exponential_jitter
 from tenacity.stop import stop_base
 
 logger = logging.getLogger(__name__)
@@ -168,3 +172,123 @@ class attempt_floor(stop_base):  # noqa: N801 - a tenacity `stop_*` object, name
 
     def __call__(self, retry_state) -> bool:
         return retry_state.attempt_number >= retry_attempts(self.default)
+
+
+# ── bulk file downloads: one body, translated and retried (RM187) ───────────────────────────────
+#
+# Eleven builders stream one file from a source's FTP or bulk endpoint, and until RM187 each carried
+# its own copy of the same fifteen lines. The copies had drifted in exactly the way copies do, and
+# the drift was invisible because every one of them *worked*:
+#
+# * **Four leaked `httpx`.** `clinvar_build`'s two, `constraint_build`'s and `clinpgx_build`'s raised
+#   the transport library's own exception at their callers, and `caches._rebuild_*` catches each
+#   lane's own error type. So a truncated download was a **traceback rather than an outcome** — it
+#   escaped `rebuild_lane` too, which means one flaky download aborted every lane after it in a
+#   `cache rebuild`. Measured, not hypothesised: NCBI closed the connection 180,927,542 bytes into a
+#   193,427,450-byte VCF on 2026-09-03 and took the run with it.
+# * **None of the eleven retried.** A ~190 MB download over a public FTP mirror is exactly the
+#   request most likely to be cut short, and it was the one request in this tier with no second
+#   attempt — while every live *client* (`gnomad`, `ensembl`, `literature`, `pgs`, `civic_api`) has
+#   had `attempt_floor` since RM42.
+#
+# This is `@client-exception-contract`'s third appearance. RM97 found it in the clients, RM101 one
+# layer up in the passes, and the builder downloads were never swept — the same shape three times,
+# which is why the guard for it walks the package rather than a list of module names (RM101's own
+# guard hand-kept eight and missed `identifiers`).
+#
+# It lives here because that is what this module is for: pacing, batching and ordering discipline
+# every client has to obey, in one place so the rule cannot drift between them. A bulk download is
+# the same kind of rule.
+
+
+@dataclass(frozen=True)
+class StreamedFile:
+    """What one bulk download established: where it landed, its digest, and the source's own labels.
+
+    **The digest is returned rather than logged.** Four of the eleven copies computed a sha256 while
+    streaming and then only wrote it to the log, so a caller that needed to record the provenance of
+    the bytes it had just fetched had to hash the file again (`@dont-discard-computed`). Two of them
+    later grew a `tuple[Path, str]` return for exactly that reason, one lane at a time.
+
+    `etag` and `last_modified` are the source's, `None` when it sends neither. They are how a lane
+    can later ask *has this file changed* without downloading it again — MANE, CIViC and PubMind
+    record them today, and the rest get them for free rather than growing their own copy later.
+    """
+
+    path: Path
+    sha256: str
+    etag: str | None = None
+    last_modified: str | None = None
+
+
+def stream_to_file(
+    dest: "Path",
+    url: str,
+    *,
+    error_cls: type[Exception],
+    what: str,
+    timeout: float | None = None,
+    remedy: str = "",
+) -> StreamedFile:
+    """Stream `url` to `dest` atomically, hashing as it goes; retry the transport, translate the rest.
+
+    The one body every `download_*` in this package calls. Four properties, and each is a defect that
+    reached a user before it was one:
+
+    **Atomic.** The bytes go to `<dest>.part` and are renamed only once the stream finished, so a
+    failed fetch leaves the directory as it found it rather than truncating a good file already there
+    (`@a-failed-fetch-is-not-a-no-op`). The partial is removed on failure — a `.part` left behind is
+    the one residue a re-run would have to reason about.
+
+    **Retried, but only where retrying is honest.** `httpx.TransportError` covers a connection cut
+    mid-body — `RemoteProtocolError` subclasses it, which is the failure that motivated this — and a
+    second attempt genuinely fixes it. A **status** error is not retried: a 404 from a mistyped
+    release tag is the same 404 four times over, and the caller wants it now rather than after three
+    backoffs. `attempt_floor` reads `$JUST_DNA_HTTP_RETRY_ATTEMPTS` at retry time like every other
+    policy here, so a deployment can raise the floor without touching code (RM42).
+
+    **Translated.** `httpx`'s exceptions do not leave this function. A caller of this package may not
+    be made to depend on the transport library's exception tree to know that a fetch failed, and the
+    lane adapters catch their own builder's type — so a leak is not merely untidy, it is a lane that
+    cannot report `built=False` (`@client-exception-contract`).
+
+    **Restarted from zero on each attempt.** The hasher and the output file are created inside the
+    attempt, not outside it: a retry that appended to a partial body would produce a file whose
+    digest is real and whose contents are nonsense, which no footer check and no `raise_for_status`
+    would catch.
+
+    `what` names the thing being fetched for the message ("the ClinVar VCF"); `remedy` is an optional
+    sentence saying what the caller can do instead, for the lanes that accept a local file.
+    """
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".part")
+
+    @retry(
+        stop=attempt_floor(3),
+        wait=wait_exponential_jitter(initial=2.0, max=30.0),
+        retry=retry_if_exception_type(httpx.TransportError),
+        reraise=True,
+    )
+    def _attempt() -> StreamedFile:
+        hasher = hashlib.sha256()
+        with httpx.stream("GET", url, follow_redirects=True, timeout=timeout) as response:
+            response.raise_for_status()
+            etag = response.headers.get("ETag")
+            last_modified = response.headers.get("Last-Modified")
+            with tmp.open("wb") as handle:
+                for chunk in response.iter_bytes():
+                    handle.write(chunk)
+                    hasher.update(chunk)
+        return StreamedFile(tmp, hasher.hexdigest(), etag, last_modified)
+
+    logger.info("Downloading %s from %s ...", what, url)
+    try:
+        streamed = _attempt()
+    except httpx.HTTPError as exc:
+        tmp.unlink(missing_ok=True)
+        message = f"could not download {what} from {url}: {exc}"
+        raise error_cls(f"{message}. {remedy}" if remedy else message) from exc
+    tmp.replace(dest)
+    logger.info("Downloaded %s (sha256 %s)", dest, streamed.sha256)
+    return dataclasses.replace(streamed, path=dest)

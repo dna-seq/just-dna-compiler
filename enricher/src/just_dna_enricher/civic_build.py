@@ -49,7 +49,6 @@ Builder-only: `polars` is a guarded `[dev]` import, exactly as in the sibling bu
 
 import collections
 import csv
-import hashlib
 import json
 import logging
 import re
@@ -57,7 +56,6 @@ from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-import httpx
 from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.civic_identities import (
@@ -78,6 +76,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_LICENSE_FILENAME,
 )
+from just_dna_enricher.net import stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -323,28 +322,13 @@ def download_civic_file(dest: Path, url: str) -> CivicDownload:
     dated release should be immutable, and recording the headers is what would turn an upstream
     revision into a finding rather than a silent change of answer.
     """
-    dest = Path(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
-    hasher = hashlib.sha256()
-    logger.info("Downloading %s ...", url)
-    try:
-        with httpx.stream("GET", url, timeout=120.0, follow_redirects=True) as response:
-            response.raise_for_status()
-            etag = response.headers.get("ETag")
-            last_modified = response.headers.get("Last-Modified")
-            with tmp.open("wb") as handle:
-                for chunk in response.iter_bytes():
-                    hasher.update(chunk)
-                    handle.write(chunk)
-    except httpx.HTTPError as exc:
-        tmp.unlink(missing_ok=True)
-        # Translated rather than leaked: a caller of this package may not be made to depend on
-        # httpx's exception tree to know that a fetch failed (`@client-exception-contract`).
-        raise CivicUnavailable(f"could not download {url}: {exc}") from exc
-    tmp.replace(dest)
+    streamed = stream_to_file(
+        dest, url, error_cls=CivicUnavailable, what=f"the CIViC file {Path(url).name}",
+        timeout=120.0,
+    )
     return CivicDownload(
-        path=dest, sha256=hasher.hexdigest(), url=url, etag=etag, last_modified=last_modified
+        path=streamed.path, sha256=streamed.sha256, url=url,
+        etag=streamed.etag, last_modified=streamed.last_modified,
     )
 
 

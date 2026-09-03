@@ -37,7 +37,6 @@ from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-import httpx
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
 
@@ -55,6 +54,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_LICENSE_FILENAME,
 )
+from just_dna_enricher.net import stream_to_file
 
 try:  # polars is a `[dev]` dependency — the runtime check reads parquet, only the builder writes it
     import polars as pl
@@ -138,27 +138,11 @@ def download_drug_labels_zip(
     endpoint is a 404, and it must reach the CLI as `DRUG-LABEL BUILD FAILED: …` rather than as a raw
     `HTTPStatusError` traceback. The half-written `.part` goes with it.
     """
-    dest = Path(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
-    hasher = hashlib.sha256()
-    logger.info("Downloading the ClinPGx drug labels from %s ...", url)
-    try:
-        with httpx.stream("GET", url, follow_redirects=True, timeout=None) as response:
-            response.raise_for_status()
-            with open(tmp, "wb") as handle:
-                for chunk in response.iter_bytes():
-                    handle.write(chunk)
-                    hasher.update(chunk)
-    except httpx.HTTPError as exc:
-        tmp.unlink(missing_ok=True)
-        raise DrugLabelUnavailable(
-            f"could not download the drug-label archive from {url}: {exc}"
-        ) from exc
-    tmp.replace(dest)
-    digest = hasher.hexdigest()
-    logger.info("Downloaded %s (sha256 %s)", dest, digest)
-    return dest, digest
+    streamed = stream_to_file(
+        dest, url, error_cls=DrugLabelUnavailable, what="the ClinPGx drug-label archive",
+        remedy="Pass --zip <archive> to build from a copy you already hold.",
+    )
+    return streamed.path, streamed.sha256
 
 
 def _member(archive: zipfile.ZipFile, filename: str) -> str:

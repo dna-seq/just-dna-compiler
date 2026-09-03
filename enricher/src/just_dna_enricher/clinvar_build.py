@@ -27,12 +27,12 @@ from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-import httpx
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.spec import extract_pmids
 
 from just_dna_enricher.clin_sig import normalize_clin_sig
 from just_dna_enricher.locations import CITATIONS_DIRNAME, RELEASE_FILENAME
+from just_dna_enricher.net import stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -229,6 +229,16 @@ class ClinVarBuildError(RuntimeError):
     """A ClinVar artifact could not be built from the file given."""
 
 
+class ClinVarUnavailable(ClinVarBuildError):
+    """A ClinVar download did not answer — the fetch failed, not the file.
+
+    A **subclass**, so a caller catching `ClinVarBuildError` catches this too and one that wants to
+    tell *the source was unreachable* from *the bytes were unreadable* can ask for it by name. That
+    split is why it is not a flat sibling (`@client-exception-contract`): retrying is the right
+    response to one and pointless for the other.
+    """
+
+
 @dataclass
 class BuildResult:
     """Outcome of a snapshot build (paths + provenance + skip stats)."""
@@ -248,23 +258,19 @@ class BuildResult:
 def download_clinvar_vcf(dest: Path, url: str = DEFAULT_CLINVAR_URL) -> Path:
     """Stream the NCBI ClinVar VCF to ``dest`` (atomic ``.part`` rename), returning the path.
 
-    Uses the core ``httpx`` (the enricher's network tier); sha256 is computed while streaming and
-    logged. Provisioning-only — the resolver never calls this; it reads a prebuilt cache.
+    Provisioning-only — the resolver never calls this; it reads a prebuilt cache.
+
+    **This is the download RM187 was filed for.** It raised `httpx`'s own exception while
+    `caches._rebuild_clinvar` catches `ClinVarBuildError`, so when NCBI closed the connection
+    180,927,542 bytes into a 193,427,450-byte body on 2026-09-03 the lane could not report
+    `built=False` — and the traceback escaped `rebuild_lane` too, which in a full `cache rebuild`
+    takes every later lane with it. It also had no retry, on the largest single request this tier
+    makes. Both are `net.stream_to_file`'s job now.
     """
-    dest = Path(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
-    hasher = hashlib.sha256()
-    logger.info("Downloading ClinVar VCF from %s ...", url)
-    with httpx.stream("GET", url, follow_redirects=True, timeout=None) as resp:
-        resp.raise_for_status()
-        with open(tmp, "wb") as fh:
-            for chunk in resp.iter_bytes():
-                fh.write(chunk)
-                hasher.update(chunk)
-    tmp.replace(dest)
-    logger.info("Downloaded %s (sha256 %s)", dest, hasher.hexdigest())
-    return dest
+    return stream_to_file(
+        dest, url, error_cls=ClinVarUnavailable, what="the ClinVar VCF",
+        remedy="Pass --source clinvar=<vcf> to build from a copy you already hold.",
+    ).path
 
 
 def download_var_citations(
@@ -280,21 +286,10 @@ def download_var_citations(
     citations table is *published* with the snapshot, its provenance has to be recordable — otherwise
     the artifact carries two ClinVar releases and `release.json` describes one of them.
     """
-    dest = Path(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
-    hasher = hashlib.sha256()
-    logger.info("Downloading ClinVar citations from %s ...", url)
-    with httpx.stream("GET", url, follow_redirects=True, timeout=None) as resp:
-        resp.raise_for_status()
-        with open(tmp, "wb") as fh:
-            for chunk in resp.iter_bytes():
-                fh.write(chunk)
-                hasher.update(chunk)
-    tmp.replace(dest)
-    digest = hasher.hexdigest()
-    logger.info("Downloaded %s (sha256 %s)", dest, digest)
-    return dest, digest
+    streamed = stream_to_file(
+        dest, url, error_cls=ClinVarUnavailable, what="the ClinVar citations table",
+    )
+    return streamed.path, streamed.sha256
 
 
 @dataclass(frozen=True)

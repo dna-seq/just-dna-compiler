@@ -40,10 +40,10 @@ from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-import httpx
 from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.gnomad import normalize_constraint_flags
+from just_dna_enricher.net import stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -217,26 +217,31 @@ class ConstraintBuildResult:
     unresolved_genes: list[str] = field(default_factory=list)
 
 
+class ConstraintBuildError(RuntimeError):
+    """This lane had **no error type at all** until RM187, which is why its download leaked.
+
+    Every other builder here owns one. This module raised whatever its inputs raised, so
+    `caches._rebuild_constraint` caught `(FileNotFoundError, ImportError, OSError)` and a transport
+    failure went straight past it. A lane without its own type cannot be caught *as that lane*, and
+    the downloader has nothing to translate into (`@client-exception-contract`).
+    """
+
+
+class ConstraintUnavailable(ConstraintBuildError):
+    """The gnomAD download did not answer — the fetch failed, not the file."""
+
+
 def download_constraint_tsv(dest: Path, url: str = DEFAULT_CONSTRAINT_URL) -> Path:
     """Stream the gnomAD constraint TSV to ``dest`` (atomic ``.part`` rename), returning the path.
 
-    Same shape as `clinvar_build.download_clinvar_vcf`: core ``httpx``, sha256 computed while
-    streaming. Provisioning-only — the gene-metrics pass never calls this; it reads a prebuilt cache.
+    Provisioning-only — the gene-metrics pass never calls this; it reads a prebuilt cache. Shares
+    `net.stream_to_file` with every other bulk download here, so the retry and the translation are
+    one rule rather than eleven copies of one (RM187).
     """
-    dest = Path(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
-    hasher = hashlib.sha256()
-    logger.info("Downloading gnomAD constraint TSV from %s ...", url)
-    with httpx.stream("GET", url, follow_redirects=True, timeout=None) as resp:
-        resp.raise_for_status()
-        with open(tmp, "wb") as fh:
-            for chunk in resp.iter_bytes():
-                fh.write(chunk)
-                hasher.update(chunk)
-    tmp.replace(dest)
-    logger.info("Downloaded %s (sha256 %s)", dest, hasher.hexdigest())
-    return dest
+    return stream_to_file(
+        dest, url, error_cls=ConstraintUnavailable, what="the gnomAD constraint TSV",
+        remedy="Pass --source constraint=<tsv> to build from a copy you already hold.",
+    ).path
 
 
 def build_snapshot(

@@ -51,11 +51,11 @@ from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-import httpx
 from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.clin_sig import normalize_clin_sig
 from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
+from just_dna_enricher.net import stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -207,31 +207,18 @@ def download_pubmind_table(
     `Last-Modified` the server sends: PubMind publishes no version string of its own, so those two
     headers plus the sha256 are the whole of what pins which bytes a snapshot was built from.
     """
-    dest = Path(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
-    hasher = hashlib.sha256()
-    logger.info("Downloading the PubMind table from %s ...", url)
-    try:
-        with httpx.stream("GET", url, follow_redirects=True, timeout=None) as resp:
-            resp.raise_for_status()
-            etag = resp.headers.get("ETag")
-            last_modified = resp.headers.get("Last-Modified")
-            with open(tmp, "wb") as fh:
-                for chunk in resp.iter_bytes():
-                    fh.write(chunk)
-                    hasher.update(chunk)
-    except httpx.HTTPError as exc:
-        raise PubMindUnavailable(
-            f"could not download the PubMind table from {url}: {exc}. It is a single dated bulk file "
-            f"on a third party's server, so a move or a rotation looks exactly like this — pass "
-            f"`--table` with a copy you already hold."
-        ) from exc
-    tmp.replace(dest)
-    digest = hasher.hexdigest()
-    logger.info("Downloaded %s (sha256 %s, etag %s)", dest, digest, etag)
+    # **This handler used to leave its `.part` behind** — the only one of the eleven that forgot,
+    # which is the drift a shared body ends (`@a-failed-fetch-is-not-a-no-op`).
+    streamed = stream_to_file(
+        dest, url, error_cls=PubMindUnavailable, what="the PubMind table",
+        remedy=(
+            "It is a single dated bulk file on a third party's server, so a move or a rotation "
+            "looks exactly like this — pass `--table` with a copy you already hold."
+        ),
+    )
     return PubMindDownload(
-        path=dest, sha256=digest, url=url, etag=etag, last_modified=last_modified
+        path=streamed.path, sha256=streamed.sha256, url=url,
+        etag=streamed.etag, last_modified=streamed.last_modified,
     )
 
 

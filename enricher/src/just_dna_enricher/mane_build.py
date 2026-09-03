@@ -76,6 +76,7 @@ from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
+from just_dna_enricher.net import stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -556,31 +557,13 @@ def download_mane_file(dest: Path, url: str) -> ManeDownload:
     Mirrors `civic_build.download_civic_file`, down to removing the partial file on failure: a
     `.part` left behind is the one residue a re-run would have to reason about.
     """
-    dest = Path(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
-    hasher = hashlib.sha256()
-    logger.info("Downloading %s ...", url)
-    try:
-        with httpx.stream("GET", url, timeout=120.0, follow_redirects=True) as response:
-            response.raise_for_status()
-            etag = response.headers.get("ETag")
-            last_modified = response.headers.get("Last-Modified")
-            with tmp.open("wb") as handle:
-                for chunk in response.iter_bytes():
-                    hasher.update(chunk)
-                    handle.write(chunk)
-    except httpx.HTTPError as exc:
-        tmp.unlink(missing_ok=True)
-        # Translated rather than leaked: a caller of this package may not be made to depend on
-        # httpx's exception tree to know that a fetch failed (`@client-exception-contract`).
-        raise ManeUnavailable(
-            f"could not download {url}: {exc}. Pass the local file instead of --download if you "
-            f"already hold a copy."
-        ) from exc
-    tmp.replace(dest)
+    streamed = stream_to_file(
+        dest, url, error_cls=ManeUnavailable, what=f"the MANE file {Path(url).name}", timeout=120.0,
+        remedy="Pass the local file instead of --download if you already hold a copy.",
+    )
     return ManeDownload(
-        path=dest, sha256=hasher.hexdigest(), url=url, etag=etag, last_modified=last_modified
+        path=streamed.path, sha256=streamed.sha256, url=url,
+        etag=streamed.etag, last_modified=streamed.last_modified,
     )
 
 

@@ -45,10 +45,10 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import httpx
 from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME
+from just_dna_enricher.net import stream_to_file
 
 try:  # polars is a `[dev]` dependency — the runtime pass reads parquet, only the builder writes it
     import polars as pl
@@ -134,26 +134,26 @@ def _schema() -> dict:
     }
 
 
+class ClinPgxUnavailable(ClinPgxArchiveError):
+    """The ClinPGx download did not answer — the fetch failed, not the archive.
+
+    Worth the subclass here more than anywhere else: this lane's *other* failure mode is a retired
+    filename that still answers 200 (RM175), so "could not reach it" and "reached the wrong thing"
+    must not arrive as one type.
+    """
+
+
 def download_clinpgx_zip(dest: Path, url: str = DEFAULT_CLINPGX_URL) -> tuple[Path, str]:
     """Stream the ClinPGx bulk archive to `dest`, returning `(path, sha256)`.
 
-    Atomic `.part` rename and a hash computed while streaming, matching the ClinVar downloader.
+    Through `net.stream_to_file` since RM187, so the atomic rename, the retry and the translation are
+    the same rule every bulk download in this package obeys.
     """
-    dest = Path(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
-    hasher = hashlib.sha256()
-    logger.info("Downloading ClinPGx summary annotations from %s ...", url)
-    with httpx.stream("GET", url, follow_redirects=True, timeout=None) as response:
-        response.raise_for_status()
-        with open(tmp, "wb") as handle:
-            for chunk in response.iter_bytes():
-                handle.write(chunk)
-                hasher.update(chunk)
-    tmp.replace(dest)
-    digest = hasher.hexdigest()
-    logger.info("Downloaded %s (sha256 %s)", dest, digest)
-    return dest, digest
+    streamed = stream_to_file(
+        dest, url, error_cls=ClinPgxUnavailable, what="the ClinPGx bulk archive",
+        remedy="Pass --zip <archive> to build from a copy you already hold.",
+    )
+    return streamed.path, streamed.sha256
 
 
 def read_license(archive: zipfile.ZipFile) -> str | None:

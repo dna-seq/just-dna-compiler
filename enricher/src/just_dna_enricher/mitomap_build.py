@@ -28,7 +28,6 @@ from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-import httpx
 from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.locations import RELEASE_FILENAME
@@ -49,6 +48,7 @@ from just_dna_enricher.mitomap import (
     vcep_clin_sig,
     withheld_bracket,
 )
+from just_dna_enricher.net import stream_to_file
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -135,28 +135,12 @@ def download_mitomap_dump(dest: Path, url: str = DEFAULT_MITOMAP_URL) -> Downloa
     `HTTPStatusError`, and the half-written `.part` goes with it so a failed run leaves the directory
     as it found it.
     """
-    dest = Path(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
-    hasher = hashlib.sha256()
-    logger.info("Downloading the MITOMAP dump from %s ...", url)
-    try:
-        with httpx.stream("GET", url, follow_redirects=True, timeout=None) as resp:
-            resp.raise_for_status()
-            last_modified = resp.headers.get("Last-Modified")
-            with open(tmp, "wb") as handle:
-                for chunk in resp.iter_bytes():
-                    handle.write(chunk)
-                    hasher.update(chunk)
-    except httpx.HTTPError as exc:
-        tmp.unlink(missing_ok=True)
-        raise MitomapUnavailable(
-            f"could not download the MITOMAP dump from {url}: {exc}"
-        ) from exc
-    tmp.replace(dest)
-    digest = hasher.hexdigest()
-    logger.info("Downloaded %s (sha256 %s, Last-Modified %s)", dest, digest, last_modified)
-    return DownloadedDump(path=dest, sha256=digest, url=url, last_modified=last_modified)
+    streamed = stream_to_file(
+        dest, url, error_cls=MitomapUnavailable, what="the MITOMAP dump",
+    )
+    return DownloadedDump(
+        path=streamed.path, sha256=streamed.sha256, url=url, last_modified=streamed.last_modified,
+    )
 
 
 def _sha256_file(path: Path) -> str | None:

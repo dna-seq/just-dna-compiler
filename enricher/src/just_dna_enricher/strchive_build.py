@@ -23,11 +23,11 @@ from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-import httpx
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.locations import RELEASE_FILENAME, STRCHIVE_CATALOGUE_FILENAME
+from just_dna_enricher.net import stream_to_file
 from just_dna_enricher.strchive import (
     SOURCE_NAME,
     StrchiveError,
@@ -85,27 +85,11 @@ def download_catalogue(dest: Path, url: str = DEFAULT_STRCHIVE_URL) -> tuple[Pat
     raw `HTTPStatusError` traceback. The half-written `.part` goes with it, so a failed run leaves the
     directory as it found it.
     """
-    dest = Path(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dest.with_name(dest.name + ".part")
-    hasher = hashlib.sha256()
-    logger.info("Downloading the STRchive catalogue from %s ...", url)
-    try:
-        with httpx.stream("GET", url, follow_redirects=True, timeout=None) as resp:
-            resp.raise_for_status()
-            with open(tmp, "wb") as handle:
-                for chunk in resp.iter_bytes():
-                    handle.write(chunk)
-                    hasher.update(chunk)
-    except httpx.HTTPError as exc:
-        tmp.unlink(missing_ok=True)
-        raise StrchiveUnavailable(
-            f"could not download the STRchive catalogue from {url}: {exc}"
-        ) from exc
-    tmp.replace(dest)
-    digest = hasher.hexdigest()
-    logger.info("Downloaded %s (sha256 %s)", dest, digest)
-    return dest, digest
+    streamed = stream_to_file(
+        dest, url, error_cls=StrchiveUnavailable, what="the STRchive catalogue",
+        remedy="Pass --catalogue <file> to build from a copy you already hold.",
+    )
+    return streamed.path, streamed.sha256
 
 
 def _sha256_file(path: Path) -> str:

@@ -345,7 +345,7 @@ def _rebuild_clinvar(request: RebuildRequest) -> RebuildOutcome:
             request.out_dir / "clinvar.vcf.gz"
         )
         result = clinvar_build.build_snapshot(vcf, request.out_dir)
-    except (FileNotFoundError, ImportError, OSError) as exc:
+    except (clinvar_build.ClinVarBuildError, FileNotFoundError, ImportError, OSError) as exc:
         return RebuildOutcome("clinvar", False, str(exc))
     try:
         citations_txt, citations_sha = clinvar_build.download_var_citations(
@@ -380,7 +380,9 @@ def _rebuild_constraint(request: RebuildRequest) -> RebuildOutcome:
             request.out_dir / "gnomad.v4.1.constraint_metrics.tsv"
         )
         result = constraint_build.build_snapshot(tsv, request.out_dir)
-    except (FileNotFoundError, ImportError, OSError) as exc:
+    except (
+        constraint_build.ConstraintBuildError, FileNotFoundError, ImportError, OSError,
+    ) as exc:
         return RebuildOutcome("constraint", False, str(exc))
     return RebuildOutcome(
         "constraint", True,
