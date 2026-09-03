@@ -386,7 +386,7 @@ No. An upper bound on pathogenicity is not a claim the band table makes, and the
 never repairs; the catalogue's own boundaries are compared, and the one it lacks (FMR1's premutation
 threshold) is a disagreement the author keeps ([RM165](ROADMAP_HISTORY.md#rm165--repeat_allelescsv-has-no-source-and-rm65rm66-have-been-waiting-on-exactly-the-corpus-one-would-bring)).
 
-**`cache rebuild` printed *not run* for four lanes — did it fail?**
+**`cache rebuild` printed *not run* for some lanes — did it fail?**
 No. The outcome is three-valued: ACMG needs an Elsevier workbook, PharmVar a personal key, CIViC a
 pinned release date, Ensembl is built elsewhere, and a derived lane without its parents names them.
 Each prints the reason from the registry field, and the exit code counts only real failures

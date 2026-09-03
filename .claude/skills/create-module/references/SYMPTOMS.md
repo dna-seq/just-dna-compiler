@@ -635,7 +635,7 @@ remaining citations for the same variant are drafted normally. Rebuilding the sn
 `clinvar citations` drops them at the source. Reported apart from the `--max-citations` line, which is
 about a cap you chose.
 
-**`N row(s) on non-diploid contigs (…) were written with a single-allele genotype`** (the contigs are named in the parentheses)
+**`were written with a single-allele genotype: exactly one is expressible there`** (the line opens with the count and names the contigs)
 Not a warning about a mistake — it is the provider telling you which cells it filled. MT is haploid and
 chrY outside the pseudoautosomal regions is hemizygous, so exactly one genotype is expressible and
 nothing was pre-empted. Those rows read as homoplasmic/hemizygous; if you mean a heteroplasmic

@@ -102,8 +102,8 @@ a statement about the protein, not about a position a consumer can genotype.
 This is the deepest structural difference and it is worth stating precisely, because it is the reason
 a PubMind row can never be adopted as a fact without a check in front of it.
 
-*Note (2026-09-01).* The half this limit leaves open — *which papers name this allele* — is what
-LitVar2/PubTator3 answers, and RM167 adopted it as `litvar coverage`: the identity there is
+*Note (2026-09-03).* The half this limit leaves open — *which papers name this allele* — is what
+LitVar2/PubTator3 answers, and RM167 (shipped 2026-09-01) adopted it as `litvar coverage`: the identity there is
 genuinely allele-level (BRAF rs113488022's three ClinGen allele ids carry 31,276 / 99 / 41 papers),
 and the answer is recorded with the tier that gave it, allele-resolved, position-only or absent. The
 measurement in this section stands; what changed is that the fan-out is no longer an unanswered
@@ -135,7 +135,7 @@ sidecar):
 
 - **173 of 423 loci (40.9 %) are known to PubMind** at position level.
 
-  *Note (2026-09-01).* The 423-locus denominator did not reproduce when RM167 re-derived the roster
+  *Note (2026-09-03).* The 423-locus denominator did not reproduce when RM167 (2026-09-01) re-derived the roster
   from the `DRAFTABLE` registry over the same eleven modules: it found **389 loci** and 388 distinct
   rsIDs. The percentages on this page keep their original denominator as the evidence they were, and
   the comparable figure for a re-run is RM167's.
