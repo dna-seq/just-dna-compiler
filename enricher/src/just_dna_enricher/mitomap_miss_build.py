@@ -49,7 +49,13 @@ from just_dna_format.normalize import now_utc_iso
 from just_dna_enricher.clinvar_build import chrom_parquet_name
 from just_dna_enricher.locations import RELEASE_FILENAME
 from just_dna_enricher.mitomap import MitomapError
-from just_dna_enricher.mitomap_build import VARIANT_COLUMNS, VARIANT_PARQUET
+from just_dna_enricher.mitomap_build import (
+    CITATIONS_PARQUET as MITOMAP_CITATIONS_PARQUET,
+)
+from just_dna_enricher.mitomap_build import (
+    VARIANT_COLUMNS,
+    VARIANT_PARQUET,
+)
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -62,6 +68,11 @@ logger = logging.getLogger(__name__)
 #: row came from is a column, so a reader asking "what does MITOMAP add" never has to know how many
 #: tables the parent had.
 MISS_PARQUET = "mitomap_miss.parquet"
+
+#: The citations for the rows this lane says are *new*, carried into the child so a drafter needs one
+#: snapshot rather than two. Only the non-photocopy rows: nothing drafts a photocopy, so shipping its
+#: literature here would be paying for evidence about rows this lane exists to refuse.
+CITATIONS_PARQUET = "mitomap_miss-citations.parquet"
 
 #: The contig both sides of this join are on. Stated once, here, rather than carried as a constant
 #: column in the key — a column that can only ever hold one value is not part of an identity.
@@ -107,6 +118,8 @@ class MissBuildResult:
     unmintable: dict[str, int] = field(default_factory=dict)
     #: How many distinct chrMT alleles the ClinVar parent published — the denominator of "absent".
     clinvar_keys: int = 0
+    #: Citation links carried into the child, for the non-photocopy rows only.
+    citation_links: int = 0
     parents: dict[str, dict] = field(default_factory=dict)
 
     @property
@@ -153,7 +166,7 @@ def stale_parents(
     `parents` names where each parent lives when the caller knows; otherwise the path recorded in the
     child's own `release.json` is used, which is what a later `draft` run has.
     """
-    release = _read_release(miss_dir)
+    release = read_miss_release(miss_dir)
     pinned = release.get("parents") or {}
     if not isinstance(pinned, dict):
         return {}
@@ -172,7 +185,8 @@ def stale_parents(
     return moved
 
 
-def _read_release(directory: Path) -> dict:
+def read_miss_release(directory: Path) -> dict:
+    """A miss snapshot's `release.json` as a dict, or `{}` when it is absent or unreadable."""
     path = Path(directory) / RELEASE_FILENAME
     if not path.is_file():
         return {}
@@ -181,6 +195,26 @@ def _read_release(directory: Path) -> dict:
     except (OSError, ValueError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def miss_dataset_label(release: dict) -> str | None:
+    """The increment's own release label — **both parents, or nothing**.
+
+    `mitomap_2026-08-24+clinvar_2026-06-27`. A derived artifact's identity is the pair it was derived
+    from: the same MITOMAP dump against a newer ClinVar is a different increment, and a label naming
+    only the source would say two different artifacts were the same one. `None` where either parent
+    is unlabelled, because half an identity is not a shorter identity — it is an unknown, and the
+    licence row withholds it rather than writing a label that cannot be compared
+    (`@currency-asks-the-source-not-the-cache`).
+    """
+    parents = release.get("parents")
+    if not isinstance(parents, dict):
+        return None
+    mitomap = (parents.get("mitomap") or {}).get("dataset")
+    clinvar = (parents.get("clinvar") or {}).get("clinvar_file_date")
+    if not mitomap or not clinvar:
+        return None
+    return f"{mitomap}+clinvar_{clinvar}"
 
 
 def _clinvar_calls(clinvar_dir: Path) -> dict[tuple[int, str, str], dict]:
@@ -308,12 +342,46 @@ def build_miss_snapshot(
         ["table", "start", "ref", "alt", "record_id"], nulls_last=True
     )
     frame.write_parquet(result.parquet_file)
+    result.citation_links = _write_citations(mitomap_dir, data_dir, frame)
     _write_release_json(out_dir, result, source_rows=source.height)
     logger.info(
         "Built the MITOMAP-miss snapshot: %s → %s",
         ", ".join(f"{name} {count}" for name, count in result.buckets.items()), result.parquet_file,
     )
     return result
+
+
+def _write_citations(mitomap_dir: Path, data_dir: Path, frame) -> int:
+    """Carry the parent's citation links for the rows this lane calls new, and only those.
+
+    A photocopy's literature is not written: nothing drafts a photocopy, so shipping evidence for one
+    would be paying to carry rows this lane exists to refuse. The result is a child a drafter can read
+    on its own — which matters because the alternative is a drafter that has to be handed both
+    parents and would then be able to draft from a MITOMAP snapshot that is *not* the one the join
+    ran against.
+    """
+    source = mitomap_dir / "data" / MITOMAP_CITATIONS_PARQUET
+    path = data_dir / CITATIONS_PARQUET
+    if not source.is_file():
+        # Not a refusal: the citation table is a second artifact beside the parent's variant tables,
+        # and a parent built before it existed still joins. The child records zero links, which reads
+        # as "this increment carries no literature" — true, and visible.
+        pl.DataFrame(schema=_citation_schema()).write_parquet(path)
+        return 0
+    keep = frame.filter(pl.col("bucket") != "photocopy").select(["table", "record_id"]).unique()
+    citations = (
+        pl.read_parquet(source)
+        .join(keep, on=["table", "record_id"], how="inner")
+        .select(list(_citation_schema()))
+        .unique()
+        .sort(["table", "record_id", "pmid"])
+    )
+    citations.write_parquet(path)
+    return citations.height
+
+
+def _citation_schema() -> dict:
+    return {"table": pl.Utf8, "record_id": pl.Utf8, "reference_id": pl.Utf8, "pmid": pl.Utf8}
 
 
 def _miss_schema() -> dict:
@@ -350,6 +418,7 @@ def _write_release_json(out_dir: Path, result: MissBuildResult, *, source_rows: 
         "rated_miss_indels": result.rated_miss_indels,
         "withheld_in_miss": result.withheld_in_miss,
         "unmintable": result.unmintable,
+        "citation_links": result.citation_links,
         "built_at": now_utc_iso(),
         "builder_version": _builder_version(),
     }

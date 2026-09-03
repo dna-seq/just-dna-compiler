@@ -265,7 +265,7 @@ def test_a_failed_provisioning_refuses_with_the_reason_attached(monkeypatch) -> 
 #
 # `--clin-sig uncertain_significance` used to drop **every** row, reporting only a raw
 # `state: Field required` — one identical line per row, 26 of them for a two-gene panel. The
-# underlying decision was right (`_STATE_BY_CLIN_SIG` folds only the four decided calls, because
+# underlying decision was right (`STATE_BY_CLIN_SIG` folds only the four decided calls, because
 # `VALID_STATES` has no "undecided" member and every candidate asserts something ClinVar did not);
 # what was wrong is that the row was thrown away and the reason never stated.
 

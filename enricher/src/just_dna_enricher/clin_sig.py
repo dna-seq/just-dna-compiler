@@ -148,3 +148,23 @@ def normalize_clin_sig(raw: str | None) -> str:
         if sig in mapped:
             return sig
     return "other"
+
+
+#: `clin_sig` → the required `state`, the legacy axis every `variants.csv` row must carry.
+#:
+#: **A fold of the source's own call, not an interpretation** — and it lives here, beside the
+#: normalizer, for the normalizer's own reason (RM171). It was private to `clinvar_draft` while
+#: ClinVar was the only source folding a call into `state`; a second drafter needing the same fold
+#: would have grown a second map, and two maps for one concept is how a difference between our own
+#: tables comes to read as a difference between two authorities.
+#:
+#: Anything outside this map leaves `state` to the human rather than guessing a default. That is why
+#: it is deliberately **not** total over `VALID_CLIN_SIG`: `drug_response`, `risk_factor`,
+#: `uncertain_significance` and `conflicting` have no honest `state`, and a drafted row carrying one
+#: would be a judgement no source made.
+STATE_BY_CLIN_SIG: dict[str, str] = {
+    "pathogenic": "risk",
+    "likely_pathogenic": "risk",
+    "benign": "neutral",
+    "likely_benign": "neutral",
+}

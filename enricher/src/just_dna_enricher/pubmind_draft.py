@@ -71,10 +71,10 @@ from just_dna_compiler.draft import DraftReport, PartialRow, append_partial_rows
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import normalize_chrom
 
+from just_dna_enricher.clin_sig import STATE_BY_CLIN_SIG
 from just_dna_enricher.clinvar import select_by_gene
 from just_dna_enricher.clinvar_draft import (
     _MATCH_ON,
-    _STATE_BY_CLIN_SIG,
     DEFAULT_CLIN_SIG,
     ClinVarDraftError,
     _genotype_worklist,
@@ -378,7 +378,7 @@ def _row_cells(key: _Key, genes: set[str]) -> dict:
     )
     if genotype is not None:
         cells["genotype"] = genotype
-    state = _STATE_BY_CLIN_SIG.get(call)
+    state = STATE_BY_CLIN_SIG.get(call)
     if state is not None:
         cells["state"] = state
     return cells

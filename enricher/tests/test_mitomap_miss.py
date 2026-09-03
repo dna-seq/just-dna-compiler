@@ -13,13 +13,12 @@ against neither the 63 MB dump nor the 200 MB VCF.
 """
 
 import dataclasses
-import gzip
 import json
 import shutil
 from pathlib import Path
 
 import pytest
-from just_dna_enricher import caches, clinvar_build
+from just_dna_enricher import caches
 from just_dna_enricher.caches import (
     CACHE_LANES,
     LANES_BY_NAME,
@@ -29,7 +28,6 @@ from just_dna_enricher.caches import (
 )
 from just_dna_enricher.clin_sig import normalize_clin_sig
 from just_dna_enricher.mitomap import MITOMAP_VCEP_CLASSES, MitomapError, parse_status
-from just_dna_enricher.mitomap_build import build_snapshot
 from just_dna_enricher.mitomap_miss_build import (
     BUCKETS,
     MISS_PARQUET,
@@ -47,35 +45,10 @@ pl = pytest.importorskip("polars")
 # one trap: 8993 T>C is a *different allele at the same position* as MITOMAP's 8993 T>G, so a
 # position-level join would report a photocopy where the exact one correctly reports a miss.
 
-_CLINVAR_VCF = """##fileformat=VCFv4.1
-##fileDate=2026-06-27
-#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
-MT\t3460\t9999\tG\tA\t.\t.\tALLELEID=1;CLNSIG=Pathogenic;CLNREVSTAT=reviewed_by_expert_panel;GENEINFO=MT-ND1:4535
-MT\t114\t9998\tC\tT\t.\t.\tALLELEID=2;CLNSIG=Benign;CLNREVSTAT=criteria_provided,_single_submitter
-MT\t8993\t9997\tT\tC\t.\t.\tALLELEID=3;CLNSIG=Uncertain_significance;CLNREVSTAT=criteria_provided,_single_submitter
-MT\t3243\t9996\tA\tG\t.\t.\tALLELEID=4;CLNSIG=Pathogenic;CLNREVSTAT=reviewed_by_expert_panel
-MT\t1555\t9995\tA\tG\t.\t.\tALLELEID=5;CLNSIG=Pathogenic;CLNREVSTAT=reviewed_by_expert_panel
-"""
-
-
-def _write_clinvar(tmp_path: Path, vcf_text: str = _CLINVAR_VCF) -> Path:
-    """A real ClinVar snapshot, built through the real builder from a five-record chrMT VCF."""
-    vcf = tmp_path / "clinvar.vcf.gz"
-    # The VCF columns above are written CHROM POS ID REF ALT ... with a placeholder ID, which is the
-    # shape `_iter_records` reads; the fields are tab-separated exactly as ClinVar's are.
-    with gzip.open(vcf, "wt", encoding="utf-8") as handle:
-        handle.write(vcf_text)
-    clinvar_build.build_snapshot(vcf, tmp_path / "clinvar")
-    return tmp_path / "clinvar"
-
-
 @pytest.fixture
-def parents(tmp_path: Path, mitomap_dump: Path):
+def parents(mitomap_snapshot: Path, build_clinvar_mt):
     """`(mitomap_dir, clinvar_dir)` — both parents built through their own builders."""
-    build_snapshot(
-        mitomap_dump, tmp_path / "mitomap", source_last_modified="Mon, 24 Aug 2026 05:01:10 GMT"
-    )
-    return tmp_path / "mitomap", _write_clinvar(tmp_path)
+    return mitomap_snapshot, build_clinvar_mt()
 
 
 # ── the join ────────────────────────────────────────────────────────────────────────────────────
@@ -212,7 +185,7 @@ def test_the_release_json_pins_both_parents(parents, tmp_path: Path) -> None:
     build_miss_snapshot(mitomap_dir, clinvar_dir, tmp_path / "miss")
     release = json.loads((tmp_path / "miss" / "release.json").read_text())
     assert set(release["parents"]) == {"mitomap", "clinvar"}
-    assert release["parents"]["mitomap"]["dataset"] == "mitomap_2026-08-24"
+    assert release["parents"]["mitomap"]["dataset"] == "mitomap_2026-08-21+2026-08-19"
     assert release["parents"]["clinvar"]["clinvar_file_date"] == "2026-06-27"
     for name, directory in (("mitomap", mitomap_dir), ("clinvar", clinvar_dir)):
         recorded = {k: v for k, v in release["parents"][name].items() if k != "path"}
@@ -220,7 +193,7 @@ def test_the_release_json_pins_both_parents(parents, tmp_path: Path) -> None:
 
 
 def test_a_parent_that_moved_makes_the_child_stale_and_the_child_says_which(
-    parents, tmp_path: Path
+    parents, tmp_path: Path, build_clinvar_mt, clinvar_mt_vcf: str
 ) -> None:
     """A ClinVar rebuild without a child rebuild is detectable, which is what the pin is for."""
     mitomap_dir, clinvar_dir = parents
@@ -228,10 +201,9 @@ def test_a_parent_that_moved_makes_the_child_stale_and_the_child_says_which(
     assert stale_parents(tmp_path / "miss") == {}
 
     # ClinVar rebuilt from a newer file: same directory, a different release.
-    _write_clinvar(
-        tmp_path,
-        _CLINVAR_VCF.replace("##fileDate=2026-06-27", "##fileDate=2026-09-01")
-        + "MT\t8618\t9994\tT\tTT\t.\t.\tALLELEID=6;CLNSIG=Likely_pathogenic\n",
+    build_clinvar_mt(
+        clinvar_mt_vcf.replace("##fileDate=2026-06-27", "##fileDate=2026-09-01")
+        + "MT\t8618\t9994\tT\tTT\t.\t.\tALLELEID=6;CLNSIG=Likely_pathogenic\n"
     )
     moved = stale_parents(tmp_path / "miss")
     assert set(moved) == {"clinvar"}, "and MITOMAP, which did not move, is not named"

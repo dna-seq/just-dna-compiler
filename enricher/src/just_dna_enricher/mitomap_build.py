@@ -12,11 +12,12 @@ row carries its source columns verbatim beside the four derived ones — the spl
 `clin_sig`, the reason its alleles cannot be spelled as VCF where that applies, and the gene where
 `locus` names exactly one.
 
-**The dataset label is the dump's own `Last-Modified`, and a local build honestly carries none.**
-The dump states no version inside itself; what it does carry is `edit_date`, a per-table curation date
-(`mMut`, `rtMut`), which is a different fact and is recorded as one. A build from `--source <file>`
-records `dataset=None` rather than inventing a label from an mtime, the same call `strchive build`
-makes for an unpinned branch build: an unlabelled snapshot is honestly unlabelled.
+**The dataset label comes from inside the dump, which is what makes a local build comparable.** The
+dump carries `edit_date`, a per-table curation date (`mMut`, `rtMut`), and the label is both of them —
+the same choice ClinVar makes with `##fileDate` rather than with `Last-Modified`. The header and the
+sha256 are recorded in `release.json` beside it, because provenance of the *fetch* is a different
+question from identity of the *content*, and a build from `--dump <file>` has the second and not the
+first.
 """
 
 import hashlib
@@ -24,7 +25,6 @@ import json
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -172,21 +172,27 @@ def _sha256_file(path: Path) -> str | None:
     return hasher.hexdigest()
 
 
-def dataset_label(last_modified: str | None) -> str | None:
-    """`mitomap_<YYYY-MM-DD>` from an HTTP `Last-Modified`, or `None` when there is nothing to read.
+def dataset_label(edit_dates: dict[str, str | None]) -> str | None:
+    """`mitomap_<mmutation date>+<rtmutation date>` from the dump's own `edit_date` table.
 
-    Parsed rather than sliced, because the header is RFC 7231 date format and a substring of it would
-    silently become wrong the day a server sends the obsolete RFC 850 form.
+    **In band, and that is the ClinVar precedent rather than a preference.** ClinVar's `dataset` is
+    the `##fileDate` its VCF states about itself, not the `Last-Modified` its server states about the
+    transfer — so the same label comes out whether the file was downloaded or handed over. The dump
+    has the same property in `edit_date`, and taking it there is what lets `mitomap build --dump` from
+    a copy on disk produce a snapshot that can be compared against a downloaded one. The header and
+    the sha256 are still recorded in `release.json`; they are provenance of the *fetch*, which is a
+    different question.
+
+    **Two dates, because this lane adopts two tables and they are curated separately.** A compound
+    artifact gets a compound label — the same shape the derived miss lane uses for its two parents.
+    Taking the later of the two would state that a `rtmutation` from August applies to an `mmutation`
+    from October, and `None` where either is missing, because half a label is not a shorter label: it
+    is one that cannot be compared.
     """
-    if not last_modified:
+    dates = [edit_dates.get(name) for name in VARIANT_TABLES]
+    if not all(dates):
         return None
-    for fmt in ("%a, %d %b %Y %H:%M:%S %Z", "%A, %d-%b-%y %H:%M:%S %Z"):
-        try:
-            return f"mitomap_{datetime.strptime(last_modified.strip(), fmt).date().isoformat()}"
-        except ValueError:
-            continue
-    logger.warning("Unparseable Last-Modified %r; this snapshot carries no dataset label.", last_modified)
-    return None
+    return "mitomap_" + "+".join(str(date) for date in dates)
 
 
 def _variant_cells(table: str, row: dict[str, str | None]) -> dict[str, object]:
@@ -343,7 +349,7 @@ def build_snapshot(
     result.edit_dates = {name: dates.get(EDIT_DATE_NAMES[name]) for name in VARIANT_TABLES}
     result.source_sha256 = source_sha256 or _sha256_file(dump)
     result.source_last_modified = source_last_modified
-    result.dataset = dataset_label(source_last_modified)
+    result.dataset = dataset_label(result.edit_dates)
     _write_release_json(out_dir, result, source_url=source_url)
     logger.info(
         "Built MITOMAP snapshot: %s → %s",

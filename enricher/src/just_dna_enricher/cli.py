@@ -132,6 +132,13 @@ from just_dna_enricher.lookup import (
 )
 from just_dna_enricher.mitomap import MitomapError
 from just_dna_enricher.mitomap_build import DEFAULT_MITOMAP_URL
+from just_dna_enricher.mitomap_draft import (
+    SOURCE_LABEL as MITOMAP_MISS_SOURCE,
+)
+from just_dna_enricher.mitomap_draft import (
+    MitomapDraftError,
+    draft_panel_from_mitomap_miss,
+)
 from just_dna_enricher.pgx import PgxEnrichmentError, enrich_pgx
 from just_dna_enricher.pgx_draft import draft_gene
 from just_dna_enricher.pharmvar import PharmVarError
@@ -3047,20 +3054,53 @@ def draft_clinpgx_(
 
 #: Which authority `draft-panel` may draft from. A closed set, and the members reach an author's
 #: `sources.csv` through `SourceRow.source`, so they are named after the source and nothing else.
-PANEL_SOURCES: frozenset[str] = frozenset({"clinvar", "pubmind", "civic"})
+PANEL_SOURCES: frozenset[str] = frozenset({"clinvar", "pubmind", "civic", MITOMAP_MISS_SOURCE})
+
+#: The panel sources that draft **by gene** and cannot run without one. MITOMAP's increment is the
+#: exception and it is a real difference rather than a convenience: the whole point of that lane is
+#: "everything MITOMAP publishes that ClinVar does not", which is a set the caller asks for as a
+#: whole. A `--gene` there filters; here it is the query.
+_GENE_SCOPED_PANEL_SOURCES: frozenset[str] = PANEL_SOURCES - {MITOMAP_MISS_SOURCE}
+
+
+def _panel_source(spelling: str) -> str | None:
+    """A `--source` value as the vocabulary declares it, or `None` for a name nothing answers to.
+
+    Accepts `-` for `_` and returns the declared member, the rule every closed vocabulary here
+    follows — `mitomap-miss` is the declared spelling and `mitomap_miss` is the cache lane's, and a
+    caller who has just typed `cache rebuild --only mitomap_miss` should not be told this command has
+    never heard of it (`@vocab-separator-slip`).
+    """
+    folded = spelling.strip().lower().replace("_", "-")
+    return folded if folded in PANEL_SOURCES else None
 
 
 @app.command("draft-panel")
 def draft_panel_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
-    gene: list[str] = typer.Option(..., "--gene", help="Gene to draft rows for (repeatable)."),
+    gene: list[str] = typer.Option(
+        [], "--gene",
+        help=(
+            "Gene to draft rows for (repeatable). Required for every source but mitomap-miss, whose "
+            "increment is asked for as a whole and where --gene only filters."
+        ),
+    ),
     source: str = typer.Option(
         "clinvar", "--source",
         help=(
             "Which authority to draft the calls from: clinvar (the default); pubmind — an LLM's "
             "reading of the literature, which needs an operator-built snapshot and still reads the "
-            "ClinVar one for its gene attribution; or civic — curated cancer interpretations, which "
-            "writes the DIRECTION axis rather than clin_sig and needs a `civic build` snapshot."
+            "ClinVar one for its gene attribution; civic — curated cancer interpretations, which "
+            "writes the DIRECTION axis rather than clin_sig and needs a `civic build` snapshot; or "
+            "mitomap-miss — the curated mtDNA calls MITOMAP publishes and the ClinVar cache does "
+            "not, which needs a `mitomap miss` snapshot."
+        ),
+    ),
+    mitomap_miss_cache: Path | None = typer.Option(
+        None, "--mitomap-miss-cache", exists=True, file_okay=False,
+        help=(
+            "Built MITOMAP-miss snapshot (see `mitomap miss`). Only read under "
+            "--source mitomap-miss; omit it and $JUST_DNA_MITOMAP_MISS_CACHE is used."
         ),
     ),
     civic_cache: Path | None = typer.Option(
@@ -3124,13 +3164,25 @@ def draft_panel_(
     source does not say. Rows land in their gene's block, and a re-run leaves anything already there —
     stub or filled — exactly as it is.
     """
-    if source not in PANEL_SOURCES:
+    resolved = _panel_source(source)
+    if resolved is None:
         typer.secho(
             f"--source {source!r} is not an authority this command drafts from. "
             f"Known: {', '.join(sorted(PANEL_SOURCES))}.",
             fg=typer.colors.RED, err=True,
         )
         raise typer.Exit(code=1)
+    source = resolved
+    if not gene and source in _GENE_SCOPED_PANEL_SOURCES:
+        # Refused rather than defaulted to "every gene": ClinVar's snapshot is 4.4M records and CIViC's
+        # is a cancer corpus, so an unfiltered draft from either is not a panel, it is the source.
+        typer.secho(
+            f"--source {source} drafts a gene panel and needs at least one --gene. Only "
+            f"--source {MITOMAP_MISS_SOURCE} is asked for as a whole, because its snapshot IS the "
+            f"increment.",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(code=2)
     calls = (
         frozenset(c.strip() for c in clin_sig.split(",") if c.strip()) if clin_sig else None
     )
@@ -3159,8 +3211,22 @@ def draft_panel_(
             "direction axis (risk/protective) rather than clinical significance",
             fg=typer.colors.YELLOW, err=True,
         )
+    # And the fourth, for its own reason again: MITOMAP's increment is already filtered to the five
+    # documented VCEP classes, and everything outside them is *withheld* rather than assigned. A
+    # `--clin-sig` there would narrow a set this command has no way to widen.
+    if calls and source == MITOMAP_MISS_SOURCE:
+        typer.secho(
+            f"  warning: --clin-sig does nothing under --source {MITOMAP_MISS_SOURCE}, which drafts "
+            f"exactly the five documented ClinGen mtDNA VCEP classes and withholds everything else",
+            fg=typer.colors.YELLOW, err=True,
+        )
     try:
-        if source == "civic":
+        if source == MITOMAP_MISS_SOURCE:
+            result = draft_panel_from_mitomap_miss(
+                spec_dir, gene, snapshot=mitomap_miss_cache,
+                declared_use=_use(use), dry_run=dry_run,
+            )
+        elif source == "civic":
             result = draft_panel_from_civic(
                 spec_dir, gene, snapshot=civic_cache,
                 declared_use=_use(use), offline=offline, dry_run=dry_run,
@@ -3179,7 +3245,10 @@ def draft_panel_(
                 min_review_stars=min_review_stars, max_citations=max_citations,
                 declared_use=_use(use), dry_run=dry_run,
             )
-    except (ClinVarDraftError, PubMindDraftError, *_DRAFT_PRECONDITION_ERRORS) as exc:
+    except (
+        ClinVarDraftError, PubMindDraftError, MitomapDraftError,
+        *_DRAFT_PRECONDITION_ERRORS,
+    ) as exc:
         typer.secho(f"DRAFT FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     # Only the ClinVar result carries `skipped`; `PubMindDraftResult` has no such field. A
@@ -3722,8 +3791,9 @@ def mitomap_build_(
         typer.echo(f"  release {result.dataset}")
     else:
         typer.secho(
-            "  the dump carried no Last-Modified, so this snapshot has no release label and the "
-            "miss lane built from it cannot name the MITOMAP release it compared",
+            "  the dump states no edit_date for one of its variant tables, so this snapshot has no "
+            "release label and the miss lane built from it cannot name the MITOMAP release it "
+            "compared",
             fg=typer.colors.YELLOW, err=True,
         )
 

@@ -47,6 +47,7 @@ from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from just_dna_format.vrs import in_pseudoautosomal_region, normalize_chrom
 from pydantic import ValidationError
 
+from just_dna_enricher.clin_sig import STATE_BY_CLIN_SIG
 from just_dna_enricher.clinvar import citations_for, clinvar_dataset_label, select_by_gene
 from just_dna_enricher.download import ensure_clinvar_snapshot
 from just_dna_enricher.enrich import source_build_mismatch
@@ -74,17 +75,6 @@ DEFAULT_CLIN_SIG: frozenset[str] = frozenset({"pathogenic", "likely_pathogenic"}
 #: this is a property of what we build rather than a guess — named for the same reason
 #: `gnomad.FREQUENCY_GENOME_BUILD` is, since every build confusion in this package began as a literal.
 CLINVAR_GENOME_BUILD = "GRCh38"
-
-#: `clin_sig` → the required `state`. A **fold of the source's own call**, not an interpretation:
-#: `state` is the legacy axis every row must carry, and `direction`/`clin_sig` are the orthogonal
-#: ones. Anything outside this map leaves `state` to the human rather than guessing a default.
-_STATE_BY_CLIN_SIG: dict[str, str] = {
-    "pathogenic": "risk",
-    "likely_pathogenic": "risk",
-    "benign": "neutral",
-    "likely_benign": "neutral",
-}
-
 
 @dataclass
 class ClinVarDraftResult:
@@ -468,7 +458,7 @@ def _row_cells(record: dict, *, force_coordinate: bool = False) -> dict | None:
     genotype = sole_expressible_genotype(record)
     if genotype is not None:
         cells["genotype"] = genotype
-    state = _STATE_BY_CLIN_SIG.get(clin_sig or "")
+    state = STATE_BY_CLIN_SIG.get(clin_sig or "")
     if state is not None:
         cells["state"] = state
     # The 0.3 booleans stay authoritative and are folded from the same call, never independently.
@@ -708,7 +698,7 @@ def draft_gene_panel(
             continue
         # `state` is required and has no honest value for an undecided clinical call, so it is stubbed
         # for the same reason `genotype` usually is: the source did not say, and only a human can. See
-        # `_STATE_BY_CLIN_SIG` — `VALID_STATES` offers no "uncertain" member, and every candidate
+        # `STATE_BY_CLIN_SIG` — `VALID_STATES` offers no "uncertain" member, and every candidate
         # asserts something ClinVar declined to (`neutral` says benign, `risk` says a direction).
         # Skipping the row instead would throw away the conclusion, phenotype, clin_sig and citations
         # already assembled for it.

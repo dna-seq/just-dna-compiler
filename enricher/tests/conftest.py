@@ -23,6 +23,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from just_dna_enricher import clinvar_build
+from just_dna_enricher.mitomap_build import build_snapshot as build_mitomap_snapshot
+from just_dna_enricher.mitomap_miss_build import build_miss_snapshot
 
 
 @pytest.fixture(autouse=True)
@@ -148,3 +151,66 @@ def mitomap_corpus() -> MitomapCorpus:
 def mitomap_dump(tmp_path: Path, mitomap_corpus: MitomapCorpus) -> Path:
     """A gzipped MITOMAP `pg_dump` fragment — the parent every MITOMAP test builds from."""
     return mitomap_corpus.write(tmp_path / "mitomap.dump.sql.gz")
+
+
+# ── the parents the MITOMAP-miss lane joins (RM171) ─────────────────────────────────────────────
+#
+# A five-record chrMT ClinVar snapshot, cut through `clinvar_build`'s own VCF path rather than
+# hand-written as a parquet, so the join runs against the file the real builder produces. The rows are
+# chosen against the corpus above to exercise all four buckets and the one trap: 8993 T>C is a
+# *different allele at the same position* as MITOMAP's 8993 T>G, so a position-level join would report
+# a photocopy where the exact one correctly reports a miss.
+
+CLINVAR_MT_VCF = """##fileformat=VCFv4.1
+##fileDate=2026-06-27
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
+MT\t3460\t9999\tG\tA\t.\t.\tALLELEID=1;CLNSIG=Pathogenic;CLNREVSTAT=reviewed_by_expert_panel;GENEINFO=MT-ND1:4535
+MT\t114\t9998\tC\tT\t.\t.\tALLELEID=2;CLNSIG=Benign;CLNREVSTAT=criteria_provided,_single_submitter
+MT\t8993\t9997\tT\tC\t.\t.\tALLELEID=3;CLNSIG=Uncertain_significance;CLNREVSTAT=criteria_provided,_single_submitter
+MT\t3243\t9996\tA\tG\t.\t.\tALLELEID=4;CLNSIG=Pathogenic;CLNREVSTAT=reviewed_by_expert_panel
+MT\t1555\t9995\tA\tG\t.\t.\tALLELEID=5;CLNSIG=Pathogenic;CLNREVSTAT=reviewed_by_expert_panel
+"""
+
+
+@pytest.fixture
+def clinvar_mt_vcf() -> str:
+    """The default chrMT VCF text, so a test can build a *newer* ClinVar out of it.
+
+    A fixture rather than an import: a pytest `conftest` is not an importable module, and a second
+    copy of the text in the test that needs to modify it is the drift this file exists to avoid.
+    """
+    return CLINVAR_MT_VCF
+
+
+@pytest.fixture
+def build_clinvar_mt(tmp_path: Path):
+    """A factory: `build_clinvar_mt()` writes `<tmp>/clinvar`, `build_clinvar_mt(other)` rebuilds it.
+
+    A factory rather than a plain fixture because one test needs the *same directory* rebuilt from a
+    newer file — which is precisely the case the child's parent pin exists to catch.
+    """
+    def build(vcf_text: str = CLINVAR_MT_VCF) -> Path:
+        vcf = tmp_path / "clinvar.vcf.gz"
+        with gzip.open(vcf, "wt", encoding="utf-8") as handle:
+            handle.write(vcf_text)
+        clinvar_build.build_snapshot(vcf, tmp_path / "clinvar")
+        return tmp_path / "clinvar"
+
+    return build
+
+
+@pytest.fixture
+def mitomap_snapshot(tmp_path: Path, mitomap_dump: Path) -> Path:
+    """A built MITOMAP snapshot — the first parent."""
+    build_mitomap_snapshot(
+        mitomap_dump, tmp_path / "mitomap", source_last_modified="Mon, 24 Aug 2026 05:01:10 GMT"
+    )
+    return tmp_path / "mitomap"
+
+
+@pytest.fixture
+def mitomap_miss_snapshot(tmp_path: Path, mitomap_snapshot: Path, build_clinvar_mt) -> Path:
+    """The derived increment, built from both parents through the real join."""
+    build_miss_snapshot(mitomap_snapshot, build_clinvar_mt(), tmp_path / "miss")
+    return tmp_path / "miss"
+

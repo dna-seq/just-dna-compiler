@@ -228,7 +228,7 @@ def test_the_snapshot_holds_one_parquet_per_table_and_counts_what_it_read(
 
     release = json.loads((tmp_path / "out" / "release.json").read_text())
     assert release["rows"] == result.rows
-    assert release["dataset"] == "mitomap_2026-08-24"
+    assert release["dataset"] == "mitomap_2026-08-21+2026-08-19"
     # The dump's own in-band statement of when each table was curated — a different fact from the
     # file's Last-Modified, so both are recorded rather than one standing in for the other.
     assert release["table_edit_dates"] == {"mmutation": "2026-08-21", "rtmutation": "2026-08-19"}
@@ -299,13 +299,31 @@ def test_a_rebuild_from_the_same_bytes_is_byte_identical(
         assert one.read_bytes() == two.read_bytes(), one.name
 
 
-def test_a_local_dump_is_honestly_unlabelled_rather_than_labelled_from_an_mtime(
+def test_the_label_comes_from_inside_the_dump_so_a_local_build_is_comparable(
     mitomap_dump: Path, tmp_path: Path
 ) -> None:
-    assert build_snapshot(mitomap_dump, tmp_path / "out").dataset is None
-    assert dataset_label(None) is None
-    assert dataset_label("not a date") is None
-    assert dataset_label("Mon, 24 Aug 2026 05:01:10 GMT") == "mitomap_2026-08-24"
+    """The ClinVar precedent: `##fileDate` over `Last-Modified`, content over transfer.
+
+    A downloaded build and a build from the same bytes on disk have to produce the same label, or the
+    off-switch quietly produces a snapshot nothing can compare against.
+    """
+    downloaded = build_snapshot(
+        mitomap_dump, tmp_path / "a", source_last_modified="Mon, 24 Aug 2026 05:01:10 GMT"
+    )
+    local = build_snapshot(mitomap_dump, tmp_path / "b")
+    assert downloaded.dataset == local.dataset == "mitomap_2026-08-21+2026-08-19"
+    # And the header is still recorded, because provenance of the fetch is a real second question.
+    assert json.loads((tmp_path / "a" / "release.json").read_text())["source_last_modified"]
+    assert json.loads((tmp_path / "b" / "release.json").read_text())["source_last_modified"] is None
+
+
+def test_a_label_naming_only_one_of_the_two_tables_is_withheld() -> None:
+    """Half a label is not a shorter label — it is one that cannot be compared."""
+    assert dataset_label({"mmutation": "2026-08-21", "rtmutation": "2026-08-19"}) == (
+        "mitomap_2026-08-21+2026-08-19"
+    )
+    assert dataset_label({"mmutation": "2026-08-21", "rtmutation": None}) is None
+    assert dataset_label({}) is None
 
 
 # ── the terms ───────────────────────────────────────────────────────────────────────────────────
