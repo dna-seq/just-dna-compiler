@@ -484,7 +484,9 @@ author time — a declarative pattern grammar, Principle 1). 0.5 adds the **quer
 underflow rather than a probability, so it is rejected instead of stored as a confident zero.
 0.6 adds **`curator?`** — who located that passage: a name, handle, or model id resolvable against
 the manifest's `authorship` (S55). 0.7 adds **`statistical_test?`** — which *analysis* produced this
-row's `p_value`/`effect_size`, free text like `study_design` beside it (RM140).
+row's `p_value`/`effect_size`, free text like `study_design` beside it (RM140) — and
+**`confidence?`/`confidence_unit?`**, how far the *citing source* stands behind this evidence link, in
+that source's own units (RM160).
 
 - **Row-level, because the work is mixed at row granularity.** A human may read a review while an
   agent traverses its citations, in one module, in one pass, and a module-level contributor list
@@ -503,6 +505,21 @@ row's `p_value`/`effect_size`, free text like `study_design` beside it (RM140).
   retroactively incomplete. Absent means the analysis was not recorded, never that the paper ran one.
   The one behaviour it does change is the duplicate-citation warning — see
   [COMPILER § the analysis grain](COMPILER.md#one-paper-several-analyses-and-the-dedup-key-rm140).
+- **`confidence` carries a source's review state unconverted, and `confidence_unit` names the
+  ladder.** The case is a citation recovered from a curated source that publishes several levels of
+  review of its own: CIViC serves `accepted` and `submitted` evidence on one variant, and a module
+  holding both must not render them as the same row. There is no house grade for *an editor signed
+  this off* — CIViC's status, ClinVar's gold stars and a miner's evidence depth are three instruments
+  measuring three things — so the value is the source's own word and the column beside it says which
+  instrument it is on, exactly as `ClinSigAuthorityCallRow` does one table over. A string rather than
+  a number, because a number invites an arithmetic across instruments nobody can justify, and an open
+  column rather than a vocabulary, because every source with a review ladder would otherwise be a
+  schema bump. **A `confidence` with no `confidence_unit` is refused at the model** — `@weight-has-no-unit`,
+  the standing example of a magnitude shipped without its instrument — while a unit with no magnitude
+  is merely an instrument nothing was measured on, and is allowed. What acts on the pair is
+  `evidence_status_currency`, the enricher check that re-asks the source whether its own judgement has
+  moved; that check compares a **field** for equality, which is why the state could not stay in
+  `conclusion` prose.
 - **Free text, never a `machine_located: bool`.** Two-valued collapses the case that actually occurs
   — a passage an agent found and a human then confirmed — into one of two lies, and it cannot name
   *which* agent or *which* human. `Contribution.who` already reads "a name, handle, or model id".

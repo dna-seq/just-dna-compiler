@@ -440,6 +440,7 @@ def test_every_check_name_is_a_verification_question() -> None:
         "literature_coverage",
         "regulator_label_agreement",
         "published_refutation",
+        "evidence_status_currency",
     } == VALID_VERIFICATION_CHECKS
 
 

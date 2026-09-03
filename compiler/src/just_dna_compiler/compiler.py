@@ -7405,6 +7405,11 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
                 # RM140 (0.7): which analysis the two numbers above came from. A passthrough like
                 # every column around it — nothing can derive it, and nothing checks it yet.
                 "statistical_test": s.statistical_test,
+                # RM160 (0.7): how far the citing source stands behind this link, in its own
+                # units, and the instrument that names them. A passthrough pair — nothing here
+                # converts one source's ladder into another's.
+                "confidence": s.confidence,
+                "confidence_unit": s.confidence_unit,
                 # ── 0.4 provenance columns (RM11/RM12, from the 0.5 scope; docs/USE_CASES.md §4a). ──
                 "doi": s.doi,
                 "provenance_quote": s.provenance_quote,
@@ -7436,6 +7441,8 @@ def _build_studies(studies: list[StudyRow], module_name: str) -> pl.DataFrame:
         "effect_allele": pl.Utf8,
         "trait_efo_id": pl.Utf8,
         "statistical_test": pl.Utf8,
+        "confidence": pl.Utf8,
+        "confidence_unit": pl.Utf8,
         "doi": pl.Utf8,
         "provenance_quote": pl.Utf8,
         "provenance_regex": pl.Utf8,
@@ -8221,6 +8228,8 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
         "stat_significance", "effect_size", "effect_measure", "effect_allele", "trait_efo_id",
         # 0.7: which analysis produced `p_value`/`effect_size` (RM140, S75)
         "statistical_test",
+        # 0.7: the citing source's own confidence in this link, and the instrument it is on (RM160)
+        "confidence", "confidence_unit",
         # 0.4 provenance columns (RM11/RM12, from the 0.5 scope), and 0.6's locator beside them (S55)
         "doi", "provenance_quote", "provenance_regex", "curator",
         # 0.5: the authored numeric p-value. `neg_log10_p` is deliberately absent — it is derived on
@@ -8252,6 +8261,8 @@ def _write_studies_csv(studies_df: pl.DataFrame, output_path: Path) -> None:
                     "effect_allele": _scalar_cell(row.get("effect_allele")),
                     "trait_efo_id": _scalar_cell(row.get("trait_efo_id")),
                     "statistical_test": _scalar_cell(row.get("statistical_test")),
+                    "confidence": _scalar_cell(row.get("confidence")),
+                    "confidence_unit": _scalar_cell(row.get("confidence_unit")),
                     "doi": _scalar_cell(row.get("doi")),
                     "provenance_quote": _scalar_cell(row.get("provenance_quote")),
                     "provenance_regex": _scalar_cell(row.get("provenance_regex")),

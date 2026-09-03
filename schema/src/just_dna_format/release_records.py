@@ -792,6 +792,30 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
                 item="RM140",
             ),
             DeclaredChange(
+                axis="parquet_schema",
+                target="studies.parquet:confidence,confidence_unit",
+                kind="addition",
+                detail=(
+                    "RM160 added the authored `confidence`/`confidence_unit` pair to `studies.csv`, "
+                    "so `studies.parquet` gained two more columns no earlier artifact could have "
+                    "carried. They travel together — a magnitude with no instrument beside it is "
+                    "refused — and every module in the corpus leaves both unset, so the value is "
+                    "absent rather than wrong and `content_signature` does not move."
+                ),
+                item="RM160",
+            ),
+            DeclaredChange(
+                axis="manifest_fields",
+                target="verification.checks",
+                kind="addition",
+                detail=(
+                    "RM160 added `evidence_status_currency` to VALID_VERIFICATION_CHECKS, so a "
+                    "module whose enrich run re-asked CIViC about a recovered citation lists one "
+                    "more member. A new member, not a changed one."
+                ),
+                item="RM160",
+            ),
+            DeclaredChange(
                 axis="parquet_bytes",
                 target="studies.parquet",
                 kind="addition",
@@ -799,7 +823,9 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
                     "The column above lands in every `studies.parquet`, so the ten reference modules "
                     "carrying one move their `artifact.digest`. This is the bulk of the measured "
                     "parquet movement in this release and it is the cheapest kind: a new column no "
-                    "row fills. RM140 arrived after the round closed and is measured here with it."
+                    "row fills. RM140 arrived after the round closed and is measured here with "
+                    "it, and RM160's two columns land in the same parquet on the same terms — the "
+                    "ten digests were already moving."
                 ),
                 item="RM140",
             ),

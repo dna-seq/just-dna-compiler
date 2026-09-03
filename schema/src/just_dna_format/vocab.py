@@ -841,6 +841,17 @@ VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
                                       #   disagreeing with itself is not an authoring error — and the
                                       #   record names its `status_basis`, because on the `accepted`
                                       #   basis the class is empty by construction.
+        "evidence_status_currency",    # a recorded `StudyRow.confidence` — a curation status a
+                                      #   citing source published when the row was drafted — against
+                                      #   what that source says about the same item NOW: accepted
+                                      #   since, rejected since, or a citation added since. `enrich`,
+                                      #   for the CIViC citations `civic citations` recovers from the
+                                      #   API. A sibling of `dataset_currency` and deliberately not
+                                      #   the same member: that one asks which release a table came
+                                      #   from, this one asks whether a per-item judgement has moved,
+                                      #   and the two currency findings stay apart. Never escalates
+                                      #   under `strict` — a source re-curating is not an authoring
+                                      #   error.
         # ── RESERVED: no emitter, deliberately. Adding one later is legal; adding the *name* late
         #    would leave the release that needs it with nothing to write (the `withdrawn` precedent).
         "gene_disease_validity",      # RESERVED — see the bullet above: `enrich_gene_validity` RECORDS

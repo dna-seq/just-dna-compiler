@@ -1104,6 +1104,40 @@ class StudyRow(AuthoredModel):
         ),
     )
 
+    # ── 0.7 additive columns: how far the citing source stands behind this link (RM160) ──
+    # A citation recovered from a curated source arrives with that source's own curation state beside
+    # it — CIViC serves `ACCEPTED`, `SUBMITTED` and `REJECTED` on one variant, and the first two are
+    # the same claim at two levels of review. Written into `conclusion` prose the difference is
+    # unreadable to anything but a human, and a currency check that has to re-parse a sentence to see
+    # whether an item was signed off is the shape `@one-side-only-has-two-causes` forbids: what a gate
+    # or a check acts on is a field compared for equality, never a phrase in free text.
+    #
+    # **Unconverted, and the unit is what makes that safe.** There is no house grade for "an editor
+    # signed this off" — CIViC's `evidence_status`, ClinVar's gold stars and a miner's evidence depth
+    # are three instruments measuring three things — so the value is the source's own word and the
+    # column beside it names the instrument. `ClinSigAuthorityCallRow` made the same call for the same
+    # reason one table over, and `weight` is the standing example of a magnitude shipped without one.
+    #
+    # **A string, not a number or a vocabulary.** Numbers invite an arithmetic across instruments that
+    # nobody can justify, and a closed vocabulary here would have to be revised every time a source
+    # with its own review ladder is read — the argument that keeps `source` open on every fact table.
+    confidence: str | None = Field(json_schema_extra=since("0.7.0"),
+        default=None,
+        description=(
+            "How far the citing source stands behind this evidence link, in ITS OWN units and "
+            "unconverted (CIViC's `submitted`/`accepted`, a review-star count). Meaningless without "
+            "`confidence_unit` beside it, and refused without one."
+        ),
+    )
+    confidence_unit: str | None = Field(json_schema_extra=since("0.7.0"),
+        default=None,
+        description=(
+            "Which instrument `confidence` is measured on, e.g. `civic_evidence_status`. Required "
+            "whenever `confidence` is set: a magnitude with no unit beside it is a value nothing can "
+            "read, and this format has paid for that once already on `weight`."
+        ),
+    )
+
     # ── 0.4 provenance columns (RM11/RM12, from the 0.5 scope; docs/USE_CASES.md §4a) ──
     # All optional → P3/P8 clean. They anchor a network-first validator (RM13) without the format
     # ever fetching: the module ships the pointer, the consumer supplies the source and does the check.
@@ -1233,6 +1267,29 @@ class StudyRow(AuthoredModel):
         except re.error as exc:
             raise ValueError(f"provenance_regex is not a valid regular expression: {exc}") from exc
         return v
+
+    @field_validator("confidence", "confidence_unit")
+    @classmethod
+    def _blank_confidence_cell_is_absent(cls, v: str | None) -> str | None:
+        # A blank cell is an absent value, not an empty magnitude — the same normalization
+        # `ClinSigAuthorityCallRow` applies to the identical pair, so a round-tripped empty column
+        # cannot reload as a `""` that the coherence rule below would then have to reason about.
+        return (v or "").strip() or None
+
+    @model_validator(mode="after")
+    def _refuse_a_magnitude_with_no_instrument(self) -> "StudyRow":
+        # `@weight-has-no-unit`, restated on the one pair this model carries. A `confidence` of `3`
+        # is unreadable without being told it is a review-star count, and the sources this column
+        # exists for publish values on scales that are not the same quantity. A unit with no
+        # magnitude is harmless — it names an instrument nothing was measured on — so only the
+        # asymmetric case is refused, exactly as `ClinSigAuthorityCallRow` refuses it.
+        if self.confidence is not None and self.confidence_unit is None:
+            raise ValueError(
+                f"confidence={self.confidence!r} names a magnitude with no instrument beside it — "
+                f"set confidence_unit (e.g. 'civic_evidence_status'), because two sources publish "
+                f"values on scales that are not the same quantity"
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_study_identification(self) -> "StudyRow":
