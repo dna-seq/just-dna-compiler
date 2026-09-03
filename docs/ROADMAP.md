@@ -178,34 +178,33 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Seven** (the count is the `## RMn` sections below — it
+**One** (the count is the `## RMn` sections below — it
 read "four as of 2026-08-21" for two rounds after it stopped being four, then *not one of them is a
 decision* through the three that are, then *three* for the hour it took a fourth to be filed, then
-*two* until RM151 shipped, then *one* naming RM152, then *one* naming RM153, then none, and now
-seven — which is why the paragraph under it says to count off the sections rather than off this
-sentence).
+*two* until RM151 shipped, then *one* naming RM152, then *one* naming RM153, then none, then seven for
+the 2026-09-01 source-adoption round, and now one — which is why the paragraph under it says to count
+off the sections rather than off this sentence).
 
-**Six of the seven are one round: the 2026-09-01 source-adoption round, RM163–RM168.** They were asked
-for as a batch — *what else should we adopt as enrichment sources, besides CIViC and PubMind* — and are
-filed together because they share a shape and a discipline rather than a mechanism. Three of them
-(RM163, RM164, RM165) come out of one measurement: a drafting **provider** exists for four of the nine
-table kinds, and `heteroplasmy.csv`, `repeat_alleles.csv`, `copynumbers.csv`, `pgs.csv` and
-`activity_phenotype.csv` have no source behind them at all. The other three each name a source that a
-*procedure* already leans on without the code knowing (RM168), a second authority on a lane that is
-currently a single licence class (RM166), or an axis a source we did adopt structurally cannot serve
-(RM167).
+**The one is RM164, and the round it came from is otherwise closed.** The 2026-09-01
+source-adoption round (RM163–RM168) was asked for as a batch — *what else should we adopt as
+enrichment sources, besides CIViC and PubMind* — and filed together because its items shared a shape
+and a discipline rather than a mechanism. Five of the six shipped inside the uncut 0.7.0, and RM164
+**parked on a measured negative**: no source publishes a heteroplasmy level per tissue, so the table
+kind stays without one. It is here rather than closed because a source would reopen it, and its own
+entry names in advance the finding that would close it instead.
 
-**Not one of the six has been probed, and every entry says so in its own words.** Each separates what
-is *measured* — a table kind with no provider, a snapshot's actual contents, a number from a probe
-already run — from what is merely *candidate*, and **none asserts a licence**. That split is the whole
-discipline of the round: the failure it is most likely to cause is a remembered licence or a remembered
-API hardening into a permanent false constraint in these files (`@probe-names-the-table`), so each
-item's **first step is the probe**, and a negative closes the item rather than leaving it open. Two of
-them, RM164 and RM166, name in advance the finding that would close them.
+**The spin-off RM164 filed shipped on 2026-09-03.** RM171 adopted MITOMAP's curated mtDNA tables as
+the increment they carry over the ClinVar cache — the *variants* half of the source RM164 probed for
+its *heteroplasmy* half and did not find. ROADMAP_HISTORY has it. The two are deliberately separate
+items: widening one by changing what it is about is how an item stops meaning anything, and RM164's
+negative would have been kept artificially alive by a positive that has nothing to do with it.
 
-**RM166 may not be a new source at all** — if ClinPGx's own drug-label download already carries the FDA
-content, it is a second file from a source already adopted, which is a cheaper item with a different
-terms answer and a different owner. That question is its first line of work for exactly that reason.
+**The discipline the round is worth remembering for**, since it is the reason these entries read the
+way they do: not one of the six had been probed when it was filed, every entry said so in its own
+words, and each separated what was *measured* from what was merely *candidate* while asserting no
+licence. The failure it was written against is a remembered licence or a remembered API hardening into
+a permanent false constraint in these files (`@probe-names-the-table`), so each item's first step was
+the probe — and five of the six entries turned out to say something their own probe contradicted.
 
 The candidates deliberately **not** filed are not restated here: the predictor tier is RM23, authored
 PRS weights are RM16, and Google Scholar, OpenAlex/Unpaywall fulltext and an offline gnomAD frequency
@@ -366,123 +365,6 @@ established before that is a plan, and neither is:**
 
 **Related** RM165 (the same shape on the other uncovered binning kind), RM171 (the spin-off),
 `@probe-uniform-corpus`.
-
-## RM171 — MITOMAP's `mmutation` is a curated mtDNA variant table behind 29 free-text status strings
-
-**Severity** low-medium · **Status** open — **a minor, release undecided** · **Owner** enricher ·
-**Motivating case** RM164's probe, which found it while answering a different question
-
-**Filed 2026-09-01, out of RM164's decision rather than out of a sweep.** RM164 read MITOMAP's full
-`pg_dump` to answer whether the source carries a heteroplasmy *level* per tissue — it does not — and
-found, beside that negative, a table that is not about heteroplasmy at all. **`mitomap.mmutation` is
-602 curated mtDNA disease variants with a confirmation status**, which is `variants.csv` territory and
-a different table kind from the one RM164 is about. It is filed separately for that reason: widening an
-item by changing what it is about is how an item stops meaning anything, and RM164's negative would
-have been kept artificially alive by a positive that has nothing to do with it.
-
-**What blocks it is one column.** `status` is **29 distinct free-text strings**, not a vocabulary —
-`Reported` 419, `Cfrm [LP]` 42, `Conflicting reports` 16, `Cfrm [P]` 16, and a long tail of one-offs
-like *"Reported: individually neutral variants causing LHON in combination"* and *"Reported; hg D1 D2
-M33 R30 marker"*. Mapping that onto `clin_sig` is **a curation decision, not a normalization**:
-`@one-normalizer-two-spellings` is the rule for a vocabulary two sources spell differently, and it
-stops being enough at the point where one side is prose. A provider that mapped the four common
-strings and dropped the tail would be writing a judgement the source did not make; one that mapped
-every string would be inventing 25 of them.
-
-**Its terms were unread, exactly as RM164 left them. They are read now (2026-09-02), and they are
-permissive.** The dump carries no licence text in 6.7 million lines; MITOMAP states its terms on
-`MITOWIKI/HelpTerms`, linked from `CitingMitomap` as *Terms of Use for data content and figures*:
-
-> All content on MITOWeb (including MITOMAP, MITOMASTER, & MITOWIKI) except where otherwise noted, is
-> made available under a **Creative Commons Attribution 3.0 License**. Authors retain ownership of the
-> copyright of their contributions, while allowing anyone to download, reuse, reprint, modify,
-> distribute, and/or copy content, so long as **the original authors and source are cited**. No
-> permissions are required from the authors or publishers to use the work in these terms.
-
-CC BY 3.0: commercial use permitted, redistribution permitted, attribution required, no separate
-agreement. **So the terms negative that would have closed this item outright does not fire** — the
-item survives on its `status` column alone.
-
-**How that was read, because the scope matters (`@probe-names-the-table`).** The live page returns
-**403** to both `curl` and the fetch tool — a Cloudflare interstitial, not a paywall — so the text
-above is the Wayback capture of **2026-04-17**, of a page whose own last revision is **r4,
-2019-07-30**. It is not a live read and should be re-read from a browser before anything is published
-from this table. Two traps found while reading: a search for MITOMAP's licence surfaces **CC BY-NC**,
-which is the *NAR article's* licence and not the database's; and **"except where otherwise noted"** is
-the floor-plus-per-record-override shape (`@a-hosts-terms-are-not-its-contents-terms`), so a per-record
-note outranks the site default and the licence row must be written as a floor. Also unrecorded, and
-owed: how RM164 acquired the `pg_dump`. If it came from a mirror rather than mitomap.org, that
-mirror's terms are a separate question this read does not answer.
-
-### Probed 2026-09-02 — [MITOMAP_STATUS](probes/MITOMAP_STATUS.md), and `status` is not what this entry said
-
-**It is a two-token grammar, not 29 sentences.** A confirmation token (`Reported` 516, `Cfrm` 69,
-`Conflicting reports` 16) followed by an optional bracketed rating (none 466, `VUS` 60, `LP` 44, `P`
-16, `VUS*` 10, `B` 4, `LB` 2). That pair accounts for **568 of 602 rows exactly**, and the two
-positions are not independent — `Cfrm` never takes a benign-side rating, `Reported` never takes
-`P`/`LP`. The prose residue is **34 rows**, of which the two informative groups are
-*combination-only/synergy* (18, a statement about a genotype rather than an allele) and *alternative
-alignment* (3, a statement about identity). This entry's own list was also short: it names four common
-strings and omits **`Reported [VUS]` at 59**, the second most common in the column.
-
-**Both token positions are documented, and the bracket is somebody else's instrument.** Nothing in the
-6.76 M-line dump comments the column — no `COMMENT ON`, no lookup table, and all 131 occurrences of
-`Cfrm` are data cells. But MITOMAP's own wiki legends both: the base token by its literature-count
-criterion, stated explicitly as *"not an assignment of pathogenicity by MITOMAP"*; and the bracket as a
-**ClinGen mtDNA VCEP rating**, scored per McCormick et al. 2020 (`10.1002/humu.24107`), over exactly
-the five classes `VALID_CLIN_SIG` already carries.
-
-**So this entry's premise splits in half, and neither half survives as written.**
-
-* **The bracket is not a curation decision.** It is a published third-party classification in a
-  documented vocabulary — a normalization, and an easy one. But it is **largely already adopted**: of
-  the 136 bracketed rows, **120 are in the on-disk ClinVar chrMT snapshot, all 120 as
-  `reviewed_by_expert_panel`, and 119 agree with the bracket**. It is the same VCEP call arriving by
-  two routes. What adopting it would add is the **16** bracketed rows ClinVar does not carry, plus one
-  currency disagreement (m.3761C>A, MITOMAP `[VUS]` on the newer file against ClinVar
-  `Likely_pathogenic`).
-* **The base half must not be mapped at all** — not because it is hard, but because MITOMAP says in as
-  many words that it is not a pathogenicity assignment. Mapping `Cfrm` onto `pathogenic` would write a
-  judgement the source explicitly declines to make. It is a literature-count criterion, which is a
-  different axis from `clin_sig` and has no column here.
-* And **466 of 602 rows carry no bracket at all**, so on the only axis that is mappable, three quarters
-  of the table is silent.
-
-**Four more things the entry did not know.**
-
-1. **`cfrm_date` is a second free-text column.** 28 of its 114 populated cells are curator prose, 18 of
-   them classification claims (`Reported by paper as VUS` ×14) — and **15 of those sit on rows whose
-   `status` reads a bare `Reported`**. Reading `status` alone misses them.
-2. **A sibling table doubles the corpus and the repo's own module uses *it*.** `mitomap.rtmutation` is
-   494 more curated rRNA/tRNA variants with the identical column and grammar (plus a fourth base token
-   `Unclear`). `reference_examples/mt_heteroplasmy`'s two variants (m.3243A>G, m.3271T>C) are both in
-   `rtmutation` and **neither is in `mmutation`** — the only mtDNA module here would draw nothing from
-   the table this entry names.
-3. **Identity is better than expected and blocked elsewhere.** 573 of 602 rows mint a `variant_key`
-   through this repo's own `derive_variant_key` with no fetch (560 VRS ids, 13 coordinate keys, all
-   distinct); the 24 that do not spell a deletion as `:` and need an rCRS anchor Principle 2 forbids
-   those tiers from fetching. All 602 cite, 3,666 links, mean 6.1 — through `reference.nlmid`, verified
-   as PMIDs on 4 of 4 sampled. But there is **no rsID column**, and **`VariantRow.genotype` is required
-   while MITOMAP publishes none**: `homo`/`hetero` are presence flags over a literature corpus, not a
-   called genotype.
-4. **The acquisition question is closed.** The local dump is byte-identical to what `mitomap.org`
-   serves (`sha256 16f01a96…`), over plain `curl` with no interstitial. Not a mirror, so the CC BY 3.0
-   terms read on the same day are the only terms in play.
-
-**What is left to decide, restated on the measurements.** Not "is `status` mappable" — the bracket is
-and the base is not. The binary the entry first posed (adopt sixteen new calls, or admit ClinVar
-already has this) is the wrong question: "16" is one join against one ClinVar vintage. A proposed
-shape is recorded in [rm171_diff_strategy](probes/rm171_diff_strategy.md) — adopt the derived
-increment, never the photocopies; withhold `VUS*`; do not map the confirmation token. **Unbuilt**,
-and the first build still owes a rejoin against that day's ClinVar, a walked `nlmid` column, and
-whether `rtmutation` enters the same miss. **The live-terms debt is discharged** — browser read of
-`MITOWIKI/HelpTerms` r5 (30 Jun 2026) on 2026-09-03, still CC BY 3.0, commercial and clinical use
-now stated rather than inferred; recorded in the strategy note §9. Deliberately not taken as a
-decision here.
-
-**Related** RM164 (where it was found), [MITOMAP_STATUS](probes/MITOMAP_STATUS.md),
-[rm171_diff_strategy](probes/rm171_diff_strategy.md), `@one-normalizer-two-spellings`,
-`@no-named-licence`, `@probe-the-real-file`.
 
 # Not format scope
 

@@ -1,7 +1,10 @@
 # PROPOSAL 0.7 PT3 — the three items left open after the 2026-09-02 round, planned for build
 
-**Status: LIVE.** Drafted 2026-09-03, decided with the maintainer the same day. It wins over the
-roadmap files until its items land, at which point it becomes a record like its six predecessors.
+**Status: a record.** Drafted 2026-09-03, decided with the maintainer the same day, and closed the same
+day when its third item landed. It no longer wins over the roadmap files: RM174, RM160 and RM171 are all
+in ROADMAP_HISTORY, and anything still open is tracked in ROADMAP like any other item. Two dated addenda
+sit at the foot of this file — RM160's authored column pair, which the release-class line below priced
+at none, and RM171's five departures from the build order.
 
 **Scope: three items, all decided, none designed from scratch here.** Each already has its shape
 settled — RM160 by a maintainer choice between three written options, RM171 by a strategy document
@@ -280,3 +283,57 @@ against recording one taken inside the same release.** A release-class line that
 "no authored column" is a claim about the *schema surface as it stands*, and it has to be checked
 against the models rather than inferred from the item's shape. This one could have been settled by a
 single grep for the field name.
+
+
+## Addendum, 2026-09-03 — RM171's five departures from the build order above
+
+The item shipped as written in every decision it was given: both tables, a published `mitomap-miss`
+child lane, terms from the live r5 read, `[VUS*]` withheld, the confirmation token never mapped, no
+photocopy drafted, the `:` deletions left unanchored, and no count in a constant. What follows is
+recorded because **a closed proposal is closed against reopening its decisions, never against recording
+what the build had to do differently** — and a silent contradiction of a build order is worse than a
+noisy one.
+
+1. **The lane is `mitomap_miss`; `mitomap-miss` is a spelling, accepted everywhere and folded to it.**
+   Point 4 above names the lane `mitomap-miss`. The registry `CacheLane` lives in is walked *by
+   identity* — `resolve_<name>_reference`, `<NAME>_SUBDIR`, `<name>_build.py` — so a hyphen cannot be a
+   lane name and `drug_labels` is the standing precedent. `caches.lane_name` folds `-` to `_` and
+   returns the **declared** member for `--only`, `--pin`, `--source` and `draft-panel --source`
+   (`@vocab-separator-slip`: a caller who merely calls a normalizer and keeps their own string has done
+   nothing).
+
+2. **The command is `draft-panel --source mitomap-miss`, not a bare `draft --source`.** Point 6 and the
+   strategy's §5 both write `draft --source mitomap-miss`. `draft` is the CPIC command and takes a
+   required `--gene`; `draft-panel` is the one that writes `variants.csv` + `studies.csv` from a
+   `--source` vocabulary, which is exactly the shape described. **`--gene` became optional for this
+   source alone** and is still refused as absent for the other three: the increment is asked for as a
+   whole, where an unfiltered ClinVar draft would be the whole 4.4 M-record snapshot.
+
+3. **`dataset` comes from the dump's own `edit_date`, not from HTTP `Last-Modified`.** Point 2 says the
+   `SourceRow.dataset` pins the dump's `Last-Modified` "the same way ClinVar records
+   `clinvar_file_date`" — and those two halves point in opposite directions, because ClinVar's label is
+   `##fileDate`, a statement the *file* makes about itself. The precedent won: a build from
+   `mitomap build --dump <local file>` now produces the same label a downloaded one does, where a
+   header-derived label would have left every off-switch build unlabelled and incomparable. Both
+   tables' dates, because both are adopted and they are curated separately; the header and the sha256
+   are recorded in `release.json`, where provenance of the *fetch* belongs.
+
+4. **The derived child carries its own citations parquet**, for the non-photocopy rows only. Nothing in
+   the plan called for it. Without it the drafter needs both parents at draft time, which lets a draft
+   run against a MITOMAP snapshot that is *not* the one the join used — the exact class of staleness the
+   parent pin exists to make visible.
+
+5. **`STATE_BY_CLIN_SIG` moved to `clin_sig.py`.** Not in the plan, and forced by it: `pubmind_draft`
+   was already importing the map out of `clinvar_draft`'s private namespace, and a third drafter folding
+   the same call made the private home indefensible on the shared normalizer's own argument.
+
+**And the finding the first build owed, which reshapes §7.2 of the strategy without contradicting it.**
+The rejoin against the ClinVar of the build's own day (`clinvar_file_date 2026-06-27`, 3,104 chrMT
+alleles) gives a rated miss of **six**, not sixteen. All sixteen of the probe's bracketed-and-absent
+`mmutation` rows reproduce exactly — but **thirteen of them are `:` deletions**, which the strategy's own
+§6 puts in the unmintable count until an enricher pass anchors them against the rCRS. Three insertions
+survive from `mmutation` and three more come from `rtmutation`. So the number the item was filed about
+was never sixteen new *draftable* calls; it was sixteen rows, thirteen of which the same document says
+this tier may not mint. That is the sharpest available argument for the rule the item shipped under —
+**the number is derived on every rebuild, never stored** — and it is why "16" was right to keep out of a
+constant even before either parent moved.

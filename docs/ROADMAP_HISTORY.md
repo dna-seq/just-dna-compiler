@@ -293,6 +293,172 @@ corpus), served through a mock transport so the suite never fetches; every expec
 them at runtime. The `--offline` probe's transport fails the run if it is reached, because an
 off-switch needs its own probe rather than a reading (`@off-switch-needs-a-probe`).
 
+## RM171 — MITOMAP's curated mtDNA tables, adopted as the increment they carry over ClinVar
+
+**Severity** low-medium · **Status** ✅ **SHIPPED 2026-09-03 in the uncut 0.7.0** — two cache lanes
+(one of them the registry's first *derived* lane), a `parents` field on `CacheLane`, a draft source, a
+`SourceTerms` row and five abbreviations in the shared clinical-significance normalizer. Nothing
+removed, promoted to required or retyped · **Owner** enricher · **Motivating case** RM164's probe,
+which found the table while answering a different question ·
+**Design** [rm171_diff_strategy](probes/rm171_diff_strategy.md), written by the maintainer, on the
+measurements in [MITOMAP_STATUS](probes/MITOMAP_STATUS.md); build order in
+[PROPOSAL_0_7_PT3](proposals/PROPOSAL_0_7_PT3.md)
+
+**What the entry was blocked on, and why that binary was the wrong question.** It read *does a source
+contributing sixteen new expert-panel calls earn an adoption, or does ClinVar already carry this?* —
+and "16" is not a fact about MITOMAP. It is a fact about one join against one ClinVar vintage, and a
+hardcoded list of sixteen alleles is a snapshot of a diff, stale the next time either parent is
+rebuilt. What shipped answers the other question instead: **what does MITOMAP publish that the ClinVar
+cache does not**, derived every time both caches are current.
+
+**The shape: two parents and one derived child.** `mitomap` is an ordinary lane — `curl` the published
+`pg_dump`, keep six of its hundred-odd tables, write parquet. `mitomap_miss` is not a download at all:
+its acquire stage is *both parents on disk*, its build is an exact `(start, ref, alt)` join on chrMT
+against the ClinVar parent, and its `release.json` pins both parents so a ClinVar rebuild without a
+child rebuild is detectable rather than silent. `CacheLane` gained `parents` for it — empty for the
+twelve that shipped with [RM176](ROADMAP_HISTORY.md#rm176--eleven-builders-three-stages-each-and-the-roster-that-was-supposed-to-name-them-was-a-list),
+a two-lane tuple here — plus a guard whose outcome is `built=None` naming the missing parent. Both
+wrong answers were available and both are silent: a `False` files another lane's absence as this lane
+breaking, and an empty miss is the strongest possible claim about MITOMAP derived from a comparison
+that never ran.
+
+**Four buckets, and only one drafts.** *photocopy* — the exact allele is in ClinVar, so the ClinGen
+mtDNA VCEP's call already reaches this repository with ClinVar's own provenance; drafting a second copy
+would attribute it to the wrong publisher and would hand a ClinVar concordance check a copy of ClinVar
+to agree with (`@tautology-zero`). *rated miss* — absent, and the bracket is one of the five documented
+VCEP classes. *unrated miss* — absent, and MITOMAP published no class this tier may map. *unmintable*
+is a fourth because the question cannot be **asked** of it: MITOMAP writes a deletion right-anchored
+(`refna="TA"` against `regna=":"`), and turning that into a VCF allele needs the rCRS base at
+`position - 1`, which Principle 2 forbids these tiers from fetching.
+
+**The bracket is a normalization; the confirmation token never is.** `status` is a two-token grammar —
+a confirmation token (`Reported`/`Cfrm`/`Conflicting reports`, plus `Unclear` in the sibling table)
+followed by an optional bracketed rating. MITOMAP's own legend says in as many words that the first is
+**not** an assignment of pathogenicity; it is a literature-count criterion, so mapping `Cfrm` onto
+`pathogenic` would write a judgement the source declines to make. The second is somebody else's
+instrument entirely — the ClinGen mtDNA VCEP's five classes, which is exactly what `VALID_CLIN_SIG`
+already carries — so the five abbreviations became **keys in the one shared normalizer**
+(`@one-normalizer-two-spellings`) rather than a MITOMAP-local map that would then have to agree with it.
+
+**`[VUS*]` is withheld, and the withhold could not be left to the normalizer.** It is not the legend's
+footnote marker (a diamond, printed *inside* the bracket), not a sixth class, and not APOGEE's
+`[VUS+]`/`[VUS-]`, which leak into `rtmutation` on one row each from a seven-tier in-silico predictor
+sharing three letters. Nobody wrote down what it means. The subtlety is that `normalize_clin_sig`'s own
+default is `other` — a **definite** member of the vocabulary, not an unknown — so an unmapped token
+falling through would have become a confident call. `mitomap.vcep_clin_sig` therefore decides
+membership *before* anything is normalized, and the withheld brackets are counted in the snapshot's
+`release.json` rather than folded into `VUS`.
+
+**Both tables, and that was settled before the build.** `reference_examples/mt_heteroplasmy` carries
+two variants and both live in `rtmutation`; neither is in `mmutation`. An `mmutation`-only lane would
+have drafted nothing the repository's one mtDNA module needs — and shipping one table and discovering
+the sibling later is how RM164 happened.
+
+### What the first build measured, on the ClinVar of its own day
+
+The entry owed a rejoin rather than a quotation, and the rejoin **moves the number the entry was
+about**. Against `clinvar_file_date 2026-06-27` (3,104 distinct chrMT alleles) and the dump served on
+2026-08-24 (`mmutation` curated through 2026-08-21, `rtmutation` through 2026-08-19):
+
+| | photocopy | rated miss | unrated miss | unmintable |
+|---|---:|---:|---:|---:|
+| `mmutation` (602) | 352 | **3** | 218 | 29 |
+| `rtmutation` (494) | 303 | **3** | 170 | 18 |
+
+**Six rated misses, not sixteen — and the difference is not a disagreement with the probe.** The probe
+counted 16 bracketed `mmutation` rows absent from that same snapshot, and all 16 reproduce. **Thirteen
+of them are `:` deletions**, which the design's own §6 puts in the unmintable count until an enricher
+pass anchors them; the three that remain are insertions the schema *can* spell. The sibling table
+contributes three more of the same kind. So the motivating number was never sixteen new *draftable*
+calls — it was sixteen rows, thirteen of which the same document says this tier may not mint. That is
+the sharpest possible argument for the rule the entry shipped under: **the number is derived, never
+stored**.
+
+**Every one of the six keys on an indel**, which the lane publishes rather than hides. The join is
+exact and neither side is left-aligned, so a miss on an indel key is either an allele ClinVar does not
+carry or one it carries at another anchor, and this lane says which it cannot tell you.
+
+**The `nlmid` walk, which the strategy left owed on a sample of four.** All 6,770 reference rows were
+walked: **6,372 carry a bare-digit PMID, 397 state none, and exactly one states
+`01930224-202601000-00006`** — an Ovid article id whose first eight characters are digits, which a
+substring search would have cited as somebody else's paper (`@pmid-vs-pmcid`, one registry over). So
+`nlmid_pmid` requires the *whole cell* to be a digit run, deliberately stricter than
+`spec.extract_pmids`. The increment carries 802 citation links for its non-photocopy rows.
+
+**One more finding the build turned up, reported and not repaired.** One drafted row's `allele` **name**
+states a variable number of copies (`T961delT+ / -C(n)ins`) while its allele *columns* state one
+definite pair (`T`→`CC`) — the source disagreeing with itself about definiteness. The row keeps
+MITOMAP's own `ref`/`alt`, because dropping it would discard a published call and rewriting it would
+need a rule for what `(n)` means that MITOMAP has not given; the drafter names it, on a row the author
+has to curate by hand anyway (`@multiplicity-is-a-finding`).
+
+### `genotype` is stubbed, and the reason is not the contig's
+
+This is the departure worth recording, because the house already has a rule that points the other way.
+`clinvar_draft.sole_expressible_genotype` **fills** the ALT on chrMT — a haploid contig leaves no
+zygosity open, so the placeholder is protecting a decision that does not exist (S6,
+`@placeholder-protects-decision`). That argument is right about ClinVar, whose record is a claim about
+an allele. MITOMAP's row is a claim about a **literature corpus**: `homo` and `hetero` are presence
+flags saying whether the variant has been *reported* in each state, and on the real increment three of
+the six drafted rows are reported only heteroplasmically. Writing `genotype=<ALT>` there states the
+homoplasmic reading — which is precisely the claim `reference_examples/mt_heteroplasmy` keeps in
+`variants.csv` and separates from its `heteroplasmy.csv` bins. So the cell is stubbed, the flags
+MITOMAP *did* publish go in front of the author per row as an uncapped worklist, and **a
+MITOMAP-drafted module cannot compile until a human writes those cells.** That is the cost of this
+adoption and it is stated rather than engineered around.
+
+### The five places the build departed from the plan
+
+Recorded here and as a dated addendum on [PROPOSAL_0_7_PT3](proposals/PROPOSAL_0_7_PT3.md), because a
+silent contradiction of a build plan is worse than a noisy one.
+
+1. **The lane is `mitomap_miss`; `mitomap-miss` is accepted everywhere and folds to it.** The registry
+   is walked by identity — `resolve_<name>_reference`, `<NAME>_SUBDIR`, `<name>_build.py` — so a
+   hyphen cannot be a lane name. `drug_labels` is the precedent, and `caches.lane_name` returns the
+   **declared** member rather than the caller's spelling (`@vocab-separator-slip`).
+2. **The command is `draft-panel --source mitomap-miss`**, not a bare `draft --source`: `draft` is the
+   CPIC command and `draft-panel` is the one that writes `variants.csv` + `studies.csv` from a
+   `--source` vocabulary. `--gene` became optional **for this source alone** and is still refused as
+   absent for the other three — the increment is asked for as a whole, where an unfiltered ClinVar
+   draft would be the whole snapshot.
+3. **`dataset` comes from the dump's own `edit_date`, not from HTTP `Last-Modified`.** The ClinVar
+   precedent the design names is `##fileDate` — a statement the file makes about itself — so a build
+   from a local dump produces a label a downloaded one can be compared against. Both tables' dates,
+   because both are adopted and they are curated separately; the header and the sha256 stay in
+   `release.json`, where provenance of the *fetch* belongs. The increment's own label is that plus the
+   ClinVar release, since a derived artifact's identity is the pair it came from, and it is withheld
+   entirely when either half is unknown.
+4. **The child carries its own citations parquet**, for the non-photocopy rows only, so the drafter
+   reads one snapshot rather than two — the alternative lets a draft run against a MITOMAP snapshot
+   that is *not* the one the join used.
+5. **`STATE_BY_CLIN_SIG` moved to `clin_sig.py`.** `pubmind_draft` was already importing it out of
+   `clinvar_draft`; a third caller made the private home indefensible, on the normalizer's own
+   argument.
+
+### What it deliberately does not do, and what is still open
+
+Never maps a confirmation token; never maps `[VUS*]`; never drafts a photocopy; never left-anchors the
+`:` deletions in the format or compiler tiers; and never puts a count in a constant — the tests assert
+relationships (a miss key is absent from the parent, a photocopy key is present, a rated-miss
+`clin_sig` is the normalizer's image of its bracket, the four buckets partition the source rows, a
+child whose parent pin does not match the parent on disk is stale).
+
+Still open, and none of it blocking: **`VUS*` is withheld rather than understood** — a legend, or
+McCormick 2020 read in full, would revisit it, and until then a rated-miss count that silently included
+those rows would be a lie. **The 388 unrated misses are a real identity increment with no mappable
+class**, counted and not drafted; whether their identity earns a row at all is a second, smaller call.
+**The `:` deletions want an enricher pass** that anchors them against the rCRS — legal in that tier,
+which may fetch. **Indel normalization** would turn the left-alignment caveat into an answer. And
+**publishing the MITOMAP snapshot to HuggingFace is outbound and stays the maintainer's**: the lane has
+`mitomap publish` and CC BY 3.0 permits it, but nothing has been uploaded. The derived child is
+deliberately unpublishable for a fourth reason that is neither a refusal nor an unestablished
+permission — a pulled copy would carry a currency check its holder cannot run.
+
+**Related** RM164 (where it was found), RM176 (the registry it extends),
+[MITOMAP_STATUS](probes/MITOMAP_STATUS.md), [rm171_diff_strategy](probes/rm171_diff_strategy.md),
+`@one-normalizer-two-spellings`, `@lookup-with-a-default-hides-a-new-member`, `@tautology-zero`,
+`@currency-asks-the-source-not-the-cache`, `@stub-cannot-compile`, `@probe-names-the-table`.
+
 ## RM176 — eleven builders, three stages each, and the roster that was supposed to name them was a list
 
 **Severity** high · **Status** ✅ **SHIPPED 2026-09-02 in the uncut 0.7.0** — the cache registry, three

@@ -992,10 +992,46 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 | **ClinPGx drug labels** 🔒 | `drug_labels/` | `$JUST_DNA_DRUG_LABELS_CACHE` | `ensure_drug_labels_snapshot` | `just-dna-seq/clinpgx_drug_labels` — repo not created yet | what five regulators say about a gene/drug pair (`clinpgx check-labels`) |
 | **STRchive** ✅ | `strchive/` | `$JUST_DNA_STRCHIVE_CACHE` | `ensure_strchive_snapshot` | `just-dna-seq/strchive` — MIT, repo not created yet | repeat-locus bands (`check-repeat-bands`, `draft-repeats`) |
 | **ACMG SF** ❓ | `acmg_sf/` | `$JUST_DNA_ACMG_CACHE` | **none, by design** | **never published** | the secondary-findings list (`check-acmg`) |
+| **MITOMAP** ✅ | `mitomap/` | `$JUST_DNA_MITOMAP_CACHE` | `ensure_mitomap_snapshot` | `just-dna-seq/mitomap` — CC BY 3.0, repo not created yet | curated mtDNA variants, both `mmutation` and `rtmutation` (RM171) |
+| **MITOMAP miss** ⛓ | `mitomap_miss/` | `$JUST_DNA_MITOMAP_MISS_CACHE` | **none — derived** | **not published, deliberately** | what MITOMAP publishes and the ClinVar cache does not (`draft-panel --source mitomap-miss`) |
 
 🔒 = licence-gated (`commercial_use=False`). ❓ = terms **unestablished** (`commercial_use=None`), which
-is a different state and not a weaker one: unknown is not permissive. The three 🔒 rows are RM38, new in
-0.5.1; the PubMind ❓ row is RM134 and the MANE one is RM168, both new in 0.7.
+is a different state and not a weaker one: unknown is not permissive. ⛓ = **derived**: this lane has
+parents rather than a download. The three 🔒 rows are RM38, new in 0.5.1; the PubMind ❓ row is RM134
+and the MANE one is RM168; the two MITOMAP rows are RM171.
+
+### The derived lane, and the `parents` field (RM171)
+
+`mitomap_miss` is the registry's first lane that fetches nothing. **Its acquire stage is both parents
+being on disk** — the MITOMAP snapshot and the ClinVar one — and its build is an exact
+`(start, ref, alt)` join on chrMT, upper-cased on both sides, with **no position-level fallback**: a
+hit at the same position on a different allele is a different allele, and collapsing onto it would
+hide a real increment or invent one where the two sources anchor an indel differently.
+
+`CacheLane.parents` is a tuple of lane names, empty for every lane that acquires its own bytes. Three
+things read it and only one is the join:
+
+- **`rebuild_lane` guards on it.** A child whose parents are not on disk is `built=None` naming which
+  one, with the command that would provision it. The two wrong answers are both silent: a `False`
+  files another lane's absence as this lane breaking, and an empty increment is the strongest
+  possible claim about MITOMAP — *it publishes nothing ClinVar lacks* — derived from a comparison that
+  never ran.
+- **The registry order is load-bearing**, because `cache prepare` walks it top to bottom. A parent
+  must precede its child, and a test asserts it rather than a comment.
+- **`cache rebuild` hands the child the parents it just cut**, under `out/<parent>/`, so a fresh set
+  is internally consistent. `--only mitomap_miss` names none and falls back to the resolvers, which is
+  the right answer for a run with no rebuild behind it.
+
+**The child pins both parents in its `release.json`**, which is what makes a ClinVar rebuild without a
+child rebuild *detectable* rather than silent — `mitomap_miss_build.stale_parents` re-reads both and
+names the one that moved. A parent that is **gone** is deliberately not reported as one that moved:
+"provision the parent" and "rebuild the child" are different instructions.
+
+**It is not published, and the reason is a fourth one.** Both parents are redistributable — ClinVar is
+public domain, MITOMAP is CC BY 3.0 — so nothing in the licensing bars it. What bars it is what the
+artifact *is*: a pulled copy would carry a currency check its holder cannot run, having neither
+parent. Rebuilding it locally is seconds against caches the machine already has, and it cannot be
+stale by construction.
 
 **The two ❓ rows are unestablished for different reasons, and the third column differs with them.**
 PubMind's bytes carry no stated terms at all; MANE's carry a *policy* — NCBI places no restrictions on
@@ -3607,6 +3643,17 @@ next such change into a finding.
 The compiler holds **no** source→licence map — that would give it a source convention (Principle 2)
 and an un-injected reference. It reads only what the enricher recorded.
 
+**A grant may be a floor rather than a total**, and two constants are written that way. The PGS
+Catalog's terms are per score. MITOMAP's page grants CC BY 3.0 for all of Mitomap.org "*unless
+otherwise noted*" (`MITOWIKI/HelpTerms` r5, read from a browser on 2026-09-03 — the data surface serves
+the dump to plain `curl` while the web surface 403s), so `MITOMAP_TERMS` states what the **host** grants
+and never that every cell in the dump carries it: a per-record note outranks the site default
+(`@a-hosts-terms-are-not-its-contents-terms`). Its `commercial_use=True` is *stated* rather than
+inferred from the CC grant — the page names individuals, clinical labs and commercial services, with no
+permission and no fee — which is why that axis is a `True` and not the `None` an unestablished
+permission gets. One trap, since a search reproduces it: MITOMAP's NAR *article* is CC BY-NC, and that
+is the paper's licence, not the database's.
+
 ### On a host, or in a service — the gated sources need a cache (RM38)
 
 Everything above assumes the shape this tier was written for: an author runs the enricher on their own
@@ -3904,6 +3951,57 @@ three are ClinVar flags by their own field descriptions, and a position appearin
 says nothing about whether *this allele* is in ClinVar. No `phenotype`, because the channel carries no
 condition. `state` is folded from the source's own call exactly as it is on the ClinVar path, and left
 as a stub for any call the fold does not cover.
+
+### Drafting from MITOMAP — the increment, never the photocopies (0.7, RM171)
+
+```bash
+just-dna-enricher mitomap build --out data/caches/mitomap                 # the pg_dump → parquet
+just-dna-enricher mitomap miss  --out data/caches/mitomap_miss            # the join, from both parents
+just-dna-enricher draft-panel spec/ --source mitomap-miss --use non-commercial
+```
+
+**The fourth `--source` on `draft-panel`, and the first that is not asked for by gene.** The other
+three draft a *panel*: ClinVar's snapshot is 4.4 M records and CIViC's is a cancer corpus, so an
+unfiltered draft from either is not a panel but the source. This one's snapshot **is** the increment,
+so `--gene` filters where it exists and is not required; the other three still refuse an empty one.
+
+**What it writes.** Identity as MITOMAP publishes it (`chrom=MT`, `start`, `ref`, `alts`), the `gene`
+where `locus` names exactly one, the disease string verbatim as `phenotype`, and `clin_sig` from the
+bracketed ClinGen mtDNA VCEP rating through the one shared normalizer. `state` is folded from that call
+where `STATE_BY_CLIN_SIG` has an answer. Study rows come from MITOMAP's own `reference.nlmid` links and
+are **position-keyed**, like ClinVar's, because a study is evidence about a locus.
+
+**What it refuses, and each for its own reason** — three sentences rather than one skipped count,
+because they send an author somewhere different:
+
+| bucket | why nothing is written |
+|---|---|
+| **photocopy** | the exact allele is in ClinVar, so that VCEP call already reaches this repository with ClinVar's own provenance. Drafting a second copy attributes it to the wrong publisher, and hands a ClinVar concordance check a copy of ClinVar to agree with (`@tautology-zero`) |
+| **unrated miss** | absent from ClinVar, and MITOMAP published no class this tier may map — no bracket, a bare confirmation token, or `[VUS*]`. A real identity increment, counted, with no significance invented for it |
+| **unmintable** | the published alleles do not spell a VCF pair. A `:` deletion needs the rCRS base at `position-1`, which Principle 2 forbids these tiers from fetching, so the question was never askable |
+
+**`genotype` is a placeholder, and the reason is not the contig's.** `clinvar_draft.sole_expressible_genotype`
+*fills* the ALT on chrMT — a haploid contig leaves no zygosity open, so there is no decision for a
+placeholder to protect (S6). That is right about ClinVar, whose record is a claim about an allele.
+MITOMAP's row is a claim about a **literature corpus**: `homo` and `hetero` say whether the variant has
+been *reported* in each state, and a share of the increment is reported only heteroplasmically. Writing
+`genotype=<ALT>` there states the homoplasmic reading, which is exactly what
+`reference_examples/mt_heteroplasmy` keeps in `variants.csv` and separates from its `heteroplasmy.csv`
+bins. So the cell is stubbed, `conclusion` with it, and the draft prints **one uncapped worklist line
+per row** carrying the alleles and the flags MITOMAP did publish. A MITOMAP-drafted module does not
+compile until a human writes those cells; that is the cost of the adoption rather than a defect in it.
+
+**Four more things the draft says out loud.** A drafted row keying on an indel is named, because the
+join is exact and neither side is left-aligned — such a row is either an allele ClinVar does not carry
+or one it carries at another anchor, and this pass cannot tell you which. A row whose `allele` *name*
+states a variable number of copies while the allele columns state one definite pair is named too: the
+source disagreeing with itself, kept rather than repaired, because rewriting it needs a rule for what
+`(n)` means that MITOMAP has not given. A parent that has moved since the increment was built is
+reported and the rows are still drafted — a stale increment is the increment against the older parent,
+which is a fact worth stating and not an authoring error. And the `SourceRow` names **mitomap**, never
+the derived lane: the computation is this repository's, the content and the attribution duty are the
+source's, and `dataset` carries both parents because a derived artifact's identity is the pair it came
+from.
 
 ### Lookups answer, they never fill
 
@@ -4258,6 +4356,9 @@ just-dna-enricher draft-panel spec/ --gene MTHFR --no-download   # use a cached 
 just-dna-enricher draft-panel spec/ --gene MTHFR --dry-run   # the genotype worklist, appending nothing
 just-dna-enricher draft-panel spec/ --gene BRCA1 --source pubmind --pubmind-cache pm/  # literature verdicts
 just-dna-enricher draft-panel spec/ --gene BRCA1 --source pubmind --min-confidence 2   # a deeper floor
+just-dna-enricher mitomap build --out mm/       # MITOMAP's pg_dump → both curated mtDNA tables
+just-dna-enricher mitomap miss  --out mm-miss/  # the join against ClinVar chrMT; both parents required
+just-dna-enricher draft-panel spec/ --source mitomap-miss   # the increment only; --gene filters, never required
 just-dna-enricher clinvar citations --out cv/ --download   # add PMIDs so a panel can compile
 just-dna-enricher clinvar publish cv/                     # data/ + citations/ + release.json
 
@@ -4327,7 +4428,8 @@ directly to compose passes, inject clients, or run in-process.
 | `acmg build` | `acmg_build.build_acmg_snapshot` → `acmg.load_acmg_snapshot` |
 | `draft` | `pgx_draft.draft_gene` |
 | `draft-clinpgx` | `clinpgx_draft.draft_pharm_variants` |
-| `draft-panel` | `clinvar_draft.draft_gene_panel` |
+| `draft-panel` | `clinvar_draft.draft_gene_panel` / `pubmind_draft.draft_gene_panel_from_pubmind` / `civic_draft.draft_panel_from_civic` / `mitomap_draft.draft_panel_from_mitomap_miss`, by `--source` |
+| `mitomap build` / `miss` / `publish` | `mitomap_build.download_mitomap_dump` + `build_snapshot` / `mitomap_miss_build.build_miss_snapshot` (+ `stale_parents`) / `upload.publish_reference_snapshot` |
 | `draft-repeats` | `strchive_draft.draft_repeat_loci` |
 | `strchive build` | `strchive_build.build_strchive_snapshot` → `strchive.load_strchive_catalogue` |
 | `clinpgx build` / `clinpgx check` | `clinpgx_build.download_clinpgx_zip` + `build_snapshot` / `clinpgx.enrich_clinpgx` |

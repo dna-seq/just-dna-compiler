@@ -41,6 +41,7 @@ from just_dna_enricher.caches import (
     RebuildOutcome,
     RebuildRequest,
     lane_name,
+    parents_from_rebuild_dir,
     prepare_caches,
     rebuild_lane,
 )
@@ -1651,7 +1652,7 @@ def cache_status_() -> None:
             # and a convention that holds for ten of twelve prints two commands nobody can run.
             how = "`cache pull`" if lane.ensure is not None else f"`{lane.build_command}`"
             typer.secho(
-                f"  {lane.name:11} absent   — {lane.serves}; provision with {how}",
+                f"  {lane.name:13} absent   — {lane.serves}; provision with {how}",
                 fg=typer.colors.YELLOW,
             )
             continue
@@ -1663,7 +1664,7 @@ def cache_status_() -> None:
             # Present and unreadable is not the same as absent, and a provenance failure is not a
             # data failure — the snapshot is still usable, so this says so instead of hiding it.
             label = "(unreadable release.json)"
-        typer.secho(f"  {lane.name:11} present  {path}  {label}", fg=typer.colors.GREEN)
+        typer.secho(f"  {lane.name:13} present  {path}  {label}", fg=typer.colors.GREEN)
 
 
 @cache_app.command("pull")
@@ -1853,9 +1854,7 @@ def cache_rebuild_(
             declared_use=declared,
             pin=pins.get(lane.name),
             source=Path(sources[lane.name]).expanduser() if lane.name in sources else None,
-            # A derived lane joins what this run already cut, where it cut it. `--only <child>`
-            # names no parent here and falls back to the registry's resolvers inside `rebuild_lane`.
-            parents={name: out / name for name in lane.parents if (out / name).is_dir()},
+            parents=parents_from_rebuild_dir(lane, out),
         )
         outcome = rebuild_lane(lane, request)
         outcomes.append(outcome)
@@ -1863,7 +1862,7 @@ def cache_rebuild_(
             True: typer.colors.GREEN, False: typer.colors.RED, None: typer.colors.YELLOW,
         }[outcome.built]
         typer.secho(
-            f"  {lane.name:11} {outcome.label:8} {outcome.detail}",
+            f"  {lane.name:13} {outcome.label:8} {outcome.detail}",
             fg=colour, err=outcome.built is not True,
         )
         if outcome.built and publish:

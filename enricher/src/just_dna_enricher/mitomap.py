@@ -333,6 +333,24 @@ def nlmid_pmid(value: str | None) -> str | None:
     return text
 
 
+#: An `allele` name that states a variable number of copies — MITOMAP writes `(n)`, as in
+#: `T961delT+ / -C(n)ins`. Exactly one row in the two tables does today, and it is the shape rather
+#: than the count that matters: the source's own two encodings of that record disagree about
+#: definiteness, since the allele *columns* flatten it to a single `T`→`CC`.
+_INDEFINITE_LENGTH = re.compile(r"\(n\)", re.IGNORECASE)
+
+
+def indefinite_length(allele: str | None) -> bool:
+    """Whether the `allele` name describes a variable-length event the allele columns cannot state.
+
+    **Reported, never repaired** (`@multiplicity-is-a-finding`). The row keeps MITOMAP's own
+    `(refna, regna)` — dropping it would discard a published call, and rewriting it would need a rule
+    for what `(n)` means that MITOMAP has not given. What a caller does with this is warn, on a row
+    the author has to curate by hand anyway.
+    """
+    return bool(_INDEFINITE_LENGTH.search(allele or ""))
+
+
 def single_gene(locus: str | None) -> str | None:
     """`locus` as a gene symbol, or `None` where the cell names something that is not one gene.
 

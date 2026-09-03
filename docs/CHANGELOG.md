@@ -107,6 +107,35 @@ four-tuple list inside `cli.py` rather than something a test could walk.
   command (it composed `f"{name} build"`, which named two commands that do not exist), and
   `cache pull`'s exit code no longer reflects an unpublished repo. No parquet column, model field or
   vocabulary member changed, and builder-only dependencies were already `[dev]`-only.
+- **MITOMAP is two more lanes, and one of them is derived from the other two**
+  ([RM171](ROADMAP_HISTORY.md#rm171--mitomaps-curated-mtdna-tables-adopted-as-the-increment-they-carry-over-clinvar),
+  `just-dna-enricher` only, no schema change). `mitomap build` cuts the source's published `pg_dump`
+  into a parquet snapshot — both curated mtDNA variant tables, because the repository's one mtDNA
+  module draws from `rtmutation` and neither of its variants is in `mmutation` — and `mitomap miss`
+  joins it against the ClinVar chrMT parquet to publish **the increment MITOMAP carries over the
+  cache**, never the rows both already have. `draft-panel --source mitomap-miss` appends the rated
+  half of that increment to `variants.csv` and `studies.csv`. `CacheLane` gains `parents`, empty for
+  the twelve lanes that shipped yesterday, and a child whose parents are not on disk is `built=None`
+  naming which — never `False`, and never an empty increment, which would be the strongest possible
+  claim about a source derived from a comparison that never ran. The child pins both parents in its
+  `release.json`, so a ClinVar rebuild without a child rebuild is detectable, and the drafter says so
+  rather than refusing. **Nothing hardcodes a diff**: the number the item was filed about ("sixteen
+  new expert-panel calls") is derived on every rebuild, and against the ClinVar of the build's own day
+  it is six rather than sixteen — thirteen of the sixteen are deletions MITOMAP writes right-anchored,
+  which need an rCRS base at `position-1` that Principle 2 forbids these tiers from fetching, so they
+  are counted as unmintable instead. MITOMAP's confirmation token is never mapped onto `clin_sig`
+  (the source states it is not an assignment of pathogenicity) and neither is its undocumented
+  `[VUS*]`; the five documented ClinGen mtDNA VCEP abbreviations became keys in the one shared
+  normalizer, so `normalize_clin_sig("LP")` and `normalize_clin_sig("Likely_pathogenic")` are the same
+  answer. `MITOMAP_TERMS` is CC BY 3.0 written as a **floor**, with commercial and clinical use stated
+  rather than inferred, so the compile gate does not fire. **A drafted row's `genotype` is a
+  placeholder** — MITOMAP's `homo`/`hetero` are literature-presence flags rather than a called
+  genotype — so a module drafted from this source does not compile until a human writes those cells,
+  and the draft prints one worklist line per row with the flags the source did publish.
+- **Consumer-visible, second half:** `draft-panel --gene` is optional under `--source mitomap-miss`
+  (the increment is asked for as a whole) and still required for the other three sources; a lane name
+  may be written with a hyphen anywhere one is taken (`--only mitomap-miss`, `--source mitomap-miss`)
+  and the declared underscore member is what is stored. `cache status` gains two rows.
 
 ### The citations ten CIViC records carry and no dated file can reach ([RM160](ROADMAP_HISTORY.md#rm160--the-citations-ten-civic-records-carry-are-published-on-one-surface-and-it-is-the-one-nothing-read))
 

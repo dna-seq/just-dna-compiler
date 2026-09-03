@@ -934,6 +934,17 @@ def parent_snapshots(
     return found, missing
 
 
+def parents_from_rebuild_dir(lane: CacheLane, out: Path) -> dict[str, Path]:
+    """A derived lane's parents as **this rebuild run** just cut them, under `out/<parent>/`.
+
+    Two callers — `rebuild_caches` and the `cache rebuild` command — and one derivation, because the
+    two producing different answers is precisely the fork that would give a child pinned to one
+    ClinVar and sitting beside another. A parent this run did not build is left out and falls back to
+    the registry's resolver inside `rebuild_lane`, which is the `--only <child>` case.
+    """
+    return {name: out / name for name in lane.parents if (out / name).is_dir()}
+
+
 def rebuild_lane(lane: CacheLane, request: RebuildRequest) -> RebuildOutcome:
     """Run one lane's three stages, or say why it did not run.
 
@@ -962,9 +973,9 @@ def rebuild_lane(lane: CacheLane, request: RebuildRequest) -> RebuildOutcome:
             )
             return RebuildOutcome(
                 lane.name, None,
-                f"derived from {', '.join(lane.parents)} and {'is' if len(missing) == 1 else 'are'} "
-                f"not on disk: {how}. A miss set computed without a parent would be an increment "
-                f"measured against a comparison that never ran, not an empty one",
+                f"derived from {' and '.join(lane.parents)}; not on disk: {how}. A miss set computed "
+                f"without a parent would be an increment measured against a comparison that never "
+                f"ran, not an empty one",
             )
         request = RebuildRequest(
             out_dir=request.out_dir, declared_use=request.declared_use, pin=request.pin,
@@ -1123,17 +1134,14 @@ def rebuild_caches(
     # **A derived lane joins the snapshots THIS run cut, where this run cut them** (RM171). Every lane
     # is written into `out/<lane>/`, so by the time the child's turn comes its parents are siblings on
     # disk — and joining the live cache instead would produce a child whose `release.json` pins two
-    # parents that are not the ones beside it. A parent this run did not build falls back to the
-    # registry's resolver inside `rebuild_lane`, which is the `--only <child>` case.
+    # parents that are not the ones beside it.
     return [
         rebuild_lane(lane, RebuildRequest(
             out_dir=out / lane.name,
             declared_use=declared_use,
             pin=pins.get(lane.name),
             source=sources.get(lane.name),
-            parents={
-                name: out / name for name in lane.parents if (out / name).is_dir()
-            },
+            parents=parents_from_rebuild_dir(lane, out),
         ))
         for lane in (lanes if lanes is not None else CACHE_LANES)
     ]

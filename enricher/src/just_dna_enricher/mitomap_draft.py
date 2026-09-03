@@ -52,7 +52,7 @@ from just_dna_enricher.licensing import (
     withdraw_stale_dataset,
 )
 from just_dna_enricher.locations import resolve_mitomap_miss_reference
-from just_dna_enricher.mitomap import SOURCE_NAME
+from just_dna_enricher.mitomap import SOURCE_NAME, indefinite_length
 from just_dna_enricher.mitomap_miss_build import (
     CITATIONS_PARQUET,
     CONTIG,
@@ -83,11 +83,6 @@ _MATCH_ON: tuple[str, ...] = ("chrom", "start", "ref", "alts")
 #: shown. `state` is stubbed *per row*, only where the fold has no answer, so it is not in here.
 _STUBBED: tuple[str, ...] = ("genotype", "conclusion")
 
-#: How many rows a note names before it becomes a count. The aggregation rule this tier applies
-#: everywhere, so a source whose spelling drifted does not print one sentence per row.
-_NOTE_LIMIT = 5
-
-
 @dataclass
 class MitomapDraftResult:
     """What was drafted, and an account of every row in the increment that was not."""
@@ -106,6 +101,9 @@ class MitomapDraftResult:
     withheld_brackets: dict[str, int] = field(default_factory=dict)
     #: Rated misses whose key is an indel, and the parents that have moved since the child was built.
     indel_keys: int = 0
+    #: Drafted rows whose `allele` NAME states a variable-length event (`C(n)ins`) that the allele
+    #: columns flatten to one definite pair. The source disagreeing with itself, reported not repaired.
+    indefinite_alleles: list[str] = field(default_factory=list)
     stale: dict[str, tuple[dict, dict]] = field(default_factory=dict)
     dataset: str | None = None
 
@@ -297,6 +295,11 @@ def draft_panel_from_mitomap_miss(
         drafted.append(row)
         if str(row.get("key_shape")) == "indel":
             result.indel_keys += 1
+        if indefinite_length(row.get("allele")):
+            result.indefinite_alleles.append(
+                f"{CONTIG}:{row.get('start')} {row.get('ref')}>{row.get('alt')} "
+                f"(MITOMAP calls it {row.get('allele')!r})"
+            )
 
     if partials:
         result.reports.append(
@@ -394,6 +397,15 @@ def _notes(
             f"neither side is left-aligned, so one of those is an allele ClinVar does not carry or "
             f"one it carries at another anchor — this pass cannot tell you which, and the drafted "
             f"row states MITOMAP's spelling."
+        )
+    if result.indefinite_alleles:
+        notes.append(
+            f"{len(result.indefinite_alleles)} drafted row(s) carry an allele NAME stating a "
+            f"variable number of copies while the allele columns state one definite pair — the "
+            f"source disagreeing with itself: {examples(result.indefinite_alleles)}. The row keeps "
+            f"MITOMAP's own ref/alt, because dropping it would discard a published call and "
+            f"rewriting it would need a rule for what `(n)` means that MITOMAP has not given. "
+            f"Decide it by hand along with the genotype."
         )
     worklist = _genotype_worklist(drafted)
     if worklist:

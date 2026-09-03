@@ -213,6 +213,27 @@ is dropped — the count is in the build output rather than hidden, and it is no
 `studies.csv` wants. And it refuses a row where CIViC's own evidence puts a variant in both directions,
 naming the variant: choosing between them is your call, not the tool's.
 
+**`draft-panel --source mitomap-miss` drafts what one mtDNA source publishes that ClinVar does not, and
+nothing else.** MITOMAP curates about 1,100 mitochondrial disease variants; most of them are alleles
+ClinVar already carries with its own provenance, so drafting those would give you the same call twice
+under the wrong name. This source drafts only the rows that are **absent** from the ClinVar snapshot
+*and* carry one of the five ClinGen mtDNA expert-panel classes — and it tells you, in three separate
+sentences, how many it left behind and why: already in ClinVar, absent but with no class the schema can
+express, or an allele the source spells in a form no VCF pair can state.
+
+Five things to know. Two snapshots have to exist first (`just-dna-enricher mitomap build --out mm/`,
+then `just-dna-enricher mitomap miss --out mm-miss/`, which needs a ClinVar snapshot too); the second
+one **pins both**, so if ClinVar is rebuilt without it, the draft tells you the increment is against the
+older ClinVar rather than quietly using it. `--gene` filters here but is not required, unlike the other
+three sources — the increment is the query. Every drafted row's `genotype` **and** `conclusion` are
+placeholders, which is unusual: on the mitochondrial genome the other sources fill `genotype` for you,
+and this one does not, because MITOMAP's `homo`/`hetero` columns record whether a variant has been
+*reported* in each state rather than calling one — a variant reported only heteroplasmically is an
+argument for a `heteroplasmy.csv` row, not a homoplasmic `variants.csv` genotype. The draft prints those
+flags for every row so you can decide. It writes **study rows** from the source's own citation links.
+And it never maps MITOMAP's confirmation token (`Reported`, `Cfrm`) onto `clin_sig`: the source states
+in as many words that the token is not an assignment of pathogenicity.
+
 One reading to get right, because the tool deliberately leaves a blank where you might expect a value.
 Where CIViC records evidence that *does not support* a variant being predisposing, the drafted row has
 **no `direction` at all** — a paper arguing against a risk claim has not shown the variant to be
@@ -285,7 +306,7 @@ Nothing automated fills these, on purpose:
 
 | Cell | Why it is yours |
 |---|---|
-| `genotype` | Sources publish **alleles, not genotypes**. Whether one copy is informative follows from the condition's inheritance mode. Write it from the allele pair the draft reported. **Except on a non-diploid contig**, where only one genotype is expressible and `draft-panel` therefore writes it for you: MT always, chrY outside the pseudoautosomal regions. Those rows arrive complete, and the draft says so in one line. |
+| `genotype` | Sources publish **alleles, not genotypes**. Whether one copy is informative follows from the condition's inheritance mode. Write it from the allele pair the draft reported. **Except on a non-diploid contig**, where only one genotype is expressible and `draft-panel` therefore writes it for you: MT always, chrY outside the pseudoautosomal regions. Those rows arrive complete, and the draft says so in one line. **`--source mitomap-miss` is the one exception to the exception** — it leaves MT genotypes to you and prints the source's own homoplasmic/heteroplasmic report flags per row, because that source describes a literature record rather than calling an allele. |
 | `state` (when stubbed) | The record is `uncertain_significance` or otherwise undecided, and no vocabulary member means "undecided" — `neutral` says benign, `risk` says a direction. If you can justify neither, drop the row rather than pick one to make the compile pass. |
 | `weight`, `direction`, `effect_size` | Your model of the finding. ClinVar publishes no effect statistic. |
 | `trait_efo_id` | A source's condition is free text / MedGen. Mapping it to an ontology is inference. |
@@ -844,7 +865,8 @@ workaround.
 | `dosage <dir>` | ClinGen dosage rows onto `gene_metrics.csv`. `--use`, `--url` |
 | `literature <dir>` | → `literature.csv`. `--fulltext/--no-fulltext`, `--doi/--no-doi` |
 | `draft <dir> --gene G` | CPIC → the three PGx tables. `--drug`, `--allele`, `--population`, `--use`, `--offline`, `--cpic-cache`, `--dry-run` |
-| `draft-panel <dir> --gene G` | ClinVar → `variants.csv` + `studies.csv`. `--source clinvar\|pubmind`, `--snapshot`, `--pubmind-cache`, `--offline`, `--download/--no-download`, `--clin-sig`, `--min-review-stars`, `--max-citations`, `--min-confidence`, `--use`, `--dry-run` |
+| `draft-panel <dir> --gene G` | an authority → `variants.csv` + `studies.csv`. `--source clinvar\|pubmind\|civic\|mitomap-miss` (`--gene` required for the first three), `--snapshot`, `--pubmind-cache`, `--civic-cache`, `--mitomap-miss-cache`, `--offline`, `--download/--no-download`, `--clin-sig`, `--min-review-stars`, `--max-citations`, `--min-confidence`, `--use`, `--dry-run` |
+| `mitomap build` / `mitomap miss` | the mtDNA source's dump → a snapshot, then its increment over ClinVar. `--out`, `--dump`, `--url`; `--mitomap-cache`, `--clinvar-cache` |
 | `draft-clinpgx <dir> --snapshot S` | ClinPGx → `pharm_variants.csv`. `--gene`, `--drug`, `--min-evidence-level`, `--use`, `--dry-run` |
 | `check-identifiers <dir>` | trait CURIEs (OLS4), gene symbols (HGNC), `pgs_id` against the PGS Catalog. `--no-traits`, `--no-genes`, `--no-pgs` |
 | `check-acmg <dir>` | `acmg_sf` vs the ACMG SF list. `--sf-list` (strongly preferred), `--offline`, `--url` |
