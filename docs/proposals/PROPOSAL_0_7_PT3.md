@@ -14,6 +14,9 @@ verification-check member, a new cache lane and a new draft source are every one
 under P3/P8. No model field is removed, promoted to required or retyped. The 0.6 charter amendment
 prices the authored layer: RM174 adds parquet columns only (approximately free), RM160 adds no
 authored column at all, and RM171 adds no schema — it writes rows into tables that already exist.
+(**RM160's half of that sentence is wrong and is corrected in the addendum at the foot of this file**:
+it shipped with one optional authored column pair. Still minor-legal, still additive; the price was
+misquoted, not the legality.)
 
 **Not in scope, and named so nobody widens into them.** RM164 stays parked to 0.8 — the MITOMAP probe
 confirmed its measured negative rather than moving it, and no source publishes a heteroplasmy level
@@ -146,6 +149,9 @@ the builder reads.
 5. **`civic build` and `civic reproduce` are untouched.** That is the whole point of shape 3: the
    published snapshot keeps its byte-reproducibility contract and does not grow.
 
+**Landed 2026-09-03**, as written apart from the one correction in the addendum below. See
+ROADMAP_HISTORY for what shipped.
+
 ### What a first cut owes
 
 - The skip must distinguish *the API said this variant has nothing more* from *nobody asked*. Three
@@ -246,3 +252,31 @@ becomes a record, and the next open item is tracked in ROADMAP like any other, n
 **One thing that is not code and is owed to whoever publishes:** the ClinPGx HuggingFace snapshot is
 still the 2025 parquet until `clinpgx build` + `clinpgx publish` run. RM175 rebuilt the builder, not
 the published artifact. Publishing is outbound and stays the maintainer's.
+
+---
+
+## Addendum, 2026-09-03 — RM160 shipped with an authored column pair, which this file priced at none
+
+The release-class paragraph at the top says RM160 "adds no authored column at all". It shipped with
+two: `StudyRow.confidence` and `StudyRow.confidence_unit`, optional, 0.7.0.
+
+**Why the estimate was wrong.** The item's own point 4 requires `status` to ride as
+`confidence`/`confidence_unit` — a requirement settled before this round, in RM160's entry, and
+restated here as non-negotiable. What nobody checked while writing the release-class line is that **no
+authored model carried that pair**. `ClinSigAuthorityCallRow` has it, and that is a machine-written
+concordance row about clinical significance, not a citation. So the requirement and the price were
+written a paragraph apart and could not both be true, and the one that had a test attached won.
+
+**The legality does not move.** A new optional column is minor-legal under P3/P8; nothing was removed,
+promoted to required or retyped. `content_signature` does not move for a module that fills neither
+cell — asserted by hashing a module that declares the columns empty against one written before they
+existed — and the parquet the pair lands in is `studies.parquet`, which RM140 had already moved on the
+ten reference examples carrying one, inside this same uncut 0.7.0. The 0.6 amendment's price is real
+and was paid: the authored layer is full cost, and the gate it asks — *will this burden the author?* —
+is answered by both cells being optional and by the model refusing only the incoherent combination.
+
+**The rule this records, since a closed proposal is closed against reopening its decisions and not
+against recording one taken inside the same release.** A release-class line that prices an item at
+"no authored column" is a claim about the *schema surface as it stands*, and it has to be checked
+against the models rather than inferred from the item's shape. This one could have been settled by a
+single grep for the field name.

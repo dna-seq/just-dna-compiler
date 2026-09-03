@@ -19,6 +19,7 @@ import httpx
 import pytest
 from just_dna_compiler.compiler import authored_input_entries, compile_module
 from just_dna_enricher import identifiers as identifiers_module
+from just_dna_enricher.civic_citations import EvidenceStatusCheck
 from just_dna_enricher.cli import app
 from just_dna_enricher.enrich import _verification_records, enrich
 from just_dna_enricher.identifiers import OntologyClient
@@ -314,6 +315,9 @@ def _records_for(ref_check, build, **over):
         "refutation_skip": "no_reference",
         "refutation_detail": "no_snapshot",
         "refutation_basis": None,
+        # RM160's canary. The neutral baseline is a module that records no CIViC-API citation, which
+        # is `nothing_to_check` — the same shape the other legs use when there is nothing to ask.
+        "evidence_status": EvidenceStatusCheck(skip="nothing_to_check"),
         "civic_ref": None,
         **over,
     }

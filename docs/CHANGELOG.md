@@ -108,6 +108,46 @@ four-tuple list inside `cli.py` rather than something a test could walk.
   `cache pull`'s exit code no longer reflects an unpublished repo. No parquet column, model field or
   vocabulary member changed, and builder-only dependencies were already `[dev]`-only.
 
+### The citations ten CIViC records carry and no dated file can reach ([RM160](ROADMAP_HISTORY.md#rm160--the-citations-ten-civic-records-carry-are-published-on-one-surface-and-it-is-the-one-nothing-read))
+
+**All three packages.** `just-dna-format` gains two optional `studies.csv` columns; the compiler
+carries them through; the enricher gains a client, a command and a check. Additive throughout — a new
+optional column and a new verification-check member are both minor-legal, so this fits the uncut 0.7.0.
+
+- **`civic citations <spec>` recovers what the builder cannot see.** RM169 widened the CIViC snapshot
+  as far as a dated file goes, and the wider basis is a VCF — which needs a POS. CIViC publishes no
+  GRCh37 coordinate for a variant it names as a class of event or a legacy notation, so the submitted
+  evidence on those records is on the GraphQL API and nowhere else. Ten records' citations were
+  unreachable; one of them is variant 1955, whose only reachable evidence for the numbering convention
+  its identity turns on is EID 9969 (PMID 12202531, free full text).
+- **`civic build` and `civic reproduce` are untouched.** That is the decision, not a side effect: the
+  published snapshot keeps its byte-reproducibility contract and does not grow. Hashing an API capture
+  as a build input was available and not taken — it keeps the *word* reproducible while changing what
+  it is reproducible against. The read is **one request per variant by construction**, which is why it
+  fits a command an author runs and would not fit a builder.
+- **`StudyRow.confidence` / `confidence_unit`** (optional, 0.7.0): how far the citing source stands
+  behind an evidence link, in **its own units, unconverted**. CIViC's `accepted` and `submitted` are
+  the case — a module holding both must not render them as the same row — and there is no house grade
+  for "an editor signed this off". A `confidence` with no `confidence_unit` is refused at the model,
+  the way `ClinSigAuthorityCallRow` already refuses it. `studies.parquet` gains both columns; a module
+  that fills neither hashes exactly as before.
+- **`evidence_status_currency` joins `VALID_VERIFICATION_CHECKS`**, emitted by `enrich`. It re-asks
+  CIViC about every citation the module recorded from the API and reports what has moved — a status
+  accepted or rejected since the draft, or a citation added since. **Warns in both modes and escalates
+  in neither**, because a source re-curating its own evidence is not an authoring error, and it is
+  deliberately not `dataset_currency`: that one asks which release a table came from, this one asks
+  whether a per-item judgement has moved.
+- **The pin is on the `SourceRow`, at the `literature` layer.** Every drafted row records when the API
+  was asked and on what basis (`dataset = civic_api:status=ALL`), rather than a timestamp in each
+  `conclusion` — a moment is not a claim about a variant. `(civic, annotation)` stays the snapshot
+  drafter's row: a second surface of one source may not claim the lane's slot.
+- **Withholding, three ways.** Rejected evidence is not drafted (counted, never silently dropped); a
+  paper whose live items disagree about their status gets its confidence withheld rather than picked;
+  a non-PubMed `citationId` withholds rather than becoming a `pmid`. `--offline` records every subject
+  as not-asked and writes nothing — never `ran, findings=0`.
+- **Consumer-visible:** two new `studies.parquet` columns, one new `verification.checks` member, one
+  new command. Nothing was removed, promoted to required, or retyped.
+
 ## 2026-09-02 — two records that contradicted themselves, and a header a draft could not write into
 
 **`just-dna-enricher` + `just-dna-compiler`, no schema change.** Three defects, each found by a probe

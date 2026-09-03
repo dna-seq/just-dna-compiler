@@ -1486,6 +1486,78 @@ permit every build unconditionally, and a flag feeding a gate that never gates i
 nothing.
 
 
+### `civic citations` — the citations no dated file can carry, and the canary on them (RM160)
+
+**The gap is structural rather than a coverage shortfall.** RM169 widened the snapshot as far as a
+dated file goes, and the wider basis is a VCF — so a VCF record needs a POS, and CIViC publishes no
+GRCh37 coordinate for a variant it names as a class of event or as a legacy notation. The submitted
+evidence on those records is published on exactly one surface, the GraphQL API. Ten records' citations
+are unreachable from every file the builder reads, and one of them is variant 1955 `VHL P71fs
+(c.211insT)`, whose only reachable evidence for the numbering convention its identity turns on is EID
+9969 (PMID 12202531, Dollfus 2002, free full text) — submitted, in the API, in no file. The counts are
+in `probes/CONTRADICTION_CORPORA.md` and `probes/CIVIC_SURVEY.md`.
+
+**`civic build` and `civic reproduce` are untouched, and that is the whole of the decision.** RM160
+was settled as shape 3: read `SUBMITTED` at enrich time, where network reads already live and
+reproducibility is never claimed. Hashing an API capture as a build input (shape 1) keeps the *word*
+reproducible while changing what it is reproducible against, and a second API-built parquet (shape 2)
+was dissolved by RM169. **The read is one request per variant by construction** — `evidenceItems`
+takes a single `variantId` — which is why it fits a command an author runs over their own module and
+would not fit a builder pinning a dated release. Batching it into `civic build` is the first repair
+anyone proposes and it is exactly the bargain this shape refused.
+
+**Three routes reach a CIViC variant id, and the third exists because the first two miss the class
+this is for.** The snapshot's own coordinate join goes through `clinical.comparison_plan`, the same
+resolved-`(chrom, start, ref, alt)` route the refutation leg and the ClinVar cross-check use, so every
+CIViC question in this tier is asked about the same alleles. The curated name-identity table (RM159)
+is how a variant whose identity CIViC publishes only inside its `name` is reachable at all. Neither
+reaches 1955 — it is one of the two records that round could **not** resolve — so `--variant-id N`
+asks about an id directly and writes a **module-level** citation row, which `StudyRow` has permitted
+since RM47.
+
+**A recovered citation lands in `studies.csv` and nowhere else.** `literature.csv` is the *derived*
+article table, filled by the `literature` command from the PMIDs `studies.csv` names, and an article
+row nothing cites is dropped from the artifact. Writing one here would either duplicate that pass or
+add a row the compiler discards; drafting the citing row and letting `literature` fill the article is
+the pairing that works in both directions. Several evidence items citing one paper are **one** row —
+five of CIViC's items cite PMID 17661816 on variant 844 — because `(variant_key, pmid)` is the grain.
+
+**`status` rides as `confidence`/`confidence_unit`, unconverted** (`civic_evidence_status`). CIViC's
+own instrument named rather than translated into a house grade, so an accepted row and a submitted row
+are not the same row once both are in the file. Where the live items behind one paper disagree, the
+confidence is **withheld** rather than picked. **Rejected evidence is not drafted at all**: `status:
+ALL` returns items CIViC's editors threw out, and a paper whose every item is rejected is content the
+source repudiated — counted under `rejected_by_source`, never silently dropped. A `citationId` on a
+non-PubMed source (ASCO and ASH abstracts) is a real id in another namespace and withholds rather than
+becoming a `pmid`.
+
+**The pin is on the `SourceRow`, and the layer is `literature`.** Every drafted row records when the
+API was asked (`fetched_at`) and on what basis (`dataset = civic_api:status=ALL`) — not a timestamp in
+each `conclusion`, which would fold the moment of a read into `content_signature`. `(civic,
+annotation)` stays `civic_draft`'s slot: a second surface of an already-declared source may not claim
+the lane's row, and a `civic_api` *source* would publish a route as a licensed body. `literature` is
+what this pass really supplies and is orphan-check exempt. Merge-not-clobber means the pin records the
+ask that first put a recovered citation into the module, which is a floor on *not asked since* — and
+the canary is what closes the gap.
+
+**`evidence_status_currency` is the canary, and it is what makes drafting from a live read honest.**
+`enrich()` re-asks CIViC about every citation the module records from this lane and reports what has
+moved: a status accepted or rejected since the draft (`civic_evidence_status_moved`), or a citation
+CIViC has added since (`civic_citation_added`). Two codes because they are two remedies. It warns in
+**both** modes and escalates in neither — a source re-curating its own evidence is not an authoring
+error — and it is deliberately **not** `dataset_currency`: that one asks which release a table came
+from, this one asks whether a per-item judgement has moved, and the two currency findings stay apart.
+
+Its four skip reasons are cleared by four different things, and none of them is a pass:
+
+| skip | what it means |
+| --- | --- |
+| `nothing_to_check` | the module records no citation from this lane — a `civic_draft` row carries no `confidence_unit`, so it is not re-asked against itself |
+| `offline` | the run had no egress. Never `ran, findings=0`: nobody-asked and the-source-has-nothing-more are different facts |
+| `no_reference` | no recorded citation could be mapped back to a variant id this run — no snapshot, or rows that ground the module rather than a variant. Published with its count rather than silently passed |
+| `unreachable` | CIViC answered for none of the variants asked about |
+
+
 ## Cache internals — locations, resolver, download
 
 - **`locations.py`** (moved from `just_dna_compiler.cache`) — `resolve_ensembl_reference` locates a usable
@@ -4241,6 +4313,7 @@ directly to compose passes, inject clients, or run in-process.
 | `strchive build` | `strchive_build.build_strchive_snapshot` → `strchive.load_strchive_catalogue` |
 | `clinpgx build` / `clinpgx check` | `clinpgx_build.download_clinpgx_zip` + `build_snapshot` / `clinpgx.enrich_clinpgx` |
 | `clinpgx build-labels` / `check-labels` | `drug_labels_build.download_drug_labels_zip` + `build_drug_label_snapshot` / `drug_labels.check_drug_labels` |
+| `civic build` / `citations` / `reproduce` | `civic_build.build_snapshot` / `civic_citations.draft_civic_citations` (+ `check_evidence_status_currency`, folded into `enrich`) / the CLI's own five checks |
 | `clinvar build` / `citations` / `publish` | `clinvar_build.download_clinvar_vcf` + `build_snapshot` / `download_var_citations` + `build_citations` / `upload.publish_reference_snapshot` |
 | `gnomad constraint build` / `publish` | `constraint_build.download_constraint_tsv` + `build_snapshot` / `upload.publish_reference_snapshot` |
 | `vrs mint` | `vrs.mint_resolution_rows` |

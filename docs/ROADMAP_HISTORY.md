@@ -68,6 +68,231 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM160 — the citations ten CIViC records carry are published on one surface, and it is the one nothing read
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-03 in the uncut 0.7.0** — the provenance half,
+as shape 3 (`just-dna-enricher` client + command + check, two optional `studies.csv` columns, one new
+`VALID_VERIFICATION_CHECKS` member). Its *coverage* half shipped earlier as
+[RM169](ROADMAP_HISTORY.md#rm169--the-wider-basis-was-published-as-a-dated-file-all-along-and-nobody-had-looked),
+and the VCF that answered the first could not answer this one ·
+**Owner** enricher · **Motivating case** the 2026-09-01 residue round, variant 1955
+([CIVIC_LEGACY_INSERTIONS](probes/CIVIC_LEGACY_INSERTIONS.md) §7.4)
+
+> **Read this first: the item's original premise was wrong.** It said the API has no dated release to
+> pin, and therefore that any wider basis costs the snapshot its reproducibility. CIViC publishes
+> `<date>-civic_accepted_and_submitted.vcf` **in the same dated directory** as the TSVs, so the wider
+> corpus was pinnable all along and RM169 took it: 507 rows on 270 variants → **1,149 on 397**, with a
+> byte-identical rebuild. The three shapes below were framed against the *coverage* half, which RM169
+> then dissolved without using any of them; they are re-scoped rather than retired, because for the
+> half that is left the tension is real.
+>
+> **What that leaves here is narrower and still real.** The VCF cannot carry a variant with no GRCh37
+> position, so it holds **none of the 10 records** whose hidden citations motivated this item, and 1
+> of the 53 unresolvable variants. The provenance half is API-only or nothing.
+
+`civic build` reads the dated bulk TSV release, and **every row in it is `evidence_status = accepted`**.
+CIViC's own GraphQL API defaults to `NON_REJECTED` and serves 11,518 evidence items against the bulk
+file's 4,903 — a 2.35× difference between two published faces of one database, declared by neither.
+`SUBMITTED` (a curator entered it, no editor signed off) is **the majority of CIViC**: 6,614 of 11,518.
+
+The snapshot records `status_basis: "accepted"` in `release.json`, so the basis is not hidden. What is
+missing is any sense that the choice **costs** something, and there is now a worked instance where it
+costs more than rows.
+
+### The instance, because a doubled row count was never the argument
+
+Variant 1955 (`VHL P71fs (c.211insT)`) is one of two records in the whole corpus that nothing
+resolves: a legacy insertion notation with two readings, both registered as real and different
+alleles, and no discriminator anywhere. Its accepted evidence item cites Olschwang 1998, paywalled and
+not in PMC. Ong 2007, behind the sibling record 2131, likewise.
+
+Queried directly, `evidenceItems(variantId: 1955, status: ALL)` returns **two** items. The second,
+EID 9969, cites PMID 12202531 — Dollfus 2002, **free full text**, whose Table 3 states the numbering
+convention the whole ambiguity turns on. It is `SUBMITTED`, so it exists in the API and in **no file
+the builder reads**.
+
+So the basis does not merely shrink the corpus. Here it hides the only reachable evidence that could
+settle an identity the snapshot is currently unable to state — and it hid it from a probe that had
+already gone looking, because the probe read the file the builder reads.
+
+### Re-measured 2026-09-01, and it is worse than "a bigger corpus"
+
+Two numbers sharpen the item, and the second changes what it is *about*.
+
+**On the direction axis the gap is 2.77×, not 2.35×.** Queried per status rather than taken from the
+whole-database ratio:
+
+| basis | all evidence items | `PREDISPOSITION`/`SUPPORTS` |
+|---|---:|---:|
+| `ACCEPTED` | 4,906 | 534 |
+| `SUBMITTED` | 6,617 | 946 |
+| `NON_REJECTED` | 11,523 | **1,480** |
+
+So the axis this source was adopted *for* is more skewed toward unreviewed content than the database
+as a whole. (`DOES_NOT_SUPPORT` is 2 → 4 and `PROTECTIVENESS` 1 → 2, which is why the
+contested-variant count moves 0 → 3 and genuine `risk`-vs-`protective` opposition still does not.)
+
+**Ten of the twenty records nothing can place gain a citation the accepted basis does not carry.**
+This is the finding, and it is not about volume. Asked `status: ALL`, per record:
+
+| record | accepted citations | citations only `SUBMITTED` brings |
+|---|---:|---:|
+| 844 `VHL Exon 1 Deletion` | 3 | **34** |
+| 1939 `VHL Exon 3 Deletion` | 4 | **33** |
+| 843 `VHL Exon 1-3 Deletion` | 2 | 17 |
+| 845 `VHL Exon 1-2 Deletion` | 1 | 18 |
+| 2182 `VHL Null (Large deletion)` | 3 | 7 |
+| 2439 `VHL Rearrangement` | 2 | 7 |
+| 715 `STK11 Mutation` | 3 | 4 |
+| 2036 `VHL Null (Partial del Ex2&3)` | 1 | 2 |
+| 3298 `VHL P81S and L188V` | 1 | 1 |
+| 1955 `VHL P71fs (c.211insT)` | 1 | **1 — the free-fulltext one** |
+
+**A verdict is only as wide as the papers read, and these were read on the accepted basis.** The
+class-C three-way split in [CIVIC_UNRESOLVED](probes/CIVIC_UNRESOLVED.md) — *never measured* /
+*measured then generalised away* / *measured at a resolution that is not allele resolution* — was
+decided from each record's cited papers, and for 2036, 2182 and 2439 those were the accepted ones
+only. The verdicts about what the **name** denotes are untouched (a class label stays a class label
+however many papers cite it), but the claim that *the source never measured breakpoints* is scoped to
+papers that a wider basis would have added 2, 7 and 7 more of. That scope belongs on those verdicts
+whether or not this item is ever taken.
+
+### What is already measured, so nobody re-derives it
+
+- Reading `SUBMITTED` roughly **doubles** the corpus and moves **every** number in
+  [CIVIC_SURVEY](probes/CIVIC_SURVEY.md).
+- It takes the **contested-variant count from 0 to 3** (variants 2161, 2428, 2533, all VHL, all
+  `risk` against `not_risk`). Under `accepted` the count is 0 because both sides of every contest are
+  `SUBMITTED`.
+- Genuine `risk`-vs-`protective` opposition stays **0** at every basis, so this does not reopen the
+  concordance route (that is closed on arithmetic, not on volume).
+- The direction slice is 533 rows on the accepted basis and 925 `SUBMITTED` against 533 `ACCEPTED`
+  over the wider germline direction set.
+
+### The design question, re-scoped 2026-09-01 after RM169
+
+**Is the API richer than the files? Yes, on exactly one axis, and it is this one.** The whole dated
+download surface is enumerated in [CIVIC_SURVEY](probes/CIVIC_SURVEY.md) § the bulk releases: seven
+TSVs and two VCFs. Both TSVs the builder reads are `accepted`-only (`ClinicalEvidenceSummaries`, and
+`VariantSummaries` too — a fact nothing had stated before that enumeration), the only two files
+carrying `submitted` at all are the VCFs, and a VCF record needs a POS. So submitted evidence attached
+to a variant with **no GRCh37 coordinate** is published on one surface only, the API. For everything
+that has a coordinate, RM169's dated VCF already carries it, pinnable, no API. Nothing else about the
+API is richer than the files, and the three summaries the builder does not read
+(`AssertionSummaries` 145 rows, `FeatureSummaries`/`GeneSummaries` 973 and byte-identical to each
+other, `VariantGroupSummaries` 30) do not bear on this: none is an evidence table.
+
+**So the reproducibility tension survives, narrowed to this half.** `civic build` is byte-reproducible
+because its input is a pinned dated file pair, and `civic reproduce` proves it by building twice. An
+API read still has nothing to pin. Of the original three shapes, two stay live and one stopped meaning
+what it meant — **this is not an open three-way choice, and it was mistakenly re-put as one on
+2026-09-01**:
+
+1. **Snapshot the API response** with a retrieval timestamp and hash it as an input, the way the
+   download files are hashed. Reproducible against *that capture*, not against CIViC.
+2. ~~**A second parquet beside the accepted one**, built from the API~~ — **dissolved by RM169.** The
+   wider parquet exists and is built from files; one more from the API would be a *third* basis rather
+   than a second, and the consumer decision this shape was priced against has already been spent.
+3. **Leave the build alone and read `SUBMITTED` at `enrich` time**, beside the CAID pass, where
+   network reads already live and reproducibility is not claimed. Narrowest, and it does not enlarge
+   the published snapshot — which may be the point or may be the missing half.
+
+**DECIDED 2026-09-02 with the maintainer: shape 3.** `civic build` and `civic reproduce` keep their
+byte-reproducibility contract untouched and the published snapshot does not grow; the API read lives
+where network reads already do and where reproducibility is never claimed. The motivating case is an
+enrich-time question anyway — an author resolving one identity, holding one variant, needing the
+citations that variant's record carries. Shape 1 was available and not taken: hashing a capture keeps
+the *word* reproducible while changing what it is reproducible against, and a snapshot that reproduces
+only against itself is a weaker claim than one that reproduces against a dated release.
+
+**Not yet built.** What it needs: a per-variant `evidenceItems(variantId:, status: ALL)` read behind
+the same offline/`check_declared_use` discipline as the other enricher fetches (CIViC is CC0, so no
+gate), the `status` on each returned item carried as `confidence`/`confidence_unit` unconverted, and
+a skip that is `offline`/`unreachable` rather than a silent empty — the pass has to distinguish *the
+API said this variant has nothing more* from *nobody asked*. It is one variant at a time by
+construction, which is why it fits `enrich` and would not fit a build.
+
+**The labelling requirement is settled and half-shipped.** An `accepted` row and a `submitted` row
+must not be indistinguishable once both are in the file, and for the file-built half RM169 did it:
+every row carries `evidence_status`, CIViC's own word, unconverted. Whatever shape this half takes
+owes the same stamp — and where it lands as a magnitude rather than a column, that is `confidence`
+with `confidence_unit`, named rather than translated into a house grade, the way
+`ClinSigAuthorityCallRow` already requires a magnitude to name its instrument.
+
+**Related** RM152 (the adoption), RM159 (the name-identity table, whose two unresolved records are the
+motivating case), RM153.
+
+### What shipped, 2026-09-03
+
+**`civic_api.py`** — the client. `evidenceItems(variantId:, status: ALL)`, paginated (variant 844
+really is 37 items and a first-page reader would have reported four), checked against the payload's
+own `totalCount`, paced on a shared `PacingGate`, retried on `attempt_floor(3)`, and translated at the
+boundary: `CivicApiUnavailable` for the question that was never put, `CivicApiError` for an answer
+this client cannot read — a GraphQL `errors` block is the second, because the service *did* answer.
+Statuses are lower-cased to the spelling `civic_vcf` already writes and not otherwise touched, and a
+member outside `{accepted, submitted, rejected}` raises rather than defaulting.
+
+**`civic citations <spec>`** — the command. Three routes reach a CIViC variant id, and the third
+exists because the first two miss the class this item is about: the snapshot's coordinate join through
+`clinical.comparison_plan` (the same resolved-`(chrom, start, ref, alt)` route the refutation leg
+uses, never an rsID), the curated name-identity table, and `--variant-id N` for a record neither can
+place. **1955 is not in `CIVIC_NAME_IDENTITY_BY_VARIANT`** — being unresolvable is why its citations
+were unreachable — so without the third route the motivating case would not have been reached by the
+thing built to reach it. Those rows ground the *module* rather than a variant, which `StudyRow` has
+permitted since RM47.
+
+**A recovered citation is a `studies.csv` row and nothing writes `literature.csv`.** That table is
+derived from these PMIDs by the `literature` pass, and an article row nothing cites is dropped from
+the artifact (`@uncited-literature-dropped`) — so drafting the citing row and letting `literature`
+fill the article is the pairing that works in both directions. Five evidence items citing one paper
+are one row, because `(variant_key, pmid)` is the grain.
+
+**`StudyRow.confidence` / `confidence_unit`**, optional and 0.7.0. The labelling requirement was
+settled before the round: an accepted row and a submitted row must not be indistinguishable once both
+are in a file, and where the state lands as a magnitude rather than a column it rides here, named
+rather than translated. **This is one authored column pair more than PROPOSAL_0_7_PT3 priced the item
+at** — that file says RM160 "adds no authored column at all" — and the correction is recorded as a
+dated addendum there rather than left as a silent contradiction. It is still minor-legal: a new
+optional column is additive under P3/P8, `content_signature` does not move for a module that fills
+neither, and the parquet it lands in is the one RM140 had already moved this release.
+
+**`evidence_status_currency`** — the canary, and the half the maintainer asked for by name. Drafting
+from a live read is only honest if something re-asks: the pin says *when* and *on what basis*
+(`fetched_at` and `dataset` on the `(civic, literature)` `SourceRow`), and `enrich` re-asks and reports
+what has moved — a status accepted or rejected since, or a citation added since. Two codes because two
+remedies. **Warns in both modes and escalates in neither**
+(`@a-source-recuring-is-not-a-strict-matter`), and deliberately **not** `dataset_currency`: that one
+asks which release a table came from, this one asks whether a per-item judgement has moved.
+
+**The pin's layer is `literature`, and neither half of that is arbitrary.** `(civic, annotation)` is
+`civic_draft`'s row and a second surface of an already-declared source may not claim the lane's slot
+(`@write-the-sourcerow`); a `civic_api` *source* would publish a route as a licensed body, which is
+the overloading `@source-vs-authority` fixed in `gene_metrics.csv`; and `literature` is one of the two
+layers the compiler's orphan check exempts, so a module carrying `studies.csv` rows does not warn
+`source_row_unused`. `merge_sources_csv` is never-clobber, so the pin records the ask that *first* put
+a recovered citation into the module — a floor on "not asked since", which is precisely the gap the
+canary closes.
+
+**Three withholds, and each is counted rather than silent.** Rejected evidence is not drafted at all
+(`rejected_by_source`) — `status: ALL` returns what CIViC's editors threw out, and a module must not
+carry it as though the source stood behind it; where a rejected item sits *beside* a live one for the
+same paper, the live ones decide the row, which is the real case on variant 1939 (PMID 28256701). A
+paper whose live items disagree about their status gets its confidence **withheld** rather than
+picked. A `citationId` on a non-PubMed source is a real id in another namespace and withholds rather
+than becoming a `pmid` (`@pmid-vs-pmcid`).
+
+**What it does not reach, said rather than smoothed over.** A citation recovered through
+`--variant-id` names no variant, so nothing can map it back to a CIViC id on a later run: the canary
+reports those as `not_re_askable` under a `no_reference` skip rather than counting them as agreement.
+That is a real bound on the route built for the motivating record, and the honest form of it is a
+published number, not silence.
+
+**Tests.** Three real recorded responses under `assets/civic_api_slice/` (1955 for the motivating
+pair, 844 for volume and the five-items-one-paper case, 1939 for the only rejected item in the
+corpus), served through a mock transport so the suite never fetches; every expected value derived from
+them at runtime. The `--offline` probe's transport fails the run if it is reached, because an
+off-switch needs its own probe rather than a reading (`@off-switch-needs-a-probe`).
+
 ## RM176 — eleven builders, three stages each, and the roster that was supposed to name them was a list
 
 **Severity** high · **Status** ✅ **SHIPPED 2026-09-02 in the uncut 0.7.0** — the cache registry, three

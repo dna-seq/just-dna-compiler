@@ -219,6 +219,42 @@ Where CIViC records evidence that *does not support* a variant being predisposin
 protective, and writing the opposite of what a source said would be inventing a finding. Those rows are
 counted and reported, and if you want them in your module you decide what they mean yourself.
 
+**Some of CIViC's citations are on its API and in none of its files, and `civic citations` is how you
+get them.** The snapshot is built from a dated release, and the widest file in that release is a VCF —
+which needs a position. For a variant CIViC names as a class of event (`VHL Exon 1 Deletion`) or in a
+legacy notation, it publishes no coordinate, so the evidence a curator entered and no editor has signed
+off lives only on the API. Ten records in the source are in that state, and one of them is the record
+whose only free-fulltext paper settles what its name means.
+
+```bash
+just-dna-enricher civic citations spec/                      # every authored row the snapshot can place
+just-dna-enricher civic citations spec/ --variant-id 1955     # a record CIViC publishes no identity for
+just-dna-enricher civic citations spec/ --dry-run             # what it would append
+```
+
+It appends to `studies.csv` and nothing else — `literature.csv` is filled from those PMIDs by the
+`literature` step, and a row there that nothing cites is dropped at compile. Each recovered row carries
+CIViC's own curation state in `confidence`, with `confidence_unit` naming the ladder it sits on
+(`civic_evidence_status`): `accepted` means an editor signed the item off and `submitted` means one has
+not, and the two are not translated into any grade of ours, because there is no honest one. **Read a
+`submitted` row as what it is** — a curator's entry, useful and unreviewed — and decide what weight it
+carries in your module.
+
+Three things it withholds rather than guessing. Evidence CIViC's editors **rejected** is not written at
+all; it is counted so you can see it happened. A paper whose items disagree about their own state gets
+a row with an empty `confidence` rather than one of the two. And a citation on a non-PubMed source (a
+conference abstract) is not written as a `pmid`, because its id belongs to a different registry.
+
+**`--variant-id` writes rows that name no variant.** That is deliberate: it is the route for a record
+this format cannot place, so its citations ground the *module* instead. The cost is that nothing can
+map such a row back later, and the currency check below says so rather than passing over it silently.
+
+**`enrich` re-asks, and that is what makes drafting from a live read safe.** Your licence table records
+when the API was asked; a later `enrich` puts the same question again and warns when the answer has
+moved — an item accepted since you drafted it, one rejected since, or a citation added since. It never
+changes your row and never fails a build: a source re-curating its own evidence is news, not an error
+in your module.
+
 **Drafting appends and never rewrites a cell.** A row whose key already exists is reported
 (`already_present` / `differs`), never overwritten — drift on existing rows is `pgx` / `clinpgx check`'s
 job to report, not drafting's to fix. Re-run per gene as the module grows; `--dry-run` first.
@@ -812,6 +848,7 @@ workaround.
 | `draft-clinpgx <dir> --snapshot S` | ClinPGx → `pharm_variants.csv`. `--gene`, `--drug`, `--min-evidence-level`, `--use`, `--dry-run` |
 | `check-identifiers <dir>` | trait CURIEs (OLS4), gene symbols (HGNC), `pgs_id` against the PGS Catalog. `--no-traits`, `--no-genes`, `--no-pgs` |
 | `check-acmg <dir>` | `acmg_sf` vs the ACMG SF list. `--sf-list` (strongly preferred), `--offline`, `--url` |
+| `civic citations <dir>` | CIViC's API → `studies.csv`, for the citations its dated files cannot carry. `--snapshot`, `--variant-id` (repeatable), `--offline`, `--dry-run` |
 | `litvar coverage <dir>` | literature coverage per locus, naming the tier that answered. `--offline`, `--quiet`. Writes nothing |
 | `litvar gene G` | every node the index holds under a gene, split by tier. Writes nothing |
 | `pgx <dir>` | `function_status` vs PharmVar + CPIC. `--no-pharmvar`, `--no-cpic`, `--use` |

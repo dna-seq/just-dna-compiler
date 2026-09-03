@@ -102,6 +102,15 @@ Two things follow, and both are easy to get wrong:
   two names differ.** An empty `statistical_test` is *unknown*, not *different*, so filling it on one
   row and leaving it blank on the other still reports the duplicate. Fill both, or accept the warning.
 
+**A citation can say how far its source stands behind it — in that source's units, never in ours.**
+`confidence` holds the value and `confidence_unit` names the instrument, and one without the other is
+refused: `2` means nothing until you are told it is a review-star count. The case this exists for is a
+source with a review ladder of its own — CIViC publishes `accepted` (an editor signed the item off) and
+`submitted` (a curator entered it and none has), and a module holding both must not render them as the
+same row. Write the source's own word, not a translation: there is no house grade for "reviewed", and
+inventing one loses exactly what made the cell worth carrying. Leave both empty when the source has no
+such ladder, which is most of them.
+
 If the paper's own numbers do not reconstruct from its own counts, that is a finding about the paper —
 record what you can support and leave `effect_size`/`effect_measure`/`effect_allele` empty rather than
 copying a magnitude you cannot ground. An absent cell is honest; a wrong one is checked by nothing.

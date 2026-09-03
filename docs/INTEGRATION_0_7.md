@@ -181,6 +181,7 @@ land alphabetically rather than at the end.
 | parquet | column | item |
 | --- | --- | --- |
 | `studies.parquet` | `statistical_test` — which analysis produced this row's `p_value`/`effect_size`. Free text; `study_design` describes the *study*, this describes the *analysis*, and one study routinely runs several | RM140 |
+| `studies.parquet` | `confidence` / `confidence_unit` — how far the **citing source** stands behind this evidence link, in that source's own units and unconverted (CIViC's `submitted`/`accepted`). They travel together: a magnitude with no instrument beside it is refused at the model | RM160 |
 | `haplotypes.parquet` | `requires_callable` — tri-state | RM70 |
 | `pharm_variants.parquet` | `requires_callable` — tri-state | RM70 |
 | `pharm_variants.parquet` | `pmid` — the third citation site, beside `StudyRow.pmid` and `MeasureBinRow.pmid` | RM132 |
@@ -547,6 +548,10 @@ by lifting a coordinate over.
    `effect_size`, show it beside them: the column exists because a `p_value` from one analysis and an
    `effect_size` from another on one row is invisible without it, and the pair is *asserted* to belong
    together by nothing but the row.
+   It also gains `confidence`/`confidence_unit` — the citing source's own review state, unconverted.
+   Read them together or not at all: the value is meaningless without the instrument beside it, and
+   `civic_evidence_status` values (`accepted`, `submitted`) are CIViC's ladder rather than anything
+   this format grades. A row with neither cell is the ordinary case and says nothing either way.
 5. `pharm_variants.parquet` gains `pmid`. It cites this row's own drug/genotype claim —
    `evidence_level` is somebody else's *grading of* the evidence and this points *at* it. Different
    axes; show both or neither.
@@ -588,8 +593,8 @@ by lifting a coordinate over.
    when it lands. Both are cases where `compile --strict` was already going to refuse, so this moves
    the failure earlier rather than adding one.
 6. New optional authored columns are available and nothing forces them: `statistical_test`,
-   `requires_callable` on the two PGx locus tables, `pharm_variants.pmid`, and the `authority_precedence:`
-   block in `module_spec.yaml`.
+   `confidence`/`confidence_unit` on `studies.csv`, `requires_callable` on the two PGx locus tables,
+   `pharm_variants.pmid`, and the `authority_precedence:` block in `module_spec.yaml`.
 
 ### just-dna-agents (MCP surface)
 
@@ -635,7 +640,7 @@ two of its rows had gone stale in ways that mattered — see the notes under the
 | 0.6.6 → 0.7.0 release sweep | 15 measured, **gate exit 0** — *after* RM161. It exited **1** on the first run of this round, on two manifest fields that moved and were not listed; the previous row's `exit 0` was measured before two declarations landed the same morning. Re-run the gate whenever a `DeclaredChange` is added, not only at the cut |
 | 0.6.6 client parses 0.7 manifests | **15 / 16** — see § 1. **Not re-measured on 2026-09-01, and the basis is stated rather than assumed**: nothing under `schema/` or `compiler/` has touched the manifest surface since it was measured. The one format change in between is RM161's release-record field list, which is not a manifest field |
 | Open consumer inbox | **empty** — S85 and S86 arrived on 2026-08-31/09-01 and were answered as RM154 and RM155. S78 was answered as RM143; S79–S84 on 2026-08-31 (RM144, RM145, RM146, RM148, RM152). S76 was withdrawn as a duplicate of S66; S75 and S77 answered as RM140 / RM142 |
-| Open roadmap items in format scope | **RM160 alone**, and it does not block: *the CIViC snapshot reads the reviewed quarter of its source*, open with the maintainer's *worth doing* and a design question (which reproducibility bargain to take) rather than a defect. RM153, which stood here on 2026-08-31, shipped the same day. RM7 sits below it and is marked not format scope |
+| Open roadmap items in format scope | **none**. RM160 stood here alone and **shipped 2026-09-03** — its provenance half took shape 3, reading CIViC's `SUBMITTED` evidence at `enrich` time, so `civic build` keeps its byte-reproducibility contract; the format-visible part is two optional `studies.csv` columns (`confidence`/`confidence_unit`) and one new `verification.checks` member. RM153, which stood here on 2026-08-31, shipped the same day. RM7 sits below and is marked not format scope |
 
 **The blocker this section carried is gone.** RM143 shipped and S78 was answered, and the 2026-08-31
 batch took the seven roadmap items that stood above with them. Everything here is committed, green and

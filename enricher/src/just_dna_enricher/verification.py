@@ -18,11 +18,18 @@ writes its own three, `clinpgx` its one, and the merge below is what keeps sever
 in one document instead of overwriting each other.
 
 **Which commands actually call this — seven of them, covering every member of
-`vocab.VALID_VERIFICATION_CHECKS` except the ones whose comment there says RESERVED.** `enrich` (six:
-reference allele, wrong build, clinical significance, rsID currency, rsid↔coordinate, dataset
-currency), `literature` (three), `check-identifiers` (five: gene symbol currency, trait currency,
-gene↔locus agreement, PGS accession currency, PGS metadata agreement), `clinpgx check`, `pgx`,
-`vrs mint` and `check-acmg` (one each).
+`vocab.VALID_VERIFICATION_CHECKS` except the ones whose comment there says RESERVED.** `enrich`
+(reference allele, wrong build, clinical significance, rsID currency, rsid↔coordinate, dataset
+currency, published refutation, evidence-status currency), `literature` (citation existence, citation
+identifier, provenance quote), `check-identifiers` (gene symbol currency, trait currency, gene↔locus
+agreement, PGS accession currency, PGS metadata agreement), `clinpgx check`, `clinpgx check-labels`,
+`pgx`, `vrs mint`, `check-acmg`, `check-repeat-bands` and `litvar coverage` (one each).
+
+**The counts in that sentence are gone on purpose, and they were wrong when they were there.** It read
+"`enrich` (six: …)" while `enrich` emitted seven — RM170's `published_refutation` had landed without
+the sentence learning about it, which is the same drift its own next paragraph is about. A number in
+prose is a registry nothing iterates (`@registry-completeness`), so the members are named instead and
+the grep below is what settles the list.
 
 **Count the call sites before you edit that paragraph, and edit it whenever you add one.** The
 sentence it replaces said *"`enrich` (four checks), `literature` (three) and `clinpgx` (one)"* and was
