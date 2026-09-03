@@ -437,6 +437,10 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
     assert set(found) == {
         # RM153's registry leg. Retried inner, and the *outer* returns a three-state outcome rather
         # than translating to an error type — see the exemption in the exception-contract suite.
+        # RM160's CIViC GraphQL leg. Same split as the two below it — the retried inner paces and
+        # POSTs, the outer translates a transport failure or a status into `CivicApiUnavailable` and
+        # a payload it cannot read into the parent type. The only client here that POSTs.
+        "civic_api.CivicApiClient._request",
         "clingen_allele.ClingenAlleleClient._fetch",
         "cpic.CpicClient._request",
         # RM85's release probe: the retried inner reads the header, the outer translates both legs.
