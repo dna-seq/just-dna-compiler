@@ -114,6 +114,12 @@ DEFAULT_STRCHIVE_REPO_ID = "just-dna-seq/strchive"
 #: `CREATED_*.txt`, so one repo holding both would date the pair from whichever was published last.
 #: Same CC BY-SA terms as the annotation lane, hence the same grounds and the same `LICENSE.txt`.
 DEFAULT_DRUG_LABELS_REPO_ID = "just-dna-seq/clinpgx_drug_labels"
+#: MITOMAP's curated mtDNA variant tables, cut from the source's published `pg_dump` (RM171). CC BY
+#: 3.0 with commercial and clinical use stated free, so redistribution is granted outright and the
+#: attribution duty travels in the snapshot's own `SourceRow`. The **derived** miss lane has no repo
+#: on purpose: it pins the digests of two parents, and a puller who does not hold those parents would
+#: be handed an increment its own currency check cannot verify.
+DEFAULT_MITOMAP_REPO_ID = "just-dna-seq/mitomap"
 
 
 def _hf_api(repo_id: str, token: str | None = None):

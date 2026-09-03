@@ -30,6 +30,7 @@ from just_dna_enricher.locations import (
     default_cpic_cache_dir,
     default_drug_labels_cache_dir,
     default_ensembl_cache_dir,
+    default_mitomap_cache_dir,
     default_strchive_cache_dir,
     load_env,
 )
@@ -79,6 +80,13 @@ _CIVIC_HF_PREFIX = "datasets/just-dna-seq/civic/data"
 _DRUG_LABELS_HF_PREFIX = "datasets/just-dna-seq/clinpgx_drug_labels/data"
 _CIVIC_FILES = "*.parquet"
 _DRUG_LABELS_FILES = "*.parquet"
+
+#: MITOMAP, added with the lane itself (RM171) rather than as a later repair — the roster's own
+#: biconditional says a lane this tier builds is publishable exactly when it is pullable, and CC BY
+#: 3.0 grants the redistribution outright, so shipping the builder without these two halves would
+#: have recreated the gap RM176 closed three times over.
+_MITOMAP_HF_PREFIX = "datasets/just-dna-seq/mitomap/data"
+_MITOMAP_FILES = "mitomap-*.parquet"
 
 #: STRchive's repo root, not a `data/` prefix: this snapshot is the upstream catalogue verbatim beside
 #: its provenance, and it holds no parquet at all.
@@ -386,6 +394,22 @@ def ensure_drug_labels_snapshot(drug_labels_cache: Path | None = None) -> Path:
     return _provision_snapshot(
         cache_dir, _DRUG_LABELS_HF_PREFIX, label="ClinPGx drug labels",
         error_cls=GatedSnapshotError, filename_glob=_DRUG_LABELS_FILES,
+    )
+
+
+def ensure_mitomap_snapshot(mitomap_cache: Path | None = None) -> Path:
+    """Provision the MITOMAP snapshot from HuggingFace Hub (RM171).
+
+    Publishable on the source's own terms — CC BY 3.0, with commercial and clinical use stated free —
+    so this is a gap-closing `ensure_*` like CIViC's rather than a permission being claimed. The glob
+    is `mitomap-*.parquet` rather than `*.parquet` for the reason the constants above record: a
+    published dataset keeps files from every earlier layout, and the reader would otherwise union a
+    foreign schema into the same directory.
+    """
+    cache_dir = Path(mitomap_cache) if mitomap_cache is not None else default_mitomap_cache_dir()
+    return _provision_snapshot(
+        cache_dir, _MITOMAP_HF_PREFIX, label="MITOMAP", error_cls=OpenSnapshotError,
+        filename_glob=_MITOMAP_FILES,
     )
 
 

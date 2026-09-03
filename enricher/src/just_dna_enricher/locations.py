@@ -154,6 +154,21 @@ DRUG_LABELS_SUBDIR: str = "drug_labels"
 #: with `mane build --download`.
 MANE_SUBDIR: str = "mane"
 
+#: MITOMAP's cache is a **parquet** snapshot cut from the source's own `pg_dump` (RM171): the two
+#: curated variant tables, their citation links and the reference records, out of a 6.76 M-line file
+#: whose other hundred tables this tier has no use for. CC BY 3.0 with commercial use stated free, so
+#: unlike the four caches above it this one may be published — the licence grants redistribution
+#: outright, and what was missing was plumbing rather than permission.
+MITOMAP_SUBDIR: str = "mitomap"
+
+#: The **derived** cache, and the only one in the registry that is not a download (RM171). Its acquire
+#: stage is *both parents on disk*: it is the join of the MITOMAP snapshot against the ClinVar chrMT
+#: parquet, and it exists as a snapshot rather than as a computation inside `draft` so the increment
+#: has an identity a currency check can talk about. Its `release.json` pins both parents, which is
+#: what makes a ClinVar rebuild without a child rebuild a detectable stale child rather than a silent
+#: one. Not published: a pulled child would carry pins for parents the puller does not have.
+MITOMAP_MISS_SUBDIR: str = "mitomap_miss"
+
 
 def read_release(reference: Path) -> dict | None:
     """A snapshot's `release.json` as a dict, or `None` when it is absent or unreadable.
@@ -573,6 +588,50 @@ def resolve_strchive_reference(
         strchive_cache, "JUST_DNA_STRCHIVE_CACHE",
         default_strchive_cache_dir(load_dotenv_file=load_dotenv_file),
         STRCHIVE_CATALOGUE_FILENAME, load_dotenv_file=load_dotenv_file,
+    )
+
+
+def default_mitomap_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    """The `<base>/mitomap` directory — see `MITOMAP_SUBDIR`."""
+    return _cache_dir(MITOMAP_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
+def resolve_mitomap_reference(
+    mitomap_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate a built MITOMAP snapshot (`$JUST_DNA_MITOMAP_CACHE`), without downloading.
+
+    `None` is nobody-asked, not "MITOMAP publishes no such variant". It is also the parent absence the
+    derived miss lane reports as *could not run* rather than as an empty increment: a miss set derived
+    with one parent missing would be a claim about a comparison that never happened.
+    """
+    return _resolve_parquet_cache(
+        mitomap_cache, "JUST_DNA_MITOMAP_CACHE",
+        default_mitomap_cache_dir(load_dotenv_file=load_dotenv_file),
+        load_dotenv_file=load_dotenv_file,
+    )
+
+
+def default_mitomap_miss_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    """The `<base>/mitomap_miss` directory — see `MITOMAP_MISS_SUBDIR`."""
+    return _cache_dir(MITOMAP_MISS_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
+def resolve_mitomap_miss_reference(
+    mitomap_miss_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate a built MITOMAP-miss snapshot (`$JUST_DNA_MITOMAP_MISS_CACHE`), without downloading.
+
+    A resolver for a derived snapshot answers a narrower question than the others: it says the join
+    was run and its result is on disk, never that the result is still *current*. Currency is
+    `mitomap_miss_build.stale_parents`, which re-reads both parents' `release.json` and names the one
+    that moved — a snapshot present and stale is a different answer from absent, and the drafter says
+    which (`@currency-asks-the-source-not-the-cache`).
+    """
+    return _resolve_parquet_cache(
+        mitomap_miss_cache, "JUST_DNA_MITOMAP_MISS_CACHE",
+        default_mitomap_miss_cache_dir(load_dotenv_file=load_dotenv_file),
+        load_dotenv_file=load_dotenv_file,
     )
 
 

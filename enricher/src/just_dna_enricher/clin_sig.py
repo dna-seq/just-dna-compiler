@@ -64,6 +64,25 @@ CLIN_SIG_MAP: dict[str, str] = {
     "other": "other",
     "confers_sensitivity": "other",
     "low_penetrance": "other",
+    # ── The ClinGen VCEP five-class abbreviations (RM171) ────────────────────────────────────────
+    #
+    # A third spelling of the same vocabulary, not a third vocabulary. MITOMAP publishes the ClinGen
+    # mtDNA VCEP's rating as a bracketed abbreviation inside its `status` column (`Cfrm [LP]`), and
+    # the five classes it uses are exactly the five this map already carries under ClinVar's
+    # underscored wording. So the abbreviations are keys here rather than a MITOMAP-local translation
+    # table that would then have to agree with this one (`@one-normalizer-two-spellings`).
+    #
+    # **What is deliberately NOT here is the point of the entry.** MITOMAP also writes `[VUS*]`, and
+    # `rtmutation` leaks APOGEE's `[VUS+]` / `[VUS-]` on one row each. None of the three is a
+    # documented class, so none is a key — and because an unmapped token falls through to `other`,
+    # which is a *definite* member rather than an unknown, the withholding cannot be left to this
+    # function. `mitomap.vcep_clin_sig` decides whether a bracket is one of the five before anything
+    # reaches here, and passes nothing else (`@lookup-with-a-default-hides-a-new-member`).
+    "p": "pathogenic",
+    "lp": "likely_pathogenic",
+    "vus": "uncertain_significance",
+    "lb": "likely_benign",
+    "b": "benign",
 }
 
 # When a single value carries several tokens (`Pathogenic/Likely_pathogenic`,

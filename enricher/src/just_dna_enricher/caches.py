@@ -1,11 +1,17 @@
 """The cache lanes as a registry, and the one endpoint that rebuilds them — RM176.
 
-Twelve snapshots, eleven of them built here. Each is supposed to have three stages: **acquire** (a
-download, or a file the operator supplies), **build** (the conversion into the snapshot a check
-reads), and **publish** (the upload a deployment then pulls with `cache pull`). Before this module
-the three stages existed as eleven independent CLI commands and one hand-kept four-tuple list inside
-`cli.py`, and the gaps that arrangement hid were all of the same kind: something true of a lane that
-no code anywhere asserted.
+Every snapshot this tier knows about, all but one of them built here. Each is supposed to have three
+stages: **acquire** (a download, a file the operator supplies, or — since RM171 — its parent lanes
+being on disk), **build** (the conversion into the snapshot a check reads), and **publish** (the
+upload a deployment then pulls with `cache pull`). Before this module the three stages existed as
+eleven independent CLI commands and one hand-kept four-tuple list inside `cli.py`, and the gaps that
+arrangement hid were all of the same kind: something true of a lane that no code anywhere asserted.
+
+**The count is deliberately not stated here.** It was "twelve snapshots, eleven of them built here",
+which is the counted-prose failure this workspace keeps re-learning: a sentence no test reads, true
+on the day it was written and quietly wrong the first time the registry grew correctly
+(`@counted-prose-needs-a-fixed-field`). `test_cache_lanes.py` asserts the equality that sentence was
+gesturing at, over the walked set.
 
 * Three lanes were missing from the roster entirely, so `cache status` reported nine caches on a
   machine that has twelve and `cache pull` could not be asked about them.
@@ -48,6 +54,8 @@ from just_dna_enricher import (
     cpic_build,
     drug_labels_build,
     mane_build,
+    mitomap,
+    mitomap_build,
     pharmvar,
     pharmvar_build,
     pubmind_build,
@@ -61,6 +69,7 @@ from just_dna_enricher.download import (
     ensure_constraint_snapshot,
     ensure_cpic_snapshot,
     ensure_drug_labels_snapshot,
+    ensure_mitomap_snapshot,
     ensure_snapshot,
     ensure_strchive_snapshot,
 )
@@ -82,6 +91,7 @@ from just_dna_enricher.locations import (
     DRUG_LABELS_SUBDIR,
     ENSEMBL_SUBDIR,
     MANE_SUBDIR,
+    MITOMAP_SUBDIR,
     PHARMVAR_SUBDIR,
     PUBMIND_SUBDIR,
     STRCHIVE_SUBDIR,
@@ -94,6 +104,7 @@ from just_dna_enricher.locations import (
     default_drug_labels_cache_dir,
     default_ensembl_cache_dir,
     default_mane_cache_dir,
+    default_mitomap_cache_dir,
     default_pharmvar_cache_dir,
     default_pubmind_cache_dir,
     default_strchive_cache_dir,
@@ -108,6 +119,7 @@ from just_dna_enricher.locations import (
     resolve_drug_labels_reference,
     resolve_ensembl_reference,
     resolve_mane_reference,
+    resolve_mitomap_reference,
     resolve_pharmvar_reference,
     resolve_pubmind_reference,
     resolve_strchive_reference,
@@ -119,6 +131,7 @@ from just_dna_enricher.upload import (
     DEFAULT_CONSTRAINT_REPO_ID,
     DEFAULT_CPIC_REPO_ID,
     DEFAULT_DRUG_LABELS_REPO_ID,
+    DEFAULT_MITOMAP_REPO_ID,
     DEFAULT_STRCHIVE_REPO_ID,
 )
 
@@ -586,6 +599,33 @@ def _rebuild_acmg(request: RebuildRequest) -> RebuildOutcome:
     )
 
 
+def _rebuild_mitomap(request: RebuildRequest) -> RebuildOutcome:
+    request.out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        if request.source is not None:
+            # The off-switch: a dump the operator already holds, and the only route with no network.
+            # It carries no `Last-Modified`, so the snapshot is honestly unlabelled rather than
+            # labelled from an mtime — a file's modification time is a fact about this disk.
+            result = mitomap_build.build_snapshot(request.source, request.out_dir)
+        else:
+            fetched = mitomap_build.download_mitomap_dump(
+                request.out_dir / "mitomap.dump.sql.gz"
+            )
+            result = mitomap_build.build_snapshot(
+                fetched.path, request.out_dir,
+                source_url=fetched.url, source_sha256=fetched.sha256,
+                source_last_modified=fetched.last_modified,
+            )
+    except (mitomap.MitomapError, ImportError, OSError) as exc:
+        return RebuildOutcome("mitomap", False, str(exc))
+    return RebuildOutcome(
+        "mitomap", True,
+        f"{', '.join(f'{name} {count}' for name, count in result.rows.items())}, "
+        f"{result.citation_links} citation links, dataset {result.dataset or 'unlabelled'}",
+        result.out_dir,
+    )
+
+
 # ── the registry ────────────────────────────────────────────────────────────────────────────────
 #
 # A list rather than a dict, because the order is what `cache status` prints and a deployment reads
@@ -725,6 +765,23 @@ CACHE_LANES: list[CacheLane] = [
         rebuild=_rebuild_strchive,
         ensure=ensure_strchive_snapshot,
         publish_repo=DEFAULT_STRCHIVE_REPO_ID,
+        terms=None,
+    ),
+    CacheLane(
+        name="mitomap",
+        build_command="mitomap build",
+        subdir=MITOMAP_SUBDIR,
+        serves="curated mtDNA variants, the miss lane's parent (draft-panel --source mitomap-miss)",
+        resolve=resolve_mitomap_reference,
+        default_dir=default_mitomap_cache_dir,
+        rebuild=_rebuild_mitomap,
+        ensure=ensure_mitomap_snapshot,
+        publish_repo=DEFAULT_MITOMAP_REPO_ID,
+        # `terms=None` even though `MITOMAP_TERMS` exists, and the field is what decides it: this
+        # column is the declared-use **gate**, not the licence. CC BY 3.0 states commercial and
+        # clinical use free, so `check_declared_use` would answer `None` on every declaration and a
+        # gate that cannot refuse is a gate nobody should have to read. ClinVar and STRchive have
+        # terms constants and a `None` here for the same reason.
         terms=None,
     ),
     CacheLane(

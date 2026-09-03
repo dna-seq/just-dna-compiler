@@ -691,6 +691,44 @@ STRCHIVE_TERMS = SourceTerms(
 )
 
 
+# MITOMAP, the curated mtDNA variant and polymorphism database (RM171). **Read from a browser on
+# 2026-09-03**, which is the whole reason this row can state as much as it does: `mitomap.org`'s web
+# surface answers `curl` and the fetch tool with a Cloudflare 403 while its *data* surface serves the
+# dump over plain `curl`, so an earlier read had only the 2019 Wayback capture to go on. The live
+# topic is `MITOWIKI/HelpTerms` r5, 30 Jun 2026 — revised two months after that capture, same day as
+# the `CitingMitomap` page it now links for the attribution duty.
+#
+# **Written as a floor, and that is not a formality.** The page says "unless otherwise noted", which
+# is the floor-plus-per-record-override shape: a per-record note outranks the site default, so this
+# row states what the *host* grants and never that every cell in the dump is CC BY 3.0
+# (`@a-hosts-terms-are-not-its-contents-terms`).
+#
+# **`commercial_use=True` is stated rather than inferred.** r4 left it to be read off the CC BY 3.0
+# grant; r5 says it in words — individuals, clinical labs and commercial services, no permission and
+# no fee. That distinction is why the axis is a `True` here and not the `None` an unestablished
+# permission gets. The one trap a search reproduces: MITOMAP's *NAR article* is CC BY-NC, and that is
+# the paper's licence, not the database's.
+MITOMAP_TERMS = SourceTerms(
+    source="mitomap",
+    license="CC-BY-3.0",
+    license_url="http://creativecommons.org/licenses/by/3.0/",
+    attribution=(
+        "MITOMAP (mitomap.org), or Lott et al. 2013, Current Protocols in Bioinformatics, "
+        "PMID 25489354 — the two forms CitingMitomap asks for"
+    ),
+    notice=(
+        "Creative Commons Attribution 3.0, as a FLOOR: the terms page grants it for all content on "
+        "Mitomap.org (MITOWEB, MITOMAP, MITOMASTER) 'unless otherwise noted', so a per-record note "
+        "outranks it. Authors retain copyright to their contributions. Commercial and clinical use "
+        "are stated free — individuals, clinical labs and commercial services, no permission and no "
+        "fee. Attribution is the one condition. Read live from MITOWIKI/HelpTerms r5, 2026-06-30."
+    ),
+    share_alike=False,
+    commercial_use=True,
+    redistribution=True,
+)
+
+
 TERMS_BY_SOURCE: dict[str, SourceTerms] = {
     terms.source: terms
     for terms in (
@@ -709,6 +747,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         MANE_TERMS,
         PGS_TERMS,
         STRCHIVE_TERMS,
+        MITOMAP_TERMS,
     )
 }
 

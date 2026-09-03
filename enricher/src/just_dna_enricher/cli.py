@@ -129,6 +129,8 @@ from just_dna_enricher.lookup import (
     lookup_trait,
     lookup_variant,
 )
+from just_dna_enricher.mitomap import MitomapError
+from just_dna_enricher.mitomap_build import DEFAULT_MITOMAP_URL
 from just_dna_enricher.pgx import PgxEnrichmentError, enrich_pgx
 from just_dna_enricher.pgx_draft import draft_gene
 from just_dna_enricher.pharmvar import PharmVarError
@@ -150,6 +152,7 @@ from just_dna_enricher.upload import (
     DEFAULT_CLINPGX_REPO_ID,
     DEFAULT_CPIC_REPO_ID,
     DEFAULT_DRUG_LABELS_REPO_ID,
+    DEFAULT_MITOMAP_REPO_ID,
     DEFAULT_STRCHIVE_REPO_ID,
 )
 from just_dna_enricher.verification import record_verification, skipped
@@ -3615,6 +3618,130 @@ def strchive_publish_(
         plan = publish_reference_snapshot(
             snapshot_dir, repo, commit_message=commit_message, payload=STRCHIVE_CATALOGUE_FILENAME,
         )
+    except (FileNotFoundError, PermissionError, ImportError) as exc:
+        typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(
+        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN,
+    )
+
+
+mitomap_app = typer.Typer(
+    add_completion=False,
+    help=(
+        "Build the MITOMAP snapshot and the derived miss lane. CC BY 3.0 with commercial use stated "
+        "free, so a deployment may publish the snapshot."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(mitomap_app, name="mitomap")
+
+
+@mitomap_app.command("build")
+def mitomap_build_(
+    out: Path = typer.Option(
+        Path("mitomap"), "--out", file_okay=False,
+        help="Output snapshot directory (writes data/mitomap-*.parquet + release.json).",
+    ),
+    dump: Path | None = typer.Option(
+        None, "--dump", exists=True, dir_okay=False,
+        help=(
+            "A mitomap.dump.sql.gz you already have. Without it the dump is downloaded — the data "
+            "surface answers plain curl, unlike the web surface. A local dump carries no "
+            "Last-Modified, so that snapshot is honestly unlabelled."
+        ),
+    ),
+    url: str = typer.Option(
+        DEFAULT_MITOMAP_URL, "--url", help="Source URL for the dump (used only when --dump is absent).",
+    ),
+) -> None:
+    """Cut the two curated mtDNA variant tables, their citations and the references out of the dump.
+
+    602 `mmutation` rows and 494 `rtmutation` rows out of 6.76 million lines. The snapshot records
+    every count this build computes — rows per table, the dump's own per-table edit dates, how much of
+    `reference.nlmid` is a PMID, the alleles that cannot be spelled as VCF and the brackets that are
+    not a documented VCEP class — because a number computed and dropped is one every reader has to
+    recompute.
+    """
+    from just_dna_enricher.mitomap_build import (
+        build_snapshot,
+        download_mitomap_dump,
+    )
+
+    try:
+        if dump is not None:
+            result = build_snapshot(dump, out, source_url=f"file://{dump.resolve()}")
+        else:
+            fetched = download_mitomap_dump(out / "mitomap.dump.sql.gz", url)
+            result = build_snapshot(
+                fetched.path, out, source_url=fetched.url, source_sha256=fetched.sha256,
+                source_last_modified=fetched.last_modified,
+            )
+    except (MitomapError, ImportError, OSError) as exc:
+        typer.secho(f"MITOMAP BUILD FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"built: {result.out_dir}", fg=typer.colors.GREEN)
+    for name, count in result.rows.items():
+        typer.echo(f"  {name} {count} rows, curated through {result.edit_dates.get(name) or 'an undated pass'}")
+    typer.echo(
+        f"  {result.citation_links} citation links from {result.reference_rows} references "
+        f"({result.references_without_nlmid} state no nlmid, "
+        f"{result.references_not_a_pmid} state something that is not a PMID)"
+    )
+    if result.unmintable:
+        typer.echo(
+            "  alleles that cannot be spelled as VCF: "
+            + ", ".join(f"{reason} {count}" for reason, count in result.unmintable.items())
+        )
+    if result.withheld_brackets:
+        typer.secho(
+            "  brackets withheld as undocumented (never mapped onto clin_sig): "
+            + ", ".join(f"{token} {count}" for token, count in result.withheld_brackets.items()),
+            fg=typer.colors.YELLOW,
+        )
+    if result.dataset:
+        typer.echo(f"  release {result.dataset}")
+    else:
+        typer.secho(
+            "  the dump carried no Last-Modified, so this snapshot has no release label and the "
+            "miss lane built from it cannot name the MITOMAP release it compared",
+            fg=typer.colors.YELLOW, err=True,
+        )
+
+
+@mitomap_app.command("publish")
+def mitomap_publish_(
+    snapshot_dir: Path = typer.Argument(
+        ..., exists=True, file_okay=False, help="Built snapshot directory (data/ + release.json).",
+    ),
+    repo: str = typer.Option(
+        DEFAULT_MITOMAP_REPO_ID, "--repo", help="Target HuggingFace dataset repo (owner/name).",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be uploaded; send nothing."),
+    commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
+) -> None:
+    """Create-or-update the dataset repo and upload the built MITOMAP snapshot (publisher/dev).
+
+    Publishable on the source's own terms: CC BY 3.0, with commercial and clinical use stated free and
+    attribution the one condition — which the snapshot's `SourceRow` carries. **Only the parent lane
+    publishes.** The derived miss snapshot pins two parent digests, so a pulled copy would be an
+    increment whose own currency check cannot be run by whoever pulled it; it is rebuilt locally from
+    the parents instead, which is cheaper than the download and cannot be stale.
+    """
+    from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
+
+    if not (read_release(snapshot_dir) or {}).get("dataset"):
+        typer.secho(
+            "  this snapshot carries no release label (it was built from a local dump), so everyone "
+            "who pulls it inherits a comparison that cannot name its own MITOMAP release.",
+            fg=typer.colors.YELLOW, err=True,
+        )
+    try:
+        if dry_run:
+            plan = plan_reference_snapshot(snapshot_dir, repo)
+            typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
+            return
+        plan = publish_reference_snapshot(snapshot_dir, repo, commit_message=commit_message)
     except (FileNotFoundError, PermissionError, ImportError) as exc:
         typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
