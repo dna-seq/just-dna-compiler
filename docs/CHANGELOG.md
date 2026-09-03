@@ -122,6 +122,12 @@ four-tuple list inside `cli.py` rather than something a test could walk.
   keeps `data/caches/`, named the same way. **`civic reproduce` moved** from `data/repro/civic` to
   `data/repro/civic_reproduce`, since `civic build` now takes the plain name. Callers passing `--out`
   are unaffected.
+- **The `.claude/skills/create-module/` authoring skill is deleted.** It was the dogfooding
+  predecessor of `just-module-creator`'s `/create-module` and stage skills, was never invoked, and
+  had become a third command-surface table to keep in step with `--help`. Authoring guidance is that
+  plugin's; this repository documents the format. Recover the wording from git history
+  (`git show dffa03f:.claude/skills/create-module/SKILL.md`) if a rule in it turns out to have lived
+  nowhere else.
 - **A failed optional fetch no longer leaves a 0-byte `LICENSE.txt` in the cache, and a blank licence
   pins nothing**
   ([RM178](ROADMAP_HISTORY.md#rm178--a-failed-optional-fetch-left-a-0-byte-licence-in-every-pulled-cache-and-an-empty-licence-pins-the-empty-string),

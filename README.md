@@ -39,16 +39,10 @@ Build all distributions: `uv build --all-packages`.
 
 ## Authoring a module
 
-Start at [`.claude/skills/create-module/SKILL.md`](.claude/skills/create-module/SKILL.md) — the command
-order end to end, what only a human may decide, the surface of both CLIs, and the gotchas that are not
-discoverable from the command output. Two companions sit beside it:
-[`TABLES.md`](.claude/skills/create-module/references/TABLES.md) (which table kind a finding belongs in)
-and [`SYMPTOMS.md`](.claude/skills/create-module/references/SYMPTOMS.md) (message → cause → action).
-
-It is a Claude Code skill — invoke it with `/create-module` if you use one — but it is plain markdown
-written for a human author who installed the packages from PyPI, so read it directly if you do not.
-Worked modules to copy from are in [`reference_examples/`](reference_examples/), each with a README
-naming what it exercises.
+Authoring is `just-module-creator`'s job — its `/create-module` skill is the door into the stage
+skills that scaffold, draft, curate, enrich, compile and publish a module against these packages.
+This repository documents the *format*; worked modules to copy from are in
+[`reference_examples/`](reference_examples/), each with a README naming what it exercises.
 
 ## Design docs
 

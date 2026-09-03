@@ -288,7 +288,7 @@ pin once written. → ROADMAP § Parked in 0.5.
 **Is `start` 0-based?**
 No. **Every `start` in this codebase is the 1-based VCF position.** The docstring that said otherwise
 was the bug, and it shifted 3,038 variants across four modules past every offline gate. Pinned by
-`schema/tests/test_coordinate_convention.py`. → CLAUDE.md, and the create-module skill's step 3.
+`schema/tests/test_coordinate_convention.py`. → CLAUDE.md.
 
 **Do I need to file a round-trip or dedup loss I can construct mechanically?**
 Only after you have built a **real, sensible** example against the actual code paths. A

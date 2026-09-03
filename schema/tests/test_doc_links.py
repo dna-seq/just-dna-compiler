@@ -18,8 +18,7 @@ Scope is every tracked markdown file, **including the reference-example and pack
 of those link out to `../../docs/ROADMAP.md` and `../../docs/ROADMAP_HISTORY.md`, which is precisely
 the live/history pair this guard exists for, so scoping to `docs/` would have excluded the case with
 the shortest path to a stale pointer. Dot-directories are skipped, which takes out the agent worktrees
-under `.claude/` (whole second checkouts) along with the `create-module` skill, whose markdown carries
-no links at all; `data/` and `dist/` are build output.
+under `.claude/` (whole second checkouts); `data/` and `dist/` are build output.
 
 A target that climbs out of the repository is reported as its own finding, decided from the path and
 not from the filesystem. `ROADMAP.md` carried a consumer's `../../just-dna-lite/docs/…` link for three

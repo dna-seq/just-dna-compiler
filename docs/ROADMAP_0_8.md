@@ -476,7 +476,7 @@ measurement that would show that has not been taken — this entry is where it g
 not in doubt is the direction: the recurring failure is real and repeatedly measured, and it is filed
 here so the next instance lands against a number rather than as a fourth anecdote.
 
-**Not to be confused with** the `/create-module` skill's authoring guidance, which is a different
+**Not to be confused with** `just-module-creator`'s authoring guidance, which is a different
 document for a different reader and stays prose. This is about *our* stated behaviour, not an author's.
 
 # The lifecycle items — what writing down the second pass surfaced

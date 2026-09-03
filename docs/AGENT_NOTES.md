@@ -17,8 +17,8 @@ enforces it, so the invariant to keep green by hand is that the two tag sets mat
 Two conventions, both inherited from `CLAUDE.md`:
 
 - **Why a bug existed, or what a repair rejected, goes here or in
-  [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) — never in the `/create-module` skill**, which is
-  operative rules only.
+  [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) — never in an authoring skill** (`just-module-creator`'s),
+  which is operative rules only.
 - **New long-form material is appended to the section it belongs in, and gets a one-line headline in
   `CLAUDE.md`.** Do not grow `CLAUDE.md` with the narrative again — it is loaded into every session
   and has a size ceiling.

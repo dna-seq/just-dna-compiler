@@ -104,26 +104,19 @@ rule → `grep -rn 'hosting_verdict' docs/ schema/ compiler/ enricher/`; a warni
    versioning, or anything downstream of publish. It carries the honest note that no module here has
    ever had a second version.
 
-## Authoring a module? It is the `/create-module` skill, and that is the only copy
+## Authoring a module? That is `just-module-creator`, not this repository
 
-`.claude/skills/create-module/SKILL.md` + `references/TABLES.md` (which table kind a finding belongs
-in) + `references/SYMPTOMS.md` (message → cause → action). It is the workflow for *using* the format,
-and every command in it was run end to end.
+The authoring workflow — `/create-module` and the stage skills behind it — lives in
+`just-module-creator`, the MCP surface. This repository carries **no authoring document**: the
+`.claude/skills/create-module/` skill that used to sit here was a dogfooding predecessor of that
+plugin, was never invoked, and was deleted on 2026-09-03 (recover it from git history for the
+wording, `git show dffa03f:.claude/skills/create-module/SKILL.md`). Two rules survive it:
 
-- **It is written for an author with no checkout**, so it is **fully dereferenced and must stay that
-  way: it names no path outside its own directory** — no `docs/`, no `reference_examples/`, no
-  Constitution, no bare `RMn`. That bans *outward references*, not the material: where a repo doc
-  would link, the skill states the rule and moves on.
-- **One copy.** A new authoring gotcha goes in the skill, and reaches this file only if a
-  *contributor* also needs it. Do not start a second authoring doc under `docs/` — the repo-side twin
-  (`AUTHORING*.md`, 578 lines the skill already contained in full) was deleted for being a second
-  thing to update. `/write-module`, a dispatcher into `docs/`, was deleted for being unusable by the
-  reader above. Recover either from git history for the wording.
-- **Why a bug existed, or what a repair rejected, never goes in the skill** — that is
-  [AGENT_NOTES.md](docs/AGENT_NOTES.md) or ROADMAP_HISTORY. The skill is operative rules only.
-- **Its command-surface tables rot silently** (no test reads them): re-run `--help` against them
-  whenever a flag, command or vocabulary member changes. Everything about *schemas* it delegates to
-  `describe`/`requirements`/`reference` — keep that half delegated.
+- **Why a bug existed, or what a repair rejected, never goes in an authoring skill** — that is
+  [AGENT_NOTES.md](docs/AGENT_NOTES.md) or ROADMAP_HISTORY. An authoring skill is operative rules only.
+- **A command-surface table rots silently** (no test reads it): whoever maintains one re-runs `--help`
+  against it whenever a flag, command or vocabulary member changes here, and everything about
+  *schemas* stays delegated to `describe`/`requirements`/`reference`.
 
 ## Gotchas — one line each, keyed for grep
 
@@ -542,8 +535,8 @@ questions vs answers. A blocker is never a dead end: dissolved, closed additivel
 - Describe the format honestly: it supplies **annotation tables**, never sample data and never a
   gene–disease inference.
 - **Self-correction**: when outdated API knowledge causes a real crash or logic failure, fix the code
-  *and* update the affected doc so the next agent doesn't repeat it. One line here (or in the
-  `/create-module` skill if an author needs it), the narrative in
+  *and* update the affected doc so the next agent doesn't repeat it. One line here (or in
+  `just-module-creator`'s skills if an author needs it), the narrative in
   [AGENT_NOTES.md](docs/AGENT_NOTES.md). Update the guides immediately whenever code is refactored.
 
 ## Data & assets conventions
