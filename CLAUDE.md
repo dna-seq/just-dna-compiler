@@ -107,10 +107,10 @@ rule → `grep -rn 'hosting_verdict' docs/ schema/ compiler/ enricher/`; a warni
 ## Authoring a module? That is `just-module-creator`, not this repository
 
 The authoring workflow — `/create-module` and the stage skills behind it — lives in
-`just-module-creator`, the MCP surface. This repository carries **no authoring document**: the
-`.claude/skills/create-module/` skill that used to sit here was a dogfooding predecessor of that
-plugin, was never invoked, and was deleted on 2026-09-03 (recover it from git history for the
-wording, `git show dffa03f:.claude/skills/create-module/SKILL.md`). Two rules survive it:
+`just-module-creator`, the MCP surface. This repository carries **no authoring document**: its
+dogfooding predecessor of that plugin was never invoked and was deleted on 2026-09-03; the
+[CHANGELOG](docs/CHANGELOG.md) entry for that date carries the git pointer if a rule in it turns out to
+have lived nowhere else. Two rules survive it:
 
 - **Why a bug existed, or what a repair rejected, never goes in an authoring skill** — that is
   [AGENT_NOTES.md](docs/AGENT_NOTES.md) or ROADMAP_HISTORY. An authoring skill is operative rules only.
