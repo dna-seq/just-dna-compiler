@@ -14,7 +14,8 @@ watcher — which exists to make a Claude session's work reproducible and which 
 runs. A script here is the other way round: an operator runs it, and no agent needs it. Put a new one
 in whichever of the two an actual reader would look in.
 
-**Reproduction *output* is not here.** A run's working directory goes under `data/repro/<name>/`,
-which the workspace git-ignores wholesale along with the rest of `data/` — `civic reproduce` defaults
-there. Nothing a command generates belongs in the repository root, and a command that writes three and
-a half megabytes into it used to need its own `.gitignore` line to say so.
+**Build *output* is not here either.** Every builder's `--out` defaults to `data/repro/<lane>/`
+(`civic reproduce` to `data/repro/civic_reproduce/`), which the workspace git-ignores wholesale along
+with the rest of `data/`; the default comes from one `locations.repro_out` and a test refuses a builder
+that spells its own. Nothing a command generates belongs in the repository root, and a command that
+wrote three and a half megabytes into it once needed its own `.gitignore` line to say so.

@@ -68,6 +68,47 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM177 — nine builders wrote their snapshot beside `pyproject.toml`, because the rule that forbade it was prose
+
+**Severity** medium · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-enricher` only —
+fourteen `--out` defaults and one `locations` helper; no schema, no parquet column, no vocabulary
+member) · **Owner** enricher · **Motivating case** the enricher reference and the authoring skill both
+telling an operator to run `clinpgx build --out ./clinpgx` from a checkout
+
+**The rule was old and it had been enforced exactly once.** *Nothing a command generates goes in the
+repository root* was filed when `civic reproduce` wrote `civic-reproduce/` there and needed its own
+`.gitignore` line to say so; the repair moved that one default under `data/repro/` and wrote the rule
+into CLAUDE.md. Every builder written after it repeated the defect, because a rule stated in prose is
+checked by whoever remembers to read it. `civic`, `clinvar`, `pubmind`, `gnomad_constraint`, `mane`,
+`strchive`, `acmg_sf`, `mitomap` and `mitomap_miss` each defaulted `--out` to a bare relative name, so
+running any of them from a checkout dropped a snapshot directory beside `pyproject.toml`. Four more —
+`clinpgx build`, `clinpgx build-labels`, `cpic build`, `pharmvar build` — required `--out` with no
+default at all, which is how the reference came to show `--out ./clinpgx`. Nothing was ever committed
+by accident, because blind staging is banned here for an unrelated reason; the defect was visible on
+every `git status` and survived nine builders anyway.
+
+**What shipped is one function, not fourteen corrections.** `locations.repro_out(name)` returns
+`data/repro/<name>/`, and every builder's `--out` default is a call to it. `cache rebuild` keeps
+`data/caches/` as `locations.CACHES_DIRNAME`, in the same file, because a cache base is a different
+concept from one snapshot and the point is that neither is spelled inline. `civic reproduce` moved from
+`data/repro/civic` to `data/repro/civic_reproduce`, since `civic build` now takes the plain name; the
+probe records that name the old path ([CONTRADICTION_CORPORA](probes/CONTRADICTION_CORPORA.md)) are
+dated and keep it. A caller passing `--out` sees no change.
+
+**The guard walks rather than lists** (`@registry-completeness`). `test_build_out_defaults.py` parses
+`cli.py`, finds every `typer.Option` bound to `--out`, and asserts each default is `repro_out(...)` or
+a `locations` constant — never a literal. Sixteen found, and sixteen `"--out"` strings in the file, so
+nothing escaped the walk. The one required `--out` that remains, `clinvar citations`, names an
+**input** (an existing snapshot to add a sidecar to) and is enumerated as an equality, so the exemption
+cannot grow quietly. A floor — *at least nine under `data/`* — would have passed forever while the
+tenth builder wrote wherever it liked.
+
+**Refused: a `.gitignore` line per lane.** It is the repair `civic reproduce` originally got, and it is
+the shape that produced nine repeats: each new builder would need its own line, which is the same
+prose rule at a different address. `/data/` is ignored whole, so a default under it needs no line.
+
+---
+
 ## RM160 — the citations ten CIViC records carry are published on one surface, and it is the one nothing read
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-03 in the uncut 0.7.0** — the provenance half,

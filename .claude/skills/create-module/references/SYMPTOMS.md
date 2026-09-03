@@ -508,7 +508,8 @@ entries more narrowly than the gene (HFE is *"c.845G>A; p.C282Y homozygotes only
 page, which is a release behind — it does not carry `ABCD1`, `CYP27A1` or `PLN`, all of which v3.3
 lists. Every disagreement is withheld rather than reported, and `--strict` will not fail on one. To get
 an answer, build the snapshot from ACMG's published workbook
-(`just-dna-enricher acmg build <workbook.xlsx> --out acmg/`) and re-run with `--sf-list acmg/`, which
+(`just-dna-enricher acmg build <workbook.xlsx>`, which writes `data/repro/acmg_sf/`) and re-run with
+`--sf-list data/repro/acmg_sf/`, which
 also works `--offline`. To stop passing the flag, point `$JUST_DNA_ACMG_CACHE` at that directory — the
 check reads a provisioned snapshot before it ever reaches for the page.
 

@@ -107,6 +107,21 @@ four-tuple list inside `cli.py` rather than something a test could walk.
   command (it composed `f"{name} build"`, which named two commands that do not exist), and
   `cache pull`'s exit code no longer reflects an unpublished repo. No parquet column, model field or
   vocabulary member changed, and builder-only dependencies were already `[dev]`-only.
+- **Every builder now writes under `data/repro/<lane>/` when the operator names nowhere, and the
+  rule is derived rather than restated**
+  ([RM177](ROADMAP_HISTORY.md#rm177--nine-builders-wrote-their-snapshot-beside-pyprojecttoml-because-the-rule-that-forbade-it-was-prose),
+  `just-dna-enricher` only, no schema change). *"Nothing a command generates goes in the repository
+  root"* has been the rule since `civic reproduce` needed its own `.gitignore` line — and it was
+  prose, so **nine `--out` defaults drifted past it**: `civic`, `clinvar`, `pubmind`,
+  `gnomad_constraint`, `mane`, `strchive`, `acmg_sf`, `mitomap`, `mitomap_miss`, each a bare relative
+  name that dropped a snapshot directory beside `pyproject.toml`. Four more builders (`clinpgx build`,
+  `clinpgx build-labels`, `cpic build`, `pharmvar build`) required `--out` with no default at all,
+  which is how the docs came to tell an operator to write `--out ./clinpgx` into the root. One
+  `locations.repro_out` now spells it, and an **AST walk over the CLI** asserts no `--out` default is
+  written inline — so the next builder inherits the rule instead of repeating it. `cache rebuild`
+  keeps `data/caches/`, named the same way. **`civic reproduce` moved** from `data/repro/civic` to
+  `data/repro/civic_reproduce`, since `civic build` now takes the plain name. Callers passing `--out`
+  are unaffected.
 - **MITOMAP is two more lanes, and one of them is derived from the other two**
   ([RM171](ROADMAP_HISTORY.md#rm171--mitomaps-curated-mtdna-tables-adopted-as-the-increment-they-carry-over-clinvar),
   `just-dna-enricher` only, no schema change). `mitomap build` cuts the source's published `pg_dump`
@@ -218,18 +233,6 @@ that was measuring something else, plus the probe round behind RM170.
   instances. The stamp defect stays RM174's; the representation is RM28's and stays parked.
 - **RM160's shape decided (unbuilt): read `SUBMITTED` at `enrich` time.** `civic build` /
   `civic reproduce` keep byte-reproducibility and the snapshot does not grow.
-- **Every builder now writes under `data/repro/<lane>/` by default, and the rule is derived rather
-  than restated.** *"Nothing a command generates goes in the repository root"* has been the rule since
-  `civic reproduce` needed its own `.gitignore` line — and it was prose, so **nine `--out` defaults
-  drifted past it**: `civic`, `clinvar`, `pubmind`, `gnomad_constraint`, `mane`, `strchive`,
-  `acmg_sf`, `mitomap`, `mitomap_miss`, each a bare relative name that dropped a snapshot directory
-  beside `pyproject.toml`. Four more builders (`clinpgx build`, `clinpgx build-labels`, `cpic build`,
-  `pharmvar build`) required `--out` with no default at all, which is how the docs came to tell an
-  operator to write `--out ./clinpgx` into the root. One `locations.repro_out` now spells it, and an
-  **AST walk over the CLI** asserts no `--out` default is written inline — so the next builder
-  inherits the rule instead of repeating it. `cache rebuild` keeps `data/caches/`, named the same way.
-  **`civic reproduce` moved** from `data/repro/civic` to `data/repro/civic_reproduce`, since
-  `civic build` now takes the plain name. Callers passing `--out` are unaffected.
 - **RM174's stamp half shipped: a row names the profile its evidence item actually belongs to.** A
   combination-genotype claim reaching the builder through the VCF was fanned out into one row per
   variant, each stamped with *that variant's* profile — so the parquet stated, once per variant, that

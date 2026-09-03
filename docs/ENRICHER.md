@@ -1223,8 +1223,10 @@ Three things about it are worth reading before a deployment runs it nightly.
   minutes, and a short parquet still has a `PAR1` footer — so an `enrich` reading a half-written
   snapshot mid-flight sees a real but incomplete table and no resolver can catch it. Moving the result
   into the live caches is a separate, deliberate step.
-- **Every `--out` default is under `data/`, and none of them is written by hand.** `cache rebuild`
-  takes `data/caches/`; every *builder* takes `data/repro/<lane>/` from `locations.repro_out`. That is
+- **Every `--out` default is under `data/`, and none of them is written by hand**
+  ([RM177](ROADMAP_HISTORY.md#rm177--nine-builders-wrote-their-snapshot-beside-pyprojecttoml-because-the-rule-that-forbade-it-was-prose)).
+  `cache rebuild` takes `data/caches/`; every *builder* takes `data/repro/<lane>/` from
+  `locations.repro_out`. That is
   not cosmetic: run from a checkout, `--out ./cpic` drops an untracked snapshot directory in the
   repository root, which is exactly the state `civic reproduce` needed its own `.gitignore` line to
   paper over. **The rule was prose for a release and nine defaults drifted past it** — `civic`,
@@ -4361,8 +4363,8 @@ just-dna-enricher draft-panel spec/ --gene MTHFR --no-download   # use a cached 
 just-dna-enricher draft-panel spec/ --gene MTHFR --dry-run   # the genotype worklist, appending nothing
 just-dna-enricher draft-panel spec/ --gene BRCA1 --source pubmind --pubmind-cache pm/  # literature verdicts
 just-dna-enricher draft-panel spec/ --gene BRCA1 --source pubmind --min-confidence 2   # a deeper floor
-just-dna-enricher mitomap build --out mm/       # MITOMAP's pg_dump → both curated mtDNA tables
-just-dna-enricher mitomap miss  --out mm-miss/  # the join against ClinVar chrMT; both parents required
+just-dna-enricher mitomap build                 # MITOMAP's pg_dump → both curated mtDNA tables (data/repro/mitomap)
+just-dna-enricher mitomap miss                  # the join against ClinVar chrMT; both parents required
 just-dna-enricher draft-panel spec/ --source mitomap-miss   # the increment only; --gene filters, never required
 just-dna-enricher clinvar citations --out cv/ --download   # add PMIDs so a panel can compile
 just-dna-enricher clinvar publish cv/                     # data/ + citations/ + release.json
@@ -4380,10 +4382,10 @@ just-dna-enricher hint gene MTHFR                            # approved | retire
 just-dna-enricher enrich-and-compile spec/ out/    # enrich, then compile from resolution.csv (offline)
 just-dna-enricher upload out/coronary --dry-run    # plan a module HF upload ([dev]); names both paths
 just-dna-enricher upload out/coronary              # push to data/coronary/ and data/coronary/v<version>/
-just-dna-enricher clinvar build --vcf clinvar.vcf.gz --out cv/   # VCF → snapshot parquet ([dev])
-just-dna-enricher clinvar build --download --out cv/            # fetch the NCBI VCF first, then build
-just-dna-enricher clinvar publish cv/ --dry-run                 # plan the reference-snapshot upload
-just-dna-enricher clinvar publish cv/                           # create-or-update datasets/just-dna-seq/clinvar
+just-dna-enricher clinvar build --vcf clinvar.vcf.gz            # VCF → snapshot parquet ([dev]), data/repro/clinvar
+just-dna-enricher clinvar build --download                      # fetch the NCBI VCF first, then build
+just-dna-enricher clinvar publish data/repro/clinvar --dry-run  # plan the reference-snapshot upload
+just-dna-enricher clinvar publish data/repro/clinvar            # create-or-update datasets/just-dna-seq/clinvar
 ```
 
 `enrich` takes the mode and cache flags (`--strict/--best-effort`, `--offline`, `--ensembl-cache`,

@@ -390,6 +390,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A source's bulk download and its API are different sources; state the status basis or the counts mean nothing. `@two-surfaces-two-denominators`
 - Score a RefSeq accession for build with the per-chromosome map — the version alone names no build. `@accession-version-names-no-build`
 - A source on an old assembly is placed by the identity it publishes beside the coordinate, never by lifting it. `@published-identity-not-liftover`
+- A builder's `--out` default is `repro_out("<lane>")`, never a literal; an AST walk over the CLI refuses the literal. `@a-default-spelled-per-command-is-a-rule-in-prose`
 
 ## The design cycle (the order of things)
 
@@ -546,12 +547,11 @@ questions vs answers. A blocker is never a dead end: dissolved, closed additivel
 ## Data & assets conventions
 
 - Generated and sample data lives under `data/`, **git-ignored and build-ignored**: `data/input/`,
-  `data/interim/` (code-generated intermediates), `data/output/`, `data/repro/<name>/` (where **every builder** writes when the operator names nowhere — one
-  `locations.repro_out`, guarded by an AST walk over the CLI, because this rule was prose for a
-  release and nine `--out` defaults drifted past it).
-- **Nothing a command generates goes in the repository root.** `civic reproduce` wrote
-  `civic-reproduce/` there and needed its own `.gitignore` line to say so; a default under `data/`
-  needs none. Check where a new `--out` default lands before shipping it.
+  `data/interim/` (code-generated intermediates), `data/output/`, `data/repro/<lane>/` (every
+  builder's default `--out`, from `locations.repro_out`).
+- **Nothing a command generates goes in the repository root.** A builder's `--out` default is
+  `repro_out("<lane>")`, never a literal — an AST walk over the CLI refuses the literal, so the rule
+  is inherited rather than remembered. `@a-default-spelled-per-command-is-a-rule-in-prose`
 - **`scripts/` is the operator-facing drivers, `.claude/` is agent tooling** — the split is by
   audience, not by file type. A deployment runs `scripts/rebuild-caches.sh`; nothing but a Claude
   session runs `.claude/rm-next.py`. [scripts/README.md](scripts/README.md) states the rule.

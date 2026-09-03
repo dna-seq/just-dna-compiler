@@ -3209,6 +3209,30 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `contested` was added for"; measured at variant granularity, three of the four have no opposing
   sibling at all, and genuine risk-versus-protective opposition across the whole source is zero.
 
+- `@a-default-spelled-per-command-is-a-rule-in-prose` — **A default every command spells for itself is
+  a rule nobody enforces, and it held for exactly one command (RM177, 2026-09-03).** *Nothing a command
+  generates goes in the repository root* went into CLAUDE.md when `civic reproduce` wrote
+  `civic-reproduce/` there. The repair was a `.gitignore` line and then a moved default — for that one
+  command. Nine builders written afterwards each defaulted `--out` to a bare name (`civic`, `clinvar`,
+  `mitomap`, …) and four required it with no default, so the reference itself taught `--out ./clinpgx`.
+  The rule was correct, visible on every `git status`, and checked by nobody, because prose is checked
+  by whoever remembers to read it.
+
+  **Derive the default, then guard the derivation.** `locations.repro_out(name)` is the one place
+  `data/repro/` is spelled; `CACHES_DIRNAME` sits beside it for `cache rebuild`, a different concept
+  named in the same file so that neither is inline. The guard is `test_build_out_defaults.py`, an AST
+  walk over `cli.py` that finds every `typer.Option` bound to `--out` and refuses a literal default —
+  walked, never listed (`@registry-completeness`), because a floor of nine would pass while the tenth
+  builder wrote wherever it liked. Cross-check the walk against the file: sixteen `"--out"` strings,
+  sixteen options found. The one required `--out` left names an *input* (`clinvar citations` adds a
+  sidecar to a snapshot that exists) and is enumerated as an equality so the exemption cannot grow.
+
+  **The refused repair is the one that was already tried.** A `.gitignore` line per lane is what
+  `civic reproduce` first got, and it is a prose rule at a different address: every new builder owes a
+  line, and the ninth forgets. `/data/` is ignored whole, so a default under it needs none. The same
+  shape as `@write-the-sourcerow` and `@fieldnames-from-model`: when a rule has to be repeated per
+  member, make it a function of the registry and test the registry.
+
 ## Dogfooding, adversarial probing, and how a finding gets filed
 
 - `@dogfood-lacks-are-results` — **Dogfooding means using the shipped surface to do real work — and a capability the tool LACKS is
