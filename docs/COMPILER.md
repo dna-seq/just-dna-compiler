@@ -1390,7 +1390,8 @@ weights  annotations  studies                                    ← the SNP cor
 activity_phenotype  copynumbers  repeat_alleles  heteroplasmy
 haplotypes  allele_function  diplotypes  pgs  pharm_variants      ← the nine table kinds
 frequencies  gene_metrics  literature  gene_validity
-clinical_assertions  gwas_effects                                 ← the derived-fact sidecars
+clinical_assertions  gwas_effects
+clin_sig_concordance  clin_sig_authority_calls                     ← the derived-fact sidecars (the last two: RM130, 0.7)
 sources                                                           ← the licence table
 overrides                                                         ← the authored overlay (0.7)
 ```
@@ -1403,7 +1404,7 @@ late it sits in the tuple. What the position does govern is the order a consumer
 listing, not the hash; what keeps an already-published digest still is that the module has no such
 file at all.
 
-Twenty names. `LEAD_PARQUETS` is the ten carrying a module's own annotation rows — `weights` plus the
+Twenty-two names. `LEAD_PARQUETS` is the ten carrying a module's own annotation rows — `weights` plus the
 nine table kinds — which is the publisher's *is this a module* rule and what discovery probes.
 
 **The per-parquet column lists are deliberately not reproduced here.** They are derivable from the
@@ -1414,8 +1415,10 @@ including which columns the compiler stamps rather than reads, is in
 
 - **`ARTIFACT_PARQUETS`** (feed `artifact.digest`; `_OUTPUT_FILES` until 0.6): `weights`/`annotations`/
   `studies.parquet` + the 9 table-kind parquets + `frequencies.parquet` / `gene_metrics.parquet` /
-  `literature.parquet` / `gene_validity.parquet` / `clinical_assertions.parquet` / `sources.parquet`
-  when present. The sidecars enter
+  `literature.parquet` / `gene_validity.parquet` / `clinical_assertions.parquet` /
+  `gwas_effects.parquet` / `clin_sig_concordance.parquet` / `clin_sig_authority_calls.parquet` /
+  `sources.parquet` / `overrides.parquet` when present — the diagram above is the tuple, and this
+  sentence is not a second inventory of it. The sidecars enter
   the digest because a module carrying frequency data genuinely *is* different content — but adding one
   leaves the SNP core's bytes untouched (an explicit test). **It is public because the publisher tier
   has to agree with it**: `just_dna_enricher.upload` derives its allow-patterns from this tuple, after a
@@ -1423,12 +1426,15 @@ including which columns the compiler stamps rather than reads, is in
   `LEAD_PARQUETS` beside it names the ten that carry a module's own annotation rows — `weights` plus the
   nine 0.4 families — which is the publisher's "is this a module" rule and what discovery probes.
 - **`_INPUT_FILES`** (feed `manifest.inputs`, raw-bytes hashed): `module_spec.yaml` + `variants.csv` +
-  `studies.csv` + the 9 table-kind CSVs — the authored surface, and the reason only the *other* files
+  `studies.csv` + the 9 table-kind CSVs + `overrides.csv` (0.7 — every row of it is written by a
+  human, which is what puts it here) — the authored surface, and the reason only the *other* files
   gained a second legal name and location in 0.6. **`resolution.csv` is deliberately NOT here** (nor in
   `ARTIFACT_PARQUETS`) — it is a multi-producer artifact hashed only by the normalized `resolution_signature`
   (a raw-bytes hash would be unstable across enricher/human/reverse producers). `frequencies.csv`,
-  `gene_metrics.csv`, `literature.csv` and the 0.6 pair `gene_validity.csv` / `clinical_assertions.csv`
-  are out for exactly the same reason, each hashed by its own `*_signature`. `provenance.json` is
+  `gene_metrics.csv`, `literature.csv`, the 0.6 pair `gene_validity.csv` / `clinical_assertions.csv`,
+  `gwas_effects.csv` and the 0.7 pair `clin_sig_concordance.csv` / `clin_sig_authority_calls.csv`
+  are out for exactly the same reason, each hashed by its own `*_signature` (the derived roster is
+  `_DERIVED_FILES`; read it rather than this sentence). `provenance.json` is
   likewise out of the digest.
 - **The derived-fact sidecars are deliberately NOT `_TABLE_KINDS`.** Those are authored DSL tables with
   `AuthoredModel` semantics, the reserved-namespace guard, duplicate-key checks and raw-byte input
@@ -1679,16 +1685,45 @@ compiled artifact — reverse will not re-emit them — and --strict refuses ins
 with an injected table present, which spells out that the flag names Ensembl but is the master switch
 and that there is no "do not reach the network" flag because the compiler never does.
 
-**The overlay's two warnings (0.7, RM124), and there are only two on purpose.** `overrides.csv`
+**Four phrases added since 2026-08-28**, each carrying its code:
+
+```
+derived_row_orphan (the concordance arm): {table} records {n} subject(s) no variant in this module
+carries: {orphans}. The record is rebuilt whole on every run, so this means variants.csv was narrowed
+since the comparison last ran — re-run it rather than editing the table.
+
+declared_license_disagrees: module declares license {declared} and {standing}. Not adjudicated here — a
+compatible pair is legitimate, an incompatible one is a real problem, and only a human can tell which.
+A declaration matching some but not all of them is the ordinary mixed-licence case, where the most
+restrictive term binds the whole artifact.
+
+gene_validity_superseded: gene_validity.csv carries a later curation for {n} gene-disease claim(s), so
+an earlier row is superseded and kept: {groups}. Nothing is deleted and nothing is wrong — the newest
+classification_date is read as current, both rows stay so the drift is visible, and
+manifest.gene_validity.classifications publishes the current one. A curating body re-curating is not
+an error in your module.
+
+gene_validity_currency_undecidable: gene_validity.csv carries several curations for {n} gene-disease
+claim(s) and nothing orders them: {groups}. Either two rows share a classification_date or one states
+none, so no row is called current and none superseded — every classification in those groups is
+published, which is the honest answer rather than a winner picked from an identifier. Withheld
+deliberately, not skipped.
+```
+
+**The overlay's three warnings (0.7, RM124; the third split out on 2026-08-31), and there are only three on purpose.** `overrides.csv`
 applies before any check reads a derived row, so what a check reports is what the module asserts. No
 operation reports its own no-op — `reverse_module` emits the post-overlay table plus the overlay, so
 on a recompile update-already-equal, insert-already-present and suppress-already-absent are all three
 true of a healthy module, and reporting any of them would make a module and its own round trip
 disagree on `manifest.compilation.warnings`. What is left is the pair an overlay operation cannot
-manufacture for itself. Note the third reading in the first message: on a recompile of a *reversed*
-module the row may be missing because the compiler dropped it before the parquet — `literature.csv`
-loses its uncited rows and `resolution.csv` has no parquet at all — so the correction is fine and the
-table is short. That case reports on lap 2 and not on lap 1.
+manufacture for itself. The unmatched-update case splits in two for the tables whose rows the compiler
+can drop before the parquet (`literature.csv` loses its uncited rows, `resolution.csv` has no parquet at
+all): an update whose subject is still cited or positioned names a table that is *short* and asks for
+the enrichment pass to be re-run, while one whose subject no artifact of this module can carry is
+**unreachable** — and unreachable fires matched-or-not, because reachability is a property of the
+module and answers the same on both laps, where "did it match" is exactly the quantity a reverse moves
+(`@lap-stable-means-a-property-of-the-module`; an earlier cut classified only the unmatched set and
+reported on lap 2 and not on lap 1). Every other table keeps the three-readings message.
 
 ```
 overrides.csv: {n} update override(s) name a row {table} does not carry: {subjects}. Three readings and
@@ -1696,6 +1731,17 @@ nothing here separates them — the subject/member may be mistyped, the source m
 publishing the row the correction was about, or the compiler dropped the row before the parquet so a
 reversed module cannot carry it. Neither an insert nor a suppress reports this: an insert creates the
 row and a suppress is satisfied by its absence.
+
+overrides.csv: {n} update override(s) name a row {table} does not carry, though this module could carry
+it: {subjects}. The subject is cited or positioned, so the table is short rather than the correction
+wrong — re-run the enrichment pass that writes {table}. Neither an insert nor a suppress reports this:
+an insert creates the row and a suppress is satisfied by its absence.
+
+overrides.csv: {n} update override(s) name a {table} row no artifact of this module can carry:
+{subjects}. Two readings and nothing here separates them — the subject may be mistyped, or the
+correction may be aimed at a row the compiler drops before the parquet (an uncited citation, an
+unresolved locus), in which case the correction is fine and simply has nothing to reach. Reported the
+same way whether or not the row is present today, so a module and its own round trip agree.
 
 overrides.csv corrects {tables}, which this module does not carry. An overlay lies on top of a derived
 table and never creates one, so those rows change nothing. Run the pass that writes the table, or drop
@@ -2039,6 +2085,9 @@ modules silently vanishing from a catalogue.
 | **`gene_metrics.csv` path (0.5)** | ✅ `GeneMetricsRow`; gene cross-check → warning; **provisional shape** | ✅ `gene_metrics.parquet` (in digest); `gene_metrics_signature`/`genes`/`datasets` → **manifest** | — | complete (injected; offline-capable upstream) |
 | **`literature.csv` path (0.5)** | ✅ `LiteratureRow`; citation cross-check + nonexistent-PMID warning; **provisional shape** | ✅ `literature.parquet` (in digest); `literature_signature`/`sources`/coverage counters → **manifest** | — | complete (injected; enricher produces it) |
 | **`gene_validity.csv` path (0.6, RM24)** | ✅ `GeneValidityRow`; gene cross-check → warning; **provisional shape** | ✅ `gene_validity.parquet` (in digest); `gene_validity_signature`/`genes`/`diseases`/`classifications`/`submitters`/`datasets` → **manifest** | — | complete (injected; ClinGen + GenCC routes in the enricher) |
+| **`clin_sig_concordance.csv` / `clin_sig_authority_calls.csv` (0.7, RM130)** | ✅ two derived fact tables — the per-variant three-way ClinVar concordance verdict, and every authority's call as it stood at the time (the only derived table recording a value *at the time*, which is what `answered-call currency` compares against); orphan rows warn under `derived_row_orphan`; **provisional shape** | ✅ `clin_sig_concordance.parquet` / `clin_sig_authority_calls.parquet` (in digest, fact-hashed); `_TABLE_DUPE_KEYS` registered; a cell key carries the value because two rows may state two claims | ✅ `clin_sig_concordance_contested` (see the phrases) | complete (written by `enrich`; the compiler cross-checks and never adjudicates) |
+| **`statistical_test` (`StudyRow`, 0.7, RM140)** | ✅ free text — which analysis produced this row's `p_value`/`effect_size`; in the dedup key by value | ✅ `studies.parquet`; reversed | — | complete (passthrough; nothing derives or checks it) |
+| **`confidence` / `confidence_unit` (`StudyRow`, 0.7, RM160)** | ✅ the citing source's own review state, unconverted, and the instrument it is on; a magnitude with no unit is refused at the model, a unit alone allowed | ✅ `studies.parquet`; reversed through the hand-kept fieldnames **and** the row dict (the fourth touch point) | — (the enricher's `evidence_status_currency` re-asks it) | complete (passthrough) |
 | **`clinical_assertions.csv` path (0.6, RM25)** | ✅ `ClinicalAssertionRow`; coordinate cross-check → warning; **provisional shape**. Records the archive's call and review tier; it does **not** adjudicate against the author's `clin_sig` — that stays the enricher's warn-in-both-modes cross-check | ✅ `clinical_assertions.parquet` (in digest); `clinical_assertion_signature`/`clin_sigs`/star range/`unrated_count`/`not_found_count` → **manifest** | — | complete (injected; offline-capable upstream from the ClinVar snapshot) |
 | CLI (0.4.1, extended 0.5) | ✅ Typer `validate`/`compile`/`signature`/`reverse`/**`verify`**/**`sign`**; `--strict`, `--strip-identity`/`--authority-key`, deprecated `--ensembl-cache`, `--resolution` | — | — | complete (compiler-only dep; tiers intact) |
 | **queryable p-value (0.5)** | ✅ `p_value_num` in (0, 1]; cross-checked against the verbatim `p_value` string (relative, 1%) | ✅ `studies.parquet`; **`neg_log10_p` derived on write**, absent from the reversed CSV | ✅ `-log10(p_value_num)` | complete |
@@ -2054,7 +2103,7 @@ modules silently vanishing from a catalogue.
 | **templating (0.5)** | ✅ a stub carries `TEMPLATE_PLACEHOLDER`, which no mode compiles | — (writes authored CSVs, not parquet) | ✅ created / kept-untouched plan | complete (`draft.stub_template`, `scaffold.scaffold_module`) |
 | **hints (0.5)** | ✅ per-cell validation, bin coverage, duplicate keys — all offline | — (writes nothing at all) | ✅ alterations + findings + options | complete (`hints.inspect_rows`, `hints.describe_table`) |
 | **delegated insertion (0.5)** | ✅ placed rows are validated rows; shifted rows keep their cells | — (writes authored CSVs, not parquet) | ✅ `DraftReport.shifted` names every moved row | complete (`draft.place_rows`, `append_rows(group_by=…)`) |
-| **partial rows (0.5)** | ✅ stubbed columns validated by omission; the stub itself never compiles | — (writes authored CSVs, not parquet) | ✅ added / already-present / invalid | complete (`draft.PartialRow`, `append_partial_rows`) |
+| **partial rows (0.5)** | ✅ stubbed columns validated by omission; the stub itself never compiles | — (writes authored CSVs, not parquet) | ✅ added / already-present / invalid; `DraftReport.header_extended` names the columns the header grew by — exactly the ones the batch fills, settled before anything is rendered (2026-09-02: an append into a header that predates a column used to raise a bare `ValueError`) | complete (`draft.PartialRow`, `append_partial_rows`) |
 | genotype widening: hemizygous single allele | ✅ | ✅ (1-element list) | — | complete |
 | genotype widening: phased `A\|G` | ✅ (order kept) | ✅ `phased` bit → lossless round-trip | ✅ | complete |
 | `state` (legacy) | ✅ (stays required — P8) | ✅ | ✅ read alias via `effective_direction`; trimmed to {protective,risk,neutral} on `upgraded()` | complete |
@@ -2082,7 +2131,7 @@ modules silently vanishing from a catalogue.
 | frozen `variant_key` identity (`base.derive_variant_key`) | ✅ stamped once, never re-keyed by resolution (P7); excluded from `authoring_reference()` | ✅ `weights.parquet` (compiler-managed) | **shipped** |
 | rsid↔coord resolution: one-to-many expansion, deterministic order, inject-only consistency check | ✅ `ORDER BY`; disagreement → warning; non-GRCh38 skipped | ✅ N coord-keyed rows per one-to-many rsid; idempotent | **shipped** (the DuckDB engine now lives in `just-dna-enricher`; GRCh38-only; multi-build RM15) |
 | **expansion marker: `VariantRow.locus_index` + `locus_count` (0.6, RM87)** | ✅ stamped at the expansion loop, authored cells overwritten by `_freeze_identity`; `exclude=True`, so no `content_signature` moves | ✅ `weights.parquet` (`UInt32` ×2, hand-listed in `_build_weights`); reverse prefers the stored index over its recompute and never re-emits either column into `variants.csv` | **shipped** — `locus_count > 1` is the row-level predicate; the positional pass's hard-coded `0` is honest only while those tables never expand (a line on RM65) |
-| **authored overlay `overrides.csv` (0.7, RM124)** | ✅ `OverrideRow` (`AuthoredModel`); `table` and `operation` are closed vocabularies; **`reason` required**; a `field` outside the named table's columns, or naming its own subject/member column, is refused; a wildcard `member` is refused for `insert` and `suppress`; duplicate `(table, subject, member, field)` and a key group carrying two operations are errors — all of it in **both** `validate_spec` and `compile_module` | ✅ `overrides.parquet`, written only when the module carries an overlay — its absence, not its slot, is why no published digest moves (`artifact_digest` name-sorts); applied to the seven covered derived tables before any check reads a row, so the fact signatures and `resolution_signature` are post-overlay | **shipped** — the derived files are pure build products, `reverse` emits post-overlay tables *plus* the overlay, and no operation reports its own no-op |
+| **authored overlay `overrides.csv` (0.7, RM124)** | ✅ `OverrideRow` (`AuthoredModel`); `table` and `operation` are closed vocabularies; **`reason` required**; a `field` outside the named table's columns, or naming its own subject/member column, is refused; a wildcard `member` is refused for `insert` and `suppress`; duplicate `(table, subject, member, field)` and a key group carrying two operations are errors — all of it in **both** `validate_spec` and `compile_module` | ✅ `overrides.parquet`, written only when the module carries an overlay — its absence, not its slot, is why no published digest moves (`artifact_digest` name-sorts); applied to the eight covered derived tables (`OVERRIDABLE_TABLES`; `clin_sig_concordance.csv` joined in 0.7) before any check reads a row, so the fact signatures and `resolution_signature` are post-overlay | **shipped** — the derived files are pure build products, `reverse` emits post-overlay tables *plus* the overlay, and no operation reports its own no-op |
 | **VCF pointer namespace + cardinality (0.6, RM53/RM54/RM61)** | ✅ `INFO/`/`FORMAT/` qualifier and the spec's key charset accepted (widening only); `_check_vcf_pointers` warns in **both** modes on a bare colliding key and on a spec-multi-valued target with no element rule, aggregated by reason | ✅ `source_element` → the binning parquets via the generic materializer; round-trips through `reverse` unchanged | **shipped** (`source_element` on `MeasureBinRow`; `callable_element`/`quality_element` **reserved**, not built) |
 
 ## Upgrade derivation (`state`/booleans → 0.3 axes)
