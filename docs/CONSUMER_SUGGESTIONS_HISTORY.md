@@ -112,6 +112,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S86** identifier roster read only variants.csv — accepted, RM155
 - **S87** overlay `reason` inside `content_signature` — accepted, RM180
 - **S88** `needs_recompile` crashed on an unstamped version — accepted, RM183
+- **S89** `CacheLane` lacked its override variable — accepted, RM184
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -7765,3 +7766,63 @@ unknown answer is safe and a caller has `complete` to test; but if you disagree,
 we would rather ask before building on it.
 
 ---
+
+# just-module-creator, 2026-09-03 — a registry with one attribute still hand-kept
+
+## S89 — `CACHE_LANES` publishes every attribute of a lane except the environment variable that overrides it
+
+**Status — accepted and shipped 2026-09-03 in the uncut 0.7.0 as
+[RM184](ROADMAP_HISTORY.md#rm184--cache_lanes-published-every-attribute-of-a-lane-except-the-variable-that-steers-it), so it is in the cut rather than waiting for 0.7.1.** Your 1:1 count
+held — fourteen lanes, fourteen per-lane variables, one shared base — and `CacheLane.env_var` carries
+each lane's. One difference from your candidate: it is `str`, not `str | None`. Every lane has a
+variable today and a lane steered only by the base is not a state that exists, so an optional would
+have invented one (the rule RM87 applied to `locus_count`); a lane that ever lacks one has to be
+argued for in the test rather than slip past a `None`. The literals moved out of the resolvers into
+`locations.<LANE>_CACHE_VAR` constants that both the resolver and the registry read, so the field
+cannot name a variable the resolver ignores — pinned on behaviour (point each lane's variable at a
+probe directory with the base moved somewhere empty; the lane resolves there and nowhere else) and by
+an equality over the walked module (every `JUST_DNA_*` string in `locations` is one lane's `env_var`
+or `CACHE_BASE_VAR`). **What to do now:** derive your list as
+`{lane.env_var for lane in CACHE_LANES} | {locations.CACHE_BASE_VAR}` and retire the fourteen
+hand-kept names; the base is the one variable no lane owns, and it is deliberately not a lane
+attribute. <!-- triaged: 0.7.0 · sha ef4aba5533ff -->
+
+
+Same session, same branch. Small, additive, and not deadline-bound — filing it now because the
+registry it is about is new in this release and consumers will hand-keep the list in the meantime.
+
+**What we were doing.** Our test suite clears every environment variable that could change what a
+test asserts, and the list is *derived* wherever it can be — every field of our own settings model
+becomes `JMC_<FIELD>` — because a hand-written one drifted the first time somebody added a setting.
+Four names are hand-maintained "by necessity", being read by code we do not own. Adopting 0.7, we
+went looking for whether the new cache variables should join them, and expected `CACHE_LANES` to
+answer, since `INTEGRATION_0_7` says to read it "instead of hard-coding which snapshots exist; a
+hand-kept list is what this replaced, and it had drifted by three lanes".
+
+**What we found.** `CacheLane` carries `name`, `subdir`, `serves`, `build_command`, `resolve`,
+`default_dir`, `rebuild`, `ensure`, `publish_repo`, `terms`, `unpublished`, `unbuilt`,
+`release_label`, `parents` — and no environment variable. The variable is a string literal inside
+each resolver:
+
+```python
+return _resolve_named_cache(acmg_cache, "JUST_DNA_ACMG_CACHE", ...)
+```
+
+The mapping is exactly 1:1 — 14 lanes, and `grep -o 'JUST_DNA_[A-Z_]*' locations.py` gives 14
+per-lane variables plus the shared `JUST_DNA_PIPELINES_CACHE_DIR` — so the field would be a pure
+restatement of something already true, which is the cheap kind to add.
+
+**Three consumers that want it, all of which currently hand-keep a list of fourteen.** A deployment
+auditing which caches were provisioned by variable rather than by path (`prepare_caches` reports the
+route but not what steered it); a `.env.template` generated rather than typed, which is what we ship;
+and a hermetic test fixture clearing the environment, which is our case.
+
+**Honest scope, so you can weight it.** **Our suite is unaffected today** — we exported all fourteen
+to a bogus path and got 658 passed, unchanged. So this is a gap, not a break, and we are not asking
+for it before the cut. It is additive, so it can land in 0.7.1 with no cost to anyone.
+
+**Candidate fix.** `env_var: str | None` on `CacheLane`, populated from the same constant each
+resolver already passes to `_resolve_named_cache`, and `None` for a lane steered only by the shared
+base. Nothing has to read it for the field to pay for itself: the registry's stated purpose is that a
+consumer stops keeping its own copy of what the lanes are, and the variable is the one attribute
+where that has not happened yet.

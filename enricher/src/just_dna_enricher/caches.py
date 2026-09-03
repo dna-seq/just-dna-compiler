@@ -84,19 +84,33 @@ from just_dna_enricher.licensing import (
     check_declared_use,
 )
 from just_dna_enricher.locations import (
+    ACMG_CACHE_VAR,
     ACMG_SUBDIR,
+    CIVIC_CACHE_VAR,
     CIVIC_SUBDIR,
+    CLINPGX_CACHE_VAR,
     CLINPGX_SUBDIR,
+    CLINVAR_CACHE_VAR,
     CLINVAR_SUBDIR,
+    CONSTRAINT_CACHE_VAR,
     CONSTRAINT_SUBDIR,
+    CPIC_CACHE_VAR,
     CPIC_SUBDIR,
+    DRUG_LABELS_CACHE_VAR,
     DRUG_LABELS_SUBDIR,
+    ENSEMBL_CACHE_VAR,
     ENSEMBL_SUBDIR,
+    MANE_CACHE_VAR,
     MANE_SUBDIR,
+    MITOMAP_CACHE_VAR,
+    MITOMAP_MISS_CACHE_VAR,
     MITOMAP_MISS_SUBDIR,
     MITOMAP_SUBDIR,
+    PHARMVAR_CACHE_VAR,
     PHARMVAR_SUBDIR,
+    PUBMIND_CACHE_VAR,
     PUBMIND_SUBDIR,
+    STRCHIVE_CACHE_VAR,
     STRCHIVE_SUBDIR,
     default_acmg_cache_dir,
     default_civic_cache_dir,
@@ -231,6 +245,14 @@ class CacheLane:
     #: a resolver returns `None` for an absent cache and an absent cache is exactly the case
     #: provisioning is for.
     default_dir: Callable[..., Path]
+    #: The environment variable that overrides where this lane's snapshot is looked for (S89) — the
+    #: same constant `resolve` reads, so the field cannot name a variable the resolver ignores. Every
+    #: lane has one; the shared `locations.CACHE_BASE_VAR` moves all of their defaults at once and is
+    #: deliberately not a lane attribute. This is the one attribute of a lane that was still a string
+    #: literal inside its resolver, so a consumer generating a `.env.template`, clearing its test
+    #: environment, or auditing which caches were provisioned by variable was hand-keeping a list of
+    #: fourteen names — the exact thing this registry exists to make unnecessary.
+    env_var: str
     rebuild: RebuildAdapter | None
     ensure: Callable[..., Path] | None
     #: The repo **this tier** publishes to. Ensembl's snapshot is on HuggingFace and this field is
@@ -743,6 +765,7 @@ CACHE_LANES: list[CacheLane] = [
         name="ensembl",
         build_command=None,
         subdir=ENSEMBL_SUBDIR,
+        env_var=ENSEMBL_CACHE_VAR,
         serves="rsID → coordinate (enrich)",
         resolve=resolve_ensembl_reference,
         default_dir=default_ensembl_cache_dir,
@@ -760,6 +783,7 @@ CACHE_LANES: list[CacheLane] = [
         build_command="clinvar build",
         release_label=clinvar_dataset_label,
         subdir=CLINVAR_SUBDIR,
+        env_var=CLINVAR_CACHE_VAR,
         serves="clinical records (enrich, draft-panel)",
         resolve=resolve_clinvar_reference,
         default_dir=default_clinvar_cache_dir,
@@ -772,6 +796,7 @@ CACHE_LANES: list[CacheLane] = [
         name="constraint",
         build_command="gnomad constraint build",
         subdir=CONSTRAINT_SUBDIR,
+        env_var=CONSTRAINT_CACHE_VAR,
         serves="gnomAD v4.1 gene constraint (gene-metrics)",
         resolve=resolve_constraint_reference,
         default_dir=default_constraint_cache_dir,
@@ -784,6 +809,7 @@ CACHE_LANES: list[CacheLane] = [
         name="clinpgx",
         build_command="clinpgx build",
         subdir=CLINPGX_SUBDIR,
+        env_var=CLINPGX_CACHE_VAR,
         serves="clinical annotations (clinpgx check)",
         resolve=resolve_clinpgx_reference,
         default_dir=default_clinpgx_cache_dir,
@@ -796,6 +822,7 @@ CACHE_LANES: list[CacheLane] = [
         name="cpic",
         build_command="cpic build",
         subdir=CPIC_SUBDIR,
+        env_var=CPIC_CACHE_VAR,
         serves="alleles/diplotypes/recommendations (pgx, draft)",
         resolve=resolve_cpic_reference,
         default_dir=default_cpic_cache_dir,
@@ -808,6 +835,7 @@ CACHE_LANES: list[CacheLane] = [
         name="drug_labels",
         build_command="clinpgx build-labels",
         subdir=DRUG_LABELS_SUBDIR,
+        env_var=DRUG_LABELS_CACHE_VAR,
         serves="regulator drug labels (clinpgx check-labels)",
         resolve=resolve_drug_labels_reference,
         default_dir=default_drug_labels_cache_dir,
@@ -820,6 +848,7 @@ CACHE_LANES: list[CacheLane] = [
         name="pharmvar",
         build_command="pharmvar build",
         subdir=PHARMVAR_SUBDIR,
+        env_var=PHARMVAR_CACHE_VAR,
         serves="star alleles (pgx)",
         resolve=resolve_pharmvar_reference,
         default_dir=default_pharmvar_cache_dir,
@@ -837,6 +866,7 @@ CACHE_LANES: list[CacheLane] = [
         name="pubmind",
         build_command="pubmind build",
         subdir=PUBMIND_SUBDIR,
+        env_var=PUBMIND_CACHE_VAR,
         serves="literature-derived verdicts (pubmind checks)",
         resolve=resolve_pubmind_reference,
         default_dir=default_pubmind_cache_dir,
@@ -853,6 +883,7 @@ CACHE_LANES: list[CacheLane] = [
         name="civic",
         build_command="civic build",
         subdir=CIVIC_SUBDIR,
+        env_var=CIVIC_CACHE_VAR,
         serves="curated cancer interpretations (draft-panel --source civic)",
         resolve=resolve_civic_reference,
         default_dir=default_civic_cache_dir,
@@ -865,6 +896,7 @@ CACHE_LANES: list[CacheLane] = [
         name="strchive",
         build_command="strchive build",
         subdir=STRCHIVE_SUBDIR,
+        env_var=STRCHIVE_CACHE_VAR,
         serves="repeat-locus bands (check-repeat-bands, draft-repeats)",
         resolve=resolve_strchive_reference,
         default_dir=default_strchive_cache_dir,
@@ -877,6 +909,7 @@ CACHE_LANES: list[CacheLane] = [
         name="mitomap",
         build_command="mitomap build",
         subdir=MITOMAP_SUBDIR,
+        env_var=MITOMAP_CACHE_VAR,
         serves="curated mtDNA variants, the miss lane's parent (draft-panel --source mitomap-miss)",
         resolve=resolve_mitomap_reference,
         default_dir=default_mitomap_cache_dir,
@@ -894,6 +927,7 @@ CACHE_LANES: list[CacheLane] = [
         name="mitomap_miss",
         build_command="mitomap miss",
         subdir=MITOMAP_MISS_SUBDIR,
+        env_var=MITOMAP_MISS_CACHE_VAR,
         serves="the MITOMAP-minus-ClinVar increment (draft-panel --source mitomap-miss)",
         resolve=resolve_mitomap_miss_reference,
         default_dir=default_mitomap_miss_cache_dir,
@@ -920,6 +954,7 @@ CACHE_LANES: list[CacheLane] = [
         name="mane",
         build_command="mane build",
         subdir=MANE_SUBDIR,
+        env_var=MANE_CACHE_VAR,
         serves="MANE transcripts, the numbering frame",
         resolve=resolve_mane_reference,
         default_dir=default_mane_cache_dir,
@@ -937,6 +972,7 @@ CACHE_LANES: list[CacheLane] = [
         name="acmg",
         build_command="acmg build",
         subdir=ACMG_SUBDIR,
+        env_var=ACMG_CACHE_VAR,
         serves="ACMG secondary findings (check-acmg)",
         resolve=resolve_acmg_reference,
         default_dir=default_acmg_cache_dir,

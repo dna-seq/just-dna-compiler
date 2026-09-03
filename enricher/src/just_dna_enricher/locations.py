@@ -194,6 +194,30 @@ MITOMAP_SUBDIR: str = "mitomap"
 MITOMAP_MISS_SUBDIR: str = "mitomap_miss"
 
 
+# ── The override variables, one per lane, plus the shared base ──────────────────────────────────
+# Named here rather than as a literal inside each resolver (S89, RM184), so `caches.CACHE_LANES`
+# can carry the variable that steers a lane as a field — `env_var` — and a consumer generating a
+# `.env.template`, clearing its test environment, or auditing which caches were provisioned by
+# variable reads the registry instead of hand-keeping fourteen names. `CACHE_BASE_VAR` is the one
+# variable no lane owns: it moves every lane's default directory at once. Every string here is the
+# whole set — a test walks this module for `JUST_DNA_*` values and asserts the lanes claim exactly
+# those, so a resolver reading a variable no lane names fails the walk.
+CACHE_BASE_VAR: str = "JUST_DNA_PIPELINES_CACHE_DIR"
+ENSEMBL_CACHE_VAR: str = "JUST_DNA_ENSEMBL_CACHE"
+CLINVAR_CACHE_VAR: str = "JUST_DNA_CLINVAR_CACHE"
+CONSTRAINT_CACHE_VAR: str = "JUST_DNA_GNOMAD_CONSTRAINT_CACHE"
+CLINPGX_CACHE_VAR: str = "JUST_DNA_CLINPGX_CACHE"
+CPIC_CACHE_VAR: str = "JUST_DNA_CPIC_CACHE"
+PHARMVAR_CACHE_VAR: str = "JUST_DNA_PHARMVAR_CACHE"
+PUBMIND_CACHE_VAR: str = "JUST_DNA_PUBMIND_CACHE"
+CIVIC_CACHE_VAR: str = "JUST_DNA_CIVIC_CACHE"
+ACMG_CACHE_VAR: str = "JUST_DNA_ACMG_CACHE"
+STRCHIVE_CACHE_VAR: str = "JUST_DNA_STRCHIVE_CACHE"
+DRUG_LABELS_CACHE_VAR: str = "JUST_DNA_DRUG_LABELS_CACHE"
+MANE_CACHE_VAR: str = "JUST_DNA_MANE_CACHE"
+MITOMAP_CACHE_VAR: str = "JUST_DNA_MITOMAP_CACHE"
+MITOMAP_MISS_CACHE_VAR: str = "JUST_DNA_MITOMAP_MISS_CACHE"
+
 def read_release(reference: Path) -> dict | None:
     """A snapshot's `release.json` as a dict, or `None` when it is absent or unreadable.
 
@@ -270,7 +294,7 @@ def resolve_ensembl_reference(
     if load_dotenv_file:
         load_env()
 
-    candidate = ensembl_cache or os.getenv("JUST_DNA_ENSEMBL_CACHE")
+    candidate = ensembl_cache or os.getenv(ENSEMBL_CACHE_VAR)
     search_dir = (
         Path(candidate) if candidate else default_ensembl_cache_dir(load_dotenv_file=load_dotenv_file)
     )
@@ -323,7 +347,7 @@ def _cache_dir(subdir: str, *, load_dotenv_file: bool = True) -> Path:
     """
     if load_dotenv_file:
         load_env()
-    base = os.getenv("JUST_DNA_PIPELINES_CACHE_DIR")
+    base = os.getenv(CACHE_BASE_VAR)
     root = Path(base) if base else Path(user_cache_dir(appname=APPNAME))
     return root / subdir
 
@@ -404,7 +428,7 @@ def resolve_constraint_reference(
     ``.duckdb``), and a bare ``.parquet`` may be pointed at directly since the snapshot is one file.
     """
     return _resolve_parquet_cache(
-        constraint_cache, "JUST_DNA_GNOMAD_CONSTRAINT_CACHE",
+        constraint_cache, CONSTRAINT_CACHE_VAR,
         default_constraint_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file, accept_bare_file=True,
     )
@@ -422,7 +446,7 @@ def resolve_clinvar_reference(
     the enricher's `download.ensure_clinvar_snapshot` or the deployment's job.
     """
     return _resolve_parquet_cache(
-        clinvar_cache, "JUST_DNA_CLINVAR_CACHE",
+        clinvar_cache, CLINVAR_CACHE_VAR,
         default_clinvar_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -439,7 +463,7 @@ def resolve_clinpgx_reference(
     `download.ensure_clinpgx_snapshot`.
     """
     return _resolve_parquet_cache(
-        clinpgx_cache, "JUST_DNA_CLINPGX_CACHE",
+        clinpgx_cache, CLINPGX_CACHE_VAR,
         default_clinpgx_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -450,7 +474,7 @@ def resolve_cpic_reference(
 ) -> Path | None:
     """Locate a built CPIC snapshot without downloading (`$JUST_DNA_CPIC_CACHE`)."""
     return _resolve_parquet_cache(
-        cpic_cache, "JUST_DNA_CPIC_CACHE",
+        cpic_cache, CPIC_CACHE_VAR,
         default_cpic_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -466,7 +490,7 @@ def resolve_pharmvar_reference(
     PharmVar leg degrades exactly as it does when no key is configured.
     """
     return _resolve_parquet_cache(
-        pharmvar_cache, "JUST_DNA_PHARMVAR_CACHE",
+        pharmvar_cache, PHARMVAR_CACHE_VAR,
         default_pharmvar_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -486,7 +510,7 @@ def resolve_civic_reference(
     source (`@unreachable-not-absent`). Build one with `civic build --release <date>`.
     """
     return _resolve_parquet_cache(
-        civic_cache, "JUST_DNA_CIVIC_CACHE",
+        civic_cache, CIVIC_CACHE_VAR,
         default_civic_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -503,7 +527,7 @@ def resolve_pubmind_reference(
     asked-and-failed and asked-and-absent (`@unreachable-not-absent`).
     """
     return _resolve_parquet_cache(
-        pubmind_cache, "JUST_DNA_PUBMIND_CACHE",
+        pubmind_cache, PUBMIND_CACHE_VAR,
         default_pubmind_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -530,7 +554,7 @@ def resolve_mane_reference(
     currency check and the negative roster.
     """
     return _resolve_parquet_cache(
-        mane_cache, "JUST_DNA_MANE_CACHE",
+        mane_cache, MANE_CACHE_VAR,
         default_mane_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -587,7 +611,7 @@ def resolve_acmg_reference(
     hand, so the accurate list was the one path a deployment never took.
     """
     return _resolve_named_cache(
-        acmg_cache, "JUST_DNA_ACMG_CACHE",
+        acmg_cache, ACMG_CACHE_VAR,
         default_acmg_cache_dir(load_dotenv_file=load_dotenv_file),
         ACMG_SNAPSHOT_FILENAME, load_dotenv_file=load_dotenv_file,
     )
@@ -609,7 +633,7 @@ def resolve_strchive_reference(
     cannot name the release it compared against.
     """
     return _resolve_named_cache(
-        strchive_cache, "JUST_DNA_STRCHIVE_CACHE",
+        strchive_cache, STRCHIVE_CACHE_VAR,
         default_strchive_cache_dir(load_dotenv_file=load_dotenv_file),
         STRCHIVE_CATALOGUE_FILENAME, load_dotenv_file=load_dotenv_file,
     )
@@ -630,7 +654,7 @@ def resolve_mitomap_reference(
     with one parent missing would be a claim about a comparison that never happened.
     """
     return _resolve_parquet_cache(
-        mitomap_cache, "JUST_DNA_MITOMAP_CACHE",
+        mitomap_cache, MITOMAP_CACHE_VAR,
         default_mitomap_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -653,7 +677,7 @@ def resolve_mitomap_miss_reference(
     which (`@currency-asks-the-source-not-the-cache`).
     """
     return _resolve_parquet_cache(
-        mitomap_miss_cache, "JUST_DNA_MITOMAP_MISS_CACHE",
+        mitomap_miss_cache, MITOMAP_MISS_CACHE_VAR,
         default_mitomap_miss_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -674,7 +698,7 @@ def resolve_drug_labels_reference(
     Provisioning is `download.ensure_drug_labels_snapshot`.
     """
     return _resolve_parquet_cache(
-        drug_labels_cache, "JUST_DNA_DRUG_LABELS_CACHE",
+        drug_labels_cache, DRUG_LABELS_CACHE_VAR,
         default_drug_labels_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )

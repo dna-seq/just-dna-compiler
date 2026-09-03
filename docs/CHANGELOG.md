@@ -34,9 +34,20 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-03 (latest) — a recompile question with no lower bound
+## 2026-09-03 (latest) — a recompile question with no lower bound, and a registry missing one attribute
 
-**`just-dna-format` only, no schema, parquet or manifest change.** [RM183](ROADMAP_HISTORY.md#rm183--needs_recompile-crashed-on-the-one-input-a-registry-is-most-likely-to-hand-it-an-unstamped-compiler-version),
+Two consumer reports from the same preview build against the uncut 0.7, both answered the day they
+arrived; no schema, parquet or manifest change in either.
+
+**`just-dna-enricher`.** [RM184](ROADMAP_HISTORY.md#rm184--cache_lanes-published-every-attribute-of-a-lane-except-the-variable-that-steers-it), from
+[S89](CONSUMER_SUGGESTIONS_HISTORY.md#s89--cache_lanes-publishes-every-attribute-of-a-lane-except-the-environment-variable-that-overrides-it): **`CacheLane.env_var`** names the variable that
+overrides a lane's location — the one attribute of a lane that was still a string literal inside its
+resolver, so three consumers were hand-keeping fourteen names. The literals are now
+`locations.<LANE>_CACHE_VAR` constants read by both the resolver and the registry, beside
+`CACHE_BASE_VAR`, the shared base no lane owns; pinned on behaviour per lane and by an equality over
+every `JUST_DNA_*` string the module declares. `str`, not optional — every lane has one.
+
+**`just-dna-format`.** [RM183](ROADMAP_HISTORY.md#rm183--needs_recompile-crashed-on-the-one-input-a-registry-is-most-likely-to-hand-it-an-unstamped-compiler-version),
 from [S88](CONSUMER_SUGGESTIONS_HISTORY.md#s88--needs_recompile-raises-attributeerror-on-the-one-input-it-is-most-likely-to-be-handed-a-manifest-that-stamped-no-compiler-version) — a consumer reading § 2.8 before adopting it.
 
 - **`needs_recompile(None, current)` answers unknown instead of raising `AttributeError`.**

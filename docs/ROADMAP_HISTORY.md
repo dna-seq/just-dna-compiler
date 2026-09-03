@@ -68,6 +68,44 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM184 — `CACHE_LANES` published every attribute of a lane except the variable that steers it
+
+**Severity** low · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-enricher` only: one
+required field on `CacheLane`, fifteen constants in `locations`, no behaviour change in any resolver)
+· **Owner** enricher · **Motivating case** S89 (just-module-creator, in
+CONSUMER_SUGGESTIONS_HISTORY.md), filed as *not deadline-bound* and taken before the cut because it
+was cheaper to land than to schedule
+
+**What it reproduced.** The consumer's 1:1 count: fourteen lanes in `CACHE_LANES`, fourteen
+`JUST_DNA_<LANE>_CACHE` literals in `locations.py` (one per resolver, passed to `_resolve_parquet_cache`
+or `_resolve_named_cache`), plus `JUST_DNA_PIPELINES_CACHE_DIR`, the shared base every default
+directory hangs off. `CacheLane` carried fourteen attributes and not that one, so the registry RM176
+built *so that a consumer stops keeping its own copy of what the lanes are* still left one attribute to
+copy — and the consumer's suite, a `.env.template` generator and a provisioning audit were each keeping
+the fourteen names by hand.
+
+**What shipped.** `CacheLane.env_var: str`, populated from new `locations.<LANE>_CACHE_VAR` constants
+that the resolvers now read in place of their literals — so the field and the behaviour are one
+string, and the field cannot name a variable the resolver ignores. `CACHE_BASE_VAR` is declared beside
+them and is deliberately **not** a lane attribute: it moves every lane's default at once and no lane
+owns it. Two tests: each lane's variable, pointed at a probe directory shaped to satisfy every
+presence test while the base is moved somewhere empty, resolves there and nowhere else; and an equality
+over the walked module — every `JUST_DNA_*` string `locations` declares is exactly one lane's
+`env_var` or the base — with each lane's identity-checked against its `<LANE>_CACHE_VAR`.
+
+**`str`, not `str | None`, against the consumer's candidate.** They proposed `None` for *a lane
+steered only by the shared base*. No such lane exists, and inventing the state would put an
+*undetermined* value into a column where every row is determinate — RM87's argument for
+`locus_count = 1`. A lane that ever lacks a variable has to be argued for in the walked test rather than
+slip past an optional. The peer session that had just added `release_label` suggested the
+equality-over-the-exception pattern for the `None` set; with no exception the equality is over the
+whole set instead, which is stricter.
+
+**Not changed.** `cache status` does not print the variable. The consumer's audit case — *which caches
+were provisioned by variable rather than by path* — is answered by reading `env_var` off the registry
+and the environment; a resolver cannot say which rung of its ladder answered, and adding that would be
+a change to every resolver for a question the registry already lets a caller ask.
+
 ## RM183 — `needs_recompile` crashed on the one input a registry is most likely to hand it, an unstamped compiler version
 
 **Severity** medium · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-format` only:

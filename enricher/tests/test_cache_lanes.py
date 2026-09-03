@@ -699,3 +699,48 @@ def test_a_builder_that_writes_nothing_is_a_failure_not_a_crash(
     outcome = caches.prepare_lane(lane, RebuildRequest(out_dir=tmp_path / "acmg_sf"))
     assert outcome.ready is False
     assert "wrote nothing" in outcome.detail
+
+
+# ── the override variable (S89, RM184) ──────────────────────────────────────────────────────────
+
+
+def test_every_lane_names_the_variable_its_own_resolver_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`env_var` is a claim about behaviour — *this variable steers this lane* — so it is pinned on
+    behaviour, not on a string comparison: point the variable at a directory shaped to satisfy every
+    resolver's presence test, and the lane must resolve there and nowhere else.
+
+    The base is moved somewhere empty first, so a lane that ignored its own variable and fell through
+    to `<base>/<subdir>` would answer `None` rather than pass by accident.
+    """
+    monkeypatch.setenv(locations.CACHE_BASE_VAR, str(tmp_path / "empty-base"))
+    probe = tmp_path / "probe"
+    (probe / "data").mkdir(parents=True)
+    (probe / "data" / "probe.parquet").touch()
+    (probe / locations.ACMG_SNAPSHOT_FILENAME).touch()
+    (probe / locations.STRCHIVE_CATALOGUE_FILENAME).touch()
+    for lane in CACHE_LANES:
+        monkeypatch.delenv(lane.env_var, raising=False)
+    for lane in CACHE_LANES:
+        assert lane.resolve(load_dotenv_file=False) is None, f"{lane.name}: found a cache with nothing set"
+        monkeypatch.setenv(lane.env_var, str(probe))
+        assert lane.resolve(load_dotenv_file=False) == probe, lane.name
+        monkeypatch.delenv(lane.env_var)
+
+
+def test_the_variables_the_module_reads_are_exactly_the_ones_the_lanes_claim() -> None:
+    """Equality over a walked module (`@registry-completeness`): every `JUST_DNA_*` string constant
+    in `locations` is either one lane's `env_var` or the shared base, and every lane's is a constant
+    there under the `<LANE>_CACHE_VAR` name. A resolver reading a variable no lane names, or a lane
+    naming one no resolver reads, fails here rather than drifting.
+    """
+    declared = {
+        value for value in vars(locations).values()
+        if isinstance(value, str) and value.startswith("JUST_DNA_")
+    }
+    claimed = {lane.env_var for lane in CACHE_LANES}
+    assert declared == claimed | {locations.CACHE_BASE_VAR}
+    assert len(claimed) == len(CACHE_LANES), "two lanes share a variable"
+    for lane in CACHE_LANES:
+        assert lane.env_var is getattr(locations, f"{lane.name.upper()}_CACHE_VAR"), lane.name

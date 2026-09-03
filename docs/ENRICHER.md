@@ -983,6 +983,11 @@ is a registry nothing iterates. **Since RM176 the roster is `caches.CACHE_LANES`
 with one entry per lane, compared by a test against the `*_build` modules on disk, so this table is a
 rendering of it rather than a third copy. Three lanes were missing from the previous list and nothing
 could have noticed: `cache status` reported nine caches on a machine that has twelve.)
+**The `Override` column below is `CacheLane.env_var` rendered (S89, RM184)**, and the constants behind it
+live in `locations` as `<LANE>_CACHE_VAR` beside `CACHE_BASE_VAR`, the one variable no lane owns. A
+consumer generating a `.env.template`, clearing its test environment, or auditing which caches were
+provisioned by variable derives the whole set as `{lane.env_var for lane in CACHE_LANES} |
+{CACHE_BASE_VAR}` rather than keeping the fourteen names by hand.
 Every live source this tier reaches has (or can have) a local copy, and the whole reason is in the rate
 table above: *a shared IP shares one budget.* An author on their own machine can go live for everything;
 a **host** cannot, and for the three licence-gated sources it should not (see *On a host, or in a
