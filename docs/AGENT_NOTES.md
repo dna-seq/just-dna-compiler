@@ -3294,6 +3294,53 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   file and then raises, exactly as the real client does, and both regression tests were run against
   the pre-fix loop and observed to fail.
 
+- `@a-lane-with-two-halves-publishes-the-provenance-of-one` — **A snapshot built in two halves on two
+  cadences is described by one file, and the half that writes it wins (RM179, 2026-09-03).** A ClinVar
+  snapshot is the VCF *and* `var_citations.txt`, which ClinVar publishes separately — the reason
+  `build_citations` merges a `citations` block into `release.json` instead of writing its own file.
+  `_rebuild_clinvar` built the VCF half only, and `release.json` is written by that half. So every
+  `cache rebuild clinvar --publish` uploaded a citations-free provenance over a repo whose sidecar it
+  had not replaced, and the publisher adds without deleting: the published snapshot carried records
+  from 2026-08-29 beside citations from 2026-06-27 and said nothing. The block was there before the
+  rebuild (revision `8f5c5720`) and gone after it.
+
+  **The merge rule only protects the directory it runs in.** *Merged, never overwritten* is written
+  into `build_citations` and it is true — locally. A publish is a different write, in a different
+  place, by a process that never read what it is replacing. Whenever a rule is stated as a property of
+  one function, ask which other writer reaches the same bytes.
+
+  **Both halves or neither, and the failure has to be loud.** The adapter builds the citations half
+  too; a failure there returns `built=False` with **no `out_dir`**, because `cache rebuild --publish`
+  uploads only on `built is True` and a quieter success would leave exactly the artifact this exists to
+  stop anyone publishing. What it costs — a fully offline `--source` rebuild of this lane now fails —
+  is stated in the entry rather than hidden, and the refused repair is a second `--source` grammar for
+  one lane's second input.
+
+  **What it does not do**, and the distinction is worth keeping: this stops the *next* bad publish. It
+  does not repair a repo that already carries the mismatch, and the general guard — refuse a publish
+  that overwrites a remote `release.json` describing sidecars the plan does not carry — is a policy
+  about what a publisher may overwrite, which is a maintainer's call rather than a bug fix.
+
+- `@the-reporter-cannot-compose-a-lanes-label` — **A label a reporter composes is a convention that
+  holds for every lane but the one you care about (RM182, 2026-09-03).** `cache status` read
+  `release.json`'s `dataset` for all twelve lanes. Eleven builders write it; `clinvar_build` writes
+  `clinvar_file_date`, so the snapshot that refreshes weekly was the only one printing a **blank**
+  release while every slower lane named its own. This is `build_command`'s defect exactly — that field
+  exists because `f"{name} build"` printed two commands nobody can run — and it recurred one field
+  over, in the same dataclass, four days later.
+
+  **So the label is a field on the lane, and the exception is enumerated.** `release_label` defaults to
+  the `dataset` reader; ClinVar's is `clinvar_dataset_label`, the function `clinvar_draft` already
+  writes onto its licence row and `clinical.tautology_reason` recomputes to compare — **shared rather
+  than mirrored**, because two spellings of one label never match and never fail either. The test
+  asserts the set of lanes overriding it *equals* `{"clinvar"}`, so a second lane that stops writing
+  `dataset` has to declare itself instead of quietly printing nothing (`@registry-completeness`).
+
+  **The refused repair is the obvious one**: add `dataset` to `clinvar_build`'s `release.json`. It
+  repairs nothing already on disk or already published — every existing snapshot still prints blank
+  until rebuilt — and it makes a second writer of a label that function owns. Additive later; not the
+  fix.
+
 ## Dogfooding, adversarial probing, and how a finding gets filed
 
 - `@dogfood-lacks-are-results` — **Dogfooding means using the shipped surface to do real work — and a capability the tool LACKS is

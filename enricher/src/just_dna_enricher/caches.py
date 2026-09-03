@@ -62,6 +62,7 @@ from just_dna_enricher import (
     pubmind_build,
     strchive_build,
 )
+from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.download import (
     SnapshotNotPublished,
     ensure_civic_snapshot,
@@ -113,6 +114,7 @@ from just_dna_enricher.locations import (
     default_strchive_cache_dir,
     load_env,
     missing_credential_reason,
+    read_release,
     resolve_acmg_reference,
     resolve_civic_reference,
     resolve_clinpgx_reference,
@@ -200,6 +202,16 @@ class RebuildOutcome:
 RebuildAdapter = Callable[[RebuildRequest], RebuildOutcome]
 
 
+def _dataset_label(reference: Path) -> str | None:
+    """Which release a snapshot on disk holds, as `release.json`'s own `dataset` states it.
+
+    The default for every lane, and `None` when the snapshot does not say — never a placeholder, since
+    a caller must be able to tell a release from a snapshot that cannot name one.
+    """
+    release = read_release(reference)
+    return (release or {}).get("dataset") or None
+
+
 @dataclass(frozen=True)
 class CacheLane:
     """One snapshot, all three of its stages, and the reason for each stage it does not have."""
@@ -235,6 +247,21 @@ class CacheLane:
     #: Why there is no `rebuild` adapter. Ensembl is the only member, and its reason is that the
     #: snapshot is built by just-dna-pipelines rather than here.
     unbuilt: str | None = None
+    #: How this lane's snapshot names the release it holds (RM180). The default reads `release.json`'s
+    #: `dataset`, which eleven lanes write; ClinVar does not, so `cache status` printed a blank label
+    #: for the one lane that moves weekly while naming the release of every lane that does not.
+    #:
+    #: Named `release_label` and not `label` because `RebuildOutcome.label` next door is the
+    #: built/failed/not-run word, and one file with two `label`s that mean different things is how a
+    #: reader learns the wrong one first.
+    #:
+    #: A field rather than a `if lane.name == "clinvar"` in the reporter, for the reason
+    #: `build_command` is one: a convention that holds for eleven of twelve is not a convention, and
+    #: the exception belongs where the lane is declared. ClinVar's is `clinvar_dataset_label`, the
+    #: function `clinvar_draft` writes onto its licence row and `clinical.tautology_reason` recomputes
+    #: — shared rather than mirrored, because two spellings of one label do not fail, they simply
+    #: never match.
+    release_label: Callable[[Path], str | None] = _dataset_label
     #: The lanes this one is **derived from** (RM171). Empty for every lane that acquires its own
     #: bytes, which is all of them but `mitomap_miss`.
     #:
@@ -275,6 +302,21 @@ def _gate(terms: SourceTerms | None, declared_use: str, lane: str) -> RebuildOut
 
 
 def _rebuild_clinvar(request: RebuildRequest) -> RebuildOutcome:
+    """The VCF half **and** the citations half, because the published artifact carries both (RM179).
+
+    This adapter built the VCF only, and `release.json` is written by that half — so every
+    `cache rebuild clinvar --publish` uploaded a file describing one release over a repo whose
+    `citations/citations.parquet` was still the previous one, and the block `build_citations` merges
+    in to say so went with it. That is not hypothetical: on 2026-09-03 the published ClinVar snapshot
+    held records from 2026-08-29 beside citations from 2026-06-27 and said nothing, because the
+    2026-09-02 rebuild published a citations-free `release.json` over the one that had described the
+    pair. The publisher adds and never deletes, so the sidecar survived its own description.
+
+    Both halves or neither, and a failure in the second is a failed lane rather than a quieter
+    success: what would otherwise be on disk is exactly the mixed-vintage artifact this exists to stop
+    anyone publishing. `--source` stays the VCF's off-switch; the citations file is a separate ClinVar
+    download and is fetched even then, which is the one thing this costs a fully offline rebuild.
+    """
     request.out_dir.mkdir(parents=True, exist_ok=True)
     try:
         vcf = request.source or clinvar_build.download_clinvar_vcf(
@@ -283,10 +325,28 @@ def _rebuild_clinvar(request: RebuildRequest) -> RebuildOutcome:
         result = clinvar_build.build_snapshot(vcf, request.out_dir)
     except (FileNotFoundError, ImportError, OSError) as exc:
         return RebuildOutcome("clinvar", False, str(exc))
+    try:
+        citations_txt, citations_sha = clinvar_build.download_var_citations(
+            request.out_dir / "var_citations.txt"
+        )
+        citations = clinvar_build.build_citations(
+            citations_txt, request.out_dir, source_sha256=citations_sha
+        )
+    except (clinvar_build.ClinVarBuildError, FileNotFoundError, ImportError, OSError) as exc:
+        return RebuildOutcome(
+            "clinvar", False,
+            f"the records built ({result.record_count} over {len(result.chromosomes)} "
+            f"chromosomes) but the citations half did not: {exc}. The snapshot in "
+            f"{request.out_dir} carries no citations table, so publishing it would describe one "
+            f"release over a repo whose citations are another — build the pair again, or add the "
+            f"sidecar with `clinvar citations`.",
+            None,
+        )
     return RebuildOutcome(
         "clinvar", True,
         f"{result.record_count} records over {len(result.chromosomes)} chromosomes, "
-        f"clinvar_file_date {result.clinvar_file_date}",
+        f"clinvar_file_date {result.clinvar_file_date}, "
+        f"{citations.row_count} citation links",
         result.out_dir,
     )
 
@@ -698,6 +758,7 @@ CACHE_LANES: list[CacheLane] = [
     CacheLane(
         name="clinvar",
         build_command="clinvar build",
+        release_label=clinvar_dataset_label,
         subdir=CLINVAR_SUBDIR,
         serves="clinical records (enrich, draft-panel)",
         resolve=resolve_clinvar_reference,

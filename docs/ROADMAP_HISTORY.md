@@ -127,6 +127,82 @@ consumer's own argument against their fix, and the shape README already has; sta
 the maintainer's observation on the resulting picture — byte digest moved, every signature intact,
 *what* moved unstated — is [RM181](ROADMAP_0_8.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker).
 
+## RM179 — the ClinVar rebuild built one half of a two-half artifact, and published its provenance over the other
+
+**Severity** high · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-enricher` only —
+one rebuild adapter; no schema, no parquet column, no CLI flag) · **Owner** enricher ·
+**Motivating case** the published `just-dna-seq/clinvar` on 2026-09-03: records from ClinVar
+2026-08-29 beside a `citations/citations.parquet` built from 2026-06-27, and a `release.json`
+describing only the first
+
+**A published snapshot is two halves on two cadences, and only one of them was being rebuilt.** ClinVar
+publishes `var_citations.txt` separately from the VCF, so a snapshot legitimately carries records from
+one release and citations from another — which is why `build_citations` merges a `citations` block into
+`release.json` rather than writing its own file. `_rebuild_clinvar` called `build_snapshot` and stopped,
+and `release.json` is written by that half. So `cache rebuild clinvar --publish` uploaded a fresh,
+citations-free provenance over a repo whose sidecar it had not replaced, and the publisher adds without
+deleting: the sidecar survived the description that had named it. The block was there until the
+2026-09-02 publish (revision `8f5c5720` has it) and gone afterwards.
+
+**The defect is structural, and that is what makes it worth an entry.** Nobody deleted the block and no
+operator did anything wrong; the adapter's shape guaranteed the outcome on every rebuild. The same
+shape is one `@registry-completeness` step away from the class this repo keeps meeting — a fact about a
+lane that lives in a comment (*"the citations table is published with the snapshot"*) rather than in
+code that has to hold.
+
+**Both halves or neither.** The adapter now downloads `var_citations.txt` and runs `build_citations`
+into the same directory, so the merged `release.json` describes the pair the publisher will carry. A
+failure in the second half returns `built=False` **with no `out_dir`** rather than a quieter success:
+`cache rebuild --publish` uploads only on `built is True`, so the artifact this item exists to stop
+anyone publishing cannot reach the plan. The detail line says the records did build, which is the
+difference between *retry the pair* and *it broke*.
+
+**What it costs, stated rather than hidden.** `--source clinvar=<vcf>` remains the VCF's off-switch,
+and the citations file is a separate ClinVar download that is still fetched — so a fully offline
+rebuild of this lane now reports failed where it used to report a snapshot. That snapshot was the
+mixed-vintage one, so the trade is deliberate; a lane-local second `--source` was refused as a flag
+grammar for one lane's second input, which is the shape MANE and CIViC already refuse.
+
+**Not repaired here: the publish-side guard.** A publish that overwrites a remote `release.json`
+describing sidecars the plan does not carry should refuse, and that is the general form of this bug —
+it would have caught this one at the boundary rather than at the lane. It is a policy about what a
+publisher may overwrite, so it is the maintainer's call and not this item's. **Nor does this repair the
+repo as it stands**: `just-dna-seq/clinvar` still needs a citations rebuild off 2026-08-29, which is an
+outbound operation.
+
+· *from* the 2026-09-03 published-artifact audit · *related* RM176, RM178 · *also in* CHANGELOG,
+AGENT_NOTES `@a-lane-with-two-halves-publishes-the-provenance-of-one`
+
+## RM182 — `cache status` named the release of every snapshot except the one that moves weekly
+
+**Severity** low · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-enricher` only — one
+field on `CacheLane` and the reporter that reads it; no schema change) · **Owner** enricher ·
+**Motivating case** the same audit: `cache status` over a freshly pulled cache printed
+`clinpgx_2026-08-05`, `civic_01-Sep-2026`, `strchive_v2.26.0` … and a blank for `clinvar`
+
+**One reader, twelve writers, and the odd one out was the one that matters most.** `cache status`
+labelled a lane with `release.json`'s `dataset`. Eleven builders write it; `clinvar_build` writes
+`clinvar_file_date` and `record_count` instead, and has since long before the field existed. So the
+lane that refreshes weekly was the only one an operator could not read a release off — precisely the
+lane where *which release is this?* is asked.
+
+**The label is a lane's own property, not the reporter's.** `release_label` joins `build_command` as a
+field that exists because a convention holding for eleven of twelve is not a convention: the reporter
+composing one for every lane is what produced the blank, exactly as composing `f"{name} build"` once
+printed two commands nobody could run. ClinVar's is `clinvar_dataset_label` — the function
+`clinvar_draft` already writes onto its licence row and `clinical.tautology_reason` recomputes to
+compare — shared rather than mirrored, because two spellings of one label never match and never fail
+either. The exception is asserted as an equality over the registry, so a second lane that stops writing
+`dataset` has to say so here instead of quietly printing nothing.
+
+**Refused: adding `dataset` to `clinvar_build`'s `release.json`.** It repairs nothing already on disk
+or already published — every existing snapshot would still print blank until rebuilt — and it makes a
+second writer of a label `clinvar_dataset_label` already owns. It stays available as an additive
+follow-up; it is not the fix.
+
+· *from* the 2026-09-03 published-artifact audit · *related* RM176, RM179 · *also in* CHANGELOG,
+AGENT_NOTES `@the-reporter-cannot-compose-a-lanes-label`
+
 ## RM178 — a failed optional fetch left a 0-byte licence in every pulled cache, and an empty licence pins the empty string
 
 **Severity** medium · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-enricher` only —

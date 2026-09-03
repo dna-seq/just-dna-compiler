@@ -15,6 +15,7 @@ the resolver family in `locations`.
 
 import dataclasses
 import inspect
+import json
 from pathlib import Path
 
 import pytest
@@ -28,6 +29,7 @@ from just_dna_enricher.caches import (
     rebuild_lane,
 )
 from just_dna_enricher.cli import app
+from just_dna_enricher.clinvar import clinvar_dataset_label
 from typer.testing import CliRunner
 
 _SRC = Path(caches.__file__).parent
@@ -122,6 +124,52 @@ def test_an_absent_stage_states_its_reason_and_a_present_one_does_not() -> None:
         # the upload target and the download that follows it, and one without the other is a lane
         # that sends bytes nobody can fetch, or fetches bytes nobody sends.
         assert (lane.publish_repo is None) == (lane.ensure is None), lane.name
+
+
+def test_every_lane_can_name_the_release_its_snapshot_holds(tmp_path: Path) -> None:
+    """Walked, because the defect was one lane silently answering nothing (RM180).
+
+    `cache status` read `release.json`'s `dataset` for every lane. Eleven write it; ClinVar writes
+    `clinvar_file_date` instead, so the fastest-moving snapshot in the registry was the one printing a
+    blank release while every slower one printed its own. A per-lane reader fixes it, and this asserts
+    the property over the whole registry rather than over the lane that happened to be wrong.
+    """
+    for lane in CACHE_LANES:
+        directory = tmp_path / lane.name
+        directory.mkdir()
+        (directory / locations.RELEASE_FILENAME).write_text(
+            json.dumps({"dataset": f"{lane.name}_2026-09-03", "clinvar_file_date": "2026-08-29"}),
+            encoding="utf-8",
+        )
+        assert lane.release_label(directory) is not None, lane.name
+        # …and an unlabelled snapshot withholds rather than inventing one
+        bare = tmp_path / f"{lane.name}-bare"
+        bare.mkdir()
+        assert lane.release_label(bare) is None, lane.name
+
+
+def test_the_lane_that_reads_its_release_differently_is_exactly_the_one_named() -> None:
+    """The exception is enumerated, so it cannot quietly grow — the shape `build_command` needed.
+
+    A second lane that stops writing `dataset` should have to say so here rather than start printing
+    a blank label, which is how this one went unnoticed.
+    """
+    from just_dna_enricher.caches import _dataset_label
+
+    overridden = {lane.name for lane in CACHE_LANES if lane.release_label is not _dataset_label}
+    assert overridden == {"clinvar"}
+
+
+def test_the_clinvar_label_is_the_one_the_drafter_writes(tmp_path: Path) -> None:
+    """Shared rather than mirrored: two spellings of one label never match, and never fail either."""
+    directory = tmp_path / "clinvar"
+    directory.mkdir()
+    (directory / locations.RELEASE_FILENAME).write_text(
+        json.dumps({"clinvar_file_date": "2026-08-29", "record_count": 4460499}), encoding="utf-8",
+    )
+    lane = LANES_BY_NAME["clinvar"]
+    assert lane.release_label(directory) == clinvar_dataset_label(directory)
+    assert lane.release_label(directory) == "clinvar_2026-08-29"
 
 
 def test_the_licence_gated_lanes_are_the_ones_carrying_terms() -> None:

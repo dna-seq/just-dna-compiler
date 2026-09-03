@@ -350,6 +350,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A default computed as an argument runs before the callee's setup. `@default-arg-before-setup`
 - Dogfood data is git-ignored, and 0.5.0's published digests are frozen. `@dogfood-data-ignored`
 - A published snapshot accumulates — provision only your own files. `@snapshot-accumulates`
+- A snapshot built in two halves is described by one `release.json`, and a publish of one half overwrites the other's provenance. `@a-lane-with-two-halves-publishes-the-provenance-of-one`
+- A lane's release label belongs on the lane; a reporter that composes one blanks the lane that spells it differently. `@the-reporter-cannot-compose-a-lanes-label`
 - The publisher's allowlist is derived from the artifact's file list; what it drops, the manifest still attests. `@publisher-allowlist-derived`
 - The snapshot layout lives in `locations`; a sidecar is a sibling of `data/`. `@snapshot-layout-locations`
 - A second published artifact makes provenance a question — answer it in `release.json`. `@release-json-provenance`

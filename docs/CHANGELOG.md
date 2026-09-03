@@ -34,7 +34,38 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-03 (latest) — an overlay's reason was part of its content identity
+## 2026-09-03 (latest) — the published artifacts, audited: two lanes that could not describe themselves
+
+**`just-dna-enricher` only, no schema change.** An audit of every artifact this project publishes to
+HuggingFace — nine snapshot repos and the module repo — pulled each publishable lane into a scratch
+cache and read what actually arrived. Every lane is current against its source and every published
+module verifies byte-for-byte against its own manifest; what the audit found was two lanes that could
+not state what they held, and one of them had been publishing a false description.
+
+- **A ClinVar rebuild builds the citations half too, or reports failed**
+  ([RM179](ROADMAP_HISTORY.md#rm179--the-clinvar-rebuild-built-one-half-of-a-two-half-artifact-and-published-its-provenance-over-the-other)).
+  A ClinVar snapshot is two halves on two cadences — the VCF and `var_citations.txt` — which is why
+  `build_citations` merges a `citations` block into `release.json` rather than writing its own file.
+  `_rebuild_clinvar` built the VCF half only, and `release.json` is written by that half, so
+  `cache rebuild clinvar --publish` uploaded a citations-free provenance over a repo whose sidecar it
+  had not replaced. The publisher adds and never deletes, so the sidecar outlived its own description:
+  the published snapshot carried **records from 2026-08-29 beside citations from 2026-06-27** and said
+  nothing about it. Both halves now, or `built=False` with no `out_dir` — and `--publish` uploads only
+  on `built is True`. **Operator-visible:** a fully offline `cache rebuild --only clinvar --source
+  clinvar=<vcf>` now reports failed instead of producing that snapshot, because the citations file is a
+  separate ClinVar download. The published repo still needs a citations rebuild off 2026-08-29; this
+  stops the next bad publish, it does not repair the last one.
+- **`cache status` names ClinVar's release instead of printing a blank**
+  ([RM182](ROADMAP_HISTORY.md#rm182--cache-status-named-the-release-of-every-snapshot-except-the-one-that-moves-weekly)).
+  The reporter labelled a lane with `release.json`'s `dataset`; eleven builders write it and
+  `clinvar_build` writes `clinvar_file_date`, so the one lane that refreshes weekly was the only one an
+  operator could not read a release off. `CacheLane` gains `release_label`, defaulting to the `dataset`
+  reader, with ClinVar's set to `clinvar_dataset_label` — the function `clinvar_draft` and
+  `clinical.tautology_reason` already share, so there is one spelling of the label rather than two. The
+  override set is asserted as an equality over the registry. **Consumer-visible:** one more populated
+  column in `cache status` output; no parquet column, model field or vocabulary member changed.
+
+## 2026-09-03 — an overlay's reason was part of its content identity
 
 **`just-dna-format` + `just-dna-compiler`, no parquet column, no vocabulary member, and no published
 signature moves.** [RM180](ROADMAP_HISTORY.md#rm180--an-overlay-rows-provenance-was-inside-content_signature-and-rewording-a-reason-minted-a-new-content-identity), from

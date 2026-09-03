@@ -1660,11 +1660,8 @@ def cache_status_() -> None:
                 fg=typer.colors.YELLOW,
             )
             continue
-        label = ""
-        release = read_release(path)
-        if release is not None:
-            label = release.get("dataset") or ""
-        elif (path / RELEASE_FILENAME).exists():
+        label = lane.release_label(path) or ""
+        if not label and (path / RELEASE_FILENAME).exists() and read_release(path) is None:
             # Present and unreadable is not the same as absent, and a provenance failure is not a
             # data failure — the snapshot is still usable, so this says so instead of hiding it.
             label = "(unreadable release.json)"
