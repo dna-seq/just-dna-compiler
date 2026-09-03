@@ -58,9 +58,11 @@ been overwritten.
    - `evidence_molecular_profile_name` — CIViC's own rendering of it, so a reader sees
      `VHL S183L (c.548C>T) AND VHL D126N (c.376G>A)` without a second lookup.
 
-   On a single-variant row these equal the existing `molecular_profile_id` and the variant's name.
-   That is deliberate: a column that is null on the common case invites a reader to treat null as
-   "not a composite", and the honest statement is that every row knows its own profile.
+   On a single-variant row the **id** equals the existing `molecular_profile_id` — deliberately, since
+   a column that is null on the common case invites a reader to treat null as "not a composite", and
+   the honest statement is that every row knows its own profile. The **name** is null on a TSV-sourced
+   row, because `MolecularProfileSummaries.tsv` publishes none; filling it from the variant's name
+   would state a profile name the source never wrote.
 
 2. **`molecular_profile_id` keeps its meaning** — the single-variant profile the row was joined
    through. Renaming it would be a wire break for a consumer that already reads it, and the field is

@@ -1457,6 +1457,25 @@ CIViC rests on a *submitted* rebuttal: both accepted refutations in the whole da
 nothing at all (`probes/CONTRADICTION_CORPORA.md`). So on the `accepted` basis this class is empty by
 construction, and `findings: 0` without the basis beside it would read as clear water.
 
+**A row names the profile its evidence item actually belongs to (RM174).** CIViC publishes molecular
+profiles as boolean expressions over variants — `VHL S183L (c.548C>T) AND VHL D126N (c.376G>A)` — and
+an evidence item on one of those is a claim about a *combination genotype*. Reaching the builder
+through the VCF, it is fanned out into one row per variant it names, and `molecular_profile_id` has to
+be the variant's own single-variant profile or the row does not join at all. So the item's real
+profile rides beside the join key in `evidence_molecular_profile_id` and
+`evidence_molecular_profile_name`, on **every** row rather than only on composites — a column that is
+null on the common case invites a reader to treat null as "not a composite". A composite is
+`evidence_molecular_profile_id != molecular_profile_id`, derived rather than stored, and
+`release.json` publishes the count as `composite_profile_rows`.
+
+The name is null on a TSV-sourced row because `MolecularProfileSummaries.tsv` publishes none, and
+filling it from the variant's name would state a profile name the source never wrote. **The path
+asymmetry is deliberate and audited rather than inherited**: a multi-variant profile arriving through
+the TSV is dropped as `combination_profile` and counted, while one arriving through the VCF is kept
+and labelled. Making both paths keep it would move an accepted-basis build's numbers, and what the
+format can honestly *represent* about a two-variant claim is a different question — that one is
+RM28's, parked, and RM174 gave it its first counted corpus entry.
+
 **Every drop is counted, and the somatic majority is the point of that.** Roughly three quarters of
 CIViC describes tumour tissue no germline genotype can satisfy. A filter whose scope is narrower than
 its name is what this adoption was designed against, so `input_rows == record_count + sum(dropped)` is

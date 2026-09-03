@@ -6691,3 +6691,114 @@ so zero corpus modules would fire either finding today.
   to whoever fixes it first, and it makes 8721 look like two independent refutations.
 
 **Related** RM169 (which made these visible), RM152, RM160.
+
+## RM174 — a claim about two variants **in trans** is written as two single-variant rows, because no brick holds the real subject
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-03 in the uncut 0.7.0** — the stamp half only
+(`just-dna-enricher`, two parquet columns and one `release.json` field; **no model and no authored
+surface**). The shape underneath it stays [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half),
+parked, and this item is where its first counted corpus entry came from · **Owner** enricher ·
+**Motivating case** the RM170 probe, which found it while measuring the refutation set
+([CONTRADICTION_CORPORA](probes/CONTRADICTION_CORPORA.md) §2.2)
+
+> **What shipped.** `evidence_molecular_profile_id` and `evidence_molecular_profile_name` on every
+> row, read from the CSQ block the parser already saw, beside the join key rather than instead of it —
+> `molecular_profile_id` has to stay the variant's own single-variant profile or the row does not join
+> at all. A composite is the inequality of the two ids, derived rather than stored, and
+> `release.json` publishes `composite_profile_rows`. The name is **null on a TSV-sourced row** because
+> `MolecularProfileSummaries.tsv` publishes none; filling it from the variant's name would state a
+> profile name the source never wrote.
+>
+> **The path asymmetry is audited and left**: the TSV drops a multi-variant profile as
+> `combination_profile`, the VCF keeps and labels it. Making both keep it moves an accepted-basis
+> build's numbers, and `@parity-by-check` says to audit an asymmetry deliberately rather than inherit
+> it.
+>
+> **Repair 1 was refused on the record**: carrying the true profile as the join key drops the row like
+> the TSV path does, which trades a wrong answer for no answer *and* deletes two of RM170's three
+> subjects.
+>
+> **The fixture is constructed and marked as such.** The slice carries CSQ entry `9999903`, a
+> submitted germline refutation whose profile is `VHL R167Q (c.500G>A) AND VHL E55* (c.163G>T)` — the
+> shape of real evidence item 8721, which the dated release carries on variants this slice does not.
+
+CIViC evidence item 8721 belongs to molecular profile **5278**, published as
+`VHL S183L (c.548C>T) AND VHL D126N (c.376G>A)`. `_submitted_evidence_row` stamps
+`molecular_profile_id` from **the variant's** `single_variant_molecular_profile_id` rather than from
+the evidence item's own profile — which the VCF CSQ block already carries and
+`CivicVcfEntry.molecular_profile_id` already parses — so the parquet states, twice, that a
+two-variant claim is a single-variant one.
+
+**Bounded and measured.** 1,149 rows carry 1,144 distinct `evidence_id`s; the five that repeat are
+5634, 6740, 6868, 8721, 8790 — all VHL, all submitted, four of them `Supports`. Across the whole VCF
+the fan-out is 108 evidence ids over 279 CSQ entries; only 5 survive the germline + direction-axis
+filter.
+
+### The phase measurement, which is why the obvious repair is wrong
+
+The first reading of this entry was that a two-variant genotype is already expressible — `HaplotypeRow`
+is a junction table, and `reference_examples/apoe_epsilon` builds ε haplotypes from two SNPs with 0.4
+bricks — so the defect was a row in the wrong table. **Measured, that is false.** EID 8721's own
+description reads:
+
+> A 2 month old male was found with **heterozygous compound mutation** in the VHL gene …
+
+Compound heterozygous means the two variants sit on **different copies** — *in trans*. A haplotype is
+same-strand co-location, *in cis*. Writing this as a `HaplotypeRow` would assert the opposite of what
+the source observed, and would do it silently, because no column carries phase for a checker to
+contradict. **There is no brick for a claim about two variants in trans**, and that is the finding.
+
+Note where the phase lives: in the evidence item's free text, not in any structured field. CIViC's
+`molecularProfile` carries `name`, `parsedName` and `variants` and **no phase at all**. So even a
+consumer willing to read the composite cannot learn cis from trans without parsing prose
+(`@one-side-only-has-two-causes`: a thing a gate must act on is a field, never a sentence in
+`evidence`).
+
+### The grammar, enumerated — and it is RM28's, both halves
+
+`01-Aug-2026-MolecularProfileSummaries.tsv`, 1,964 profiles, **209 multi-variant**:
+
+| operator | profiles |
+|---|---:|
+| `AND` | 141 |
+| `OR` | 72 |
+| `NOT` | 1 |
+
+and they nest: `BRAF Amplification AND ( BRAF V600E OR BRAF V600K )`,
+`EZH2 Y646S OR EZH2 Y646F OR …` (seven terms), `MET Amplification AND NOT KRAS Mutation`.
+
+That is a boolean expression over variants, which is exactly the surface RM28 parked. And both of the
+arguments RM28 *survived* on show up in this one source, with counts rather than as hypotheticals:
+
+* **Economy.** RM28's own stated case is "any two pathogenic variants **in trans**" — the phrase, not
+  an analogy. 8721 is one, observed, with a citation.
+* **Open-world negation.** `AND NOT KRAS Mutation` quantifies over a set the module cannot close, and
+  `Mutation` is a class term rather than an enumerable allele. RM28 names this as the half that no
+  amount of row-enumeration reaches.
+
+The disjunctions are the half that *is* already expressible — rows are a disjunction, so `OR` over
+enumerable alleles is 72 profiles' worth of row-writing, not a missing operator. The split is exactly
+where RM28 drew it.
+
+### So this entry is two things, and only one of them is a bug
+
+1. **The stamp is a defect and stays here.** `molecular_profile_id` overwritten with the variant's own
+   profile is wrong whatever the format can express, and it is the column a reader would use to notice
+   the composite at all. The narrow repair — publish the evidence item's own profile id and name in
+   their own columns, keep the join key as it is — is additive, minor-legal, and does not require the
+   format to hold the claim. It makes the composite **legible** rather than either silently wrong or
+   silently dropped, which is all a snapshot can honestly do here.
+2. **The representation is RM28's and is not repairable in this tier.** Dropping the row (matching the
+   TSV path, which counts a multi-variant profile as `combination_profile`) trades a wrong answer for
+   no answer, and would also delete two of RM170's three subjects. Writing it as a haplotype asserts
+   cis where the source says trans. Neither is available, so the honest state is: the snapshot carries
+   the rows, labels the composite, and the format does not yet claim to represent it.
+
+**Do not widen RM28 from here, and do not fold this into it.** What this adds to that item is
+*evidence* — an observed instance of both surviving arguments in one adopted source, with a
+grammar counted rather than imagined — which is exactly the corpus RM28 was parked waiting for. The
+note belongs on RM28; the decision stays parked until the corpus is worth deciding on.
+
+**Related** RM170 (where it was found, and whose check keys on the evidence id precisely so this stays
+one finding over two subjects), RM169 (which added the VCF path), RM28 (the shape),
+`@parity-by-check`, `@one-side-only-has-two-causes`.

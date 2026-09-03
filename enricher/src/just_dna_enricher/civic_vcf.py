@@ -76,6 +76,7 @@ _REQUIRED_CSQ_FIELDS: tuple[str, ...] = (
     "Allele Registry ID",
     "SYMBOL",
     "CIViC Molecular Profile ID",
+    "CIViC Molecular Profile Name",
 )
 
 _CSQ_FORMAT_RE = re.compile(r'ID=CSQ.*?Format:\s*([^"]+)"')
@@ -134,6 +135,10 @@ class CivicVcfEntry:
     #: CIViC's real profile id for this entry. Used as the join key for a CSQ-sourced variant, so the
     #: id in the parquet is the source's own rather than something this builder invented.
     molecular_profile_id: str
+    #: And its name, which is the only place a *composite* profile says so in words —
+    #: `VHL S183L (c.548C>T) AND VHL D126N (c.376G>A)`. Carried because the id alone cannot tell a
+    #: reader that one evidence item is a statement about two variants (RM174).
+    molecular_profile_name: str
 
 
 def parse_csq_format(header_line: str) -> list[str]:
@@ -245,6 +250,7 @@ def _parse_entry(raw: str, fields: list[str]) -> CivicVcfEntry | None:
         allele_registry_id=cell["Allele Registry ID"].strip(),
         gene=cell["SYMBOL"].strip(),
         molecular_profile_id=cell["CIViC Molecular Profile ID"].strip(),
+        molecular_profile_name=cell["CIViC Molecular Profile Name"].replace("&", ",").strip(),
     )
 
 

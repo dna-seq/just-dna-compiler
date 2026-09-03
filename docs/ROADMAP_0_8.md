@@ -154,7 +154,7 @@ the injected-cofactor half closed, the predicate half stays here · **Owner** fo
 most of it, and the 0.6 review removed the rest of the cofactor axis. What is left is genuinely small
 and genuinely unsolved.
 
-**The corpus this was parked waiting for has its first real entry (2026-09-02, [RM174](ROADMAP.md#rm174--a-claim-about-two-variants-in-trans-is-written-as-two-single-variant-rows-because-no-brick-holds-the-real-subject)).**
+**The corpus this was parked waiting for has its first real entry (2026-09-02, [RM174](ROADMAP_HISTORY.md#rm174--a-claim-about-two-variants-in-trans-is-written-as-two-single-variant-rows-because-no-brick-holds-the-real-subject)).**
 Not an argument — an adopted source whose grammar was counted. CIViC publishes molecular profiles as
 boolean expressions over variants: of 1,964 profiles, **209 are multi-variant** — `AND` 141, `OR` 72,
 `NOT` 1 — and they nest (`BRAF Amplification AND ( BRAF V600E OR BRAF V600K )`). Both halves of this

@@ -5,9 +5,13 @@ every identity route and every drop reason has at least one row — including va
 (`V62Cfs*5 (c.180del)`), which carries no identifier CIViC publishes and is placed only from the
 curated name table, so the curated path runs through the real build rather than a stub. Two rows in it
 are constructed rather
-than harvested, and both are marked here, because upstream has no example: a germline direction row on
-a combination profile, and a `Does Not Support` row on a variant that carries identity. Everything
-else is upstream bytes.
+than harvested, and all are marked here, because upstream has no example: a germline direction row on
+a combination profile, a `Does Not Support` row on a variant that carries identity, and — added for
+RM174 — CSQ entry `9999903`, a submitted germline refutation on variant 1739 whose molecular profile
+is `VHL R167Q (c.500G>A) AND VHL E55* (c.163G>T)`. That last one is the shape of real evidence item
+8721, which the dated release carries on variants this slice does not: one statement about a
+two-variant genotype, reaching the builder through the VCF and so fanned out rather than dropped.
+Everything else is upstream bytes.
 """
 
 import csv
@@ -666,6 +670,54 @@ def test_release_json_states_the_basis_and_what_it_counted(widened):
     assert sum(payload["status_counts"].values()) == payload["record_count"]
     assert set(payload["vcf_evidence"]) == set(CIVIC_EVIDENCE_STATUSES)
     assert payload["unjoinable_submitted"] >= 0
+
+
+def test_a_row_names_the_profile_its_evidence_item_actually_belongs_to(widened):
+    """RM174. The join key has to be the variant's own profile or the row does not join at all — so
+    the item's real profile goes BESIDE it, never instead of it.
+
+    Before this, a combination-genotype claim reaching the builder through the VCF was written as one
+    single-variant row per variant it names, each stamped with that variant's own profile, and the
+    column that would have said otherwise had been overwritten. The parquet stated, once per variant,
+    that a two-variant claim was a single-variant one.
+    """
+    frame = _frame(widened)
+
+    assert frame["evidence_molecular_profile_id"].null_count() == 0, (
+        "every row knows its own profile; a null here would read as 'not a composite'"
+    )
+    composite = frame.filter(
+        pl.col("evidence_molecular_profile_id") != pl.col("molecular_profile_id")
+    )
+    assert composite.height, "the fixture must carry a composite or this test proves nothing"
+    for row in composite.iter_rows(named=True):
+        assert " AND " in row["evidence_molecular_profile_name"], (
+            "a profile the row's own variant does not account for is CIViC's composite grammar"
+        )
+        assert str(row["variant_name"]) in row["evidence_molecular_profile_name"], (
+            "the row's variant is one of the profile's operands"
+        )
+    # A single-variant row's two ids agree, which is what makes the inequality above meaningful.
+    plain = frame.filter(pl.col("evidence_molecular_profile_id") == pl.col("molecular_profile_id"))
+    assert plain.height > composite.height
+
+
+def test_the_composite_count_is_published_rather_than_left_to_each_reader(built, widened):
+    """A number the builder computed and would otherwise discard (`@dont-discard-computed`).
+
+    And it is basis-dependent in a way worth asserting: the TSV path drops a multi-variant profile as
+    `combination_profile` before it can reach a row, so the accepted basis cannot produce one.
+    """
+    wide = json.loads((widened.out_dir / RELEASE_FILENAME).read_text())
+    narrow = json.loads((built.out_dir / RELEASE_FILENAME).read_text())
+    frame = _frame(widened)
+
+    assert wide["composite_profile_rows"] == frame.filter(
+        pl.col("evidence_molecular_profile_id") != pl.col("molecular_profile_id")
+    ).height
+    assert narrow["composite_profile_rows"] == 0, (
+        "the TSV path drops a combination profile, so the narrow basis has none to label"
+    )
 
 
 def test_the_notice_states_the_basis_the_build_actually_read(built, widened):

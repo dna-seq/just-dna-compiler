@@ -149,6 +149,15 @@ that was measuring something else, plus the probe round behind RM170.
   instances. The stamp defect stays RM174's; the representation is RM28's and stays parked.
 - **RM160's shape decided (unbuilt): read `SUBMITTED` at `enrich` time.** `civic build` /
   `civic reproduce` keep byte-reproducibility and the snapshot does not grow.
+- **RM174's stamp half shipped: a row names the profile its evidence item actually belongs to.** A
+  combination-genotype claim reaching the builder through the VCF was fanned out into one row per
+  variant, each stamped with *that variant's* profile — so the parquet stated, once per variant, that
+  a two-variant claim was a single-variant one. `evidence_molecular_profile_id` and
+  `evidence_molecular_profile_name` now ride beside the join key on every row (the key has to stay the
+  variant's own profile or the row does not join), a composite is the inequality of the two ids, and
+  `release.json` carries `composite_profile_rows`. The name is null on a TSV-sourced row because that
+  file publishes none. **The representation question is not touched** — 8721 is a claim about two
+  variants *in trans*, `HaplotypeRow` is *cis*, and no brick holds it; that is RM28's and stays parked.
 - **RM170 shipped: an authored direction beside a refutation the source published.** `Does Not
   Support` was already withheld rather than negated — but a variant CIViC *supports* and *also* rebuts
   still got a `risk` row drafted, and nothing then said the rebuttal existed. `contested_variants`

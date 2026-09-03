@@ -263,6 +263,12 @@ class CivicBuildResult:
     #: registry deliberately — those rows never entered the evidence list the registry's equality is
     #: over — and reported separately so the number is not lost (`@dont-discard-computed`).
     unjoinable_submitted: int = 0
+    #: Emitted rows whose evidence item belongs to a molecular profile other than the variant's own —
+    #: a claim about a combination genotype, fanned out across the variants it names (RM174). Derived
+    #: from the two profile columns rather than stored on the row: a boolean beside two ids is a third
+    #: thing that can disagree with them (`@derived-not-stored`). Always 0 on the `accepted` basis,
+    #: where the TSV path drops a multi-variant profile before it reaches a row.
+    composite_profile_rows: int = 0
     #: Emitted rows per `evidence_status`. Empty on the `accepted` basis, where the answer is the
     #: record count and a second number would only be able to disagree with it.
     status_counts: dict[str, int] = field(default_factory=dict)
@@ -440,6 +446,7 @@ CIVIC_COLUMNS: tuple[str, ...] = (
     "chrom", "start", "ref", "alt", "rsid", "allele_registry_id",
     "identity_derivation", "direction", "significance_raw", "evidence_direction_raw",
     "variant_id", "variant_name", "gene", "evidence_id", "molecular_profile_id",
+    "evidence_molecular_profile_id", "evidence_molecular_profile_name",
     "evidence_level", "rating", "variant_origin", "pmid", "disease", "doid",
     "civic_grch37_chrom", "civic_grch37_start", "evidence_status",
 )
@@ -640,6 +647,13 @@ def build_snapshot(
                 "gene": variant.get("gene") or None,
                 "evidence_id": int(row["evidence_id"]),
                 "molecular_profile_id": int(profile_id),
+                # RM174. A TSV row's own profile IS `profile_id` — the TSV path drops a multi-variant
+                # profile as `combination_profile` before it reaches here, so the two can only differ
+                # on the VCF path, where a composite is fanned out and kept. The **name** is null for
+                # a TSV row because `MolecularProfileSummaries.tsv` publishes none; filling it from
+                # the variant's name would state a profile name the source never wrote.
+                "evidence_molecular_profile_id": int(row.get("evidence_molecular_profile_id") or profile_id),
+                "evidence_molecular_profile_name": (row.get("evidence_molecular_profile_name") or "").strip() or None,
                 "evidence_level": row.get("evidence_level") or None,
                 "rating": int(row["rating"]) if (row.get("rating") or "").isdigit() else None,
                 "variant_origin": row.get("variant_origin") or None,
@@ -655,6 +669,11 @@ def build_snapshot(
                 "evidence_status": (row.get("evidence_status") or "").strip() or None,
             }
         )
+
+    composite_profile_rows = sum(
+        1 for record in records
+        if record["evidence_molecular_profile_id"] != record["molecular_profile_id"]
+    )
 
     assert_registry_closes(len(evidence), len(records), dropped)
     assert_curation_closes(curated)
@@ -686,6 +705,7 @@ def build_snapshot(
         status_counts=status_counts,
         unjoinable_submitted=unjoinable_submitted,
         status_basis=status_basis,
+        composite_profile_rows=composite_profile_rows,
         vcf_evidence=vcf_statuses,
         curated_identities=curated,
         variants=len({int(r["variant_id"]) for r in records}),
@@ -823,6 +843,13 @@ def _submitted_evidence_row(
     """
     return {
         "molecular_profile_id": (variant.get("single_variant_molecular_profile_id") or "").strip(),
+        # The evidence item's OWN profile, beside the join key rather than instead of it (RM174). The
+        # key above has to be the variant's single-variant profile or the row does not join at all;
+        # these two say what the item is actually about, which for a combination genotype is two
+        # variants and not this one. Written on every row, never only on composites: a column that is
+        # null on the common case invites a reader to treat null as "not a composite".
+        "evidence_molecular_profile_id": entry.molecular_profile_id,
+        "evidence_molecular_profile_name": entry.molecular_profile_name or "",
         "evidence_id": str(entry.evidence_id),
         "evidence_type": "Predisposing",
         "evidence_direction": entry.direction,
@@ -981,6 +1008,7 @@ def _polars_schema() -> dict:
         "direction": pl.Utf8, "significance_raw": pl.Utf8, "evidence_direction_raw": pl.Utf8,
         "variant_id": pl.Int64, "variant_name": pl.Utf8, "gene": pl.Utf8,
         "evidence_id": pl.Int64, "molecular_profile_id": pl.Int64,
+        "evidence_molecular_profile_id": pl.Int64, "evidence_molecular_profile_name": pl.Utf8,
         "evidence_level": pl.Utf8, "rating": pl.Int64, "variant_origin": pl.Utf8,
         "pmid": pl.Utf8, "disease": pl.Utf8, "doid": pl.Utf8,
         "civic_grch37_chrom": pl.Utf8, "civic_grch37_start": pl.Int64,
@@ -1025,6 +1053,7 @@ def _write_release_json(out_dir: Path, result: CivicBuildResult, *, release: str
         "status_basis": result.status_basis,
         "status_counts": result.status_counts,
         "unjoinable_submitted": result.unjoinable_submitted,
+        "composite_profile_rows": result.composite_profile_rows,
         "vcf_evidence": result.vcf_evidence,
         "input_rows": result.input_rows,
         "record_count": result.record_count,
