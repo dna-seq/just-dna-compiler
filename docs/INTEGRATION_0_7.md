@@ -176,7 +176,7 @@ list. The 0.6 guide says the same thing and it is the defect that broke the publ
 `artifact.files` is name-sorted before hashing, so tuple position is invisible to the digest and these
 land alphabetically rather than at the end.
 
-**Four new columns**, all optional, all absent-means-nothing-was-said:
+**New columns** (the table is the list), all optional, all absent-means-nothing-was-said:
 
 | parquet | column | item |
 | --- | --- | --- |
@@ -239,7 +239,7 @@ reports its own no-op**, so a `suppress` with a typo'd subject does nothing and 
 | `integrity.clin_sig_concordance_signature` / `clin_sig_authority_call_signature` | format | two fact-hashes because they are two tables: a corrected normalization moves the detail rows without moving a verdict. |
 | `layout.atomic_write_text` / `layout.atomic_writer` | format | write a sidecar so a reader sees the whole file or the previous one. Nine writers were routed through these (S66) — if you write a sidecar yourself, use them. |
 | `normalize.PRESENTATION_AUTHORITY_KEYS` / `SHORT_DESCRIPTION_MAX_CHARS` / `PRESENTATION_AUTHORITY_REASONS` | format | the registry-held card subtitle (RM133), and its ~120-character ceiling. Still inject-only: `strip_authority_keys` takes the set *you* pass. |
-| **`caches.CACHE_LANES` / `CacheLane`** | enricher | RM176. The cache registry: one entry per lane carrying its three stages (`resolve`, `rebuild`, `ensure`), where it lives (`subdir`, `default_dir`), its licence terms, its publish repo, and — for each stage it lacks — **the reason as a field** (`unpublished`, `unbuilt`). Read it instead of hard-coding which snapshots exist; a hand-kept list is what this replaced, and it had drifted by three lanes. |
+| **`caches.CACHE_LANES` / `CacheLane`** | enricher | RM176. The cache registry: one entry per lane carrying its three stages (`resolve`, `rebuild`, `ensure`), where it lives (`subdir`, `default_dir`), its licence terms, its `parents` when it is derived from other lanes (RM171: `mitomap_miss` names `mitomap` and `clinvar`, and an absent parent is `built=None` naming it), its publish repo, and — for each stage it lacks — **the reason as a field** (`unpublished`, `unbuilt`). Read it instead of hard-coding which snapshots exist; a hand-kept list is what this replaced, and it had drifted by three lanes. |
 | **`caches.prepare_caches(lanes=None, *, declared_use, pins, sources)`** | enricher | provisions every lane by its own route and returns one `PrepareOutcome` per lane, in registry order. `ready` is tri-state and `route` is `present` / `pulled` / `built` / `none` — a deployment auditing its caches has to tell a snapshot it *fetched* from one it *made*, and `release.json` names the release but not the route. This is what `cache prepare` calls. |
 | **`caches.rebuild_caches(lanes=None, *, out, declared_use, pins, sources)`** | enricher | the rebuild loop, returning `RebuildOutcome` per lane. Tri-state: `built is None` means the lane cannot run unattended (an Elsevier workbook, a personal key, a release to pin, or built elsewhere) and is **not** a failure. |
 | **`caches.prepare_lane` / `rebuild_lane` / `RebuildRequest`** | enricher | the single-lane forms, if you drive your own loop. |
@@ -260,8 +260,11 @@ set naming the authority inside its members needed a new member per source and f
 five. Which authority spoke is **data**, in `clin_sig_authority_calls.csv`.
 
 Also new: `VALID_WARNING_CODES` (72 members) and `CARRIED_WARNING_CODES` (11),
-`VALID_RELEASE_OUTPUT_AXES` and `VALID_RELEASE_CHANGE_KINDS`. `VALID_VERIFICATION_CHECKS` gains one
-member, `dataset_currency` (RM85) — if you validate check names against a hard-coded set, add it.
+`VALID_RELEASE_OUTPUT_AXES` and `VALID_RELEASE_CHANGE_KINDS`. `VALID_VERIFICATION_CHECKS` gains
+**eight** members — `dataset_currency` (RM85), `pgs_accession_currency` and `pgs_metadata_agreement`
+(RM163), `repeat_band_agreement` (RM165), `literature_coverage` (RM167), `regulator_label_agreement`
+(RM166), `published_refutation` (RM170) and `evidence_status_currency` (RM160) — if you validate check
+names against a hard-coded set, take the set from the vocabulary rather than adding them by hand.
 
 **`VALID_DIRECTIONS` gains a fifth member, `contested` (RM150)** — the one existing vocabulary that
 grew. `unknown` had been carrying both *nobody assessed the sign* and *the sources disagree about it*,
@@ -289,14 +292,20 @@ The registry `reference()` / `authoring_reference()` walks now renders **31 mode
 ### 2.5 CLI
 
 One new compiler command, several new enricher commands, four new `enrich` flags. Nothing was removed
-or retyped.
+or retyped. **Two behaviour changes for anyone scripting a builder**: `clinpgx build` refuses the
+retired `clinicalAnnotations.zip` member names and exits 1 naming `summaryAnnotations.zip` (RM175 —
+the old filename still answers 200 and serves a frozen 2025 object), and every builder's `--out` now
+defaults to `data/repro/<lane>/` — `cpic build`, `clinpgx build`, `clinpgx build-labels` and
+`pharmvar build` no longer require it, the nine that defaulted to a bare relative name no longer
+write into the working directory, and `civic reproduce` moved to `data/repro/civic_reproduce`
+([RM177](ROADMAP_HISTORY.md#rm177--nine-builders-wrote-their-snapshot-beside-pyprojecttoml-because-the-rule-that-forbade-it-was-prose)). A caller passing `--out` is unaffected.
 
 | command | what it does |
 | --- | --- |
 | `just-dna-compiler sweep BEFORE AFTER [--spec-root DIR] [--release V] [--json]` | measures what a release changed about compiled output, and with `--release` runs the **release gate** — a measured movement no `ReleaseRecord` declares exits 1. It needs the previous release actually installed, so it is a release-sequence command rather than a test. Under `--json` stdout is one JSON document and the gate's prose goes to stderr. |
 | `just-dna-enricher pubmind build` | reduces the ANNOVAR-distributed PubMind table to the snapshot the checks read |
 | `just-dna-enricher pubmind publish` | refuses to publish it, and says why — the snapshot is operator-built and inject-only |
-| **`just-dna-enricher cache prepare`** | RM176. **The one a deployment wants.** Leaves the machine with every cache it can have: pulls the published snapshots, builds the four that are unpublished for recorded reasons (PharmVar, PubMind, MANE, ACMG). A present cache is left alone, so it is idempotent. |
+| **`just-dna-enricher cache prepare`** | RM176. **The one a deployment wants.** Leaves the machine with every cache it can have: pulls the published snapshots, builds the five that are unpublished for recorded reasons (PharmVar, PubMind, MANE, ACMG, and the derived `mitomap_miss`, which would only pin somebody else's ClinVar if it travelled). A present cache is left alone, so it is idempotent. |
 | **`just-dna-enricher cache rebuild`** | RM176. Re-derives every lane into `<base>/<lane>/` (default `data/caches`), **never in place**, with `--publish` to upload each. The complement of `prepare`: rebuild cuts a fresh set, prepare fills in what is missing. |
 | **`just-dna-enricher strchive publish`** / **`clinpgx publish-labels`** / **`acmg build`** / **`mane build`** / **`strchive build`** / **`clinpgx build-labels`** | RM176 and RM168. Three lanes gained a publish command; three gained a cache and a resolver. |
 
@@ -319,8 +328,15 @@ centrally will see that check start answering. An explicit flag still wins every
 counted as a failure, so `pull` on a fresh machine exits 0 where it used to exit 1. A download that
 breaks still fails and still exits 1.
 
-`draft-panel` gains `--source clinvar|pubmind` and `--min-confidence`, and `hint variant` reports
-PubMind's reading beside the rest (RM134 §§ C and D). PubMind is an LLM's reading of the literature and
+`draft-panel` gains `--source clinvar|pubmind|civic|mitomap-miss` and `--min-confidence` (`--gene` is
+required for every source but `mitomap-miss`, where the increment over ClinVar is the query — RM171),
+`draft-repeats` drafts `repeat_alleles.csv` identity rows from STRchive (RM165), `check-repeat-bands`
+compares an authored band table against it, `litvar coverage` / `litvar gene` ask LitVar2 which papers
+name an allele (RM167), `civic citations` drafts the citations CIViC's dated files cannot reach and
+records the source's review state in `StudyRow.confidence` (RM160), `clinpgx check-labels` compares a
+drug claim against five regulators' labels (RM166), `mitomap build` / `miss` / `publish` are the two
+MITOMAP lanes (RM171), and `hint variant` reports PubMind's reading beside the rest (RM134 §§ C
+and D). PubMind is an LLM's reading of the literature and
 is labelled as such at every surface; the measured corpus join agrees with ClinVar 62 % of the time.
 
 ### 2.6 Warnings: the same channel, now with codes
@@ -440,7 +456,7 @@ coordinates and `conclusion`, every one an authored column that has existed sinc
 
 | Surface | What it is |
 |---|---|
-| `just-dna-enricher civic build --release <date>` | Builds a snapshot from a **dated** CIViC bulk release into `data/civic.parquet` + `release.json`. Three input files; `--evidence/--variants/--profiles` build offline from local copies. No `--use` flag — CC0 permits every declaration, so a gate there would never gate. |
+| `just-dna-enricher civic build --release <date>` | Builds a snapshot from a **dated** CIViC bulk release into `data/civic.parquet` + `release.json`. Three input files, and a fourth behind `--submitted` — the dated `<date>-civic_accepted_and_submitted.vcf`, which widens the basis to accepted+submitted and adds `status_counts`, `vcf_evidence`, `unjoinable_submitted` and a per-row `evidence_status` (RM169); `--evidence/--variants/--profiles` build offline from local copies. No `--use` flag — CC0 permits every declaration, so a gate there would never gate. |
 | `draft-panel --source civic` | Drafts the **`direction`** axis (`risk`/`protective`), never `clin_sig`. `--clin-sig` is reported inert under it rather than silently ignored. |
 | `--civic-cache` / `$JUST_DNA_CIVIC_CACHE` | Points at a built snapshot. There is no published one to download. |
 | `CIVIC_TERMS` in `licensing.py` | CC0 1.0, permissive on all three axes. A module drafted from CIViC lands `civic` in `sources.csv` and taints nothing. |
@@ -454,10 +470,16 @@ tuple; an out-of-tree provider computing `match_on` per row was already broken a
 
 **Two facts about the source worth carrying**, because a consumer comparing our numbers with CIViC's
 own will otherwise disagree with us. Its GraphQL API defaults to `status: NON_REJECTED` and serves
-11,518 evidence items; the dated bulk TSV is `accepted`-only at 4,903. We build from the TSV, and
-`release.json` records `status_basis` for exactly that reason. And CIViC publishes **no GRCh38
-coordinates** — rows are placed by the rsID and GRCh38 RefSeq accession it publishes beside them, never
-by lifting a coordinate over.
+11,518 evidence items; the dated bulk TSV is `accepted`-only at 4,903. We build from the TSV by
+default, and `release.json` records `status_basis` for exactly that reason — `accepted` or, with
+`--submitted`, `accepted+submitted` (RM169). And CIViC publishes **no GRCh38 coordinates** — rows are
+placed by the rsID and GRCh38 RefSeq accession it publishes beside them, never by lifting a coordinate
+over; where neither is published, two more `identity_derivation` members place a row: `vcf_csq`, from
+the CSQ block of the wider VCF (RM169), and `curated_name`, from the identity the source states in a
+variant's own name (RM159, 33 variants resolved by a recorded procedure rather than a lookup). A row
+also carries `evidence_molecular_profile_id` / `_name` beside its join key, so a claim about a
+combination profile is visible as one — a composite is the inequality of the two ids, counted in
+`release.json` as `composite_profile_rows` (RM174).
 
 
 ## 3. Per-consumer check / change lists
