@@ -39,6 +39,11 @@ from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import normalize_chrom, par_partner
 
 from just_dna_enricher import clinvar
+from just_dna_enricher.civic_citations import (
+    EvidenceStatusCheck,
+    check_evidence_status_currency,
+    read_studies,
+)
 from just_dna_enricher.civic_refutation import (
     REFUTATION_BESIDE_CLAIM,
     REFUTATION_WITHOUT_CLAIM,
@@ -558,6 +563,12 @@ class EnrichmentResult:
     # Why the check above did not run, or `None` when it did. An empty `refutation_findings` says
     # nothing on its own, exactly as an empty `clin_sig_conflicts` does not.
     refutation_not_checked: str | None = None
+    # RM160. The canary over citations `civic citations` recovered from CIViC's API: what the module
+    # recorded as CIViC's curation status, re-asked. Warnings in BOTH modes and escalated in neither,
+    # for the reason above it — and a **different** question from `dataset_currency`, which asks which
+    # release a table came from rather than whether one judgement has moved. `None` when this run put
+    # no such question, which its own `skip` names.
+    evidence_status: EvidenceStatusCheck | None = None
     # The per-row split behind that tautology, and **only** there: `strict` over a module whose licence
     # row says it was drafted from this very snapshot looks every value up and reports how many are
     # still copies, how many a human wrote, and how many conflict (RM4). `None` — never an audit of
@@ -1488,6 +1499,21 @@ def _run_enrichment(
         refutation_findings = refutation.findings
         refutation_subjects = refutation.subjects
         refutation_basis = refutation.status_basis
+    # RM160 — the CIViC citation canary. It sits here rather than in `civic citations` because the
+    # question is not *what did the API say today*, it is *has what this module already recorded moved
+    # since*: a module can be drafted once and enriched for a year, and only the pass everybody runs
+    # will notice. It is a live read, so `--offline` is a real skip; a module that never ran
+    # `civic citations` has no recorded status and is `nothing_to_check`, which is not a pass.
+    evidence_status = check_evidence_status_currency(
+        variants, out, read_studies(spec_dir), reference=civic_ref, offline=offline
+    )
+    for moved in evidence_status.findings:
+        # Warned in both modes, escalated in neither, and the row is left exactly as authored: CIViC
+        # re-curating its own evidence is a fact about CIViC (`@a-source-recuring-is-not-a-strict-
+        # matter`), and rewriting an authored cell from a live read is the one thing this tier may not
+        # do (`@enrichment-is-validation`).
+        logger.warning("CIViC %s — %s", moved.code, moved.restate())
+
     for finding in refutation_findings:
         # Warned in both modes, escalated in neither. The neighbours say so for the same reason
         # (`@clinsig-never-escalates`), and the row is deliberately left exactly as authored: a
@@ -1730,6 +1756,7 @@ def _run_enrichment(
         ref_mismatches=ref_mismatches, clin_sig_conflicts=clin_sig_conflicts,
         clin_sig_not_checked=clin_sig_not_checked, clin_sig_comparison=clin_sig_comparison,
         refutation_findings=refutation_findings, refutation_not_checked=refutation_not_checked,
+        evidence_status=evidence_status,
         build_diagnoses=build.diagnoses, build_not_diagnosed=build.not_checked,
         stale_rsids=stale_rsids, par_twins_dropped=sorted(par_twins_dropped),
         vrs=mint_result, unreachable_rsids=sorted(unreachable_rsids),
@@ -1899,6 +1926,7 @@ def _run_enrichment(
                 refutation_skip=refutation_skip,
                 refutation_detail=refutation_not_checked,
                 refutation_basis=refutation_basis,
+                evidence_status=evidence_status,
                 civic_ref=civic_ref,
                 verify_rsids=verify_rsids,
                 rsid_subjects=rsid_subjects,
@@ -2011,6 +2039,7 @@ def _verification_records(
     refutation_skip: str | None,
     refutation_detail: str | None,
     refutation_basis: str | None,
+    evidence_status: EvidenceStatusCheck,
     civic_ref: Path | None,
     verify_rsids: bool,
     rsid_subjects: int,
@@ -2187,6 +2216,31 @@ def _verification_records(
                 source="civic",
                 release=_civic_release(civic_ref),
                 detail=_refutation_detail(refutation_findings, refutation_basis),
+            )
+        )
+
+    # RM160 — the CIViC citation canary. Four skip reasons rather than one, because they are cleared
+    # by four different things: nothing recorded, no egress, nothing this run could map back to a
+    # variant id, and a source that did not answer. `findings` counts both codes under one record
+    # because they share a subject *set* — the citations this module holds from CIViC — the same
+    # reason the refutation leg above puts two codes under one record.
+    if evidence_status.skip is not None:
+        records.append(
+            skipped(
+                "evidence_status_currency",
+                evidence_status.skip,
+                detail=evidence_status.detail(),
+                source="civic",
+            )
+        )
+    else:
+        records.append(
+            ran(
+                "evidence_status_currency",
+                subjects=evidence_status.subjects,
+                findings=len(evidence_status.findings),
+                source="civic",
+                detail=evidence_status.detail(),
             )
         )
 

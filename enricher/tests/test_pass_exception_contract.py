@@ -261,6 +261,15 @@ def test_every_pass_taking_an_injected_client_is_covered() -> None:
         # down still returns a complete report saying so. `LitvarClient` itself is covered in
         # `test_client_exception_contract.py`, where the translation really does happen.
         "litvar.check_literature_coverage",
+        # RM160, and the same shape once more: both catch `CivicApiError` per subject and record that
+        # subject as `unreachable` with its reason — the withhold rather than a leak, so a run where
+        # CIViC is down still returns a complete report saying which variants were never asked about.
+        # `CivicCitationsError` exists and is what a caller catches, but it is for this lane's *own*
+        # failures (an unreadable licence table, a spec it cannot write into), never for the client's;
+        # `CivicApiClient` is covered in `test_client_exception_contract.py`, where the translation
+        # really does happen.
+        "civic_citations.draft_civic_citations",
+        "civic_citations.check_evidence_status_currency",
     }
     uncovered = discovered - covered
     assert uncovered == exempt, sorted(uncovered.symmetric_difference(exempt))

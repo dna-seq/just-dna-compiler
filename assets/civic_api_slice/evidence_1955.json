@@ -1,0 +1,57 @@
+{
+ "data": {
+  "evidenceItems": {
+   "nodes": [
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 5269,
+     "molecularProfile": {
+      "id": 1831,
+      "name": "VHL P71fs (c.211insT)"
+     },
+     "significance": "PREDISPOSITION",
+     "source": {
+      "citation": "Olschwang et al., 1998",
+      "citationId": "9829912",
+      "id": 1278,
+      "publicationYear": 1998,
+      "sourceType": "PUBMED",
+      "title": "Germline mutation profile of the VHL gene in von Hippel-Lindau disease and in sporadic hemangioblastoma."
+     },
+     "status": "ACCEPTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 9969,
+     "molecularProfile": {
+      "id": 1831,
+      "name": "VHL P71fs (c.211insT)"
+     },
+     "significance": "PREDISPOSITION",
+     "source": {
+      "citation": "Dollfus et al., 2002",
+      "citationId": "12202531",
+      "id": 2179,
+      "publicationYear": 2002,
+      "sourceType": "PUBMED",
+      "title": "Retinal hemangioblastoma in von Hippel-Lindau disease: a clinical and molecular study."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    }
+   ],
+   "pageInfo": {
+    "endCursor": "Mg",
+    "hasNextPage": false
+   },
+   "totalCount": 2
+  }
+ }
+}

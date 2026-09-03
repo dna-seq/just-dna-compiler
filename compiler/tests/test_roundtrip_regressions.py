@@ -461,6 +461,9 @@ def test_every_column_the_studies_writer_declares_is_actually_written(tmp_path: 
         "trait_efo_id": "EFO:0000305", "doi": "10.1000/demo", "provenance_quote": "a passage",
         "provenance_regex": "a[a-z ]+passage", "curator": "claude-opus-5", "p_value_num": "5e-8",
         "statistical_test": "logistic regression adjusted for age and sex",
+        # RM160's pair. They travel together — a magnitude with no instrument beside it is refused at
+        # the model — so the guard fills both or neither.
+        "confidence": "submitted", "confidence_unit": "civic_evidence_status",
     }
     # Derived from the model, so a column added to StudyRow without a value here fails loudly rather
     # than being quietly excluded from the guard.

@@ -27,6 +27,7 @@ from collections.abc import Callable
 
 import httpx
 import pytest
+from just_dna_enricher.civic_api import CivicApiClient, CivicApiUnavailable
 from just_dna_enricher.cpic import CpicClient, CpicError
 from just_dna_enricher.currency import ClinVarReleaseClient, ReleaseUnavailable
 from just_dna_enricher.eutils import EutilsClient, EutilsError, EutilsSettings
@@ -128,6 +129,16 @@ def _litvar(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], 
     return lambda: client.autocomplete("rs1800562")
 
 
+def _civic_api(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    """RM160's CIViC GraphQL client. It POSTs rather than GETs, which is why it is on its own line:
+    a `raise_for_status()` outside the `try` leaks identically either way, and no other client in
+    this file exercises the POST leg against a mock transport."""
+    client = CivicApiClient(
+        client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate()
+    )
+    return lambda: client.evidence_items(1955)
+
+
 def _pharmvar(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
     client = PharmVarClient(
         api_key="test-key",
@@ -162,6 +173,14 @@ CLIENTS = [
     # `test_litvar.py` does. The two must not be confused: the JSON-decode leg was leaking untyped
     # until a review found it, and these three cases could not see it.
     ("litvar", _litvar, LitvarUnavailable),
+
+    # `CivicApiUnavailable` rather than its parent, the same stronger assertion as the four above:
+    # every transport and status leg of this client means CIViC could not be asked. `CivicApiError`
+    # is the parent and covers the shape failures this file does not drive — a 200 that is not JSON,
+    # a GraphQL `errors` block, a status outside the vocabulary — which `test_civic_citations.py`
+    # does. Keeping them apart is the point: the service refusing a query and the service being
+    # unreachable are cleared by different things.
+    ("civic_api", _civic_api, CivicApiUnavailable),
 ]
 
 

@@ -2177,6 +2177,98 @@ def civic_build_(
         )
 
 
+@civic_app.command("citations")
+def civic_citations_(
+    spec: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory."),
+    snapshot: Path | None = typer.Option(
+        None, "--snapshot", exists=True, file_okay=False,
+        help="CIViC snapshot to map authored rows through. Default: the provisioned cache.",
+    ),
+    variant_id: list[int] = typer.Option(
+        [], "--variant-id",
+        help=(
+            "Ask about a CIViC variant id directly, repeatable. Its citations ground the MODULE "
+            "rather than a variant, which is the only route to a record CIViC publishes no identity "
+            "for — variant 1955 is the case this exists for."
+        ),
+    ),
+    offline: bool = typer.Option(
+        False, "--offline",
+        help="Do not fetch. Every subject is recorded as not-asked; no row is written.",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Report what would be appended, write nothing.",
+    ),
+) -> None:
+    """Append the citations a CIViC variant carries that the dated bulk release cannot reach (RM160).
+
+    **Why this is not part of `civic build`.** The builder reads a dated release and is byte-
+    reproducible from it; `civic reproduce` proves it by building twice. The wider basis RM169 adopted
+    comes from a VCF, and a VCF record needs a POS — so submitted evidence attached to a variant with
+    no GRCh37 coordinate is published on exactly one surface, the GraphQL API, which has no release to
+    pin. The read is also **one request per variant by construction**, because `evidenceItems` takes a
+    single `variantId`. Batching it into the builder is the first repair anyone proposes and it is
+    exactly the reproducibility bargain this shape refused.
+
+    A recovered citation lands in `studies.csv`; `literature.csv` is derived from those PMIDs by the
+    `literature` command, and an article row nothing cites is dropped from the artifact. CIViC's own
+    curation status rides in `confidence`/`confidence_unit`, unconverted, so an accepted row and a
+    submitted row are not the same row. Appending only — a second run over an unchanged API adds
+    nothing — and `enrich` re-asks later and reports what has moved since.
+
+    CIViC is CC0, so there is no `--use` flag: a declared-use gate would permit every call
+    unconditionally, and a flag feeding a gate that never gates is a flag that does nothing.
+    """
+    from just_dna_enricher.civic_citations import (
+        CivicCitationsError,
+        draft_civic_citations,
+        read_module,
+    )
+    from just_dna_enricher.enrich import spec_genome_build
+    from just_dna_enricher.locations import resolve_civic_reference
+
+    reference = snapshot if snapshot is not None else resolve_civic_reference()
+    try:
+        variants, resolution = read_module(spec, genome_build=spec_genome_build(spec))
+        result = draft_civic_citations(
+            spec,
+            variants=variants,
+            resolution_rows=resolution,
+            reference=reference,
+            requested=variant_id,
+            offline=offline,
+            dry_run=dry_run,
+        )
+    except (CivicCitationsError, *_DRAFT_PRECONDITION_ERRORS) as exc:
+        typer.secho(f"CIVIC CITATIONS FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    typer.echo(
+        f"  {len(result.subjects)} CIViC variant(s) in scope, {result.asked} asked; "
+        f"{result.citations_seen} PubMed citation(s) seen"
+    )
+    if result.unmapped_rows:
+        typer.echo(
+            f"  {result.unmapped_rows} authored row(s) resolved to a locus no CIViC variant matched "
+            f"— name one with --variant-id if CIViC publishes no identity for it"
+        )
+    for reason, count in result.withheld.items():
+        if count:
+            typer.echo(f"  withheld {reason:22s} {count}")
+    if result.confidence_withheld:
+        typer.echo(
+            f"  {result.confidence_withheld} row(s) written with no confidence: CIViC states more "
+            f"than one status for the items citing that paper"
+        )
+    for report in result.reports:
+        typer.echo(f"  {report}")
+    for warning in result.warnings:
+        typer.secho(f"  warning: {warning}", fg=typer.colors.YELLOW, err=True)
+    verb = "would add" if dry_run else "added"
+    breakdown = ", ".join(f"{r.csv_name} {len(r.added)}" for r in result.reports) or "nothing"
+    typer.secho(f"{verb}: {breakdown} — in {spec}", fg=typer.colors.GREEN)
+
+
 @civic_app.command("publish")
 def civic_publish_(
     snapshot_dir: Path = typer.Argument(

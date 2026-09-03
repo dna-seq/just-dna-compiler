@@ -1,0 +1,827 @@
+{
+ "data": {
+  "evidenceItems": {
+   "nodes": [
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 4,
+     "evidenceType": "PREDISPOSING",
+     "id": 6420,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "UNCERTAIN_SIGNIFICANCE",
+     "source": {
+      "citation": "Hes et al., 2007",
+      "citationId": "17661816",
+      "id": 2192,
+      "publicationYear": 2007,
+      "sourceType": "PUBMED",
+      "title": "Frequency of Von Hippel-Lindau germline mutations in classic and non-classic Von Hippel-Lindau disease identified by DNA sequencing, Southern blot analysis and multiplex ligation-dependent probe amplification."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 1943,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "PREDISPOSITION",
+     "source": {
+      "citation": "Nordstrom-O'Brien et al., 2010",
+      "citationId": "20151405",
+      "id": 1368,
+      "publicationYear": 2010,
+      "sourceType": "PUBMED",
+      "title": "Genetic analysis of von Hippel-Lindau disease."
+     },
+     "status": "ACCEPTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 6358,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "UNCERTAIN_SIGNIFICANCE",
+     "source": {
+      "citation": "Launbjerg et al., 2017",
+      "citationId": "28650583",
+      "id": 2514,
+      "publicationYear": 2017,
+      "sourceType": "PUBMED",
+      "title": "von Hippel-Lindau development in children and adolescents."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 6418,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "UNCERTAIN_SIGNIFICANCE",
+     "source": {
+      "citation": "Hes et al., 2007",
+      "citationId": "17661816",
+      "id": 2192,
+      "publicationYear": 2007,
+      "sourceType": "PUBMED",
+      "title": "Frequency of Von Hippel-Lindau germline mutations in classic and non-classic Von Hippel-Lindau disease identified by DNA sequencing, Southern blot analysis and multiplex ligation-dependent probe amplification."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 6419,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "UNCERTAIN_SIGNIFICANCE",
+     "source": {
+      "citation": "Hes et al., 2007",
+      "citationId": "17661816",
+      "id": 2192,
+      "publicationYear": 2007,
+      "sourceType": "PUBMED",
+      "title": "Frequency of Von Hippel-Lindau germline mutations in classic and non-classic Von Hippel-Lindau disease identified by DNA sequencing, Southern blot analysis and multiplex ligation-dependent probe amplification."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 6421,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "UNCERTAIN_SIGNIFICANCE",
+     "source": {
+      "citation": "Hes et al., 2007",
+      "citationId": "17661816",
+      "id": 2192,
+      "publicationYear": 2007,
+      "sourceType": "PUBMED",
+      "title": "Frequency of Von Hippel-Lindau germline mutations in classic and non-classic Von Hippel-Lindau disease identified by DNA sequencing, Southern blot analysis and multiplex ligation-dependent probe amplification."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 6624,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "UNCERTAIN_SIGNIFICANCE",
+     "source": {
+      "citation": "Bausch et al., 2016",
+      "citationId": "25867206",
+      "id": 2610,
+      "publicationYear": 2016,
+      "sourceType": "PUBMED",
+      "title": "Characterization of endolymphatic sac tumors and von Hippel-Lindau disease in the International Endolymphatic Sac Tumor Registry."
+     },
+     "status": "ACCEPTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 6692,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "UNCERTAIN_SIGNIFICANCE",
+     "source": {
+      "citation": "Khadilkar et al., 2017",
+      "citationId": "28432847",
+      "id": 2627,
+      "publicationYear": 2017,
+      "sourceType": "PUBMED",
+      "title": "Genotype-phenotype correlation in paediatric pheochromocytoma and paraganglioma: a single centre experience from India."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 6702,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "UNCERTAIN_SIGNIFICANCE",
+     "source": {
+      "citation": "Cooper et al., 2017",
+      "citationId": "28261513",
+      "id": 2631,
+      "publicationYear": 2017,
+      "sourceType": "PUBMED",
+      "title": "Primary Clear Cell Microcystic Adenoma of the Sinonasal Cavity: Pathological or Fortuitous Association?"
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 6716,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "UNCERTAIN_SIGNIFICANCE",
+     "source": {
+      "citation": "Krzystolik et al., 2016",
+      "citationId": "26308528",
+      "id": 2634,
+      "publicationYear": 2016,
+      "sourceType": "PUBMED",
+      "title": "PARS PLANA VITRECTOMY IN ADVANCED CASES OF VON HIPPEL-LINDAU EYE DISEASE."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 6759,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "PREDISPOSITION",
+     "source": {
+      "citation": "Pandit et al., 2016",
+      "citationId": "27539324",
+      "id": 2645,
+      "publicationYear": 2016,
+      "sourceType": "PUBMED",
+      "title": "Germline mutations and genotype-phenotype correlation in Asian Indian patients with pheochromocytoma and paraganglioma."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 6787,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "UNCERTAIN_SIGNIFICANCE",
+     "source": {
+      "citation": "Lomte et al., 2018",
+      "citationId": "29124493",
+      "id": 2649,
+      "publicationYear": 2018,
+      "sourceType": "PUBMED",
+      "title": "Genotype phenotype correlation in Asian Indian von Hippel-Lindau (VHL) syndrome patients with pheochromocytoma/paraganglioma."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 6847,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "UNCERTAIN_SIGNIFICANCE",
+     "source": {
+      "citation": "Peng et al., 2017",
+      "citationId": "28388566",
+      "id": 2650,
+      "publicationYear": 2017,
+      "sourceType": "PUBMED",
+      "title": "Genotype-phenotype correlations in Chinese von Hippel-Lindau disease patients."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "NA",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 8124,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "NA",
+     "source": {
+      "citation": "Prowse et al., 1997",
+      "citationId": "9106522",
+      "id": 3351,
+      "publicationYear": 1997,
+      "sourceType": "PUBMED",
+      "title": "Somatic inactivation of the VHL gene in Von Hippel-Lindau disease tumors."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "NA",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 8125,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "NA",
+     "source": {
+      "citation": "Prowse et al., 1997",
+      "citationId": "9106522",
+      "id": 3351,
+      "publicationYear": 1997,
+      "sourceType": "PUBMED",
+      "title": "Somatic inactivation of the VHL gene in Von Hippel-Lindau disease tumors."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "NA",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 8126,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "NA",
+     "source": {
+      "citation": "Prowse et al., 1997",
+      "citationId": "9106522",
+      "id": 3351,
+      "publicationYear": 1997,
+      "sourceType": "PUBMED",
+      "title": "Somatic inactivation of the VHL gene in Von Hippel-Lindau disease tumors."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "NA",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 8127,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "NA",
+     "source": {
+      "citation": "Prowse et al., 1997",
+      "citationId": "9106522",
+      "id": 3351,
+      "publicationYear": 1997,
+      "sourceType": "PUBMED",
+      "title": "Somatic inactivation of the VHL gene in Von Hippel-Lindau disease tumors."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "NA",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 8382,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "NA",
+     "source": {
+      "citation": "Fagundes et al., 2019",
+      "citationId": "31528828",
+      "id": 3489,
+      "publicationYear": 2019,
+      "sourceType": "PUBMED",
+      "title": "New Insights Into Pheochromocytoma Surveillance of Young Patients With VHL Missense Mutations."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "NA",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 8489,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "NA",
+     "source": {
+      "citation": "van der Horst-Schrivers et al., 2019",
+      "citationId": "31087189",
+      "id": 3543,
+      "publicationYear": 2019,
+      "sourceType": "PUBMED",
+      "title": "The incidence of consecutive manifestations in Von Hippel-Lindau disease."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "NA",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 8744,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "NA",
+     "source": {
+      "citation": "Casc\u00f3n et al., 2007",
+      "citationId": "17311301",
+      "id": 3666,
+      "publicationYear": 2007,
+      "sourceType": "PUBMED",
+      "title": "Loss of the actin regulator HSPC300 results in clear cell renal cell carcinoma protection in Von Hippel-Lindau patients."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "NA",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 8876,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "NA",
+     "source": {
+      "citation": "Gl\u00e4sker et al., 2013",
+      "citationId": "23407287",
+      "id": 3714,
+      "publicationYear": 2013,
+      "sourceType": "PUBMED",
+      "title": "Hemangioblastomas and neurogenic polyglobulia."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "NA",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 8958,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "NA",
+     "source": {
+      "citation": "Granata et al., 2004",
+      "citationId": "15293534",
+      "id": 3777,
+      "publicationYear": 2004,
+      "sourceType": "PUBMED",
+      "title": "Juvenile renal cell carcinoma as first manifestation of von Hippel-Lindau disease."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "NA",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 9039,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "NA",
+     "source": {
+      "citation": "Krzystolik et al., 2014",
+      "citationId": "25093046",
+      "id": 3817,
+      "publicationYear": 2014,
+      "sourceType": "PUBMED",
+      "title": "Large deletion causing von Hippel-Lindau disease and hereditary breast cancer syndrome."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 9281,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "PREDISPOSITION",
+     "source": {
+      "citation": "Zhang et al., 2008",
+      "citationId": "18446368",
+      "id": 3973,
+      "publicationYear": 2008,
+      "sourceType": "PUBMED",
+      "title": "Germline mutations in the von Hippel-Lindau disease (VHL) gene in mainland Chinese families."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "NA",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 9402,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "NA",
+     "source": {
+      "citation": "Albi\u00f1ana et al., 2017",
+      "citationId": "28662711",
+      "id": 4029,
+      "publicationYear": 2017,
+      "sourceType": "PUBMED",
+      "title": "Repurposing propranolol as a drug for the treatment of retinal haemangioblastomas in von Hippel-Lindau disease."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "NA",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 10103,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "NA",
+     "source": {
+      "citation": "Hes et al., 2000",
+      "citationId": "10830910",
+      "id": 4222,
+      "publicationYear": 2000,
+      "sourceType": "PUBMED",
+      "title": "Genotype-phenotype correlations in families with deletions in the von Hippel-Lindau (VHL) gene."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "NA",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 10107,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "NA",
+     "source": {
+      "citation": "Ning et al., 2014",
+      "citationId": "24986515",
+      "id": 3429,
+      "publicationYear": 2014,
+      "sourceType": "PUBMED",
+      "title": "Telomere shortening is associated with genetic anticipation in Chinese Von Hippel-Lindau disease families."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 10298,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "PREDISPOSITION",
+     "source": {
+      "citation": "Chen et al., 2013",
+      "citationId": "23143947",
+      "id": 2311,
+      "publicationYear": 2013,
+      "sourceType": "PUBMED",
+      "title": "Clinical and mutation analysis of four Chinese families with von Hippel-Lindau disease."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 3,
+     "evidenceType": "PREDISPOSING",
+     "id": 10970,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "PREDISPOSITION",
+     "source": {
+      "citation": "Reich et al., 2021",
+      "citationId": "33720516",
+      "id": 4473,
+      "publicationYear": 2021,
+      "sourceType": "PUBMED",
+      "title": "Genotype-phenotype correlation in von Hippel-Lindau disease."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 2,
+     "evidenceType": "PREDISPOSING",
+     "id": 5222,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "PREDISPOSITION",
+     "source": {
+      "citation": "Leonardi et al., 2011",
+      "citationId": "21463266",
+      "id": 2174,
+      "publicationYear": 2011,
+      "sourceType": "PUBMED",
+      "title": "Identification and in silico analysis of novel von Hippel-Lindau (VHL) gene variants from a large population."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 2,
+     "evidenceType": "PREDISPOSING",
+     "id": 5249,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "PREDISPOSITION",
+     "source": {
+      "citation": "Huang et al., 2012",
+      "citationId": "21972040",
+      "id": 2215,
+      "publicationYear": 2012,
+      "sourceType": "PUBMED",
+      "title": "Germline mutations of the VHL gene in seven Chinese families with von Hippel-Lindau disease."
+     },
+     "status": "ACCEPTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 2,
+     "evidenceType": "PREDISPOSING",
+     "id": 6422,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "UNCERTAIN_SIGNIFICANCE",
+     "source": {
+      "citation": "Hes et al., 2007",
+      "citationId": "17661816",
+      "id": 2192,
+      "publicationYear": 2007,
+      "sourceType": "PUBMED",
+      "title": "Frequency of Von Hippel-Lindau germline mutations in classic and non-classic Von Hippel-Lindau disease identified by DNA sequencing, Southern blot analysis and multiplex ligation-dependent probe amplification."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 2,
+     "evidenceType": "PREDISPOSING",
+     "id": 6472,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "UNCERTAIN_SIGNIFICANCE",
+     "source": {
+      "citation": "Huang et al., 2007",
+      "citationId": "17537157",
+      "id": 2576,
+      "publicationYear": 2007,
+      "sourceType": "PUBMED",
+      "title": "Associations between VHL genotype and clinical phenotype in familial von Hippel-Lindau disease."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 2,
+     "evidenceType": "PREDISPOSING",
+     "id": 6483,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "UNCERTAIN_SIGNIFICANCE",
+     "source": {
+      "citation": "Franke et al., 2009",
+      "citationId": "19280651",
+      "id": 2585,
+      "publicationYear": 2009,
+      "sourceType": "PUBMED",
+      "title": "Alu-Alu recombination underlies the vast majority of large VHL germline deletions: Molecular characterization and genotype-phenotype correlations in VHL patients."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "SUPPORTS",
+     "evidenceLevel": "C",
+     "evidenceRating": 2,
+     "evidenceType": "PREDISPOSING",
+     "id": 6668,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "UNCERTAIN_SIGNIFICANCE",
+     "source": {
+      "citation": "Binderup et al., 2016",
+      "citationId": "25834951",
+      "id": 2625,
+      "publicationYear": 2016,
+      "sourceType": "PUBMED",
+      "title": "Risk of new tumors in von Hippel-Lindau patients depends on age and genotype."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "NA",
+     "evidenceLevel": "C",
+     "evidenceRating": 2,
+     "evidenceType": "PREDISPOSING",
+     "id": 8198,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "NA",
+     "source": {
+      "citation": "Chatha et al., 2001",
+      "citationId": "11273887",
+      "id": 3383,
+      "publicationYear": 2001,
+      "sourceType": "PUBMED",
+      "title": "Von Hippel-Lindau disease masquerading as autosomal dominant polycystic kidney disease."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    },
+    {
+     "evidenceDirection": "NA",
+     "evidenceLevel": "C",
+     "evidenceRating": 2,
+     "evidenceType": "PREDISPOSING",
+     "id": 10008,
+     "molecularProfile": {
+      "id": 818,
+      "name": "VHL Exon 1 Deletion"
+     },
+     "significance": "NA",
+     "source": {
+      "citation": "Cybulski et al., 2002",
+      "citationId": "12114495",
+      "id": 1372,
+      "publicationYear": 2002,
+      "sourceType": "PUBMED",
+      "title": "Germline mutations in the von Hippel-Lindau (VHL) gene in patients from Poland: disease presentation in patients with deletions of the entire VHL gene."
+     },
+     "status": "SUBMITTED",
+     "variantOrigin": "RARE_GERMLINE"
+    }
+   ],
+   "pageInfo": {
+    "endCursor": "Mzc",
+    "hasNextPage": false
+   },
+   "totalCount": 37
+  }
+ }
+}

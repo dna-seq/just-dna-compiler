@@ -174,8 +174,14 @@ def _snapshot_release_basis(reference: Path) -> str | None:
         return None
 
 
-def _snapshot_rows(reference: Path) -> list[dict]:
+def civic_snapshot_rows(reference: Path) -> list[dict]:
     """Every row of the CIViC snapshot parquet as plain dicts, or `[]` when there is none.
+
+    Public and shared, because a second reading pass wanted exactly this and a private name is how a
+    second caller stops finding the first (`@roster-is-as-wide-as-the-tables-it-reads`) — RM160's
+    citation lane maps a module onto CIViC variant ids off the same rows. `civic_draft` keeps its own
+    copy on purpose: that one **raises** on a missing snapshot because a draft with no source is a
+    failed command, while a *check* with no snapshot is a skip, and one function cannot be both.
 
     Neither reader is imported at module scope for the reason `civic_draft._snapshot_rows` gives: a
     *reader* of a built snapshot must not drag the builder's dev extra in behind it.
@@ -222,7 +228,7 @@ def compare_refutations(
     if reference is None:
         logger.info("CIViC refutation check skipped: no snapshot provisioned this run.")
         return None
-    rows = _snapshot_rows(reference)
+    rows = civic_snapshot_rows(reference)
     if not rows:
         logger.warning(
             "CIViC snapshot at %s is missing or unreadable; the refutation check is skipped this "
