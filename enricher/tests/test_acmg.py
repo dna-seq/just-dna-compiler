@@ -181,7 +181,7 @@ def test_a_row_with_no_gene_is_unchecked_not_absent(sf_list):
     assert report.clean
 
 
-def test_offline_reports_unchecked_rather_than_not_on_the_list():
+def test_offline_reports_unchecked_rather_than_not_on_the_list(no_ambient_caches):
     variants = [_variant("HFE", True), _variant("HBB", True)]
     report = verify_acmg_sf(variants, offline=True)
     assert report.version is None
@@ -259,7 +259,7 @@ def test_a_disagreement_no_list_can_settle_is_named_rather_than_counted(sf_list)
     assert record.release == sf_list.version
 
 
-def test_offline_with_no_list_is_a_skip_and_not_a_run_over_nothing():
+def test_offline_with_no_list_is_a_skip_and_not_a_run_over_nothing(no_ambient_caches):
     """`ran(0, 0)` reads as "the check ran and had nothing in scope", which is the opposite of true."""
     record = verification_record(verify_acmg_sf([_variant("HFE", True)], offline=True))
     assert record.skipped == "offline" and record.subjects == 0

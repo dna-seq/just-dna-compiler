@@ -342,7 +342,7 @@ def test_load_spec_variants_injects_the_modules_declared_build(tmp_path: Path) -
     assert aware[0].gene is None
 
 
-def test_the_row_taking_checks_take_a_spec_dir_too(tmp_path: Path) -> None:
+def test_the_row_taking_checks_take_a_spec_dir_too(tmp_path: Path, no_ambient_caches: Path) -> None:
     """Both forms stay; exactly one may be passed, and neither/both is refused rather than guessed."""
     from just_dna_enricher.acmg import AcmgSfError, verify_acmg_sf
     from just_dna_enricher.identifiers import check_identifiers

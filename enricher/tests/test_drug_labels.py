@@ -622,7 +622,10 @@ def test_the_record_names_both_tiers_and_never_more_findings_than_subjects(
         assert f"at the {tier} tier" in record["detail"]
 
 
-def test_no_snapshot_is_a_skip_that_says_so(tmp_path: Path) -> None:
+def test_no_snapshot_is_a_skip_that_says_so(tmp_path: Path, no_ambient_caches: Path) -> None:
+    """`snapshot=None` means *resolve from the environment*, so "no snapshot" has to be arranged
+    rather than assumed: this passed for as long as no drug-labels snapshot happened to sit in the
+    developer's configured base, and failed the day one was pulled there (`no_ambient_caches`)."""
     spec = _module(tmp_path, "cyp2c19_star_alleles")
     result = check_drug_labels(spec, snapshot=None, declared_use="non_commercial", write=True)
     assert result.not_checked == "no_reference"

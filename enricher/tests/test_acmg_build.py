@@ -117,7 +117,7 @@ def test_the_same_rows_are_unverifiable_once_the_list_admits_it_is_superseded():
     assert all(f"v{KNOWN_LATEST_SF_VERSION} is published" in v.message for v in report.unverifiable)
 
 
-def test_strict_refuses_on_a_real_mismatch_but_not_on_an_unverifiable_one():
+def test_strict_refuses_on_a_real_mismatch_but_not_on_an_unverifiable_one(no_ambient_caches):
     """The two halves must not collapse into each other: `strict` still has teeth on a current list."""
     page = parse_acmg_page(_V32_PAGE)
     assert page.superseded_by == KNOWN_LATEST_SF_VERSION
@@ -292,7 +292,7 @@ def test_an_injected_snapshot_makes_the_check_work_offline(tmp_path):
     assert report.warnings == [], "a snapshot is a current list; nothing to warn about"
 
 
-def test_offline_without_a_snapshot_is_still_unchecked_not_absent(tmp_path):
+def test_offline_without_a_snapshot_is_still_unchecked_not_absent(tmp_path, no_ambient_caches):
     variants = [VariantRow(rsid="rs1800562", genotype="A/A", state="risk", conclusion="x",
                            gene="ABCD1", acmg_sf=True)]
     report = verify_acmg_sf(variants, offline=True)
@@ -323,7 +323,7 @@ def test_the_real_v33_workbook_parses_to_its_published_shape():
     assert "C282Y" in (hfe.variants_to_report or "")
 
 
-def test_the_real_workbook_settles_what_the_page_could_not(tmp_path):
+def test_the_real_workbook_settles_what_the_page_could_not(tmp_path, no_ambient_caches):
     """End to end: the v3.3 additions go from `unverifiable` to `agree`."""
     build_acmg_snapshot(_REAL_WORKBOOK, tmp_path / "snap")
     variants = [

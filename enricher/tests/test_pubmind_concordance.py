@@ -760,7 +760,9 @@ def test_a_record_survives_a_run_that_could_not_replace_it(clinvar: Path, tmp_pa
     assert (spec / CONCORDANCE_CSV).read_text(encoding="utf-8") == written
 
 
-def test_a_refused_strict_run_leaves_no_record_behind(clinvar: Path, tmp_path: Path) -> None:
+def test_a_refused_strict_run_leaves_no_record_behind(
+    clinvar: Path, tmp_path: Path, no_ambient_caches: Path
+) -> None:
     """The transaction's written promise, asserted on the bytes: everything before the gate is
     staging, so a run that refuses must not have written the record."""
     spec = tmp_path / "spec"

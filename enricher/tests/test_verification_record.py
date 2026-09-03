@@ -690,7 +690,9 @@ def test_an_offline_re_run_does_not_downgrade_the_answer_the_document_holds(tmp_
     )
 
 
-def test_an_answer_over_bytes_that_moved_gives_way_to_this_runs_skip(tmp_path: Path) -> None:
+def test_an_answer_over_bytes_that_moved_gives_way_to_this_runs_skip(
+    tmp_path: Path, no_ambient_caches: Path
+) -> None:
     """The condition on that protection, and it is what keeps the fix from being a regression.
 
     A record earns its place by describing *this* module. Once `variants.csv` has changed it is about

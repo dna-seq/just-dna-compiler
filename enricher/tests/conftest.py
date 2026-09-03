@@ -16,6 +16,16 @@ and a path that is not a directory resolves to `None`. Set rather than deleted, 
 that rule gives — a `delenv` leaves the *default* directory still in play, which is the other half of
 the ladder and the half that actually holds a built snapshot. A test that wants a snapshot passes one
 explicitly and is unaffected.
+
+**And one opt-in fixture, `no_ambient_caches`, for the test that means "no snapshot" about any lane.**
+The PubMind fixture is autouse because *every* lookup test wants it; the general one is not, because
+the integration tests (`test_resolver_integration`, the `_needs_snapshot` drafters) deliberately use
+whatever the developer's base holds and would turn from *run when present* into *always fail*. So a
+test that asserts `no_reference`, `unchecked` or `offline` requests it by name — ten did on
+2026-09-04, the day a colleague pulled every publishable snapshot into the configured base and ten
+tests that had only ever run against an empty one started reading a real answer where they asserted
+an absence. It blanks `CACHE_BASE_VAR` and every lane's `env_var`, walked off `CACHE_LANES` rather
+than listed, so a fifteenth lane is covered the day it is declared.
 """
 
 import gzip
@@ -23,7 +33,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from just_dna_enricher import clinvar_build
+from just_dna_enricher import clinvar_build, locations
+from just_dna_enricher.caches import CACHE_LANES
 from just_dna_enricher.mitomap_build import build_snapshot as build_mitomap_snapshot
 from just_dna_enricher.mitomap_miss_build import build_miss_snapshot
 
@@ -33,7 +44,23 @@ def _no_ambient_pubmind_snapshot(
     monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
 ) -> None:
     absent = Path(tmp_path_factory.getbasetemp()) / "no-pubmind-snapshot"
-    monkeypatch.setenv("JUST_DNA_PUBMIND_CACHE", str(absent))
+    monkeypatch.setenv(locations.PUBMIND_CACHE_VAR, str(absent))
+
+
+@pytest.fixture
+def no_ambient_caches(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """Every lane resolves to *nothing*, whatever the developer's `.env` and base hold.
+
+    Set, never deleted (`@test-no-credential`): `load_env` keeps a variable that is present, and a
+    deleted one is exactly what lets `.env` refill it. The base is blanked too, because the default
+    directory is the other half of the ladder and the half that actually holds a pulled snapshot.
+    Returns the directory nothing lives in, for a test that wants to build there afterwards.
+    """
+    nowhere = tmp_path / "no-ambient-caches"
+    monkeypatch.setenv(locations.CACHE_BASE_VAR, str(nowhere))
+    for lane in CACHE_LANES:
+        monkeypatch.setenv(lane.env_var, str(nowhere))
+    return nowhere
 
 
 # ── the MITOMAP corpus (RM171) ──────────────────────────────────────────────────────────────────

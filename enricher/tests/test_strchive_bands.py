@@ -380,7 +380,9 @@ def test_a_module_with_no_band_table_attests_nothing(tmp_path: Path, catalogue: 
     assert not (spec / VERIFICATION_JSON).exists()
 
 
-def test_no_catalogue_is_a_no_reference_skip_rather_than_a_clean_pass(tmp_path: Path) -> None:
+def test_no_catalogue_is_a_no_reference_skip_rather_than_a_clean_pass(
+    tmp_path: Path, no_ambient_caches: Path
+) -> None:
     """Nobody-asked is a third state, and it must reach the attestation as one.
 
     A module whose bands were never compared and one whose bands agree ship identical manifests unless

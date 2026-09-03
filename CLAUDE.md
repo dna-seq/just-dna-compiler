@@ -534,6 +534,7 @@ questions vs answers. A blocker is never a dead end: dissolved, closed additivel
 - A test meaning "no credential" must say so: `api_key=None` is indistinguishable from "not passed",
   `.env` leaks into `os.environ` from any unrelated test, so neutralize with `setenv(VAR, "")`, never
   `delenv`. Suspect ordering whenever a test passes alone and fails in the suite. `@test-no-credential`
+- A test meaning "no snapshot" must arrange it: request `no_ambient_caches` (enricher conftest, walked off `CACHE_LANES`). Ten tests read a real answer the day the developer's base gained every snapshot. `@test-no-credential`
 
 ## Documentation & prose style
 
