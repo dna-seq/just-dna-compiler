@@ -249,7 +249,7 @@ p-value pair, and whether every genotype and `effect_allele` names an allele its
 What still only appears at compile is anything computed from *resolved* rows — the expansion and hosting
 findings above — because resolution has not run when `validate` does.
 
-**`--no-resolve switches off resolution entirely, including the injected resolution.csv`**
+**`switches off resolution entirely, including the injected resolution.csv`** (the message opens with `--no-resolve (resolve_with_ensembl=False)`)
 You passed `--no-resolve` (or `resolve_with_ensembl=False`) with a `resolution.csv` beside the spec. The
 flag reads as "do not use Ensembl" and is actually the master switch for resolution of *every* kind, so
 the compile succeeds and writes a module whose every row has no `chrom`/`start` — rows no VCF can match.
@@ -583,6 +583,27 @@ sitting in its `data/` directory, which puts two schemas under one query. Nothin
 run says so rather than reporting an empty conflict list that reads as a pass. Rebuild it
 (`just-dna-enricher clinvar build --download`, which writes `data/repro/clinvar/`) or re-provision a clean cache.
 
+**`CIViC publishes … refuting a predisposition claim here and no supporting item on this basis`** /
+**`CIViC has supporting … and Does-Not-Support …`**
+The `published_refutation` check, from `enrich` when a CIViC snapshot resolves, or from
+`draft-panel --source civic` naming the rows it wrote anyway (`… were drafted with a direction the same
+snapshot also REFUTES, and the rows were written`). The row was not changed and nothing says your
+`direction` is wrong: a refutation withholds a claim, it does not establish the opposite sign. The
+first form means the source has *only ever denied* the claim on this basis; the second means it both
+asserts and rebuts it. Read both items and decide; keep the row or drop it. Never fatal, even under
+`--strict`, and the message names the snapshot basis (`accepted` or `accepted+submitted`) because the
+answer differs between them — no refutation that stands against a claim is *accepted*, so build the
+snapshot with `--submitted` to see them.
+
+**`PMID … was recorded as 'submitted' and CIViC now says 'accepted'`** /
+**`CIViC now carries PMID … and this module has no row for it`**
+The `evidence_status_currency` check, run by `enrich` over the citation rows `civic citations` wrote.
+The first: the review state recorded in `confidence` moved since you drafted — a source re-curating is
+not an authoring error, and the row was not changed; update `confidence` if you want the record
+current. The second: a citation was added since; re-run `civic citations` to append it. The summary
+line (`N recorded CIViC citation set(s) re-asked; N status(es) moved, N citation(s) added since`) counts
+both, and a row that could not be mapped back to a variant id is counted separately, never as moved.
+
 **`clin_sig cross-check not run: no ClinVar snapshot this run`**
 Different sentence, different meaning: nothing was compared because there was nothing to compare
 against. Provision a snapshot (`just-dna-enricher cache pull --only clinvar`) or pass
@@ -614,7 +635,7 @@ remaining citations for the same variant are drafted normally. Rebuilding the sn
 `clinvar citations` drops them at the source. Reported apart from the `--max-citations` line, which is
 about a cap you chose.
 
-**`N row(s) on non-diploid contigs were written with a single-allele genotype`**
+**`N row(s) on non-diploid contigs (…) were written with a single-allele genotype`** (the contigs are named in the parentheses)
 Not a warning about a mistake — it is the provider telling you which cells it filled. MT is haploid and
 chrY outside the pseudoautosomal regions is hemizygous, so exactly one genotype is expressible and
 nothing was pre-empted. Those rows read as homoplasmic/hemizygous; if you mean a heteroplasmic

@@ -24,7 +24,8 @@ Run `just-dna-compiler describe <kind>` for the columns and vocabularies; this f
 
 Enricher-produced sidecars you never hand-author: `resolution.csv`, `frequencies.csv`,
 `gene_metrics.csv`, `gene_validity.csv`, `clinical_assertions.csv`, `gwas_effects.csv`,
-`literature.csv`, `licensing.csv`. The one exception is `licensing.csv` when you copied rows out of a
+`literature.csv`, `clin_sig_concordance.csv`, `clin_sig_authority_calls.csv` (the last two appear after
+a `clin_sig` cross-check against more than one authority), `licensing.csv`. The one exception is `licensing.csv` when you copied rows out of a
 source by hand — no pass ran, so no pass will write the row, and the compile gate reads that file and
 nothing else. (`sources.csv` is the older name for it; still read, and the compile tells you to rename
 it. Never keep both — a module carrying two copies is refused.)
@@ -33,7 +34,9 @@ it. Never keep both — a module carrying two copies is refused.)
 a build product, so a re-derivation reproduces it and your edit is a value nothing preserves. Write one
 overlay row per column you are changing — `table`, `subject`, `member`, `field`, `operation`
 (`update`/`insert`/`suppress`), `value`, and a **required** `reason` — and the compiler applies it on
-every build. It covers all seven tables above except `licensing.csv`, which you write by hand anyway.
+every build. It covers eight of the tables above — every one except `clin_sig_authority_calls.csv`
+(a record of what an authority said, which a correction would falsify) and `licensing.csv`, which you
+write by hand anyway.
 The full rules are in the main workflow under module structure.
 
 Any of the enricher-produced files may sit either beside `module_spec.yaml` or in a `derived/` subdirectory, which is

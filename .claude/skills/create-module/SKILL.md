@@ -1,7 +1,7 @@
 ---
 name: create-module
 description: >-
-  Author a just-dna annotation module (format 0.5) end to end against the published packages —
+  Author a just-dna annotation module (format 0.7) end to end against the published packages —
   scaffold, draft from a source, curate what only a human can decide, enrich, cross-check, compile,
   sign. Self-contained: assumes only `pip install just-dna-enricher` and no checkout of the format
   repository. Use when creating or extending a module spec directory (module_spec.yaml + CSVs), when
@@ -52,8 +52,8 @@ A `.env` found by walking up from the working directory is loaded automatically.
 
 | Variable | For |
 |---|---|
-| `JUST_DNA_PIPELINES_CACHE_DIR` | base for all three snapshot caches (else a platform cache dir) |
-| `JUST_DNA_ENSEMBL_CACHE` / `JUST_DNA_CLINVAR_CACHE` / `JUST_DNA_GNOMAD_CONSTRAINT_CACHE` | override one cache path |
+| `JUST_DNA_PIPELINES_CACHE_DIR` | base for every snapshot cache (else a platform cache dir); `cache status` prints each lane's resolved path |
+| `JUST_DNA_<LANE>_CACHE` | override one cache path. One per lane: `ENSEMBL`, `CLINVAR`, `GNOMAD_CONSTRAINT`, `CLINPGX`, `CPIC`, `DRUG_LABELS`, `PHARMVAR`, `PUBMIND`, `CIVIC`, `STRCHIVE`, `MITOMAP`, `MITOMAP_MISS`, `MANE`, `ACMG` |
 | `NCBI_API_KEY` | tightens PubMed/dbSNP pacing from 1/3 s to 1/10 s |
 | `JUST_DNA_CONTACT_EMAIL` | sent to NCBI/Europe PMC as the polite-pool contact; omitted when unset |
 | `PHARMVAR_API_KEY` | the PharmVar leg of `pgx`. **The key is personal under PharmVar's ToS §2 — never bake it into a module, fixture or snapshot.** |
@@ -204,14 +204,18 @@ clinical-significance vocabulary: five ACMG-tier calls in the entire source, non
 What it does carry is which *way* a variant runs — predisposing or protective — so this source fills
 `direction` (`risk`/`protective`) and never `clin_sig`. `--clin-sig` does nothing here and says so.
 
-Four things to know before running it. Somebody in your deployment has to build the snapshot
+Five things to know before running it. Somebody in your deployment has to build the snapshot
 (`just-dna-enricher civic build --release 01-Aug-2026`; there is none to download, and `--civic-cache`
 or `$JUST_DNA_CIVIC_CACHE` points at it), and the release date is part of what the draft records. About
 three quarters of CIViC describes tumour tissue no germline genotype can satisfy, so most of the source
 is dropped — the count is in the build output rather than hidden, and it is not an error. It writes
 **study rows**, because every row it drafts cites a real PubMed id, which is the grounding evidence
-`studies.csv` wants. And it refuses a row where CIViC's own evidence puts a variant in both directions,
-naming the variant: choosing between them is your call, not the tool's.
+`studies.csv` wants. It refuses a row where CIViC's own evidence puts a variant in both directions,
+naming the variant: choosing between them is your call, not the tool's. And where it *did* write a
+`risk` row for a variant the same snapshot also carries a refutation for, it says so by name and leaves
+the row — a refutation withholds a claim rather than establishing its opposite — and `enrich` repeats
+that comparison against any CIViC snapshot it finds, so a hand-authored `direction` meets it too
+(`published_refutation`; never fatal, even under `--strict`).
 
 **`draft-panel --source mitomap-miss` drafts what one mtDNA source publishes that ClinVar does not, and
 nothing else.** MITOMAP curates about 1,100 mitochondrial disease variants; most of them are alleles
@@ -502,8 +506,8 @@ an old paper's name meant.
 
 `check-acmg` needs a built list to give a real answer: NCBI's page serves SF **v3.2** while ACMG has
 published **v3.3**, so without a snapshot every disagreement comes back `unverifiable` rather than as a
-finding. Build it once from ACMG's workbook — `just-dna-enricher acmg build <workbook.xlsx> --out
-acmg/` — and the check also stops needing the network. **You only have to name it once**: put the
+finding. Build it once from ACMG's workbook — `just-dna-enricher acmg build <workbook.xlsx>`, which writes
+`data/repro/acmg_sf/` unless you pass `--out` — and the check also stops needing the network. **You only have to name it once**: put the
 directory in `$JUST_DNA_ACMG_CACHE`, or under the shared cache base as `acmg_sf/`, and every later run
 finds it with no flag. `--sf-list` still wins where you pass it.
 
@@ -826,10 +830,12 @@ Messages sometimes cite an `RMn` — a tracked item in the upstream project's ro
 **known and deliberate**: leave the data honest and note the limitation rather than inventing a
 workaround.
 
-- **RM5** — symbolic and structural alleles (`<DEL>`, 5-HTTLPR, ClinPGx `del`/`ins`, CPIC's `x≥3` and
-  `DELTCT` notations) are outside the `^[ACGT]+$` grammar. The PGx passes skip such rows and count them
-  rather than coercing them. Distinct from CPIC's IUPAC ambiguity codes (`R`), which record an
-  uncertainty that was never expressible.
+- **RM5** — the symbolic half shipped: VCF's five structural types with the length inside the token
+  (`<DEL:4977>`, `<CNV:TR:30>`) are valid alleles, and 5-HTTLPR turned out to be a plain indel
+  `ref`/`alts` state directly. What a message citing RM5 still means is the **notation** gap: ClinPGx
+  `del`/`ins`, CPIC's `x≥3` and `DELTCT` spellings are outside every grammar, so the PGx passes skip
+  such rows and count them rather than coercing them. Distinct from CPIC's IUPAC ambiguity codes
+  (`R`), which record an uncertainty that is deliberately never expressible.
 - **RM15** — multi-build support. GRCh38 is the only assembly with a refget table, so VRS identity
   minting and rsID resolution are GRCh38-only.
 
@@ -849,12 +855,13 @@ workaround.
 | `hint <kind> --file F` | inspect authored rows; report wrong / rewritten / left-to-you. Writes nothing |
 | `validate <dir>` | full pre-flight, exit 1 if invalid. `--strict/--best-effort` — pass the mode you will compile with. Writes nothing |
 | `close <dir>` | declare authoring finished, bound to the authored bytes. `--by`, `--private-key`. Refuses an invalid spec, not a warning |
-| `compile <dir> <out>` | parquet + `manifest.json`. `--strict`, `--compression`, `--compiled-by` |
+| `compile <dir> <out>` | parquet + `manifest.json`. `--strict`, `--compression`, `--compiled-by`, `--resolve/--no-resolve` (the master switch for resolution of every kind, the injected `resolution.csv` included), `--strip-identity`, `--authority-key` |
 | `signature <dir>` | the content signature of the raw authored data — no compile, no reference |
 | `reverse <artifact> <out>` | artifact → authored spec DSL. `--resolution/--no-resolution`, `--genome-build` |
 | `keygen --out key.pem` | Ed25519 key; prints the public key `verify` pins |
 | `sign <dir> --private-key K` | signs `artifact.digest`, writes the signature into the manifest |
-| `verify <dir>` | re-hash every file, recompute the digest, check the signature. `--public-key`, `--no-require-marketplace`, `--check-inputs/-logs/-provenance/-logo` |
+| `verify <dir>` | re-hash every file, recompute the digest, check the signature. `--public-key`, `--no-require-marketplace`, `--check-inputs/-logs/-provenance/-logo/-readme/-derived` |
+| `sweep BEFORE AFTER` | a release-cut instrument, not an authoring step: measures what a toolchain change moved across a corpus of compiled modules. `--spec-root`, `--release`, `--json` |
 
 ## `just-dna-enricher` (the only tier that fetches)
 
@@ -862,22 +869,28 @@ workaround.
 |---|---|
 | `enrich <dir>` | → `resolution.csv`. `--strict`, `--offline`, `--no-clinvar`, `--no-gnomad`, `--no-vrs`, `--no-verify-ref/-clinsig/-rsids/-datasets`, `--keep-par-twin`, `--rederive`, `--keep-staging`, `--ensembl-cache`, `--clinvar-cache`, `--pubmind-cache` |
 | `frequencies <dir>` | → `frequencies.csv` from gnomAD. `--populations`, `--dataset`. Online only |
-| `gene-metrics <dir>` | → `gene_metrics.csv` constraint. Snapshot first, live API (v2.1.1) as fallback |
+| `gene-metrics <dir>` | → `gene_metrics.csv` constraint. Snapshot first, live API (v2.1.1) as fallback. `--strict/--best-effort`, `--offline`, `--constraint-cache` |
+| `gene-validity <dir>` | ClinGen or GenCC gene–disease validity onto `gene_validity.csv`. `--source clingen\|gencc`, `--strict/--best-effort`, `--offline`, `--url` |
+| `assertions <dir>` | ClinVar's clinical assertions onto `clinical_assertions.csv`. `--strict/--best-effort`, `--offline`, `--clinvar-cache` |
+| `gwas <dir>` | GWAS Catalog effect sizes onto `gwas_effects.csv`. `--strict/--best-effort`, `--offline`, `--use`, `--study-facts/--no-study-facts` |
 | `dosage <dir>` | ClinGen dosage rows onto `gene_metrics.csv`. `--use`, `--url` |
 | `literature <dir>` | → `literature.csv`. `--fulltext/--no-fulltext`, `--doi/--no-doi` |
 | `draft <dir> --gene G` | CPIC → the three PGx tables. `--drug`, `--allele`, `--population`, `--use`, `--offline`, `--cpic-cache`, `--dry-run` |
 | `draft-panel <dir> --gene G` | an authority → `variants.csv` + `studies.csv`. `--source clinvar\|pubmind\|civic\|mitomap-miss` (`--gene` required for the first three), `--snapshot`, `--pubmind-cache`, `--civic-cache`, `--mitomap-miss-cache`, `--offline`, `--download/--no-download`, `--clin-sig`, `--min-review-stars`, `--max-citations`, `--min-confidence`, `--use`, `--dry-run` |
 | `mitomap build` / `mitomap miss` | the mtDNA source's dump → a snapshot, then its increment over ClinVar. `--out`, `--dump`, `--url`; `--mitomap-cache`, `--clinvar-cache` |
+| `draft-repeats <dir> --gene G` | STRchive → the identity row of `repeat_alleles.csv` (gene, motif, coordinates); every band is left to you. `--catalogue`, `--use`, `--dry-run` |
+| `check-repeat-bands <dir>` | an authored band table vs STRchive's benign/intermediate/pathogenic bounds. Reports and never repairs; the catalogue's `pathogenic_max` is reported as its own finding and never written. `--catalogue`, `--strict/--best-effort` |
 | `draft-clinpgx <dir> --snapshot S` | ClinPGx → `pharm_variants.csv`. `--gene`, `--drug`, `--min-evidence-level`, `--use`, `--dry-run` |
 | `check-identifiers <dir>` | trait CURIEs (OLS4), gene symbols (HGNC), `pgs_id` against the PGS Catalog. `--no-traits`, `--no-genes`, `--no-pgs` |
 | `check-acmg <dir>` | `acmg_sf` vs the ACMG SF list. `--sf-list` (strongly preferred), `--offline`, `--url` |
 | `civic citations <dir>` | CIViC's API → `studies.csv`, for the citations its dated files cannot carry. `--snapshot`, `--variant-id` (repeatable), `--offline`, `--dry-run` |
 | `litvar coverage <dir>` | literature coverage per locus, naming the tier that answered. `--offline`, `--quiet`. Writes nothing |
 | `litvar gene G` | every node the index holds under a gene, split by tier. Writes nothing |
-| `pgx <dir>` | `function_status` vs PharmVar + CPIC. `--no-pharmvar`, `--no-cpic`, `--use` |
-| `clinpgx check <dir> --snapshot S` | `pharm_variants.csv` vs the ClinPGx snapshot, offline-capable |
-| `clinpgx check-labels <dir> --snapshot S` | gene/allele/drug claims vs five regulators' drug labels, at two join tiers. `--strict/--best-effort`, `--use`. Writes nothing, never escalates |
+| `pgx <dir>` | `function_status` vs PharmVar + CPIC. `--no-pharmvar`, `--no-cpic`, `--use`, `--strict/--best-effort`, `--offline`, `--cpic-cache`, `--pharmvar-cache` |
+| `clinpgx check <dir>` | `pharm_variants.csv` vs the ClinPGx snapshot, offline-capable. `--snapshot` (omit it and the cache is used, or one is downloaded), `--strict/--best-effort`, `--offline`, `--use` |
+| `clinpgx check-labels <dir>` | gene/allele/drug claims vs five regulators' drug labels, at two join tiers. `--snapshot` (omit it and `$JUST_DNA_DRUG_LABELS_CACHE` or the shared cache base is used), `--strict/--best-effort`, `--use`. Writes nothing, never escalates |
 | `hint variant\|citation\|trait\|gene` | look up one identifier. Writes nothing. `--json`, `--offline`, `--ambiguity`, `--frequencies`, `--pubmind-cache` |
+| `hint recover --chrom C --start S` | which rs-number GRCh37 dbSNP records at an hg19/GRCh37 coordinate — the tool for a source that gives you old-assembly coordinates. `--ref`, `--alts`, `--offline`, `--json`. Writes nothing |
 | `vrs mint <dir>` | stamp `ga4gh:VA.…` ids onto `resolution.csv` (substitutions offline, indels online) |
 | `enrich-and-compile <dir> <out>` | steps 4 + 6. `--frequencies`, `--gene-metrics` |
 | `template <kind>` | the compiler's, mirrored |
@@ -886,11 +899,11 @@ Snapshot builders (dev/publisher surface, mostly needing the `polars` extra):
 `clinvar build|citations|publish`,
 `clinpgx build|build-labels|check|check-labels|publish|publish-labels`,
 `cpic build|publish`, `pharmvar build`,
-`acmg build`, `gnomad constraint build|publish`, `pubmind build`, `civic build|publish`,
-`mane build`, `strchive build|publish`,
+`acmg build`, `gnomad constraint build|publish`, `pubmind build`, `civic build|citations|publish|reproduce`,
+`mane build`, `strchive build|publish`, `mitomap build|miss|publish`,
 `cache status|pull|prepare|rebuild`, `upload`.
-`cache prepare` is the one to run first: it leaves the machine with every cache it can have, pulling the published snapshots and building the four that nothing publishes (PharmVar, PubMind, MANE, ACMG), and it leaves a cache that is already there alone. `cache rebuild --out <dir>` runs every one of those builders in a single pass — acquire, build, and
-with `--publish` upload — writing each into `<dir>/<lane>/` rather than over a cache something may be
+`cache prepare` is the one to run first: it leaves the machine with every cache it can have, pulling the published snapshots and building the five that nothing publishes (PharmVar, PubMind, MANE, ACMG, and `mitomap miss`, which is derived from two caches on your own machine), and it leaves a cache that is already there alone. `cache rebuild` (into `data/caches/` unless you pass `--out <dir>`) runs every one of those builders in a single pass — acquire, build, and
+with `--publish` upload — writing each into `<base>/<lane>/` rather than over a cache something may be
 reading. A lane it cannot run unattended says so and is not counted as a failure: `--source
 acmg=<workbook.xlsx>` supplies the one input nothing may fetch for you, `--pin civic=<date>` names a
 release that has no moving default, and PharmVar needs your own key.
