@@ -68,6 +68,65 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM180 — an overlay row's provenance was inside `content_signature`, and rewording a reason minted a new content identity
+
+**Severity** medium · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-format` — one
+field marker and its reader in `base`, one `exclude=` in `integrity.content_signature`, three marked
+fields on `OverrideRow`; `just-dna-compiler` — a roster comment and two tests; no parquet column, no
+vocabulary member, no CLI change) · **Owner** format · **Motivating case** S87 (just-module-creator, in
+CONSUMER_SUGGESTIONS_HISTORY.md), a before-the-cut report against the 0.7 branch at `f4a9b14`
+
+**What it reproduced.** On `reference_examples/hboc_palb2`, with no compile and no network, one
+`frequencies.csv` correction produced four `content_signature`s: none, the correction, the correction
+with its `reason` reworded, and the correction with `decided_by`/`decided_at` changed. The first three
+movements are right — the overlay is authored input and the value it writes changes what the module
+asserts. The fourth is byte-identical data under a different sentence, and the consumer's reading of
+`spec_tables`' comment was accurate: it justified including the overlay without distinguishing the
+value cells from the provenance cells, because nobody had.
+
+**The decision, and who took it.** The maintainer, 2026-09-03: exclude the three. The six cells
+`table`/`subject`/`member`/`field`/`operation`/`value` say *what* the correction is; `reason`/
+`decided_by`/`decided_at` say why, who and when. The precedents are S25 — a README caveat is outside
+both identity halves, so fixing a typo in it is a patch — and the fact-signature family, which keeps
+`fetched_at`/`status` out of every derived table's hash. The counter-precedent is stated rather than
+repaired: `curator`/`method` on `variants.csv` are inside the signature, folded from `defaults:` as
+content (RM37), and moving them re-keys every published module. Nothing in the compiler or enricher
+reads the three cells; they exist for a human reader, and they are exactly the cells an author
+improves on a second pass.
+
+**Why the window was the release.** The three fields are `since("0.7.0")`, 0.7.0 is uncut, and no
+published module carries an overlay, so excluding them moved no signature. After the cut the same
+change moves every overlay-carrying module's signature — the one move `stamped_identity_field`'s
+docstring says a content-dedup key may not make. Filing it to a roadmap would therefore have been a
+decision to keep them in, taken by default; it was put to the maintainer as that.
+
+**The candidate mechanism was refused, and the suite is what refused it.** The consumer proposed
+`exclude=True`, the `stamped_identity_field` idiom. Probed in a detached worktree first: the
+signatures collapsed exactly as expected, 1,054 schema and overlay tests passed, and `reason`
+survived `reverse` — whose column list is `authored_field_names`, which filters on `COMPILER_MANAGED`
+and nothing else. The **full** suite then failed one enricher test, `test_answered_call_shift`,
+because its overlay writer serializes rows through `model_dump()` and an excluded `reason` came out
+blank, which `OverrideRow` refuses by design. `draft._authored_dump` makes the same `model_dump()`
+call, read from the code rather than run: every drafted overlay row would have failed its own compile on a blank the tool wrote. A
+stamped column can be excluded because nothing authors it and no writer reads it back; an authored
+column cannot, because `model_dump()` is the writers' contract. So the fact lives on the field as
+`OUTSIDE_CONTENT_IDENTITY`, `content_identity_exclusions(model)` walks it, and
+`integrity.content_signature` passes it as `exclude=` — the one reader. A test asserts the marked set
+over `_ALL_MODELS` equals exactly the overlay's three, so a fourth cannot leave the signature silently
+and a marker on any other model is a visible decision.
+
+**What still sees the prose.** `overrides.parquet` (`_build_table` reads fields off the model),
+`manifest.inputs` (raw bytes of `overrides.csv`), the verification binding (a reworded reason still
+un-closes a module), `reverse` (re-emits all nine columns; the fixed-point test now asserts the reason
+cells on the reversed bytes, since the signature can no longer vouch for them) and `artifact.digest`,
+which moves. That is the README shape.
+
+**What it did not repair.** A reader that dedups on `content_signature` and then opens
+`overrides.parquet` can find two modules with one signature whose overlay prose differs — the
+consumer's own argument against their fix, and the shape README already has; stated in SCHEMAS. And
+the maintainer's observation on the resulting picture — byte digest moved, every signature intact,
+*what* moved unstated — is [RM181](ROADMAP_0_8.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker).
+
 ## RM178 — a failed optional fetch left a 0-byte licence in every pulled cache, and an empty licence pins the empty string
 
 **Severity** medium · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-enricher` only —

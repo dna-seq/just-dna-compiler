@@ -53,7 +53,7 @@ from typing import Any, ClassVar
 from pydantic import BaseModel, Field, ValidationError, ValidationInfo, field_validator, model_validator
 
 from just_dna_format.assertions import ClinicalAssertionRow
-from just_dna_format.base import AuthoredModel, since, vocabulary
+from just_dna_format.base import OUTSIDE_CONTENT_IDENTITY, AuthoredModel, since, vocabulary
 from just_dna_format.concordance import ClinSigConcordanceRow
 from just_dna_format.findings import CodedWarning
 from just_dna_format.frequency import FrequencyRow
@@ -175,6 +175,26 @@ class OverrideRow(AuthoredModel):
     every other row in the tables it names is machine-written. So it carries the reserved-
     namespace guard and the shared field validators, and it is inside `content_signature` — a
     correction is part of what the module says.
+
+    **Inside it by its first six columns only (S87).** `table`/`subject`/`member`/`field`/
+    `operation`/`value` say *what* the correction is, and two modules differing in any of them
+    assert different things. `reason`/`decided_by`/`decided_at` say why, who and when — provenance
+    beside the claim, which nothing in the compiler or enricher reads and which is exactly the cell
+    an author improves on a second pass. They are marked `OUTSIDE_CONTENT_IDENTITY`, which
+    `content_signature` alone reads: rewording a reason is a patch, as fixing a README caveat is
+    (S25), rather than a new content identity for byte-identical data. Everything else still
+    carries them — `overrides.parquet`, the raw-bytes hash of `overrides.csv` in `manifest.inputs`
+    and therefore the verification binding (editing a reason still un-closes a module, and still
+    moves `artifact.digest`), `reverse`, and every `model_dump()` writer. **Not `exclude=True`**:
+    the consumer's candidate was the stamped-column mechanism, and it would have emptied `reason`
+    in `draft._authored_dump` and every other writer that serializes a row through `model_dump()`
+    — a drafted overlay row the compiler then refuses for the blank it itself wrote.
+
+    The line is drawn here and not on `variants.csv`, where `curator`/`method` are inside the
+    signature: those are folded from `defaults:` as content (RM37) and moving them would re-key
+    every published module, so that asymmetry is carried rather than repaired. Decided with the
+    maintainer on 2026-09-03, before 0.7 was cut, because no published module carries an overlay
+    and the window in which excluding these moves nothing is the release.
     """
 
     #: `(table, subject, member, field)` — what makes two overlay rows the same overlay row, so a
@@ -228,17 +248,19 @@ class OverrideRow(AuthoredModel):
             "refuses where the column is required. Required empty for `suppress`."
         ),
     )
-    reason: str = Field(json_schema_extra=since("0.7.0"), 
+    # The three provenance columns are marked `OUTSIDE_CONTENT_IDENTITY` — outside
+    # `content_signature`, inside every other surface. The class docstring has the rule (S87).
+    reason: str = Field(json_schema_extra={**OUTSIDE_CONTENT_IDENTITY, **since("0.7.0")}, 
         description=(
             "Why this correction was made, in a sentence. REQUIRED, and that is what makes the "
             "overlay a record rather than a knob: a derived cell that disagrees with its source is a "
             "claim, and a claim with no reason beside it is indistinguishable from a mistake."
         )
     )
-    decided_by: str | None = Field(json_schema_extra=since("0.7.0"), 
+    decided_by: str | None = Field(json_schema_extra={**OUTSIDE_CONTENT_IDENTITY, **since("0.7.0")}, 
         default=None, description="Who decided it (a curator, a panel, a tool run)"
     )
-    decided_at: str | None = Field(json_schema_extra=since("0.7.0"), 
+    decided_at: str | None = Field(json_schema_extra={**OUTSIDE_CONTENT_IDENTITY, **since("0.7.0")}, 
         default=None,
         description=(
             "When it was decided — ISO-8601, canonicalized to UTC on load. A bare date is accepted "

@@ -162,6 +162,14 @@ re-emits the **pre-coercion** string. Two consequences: a reversed spec carries 
 it used to carry none, and the field is a fixed point across `compile → reverse → compile` rather than
 going absent on lap 2. Nothing hashes on `module.version`.
 
+**`content_signature` covers `overrides.csv` by its value cells only (S87, RM180).** A module carrying
+an overlay hashes `table`/`subject`/`member`/`field`/`operation`/`value` and not
+`reason`/`decided_by`/`decided_at`, so a registry keyed on the signature treats a reworded reason as
+the same content — while `artifact.digest` and the `manifest.inputs` entry for the file still move.
+Decided before the cut, so no published signature changed. If you compute the signature yourself rather
+than calling `integrity.content_signature`, drop those columns via
+`base.content_identity_exclusions(OverrideRow)` or your dedup will split on prose.
+
 ### 2.2 Parquets
 
 **Three new files, so `ARTIFACT_PARQUETS` goes 19 → 22.** Derive from the constant; do not hand-keep a

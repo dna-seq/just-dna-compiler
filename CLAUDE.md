@@ -141,6 +141,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - VRS verdicts are verified / mismatch / unverifiable, and severity is whose limit it is, not the mode. `@vrs-three-outcomes`
 - `ga4gh.vrs` is a core enricher dep; never in format or compiler. `@ga4gh-vrs-core-dep`
 - `refget_accession` raises off GRCh38 and `refget_supports_build` answers the same predicate. `@refget-raises`
+- Provenance beside a claim (why/who/when) is outside `content_signature`; the WHAT stays in. Mark it; never `exclude=True` an authored field. `@provenance-beside-a-claim-is-outside-content-identity`
 
 ### Coordinates and the genome build
 

@@ -174,6 +174,37 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   row's build through, which is what `test_build_call_sites.py` walks the AST to prevent. Every other
   build gate in `vrs` already read it that way.
 
+- `@provenance-beside-a-claim-is-outside-content-identity` — **A cell that says why/who/when about a row is
+  outside `content_signature`; the cells that say WHAT stay in — and the mechanism is a marker the hash
+  reads, never `exclude=True` on an authored field** (S87, RM180, 2026-09-03).
+  A consumer building against the uncut 0.7 found that rewording an overlay `reason` minted a new content
+  identity for byte-identical data — four signatures for one correction, across a reword and a
+  `decided_by`/`decided_at` change. Reproduced on `hboc_palb2`. The maintainer drew the line at the value
+  cells, on S25's precedent (a README caveat is outside both identity halves) and the fact-signature
+  family's (`fetched_at`/`status` are outside every derived table's hash). The counter-precedent is
+  stated, not repaired: `curator`/`method` on `variants.csv` are inside, folded from `defaults:` as
+  content (RM37), and moving them re-keys every published module.
+  **The rejected repair is the consumer's own candidate, and the suite is what rejected it.**
+  `exclude=True` — the `stamped_identity_field` idiom — collapsed the signatures as expected, passed
+  1,054 schema and overlay tests, and survived `reverse` (whose column list is `authored_field_names`,
+  which filters on `COMPILER_MANAGED` only). The full suite failed one enricher test, because its overlay
+  writer serializes rows through `model_dump()` and an excluded `reason` came out blank — which
+  `OverrideRow` refuses by design. `draft._authored_dump` does the same, by the same `model_dump()` call, read from the code: every drafted
+  overlay row would have failed its own compile on a blank the tool wrote. A stamped column can be
+  excluded because nothing authors it and no writer reads it back; an **authored** column cannot,
+  because `model_dump()` is the writers' contract. So the fact lives on the field as
+  `OUTSIDE_CONTENT_IDENTITY`, `content_identity_exclusions(model)` walks it, and
+  `integrity.content_signature` is the one reader — `model_dump()` stays complete. A test asserts the
+  marked set over `_ALL_MODELS` equals exactly the three, so a fourth cannot leave the signature
+  silently. Run the **whole** suite against a candidate, not the tests nearest the change: the failure
+  that decided the mechanism was three packages away from the field.
+  **The window was the release.** The three fields are `since("0.7.0")` and no published module carries
+  an overlay, so excluding them moved nothing; after the cut it would have moved every overlay module's
+  signature, the one move `base.py` says a content-dedup key may not make. A before-the-cut report is the
+  cheapest kind, and "defer to ROADMAP" would have been a decision to keep them in. Not repaired:
+  dedup-then-read can now find two modules with one signature and differing overlay prose (the README
+  shape), and a byte digest moving beside intact signatures says *something* changed, not what — RM181.
+
 ## Coordinates and the genome build
 
 - `@start-1based` — **Every `start` in this codebase is the 1-based VCF position — do NOT convert.** The pipeline stores

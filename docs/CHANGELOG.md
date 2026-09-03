@@ -34,7 +34,26 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-02 (latest) — a cache roster that could not be walked, and the three lanes it lost
+## 2026-09-03 (latest) — an overlay's reason was part of its content identity
+
+**`just-dna-format` + `just-dna-compiler`, no parquet column, no vocabulary member, and no published
+signature moves.** [RM180](ROADMAP_HISTORY.md#rm180--an-overlay-rows-provenance-was-inside-content_signature-and-rewording-a-reason-minted-a-new-content-identity), from
+[S87](CONSUMER_SUGGESTIONS_HISTORY.md#s87--an-overlay-rows-reason-prose-is-inside-content_signature-and-fixing-a-typo-in-it-mints-a-new-content-identity) — a consumer building a preview against the uncut 0.7,
+decided with the maintainer before the cut because the window in which it moves nothing is the release.
+
+- **`overrides.csv`'s `reason`, `decided_by` and `decided_at` are outside `content_signature`.**
+  Rewording a reason is a patch, as a README caveat is (S25); changing the value an override writes is
+  still a new identity. They stay in `overrides.parquet`, `manifest.inputs`, the verification binding
+  and `artifact.digest`, which all still move.
+- **The mechanism is a field marker, not `exclude=True`.** `base.OUTSIDE_CONTENT_IDENTITY`, walked by
+  `content_identity_exclusions`, read only by `integrity.content_signature`, so `model_dump()` stays
+  complete for every writer. The stamped-column idiom was probed first and emptied `reason` in
+  `draft._authored_dump` and the enricher's overlay writers — a drafted row the model then refuses.
+- **Filed, not built**: [RM181](ROADMAP_0_8.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker) — a byte digest moving beside intact
+  signatures says *something* changed and not what, and provenance has no shift tracker of its own.
+  The maintainer's note for the 0.8 digest-coverage review.
+
+## 2026-09-02 — a cache roster that could not be walked, and the three lanes it lost
 
 **`just-dna-enricher` only, no schema change.** [RM176](ROADMAP_HISTORY.md#rm176--eleven-builders-three-stages-each-and-the-roster-that-was-supposed-to-name-them-was-a-list),
 from the maintainer's question: do all the caches we build have a common rebuild endpoint, and does

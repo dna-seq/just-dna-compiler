@@ -1924,6 +1924,21 @@ table contributes nothing, exactly as an unset optional column does. It also car
 corrections back from. Its position in `ARTIFACT_PARQUETS` is **not** what keeps published digests
 still — `artifact_digest` sorts the file listing by name before hashing, so a tuple position is invisible to it — what protects an already-published module is that it carries no `overrides.csv`, so the file is absent from its listing entirely.
 
+**Inside it by its value cells only (S87, RM180).** `table`/`subject`/`member`/`field`/
+`operation`/`value` say what the correction is; `reason`/`decided_by`/`decided_at` say why, who and
+when, and are marked `OUTSIDE_CONTENT_IDENTITY` (`base.content_identity_exclusions`), which
+`integrity.content_signature` alone reads. Rewording a reason is therefore a patch, as fixing a
+README caveat is (S25), while the byte-hashed `manifest.inputs` entry, the verification binding,
+`overrides.parquet` and `artifact.digest` all still move — the README shape exactly. Two consequences
+are stated rather than hidden. A reader that dedups on `content_signature` and then opens
+`overrides.parquet` can find two modules with one signature whose overlay prose differs. And
+`curator`/`method` on `variants.csv` stay inside the signature (folded from `defaults:` as content,
+RM37), so who-decided is content on one authored table and provenance on the other — carried, because
+moving those re-keys every published module. The marker is deliberately not `exclude=True`: that is
+the stamped-column idiom, and an excluded *authored* cell comes out empty of every `model_dump()`
+writer, `draft` included, which the model then refuses. Decided before the 0.7 cut, when no published
+module carried an overlay and excluding the three moved nothing.
+
 The fact signatures and `resolution_signature` are over the derived tables **as they stand**,
 therefore post-overlay — a signature should describe what the module actually asserts.
 
@@ -2192,7 +2207,7 @@ RM130, which added two more — and the count is gone rather than corrected a th
 | Hash (`integrity.py`) | Over | Order | Reference-dependent | Purpose |
 |---|---|---|---|---|
 | `artifact_digest(files)` | compiled parquet file set (Merkle root of `{name,sha256,size}`) | row order preserved in each file | yes (GRCh38 coords) | the version's immutable **byte** identity — *these bytes, from this compiler* (P4). Not its content identity; that is the row below, and conflating the two is what sends a reader hunting a content change that did not happen |
-| `content_signature(tables, genome_build)` | raw authored rows, `model_dump(mode="json", exclude_none=True)`, plus `genome_build` when non-default | order-independent (sorted) | no (pre-resolution) | content-dedup key surviving recompile/metadata-strip. **Reference-independent, not build-independent** (RM36): identical rows on two assemblies are two different loci, so the declared build is content. Omitting the default keeps every GRCh38 module's signature unchanged. |
+| `content_signature(tables, genome_build)` | raw authored rows, `model_dump(mode="json", exclude_none=True)` minus any column marked `OUTSIDE_CONTENT_IDENTITY` (the overlay's `reason`/`decided_by`/`decided_at`, RM180), plus `genome_build` when non-default | order-independent (sorted) | no (pre-resolution) | content-dedup key surviving recompile/metadata-strip. **Reference-independent, not build-independent** (RM36): identical rows on two assemblies are two different loci, so the declared build is content. Omitting the default keeps every GRCh38 module's signature unchanged. |
 | `resolution_signature(rows)` | resolution **facts** only (`RESOLUTION_FACT_FIELDS`) | order-independent | n/a | pins the resolved facts; producer-independent |
 | `frequency_signature(rows)` | frequency **facts** (`FREQUENCY_FACT_FIELDS`) | order-independent | n/a | pins the allele-frequency table |
 | `gene_metrics_signature(rows)` | gene-constraint **facts** (`GENE_METRICS_FACT_FIELDS`) | order-independent | n/a | pins the gene-constraint table |

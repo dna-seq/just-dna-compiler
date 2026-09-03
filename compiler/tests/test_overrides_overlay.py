@@ -121,6 +121,14 @@ def test_a_module_with_an_overlay_is_a_principle_7_fixed_point(tmp_path: Path) -
     reversed_check = validate_spec(tmp_path / "rev1")
     assert reversed_check.valid, reversed_check.errors
 
+    # The signature no longer sees the three provenance cells (S87), so their survival through
+    # reverse is asserted on the bytes rather than inferred from the equality below.
+    assert {row["reason"] for row in _read(tmp_path / "rev1" / "overrides.csv")} == {
+        "re-checked against dbSNP by hand",
+        "the association was retracted upstream",
+        "the source has no answer for this locus",
+    }
+
     second = compile_module(tmp_path / "rev1", tmp_path / "a2")
     assert second.success, second.errors
     assert first.manifest.artifact.digest == second.manifest.artifact.digest
@@ -404,3 +412,33 @@ def test_a_table_that_fails_to_load_is_still_a_table_the_module_carries(tmp_path
     missing = [w for w in result.warnings if "which this module does not carry" in w]
     assert missing == [], f"gwas_effects.csv is present; it just did not parse: {missing}"
     assert not result.valid, "a malformed covered table is still an error"
+
+
+def test_rewording_a_reason_is_a_patch_and_the_bytes_still_notice(tmp_path: Path) -> None:
+    """S87, through the real compile path: the same correction with its `reason` reworded and its
+    `decided_by`/`decided_at` changed keeps `content_signature`, while the value cell moves it.
+
+    The other identity half is asserted the other way round, on purpose. A reworded reason is
+    still a different `overrides.csv` — `manifest.inputs` hashes the bytes, `overrides.parquet`
+    carries the prose, and so `artifact.digest` moves. That is the README shape (S25): prose about
+    the module is outside its content identity and inside its byte identity.
+    """
+    subject = _read(_example(tmp_path / "probe") / "resolution.csv")[0]["variant_key"]
+
+    def build(tag: str, value: str, why: list[str]) -> tuple[str, str, str]:
+        spec = _example(tmp_path / tag)
+        _write_overlay(spec, [["resolution.csv", subject, "0", "source", "update", value, *why]])
+        result = compile_module(spec, tmp_path / f"{tag}_out")
+        assert result.success, result.errors
+        overlay = next(f for f in result.manifest.inputs if f.name == "overrides.csv")
+        return result.manifest.content_signature, result.manifest.artifact.digest, overlay.sha256
+
+    base = build("a", "manual", ["probe", "x", "2026-09-03"])
+    reworded = build("b", "manual", ["probe, reworded", "x", "2026-09-03"])
+    another_day = build("c", "manual", ["probe", "y", "2026-09-02"])
+    other_value = build("d", "curated", ["probe", "x", "2026-09-03"])
+
+    assert reworded[0] == base[0] and another_day[0] == base[0]
+    assert other_value[0] != base[0]
+    assert len({base[1], reworded[1], another_day[1]}) == 3
+    assert len({base[2], reworded[2], another_day[2]}) == 3

@@ -79,6 +79,34 @@ from just_dna_format.vrs import UnsupportedBuildError, derive_vrs_allele_id
 # else is how `reverse_module`'s writer and a generator drift apart — see `authored_field_names`.
 COMPILER_MANAGED: dict[str, bool] = {"compiler_managed": True}
 
+# ── Provenance beside a claim: authored, and outside `content_signature` ────────────────────────
+# Marker for an authored column that says *why, who or when* about the row it sits on rather than
+# *what* the row asserts — today `OverrideRow.reason`/`decided_by`/`decided_at` (S87). Two modules
+# differing only in such a cell say the same thing about the genome, so `content_signature` omits
+# it: rewording a reason is a patch, as fixing a README caveat is (S25), not a new content identity.
+#
+# **Not `exclude=True`, and the difference is load-bearing.** `stamped_identity_field` uses
+# `exclude=True` because a stamped column has no author and no writer reads it back through
+# `model_dump()`. An authored column has both: `draft._authored_dump` and every test writer serialize
+# a row through `model_dump()`, and an excluded `reason` would come out empty — which the model then
+# refuses, so a drafted overlay row would fail its own compile. So this marker is read in exactly
+# one place, `integrity.content_signature`, and `model_dump()` stays complete.
+OUTSIDE_CONTENT_IDENTITY: dict[str, bool] = {"outside_content_identity": True}
+
+
+def content_identity_exclusions(model: type[BaseModel]) -> frozenset[str]:
+    """The columns of `model` that `content_signature` omits — those marked `OUTSIDE_CONTENT_IDENTITY`.
+
+    Walked off the fields, never listed beside them, for the same reason `authored_field_names` is:
+    a hand-kept set one file over is the thing that drifts. Empty for every model but the overlay
+    row today, and a test pins that equality over the whole registry."""
+    return frozenset(
+        name
+        for name, field in model.model_fields.items()
+        if isinstance(field.json_schema_extra, dict)
+        and field.json_schema_extra.get("outside_content_identity")
+    )
+
 
 def authored_field_names(model: type[BaseModel]) -> list[str]:
     """The columns a human actually authors for `model`, in field-declaration order.

@@ -36,6 +36,14 @@ provenance-only change and is the intended reading.
 [S7](history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md#s7--sourcescsv-stamps-fetched_at-into-the-digest-so-a-rebuild-is-never-reproducible),
 which was filed after somebody spent an afternoon looking for the content change that had not happened.
 
+**I reworded the `reason` on an `overrides.csv` row. Did my `content_signature` move?**
+No, since 0.7 (RM180): `reason`, `decided_by` and `decided_at` are provenance beside the correction and
+sit outside the content identity, the way a README caveat does. Changing the *value* an override writes
+does move it. `artifact.digest` and the `manifest.inputs` entry for `overrides.csv` move either way, and
+so does the verification binding — a reworded reason still un-closes a module.
+→ [S87](CONSUMER_SUGGESTIONS_HISTORY.md#s87--an-overlay-rows-reason-prose-is-inside-content_signature-and-fixing-a-typo-in-it-mints-a-new-content-identity), and
+[SCHEMAS § The authored overlay](SCHEMAS.md#the-authored-overlay-07-rm124--overridescsv).
+
 **Then should the digest exclude the timestamp column, the way a build system excludes mtimes?**
 No — unsound rather than unwanted. `verify_manifest` re-hashes every `artifact.files[]` entry from disk
 before recomputing the root, so a digest over anything but the shipped bytes is one no consumer can

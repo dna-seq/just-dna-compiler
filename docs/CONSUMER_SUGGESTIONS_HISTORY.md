@@ -110,6 +110,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S84** CIViC scored as a source; germline quarter too thin — RM152
 - **S85** `not_found` for an rsID the source has — accepted, RM154
 - **S86** identifier roster read only variants.csv — accepted, RM155
+- **S87** overlay `reason` inside `content_signature` — accepted, RM180
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -7590,3 +7591,96 @@ the tally counting the union. If the roster stays narrow deliberately, then the 
 The run that found it concluded the trait check *never runs*. It does: once the same module's
 `variants.csv` carried `trait_efo_id`, the next call returned `checked: 1, clean: 1`. The first call's
 `0` was honest for the table it read. The defect is the scope and the unreadable `0`, not a dead check.
+
+# just-module-creator, 2026-09-03 — a before-the-cut report against the 0.7 branch
+
+## S87 — an overlay row's `reason` prose is inside `content_signature`, and fixing a typo in it mints a new content identity
+
+**Status — accepted, decided with the maintainer on 2026-09-03 and shipped the same day in the uncut
+0.7.0 as [RM180](ROADMAP_HISTORY.md#rm180--an-overlay-rows-provenance-was-inside-content_signature-and-rewording-a-reason-minted-a-new-content-identity).** Reproduced exactly as
+reported, on `reference_examples/hboc_palb2`: `sha256:43ad8ac1…` with no overlay, then a distinct
+signature for the same correction under a reworded `reason` and again under a changed
+`decided_by`/`decided_at`. The line is drawn where you argued it should be — `reason`, `decided_by`
+and `decided_at` are outside `content_signature`; the six cells that say *what* the correction is stay
+inside — and on the precedents you cited: S25 keeps a README caveat out of both identity halves, and
+the fact-signature family keeps `fetched_at`/`status` out of every derived table's hash. **Your
+candidate mechanism was not taken, and the suite is what refused it.** `exclude=True` is the
+stamped-column idiom, and it empties the three cells in every writer that serializes a row through
+`model_dump()` — `draft._authored_dump` in production, and the enricher's own overlay writers in its
+tests — so a drafted overlay row would have failed its own compile on the blank the tool wrote. The
+three carry a field marker instead (`base.OUTSIDE_CONTENT_IDENTITY`, walked by
+`content_identity_exclusions`) that `integrity.content_signature` alone reads; `model_dump()` stays
+complete, and a test pins the marked set over every model to exactly those three. Everything else
+still sees the prose, as you expected: `overrides.parquet`, the raw-bytes hash of `overrides.csv` in
+`manifest.inputs`, the verification binding (a reworded reason still un-closes a module) and
+`artifact.digest`, which moves. The asymmetry you argued against your own fix stands and is stated in
+SCHEMAS rather than repaired, beside a second one you did not raise: `curator`/`method` on
+`variants.csv` are inside the signature and stay there, because moving them re-keys every published
+module. The maintainer's note on your closing paragraph became
+[RM181](ROADMAP_0_8.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker) — a byte digest moving beside intact signatures says *something*
+changed and not *what*, and provenance has no shift tracker of its own. **What to do now:** nothing.
+No published module carries an overlay, so no signature moved; once 0.7 is cut, an overlay whose
+reason you improve is a patch. If you compute the signature yourself rather than calling
+`integrity.content_signature`, drop the three columns via `content_identity_exclusions(OverrideRow)`. <!-- triaged: 0.7.0 · sha 720cc1c7a5c3 -->
+
+
+Reported from `just-module-creator`, 2026-09-03, against the 0.7 branch at `f4a9b14`
+(`schema`/`compiler`/`enricher` installed editable from `/data/sources/just-dna-format`, so
+`just_dna_format.__file__` is your tree, not a wheel). We are building a preview branch against the
+uncut 0.7 to find things while they are still cheap to move, which is why this is a "before the cut"
+report rather than a bug.
+
+**What we ran.** Copied `reference_examples/hboc_palb2` twice, added an `overrides.csv` to one, and
+asked for `content_signature` on each — no compile, no network:
+
+```python
+from just_dna_compiler import compiler
+compiler.content_signature(a)   # no overlay
+compiler.content_signature(b)   # + overrides.csv
+```
+
+| spec | `content_signature` |
+| --- | --- |
+| no overlay | `sha256:43ad8ac1…` |
+| `frequencies.csv / 16:23603657:AC:A / global / faf95 → 0.0001`, reason `"probe"` | `sha256:aed031fd…` |
+| same row, value `0.0002` | `sha256:b9399ab8…` |
+| same row, same value, **reason text changed only** | `sha256:950a4edc…` |
+
+The first three movements are correct and we are not reporting them: an overlay is authored input,
+the value it writes changes what the module asserts, and `spec_tables`' comment says so outright.
+**The fourth is the report.** `reason`, `decided_by` and `decided_at` carry no `exclude=True`, so they
+reach `model_dump()` and therefore the hash. Rewording a sentence, correcting an initial in
+`decided_by`, or two curators recording the identical correction on different days each produce a
+different *content* identity for byte-identical data.
+
+**Why we think that is the wrong side of the line, using your own argument.** `stamped_identity_field`
+in `base.py` states the rule we are appealing to — a value that adds nothing to a content identity is
+excluded, because moving the signature of an already-published module "is the one thing a
+content-dedup key may not do" — and `compile_module`'s docstring keeps `README.md` out of both
+identity halves for the same reason, citing S25: *prose about the module is not part of its identity,
+so fixing a caveat is a patch.* An overlay `reason` is prose about a correction. It is required, it is
+load-bearing for a human reader, and it is exactly the cell an author will improve on a second pass —
+and improving it is the case S25 decided should be a patch.
+
+**Why now rather than later.** No published module carries an `overrides.csv`, so excluding the three
+fields today moves nothing. After 0.7 is cut, excluding them moves the signature of every module
+published with an overlay, which is the movement the `base.py` comment says is unavailable. The
+window is the release, not the design.
+
+**Candidate fix, and the part we are least sure of.** Exclude `reason` / `decided_by` / `decided_at`
+from `model_dump()` the way `stamped_identity_field` does, keeping them in the parquet (`_build_table`
+already reads fields off the model directly) and in `manifest.inputs`, whose raw-bytes hash still
+covers the file and is the right place for "this exact overlay file, prose and all". `artifact.digest`
+would then still move on a reason edit via `overrides.parquet`, which we think is correct — the
+artifact carries the prose — while `content_signature` would not.
+
+**The argument against our own fix, which you may find decisive.** Unlike a README, the overlay's
+prose sits *in a data table* that compiles to a parquet, and a reader who dedups on
+`content_signature` and then reads `overrides.parquet` would find two modules with one signature whose
+overlay prose differs. If that asymmetry is worse than the typo-mints-an-identity one, the other
+consistent answer is to say so in `spec_tables`' comment — it currently justifies including the
+overlay without distinguishing the value cells from the provenance cells, and we read it as not having
+considered them separately.
+
+**What we did meanwhile.** Nothing — we have no module carrying an overlay yet, and our adoption of
+`overrides.csv` is the work this probe was opening.

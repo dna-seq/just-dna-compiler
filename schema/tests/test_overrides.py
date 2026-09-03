@@ -14,8 +14,9 @@ them exists to stop a silent wrong answer rather than a crash.
 from __future__ import annotations
 
 import pytest
-from just_dna_format.base import field_category
+from just_dna_format.base import authored_field_names, content_identity_exclusions, field_category
 from just_dna_format.frequency import FrequencyRow
+from just_dna_format.integrity import content_signature
 from just_dna_format.overrides import (
     OVERRIDABLE_TABLES,
     SUPPRESSED_PHRASE,
@@ -24,6 +25,7 @@ from just_dna_format.overrides import (
     apply_overrides,
     overlay_coherence_errors,
 )
+from just_dna_format.reference import _ALL_MODELS
 from just_dna_format.resolution import ResolutionRow
 from pydantic import ValidationError
 
@@ -620,3 +622,54 @@ def test_a_key_column_is_stored_the_way_it_is_compared() -> None:
         field="doi", operation="update", value="10.1000/x",
     )
     assert blank.member is None
+
+
+# ── the identity line (S87) ─────────────────────────────────────────────────────────────────────
+
+
+_PROVENANCE = {"reason", "decided_by", "decided_at"}
+
+
+def _signature(**kwargs: object) -> str:
+    data: dict[str, object] = {"table": "frequencies.csv", "subject": "rs1", "member": "global",
+                               "field": "faf95", "operation": "update", "value": "0.0001"}
+    data.update(kwargs)
+    return content_signature({"overrides.csv": [_row(**data)]})
+
+
+def test_the_provenance_cells_are_outside_content_signature_and_the_value_cells_inside() -> None:
+    """Rewording a `reason`, correcting a `decided_by`, or two curators recording one correction
+    on different days: one content identity. Changing what is written: another (S87).
+
+    Both directions are asserted, because a signature that ignored the whole row would pass the
+    first half on its own — the value edit is what proves the row is still hashed at all.
+    """
+    base = _signature(reason="probe", decided_by="x", decided_at="2026-09-03")
+    assert _signature(reason="probe, reworded", decided_by="x", decided_at="2026-09-03") == base
+    assert _signature(reason="probe", decided_by="y", decided_at="2026-09-02") == base
+    assert _signature(reason="probe", decided_by="x", decided_at="2026-09-03", value="0.0002") != base
+
+
+def test_the_excluded_set_is_exactly_the_provenance_columns_and_they_stay_authored() -> None:
+    """Equality over the walked registry, never a floor (`@registry-completeness`).
+
+    Three properties. The marked columns across **every** model are exactly the overlay's three
+    provenance cells — a fourth would silently leave the signature, a missing one would silently
+    re-enter it, and a marker on any other model is a decision this test makes visible. They stay
+    authored: offered in every template and re-emitted by `reverse`. And `model_dump()` still
+    carries them, which is the property the `exclude=True` candidate lacked — `draft._authored_dump`
+    and every writer serialize a row through it, and an emptied `reason` is a row the model refuses.
+    """
+    marked = {
+        (name, column)
+        for name, model in _ALL_MODELS.items()
+        for column in content_identity_exclusions(model)
+    }
+    assert marked == {("OverrideRow", column) for column in _PROVENANCE}
+    assert _PROVENANCE <= set(authored_field_names(OverrideRow))
+    row = _row(table="frequencies.csv", subject="rs1", member="global", field="faf95",
+               operation="update", value="0.0001", decided_by="x")
+    dumped = row.model_dump(mode="json", exclude_none=True)
+    assert {k: dumped[k] for k in ("reason", "decided_by")} == {
+        "reason": "checked against the source by hand", "decided_by": "x"
+    }

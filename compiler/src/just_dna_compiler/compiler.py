@@ -4641,9 +4641,12 @@ def spec_tables(spec_dir: Path) -> tuple[dict[str, list[Any]], str]:
         ("variants.csv", VariantRow),
         ("studies.csv", StudyRow),
         *((csv_name, model) for csv_name, _parquet, model in _TABLE_KINDS),
-        # The overlay is authored input, so it is content (RM124). No published module's signature
-        # moves: `content_signature` skips a table this loop finds no file for, exactly as an unset
-        # optional column contributes nothing, and no module published to date carries one.
+        # The overlay is authored input, so it is content (RM124) — by its value cells. Its three
+        # provenance cells (`reason`/`decided_by`/`decided_at`) are `exclude=True` on the model and
+        # so outside the hash (S87): rewording a reason is a patch, not a new identity. No published
+        # module's signature moves: `content_signature` skips a table this loop finds no file for,
+        # exactly as an unset optional column contributes nothing, and no module published to date
+        # carries one.
         (OVERRIDES_CSV, OverrideRow),
     ]
     tables: dict[str, list[Any]] = {}

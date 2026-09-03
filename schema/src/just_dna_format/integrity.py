@@ -20,7 +20,7 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 from pydantic import BaseModel
 
 from just_dna_format.assertions import CLINICAL_ASSERTION_FACT_FIELDS
-from just_dna_format.base import DEFAULT_GENOME_BUILD
+from just_dna_format.base import DEFAULT_GENOME_BUILD, content_identity_exclusions
 from just_dna_format.concordance import (
     CLIN_SIG_AUTHORITY_CALL_FACT_FIELDS,
     CLIN_SIG_CONCORDANCE_FACT_FIELDS,
@@ -223,6 +223,12 @@ def content_signature(
     - **Normalized** — each row is `model_dump(mode="json", exclude_none=True)`, so CSV reformatting
       (whitespace, quoting, column reorder, cell canonicalization like `1.00`→`1.0`) and additive
       schema growth (a new optional column left unset) do not change it.
+    - **Value cells, not the provenance beside them** — a column marked `OUTSIDE_CONTENT_IDENTITY`
+      (`base.content_identity_exclusions`) is dropped from the dump here and nowhere else: the
+      overlay's `reason`/`decided_by`/`decided_at` (S87) say why a correction was made, and two
+      modules differing only there assert the same thing. It is the same exclusion `fact_signature`
+      applies to a derived table's `fetched_at`, applied to the one authored table that carries
+      provenance beside its claims.
     - **Deterministically sorted, order-independent** — the normalized rows of each file are sorted by
       their canonical JSON, and files are sorted by name, so re-ordering rows yields the *same*
       signature. (This is deliberately unlike `artifact.digest`, which *preserves* authored row order:
@@ -238,7 +244,11 @@ def content_signature(
             "file": filename,
             "rows": sorted(
                 json.dumps(
-                    row.model_dump(mode="json", exclude_none=True),
+                    row.model_dump(
+                        mode="json",
+                        exclude_none=True,
+                        exclude=content_identity_exclusions(type(row)) or None,
+                    ),
                     sort_keys=True,
                     separators=(",", ":"),
                 )
