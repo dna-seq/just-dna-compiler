@@ -34,7 +34,27 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-03 (latest) — a download that could not fail politely, and one body for eleven of them
+## 2026-09-04 (latest) — the allocator reserved a number when you asked it for help
+
+**Agent tooling only (`.claude/rm-next.py`), no package, no schema, no CLI surface.** Found while
+clearing a stale `🔷 reserved` row that RM187 had left in `RM_TOC.md` after the item shipped.
+
+- **Reserving was the default path, so an unknown flag reached it.** `main()` handled `--dry-run`,
+  `--note`, `--release` and `--list` and let everything else fall through to `allocate()` — so
+  `.claude/rm-next.py --help`, a flag the tool never had, claimed **RM189**, and one more typo while
+  repairing it claimed **RM190**. Both numbers are spent (ids are never reused) and share one
+  tombstone row in `RM_TOC.md` that names the cause rather than reading as two withdrawn items.
+- **The repair**: a `KNOWN_FLAGS` set, a real `--help` printing the usage, and exit 2 on anything
+  else. `--note`'s value is excluded from the flag scan, so a note may open with a dash.
+- **Pinned by running the version without the guard**, the idiom the lock probe in the same file
+  already uses: the unguarded copy reserves on `--nonsense`, the guarded one refuses and leaves the
+  index byte-identical. Three tests on the argument surface, which had none — the tool had eleven on
+  the lock, the tombstone and the anchor, and nothing on how it reads `sys.argv`.
+- Recorded in AGENT_NOTES under `@an-index-is-not-an-allocator`, with the sentinel slip the repair
+  passed through on the way (`else -1` made index 0 the exempt slot, so the first argument went
+  unchecked — `None` is the sentinel that cannot collide with a real index).
+
+## 2026-09-03 — a download that could not fail politely, and one body for eleven of them
 
 **`just-dna-enricher` only, no schema change.** [RM187](ROADMAP_HISTORY.md#rm187--eleven-bulk-downloads-carried-one-body-in-eleven-copies-four-of-them-leaking-the-transport),
 found by a real failure rather than an audit: NCBI closed the connection 180,927,542 bytes into a

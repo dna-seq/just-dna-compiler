@@ -35,12 +35,19 @@ Prose at the end of the file, which a reservation row must never land under.
 """
 
 
-def _sandbox(tmp_path: pathlib.Path, toc: str = _TOC, *, lock: bool = True) -> pathlib.Path:
+def _sandbox(
+    tmp_path: pathlib.Path, toc: str = _TOC, *, lock: bool = True, flag_guard: bool = True
+) -> pathlib.Path:
     """A miniature repo: `.claude/rm-next.py` beside a `docs/` holding one index."""
     repo = tmp_path / "repo"
     (repo / ".claude").mkdir(parents=True)
     (repo / "docs").mkdir()
     source = (CLAUDE / "rm-next.py").read_text()
+    if not flag_guard:
+        # Neuter ONLY the unknown-flag refusal, so a typed flag falls through to the reserve path
+        # again — the shape that spent RM189 and RM190.
+        source = source.replace("    if unknown:", "    if False:  # disabled for this probe")
+        assert "disabled for this probe" in source, "the refusal moved; this probe is stale"
     if not lock:
         # Neuter ONLY the lock, so the concurrent run below differs in exactly one thing.
         source = source.replace(
@@ -50,6 +57,14 @@ def _sandbox(tmp_path: pathlib.Path, toc: str = _TOC, *, lock: bool = True) -> p
     (repo / ".claude" / "rm-next.py").write_text(source)
     (repo / "docs" / "RM_TOC.md").write_text(toc)
     return repo
+
+
+def _run(repo: pathlib.Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """The CLI surface, run as a process — where argument parsing actually happens."""
+    return subprocess.run(
+        [sys.executable, str(repo / ".claude" / "rm-next.py"), *args],
+        cwd=repo, capture_output=True, text=True,
+    )
 
 
 def _load(repo: pathlib.Path):
@@ -254,3 +269,48 @@ def test_this_repo_allocates_above_its_own_highest(tmp_path: pathlib.Path) -> No
     used = module.used_numbers()
     assert used, "the scan found no RM numbers at all, which cannot be right for this repo"
     assert module.next_free(used) not in used
+
+
+# ── the argument surface: reserving is the no-flag path, so a typo must not reach it ─────────────
+
+
+def test_an_unrecognized_flag_refuses_rather_than_reserving_a_number(tmp_path: pathlib.Path) -> None:
+    """Proven by running the version without the guard first, the way the lock probe above is.
+
+    `--help` was not a flag this tool knew, and every unknown flag fell through to `allocate()` — so
+    asking it for usage claimed RM189, and one more typo claimed RM190. Both numbers are spent; the
+    tombstone in `RM_TOC.md` names the cause.
+    """
+    unguarded = _sandbox(tmp_path / "unguarded", flag_guard=False)
+    before = (unguarded / "docs" / "RM_TOC.md").read_text()
+    assert _run(unguarded, "--nonsense").returncode == 0
+    assert (unguarded / "docs" / "RM_TOC.md").read_text() != before, (
+        "the probe is stale: the unguarded tool no longer reserves on an unknown flag"
+    )
+
+    repo = _sandbox(tmp_path / "guarded")
+    before = (repo / "docs" / "RM_TOC.md").read_text()
+    done = _run(repo, "--nonsense")
+    assert done.returncode == 2
+    assert "--nonsense" in done.stderr
+    assert (repo / "docs" / "RM_TOC.md").read_text() == before
+
+
+def test_help_prints_the_usage_and_reserves_nothing(tmp_path: pathlib.Path) -> None:
+    """The flag whose fall-through spent the first of the two numbers."""
+    repo = _sandbox(tmp_path)
+    before = (repo / "docs" / "RM_TOC.md").read_text()
+    for flag in ("--help", "-h"):
+        done = _run(repo, flag)
+        assert done.returncode == 0
+        assert "--release RM" in done.stdout, done.stdout
+        assert (repo / "docs" / "RM_TOC.md").read_text() == before
+
+
+def test_a_note_may_open_with_a_dash_without_reading_as_a_flag(tmp_path: pathlib.Path) -> None:
+    """`--note`'s value is a value: the refusal above must not swallow it."""
+    repo = _sandbox(tmp_path)
+    done = _run(repo, "--note", "-- a dashed note")
+    assert done.returncode == 0, done.stderr
+    assert "RM3" in done.stdout
+    assert "a dashed note" in (repo / "docs" / "RM_TOC.md").read_text()

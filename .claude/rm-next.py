@@ -39,10 +39,17 @@ This file is Python with a `.py` extension for a reason — see the `bash` trap 
 docs/CONSUMER_TRIAGE_LOOP.md § 6. Run it, never `bash` it.
 
 Usage:
-    .claude/rm-next.py                 # reserve the next number and print it
-    .claude/rm-next.py --dry-run       # print what it would reserve, write nothing
-    .claude/rm-next.py --note "..."    # a few words on what it is for, into the placeholder
-    .claude/rm-next.py --release       # release a reservation you are not going to use
+    .claude/rm-next.py                   # reserve the next number and print it
+    .claude/rm-next.py --dry-run         # print what it would reserve, write nothing
+    .claude/rm-next.py --note "..."      # a few words on what it is for, into the placeholder
+    .claude/rm-next.py --list            # print the standing reservations
+    .claude/rm-next.py --release RM161   # release a reservation you are not going to use
+    .claude/rm-next.py --help            # this text
+
+**An unrecognized flag is refused, never allocated.** Reserving is the no-flag path, so anything that
+falls through to it claims a number as a side effect of a typo — `--help` spent RM189 that way, and
+the number stays spent because ids are never reused. The known set is enumerated below; a new flag
+goes in it as well as in this list.
 """
 
 import os
@@ -244,9 +251,26 @@ def release(number: int) -> int:
             os.close(fd)
 
 
+KNOWN_FLAGS = frozenset({"--dry-run", "--note", "--list", "--release", "--help", "-h"})
+
+
 def main() -> int:
     argv = sys.argv[1:]
-    flags = {a for a in argv if a.startswith("--")}
+    # The token after --note is its value, not a flag: a note may legitimately open with a dash.
+    at_note = argv.index("--note") if "--note" in argv else None
+    note_value = at_note + 1 if at_note is not None else None
+    flags = {a for i, a in enumerate(argv) if a.startswith("-") and i != note_value}
+    if flags & {"--help", "-h"}:
+        print(__doc__.strip())
+        return 0
+    unknown = sorted(flags - KNOWN_FLAGS)
+    if unknown:
+        print(
+            f"unknown flag(s): {' '.join(unknown)} — refusing rather than reserving a number; "
+            f"see .claude/rm-next.py --help",
+            file=sys.stderr,
+        )
+        return 2
     note = None
     if "--note" in argv:
         at = argv.index("--note")

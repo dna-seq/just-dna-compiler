@@ -385,6 +385,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - `flock` the directory, never a lockfile: the kill it guards against is what leaves one behind. `@flock-not-a-lockfile`
 - And never lock a path something rewrites atomically — `flock` binds an inode, so a rename-over defeats it. `@an-index-is-not-an-allocator`
 - An index is not an allocator: a number is claimed by a locked write, never by reading the highest. `@an-index-is-not-an-allocator`
+- A tool whose no-flag path mutates refuses an unknown flag: `--help` once reserved an `RMn`. `@an-index-is-not-an-allocator`
 - A progress callback's unit is a contract — subjects, because `total` must be known up front. `@progress-unit-is-subjects`
 - `--rederive` never shortens a table: answered replaces, could-not-ask keeps its rows. `@rederive-never-shortens`
 - A currency check asks the source, never the cache it was drafted from; and a digest label does not compare against a dated one. `@currency-asks-the-source-not-the-cache`

@@ -779,6 +779,21 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   re-reading the version-pinned raw URL and comparing bytes, never by the exit code** — the same shape
   as `@off-switch-needs-a-probe`: run the thing, do not read it.
 
+  **A tool whose no-flag path mutates must refuse an unknown flag (2026-09-04).** `main()` parsed the
+  flags it knew and let everything else fall through to `allocate()`, so the reserve path was also the
+  *default* path: `.claude/rm-next.py --help` — a flag the tool never had — claimed **RM189**, and one
+  more typo while repairing it claimed **RM190**. Both are spent, since ids are never reused, and they
+  share one tombstone row in `RM_TOC.md` naming the cause. The repair is a `KNOWN_FLAGS` set, a
+  `--help` that prints the usage, and exit 2 on anything else; pinned by running the version with the
+  refusal neutered, which reserves exactly as before. Two things generalize. **An allocator's default
+  action is its most dangerous one** — where the no-argument invocation has a side effect, an
+  unrecognized argument must never reach it, and "unknown flags are ignored" is a design for tools that
+  only read. And **the argument surface is a surface**: this tool had eleven tests on the lock, the
+  tombstone and the anchor, and none on how it reads `sys.argv`, which is the half a human touches.
+  One catch worth copying from the repair: excluding `--note`'s value from the flag scan with
+  `argv.index(...) if ... else -1` made index `0` the exempt slot, so the *first* argument silently
+  went unchecked — a sentinel that can collide with a real index is not a sentinel. `None` is.
+
 ## Checks: where they run, and what severity means
 
 - `@parity-by-check` — **Audit `validate`/`compile` parity by CHECK, not by TABLE — that is how the third instance hid.**
