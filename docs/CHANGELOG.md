@@ -115,6 +115,16 @@ behind the green. Each landed as its own commit with the test that pins it.
   builder text write goes through `atomic_write_text` / `atomic_writer` now, and the guard walks
   every `*_build.py` by AST rather than a hand-kept function list.
 
+- **The lookup's refusal map was read with a default that is itself a member** (`just-dna-enricher`,
+  latent; no output change). `_advisory` read `_REFUSAL_BY_COLUMN.get(column, "redundancy_bearing")`,
+  so the next advisory column would have been handed the mildest refusal silently, where
+  `identity_bearing` may be the right one, and every output assertion would have passed against it
+  (`@lookup-with-a-default-hides-a-new-member`). Indexed strictly now — an unknown column is a
+  `KeyError` at the call — and a test walks every `_advisory` call site by AST to assert the
+  advised columns are a subset of the map's keys and the map's values are members of
+  `REFUSAL_REASONS`. The two entries nothing advises on yet (`gene`, `trait_efo_id`, since 0.5.0)
+  are decisions recorded ahead of the lookup that would need them, and stay.
+
 ## 2026-09-04 — the allocator reserved a number when you asked it for help
 
 **Agent tooling only (`.claude/rm-next.py`), no package, no schema, no CLI surface.** Found while

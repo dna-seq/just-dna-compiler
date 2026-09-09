@@ -187,7 +187,11 @@ def _advisory(column: str, value: str, source: str, note: str) -> Alteration:
         kind="advisory",
         applied=False,
         source=source,
-        refusal=_REFUSAL_BY_COLUMN.get(column, "redundancy_bearing"),
+        # Indexed, never `.get(column, <member>)`: a default that is itself a member of the refusal
+        # vocabulary hands the next advisory column the MILDEST refusal silently, where
+        # `identity_bearing` may be the right one (`@lookup-with-a-default-hides-a-new-member`).
+        # A column the map does not know is a KeyError at the call, which is the loud failure.
+        refusal=_REFUSAL_BY_COLUMN[column],
         note=note,
     )
 

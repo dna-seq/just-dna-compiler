@@ -411,3 +411,45 @@ def test_every_offered_column_is_one_the_compiler_calls_redundancy_bearing() -> 
 def test_either_identifier_shape_is_accepted(kwargs: dict, tmp_path: Path) -> None:
     hint = lookup_variant(offline=True, ensembl_cache=tmp_path, clinvar_cache=tmp_path, **kwargs)
     assert hint.ambiguous is False  # nothing found, so nothing ambiguous
+
+
+def test_every_advisory_column_has_its_refusal_stated_rather_than_defaulted() -> None:
+    """`_REFUSAL_BY_COLUMN.get(column, "redundancy_bearing")` was a lookup with a default that is
+    itself a member of the vocabulary: the next advisory column would have been handed the mildest
+    refusal silently, where `identity_bearing` may be the right one, and every output assertion
+    would have passed against it (`@lookup-with-a-default-hides-a-new-member`). Indexed strictly
+    now, and the columns the module advises on — every literal first argument to `_advisory`, plus
+    the ones a loop passes by name — are asserted to be exactly the map's keys."""
+    import ast
+    import inspect
+
+    from just_dna_enricher import lookup
+
+    tree = ast.parse(inspect.getsource(lookup))
+    advised: set[str] = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "_advisory"):
+            continue
+        first = node.args[0]
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            advised.add(first.value)
+    # The one call passing a Name: `for column in ("chrom", "start", "ref", "alts")`.
+    for node in ast.walk(tree):
+        if isinstance(node, ast.For) and isinstance(node.target, ast.Name) and node.target.id == "column":
+            assert isinstance(node.iter, ast.Tuple)
+            advised.update(elt.value for elt in node.iter.elts if isinstance(elt, ast.Constant))
+    from just_dna_compiler.hints import REFUSAL_REASONS
+
+    assert advised <= set(lookup._REFUSAL_BY_COLUMN), (
+        f"advised on without a stated refusal: {sorted(advised - set(lookup._REFUSAL_BY_COLUMN))}"
+    )
+    # The map may state a refusal for a column nothing advises on yet (`gene`, `trait_efo_id` since
+    # 0.5.0): that is a decision recorded ahead of the lookup that would need it, not a dead entry.
+    assert set(lookup._REFUSAL_BY_COLUMN.values()) <= REFUSAL_REASONS
+    # And the lookup is a subscript, not a `.get` with a default — asserted on the AST rather than the
+    # text, because the text now carries a comment saying exactly that.
+    body = ast.parse(inspect.getsource(lookup._advisory))
+    assert not [
+        n for n in ast.walk(body)
+        if isinstance(n, ast.Call) and getattr(n.func, "attr", None) == "get"
+    ]
