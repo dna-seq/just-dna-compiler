@@ -34,7 +34,33 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — the Output Terms want the licence inside the artifact, and the dep moved to an extra
+## 2026-09-10 (latest) — what the API adds over the files is resolution, and motifs are not a dataset
+
+Fourth round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md), measuring the network
+surface against the offline copies now that all three artifacts are on disk. No `RMn`, no adoption.
+
+- **Three surfaces, not two** (§6.4). The bulk files, the **Atlas** service (precomputed) and the
+  **model** service (computed on demand) differ in a way that matters: indels work on the model API
+  and are `UNIMPLEMENTED` on Atlas, exactly as they are absent from the files. Atlas also **validates
+  `REF` against the assembly** and names the real base in the error, where a file lookup just misses —
+  `@va-omits-ref` answered by the source rather than by us.
+- **The API's addition is resolution, not more scores.** One variant unfiltered returns **36,152
+  values across 22 scorer blocks** against the files' 20 columns. The breakdown is the finding:
+  `CHIP_TF` comes back as **1,617 named tracks** where the SHAP file carries one `MAX_ABS_CHIP_TF`,
+  `CHIP_HISTONE` 1,116 against one, `RNA_SEQ` 37 genes × 371 tracks against one. `MAX_ABS_` is a lossy
+  aggregate and the **name** is what the file throws away. Median single-variant latency 161 ms, so it
+  is not a bulk surface and does not pretend to be.
+- **Motifs are not a dataset at either surface, and the announced "Motif datasets" block nothing**
+  (§6.5). The string "motif" appears nowhere in the SDK and none of the 22 scorers is one. What reads
+  a motif is in-silico mutagenesis, and `query_interval` over a 200 bp window returns a
+  **600 × 1,617** ISM matrix in **1.6 s** with a `transcription_factor` column naming every track. The
+  files hold a genome-wide ISM matrix already — that is what a score for every SNV *is* — but with the
+  TF identity and cell type aggregated away. So the motif conclusion holds and its reason does not:
+  the API is the only route because a motif needs per-track resolution, not because a motif dataset
+  sits behind it. Motif work is per-locus and network-bound, which puts it on the enricher side as a
+  check about a variant, never as something a compiled module carries.
+
+## 2026-09-10 — the Output Terms want the licence inside the artifact, and the dep moved to an extra
 
 Third round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md). Still no `RMn` and still no
 adoption; what changed is that the terms are now readable from the repo and the dependency question has

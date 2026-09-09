@@ -81,6 +81,14 @@ question.
    splicing pipeline never scored a position, so the source itself collapses unmeasured into
    no-effect (§1.5).
 
+5d. **Motifs are not a dataset at either surface, and the API is still the only route.** "motif"
+   appears nowhere in the SDK and none of the 22 Atlas scorers is one; the announced "Motif
+   datasets" are unpublished. What reads a motif is in-silico mutagenesis, and one interval query
+   returns a **600-variant × 1,617-TF-track** ISM matrix in **1.6 s**, each track named with its
+   transcription factor and cell type. The files cannot: `MAX_ABS_CHIP_TF` collapses those 1,617
+   named tracks into one unsigned magnitude. The API's addition is **resolution, not more scores**
+   — 36,152 values per variant against the files' 20 (§6.4, §6.5).
+
 5c. **The Output Terms require the licence text to travel *inside* the artifact**, not as a
    link: restriction 3b says anyone attaching their own terms must carry the "Use restrictions"
    section as an enforceable provision. They also let Google demand deletion on breach, not only
@@ -836,6 +844,84 @@ The docs also give the merged score a **source-sanctioned threshold**: variants 
 0.249% of the corpus — about 62 MB as parquet. That is a threshold the source names, not one
 invented to hit a budget.
 
+### 6.4 What the API adds over the offline copies, measured
+
+The question is worth asking precisely because the files are the cheap option: they are offline,
+unmetered, and reproducible. Measured against them, three surfaces exist and not two.
+
+| | bulk files | **Atlas API** (precomputed) | model API (computed) |
+| --- | --- | --- | --- |
+| SNVs | yes | yes | yes |
+| **indels** | **no** | **no** — `UNIMPLEMENTED` | **yes** |
+| wrong `REF` | silently misses | **`INVALID_ARGUMENT`, names the real base** | validates |
+| values per variant | **20** | **36,152** | matrices |
+| per-track resolution | none | **yes, named** | yes |
+| rate limit | none | unmeasured | unmeasured |
+| offline / reproducible | yes | no | no |
+
+**One variant, unfiltered, returns 36,152 values across 22 scorer blocks.** Against 20 offline —
+two AVI columns, one splicing column, seventeen SHAP feature columns — that is a factor of
+**1,800**. The breakdown is where the interesting part is, because it shows exactly what the
+files collapse:
+
+| scorer | tracks the API returns | what the files carry |
+| --- | ---: | --- |
+| `CHIP_TF` | **1,617** | one `MAX_ABS_CHIP_TF` |
+| `CHIP_HISTONE` | 1,116 | one `MAX_ABS_CHIP_HISTONE` |
+| `CAGE` | 546 | one `MAX_ABS_CAGE` |
+| `POLYADENYLATION` | 371 | one `MAX_ABS_POLYADENYLATION` |
+| `SPLICE_SITE_USAGE` / `SPLICE_JUNCTIONS` | 367 each | folded into one `MERGED_SPLICING` |
+| `DNASE` | 305 | one `MAX_ABS_DNASE` |
+| `ATAC` | 167 | one `MAX_ABS_ATAC` |
+| `RNA_SEQ` | 37 genes × 371 tracks = 13,727 | one `MAX_ABS_RNA_SEQ` |
+| `CONTACT_MAPS` | 28 | one `MAX_ABS_CONTACT_MAPS` |
+| `AVI_SCORE_MODEL_FEATURES` / `…_FEATURE_IMPORTANCE` | 18 each | the SHAP file's 17 columns |
+
+So the API's addition is not *more scores*, it is **resolution**: which assay, which cell type,
+which transcription factor, which gene. `MAX_ABS_` is a lossy aggregate over hundreds of named
+tracks, and the name is what the file throws away.
+
+Timings, on the maintainer's connection: a single-variant AVI RPC has a **median latency of
+161 ms** (min 125, max 353, n=12) against a `tabix` lookup in the local file, which is disk-bound
+and three orders of magnitude faster. The API is not a bulk surface and does not pretend to be.
+
+### 6.5 Motifs — the expectation was that this is the API-only capability, and it is not a dataset
+
+**There is no motif surface anywhere.** The string "motif" does not appear once in the
+`alphagenome` SDK, none of the 22 Atlas scorers is a motif scorer, and the download page's
+"AlphaGenome Motif datasets will be made available soon" describes something not yet published.
+The quick-start's mention is incidental.
+
+What exists instead is the raw material, and it is already reachable. Motifs are read from a
+sequence model by **in-silico mutagenesis** — score every possible SNV across a window and read
+the (position × base) matrix — and the SDK ships `interpretation/ism.py` with exactly two
+functions for it, `ism_variants` and `ism_matrix`. Measured:
+
+```
+query_interval(chr22:36,200,000-36,200,200, scorers=["CHIP_TF"])
+  -> AnnData (600 variants × 1,617 tracks) = 970,200 values in 1.6 s
+  track names: "CL:0000062 TF ChIP-seq CTCF", "CL:0000115 TF ChIP-seq CTCF", …
+  var columns: name, strand, Assay title, ontology_curie, biosample_name,
+               biosample_type, biosample_life_stage, transcription_factor
+```
+
+A 200 bp window is 600 SNVs; one interval query returns the full ISM matrix for all 1,617 TF
+tracks in **1.6 seconds**, with a `transcription_factor` column naming each one. **That is a
+motif footprint**, per TF and per cell type, available today.
+
+The offline files cannot do this at all, and the reason is §6.4's: the SHAP file's
+`MAX_ABS_CHIP_TF` is a single unsigned magnitude over all 1,617 tracks, so the genome-wide ISM
+matrix it does contain has had the TF identity and the cell type removed — which is the entire
+motif question. **So the motif expectation is right about the conclusion and wrong about the
+mechanism**: the API is the only route, not because a motif dataset exists behind it, but because
+a motif needs per-track resolution and the files publish an aggregate.
+
+Two consequences worth stating. The forthcoming "Motif datasets" would be a *precomputed
+convenience*, not a new capability, so nothing here is blocked on waiting for them. And motif work
+is inherently **per-locus and network-bound** — 1.6 s per 200 bp per modality — which puts it on
+the enricher side of the tier line as a check about a variant, never as something a compiled
+module carries.
+
 ### 6.4 The model service, for completeness
 
 - **Output types (11):** ATAC, CAGE, DNASE, RNA_SEQ, CHIP_HISTONE, CHIP_TF, SPLICE_SITES,
@@ -868,7 +954,11 @@ Named so the next reader knows the shape of the hole rather than inheriting a si
 - **Google's Generative AI Prohibited Use Policy**, incorporated by prohibition 8.
 - **AlphaMissense's own terms**, owed by the `ALPHAMISSENSE` column in the SHAP artifact, and the
   provenance of its `CACTUS_241_WAY` / `PHASTCONS_470_WAY` columns.
-- **Motif datasets** — announced, not published.
+- **Motif datasets** — announced, not published, and §6.5 shows nothing is blocked on them.
+- **The Atlas interval RPC on the two-dependency tier.** `ListDenseVariantScores` needs an
+  `x-goog-fieldmask` header and 32 bp chunking; hand-built requests returned `INVALID_ARGUMENT`
+  and the measurement in §6.5 was taken through the SDK instead. The single-variant RPC works on
+  the protos alone (§6.2) — the interval one was not made to.
 - **API quota and rate limits.** Not measured; roughly a dozen calls were made in total.
 - **The exact merged-splicing aggregation.** The formula is documented and §6.3 shows it lands
   within ~15% but does not reproduce the file, and fails entirely at one locus. What is *not*
