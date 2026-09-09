@@ -56,6 +56,7 @@ from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.civic_identities import (
@@ -737,7 +738,7 @@ taken from here is not comparable with one taken from there.
 def _write_license(out_dir: Path) -> Path:
     """Write the source's own terms beside the data, under the name every sibling snapshot uses."""
     path = Path(out_dir) / SNAPSHOT_LICENSE_FILENAME
-    path.write_text(CIVIC_LICENSE_TEXT, encoding="utf-8")
+    atomic_write_text(path, CIVIC_LICENSE_TEXT)
     return path
 
 
@@ -1066,7 +1067,7 @@ def _write_release_json(out_dir: Path, result: CivicBuildResult, *, release: str
         "builder_version": _builder_version(),
     }
     path = out_dir / RELEASE_FILENAME
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
     return path
 
 

@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.spec import extract_pmids
 
@@ -440,7 +441,7 @@ def _merge_release_block(out_dir: Path, name: str, block: dict) -> bool:
             logger.warning("%s is not a JSON object; not recording the %s block.", path, name)
             return False
     release[name] = block
-    path.write_text(json.dumps(release, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
     return True
 
 
@@ -576,5 +577,5 @@ def _write_release_json(
         "builder_version": _builder_version(),
     }
     path = out_dir / RELEASE_FILENAME
-    path.write_text(json.dumps(release, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
     return path

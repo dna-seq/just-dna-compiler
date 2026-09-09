@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ast
 import csv
+import importlib
 import inspect
 from pathlib import Path
 
@@ -165,3 +166,38 @@ def test_atomic_write_text_creates_parent_and_replaces(tmp_path: Path) -> None:
     atomic_write_text(target, '{"a": 2}\n')
     assert target.read_text(encoding="utf-8") == '{"a": 2}\n'
     assert sorted(p.name for p in target.parent.iterdir()) == ["verification.json"]
+
+
+# ── the builders (the pre-cut audit, 2026-09-09) ────────────────────────────────────────────────
+
+
+def _builder_modules() -> list[str]:
+    """Every `<lane>_build.py` in the package — the same derivation `test_cache_lanes` uses."""
+    src = Path(__import__("just_dna_enricher").__file__).parent
+    return sorted(p.stem for p in src.glob("*_build.py"))
+
+
+@pytest.mark.parametrize("module_name", _builder_modules())
+def test_no_builder_writes_a_text_file_in_place(module_name: str) -> None:
+    """The nine spec-dir writers above were guarded; the fourteen builders were not, and ten of them
+    wrote `release.json` (and `acmg_build` its whole snapshot CSV) with `write_text` / `open("w")`.
+    A kill mid-write leaves a `release.json` that `read_release` degrades to `None` — but the ACMG
+    CSV parses cleanly and is simply short, so `verify_acmg_sf` would report a gene as "not on the
+    list" with nothing failing. Walked over the module rather than a hand-kept function list,
+    because the list of writers is what drifted.
+    """
+    module = importlib.import_module(f"just_dna_enricher.{module_name}")
+    tree = ast.parse(inspect.getsource(module))
+    offenders = [
+        ast.unparse(node)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and (
+            getattr(node.func, "attr", None) in {"write_text", "write_bytes"}
+            or _opens_for_truncating_write(node)
+        )
+    ]
+    assert not offenders, (
+        f"{module_name} writes a file in place: {offenders}. Route it through "
+        "just_dna_format.layout.atomic_write_text / atomic_writer."
+    )

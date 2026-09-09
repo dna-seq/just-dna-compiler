@@ -45,6 +45,7 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME
@@ -297,8 +298,7 @@ def build_snapshot(
     )
     if license_text is not None:
         # Kept beside the data so a holder of the snapshot can read the terms without the archive.
-        (out_dir / SNAPSHOT_LICENSE_FILENAME).write_text(license_text, encoding="utf-8")
-
+        atomic_write_text((out_dir / SNAPSHOT_LICENSE_FILENAME), license_text)
     genes = sorted({r["gene"] for r in records if r["gene"]})
     digest = source_sha256 or _sha256_file(zip_path)
     release = {
@@ -311,8 +311,7 @@ def build_snapshot(
         "annotation_count": len(by_id),
         "built_at": now_utc_iso(),
     }
-    (out_dir / RELEASE_FILENAME).write_text(json.dumps(release, indent=2) + "\n", encoding="utf-8")
-
+    atomic_write_text((out_dir / RELEASE_FILENAME), json.dumps(release, indent=2) + "\n")
     logger.info(
         "ClinPGx snapshot: %d rows across %d annotations (%s), %d genes → %s",
         len(records), len(by_id), created or "undated", len(genes), parquet_path,

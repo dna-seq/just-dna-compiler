@@ -45,6 +45,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from just_dna_format.layout import atomic_write_text, atomic_writer
 from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.acmg import (
@@ -267,7 +268,7 @@ def build_acmg_snapshot(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     csv_path = out_dir / ACMG_SNAPSHOT_FILENAME
-    with csv_path.open("w", encoding="utf-8", newline="") as handle:
+    with atomic_writer(csv_path, newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=_SNAPSHOT_FIELDS)
         writer.writeheader()
         # Sheet order, never set order (P7): a snapshot rebuilt from the same workbook is byte-identical.
@@ -288,7 +289,7 @@ def build_acmg_snapshot(
         "built_at": sf_list.retrieved_at,
         "builder": "just_dna_enricher.acmg_build",
     }
-    (out_dir / RELEASE_FILENAME).write_text(json.dumps(release, indent=2) + "\n", encoding="utf-8")
+    atomic_write_text((out_dir / RELEASE_FILENAME), json.dumps(release, indent=2) + "\n")
     logger.info(
         "wrote ACMG SF v%s snapshot to %s (%d genes, %d rows)",
         sf_list.version, out_dir, release["gene_count"], release["row_count"],

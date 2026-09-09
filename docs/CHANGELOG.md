@@ -105,6 +105,16 @@ behind the green. Each landed as its own commit with the test that pins it.
   left a valid short file; both go through `atomic_writer` now, the append path copying the author's
   bytes through verbatim, and an AST walk pins it the way the enricher's sidecar guard does.
 
+- **Ten builders wrote `release.json` in place, and `acmg build` its whole snapshot CSV**
+  (`just-dna-enricher`; no schema change). The nine spec-dir sidecar writers have been guarded since
+  S66; the builders were not, and the three newest (`mane`, `drug_labels`, `strchive`) had adopted
+  `atomic_write_text` while the ten older ones kept `write_text` — the next builder would inherit
+  whichever neighbour it copied. A truncated `release.json` is at least invalid JSON that
+  `read_release` degrades to `None`; a truncated ACMG CSV parses cleanly and is simply short, so
+  `verify_acmg_sf` would have reported a gene as "not on the list" with nothing failing. Every
+  builder text write goes through `atomic_write_text` / `atomic_writer` now, and the guard walks
+  every `*_build.py` by AST rather than a hand-kept function list.
+
 ## 2026-09-04 — the allocator reserved a number when you asked it for help
 
 **Agent tooling only (`.claude/rm-next.py`), no package, no schema, no CLI surface.** Found while

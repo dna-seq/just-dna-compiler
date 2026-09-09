@@ -40,6 +40,7 @@ from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.gnomad import normalize_constraint_flags
@@ -334,5 +335,5 @@ def _write_release_json(
         "builder_version": _builder_version(),
     }
     path = out_dir / "release.json"
-    path.write_text(json.dumps(release, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_text(path, json.dumps(release, indent=2, sort_keys=True) + "\n")
     return path

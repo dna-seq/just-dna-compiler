@@ -30,6 +30,7 @@ from dataclasses import dataclass, field
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
 
 from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
@@ -179,8 +180,8 @@ def build_snapshot(
         "built_at": now_utc_iso(),
         "builder_version": _builder_version(),
     }
-    (out_dir / RELEASE_FILENAME).write_text(
-        json.dumps(release, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    atomic_write_text(
+        (out_dir / RELEASE_FILENAME), json.dumps(release, indent=2, sort_keys=True) + "\n"
     )
     logger.info(
         "PharmVar snapshot: %d gene(s), %d allele(s), %d defining variant(s) on %s → %s",
