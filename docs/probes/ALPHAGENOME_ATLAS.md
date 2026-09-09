@@ -32,7 +32,7 @@ question.
 
 ---
 
-## 0. Summary — the seven things that decide whether this is adoptable
+## 0. Summary — the nine things that decide whether this is adoptable
 
 1. **The three bulk artifacts are not one licence.** Only *AVI SNV scores* (88.5 GB) is a
    *Permissive Use Downloadable Artifact*, usable commercially and by commercial
@@ -73,7 +73,20 @@ question.
    available for any commercial entity, even if conducting non-commercial work." That is not
    `commercial_use=False`. §2.6 enumerates all four.
 
-7. **There is no `--non-commercial` flag to lean on.** The compile gate is data-driven
+7. **A 22 MB client exists, and `uv add alphagenome` is 255 MB.** The Atlas service serves the
+   precomputed scores — all 22 scorers, SHAP included — over gRPC, and the generated protos plus
+   `grpcio`/`protobuf` are a complete client (`numpy.frombuffer` decodes the score bytes; the
+   request filter is a string). The SDK's own import path costs 242 MB because `atlas.py` imports
+   `anndata` at module level. Six declared dependencies are never loaded on any scoring path.
+   §6.2 sets out three shapes and picks none; the `alphagenome>=0.9.0` line currently in
+   `enricher/pyproject.toml` is a probe and is **not** committed here.
+
+8. **AVI reproduces exactly from the API; merged splicing does not.** The bulk AVI file is the
+   API's float32 printed to five decimals, so the download and the RPC are one source. The
+   splicing file is not reachable from the documented merge formula — 2.81 against a stated
+   2.735, and zero rows at a locus the file scores. §6.3.
+
+9. **There is no `--non-commercial` flag to lean on.** The compile gate is data-driven
    (`@gate-is-data-driven`): the mechanism is `declared_use` on a `SourceRow` in `sources.csv`,
    whose vocabulary is `{unstated, non_commercial, commercial}`. A flag was considered and
    refused once because it breaks the round trip.
@@ -146,6 +159,49 @@ independent score rows for it. Whether they agree is unmeasured.
 
 
 ---
+
+### 1.3 The AVI file's schema — two columns, and one is derived from the other
+
+Downloaded complete on 2026-09-10 (`avi_scores_snvs_tabix(1).zip`, 88,473,344,811 bytes;
+members `alphagenome_variant_impact_score_snvs.tsv.gz` 88,470,182,310 bytes and a 3,161,911-byte
+`.tbi`, stamped 2026-08-27 17:40/17:42).
+
+```
+#CHROM  POS  REF  ALT  raw_score  PHRED
+chr1    10001  T  A  -0.03868  1.06466
+chr1    10001  T  C  -0.032    1.3114
+chr1    10001  T  G  -0.0372   1.11839
+```
+
+Three differences from the splicing file, each of them load-bearing:
+
+1. **`raw_score` is signed.** The splicing score is a magnitude; this one has a direction, and a
+   negative AVI is a different claim from a positive one of the same size. Any ingest that takes
+   `abs()` throws away half the content.
+2. **It starts at `chr1:10001`** — the first non-N base of GRCh38 — where splicing starts at
+   65,409. AVI looks genome-wide where splicing is gene-proximal. Confirmation is pending the
+   full pass (§1.4).
+3. **`PHRED` is not a second score.** The Atlas API returns, beside `raw_score`, a *calibrated*
+   value, and `PHRED = −10·log₁₀(1 − calibrated)` reproduces the file exactly:
+
+   | variant | API `raw` | API `calibrated` | −10·log₁₀(1−cal) | file `PHRED` |
+   | --- | ---: | ---: | ---: | ---: |
+   | chr1:10001 T>A | −0.03868196 | 0.21739846 | 1.06466 | 1.06466 |
+   | chr1:10001 T>C | −0.03200157 | 0.26062370 | 1.31139 | 1.3114 |
+
+   So `calibrated` is a percentile rank and `PHRED` is its presentation. **A parquet needs
+   `raw_score` and one of the two, never all three** — and the choice matters, because a
+   percentile is bounded and quantises well while a Phred value does not. This also answers what
+   the Atlas page means by "AVI scores and Phred-scaled scores": one score and one rescaling of
+   its calibration, not two independent measures.
+
+### 1.4 AVI's distribution — measured, pending
+
+The same 12-way per-contig pass is queued behind the extraction (`/data/downloads/alphagenome/
+avi_pass.sh`, writing `avi_hist/<contig>.txt`). Until it lands, **none of §3's or §4's numbers
+apply to AVI** — different corpus, different row count, an extra column and a sign
+(`@probe-names-the-table`). The one thing already established is that its rows begin at the
+start of the assembly, so the ~3.9 billion of §1.2 is a floor and not an estimate for it.
 
 ## 2. The terms, clause by clause
 
@@ -332,6 +388,11 @@ threshold is doing all the work** — there is no natural gap the data picks out
 Between 0.02 and 0.05 the corpus falls from 91% to 10%. That cliff is the background lump of
 §3.1, and it is where any threshold argument will actually be had.
 
+**One threshold is not an argument, because the source states it.** The splicing scoring
+documentation says variants above **1.0** "generally exhibit substantial effects on splicing".
+That is the bottom row of the table: 9,761,281 rows, 0.249% of the corpus, about **62 MB** as
+parquet. A build that wants a defensible cut rather than a budget-driven one already has it.
+
 **A caution about extrapolating from a sample:** a first pass over the leading 20 M rows (the 5′
 end of `chr1`) gave ≥0.05 → 16.3% and ≥0.1 → 7.4%, against the whole-genome 10.4% and 4.8%. The
 head of `chr1` is gene-dense and scores high; a slice sized from it would have been ~55% too
@@ -421,6 +482,7 @@ Scaling `chr22`'s bytes-per-row to the full 3,924,674,451 rows:
 | ≥0.1 | 186,552,701 | ≈ 1.1 GB |
 | ≥0.2 | 85,537,292 | ≈ 0.55 GB |
 | ≥0.5 | 26,777,898 | ≈ 0.18 GB |
+| ≥1.0 — *the threshold the source itself names* | 9,761,281 | ≈ 0.062 GB |
 
 **The 40 GB budget is not binding, and neither is the size question.** The entire 20.6 GB
 artifact re-encoded **without losing a digit** is about 11.4 GB — smaller than the source,
@@ -443,10 +505,16 @@ Neither is chosen here.
 
 ### 4.3 What the sizing does not cover
 
-The numbers above are for the *splicing* artifact only. AVI (88.5 GB) is 4.3× larger as source
-and carries two score columns rather than one; SHAP (283.9 GB) is a feature *breakdown*, so its
-row shape is wholly different and none of this arithmetic transfers to it
-(`@probe-names-the-table`).
+**Everything in §3 and §4 is the 20.6 GB merged-splicing artifact and nothing else.** The
+~11.4 GB verbatim figure, the 3,924,674,451 rows, the exceedance table and every bytes-per-row
+number are that corpus. They are **not** AVI's.
+
+AVI is a different corpus, not a bigger one: 88.5 GB of source, a **signed** `raw_score` plus a
+derived `PHRED` (§1.3), and rows that begin at `chr1:10001` rather than 65,409 — so it is
+plausibly genome-wide at ~9.3 billion rows, 2.4× the splicing count, and its own measurement is
+running (§1.4). SHAP (283.9 GB) is a feature *breakdown* with a wholly different row shape and
+none of this arithmetic reaches it either. `@probe-names-the-table`: a negative or a positive
+finding about "the source" is only as wide as the table it was taken from.
 
 ---
 
@@ -525,51 +593,144 @@ record of what has been seen, so intersecting them changes the corpus *kind* —
 for any query" to "an answer for known variants". Which of those a consumer wants is a use-case
 question, and `docs/USE_CASES.md` is where the design cycle says it starts.
 
-## 6. The API surface
+## 6. Two surfaces, and three dependency tiers
 
-Probed live on the maintainer's key (`ALPHAGENOME_API_KEY`, 39 characters), via the `alphagenome`
-SDK:
+There are two ways to reach these numbers — the bulk downloads of §1 and a network API — and the
+API is really two APIs: a **model** service that runs AlphaGenome on a sequence window, and an
+**Atlas** service that serves the *precomputed* scores, the same content as the downloads, one
+variant at a time.
+
+### 6.1 What the Atlas service offers
+
+`alphagenome.atlas.atlas` wraps three RPCs on `gdmscience.googleapis.com:443`, authenticated with
+`x-goog-api-key`: `GetDenseVariantScores` (one variant), `ListDenseVariantScores` (an interval)
+and `ListVariantScoresMetadata`. The metadata call reports **22 precomputed scorers**, which is a
+superset of what is downloadable:
+
+```
+AVI_SCORE  AVI_SCORE_FEATURE_IMPORTANCE  AVI_SCORE_MODEL_FEATURES
+SPLICE_SITES  SPLICE_SITE_USAGE  SPLICE_JUNCTIONS  POLYADENYLATION
+RNA_SEQ  RNA_SEQ_ACTIVE  CAGE  CAGE_ACTIVE  PROCAP  PROCAP_ACTIVE
+ATAC  ATAC_ACTIVE  DNASE  DNASE_ACTIVE  CHIP_TF  CHIP_TF_ACTIVE
+CHIP_HISTONE  CHIP_HISTONE_ACTIVE  CONTACT_MAPS
+```
+
+Seven carry `is_signed: true`. **The SHAP feature importances that are a 283.9 GB download are
+one of these scorers**, so a consumer needing them for a handful of variants never has to take
+the file.
+
+### 6.2 The dependency question, measured
+
+`uv add alphagenome` pulls **anndata, pandas, scipy, zarr, h5py, numcodecs, pyarrow, matplotlib,
+seaborn, pyfaidx, absl-py, fsspec, jaxtyping, typeguard, ml-dtypes, zstandard, grpcio, protobuf,
+numpy, tqdm, immutabledict** and their closures. Against a tier whose whole dependency list is
+`httpx`/`tenacity`/`huggingface-hub`, that is not a size question, it is the
+**"dependency tiers are sacred"** rule in CLAUDE.md.
+
+Four install shapes, each built as a real venv and measured:
+
+| tier | what you install | size | what works |
+| --- | --- | ---: | --- |
+| **protos only** | `alphagenome --no-deps` + `grpcio` + `protobuf` | **22 MB** | every Atlas RPC; scores come back as raw little-endian `float32` bytes |
+| + numpy | the above + `numpy`, `ml_dtypes`, `zstandard`, `immutabledict` | 85 MB | the above, plus `tensor_utils` for the model service's packed tensors |
+| SDK import path | the above + `anndata`, `pandas`, `tqdm` and their closure | 242 MB | `alphagenome.atlas.atlas` and `alphagenome.models.dna_client` import |
+| full declared | `uv add alphagenome` | 255 MB | everything, including plotting |
+
+**The 22 MB tier is not a trick — it is a complete client.** `DenseVariantScore.scores` and
+`.calibrated_scores` are `bytes` fields, not tensor protos, so `numpy.frombuffer(s.scores,
+'<f4')` decodes them; and the request's `filter` is a plain AIP-160 **string**
+(`'scores.variant_scorer.name = "AVI_SCORE"'`), not a message that needs building. The whole
+call, verified live, is in Appendix A.6.
+
+Six of the declared dependencies — **matplotlib, seaborn, pyfaidx, absl-py, fsspec, pyarrow** —
+are never imported on any scoring path; they belong to `alphagenome.visualization` and
+`alphagenome.io`. The wheel declares them flat, so there is no extra to opt out of.
+
+**Where the jungle becomes unavoidable is `anndata`.** Both `atlas/atlas.py` and
+`models/dna_client.py` `import anndata` at module level, and anndata drags scipy, zarr, h5py,
+numcodecs, pydantic-settings and natsort. So the split is not "a light half of the SDK" — it is
+**use the generated protos and skip the SDK's convenience layer**, which is a real cost: the
+`AnnData` return type is where track metadata, ontology terms and gene ids are attached, and
+anything hand-rolled on the protos re-implements that.
+
+Three shapes follow, none chosen here:
+
+1. **`grpcio` + `protobuf` as enricher core deps** (22 MB), talking to the generated stubs. Two
+   new core dependencies on the network tier, and a hand-written decode layer to maintain against
+   a service whose protos can change under it.
+2. **An optional extra** — `just-dna-enricher[alphagenome]` with a guarded module-level
+   `try/except ImportError`, which is the one exception CLAUDE.md's no-inline-imports rule
+   already allows for an optional dep. Nothing changes for a consumer that does not ask for it.
+3. **No client at all** — treat the bulk artifacts as a snapshot lane like ClinVar's, built by an
+   operator with `tabix`, and never reach the service from library code at all. This is the shape
+   the repo's existing licence-gated caches already have, and it needs no new dependency
+   whatsoever.
+
+`alphagenome>=0.9.0` is presently in `enricher/pyproject.toml` and `uv.lock` as the maintainer's
+own probe. **It is deliberately not committed by this document**, because adding it is exactly
+the decision the three shapes above are for.
+
+### 6.3 The two surfaces do not agree equally well
+
+`@two-surfaces-two-denominators` says a bulk download and an API are different sources. Measured
+here, that is true of one artifact and not the other:
+
+- **AVI reproduces exactly.** The Atlas API returns `raw_score` −0.03868196 where the file says
+  −0.03868, and −0.03200157 where it says −0.032 — the file is the API's float32 printed to five
+  decimals. For AVI, the 88.5 GB download and the per-variant RPC are one source.
+- **Merged splicing does not.** The documented formula is
+  `max(splice_sites) + max(splice_site_usage) + max(splice_junctions) / 5` — full weight to site
+  identity and usage, a 0.2 multiplier on junctions because their magnitudes run larger. Scoring
+  through the model service at a 1 MB window and applying it gives **2.81 against the file's
+  2.735**, and **1.83 against 2.112** — right in shape, wrong in detail, so the exact aggregation
+  (which tracks, which axis, which window) is not pinned by what is published.
+- And at `chr1:65409 A>C`, where the file says 0.003052, all three splice scorers return **zero
+  rows** at both a 128 KB and a 1 MB window, so the value in the file is not reachable through
+  the documented recommended scorers at all. The locus sits ~10 bp upstream of *OR4F5*, so it is
+  not a case of there being no gene nearby.
+
+The docs also give the merged score a **source-sanctioned threshold**: variants above **1.0**
+"generally exhibit substantial effects on splicing". §3.2 measures that at 9,761,281 rows,
+0.249% of the corpus — about 62 MB as parquet. That is a threshold the source names, not one
+invented to hit a budget.
+
+### 6.4 The model service, for completeness
 
 - **Output types (11):** ATAC, CAGE, DNASE, RNA_SEQ, CHIP_HISTONE, CHIP_TF, SPLICE_SITES,
-  SPLICE_SITE_USAGE, SPLICE_JUNCTIONS, CONTACT_MAPS, PROCAP.
-- **Recommended variant scorers (19):** the above plus POLYADENYLATION and an `_ACTIVE` variant
-  of most.
-- **Input windows:** 16 KB, 128 KB, 512 KB, 1 MB (`SUPPORTED_SEQUENCE_LENGTHS`).
-- **Build:** hg38 / GENCODE v46. Human and mouse.
-- **Indels work.** `chr22:36201698 AC>A` scored without complaint — so the API is the *only*
-  route to the indel half of the effect-score idea, and it is non-commercial-only with no AVI
-  carve-out for API output (§2.4/1 exempts only the AVI Score).
-- **The API returns matrices, not scalars.** Scoring one SNV with `RNA_SEQ` returned an AnnData
-  of 13 genes × 371 tracks; `SPLICE_SITE_USAGE` and `SPLICE_JUNCTIONS` are 367 tracks wide. The
-  bulk artifact's single `alphagenome_splicing` column is already a heavy reduction of that.
-- **Unexplained:** at `chr1:65409 A>C` — a row the bulk file scores 0.003052 — all three
-  `SPLICE_*` scorers returned **zero rows** for a 128 KB window. So the merged score is not a
-  straightforward aggregate of what those scorers return at that locus, and the merge formula is
-  not documented in what was read. Anyone joining bulk to API values needs to establish it
-  first; `@two-surfaces-two-denominators` is the rule that says a bulk download and an API are
-  different sources and a status basis must be stated.
-
-No quota or rate-limit figure is published in the quick-start docs, and none was measured — this
-probe made four API calls in total, deliberately.
-
----
+  SPLICE_SITE_USAGE, SPLICE_JUNCTIONS, CONTACT_MAPS, PROCAP; **19 recommended variant scorers**
+  including POLYADENYLATION and `_ACTIVE` variants.
+- **Input windows:** 16 KB, 128 KB, 512 KB, 1 MB. **Build:** hg38 / GENCODE v46; human and mouse.
+- **Indels work** — `chr22:36201698 AC>A` scored without complaint, and the model service is the
+  only route to them: all three bulk artifacts are SNV-only.
+- **It returns matrices, not scalars.** One SNV through `RNA_SEQ` came back as 13 genes × 371
+  tracks; the splice scorers are 367 tracks wide. The bulk files' single columns are heavy
+  reductions of that.
+- No quota or rate-limit figure is published, and none was measured — this probe made roughly a
+  dozen calls in total, deliberately.
 
 ## 7. Not probed
 
-Named so the next reader knows the shape of the hole rather than inheriting a silent one:
+Named so the next reader knows the shape of the hole rather than inheriting a silent one.
 
-- **The AVI SNV scores artifact** — the only commercially usable one, and the one worth the most.
-  1.8 GB of 88.5 GB downloaded at the time of writing. Its schema, its score distribution, its
-  Phred column and its genome coverage are all unmeasured. The `hist.awk` used in §3 applies
-  unchanged once it lands.
-- **The SHAP feature-importance artifact** (283.9 GB). ~40 GB downloaded, nothing read.
-- **The AlphaGenome Output Terms of Use** (§2.7) and the Atlas page's own licence wording.
+- **AVI's distribution.** The artifact is downloaded and extracted; the pass is queued
+  (§1.4, Appendix A.7). Its row count, its coverage, the sign split on `raw_score` and the shape
+  of `PHRED` are all open until it lands. **Nothing in §3 or §4 may be quoted about AVI.**
+- **The SHAP feature-importance artifact** (283.9 GB). Nothing read. Note that §6.1 makes the
+  file optional for small numbers of variants — `AVI_SCORE_FEATURE_IMPORTANCE` is an Atlas
+  scorer.
+- **The AlphaGenome Output Terms of Use** (§2.7) and the Atlas page's own per-artifact licence
+  wording. Still the largest hole: it is the document a distributor of Derivatives must point
+  downstream readers at, and it is sign-in-gated.
 - **Motif datasets** — announced, not published.
-- **API quota and rate limits**, and the merge formula behind `alphagenome_splicing` (§6).
-- **Whether an HF-published snapshot counts as an "open source release"** under §2.4/1b. This is
-  a legal question about the only route by which a non-commercial-derived cache lane could be
-  `cache pull`-able, and it is not one this repository should answer for itself.
-
+- **API quota and rate limits.** Not measured; roughly a dozen calls were made in total.
+- **The exact merged-splicing aggregation.** The formula is documented and §6.3 shows it lands
+  within ~15% but does not reproduce the file, and fails entirely at one locus. What is *not*
+  known is which tracks, which axis and which window the published file used.
+- **Whether an HF-published snapshot counts as an "open source release"** under §2.4/1b — the
+  only route by which a non-commercial-derived cache lane could be `cache pull`-able. A legal
+  question, not one this repository should answer for itself.
+- **Whether the two PAR copies agree.** `chrX` and `chrY` both carry position 276,225 onward
+  (§1.2); no comparison was run.
 
 ---
 
@@ -657,7 +818,7 @@ joined = df.join(es, on=["pos", "ref", "alt"], how="inner")   # df from A.3
 `start` in the Ensembl snapshot is the 1-based position and joins directly against AlphaGenome's
 `POS` (`@start-1based`); no `-1` anywhere.
 
-### A.5 The API probe
+### A.5 The model-service probe
 
 ```python
 import os
@@ -674,3 +835,55 @@ out = m.score_variant(interval=v.reference_interval.resize(2**17), variant=v,
 
 `pip install alphagenome`. Keep the venv off `/`: this machine has 8 GB free on root and the
 artifacts live on `/data`.
+
+### A.6 The Atlas service on two dependencies
+
+The whole client, verified live on 2026-09-10. `pip install --no-deps alphagenome grpcio
+protobuf` — 22 MB — and nothing else:
+
+```python
+import importlib.resources, os
+import grpc, numpy as np
+from alphagenome.protos import (atlas_service_pb2 as a,
+                                atlas_service_pb2_grpc as ag,
+                                dna_model_pb2 as d)
+
+cfg = (importlib.resources.files("alphagenome") / "protos/grpc_service_config.json").read_text()
+channel = grpc.secure_channel("dns:///gdmscience.googleapis.com:443",
+                              grpc.ssl_channel_credentials(),
+                              options=(("grpc.service_config", cfg),))
+grpc.channel_ready_future(channel).result(30)
+stub = ag.AtlasServiceStub(channel=channel)
+md = [("x-goog-api-key", os.environ["ALPHAGENOME_API_KEY"])]
+
+# the 22 scorers
+meta = stub.ListVariantScoresMetadata(
+    a.ListVariantScoresMetadataRequest(organism=d.ORGANISM_HOMO_SAPIENS), metadata=md)
+names = [m.variant_scorer.name for m in meta.variant_scorer_metadata]
+
+# one variant's AVI score; `filter` is an AIP-160 string, not a message
+resp = stub.GetDenseVariantScores(
+    a.GetDenseVariantScoresRequest(
+        variant=d.Variant(chromosome="chr1", position=10001,
+                          reference_bases="T", alternate_bases="A"),
+        organism=d.ORGANISM_HOMO_SAPIENS,
+        filter='scores.variant_scorer.name = "AVI_SCORE"'),
+    metadata=md)
+
+for s in resp.scores:
+    raw = np.frombuffer(s.scores, dtype="<f4")            # -0.03868196
+    cal = np.frombuffer(s.calibrated_scores, dtype="<f4")  # 0.21739846
+    phred = -10 * np.log10(1 - cal)                        # 1.06466 == the file's PHRED
+```
+
+`numpy` is used here only to read four bytes; `struct.unpack("<f", …)` does the same with no
+dependency at all, which is what makes the honest floor two packages rather than three.
+
+### A.7 The AVI histogram
+
+`/data/downloads/alphagenome/avi_hist.awk` and `avi_pass.sh` — deliberately written to that
+directory rather than a session temp, because the pass waits on an 88.5 GB extraction and fires
+whether or not the session that queued it is alive. Same 12-way `tabix`-per-contig shape as A.2,
+with two differences the extra column forces: `raw_score` is **signed**, so every threshold is
+counted twice (all, and negative-only), and `PHRED` gets its own half-unit histogram since it is
+a percentile transform and a log-decade bin would say nothing.
