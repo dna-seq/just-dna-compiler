@@ -66,15 +66,22 @@ greppable and hashed rather than re-fetched from a sign-in-gated single-page app
   filter of zeros. A first pass over the leading 20 M rows of `chr1` would have sized a slice ~55% too
   large; the whole-file numbers are in §3.
 - **Size turned out not to be the constraint.** Measured on `chr22` and scaled: the entire corpus as
-  parquet (`UInt16` at 10⁻⁴, one row per position, three ALT columns) is **~9.6 GB with nothing
-  discarded** — under half the source — and a ≥0.1 slice is ~1.1 GB. So the design question is not
+  parquet (`UInt32` at 10⁻⁶, one row per position, three ALT columns — **verbatim**, since the source
+  states six decimals) is **~11.4 GB with nothing discarded and no digit lost**, and a ≥0.1 slice is
+  ~1.1 GB. So the design question is not
   which slice fits a budget but whether the artifact is a *lookup table* (absent means unscored) or a
   *finding list* (absent means unscored **or** below threshold, a fresh instance of
   `@unreachable-not-absent`). §4.2 states both and picks neither.
-- **The rarity axis has no offline source**, by a decision already recorded in `locations.py`: gene
-  constraint gets a snapshot precisely because allele frequency cannot. And **the bulk artifacts are
-  SNV-only**, so rare indels are not a slice of them at all — they exist only through the API, which
-  is per-request, returns 367-track matrices rather than scalars, and carries no AVI carve-out.
+- **The rarity axis exists offline and is 6% populated**, which is worse than absent. The Ensembl
+  snapshot the enricher already provisions carries `MAF`/`MAC`, so no new download is needed — but on
+  `chr22` only 6.1% of its SNVs have a value, and after the join only **0.61% of AlphaGenome's ≥0.1
+  slice has a frequency at all**. "Score ≥0.1 and rare" is ~1.6 M rows genome-wide, small because the
+  column is 94% null rather than because the biology says so: `MAF` absent means unmeasured, never
+  rare, and a build that filters on it answers a different question than the one asked. §5 states the
+  four honest options. Separately, only 9.95% of AlphaGenome's SNVs are observed variants at all, so
+  intersecting changes the corpus kind. And **the bulk artifacts are SNV-only**, so rare indels are
+  not a slice of them — they exist only through the API, which is per-request, returns 367-track
+  matrices rather than scalars, and carries no AVI carve-out.
 - `ALPHAGENOME_API_KEY` joins `.env.template` with the PharmVar-shaped warning: personal under
   prohibition 7a, never in a module, fixture or snapshot.
 

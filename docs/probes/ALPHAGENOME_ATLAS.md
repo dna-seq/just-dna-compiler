@@ -56,11 +56,12 @@ question.
    and becomes "is this a lookup table or a finding list", which §4.2 sets out and does not
    decide.
 
-4. **The rarity axis has no offline source in this repo, by an existing deliberate decision.**
-   `enricher/src/just_dna_enricher/locations.py` records that gene constraint gets a snapshot
-   precisely because *allele frequency cannot*. So the second dimension of the proposed 2D
-   surface is not available to a `cache pull` today. §5 lays out the three routes and picks
-   none.
+4. **The rarity axis exists offline but is 6% populated, which is not the same as absent.** The
+   Ensembl snapshot already on disk carries `MAF`/`MAC` — but on `chr22` only 6.1% of its SNVs
+   have a value, and after joining to AlphaGenome only **0.61% of the ≥0.1 slice has a
+   frequency at all**. A 2D effect × rarity surface is therefore buildable today and would be
+   tiny — *for the wrong reason*. `MAF` absent means unmeasured, never rare, so the surface is
+   governed by the sparsity of one column rather than by biology. §5 has the measurements.
 
 5. **All three bulk artifacts are SNV-only** — the filenames say so and the splicing file's
    schema confirms it. **Rare indels do not exist in the bulk data at all**; they exist only
@@ -124,7 +125,8 @@ Measured over the whole file (24 per-contig `tabix` streams, aggregated):
 | Distinct positions | **1,308,224,817** |
 | Rows per position | **3.000** — exactly the three non-reference ALTs, everywhere |
 | Contigs | `chr1`–`chr22`, `chrX`, `chrY`. **No `chrM`.** |
-| Score range | 0.000000 … 5.799 |
+| Score range | max **5.799**; **no zeros anywhere** — the catch-all bin for `score ≤ 10⁻⁹`
+is empty across all 3.92 B rows, and the lowest populated bin is `[10⁻⁶·²⁵, 10⁻⁶)` with 10 rows |
 | Mean score | 0.045180 |
 
 An exhaustive all-SNV map of GRCh38's ~3.1 Gb primary assembly would be ~9.3 billion rows. This
@@ -283,8 +285,10 @@ saved would close it.
 ## 3. The merged splicing corpus, measured
 
 Aggregated from 24 per-contig passes over the complete file (~17 minutes wall, 12-way parallel
-by contig; the awk is in the session scratchpad and is trivially re-runnable against the AVI
-artifact when it lands).
+by contig). The per-contig outputs are on disk at
+`/data/downloads/alphagenome/hist/<contig>.txt` and **the programs are Appendix A**, inlined
+rather than left in a session scratchpad so they can be re-run unchanged against the AVI
+artifact when it finishes downloading.
 
 ### 3.1 The distribution has a floor, not a tail
 
@@ -390,6 +394,13 @@ belongs in whatever builds one.
 | long ≥0.5, `Float32` | 590,207 | 3,911,004 | 6.63 |
 | long ≥1.0, `Float32` | 203,548 | 1,288,439 | 6.33 |
 
+**Verbatim costs 11.4 GB, not 9.6.** `@verbatim-except-order` says to store a source's value as
+the source states it, and the source states six decimals. The exactly-lossless encoding is
+`UInt32` ×10⁶ in the wide layout: `chr22` at **165,849,495 bytes, 2.90 B/SNV → ≈11.4 GB**
+genome-wide. The 9.6 GB figure below rounds to four decimals and is the *cheaper, lossy* option;
+both are smaller than the 20.6 GB source, so the rule costs nothing here and the verbatim number
+is the one an adoption item should quote.
+
 Two things the table says that an estimate would not have. **Filtering makes each surviving row
 more expensive** — 4.17 B/row unfiltered against 6.63 B/row at ≥0.5 — because a dense sorted
 `pos` column delta-encodes almost to nothing and a sparse one does not. And **the score is the
@@ -402,7 +413,8 @@ Scaling `chr22`'s bytes-per-row to the full 3,924,674,451 rows:
 
 | what you keep | rows | parquet |
 | --- | ---: | ---: |
-| **everything**, wide, `UInt16` ×10⁴ | 3,924,674,451 | **≈ 9.6 GB** |
+| **everything**, wide, `UInt32` ×10⁶ — *verbatim, lossless* | 3,924,674,451 | **≈ 11.4 GB** |
+| everything, wide, `UInt16` ×10⁴ (lossy at the 5th decimal) | 3,924,674,451 | ≈ 9.6 GB |
 | everything, long, `UInt16` ×10⁴ | 3,924,674,451 | ≈ 11.6 GB |
 | everything, long, `Float32` | 3,924,674,451 | ≈ 16.4 GB |
 | ≥0.05 | 408,709,233 | ≈ 2.3 GB |
@@ -411,7 +423,7 @@ Scaling `chr22`'s bytes-per-row to the full 3,924,674,451 rows:
 | ≥0.5 | 26,777,898 | ≈ 0.18 GB |
 
 **The 40 GB budget is not binding, and neither is the size question.** The entire 20.6 GB
-artifact re-encoded losslessly to four decimal places is about 9.6 GB — smaller than the source,
+artifact re-encoded **without losing a digit** is about 11.4 GB — smaller than the source,
 without discarding a single row. There is no need to choose a threshold to fit a size, which
 removes the only forcing argument for one.
 
@@ -438,36 +450,80 @@ row shape is wholly different and none of this arithmetic transfers to it
 
 ---
 
-## 5. The rarity axis
+## 5. The rarity axis — it exists, and it is 6% populated
 
-The proposed surface is *size × rarity × effect*. The effect axis is measured above. The rarity
-axis is the problem, for a reason already recorded in this repo rather than a new one.
+The proposed surface is *size × rarity × effect*. The effect axis is measured in §3. The rarity
+axis turns out to be present offline and almost empty, which is a worse problem than absent.
 
-`locations.py`, on why gene constraint gets a snapshot:
+### 5.1 What is already on disk
 
-> Small enough to ship offline is exactly why gene constraint gets a snapshot while allele
-> frequency cannot.
+`locations.py` says gene constraint gets a snapshot precisely because *allele frequency cannot*
+ship offline, and that is true of a genome-wide gnomAD AF table. But the **Ensembl variation
+snapshot the enricher already provisions carries a frequency column of its own**:
 
-So there is no allele-frequency cache lane, deliberately. Three routes exist and this document
-picks none:
+```
+chrom start end id ref alt alts qual filter … MA MAF MAC AA
+                                                  ^^^^^^^ Float32 / Int32
+```
 
-1. **Live gnomAD per variant.** Already implemented in the enricher, already rate-limited
-   (`@gnomad-rate-limits`), and hopeless at 10⁸ scale — it is a per-variant check for an
-   authored module, not a bulk join.
-2. **A new gnomAD sites lane.** A genome-wide AF table is itself a multi-hundred-GB download
-   before filtering, which reproduces the problem the slice is meant to solve, and it is a new
-   cache lane with all three stages to build (`@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing`).
-3. **"Observed at all" as the rarity proxy.** Intersect the slice with the Ensembl/dbSNP or
-   ClinVar snapshots already on disk. This inverts the axis — it keeps *common and known*
-   variants rather than discarding rare ones — and it is by far the cheapest, but it answers a
-   different question than the one asked.
+plus boolean evidence flags `E_gnomAD`, `E_1000G`, `E_TOPMed`, `E_ESP`, `E_ExAC`. So route 3 of
+the old three-route framing is not a proxy at all — there is a real global minor-allele frequency
+to join on, and no new download is needed.
 
-Note also that route 3 is the only one that changes the corpus *kind*: the bulk artifacts are
-exhaustive over all possible SNVs, and intersecting with an observed-variant set turns a lookup
-table for any query into a lookup table for known variants. Which of those a consumer wants is
-a use-case question, and `docs/USE_CASES.md` is where the design cycle says it starts.
+### 5.2 How thin it is, measured on `chr22`
 
----
+| | |
+| --- | --- |
+| Ensembl rows (chr22) | 14,915,802 |
+| …of which SNVs | 11,114,671 |
+| …**with a non-null `MAF`** | **682,227 (6.1%)** |
+| `E_gnomAD` set | 5,231,445 |
+| `E_TOPMed` set | 6,323,750 |
+| `E_1000G` set | 1,073,892 |
+
+Joining AlphaGenome's chr22 SNVs to that snapshot on `(pos, ref, alt)`:
+
+| | rows | share of the AlphaGenome column above it |
+| --- | ---: | ---: |
+| AlphaGenome chr22 SNVs | 57,280,128 | — |
+| …observed in the Ensembl snapshot at all | 5,701,427 | 9.95% |
+| …with a known `MAF` | 377,644 | 0.66% |
+| AlphaGenome chr22, score ≥0.1 | 4,261,341 | — |
+| …observed at all | 437,236 | 10.26% |
+| …with a known `MAF` | 26,087 | **0.61%** |
+| …**and `MAF` < 0.01** | 23,496 | 0.55% |
+
+Scaled by chr22's 1.46% share of the corpus, "score ≥0.1 **and** rare" is on the order of
+**1.6 million rows genome-wide** — a few megabytes.
+
+### 5.3 Why that number is a trap
+
+It is small because **`MAF` is 94% null**, not because rare high-effect variants are rare. And
+the null is exactly the tri-state the house algebra exists for: **`MAF` absent means unmeasured,
+never rare.** A build that filters `MAF < 0.01` silently answers a different question — "of the
+6% of variants somebody measured, which are rare" — and a build that treats null as rare inverts
+the meaning outright. Both are `@unreachable-not-absent`, and the second is the `None`-is-never-
+`False` rule (`@tri-state-is-the-house-algebra`) broken directly.
+
+The honest options, none chosen here:
+
+1. **Effect only, keep the null.** Threshold on score, carry `MAF` where known and `unknown`
+   where not, and let the consumer decide. The only shape that does not lie.
+2. **Effect × observed-ness.** `E_gnomAD` is set on 47% of chr22's Ensembl SNVs against `MAF`'s
+   6%, so "has been seen in gnomAD" is a far denser signal than "has a frequency" — but it is a
+   boolean, and it says *observed*, not *common*. Denser and coarser.
+3. **A real AF lane.** A genome-wide gnomAD sites table, which is a multi-hundred-GB download
+   before filtering and a new cache lane with all three stages to build
+   (`@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing`). It would make the
+   surface mean what it says, at the cost the snapshot decision already declined once.
+4. **Live gnomAD per variant** — implemented, rate-limited (`@gnomad-rate-limits`), and hopeless
+   at 10⁸ scale. It is a per-variant check for an authored module, not a bulk join.
+
+One more thing the join says on its own: **only 9.95% of AlphaGenome's SNVs are observed
+variants at all.** The bulk artifact is exhaustive over positions and the variation snapshot is a
+record of what has been seen, so intersecting them changes the corpus *kind* — from "an answer
+for any query" to "an answer for known variants". Which of those a consumer wants is a use-case
+question, and `docs/USE_CASES.md` is where the design cycle says it starts.
 
 ## 6. The API surface
 
@@ -513,3 +569,108 @@ Named so the next reader knows the shape of the hole rather than inheriting a si
 - **Whether an HF-published snapshot counts as an "open source release"** under §2.4/1b. This is
   a legal question about the only route by which a non-commercial-derived cache lane could be
   `cache pull`-able, and it is not one this repository should answer for itself.
+
+
+---
+
+## Appendix A — the programs, so this is re-runnable
+
+Inlined deliberately: the 9.6/11.4 GB and the exceedance numbers are unverifiable without them,
+and a path under a session temp directory does not survive the session.
+
+### A.1 The histogram, one contig at a time (`hist.awk`)
+
+```awk
+$1=="#CHROM"{next}
+{n++; s=$5+0
+ sum+=s; if(s>mx)mx=s
+ if($2!=prev){np++; prev=$2}
+ b=int(-log(s+1e-12)/log(10)*4); if(b<0)b=0; if(b>39)b=39; h[b]++
+ if(s>=0.01)t[1]++; if(s>=0.02)t[2]++; if(s>=0.05)t[3]++; if(s>=0.1)t[4]++
+ if(s>=0.2)t[5]++; if(s>=0.3)t[6]++; if(s>=0.5)t[7]++; if(s>=1)t[8]++
+ if(minp==0||$2<minp)minp=$2; if($2>maxp)maxp=$2}
+END{printf "N %d\nSUM %.6f\nMAX %.6f\nMINPOS %d\nMAXPOS %d\nDISTINCTPOS %d\n", n,sum,mx,minp,maxp,np
+ for(i=1;i<=8;i++) printf "T %d %d\n", i, t[i]+0
+ for(i=0;i<=39;i++) printf "H %d %d\n", i, h[i]+0}
+```
+
+`b` is the quarter-decade of `-log10(score)`; the `+1e-12` and the clamp at 39 mean a literal
+zero would land in bin 39, which is how §1.2 can state there are none. Counting distinct
+positions by comparing against the previous row relies on the file being position-sorted, which
+tabix guarantees; **do not** build a hash of positions instead — `chr1` alone has 114 M of them
+and twelve parallel workers will take the machine down.
+
+### A.2 The driver
+
+```bash
+D=/data/downloads/alphagenome
+F=$D/combined_alphagenome_splicing_snvs.tsv.gz
+mkdir -p $D/hist
+tabix -l $F | xargs -P 12 -I{} sh -c "tabix '$F' '{}' | mawk -F'\t' -f hist.awk > $D/hist/{}.txt"
+```
+
+Per contig rather than one stream because `mawk`, not the decompressor, is the bottleneck: a
+single-threaded pass over 3.9 B rows is ~50 minutes against 17 for this.
+
+### A.3 The parquet sizing
+
+```python
+import subprocess
+import polars as pl
+
+F = "/data/downloads/alphagenome/combined_alphagenome_splicing_snvs.tsv.gz"
+raw = subprocess.run(["tabix", F, "chr22"], capture_output=True, text=True, check=True).stdout
+df = pl.read_csv(raw.encode(), separator="\t", has_header=False,
+                 new_columns=["chrom", "pos", "ref", "alt", "score"],
+                 schema_overrides={"pos": pl.UInt32, "score": pl.Float64})
+
+# wide, one row per position, three ALT columns; UInt32 x1e6 is exact for six decimals
+wide = (df.with_columns((pl.col("score") * 1_000_000).round().cast(pl.UInt32).alias("s"))
+          .sort(["pos", "alt"])
+          .group_by("pos", maintain_order=True)
+          .agg(pl.col("ref").first(), pl.col("s"))
+          .with_columns([pl.col("s").list.get(i, null_on_oob=True).alias(f"alt{i}")
+                         for i in range(3)])
+          .drop("s")
+          .with_columns(pl.col("ref").cast(pl.Categorical)))
+wide.write_parquet("chr22_wide.parquet", compression="zstd", compression_level=9)
+```
+
+Scale the resulting bytes by `3_924_674_451 / 57_280_128` for the genome-wide figure. `chr22` is
+1.46% of the corpus and its score distribution is close to the whole-genome one (§3.3), but it is
+still one contig — `chr19` would extrapolate high and `chr18` low.
+
+### A.4 The rarity join
+
+```python
+import glob, os, subprocess
+import polars as pl
+
+base = os.environ["JUST_DNA_PIPELINES_CACHE_DIR"]
+ens = pl.scan_parquet(glob.glob(base + "/ensembl_variations/data/homo_sapiens-chr22.parquet")[0])
+snv = ens.filter((pl.col("ref").str.len_bytes() == 1) & (pl.col("alt").str.len_bytes() == 1))
+es = snv.select(["start", "ref", "alt", "MAF"]).collect().rename({"start": "pos"})
+
+joined = df.join(es, on=["pos", "ref", "alt"], how="inner")   # df from A.3
+```
+
+`start` in the Ensembl snapshot is the 1-based position and joins directly against AlphaGenome's
+`POS` (`@start-1based`); no `-1` anywhere.
+
+### A.5 The API probe
+
+```python
+import os
+from alphagenome.data import genome
+from alphagenome.models import dna_client, variant_scorers
+
+m = dna_client.create(os.environ["ALPHAGENOME_API_KEY"])
+rs = variant_scorers.RECOMMENDED_VARIANT_SCORERS
+v = genome.Variant(chromosome="chr22", position=36201698,
+                   reference_bases="AC", alternate_bases="A")   # an indel
+out = m.score_variant(interval=v.reference_interval.resize(2**17), variant=v,
+                      variant_scorers=[rs["RNA_SEQ"]])
+```
+
+`pip install alphagenome`. Keep the venv off `/`: this machine has 8 GB free on root and the
+artifacts live on `/data`.
