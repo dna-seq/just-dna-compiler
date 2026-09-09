@@ -2089,6 +2089,28 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   created *inside* the attempt: a retry that appended to a partial body would produce a file whose
   digest is real and whose contents are nonsense, and neither a parquet footer check nor
   `raise_for_status` would catch it.
+
+  **Fourth appearance (2026-09-09, the pre-cut audit): the leg the contract test never drove.** The
+  test walked every client for a 5xx, a transport failure and a 404, and three clients leaked on the
+  case none of those is — **a 200 whose body is not JSON**, a maintenance page or a CDN interstitial.
+  `raise_for_status()` passes it and `.json()` raises `json.JSONDecodeError`, a `ValueError`. In
+  `identifiers` that landed in `cli.py`'s `except ValueError` arm, which sits *before* `except
+  IdentifierUnavailable`, so the run was filed as "a module whose rows will not load" and skipped the
+  `unreachable` attestation on exactly the run it exists for. In `ensembl` the GraphQL leg answering
+  HTML never fell through to the REST leg the method exists to provide, and `enrich` wraps that call
+  in `try/finally` with no `except`, so the whole run aborted mid-loop. `grch37.variants_at` raised
+  out of a method whose entire contract is three-valued. Every sibling client already translated
+  this leg (`pgs._get` names it); the three that did not were the three the case never reached.
+  Three things to carry. *One:* **a contract test covers the legs it drives**, and "5xx, transport,
+  404" is a list somebody wrote — a body that passes the status check and fails the parse is a
+  fourth leg, and there may be a fifth. *Two:* **a withholding client owes the same legs.** `grch37`
+  and `ensembl` were exempt from the contract table for the right reason (their contract is `None`,
+  not an exception), and the exemption was where the leak lived, so `WITHHOLDING_CLIENTS` now pins
+  the withheld *value* across all three legs instead of leaving them out. *Three:* **the discovery
+  guard keyed on a name.** RM101's registry walk found classes ending in `Client`; `EnsemblResolver`
+  constructs its own `httpx.Client` and was invisible for as long as the suffix was the test — the
+  RM101 blind spot one more time, on the oldest client in the tier. Owning a transport is the
+  criterion now, and the name is only the usual spelling.
 - `@draft-appends` — **Drafting appends, it never mutates — that word is the whole line.** `just_dna_compiler.draft`
   appends rows into an authored CSV at **row** granularity (a file-level "refuse if it exists" rule
   self-defuses after the first gene and makes a multi-gene module unbuildable). A row whose key exists

@@ -151,9 +151,22 @@ class Grch37Client:
         except (httpx.TransportError, httpx.TimeoutException, httpx.HTTPError) as exc:
             logger.warning("GRCh37 overlap for %s:%d could not be reached: %s", chrom, start, exc)
             return None
+        try:
+            features = response.json()
+        except ValueError as exc:
+            # A 200 that is not JSON — a maintenance page — is the service answering with something
+            # that cannot be read: could-not-ask, never "nothing there". Left raw it was a bare
+            # `JSONDecodeError` out of a method whose whole contract is three-valued.
+            logger.warning("GRCh37 overlap for %s:%d did not answer JSON: %s", chrom, start, exc)
+            return None
+        if not isinstance(features, list):
+            logger.warning(
+                "GRCh37 overlap for %s:%d answered %s, not a list", chrom, start, type(features).__name__
+            )
+            return None
         return [
             feature
-            for feature in response.json()
+            for feature in features
             if feature.get("assembly_name") == GRCH37_BUILD
             and feature.get("source") == "dbSNP"
             and str(feature.get("id", "")).startswith("rs")

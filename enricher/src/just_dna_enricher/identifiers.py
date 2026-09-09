@@ -636,7 +636,7 @@ class OntologyClient:
         )
         if response.status_code == 404:
             return TraitStatus(curie=curie, state="absent")
-        terms = (response.json().get("_embedded") or {}).get("terms") or []
+        terms = (_json(response).get("_embedded") or {}).get("terms") or []
         if not terms:
             return TraitStatus(curie=curie, state="absent")
         term = terms[0]
@@ -672,7 +672,28 @@ class OntologyClient:
         response = self._get(f"{self.hgnc_base.rstrip('/')}/fetch/{path}")
         if response.status_code == 404:
             return []
-        return (response.json().get("response") or {}).get("docs") or []
+        return (_json(response).get("response") or {}).get("docs") or []
+
+
+def _json(response: httpx.Response) -> dict:
+    """The body as JSON, or `IdentifierUnavailable` — the third leg of the contract.
+
+    A 200 whose body is not JSON (a maintenance page, a CDN interstitial) is the registry having
+    answered with something that cannot be read, which is *could not be asked* and never *absent*.
+    Left raw it was a `json.JSONDecodeError`, a `ValueError` subclass — and the CLI's `except
+    ValueError` arm sits before its `except IdentifierUnavailable` one, so the run was filed as "a
+    module whose rows will not load" and the `unreachable` attestation was skipped on exactly the
+    run it exists for. Every sibling client already translates this leg (`pgs._get` names it).
+    """
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise IdentifierUnavailable(f"{response.url} did not answer JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise IdentifierUnavailable(
+            f"{response.url} answered {type(payload).__name__}, not an object"
+        )
+    return payload
 
 
 def _curie_from_iri(iri: str | None) -> str | None:

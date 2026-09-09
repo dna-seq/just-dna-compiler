@@ -30,8 +30,10 @@ import pytest
 from just_dna_enricher.civic_api import CivicApiClient, CivicApiUnavailable
 from just_dna_enricher.cpic import CpicClient, CpicError
 from just_dna_enricher.currency import ClinVarReleaseClient, ReleaseUnavailable
+from just_dna_enricher.ensembl import EnsemblResolver, EnsemblSettings
 from just_dna_enricher.eutils import EutilsClient, EutilsError, EutilsSettings
 from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadSettings
+from just_dna_enricher.grch37 import Grch37Client
 from just_dna_enricher.identifiers import IdentifierUnavailable, OntologyClient
 from just_dna_enricher.litvar import LitvarClient, LitvarUnavailable
 from just_dna_enricher.net import PacingGate
@@ -62,6 +64,14 @@ def _serve(status: int) -> Callable[[httpx.Request], httpx.Response]:
 
 def _refuse(request: httpx.Request) -> httpx.Response:
     raise httpx.ConnectError("connection refused", request=request)
+
+
+def _serve_html(request: httpx.Request) -> httpx.Response:
+    """A 200 whose body is a maintenance page — the service answered, and what it said cannot be read."""
+    return httpx.Response(
+        200, text="<html><body>Scheduled maintenance</body></html>",
+        headers={"content-type": "text/html"},
+    )
 
 
 def _gnomad(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
@@ -210,9 +220,14 @@ def test_every_network_client_in_the_tier_is_covered() -> None:
         for name, obj in vars(module).items():
             if not (inspect.isclass(obj) and obj.__module__ == module.__name__):
                 continue
-            if not name.endswith("Client"):
+            source = inspect.getsource(obj)
+            # Owning a transport is the criterion; the `Client` suffix is only the usual spelling.
+            # `EnsemblResolver` constructs its own `httpx.Client` and was invisible here for as long
+            # as the name was the test — the RM101 blind spot one more time, on the oldest client
+            # in the tier.
+            if not (name.endswith("Client") or "httpx.Client(" in source):
                 continue
-            if "httpx" not in inspect.getsource(obj):
+            if "httpx" not in source:
                 continue  # a snapshot reader, not a network client
             discovered.add(f"{module_info.name}.{name}")
 
@@ -230,8 +245,12 @@ def test_every_network_client_in_the_tier_is_covered() -> None:
         # cross-module mismatch here for a caller to fall through.
         "gwas.GwasCatalogClient",
         # Raises nothing at all: every httpx path returns `None` or `[]`, which is the withhold. A
-        # contract test asserting an error type would be asserting the wrong contract.
+        # contract test asserting an error type would be asserting the wrong contract — the one in
+        # `WITHHOLDING_CLIENTS` below asserts the right one.
         "grch37.Grch37Client",
+        # The same contract as `grch37`, one tier older: `resolve_rsid` answers `(None, None)` for
+        # could-not-ask on both legs and never raises. Pinned in `WITHHOLDING_CLIENTS` too.
+        "ensembl.EnsemblResolver",
         # Same shape and the same reason (RM153). Every httpx path returns an `AlleleIdentity` whose
         # `outcome` carries the failure — `unchecked` for a transport error or a 5xx, `no_identity`
         # for a 404, which is the registry answering. There is no error type for a caller to catch
@@ -296,3 +315,72 @@ def test_a_client_error_is_not_swallowed_into_a_wrong_answer(label, builder, err
         return
     with pytest.raises(error):
         call()
+
+
+@pytest.mark.parametrize("label,builder,error", CLIENTS, ids=[c[0] for c in CLIENTS])
+def test_a_200_that_is_not_json_surfaces_as_the_tiers_own_error(label, builder, error) -> None:
+    """The third leg, and the one the two above could not see.
+
+    A maintenance page served with a 200 passes `raise_for_status()` and fails at `.json()` — a
+    `json.JSONDecodeError`, which is a `ValueError`. Three clients let that out raw for as long as
+    this file drove only 5xx, transport failure and 404; and because `cli.py`'s `except ValueError`
+    arm sits before its `except IdentifierUnavailable` one, the identifier run was filed as "a module
+    whose rows will not load" and skipped the `unreachable` attestation on exactly the run it exists
+    for. The service answered with something that cannot be read: could-not-ask, never absent.
+    """
+    if label in READS_NO_JSON:
+        assert builder(_serve_html)() is None, f"{label} must withhold on a body it cannot read"
+        return
+    call = builder(_serve_html)
+    with pytest.raises(Exception) as caught:
+        call()
+    raised = type(caught.value)
+    assert raised.__module__.startswith("just_dna_enricher") and not isinstance(
+        caught.value, (ValueError, httpx.HTTPError)
+    ), f"{label} leaked {raised.__name__} past its own error type"
+    # The tier's type or one of its own ancestors: `litvar` and `civic_api` raise the *parent* here
+    # on purpose, since a body that cannot be read is a shape failure rather than unreachability,
+    # and their `CLIENTS` rows say so.
+    assert issubclass(error, raised), f"{label} raised {raised.__name__}, outside {error.__name__}'s family"
+
+
+#: Clients whose answer is not a JSON body at all — `cpic.row_count` reads a `Content-Range` header
+#: and `currency` a gzip prefix — so an unreadable body there is the documented `None` withhold ("the
+#: source answered and what it said carries no label"), never a decode error to translate.
+READS_NO_JSON = {"cpic.row_count", "currency"}
+
+
+def _grch37(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    client = Grch37Client(gate=_instant_gate())
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    return lambda: client.variants_at("6", 26093141)
+
+
+def _ensembl(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    resolver = EnsemblResolver(settings=EnsemblSettings())
+    resolver._client = httpx.Client(transport=httpx.MockTransport(handler))
+    return lambda: resolver.resolve_rsid("rs334")
+
+
+#: `(label, builder, the value that means could-not-ask)`: the clients whose contract is a withhold
+#: rather than an exception. They are exempt from `CLIENTS` for the right reason, and that exemption
+#: is what let the non-JSON leg leak from both — a raw `JSONDecodeError` out of a method whose whole
+#: contract is three-valued. Asserted here as the *value*, so the exemption above is a decision this
+#: table holds to rather than a gap.
+WITHHOLDING_CLIENTS = [
+    ("grch37", _grch37, None),
+    ("ensembl", _ensembl, (None, None)),
+]
+
+
+@pytest.mark.parametrize(
+    "label,builder,withheld", WITHHOLDING_CLIENTS, ids=[c[0] for c in WITHHOLDING_CLIENTS]
+)
+@pytest.mark.parametrize("handler", [_serve(503), _refuse, _serve_html], ids=["5xx", "transport", "html"])
+def test_a_withholding_client_withholds_on_every_failed_leg(label, builder, withheld, handler) -> None:
+    """Every failure leg — status, transport, unreadable body — is the same withheld value, and none
+    of them is an exception. `ensembl` is the sharper case: with the GraphQL leg answering HTML the
+    resolver used to raise instead of falling through to REST, and `enrich` wraps the call in a
+    `try/finally` with no `except`, so the whole run aborted mid-loop."""
+    assert builder(handler)() == withheld
+

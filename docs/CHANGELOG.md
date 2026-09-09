@@ -65,6 +65,20 @@ behind the green. Each landed as its own commit with the test that pins it.
   is unchanged (it has no table to canonicalize against), which is why the refusal lives in the
   function both `validate` and `compile` call.
 
+- **Three clients leaked on a 200 that is not JSON** (`just-dna-enricher`; no schema change). The
+  contract test drove a 5xx, a transport failure and a 404, and a maintenance page served with a 200
+  is none of those: `raise_for_status()` passes it and `.json()` raises a bare `JSONDecodeError`.
+  `identifiers` (OLS4/HGNC) let it reach `cli.py`'s `except ValueError` arm, which sits before
+  `except IdentifierUnavailable`, so the run was filed as "rows will not load" and skipped the
+  `unreachable` attestation; `ensembl`'s GraphQL leg answering HTML never fell through to REST and
+  aborted `enrich` mid-loop; `grch37.variants_at` raised out of a three-valued method. All three now
+  translate (`IdentifierUnavailable`, `EnsemblError` → the `(None, None)` withhold, `None`). The
+  contract test gains the leg over every client, a `WITHHOLDING_CLIENTS` table pins the withheld
+  value across all three legs for the two clients whose contract is a value rather than an
+  exception, and the discovery guard now keys on owning an `httpx.Client` rather than on a `Client`
+  suffix — `EnsemblResolver` had been invisible to it since RM101. Fourth appearance of
+  `@client-exception-contract` in AGENT_NOTES.
+
 ## 2026-09-04 — the allocator reserved a number when you asked it for help
 
 **Agent tooling only (`.claude/rm-next.py`), no package, no schema, no CLI surface.** Found while

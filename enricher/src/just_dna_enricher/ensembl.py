@@ -136,7 +136,7 @@ class EnsemblResolver:
             },
         )
         resp.raise_for_status()
-        payload = resp.json()
+        payload = _json(resp)
         if payload.get("errors"):
             raise EnsemblError(f"GraphQL errors for {rsid}: {payload['errors']}")
         variant = (payload.get("data") or {}).get("variant")
@@ -156,7 +156,25 @@ class EnsemblResolver:
             headers={"Accept": "application/json"},
         )
         resp.raise_for_status()
-        return _loci_from_rest(resp.json())
+        return _loci_from_rest(_json(resp))
+
+
+def _json(response: httpx.Response) -> dict:
+    """The body as JSON, or `EnsemblError` — so `resolve_rsid` can treat it as a leg that failed.
+
+    A 200 carrying HTML (Ensembl's maintenance page, a proxy interstitial) raised a bare
+    `json.JSONDecodeError` here, and `resolve_rsid`'s first `try` catches only `httpx` types and
+    `EnsemblError`: the GraphQL leg answering HTML never fell through to the REST leg the method
+    exists to provide, and `enrich` — which wraps the call in `try/finally` with no `except` — aborted
+    mid-loop instead of recording the subject as unreachable. Typed, both legs now withhold.
+    """
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise EnsemblError(f"{response.url} did not answer JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise EnsemblError(f"{response.url} answered {type(payload).__name__}, not an object")
+    return payload
 
 
 def _loci_from_rest(payload: dict) -> list[dict]:
