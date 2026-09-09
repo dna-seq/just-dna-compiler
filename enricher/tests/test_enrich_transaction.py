@@ -703,3 +703,35 @@ def test_the_settled_count_grows_whether_or_not_a_callback_is_listening() -> Non
     watched.settle(["b"])          # already settled: no second report
     assert watched.settled == silent.settled
     assert calls == [(0, 3), (2, 3)]
+
+
+# ── the writer's column list is the model's, never a literal beside it ──────────────────────────
+
+
+def test_the_written_columns_are_derived_from_the_model(tmp_path: Path) -> None:
+    """A hand-kept column list loses a column — `SOURCES_FIELDNAMES` lost `redistribution` that way,
+    and this writer had the same shape twice over: a literal list *and* a per-column dict literal, so
+    a new optional `ResolutionRow` field would have been dropped by every run with `DictWriter`
+    raising nothing. Proven on the old writer by subclassing the model with one extra field: header
+    and row came back without it. Here the equality is asserted, and a row with every field set is
+    written and read back through the model it was written from."""
+    from just_dna_enricher.enrich import _FIELDNAMES
+
+    assert _FIELDNAMES == list(ResolutionRow.model_fields)
+
+    full = ResolutionRow(
+        variant_key="rs334", rsid="rs334", chrom="11", start=5227002, ref="T", alts="A",
+        genome_build="GRCh38", locus_index=0, vrs_id="ga4gh:VA.JGrSjQEcYOJ14vlkvm7sIyYSgHfpC5UG", vrs_spec="2.0",
+        caid="CA127301", source="ensembl-rest", authority=resolution_authority("ensembl-rest"),
+        status="resolved", rsid_alternates="rs77121243", rsid_current="rs334", rsid_status="live",
+        fetched_at="2026-09-09T00:00:00Z",
+    )
+    # Every field set, so a column the renderer skipped would show as a blank cell on reload.
+    assert all(getattr(full, name) is not None for name in ResolutionRow.model_fields)
+    path = tmp_path / "resolution.csv"
+    _write_resolution_csv([full], path)
+    header, cells = path.read_text(encoding="utf-8").splitlines()[:2]
+    assert header.split(",") == list(ResolutionRow.model_fields)
+    with path.open(newline="", encoding="utf-8") as handle:
+        reloaded = [ResolutionRow.model_validate(row) for row in csv.DictReader(handle)]
+    assert reloaded == [full]

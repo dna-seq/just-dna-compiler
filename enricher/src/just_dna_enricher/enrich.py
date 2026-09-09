@@ -125,11 +125,15 @@ from just_dna_enricher.vrs import MintResult, VrsMinter, mint_resolution_rows
 
 logger = logging.getLogger(__name__)
 
-_FIELDNAMES = [
-    "variant_key", "rsid", "chrom", "start", "ref", "alts",
-    "genome_build", "locus_index", "vrs_id", "vrs_spec", "caid",
-    "source", "authority", "status", "rsid_alternates", "rsid_current", "rsid_status", "fetched_at",
-]
+#: Derived from the model, never restated beside it (`@fieldnames-from-model`). This was a hand-kept
+#: literal in sync with `ResolutionRow` by coincidence, paired with a per-column dict literal in the
+#: writer below — the shape `SOURCES_FIELDNAMES` had when it lost `redistribution`. Here the loss
+#: would have been quieter: `DictWriter` raises nothing for a model field the dict simply omits, so
+#: the next optional column on `ResolutionRow` would have been dropped by every enrich run, and a
+#: fact column among them would have made `resolution_signature` disagree between a hand-filled
+#: table and an enricher-filled one. `ResolutionRow` carries no compiler-stamped fields, so
+#: `model_fields` is exactly the written surface.
+_FIELDNAMES: list[str] = list(ResolutionRow.model_fields)
 
 
 @dataclass(frozen=True)
@@ -2419,25 +2423,13 @@ def _write_resolution_csv(rows: list[ResolutionRow], output_path: Path) -> None:
         writer = csv.DictWriter(f, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for r in rows:
-            writer.writerow(
-                {
-                    "variant_key": r.variant_key,
-                    "rsid": r.rsid or "",
-                    "chrom": r.chrom if r.chrom is not None else "",
-                    "start": r.start if r.start is not None else "",
-                    "ref": r.ref or "",
-                    "alts": r.alts or "",
-                    "genome_build": r.genome_build,
-                    "locus_index": r.locus_index,
-                    "vrs_id": r.vrs_id or "",
-                    "vrs_spec": r.vrs_spec or "",
-                    "caid": r.caid or "",
-                    "source": r.source or "",
-                    "authority": r.authority or "",
-                    "status": r.status or "",
-                    "rsid_alternates": r.rsid_alternates or "",
-                    "rsid_current": r.rsid_current or "",
-                    "rsid_status": r.rsid_status or "",
-                    "fetched_at": r.fetched_at or "",
-                }
-            )
+            # Generic over the fields for the reason `_FIELDNAMES` gives: a per-column dict literal is
+            # a hand-kept column list one edit later. `None` is the empty cell; every other value is
+            # written as the model holds it (`start`/`locus_index` are ints and render as such).
+            writer.writerow({name: _resolution_cell(getattr(r, name)) for name in _FIELDNAMES})
+
+
+def _resolution_cell(value: object) -> str:
+    """`None` is the empty cell, everything else its `str`. `ResolutionRow` has no boolean field, so
+    there is no tri-state spelling to agree with the compiler about here."""
+    return "" if value is None else str(value)

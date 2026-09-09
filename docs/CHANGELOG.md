@@ -34,7 +34,24 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-04 (latest) — the allocator reserved a number when you asked it for help
+## 2026-09-09 (latest) — the pre-cut audit: what a green suite and a passing sweep did not see
+
+**Found by a code audit against the house rules rather than by a failure**, run after the 2026-09-01
+readiness measurement had gone 138 commits stale. Every gate was re-measured first and held (the
+table in INTEGRATION_0_7 § 5 carries the commit); the items below are what reading the code found
+behind the green. Each landed as its own commit with the test that pins it.
+
+- **`resolution.csv`'s writer kept its column list by hand, twice** (`just-dna-enricher`, no output
+  change today). `enrich._FIELDNAMES` was a literal in sync with `ResolutionRow` by coincidence,
+  paired with a per-column dict literal in `_write_resolution_csv` — the shape `SOURCES_FIELDNAMES`
+  had when it lost `redistribution`, and quieter here because `DictWriter` raises nothing for a model
+  field the dict simply omits. The next optional column on `ResolutionRow` would have been dropped by
+  every enrich run, and a fact column among them would have made `resolution_signature` disagree
+  between a hand-filled and an enricher-filled table. Now `list(ResolutionRow.model_fields)` and a
+  generic renderer, the idiom every sibling writer already uses; reproduced on the old writer by
+  subclassing the model with one extra field, and pinned by the equality plus a full-row read-back.
+
+## 2026-09-04 — the allocator reserved a number when you asked it for help
 
 **Agent tooling only (`.claude/rm-next.py`), no package, no schema, no CLI surface.** Found while
 clearing a stale `🔷 reserved` row that RM187 had left in `RM_TOC.md` after the item shipped.
