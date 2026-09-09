@@ -81,6 +81,15 @@ question.
    splicing pipeline never scored a position, so the source itself collapses unmeasured into
    no-effect (§1.5).
 
+5e. **AVI's `PHRED` is a size dial, not a measurement.** Measured over all 8,812,917,339 rows,
+   `PHRED ≥ p` keeps exactly `10^(-p/10)` of the corpus — to four significant figures across four
+   orders of magnitude. So its histogram is a straight line by construction, there is no natural
+   cut to find, and choosing a threshold *is* choosing a dataset size: **6.7 GB at ≥10 (top
+   decile), 662 MB at ≥20 (top percentile), 34.4 GB for everything with `raw_score` alone**. It
+   also contradicts the FAQ's common-variant background, so `PHRED` cannot substitute for the
+   missing rarity axis. And because a rank discards sign, thresholding on it drops **every
+   down-regulating variant** — 49.30% of the corpus is negative (§4.4).
+
 5d. **Motifs are not a dataset at either surface, and the API is still the only route.** "motif"
    appears nowhere in the SDK and none of the 22 Atlas scorers is one; the announced "Motif
    datasets" are unpublished. What reads a motif is in-silico mutagenesis, and one interval query
@@ -225,11 +234,13 @@ Three differences from the splicing file, each of them load-bearing:
    linearly mapped to [−1, 1] instead, with 0 at the median. AVI is unsigned, so its quantile is
    [0, 1) and the Phred transform applies.
 
-   **The rarity axis is therefore already inside the calibrated score**, which matters for §5:
-   `PHRED` is not an independent second dimension to cross with allele frequency, it is a
-   comparison *against* common variation already made. So `raw_score` and `PHRED` are the
-   magnitude and the surprise, and pairing `PHRED` with gnomAD MAF double-counts the same
-   reference set.
+   **That description does not match what the published AVI artifact does** — see §4.4, which
+   measures `PHRED` against the whole corpus and finds it is an exact rank *within the corpus of
+   all possible SNVs*, not against a 300 K common-variant background. The FAQ is describing the
+   API's `quantile_score` for the recommended per-modality scorers; AVI's published column behaves
+   differently, and the difference is measurable to four significant figures. So **the rarity axis
+   is not already inside `PHRED`** — a tempting inference from the FAQ alone, and the measurement
+   refuses it.
 
    So `calibrated` is a percentile rank and `PHRED` is its presentation. **A parquet needs
    `raw_score` and one of the two, never all three** — and the choice matters, because a
@@ -237,13 +248,42 @@ Three differences from the splicing file, each of them load-bearing:
    the Atlas page means by "AVI scores and Phred-scaled scores": one score and one rescaling of
    its calibration, not two independent measures.
 
-### 1.4 AVI's distribution — measured, pending
+### 1.4 AVI, measured whole
 
-The same 12-way per-contig pass is queued behind the extraction (`/data/downloads/alphagenome/
-avi_pass.sh`, writing `avi_hist/<contig>.txt`). Until it lands, **none of §3's or §4's numbers
-apply to AVI** — different corpus, different row count, an extra column and a sign
-(`@probe-names-the-table`). The one thing already established is that its rows begin at the
-start of the assembly, so the ~3.9 billion of §1.2 is a floor and not an estimate for it.
+Same 12-way per-contig pass as §3, over the complete extracted artifact; 46 minutes.
+
+| | |
+| --- | --- |
+| Rows | **8,812,917,339** |
+| Distinct positions | **2,937,639,113** (3.000 rows each) |
+| Contigs | `chr1`–`chr22`, `chrX`, `chrY`. No `chrM`. |
+| `raw_score` | −1.269 … 6.081, mean 0.028291 |
+| …negative | **4,344,533,049 — 49.30%** |
+| …exactly zero | 672,931 |
+| `PHRED` | 0 … 89.451, mean 4.343 |
+
+**AVI is genome-wide where splicing was not.** 2.94 billion positions against splicing's 1.31
+billion — about **95% of the GRCh38 primary assembly** rather than 42%, and 2.25× the rows. The
+§3/§4 arithmetic does not transfer, which §4.3 already said and this confirms.
+
+**`raw_score` is signed and the sign is half the corpus.** 49.30% negative is not a tail; it is a
+direction, and any ingest that takes `abs()` throws away what half the rows are saying. It also
+has **672,931 exact zeros**, where the splicing artifact had none — so for AVI, unlike splicing,
+`0.0` is a value the file actually writes and `absent` has to be represented some other way.
+
+Its magnitude distribution is a clean lognormal-ish hump, peaking two quarter-decades below 0.03:
+
+| `\|raw_score\|` | rows | share | cumulative |
+| --- | ---: | ---: | ---: |
+| ≥ 0.562 | 88,276,488 | 1.002% | 1.00% |
+| 0.316 – 0.562 | 216,463,116 | 2.456% | 3.46% |
+| 0.178 – 0.316 | 564,208,351 | 6.402% | 9.86% |
+| 0.100 – 0.178 | 986,164,637 | 11.190% | 21.05% |
+| 0.056 – 0.100 | 1,403,446,097 | 15.925% | 36.98% |
+| **0.032 – 0.056** | **1,803,697,674** | **20.467%** | 57.44% |
+| 0.018 – 0.032 | 1,471,529,460 | 16.697% | 74.14% |
+| 0.010 – 0.018 | 956,931,155 | 10.858% | 85.00% |
+| below 0.010 | 1,321,401,459 | 15.000% | 100.00% |
 
 ### 1.5 The SHAP artifact is a feature table, not an opacity
 
@@ -682,6 +722,96 @@ none of this arithmetic reaches it either. `@probe-names-the-table`: a negative 
 finding about "the source" is only as wide as the table it was taken from.
 
 ---
+
+### 4.4 AVI triage: `PHRED` is a size dial, exactly
+
+This is the 2D size × rarity × effect surface projected onto one axis — and the projection turns
+out to be degenerate in a way that is worth knowing before anyone designs against it.
+
+#### 4.4.1 The histogram carries no information, because it *is* the transform
+
+`PHRED = -10 log10(1 - q)` with `q` a rank, so if the ranking is over the corpus itself then
+`PHRED ≥ p` keeps exactly `10^(-p/10)` of the rows. Measured against all 8,812,917,339:
+
+| threshold | rows kept | observed | `10^(-p/10)` | ratio |
+| --- | ---: | ---: | ---: | ---: |
+| ≥ 1 | 7,000,282,021 | 79.4321% | 79.4328% | 0.99999 |
+| ≥ 5 | 2,786,658,500 | 31.6202% | 31.6228% | 0.99992 |
+| ≥ 10 | 881,307,226 | 10.0002% | 10.0000% | 1.00002 |
+| ≥ 15 | 278,594,125 | 3.1612% | 3.1623% | 0.99966 |
+| ≥ 20 | 88,119,754 | 0.9999% | 1.0000% | 0.99990 |
+| ≥ 25 | 27,854,420 | 0.3161% | 0.3162% | 0.99960 |
+| ≥ 30 | 8,812,976 | 0.1000% | 0.1000% | 1.00000 |
+| ≥ 40 | 882,484 | 0.0100% | 0.0100% | 1.00000 |
+
+**Four significant figures across four orders of magnitude.** `PHRED` in this artifact is the
+variant's exact percentile rank among all possible human SNVs, and nothing else. Two consequences:
+
+- **A `PHRED` histogram is a straight line in log space and tells you nothing about the data.**
+  Any threshold selects a predetermined fraction. There is no shoulder to find, no natural cut, no
+  "most variants are negligible" to discover — that shape was assigned by the transform, not
+  measured from biology.
+- **Choosing a `PHRED` threshold is identical to choosing a dataset size**, which makes it an
+  unusually honest dial: state the budget, read off the cut. It is the *opposite* of the splicing
+  file, where §3.2's cliff between 0.02 and 0.05 was real structure.
+
+It also contradicts the upstream FAQ, which describes the quantile background as ~300 K **common**
+variants (MAF > 0.01 in gnomAD v3). An all-possible-SNV corpus scored against a common-variant
+background would be shifted upward, visibly and by a lot. It is not shifted at all. So the FAQ
+describes the API's `quantile_score` for the recommended per-modality scorers, and the AVI
+artifact's `PHRED` is calibrated on something corpus-shaped instead. **Whatever the mechanism, the
+practical point stands: `PHRED` is not a rarity comparison, so it cannot stand in for the missing
+allele-frequency axis of §5.**
+
+#### 4.4.2 Where the information actually is
+
+`raw_score`, and it is not degenerate: §1.4's magnitude histogram is a lognormal-ish hump peaking
+at 0.032–0.056 with 20.5% of rows in that one quarter-decade, and it is **signed**, with 49.30%
+negative. The sign is the half of the corpus a rank transform necessarily discards — every row
+above `PHRED` 5 is positive, and at `PHRED ≥ 1` still 36.17% are negative, so the negatives are
+compressed into the bottom of the scale where a threshold cannot distinguish them.
+
+**A triage that thresholds on `PHRED` therefore throws away every down-regulating variant**, which
+is a design decision rather than a filter, and one nothing in the column names warns you about.
+
+#### 4.4.3 Dataset size at each cut
+
+Measured on `chr22` (117,479,331 rows) and scaled by the genome-wide row counts above. `both int`
+stores `raw_score` and `PHRED` as scaled integers at the source's own 5 decimal places; `raw only`
+drops `PHRED` entirely, which is defensible precisely because §4.4.1 shows it is a rank the
+threshold already encodes.
+
+| threshold | rows | % corpus | both `f32` | both int | `raw_score` only |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| all | 8,812,917,339 | 100% | 69.0 GB | 59.1 GB | **34.4 GB** |
+| ≥ 1 | 7,000,282,021 | 79.43% | 56.3 GB | 46.5 GB | 27.9 GB |
+| ≥ 5 | 2,786,658,500 | 31.62% | 22.8 GB | 18.5 GB | 12.5 GB |
+| ≥ 10 | 881,307,226 | 10.00% | 6.7 GB | 5.7 GB | 3.9 GB |
+| ≥ 15 | 278,594,125 | 3.16% | 2.1 GB | 1.8 GB | 1.2 GB |
+| ≥ 20 | 88,119,754 | 1.00% | 662 MB | 550 MB | 387 MB |
+| ≥ 25 | 27,854,420 | 0.32% | 201 MB | 168 MB | 127 MB |
+| ≥ 30 | 8,812,976 | 0.10% | 70 MB | 61 MB | 48 MB |
+| ≥ 40 | 882,484 | 0.01% | 7 MB | 6 MB | 5 MB |
+
+**Unlike splicing, AVI does not fit whole.** The full corpus is 69 GB as parquet against the
+splicing file's 11.4 GB, because there are 2.25× the rows and two columns rather than one. So for
+this artifact the threshold question is real, and the 40 GB budget bites at about `PHRED ≥ 2`
+(`raw_score` only) or between `PHRED ≥ 1` and `≥ 5` if both columns are kept.
+
+Three cuts worth naming, none chosen here:
+
+- **`PHRED ≥ 10` — 6.7 GB, 881 M rows, the top decile.** Comparable in size to the caches this
+  repo already provisions, and a round number a consumer can reason about.
+- **`PHRED ≥ 20` — 662 MB, 88 M rows, the top percentile.** Small enough to ship anywhere, and
+  still 30× more variants than ClinVar carries in total.
+- **Everything, `raw_score` only, 34.4 GB.** Keeps the sign and every row, inside the stated
+  budget, and lets a consumer compute their own rank because §4.4.1 shows `PHRED` is recoverable
+  from the ranking they would then hold.
+
+The same collision as §4.2 applies and is worse here: at any threshold a missing row means either
+"not scored" or "scored below the cut", and AVI writes **672,931 exact zeros**, so `0.0` cannot be
+the sentinel either. A thresholded AVI artifact must record its own threshold or the ambiguity is
+unrecoverable.
 
 ## 5. The rarity axis — it exists, and it is 6% populated
 

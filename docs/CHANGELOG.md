@@ -34,7 +34,37 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — the light Atlas client is declarable after all, and now it is built
+## 2026-09-10 (latest) — AVI measured whole, and its `PHRED` turns out to be a size dial
+
+Sixth and final round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md): the 88.5 GB AVI
+artifact extracted and passed over in 46 minutes, 24 contigs, 12-way. No `RMn`, no adoption.
+
+- **AVI is genome-wide where splicing was not**: **8,812,917,339 rows** over 2,937,639,113 positions,
+  ~95% of the primary assembly against splicing's 42%, and 2.25× the rows. `raw_score` is **signed and
+  49.30% negative**, so an ingest calling `abs()` discards what half the corpus says, and it writes
+  **672,931 exact zeros** where the splicing artifact had none — so `0.0` cannot be an absent sentinel
+  here either.
+- **`PHRED ≥ p` keeps exactly `10^(-p/10)` of the corpus** — 79.4321% at ≥1, 10.0002% at ≥10, 0.9999%
+  at ≥20, 0.0100% at ≥40, matching the transform to four significant figures across four orders of
+  magnitude. The column is the variant's exact percentile rank among all possible SNVs, so **its
+  histogram is a straight line by construction**: no shoulder, no natural cut, nothing to discover.
+  What it *is* is an unusually honest dial — state the budget, read off the threshold.
+- **That refutes an inference this document had already drawn.** From the upstream FAQ alone it looked
+  as though the rarity axis was already inside the calibrated score, the background being ~300 K common
+  variants at MAF > 0.01. An all-possible-SNV corpus scored against a common-variant background would
+  be visibly shifted; it is not shifted at all. The FAQ describes the API's `quantile_score` for the
+  recommended scorers, and AVI's published column behaves differently. **`PHRED` is not a rarity
+  comparison and cannot stand in for §5's missing allele-frequency axis.**
+- **Thresholding on `PHRED` drops every down-regulating variant.** Every row above `PHRED` 5 is
+  positive; at ≥1, 36.17% are still negative. A rank discards sign, and nothing in the column names
+  warns of it — a design decision disguised as a filter.
+- **Sizes at each cut**, measured on `chr22` and scaled: 69.0 GB for everything with both columns as
+  `f32`, **34.4 GB `raw_score` only**, 6.7 GB at ≥10, 662 MB at ≥20, 70 MB at ≥30. Unlike splicing,
+  **AVI does not fit whole** — 69 GB against 11.4 GB — so here the threshold question is real, and the
+  40 GB budget bites around `PHRED ≥ 2`. The information lives in `raw_score`, whose magnitude
+  histogram is a genuine lognormal-ish hump peaking at 0.032–0.056 with 20.5% of rows.
+
+## 2026-09-10 — the light Atlas client is declarable after all, and now it is built
 
 Fifth round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md), after reading the upstream
 repository rather than the rendered docs. Still no `RMn`, still nothing imported by a shipped package.
