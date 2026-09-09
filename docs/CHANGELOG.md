@@ -94,6 +94,17 @@ behind the green. Each landed as its own commit with the test that pins it.
   left the partial its docstring promised was gone; removed on every failure now, translated only
   for the transport.
 
+- **A rejected partial row widened the author's header, and both drafting writers truncated the
+  author's file in place** (`just-dna-compiler`, drafting surface only; no artifact change).
+  `append_partial_rows` computed what the batch fills over every partial *before* the loop rejected
+  any, so a column only an invalid row filled — or only an already-present row, or a raw `""` —
+  was added to a hand-authored CSV, empty in every row; `append_rows` had always decided it over the
+  rows it writes. Now decided over the accepted rows, with a blank counting as unfilled, and a dry
+  run reports the extension it would have made rather than the one it was asked for. Separately,
+  both writers opened the author's CSV with `open(path, "w")` after reading it, so a kill mid-rewrite
+  left a valid short file; both go through `atomic_writer` now, the append path copying the author's
+  bytes through verbatim, and an AST walk pins it the way the enricher's sidecar guard does.
+
 ## 2026-09-04 — the allocator reserved a number when you asked it for help
 
 **Agent tooling only (`.claude/rm-next.py`), no package, no schema, no CLI surface.** Found while

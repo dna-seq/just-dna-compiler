@@ -50,6 +50,7 @@ from just_dna_format.layout import (
     SIDECAR_SPELLINGS,
     SOURCES_CSV,
     SidecarCollision,
+    atomic_writer,
     resolve_sidecar,
     sidecar_spellings,
 )
@@ -462,7 +463,10 @@ def append_rows(
         # so a rewrite can never reformat `1.0` to `1`; only their line number can change.
         previous = _render_existing(path, fieldnames) if existing_header else []
         merged, shifted = place_rows(previous, rendered, group_by)
-        with open(path, "w", encoding="utf-8", newline="") as handle:
+        # Atomic, on both branches: this is the author's own file, the one class of file this module
+        # promises never to damage, and a kill between `open(.., "w")` and the last `writerows` left
+        # it truncated to a valid short CSV that nothing downstream could tell from a shorter table.
+        with atomic_writer(path, newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(merged)
@@ -470,8 +474,11 @@ def append_rows(
         # The common case: the header already fits, so existing bytes are literally untouched — bar a
         # final newline the file may be missing. A hand-authored CSV often has none (plenty of editors
         # do not add one), and appending straight onto it would glue the first new row to the author's
-        # last one, corrupting a row this module promises never to touch.
-        with open(path, "a", encoding="utf-8", newline="") as handle:
+        # last one, corrupting a row this module promises never to touch. The existing bytes are
+        # copied through verbatim rather than re-rendered, so the atomic rewrite changes none of them.
+        existing_text = path.read_text(encoding="utf-8", newline="")
+        with atomic_writer(path, newline="") as handle:
+            handle.write(existing_text)
             if not _ends_with_newline(path):
                 handle.write(csv.excel.lineterminator)
             csv.DictWriter(handle, fieldnames=fieldnames).writerows(rendered)
@@ -572,22 +579,19 @@ def append_partial_rows(
         with open(path, encoding="utf-8", newline="") as handle:
             existing_header = next(csv.reader(handle), [])
 
-    # The header grows to fit what this batch fills, the same way `append_rows` does. It has to be
-    # settled BEFORE the existing rows are re-rendered: rendering them against the model's full field
-    # list and then writing them under the file's narrower header handed `csv.DictWriter` dicts with
-    # columns the header lacks, and the author saw a raw `ValueError: dict contains fields not in
-    # fieldnames` rather than a diagnosis (`@specific-rejection`). It reproduced on every shipped
-    # example whose CSV predates a column the model has since gained.
-    filled = {
-        name
-        for partial in partials
-        for name, value in ((n, partial.cells.get(n)) for n in (*partial.cells, *partial.stubbed))
-        if name in partial.stubbed or (value is not None and value != [])
-    }
+    # The header grows to fit what this batch fills, the same way `append_rows` does — and, as there,
+    # what the batch fills is decided over the rows that will actually be WRITTEN, after the loop
+    # below has rejected the invalid ones and the ones already covered. Computed over every partial
+    # up front, a column an invalid row filled, or an already-present row filled, widened the
+    # author's header with a column no written row had anything to put in; and a raw `""` counted
+    # as filled where `append_rows`' `_authored_dump` already reads a blank as `None`. The header the
+    # existing rows are re-rendered against is settled before that rewrite for the reason
+    # `@specific-rejection` records: rendered against the model's full field list and written under
+    # the file's narrower header, `csv.DictWriter` raised a raw `ValueError: dict contains fields not
+    # in fieldnames`, on every shipped example whose CSV predates a column the model has since gained.
     header = existing_header or fieldnames
-    extended = [name for name in fieldnames if name in filled and name not in header]
-    fieldnames = header + extended
-    previous = _render_existing(path, fieldnames) if existing_header else []
+    model_fieldnames = fieldnames
+    previous = _render_existing(path, header) if existing_header else []
 
     # The covered-set is built from ONE `match_on`, so every partial in a batch must share it. A
     # provider computing `match_on` per row from whichever identity cells that row happened to carry
@@ -603,7 +607,7 @@ def append_partial_rows(
         )
 
     outcomes: list[RowOutcome] = []
-    to_write: list[dict[str, str]] = []
+    accepted: list[PartialRow] = []
     covered = [
         tuple((row.get(column) or "").strip() for column in partials[0].match_on)
         for row in previous
@@ -622,14 +626,27 @@ def append_partial_rows(
             continue
         covered.append(signature)
         outcomes.append(RowOutcome(signature, "added"))
-        to_write.append(partial.rendered(fieldnames, list_fields))
+        accepted.append(partial)
+
+    filled = {
+        name
+        for partial in accepted
+        for name in (*partial.cells, *partial.stubbed)
+        if name in partial.stubbed or partial.cells.get(name) not in (None, "", [])
+    }
+    extended = [name for name in model_fieldnames if name in filled and name not in header]
+    fieldnames = header + extended
+    to_write = [partial.rendered(fieldnames, list_fields) for partial in accepted]
 
     if dry_run or not to_write:
         return DraftReport(csv_name, path, outcomes, written=False, header_extended=extended)
 
+    if extended:
+        previous = _render_existing(path, fieldnames) if existing_header else []
     merged, shifted = place_rows(previous, to_write, group_by)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", encoding="utf-8", newline="") as handle:
+    # Atomic: the author's own file, see `append_rows`.
+    with atomic_writer(path, newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(merged)

@@ -274,3 +274,61 @@ def test_a_uniform_batch_matches_on_a_second_lap_even_where_cells_are_empty(tmp_
     second = append_partial_rows(tmp_path, "variants.csv", batch)
     assert second.added == [] and len(second.already_present) == 2
     assert len(_rows(tmp_path / "variants.csv")) == 2, "a second lap must not grow the file"
+
+
+def test_a_rejected_partial_may_not_widen_the_authors_header(tmp_path: Path) -> None:
+    """The header grows to fit what the batch WRITES, not what it was handed. `filled` was computed
+    over every partial before the loop rejected any, so a column an invalid row filled — or an
+    already-present row filled, or a raw `""` — widened the author's header with a column no written
+    row had anything to put in. Reproduced: one invalid partial filling `gene` beside one valid partial
+    filling nothing new rewrote `rsid,state,conclusion,genotype` as `...,gene`, empty in every row."""
+    narrow = ["rsid", "state", "conclusion", "genotype"]
+    path = tmp_path / "variants.csv"
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=narrow)
+        writer.writeheader()
+        writer.writerow({"rsid": "rs1801131", "state": "risk", "conclusion": "c", "genotype": "AA"})
+
+    invalid = _partial("not-an-rsid", gene="MTHFR")          # rejected, and the only row filling `gene`
+    present = _partial("rs1801131", clin_sig="pathogenic")     # already there, and the only row filling `clin_sig`
+    blank = _partial("rs1801133", gene="")                     # a raw blank is not a filled cell
+    report = append_partial_rows(tmp_path, "variants.csv", [invalid, present, blank])
+
+    assert [o.status for o in report.outcomes] == ["invalid", "already_present", "added"]
+    assert report.written and report.header_extended == []
+    assert _header(path) == narrow, "a column only a rejected row filled was added to the header"
+    assert [row["rsid"] for row in _rows(path)] == ["rs1801131", "rs1801133"]
+
+    # And a dry run of a batch that would extend reports the extension it did not make, while a
+    # batch with nothing to write reports none — the report names what happened, not what was asked.
+    dry = append_partial_rows(tmp_path, "variants.csv", [_partial("rs1801133", gene="MTHFR")], dry_run=True)
+    assert dry.written is False and dry.header_extended == [], "the row is present, so nothing would extend"
+    dry = append_partial_rows(tmp_path, "variants.csv", [_partial("rs2228570", gene="VDR")], dry_run=True)
+    assert dry.written is False and dry.header_extended == ["gene"]
+    assert _header(path) == narrow
+
+
+def test_the_authors_csv_is_never_truncated_in_place() -> None:
+    """Both drafting writers rewrite the author's own file — the one class of file this module
+    promises never to damage — and did so through `open(path, "w")`, so a kill between the open and
+    the last `writerows` left a valid short CSV nothing downstream could tell from a shorter table.
+    Walked by AST, the same guard the enricher keeps over its sidecar writers."""
+    import ast
+    import inspect
+
+    from just_dna_compiler import draft
+
+    for name in ("append_rows", "append_partial_rows"):
+        tree = ast.parse(inspect.getsource(getattr(draft, name)))
+        truncating = [
+            ast.unparse(node)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and (getattr(node.func, "id", None) == "open" or getattr(node.func, "attr", None) == "open")
+            and any(
+                isinstance(arg, ast.Constant) and isinstance(arg.value, str) and set(arg.value) & {"w", "a"}
+                for arg in (*node.args, *(kw.value for kw in node.keywords if kw.arg == "mode"))
+            )
+        ]
+        assert not truncating, f"{name} writes the author's file in place: {truncating}"
+        assert "atomic_writer" in inspect.getsource(getattr(draft, name))
