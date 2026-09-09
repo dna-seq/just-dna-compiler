@@ -34,7 +34,43 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — the AVI artifact is a different corpus, and a 22 MB client reaches all of it
+## 2026-09-10 (latest) — the Output Terms want the licence inside the artifact, and the dep moved to an extra
+
+Third round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md). Still no `RMn` and still no
+adoption; what changed is that the terms are now readable from the repo and the dependency question has
+a landed answer.
+
+- **`alphagenome` is an optional extra, not a core dependency of the enricher.** A default install is
+  back to its 45-package closure; `just-dna-enricher[alphagenome]` adds 36 more (anndata, pandas,
+  scipy, zarr, h5py, matplotlib, seaborn, pyarrow, …). The 22 MB protos-only client measured in §6.2 is
+  **not declarable** — the generated stubs ship only inside the wheel, so the light path is
+  `pip install --no-deps alphagenome grpcio protobuf`, a deployment recipe rather than a dependency
+  specifier, and declaring it would mean vendoring the protos. Nothing imports either yet.
+- **Four terms documents are now pinned in `docs/vendor/`** with `pdftotext` extractions and recorded
+  hashes: the Additional Terms (2026-09-08), the **Output Terms of Use** (Effective 2025-06-25), the
+  Google Terms of Service (2026-07-30) and the Google APIs Terms of Service (2021-11-09). Two binding
+  documents are still missing, and §2.8 names them — the Generative AI Prohibited Use Policy, and the
+  website section that says **which artifacts are Permissive**, which is the only statement of the
+  single most consequential claim in the whole probe.
+- **The Output Terms add three things the Additional Terms did not say** (§2.7). The licence text must
+  travel **inside** a derivative rather than as a link — restriction 3b makes the "Use restrictions"
+  section an enforceable provision anyone attaching their own terms must carry, which is the shape
+  `SNAPSHOT_LICENSE_FILENAME` already has for ClinPGx. Google may demand deletion **on breach**, not
+  only on termination. And the applicable version is pinned to **the date the Output was generated**,
+  which turns an artifact's timestamp into a legally load-bearing field and is the argument for
+  recording `license_sha256` and a dated `dataset` rather than linking a live page. The document also
+  predates the Atlas by fifteen months and carries no AVI carve-out at all.
+- **The SHAP artifact is a 20-column feature table, not an opacity** (§1.5): `MERGED_SPLICING`, nine
+  `MAX_ABS_*` modality scores, and three third-party features — `ALPHAMISSENSE`, `CACTUS_241_WAY`,
+  `PHASTCONS_470_WAY` — so a module carrying those columns stacks terms rather than inheriting one
+  set. Its `MERGED_SPLICING` is the splicing artifact **rescaled by 3.345 ± 0.043**, not copied, so
+  neither file recovers the other exactly and a module must say which it read. And it writes `0.0`
+  where the splicing pipeline never scored a position — 2.42 M of 2.95 M rows in the window measured —
+  so the source itself collapses unmeasured into no-effect, `@unreachable-not-absent` occurring
+  upstream of us. Its `IS_INSERTION`/`IS_DELETION` columns are constant `0` across 8 M sampled rows
+  despite the filename, so the SNV-only finding survives being checked.
+
+## 2026-09-10 — the AVI artifact is a different corpus, and a 22 MB client reaches all of it
 
 Second round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md). Still no `RMn`, still no
 adoption, and **`alphagenome>=0.9.0` is deliberately left uncommitted** in `enricher/pyproject.toml` —
