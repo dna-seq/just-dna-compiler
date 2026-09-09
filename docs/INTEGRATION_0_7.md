@@ -674,7 +674,9 @@ genotype while the 0.4 families keep the string) and the `stats` counter retype.
 ## 5. Readiness
 
 **Gates, re-run on this branch on 2026-09-09 at `a6f31f8`**, the last of the seven pre-cut audit
-fixes (CHANGELOG § 2026-09-09). The 2026-09-01 measurement at `741ec59` is superseded: 145 commits
+fixes (CHANGELOG § 2026-09-09); `3d5f855`, one commit later, adds a test and removes a `noqa` comment
+and is the commit `dist/` was built from — the two cache-lane suites were re-run there, the full
+suite was not. The 2026-09-01 measurement at `741ec59` is superseded: 145 commits
 landed after it (RM160, RM171, RM174–RM188 and the audit), and one of its rows stated a basis that
 had already stopped being true — see the notes under the table.
 
@@ -702,7 +704,7 @@ signature (the corpus row above is the measurement). Two notes on the cut itself
 
 1. The three `pyproject.toml` files read `0.7.0` while `git tag` stops at `v0.6.6`, so anything
    published from here must be a real cut. **`dist/` was rebuilt on 2026-09-09 from a detached
-   worktree at `a6f31f8`** and holds the six 0.7.0 artifacts and nothing else; the six it held before
+   worktree at `3d5f855`** and holds the six 0.7.0 artifacts and nothing else; the six it held before
    were built at `741ec59` on 2026-09-01 and **lacked twenty enricher modules** added since (the
    MITOMAP, STRchive, CIViC, drug-label, LitVar, PGS and MANE lanes among them) — the same version
    number over different bytes, which is the worst state a `dist/` can be in. Those stale six were
@@ -712,12 +714,12 @@ signature (the corpus row above is the measurement). Two notes on the cut itself
 
    | artifact | sha256 |
    | --- | --- |
-   | `just_dna_format-0.7.0-py3-none-any.whl` | `a5dafeb868f8162447d436c3650b96bcd4111e2e4611b158681d202fdb3c5bb2` |
+   | `just_dna_format-0.7.0-py3-none-any.whl` | `a105203f105c91a9038b4a5db14aaadf7515a38ef9254b045ebbc6316ddcc776` |
    | `just_dna_format-0.7.0.tar.gz` | `2f32945d0aad27c95357d3ecf2a67bb3e2ea1958aaaac9cb0af9c3e729f5815a` |
-   | `just_dna_compiler-0.7.0-py3-none-any.whl` | `5cf647ed5d261a2cc34bde3091cfc22772dee89c79cf2fe14ff3e3cfe4d99c38` |
+   | `just_dna_compiler-0.7.0-py3-none-any.whl` | `5db35e552482e64290e3e23d9ba96cb6e1b41381815a7abf3faddd95b16edbc5` |
    | `just_dna_compiler-0.7.0.tar.gz` | `7a0493211b4a545dd9bf1c3a424ccc599cc2335cb1e7dea5e9b83c633541a708` |
-   | `just_dna_enricher-0.7.0-py3-none-any.whl` | `5d2db2065945bfa3cc5f06a843a26ad92cbd37d563912df69e0bf5486c7782e4` |
-   | `just_dna_enricher-0.7.0.tar.gz` | `f34ee1b9b7f89a21e932901315fae5e009a384221dd84cc653113e91fd346edf` |
+   | `just_dna_enricher-0.7.0-py3-none-any.whl` | `8d066166edda0512124a0a9a8c1890c008b41352233e0a299c6418f3db9e1880` |
+   | `just_dna_enricher-0.7.0.tar.gz` | `3bbb43551315c00af86ac4ddc295203b33865ef3108b9243b83c9ce2fb2d66af` |
 
    A build is taken from a detached worktree rather than the checkout because `uv build` reads the
    working tree, so an uncommitted file inside a package directory would ship in the wheel. The
