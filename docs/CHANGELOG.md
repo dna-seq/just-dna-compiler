@@ -79,6 +79,21 @@ behind the green. Each landed as its own commit with the test that pins it.
   suffix — `EnsemblResolver` had been invisible to it since RM101. Fourth appearance of
   `@client-exception-contract` in AGENT_NOTES.
 
+- **A directory is not a snapshot — three cache-side repairs** (`just-dna-enricher`; no schema
+  change). *(1)* The derived-lane parent guard judged a parent by `is_dir()`, and every adapter
+  `mkdir`s before it downloads, so a ClinVar fetch cut mid-body left an empty `out/clinvar/` that the
+  guard accepted; `mitomap_miss` then ran, its join found no parquet, and the **child** was the lane
+  reported FAILED — the arm the guard's own docstring forbids. Parents are judged by their lane's
+  resolver now (`_snapshot_at`), and a supplied path with no payload is reported missing by name
+  rather than silently swapped for the machine's older cache. *(2)* `prepare_lane` read `resolve()
+  is None` as "absent" and renamed its staging directory onto a target that could exist with no
+  payload, so `Directory not empty` escaped the whole `cache prepare` with every later lane
+  unattempted; it refuses before the build now, naming `cache prune`, since provisioning never
+  deletes, and `prepare_caches` isolates each lane the way `cache pull` always has. *(3)*
+  `net.stream_to_file` removed its `.part` only on `httpx.HTTPError`, so a disk that filled mid-body
+  left the partial its docstring promised was gone; removed on every failure now, translated only
+  for the transport.
+
 ## 2026-09-04 — the allocator reserved a number when you asked it for help
 
 **Agent tooling only (`.claude/rm-next.py`), no package, no schema, no CLI surface.** Found while

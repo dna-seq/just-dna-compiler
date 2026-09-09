@@ -3681,6 +3681,26 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   refused on a fourth kind of reason, neither a licence refusal nor an unestablished permission: both
   parents are redistributable, but a pulled copy would carry a currency check its holder cannot run.
 
+  **A directory is not a snapshot (2026-09-09, the pre-cut audit).** The guard above judged a parent
+  by `is_dir()`, and every adapter `mkdir`s its `out_dir` before it downloads anything — so a parent
+  whose fetch was cut mid-body (the NCBI incident RM187 was written for) left an empty `out/clinvar/`
+  that both `parents_from_rebuild_dir` and `parent_snapshots` accepted. The child then ran, its join
+  found no parquet, and **the child was the lane reported FAILED**: the absence of another lane filed
+  as this one failing, which is the exact arm the guard's own docstring says must not happen.
+  Reproduced, not hypothesised. The predicate was already in the registry — every
+  `locations.resolve_*` accepts an explicit path and answers whether the *payload* is there — so the
+  repair is a predicate swap (`_snapshot_at`), and a supplied path with no payload is reported
+  missing by name rather than falling back to the machine's cache: a child pinned to an old parent
+  while sitting beside a failed new one is the fork `parents_from_rebuild_dir` exists to prevent.
+  The same confusion sat one function over: `prepare_lane` read `resolve() is None` as "the target
+  is absent" and moved its staging directory across with a plain rename, but `None` means *no
+  payload*, and a directory that exists with none (a build that failed after its downloads, a
+  payload deleted by hand beside its `release.json`) made `staging.replace(target)` raise `Directory
+  not empty` out of the whole `cache prepare` — every later lane unattempted, the provisioned ones
+  unprinted. Provisioning never deletes (deletion is by declaration or by `cache prune`), so it
+  refuses before the build is spent, and `prepare_caches` gained the per-lane isolation `cache pull`
+  has had all along.
+
 - `@a-label-read-in-band-beats-one-read-off-the-transfer` — **A snapshot's release label has to come
   from the bytes, or the off-switch produces something nothing can compare against (RM171, 0.7).** The
   MITOMAP lane was first built to take `dataset` from the download's HTTP `Last-Modified`, which is what

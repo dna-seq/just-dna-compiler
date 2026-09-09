@@ -338,3 +338,27 @@ def test_without_the_translation_it_really_did_escape_the_lane(
     monkeypatch.setattr(caches.clinvar_build, "download_clinvar_vcf", leaking)
     with pytest.raises(httpx.RemoteProtocolError):
         rebuild_lane(LANES_BY_NAME["clinvar"], RebuildRequest(out_dir=tmp_path / "clinvar"))
+
+
+def test_a_write_failure_leaves_no_partial_behind_either(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The docstring promised the `.part` is removed on failure; it was removed on *transport*
+    failure. A disk that fills mid-body raises `OSError` from `handle.write`, which is not an
+    `httpx.HTTPError`, and the partial stayed. The type is the caller's and is not translated —
+    only the residue goes."""
+    dest = tmp_path / "f.bin"
+    monkeypatch.setattr(net.httpx, "stream", _fake_stream([b"a body"]))
+
+    class _Full:
+        def update(self, _chunk: bytes) -> None:
+            raise OSError(28, "No space left on device")
+
+        def hexdigest(self) -> str:
+            return ""
+
+    monkeypatch.setattr(net.hashlib, "sha256", _Full)
+    with pytest.raises(OSError):
+        stream_to_file(dest, "https://example.invalid/f", error_cls=_Boom, what="a file")
+    assert not dest.exists()
+    assert not list(tmp_path.glob("*.part"))

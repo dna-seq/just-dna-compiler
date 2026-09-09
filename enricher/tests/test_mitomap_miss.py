@@ -308,3 +308,32 @@ def test_a_lane_name_may_be_written_with_a_hyphen_and_comes_back_declared() -> N
     assert lane_name("clinvar") == "clinvar"
     assert lane_name("nosuch") is None
     assert lane_name("mitomap_miss") in LANES_BY_NAME
+
+
+def test_an_empty_parent_directory_is_a_missing_parent_not_a_failed_child(
+    parents, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A directory is not a snapshot. Every adapter `mkdir`s its `out_dir` before it downloads, so
+    a parent whose fetch was cut mid-body leaves an empty `out/<parent>/` — and `is_dir()` handed
+    that to the child as a parent. The child's join then failed on a parquet that did not exist and
+    the CHILD was the lane reported FAILED: the absence of another lane filed as this one failing,
+    the arm `rebuild_lane`'s own docstring says must not happen. Reproduced with an empty
+    `out/clinvar` beside a real MITOMAP: `parents_from_rebuild_dir` supplied it, `parent_snapshots`
+    accepted it, and the outcome was `built=False`."""
+    mitomap_dir, _ = parents
+    _unresolvable(monkeypatch, "clinvar")
+    out = tmp_path / "out"
+    (out / "clinvar").mkdir(parents=True)          # the residue of a download cut mid-body
+    (out / "mitomap").symlink_to(mitomap_dir)
+
+    from_run = caches.parents_from_rebuild_dir(LANES_BY_NAME["mitomap_miss"], out)
+    assert set(from_run) == {"mitomap"}, "an empty directory is not a parent this run cut"
+
+    outcome = rebuild_lane(
+        LANES_BY_NAME["mitomap_miss"],
+        RebuildRequest(out_dir=out / "mitomap_miss", parents={"mitomap": mitomap_dir, "clinvar": out / "clinvar"}),
+    )
+    assert outcome.built is None, outcome.detail
+    assert "clinvar" in outcome.detail and "holds no snapshot" in outcome.detail
+    assert "clinvar build" in outcome.detail, "the remedy is still named"
+    assert not (out / "mitomap_miss").exists(), "and nothing was written"

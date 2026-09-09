@@ -1020,17 +1020,40 @@ def parent_snapshots(
     found: dict[str, Path] = {}
     missing: list[str] = []
     for name in lane.parents:
-        supplied = request.parents.get(name)
-        if supplied is not None and Path(supplied).is_dir():
-            found[name] = Path(supplied)
-            continue
         parent = LANES_BY_NAME.get(name)
+        supplied = request.parents.get(name)
+        if supplied is not None:
+            # **A directory is not a snapshot.** Every adapter `mkdir`s its `out_dir` before it
+            # downloads anything, so a parent whose fetch was cut mid-body — the NCBI incident RM187
+            # was written for — leaves an empty `out/<parent>/` that `is_dir()` accepted as present.
+            # The child then ran, its join found no parquet, and it was reported FAILED: the absence
+            # of another lane filed as this one failing, the very arm the guard below exists to
+            # refuse. Ask the parent lane's own resolver whether the *payload* is there, the same
+            # predicate the registry route two lines down uses. A supplied path with no payload is
+            # missing and says so; it does not fall back to whatever the machine's cache holds,
+            # because a child pinned to an old parent while sitting beside a failed new one is the
+            # fork `parents_from_rebuild_dir` exists to prevent.
+            payload = _snapshot_at(parent, Path(supplied))
+            if payload is not None:
+                found[name] = payload
+            else:
+                missing.append(f"{name} (supplied path {supplied} holds no snapshot)")
+            continue
         resolved = parent.resolve() if parent is not None else None
         if resolved is None:
             missing.append(name)
             continue
         found[name] = resolved
     return found, missing
+
+
+def _snapshot_at(lane: CacheLane | None, directory: Path) -> Path | None:
+    """`directory` if it holds `lane`'s payload, else `None` — through the lane's own resolver,
+    which every `locations.resolve_*` accepts an explicit path for. A lane the registry does not
+    know (a test's stand-in) is judged on the directory holding anything at all."""
+    if lane is not None:
+        return lane.resolve(directory)
+    return directory if directory.is_dir() and any(directory.iterdir()) else None
 
 
 def parents_from_rebuild_dir(lane: CacheLane, out: Path) -> dict[str, Path]:
@@ -1040,8 +1063,17 @@ def parents_from_rebuild_dir(lane: CacheLane, out: Path) -> dict[str, Path]:
     two producing different answers is precisely the fork that would give a child pinned to one
     ClinVar and sitting beside another. A parent this run did not build is left out and falls back to
     the registry's resolver inside `rebuild_lane`, which is the `--only <child>` case.
+
+    **Built means the payload is there, not that the directory is.** A parent whose download was
+    cut leaves an empty `out/<parent>/` behind (every adapter `mkdir`s first), and `is_dir()` handed
+    that to the child as a parent — so the child's join failed on a parquet that did not exist and
+    the child was the lane reported FAILED. Judged by the parent lane's resolver now.
     """
-    return {name: out / name for name in lane.parents if (out / name).is_dir()}
+    return {
+        name: out / name
+        for name in lane.parents
+        if _snapshot_at(LANES_BY_NAME.get(name), out / name) is not None
+    }
 
 
 def rebuild_lane(lane: CacheLane, request: RebuildRequest) -> RebuildOutcome:
@@ -1065,10 +1097,11 @@ def rebuild_lane(lane: CacheLane, request: RebuildRequest) -> RebuildOutcome:
         resolved, missing = parent_snapshots(lane, request)
         if missing:
             how = "; ".join(
-                f"{name} (`{LANES_BY_NAME[name].build_command}`, or `cache pull --only {name}`)"
+                f"{entry} (`{LANES_BY_NAME[name].build_command}`, or `cache pull --only {name}`)"
                 if LANES_BY_NAME.get(name) is not None and LANES_BY_NAME[name].build_command
-                else name
-                for name in missing
+                else entry
+                for entry in missing
+                for name in (entry.split(" ", 1)[0],)
             )
             return RebuildOutcome(
                 lane.name, None,
@@ -1156,8 +1189,19 @@ def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
     # Built locally, because nothing publishes it. Into a staging directory beside the target and
     # moved across only once the build has finished: the resolvers read the target by globbing, so a
     # build writing straight into it would be visible half-done, and a short parquet still has a
-    # footer. The target is absent here (checked above), so the move is a plain rename.
+    # footer. `resolve()` answered `None` above, which means the target holds no PAYLOAD — not that
+    # it is absent. A directory that exists with no snapshot in it (a build that failed after its
+    # downloads, a payload deleted by hand beside its `release.json`, a stray `.part`) made
+    # `staging.replace(target)` raise `Directory not empty` out of the whole command, and every lane
+    # after it was never attempted. Provisioning never deletes (deletion is by declaration or by
+    # `cache prune`, never a side effect), so it is refused here, before a build is spent on it.
     target = lane.default_dir()
+    if target.exists() and any(target.iterdir()):
+        return PrepareOutcome(
+            lane.name, False, "built",
+            f"{target} exists and holds no {lane.name} snapshot; prepare never deletes, so move it "
+            f"aside (or `cache prune --only {lane.name}` if it is a retired file) and re-run",
+        )
     staging = target.parent / f"{target.name}.incoming"
     if staging.exists():
         shutil.rmtree(staging)
@@ -1203,12 +1247,22 @@ def prepare_caches(
     sources = sources or {}
     outcomes = []
     for lane in lanes if lanes is not None else CACHE_LANES:
-        outcomes.append(prepare_lane(lane, RebuildRequest(
+        request = RebuildRequest(
             out_dir=lane.default_dir(),
             declared_use=declared_use,
             pin=pins.get(lane.name),
             source=sources.get(lane.name),
-        )))
+        )
+        try:
+            outcomes.append(prepare_lane(lane, request))
+        except Exception as exc:  # noqa: BLE001 — one lane's crash may not sink the others' report
+            # The per-lane isolation `cache pull` has had all along. `prepare_lane` reports every
+            # failure it can foresee as an outcome; this is for the one it cannot, and the
+            # alternative is a traceback that hides which lanes DID provision.
+            logger.exception("preparing the %s cache raised", lane.name)
+            outcomes.append(PrepareOutcome(
+                lane.name, False, "pulled" if lane.ensure is not None else "built", str(exc),
+            ))
     return outcomes
 
 

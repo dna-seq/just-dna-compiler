@@ -368,6 +368,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A derived lane's parents are a **field**; an absent parent is could-not-run, never an empty result. `@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`
 - A derived artifact's identity is the pair it came from, and half a label is withheld. `@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`
 - A parent that MOVED and a parent that is GONE are different instructions; report the first, never the second as it. `@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`
+- A directory is not a snapshot: judge a parent, and a provisioning target, by its payload, never by `is_dir()`. `@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`
 - Take a snapshot's release label from the bytes, not from the transfer — or the off-switch build is incomparable. `@a-label-read-in-band-beats-one-read-off-the-transfer`
 - Every stage a lane lacks carries its reason as a **field**, and a rebuild's outcome is tri-state. `@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing`
 - A rebuild writes to `<base>/<lane>/`, never in place: a short parquet still has a footer. `@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing`

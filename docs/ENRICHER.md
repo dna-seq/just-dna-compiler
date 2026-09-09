@@ -1232,6 +1232,17 @@ traceback rather than a `built=False`, and it escaped `rebuild_lane` too, aborti
 `httpx` exception is kept as `__cause__`. A retry re-fetches from byte zero: there is no resume, so a
 190 MB download that dies at 180 MB costs the full 190 MB again.
 
+**Two refusals a payload-less directory earns (2026-09-09).** `resolve()` answering `None` means the
+lane's directory holds no *payload*, not that it is absent. A directory that exists with none — a
+build that failed after its downloads, a payload deleted by hand beside its `release.json` — is
+refused on the build route before any build is spent, naming the directory and `cache prune`,
+because provisioning never deletes and the rename onto it would have raised `Directory not empty`
+out of the whole command. And a derived lane judges each parent by that same resolver: an empty
+`out/<parent>/` left by a download cut mid-body is a *missing* parent (the child could not run),
+never a present one whose join then fails and files the child as FAILED. `prepare_caches` isolates
+each lane the way `cache pull` always has, so one lane raising is that lane's FAILED line and the
+rest still run and print.
+
 ### One endpoint over every builder (`cache rebuild`, RM176)
 
 Thirteen builders today — eleven when RM176 shipped, plus `mitomap` and `mitomap_miss` from RM171 the

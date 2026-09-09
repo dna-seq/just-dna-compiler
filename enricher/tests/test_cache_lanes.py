@@ -744,3 +744,52 @@ def test_the_variables_the_module_reads_are_exactly_the_ones_the_lanes_claim() -
     assert len(claimed) == len(CACHE_LANES), "two lanes share a variable"
     for lane in CACHE_LANES:
         assert lane.env_var is getattr(locations, f"{lane.name.upper()}_CACHE_VAR"), lane.name
+
+
+# ── a target that exists with no payload (the pre-cut audit, 2026-09-09) ────────────────────────
+
+
+def test_a_payload_less_target_is_refused_before_a_build_is_spent_on_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`resolve()` answering `None` means the target holds no payload — not that it is absent.
+
+    A directory that exists with no snapshot in it (a build that failed after its downloads, a
+    payload deleted by hand beside its `release.json`) made `staging.replace(target)` raise
+    `Directory not empty` out of the whole command, so every lane after it was never attempted and
+    the ones that had provisioned were never printed. Provisioning never deletes, so it refuses —
+    and before the build, not after it.
+    """
+    target = tmp_path / "acmg_sf"
+    target.mkdir()
+    (target / "release.json").write_text("{}", encoding="utf-8")   # a residue, no payload
+    built: list[Path] = []
+    monkeypatch.setattr(
+        caches, "rebuild_lane",
+        lambda lane, req: built.append(req.out_dir) or caches.RebuildOutcome(lane.name, True, "x", req.out_dir),
+    )
+    lane = dataclasses.replace(
+        LANES_BY_NAME["acmg"], resolve=lambda: None, default_dir=lambda: target,
+    )
+    outcome = caches.prepare_lane(lane, RebuildRequest(out_dir=target))
+    assert outcome.ready is False
+    assert "holds no acmg snapshot" in outcome.detail and "never deletes" in outcome.detail
+    assert built == [], "no build was spent on a target the move could not replace"
+    assert (target / "release.json").exists(), "and nothing was deleted"
+
+
+def test_one_lane_crashing_does_not_sink_the_others_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The per-lane isolation `cache pull` has had all along, now on `prepare` too: a raise out of
+    one lane is that lane's FAILED outcome, and the lanes after it still run and still print."""
+    def boom(lane, request):
+        if lane.name == "acmg":
+            raise OSError(39, "Directory not empty")
+        return caches.PrepareOutcome(lane.name, True, "present", "fine")
+
+    monkeypatch.setattr(caches, "prepare_lane", boom)
+    lanes = [LANES_BY_NAME["acmg"], LANES_BY_NAME["mane"]]
+    outcomes = caches.prepare_caches(lanes)
+    assert [(o.lane, o.ready) for o in outcomes] == [("acmg", False), ("mane", True)]
+    assert "Directory not empty" in outcomes[0].detail

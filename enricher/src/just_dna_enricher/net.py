@@ -289,6 +289,13 @@ def stream_to_file(
         tmp.unlink(missing_ok=True)
         message = f"could not download {what} from {url}: {exc}"
         raise error_cls(f"{message}. {remedy}" if remedy else message) from exc
+    except BaseException:
+        # Not only the transport: a disk that fills or a mount that turns read-only raises `OSError`
+        # from `handle.write`, and the partial was left behind on exactly that leg while the
+        # docstring promised none. The type is the caller's (the lane adapters catch `OSError`),
+        # so it is not translated — only the residue is removed.
+        tmp.unlink(missing_ok=True)
+        raise
     tmp.replace(dest)
     logger.info("Downloaded %s (sha256 %s)", dest, streamed.sha256)
     return dataclasses.replace(streamed, path=dest)
