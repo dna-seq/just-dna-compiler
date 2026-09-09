@@ -34,7 +34,36 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-09 (latest) — AlphaGenome Atlas read as an exploration: three artifacts, three licence answers
+## 2026-09-10 (latest) — the AVI artifact is a different corpus, and a 22 MB client reaches all of it
+
+Second round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md). Still no `RMn`, still no
+adoption, and **`alphagenome>=0.9.0` is deliberately left uncommitted** in `enricher/pyproject.toml` —
+adding it is the decision §6.2 exists to inform.
+
+- **The sizing in §4 was the splicing artifact and nothing else**, which §4.3 now says in its first
+  line rather than its last paragraph. AVI is not a bigger version of it: `raw_score` is **signed**,
+  its rows start at `chr1:10001` rather than 65,409 (so plausibly genome-wide, ~2.4× the rows), and
+  its `PHRED` is not a second score — `PHRED = −10·log₁₀(1 − calibrated)` reproduces the file exactly
+  from the API's calibrated percentile, so a parquet needs two columns and not three.
+- **A complete Atlas client costs two packages.** The Atlas service (`gdmscience.googleapis.com`,
+  `x-goog-api-key`) serves the precomputed scores — **22 scorers**, the 283.9 GB SHAP breakdown among
+  them — and the generated protos with `grpcio`/`protobuf` reach all of it: the score fields are plain
+  `bytes` that `frombuffer('<f4')` decodes and the request filter is an AIP-160 string. Measured as
+  real venvs: **22 MB** protos-only, 85 MB with numpy, **242 MB** for the SDK's own import path
+  (`atlas.py` imports `anndata` at module level, which drags scipy/zarr/h5py), 255 MB for
+  `uv add alphagenome`. Six declared dependencies — matplotlib, seaborn, pyfaidx, absl-py, fsspec,
+  pyarrow — are never imported on any scoring path. Against a tier whose whole list is
+  httpx/tenacity/huggingface-hub this is the "dependency tiers are sacred" question, not a size one;
+  §6.2 states three shapes (core deps, optional extra, or no client at all) and picks none.
+- **The two surfaces agree for AVI and not for splicing** — `@two-surfaces-two-denominators`, measured
+  rather than assumed. The AVI file is the API's float32 printed to five decimals. The splicing file is
+  not reachable from its own documented merge formula (2.81 against a stated 2.735, 1.83 against
+  2.112), and at `chr1:65409` — 10 bp upstream of *OR4F5* — all three splice scorers return zero rows
+  at both 128 KB and 1 MB windows while the file scores it 0.003052.
+- **The source names its own threshold**, which replaces the invented ones: the splicing docs call
+  >1.0 a substantial effect, and that is 9,761,281 rows, 0.249% of the corpus, ~62 MB as parquet.
+
+## 2026-09-09 — AlphaGenome Atlas read as an exploration: three artifacts, three licence answers
 
 **No code, no `RMn`, no adoption.** Google DeepMind published the AlphaGenome Atlas on 2026-09-08 —
 precomputed molecular predictions over every possible human SNV — and this is the exploratory read of
