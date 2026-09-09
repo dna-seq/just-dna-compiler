@@ -125,6 +125,13 @@ behind the green. Each landed as its own commit with the test that pins it.
   `REFUSAL_REASONS`. The two entries nothing advises on yet (`gene`, `trait_efo_id`, since 0.5.0)
   are decisions recorded ahead of the lookup that would need them, and stay.
 
+- **The readiness table was re-measured at `a6f31f8`** (INTEGRATION_0_7 § 5): suite 4311/0, lint
+  clean, corpus 16/16 with every digest identical to the pre-audit compile, sweep gate exit 0, the
+  0.6.6 client at 15/16 on the same one field — its previous row had rested on "nothing touched the
+  manifest surface", which RM160 had already falsified. **`dist/` was rebuilt** from a detached
+  worktree at that commit: the six artifacts it held were `741ec59` bytes under the 0.7.0 name and
+  lacked twenty enricher modules added since. The tag is still the maintainer's.
+
 ## 2026-09-04 — the allocator reserved a number when you asked it for help
 
 **Agent tooling only (`.claude/rm-next.py`), no package, no schema, no CLI surface.** Found while

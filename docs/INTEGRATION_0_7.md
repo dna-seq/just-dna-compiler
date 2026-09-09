@@ -673,42 +673,55 @@ genotype while the 0.4 families keep the string) and the `stats` counter retype.
 
 ## 5. Readiness
 
-**Gates, re-run on this branch on 2026-09-01 at `741ec59`.** The 2026-08-31 sweep this table
-first carried is superseded: nine commits landed after it, two of them from a concurrent session, and
-two of its rows had gone stale in ways that mattered — see the notes under the table.
+**Gates, re-run on this branch on 2026-09-09 at `a6f31f8`**, the last of the seven pre-cut audit
+fixes (CHANGELOG § 2026-09-09). The 2026-09-01 measurement at `741ec59` is superseded: 145 commits
+landed after it (RM160, RM171, RM174–RM188 and the audit), and one of its rows stated a basis that
+had already stopped being true — see the notes under the table.
 
 | gate | result |
 | --- | --- |
-| `uv run pytest` | **3760 passed, 18 skipped, 0 failed** (3653 at the 2026-08-31 sweep; 3610 before the readiness pass that closed the lint gate, added the workspace-floor guard and fixed the CIViC drafter's `trait_efo_id`; 3581 before RM151; 3394 before the 2026-08-31 batch; 2916 at the 2026-08-24 one). Re-run on a **clean checkout** of the same commit: 3742 passed, **36** skipped — the extra 18 are data-dependent tests (the Ensembl cache, a built ClinVar snapshot) whose inputs live under the git-ignored `data/`, so a fresh worktree skips them. Both runs, 0 failed |
-| `uv run ruff check` | clean. **It had gone red**: seven findings accumulated after the 2026-08-31 row was written — four unsorted import blocks, two unused imports and a lambda bound to a name — closed on 2026-09-01. A gate row is a measurement, not a property |
-| Reference corpus under the 0.7 compiler | **16 / 16 compile** |
-| 0.6.6 → 0.7.0 release sweep | 15 measured, **gate exit 0** — *after* RM161. It exited **1** on the first run of this round, on two manifest fields that moved and were not listed; the previous row's `exit 0` was measured before two declarations landed the same morning. Re-run the gate whenever a `DeclaredChange` is added, not only at the cut |
-| 0.6.6 client parses 0.7 manifests | **15 / 16** — see § 1. **Not re-measured on 2026-09-01, and the basis is stated rather than assumed**: nothing under `schema/` or `compiler/` has touched the manifest surface since it was measured. The one format change in between is RM161's release-record field list, which is not a manifest field |
-| Open consumer inbox | **empty** — S85 and S86 arrived on 2026-08-31/09-01 and were answered as RM154 and RM155. S78 was answered as RM143; S79–S84 on 2026-08-31 (RM144, RM145, RM146, RM148, RM152). S76 was withdrawn as a duplicate of S66; S75 and S77 answered as RM140 / RM142 |
-| Open roadmap items in format scope | **none**. RM160 stood here alone and **shipped 2026-09-03** — its provenance half took shape 3, reading CIViC's `SUBMITTED` evidence at `enrich` time, so `civic build` keeps its byte-reproducibility contract; the format-visible part is two optional `studies.csv` columns (`confidence`/`confidence_unit`) and one new `verification.checks` member. RM153, which stood here on 2026-08-31, shipped the same day. RM7 sits below and is marked not format scope |
+| `uv run pytest` | **4311 passed, 20 skipped, 0 failed** at `a6f31f8` (4273 at `0d73268` before the audit fixes; 3760 at the 2026-09-01 sweep; 3653 at 2026-08-31; 2916 at 2026-08-24). In-tree run: the 20 skips are the network-gated tests. The clean-checkout variant of this row (36 skips at 2026-09-01, the data-dependent tests under git-ignored `data/`) was not re-run |
+| `uv run ruff check` | clean at `a6f31f8`. A gate row is a measurement, not a property: it had gone red once before this table was re-measured on 2026-09-01 |
+| Reference corpus under the 0.7 compiler | **16 / 16 compile** at `a6f31f8`, and every `artifact.digest` and `content_signature` is byte-identical to the compile at `0d73268` before the audit fixes — the overlay repair reaches no reference example, since none carries an `overrides.csv` |
+| 0.6.6 → 0.7.0 release sweep | 15 measured, **gate exit 0** at `a6f31f8`, and again at `0d73268` before the fixes: content_signature 0/15, manifest_fields 15/15, parquet_bytes 14/15, parquet_schema 14/15, warnings 3/15, `cyp2c9_warfarin_grch37` unmeasured (its `requires_callable` column does not exist under 0.6.6, so the BEFORE side refuses it). The record covers every field that moved. Re-run the gate whenever a `DeclaredChange` is added, not only at the cut |
+| 0.6.6 client parses 0.7 manifests | **15 / 16** — re-measured at `a6f31f8` by parsing the sweep's AFTER manifests with `just-dna-format==0.6.6`. **The previous row's stated basis was wrong**: it said nothing had touched the manifest surface since 2026-08-31, and RM160 then added a `verification.checks` member. The result held anyway, on the same one field: `mt_common_deletion`, `verification.checks[].producer`, now across its four check records rather than one. The basis of this row is a measurement, not a claim about the diff |
+| Open consumer inbox | **empty** at `a6f31f8` (`triage-state.py`: nothing pending). S87–S89 were answered 2026-09-03 as RM180/RM183/RM184 |
+| Open roadmap items in format scope | **none**. RM164 is parked to 0.8 (enricher scope), RM7 is marked not format scope, everything else in ROADMAP is queued for 1.0 |
 
 **The blocker this section carried is gone.** RM143 shipped and S78 was answered, and the 2026-08-31
 batch took the seven roadmap items that stood above with them. Everything here is committed, green and
 measured; what remains before a cut is release management rather than work.
 
-**Two rows had gone stale, and the pair is the reason this section is re-measured rather than read.**
-The lint gate had gone red and the release gate exited 1 — the second on two manifest fields declared
-the morning after the measurement its record's list came from. Neither was visible from the tree: one
-is a gate nobody re-runs between cuts, and the other needs the previous release installed. A readiness
-table is worth exactly as much as the last time somebody ran it, so it carries the commit it was
-measured at. Two notes on the cut itself:
+**A readiness table is worth exactly as much as the last time somebody ran it**, which is why it
+carries the commit it was measured at and why every row above was re-run rather than read. The
+2026-09-01 pass had found a red lint gate and a release gate exiting 1; this pass found the
+0.6.6-parse row resting on a basis RM160 had falsified (the result held), and `dist/` holding bytes
+from 145 commits ago under the current version number. What the 2026-09-09 audit changed in the code
+is in CHANGELOG § 2026-09-09: seven fixes, none of which moved a reference example's digest or
+signature (the corpus row above is the measurement). Two notes on the cut itself:
 
 1. The three `pyproject.toml` files read `0.7.0` while `git tag` stops at `v0.6.6`, so anything
-   published from here must be a real cut. **`dist/` was wiped and rebuilt on 2026-09-01** and now
-   holds the six 0.7.0 artifacts and nothing else — it had carried the published 0.6.6 ones, which
-   `uv publish` would have re-uploaded. The build was taken from a **detached worktree at `741ec59`**
-   rather than from the checkout: a second session was working in the same tree, and `uv build` reads
-   the working tree rather than git, so an uncommitted file inside a package directory would have
-   shipped in the wheel. Verified after building: six files, all `0.7.0`, and the three packages
-   import and report their versions from an isolated install. Their **intra-workspace floors** read
-   `0.7.0` as well: the bump moved only the `version` fields, leaving `just-dna-format>=0.6.6` under a
-   compiler that imports four modules 0.6.6 does not have. Nothing in a checkout can see that —
-   `uv.lock` records those edges as editable with no specifier — so a test walks them now.
+   published from here must be a real cut. **`dist/` was rebuilt on 2026-09-09 from a detached
+   worktree at `a6f31f8`** and holds the six 0.7.0 artifacts and nothing else; the six it held before
+   were built at `741ec59` on 2026-09-01 and **lacked twenty enricher modules** added since (the
+   MITOMAP, STRchive, CIViC, drug-label, LitVar, PGS and MANE lanes among them) — the same version
+   number over different bytes, which is the worst state a `dist/` can be in. Those stale six were
+   moved out of the tree, not deleted. Verified after building: the three packages install from the
+   wheels into an isolated venv, report `0.7.0`, and import symbols that exist only after the audit.
+   The sha256 of each artifact, so a later `dist/` can be told from this one:
+
+   | artifact | sha256 |
+   | --- | --- |
+   | `just_dna_format-0.7.0-py3-none-any.whl` | `a5dafeb868f8162447d436c3650b96bcd4111e2e4611b158681d202fdb3c5bb2` |
+   | `just_dna_format-0.7.0.tar.gz` | `2f32945d0aad27c95357d3ecf2a67bb3e2ea1958aaaac9cb0af9c3e729f5815a` |
+   | `just_dna_compiler-0.7.0-py3-none-any.whl` | `5cf647ed5d261a2cc34bde3091cfc22772dee89c79cf2fe14ff3e3cfe4d99c38` |
+   | `just_dna_compiler-0.7.0.tar.gz` | `7a0493211b4a545dd9bf1c3a424ccc599cc2335cb1e7dea5e9b83c633541a708` |
+   | `just_dna_enricher-0.7.0-py3-none-any.whl` | `5d2db2065945bfa3cc5f06a843a26ad92cbd37d563912df69e0bf5486c7782e4` |
+   | `just_dna_enricher-0.7.0.tar.gz` | `f34ee1b9b7f89a21e932901315fae5e009a384221dd84cc653113e91fd346edf` |
+
+   A build is taken from a detached worktree rather than the checkout because `uv build` reads the
+   working tree, so an uncommitted file inside a package directory would ship in the wheel. The
+   intra-workspace floors read `0.7.0` and a test walks them.
 2. This release moves all three packages. Format gains models and columns, the compiler gains columns
    and `sweep`, the enricher gains the transaction, the PubMind surface and the currency check. There
    is no partial cut available.
