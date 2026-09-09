@@ -30,11 +30,18 @@ select = [
     "C4",               # comprehensions
     "SIM", "FURB", "PIE", "FLY",
 ]
-ignore = [
-    # Typer's entire API is `def cmd(x: T = typer.Option(...))`: the call in the default *is* the
-    # declaration, and "Typer for every CLI" is a house rule, so there is no alternative spelling.
-    "B008",
-]
+ignore = []
+
+[tool.ruff.lint.flake8-bugbear]
+# B008 (a function call in a default argument) is ENFORCED, with the three intended shapes named
+# rather than the rule switched off. Typer's entire API is `def cmd(x: T = typer.Option(...))`: the
+# call in the default *is* the declaration, and "Typer for every CLI" is a house rule, so there is no
+# alternative spelling. `repro_out` is a pure function of a constant that every builder's `--out`
+# default goes through, so an AST guard can prove they all land under `data/`. Everything else a
+# default calls — a clock, a resolver, a loader — is exactly what the rule exists to catch, and this
+# repo has met that shape once already (`@default-arg-before-setup`). It read `ignore = ["B008"]`
+# until 2026-09-09, which switched the rule off for those cases too.
+extend-immutable-calls = ["typer.Option", "typer.Argument", "just_dna_enricher.locations.repro_out"]
 
 # Deliberately NOT selected, so the reasons are recorded rather than rediscovered:
 #   BLE001 — `except Exception` around a network call is this tier's contract, not a swallowed error.
