@@ -1255,7 +1255,7 @@ def prepare_caches(
         )
         try:
             outcomes.append(prepare_lane(lane, request))
-        except Exception as exc:  # noqa: BLE001 — one lane's crash may not sink the others' report
+        except Exception as exc:  # one lane's crash may not sink the others' report
             # The per-lane isolation `cache pull` has had all along. `prepare_lane` reports every
             # failure it can foresee as an outcome; this is for the one it cannot, and the
             # alternative is a traceback that hides which lanes DID provision.

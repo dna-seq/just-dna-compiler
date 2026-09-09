@@ -337,3 +337,26 @@ def test_an_empty_parent_directory_is_a_missing_parent_not_a_failed_child(
     assert "clinvar" in outcome.detail and "holds no snapshot" in outcome.detail
     assert "clinvar build" in outcome.detail, "the remedy is still named"
     assert not (out / "mitomap_miss").exists(), "and nothing was written"
+
+
+def test_an_empty_supplied_parent_is_not_swapped_for_the_machines_cache(
+    parents, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The discriminating arm of the test above, with the REAL resolver. `_snapshot_at` asks the
+    parent lane's resolver about the supplied directory, and that resolver is a precedence ladder —
+    explicit, then `$JUST_DNA_CLINVAR_CACHE`, then the default — so if an explicit directory with no
+    payload fell through to the variable, the guard would perform exactly the silent swap it exists
+    to prevent: a child pinned to the machine's older ClinVar while sitting beside a failed new one.
+    It does not fall through (an explicit path is judged on its own contents), and this pins that."""
+    mitomap_dir, clinvar_dir = parents
+    monkeypatch.setenv(caches.CLINVAR_CACHE_VAR, str(clinvar_dir))   # a real ClinVar IS on this machine
+    assert LANES_BY_NAME["clinvar"].resolve() == clinvar_dir, "the fixture's cache is reachable by the variable"
+    empty = tmp_path / "out" / "clinvar"
+    empty.mkdir(parents=True)
+
+    found, missing = caches.parent_snapshots(
+        LANES_BY_NAME["mitomap_miss"],
+        RebuildRequest(out_dir=tmp_path / "out" / "mitomap_miss", parents={"mitomap": mitomap_dir, "clinvar": empty}),
+    )
+    assert set(found) == {"mitomap"}
+    assert len(missing) == 1 and missing[0].startswith("clinvar ") and "holds no snapshot" in missing[0]
