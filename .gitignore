@@ -229,3 +229,4 @@ __marimo__/
 # under `data/` needs none. That rule lived in prose for a release and nine `--out` defaults drifted
 # past it before it was made derivable.
 /data/
+docs/probes/alphagenome_poc/generated/

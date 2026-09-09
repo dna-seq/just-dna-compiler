@@ -216,6 +216,21 @@ Three differences from the splicing file, each of them load-bearing:
    | chr1:10001 T>A | −0.03868196 | 0.21739846 | 1.06466 | 1.06466 |
    | chr1:10001 T>C | −0.03200157 | 0.26062370 | 1.31139 | 1.3114 |
 
+   And `calibrated` is not an unexplained number: the upstream FAQ defines it as the **quantile
+   score**, an empirical rank against a background distribution estimated per scorer and per track
+   from **common variants — MAF > 0.01 in any gnomAD v3 population**, about 300 K of them. A
+   quantile of 0.99 means "as extreme as the 99th percentile of common variation". Two
+   consequences: the background is capped at **±0.999990** by that sample size, so `PHRED` cannot
+   exceed **50** whatever the raw score does; and for the seven `is_signed` scorers the quantile is
+   linearly mapped to [−1, 1] instead, with 0 at the median. AVI is unsigned, so its quantile is
+   [0, 1) and the Phred transform applies.
+
+   **The rarity axis is therefore already inside the calibrated score**, which matters for §5:
+   `PHRED` is not an independent second dimension to cross with allele frequency, it is a
+   comparison *against* common variation already made. So `raw_score` and `PHRED` are the
+   magnitude and the surprise, and pairing `PHRED` with gnomAD MAF double-counts the same
+   reference set.
+
    So `calibrated` is a percentile rank and `PHRED` is its presentation. **A parquet needs
    `raw_score` and one of the two, never all three** — and the choice matters, because a
    percentile is bounded and quantises well while a Phred value does not. This also answers what
@@ -773,7 +788,10 @@ the file.
 
 `uv add alphagenome` pulls **anndata, pandas, scipy, zarr, h5py, numcodecs, pyarrow, matplotlib,
 seaborn, pyfaidx, absl-py, fsspec, jaxtyping, typeguard, ml-dtypes, zstandard, grpcio, protobuf,
-numpy, tqdm, immutabledict** and their closures. Against a tier whose whole dependency list is
+numpy, tqdm, immutabledict** and their closures. That is not an artefact of the resolver: the
+upstream `pyproject.toml` declares **twenty flat runtime dependencies** with matplotlib, seaborn,
+pyfaidx, absl-py, fsspec and pyarrow among them, and its only extras are `dev`, `docs` and
+`scripts`. There is no light variant to ask for, by design. Against a tier whose whole dependency list is
 `httpx`/`tenacity`/`huggingface-hub`, that is not a size question, it is the
 **"dependency tiers are sacred"** rule in CLAUDE.md.
 
@@ -787,10 +805,25 @@ Four install shapes, each built as a real venv and measured:
 | full declared | `uv add alphagenome` | 255 MB | everything, including plotting |
 
 **The 22 MB tier is not a trick — it is a complete client.** `DenseVariantScore.scores` and
-`.calibrated_scores` are `bytes` fields, not tensor protos, so `numpy.frombuffer(s.scores,
-'<f4')` decodes them; and the request's `filter` is a plain AIP-160 **string**
+`.calibrated_scores` are `bytes` fields, not tensor protos, so `struct.unpack('<f', …)` decodes
+them with no third-party package at all; and the request's `filter` is a plain AIP-160 **string**
 (`'scores.variant_scorer.name = "AVI_SCORE"'`), not a message that needs building. The whole
 call, verified live, is in Appendix A.6.
+
+**And it *is* declarable, contrary to what this section said before the upstream repository was
+read.** `github.com/google-deepmind/alphagenome` is Apache-2.0 and ships the four `.proto`
+sources; the wheel generates its bindings at build time from them (`hatch_build.py` calling
+`grpc_tools.protoc`). The Atlas surface needs three of the four —
+`atlas_service.proto` (170 lines), `dna_model.proto` (560) and `tensor.proto` (104), **28 KB
+together** — so vendoring those and generating bindings with `grpcio-tools` gives a declarable
+dependency set of exactly `grpcio` + `protobuf`.
+
+Verified end to end: in a venv with **no `alphagenome` package installed** (`import alphagenome`
+→ `ModuleNotFoundError`), bindings generated from the three vendored protos returned
+`chr1:10001 T>A raw=-0.03868196 calibrated=0.21739846` in 372 ms, decoded with `struct.unpack`
+from the standard library. Appendix A.8 is the recipe. That makes four shapes below, not three,
+and it is the only one that is both light and declarable — at the cost of owning generated code
+against a service whose protos can move.
 
 Six of the declared dependencies — **matplotlib, seaborn, pyfaidx, absl-py, fsspec, pyarrow** —
 are never imported on any scoring path; they belong to `alphagenome.visualization` and
@@ -803,7 +836,7 @@ numcodecs, pydantic-settings and natsort. So the split is not "a light half of t
 `AnnData` return type is where track metadata, ontology terms and gene ids are attached, and
 anything hand-rolled on the protos re-implements that.
 
-Three shapes follow, none chosen here:
+Four shapes follow, none chosen here:
 
 1. **`grpcio` + `protobuf` as enricher core deps** (22 MB), talking to the generated stubs. Two
    new core dependencies on the network tier, and a hand-written decode layer to maintain against
@@ -811,7 +844,14 @@ Three shapes follow, none chosen here:
 2. **An optional extra** — `just-dna-enricher[alphagenome]` with a guarded module-level
    `try/except ImportError`, which is the one exception CLAUDE.md's no-inline-imports rule
    already allows for an optional dep. Nothing changes for a consumer that does not ask for it.
-3. **No client at all** — treat the bulk artifacts as a snapshot lane like ClinVar's, built by an
+3. **Vendor three Apache-2.0 protos** (28 KB) and declare `grpcio` + `protobuf`. Light *and*
+   declarable — and **built, with tests**: [`alphagenome_poc/`](alphagenome_poc/) is a working
+   client with 23 passing tests, 20 of them offline. An AST walk pins the dependency floor at
+   `{grpc, docs}` so the 22 MB claim is a property of the code; a live test asserts the RPC
+   returns what the 88.5 GB file contains. The cost it makes visible is that generated code has
+   **no compile-time signal when the service's protos move** — `PROVENANCE.txt` records the commit
+   so re-vendoring is a diff, but noticing it is due is manual.
+4. **No client at all** — treat the bulk artifacts as a snapshot lane like ClinVar's, built by an
    operator with `tabix`, and never reach the service from library code at all. This is the shape
    the repo's existing licence-gated caches already have, and it needs no new dependency
    whatsoever.
@@ -833,7 +873,10 @@ here, that is true of one artifact and not the other:
   identity and usage, a 0.2 multiplier on junctions because their magnitudes run larger. Scoring
   through the model service at a 1 MB window and applying it gives **2.81 against the file's
   2.735**, and **1.83 against 2.112** — right in shape, wrong in detail, so the exact aggregation
-  (which tracks, which axis, which window) is not pinned by what is published.
+  (which tracks, which axis, which window) is not pinned by what is published. The upstream
+  notebook's own `compute_merged_splicing_score` takes a **signed** `max` over genes and tracks,
+  not an absolute one; re-running with the signed max changed nothing (every value was positive),
+  so that is ruled out as the cause rather than assumed away.
 - And at `chr1:65409 A>C`, where the file says 0.003052, all three splice scorers return **zero
   rows** at both a 128 KB and a 1 MB window, so the value in the file is not reachable through
   the documented recommended scorers at all. The locus sits ~10 bp upstream of *OR4F5*, so it is
@@ -909,6 +952,17 @@ A 200 bp window is 600 SNVs; one interval query returns the full ISM matrix for 
 tracks in **1.6 seconds**, with a `transcription_factor` column naming each one. **That is a
 motif footprint**, per TF and per cell type, available today.
 
+Upstream says the same thing in the only place the word appears — the quick-start notebook, after
+plotting a contribution-score track:
+
+> These contribution scores can be used to systematically discover motifs important for different
+> modalities and cell types, find the transcription factors binding those motifs and map motif
+> instances across the genome.
+
+and it names the downstream toolchain rather than an AlphaGenome surface: **tfmodisco-lite**,
+**tangermeme**, **tomtom**. So the intended route to a motif is contribution scores out of
+AlphaGenome and motif discovery outside it, which is why there is no motif scorer to find.
+
 The offline files cannot do this at all, and the reason is §6.4's: the SHAP file's
 `MAX_ABS_CHIP_TF` is a single unsigned magnitude over all 1,617 tracks, so the genome-wide ISM
 matrix it does contain has had the TF identity and the cell type removed — which is the entire
@@ -958,7 +1012,11 @@ Named so the next reader knows the shape of the hole rather than inheriting a si
 - **The Atlas interval RPC on the two-dependency tier.** `ListDenseVariantScores` needs an
   `x-goog-fieldmask` header and 32 bp chunking; hand-built requests returned `INVALID_ARGUMENT`
   and the measurement in §6.5 was taken through the SDK instead. The single-variant RPC works on
-  the protos alone (§6.2) — the interval one was not made to.
+  the protos alone and is the one [`alphagenome_poc/`](alphagenome_poc/) implements — the interval
+  one is the obvious next step and was not taken, since nothing needs it yet.
+- **Everything a shipped lane would need beyond reachability**: retry layering, pacing, caching and
+  a `SourceRow`. The blueprint proves the transport and deliberately stops there; its README lists
+  what it omits.
 - **API quota and rate limits.** Not measured; roughly a dozen calls were made in total.
 - **The exact merged-splicing aggregation.** The formula is documented and §6.3 shows it lands
   within ~15% but does not reproduce the file, and fails entirely at one locus. What is *not*

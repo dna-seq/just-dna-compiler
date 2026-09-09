@@ -34,7 +34,44 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — what the API adds over the files is resolution, and motifs are not a dataset
+## 2026-09-10 (latest) — the light Atlas client is declarable after all, and now it is built
+
+Fifth round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md), after reading the upstream
+repository rather than the rendered docs. Still no `RMn`, still nothing imported by a shipped package.
+
+- **§6.2 said the 22 MB client was "not declarable". That was wrong.**
+  `github.com/google-deepmind/alphagenome` is Apache-2.0 and ships the four `.proto` sources its own
+  wheel generates bindings from (`hatch_build.py` calling `grpc_tools.protoc`). The Atlas surface needs
+  three of them — **28 KB** — so vendoring those and declaring `grpcio` + `protobuf` is a real
+  dependency set. Corrected in place, and the option list went from three shapes to four.
+- **[`docs/probes/alphagenome_poc/`](probes/alphagenome_poc/README.md) is the blueprint, test-proven.**
+  A working client with **23 passing tests**, 20 needing no network. An AST walk asserts its
+  third-party imports are exactly `{grpc, docs}`, which makes the 22 MB figure a property of the code
+  rather than a claim in prose; the bindings regenerate from the committed sources; and a live test
+  asserts the RPC returns what the 88.5 GB AVI artifact contains. Scores decode with `struct.unpack` —
+  numpy is not needed either. It is **outside `testpaths`** on purpose, so the 4,332-test suite is
+  unchanged.
+- **One real mistake, caught by writing it.** protoc bakes the staged path into every cross-import, so
+  staging at upstream's own `alphagenome/protos/` produces a package literally named `alphagenome`
+  that shadows the real wheel for anyone with both installed. Staging under the full package path
+  fixes it and removes the `sys.path` insertion at the same time;
+  `test_the_generated_bindings_do_not_shadow_the_upstream_package` pins it.
+- **The error contract is where the house rules land.** Three refusals with three different remedies —
+  `AtlasUnavailable` (retry), `AtlasRefMismatch` (the caller's `REF` disagrees with GRCh38, and the
+  server names the real base), `AtlasNotScored` (an indel: the answer does not exist). The third
+  deliberately does **not** derive from the second, so `except AtlasRefused` cannot swallow it and
+  record a zero for a variant nobody scored.
+- **The upstream FAQ defines `calibrated_scores`**: the quantile score, an empirical rank against a
+  background of **common variants, MAF > 0.01 in any gnomAD v3 population**, ~300 K of them, capped at
+  ±0.999990 — so `PHRED` cannot exceed **50**. That matters for §5: **the rarity axis is already inside
+  the calibrated score**, and pairing `PHRED` with gnomAD MAF double-counts the same reference set.
+- **The merged-splicing discrepancy is not an abs-versus-signed slip.** Upstream's own
+  `compute_merged_splicing_score` takes a signed `max`; re-running with it changed nothing, so §6.3's
+  finding stands with one candidate cause ruled out rather than assumed away. And the only mention of
+  "motif" in the whole repository is the quick-start's note that contribution scores are what discover
+  them, naming **tfmodisco-lite**, **tangermeme** and **tomtom** — outside tools. §6.5 confirmed.
+
+## 2026-09-10 — what the API adds over the files is resolution, and motifs are not a dataset
 
 Fourth round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md), measuring the network
 surface against the offline copies now that all three artifacts are on disk. No `RMn`, no adoption.

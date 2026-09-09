@@ -1,0 +1,2 @@
+aa6fc8f6faadcb8c910fa2b85b57386fbd5c7b5d 2026-09-08
+https://github.com/google-deepmind/alphagenome  src/alphagenome/protos/  (Apache-2.0)
