@@ -24,6 +24,7 @@ from just_dna_format.overrides import (
     OverrideRow,
     apply_overrides,
     overlay_coherence_errors,
+    update_targets,
 )
 from just_dna_format.reference import _ALL_MODELS
 from just_dna_format.resolution import ResolutionRow
@@ -673,3 +674,50 @@ def test_the_excluded_set_is_exactly_the_provenance_columns_and_they_stay_author
     assert {k: dumped[k] for k in ("reason", "decided_by")} == {
         "reason": "checked against the source by hand", "decided_by": "x"
     }
+
+
+def test_two_spellings_of_one_key_are_one_key_group() -> None:
+    """The other half of the spelling defect above. Matching went through the model, so `AFR` and
+    `afr` each reached the same `afr` row — but *grouping* did not, so they were two key groups with
+    one operation each, and the file-level "one operation per key group" rule had nothing to refuse.
+    Before the repair: an `update` under one spelling beside a `suppress` under the other applied
+    both (row corrected, then deleted, zero rows left, no error), and two `update`s of one field
+    under two spellings let the second silently win — `faf95=0.3` with the author's `0.2` absent
+    from the build product and nothing said."""
+    rows = [FrequencyRow(variant_key="rs1", population="afr", dataset="gnomad_v4.1", faf95=0.1)]
+
+    def spelled(member: str, **kwargs: object) -> OverrideRow:
+        return _row(table="frequencies.csv", subject="rs1", member=member, **kwargs)
+
+    twice = [
+        spelled("AFR", field="faf95", operation="update", value="0.2"),
+        spelled("afr", field="faf95", operation="update", value="0.3"),
+    ]
+    # The model-free pre-flight cannot see it: it has no table to canonicalize against.
+    assert overlay_coherence_errors(twice) == []
+    kept, errors, warnings = apply_overrides("frequencies.csv", rows, twice)
+    assert warnings == []
+    assert len(errors) == 1 and "field='faf95' is stated by 2 rows" in errors[0]
+    assert "member='AFR'" in errors[0] and "member='afr'" in errors[0]
+    assert [r.faf95 for r in kept] == [0.1], "a refused overlay changes nothing"
+
+    mixed = [
+        spelled("AFR", field="faf95", operation="update", value="0.2"),
+        spelled("afr", operation="suppress"),
+    ]
+    assert overlay_coherence_errors(mixed) == []
+    kept, errors, _ = apply_overrides("frequencies.csv", rows, mixed)
+    assert len(errors) == 1 and "more than one operation (suppress, update)" in errors[0]
+    assert len(kept) == 1, "neither the update nor the suppress may apply"
+
+    # Two spellings that carry ONE operation on DIFFERENT fields are one coherent group, not an
+    # error: the rule is about contradiction, never about the author's capitalisation.
+    complementary = [
+        spelled("AFR", field="faf95", operation="update", value="0.2"),
+        spelled("afr", field="dataset", operation="update", value="gnomad_v4.2"),
+    ]
+    updated, errors, warnings = apply_overrides("frequencies.csv", rows, complementary)
+    assert (errors, warnings) == ([], [])
+    assert [(r.faf95, r.dataset) for r in updated] == [(0.2, "gnomad_v4.2")]
+    # And `update_targets` sees one target for the group, not one per spelling.
+    assert update_targets("frequencies.csv", rows, complementary) == [(("rs1", "AFR"), True)]

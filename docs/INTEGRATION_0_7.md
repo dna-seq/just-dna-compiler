@@ -98,9 +98,19 @@ that `warnings_summary`'s closed vocabulary carries and that COMPILER.md already
 codes — *additive* describes the writer, never the reader — but it had not been said about
 `VerificationRecord`, and it is the sharper case because it needs no new vocabulary member to fire.
 
-### Three checks can newly refuse
+### Four checks can newly refuse
 
 None of them is a schema change, and each is a fix:
+
+- **An overlay that spells one key two ways is refused (2026-09-09, the pre-cut audit).** The overlay's
+  key cells are raw author text and the derived rows are canonical; the *match* already went through
+  the model, so `member=AFR` and `member=afr` each reached the same `afr` row, but the *grouping* did
+  not, so the file-level "one operation per key group" rule had nothing to refuse. An `update` under one
+  spelling beside a `suppress` under the other applied both, and two `update`s of one field under two
+  spellings let the later row silently win. Both are errors now, from `apply_overrides`, so `validate`
+  and `compile` meet them alike. **No reference example carries an `overrides.csv`**, and no published
+  module does, so nothing in the sweep moved; a consumer's module can only be affected if its overlay
+  already carried a contradiction it was not being told about.
 
 - **RM141 — `validate --strict` now refuses what `compile --strict` refuses, on a partial resolution
   table.** A module whose variants have no position after resolution was refused by the compile and

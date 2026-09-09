@@ -485,6 +485,86 @@ def overlay_coherence_errors(overrides: Sequence[OverrideRow]) -> list[str]:
     return errors
 
 
+#: One key group of an overlay as the TABLE stores its key: the spelling the author used first (the
+#: label every message names), the canonical `(subject, member)` pair, the rows in authored order, and
+#: every spelling the group was written under.
+_KeyGroup = tuple[tuple[str, str], tuple[str, str], list[OverrideRow], list[tuple[str, str]]]
+
+
+def _key_groups(
+    target: OverlayTarget, sample: BaseModel | None, mine: Sequence[OverrideRow]
+) -> list[_KeyGroup]:
+    """Group `mine` by key **as the target model stores it**, in first-seen order.
+
+    Grouping by the raw authored key was the second half of the `_canonical_key_cell` defect: the
+    *match* went through the model, so `member=AFR` and `member=afr` each reached the same `afr` row,
+    but the *grouping* did not — so they were two groups, each with one operation, and the
+    file-level "one operation per key group" rule had nothing to refuse. An `update` under one
+    spelling beside a `suppress` under the other applied both (row corrected, then deleted, no
+    error), and two `update`s of one field under two spellings let the second silently win, which
+    is exactly the outcome `_strip_key_columns` describes as repaired for trailing whitespace.
+
+    Canonicalized against `sample` once, up front: the merge needs every key before the first
+    operation runs. With no row to canonicalize against (an empty table) the raw spelling stands,
+    which is also what the match would fall back to.
+    """
+    raw_order: list[tuple[str, str]] = []
+    raw_groups: dict[tuple[str, str], list[OverrideRow]] = {}
+    for row in mine:
+        raw = (row.subject, (row.member or "").strip())
+        if raw not in raw_groups:
+            raw_groups[raw] = []
+            raw_order.append(raw)
+        raw_groups[raw].append(row)
+    merged: dict[tuple[str, str], _KeyGroup] = {}
+    order: list[tuple[str, str]] = []
+    for raw in raw_order:
+        subject, member = raw
+        canonical = (
+            _canonical_key_cell(sample, target.subject_field, subject),
+            _canonical_key_cell(sample, target.member_field, member),
+        )
+        if canonical not in merged:
+            merged[canonical] = (raw, canonical, [], [])
+            order.append(canonical)
+        merged[canonical][2].extend(raw_groups[raw])
+        merged[canonical][3].append(raw)
+    return [merged[canonical] for canonical in order]
+
+
+def _spelling_errors(table: str, groups: Sequence[_KeyGroup]) -> list[str]:
+    """The file-level rules again, over the groups the model sees rather than the ones the author
+    spelled — only where the two differ, since `overlay_coherence_errors` has already ruled on a
+    group written one way and a second copy of its message would be a rerun (`@no-rerun-with-counts`)."""
+    errors: list[str] = []
+    for _label, canonical, rows, spellings in groups:
+        if len(spellings) < 2:
+            continue
+        spelled = ", ".join(f"subject={s!r} member={m!r}" for s, m in spellings)
+        stored = f"subject={canonical[0]!r} member={canonical[1]!r}"
+        operations = sorted({row.operation for row in rows})
+        if len(operations) > 1:
+            errors.append(
+                f"overrides.csv: {table} {stored} is written under more than one spelling "
+                f"({spelled}) and the spellings carry more than one operation ({', '.join(operations)}). "
+                f"The table stores the key as {stored}, so they are one key group, and a key group "
+                f"carries exactly one operation."
+            )
+            continue
+        fields: dict[str, int] = {}
+        for row in rows:
+            if row.operation == "update":
+                fields[row.field or ""] = fields.get(row.field or "", 0) + 1
+        for field_name, count in fields.items():
+            if count > 1:
+                errors.append(
+                    f"overrides.csv: {table} {stored} field={field_name!r} is stated by {count} rows "
+                    f"under different spellings of the key ({spelled}). The table stores the key as "
+                    f"{stored}, so the later row would silently win; state each cell once."
+                )
+    return errors
+
+
 def apply_overrides(
     table: str,
     rows: Sequence[BaseModel],
@@ -539,18 +619,13 @@ def apply_overrides(
     if not mine:
         return result, errors, []
 
-    groups: dict[tuple[str, str], list[OverrideRow]] = {}
-    order: list[tuple[str, str]] = []
-    for row in mine:
-        key = (row.subject, (row.member or "").strip())
-        if key not in groups:
-            groups[key] = []
-            order.append(key)
-        groups[key].append(row)
+    groups = _key_groups(target, result[0] if result else None, mine)
+    errors.extend(_spelling_errors(table, groups))
+    if errors:
+        return result, errors, []
 
-    for key in order:
+    for key, _canonical, group, _spellings in groups:
         subject, member = key
-        group = groups[key]
         operation = group[0].operation
         # Canonicalized against a row of the table being corrected, and re-read **per group** rather
         # than once: an `insert` earlier in this loop may be the only row there is to ask.
@@ -654,19 +729,10 @@ def update_targets(
     target = OVERRIDABLE_TABLES[table]
     result = list(rows)
     targets: list[tuple[tuple[str, str], bool]] = []
-    groups: dict[tuple[str, str], list[OverrideRow]] = {}
-    order: list[tuple[str, str]] = []
-    for row in overrides:
-        if row.table != table:
-            continue
-        key = (row.subject, (row.member or "").strip())
-        if key not in groups:
-            groups[key] = []
-            order.append(key)
-        groups[key].append(row)
-    for key in order:
+    mine = [row for row in overrides if row.table == table]
+    for key, _canonical, group, _spellings in _key_groups(target, result[0] if result else None, mine):
         subject, member = key
-        if groups[key][0].operation != "update":
+        if group[0].operation != "update":
             continue
         sample = result[0] if result else None
         subject_key = _canonical_key_cell(sample, target.subject_field, subject)

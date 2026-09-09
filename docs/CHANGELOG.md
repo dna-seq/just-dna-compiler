@@ -51,6 +51,20 @@ behind the green. Each landed as its own commit with the test that pins it.
   generic renderer, the idiom every sibling writer already uses; reproduced on the old writer by
   subclassing the model with one extra field, and pinned by the equality plus a full-row read-back.
 
+- **An overlay spelling one key two ways defeated its own coherence rule** (`just-dna-format`; a
+  check gains reach, no schema change — INTEGRATION_0_7 § 1 lists it as the fourth check that can
+  newly refuse). `_canonical_key_cell` had repaired the *match* — `member=AFR` reaches the `afr` row —
+  but `apply_overrides` and `update_targets` still *grouped* by the raw spelling, so two spellings
+  were two key groups with one operation each and "one operation per key group" had nothing to
+  refuse. Reproduced: an `update` under `AFR` beside a `suppress` under `afr` corrected the row and
+  then deleted it with no error, and two `update`s of `faf95` under the two spellings kept the later
+  value with the author's first correction silently absent. Grouping now runs through the model
+  (`_key_groups`), and a merged group with more than one spelling is refused on a mixed operation or
+  a twice-stated field, naming both spellings and the stored key. Two spellings carrying one
+  operation on different fields stay one coherent group. The pre-flight `overlay_coherence_errors`
+  is unchanged (it has no table to canonicalize against), which is why the refusal lives in the
+  function both `validate` and `compile` call.
+
 ## 2026-09-04 — the allocator reserved a number when you asked it for help
 
 **Agent tooling only (`.claude/rm-next.py`), no package, no schema, no CLI surface.** Found while

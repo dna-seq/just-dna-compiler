@@ -1883,7 +1883,12 @@ Two more refusals, both structural:
   overlay row matching nothing on the next lap, so the warning would appear on a module's round trip
   and not on the module.
 - **`suppress` names a row, so it carries neither `field` nor `value`**, and one `(table, subject,
-  member)` group carries exactly one operation.
+  member)` group carries exactly one operation. **A group is the key as the table stores it**, not as
+  the author spelled it: `member=AFR` and `member=afr` over a `frequencies.csv` full of `afr` are
+  one group, so an `update` under one spelling beside a `suppress` under the other is refused, and
+  two `update`s of one field under two spellings are refused rather than letting the later row win.
+  The model-free pre-flight cannot see this (it has no table to canonicalize against), so the
+  refusal comes from `apply_overrides`, which both `validate` and `compile` reach.
 
 An `insert` places its row **at the end of its subject's group, in the order the overlay rows appear**
 — at the end of the table when the subject has no group yet. Row order is load-bearing (parquet bytes
