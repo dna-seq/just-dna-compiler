@@ -10,18 +10,22 @@ live AlphaGenome API reached with a personal `ALPHAGENOME_API_KEY`.
   complete (20,637,481,745 bytes over two members, `combined_alphagenome_splicing_snvs.tsv.gz`
   and its `.tbi`; member timestamps 2026-08-27 19:16/19:17). Every splicing number below was
   re-derived from those bytes in this session.
-- `docs/vendor/alphagenome_additional_tos.pdf`
-  (`sha256 0a1b52c469cda9828cc1a5c64b7b39122bd96e20827617fe157d34126005a6c5`, "Last Modified:
-  September 8, 2026"), saved by the maintainer from the Terms page, with a `pdftotext -layout`
-  extraction beside it at `docs/vendor/alphagenome_additional_tos.txt` so the clauses are
-  greppable. **Every quotation in §2 is from that file**, not from the web page.
+- **Four terms documents**, all saved by the maintainer from a signed-in browser and pinned in
+  `docs/vendor/` with `pdftotext -layout` extractions beside them so the clauses are greppable —
+  `alphagenome_additional_tos.pdf` (`sha256 0a1b52c4…`, Last Modified 2026-09-08),
+  `alphagenome_output_terms.pdf` (`sha256 a1293588…`, Effective 2025-06-25),
+  `google_terms_of_service.pdf` (`sha256 79fc5e45…`, Effective 2026-07-30) and
+  `google_apis_terms_of_service.md` (`sha256 b6d1364e…`, Last modified 2021-11-09). **Every
+  quotation in §2 is from those files**, never from a web page. §2.8 lists the two binding
+  documents still missing.
 - The live API, via the `alphagenome` PyPI SDK in a throwaway venv on `/data`, on the
   maintainer's own key.
-- The artifact names, sizes and licence classes in §1 are **quoted from the maintainer's reading
-  of the Atlas page**, not fetched: `deepmind.google.com/science/alphagenome/*` is a
-  sign-in-gated single-page app that serves 185 KB of navigation chrome and no content to
-  `curl`/WebFetch. So is `…/terms` and `…/output-terms`. The PDF is why §2 can be precise and
-  the missing Output Terms of Use is why §2.7 cannot.
+- The three artifacts themselves, now all downloaded, at `/data/genomes/alphagenome/`.
+- The artifact **licence classes** in §1 are still **quoted from the maintainer's reading of the
+  Atlas page**, not fetched: `deepmind.google.com/science/alphagenome/*` is a sign-in-gated
+  single-page app that serves 185 KB of navigation chrome and no content to `curl`/WebFetch. That
+  page is the only place membership of the Permissive class is stated, which §2.8 records as the
+  one gap that matters.
 
 **Date of analysis:** 2026-09-09.
 
@@ -32,7 +36,7 @@ question.
 
 ---
 
-## 0. Summary — the nine things that decide whether this is adoptable
+## 0. Summary — the things that decide whether this is adoptable
 
 1. **The three bulk artifacts are not one licence.** Only *AVI SNV scores* (88.5 GB) is a
    *Permissive Use Downloadable Artifact*, usable commercially and by commercial
@@ -63,10 +67,25 @@ question.
    tiny — *for the wrong reason*. `MAF` absent means unmeasured, never rare, so the surface is
    governed by the sparsity of one column rather than by biology. §5 has the measurements.
 
-5. **All three bulk artifacts are SNV-only** — the filenames say so and the splicing file's
-   schema confirms it. **Rare indels do not exist in the bulk data at all**; they exist only
-   through the API, which is per-request, tissue-resolved, and non-commercial. Filtering "rare
-   indels with low score" is not a slice of these artifacts.
+5. **All three bulk artifacts are SNV-only**, checked rather than inferred: the SHAP file is
+   *named* `…indels_with_am_snvs` and carries `IS_INSERTION`/`IS_DELETION` columns, but across
+   8 M sampled rows both flags are constant `0` and no `REF`/`ALT` is multi-base (§1.5). **Rare
+   indels do not exist in the bulk data at all** — only through the API, which is per-request,
+   tissue-resolved and non-commercial. Filtering "rare indels with low score" is not a slice of
+   these artifacts.
+
+5b. **The SHAP artifact is a 20-column feature table**, not an opaque attribution: it carries
+   `MERGED_SPLICING` (the splicing artifact rescaled by ~3.345, not copied), nine `MAX_ABS_*`
+   modality scores, and three **third-party** features — `ALPHAMISSENSE`, `CACTUS_241_WAY`,
+   `PHASTCONS_470_WAY` — each with its own upstream terms. And it writes `0.0` where the
+   splicing pipeline never scored a position, so the source itself collapses unmeasured into
+   no-effect (§1.5).
+
+5c. **The Output Terms require the licence text to travel *inside* the artifact**, not as a
+   link: restriction 3b says anyone attaching their own terms must carry the "Use restrictions"
+   section as an enforceable provision. They also let Google demand deletion on breach, not only
+   on termination — and they pin the applicable version to **the date the Output was generated**,
+   which makes the artifact's own timestamp legally load-bearing. §2.7.
 
 6. **The terms need at least four axes `SourceRow` cannot express**, and one of them is not a
    use restriction at all but a bar on *who may hold the data*: "The AlphaGenome Services aren't
@@ -203,6 +222,53 @@ apply to AVI** — different corpus, different row count, an extra column and a 
 (`@probe-names-the-table`). The one thing already established is that its rows begin at the
 start of the assembly, so the ~3.9 billion of §1.2 is a floor and not an estimate for it.
 
+### 1.5 The SHAP artifact is a feature table, not an opacity
+
+Read from `/data/genomes/alphagenome/avi_feature_importances_snvs_tabix.zip`
+(283,875,513,566 bytes; member
+`combined_ag_cond_linear_ensemble_20260417_feature_importance_indels_with_am_snvs.tsv.gz`,
+283,872,737,358 bytes, stamped **2026-09-01** — four days later than the other two artifacts).
+Header and streamed samples only; the file was not extracted.
+
+**Twenty columns**, and they are the AVI model's inputs rather than a post-hoc attribution blob:
+
+```
+#CHROM POS REF ALT MERGED_SPLICING
+MAX_ABS_ATAC MAX_ABS_CONTACT_MAPS MAX_ABS_DNASE MAX_ABS_CHIP_TF MAX_ABS_CHIP_HISTONE
+MAX_ABS_CAGE MAX_ABS_PROCAP MAX_ABS_RNA_SEQ MAX_ABS_POLYADENYLATION
+ALPHAMISSENSE CACTUS_241_WAY PROTEIN_TERMINATION START_LOST STOP_LOST
+PHASTCONS_470_WAY IS_INSERTION IS_DELETION
+```
+
+Four findings, each one measured.
+
+**It carries three third-party sources.** `ALPHAMISSENSE` is a different DeepMind model with its
+own licence; `CACTUS_241_WAY` and `PHASTCONS_470_WAY` are comparative-genomics conservation
+scores. A module carrying any of those columns stacks terms rather than inheriting one set
+(`@a-hosts-terms-are-not-its-contents-terms` is the rule; §2.8 records the gap).
+
+**`MERGED_SPLICING` is the splicing artifact rescaled, not copied.** Joining the two files over
+`chr1:65,409–1,200,000` on `(pos, ref, alt)` gives **534,528 rows in common** and a ratio
+`splicing / SHAP` of **3.345 ± 0.043** (min 2.915, max 3.500). Near-constant but not constant, so
+neither file is exactly recoverable from the other, and a module must record **which file** its
+splicing number came from. The scale is presumably the feature standardisation the linear
+ensemble in the filename was fitted with.
+
+**Zero means unscored, and the source does not distinguish them.** In that same window SHAP has
+**2,953,776 rows** against splicing's **534,528**, and every one of the 534,528 joined rows had a
+*nonzero* `MERGED_SPLICING` — so the other 2.42 M rows carry `MERGED_SPLICING = 0.0` at positions
+the splicing pipeline never scored. This is `@unreachable-not-absent` occurring **inside the
+source**: a consumer reading that column as a splicing effect reads 82% of this window as "no
+effect" when the truth is "not measured". Anything ingesting this file has to reconstruct the
+distinction from the splicing artifact's own coverage, because the column cannot express it.
+
+**No indels, despite the filename and the two flags.** The member is named
+`…feature_importance_indels_with_am_snvs`, and `IS_INSERTION`/`IS_DELETION` are real columns —
+but across the first 8,000,000 rows sampled there is **not one** row with a multi-base `REF` or
+`ALT`, and both flags are constant `0`. The final token of the name is the operative one: this is
+the SNV slice of a feature schema that *supports* indels. So the SNV-only statement in §0 holds
+for all three published artifacts, and the flags are a hint that an indel artifact could follow.
+
 ## 2. The terms, clause by clause
 
 All quotations from `docs/vendor/alphagenome_additional_tos.txt`, Last Modified 2026-09-08 — one
@@ -327,14 +393,90 @@ reading a snapshot the operator built is not one.
 `source="alphagenome"` would have one row for two incompatible licence classes. Whether that
 forces two source names (`alphagenome_avi` / `alphagenome_splicing`) or a wider key is open.
 
-### 2.7 What could not be read
+### 2.7 The Output Terms of Use — read, and they change three things
 
-The **AlphaGenome Output Terms of Use** — the document §2.4/5 requires a distributor to point
-at, and therefore the one that actually governs what a downstream reader of a derived module may
-do — is at `deepmind.google.com/science/alphagenome/output-terms` and is unreadable without a
-signed-in browser. **It is a hole in this analysis, not a detail.** The same applies to the
-Atlas page's own per-artifact licence wording. Saving both the way the Additional Terms PDF was
-saved would close it.
+Saved by the maintainer on 2026-09-10 as `docs/vendor/alphagenome_output_terms.pdf`
+(`sha256 a12935888c9c39e5…`), **Effective: June 25, 2025**. It is the document §2.4/5 requires a
+distributor to point downstream readers at, so it governs what someone who receives a derived
+module may do with it.
+
+**It predates the Atlas by fifteen months and carries no AVI carve-out.** Its opening is flat:
+
+> The AlphaGenome API belongs to us. We make Output available free of charge, **for
+> non-commercial use only**, in accordance with following use restrictions.
+
+Its five Use restrictions mirror the Additional Terms' prohibitions 1, 4, 5, 6 and 7 almost
+word for word, including the same carve-out — sharing with a commercial organization is barred
+"aside from indirectly via a scientific publication, open source release or to support
+journalism". What it does **not** have is the Permissive Use exception: that lives only in the
+2026-09-08 Additional Terms, which state they govern where the two conflict, and whose
+prohibition 5 exempts Permissive artifacts from the notice-and-Output-Terms requirement
+altogether. So the AVI artifact is outside this document, and everything else is inside it.
+
+Three things follow that the Additional Terms alone did not say:
+
+**(a) The licence text must travel inside the artifact, not as a link.** Restriction 3b:
+
+> If you provide additional or different terms and conditions for use, reproduction or
+> distribution of Output or Derivatives, you must include **this "Use restrictions" section of
+> these Terms as an enforceable provision** and provide clear notice to subsequent users that
+> Output and Derivatives are subject to such use restrictions.
+
+A module carries its own `sources.csv` terms, which is exactly "additional or different terms".
+So a compiled module carrying AlphaGenome-derived data must **embed the Use restrictions text**.
+The repo already has the machinery and the precedent: `SNAPSHOT_LICENSE_FILENAME` exists because
+ClinPGx bundles a `LICENSE.txt` inside its archive and the builder extracts it so a holder of the
+snapshot can read the terms without the archive (`@a-hosts-terms-are-not-its-contents-terms`).
+This is the same shape with the requirement made explicit by the licensor.
+
+**(b) Revocation is not limited to termination.** §2.3 read the Additional Terms' termination
+clause; this one is broader and needs no termination at all:
+
+> If you breach these Terms, Google reserves the right to request that you delete and cease use
+> or sharing of Output or Derivatives in your possession or control. You agree to **immediately
+> comply** with any such request.
+
+**(c) The terms are pinned to the date the Output was generated**, which is the one clause that
+helps rather than constrains:
+
+> The version of these Terms that were effective on the date the relevant Output was generated
+> will apply to your use of that Output.
+
+So recording **when the bytes were produced** fixes which terms apply to them, permanently. That
+turns the artifact's own timestamp into a legally load-bearing field rather than provenance
+hygiene — the splicing and AVI files are stamped 2026-08-27, the SHAP file 2026-09-01 — and it is
+the argument for `license_sha256` plus a recorded `dataset` date being the right pattern here
+rather than a link to a live page. `licensing.py` already records both for exactly this reason.
+
+One sign the document is a reused template rather than a bespoke one: its liability section
+disclaims "**Structure predictions** provided by AlphaGenome", which is AlphaFold's language. It
+does not weaken anything, but it is a reason to read it as the general API output licence it is
+rather than as a considered statement about Atlas artifacts.
+
+### 2.8 The document set, and what is still missing
+
+Six documents are binding, by the Additional Terms' own first page. Four are now pinned in
+`docs/vendor/`:
+
+| document | version | in repo |
+| --- | --- | --- |
+| AlphaGenome Services Additional Terms of Service | Last modified 2026-09-08 | `alphagenome_additional_tos.pdf` + `.txt` |
+| AlphaGenome Output Terms of Use | Effective 2025-06-25 | `alphagenome_output_terms.pdf` + `.txt` |
+| Google APIs Terms of Service | Last modified 2021-11-09 | `google_apis_terms_of_service.md` |
+| Google Terms of Service | Effective 2026-07-30 | `google_terms_of_service.pdf` + `.txt` |
+| Google Generative AI Prohibited Use Policy | — | **missing** (incorporated by prohibition 8) |
+| the website's "Permissive Use Downloadable Artifact" section | — | **missing** |
+
+The second gap is the load-bearing one. **Nothing in the four pinned documents says which
+artifacts are Permissive.** The Additional Terms define the class and grant it commercial use,
+but they delegate membership to "the 'Permissive Use Downloadable Artifact' section of the
+AlphaGenome Services website" — so §1's table, the single most consequential claim in this
+document, rests on the maintainer's reading of a sign-in-gated page and cannot be verified from
+the repo. That page, saved the way these four were, is the last thing this analysis needs.
+
+A third document is owed by the *data* rather than by Google's terms: the SHAP artifact carries
+an `ALPHAMISSENSE` column (§1.5), and AlphaMissense is a separate model with its own licence. A
+module carrying that column stacks two sets of terms, not one.
 
 ---
 
@@ -715,12 +857,17 @@ Named so the next reader knows the shape of the hole rather than inheriting a si
 - **AVI's distribution.** The artifact is downloaded and extracted; the pass is queued
   (§1.4, Appendix A.7). Its row count, its coverage, the sign split on `raw_score` and the shape
   of `PHRED` are all open until it lands. **Nothing in §3 or §4 may be quoted about AVI.**
-- **The SHAP feature-importance artifact** (283.9 GB). Nothing read. Note that §6.1 makes the
-  file optional for small numbers of variants — `AVI_SCORE_FEATURE_IMPORTANCE` is an Atlas
-  scorer.
-- **The AlphaGenome Output Terms of Use** (§2.7) and the Atlas page's own per-artifact licence
-  wording. Still the largest hole: it is the document a distributor of Derivatives must point
-  downstream readers at, and it is sign-in-gated.
+- **The SHAP artifact's distribution.** Its schema, its third-party columns, its zero-means-
+  unscored behaviour and its splicing ratio are measured (§1.5), but nothing beyond the first
+  8 M rows of `chr1` was read and the file was never extracted — 284 GB and roughly three hours.
+  Note §6.1 makes it optional for small numbers of variants: `AVI_SCORE_FEATURE_IMPORTANCE` is
+  an Atlas scorer, so a consumer needing a handful never takes the file.
+- **The Atlas page's "Permissive Use Downloadable Artifact" section.** Now the largest hole and
+  the only one that changes a conclusion: it is the sole statement of *which* artifacts are
+  commercially usable, and §1's table rests on it (§2.8).
+- **Google's Generative AI Prohibited Use Policy**, incorporated by prohibition 8.
+- **AlphaMissense's own terms**, owed by the `ALPHAMISSENSE` column in the SHAP artifact, and the
+  provenance of its `CACTUS_241_WAY` / `PHASTCONS_470_WAY` columns.
 - **Motif datasets** — announced, not published.
 - **API quota and rate limits.** Not measured; roughly a dozen calls were made in total.
 - **The exact merged-splicing aggregation.** The formula is documented and §6.3 shows it lands

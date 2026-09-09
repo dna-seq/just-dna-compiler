@@ -1,0 +1,134 @@
+AlphaGenome Output Terms of Use
+Effective: June 25, 2025
+
+
+ By using predictions or related information provided by Google DeepMind’s AlphaGenome
+ API (“Output”), or substantially derived from Output (“Derivatives”), without signing up to
+ AlphaGenome API and agreeing to the AlphaGenome API Additional Terms of Service, you
+ agree to be bound by these AlphaGenome Output Terms of Use between you (or your
+ organization, as applicable) and Google LLC (these “Terms”).​
+
+ If you are using Output or Derivatives on behalf of an organization, you confirm you are
+ authorized either explicitly or implicitly to agree to, and are agreeing to, these Terms as an
+ employee or otherwise on behalf of your organization.​
+
+ If you have agreed to the AlphaGenome API Additional Terms of Service, your use of Output
+ or Derivatives is governed by those terms. If you haven't agreed to the AlphaGenome API
+ Additional Terms of Service and don't agree to these Terms, don't use Output or
+ Derivatives or permit any third party to do so on your behalf.​
+
+ When we say "you", we mean the individual or organization using Output or Derivatives.
+ When we say "we", "us" or "Google", we mean the entities that belong to the Google group
+ of companies, which means Google LLC and its affiliates.
+
+
+Use restrictions
+​
+The AlphaGenome API belongs to us. We make Output available free of charge, for
+non-commercial use only, in accordance with following use restrictions. You must not use nor
+allow others to use Output or Derivatives:
+
+   1.​ On behalf of a commercial organization or in connection with any commercial
+       activities, including research on behalf of commercial organizations or sharing or
+       using Output or Derivatives in a manner that will grant a commercial organization any
+       rights in Output or Derivatives, in each case aside from indirectly via a scientific
+       publication, open source release or to support journalism.
+
+   2.​ To train machine learning models or related technology for predicting the effects
+       of genetic variants similar to AlphaGenome.
+
+   3.​ Without providing conspicuous notice that any Output or Derivatives you publish
+       or distribute are provided under and subject to these Terms and of any
+       modifications you make to Output.
+
+           a.​ By way of example, you can do this by sharing a copy of the AlphaGenome
+               Output Terms of Use and a “Legally Binding Terms of Use” text file that contains
+               the following notice: “By using this information, you agree to AlphaGenome
+               Output Terms of Use found at
+               http://deepmind.google.com/science/alphagenome/output-terms”.
+
+           b.​ If you provide additional or different terms and conditions for use, reproduction
+               or distribution of Output or Derivatives, you must include this “Use restrictions”
+               section of these Terms as an enforceable provision and provide clear notice to
+               subsequent users that Output and Derivatives are subject to such use
+               restrictions.
+
+   4.​ To misinform, misrepresent or mislead, including:
+
+           a.​ misrepresenting your relationship with us;
+
+           b.​ misrepresenting the origin of Output or Derivatives;
+
+           c.​ distributing misleading claims of expertise or capability made particularly in
+               sensitive areas (e.g., health); or
+
+           d.​ making decisions in domains that affect material or individual rights or
+               well-being (e.g., healthcare).
+
+   5.​ To perform or facilitate dangerous, illegal or malicious activities, including
+       promoting or facilitating the sale of, or providing instructions for synthesizing or
+       accessing, illegal substances, goods or services.
+Output and Derivatives may be provided with ancillary information that belongs to us. You may
+use such ancillary information as allowed by these Terms. You agree that your right to use and
+share Output or Derivatives is subject to your compliance with these Terms. If you breach
+these Terms, Google reserves the right to request that you delete and cease use or sharing of
+Output or Derivatives in your possession or control. You agree to immediately comply with any
+such request.
+
+Disclaimers and limitations of liability
+Nothing in these Terms restricts any rights that cannot be restricted under applicable law or
+limits Google's responsibilities except as allowed by applicable law. If you are legally exempt
+from certain responsibilities, including indemnification, then those responsibilities do not apply
+to you under the Terms.
+
+Structure predictions provided by AlphaGenome are predictions with varying levels of
+confidence, provided strictly as-is and without representation or warranty of any kind,
+express or implied, including implied warranties of merchantability, fitness for a
+particular purpose, title, and non-infringement. You are responsible for the accuracy,
+reliability, availability, effectiveness, or correct use of information generated by
+AlphaGenome or for any impact from ongoing use of such information. If you rely on any
+such information, you do so solely at your own risk.
+
+AlphaGenome, Output and Derivatives are for theoretical modelling only. These are not
+intended, validated, or approved for clinical use. You should not use these for clinical
+purposes or rely on them for medical or other professional advice. Any content regarding
+those topics is provided for informational purposes only and is not a substitute for advice
+from a qualified professional.
+
+In no circumstances will Google be responsible for (i) any expense, loss or damage that is not
+reasonably foreseeable; (ii) lost profits, revenues, or data; financial losses; or indirect, special,
+consequential, exemplary, or punitive damages, or (iii) any liability, including for its own
+negligence, relating to these Terms over $500.
+
+
+Governing law and disputes
+
+These Terms will be governed by the laws of the State of California without regard to choice of
+law principles. The state or federal courts of Santa Clara County, California shall have exclusive
+jurisdiction of any dispute arising out of these Terms.
+
+Given the nature of scientific research, it may take some time for any breach of these Terms to
+become apparent. To the extent allowed by applicable law, any legal claims relating to these
+Terms can be initiated until the later of: (a) the cut-off date under applicable law for bringing
+the legal claim; or (b) two years from the date you or Google (as applicable) became aware, or
+should reasonably have become aware, of the facts giving rise to that claim. You won't argue
+limitation, time bar, delay, waiver or the like in an attempt to bar an action filed within that time
+period, and neither will we.
+
+All rights not specifically and expressly granted to you by these Terms are reserved to Google.
+No delay, act or omission by Google in exercising any right or remedy will be deemed a waiver
+of any breach of these Terms and Google expressly reserves any and all rights and remedies
+available under these Terms or at law or in equity or otherwise, including the remedy of
+injunctive relief against any threatened or actual breach of these Terms without the necessity
+of proving actual damages.
+
+Miscellaneous
+
+Google may update these Terms (1) to reflect changes in how it does business, (2) for legal,
+regulatory, or security reasons, or (3) to prevent abuse or harm. The version of these Terms that
+were effective on the date the relevant Output was generated will apply to your use of that
+Output. ​
+​
+If it turns out that a particular provision of these Terms is not valid or enforceable, this will not
+affect any other provisions.
+

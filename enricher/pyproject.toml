@@ -47,6 +47,23 @@ just-dna-enricher = "just_dna_enricher.cli:app"
 # polars is a builder-only dep (guarded import in `clinvar_build`/`constraint_build`); the runtime
 # resolver path stays polars-free (the compiler tier owns polars, CONSTITUTION Goal 2).
 [project.optional-dependencies]
+# AlphaGenome Atlas / model API. An **extra**, not core, and the reason is measured rather than
+# assumed (docs/probes/ALPHAGENOME_ATLAS.md § 6.2): `alphagenome` declares anndata, pandas, scipy,
+# zarr, h5py, numcodecs, pyarrow, matplotlib, seaborn, pyfaidx, absl-py and fsspec, and a full
+# install is **255 MB** against a tier whose entire runtime list is httpx/tenacity/huggingface-hub.
+# Six of those are never imported on any scoring path, but the wheel declares them flat so there is
+# no lighter variant to ask for, and `atlas.py` imports `anndata` at module level, so even the SDK's
+# own import path costs 242 MB. CONSTITUTION Goal 2 makes that a core-dependency question, not a
+# size one, and no adoption decision has been taken — so nothing in the enricher imports this yet.
+#
+# **A 22 MB client exists and is not declarable here.** `grpcio` + `protobuf` + the generated stubs
+# reach every Atlas RPC (the score fields are plain `bytes`, the request filter is a string), but the
+# stubs ship only inside this wheel, so the light path is `pip install --no-deps alphagenome grpcio
+# protobuf` — a deployment recipe, not a dependency specifier. Vendoring the generated protos is the
+# only way to declare it, and that is a decision with a maintenance cost attached.
+alphagenome = [
+    "alphagenome>=0.9.0",
+]
 dev = [
     "pytest>=9.0.3",
     "polars>=1.42.0",
