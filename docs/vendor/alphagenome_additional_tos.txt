@@ -1,0 +1,265 @@
+AlphaGenome Services Additional Terms of Service
+
+
+  Use of the AlphaGenome Services is subject to these AlphaGenome Services
+  Additional Terms of Service in addition to:
+
+    ●​ for Google API and AlphaGenome Atlas API: the Google APIs Terms of
+       Service.
+    ●​ for AlphaGenome Atlas Non-API Features: the Google Terms of Service.
+
+  Key things to know
+
+    1.​ The AlphaGenome Services are only available for use by individuals and
+        non-commercial organizations (universities, non-profit organizations and research
+        institutes, educational and government bodies), or for journalism.
+    2.​ You must not use the AlphaGenome Services or outputs (with the exception of the
+        AVI Score):
+            a.​ in connection with any commercial activities, including research on behalf
+                of commercial organizations; or
+            b.​ to train machine learning models or related technology for predicting the
+                effects of genetic variants similar to AlphaGenome.
+            c.​ for clinical purposes or rely on them for medical or other professional advice.
+    3.​ Your individual AlphaGenome Services credentials are personal and must not be
+        published or shared, even within your organization.
+    4.​ You can publish, share and adapt output in accordance with the Terms, including
+        the requirement to provide clear notice that (with the exception of the AVI Score) use
+        is subject to AlphaGenome Output Terms of Use and of any modifications you make.
+
+
+  Besides our terms, we also publish a Privacy Policy. Although it’s not part of our terms, we
+  encourage you to read it to better understand how you can update, manage, export, and
+  delete your information. Notwithstanding the “Exporting & deleting your information”
+  section of our Privacy Policy, if you would like to update, manage, export or delete your
+  information related to AlphaGenome Services, please contact
+  AlphaGenome@google.com.
+
+
+
+
+Last Modified: September 8, 2026
+
+By using Google's AlphaGenome Atlas (as defined below) or AlphaGenome API (collectively,
+the "AlphaGenome Services"), you agree to be bound by these AlphaGenome Services
+additional terms of service ("Additional Terms"). These Additional Terms apply in addition to
+the Google APIs Terms of Service (the "API Terms") to any use of the AlphaGenome Service
+that invokes an API, including the AlphaGenome Atlas API or Google’s API. These Additional
+Terms also apply in addition to the Google Terms of Service (the “Google Terms of Service”)
+to all non-API features of AlphaGenome Atlas including pre-computed datasets
+(“AlphaGenome Atlas Non-API Features”). Together, such API Terms, Google Terms of
+Service and these Additional Terms are referred to herein as the "Terms", in each case: (a) as
+modified from time to time in accordance with the Terms, and (b) between you and (i) if you are
+from a country in the European Economic Area or Switzerland, Google Ireland Limited, or (ii)
+otherwise, Google LLC. “AlphaGenome Atlas” comprises the AlphaGenome Atlas API and the
+AlphaGenome Atlas Non-API Features.
+
+Terms that are not defined in these Additional Terms have the meanings given in the API Terms
+or the Google Terms of Service, as applicable. Any system or application through which you use
+or into which you embed the Google API or AlphaGenome Atlas API is an "API Client" under the
+API Terms.
+
+When we say "you", we mean the individual or organization using an AlphaGenome Service and
+all related information, including (a) any model output, AVI Scores, other pre-computed scores,
+or pre-computed datasets and related information provided by an AlphaGenome Service
+("Output"), and (b) any visual representations, computational predictions, descriptions,
+modifications, copies, or adaptations that are substantially derived from Output ("Derivatives")
+(together, the "AlphaGenome Assets"). When we say "we", "us" or "Google", we mean the
+entities that belong to the Google group of companies, which means Google LLC and its
+affiliates.
+
+If these Additional Terms conflict with the API Terms or the Google Terms of Service, these
+Additional Terms will govern for the use of AlphaGenome Services. If the API Terms conflict
+with the Google Terms of Service, the API Terms will govern solely for the use of the
+AlphaGenome API and the AlphaGenome Atlas API.
+
+
+
+
+Account and Registration
+
+In addition to Section 1 "Account and Registration" of the API Terms and the “Your Google
+Account” section in the Google Terms of Service, you may only access and use the
+AlphaGenome Services for individual use, journalism, or use for, or on behalf of, a
+non-commercial organization (i.e., a university, non-profit organization or research institute, or
+educational or government body). The AlphaGenome Services aren’t available for any
+commercial entity, even if conducting non-commercial work. In using AlphaGenome Services
+on behalf of an organization, you confirm you are authorized either explicitly or implicitly to
+enter, and are entering, into the Terms as an employee on behalf of, or otherwise on behalf of,
+your organization.
+Subject to your compliance with the Terms, you may access, use and modify the AlphaGenome
+Assets and distribute Output and Derivatives. We grant you a non-exclusive, royalty-free,
+revocable, non-transferable and non-sublicensable (except as expressly permitted in these
+Terms) license to any intellectual property rights we have in the AlphaGenome Assets to the
+extent necessary for these purposes and for use in accordance with these Terms. In order to
+verify your access and use of the AlphaGenome Assets, we may from time-to-time ask for
+additional information from you, including verification of your name, organization, and other
+identifying information. You will respond promptly, accurately and comprehensively to such
+requests.
+
+
+
+
+Prohibitions and Condentiality
+
+In addition to Section 4 "API Prohibitions" of the API Terms, the “Respect others” section in the
+Google Terms of Service and any requirements identified in the AlphaGenome Services or
+related documentation made available to you by Google, you must comply with the use
+restrictions set out below.
+
+You must not use nor allow others to use the AlphaGenome Services or the
+AlphaGenome Assets:
+
+   1.​ Except for Permissive Use Downloadable Artifacts for Commercial and
+       Non-Commercial Use (defined below), on behalf of a commercial organization or in
+       connection with any commercial activities, including research on behalf of
+       commercial organizations. The only exception is journalism.
+           a.​ This means that only individuals and non-commercial organizations (universities,
+               non-profit organizations and research institutes, educational and government
+               bodies) may use the AlphaGenome Assets and only for non-commercial
+               purposes (except for the AVI Score, which may be used for commercial
+               purposes). The only exception is journalism which is permitted. The
+               AlphaGenome Assets aren't available for any other types of organization, even if
+               conducting non-commercial work.
+           b.​ You must not share Output or Derivatives with any commercial organization or
+               use any AlphaGenome Services in a manner that will grant a commercial
+               organization any rights in Output or Derivatives, in each case aside from
+               indirectly via a scientific publication, open source release or to support
+               journalism.
+   2.​ To transmit, store, or process health information subject to United States HIPAA
+       regulations.
+   3.​ To reverse engineer, disassemble, republish, copy, modify, distribute, transfer, sell,
+       or otherwise grant or permit access to any AlphaGenome Services, including the
+       underlying data or models (e.g., parameter weights), except to the extent such reverse
+       engineering is allowed by applicable law. This doesn't stop you from using and sharing
+       Output or Derivatives in accordance with the Terms.
+   4.​ Except for Permissive Use Downloadable Artifacts for Commercial and
+       Non-Commercial Use, to train machine learning models or related technology for
+       predicting the effects of genetic variants similar to AlphaGenome.
+   5.​ Except for Permissive Use Downloadable Artifacts for Commercial and
+       Non-Commercial Use, without providing conspicuous notice that any Output or
+       Derivatives you publish or distribute are provided under and subject to
+       AlphaGenome Output Terms of Use and of any modifications you make to Output.
+           a.​ By way of example, you can do this by sharing a copy of the AlphaGenome
+               Output Terms of Use and a "Legally Binding Terms of Use" text file that contains
+               the following notice: "By using this information, you agree to AlphaGenome
+               Output Terms of Use found at
+               https://deepmind.google.com/science/alphagenome/output-terms".
+           b.​ If you provide additional or different terms and conditions for use, reproduction
+               or distribution of Output or Derivatives, you must include the "Use Restrictions"
+               section of these Terms as an enforceable provision and provide clear notice to
+               subsequent users that Output or Derivatives are subject to such use restrictions.
+   6.​ To misinform, misrepresent or mislead, including:
+           a.​ using AlphaGenome Services on behalf of an organization without telling us
+               when you sign-up or by updating us via your profile page;
+           b.​ misrepresenting your relationship with us;
+           c.​ misrepresenting the origin of Output or Derivatives;
+           d.​ distributing misleading claims of expertise or capability made particularly in
+               sensitive areas (e.g., health); or
+           e.​ making decisions in domains that affect material or individual rights or well-being
+               (e.g., healthcare).
+   7.​ To perform or facilitate dangerous, illegal or malicious activities, including:
+           a.​ publishing or sharing your individual AlphaGenome Services credentials, even
+               within an organization, as these are personal;
+           b.​ promoting or facilitating the sale of, or providing instructions for synthesizing or
+               accessing, illegal substances, goods or services; or
+           c.​ attempting to override or circumvent safety filters or intentionally drive the
+               model to act in a manner that contravenes our Terms.
+   8.​ In breach of Google’s Generative AI Prohibited Use Policy.
+
+In these Additional Terms, “AVI Score” means the AlphaGenome Variant Impact score which is
+a single score reflecting variant impact, as further described here. For clarity, the AVI Score
+Feature Breakdown (defined below) does not form part of AVI Score. “AVI Score Feature
+Breakdown” means the breakdown showing features and inputs used to generate the AVI
+Score.
+
+Subject to your compliance with and without prejudice to the other provision of these Terms,
+AVI Scores and other artifacts that are made available for download within the “Permissive Use
+Downloadable Artifact” section of the AlphaGenome Services website (“Permissive Use
+Downloadable Artifacts for Commercial and Non-Commercial Use”) may be used for
+commercial use and in connection with any commercial organisations.
+Content
+
+As described in the Google Terms of Service and Section 5 "Content" of the API Terms, your
+content remains yours. We won’t claim ownership in any of your content when you use the
+AlphaGenome Services. However, you acknowledge that we may generate the same or similar
+content for others, including Google, and that we reserve all rights to do so. We won’t share
+your content with others except as described in the Terms. For the avoidance of doubt, we
+won’t publish your original content or Output without your approval.
+
+
+
+
+Termination
+
+In addition to Section 8.b "Your Obligations Post-Termination" of the API Terms and the
+‘Suspending or terminating your access to Google services’ section of the Google Terms of
+Service, if Google terminates your right to access or use any AlphaGenome Services due to: (a)
+your failure to fully comply with the Terms, (b) our compliance with a legal requirement or court
+order, or (c) our belief that your conduct causes harm or liability to a user, third party or Google,
+you must immediately stop using and delete all copies of the Output and Derivatives in your
+possession or control, require all third parties (except for scientific journals) that you have
+shared any Output or Derivatives with to stop using and delete such Output and Derivatives,
+and are prohibited from using the AlphaGenome Assets, including by submitting another
+application to use the AlphaGenome Services.
+
+In addition to Section 8.c "Surviving Provisions" of the API Terms, the following provisions of
+these Additional Terms will survive termination of the Terms: "Content", "Termination", "Liability
+for AlphaGenome API" and "General Legal Terms".
+
+
+
+
+Payment
+
+Google does not currently levy a charge for your access and use of the AlphaGenome Services.
+However, without prejudice to our other rights, Google reserves the right to charge fees for
+access to the AlphaGenome Services by providing you with at least one month’s prior written
+notice. Where Google introduces fees, your use of the AlphaGenome Services will be subject
+to payment of the applicable fees and may be subject to additional terms and conditions. If you
+do not wish to pay the fees, you must stop using the AlphaGenome Services immediately.
+Liability for AlphaGenome Services
+
+Nothing in these Terms restricts any rights that cannot be restricted under applicable law or
+limits Google's responsibilities except as allowed by applicable law. If you are legally exempt
+from certain responsibilities, including indemnification, then those responsibilities do not apply
+to you under the Terms.
+
+The AlphaGenome Services include experimental technology and may sometimes
+provide inaccurate output. Output are predictions with varying levels of confidence and
+should be interpreted carefully. Use discretion before publishing, or otherwise using
+Output provided by the AlphaGenome Services.
+
+AlphaGenome Assets are for theoretical modelling only. They are not intended, validated,
+or approved for clinical use. You should not use AlphaGenome Assets for clinical
+purposes or rely on them for medical or other professional advice. Any content regarding
+those topics is provided for informational purposes only and is not a substitute for advice
+from a qualified professional.
+
+Notwithstanding Section 9.b "Limitation of Liability" of the API Terms, where the AlphaGenome
+Services have been provided to you for free, to the extent permitted by law, Google's total
+aggregate liability for all claims arising out of or in connection with the Terms or the
+AlphaGenome Assets, including for its own negligence, is limited to $500.
+
+
+
+
+General Legal Terms
+
+Given the nature of scientific research, it may take some time for any breach of these Terms to
+become apparent. To protect you, us, and the AlphaGenome Services, to the extent allowed by
+applicable law:
+
+   1.​ any legal claims relating to these Terms can be initiated until the later of:
+           a.​ the cut-off date under applicable law for bringing the legal claim; or
+           b.​ two years from the date you or Google (as applicable) became aware, or should
+               reasonably have become aware, of the facts giving rise to that claim.
+   2.​ you won't argue limitation, time bar, delay, or the like in an attempt to bar an action filed
+       within that time period, and neither will we.
+
+When the API Terms apply, to the extent that applicable local law prevents certain disputes
+from being resolved in the courts specified in Section 10.c "General Legal Terms" of the API
+Terms, you and Google can file those disputes in your local courts. When the API Terms apply,
+to the extent that applicable local law prevents your local courts from applying the governing
+law specified in Section 10.c "General Legal Terms" of the API Terms, these disputes will be
+governed by the applicable local laws of your country, state, or other place of residence.
+

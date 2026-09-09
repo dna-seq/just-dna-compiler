@@ -34,7 +34,51 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-09 (latest) — the pre-cut audit: what a green suite and a passing sweep did not see
+## 2026-09-09 (latest) — AlphaGenome Atlas read as an exploration: three artifacts, three licence answers
+
+**No code, no `RMn`, no adoption.** Google DeepMind published the AlphaGenome Atlas on 2026-09-08 —
+precomputed molecular predictions over every possible human SNV — and this is the exploratory read of
+what it would take to carry any of it. The record is
+[probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md); the terms it quotes are pinned in
+`docs/vendor/` as the maintainer's saved PDF plus a `pdftotext` extraction, so §2's clauses are
+greppable and hashed rather than re-fetched from a sign-in-gated single-page app.
+
+- **The three bulk artifacts are not one licence, and the one already downloaded is the restricted
+  one.** Only *AVI SNV scores* (88.5 GB) is a "Permissive Use Downloadable Artifact", usable
+  commercially and by commercial organizations; the merged splicing scores (20.6 GB) and the AVI
+  feature-importance/SHAP scores (283.9 GB) are non-commercial-only. The Terms make the split a
+  definition: the AVI Score is carved out of nearly every prohibition and the *AVI Score Feature
+  Breakdown* is expressly not part of it.
+- **Four things the Terms need that `SourceRow` cannot say** (§2.6), the first of which is not a use
+  restriction at all: eligibility is a bar on **who may hold the data** — "aren't available for any
+  commercial entity, even if conducting non-commercial work" — where every gated source the repo
+  already carries restricts only what may be *done*. The other three are the no-training-a-similar-model
+  clause, a **revocable** licence with a delete-and-tell-third-parties termination obligation against
+  P4's frozen digests, and a notice requirement that must travel with a derivative *and* state the
+  modifications made to it. Two further shapes are existing gotchas rather than gaps:
+  `@acquisition-gate-is-not-a-read-gate` (eligibility gates the download; commercial use of the
+  downloaded AVI artifact is expressly permitted) and `@write-the-sourcerow`'s `(source, layer)` key,
+  which one source with two licence classes would collide on.
+- **The corpus was measured, not sampled** — 3,924,674,451 rows over 1,308,224,817 positions, exactly
+  three ALTs each, `chr1`–`chr22`/`X`/`Y` and no `chrM`, covering ~42% of the assembly rather than all
+  of it. The score has **no tail toward zero**: 86.7% of rows sit between 0.032 and 0.100 and 0.32%
+  fall below 0.01, so discarding "the negligible 90%" is a threshold against a background lump, not a
+  filter of zeros. A first pass over the leading 20 M rows of `chr1` would have sized a slice ~55% too
+  large; the whole-file numbers are in §3.
+- **Size turned out not to be the constraint.** Measured on `chr22` and scaled: the entire corpus as
+  parquet (`UInt16` at 10⁻⁴, one row per position, three ALT columns) is **~9.6 GB with nothing
+  discarded** — under half the source — and a ≥0.1 slice is ~1.1 GB. So the design question is not
+  which slice fits a budget but whether the artifact is a *lookup table* (absent means unscored) or a
+  *finding list* (absent means unscored **or** below threshold, a fresh instance of
+  `@unreachable-not-absent`). §4.2 states both and picks neither.
+- **The rarity axis has no offline source**, by a decision already recorded in `locations.py`: gene
+  constraint gets a snapshot precisely because allele frequency cannot. And **the bulk artifacts are
+  SNV-only**, so rare indels are not a slice of them at all — they exist only through the API, which
+  is per-request, returns 367-track matrices rather than scalars, and carries no AVI carve-out.
+- `ALPHAGENOME_API_KEY` joins `.env.template` with the PharmVar-shaped warning: personal under
+  prohibition 7a, never in a module, fixture or snapshot.
+
+## 2026-09-09 — the pre-cut audit: what a green suite and a passing sweep did not see
 
 **Found by a code audit against the house rules rather than by a failure**, run after the 2026-09-01
 readiness measurement had gone 138 commits stale. Every gate was re-measured first and held (the
