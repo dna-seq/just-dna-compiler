@@ -36,7 +36,7 @@ signature, so `just-dna-compiler` took the patch alongside while `just-dna-forma
 
 ## 2026-09-10 (latest) — AVI measured whole, and its `PHRED` turns out to be a size dial
 
-Sixth and final round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md): the 88.5 GB AVI
+Sixth round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md): the 88.5 GB AVI
 artifact extracted and passed over in 46 minutes, 24 contigs, 12-way. No `RMn`, no adoption.
 
 - **AVI is genome-wide where splicing was not**: **8,812,917,339 rows** over 2,937,639,113 positions,
@@ -55,14 +55,25 @@ artifact extracted and passed over in 46 minutes, 24 contigs, 12-way. No `RMn`, 
   be visibly shifted; it is not shifted at all. The FAQ describes the API's `quantile_score` for the
   recommended scorers, and AVI's published column behaves differently. **`PHRED` is not a rarity
   comparison and cannot stand in for §5's missing allele-frequency axis.**
-- **Thresholding on `PHRED` drops every down-regulating variant.** Every row above `PHRED` 5 is
+- **Thresholding on `PHRED` drops every negative-scored variant.** Every row above `PHRED` 5 is
   positive; at ≥1, 36.17% are still negative. A rank discards sign, and nothing in the column names
-  warns of it — a design decision disguised as a filter.
+  warns of it — a design decision disguised as a filter. *Negative-scored*, not *down-regulating*:
+  `AVI_SCORE` is not among the seven scorers the Atlas marks `is_signed` and its quantile is [0, 1),
+  so the source states no direction and reading one in would be `@field-description-is-a-claim`.
 - **Sizes at each cut**, measured on `chr22` and scaled: 69.0 GB for everything with both columns as
-  `f32`, **34.4 GB `raw_score` only**, 6.7 GB at ≥10, 662 MB at ≥20, 70 MB at ≥30. Unlike splicing,
-  **AVI does not fit whole** — 69 GB against 11.4 GB — so here the threshold question is real, and the
-  40 GB budget bites around `PHRED ≥ 2`. The information lives in `raw_score`, whose magnitude
-  histogram is a genuine lognormal-ish hump peaking at 0.032–0.056 with 20.5% of rows.
+  `f32`, **34.4 GB keeping `raw_score` alone**, 6.7 GB at ≥10, 662 MB at ≥20, 70 MB at ≥30. **AVI
+  still fits whole, but only one way**: a both-column build needs a cut between ≥1 and ≥5 to reach
+  40 GB, while `raw_score` alone holds every row inside the budget with the sign intact — and drops
+  nothing unrecoverable, since `PHRED` is the rank and recomputes from a complete `raw_score` column.
+  The information lives in `raw_score`, whose magnitude histogram is a genuine lognormal-ish hump
+  peaking at 0.032–0.056 with 20.5% of rows.
+- **The API saturates where the download does not.** `calibrated_scores` is a `float32`, so the
+  largest quantile it can carry caps a derived Phred at **72.247** — and the artifact reaches
+  **89.451**. At `chr22:30339156 C>A` (file: `PHRED 84.10132`) the API returns `calibrated = 1.0`
+  exactly and the rank is gone, while `raw_score` still agrees to five decimals. About **1,300 rows
+  genome-wide**, and they are the highest-impact ones, so `@two-surfaces-two-denominators` applies to
+  AVI after all — narrowly, on the rank and not the magnitude. The PoC client had clamped at the FAQ's
+  Phred 50 and would have rewritten those as fifty; the clamp is gone and saturation now raises.
 
 ## 2026-09-10 — the light Atlas client is declarable after all, and now it is built
 

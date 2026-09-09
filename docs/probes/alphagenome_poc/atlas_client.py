@@ -43,11 +43,17 @@ SERVICE_CONFIG_PATH = (
     Path(__file__).resolve().parents[2] / "vendor" / "alphagenome_protos" / "grpc_service_config.json"
 )
 
-#: The quantile cap the upstream FAQ states, from the ~300 K common variants the background was
-#: estimated on. It bounds `phred_from_quantile` at 50 — a value at the cap means "at least this
-#: extreme", never "exactly this extreme", so the ceiling is worth naming rather than discovering.
-QUANTILE_CAP = 0.999990
-PHRED_CEILING = 50.0
+#: The largest `float32` strictly below 1.0, and therefore the largest quantile the wire format can
+#: carry. It caps a derived Phred at ~72.247 — while the **published AVI artifact reaches 89.451**,
+#: so for the most extreme rows the API saturates to exactly 1.0 and the Phred value is
+#: unrecoverable from it (ALPHAGENOME_ATLAS.md § 6.3 measures this: about 1,300 rows genome-wide).
+#: Named so a caller can tell "off the top of the float32 scale" from "wrong".
+#:
+#: There is deliberately **no** clamp at the FAQ's 0.999990 / Phred 50. That cap describes the
+#: API's `quantile_score` for the recommended per-modality scorers; the AVI column measurably does
+#: not obey it, and clamping to a bound the data exceeds would silently rewrite real values.
+MAX_FLOAT32_QUANTILE = 1.0 - 2.0**-24
+MAX_REPRESENTABLE_PHRED = 72.24719895935549
 
 
 class AtlasError(RuntimeError):
@@ -103,20 +109,27 @@ class VariantScore:
         """
         if self.quantile is None or len(self.quantile) != 1:
             return None
+        if self.quantile[0] >= 1.0:
+            return None  # saturated; the property withholds where the function refuses
         return phred_from_quantile(self.quantile[0])
 
 
 def phred_from_quantile(quantile: float) -> float:
     """`-10 log10(1 - q)`, the transform the published AVI file's `PHRED` column is.
 
-    Clamped at `PHRED_CEILING` rather than allowed to run to infinity: the background distribution
-    is capped at `QUANTILE_CAP`, so a larger value would be an artefact of float error and not a
-    stronger claim.
+    A saturated quantile — exactly 1.0, which is what the API returns for the most extreme variants
+    — raises rather than returning infinity or a clamped stand-in. The honest answer there is "this
+    surface cannot tell you", and a number would be a worse answer than a refusal: the file has the
+    real value and the API does not (`@unreachable-not-absent`, at the resolution of one float).
     """
-    if not 0.0 <= quantile < 1.0:
-        raise ValueError(f"quantile must be in [0, 1), got {quantile!r}")
-    if quantile >= QUANTILE_CAP:
-        return PHRED_CEILING
+    if not 0.0 <= quantile <= 1.0:
+        raise ValueError(f"quantile must be in [0, 1], got {quantile!r}")
+    if quantile >= 1.0:
+        raise AtlasNotScored(
+            "quantile saturated at 1.0: the float32 wire format caps a derived Phred at "
+            f"{MAX_REPRESENTABLE_PHRED:.3f} and the published artifact goes above it. "
+            "Read PHRED from the downloaded file for this variant."
+        )
     return -10.0 * math.log10(1.0 - quantile)
 
 

@@ -181,17 +181,41 @@ def test_phred_transform_reproduces_the_published_column(key, expected):
     assert ac.phred_from_quantile(quantile) == pytest.approx(phred, abs=1e-4)
 
 
-def test_phred_is_bounded_by_the_backgrounds_own_resolution():
-    """A quantile at or past the cap reports the ceiling, not infinity.
+def test_a_saturated_quantile_refuses_rather_than_inventing_a_ceiling():
+    """The wire format runs out before the data does, and the client says so.
 
-    The upstream FAQ puts the cap at 0.999990 because the background was estimated on ~300 K common
-    variants; past it the transform would be reporting float error as signal.
+    An earlier version clamped at the FAQ's 0.999990 / Phred 50. The published AVI artifact reaches
+    **89.451**, so that clamp would have rewritten real values as 50 — a bound taken from prose
+    about a different scorer, silently applied to data that exceeds it. What actually bounds the
+    API is `float32`: the largest representable quantile below 1.0 caps a derived Phred at 72.247,
+    and above that the API returns exactly 1.0. That is unknown, not fifty.
     """
-    assert ac.phred_from_quantile(ac.QUANTILE_CAP) == ac.PHRED_CEILING
-    assert ac.phred_from_quantile(0.9999999) == ac.PHRED_CEILING
+    assert ac.MAX_REPRESENTABLE_PHRED == pytest.approx(72.247, abs=1e-3)
+    assert ac.phred_from_quantile(ac.MAX_FLOAT32_QUANTILE) == pytest.approx(
+        ac.MAX_REPRESENTABLE_PHRED, abs=1e-6
+    )
     assert ac.phred_from_quantile(0.0) == 0.0
-    with pytest.raises(ValueError):
+    # Saturation is an absence of information, so it raises the "unknown" type, not ValueError.
+    with pytest.raises(ac.AtlasNotScored):
         ac.phred_from_quantile(1.0)
+    with pytest.raises(ValueError):
+        ac.phred_from_quantile(1.5)
+    # 50 must not be reachable as a magic clamp any more.
+    assert ac.phred_from_quantile(0.99999) == pytest.approx(50.0, abs=1e-6), (
+        "0.99999 really is Phred 50 — the point is that nothing *above* it is also 50"
+    )
+    assert ac.phred_from_quantile(0.999999) == pytest.approx(60.0, abs=1e-6)
+
+
+def test_the_property_withholds_where_the_function_refuses():
+    """`VariantScore.phred` returns `None` on saturation instead of propagating the refusal.
+
+    A verdict function with several arms owes a reason function with the same arms
+    (`@answered-is-not-absent`): the property is the verdict and returns the third state, while
+    `phred_from_quantile` is the reason and says why.
+    """
+    saturated = ac.VariantScore("AVI_SCORE", raw=(4.626,), quantile=(1.0,), shape=(1, 1))
+    assert saturated.phred is None
 
 
 def test_variant_score_withholds_phred_for_a_multi_valued_block():
@@ -327,6 +351,22 @@ def test_an_indel_is_unknown_and_a_wrong_ref_is_a_finding():
         client.score_variant("chr22", 36201698, "AC", "A", scorers=("AVI_SCORE",))
     with pytest.raises(ac.AtlasRefMismatch, match="G"):
         client.score_variant("chr22", 36200000, "A", "T", scorers=("AVI_SCORE",))
+
+
+@live
+def test_the_api_saturates_where_the_download_still_has_a_value():
+    """The one place the two surfaces are **not** one source — measured, not assumed.
+
+    `chr22:30339156 C>A` is `PHRED 84.10132` in the published artifact. `calibrated_scores` is a
+    float32, so the API returns exactly 1.0 and the rank is gone; `raw_score` still agrees. About
+    1,300 rows genome-wide, and they are the highest-impact ones, which is why this is a test and
+    not a footnote.
+    """
+    client = ac.connect(API_KEY)
+    (block,) = client.score_variant("chr22", 30339156, "C", "A", scorers=("AVI_SCORE",))
+    assert block.raw is not None and block.raw[0] == pytest.approx(4.626, abs=1e-3)
+    assert block.quantile == (1.0,), "if this stops saturating, the wire format widened"
+    assert block.phred is None, "a saturated quantile has no Phred to report"
 
 
 @live

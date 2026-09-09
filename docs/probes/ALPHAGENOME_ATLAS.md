@@ -88,7 +88,8 @@ question.
    decile), 662 MB at ≥20 (top percentile), 34.4 GB for everything with `raw_score` alone**. It
    also contradicts the FAQ's common-variant background, so `PHRED` cannot substitute for the
    missing rarity axis. And because a rank discards sign, thresholding on it drops **every
-   down-regulating variant** — 49.30% of the corpus is negative (§4.4).
+   negative-scored variant** — 49.30% of the corpus (§4.4). *Negative-scored*, not
+   *down-regulating*: AVI is not marked `is_signed` and the source says nothing about direction.
 
 5d. **Motifs are not a dataset at either surface, and the API is still the only route.** "motif"
    appears nowhere in the SDK and none of the 22 Atlas scorers is one; the announced "Motif
@@ -771,8 +772,15 @@ negative. The sign is the half of the corpus a rank transform necessarily discar
 above `PHRED` 5 is positive, and at `PHRED ≥ 1` still 36.17% are negative, so the negatives are
 compressed into the bottom of the scale where a threshold cannot distinguish them.
 
-**A triage that thresholds on `PHRED` therefore throws away every down-regulating variant**, which
+**A triage that thresholds on `PHRED` therefore throws away every negative-scored variant**, which
 is a design decision rather than a filter, and one nothing in the column names warns you about.
+
+*Negative-scored*, deliberately, not *down-regulating*: `AVI_SCORE` is **not** among the seven
+scorers the Atlas metadata marks `is_signed`, and its quantile is [0, 1) rather than the [−1, 1]
+the FAQ describes for signed ones. So the calibration treats the score as unsigned and negatives
+simply rank lowest; what a negative *means* — a direction, or sub-baseline noise — is not
+something the published metadata says. Reading direction into it would be
+`@field-description-is-a-claim`: an interpretation asserted where the source states none.
 
 #### 4.4.3 Dataset size at each cut
 
@@ -793,10 +801,12 @@ threshold already encodes.
 | ≥ 30 | 8,812,976 | 0.10% | 70 MB | 61 MB | 48 MB |
 | ≥ 40 | 882,484 | 0.01% | 7 MB | 6 MB | 5 MB |
 
-**Unlike splicing, AVI does not fit whole.** The full corpus is 69 GB as parquet against the
-splicing file's 11.4 GB, because there are 2.25× the rows and two columns rather than one. So for
-this artifact the threshold question is real, and the 40 GB budget bites at about `PHRED ≥ 2`
-(`raw_score` only) or between `PHRED ≥ 1` and `≥ 5` if both columns are kept.
+**AVI still fits whole, but only one way.** With both columns it is 69 GB as parquet against the
+splicing file's 11.4 GB — 2.25× the rows and two columns instead of one — so a both-column build
+needs a cut somewhere between `PHRED ≥ 1` and `≥ 5` to reach 40 GB. Keeping **`raw_score` alone**
+is **34.4 GB for every row**, inside the budget with the sign intact and nothing discarded. And
+dropping `PHRED` costs nothing that cannot be rebuilt: §4.4.1 shows it is the rank, so a holder of
+the complete `raw_score` column can recompute it exactly.
 
 Three cuts worth naming, none chosen here:
 
@@ -995,9 +1005,23 @@ the decision the three shapes above are for.
 `@two-surfaces-two-denominators` says a bulk download and an API are different sources. Measured
 here, that is true of one artifact and not the other:
 
-- **AVI reproduces exactly.** The Atlas API returns `raw_score` −0.03868196 where the file says
-  −0.03868, and −0.03200157 where it says −0.032 — the file is the API's float32 printed to five
-  decimals. For AVI, the 88.5 GB download and the per-variant RPC are one source.
+- **AVI's `raw_score` reproduces exactly; its `PHRED` does not, at the top of the scale.** The
+  Atlas API returns `raw_score` −0.03868196 where the file says −0.03868, and −0.03200157 where it
+  says −0.032 — the file is the API's float32 printed to five decimals. But `calibrated_scores` is
+  also a **float32**, and the largest float32 below 1.0 is `1 − 2⁻²⁴`, which caps a derived Phred
+  at **72.247**. The published file goes to **89.451**. Checked on the two highest-Phred variants
+  on `chr22`:
+
+  | variant | file `raw` / `PHRED` | API `raw` | API `calibrated` | derived `PHRED` |
+  | --- | --- | ---: | ---: | --- |
+  | chr22:30339156 C>A | 4.626 / **84.10132** | 4.62584 | **1.0** | **+∞** |
+  | chr22:41781345 C>A | 4.499 / **81.86764** | 4.49909 | **1.0** | **+∞** |
+
+  The quantile saturates and the Phred value is unrecoverable. It affects **17 of `chr22`'s
+  117,479,331 rows**, about **1,300 genome-wide** — vanishing as a fraction and precisely the rows
+  an impact-ranked consumer would look at first. So for AVI the download and the RPC are one source
+  on the magnitude and **two** on the rank, and `@two-surfaces-two-denominators` applies to this
+  artifact after all, narrowly.
 - **Merged splicing does not.** The documented formula is
   `max(splice_sites) + max(splice_site_usage) + max(splice_junctions) / 5` — full weight to site
   identity and usage, a 0.2 multiplier on junctions because their magnitudes run larger. Scoring

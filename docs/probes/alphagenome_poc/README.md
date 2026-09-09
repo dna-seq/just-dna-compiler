@@ -17,7 +17,7 @@ uv run --with grpcio-tools python docs/probes/alphagenome_poc/generate.py
 uv run --with grpcio-tools pytest docs/probes/alphagenome_poc/ -vvv
 ```
 
-Twenty of the twenty-three tests need no network and no key. The three live ones need both
+Twenty-one of the twenty-five tests need no network and no key. The four live ones need both
 `ALPHAGENOME_API_KEY` and the repo's opt-in switch `JUST_DNA_NETWORK_TESTS=1`
 (`@network-tests-optin`); they are skipped otherwise.
 
@@ -33,7 +33,7 @@ Twenty of the twenty-three tests need no network and no key. The three live ones
 
 ## What the tests actually pin
 
-Four of them carry the argument; the rest keep the client honest.
+Five of them carry the argument; the rest keep the client honest.
 
 - **`test_imports_stay_within_the_declared_floor`** walks the client's AST and asserts its
   third-party imports are exactly `{grpc, docs}`. An AST walk rather than a `sys.modules` check,
@@ -54,6 +54,14 @@ Four of them carry the argument; the rest keep the client honest.
   It asserts the Atlas returns what the 88.5 GB AVI artifact contains — `raw` to 5e-6 and the
   derived `PHRED` to 1e-4 — so the download and the RPC are one source. If it ever fails, they
   have diverged and § 6.4 needs re-measuring.
+- **`test_the_api_saturates_where_the_download_still_has_a_value`** is its counterweight, and it
+  came out of measuring the AVI file whole. `calibrated_scores` is a `float32`, so the largest
+  quantile it can carry caps a derived Phred at **72.247** — while the published artifact reaches
+  **89.451**. Above the cap the API returns exactly `1.0` and the rank is unrecoverable. It affects
+  about **1,300 rows genome-wide**, which are precisely the highest-impact ones. An earlier version
+  of this client clamped at the FAQ's Phred 50 and would have rewritten those as fifty; the clamp
+  is gone, and a saturated quantile now raises `AtlasNotScored` while `VariantScore.phred` returns
+  `None`.
 
 ## The three-valued part
 
@@ -65,6 +73,7 @@ different remedy:
 | transport failed | `AtlasUnavailable` | retry |
 | `REF` disagrees with GRCh38 | `AtlasRefMismatch` | fix the caller's data — and the server names the real base |
 | an indel | `AtlasNotScored` | none: the answer does not exist |
+| a quantile saturated at 1.0 | `AtlasNotScored` | read `PHRED` from the downloaded file instead |
 
 `AtlasNotScored` deliberately does **not** derive from `AtlasRefused`, so an `except AtlasRefused`
 cannot swallow it. A caller that recorded "no score" for a variant the service never claimed to
