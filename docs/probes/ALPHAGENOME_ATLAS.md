@@ -89,6 +89,14 @@ question.
    regulatory features are all `MAX_ABS_*`, magnitudes with the sign already discarded, so there is
    no expression direction anywhere in the model. The axis is benign ↔ damaging, not down ↔ up (§4.7).
 
+5l. **Ship a 502 KB knot table instead of querying anything.** The `raw_score` value set is a fixed
+   grid that saturates at **~41,000 values** — 400 M rows scanned grew it 1.7% past one chromosome,
+   and the **2,001 ambiguous knots and 0.000700 widest span did not move at all**. A
+   `(raw, phred_lo, phred_hi, n)` table is **501,592 bytes**, and it carries the reconstruction
+   curve, the per-knot ambiguity interval, and decidable threshold safety at once. Rebuilding the
+   column by API is **272 days and ~92 M RPCs** at the measured 375 variants/s — and prohibition 3
+   plus a revocable licence make it the wrong shape of request anyway (§4.7.2).
+
 5k. **The precision the file lost exists on the API, and neither surface is a superset of the
    other.** The Atlas returns `raw_score` as `float32` — ~7 significant digits against the file's 4
    — and at the exact atom that causes every threshold-3 flip, six rows the file prints identically
@@ -1049,6 +1057,50 @@ The practical consequence is a two-stage shape rather than a choice: build the b
 the download, and **refine a shortlist through the API** where the fourth digit is load-bearing.
 §4.8.1's rule says exactly when that is — a threshold falling inside a knot's span — so the refine
 step is targetable rather than blanket, and at 161 ms per variant a few thousand rows is minutes.
+
+### 4.7.2 Rebuilding the column from the API is not viable — and not necessary
+
+**The whole column, by API.** 8,812,917,339 variants. The interval RPC measured at **375
+variants/s** (600 in 1.6 s, the SDK's default 10 workers), which is **23.5 million seconds — 272
+days** of continuous querying, in roughly **92 million RPCs**. Single-variant calls at 161 ms
+serial would be **45 years**. Even the 14.2% of rows that sit on an ambiguous knot (~1.25 billion
+genome-wide) is 39 days. None of these are engineering problems; they are answers.
+
+They are also the wrong question, and the Terms make that explicit: prohibition 3 bars anyone from
+"reverse engineer, disassemble, republish, copy, modify, distribute" the Services, the licence is
+**revocable** (§2.3), and credentials are personal (§2.4/7a). Reconstructing a published artifact
+through 92 million calls on a personal key is the shape of thing that ends a key, and the artifact
+is a download.
+
+**What is actually needed is 502 KB and no calls at all.** The `raw_score` value set is not open —
+four-significant-digit printing makes it a fixed grid, and it **saturates immediately**:
+
+| corpus scanned | distinct `raw_score` | ambiguous knots | widest span |
+| --- | ---: | ---: | ---: |
+| chr22 | 40,204 | **2,001** | 0.000700 |
+| + chr21 | 40,546 | **2,001** | 0.000700 |
+| + chr20 20–40 Mb | 40,655 | **2,001** | 0.000700 |
+| + chr19 20–40 Mb | 40,742 | **2,001** | 0.000700 |
+| + chr1 20–40 Mb | 40,858 | **2,001** | 0.000700 |
+| + chr7 20–40 Mb | **40,888** | **2,001** | 0.000700 |
+
+Roughly 400 million rows scanned and the knot set grew **1.7%** past what one chromosome already
+showed, while the ambiguous count and the widest span did not move at all. The ambiguity structure
+is **global, small, and enumerable**.
+
+So ship the knots. A table of `(raw_score, phred_lo, phred_hi, n)` over ~41,000 rows is
+**501,592 bytes** as parquet — **381,432** without the counts. It carries three things at once:
+
+- **the reconstruction curve**, exactly, so `PHRED` need not be stored (§4.6);
+- **the ambiguity bounds per knot**, so an ambiguous row reports the interval
+  `[phred_lo, phred_hi]` rather than a point — which is the house answer rather than a workaround
+  (`@tri-state-is-the-house-algebra`: withhold where the answer is not determined);
+- **threshold safety, decidable in advance** (§4.8.1) — scan 41,000 rows, not 8.8 billion.
+
+The API refinement of §4.7.1 then shrinks to a genuine last resort: only rows on a knot that
+straddles the specific threshold in use. At threshold 3 that is ~633,000 rows genome-wide; at every
+other integer threshold from 1 to 50 it is **zero**. And even those need querying only if a caller
+insists on a point estimate where the data supports an interval.
 
 ### 4.8 Does the 3.6e-4 residual actually rerank anything?
 

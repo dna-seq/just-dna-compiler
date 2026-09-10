@@ -34,7 +34,29 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — the precision the file lost is on the API, and neither surface is a superset
+## 2026-09-10 (latest) — a 502 KB knot table replaces both the `PHRED` column and the API refinement
+
+Eleventh round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md) § 4.7.2. No `RMn`, no adoption.
+
+- **Rebuilding `PHRED` through the API is 272 days.** 8.81 billion variants at the measured **375
+  variants/s** (the interval RPC, 10 workers) is 23.5 M seconds in ~**92 million RPCs**; single-variant
+  calls would be 45 years, and even the 14.2% of rows on an ambiguous knot is 39 days. It is also the
+  wrong shape of request: prohibition 3 bars republishing the Services, the licence is revocable, and
+  credentials are personal — 92 M calls on a personal key to reconstruct a file that is a download.
+- **The `raw_score` value set saturates, so the ambiguity is enumerable.** Four-significant-digit
+  printing makes it a fixed grid: chr22 alone shows 40,204 distinct values, and adding ~400 M more rows
+  across five other regions grows it to **40,888 — 1.7%** — while the **2,001 ambiguous knots and the
+  0.000700 widest span do not move at all**.
+- **So ship the knots, not the column.** `(raw_score, phred_lo, phred_hi, n)` over ~41,000 rows is
+  **501,592 bytes** as parquet (381,432 without counts), and it carries three things at once: the exact
+  reconstruction curve, the per-knot ambiguity **interval** — so an ambiguous row reports
+  `[lo, hi]` rather than a point, which is `@tri-state-is-the-house-algebra` rather than a workaround —
+  and threshold safety decidable by scanning 41,000 rows instead of 8.8 billion.
+- API refinement then shrinks to a last resort: only rows on a knot straddling the threshold actually
+  in use — ~633,000 genome-wide at threshold 3, **zero at every other integer threshold from 1 to 50**
+  — and only if a caller insists on a point estimate where the data supports an interval.
+
+## 2026-09-10 — the precision the file lost is on the API, and neither surface is a superset
 
 Tenth round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md) § 4.7.1. No `RMn`, no adoption.
 
