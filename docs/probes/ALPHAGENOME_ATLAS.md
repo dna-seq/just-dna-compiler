@@ -1806,6 +1806,96 @@ module carries.
 - No quota or rate-limit figure is published, and none was measured — this probe made roughly a
   dozen calls in total, deliberately.
 
+
+### 6.6 The other twenty-one scorers, assayed for annotation (2026-09-11)
+
+**Subject:** whether anything the API exposes besides `AVI_SCORE` can be recorded on an authored row.
+Three assays, all against the live service. **The first one refutes a hypothesis this document raised
+one revision earlier**, which is the reason it is written up rather than summarised.
+
+#### 6.6.1 Consensus fraction is a property of the scorer, not of the variant
+
+§ 4.10 and the `CAGE` reading suggested a shape: where a scorer's tracks agree on a direction, that
+agreement is a claim about the variant. Measured across seven signed scorers and six variants
+spanning four decades of `PHRED`, as `max(%neg, 100−%neg)` — 50% means no consensus, 100% means
+unanimous:
+
+| variant | `PHRED` | RNA_SEQ | CAGE | ATAC | DNASE | CHIP_TF | CHIP_HISTONE | PROCAP |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| chr22:30339156 C>A | **84.1** | 54% | **100%** | 94% | 66% | 85% | 56% | **100%** |
+| chr22:20002017 C>A | 19.6 | 56% | **100%** | 82% | 58% | 51% | 62% | **100%** |
+| chr22:20002007 G>A | 10.6 | 53% | 98% | 57% | 53% | 59% | 66% | 83% |
+| chr22:20002123 G>T | 3.0 | 52% | 92% | 99% | 91% | 74% | 65% | **100%** |
+| chr22:20002124 C>A | 0.007 | 52% | 97% | 74% | 72% | 63% | 60% | 92% |
+| chr1:10001 T>A | 1.1 | 61% | 82% | **100%** | 70% | 73% | 59% | 92% |
+
+**`CAGE` and `PROCAP` are near-unanimous at every variant, including the ones with no effect at all**
+— 97% consensus at `PHRED` 0.007, 82–92% at 1.1. So consensus does not separate a consequential
+variant from an inconsequential one, and **it is not a confidence measure**. The hypothesis is dead
+in the form it was raised.
+
+What survives is narrower: under high consensus the **direction** is still a claim, and the direction
+does move — `CAGE` is 100% negative at `PHRED` 84 and 0% negative at 19.6. A record would have to say
+*which way*, never *how sure*.
+
+**`RNA_SEQ` never reaches consensus** (52–61% throughout), and that is structural rather than noisy:
+a variant can raise one gene and lower another, so the tracks *should* disagree. It is the clearest
+evidence that the consensus question is simply the wrong question for the one scorer that carries a
+gene axis — the disagreement is the signal, and reading it needs the axis rather than a fraction.
+
+#### 6.6.2 `*_ACTIVE` does move with the ALT, and where it does is predictable
+
+§ 6.6's first pass concluded `*_ACTIVE` is a locus property, from five variants **none of which
+disturbed a structural element**. That was `@probe-uniform-corpus`: the sample agreed with itself.
+Re-run against motifs found in the artifact's own `REF` column — a tabix window yields the reference
+sequence for that window, so no FASTA is needed anywhere — and measured as the median share of a
+track's magnitude that moves when only the ALT changes:
+
+| locus class | n | ATAC_ACTIVE | CHIP_TF_ACTIVE | RNA_SEQ_ACTIVE |
+| --- | ---: | ---: | ---: | ---: |
+| **Z-DNA former** (`(CA)n`/`(GT)n`) | 4 | **1.88%** | 0.84% | 0.08% |
+| **poly-T run** (≥10) | 4 | **1.26%** | 2.01% | 0.08% |
+| **poly-A run** (≥10) | 4 | **0.81%** | 1.41% | 0.10% |
+| G-quadruplex motif | 4 | 0.15% | 0.00% | 0.07% |
+| control (non-motif) | 8 | **0.12%** | 0.79% | 0.07% |
+
+**The maintainer's objection is confirmed for repeats and refuted for G-quadruplexes.**
+`ATAC_ACTIVE` moves with the ALT about **16× control** inside a Z-DNA former and **10×** inside a
+poly-T run, and individual loci reach far higher — 20.05% at `chr22:20011865`, 15.74% at
+`chr22:20005803`. A G4 motif is indistinguishable from background (0.15% against 0.12%), which is
+worth stating because it is the motif class one would expect to matter most.
+
+So `*_ACTIVE` is **not** purely positional. It is *mostly* positional, with a real per-variant
+component concentrated where DNA geometry is at stake — which is precisely the degraded edge case,
+and precisely where a per-locus attribution would be wrong.
+
+`RNA_SEQ_ACTIVE` is flat at 0.06–0.11% everywhere, so it carries no structural sensitivity at all.
+
+#### 6.6.3 What this settles about annotating an authored row
+
+**Positional scorers are not usable as named claims.** Two independent tests say so. Ranking tracks
+fails: the top-5 share of the total effect is 2–7% for `CAGE` (546 tracks) and 1–3% for `CHIP_TF`
+aggregated over 751 named transcription factors, and in both the concentration runs **backwards** to
+effect size — the `PHRED` 84 variant is *less* concentrated than the `PHRED` 1 one. Every leading
+`CHIP_TF` factor is a **singleton track**, so the "top TF" is whichever factor happens to be measured
+once. And consensus, above, does not discriminate.
+
+**The track vocabulary compounds it.** `CAGE`'s 546 tracks are `hCAGE CL` 258, `hCAGE UBERON` 220,
+`hCAGE EFO` 38, `LQhCAGE CL` 28, `LQhCAGE UBERON` 2; `ATAC`'s 167 are `EFO` 65, `UBERON` 44, `CLO`
+40, `CL` 15, `NTR` 3. Those are not one axis — `EFO:0001203 MCF-7` is a cancer cell line,
+`UBERON:0001159 sigmoid colon` an anatomical structure, `CL:0000236 B cell` a cell type — so ranking
+them against each other compares incomparable things, and `NTR:` is ENCODE's *no term registered*.
+
+**What is left, and it is one thing.** `RNA_SEQ` is the only scorer with a gene axis, the only one
+whose disagreement across tracks is meaningful rather than flat, and the only one that attributes its
+own claim to a gene. Everything else in the roster is either a restatement of `AVI_SCORE` or a
+ranking of noise.
+
+**Not measured, and it is the question this assay could not reach.** Whether an *averaged* locus
+accessibility buys a module anything at all. Every number above says what the scorers do; none says
+that a consumer wants it. That is a use-case question and belongs in USE_CASES.md rather than here.
+
+Filed as RM200.
 ## 7. Not probed
 
 Named so the next reader knows the shape of the hole rather than inheriting a silent one.

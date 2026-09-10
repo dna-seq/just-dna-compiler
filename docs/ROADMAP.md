@@ -419,20 +419,37 @@ incomparable, and a threshold means nothing — which is why the first pass foun
    **So the recordable shape is a consensus fraction, not a top-k**, and that is the hypothesis the
    next scorer should be tested against rather than concentration.
 
-### The `*_ACTIVE` finding is weaker than it reads, and the sample is why
+### Assayed 2026-09-11 — the full measurement is [probes/ALPHAGENOME_ATLAS.md § 6.6](probes/ALPHAGENOME_ATLAS.md)
 
-The claim above — that `*_ACTIVE` barely moves with the ALT, and therefore annotates the locus rather
-than the variant — rests on five variants **none of which disturbs a structural element**. Poly-A
-tracts, G-quadruplexes and Z-DNA-forming repeats are exactly where a single substitution changes local
-geometry and therefore accessibility, and a sample that contains none of them cannot see it. That is
-`@probe-uniform-corpus` in miniature: the conclusion generalises from cases that all agree.
+Three assays, and two of them refuted a hypothesis this entry had raised.
 
-Two things follow. The `_ACTIVE`-as-locus-annotation reading is **provisional** and must be re-tested
-against variants chosen for structural disruption before anything is built on it. And the prior
-question is still unanswered: **what an averaged locus accessibility buys a module at all.** Nothing
-measured so far says. Until one of those has an answer, `_ACTIVE` is not a candidate.
+**Consensus fraction is a property of the scorer, not the variant**, so it is not a confidence
+measure and the shape proposed above is dead. `CAGE` and `PROCAP` are near-unanimous at *every*
+variant — 97% at `PHRED` 0.007 — while `RNA_SEQ` never exceeds 61%. What survives is only that under
+high consensus the **direction** is a claim; a record may say which way, never how sure.
 
+**`RNA_SEQ`'s lack of consensus is structural, not noise.** A variant can raise one gene and lower
+another, so its tracks *should* disagree — which is the sharpest argument that the gene axis is the
+thing to use and a fraction is the wrong summary for it.
 
+**`*_ACTIVE` does move with the ALT, and the maintainer's objection was half right.** Re-tested
+against motifs found in the artifact's own `REF` column: `ATAC_ACTIVE` moves ~**16× control** inside
+a Z-DNA former and ~10× inside a poly-T run, reaching 20% at individual loci — but a **G-quadruplex
+is indistinguishable from background**, which is the motif class one would expect to matter most. So
+it is mostly positional with a real per-variant component exactly where DNA geometry is at stake.
+
+**Positional scorers remain unusable as named claims**, now on two independent tests rather than
+one: ranking fails (top-5 carries 2–7%, running backwards to effect size) and consensus does not
+discriminate. The track vocabularies also mix cancer cell lines, anatomical structures and cell types
+under one ranking, with three ENCODE *no term registered* placeholders.
+
+**So the item narrows to `RNA_SEQ`**, and the remaining questions are unchanged: what one authored
+cell records, and whether non-commercial Output may be a stored column at all or stays a finding as
+RM193 has it.
+
+**Still unmeasured, and it is a use-case question rather than an assay one:** whether an averaged
+locus accessibility buys a module anything. Every number says what the scorers do; none says a
+consumer wants it. That belongs in USE_CASES.md.
 
 ## RM194 — gene-scoped SNV subslices, and the ±512 kb horizon
 
