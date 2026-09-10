@@ -98,6 +98,12 @@ question.
    curve in advance. Rounding to 10⁻³ makes 97% of rows compare equal but raises the **worst case
    from 3.6e-4 to 1.0e-3**, so it hides the common case and worsens the rare one (§4.8).
 
+5j. **A rescaled `UInt16` for `PHRED` is dominated by not storing it.** 16.3 GB to be twice as
+   inaccurate (7.6e-4 against 3.6e-4) and five times as flip-prone as the free reconstruction from
+   `raw_score`. Beating that reconstruction needs a scale of 1,404, which puts the top of the range
+   at 125,632 — nearly twice what 16 bits hold. So the only two rational choices are `Int32`×10⁵
+   exact, or nothing at all (§4.9.1).
+
 5i. **Store the floats as `Int32`×10⁵ — lossless and 13% smaller than `Float32`.** Both columns
    print at most 5 decimals, so the integer scale is exact while `Float32` is both larger *and*
    lossy. Whole rows: 59.2 GB against 67.9 GB, or 34.4 GB keeping `raw_score` alone. The general
@@ -1092,6 +1098,36 @@ And whole rows:
 printing), but parquet already dictionary-encodes internally, which is why the gain over `Int32` is
 only 3%; an explicit dictionary would have to travel with the artifact to be decodable, so it buys
 little for a real cost.
+
+#### 4.9.1 Sixteen bits does not suffice — but the bit-width is not why
+
+`PHRED` reaches 89.45, so at 5 decimals it needs 8,945,120 codes and `Int32` is forced. The
+interesting question is the rescaled one: give up the decimals, spread 65,536 codes across the
+range, and take the precision hit. Measured on the same 36 M-row slice, against the *free* option
+of not storing the column at all and reconstructing it from `raw_score` (§4.6):
+
+| how `PHRED` is carried | size | genome-wide | max \|err\| | threshold flips |
+| --- | ---: | ---: | ---: | ---: |
+| `Int32`×10⁵, stored | 2.804 B/row | 24.7 GB | **0** | **0** |
+| `UInt16`×655.35, rescaled | 1.846 B/row | 16.3 GB | 7.63e-4 | 6,615 |
+| `UInt16`×700, rescaled | 1.869 B/row | 16.5 GB | 7.14e-4 | 10,513 |
+| **not stored — rebuilt from `raw_score`** | **0** | **0 GB** | **3.56e-4** | **1,218** |
+
+*(flips summed over thresholds 1, 3, 5, 10, 15, 20, 25, 30, 40, 50)*
+
+**A rescaled `UInt16` is strictly dominated.** It costs 16.3 GB to be **twice as inaccurate and
+five times as flip-prone** as storing nothing at all. There is no operating point at which it is
+the right answer: if exactness matters, `Int32`×10⁵ is the only choice; if it does not, the column
+is free to drop and the reconstruction is better than any 16-bit code.
+
+The arithmetic says this is not a tuning problem. To beat the reconstruction's 3.56e-4 a uniform
+code needs a scale of at least **1,404**, which puts the top of the range at **125,632** — nearly
+twice what `UInt16` holds. **No uniform 16-bit encoding can match a column you get for free**, and
+65,536 codes over 89.45 `PHRED` units is a mean spacing of 1.37e-3 whatever you do with them.
+
+A *non-uniform* code — codes allocated by density, which for a rank means concentrating them at low
+`PHRED` where 10^(-p/10) puts the mass — could in principle do better in the dense region at the
+cost of the tail. It was not measured, and it would have to beat free.
 
 `Float64` beating `Float32` on `raw_score` (2.943 against 3.154) is the same effect seen from the
 other end: the `f64` representation of a 5-decimal value has long runs of zero mantissa bits, while

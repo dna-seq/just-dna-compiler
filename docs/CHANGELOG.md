@@ -34,7 +34,26 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — the reconstruction residual reranks, but only inside ties the rounding made
+## 2026-09-10 (latest) — sixteen bits for `PHRED` is dominated by not storing it at all
+
+Ninth round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md) § 4.9.1, one question:
+`PHRED` rescaled into `UInt16` rather than `Int32`×10⁵. No `RMn`, no adoption.
+
+- **It loses to the free option on both axes.** A rescaled `UInt16` costs **16.3 GB** genome-wide to
+  deliver `max |err| 7.63e-4` and 6,615 threshold flips, while **dropping the column entirely** and
+  rebuilding it from `raw_score` costs **nothing** and delivers `3.56e-4` and 1,218 flips. Twice as
+  inaccurate and five times as flip-prone, for 16 GB. There is no operating point where it wins.
+- **And it is not a tuning problem.** Beating the reconstruction's 3.56e-4 needs a uniform scale of at
+  least **1,404**, putting the top of the 89.45 range at **125,632** — nearly twice what `UInt16`
+  holds. 65,536 codes over that range is a mean spacing of 1.37e-3 however they are assigned, so **no
+  uniform 16-bit encoding can match a column that is free.** A density-weighted non-uniform code could
+  in principle do better in the dense low-`PHRED` region; it was not measured, and it would still have
+  to beat free.
+- So the roster is two entries, not three: **`Int32`×10⁵ when the rank must be exact, nothing when it
+  need not be.** `Float32` remains worse than both — larger than `UInt16` and lossy where `Int32` is
+  not.
+
+## 2026-09-10 — the reconstruction residual reranks, but only inside ties the rounding made
 
 Eighth round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md), following the previous
 round's `3.56e-4` residual to its consequences. No `RMn`, no adoption.
