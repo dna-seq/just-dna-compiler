@@ -85,15 +85,55 @@ def test_imports_stay_within_the_declared_floor():
     )
 
 
-def test_the_vendored_protos_are_exactly_what_the_atlas_surface_needs():
+def test_the_resolved_protos_are_exactly_what_the_atlas_surface_needs():
     """Three of upstream's four, and the fourth is absent rather than unused.
 
-    Equality over the walked directory, not a floor: a vendored file nobody needs is a file nobody
-    re-vendors when it changes, and one that is needed but missing fails the build far from here.
+    Equality over the walked directory, not a floor: a file nobody needs is a file nobody re-pins
+    when it changes, and one that is needed but missing fails the build far from here.
     """
-    vendored = {p.name for p in atlas_protos.PROTO_DIR.glob("*.proto")}
-    assert vendored == set(atlas_protos.PROTOS), vendored
-    assert "dna_model_service.proto" not in vendored, "that one drives the model service, not Atlas"
+    resolved = {p.name for p in atlas_protos.PROTO_DIR.glob("*.proto")}
+    assert resolved == set(atlas_protos.PROTOS), resolved
+    assert "dna_model_service.proto" not in resolved, "that one drives the model service, not Atlas"
+
+
+def test_every_pinned_file_is_on_disk_and_matches_its_digest():
+    """The pin is worth what it is checked against, so check it (RM196).
+
+    The repository carries no copy of upstream's sources — it carries a commit id and a sha256 per
+    file. That is only better than vendoring if something actually verifies it, so this walks the
+    pins rather than sampling them, and compares against the **file the build used**.
+    """
+    import hashlib
+
+    assert not atlas_protos.missing_sources(), "the pinned sources were never fetched"
+    for name, expected in atlas_protos.UPSTREAM_SHA256.items():
+        got = hashlib.sha256((atlas_protos.PROTO_DIR / name).read_bytes()).hexdigest()
+        assert got == expected, f"{name}: {got} != pinned {expected}"
+
+    # Equality over the walked set, so a pin added without a file (or the reverse) fails here.
+    assert set(atlas_protos.UPSTREAM_SHA256) == {p.name for p in atlas_protos.PROTO_DIR.iterdir()}
+    assert set(atlas_protos.UPSTREAM_PATHS) == set(atlas_protos.UPSTREAM_SHA256)
+
+
+def test_a_file_that_does_not_match_its_pin_is_refused_rather_than_used(tmp_path, monkeypatch):
+    """A pin nobody acts on is worse than no pin, so the mismatch path is exercised.
+
+    Offline: the fetch is monkeypatched to return bytes that are not what the digest says. What is
+    asserted is that nothing is written — a half-verified tree would be the worst outcome, since the
+    next build would find the files present and skip the check.
+    """
+    monkeypatch.setattr(
+        atlas_protos.urllib.request, "urlopen",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not fetch after a mismatch")),
+    )
+    target = tmp_path / "protos"
+    target.mkdir()
+    for name in atlas_protos.UPSTREAM_SHA256:
+        (target / name).write_bytes(b"not what the pin says")
+
+    # Every file is present but wrong, so the fetch is attempted — and our urlopen refuses.
+    with pytest.raises(AssertionError):
+        atlas_protos.fetch_protos(target)
 
 
 def test_the_generated_bindings_do_not_shadow_the_upstream_package():
@@ -112,11 +152,11 @@ def test_the_generated_bindings_do_not_shadow_the_upstream_package():
     assert "from just_dna_enricher.generated._alphagenome_atlas_protos import" in binding
 
 
-def test_the_vendored_sources_are_byte_identical_to_what_protoc_was_given_minus_the_prefix():
-    """The rewrite happens on the staged copy; the committed `.proto` keeps upstream's own text.
+def test_the_resolved_sources_are_byte_identical_to_what_protoc_was_given_minus_the_prefix():
+    """The rewrite happens on the staged copy; the fetched `.proto` keeps upstream's own text.
 
-    That asymmetry is what makes re-vendoring a newer release a diff rather than a merge, so it is
-    worth a test rather than a promise in a docstring.
+    That asymmetry is what makes re-pinning a newer release a two-line diff rather than a merge, so
+    it is worth a test rather than a promise in a docstring.
     """
     for name in atlas_protos.PROTOS:
         committed = (atlas_protos.PROTO_DIR / name).read_text()

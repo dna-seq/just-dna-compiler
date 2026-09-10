@@ -34,7 +34,59 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — the AVI lane built genome-wide: 8.8 billion rows, 34.3 GB, and two defects only the real thing found
+## 2026-09-10 (latest) — RM195 and RM196: a pinned page settles the licence, and the repository stops vendoring somebody else's source
+
+Two of the AlphaGenome round's open items closed the same evening, and both are about what a
+repository should carry as evidence.
+
+**RM195 — AVI may be used commercially, and now the repository can show why.** The Additional Terms
+define a "Permissive Use Downloadable Artifact" class and grant it commercial use, then delegate
+**membership** to a section of the Atlas website. None of the four pinned terms documents named a
+single artifact, and that page is a sign-in-gated single-page app. So the most consequential claim
+about this source shipped as `commercial_use=None` — unknown is a value, `None` is never `False`, and
+unknown commercial terms warn rather than gate.
+
+The maintainer saved the page. It carries its content as **embedded JSON rather than markup**, which
+is why every attempt to fetch it had returned navigation chrome, and it says: *"Permissive Use
+Downloadable artifacts for commercial and non-commercial use"* → **AVI SNV scores**; *"Downloadable
+artifacts for non-commercial use only"* → merged splicing scores and feature importance scores. So
+`commercial_use=True`, and it independently confirms why the builder refuses the other two artifacts
+by name. The whole page is pinned (7.1 MB → 1.1 MB gzipped) with a greppable extraction; the test
+asserts against those bytes rather than a constant.
+
+**`redistribution=True` is a reading, not a clause**, and the entry says whose. Prohibition 1 permits
+sharing "indirectly via … open source release", and an openly published snapshot — carrying the Use
+restrictions inside it as `LICENSE.txt`, which restriction 3b requires — was read as one. The three
+permission axes now rest on three different kinds of ground and `sources.csv` shows only booleans, so
+a test records which is documented and which is decided.
+
+**RM196 — `pip install just-dna-enricher[atlas]` used to install two packages and then fail to
+import.** The protos lived in `docs/`, the bindings were git-ignored, and neither reaches a wheel.
+
+What shipped is not "commit the generated code" or "vendor harder": **the repository now carries a
+pin rather than a copy.** A commit id and a sha256 per file; `atlas_protos.fetch_protos()` downloads
+from `google-deepmind/alphagenome` and refuses anything that does not match; `enricher/hatch_build.py`
+runs that and `protoc` at build time. Both trees are git-ignored and deliberately **not**
+build-ignored, so the sdist and wheel carry the files while the history does not. A commit id proves
+what git had; a digest proves what arrived.
+
+Only the enricher moved to hatchling — **build backends are declared per package**, so
+`just-dna-format` and `just-dna-compiler` are untouched. `hatch-protobuf` was measured and cannot do
+the job: it has no import rewriting, and that rewrite is what stops the generated package being
+named `alphagenome` and shadowing the real wheel.
+
+Three things only the real build found: upstream's Apache-2.0 `LICENSE` is at the **repository
+root**, not beside the protos; hatchling globs `LICEN[CS]E*` for the *package's own* licence
+metadata, so a fetched `LICENSE` was added twice and mis-advertised as ours; and `force_include`
+duplicates files that live inside the declared package, where `artifacts` is the right mechanism.
+Verified from a clean venv: installs with `grpcio` and `protobuf` alone, imports, and
+`find_spec("alphagenome")` is `None`.
+
+`docs/vendor/` keeps the terms documents and the download page, and its README now says why — those
+are **evidence about licensing**, which should be frozen in the repository. Upstream's source code is
+the opposite kind of file.
+
+## 2026-09-10 — the AVI lane built genome-wide: 8.8 billion rows, 34.3 GB, and two defects only the real thing found
 
 `just-dna-enricher alphagenome build` has now been run over the whole artifact. 88.5 GB of tabix TSV
 becomes **34,291,319,173 bytes over 24 parquets — 3.891 B/row — in 85 minutes** on twelve streams.

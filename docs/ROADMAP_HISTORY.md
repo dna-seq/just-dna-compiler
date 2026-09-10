@@ -68,6 +68,65 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM196 — the repository stopped carrying somebody else's source and started carrying a pin
+
+**Severity** medium · **Status** ✅ shipped 2026-09-10 (`just-dna-enricher` only: a build-backend
+change for that package, a resolver, a build hook, five files removed from `docs/vendor/`) ·
+**Owner** maintainer · **Motivating case** `pip install just-dna-enricher[atlas]` installed two
+packages and then could not import the client
+
+**What it was.** RM192 vendored upstream's `.proto` sources and generated the bindings into a
+git-ignored tree. Neither `docs/` nor `generated/` is in a wheel, so an installed package had no
+sources to generate from and no bindings to import: the extra worked from a checkout and nowhere
+else. The client's import was guarded and named the command, which made the failure legible rather
+than absent, but it was still a broken install path.
+
+**What was measured before choosing.** Three things, and two of them shrank the problem:
+
+- **The build backend is declared per package.** The ROADMAP entry said changing it "touches how all
+  three packages are built"; that was wrong. `just-dna-format` and `just-dna-compiler` stay on
+  `uv_build` and only the tier that runs `protoc` moved.
+- **`hatch-protobuf` cannot do this job**, checked rather than assumed: its options are
+  `generate_grpc`, `generate_pyi`, `generators`, `import_site_packages`, `library_paths`,
+  `output_path` and `proto_paths`, and **none rewrites an import**. The rewrite is the entire safety
+  property — without it the generated package is literally named `alphagenome` and shadows the real
+  wheel — so the plugin would have produced exactly the artifact
+  `test_the_generated_bindings_do_not_shadow_the_upstream_package` exists to prevent.
+- **A custom hatchling hook does**, in about thirty lines, which is what upstream AlphaGenome itself
+  does for the same reason.
+
+**What shipped, and it is not any of the three options the entry listed.** The maintainer's shape:
+the repository carries **neither the sources nor the bindings — it carries the pin.**
+`atlas_protos.fetch_protos()` downloads the five files from `google-deepmind/alphagenome` at a
+pinned commit and verifies each against a recorded sha256; `hatch_build.py` runs that and `protoc`
+at build time; and both trees are **git-ignored and deliberately not build-ignored**, so an sdist and
+a wheel carry the files while the repository's history does not.
+
+**Why a commit id *and* a digest.** A commit id proves what git had; a digest proves what arrived.
+The fetch crosses HTTPS to a CDN, and a pin is worth exactly what something checks it against — the
+same reason `SourceRow.license_sha256` exists. A file already on disk and matching is left alone, so
+the build is offline after the first run; a file that does *not* match is re-fetched rather than
+trusted, because the only thing worse than no pin is a pin nobody acts on.
+
+**Three defects the real build found**, none of which a plan would have:
+
+- The Apache-2.0 `LICENSE` is at upstream's **repository root**, not beside the protos. A
+  single-directory assumption 404s on it, so the pin maps each file to its own upstream path.
+- Hatchling globs `LICEN[CS]E*` for the **package's own** `License-File` metadata, so a fetched file
+  called `LICENSE` was both added to the archive twice *and* advertised as `just-dna-enricher`'s
+  licence — which it is not. It ships as `alphagenome_apache-2.0.txt`, outside the glob.
+- `force_include` duplicated every file, because the trees sit **inside** the declared package and
+  hatchling already walks it. `artifacts` is the mechanism for build-time output that lives in the
+  package tree and is deliberately absent from version control.
+
+**Verified from a clean venv**, not from the checkout that built it: the wheel installs with
+`grpcio` and `protobuf` alone, the bindings import, the service config and upstream's notice are
+present, and `importlib.util.find_spec("alphagenome")` is `None` — no shadowing.
+
+**What `docs/vendor/` keeps.** The four terms documents and the download page, and the README there
+now says why: those are **evidence about licensing**, which is exactly the kind of file that should
+be frozen in the repository rather than re-fetched. Upstream's source code is the opposite kind.
+
 ## RM195 — the most consequential claim about a source, resting on a page nobody had saved
 
 **Severity** medium · **Status** ✅ resolved 2026-09-10 (`just-dna-enricher` only: one `SourceTerms`

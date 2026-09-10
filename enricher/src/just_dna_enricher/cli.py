@@ -4322,18 +4322,27 @@ app.add_typer(atlas_app, name="atlas")
 
 
 @atlas_app.command("generate")
-def atlas_generate_() -> None:
-    """Build the Atlas gRPC bindings from `docs/vendor/alphagenome_protos/`.
+def atlas_generate_(
+    refetch: bool = typer.Option(
+        False, "--refetch",
+        help="Re-download the pinned sources even if they are already on disk and match.",
+    ),
+) -> None:
+    """Fetch the pinned Atlas `.proto` sources and generate the gRPC bindings from them.
 
-    Needs `grpcio-tools`, which is in the `[dev]` group and deliberately not in `[atlas]` — the
-    runtime imports the bindings without it. A checkout is required: an installed package carries
-    no `docs/vendor` tree, which is RM196.
+    The sources are not vendored: the repository carries a commit id and a sha256 per file, and a
+    file that does not match its pin is refused rather than used (RM196). Needs `grpcio-tools`,
+    which is in `[dev]` and deliberately not in `[atlas]` — the runtime imports the bindings without
+    it. A released wheel carries both the sources and the bindings already, so this is a checkout
+    command.
     """
     from just_dna_enricher import atlas_protos
 
     try:
+        if refetch:
+            atlas_protos.fetch_protos(force=True)
         out = atlas_protos.generate()
-    except FileNotFoundError as exc:
+    except atlas_protos.ProtoFetchError as exc:
         typer.secho(f"GENERATE FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     except ImportError as exc:

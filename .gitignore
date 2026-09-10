@@ -230,6 +230,13 @@ __marimo__/
 # past it before it was made derivable.
 /data/
 
+# The Atlas `.proto` sources (RM196): upstream's files, fetched rather than vendored. The repository
+# carries the *pin* — a commit id and a sha256 per file, in `atlas_protos.py` — because a copy of
+# somebody else's source is a copy that goes stale silently. Git-ignored and deliberately NOT
+# build-ignored: `hatch_build.py` force-includes them, so an sdist and a wheel carry the files and a
+# consumer building from source needs no network.
+enricher/src/just_dna_enricher/_atlas_protos/
+
 # The Atlas gRPC bindings (RM192): a build product, not source. `docs/vendor/alphagenome_protos/`
 # carries the Apache-2.0 `.proto` files the repository actually commits, and
 # `just-dna-enricher atlas generate` rebuilds this tree from them — so a regeneration is reproducible

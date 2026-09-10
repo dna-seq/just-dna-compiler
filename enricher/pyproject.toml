@@ -89,9 +89,26 @@ dev = [
     "openpyxl>=3.1.5",
 ]
 
+# **hatchling for this package only** (RM196). `uv_build` has no build hook, and the Atlas bindings
+# have to be generated at build time with upstream's proto imports rewritten — see
+# `enricher/hatch_build.py` for why no off-the-shelf plugin does that. Backends are declared per
+# package, so `just-dna-format` and `just-dna-compiler` stay on `uv_build`; the blast radius is the
+# one tier that runs `protoc`.
 [build-system]
-requires = ["uv-build"]
-build-backend = "uv_build"
+requires = ["hatchling", "grpcio-tools>=1.68.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/just_dna_enricher"]
+
+# The fetched sources are git-ignored and deliberately NOT build-ignored: the repository carries a
+# pin, the distribution carries the files. `hatch_build.py` force-includes them and the generated
+# tree, since hatchling honours .gitignore by default.
+[tool.hatch.build.targets.sdist]
+include = ["src/just_dna_enricher", "hatch_build.py", "README.md"]
+
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
 
 [tool.uv.sources]
 just-dna-format = { workspace = true }

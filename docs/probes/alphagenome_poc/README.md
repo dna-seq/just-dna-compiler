@@ -107,7 +107,9 @@ enumerates the ladder, because `AtlasRefMismatch` being a subclass makes a calle
 
 Generated code has no compile-time signal when the service's protos move. Upstream regenerates on
 every release; a vendored copy goes stale silently, and the failure surfaces as a decode error or a
-missing field rather than a build break. [`PROVENANCE.txt`](../../vendor/alphagenome_protos/PROVENANCE.txt)
-records the commit the three files came from (`aa6fc8f`, 2026-09-08) so re-vendoring is a diff, but
-noticing that it is *due* is manual. That is the price of the light path, and it is the reason
-§ 6.2 lists four shapes and picks none.
+missing field rather than a build break. The blueprint answered that with a `PROVENANCE.txt`
+recording the commit (`aa6fc8f`, 2026-09-08) so re-vendoring was a diff — and **RM196 later removed
+the vendored copy entirely**: the repository carries a commit id and a sha256 per file, and
+`atlas_protos.fetch_protos()` refuses anything that does not match. Noticing a re-pin is *due* is
+still manual. That is the price of the light path, and it is the reason § 6.2 listed four shapes and
+picked none.
