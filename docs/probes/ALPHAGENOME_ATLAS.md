@@ -90,11 +90,12 @@ question.
    no expression direction anywhere in the model. The axis is benign ↔ damaging, not down ↔ up (§4.7).
 
 5m. **A `PHRED` threshold is a triage, not just a size dial** — the one thing §4.4.1 could not
-   settle. Against ClinVar (21 of 24 contigs, 3,344,261 joined rows): **`PHRED ≥ 20` keeps 97.63% of
-   pathogenic variants, discards 94.3% of benign ones and 99% of the corpus** — 98× the baseline,
-   592× at ≥ 30. Median `PHRED` runs 31.4 pathogenic against 7.0 benign. And the sign agrees
-   independently of §4.7's attribution reading: **0.16% of pathogenic variants score negative
-   against 34.35% of benign**. Read it with the ascertainment caveat — ClinVar's pathogenic set is
+   settle. Against ClinVar (all 24 contigs, 3,887,455 joined rows — a 100% join rate):
+   **`PHRED ≥ 20` keeps 97.65% of pathogenic variants, discards 94.2% of benign ones and 99% of the
+   corpus** — 98× the baseline, 584× at ≥ 30, where 41% of pathogenic variants are already gone.
+   Median `PHRED` runs 31.3 pathogenic against 7.1 benign. And the sign agrees independently of
+   §4.7's attribution reading: **0.16% of pathogenic variants score negative against 34.24% of
+   benign**. Read it with the ascertainment caveat — ClinVar's pathogenic set is
    mostly coding, which is what AVI scores high for reasons already known (§4.10).
 
 5l. **Ship a 502 KB knot table instead of querying anything.** The `raw_score` value set is a fixed
@@ -1372,9 +1373,11 @@ the wrong container** — that is the general lesson, and it is not specific to 
 
 ### 4.10 The ClinVar spectrum — the threshold is a triage, and the sign agrees
 
-**Scope: 21 of 24 contigs, 3,344,261 joined rows** — 86% of the 3,887,455 classified ClinVar SNVs
-selected. The three outstanding are the largest; an earlier 8-contig pass gave 97.49% where this
-gives 97.63%, so the shape is settled and the remainder will move the third decimal.
+**Complete: 24 contigs, 3,887,455 joined rows.** That is **every** classified ClinVar SNV that was
+selected — a 100.000% join rate, not a coincidence worth passing over: AVI covers ~95% of the
+assembly (§1.4), and ClinVar's classified set falls entirely inside the covered part. Stable
+throughout, which is why the partial passes were quotable: 97.49% at 8 contigs, 97.63% at 21,
+**97.65%** complete.
 
 §4.4.1 established that `PHRED` is an exact within-corpus rank, which makes any threshold a size
 dial. It says nothing on its own about whether the variants it keeps are the ones anyone cares
@@ -1382,34 +1385,34 @@ about. This join answers that, and the answer is clear.
 
 | class | rows | median `PHRED` | median `raw_score` | negative `raw` |
 | --- | ---: | ---: | ---: | ---: |
-| **pathogenic** (P + LP) | 156,653 | **31.40** | 1.6400 | **0.16%** |
-| VUS | 1,947,487 | 21.41 | 0.6590 | 3.49% |
-| conflicting | 135,069 | 17.50 | 0.4279 | 13.71% |
-| **benign** (B + LB) | 1,105,052 | **7.01** | 0.0702 | **34.35%** |
+| **pathogenic** (P + LP) | 188,912 | **31.31** | 1.6340 | **0.16%** |
+| VUS | 2,252,696 | 21.37 | 0.6565 | 3.53% |
+| conflicting | 157,591 | 17.62 | 0.4336 | 13.71% |
+| **benign** (B + LB) | 1,288,256 | **7.08** | 0.0718 | **34.24%** |
 
 Share of each class at or above a threshold, against the corpus baseline `10^(-p/10)`:
 
 | `PHRED ≥` | corpus | pathogenic | benign | VUS | conflicting |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 79.43% | 99.89% | 75.83% | 97.76% | 89.62% |
-| 5 | 31.62% | 99.78% | 57.72% | 95.07% | 83.19% |
-| 10 | 10.00% | 99.49% | 39.35% | 86.20% | 70.83% |
-| 15 | 3.16% | 98.98% | 18.81% | 76.34% | 57.74% |
-| **20** | **1.00%** | **97.63%** | **5.73%** | 58.86% | 41.60% |
-| 25 | 0.32% | 88.91% | 0.69% | 20.65% | 15.61% |
-| **30** | **0.10%** | **59.22%** | **0.11%** | 4.16% | 4.66% |
-| 40 | 0.01% | 8.61% | 0.01% | 0.15% | 0.28% |
+| 1 | 79.43% | 99.90% | 75.87% | 97.73% | 89.59% |
+| 5 | 31.62% | 99.78% | 57.89% | 95.01% | 83.25% |
+| 10 | 10.00% | 99.49% | 39.65% | 86.11% | 71.26% |
+| 15 | 3.16% | 99.00% | 18.92% | 76.23% | 58.22% |
+| **20** | **1.00%** | **97.65%** | **5.80%** | 58.64% | 41.82% |
+| 25 | 0.32% | 88.89% | 0.70% | 20.56% | 15.55% |
+| **30** | **0.10%** | **58.36%** | **0.11%** | 4.09% | 4.56% |
+| 40 | 0.01% | 8.35% | 0.01% | 0.15% | 0.27% |
 
-**`PHRED ≥ 20` keeps 97.63% of pathogenic variants while discarding 94.3% of benign ones and 99% of
-the corpus** — **98× the baseline**, and **592×** at `≥ 30`. So the size dial is also a triage,
+**`PHRED ≥ 20` keeps 97.65% of pathogenic variants while discarding 94.2% of benign ones and 99% of
+the corpus** — **98× the baseline**, and **584×** at `≥ 30`. So the size dial is also a triage,
 which was not guaranteed and is the thing worth knowing before anyone fixes a default. Note also
-where it *stops* working: at `≥ 30` more than 40% of pathogenic variants are already gone, so the
+where it *stops* working: at `≥ 30` more than 41% of pathogenic variants are already gone, so the
 extreme tail is a precision instrument and not a stronger version of the same filter.
 
 **The sign agrees, independently.** §4.7 read a negative `AVI` as evidence *against* functional
 impact, inferred from the feature attributions — one feature, the signed 241-way conservation
 score, carrying nearly the whole of it. ClinVar confirms it from the other side without being
-asked: **0.16% of pathogenic variants score negative against 34.35% of benign ones**, a 212× ratio.
+asked: **0.16% of pathogenic variants score negative against 34.24% of benign ones**, a 216× ratio.
 Nothing in the join knew about the attributions, and nothing in the attributions knew about
 ClinVar.
 
