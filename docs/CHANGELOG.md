@@ -34,7 +34,44 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — RM197 and RM199: the ALT column a proof removed, and the description a publish sends last
+## 2026-09-11 (latest) — RM200: the API has expression direction, and the scorer that looked most useful does not survive being measured
+
+The shipped AVI artifact is one number per variant with the sign discarded. The Atlas serves
+twenty-two scorers, and nobody had asked which of the other twenty-one a module could take. Measured
+against the live service.
+
+**A correction to our own probe first.** ALPHAGENOME_ATLAS.md § 4.7 concludes *"there is no
+expression direction anywhere in the model"*. That is true of the **AVI aggregate**, whose eighteen
+features are all `MAX_ABS_*`, and **false of the API**: eight scorers report `is_signed=True`,
+`RNA_SEQ` among them. AVI throws the sign away; the others never had it thrown away.
+
+**`RNA_SEQ` is the one to adopt, and the reason is structural.** It is the **only scorer with a gene
+axis** — its shape is `(genes, tracks)` and the gene count varies with the window, 61 at one variant
+and 48 at another, against `(1, N)` for all twenty others. So AlphaGenome makes the gene attribution
+itself, which is exactly what `@gene-map-is-another-sources-attribution` demands: a gene claim comes
+from a source's own per-record attribution, never from a span the caller drew. Signed, 371 tissue
+tracks, 22,631 values at one variant — expression, per gene, per tissue, with direction.
+
+**`CHIP_TF` was the most promising candidate and it is refused.** All 1,617 tracks carry a real
+transcription factor code, so "this variant disrupts CTCF binding" looks sayable. Aggregated by TF
+over 751 factors, the top three carry **1–3% of the mass**, the concentration **does not track effect
+size** — the `PHRED` 84 variant is no more concentrated than the `PHRED` 1 one — and every leading
+factor is a **singleton track**, so the "top TF" is whichever one happens to be measured once.
+Naming a TF from that would publish a sampling artefact as a mechanism.
+
+**And `*_ACTIVE` is not what its name suggests**, which is the finding worth keeping. It is an
+activity **level**, not a variant effect: raw assay units, barely moved by swapping the ALT. So it
+does not describe the variant, it describes **the locus** — "this position sits in open chromatin in
+these cell types", which is a claim the format holds nothing like today. Every track carries a
+`nonzero_mean`, so a level normalises to fold-over-typical; without that a raw 31 and a raw 0.7 are
+incomparable, which is why a first pass found all 167 tracks "above threshold" everywhere.
+
+Filed with what still has to be decided: what one authored cell would record, whether this is a check
+or a column, and that `CAGE` — 546/546 tracks negative at the extreme variant, the only signal so far
+that looked like a claim — has **not** been put to the same test and should be before anyone believes
+it. All of it is non-commercial Output and needs the second source name `alphagenome_atlas`.
+
+## 2026-09-10 — RM197 and RM199: the ALT column a proof removed, and the description a publish sends last
 
 **RM197 — wide by position.** The AVI lane stores one row per locus with three ALT-score columns and
 **no `alt` column at all**: `chrom, pos, ref, alt0, alt1, alt2`. **3.371 B/row against 3.882**, so

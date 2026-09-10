@@ -320,6 +320,87 @@ you**, so check which `# ` heading you are under before writing the section, not
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
+## RM200 — the Atlas's other twenty-one scorers: what a module can take from them
+
+**Severity** medium · **Status** open — **measured 2026-09-11, not built** · **Owner** enricher ·
+**Motivating case** the AVI artifact is one number per variant with the sign discarded; the API
+carries direction, tissue and mechanism, and nobody had asked which of it is usable
+
+**Everything here is non-commercial.** Only `AVI_SCORE` is a Permissive Use artifact (RM195). Every
+other scorer is ordinary Output, so it enters under `declared_use=non_commercial` and needs the
+second source name `alphagenome_atlas` — one `(source, layer)` key cannot carry two licence classes.
+
+### The correction this starts from
+
+[ALPHAGENOME_ATLAS.md § 4.7](probes/ALPHAGENOME_ATLAS.md) concludes *"there is no expression
+direction anywhere in the model"*. That is true of the **AVI aggregate**, whose eighteen features are
+all `MAX_ABS_*`, and **false of the API**. Measured on the live service: `is_signed` is `True` for
+`RNA_SEQ`, `CAGE`, `ATAC`, `DNASE`, `CHIP_TF`, `CHIP_HISTONE`, `PROCAP` and
+`AVI_SCORE_MODEL_FEATURES`. AVI throws the sign away; those never had it thrown away.
+
+### 1. `RNA_SEQ` — adopt for drafting
+
+**The only scorer with a gene axis.** Shape is `(genes, tracks)` and the gene count *varies with the
+window* — 61 genes at one variant, 48 at another, against `(1, N)` for all twenty other scorers. So
+AlphaGenome attributes it to genes itself, which is what `@gene-map-is-another-sources-attribution`
+requires: a gene claim must come from a source's own per-record attribution, never from a span the
+caller drew.
+
+Signed, 371 RNA-seq tracks, and at `chr22:20002007` it returns 22,631 values across 61 genes. That is
+**expression, per gene, per tissue, with direction** — the axis the shipped artifact cannot express.
+
+Per-request only: no bulk copy exists, and at ~1,091 SNVs/s a gene plus its ±512 kb flanks is ~50
+minutes (RM194). So it is a drafting surface for named genes, never a genome-wide pass.
+
+### 2. Positional enrichment of authored rows — the shape is right, the obvious pick was wrong
+
+A module is **not** gene-scoped: the mandatory gene filter is RM194's *drafting* constraint, because
+an unfiltered interval query dies with `RESOURCE_EXHAUSTED`. For a variant an author has already
+written, the position is known and a positional score needs no attribution at all.
+
+**`CHIP_TF` is refused on the measurement, and it was the most promising candidate.** All 1,617
+tracks carry a real `transcription_factor_code` (`CTCF`, `EZH2`, …), so "this variant disrupts CTCF
+binding" *looks* sayable. Aggregating |effect| by transcription factor over 751 distinct TFs:
+
+| variant | `PHRED` | top-3 TFs' share | leading factors |
+| --- | ---: | ---: | --- |
+| chr22:30339156 C>A | **84.1** | **2%** | ZNF513(1), HMBOX1(1), PCBP1(1) |
+| chr22:20002017 C>A | 19.6 | 3% | AGO2(1), IKZF3(1), HMBOX1(1) |
+| chr22:20002007 G>A | 10.6 | 3% | NRL(1), ZNF280B(1), ZNF768(1) |
+| chr1:10001 T>A | 1.1 | 1% | ZNF48(1), PRDM6(1), SMAD7(1) |
+
+Two things kill it. The concentration **does not track effect size** — the `PHRED` 84 variant is no
+more concentrated than the `PHRED` 1 one — and every leading factor is a **singleton track**, so the
+"top TF" is whichever TF happens to be measured once. Naming a TF from that would publish a sampling
+artefact as a mechanism. Same test sinks a named-cell-type claim from `ATAC`: top-5 of 167 tracks
+carry 22% / 15% / 5% of the mass, *least* concentrated at the most extreme variant.
+
+**`*_ACTIVE` is not what its name suggests, and that is the useful finding.** It is an **activity
+level, not a variant effect**: raw assay units (ATAC 5.7–31, ChIP_TF 332–475), and swapping the ALT
+barely moves it. So it does not describe the variant — it describes **the locus**. "This position
+sits in open chromatin in these cell types" is exactly the positional annotation an authored row
+could carry, and it is a different claim from anything the format holds today.
+
+It needs a normaliser, and the metadata has one: **every track carries `nonzero_mean`** (167/167 for
+ATAC), so a level becomes fold-over-typical for that track. Without it a raw 31 and a raw 0.7 are
+incomparable, and a threshold means nothing — which is why the first pass found all 167 tracks "above
+0.5" at every variant.
+
+### What has to be decided before building
+
+1. **What one cell records.** A per-track vector is not an authored cell. A magnitude, a count of
+   tracks above a normalised threshold, or a top-k of *ontology-typed* terms are three different
+   claims, and the track vocabulary is mixed — `EFO 65 · UBERON 44 · CLO 40 · CL 15 · NTR 3` — so
+   `EFO:0001203 MCF-7` (a cancer cell line) and `UBERON:0001159 sigmoid colon` (an anatomical
+   structure) are not comparable and `NTR:` is ENCODE's "no term registered".
+2. **Whether this is a check or a column.** RM193's position is that non-commercial Output enters as a
+   *finding* and never as a stored value, which keeps the compile gate data-driven. A stored
+   accessibility column would be the first thing to test that.
+3. **`CAGE` is unmeasured against the concentration test.** At the `PHRED` 84 variant it was
+   **546/546 negative** — uniform predicted loss of initiation — which is the only signal so far that
+   looked like a claim rather than a ranking. It has not been put to the same test as `CHIP_TF`, and
+   it should be before anyone believes it.
+
 ## RM194 — gene-scoped SNV subslices, and the ±512 kb horizon
 
 **Severity** low · **Status** open — **unblocked 2026-09-10, not built** · **Owner** enricher ·
