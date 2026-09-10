@@ -1,0 +1,403 @@
+"""RM191: the AVI snapshot's three contracts — losslessness, reconciliation, threshold safety.
+
+Every test here runs the **real builder over a real slice of the published artifact**
+(`assets/alphagenome/avi_chr22_slice.tsv.gz`, 120,003 rows of chr22:20,000,000-20,040,000, bgzipped
+and tabix-indexed exactly as upstream ships it). Expected values are computed at runtime from the
+slice's own text, never copied from a dump: what is being pinned is the *relationship* between what
+AlphaGenome printed and what the snapshot stores.
+
+**The slice is chosen, not arbitrary.** Measured over the genome-wide knot table, exactly **one**
+printed `raw_score` spans an integer `PHRED` threshold — `0.00076`, whose 676,356 rows run from
+2.99961 to 3.00027 and therefore straddle 3.0. This window carries ten of them, seven below the
+threshold and three above. Without such a row `test_a_threshold_the_knots_do_not_straddle...` would
+be `@tautology-zero`: a threshold-safety property is only worth asserting where the reconstruction
+*can* disagree, and this is the only place in the human genome where it does.
+"""
+
+import subprocess
+from decimal import Decimal
+from pathlib import Path
+
+import polars as pl
+import pytest
+from just_dna_enricher import alphagenome_avi_build as ab
+from just_dna_enricher.licensing import ALPHAGENOME_AVI_TERMS
+from just_dna_format.layout import atomic_write_text
+
+_SLICE = Path(__file__).resolve().parents[2] / "assets" / "alphagenome" / "avi_chr22_slice.tsv.gz"
+_TERMS = Path(__file__).resolve().parents[2] / "docs" / "vendor" / "alphagenome_output_terms.txt"
+
+#: The one knot in the whole corpus whose `PHRED` interval contains an integer threshold. Domain
+#: constants — what the artifact prints — rather than counts read off a dump.
+STRADDLING_RAW = "0.00076"
+STRADDLED_THRESHOLD = 3.0
+
+pytestmark = pytest.mark.skipif(
+    not _SLICE.is_file(), reason="the committed AVI slice is missing"
+)
+
+
+def _tabix_available() -> bool:
+    try:
+        subprocess.run(["tabix", "--version"], capture_output=True, check=True)
+    except (FileNotFoundError, subprocess.CalledProcessError):  # pragma: no cover
+        return False
+    return True
+
+
+needs_tabix = pytest.mark.skipif(
+    not _tabix_available(), reason="tabix is not on PATH; the AVI artifact is a bgzipped TSV"
+)
+
+
+def _printed_rows() -> pl.DataFrame:
+    """The slice as the file prints it — `raw_score` and `PHRED` kept as **strings**.
+
+    Strings on purpose: the claim under test is that the stored integer reproduces the *printed
+    decimal*, and parsing both sides through the same float would make the comparison agree by
+    construction rather than by the encoding being right.
+    """
+    text = subprocess.run(
+        ["tabix", str(_SLICE), "chr22"], capture_output=True, check=True
+    ).stdout
+    return pl.read_csv(
+        text,
+        separator="\t",
+        has_header=False,
+        new_columns=["chrom", "pos", "ref", "alt", "raw_printed", "phred_printed"],
+        schema_overrides={"pos": pl.UInt32, "raw_printed": pl.String, "phred_printed": pl.String},
+    )
+
+
+@pytest.fixture(scope="module")
+def built(tmp_path_factory) -> Path:
+    """One build of the slice, shared: it is the real code path and it costs a second."""
+    if not _tabix_available():  # pragma: no cover
+        pytest.skip("tabix is not on PATH")
+    out = tmp_path_factory.mktemp("avi")
+    ab.build_snapshot(_SLICE, out, workers=1, hash_source=False, terms_file=_TERMS)
+    return out
+
+
+@needs_tabix
+def test_the_stored_integer_reproduces_the_printed_score_exactly(built: Path) -> None:
+    """`raw_score_e5` is the printed decimal shifted five places, for every row. Zero tolerance.
+
+    This is the whole case for `Int32` over `Float32`: the artifact publishes fixed decimals, so an
+    integer scale is exact while a 32-bit float rounds the fifth digit.
+
+    **The comparison runs in `Decimal`, over the file's own text, and that is the point rather than
+    a convenience.** The obvious form — divide the integer back and compare doubles — fails on 53%
+    of this slice, because the division rounds a second time and lands one ulp away from the nearest
+    double to the printed decimal. So the losslessness this artifact offers is about the *decimal*,
+    not about a float round-trip, and a consumer who needs it must stay in the integer. Asserting it
+    the obvious way would have quietly weakened the claim to whatever a tolerance admitted.
+    """
+    printed = _printed_rows()
+    stored = pl.read_parquet(built / "data" / "alphagenome_avi-chr22.parquet")
+    assert stored.height == printed.height
+
+    joined = printed.join(
+        stored.with_columns(pl.col("ref").cast(pl.String), pl.col("alt").cast(pl.String)),
+        on=["pos", "ref", "alt"],
+        how="inner",
+    )
+    assert joined.height == printed.height, "the join lost rows: the key is not (pos, ref, alt)"
+
+    # Compared as **integers**, through `Decimal`, and the choice is the finding rather than a
+    # convenience. Going the other way — `raw_score_e5 / 1e5` against `float(printed)` — disagrees
+    # on 53% of this slice, because binary division rounds a second time and lands one ulp off the
+    # nearest double to the printed decimal. That is not a defect in the encoding; it is the reason
+    # the encoding exists. The stored integer IS the printed decimal shifted five places, exactly,
+    # and a consumer who needs that exactness must work in the integer rather than divide back.
+    exact = Decimal(ab.RAW_SCORE_SCALE)
+    disagreements = [
+        row
+        for row in joined.select("pos", "ref", "alt", "raw_printed", "raw_score_e5").iter_rows(
+            named=True
+        )
+        if Decimal(row["raw_printed"]) * exact != Decimal(row["raw_score_e5"])
+    ]
+    assert not disagreements, disagreements[:5]
+
+
+@needs_tabix
+def test_a_score_with_more_precision_than_the_scale_is_refused_rather_than_rounded(
+    tmp_path: Path,
+) -> None:
+    """The losslessness guarantee is a *check*, not a comment — so break it and watch it refuse.
+
+    If upstream ever widens the column, the wrong outcome is a silently rounded score: the artifact
+    would then disagree with its own source in a way no downstream check could see. Six decimals
+    here, one row, and the build stops.
+    """
+    rows = subprocess.run(
+        ["tabix", str(_SLICE), "chr22:20000000-20000100"], capture_output=True, check=True
+    ).stdout.decode().splitlines()
+    assert rows, "the fixture window is empty"
+    fields = rows[0].split("\t")
+    fields[4] = "0.123456"  # one digit past the scale
+    doctored = tmp_path / "doctored.tsv"
+    atomic_write_text(doctored, "\n".join(["\t".join(fields), *rows[1:]]) + "\n")
+    subprocess.run(["bgzip", "-f", str(doctored)], check=True)
+    gz = doctored.with_suffix(".tsv.gz")
+    subprocess.run(["tabix", "-s1", "-b2", "-e2", "-f", str(gz)], check=True)
+
+    with pytest.raises(ab.AlphaGenomeBuildError, match="more precision"):
+        ab.build_snapshot(gz, tmp_path / "out", workers=1, hash_source=False)
+
+
+@needs_tabix
+def test_phred_is_read_and_used_but_never_stored(built: Path) -> None:
+    """24.7 GB genome-wide of a number that is a function of another column, and the knots carry it.
+
+    Equality over the written schema rather than a "PHRED not in columns" check, so a column added
+    without a decision fails here too (`@registry-completeness`).
+    """
+    stored = pl.read_parquet(built / "data" / "alphagenome_avi-chr22.parquet")
+    assert list(stored.columns) == list(ab.PARQUET_SCHEMA)
+    assert "PHRED" not in stored.columns and "phred" not in stored.columns
+    # …and the knot table is where it went.
+    knots = pl.read_parquet(built / ab.KNOT_FILENAME)
+    assert list(knots.columns) == list(ab.KNOT_COLUMNS)
+
+
+@needs_tabix
+def test_the_knot_table_accounts_for_every_row_the_build_wrote(built: Path) -> None:
+    """`sum(n)` over knots equals the rows written, and every stored score has a knot.
+
+    Two directions, because they fail differently: a short `sum(n)` means the curve describes less
+    data than exists, and a score with no knot means a consumer cannot reconstruct its `PHRED` at
+    all. The builder already refuses on the first; this pins the second.
+    """
+    stored = pl.read_parquet(built / "data" / "alphagenome_avi-chr22.parquet")
+    knots = pl.read_parquet(built / ab.KNOT_FILENAME)
+
+    assert int(knots["n"].sum()) == stored.height
+    assert set(stored["raw_score_e5"].unique()) == set(knots["raw_score_e5"])
+    assert knots["raw_score_e5"].is_sorted(), "a consumer bisects this curve"
+    assert (knots["phred_lo"] <= knots["phred_hi"]).all()
+
+
+@needs_tabix
+def test_the_fixture_really_contains_the_one_straddling_knot(built: Path) -> None:
+    """Guards every threshold claim below from being vacuous.
+
+    Exactly one printed `raw_score` in the human genome spans an integer `PHRED` threshold. If this
+    slice stopped carrying it — a re-cut window, a re-published artifact — the safety test would go
+    green while checking nothing, which is the failure `@tautology-zero` names.
+    """
+    knots = pl.read_parquet(built / ab.KNOT_FILENAME)
+    straddling = knots.filter(
+        (pl.col("phred_lo") < STRADDLED_THRESHOLD) & (pl.col("phred_hi") > STRADDLED_THRESHOLD)
+    )
+    assert straddling.height == 1, straddling.to_dicts()
+    assert straddling.item(0, "raw_score_e5") == int(float(STRADDLING_RAW) * ab.RAW_SCORE_SCALE)
+
+    printed = _printed_rows().filter(pl.col("raw_printed") == STRADDLING_RAW)
+    below = printed.filter(pl.col("phred_printed").cast(pl.Float64) < STRADDLED_THRESHOLD).height
+    above = printed.height - below
+    assert below > 0 and above > 0, (
+        "the fixture must carry rows on BOTH sides of the threshold, or 'the reconstruction can "
+        f"disagree here' is untested: {below} below, {above} above"
+    )
+
+
+@needs_tabix
+@pytest.mark.parametrize("threshold", [1.0, 2.0, 4.0, 5.0, 10.0, 15.0, 20.0])
+def test_a_threshold_no_knot_straddles_classifies_identically_to_the_stored_phred(
+    built: Path, threshold: float
+) -> None:
+    """The item's real contract: where the curve is unambiguous, dropping `PHRED` costs nothing.
+
+    For every row whose knot does not span the threshold, the knot's interval and the file's own
+    `PHRED` must put the row on the same side. **Zero misclassifications, not a bound** — that is
+    what § 4.8 measured across all fifty integer thresholds, and a tolerance here would turn a
+    measured exactness into an unmeasured approximation.
+    """
+    printed = _printed_rows()
+    knots = pl.read_parquet(built / ab.KNOT_FILENAME)
+
+    joined = (
+        printed.with_columns(
+            (pl.col("raw_printed").cast(pl.Float64) * ab.RAW_SCORE_SCALE)
+            .round()
+            .cast(pl.Int32)
+            .alias("raw_score_e5"),
+            pl.col("phred_printed").cast(pl.Float64).alias("phred"),
+        )
+        .join(knots, on="raw_score_e5", how="inner")
+    )
+    assert joined.height == printed.height
+
+    unambiguous = joined.filter(
+        (pl.col("phred_lo") >= threshold) | (pl.col("phred_hi") < threshold)
+    )
+    assert unambiguous.height > 0, "nothing to check at this threshold"
+
+    disagreed = unambiguous.filter(
+        (pl.col("phred") >= threshold) != (pl.col("phred_lo") >= threshold)
+    )
+    assert disagreed.height == 0, disagreed.head(5).to_dicts()
+
+
+@needs_tabix
+def test_the_straddled_threshold_is_exactly_where_the_knot_declares_it_unsafe(
+    built: Path,
+) -> None:
+    """The other half, and the reason the interval is published rather than a midpoint.
+
+    At 3.0 the reconstruction genuinely cannot decide: one printed `raw_score` holds rows on both
+    sides. The contract is not that the answer is right — it is that the artifact **says so in
+    advance**, from the knot table alone, without reading a single data row. That is what makes
+    threshold safety decidable rather than something a consumer discovers after the fact.
+    """
+    printed = _printed_rows()
+    knots = pl.read_parquet(built / ab.KNOT_FILENAME)
+
+    declared_unsafe = knots.filter(
+        (pl.col("phred_lo") < STRADDLED_THRESHOLD) & (pl.col("phred_hi") > STRADDLED_THRESHOLD)
+    )["raw_score_e5"]
+    assert declared_unsafe.len() == 1
+
+    ambiguous = printed.with_columns(
+        (pl.col("raw_printed").cast(pl.Float64) * ab.RAW_SCORE_SCALE)
+        .round()
+        .cast(pl.Int32)
+        .alias("raw_score_e5"),
+        pl.col("phred_printed").cast(pl.Float64).alias("phred"),
+    ).filter(pl.col("raw_score_e5").is_in(declared_unsafe))
+
+    sides = ambiguous.select((pl.col("phred") >= STRADDLED_THRESHOLD).alias("above"))["above"]
+    assert sides.any() and not sides.all(), (
+        "the knot declares 3.0 unsafe, so the rows behind it must really fall on both sides — "
+        "otherwise the interval is wider than the data and the declaration is noise"
+    )
+
+    # And every OTHER knot at this threshold is decided, which is what makes the warning narrow
+    # enough to be worth acting on rather than a blanket "thresholds may be wrong".
+    decided = knots.filter(~pl.col("raw_score_e5").is_in(declared_unsafe))
+    assert decided.filter(
+        (pl.col("phred_lo") < STRADDLED_THRESHOLD) & (pl.col("phred_hi") > STRADDLED_THRESHOLD)
+    ).height == 0
+
+
+@needs_tabix
+def test_absence_is_row_absence_and_a_stored_zero_is_a_scored_zero(built: Path) -> None:
+    """AVI covers ~95% of the assembly and writes genuine zeros; the two must stay distinguishable.
+
+    A position the artifact never scored has no row. A position it scored at zero has a row holding
+    zero. Collapsing them — writing `0.0` for an unscored position, or dropping zero rows as
+    "nothing to say" — is `@unreachable-not-absent` at nine-billion-row scale, and it is the single
+    easiest mistake to make in a table this size.
+    """
+    stored = pl.read_parquet(built / "data" / "alphagenome_avi-chr22.parquet")
+    printed = _printed_rows()
+
+    # Set equality over the (pos, ref, alt) keys, in both directions. Left to right catches a row
+    # the build invented — a position filled in because it looked like a gap; right to left catches
+    # one it dropped, which for a zero-scored row is the same defect wearing the other hat. An
+    # equality rather than a count, because two errors of opposite sign cancel in a count
+    # (`@registry-completeness`).
+    def keys(frame: pl.DataFrame) -> set[tuple]:
+        return set(
+            frame.select(
+                pl.col("pos"), pl.col("ref").cast(pl.String), pl.col("alt").cast(pl.String)
+            ).iter_rows()
+        )
+
+    assert keys(stored) == keys(printed)
+
+    # And the zeros survived as zeros rather than being read as nothing to say. Re-derived from the
+    # slice, never a constant off a dump.
+    zeros_in_file = printed.filter(pl.col("raw_printed").cast(pl.Float64) == 0.0).height
+    assert stored.filter(pl.col("raw_score_e5") == 0).height == zeros_in_file
+
+    # The window is dense — every position in it carries all three ALTs — so this slice cannot show
+    # a *gap*. Asserted rather than assumed, so nobody reads the equality above as proof that
+    # unscored positions are handled: the artifact covers ~95% of the assembly, and what pins the
+    # sparse case is the key equality itself, which admits no row the file did not carry.
+    positions = set(printed["pos"].to_list())
+    assert len(positions) * 3 == printed.height, "the fixture stopped being three-ALT-dense"
+
+
+@needs_tabix
+def test_the_use_restrictions_travel_inside_the_snapshot(built: Path) -> None:
+    """Restriction 3b, honoured: the licence text is a file beside the data, not a link.
+
+    Anyone who attaches their own terms to a derivative — which a module's `sources.csv` is — must
+    carry the Output Terms' "Use restrictions" section as an enforceable provision. So the bytes go
+    in the snapshot, `SNAPSHOT_LICENSE_FILENAME` being the slot that already exists for exactly this
+    (ClinPGx bundles one, `@a-hosts-terms-are-not-its-contents-terms`).
+    """
+    licence = (built / "LICENSE.txt").read_text()
+    assert licence.startswith("Use restrictions")
+    # The four clauses that actually bind a holder of this snapshot, quoted from the pinned document.
+    assert "non-commercial use only" in licence
+    assert "train machine learning models" in licence
+    assert 'include this “Use restrictions”' in licence
+    # …and it stops before the parts that are not use restrictions.
+    assert "Disclaimers and limitations of liability" not in licence
+    assert "Governing law" not in licence
+
+
+def test_the_terms_row_records_unknown_rather_than_permitted() -> None:
+    """RM195 as a property of the row, not a sentence in a comment.
+
+    The Additional Terms define a Permissive Use class and grant it commercial use, then delegate
+    *membership* to a sign-in-gated page nothing in `docs/vendor/` pins. So this is the house
+    algebra applied to a licence: unknown is a value, `None` is never `False`, and
+    `@no-named-licence` already settles that unknown commercial terms **warn** rather than gate.
+    Asserted with `is None` rather than falsiness, because `False` would pass a truthiness check and
+    mean something entirely different.
+    """
+    licence_text = ab.use_restrictions_text(_TERMS)
+    # `annotation` because that is the layer a module carrying AVI scores would fill; the layer a
+    # *check* records under is RM193's decision, and this test is about the three permission axes.
+    row = ALPHAGENOME_AVI_TERMS.row(
+        "annotation", declared_use="unstated", license_text=licence_text
+    )
+    assert row.commercial_use is None, "an unread page is unknown, not permission"
+    assert row.redistribution is None, "the 'open source release' carve-out is unanswered"
+    assert row.share_alike is False, "this one IS established: the terms impose no copyleft"
+    assert row.source == "alphagenome_avi", "one name cannot carry two licence classes"
+    # The pin is over the bytes the snapshot actually carries, not over the whole terms document.
+    assert row.license_sha256 is not None and row.license_sha256.startswith("sha256:")
+
+
+@needs_tabix
+def test_the_other_two_bulk_artifacts_are_refused_by_name(tmp_path: Path) -> None:
+    """A different licence class must not reach a lane whose `SourceRow` describes this one.
+
+    The merged-splicing and feature-importance artifacts are non-commercial-only, and the second
+    stacks AlphaMissense, Cactus and phastCons terms on top. Reading either into this lane would
+    publish a `sources.csv` row that does not describe its own bytes — the mirror of
+    `@a-hosts-terms-are-not-its-contents-terms`. Checked on the name, because the name is what an
+    operator actually types.
+    """
+    for name in ("combined_alphagenome_splicing_snvs.tsv.gz", "avi_indels_with_am_snvs.tsv.gz"):
+        decoy = tmp_path / name
+        decoy.write_bytes(b"")
+        with pytest.raises(ab.AlphaGenomeBuildError, match="not the AVI artifact"):
+            ab.build_snapshot(decoy, tmp_path / "out", workers=1, hash_source=False)
+
+
+@needs_tabix
+def test_the_release_records_the_stamp_the_terms_resolve_against(built: Path) -> None:
+    """`artifact_mtime` is legally load-bearing, not provenance hygiene.
+
+    The Output Terms pin the applicable version to "the date the relevant Output was generated"
+    (§ 2.7c), so the artifact's own timestamp fixes which terms govern these bytes, permanently.
+    Recorded rather than derived at read time, because the file it describes may not be there later.
+    """
+    import json
+
+    release = json.loads((built / "release.json").read_text())
+    assert release["artifact_mtime"] is not None
+    assert release["dataset"] == release["artifact_mtime"][:10]
+    assert release["phred_stored"] is False
+    assert release["raw_score_scale"] == ab.RAW_SCORE_SCALE
+    assert release["rows"] == pl.read_parquet(
+        built / "data" / "alphagenome_avi-chr22.parquet"
+    ).height
+    assert release["contigs"] == ["chr22"]

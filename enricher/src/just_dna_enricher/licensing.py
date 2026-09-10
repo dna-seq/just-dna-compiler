@@ -739,6 +739,53 @@ MITOMAP_TERMS = SourceTerms(
 )
 
 
+# AlphaGenome's AVI scores (RM191). The one entry here whose **`commercial_use` is `None` on purpose**,
+# and the reason is not caution — it is that nobody can read the answer from the repository.
+#
+# The Additional Terms **define** a "Permissive Use Downloadable Artifact" class and grant it
+# commercial use outright, then delegate *membership* of that class to "the 'Permissive Use
+# Downloadable Artifact' section of the AlphaGenome Services website" (§ 2.5). Four terms documents
+# are pinned in `docs/vendor/` and **none of them says which artifacts are Permissive**; that page is
+# a sign-in-gated single-page app. So the claim "AVI is commercially usable" rests on one reading of
+# one page this workspace cannot verify, which makes it **unknown**, not true and not false. `None`
+# is never `False` — `@no-named-licence` already settles what follows: unknown commercial terms
+# *warn*, they never gate. RM195 resolves it by saving one page, and then `True` becomes assertable.
+#
+# `redistribution` is `None` for a second, independent reason: prohibition 1 bars sharing with a
+# commercial organization "aside from indirectly via a scientific publication, open source release or
+# to support journalism", and whether an HF-published snapshot is an "open source release" is a legal
+# question this workspace has not answered. Recorded as unasked rather than guessed either way.
+#
+# The source name is `alphagenome_avi`, not `alphagenome`. `@write-the-sourcerow` keys a row on
+# `(source, layer)` and **one name cannot carry two licence classes**: the AVI artifact is the
+# Permissive candidate while everything else the Atlas serves is ordinary non-commercial Output. The
+# second name, `alphagenome_atlas`, belongs to RM194 and is deliberately not declared here — a lane
+# that does not exist yet does not get a terms entry.
+ALPHAGENOME_AVI_TERMS = SourceTerms(
+    source="alphagenome_avi",
+    # No SPDX identifier exists: these are bespoke terms, and the open-string decision on
+    # `SourceRow.license` is what lets that be said rather than approximated by the nearest CC code.
+    license="AlphaGenome Services Additional Terms of Service (2026-09-08)",
+    license_url="https://deepmind.google.com/science/alphagenome/terms",
+    attribution="AlphaGenome (Google DeepMind), https://deepmind.google.com/science/alphagenome",
+    notice=(
+        "Output Terms of Use restriction 3a, verbatim: 'By using this information, you agree to "
+        "AlphaGenome Output Terms of Use found at "
+        "http://deepmind.google.com/science/alphagenome/output-terms'. Restriction 3b additionally "
+        "requires the 'Use restrictions' section to travel INSIDE a derivative as an enforceable "
+        "provision when the distributor attaches terms of their own, which a module's sources.csv "
+        "is — the snapshot's LICENSE.txt carries those bytes and license_sha256 pins them. Two "
+        "further bars have no axis on this row and are stated here because they bind anyway: no "
+        "training of variant-effect models (prohibition 4), and Google may demand deletion of "
+        "Output and Derivatives already in your possession on breach, not only on termination. "
+        "The applicable version of the terms is the one effective on the date the Output was "
+        "generated, which is why release.json records the artifact's own timestamp."
+    ),
+    share_alike=False,
+    commercial_use=None,  # RM195 — unknown, and unknown is a value
+    redistribution=None,  # the § 2.4/1b "open source release" carve-out is unanswered
+)
+
 TERMS_BY_SOURCE: dict[str, SourceTerms] = {
     terms.source: terms
     for terms in (
@@ -758,6 +805,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         PGS_TERMS,
         STRCHIVE_TERMS,
         MITOMAP_TERMS,
+        ALPHAGENOME_AVI_TERMS,
     )
 }
 

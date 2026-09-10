@@ -1021,11 +1021,18 @@ service* below). Pre-provisioning is therefore a deployment step, not an optimiz
 | **ACMG SF** ❓ | `acmg_sf/` | `$JUST_DNA_ACMG_CACHE` | **none, by design** | **never published** | the secondary-findings list (`check-acmg`) |
 | **MITOMAP** ✅ | `mitomap/` | `$JUST_DNA_MITOMAP_CACHE` | `ensure_mitomap_snapshot` | `just-dna-seq/mitomap` — CC BY 3.0, repo not created yet | curated mtDNA variants, both `mmutation` and `rtmutation` (RM171) |
 | **MITOMAP miss** ⛓ | `mitomap_miss/` | `$JUST_DNA_MITOMAP_MISS_CACHE` | **none — derived** | **not published, deliberately** | what MITOMAP publishes and the ClinVar cache does not (`draft-panel --source mitomap-miss`) |
+| **AlphaGenome AVI** ❓🔑 | `alphagenome_avi/` | `$JUST_DNA_ALPHAGENOME_AVI_CACHE` | **none — operator-supplied** | **not published; RM195 + a legal question** | variant-impact scores for 8.8 B SNVs, `Int32`×10⁵ plus a 466 KB knot table (`alphagenome build --input`, RM191) |
 
 🔒 = licence-gated (`commercial_use=False`). ❓ = terms **unestablished** (`commercial_use=None`), which
 is a different state and not a weaker one: unknown is not permissive. ⛓ = **derived**: this lane has
-parents rather than a download. The three 🔒 rows are RM38, new in 0.5.1; the PubMind ❓ row is RM134
-and the MANE one is RM168; the two MITOMAP rows are RM171.
+parents rather than a download. 🔑 = **the acquisition itself is gated**, which is a fourth thing again
+(RM191): the AVI artifact is 88.5 GB behind a sign-in whose eligibility clause bars *classes of holder*
+— "the AlphaGenome Services aren't available for any commercial entity, even if conducting
+non-commercial work" — so there is nothing for a `rebuild` adapter to fetch and the operator supplies
+the file under their own acceptance (`@acquisition-gate-is-not-a-read-gate`). It is the **second lane
+with no `rebuild` adapter and the first with a builder anyway**: having a builder module and being
+rebuildable stopped being the same property here. The three 🔒 rows are RM38, new in 0.5.1; the PubMind
+❓ row is RM134 and the MANE one is RM168; the two MITOMAP rows are RM171.
 
 ### The derived lane, and the `parents` field (RM171)
 

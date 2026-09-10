@@ -76,6 +76,7 @@ from just_dna_enricher.download import (
     ensure_strchive_snapshot,
 )
 from just_dna_enricher.licensing import (
+    ALPHAGENOME_AVI_TERMS,
     CLINPGX_TERMS,
     CPIC_TERMS,
     PHARMVAR_TERMS,
@@ -86,6 +87,8 @@ from just_dna_enricher.licensing import (
 from just_dna_enricher.locations import (
     ACMG_CACHE_VAR,
     ACMG_SUBDIR,
+    ALPHAGENOME_AVI_CACHE_VAR,
+    ALPHAGENOME_AVI_SUBDIR,
     CIVIC_CACHE_VAR,
     CIVIC_SUBDIR,
     CLINPGX_CACHE_VAR,
@@ -113,6 +116,7 @@ from just_dna_enricher.locations import (
     STRCHIVE_CACHE_VAR,
     STRCHIVE_SUBDIR,
     default_acmg_cache_dir,
+    default_alphagenome_avi_cache_dir,
     default_civic_cache_dir,
     default_clinpgx_cache_dir,
     default_clinvar_cache_dir,
@@ -130,6 +134,7 @@ from just_dna_enricher.locations import (
     missing_credential_reason,
     read_release,
     resolve_acmg_reference,
+    resolve_alphagenome_avi_reference,
     resolve_civic_reference,
     resolve_clinpgx_reference,
     resolve_clinvar_reference,
@@ -266,8 +271,12 @@ class CacheLane:
     #: biconditional, because a lane that gained a publish command and kept its excuse would go on
     #: telling operators to build their own.
     unpublished: str | None = None
-    #: Why there is no `rebuild` adapter. Ensembl is the only member, and its reason is that the
-    #: snapshot is built by just-dna-pipelines rather than here.
+    #: Why there is no `rebuild` adapter. **Two members, for two different reasons**, and the pair is
+    #: worth naming because they look alike and are not: `ensembl`'s snapshot is built by
+    #: just-dna-pipelines rather than here, so a rebuild command would be this repository claiming
+    #: another's artifact; `alphagenome_avi` cannot be rebuilt by *anyone* without a file the tier is
+    #: not allowed to fetch, so the adapter has no bytes to start from. The first is a division of
+    #: labour, the second is an acquisition gate (`@acquisition-gate-is-not-a-read-gate`).
     unbuilt: str | None = None
     #: How this lane's snapshot names the release it holds (RM180). The default reads `release.json`'s
     #: `dataset`, which eleven lanes write; ClinVar does not, so `cache status` printed a blank label
@@ -985,6 +994,44 @@ CACHE_LANES: list[CacheLane] = [
         unpublished=(
             "unestablished: the SF v3.3 list is ACMG/Elsevier supplementary material and nothing "
             "grants redistribution of it. Build your own with `acmg build <workbook.xlsx>`"
+        ),
+    ),
+    CacheLane(
+        name="alphagenome_avi",
+        build_command="alphagenome build",
+        subdir=ALPHAGENOME_AVI_SUBDIR,
+        env_var=ALPHAGENOME_AVI_CACHE_VAR,
+        serves="AlphaGenome AVI variant-impact scores (alphagenome build, RM193 checks)",
+        resolve=resolve_alphagenome_avi_reference,
+        default_dir=default_alphagenome_avi_cache_dir,
+        rebuild=None,
+        ensure=None,
+        publish_repo=None,
+        terms=ALPHAGENOME_AVI_TERMS,
+        # **The lane that cannot acquire its own bytes.** Every other buildable lane's adapter starts
+        # with a download; this one's input is 88.5 GB behind a sign-in whose eligibility clause is a
+        # bar on *who may hold the data at all* — "the AlphaGenome Services aren't available for any
+        # commercial entity, even if conducting non-commercial work" — which is not a use restriction
+        # and has no axis on `SourceRow`. So acquisition is the operator's act under their own
+        # acceptance, and `alphagenome build --input <the file you downloaded>` is the whole build.
+        unbuilt=(
+            "no rebuild adapter because there is nothing to fetch: the AVI artifact is 88.5 GB "
+            "behind a sign-in whose eligibility clause bars classes of holder outright "
+            "(ALPHAGENOME_ATLAS.md § 2.1), so the operator downloads it under their own acceptance "
+            "and `alphagenome build --input` re-encodes the file they hold"
+        ),
+        # Two independent blockers, and neither is a licence this tier has read as forbidding it.
+        # The first is that the terms **do not say** whether AVI is commercially usable at all
+        # (RM195), so publishing would put a snapshot into the world under an unknown permission.
+        # The second is narrower and would survive RM195: prohibition 1 bars sharing with a
+        # commercial organization "aside from indirectly via a scientific publication, open source
+        # release or to support journalism", and whether a HuggingFace snapshot is an "open source
+        # release" is a legal reading rather than an engineering one.
+        unpublished=(
+            "not publishable while two questions are open: RM195 (the Permissive-class membership "
+            "that would make `commercial_use` True is stated only on a page nothing in docs/vendor "
+            "pins, so the row ships `None`), and whether an HF-published snapshot counts as an "
+            "'open source release' under the Output Terms' prohibition 1 carve-out"
         ),
     ),
 ]

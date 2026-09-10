@@ -29,6 +29,8 @@ from just_dna_enricher.acmg import (
     verify_acmg_sf,
 )
 from just_dna_enricher.acmg import verification_record as acmg_record
+from just_dna_enricher.alphagenome_avi_build import AlphaGenomeBuildError
+from just_dna_enricher.alphagenome_avi_build import build_snapshot as build_alphagenome_snapshot
 from just_dna_enricher.assertions import (
     ASSERTION_GENOME_BUILD,
     ClinicalAssertionError,
@@ -4337,6 +4339,85 @@ def atlas_generate_() -> None:
         )
         raise typer.Exit(code=1) from exc
     typer.secho(f"bindings written to {out}", fg=typer.colors.GREEN)
+
+
+# ── the AlphaGenome AVI snapshot (RM191) ────────────────────────────────────────────────────────
+
+alphagenome_app = typer.Typer(
+    add_completion=False,
+    help=(
+        "Re-encode AlphaGenome's AVI variant-impact scores into a cache lane. **Reads a file you "
+        "already hold** — the artifact is 88.5 GB behind a sign-in whose eligibility clause bars "
+        "classes of holder, so this never downloads."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(alphagenome_app, name="alphagenome")
+
+
+@alphagenome_app.command("build")
+def alphagenome_avi_build_(
+    input_: Path = typer.Option(
+        ..., "--input", exists=True, dir_okay=False,
+        help=(
+            "The extracted alphagenome_variant_impact_score_snvs.tsv.gz (its .tbi must be beside "
+            "it). Required, and there is no default URL: acquisition is yours, under your own "
+            "acceptance of the AlphaGenome Services Additional Terms."
+        ),
+    ),
+    out: Path = typer.Option(
+        repro_out("alphagenome_avi"), "--out", file_okay=False,
+        help="Output snapshot directory (writes data/alphagenome_avi-*.parquet, avi_knots.parquet, release.json, LICENSE.txt).",
+    ),
+    contig: list[str] = typer.Option(
+        None, "--contig",
+        help="Build only these contigs, repeatable. Omit for every contig the .tbi index knows.",
+    ),
+    workers: int = typer.Option(
+        12, "--workers", min=1,
+        help="How many contigs to read at once. Twelve ran 24 contigs in 41-46 minutes; one takes about four times as long.",
+    ),
+    no_hash: bool = typer.Option(
+        False, "--no-hash",
+        help="Skip the source sha256. It is a few minutes over 88.5 GB; release.json then records null, which is unknown rather than unpinned.",
+    ),
+) -> None:
+    """Build the AVI snapshot from a local copy of the artifact.
+
+    `raw_score` is stored as `Int32` at a scale of 10**5 — exactly lossless, since the artifact
+    prints at most five decimals — and `PHRED` is **not** stored: it is a rank, a function of
+    `raw_score`, and the 466 KB knot table beside the data reconstructs it while also carrying the
+    per-value ambiguity interval a threshold has to be checked against.
+    """
+    try:
+        result = build_alphagenome_snapshot(
+            input_, out, contigs=list(contig) if contig else None,
+            workers=workers, hash_source=not no_hash,
+        )
+    except AlphaGenomeBuildError as exc:
+        typer.secho(f"BUILD FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(
+        f"built {result.rows:,} rows over {len(result.contigs)} contig(s) into {out}",
+        fg=typer.colors.GREEN,
+    )
+    typer.echo(
+        f"  {result.knots:,} knots, {result.negative_rows:,} negative scores, "
+        f"{result.zero_rows:,} genuine zeros (absence is row-absence, never a zero)"
+    )
+    if result.dataset is None:
+        typer.secho(
+            "  the artifact's own timestamp could not be read, so release.json records no dataset. "
+            "The Output Terms pin the applicable version to the date the Output was generated, so "
+            "that date is worth recovering before the snapshot is relied on.",
+            fg=typer.colors.YELLOW, err=True,
+        )
+    typer.secho(
+        "  commercial_use is recorded as UNKNOWN, not permitted (RM195): the Additional Terms "
+        "define a Permissive Use class and delegate membership to a web page nothing in "
+        "docs/vendor pins.",
+        fg=typer.colors.YELLOW, err=True,
+    )
 
 
 if __name__ == "__main__":

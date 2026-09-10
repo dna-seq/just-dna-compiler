@@ -320,17 +320,38 @@ you**, so check which `# ` heading you are under before writing the section, not
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
-## RM191 — AlphaGenome AVI as a derived cache lane: `Int32` parquet plus a knot table
+## RM197 — the AVI lane's layout: 43.0 GB long against 29.7 GB wide, now measured
 
-**Severity** medium · **Status** open — **planned 2026-09-10** · **Owner** enricher ·
-**Motivating case** the AlphaGenome Atlas launch, 2026-09-08
+**Severity** low · **Status** open — **filed 2026-09-10 by RM191** · **Owner** maintainer ·
+**Motivating case** RM191 shipped the layout its proposal specified, and building it produced a
+number 25% off the one the proposal quoted
 
-An operator-built snapshot of the 88.5 GB AVI artifact, re-encoded to **34.4 GB** as parquet with
-`raw_score` as `Int32`×10⁵ — exactly lossless, since both published columns print at most 5 decimals,
-where `Float32` is both larger and lossy. The `PHRED` column is **not stored**: it is a within-corpus
-rank, and the 466 KB knot table reconstructs it with zero threshold misclassifications. Design and
-build in [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm191); evidence in
-[ALPHAGENOME_ATLAS](probes/ALPHAGENOME_ATLAS.md).
+[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md) listed *"wide-by-position layout for AVI (saved
+17% on splicing; unmeasured here)"* as deferred. It is measured now, because RM191's build supplied
+the comparison for free — on chr22's 117,479,331 rows, at `zstd` level 9:
+
+| layout | B/row | genome-wide |
+| --- | ---: | ---: |
+| **long — one row per SNV** (shipped) | **4.878** | **43.0 GB** |
+| wide — one row per position, three ALT columns | 3.371 | 29.7 GB |
+
+**A 31% saving, and the proposal's own 34.4 GB reproduces in neither.** That figure comes from the
+probe's § 4.9 whole-row table; whatever it measured, it is not either of these at these settings.
+
+The cost sits in one column. Per column on the shipped layout: `pos` **2.067 B/row**, `raw_score_e5`
+2.564, `ref` 0.134, `alt` 0.111. Two thirds of `pos` is pure redundancy — it is monotone and each
+value appears three times, once per ALT — so the wide layout is not a clever encoding, it is simply
+not writing the position twice more.
+
+**Why this is not a decision the build round took.** It is a schema change to a shipped artifact:
+RM193's checks read `(pos, ref, alt)` rows, a wide table changes what a consumer joins against, and
+the three-ALT assumption needs checking against the ~5% of the assembly AVI does not cover densely.
+None of that is a night's work, and the size never binds — 43 GB against 4 TB free. So the number is
+recorded and the shape is left alone.
+
+Two cheaper things were measured and are **not** worth taking on their own: `row_group_size=250_000`
+buys 2.6% (4.747 B/row) and larger groups cost more; dropping the constant `chrom` column buys 0.003
+B/row and loses a reader's ability to glob `data/*.parquet` into one frame.
 
 ## RM196 — the Atlas bindings are a build product, and a wheel cannot build them
 

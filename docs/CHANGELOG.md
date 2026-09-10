@@ -34,7 +34,58 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — RM192: the AlphaGenome Atlas client, on two packages
+## 2026-09-10 (latest) — RM191: AlphaGenome's AVI scores as a cache lane, and a 466 KB curve instead of a 24.7 GB column
+
+`just-dna-enricher alphagenome build --input <the file you downloaded>` re-encodes AlphaGenome's
+Variant Impact scores — 8,812,917,339 SNVs — into a fifteenth cache lane.
+
+**It never downloads, and that is not the usual inject-only rule.** This is the network tier, so it
+is allowed to fetch; the reason it does not is that the artifact sits behind a sign-in whose
+eligibility clause bars *classes of holder* rather than classes of use. So `--input` is required and
+there is no default URL: acquisition is the operator's act under their own acceptance.
+
+**`PHRED` is not stored.** Measured over every row, `PHRED ≥ p` keeps `10^(-p/10)` of the corpus to
+four significant figures across four decades — it is an exact within-corpus rank and therefore a
+function of `raw_score`. Storing it costs 24.7 GB. A **466 KB knot table** beside the data carries
+the reconstruction curve instead, and carries an **interval** per printed score rather than a point,
+because the artifact prints `raw_score` to four significant digits and `PHRED` to six. That interval
+is the useful part: **a threshold is unsafe iff it lands inside a knot's span**, which is checkable
+in advance from 466 KB without reading a data row. Genome-wide, exactly **one** knot straddles any
+integer threshold between 1 and 50 — `0.00076`, 676,356 rows, spanning 2.99961 to 3.00027. Every
+other threshold is decided.
+
+**`raw_score` is `Int32` at a scale of 10⁵, and the losslessness is checked rather than asserted.**
+Both published columns print at most five decimals, so an integer scale is exact where `Float32` is
+both larger *and* lossy. The builder refuses a value that does not land on the grid instead of
+rounding it, so if upstream ever widens the column the build stops rather than silently disagreeing
+with its own source.
+
+**One consumer-facing caveat, measured:** the exactness is about the **decimal**. Recovering a float
+with `raw_score_e5 / 1e5` disagrees with `float(printed)` on **53% of rows** — the division rounds a
+second time and lands one ulp away. Compare in the integer domain (`score >= 0.1` is
+`raw_score_e5 >= 10_000`) and it never arises.
+
+**Two figures from the proposal did not survive measurement**, and both are recorded rather than
+worked around. The artifact re-encodes to **43.0 GB** in the shipped one-row-per-SNV layout, not the
+34.4 GB the design quoted; a wide-by-position layout measures **29.7 GB**, so that deferred item now
+carries a number instead of "unmeasured". And `pos` alone costs 2.067 B/row for a monotone column of
+triplets, which is where the gap sits.
+
+**Absence stays row-absence.** AVI covers about 95% of the assembly and writes 672,931 genuine
+zeros, so an unscored position has no row while a scored-zero position has a row holding zero.
+
+The snapshot carries the Output Terms' **"Use restrictions" section as a `LICENSE.txt` beside the
+data**, because restriction 3b requires it to travel *inside* a derivative rather than as a link
+when the distributor attaches terms of their own — which a module's `sources.csv` is. `release.json`
+records the artifact's own timestamp, which is legally load-bearing rather than provenance hygiene:
+the Output Terms pin the applicable version to the date the Output was generated.
+
+**`commercial_use` is recorded as unknown, not permitted** — RM195. The Additional Terms define a
+Permissive Use class and grant it commercial use, then delegate *membership* to a sign-in-gated page
+that nothing in `docs/vendor/` pins. `None` is never `False`, and unknown commercial terms warn
+rather than gate.
+
+## 2026-09-10 — RM192: the AlphaGenome Atlas client, on two packages
 
 `just-dna-enricher` gains a working client for the AlphaGenome Atlas — Google DeepMind's
 precomputed variant scores, served over gRPC — and it costs **two packages**, not the SDK's

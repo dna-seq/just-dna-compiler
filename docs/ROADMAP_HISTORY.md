@@ -68,6 +68,75 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM191 — nine billion scores, and the column that is a function of another column
+
+**Severity** medium · **Status** ✅ shipped 2026-09-10 in the uncut 0.7.0 (`just-dna-enricher` only:
+a new builder module, a new cache lane, a new CLI command, a new `SourceTerms` entry; no model, no
+authored column, no manifest field) · **Owner** enricher · **Motivating case**
+[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm191), against
+[ALPHAGENOME_ATLAS.md §§ 1.4, 4.4–4.9](probes/ALPHAGENOME_ATLAS.md)
+
+**What shipped.** `alphagenome_avi_build.py` and `just-dna-enricher alphagenome build --input`,
+writing `<out>/data/alphagenome_avi-<contig>.parquet` + `avi_knots.parquet` + `release.json` +
+`LICENSE.txt`, and a fifteenth `CACHE_LANES` entry. `--input` is required and there is no default
+URL: the artifact is 88.5 GB behind a sign-in whose eligibility clause bars classes of holder
+outright, so acquisition is the operator's act under their own acceptance
+(`@acquisition-gate-is-not-a-read-gate`).
+
+**`PHRED` is not stored, and the 466 KB that replace it are the item.** Measured over all
+8,812,917,339 rows, `PHRED ≥ p` keeps `10^(-p/10)` of the corpus to four significant figures across
+four decades — it is an exact within-corpus rank, a function of `raw_score`, and 24.7 GB of it. The
+knot table carries the curve instead, and it carries the *interval* rather than a point: the
+artifact prints `raw_score` to four significant digits and `PHRED` to six, so one printed score can
+span many ranks. Publishing a midpoint would turn a measurable ambiguity into an invisible one.
+**That interval is what makes threshold safety decidable** — a threshold is unsafe iff it lands
+inside a knot's span, checkable from 466 KB without reading a data row. Genome-wide, **exactly one
+knot straddles any integer threshold from 1 to 50**: `0.00076`, 676,356 rows, `PHRED` 2.99961 to
+3.00027. Every other threshold is decided.
+
+**Two measurements corrected the proposal, and both are recorded rather than worked around.**
+
+- **Size.** The proposal's 34.4 GB comes from the probe's § 4.9 whole-row table and **reproduces in
+  neither layout at these compression settings.** Built and measured on chr22 (117,479,331 rows):
+  the shipped long layout is **4.878 B/row → 43.0 GB genome-wide**, and a wide-by-position layout
+  (one row per position, three ALT columns) is **3.371 B/row → 29.7 GB**. Per column, `pos` alone
+  costs 2.067 B/row for a monotone column of triplets, which is where the gap sits. The long layout
+  is what the proposal specified and what shipped; the wide one is a schema change and the
+  maintainer's call, so the **debt item now carries a measurement instead of "unmeasured here"**.
+- **Losslessness is about the decimal, not about a float round-trip.** `Int32`×10⁵ is exact for a
+  value printed to five decimals, and the builder *checks* it — `_scaled_scores` refuses a value
+  that does not land on the grid rather than rounding it, so the guarantee holds over every row
+  written rather than over the 900,003-row slice it was measured on. But recovering a float with
+  `raw_score_e5 / 1e5` disagrees with `float(printed)` on **53% of rows**: the division rounds a
+  second time and lands one ulp off. The test compares in `Decimal`, and both the module docstring
+  and the test say why — asserting it the obvious way would have weakened the claim to whatever a
+  tolerance admitted.
+
+**What the tests pin**, all against a committed 1.2 MB slice of the real artifact
+(`assets/alphagenome/avi_chr22_slice.tsv.gz`) with expected values re-derived from its own text:
+the decimal round-trip; the refusal when a score carries more precision than the scale; that
+`PHRED` is absent from the parquet and present in the knots; that `sum(n)` over knots equals the
+rows written **and** every stored score has a knot; the threshold-safety property at seven
+thresholds with zero misclassifications; and that the one straddling knot really has rows on both
+sides of 3.0 — without which the safety test would be `@tautology-zero`, which is why the slice was
+cut around that locus rather than anywhere.
+
+**Absence is row-absence.** AVI covers ~95% of the assembly and writes 672,931 genuine zeros, so an
+unscored position has no row and a scored-zero position has a row holding zero. The test asserts
+**set equality over `(pos, ref, alt)` in both directions**, because a count cancels an invented row
+against a dropped one.
+
+**Two registry guards caught real defects rather than needing to be widened**, which is the shape
+`@registry-completeness` predicts. `test_the_lane_that_reads_its_release_differently_is_exactly_the_one_named`
+rejected a `release_label` that was byte-identical to the default — a duplicate that would have
+drifted — and it was deleted. `test_every_builder_module_has_a_lane_and_every_lane_but_one_has_a_builder`
+rejected a module named for something other than its lane, and the module was renamed to
+`alphagenome_avi_build.py` rather than excepted, exactly as its own docstring instructs. That test
+also had to be split: **having a builder module and having a `rebuild` adapter stopped being the
+same property**, because this lane has the first and cannot have the second.
+
+**`commercial_use` is `None`, not `True`** — see RM195. Unknown is a value.
+
 ## RM192 — 255 MB of wheel for a service whose scores are plain bytes
 
 **Severity** medium · **Status** ✅ shipped 2026-09-10 in the uncut 0.7.0 (`just-dna-enricher` only:

@@ -193,6 +193,14 @@ MITOMAP_SUBDIR: str = "mitomap"
 #: one. Not published: a pulled child would carry pins for parents the puller does not have.
 MITOMAP_MISS_SUBDIR: str = "mitomap_miss"
 
+#: AlphaGenome's AVI scores, re-encoded (RM191). The **only lane the tier cannot acquire for itself**:
+#: the artifact is 88.5 GB behind a sign-in whose eligibility clause bars whole classes of holder
+#: (ALPHAGENOME_ATLAS.md § 2.1), so `alphagenome build --input` reads a file the operator downloaded
+#: and there is no `rebuild` adapter to run without one. Its licence class is also the one thing about
+#: it that is *unknown* rather than permissive — RM195 — so `commercial_use` is `None` and nothing
+#: publishes it.
+ALPHAGENOME_AVI_SUBDIR: str = "alphagenome_avi"
+
 
 # ── The override variables, one per lane, plus the shared base ──────────────────────────────────
 # Named here rather than as a literal inside each resolver (S89, RM184), so `caches.CACHE_LANES`
@@ -217,6 +225,7 @@ DRUG_LABELS_CACHE_VAR: str = "JUST_DNA_DRUG_LABELS_CACHE"
 MANE_CACHE_VAR: str = "JUST_DNA_MANE_CACHE"
 MITOMAP_CACHE_VAR: str = "JUST_DNA_MITOMAP_CACHE"
 MITOMAP_MISS_CACHE_VAR: str = "JUST_DNA_MITOMAP_MISS_CACHE"
+ALPHAGENOME_AVI_CACHE_VAR: str = "JUST_DNA_ALPHAGENOME_AVI_CACHE"
 
 def read_release(reference: Path) -> dict | None:
     """A snapshot's `release.json` as a dict, or `None` when it is absent or unreadable.
@@ -656,6 +665,28 @@ def resolve_mitomap_reference(
     return _resolve_parquet_cache(
         mitomap_cache, MITOMAP_CACHE_VAR,
         default_mitomap_cache_dir(load_dotenv_file=load_dotenv_file),
+        load_dotenv_file=load_dotenv_file,
+    )
+
+
+def default_alphagenome_avi_cache_dir(*, load_dotenv_file: bool = True) -> Path:
+    """The `<base>/alphagenome_avi` directory — see `ALPHAGENOME_AVI_SUBDIR`."""
+    return _cache_dir(ALPHAGENOME_AVI_SUBDIR, load_dotenv_file=load_dotenv_file)
+
+
+def resolve_alphagenome_avi_reference(
+    alphagenome_avi_cache: Path | None = None, *, load_dotenv_file: bool = True
+) -> Path | None:
+    """Locate a built AVI snapshot (`$JUST_DNA_ALPHAGENOME_AVI_CACHE`), without downloading.
+
+    `None` here is *nobody-asked* in its strongest form: this lane has no acquire stage at all, so an
+    absent snapshot means the operator has not run `alphagenome build` against a file they hold — not
+    that a fetch failed, and not that AlphaGenome scores nothing at that position
+    (`@unreachable-not-absent`).
+    """
+    return _resolve_parquet_cache(
+        alphagenome_avi_cache, ALPHAGENOME_AVI_CACHE_VAR,
+        default_alphagenome_avi_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
 

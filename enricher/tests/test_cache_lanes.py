@@ -36,6 +36,18 @@ _SRC = Path(caches.__file__).parent
 
 #: The one lane with no builder in this tier. Named rather than counted, so that a *second* builderless
 #: lane appearing has to be argued for here instead of slipping past an inequality.
+#: The lanes with **no `rebuild` adapter**, and the two are not the same kind of absence — which is
+#: why they are named individually rather than counted. `ensembl`'s snapshot is cut by
+#: just-dna-pipelines, so a rebuild here would be this repository claiming another's artifact.
+#: `alphagenome_avi` has a builder and no adapter: its input is 88.5 GB behind a sign-in whose
+#: eligibility clause bars classes of holder, so there is nothing for an unattended rebuild to fetch
+#: and the operator supplies the file (RM191, `@acquisition-gate-is-not-a-read-gate`).
+_NO_REBUILD_ADAPTER = {"ensembl", "alphagenome_avi"}
+
+#: The one lane with no builder module in this package at all. A strictly smaller set than the one
+#: above, and the gap between them is exactly `alphagenome_avi`: **having a builder and being
+#: rebuildable are different properties**, and they were the same set until an operator-supplied
+#: artifact arrived.
 _BUILT_ELSEWHERE = {"ensembl"}
 
 
@@ -62,12 +74,22 @@ def test_every_builder_module_has_a_lane_and_every_lane_but_one_has_a_builder() 
 
     Left to right catches the defect that happened: `acmg_build`, `strchive_build` and
     `drug_labels_build` existed with no roster entry. Right to left catches its mirror — a lane kept
-    in the registry after its builder was deleted, which would advertise a rebuild that cannot run.
-    """
-    lanes_with_builders = {lane.name for lane in CACHE_LANES if lane.rebuild is not None}
-    assert _builder_modules() == lanes_with_builders
+    in the registry after its builder was deleted, which would advertise a build that cannot run.
 
-    assert {lane.name for lane in CACHE_LANES if lane.rebuild is None} == _BUILT_ELSEWHERE
+    **It is keyed on having a builder module, not on having a `rebuild` adapter**, and the two were
+    the same set until RM191. `alphagenome_avi` has `alphagenome_avi_build.py` and no adapter,
+    because its input is a file the tier is not permitted to fetch — so folding the two properties
+    together would have forced either an exception here or a lane named for something other than its
+    module, and the docstring below says which of those is the right repair.
+    """
+    assert _builder_modules() == {lane.name for lane in CACHE_LANES} - _BUILT_ELSEWHERE
+
+    # And the narrower property, stated separately because it stopped coinciding: a `rebuild`
+    # adapter means *this tier can acquire the bytes and rebuild unattended*, which a builder module
+    # does not imply. Keyed on the two names rather than on a count, so a lane that quietly lost its
+    # adapter fails here instead of being read as a third operator-supplied artifact.
+    assert {lane.name for lane in CACHE_LANES if lane.rebuild is None} == _NO_REBUILD_ADAPTER
+    assert _BUILT_ELSEWHERE < _NO_REBUILD_ADAPTER
 
 
 def test_every_lane_resolves_through_the_locations_family() -> None:
@@ -178,9 +200,17 @@ def test_the_licence_gated_lanes_are_the_ones_carrying_terms() -> None:
     ClinPGx's terms cover two archives — the annotation lane and the drug labels — so the same
     `SourceTerms` object appears twice, which is the point of comparing the *sources* rather than
     counting the lanes.
+
+    `alphagenome_avi` joined on 2026-09-10 and is the first entry here whose `commercial_use` is
+    **`None` rather than `False`** (RM195): the other four carry terms this workspace has read as
+    forbidding sale, while AlphaGenome's terms define a Permissive class and then delegate
+    membership to a page nothing in `docs/vendor/` pins. Carrying terms and being *refused* are
+    different things, and `_gate` already keeps them apart — a refusal is a `False` outcome, an
+    unestablished permission is a `None` one.
     """
     gated = {lane.name: lane.terms.source for lane in CACHE_LANES if lane.terms is not None}
-    assert gated == {"clinpgx": "clinpgx", "cpic": "cpic", "drug_labels": "clinpgx",
+    assert gated == {"alphagenome_avi": "alphagenome_avi",
+                     "clinpgx": "clinpgx", "cpic": "cpic", "drug_labels": "clinpgx",
                      "pharmvar": "pharmvar"}
 
 
