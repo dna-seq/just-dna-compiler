@@ -1593,6 +1593,17 @@ Named so the next reader knows the shape of the hole rather than inheriting a si
   question, not one this repository should answer for itself.
 - **Whether the two PAR copies agree.** `chrX` and `chrY` both carry position 276,225 onward
   (§1.2); no comparison was run.
+- **The ClinVar spectrum — scheduled, not skipped.** `PHRED` is an exact within-corpus rank
+  (§4.4.1), so it says nothing on its own about whether high-scoring variants are the clinically
+  interesting ones. The join is running as this section is written: `tabix -R` over 3,523,241
+  ClinVar regions against the artifact, covering **3,887,455 classified SNVs** (2,252,696 VUS,
+  1,109,507 likely-benign, 178,749 benign, 157,591 conflicting, plus the pathogenic set). It lands
+  here as **§4.10**, with the corpus baseline `10^(-p/10)` beside each class. **Nobody should treat
+  a threshold as a default before reading it**: if pathogenic variants are not enriched at high
+  `PHRED`, a threshold slice is a size dial and not a triage.
+- **Whether a knot's `[lo, hi]` interval is stable across releases.** The knot structure was
+  measured once, on the 2026-08-27 artifact. A re-derived model would move the ranks and therefore
+  every knot; nothing here says how much.
 
 ---
 
