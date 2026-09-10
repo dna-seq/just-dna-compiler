@@ -145,9 +145,20 @@ PARQUET_SCHEMA: dict[str, str] = {
 #: because the file prints `raw_score` to four significant digits and `PHRED` to six. Publishing a
 #: midpoint would turn a measurable ambiguity into an invisible one, and the interval is what makes
 #: threshold safety *decidable* — a threshold is unsafe iff it lands inside some knot's span.
+#: `n` is `UInt64`: the corpus has 8,812,917,339 rows, which is past `UInt32` (4,294,967,295), and
+#: polars' `len()` defaults to the narrower type. A single contig fits; the sum across contigs does
+#: not, and it wraps rather than raising.
 KNOT_COLUMNS = ("raw_score_e5", "n", "phred_lo", "phred_hi")
 
 KNOT_FILENAME = "avi_knots.parquet"
+
+#: Where a contig's own knot aggregate is parked until the merge succeeds. **A contig's knots cannot
+#: be recovered from the finished artifact** — they are built from `PHRED`, which the artifact
+#: deliberately does not store — so a failure between the last contig and the merge would otherwise
+#: mean re-reading 88.5 GB. That is not hypothetical: the first genome-wide build reached the merge
+#: after 65 minutes and died there on a `UInt32` overflow. Removed once the merged table is written,
+#: so a successful snapshot carries no trace of it.
+KNOT_PARTS_DIRNAME = ".knots"
 
 
 class AlphaGenomeBuildError(RuntimeError):
@@ -362,7 +373,14 @@ def _build_contig(
         frame = _scaled_scores(frame, "raw_score", "raw_score_e5")
         knot_parts.append(
             frame.group_by("raw_score_e5").agg(
-                pl.len().alias("n"),
+                # **`UInt64`, and the cast is load-bearing.** `pl.len()` is `UInt32`, which holds any
+                # single contig (chr2, the largest, is 721 M rows) and overflows the moment the
+                # per-contig tables are summed: the corpus is 8,812,917,339 rows and
+                # 8,812,917,339 - 2*2**32 = 222,982,747, which is exactly what the reconciliation
+                # guard reported before this cast existed. A count that silently wraps is worse than
+                # one that is missing, and the only reason it was caught at all is that `sum(n)` is
+                # checked against the rows actually written.
+                pl.len().cast(pl.UInt64).alias("n"),
                 pl.col("PHRED").min().alias("phred_lo"),
                 pl.col("PHRED").max().alias("phred_hi"),
             )
@@ -396,9 +414,12 @@ def _build_contig(
         )
         if knot_parts
         else pl.DataFrame(
-            schema={"raw_score_e5": pl.Int32, "n": pl.UInt32, "phred_lo": pl.Float64, "phred_hi": pl.Float64}
+            schema={"raw_score_e5": pl.Int32, "n": pl.UInt64, "phred_lo": pl.Float64, "phred_hi": pl.Float64}
         )
     )
+    parts_dir = out_dir.parent / KNOT_PARTS_DIRNAME
+    parts_dir.mkdir(parents=True, exist_ok=True)
+    knots.write_parquet(parts_dir / f"{contig}.parquet")
     logger.info("alphagenome %s: %d rows, %d knots", contig, rows, knots.height)
     return ContigResult(contig=contig, rows=rows, path=path), knots
 
@@ -580,6 +601,9 @@ def build_snapshot(
     knot_table.write_parquet(
         out_dir / KNOT_FILENAME, compression="zstd", compression_level=9
     )
+    # The per-contig aggregates have served their purpose. Removed only after the merged table is on
+    # disk, so a crash anywhere before this point leaves the expensive half of the build recoverable.
+    shutil.rmtree(out_dir / KNOT_PARTS_DIRNAME, ignore_errors=True)
 
     rows = sum(c.rows for c in results)
     reconciled = int(knot_table["n"].sum()) if knot_table.height else 0

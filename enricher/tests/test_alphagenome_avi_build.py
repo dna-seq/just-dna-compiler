@@ -401,3 +401,52 @@ def test_the_release_records_the_stamp_the_terms_resolve_against(built: Path) ->
         built / "data" / "alphagenome_avi-chr22.parquet"
     ).height
     assert release["contigs"] == ["chr22"]
+
+
+@needs_tabix
+def test_the_knot_count_is_wide_enough_for_the_whole_corpus(built: Path) -> None:
+    """`n` must be `UInt64`, because `UInt32` wraps on a genome-wide sum and does it silently.
+
+    This is a real regression, caught by the reconciliation guard on the first full build: the
+    per-contig aggregate used `pl.len()`, which is `UInt32`, and every single contig fits it —
+    chr2, the largest, is 721 M rows. The corpus is **8,812,917,339**, and summing the per-contig
+    tables wrapped it to 222,982,747, which is 8,812,917,339 − 2·2³² exactly. Two hours of build
+    time said nothing was wrong until the last step compared the total against the rows written.
+
+    Asserted on the **dtype** rather than on a count, because no fixture can be nine billion rows.
+    The arithmetic is checked separately below, on a frame small enough to build and wide enough to
+    overflow the type this is guarding against.
+    """
+    knots = pl.read_parquet(built / ab.KNOT_FILENAME)
+    assert knots.schema["n"] == pl.UInt64, (
+        f"`n` is {knots.schema['n']}, which wraps at 4,294,967,295 — under the corpus's "
+        "8,812,917,339 rows"
+    )
+
+
+def test_a_count_past_thirty_two_bits_survives_the_knot_aggregation() -> None:
+    """The arithmetic the dtype exists for, on three rows instead of nine billion.
+
+    Two synthetic per-contig knot tables whose counts sum past `UInt32`, merged the way
+    `build_snapshot` merges them. Under the old `UInt32` this comes back as 222,982,747; it must come
+    back as the true total. A test that only asserted the dtype would keep passing if the merge
+    itself narrowed the column again.
+    """
+    total = 8_812_917_339
+    half = total // 2
+    parts = [
+        pl.DataFrame({"raw_score_e5": [76], "n": [n], "phred_lo": [2.99961], "phred_hi": [3.00027]})
+        .with_columns(pl.col("n").cast(pl.UInt64))
+        for n in (half, total - half)
+    ]
+    merged = (
+        pl.concat(parts)
+        .group_by("raw_score_e5")
+        .agg(
+            pl.col("n").sum().alias("n"),
+            pl.col("phred_lo").min().alias("phred_lo"),
+            pl.col("phred_hi").max().alias("phred_hi"),
+        )
+    )
+    assert int(merged["n"].sum()) == total
+    assert total > 2**32, "the constant has to exceed the type this is guarding against"
