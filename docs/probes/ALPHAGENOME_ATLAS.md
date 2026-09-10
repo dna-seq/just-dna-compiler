@@ -1102,6 +1102,103 @@ straddles the specific threshold in use. At threshold 3 that is ~633,000 rows ge
 other integer threshold from 1 to 50 it is **zero**. And even those need querying only if a caller
 insists on a point estimate where the data supports an interval.
 
+### 4.7.3 Corrections from the build — four numbers in this document were wrong
+
+RM191–RM193 were built against §§4.4–4.9 on 2026-09-10, and building them refuted four things
+written above. Each is corrected in place; this section records what moved and why, because the
+pattern is the one the whole document keeps hitting — a measurement taken one way, generalised one
+step too far.
+
+#### `34.4 GB` is a **writer setting**, not a property of the schema
+
+§4.9's whole-row figure came from `write_parquet` with polars' default row-group size. The shipped
+builder writes 1,000,000-row groups, and that alone costs **22%**. Re-measured on a 30 M-row
+`chr22` slice, same schema, same `zstd-9`:
+
+| row groups | B/row | genome-wide |
+| --- | ---: | ---: |
+| polars default | 3.963 | **34.9 GB** |
+| `row_group_size=1_000_000` | 4.835 | **42.6 GB** |
+
+Almost all of the difference is `pos`: **1.250 B/row standalone against 2.067 in the shipped
+file**, because a smaller row group truncates the delta-encoding run that a sorted position column
+depends on. So the artifact's size is set by a knob nobody named, and "34.4 GB" was only ever true
+of the default. **Both numbers are right about different files** — the tradeoff is size against
+random-access granularity, which is a real choice and now an item (RM197).
+
+#### "Exactly lossless" is true of the encoding and **not** of the obvious way to decode it
+
+`Int32`×10⁵ is exact for the printed decimal: over 200,000 sampled values, `Decimal(printed)`
+scaled by 10⁵ round-trips with **zero** disagreements. But the natural decode does not:
+
+| how the decimal is recovered | disagrees with `float(printed)` |
+| --- | ---: |
+| Python `e5 / 100000` (true division) | **0 / 200,000** |
+| **polars `pl.col("e5") / 100000`** | **3,165,111 / 6,000,003 — 52.75%** |
+| polars `pl.col("e5") * 1e-5` | 3,165,111 — **the identical rows** |
+| polars `Float32` division | 5,995,703 — 99.93% |
+
+The two polars results being *bit-identical in count* is the tell: **polars compiles the division
+into a multiplication by the reciprocal**, and `1e-5` is not exactly representable, so the product
+is rounded twice and lands one ULP off on half the corpus. IEEE division is correctly rounded and
+Python's is exact; the vectorised path is not the same operation.
+
+The differences are invisible at `repr` — `0.00114` prints as `0.00114` either way — so nothing
+warns. **The remedy is not a tolerance: threshold and compare in the integer domain**, where the
+values are exact by construction. A consumer that needs the decimal should be told the scale, not
+handed a float.
+
+#### The interval RPC's refusal was `Strand`, not the field mask
+
+§6.5 attributed the hand-built `ListDenseVariantScores` failure to a missing `x-goog-fieldmask`
+header and 32 bp chunking, on the evidence that the SDK sends both. Wrong on both counts, and the
+real cause is a proto3 trap:
+
+```
+Strand: STRAND_UNSPECIFIED=0, STRAND_POSITIVE=1, STRAND_NEGATIVE=2, STRAND_UNSTRANDED=3
+```
+
+**There is no meaningful zero.** An `Interval` that omits `strand` therefore carries
+`STRAND_UNSPECIFIED`, which the server rejects — as a bare `INVALID_ARGUMENT` naming no field.
+Verified directly on the two-package tier:
+
+| request | result |
+| --- | --- |
+| `strand` omitted (proto3 default `0`) | `INVALID_ARGUMENT: Request contains an invalid argument.` |
+| `strand=STRAND_UNSTRANDED` | **OK, 96 variants, no next page** |
+
+The field mask is optional (the same answer comes back without it) and 32 bp chunking is not
+required — 128 bp answers in one call. A *filter* is effectively required, but for a different
+reason than §6.5 gave: an unfiltered 32 bp request is a **43 MB** message against a 4 MB limit.
+
+**A proto3 enum whose zero is a sentinel makes "field absent" and "field invalid" the same wire
+state**, and a server that validates it can only answer with a message that names nothing. Worth
+remembering wherever generated bindings are hand-driven.
+
+#### The straddling knot is 676,356 rows, not ~633,000
+
+§4.7.2 scaled `chr22`'s 8,443 rows to a genome-wide estimate. The committed knot table has the
+real number, and it confirms the shape exactly — **one** knot straddles any integer threshold from
+1 to 50:
+
+| `raw_score` | rows | `phred_lo` | `phred_hi` |
+| ---: | ---: | ---: | ---: |
+| **0.00076** | **676,356** | 2.99961 | 3.00027 |
+
+An estimate where the artifact carries the count is the smallest version of this document's
+recurring mistake, and it is the one that had a table sitting next to it the whole time.
+
+#### One silent trap, found by a test that asserted a positive
+
+`VariantRow` normalizes `chrom` to `22`; the artifact ships `chr22`. Joining one onto the other
+**matched nothing and raised nothing** — every variant came back "absent from the snapshot", which
+is indistinguishable from a genuinely uncovered region, and AVI covers only ~95% of the assembly
+so that answer is plausible. It was caught only because the test asserted a *positive* match count
+rather than the absence of an exception.
+
+A join key that silently produces the corpus's own legitimate answer is worse than one that
+crashes. Assert a positive.
+
 ### 4.8 Does the 3.6e-4 residual actually rerank anything?
 
 Three questions, measured on a 36 M-row `chr21` slice against a curve built from `chr22`.
@@ -1576,11 +1673,9 @@ Named so the next reader knows the shape of the hole rather than inheriting a si
 - **AlphaMissense's own terms**, owed by the `ALPHAMISSENSE` column in the SHAP artifact, and the
   provenance of its `CACTUS_241_WAY` / `PHASTCONS_470_WAY` columns.
 - **Motif datasets** — announced, not published, and §6.5 shows nothing is blocked on them.
-- **The Atlas interval RPC on the two-dependency tier.** `ListDenseVariantScores` needs an
-  `x-goog-fieldmask` header and 32 bp chunking; hand-built requests returned `INVALID_ARGUMENT`
-  and the measurement in §6.5 was taken through the SDK instead. The single-variant RPC works on
-  the protos alone and is the one [`alphagenome_poc/`](alphagenome_poc/) implements — the interval
-  one is the obvious next step and was not taken, since nothing needs it yet.
+- ~~The Atlas interval RPC on the two-dependency tier.~~ **Closed by the build** — the cause was
+  `Strand` having no meaningful zero, not the field mask or the chunking, and the interval RPC now
+  works hand-built. §4.7.3 has the measurement.
 - **Everything a shipped lane would need beyond reachability**: retry layering, pacing, caching and
   a `SourceRow`. The blueprint proves the transport and deliberately stops there; its README lists
   what it omits.
