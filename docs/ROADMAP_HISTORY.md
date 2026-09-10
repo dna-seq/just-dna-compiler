@@ -157,6 +157,26 @@ nobody had met it.
 a two-phase publish, one registry reordered) · **Owner** enricher · **Motivating case** the AVI lane
 is 32 GB and `upload_folder` is a single atomic commit with no resumption
 
+**Revised the same day it shipped, by a deprecation warning in a real publish.** The size branch
+below is **gone**: `huggingface_hub` 1.x makes `upload_folder` multi-commit itself and deprecates
+`upload_large_folder`, which now emits a `FutureWarning` naming `upload_folder` as the replacement.
+So the threshold, its two constants and the whole large path are removed, and one `upload_folder`
+carries every payload.
+
+Two consequences worth keeping. **The RM186 collision dissolved rather than being solved** —
+`upload_folder` takes `delete_patterns`, so a declared retirement rides the payload call again and
+the refusal this function used to raise is deleted; a guard now asserts the retirement is on the
+payload commit at 6 GB as well as at 1 KB, since a small-snapshot test would not have exercised the
+branch that used to exist. And **the one-commit guarantee is upstream's business now**: a large
+upload is several commits either way, so it holds for payloads that fit in one and is the Hub's to
+keep for those that do not. That is a weaker promise honestly stated rather than a strong one
+quietly broken.
+
+The lesson is the ordinary one and it still cost a revision: **heed terminal warnings, deprecations
+especially.** This one appeared the first time an operator ran the command against a real repo, and
+nothing in the test suite would ever have raised it — the tests mock `HfApi`, so a deprecated method
+on a `MagicMock` warns about nothing.
+
 **Two changes, and only one of them is about size.**
 
 **`release.json` goes last, on every path.** It is what a puller reads to learn which release it

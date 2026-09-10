@@ -4539,11 +4539,52 @@ def _atlas_client_or_none():
         return None
 
 
+def _resolve_avi_snapshot() -> Path | None:
+    """Where the AVI snapshot is, asked of the lane rather than of the caller's shell.
+
+    **A read default must not depend on the working directory.** `repro_out` is right for a builder's
+    `--out` — it writes where you are — and wrong for a publish, which silently named a different
+    directory depending on where the operator stood: run from `enricher/` it looked for
+    `enricher/data/repro/alphagenome_avi` and refused. So the resolver comes first, which is the whole
+    point of the lane having one, and the build directory is only the fallback.
+    """
+    from just_dna_enricher.locations import (
+        SNAPSHOT_DATA_DIRNAME,
+        resolve_alphagenome_avi_reference,
+    )
+
+    resolved = resolve_alphagenome_avi_reference()
+    if resolved is not None:
+        # `resolve` may hand back the `data/` directory; the publisher wants the snapshot root.
+        return resolved.parent if resolved.name == SNAPSHOT_DATA_DIRNAME else resolved
+    # `repro_out` is relative, so it means a different directory from every working directory. The
+    # builder wrote into the *checkout's* `data/repro/`, so look there too — found by walking up for
+    # the workspace marker rather than assuming the caller stands at the root.
+    candidates = [repro_out("alphagenome_avi")]
+    root = next(
+        (d for d in Path.cwd().resolve().parents
+         if (d / "pyproject.toml").is_file()
+         and "[tool.uv.workspace]" in (d / "pyproject.toml").read_text()),
+        None,
+    )
+    if root is not None:
+        candidates.append(root / repro_out("alphagenome_avi"))
+    # **Absolute, always.** A resolved location that is relative carries the defect this function
+    # exists to remove: it means a different directory the moment anything logs it, stores it, or
+    # hands it to a subprocess with a different working directory.
+    found = next((c for c in candidates if (c / SNAPSHOT_DATA_DIRNAME).is_dir()), None)
+    return found.resolve() if found is not None else None
+
+
 @alphagenome_app.command("publish")
 def alphagenome_publish_(
-    snapshot: Path = typer.Argument(
-        repro_out("alphagenome_avi"), exists=True, file_okay=False,
-        help="The built snapshot directory. Defaults to where `alphagenome build` writes.",
+    snapshot: Path | None = typer.Argument(
+        None, exists=True, file_okay=False,
+        help=(
+            "The built snapshot directory. Omit to use the resolved cache "
+            "($JUST_DNA_ALPHAGENOME_AVI_CACHE, then the cache base), falling back to where "
+            "`alphagenome build` writes."
+        ),
     ),
     repo: str | None = typer.Option(
         None, "--repo", help=f"Target HF dataset. Default: {DEFAULT_ALPHAGENOME_AVI_REPO_ID}.",
@@ -4567,6 +4608,18 @@ def alphagenome_publish_(
     from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
 
     target = repo or DEFAULT_ALPHAGENOME_AVI_REPO_ID
+    if snapshot is None:
+        snapshot = _resolve_avi_snapshot()
+        if snapshot is None:
+            typer.secho(
+                "PUBLISH FAILED: no AVI snapshot found. Looked at "
+                f"$JUST_DNA_ALPHAGENOME_AVI_CACHE, the cache base, and "
+                f"{repro_out('alphagenome_avi').resolve()}. Build one with `alphagenome build "
+                "--input <the artifact you downloaded>`, or pass the directory explicitly.",
+                fg=typer.colors.RED, err=True,
+            )
+            raise typer.Exit(code=1)
+        typer.echo(f"  using {snapshot}")
     try:
         if dry_run:
             plan = plan_reference_snapshot(snapshot, target)

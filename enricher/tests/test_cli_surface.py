@@ -283,3 +283,56 @@ def test_every_drafting_command_declares_the_same_dry_run_flag() -> None:
         "the promise is 'report what would be added; write nothing' — if the wording drifts, the "
         "three have to drift together, which is what the equality above enforces"
     )
+
+
+def test_the_publish_default_does_not_depend_on_the_working_directory(tmp_path, monkeypatch) -> None:
+    """A *read* default that names a different directory per shell is a bad default (RM202).
+
+    `repro_out` is right for a builder's `--out` — it writes where you are — and wrong for a publish.
+    Run from `enricher/`, `alphagenome publish` looked for `enricher/data/repro/alphagenome_avi` and
+    refused a snapshot that was sitting in the checkout. Asserted by resolving from **two different
+    working directories** and requiring the same answer, because a single-directory test is exactly
+    what missed it.
+    """
+    from just_dna_enricher.cli import _resolve_avi_snapshot
+    from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
+
+    root = Path(__file__).resolve().parents[2]
+    if not (root / "data" / "repro" / "alphagenome_avi" / SNAPSHOT_DATA_DIRNAME).is_dir():
+        pytest.skip("no built AVI snapshot in this checkout")
+
+    monkeypatch.chdir(root)
+    from_root = _resolve_avi_snapshot()
+    monkeypatch.chdir(root / "enricher")
+    from_sub = _resolve_avi_snapshot()
+
+    assert from_root is not None and from_sub is not None
+    # Absolute on both sides, so the comparison cannot itself depend on where it is made — resolving
+    # a relative answer after a chdir is the same bug one level up, and it is what this test hit
+    # first.
+    assert from_root.is_absolute() and from_sub.is_absolute()
+    assert from_root == from_sub, "the publish default changed meaning with the working directory"
+
+
+def test_the_publish_default_prefers_the_resolved_cache_over_the_build_directory(monkeypatch, tmp_path) -> None:
+    """The lane has a resolver; a publish should ask it rather than guess a path.
+
+    `$JUST_DNA_ALPHAGENOME_AVI_CACHE` is what an operator sets to say where their snapshot lives, and
+    a publish that ignored it would upload a different one from the one `cache status` reports.
+    """
+    from just_dna_enricher.cli import _resolve_avi_snapshot
+    from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
+
+    elsewhere = tmp_path / "elsewhere"
+    (elsewhere / SNAPSHOT_DATA_DIRNAME).mkdir(parents=True)
+    # A real parquet, because **a directory is not a snapshot**: the resolver judges a cache by its
+    # payload and not by `is_dir()`, which is the rule a first version of this test broke by handing
+    # it an empty `data/` and reading the fall-through as a bug in the resolver.
+    pl = pytest.importorskip("polars")
+    pl.DataFrame({"pos": [1]}).write_parquet(
+        elsewhere / SNAPSHOT_DATA_DIRNAME / "alphagenome_avi-chr22.parquet"
+    )
+    monkeypatch.setenv("JUST_DNA_ALPHAGENOME_AVI_CACHE", str(elsewhere))
+
+    got = _resolve_avi_snapshot()
+    assert got is not None and got.resolve() == elsewhere.resolve()

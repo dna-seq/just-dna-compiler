@@ -771,11 +771,11 @@ def test_a_payload_snapshot_with_nothing_built_is_refused_like_an_empty_parquet_
         plan_reference_snapshot(empty, DEFAULT_STRCHIVE_REPO_ID, payload="STRchive-loci.json")
 
 
-# ── the large-snapshot publish path (RM199) ─────────────────────────────────────────────────────
+# ── the publish path's shape (RM199) ─────────────────────────────────────────────────────────────
 
 
 def _snapshot_of_size(tmp_path: Path, payload_bytes: int) -> Path:
-    """A snapshot whose `data/` really is this big, so `_is_large` measures rather than is told."""
+    """A snapshot whose `data/` really is this big — size is measured, never asserted."""
     from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
 
     snap = tmp_path / "snap"
@@ -786,76 +786,35 @@ def _snapshot_of_size(tmp_path: Path, payload_bytes: int) -> Path:
     return snap
 
 
-def test_a_small_snapshot_still_goes_out_as_one_payload_commit(tmp_path: Path) -> None:
-    """The threshold is a threshold: nothing below it changes shape.
+def test_a_publish_never_reaches_for_the_deprecated_large_uploader(tmp_path: Path) -> None:
+    """`upload_large_folder` is deprecated in `huggingface_hub` 1.x and must not be called.
 
-    Every lane but AlphaGenome AVI is orders of magnitude under `LARGE_UPLOAD_BYTES`, and
-    `upload_folder` is the right tool for them — one atomic commit, and a retirement can ride in it.
+    It existed here because `upload_folder` used to be one non-resumable commit, which is the wrong
+    shape for 32 GB. The Hub settled it the other way — `upload_folder` is multi-commit now — and
+    said so with a `FutureWarning` in a real publish. Asserted at **both** sizes, because the branch
+    this replaces only fired above a threshold and a small-snapshot test would not have seen it.
     """
-    from just_dna_enricher.upload import publish_reference_snapshot
 
-    snap = _snapshot_of_size(tmp_path, 1024)
-    api = MagicMock()
-    api.list_repo_files.return_value = []
-    with (
-        patch("huggingface_hub.HfApi", return_value=api),
-        patch("huggingface_hub.get_token", return_value="hf_test_token"),
-    ):
-        publish_reference_snapshot(snap, "just-dna-seq/clinvar")
+    for payload in (1024, 6 * 1024**3):
+        api = MagicMock()
+        api.list_repo_files.return_value = []
+        with (
+            patch("huggingface_hub.HfApi", return_value=api),
+            patch("huggingface_hub.get_token", return_value="hf_test_token"),
+        ):
+            publish_reference_snapshot(_snapshot_of_size(tmp_path / str(payload), payload),
+                                       "just-dna-seq/alphagenome_avi")
+        api.upload_large_folder.assert_not_called()
+        assert len(api.upload_folder.call_args_list) == 2, "payload then description"
 
-    api.upload_large_folder.assert_not_called()
-    assert len(api.upload_folder.call_args_list) == 2, "payload then description"
 
+def test_a_retirement_still_rides_the_payload_commit_at_any_size(tmp_path: Path) -> None:
+    """RM186's guarantee survived the RM199 revision, and that is the point of recording it.
 
-def test_a_large_snapshot_uses_the_resumable_uploader_and_still_describes_itself_last(
-    tmp_path: Path,
-) -> None:
-    """32 GB in one atomic commit has no resumption: a failure at 30 GB starts over (RM199).
-
-    `upload_large_folder` chunks, retries per file and resumes, at the cost of not being atomic. So
-    the payload goes through it and **`release.json` still goes last, through the ordinary uploader**
-    — because the description arriving before the bytes is the failure that matters, and it is one
-    small file that does not need chunking.
+    The first cut of RM199 had to *refuse* a declared retirement above the threshold, because
+    `upload_large_folder` takes no `delete_patterns`. Dropping that uploader dissolves the collision:
+    the deletion rides the payload call again, at every size.
     """
-    from just_dna_enricher.locations import RELEASE_FILENAME
-    from just_dna_enricher.upload import LARGE_UPLOAD_BYTES, publish_reference_snapshot
-
-    snap = _snapshot_of_size(tmp_path, LARGE_UPLOAD_BYTES + 1)
-    api = MagicMock()
-    api.list_repo_files.return_value = []
-    with (
-        patch("huggingface_hub.HfApi", return_value=api),
-        patch("huggingface_hub.get_token", return_value="hf_test_token"),
-    ):
-        plan = publish_reference_snapshot(snap, "just-dna-seq/alphagenome_avi")
-
-    large = api.upload_large_folder.call_args.kwargs
-    assert large["repo_id"] == "just-dna-seq/alphagenome_avi"
-    assert large["repo_type"] == "dataset"
-    assert RELEASE_FILENAME not in large["allow_patterns"], "the description went out with the bulk"
-
-    # …and the description is the only thing the ordinary uploader carried, after it.
-    assert len(api.upload_folder.call_args_list) == 1
-    assert api.upload_folder.call_args.kwargs["allow_patterns"] == [RELEASE_FILENAME]
-
-    # Union still equals the plan: splitting the upload may not drop a file
-    # (`@publisher-allowlist-derived`).
-    assert large["allow_patterns"] + [RELEASE_FILENAME] == plan.files
-
-
-def test_a_retirement_on_the_large_path_is_refused_rather_than_quietly_weakened(
-    tmp_path: Path,
-) -> None:
-    """RM186 promises one commit for the arrival and the departure. RM199's uploader cannot give one.
-
-    `upload_large_folder` is inherently multi-commit and takes no `delete_patterns`, so a declared
-    retirement cannot ride with the file that replaces it. Silently doing it in a separate commit
-    would leave exactly the window RM186 exists to close — a reader seeing the repo with neither file
-    or both — so the publish refuses and says which two rules collided.
-    """
-    from just_dna_enricher.upload import LARGE_UPLOAD_BYTES, publish_reference_snapshot
-
-    snap = _snapshot_of_size(tmp_path, LARGE_UPLOAD_BYTES + 1)
     api = MagicMock()
     api.list_repo_files.return_value = []
     with (
@@ -865,24 +824,10 @@ def test_a_retirement_on_the_large_path_is_refused_rather_than_quietly_weakened(
             "just_dna_enricher.upload.layout_shifts_to_apply",
             return_value=[SimpleNamespace(retires="data/old-*.parquet", reason="a test")],
         ),
-        pytest.raises(ValueError, match="RM186 vs RM199"),
     ):
-        publish_reference_snapshot(snap, "just-dna-seq/alphagenome_avi")
+        publish_reference_snapshot(_snapshot_of_size(tmp_path, 6 * 1024**3),
+                                   "just-dna-seq/alphagenome_avi")
 
-    api.upload_large_folder.assert_not_called()
-    api.upload_folder.assert_not_called()
-
-
-def test_the_size_that_picks_the_uploader_is_measured_from_the_payload(tmp_path: Path) -> None:
-    """`_is_large` reads the files, so the choice cannot drift from what is actually being sent.
-
-    And it measures the **payload**, not the whole directory: `release.json` never goes through the
-    large path, so counting it toward the threshold would let a description tip the decision.
-    """
-    from just_dna_enricher.upload import LARGE_UPLOAD_BYTES, _is_large
-
-    snap = _snapshot_of_size(tmp_path, LARGE_UPLOAD_BYTES + 1)
-    payload = ["data/clinvar-chr1.parquet"]
-    assert _is_large(snap, payload) is True
-    assert _is_large(snap, []) is False
-    assert _is_large(snap, ["data/does-not-exist.parquet"]) is False, "absent files count as nothing"
+    payload, description = (c.kwargs for c in api.upload_folder.call_args_list)
+    assert payload["delete_patterns"] == ["data/old-*.parquet"]
+    assert "delete_patterns" not in description, "the description commit deletes nothing"
