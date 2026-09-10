@@ -194,6 +194,19 @@ thresholds with zero misclassifications; and that the one straddling knot really
 sides of 3.0 — without which the safety test would be `@tautology-zero`, which is why the slice was
 cut around that locus rather than anywhere.
 
+**"No threshold" was the right default, and the evidence arrived after the decision.** The artifact
+ships the whole corpus with the sign intact, on the argument that a cut is a consumer's slice. The
+ClinVar join measured beside this round (probe § 4.10, 21 of 24 contigs) shows a threshold *is* a
+real triage rather than only a size dial — `PHRED ≥ 20` keeps **97.63% of pathogenic** variants
+while discarding **94.3% of benign** and 99% of the corpus, 98× the baseline — and it independently
+confirms § 4.7's reading of the sign, with **0.16% of pathogenic scoring negative against 34.35% of
+benign**. Neither result changes what shipped, and the reason is the caveat attached to them:
+ClinVar is an **ascertained** set skewed to coding changes, so part of that enrichment is "AVI
+recognises coding damage", and the table is not evidence about regulatory variants. A default cut
+baked into the artifact would have carried that bias into every consumer; offering the whole corpus
+plus a knot table that says which cuts are *safe* leaves the choice where the caveat can travel with
+it.
+
 **Absence is row-absence.** AVI covers ~95% of the assembly and writes 672,931 genuine zeros, so an
 unscored position has no row and a scored-zero position has a row holding zero. The test asserts
 **set equality over `(pos, ref, alt)` in both directions**, because a count cancels an invented row

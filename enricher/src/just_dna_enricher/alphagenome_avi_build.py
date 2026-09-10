@@ -32,8 +32,8 @@ Four shape decisions, each measured rather than argued (§§ 1.4, 4.4–4.9 of t
 * **The knot table is rebuilt here, not copied.** `docs/probes/alphagenome_knots/avi_knots.parquet`
   is *evidence*; the lane's copy is the *artifact*, and `sum(n)` over its knots must equal the rows
   this build wrote or the two halves describe different data.
-* **No threshold.** The whole corpus is 34.4 GB keeping `raw_score` alone — inside any stated
-  budget, with the sign intact. 49.30% of rows are negative and a negative AVI is *low
+* **No threshold.** The whole corpus is **34.2 GB measured** keeping `raw_score` alone — inside any
+  stated budget, with the sign intact. 49.30% of rows are negative and a negative AVI is *low
   conservation*, evidence against impact, not down-regulation (§ 4.7): `abs()` would discard what
   half the corpus says. A threshold is a consumer's slice, not this artifact's shape.
 
