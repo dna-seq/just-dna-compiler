@@ -784,22 +784,21 @@ genotype while the 0.4 families keep the string) and the `stats` counter retype.
 
 ## 5. Readiness
 
-**Gates, re-run on this branch on 2026-09-09 at `a6f31f8`**, the last of the seven pre-cut audit
-fixes (CHANGELOG § 2026-09-09); `3d5f855`, one commit later, adds a test and removes a `noqa` comment
-and is the commit `dist/` was built from — the two cache-lane suites were re-run there, the full
-suite was not. The 2026-09-01 measurement at `741ec59` is superseded: 145 commits
-landed after it (RM160, RM171, RM174–RM188 and the audit), and one of its rows stated a basis that
-had already stopped being true — see the notes under the table.
+**Gates, re-run on this branch on 2026-09-10 at `7153df4`**, after the AlphaGenome round
+(RM191–RM199). The 2026-09-09 measurement at `a6f31f8` is superseded: 46 commits landed after it,
+one of which adds a `VALID_VERIFICATION_CHECKS` member and so touches the surface an old reader
+validates against — see § 1's second break.
 
 | gate | result |
 | --- | --- |
-| `uv run pytest` | **4311 passed, 20 skipped, 0 failed** at `a6f31f8` (4273 at `0d73268` before the audit fixes; 3760 at the 2026-09-01 sweep; 3653 at 2026-08-31; 2916 at 2026-08-24). In-tree run: the 20 skips are the network-gated tests. The clean-checkout variant of this row (36 skips at 2026-09-01, the data-dependent tests under git-ignored `data/`) was not re-run |
-| `uv run ruff check` | clean at `a6f31f8`. A gate row is a measurement, not a property: it had gone red once before this table was re-measured on 2026-09-01 |
+| `uv run pytest` | **4398 passed, 27 skipped, 0 failed** at `7153df4` (4311 at `a6f31f8`; 4273 at `0d73268`; 3760 at the 2026-09-01 sweep; 3653 at 2026-08-31; 2916 at 2026-08-24). In-tree run; the skips are the network-gated tests. **An earlier pass of this same commit reported one failure and it was the machine, not the code**: `test_a_regex_locator_matches_the_fulltext` returned `None` where it wanted `True`, and `regex_matches` returns `None` on **timeout**, enforced in a subprocess (`@regex-timeout-process`). It ran while a 12-way genome-wide build saturated all sixteen cores. Worth knowing before a loaded CI runner meets it, because the failure reads as a logic error rather than as a timeout |
+| `uv run ruff check` | clean at `7153df4`. A gate row is a measurement, not a property: it had gone red once before this table was re-measured on 2026-09-01 |
 | Reference corpus under the 0.7 compiler | **16 / 16 compile** at `a6f31f8`, and every `artifact.digest` and `content_signature` is byte-identical to the compile at `0d73268` before the audit fixes — the overlay repair reaches no reference example, since none carries an `overrides.csv` |
 | 0.6.6 → 0.7.0 release sweep | 15 measured, **gate exit 0** at `a6f31f8`, and again at `0d73268` before the fixes: content_signature 0/15, manifest_fields 15/15, parquet_bytes 14/15, parquet_schema 14/15, warnings 3/15, `cyp2c9_warfarin_grch37` unmeasured (its `requires_callable` column does not exist under 0.6.6, so the BEFORE side refuses it). The record covers every field that moved. Re-run the gate whenever a `DeclaredChange` is added, not only at the cut |
-| 0.6.6 client parses 0.7 manifests | **15 / 16** — re-measured at `a6f31f8` by parsing the sweep's AFTER manifests with `just-dna-format==0.6.6`. **The previous row's stated basis was wrong**: it said nothing had touched the manifest surface since 2026-08-31, and RM160 then added a `verification.checks` member. The result held anyway, on the same one field: `mt_common_deletion`, `verification.checks[].producer`, now across its four check records rather than one. The basis of this row is a measurement, not a claim about the diff |
+| 0.6.6 client parses 0.7 manifests | **15 / 16** (corpus unchanged; and see below — a *consumer's* module that runs `alphagenome check` is a sixteenth case this row does not cover) — re-measured at `a6f31f8` by parsing the sweep's AFTER manifests with `just-dna-format==0.6.6`. **The previous row's stated basis was wrong**: it said nothing had touched the manifest surface since 2026-08-31, and RM160 then added a `verification.checks` member. The result held anyway, on the same one field: `mt_common_deletion`, `verification.checks[].producer`, now across its four check records rather than one. The basis of this row is a measurement, not a claim about the diff |
 | Open consumer inbox | **empty** at `a6f31f8` (`triage-state.py`: nothing pending). S87–S89 were answered 2026-09-03 as RM180/RM183/RM184 |
-| Open roadmap items in format scope | **none**. RM164 is parked to 0.8 (enricher scope), RM7 is marked not format scope, everything else in ROADMAP is queued for 1.0 |
+| Open roadmap items in format scope | **none**. RM164 is parked to 0.8 (enricher scope), RM7 is marked not format scope, everything else in ROADMAP is queued for 1.0. The AlphaGenome round (RM191–RM199) closed on 2026-09-10; RM194 stays open and is enricher scope |
+| AlphaGenome lane, built genome-wide | **8,812,917,339 rows → 29.8 GB** over 24 parquets at `54b1f6a`, and every published number cross-checked against an independent measurement: 41,474 knots **knot-for-knot** against a table built by a different session from a different pass, 672,931 zeros, 49.30% negative, one straddling knot at threshold 3 |
 
 **The blocker this section carried is gone.** RM143 shipped and S78 was answered, and the 2026-08-31
 batch took the seven roadmap items that stood above with them. Everything here is committed, green and
@@ -807,7 +806,7 @@ measured; what remains before a cut is release management rather than work.
 
 **A readiness table is worth exactly as much as the last time somebody ran it**, which is why it
 carries the commit it was measured at and why every row above was re-run rather than read. The
-2026-09-01 pass had found a red lint gate and a release gate exiting 1; this pass found the
+2026-09-01 pass had found a red lint gate and a release gate exiting 1; the 2026-09-09 pass found the
 0.6.6-parse row resting on a basis RM160 had falsified (the result held), and `dist/` holding bytes
 from 145 commits ago under the current version number. What the 2026-09-09 audit changed in the code
 is in CHANGELOG § 2026-09-09: seven fixes, none of which moved a reference example's digest or
