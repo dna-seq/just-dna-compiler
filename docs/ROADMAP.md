@@ -432,11 +432,14 @@ high consensus the **direction** is a claim; a record may say which way, never h
 another, so its tracks *should* disagree — which is the sharpest argument that the gene axis is the
 thing to use and a fraction is the wrong summary for it.
 
-**`*_ACTIVE` does move with the ALT, and the maintainer's objection was half right.** Re-tested
-against motifs found in the artifact's own `REF` column: `ATAC_ACTIVE` moves ~**16× control** inside
-a Z-DNA former and ~10× inside a poly-T run, reaching 20% at individual loci — but a **G-quadruplex
-is indistinguishable from background**, which is the motif class one would expect to matter most. So
-it is mostly positional with a real per-variant component exactly where DNA geometry is at stake.
+**`*_ACTIVE` does move with the ALT, and the maintainer's objection holds for every motif class.**
+Re-tested against motifs found in the artifact's own `REF` column: `ATAC_ACTIVE` moves ~**16×
+control** in a Z-DNA former, ~**15×** in a G-quadruplex and ~10× in a poly-T run, reaching 20% at
+individual loci. So it is mostly positional with a real per-variant component wherever DNA geometry
+is at stake. **The G4 row read *background* until the probe was fixed** — it had been sampling motif
+*centres*, which are mostly loop bases, where disrupting a quadruplex requires breaking a tetrad. The
+signed `ATAC` channel spreads 27–151% at the same positions, so the model is not insensitive at all;
+the *level* is damped, as a level should be.
 
 **Positional scorers remain unusable as named claims**, now on two independent tests rather than
 one: ranking fails (top-5 carries 2–7%, running backwards to effect size) and consensus does not

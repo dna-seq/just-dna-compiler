@@ -1856,18 +1856,44 @@ track's magnitude that moves when only the ALT changes:
 | **Z-DNA former** (`(CA)n`/`(GT)n`) | 4 | **1.88%** | 0.84% | 0.08% |
 | **poly-T run** (≥10) | 4 | **1.26%** | 2.01% | 0.08% |
 | **poly-A run** (≥10) | 4 | **0.81%** | 1.41% | 0.10% |
-| G-quadruplex motif | 4 | 0.15% | 0.00% | 0.07% |
+| **G-quadruplex, G-tract base** | 4 | **1.76%** | — | — |
+| G-quadruplex, loop base | 4 | 1.17% | — | — |
+| ~~G-quadruplex, motif centre~~ | 4 | ~~0.15%~~ | ~~0.00%~~ | ~~0.07%~~ |
 | control (non-motif) | 8 | **0.12%** | 0.79% | 0.07% |
 
-**The maintainer's objection is confirmed for repeats and refuted for G-quadruplexes.**
-`ATAC_ACTIVE` moves with the ALT about **16× control** inside a Z-DNA former and **10×** inside a
-poly-T run, and individual loci reach far higher — 20.05% at `chr22:20011865`, 15.74% at
-`chr22:20005803`. A G4 motif is indistinguishable from background (0.15% against 0.12%), which is
-worth stating because it is the motif class one would expect to matter most.
+**The maintainer's objection is confirmed for every motif class, once the probe stops sampling the
+wrong base.** `ATAC_ACTIVE` moves with the ALT about **16× control** inside a Z-DNA former, **15×**
+inside a G-quadruplex and **10×** inside a poly-T run, and individual loci reach far higher — 20.05%
+at `chr22:20011865`, 15.74% at `chr22:20005803`, 11.68% at `chr22:20016023`.
+
+**The G4 row was wrong in this document's first pass, and the error is worth keeping visible.** The
+first probe took each motif's *centre* — `s[len(s)//2]` — and the REF bases that came back were `T`,
+`A`, `G`, `A`: three of four were **loop** bases. Disrupting a quadruplex means breaking a tetrad,
+which requires hitting a `G` inside a G-run, so the assay was mostly mutating the parts of the motif
+that do not hold it together. Re-run against the middle `G` of the second G-run, the result flips
+from *indistinguishable from background* to *among the most sensitive classes measured*.
+
+The tempting explanation for the original null was a training-data gap — condensed centromeric and
+cap-adjacent sequence being a recent (T2T-era) addition, so the model would have learnt little about
+G4s there. That argument is sound in general and **does not apply to these loci**:
+`chr22:20.0 Mb` is q-arm euchromatin, well inside sequence GRCh38 has always had. There was no null
+to explain; the probe made one.
+
+**The signed channel is where the effect really shows.** Measured at the same eight G4 positions,
+`ATAC` (signed) spreads **27–151%** of its magnitude across the three ALTs, against fractions of a
+percent for `ATAC_ACTIVE`. So the model is not insensitive to structural disruption at all — it is
+`*_ACTIVE`, the *level*, that is damped, exactly as a level should be.
 
 So `*_ACTIVE` is **not** purely positional. It is *mostly* positional, with a real per-variant
-component concentrated where DNA geometry is at stake — which is precisely the degraded edge case,
-and precisely where a per-locus attribution would be wrong.
+component wherever DNA geometry is at stake — poly-A, poly-T, Z-DNA and G-quadruplex alike — which is
+precisely the degraded edge case, and precisely where a per-locus attribution would be wrong.
+
+**Three of this document's conclusions have now been overturned by the measuring instrument rather
+than by the data** (`@a-disagreement-with-a-document-may-be-in-the-instrument`): the 43.0 GB artifact
+size, which was a fragmenting parquet writer; the split-locus refusal at `chr1:1196920`, which was a
+chunk boundary rather than a malformed source; and this G4 null, which was a probe sampling loop
+bases. In all three the wrong answer was *plausible*, and in all three the corrective was to
+reproduce the disagreement under a different instrument rather than to explain it.
 
 `RNA_SEQ_ACTIVE` is flat at 0.06–0.11% everywhere, so it carries no structural sensitivity at all.
 
