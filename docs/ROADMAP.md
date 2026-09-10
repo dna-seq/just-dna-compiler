@@ -396,10 +396,43 @@ incomparable, and a threshold means nothing — which is why the first pass foun
 2. **Whether this is a check or a column.** RM193's position is that non-commercial Output enters as a
    *finding* and never as a stored value, which keeps the compile gate data-driven. A stored
    accessibility column would be the first thing to test that.
-3. **`CAGE` is unmeasured against the concentration test.** At the `PHRED` 84 variant it was
-   **546/546 negative** — uniform predicted loss of initiation — which is the only signal so far that
-   looked like a claim rather than a ranking. It has not been put to the same test as `CHIP_TF`, and
-   it should be before anyone believes it.
+3. **`CAGE` was measured on 2026-09-11 and it splits: the ranking fails, the sign holds.**
+
+   | variant | `PHRED` | tracks negative | top-5 share of 546 |
+   | --- | ---: | ---: | ---: |
+   | chr22:30339156 C>A | **84.1** | **100%** | 2% |
+   | chr22:20002017 C>A | 19.6 | **0%** | 3% |
+   | chr22:20002007 G>A | 10.6 | 2% | 4% |
+   | chr22:20002123 G>T | 3.0 | 92% | 5% |
+   | chr1:10001 T>A | 1.1 | 18% | 7% |
+
+   The top-5 share is 2–7% and runs **backwards** to effect size, exactly as `CHIP_TF` did, so
+   naming a tissue is the same sampling artefact — the leaders (Jurkat, retina, amygdala) are the top
+   of a flat distribution.
+
+   **The consensus fraction is a different quantity and it is not flat.** 100% and 0% are unanimous
+   predicted loss and unanimous predicted gain of transcription initiation, which is a directional
+   claim about the *variant* needing no tissue named at all. It is **not monotone in `PHRED`** — 19.6
+   is unanimous-positive while 3.0 is 92% negative — which is what makes it an independent axis
+   rather than a restatement of the score.
+
+   **So the recordable shape is a consensus fraction, not a top-k**, and that is the hypothesis the
+   next scorer should be tested against rather than concentration.
+
+### The `*_ACTIVE` finding is weaker than it reads, and the sample is why
+
+The claim above — that `*_ACTIVE` barely moves with the ALT, and therefore annotates the locus rather
+than the variant — rests on five variants **none of which disturbs a structural element**. Poly-A
+tracts, G-quadruplexes and Z-DNA-forming repeats are exactly where a single substitution changes local
+geometry and therefore accessibility, and a sample that contains none of them cannot see it. That is
+`@probe-uniform-corpus` in miniature: the conclusion generalises from cases that all agree.
+
+Two things follow. The `_ACTIVE`-as-locus-annotation reading is **provisional** and must be re-tested
+against variants chosen for structural disruption before anything is built on it. And the prior
+question is still unanswered: **what an averaged locus accessibility buys a module at all.** Nothing
+measured so far says. Until one of those has an answer, `_ACTIVE` is not a candidate.
+
+
 
 ## RM194 — gene-scoped SNV subslices, and the ±512 kb horizon
 
