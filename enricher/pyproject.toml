@@ -39,6 +39,35 @@ dependencies = [
 [project.scripts]
 just-dna-enricher = "just_dna_enricher.cli:app"
 
+[project.optional-dependencies]
+# The AlphaGenome Atlas, on two packages (RM192). `grpcio` + `protobuf` reach **every** Atlas RPC:
+# the score fields are plain `bytes` that `struct.unpack` decodes, and the request filter is an
+# AIP-160 string. Measured on 2026-09-10 in a clean venv: `uv pip install grpcio protobuf` is
+# **19 MB of site-packages and +2 packages** on this tier (grpcio 1.83.1, protobuf 7.36.1;
+# typing-extensions comes with it but pydantic already requires it). Against **255 MB and 81
+# packages** for `uv add alphagenome`, whose wheel declares anndata, pandas, scipy, zarr, h5py,
+# numcodecs, pyarrow, matplotlib, seaborn, pyfaidx, absl-py and fsspec flat — six of them never
+# imported on any scoring path, and `atlas.py` importing `anndata` at module level so even the
+# SDK's own import path costs 242 MB (ALPHAGENOME_ATLAS.md § 6.2, which measured 22 MB at the
+# grpcio release current then).
+#
+# The `.proto` sources are Apache-2.0 and vendored in `docs/vendor/alphagenome_protos/`, which is
+# what makes the light path **declarable** rather than a `pip install --no-deps` recipe. That was
+# the open question until commit `1f9a84a` closed it by doing the vendoring; this file argued the
+# opposite until RM192, and the argument is deleted rather than left standing.
+#
+# `protobuf` is a **runtime** dependency, not a build one — the generated `_pb2` modules
+# `from google.protobuf import descriptor`, so it is imported on every call. Only `grpcio-tools` is
+# build-only, and it is in `dev`. Measured, not assumed: the client runs in a venv holding exactly
+# `grpcio`, `protobuf` and the generated bindings, with `import alphagenome` raising
+# `ModuleNotFoundError`.
+#
+# An extra rather than core because one gRPC surface does not move the tier's floor. If a second
+# arrives, this moves to `dependencies` and nothing else changes.
+atlas = [
+    "grpcio>=1.68.0",
+    "protobuf>=5.29.0",
+]
 # Publisher / developer surface. huggingface-hub and ga4gh.vrs are already core deps (snapshot
 # download; allele identity); this extra marks the upload CLI (`just-dna-enricher upload`), the
 # ClinVar and gnomAD-constraint reference builders (`just-dna-enricher clinvar build`,
@@ -46,27 +75,14 @@ just-dna-enricher = "just_dna_enricher.cli:app"
 # test tooling as the supported install path for authors — `pip install just-dna-enricher[dev]`.
 # polars is a builder-only dep (guarded import in `clinvar_build`/`constraint_build`); the runtime
 # resolver path stays polars-free (the compiler tier owns polars, CONSTITUTION Goal 2).
-[project.optional-dependencies]
-# AlphaGenome Atlas / model API. An **extra**, not core, and the reason is measured rather than
-# assumed (docs/probes/ALPHAGENOME_ATLAS.md § 6.2): `alphagenome` declares anndata, pandas, scipy,
-# zarr, h5py, numcodecs, pyarrow, matplotlib, seaborn, pyfaidx, absl-py and fsspec, and a full
-# install is **255 MB** against a tier whose entire runtime list is httpx/tenacity/huggingface-hub.
-# Six of those are never imported on any scoring path, but the wheel declares them flat so there is
-# no lighter variant to ask for, and `atlas.py` imports `anndata` at module level, so even the SDK's
-# own import path costs 242 MB. CONSTITUTION Goal 2 makes that a core-dependency question, not a
-# size one, and no adoption decision has been taken — so nothing in the enricher imports this yet.
-#
-# **A 22 MB client exists and is not declarable here.** `grpcio` + `protobuf` + the generated stubs
-# reach every Atlas RPC (the score fields are plain `bytes`, the request filter is a string), but the
-# stubs ship only inside this wheel, so the light path is `pip install --no-deps alphagenome grpcio
-# protobuf` — a deployment recipe, not a dependency specifier. Vendoring the generated protos is the
-# only way to declare it, and that is a decision with a maintenance cost attached.
-alphagenome = [
-    "alphagenome>=0.9.0",
-]
 dev = [
     "pytest>=9.0.3",
     "polars>=1.42.0",
+    # Build-time only, and the reason it is here rather than in `atlas`: protoc generates the Atlas
+    # bindings, and the runtime imports them without it (RM192). The suite needs it because
+    # `test_bindings_regenerate_from_the_vendored_sources` regenerates into a scratch directory —
+    # which is what keeps "the repository carries reproducible sources" a checked property.
+    "grpcio-tools>=1.68.0",
     # Builder-only, for `just-dna-enricher acmg build`: ACMG publishes the SF v3.3 list as a
     # supplementary **workbook**, and the page NCBI serves is a release behind it. The runtime check
     # reads the built CSV snapshot with the standard library, so this never enters a check's install.
@@ -84,4 +100,8 @@ just-dna-compiler = { workspace = true }
 [dependency-groups]
 dev = [
     "just-dna-enricher[dev]",
+    # The Atlas tests moved into `testpaths` with RM192, so a developer install has to carry the
+    # extra or `uv run pytest` collects them into a `ModuleNotFoundError: grpc`. This is what makes
+    # the extra optional for a *consumer* and mandatory for the suite.
+    "just-dna-enricher[atlas]",
 ]

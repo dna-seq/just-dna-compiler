@@ -68,6 +68,54 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM192 — 255 MB of wheel for a service whose scores are plain bytes
+
+**Severity** medium · **Status** ✅ shipped 2026-09-10 in the uncut 0.7.0 (`just-dna-enricher` only:
+a new `[atlas]` extra, two new modules, one new CLI command, the `alphagenome` extra deleted; no
+model, no parquet, no manifest field) · **Owner** enricher · **Motivating case**
+[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm192), against
+[ALPHAGENOME_ATLAS.md § 6.2](probes/ALPHAGENOME_ATLAS.md)
+
+**What it reproduced.** `uv add alphagenome` resolves to 81 packages and 255 MB — anndata, pandas,
+scipy, zarr, h5py, numcodecs, pyarrow, matplotlib, seaborn, pyfaidx, absl-py, fsspec — against a
+tier whose entire runtime list is httpx/tenacity/huggingface-hub/typer/ga4gh.vrs. Six of the
+twenty declared dependencies are never imported on any scoring path, and `atlas.py` imports
+`anndata` at module level, so even the SDK's own import costs 242 MB. CONSTITUTION Goal 2 makes
+that a dependency-tier question rather than a disk-space one.
+
+**What the measurement changed.** The probe's first answer was *"a 22 MB client exists and is not
+declarable"* — the light path being `pip install --no-deps alphagenome grpcio protobuf`, a
+deployment recipe rather than a dependency specifier. Reading the upstream repository refuted the
+second half: `github.com/google-deepmind/alphagenome` is Apache-2.0 and ships the `.proto` sources
+its own wheel generates bindings from. So the light path **is** declarable, and this is one of the
+four claims in that document that upstream prose got wrong and bytes corrected.
+
+**What shipped.** `enricher/src/just_dna_enricher/atlas_client.py` (the three Atlas RPCs with the
+transport's exceptions kept inside), `atlas_protos.py` (the generator), `just-dna-enricher atlas
+generate`, and `enricher/tests/test_atlas_client.py` — 25 tests, now inside `testpaths`, all 25
+green including the four live ones against the real service. Dependencies are the new `[atlas]`
+extra: `grpcio` + `protobuf`, measured at **19 MB and +2 packages** in a clean venv on 2026-09-10
+(grpcio 1.83.1, protobuf 7.36.1). `grpcio-tools` is build-only and joined `[dev]`; the dev group
+gained `just-dna-enricher[atlas]` so the suite collects the moved tests instead of erroring on
+`import grpc`. The `alphagenome` extra is gone.
+
+**What kept it honest.** `test_imports_stay_within_the_declared_floor` walks the client's AST and
+asserts its third-party roots are exactly `{grpc, just_dna_enricher}` — an AST walk rather than a
+`sys.modules` check, because another test's heavier import would already be resident by then and
+the assertion would pass for the wrong reason. That test is what makes the size claim a property of
+the code instead of a sentence in a comment.
+
+**The stale argument, deleted rather than left standing.** `enricher/pyproject.toml` carried a
+comment block asserting the light client "is not declarable here" and calling vendoring "a decision
+with a maintenance cost attached". Commit `1f9a84a` had already refuted it by doing the vendoring,
+and a comment arguing against what the file now declares is worse than no comment. Rewritten in the
+same commit as the extra it describes.
+
+**What it did not do, filed rather than improvised.** No `tenacity` layer over the vendored
+`grpc_service_config.json` (`@retry-attempt-floor`), no shared pacing gate, and no interval RPC —
+`ListDenseVariantScores` needs an `x-goog-fieldmask` header and 32 bp chunking, which RM194 owes.
+And the bindings are a build product no wheel can build, which is **RM196**.
+
 ## RM184 — `CACHE_LANES` published every attribute of a lane except the variable that steers it
 
 **Severity** low · **Status** ✅ shipped 2026-09-03 in the uncut 0.7.0 (`just-dna-enricher` only: one

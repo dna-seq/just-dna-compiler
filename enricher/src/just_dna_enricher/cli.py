@@ -4300,5 +4300,44 @@ def clinpgx_publish_labels_(
     )
 
 
+# ── the AlphaGenome Atlas (RM192) ───────────────────────────────────────────────────────────────
+
+atlas_app = typer.Typer(
+    add_completion=False,
+    help=(
+        "The AlphaGenome Atlas — precomputed variant scores over gRPC. Needs the [atlas] extra "
+        "(grpcio + protobuf, 22 MB); the bindings are generated from the vendored Apache-2.0 "
+        ".proto sources rather than committed, so `atlas generate` runs once per checkout."
+    ),
+    no_args_is_help=True,
+)
+app.add_typer(atlas_app, name="atlas")
+
+
+@atlas_app.command("generate")
+def atlas_generate_() -> None:
+    """Build the Atlas gRPC bindings from `docs/vendor/alphagenome_protos/`.
+
+    Needs `grpcio-tools`, which is in the `[dev]` group and deliberately not in `[atlas]` — the
+    runtime imports the bindings without it. A checkout is required: an installed package carries
+    no `docs/vendor` tree, which is RM196.
+    """
+    from just_dna_enricher import atlas_protos
+
+    try:
+        out = atlas_protos.generate()
+    except FileNotFoundError as exc:
+        typer.secho(f"GENERATE FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    except ImportError as exc:
+        typer.secho(
+            f"GENERATE FAILED: grpcio-tools is not installed ({exc}). It is build-time only and "
+            "lives in the [dev] group: `uv sync` from a checkout, or `pip install grpcio-tools`.",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(code=1) from exc
+    typer.secho(f"bindings written to {out}", fg=typer.colors.GREEN)
+
+
 if __name__ == "__main__":
     app()

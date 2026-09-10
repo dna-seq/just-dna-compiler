@@ -229,4 +229,10 @@ __marimo__/
 # under `data/` needs none. That rule lived in prose for a release and nine `--out` defaults drifted
 # past it before it was made derivable.
 /data/
-docs/probes/alphagenome_poc/generated/
+
+# The Atlas gRPC bindings (RM192): a build product, not source. `docs/vendor/alphagenome_protos/`
+# carries the Apache-2.0 `.proto` files the repository actually commits, and
+# `just-dna-enricher atlas generate` rebuilds this tree from them — so a regeneration is reproducible
+# from what is committed rather than from what a wheel happened to ship. It also holds the copy of
+# `grpc_service_config.json` the channel reads at runtime.
+enricher/src/just_dna_enricher/generated/

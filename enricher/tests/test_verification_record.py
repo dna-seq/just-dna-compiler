@@ -839,15 +839,27 @@ def test_every_check_member_has_an_emitter_or_says_it_is_reserved() -> None:
     which is the direction the last three defects all ran.
     """
     import ast
-    import pkgutil
 
     import just_dna_enricher
     from just_dna_format.vocab import VALID_VERIFICATION_CHECKS
 
+    #: The tier's own source, recursively — `rglob` rather than `pkgutil.iter_modules`, which yields
+    #: a *package* as a bare name and sent this walk looking for `generated.py`. Recursion rather
+    #: than skipping packages, because a subpackage that gained an emitter would then be missed
+    #: silently, which is the direction every defect this test exists for has run.
+    #:
+    #: One exclusion, named so it cannot widen by accident: the Atlas gRPC bindings are machine-
+    #: written, git-ignored, and present only in a checkout that ran the generator (RM192). Walking
+    #: them would make this set depend on whether someone had — an input set that varies by
+    #: developer is not a registry.
+    generated_tree = "generated"
+
     root = Path(just_dna_enricher.__path__[0])
     emitted: set[str] = set()
-    for info in pkgutil.iter_modules(just_dna_enricher.__path__):
-        source = (root / f"{info.name}.py").read_text(encoding="utf-8")
+    for path in sorted(root.rglob("*.py")):
+        if generated_tree in path.relative_to(root).parts:
+            continue
+        source = path.read_text(encoding="utf-8")
         for node in ast.walk(ast.parse(source)):
             if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
                 continue

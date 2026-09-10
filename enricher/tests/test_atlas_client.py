@@ -1,44 +1,42 @@
-"""Tests for the minimal Atlas client blueprint.
+"""The Atlas client's contract — the dependency floor, the decode, and the three refusals (RM192).
 
-**Outside `testpaths` on purpose** — `uv run pytest` does not collect this, because nothing here is
-adopted. Run it explicitly:
-
-    uv run --with grpcio-tools pytest docs/probes/alphagenome_poc/ -vvv
+Moved into the suite from `docs/probes/alphagenome_poc/`, where it was written to make one claim
+falsifiable before anything was adopted: **the Atlas is reachable without the `alphagenome` wheel**.
+`test_imports_stay_within_the_declared_floor` is the test that actually pins it; the rest keep the
+decode and the error contract honest.
 
 Most of it is offline. The live tests need `ALPHAGENOME_API_KEY` **and** the repo's opt-in network
 switch, `JUST_DNA_NETWORK_TESTS=1` (`@network-tests-optin`), and they are the only ones that touch
 Google's service.
 
-The claim under test is not "the client works" but the narrower thing § 6.2 asserts: **that the
-Atlas is reachable without the `alphagenome` wheel**. `test_imports_stay_within_the_declared_floor`
-is the test that actually pins it; the rest keep the decode and the error contract honest.
+The bindings are a build product: `generated/` is git-ignored, so this module generates them on
+first run if they are absent, exactly as a developer would. That needs `grpcio-tools`, which is in
+the `[dev]` group.
 """
 
 import ast
 import math
 import os
 import struct
-import subprocess
 import sys
 from pathlib import Path
 
+import just_dna_enricher
 import pytest
+from just_dna_enricher import atlas_protos
 
-HERE = Path(__file__).resolve().parent
-REPO_ROOT = HERE.parents[2]
+#: The tests read the client's own source for the AST walk, so they need where it lives — asked of
+#: the package rather than composed from this file's location, which would break if either moved.
+CLIENT_SOURCE = Path(just_dna_enricher.__file__).resolve().parent / "atlas_client.py"
 
-pytest.importorskip("grpc", reason="the blueprint's whole point is that grpcio is one of two deps")
+pytest.importorskip("grpc", reason="the [atlas] extra is what makes the Atlas reachable")
 import grpc  # noqa: E402
 
-if not (HERE / "generated").exists():  # pragma: no cover - first run only
-    pytest.importorskip("grpc_tools", reason="run generate.py first, or install grpcio-tools")
-    sys.path.insert(0, str(REPO_ROOT))
-    from docs.probes.alphagenome_poc.generate import generate
+if not (atlas_protos.OUT_DIR / atlas_protos.STAGE_PREFIX).exists():  # pragma: no cover - first run
+    pytest.importorskip("grpc_tools", reason="run `just-dna-enricher atlas generate`, or install grpcio-tools")
+    atlas_protos.generate()
 
-    generate()
-
-sys.path.insert(0, str(REPO_ROOT))
-from docs.probes.alphagenome_poc import atlas_client as ac  # noqa: E402
+from just_dna_enricher import atlas_client as ac  # noqa: E402
 
 NETWORK = os.environ.get("JUST_DNA_NETWORK_TESTS") == "1"
 API_KEY = os.environ.get("ALPHAGENOME_API_KEY") or ""
@@ -68,7 +66,7 @@ def test_imports_stay_within_the_declared_floor():
     assertion would pass for the wrong reason. This is the test that makes "22 MB, not 255 MB" a
     property of the code instead of a claim in prose.
     """
-    tree = ast.parse((HERE / "atlas_client.py").read_text())
+    tree = ast.parse(CLIENT_SOURCE.read_text())
     roots = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -76,9 +74,10 @@ def test_imports_stay_within_the_declared_floor():
         elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
             roots.add(node.module.split(".")[0])
     third_party = roots - set(sys.stdlib_module_names)
-    assert third_party == {"grpc", "docs"}, (
-        f"the blueprint's dependency floor moved: {sorted(third_party)}. "
-        "`docs` is this repository (the generated protos); anything else is a new runtime dependency."
+    assert third_party == {"grpc", "just_dna_enricher"}, (
+        f"the Atlas client's dependency floor moved: {sorted(third_party)}. "
+        "`just_dna_enricher` is this package (the generated protos and the generator); anything "
+        "else is a new runtime dependency and moves the [atlas] extra off two packages."
     )
 
 
@@ -88,10 +87,8 @@ def test_the_vendored_protos_are_exactly_what_the_atlas_surface_needs():
     Equality over the walked directory, not a floor: a vendored file nobody needs is a file nobody
     re-vendors when it changes, and one that is needed but missing fails the build far from here.
     """
-    from docs.probes.alphagenome_poc.generate import PROTOS
-
-    vendored = {p.name for p in (REPO_ROOT / "docs/vendor/alphagenome_protos").glob("*.proto")}
-    assert vendored == set(PROTOS), vendored
+    vendored = {p.name for p in atlas_protos.PROTO_DIR.glob("*.proto")}
+    assert vendored == set(atlas_protos.PROTOS), vendored
     assert "dna_model_service.proto" not in vendored, "that one drives the model service, not Atlas"
 
 
@@ -102,15 +99,13 @@ def test_the_generated_bindings_do_not_shadow_the_upstream_package():
     is invisible until someone installs the real wheel alongside. Pinned here rather than left as a
     comment.
     """
-    from docs.probes.alphagenome_poc.generate import STAGE_PREFIX
-
-    assert STAGE_PREFIX != "alphagenome"
-    assert not (HERE / "generated" / "alphagenome").exists()
-    binding = (HERE / "generated" / STAGE_PREFIX / "atlas_service_pb2.py").read_text()
+    assert atlas_protos.STAGE_PREFIX != "alphagenome"
+    assert not (atlas_protos.OUT_DIR / "alphagenome").exists()
+    binding = (atlas_protos.OUT_DIR / atlas_protos.STAGE_PREFIX / "atlas_service_pb2.py").read_text()
     assert "from alphagenome.protos import" not in binding
-    # The cross-import is fully qualified from the repository root, which is both why it cannot
-    # shadow the wheel and why the client imports it without touching `sys.path`.
-    assert "from docs.probes.alphagenome_poc.generated._alphagenome_atlas_protos import" in binding
+    # The cross-import is fully qualified from `enricher/src`, which is both why it cannot shadow
+    # the wheel and why the client imports it without touching `sys.path`.
+    assert "from just_dna_enricher.generated._alphagenome_atlas_protos import" in binding
 
 
 def test_the_vendored_sources_are_byte_identical_to_what_protoc_was_given_minus_the_prefix():
@@ -119,14 +114,12 @@ def test_the_vendored_sources_are_byte_identical_to_what_protoc_was_given_minus_
     That asymmetry is what makes re-vendoring a newer release a diff rather than a merge, so it is
     worth a test rather than a promise in a docstring.
     """
-    from docs.probes.alphagenome_poc.generate import PROTOS, STAGE_PREFIX
-
-    for name in PROTOS:
-        committed = (REPO_ROOT / "docs/vendor/alphagenome_protos" / name).read_text()
-        staged = (HERE / "generated" / STAGE_PREFIX / name).read_text()
+    for name in atlas_protos.PROTOS:
+        committed = (atlas_protos.PROTO_DIR / name).read_text()
+        staged = (atlas_protos.OUT_DIR / atlas_protos.STAGE_PREFIX / name).read_text()
         assert staged == committed.replace(
             'import "alphagenome/protos/',
-            'import "docs/probes/alphagenome_poc/generated/_alphagenome_atlas_protos/',
+            'import "just_dna_enricher/generated/_alphagenome_atlas_protos/',
         )
         assert 'package google.gdm.gdmscience.alphagenome' in staged, (
             "the protobuf package must not move — descriptor names are the wire format"
@@ -140,11 +133,8 @@ def test_bindings_regenerate_from_the_vendored_sources(tmp_path):
     which is the difference between vendoring sources and vendoring generated code.
     """
     pytest.importorskip("grpc_tools")
-    sys.path.insert(0, str(REPO_ROOT))
-    from docs.probes.alphagenome_poc.generate import STAGE_PREFIX, generate
-
-    out = generate(tmp_path / "generated", include_root=tmp_path)
-    produced = {p.name for p in (out / STAGE_PREFIX).glob("*_pb2*.py")}
+    out = atlas_protos.generate(tmp_path / "generated", include_root=tmp_path)
+    produced = {p.name for p in (out / atlas_protos.STAGE_PREFIX).glob("*_pb2*.py")}
     expected = {
         f"{stem}_pb2{suffix}.py"
         for stem in ("atlas_service", "dna_model", "tensor")

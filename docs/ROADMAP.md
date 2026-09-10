@@ -332,18 +332,36 @@ rank, and the 466 KB knot table reconstructs it with zero threshold misclassific
 build in [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm191); evidence in
 [ALPHAGENOME_ATLAS](probes/ALPHAGENOME_ATLAS.md).
 
-## RM192 — the Atlas client on two packages, and the `alphagenome` extra deleted
+## RM196 — the Atlas bindings are a build product, and a wheel cannot build them
 
-**Severity** medium · **Status** open — **planned 2026-09-10** · **Owner** enricher ·
-**Motivating case** `uv add alphagenome` costs 255 MB and 36 packages against a tier whose whole
-runtime list is httpx/tenacity/huggingface-hub
+**Severity** medium · **Status** open — **filed 2026-09-10 by RM192** · **Owner** maintainer ·
+**Motivating case** `pip install just-dna-enricher[atlas]` installs `grpcio` and `protobuf` and then
+cannot import `just_dna_enricher.atlas_client`
 
-The upstream wheel declares 20 flat dependencies including matplotlib, seaborn and pyfaidx, six of
-which are never imported on any scoring path. The `.proto` sources are Apache-2.0 and vendored, so
-`grpcio` + `protobuf` reach every Atlas RPC — **22 MB in a new `[atlas]` extra**, with the
-`alphagenome` extra deleted. Already built and tested as
-[alphagenome_poc](probes/alphagenome_poc/README.md); this item moves it into the package.
-[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm192).
+RM192 vendors the three Apache-2.0 `.proto` sources in `docs/vendor/alphagenome_protos/` and
+generates the bindings from them into a git-ignored `generated/` package, which is what makes the
+light client **reproducible from what the repository commits** rather than from what a wheel
+happened to ship. The cost of that choice is that neither `docs/` nor `generated/` is in the sdist
+or the wheel: an installed package has no sources to generate from and no bindings to import, so
+`atlas_client` raises its guarded `ImportError` and `just-dna-enricher atlas generate` refuses with
+`missing_sources()`. Only a checkout works today, and the tests only pass because they run in one.
+
+The three shapes, none of them taken here because the trade is the maintainer's:
+
+- **Commit the generated code.** Immediate, and gives an installed wheel a working client. It puts
+  ~7,000 lines of machine-written Python under review forever and makes re-vendoring a merge rather
+  than a diff — the exact asymmetry
+  `test_the_vendored_sources_are_byte_identical_to_what_protoc_was_given_minus_the_prefix` exists to
+  preserve.
+- **Generate at build time.** Keeps the repository carrying sources only, but `uv_build` has no
+  build hook, so it means changing the build backend for one extra.
+- **Ship the `.proto` files inside the package and generate on first use.** Puts `grpcio-tools` in
+  the `[atlas]` extra, which triples what the extra costs and undoes the measurement RM192 is about.
+
+Whichever wins also decides where `grpc_service_config.json` lives: the channel reads it at connect
+time, and the generator copies it into `generated/` for exactly this reason. **Until then the extra
+is checkout-only, and that is stated in the extra's own comment rather than left for a consumer to
+discover.** [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm192).
 
 ## RM193 — the Atlas as a resolver: knot-straddle refinement, `REF` mismatch, and not-scored
 

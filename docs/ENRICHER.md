@@ -293,8 +293,20 @@ Evidence, not contract: this document is the maintained one.
 
 ```
 pip install just-dna-enricher          # runtime: enrich (caches, live Ensembl, live gnomAD, VRS minting)
+pip install 'just-dna-enricher[atlas]' # + the AlphaGenome Atlas client (grpcio + protobuf)
 pip install 'just-dna-enricher[dev]'   # + publisher surface (module/reference upload), snapshot builders (polars), tests
 ```
+
+**`[atlas]` is two packages, and it is checkout-only today (RM192, RM196).** The AlphaGenome Atlas
+serves precomputed variant scores over gRPC; its score fields are plain `bytes` and its request
+filter is an AIP-160 string, so `grpcio` + `protobuf` reach every RPC and `struct.unpack` from the
+standard library decodes the payload — **19 MB and +2 packages**, measured in a clean venv on
+2026-09-10, against **255 MB and 81 packages** for `uv add alphagenome`. The bindings are generated
+from the Apache-2.0 `.proto` sources vendored in `docs/vendor/alphagenome_protos/` rather than
+committed, so run `just-dna-enricher atlas generate` once per checkout (it needs `grpcio-tools`,
+which is in `[dev]`, not in `[atlas]` — the runtime imports the bindings without it). An installed
+wheel carries neither the sources nor the generated tree, so the client's import is guarded and says
+so; **RM196** is where that trade gets decided.
 
 `ga4gh.vrs` is a **core** dependency, not an extra. Minting a *substitution*'s VRS allele id is stdlib
 and lives in the format tier, but justifying an **indel** needs the reference sequence — and reading
@@ -4310,6 +4322,23 @@ client's type through and the documented handler was silent for exactly the fail
 | `enrich_gwas` | `GwasError` | — client and pass share the type |
 | `enrich_pgx` | `PgxEnrichmentError` | — degrades per leg instead of raising |
 | `enrich()` | — | — degrades and withholds; see below |
+
+**The Atlas client has its own ladder, and it is a client rather than a pass** (RM192). It is listed
+apart because its third arm is not a failure at all:
+
+| what happened | type | remedy |
+| --- | --- | --- |
+| transport failed | `AtlasUnavailable` | retry |
+| `REF` disagrees with GRCh38 | `AtlasRefMismatch` | fix the caller's data — **the server names the real base**, which `@va-omits-ref` says only this tier can discover |
+| an indel | `AtlasNotScored` | none: the answer does not exist |
+| a quantile saturated at `1.0` | `AtlasNotScored` | read `PHRED` from the downloaded artifact instead |
+
+`AtlasNotScored` deliberately does **not** derive from `AtlasRefused`, so an `except AtlasRefused`
+cannot swallow it — a caller that recorded "no score" for a variant the service never claimed to
+have scored would be `@unreachable-not-absent` in one line. `AtlasRefMismatch` **is** a subclass of
+`AtlasRefused`, so the same handler-order rule below applies to it, and
+`test_handler_order_is_not_load_bearing_by_accident` enumerates the ladder rather than leaving it to
+a reviewer.
 
 **Every `*Unavailable` is a subclass of the type beside it**, so `except <Pass>Error` keeps catching
 everything it did (P3, additive within a major) and the narrower catch is new capability rather than a

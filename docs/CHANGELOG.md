@@ -34,7 +34,48 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — PROPOSAL 0.7 PT4: adopting AlphaGenome as RM191–RM195
+## 2026-09-10 (latest) — RM192: the AlphaGenome Atlas client, on two packages
+
+`just-dna-enricher` gains a working client for the AlphaGenome Atlas — Google DeepMind's
+precomputed variant scores, served over gRPC — and it costs **two packages**, not the SDK's
+eighty-one.
+
+**The measurement that decided it.** `uv add alphagenome` resolves to **255 MB and 81 packages**
+(anndata, pandas, scipy, zarr, h5py, numcodecs, pyarrow, matplotlib, seaborn, pyfaidx, absl-py,
+fsspec) against a tier whose entire runtime list is httpx/tenacity/huggingface-hub/typer/ga4gh.vrs.
+Six of the twenty dependencies that wheel declares are never imported on any scoring path, and
+`atlas.py` imports `anndata` at module level so even the SDK's own import path costs 242 MB. The
+Atlas score fields are plain `bytes` and the request filter is an AIP-160 string, so `grpcio` +
+`protobuf` reach every RPC and `struct.unpack` from the standard library decodes the scores —
+**19 MB and +2 packages**, measured in a clean venv on 2026-09-10 at grpcio 1.83.1 / protobuf
+7.36.1.
+
+**What a consumer does.** `pip install just-dna-enricher[atlas]`, from a checkout, then
+`just-dna-enricher atlas generate` once. The bindings are generated from the three Apache-2.0
+`.proto` sources vendored in `docs/vendor/alphagenome_protos/` rather than committed, so what the
+repository carries is reproducible input rather than machine-written output. **The extra is
+checkout-only for now** — an installed wheel has neither the sources nor the bindings, which is
+filed as **RM196** rather than papered over: the client's import is guarded and names the command
+to run.
+
+**The error contract is the part worth reading.** The service says no in three ways with three
+different remedies, and the types keep them apart: `AtlasUnavailable` (retry), `AtlasRefMismatch`
+(your `REF` disagrees with GRCh38 — and the server names the real base, which
+`@va-omits-ref` says only this tier can discover), and `AtlasNotScored` (an indel, or a quantile
+that saturated off the top of the `float32` scale). `AtlasNotScored` deliberately does **not**
+derive from `AtlasRefused`, so an `except AtlasRefused` cannot swallow it and record a zero for a
+variant the service never claimed to have scored.
+
+**What is deliberately absent**, filed rather than improvised: no `tenacity` layer over upstream's
+vendored retry policy, no shared pacing gate, and no interval RPC — that one is RM194's.
+
+The `alphagenome` extra is **deleted**, and the comment block in `enricher/pyproject.toml` that
+argued the light client "is not declarable here" went with it: commit `1f9a84a` had already refuted
+it by vendoring the sources, and an argument against what the file now declares is worse than no
+comment at all. Twenty-five tests moved into `testpaths` with the code and all twenty-five are
+green, including the four live ones against the real service.
+
+## 2026-09-10 — PROPOSAL 0.7 PT4: adopting AlphaGenome as RM191–RM195
 
 **The first live proposal since PT3 closed on 2026-09-03**, and the point at which eleven rounds of
 measurement in [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md) become a build.

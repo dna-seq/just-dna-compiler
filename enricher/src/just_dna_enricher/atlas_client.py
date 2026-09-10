@@ -1,14 +1,17 @@
-"""A minimal AlphaGenome Atlas client — the blueprint measured in ALPHAGENOME_ATLAS.md § 6.2.
+"""The AlphaGenome Atlas client — precomputed variant scores over gRPC, on two packages (RM192).
 
-**This is a proof of concept, not a shipped surface.** Nothing in `just-dna-enricher` imports it,
-it is outside `testpaths`, and no `RMn` adopts it. It exists to make one claim testable: that the
-Atlas service is reachable on `grpcio` + `protobuf` alone, without the `alphagenome` wheel and the
-twenty flat dependencies it declares.
+**The `[atlas]` extra, not core.** `uv add alphagenome` costs 255 MB and 36 packages against a tier
+whose entire runtime list is httpx/tenacity/huggingface-hub, and six of the twenty dependencies that
+wheel declares are never imported on any scoring path. The `.proto` sources are Apache-2.0, so
+`grpcio` + `protobuf` reach every Atlas RPC — **22 MB**, with score payloads decoding through
+`struct.unpack` from the standard library. Measured in
+[ALPHAGENOME_ATLAS.md § 6.2](../../../docs/probes/ALPHAGENOME_ATLAS.md), and pinned by
+`test_imports_stay_within_the_declared_floor` rather than left as a claim in prose.
 
-What it costs, measured: **22 MB** of runtime dependencies against 255 MB for `uv add alphagenome`,
-and 28 KB of vendored Apache-2.0 `.proto` sources in `docs/vendor/alphagenome_protos/` whose
-bindings `generate.py` builds. Score payloads are plain `bytes`, so `struct.unpack` from the
-standard library decodes them — numpy is not needed either.
+The bindings are **generated, not committed**: `just-dna-enricher atlas generate` builds them from
+`docs/vendor/alphagenome_protos/` into a git-ignored `generated/` package. So this module's import
+is guarded, and a checkout that has not run the generator gets a message naming the command instead
+of a traceback from protobuf. An installed wheel cannot run it at all — that is RM196.
 
 Three house rules shape the code rather than the wire format:
 
@@ -20,28 +23,47 @@ Three house rules shape the code rather than the wire format:
   it is not scored at all, and `score_variant` says so by raising rather than returning a number.
 * **A verdict function with several arms owes a reason function with the same arms**
   (`@answered-is-not-absent`), which is why every refusal carries the server's own words.
+
+What a first cut does not carry, filed rather than improvised: no `tenacity` layer over the vendored
+`grpc_service_config.json` (`@retry-attempt-floor`), no shared pacing gate
+(`@shared-pacing-gate`), and no interval RPC — `ListDenseVariantScores` needs an
+`x-goog-fieldmask` header and 32 bp chunking, which RM194 owes and RM192 does not.
 """
 
 import math
 import struct
 from dataclasses import dataclass
-from pathlib import Path
 
 import grpc
 
-from docs.probes.alphagenome_poc.generated._alphagenome_atlas_protos import (
-    atlas_service_pb2,
-    atlas_service_pb2_grpc,
-    dna_model_pb2,
-)
+from just_dna_enricher.atlas_protos import OUT_DIR, SERVICE_CONFIG_NAME
+
+# The one guarded module-level import the house rules allow, and the reason it is guarded is that
+# the bindings are a build product rather than source: `generated/` is git-ignored, so a fresh
+# checkout has none until the generator runs. Re-raised with the command to run, because
+# `ModuleNotFoundError: just_dna_enricher.generated…` names a package nobody wrote and sends the
+# reader looking for a typo.
+try:
+    from just_dna_enricher.generated._alphagenome_atlas_protos import (
+        atlas_service_pb2,
+        atlas_service_pb2_grpc,
+        dna_model_pb2,
+    )
+except ImportError as _exc:  # pragma: no cover - exercised by a subprocess test, not in-process
+    raise ImportError(
+        "the Atlas gRPC bindings have not been generated. Run `just-dna-enricher atlas generate` "
+        "from a checkout of just-dna-format (it needs grpcio-tools, which is in the [dev] group). "
+        "An installed package carries no docs/vendor tree and cannot generate them — RM196."
+    ) from _exc
 
 #: The service. Named here rather than inline so a test can point at a fake.
 DEFAULT_ADDRESS = "dns:///gdmscience.googleapis.com:443"
 
-#: Retry/backoff policy, taken verbatim from upstream beside the protos it belongs to.
-SERVICE_CONFIG_PATH = (
-    Path(__file__).resolve().parents[2] / "vendor" / "alphagenome_protos" / "grpc_service_config.json"
-)
+#: Retry/backoff policy, taken verbatim from upstream. It sits **beside the generated bindings**
+#: rather than in `docs/vendor/`, because the channel reads it at connect time and a runtime that
+#: has the bindings must have the policy too — one directory the client needs, not two. The
+#: generator copies it there.
+SERVICE_CONFIG_PATH = OUT_DIR / SERVICE_CONFIG_NAME
 
 #: The largest `float32` strictly below 1.0, and therefore the largest quantile the wire format can
 #: carry. It caps a derived Phred at ~72.247 — while the **published AVI artifact reaches 89.451**,

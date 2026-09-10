@@ -1,5 +1,13 @@
 # A minimal AlphaGenome Atlas client — the blueprint, test-proven
 
+**Adopted on 2026-09-10 by RM192. The code left this directory** and now lives as
+`enricher/src/just_dna_enricher/atlas_client.py` (the client), `atlas_protos.py` (the generator, run
+as `just-dna-enricher atlas generate`) and `enricher/tests/test_atlas_client.py` (the tests, now
+inside `testpaths`). The dependencies are the `[atlas]` extra, and the `alphagenome` extra is gone.
+**This file stays as the record of what the blueprint cost and what it refused**, which is the half
+that does not travel with the code; everything below describes the probe as it stood, in the past
+tense as of that date.
+
 **Not a shipped surface, and not adopted.** Nothing in `just-dna-enricher` imports this, it sits
 outside `testpaths` so `uv run pytest` does not collect it, and no `RMn` covers it. It exists to
 turn one sentence of [ALPHAGENOME_ATLAS.md § 6.2](../ALPHAGENOME_ATLAS.md) into something a test
