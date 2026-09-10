@@ -31,6 +31,11 @@ from just_dna_enricher.acmg import (
 from just_dna_enricher.acmg import verification_record as acmg_record
 from just_dna_enricher.alphagenome_avi_build import AlphaGenomeBuildError
 from just_dna_enricher.alphagenome_avi_build import build_snapshot as build_alphagenome_snapshot
+from just_dna_enricher.alphagenome_check import (
+    DEFAULT_REFINEMENT_CAP,
+    VariantImpactError,
+    check_variant_impact,
+)
 from just_dna_enricher.assertions import (
     ASSERTION_GENOME_BUILD,
     ClinicalAssertionError,
@@ -4418,6 +4423,110 @@ def alphagenome_avi_build_(
         "docs/vendor pins.",
         fg=typer.colors.YELLOW, err=True,
     )
+
+
+@alphagenome_app.command("check")
+def alphagenome_check_(
+    spec: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    reference: Path | None = typer.Option(
+        None, "--reference", exists=True, file_okay=False,
+        help="An AVI snapshot directory. Omit to use $JUST_DNA_ALPHAGENOME_AVI_CACHE.",
+    ),
+    threshold: float | None = typer.Option(
+        None, "--threshold",
+        help=(
+            "A PHRED cut to check the module's variants against. Without one the pass is entirely "
+            "offline: there is no question the local artifact cannot answer."
+        ),
+    ),
+    offline: bool = typer.Option(
+        False, "--offline",
+        help="Never reach the Atlas. Straddling variants are recorded as nobody-asked, not as decided.",
+    ),
+    refinement_cap: int = typer.Option(
+        DEFAULT_REFINEMENT_CAP, "--refinement-cap", min=1,
+        help="Refuse rather than refine more than this many variants over the network in one run.",
+    ),
+    strict: bool = typer.Option(False, "--strict", help="Carried for the report; see the docstring."),
+) -> None:
+    """Cross-check a module's variants against AlphaGenome's AVI scores. Reports, never repairs.
+
+    The local snapshot answers most of it. The Atlas is asked only where the knot table says the
+    local data genuinely cannot decide — a threshold falling inside a printed score's PHRED interval
+    — and that set is computed offline, before any request is spent.
+    """
+    try:
+        client = None
+        if threshold is not None and not offline:
+            client = _atlas_client_or_none()
+        result = check_variant_impact(
+            spec, reference=reference, client=client, threshold=threshold,
+            mode="strict" if strict else "best_effort", offline=offline,
+            refinement_cap=refinement_cap,
+        )
+    except VariantImpactError as exc:
+        typer.secho(f"CHECK FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    for note in result.warnings:
+        typer.secho(f"  {note}", fg=typer.colors.YELLOW, err=True)
+    for finding in result.findings:
+        typer.secho(f"  {finding}", fg=typer.colors.YELLOW)
+    if result.straddling:
+        typer.echo(
+            f"  {len(result.straddling)} variant(s) sit inside a knot spanning PHRED "
+            f"{threshold}; {len(result.refined)} refined against the Atlas"
+        )
+    by_reason: dict[str, int] = {}
+    for _, reason in result.unanswered:
+        by_reason[reason] = by_reason.get(reason, 0) + 1
+    if by_reason:
+        # Grouped by reason rather than listed per row (`@ref-mismatch-causes`): four histories with
+        # four remedies, and a flat list of variants hides which one a reader is looking at.
+        typer.echo("  no answer: " + ", ".join(f"{n} {reason}" for reason, n in sorted(by_reason.items())))
+    typer.secho(
+        f"checked {result.subjects} variant(s): {len(result.decided)} decided locally, "
+        f"{len(result.findings)} finding(s)",
+        fg=typer.colors.GREEN,
+    )
+
+
+def _atlas_client_or_none():
+    """An Atlas client, or `None` with a sentence — never a traceback from a missing extra.
+
+    Three absences and they are not the same: the extra is not installed, the bindings have not been
+    generated, or there is no key. Each names its own remedy, and the caller degrades to the
+    interval the knot table publishes rather than failing the run.
+    """
+    import os
+
+    key = os.environ.get("ALPHAGENOME_API_KEY") or ""
+    if not key:
+        typer.secho(
+            "  no ALPHAGENOME_API_KEY, so nothing was refined. The knot table's interval is still "
+            "the honest answer for those rows.",
+            fg=typer.colors.YELLOW, err=True,
+        )
+        return None
+    # Imported here, not at module level, and this is the guarded-optional-dependency exception to
+    # "no inline imports" rather than a lapse: `atlas_client` imports `grpc`, so a module-level
+    # import would make the [atlas] extra a requirement of the whole CLI — which is the thing RM192
+    # measured its way out of. `AtlasError` comes with it for the same reason.
+    try:
+        from just_dna_enricher.atlas_client import AtlasError, connect
+    except ImportError as exc:
+        typer.secho(
+            f"  no Atlas client, so nothing was refined ({exc}). Install the extra with "
+            "`pip install 'just-dna-enricher[atlas]'` and run `just-dna-enricher atlas generate`.",
+            fg=typer.colors.YELLOW, err=True,
+        )
+        return None
+    try:
+        return connect(key)
+    except AtlasError as exc:
+        typer.secho(f"  the Atlas could not be reached ({exc}); nothing was refined.",
+                    fg=typer.colors.YELLOW, err=True)
+        return None
 
 
 if __name__ == "__main__":

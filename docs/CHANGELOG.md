@@ -34,7 +34,46 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — RM191: AlphaGenome's AVI scores as a cache lane, and a 466 KB curve instead of a 24.7 GB column
+## 2026-09-10 (latest) — RM193: the Atlas as a resolver, and a check that refuses to run unbounded
+
+`just-dna-enricher alphagenome check <spec>` cross-checks a module's variants against AlphaGenome's
+AVI scores. It reports and never repairs, and it exists for the three questions the nine-billion-row
+snapshot on your own disk provably **cannot** answer.
+
+**Most of it is offline, by design rather than as a fallback.** Without `--threshold` there is no
+question the local artifact cannot settle, so nothing is asked. With one, the knot table names the
+candidate set — the variants whose printed score spans a `PHRED` interval containing the cut — from
+**466 KB, before a single request is spent**. `threshold_is_safe()` answers the prior question for
+the same 466 KB, and genome-wide it is yes at every integer threshold from 1 to 50 except 3.
+
+**The check refuses to run unbounded.** Rebuilding the `PHRED` column by RPC is 272 days and ~92
+million requests at the measured rate, so a caller whose candidate set exceeds `--refinement-cap`
+gets a refusal that costs zero calls and names the cheaper answer they already hold.
+
+**Three states, kept apart, and none of them a zero.** A `REF` that disagrees with GRCh38 becomes a
+finding **carrying the base the server named** — the one thing a local lookup cannot produce, since
+a file simply misses and a miss looks like an uncovered position. An indel, or a quantile that
+saturated off the top of the `float32` scale, is recorded as *no answer exists*. A transport failure
+is recorded as *could not ask* and deliberately produces **no finding at all**: a bad minute at
+Google is not a claim about the caller's data. `--offline` gives the same third state rather than a
+silent skip.
+
+It emits its own `variant_impact_agreement` check rather than a second `reference_allele`. The Atlas
+answers the `REF` question too, but that check belongs to `enrich` and compares against the reference
+*sequence* — letting an Atlas outage write a skip against it would make one registry's availability
+speak for another's question.
+
+**A bug worth naming, because it was silent.** `VariantRow` normalizes `chrom` and stores `22`;
+AlphaGenome ships `chr22`. Joining one onto the other matched nothing and raised nothing — every
+variant came back as "absent from the snapshot", which reads exactly like an artifact that does not
+cover them. Caught only because the test asserted a positive count rather than the absence of a
+crash. The conversion now happens at the boundary, and a test asserts both spellings give the *same*
+answer rather than that neither is empty.
+
+**The `[atlas]` extra stays optional**, and a subprocess test with `grpc` blocked proves it: the
+offline half of this check, and the whole CLI, must not acquire a 19 MB dependency by the back door.
+
+## 2026-09-10 — RM191: AlphaGenome's AVI scores as a cache lane, and a 466 KB curve instead of a 24.7 GB column
 
 `just-dna-enricher alphagenome build --input <the file you downloaded>` re-encodes AlphaGenome's
 Variant Impact scores — 8,812,917,339 SNVs — into a fifteenth cache lane.

@@ -384,19 +384,6 @@ time, and the generator copies it into `generated/` for exactly this reason. **U
 is checkout-only, and that is stated in the extra's own comment rather than left for a consumer to
 discover.** [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm192).
 
-## RM193 — the Atlas as a resolver: knot-straddle refinement, `REF` mismatch, and not-scored
-
-**Severity** medium · **Status** open — **planned 2026-09-10** · **Owner** enricher ·
-**Motivating case** the local artifact cannot validate `REF` and cannot resolve an ambiguous knot
-
-Three capabilities the file provably lacks: the API's `raw_score` carries ~7 significant digits
-against the file's 4 and resolves the ~633,000 knot-straddling rows at one threshold; the Atlas
-validates `REF` against GRCh38 and **names the real base**, which is a finding `@va-omits-ref` says
-only the enricher can make; and an indel returns `UNIMPLEMENTED`, the third state, which must be
-recorded as could-not-ask and never as a zero. Reports, never repairs. The check **refuses** an
-unbounded refinement — rebuilding the column is 272 days and ~92 M RPCs.
-[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm193).
-
 ## RM194 — gene-scoped SNV subslices, and the ±512 kb horizon
 
 **Severity** low · **Status** open — **planned 2026-09-10, most likely to be cut** · **Owner** enricher ·

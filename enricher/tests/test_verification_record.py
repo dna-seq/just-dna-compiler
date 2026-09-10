@@ -859,8 +859,25 @@ def test_every_check_member_has_an_emitter_or_says_it_is_reserved() -> None:
     for path in sorted(root.rglob("*.py")):
         if generated_tree in path.relative_to(root).parts:
             continue
-        source = path.read_text(encoding="utf-8")
-        for node in ast.walk(ast.parse(source)):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+
+        # A module-level `CHECK = "..."` counts as a literal, and resolving it is the difference
+        # between this walk seeing an emitter and not. A pass that names its check once and uses the
+        # constant eight times is better code than one that repeats the string, so a walk that only
+        # reads inline literals would quietly stop covering the better-written module — a registry
+        # blind to the idiom it should encourage. Module level only, and only a plain string: a
+        # constant built at runtime is not something a static walk should pretend to know.
+        constants = {
+            node.targets[0].id: node.value.value
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        }
+
+        for node in ast.walk(tree):
             if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
                 continue
             if node.func.id not in {"ran", "skipped"} or not node.args:
@@ -868,6 +885,8 @@ def test_every_check_member_has_an_emitter_or_says_it_is_reserved() -> None:
             first = node.args[0]
             if isinstance(first, ast.Constant) and isinstance(first.value, str):
                 emitted.add(first.value)
+            elif isinstance(first, ast.Name) and first.id in constants:
+                emitted.add(constants[first.id])
 
     #: Named rather than silently subtracted, so each one is a decision a reader can dispute — and
     #: each says RESERVED beside itself in `VALID_VERIFICATION_CHECKS`, with the reason.

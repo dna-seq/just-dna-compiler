@@ -68,6 +68,68 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM193 — the three questions a nine-billion-row file on your own disk cannot answer
+
+**Severity** medium · **Status** ✅ shipped 2026-09-10 in the uncut 0.7.0 (`just-dna-enricher` plus
+one new `VALID_VERIFICATION_CHECKS` member in `just-dna-format` — additive, minor-legal under P3/P8;
+no column, no table, no manifest field) · **Owner** enricher · **Motivating case**
+[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm193)
+
+**What shipped.** `alphagenome_check.py` and `just-dna-enricher alphagenome check <spec>`, plus the
+`variant_impact_agreement` check member. Reports, never repairs
+(`@enrichment-is-validation`).
+
+**Most of it never touches the network, and that is the design rather than a fallback.** Without
+`--threshold` there is no question RM191's snapshot cannot answer, so the pass is entirely offline.
+With one, the knot table says — **from 466 KB, before a single request** — which variants sit inside
+a `PHRED` interval spanning the cut, and only those are asked about. `threshold_is_safe()` answers
+the prior question ("can I cut here at all?") for the same 466 KB, and genome-wide the answer is yes
+at every integer threshold from 1 to 50 except 3.
+
+**The refusal is the item's spine.** Rebuilding the `PHRED` column by RPC is 272 days and ~92 M
+requests at the measured rate, and prohibition 3 governs the result, so a check that could start
+down that road has to stop. `refinement_cap` refuses **before any request is spent**, and the
+message names the knot table — because what the caller actually wants, which rows are affected and
+by how much, is already on their disk. `test_an_unbounded_refinement_is_refused_and_names_the_cheaper_answer`
+asserts the stub's call log is empty, not merely that an exception was raised.
+
+**Four no-answer reasons, kept apart** (`@answered-is-not-absent`, `@unreachable-not-absent`):
+`ref_mismatch` (the Atlas validated `REF` against GRCh38 and **named the real base**, which
+`@va-omits-ref` says only this tier can discover), `not_scored` (an indel, or a quantile saturated
+off the top of the `float32` scale — the artifact reaches `PHRED` 89.451 where the API caps at
+72.247), `unreachable` (asked, no answer — and deliberately **no finding**, since a bad minute at
+Google is not a claim about the caller's data), and `offline`/`no_client` (nobody asked). A fifth,
+`absent_from_snapshot`, is the local artifact's own silence. None of them is a zero, which matters
+at a scale where the corpus holds 672,931 genuine ones.
+
+**It emits its own check member rather than a second `reference_allele`.** The Atlas answers the
+`REF` question too, but that check belongs to `enrich` and compares against the reference
+*sequence*; letting an Atlas outage write a skip against it would make one registry's availability
+speak for another's question (`@one-registrys-outage-may-not-speak-for-another`). Two sources, two
+checks, side by side.
+
+**A silent-wrong-answer bug the tests caught, and it is the kind worth recording.** `VariantRow`
+normalizes `chrom` through `vrs.normalize_chrom` and stores `22`; AlphaGenome ships UCSC-style
+`chr22` and indexes it that way. Joining the module's spelling straight onto the snapshot matched
+**nothing** — and produced no error, just every variant reported `absent_from_snapshot`, which reads
+exactly like an artifact that does not cover them. Found only because a test asserted a *positive*
+count rather than the absence of a crash. `artifact_contig()` converts at the boundary, one
+direction, and a test asserts the two spellings give the **same** answer rather than that neither is
+empty.
+
+**The `[atlas]` extra stays optional, and a test proves it in a subprocess.** `atlas_client` imports
+`grpc`, so a module-level import anywhere on the CLI's import graph would make RM192's 19 MB extra a
+requirement of the whole tier — undoing the thing RM192 measured its way out of. Both `cli.py` and
+`alphagenome_check.py` guard it, the latter binding a never-raised class rather than `None` so the
+`except` arms stay well-formed. Checked with `grpc` blocked at `sys.meta_path` in a child process,
+because in this environment the extra *is* installed and an in-process assertion would pass for the
+wrong reason — the same trap `test_imports_stay_within_the_declared_floor` avoids with an AST walk.
+
+**What it does not do.** No new stored column from any of the Atlas's other 21 scorers. They are
+ordinary Output — non-commercial, notice-bearing — so they may enter as *findings* under
+`declared_use=non_commercial` and never as values, and the existing data-driven gate needs no new
+axis for that.
+
 ## RM191 — nine billion scores, and the column that is a function of another column
 
 **Severity** medium · **Status** ✅ shipped 2026-09-10 in the uncut 0.7.0 (`just-dna-enricher` only:

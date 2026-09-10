@@ -794,6 +794,12 @@ VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
                                       #   claim about where its rows came from, which is why this is a
                                       #   check and not a recording pass: it compares something the
                                       #   module asserts against what the source says.
+        "variant_impact_agreement",   # a module's variants vs AlphaGenome's AVI scores —
+                                      #   `alphagenome check` (RM193). Its own member rather than a
+                                      #   second writer of `reference_allele`: the Atlas answers the
+                                      #   REF question too, and letting one registry's outage write a
+                                      #   skip against another's check is exactly what
+                                      #   `@one-registrys-outage-may-not-speak-for-another` forbids.
         # ── wired: one command each ──
         "citation_existence",         # an authored `pmid`/`doi` vs PubMed and Crossref — `literature`
         "citation_identifier",        # an authored `doi` vs the registry's own for that PMID — `literature`

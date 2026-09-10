@@ -4330,6 +4330,12 @@ client's type through and the documented handler was silent for exactly the fail
 | `enrich_pgx` | `PgxEnrichmentError` | — degrades per leg instead of raising |
 | `enrich()` | — | — degrades and withholds; see below |
 
+**`alphagenome check` raises `VariantImpactError` / `VariantImpactUnavailable`** (RM193), the pass
+half of the pair above — a consumer calls the pass, so this is the type to write in an `except`.
+Note that a *transport* failure inside it is neither: the pass records the variant as
+`unreachable` and produces no finding, because a service that did not answer has said nothing about
+the caller's data.
+
 **The Atlas client has its own ladder, and it is a client rather than a pass** (RM192). It is listed
 apart because its third arm is not a failure at all:
 
