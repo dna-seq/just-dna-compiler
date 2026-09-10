@@ -386,17 +386,54 @@ discover.** [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm192).
 
 ## RM194 — gene-scoped SNV subslices, and the ±512 kb horizon
 
-**Severity** low · **Status** open — **planned 2026-09-10, most likely to be cut** · **Owner** enricher ·
-**Motivating case** slicing by gene position silently drops promoters, enhancers and distal
-regulatory variants
+**Severity** low · **Status** open — **unblocked 2026-09-10, not built** · **Owner** enricher ·
+**Motivating case** slicing the artifact by gene *position* silently drops promoters, enhancers and
+other distal variants that act on a gene without sitting in it
 
-Measured: gene-filtered Atlas scores are returned out to **+500 kb** and vanish at +700 kb — the
-half-window of the model's 1 MB input, a hard horizon. A gene-filtered interval query returns
-1,200 variants × 371 tracks in **1.1 s**, and the filter is **required**, not an optimisation: the
-unfiltered query fails with `RESOURCE_EXHAUSTED`. Cost is ~50 minutes per gene, so this is a panel
-tool and never genome-wide. Distal scores run ~10× lower, so a flat `--min-score` would silently keep
-only proximal variants — record the distance beside the score.
-[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm194).
+**The blocker this item carried is gone.** [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm194)
+listed the interval RPC as the thing a first cut owes, "including the `x-goog-fieldmask` header and
+32 bp chunking that hand-built requests got wrong". Measured on 2026-09-10 and **none of that was
+the cause**:
+
+| claim | measured |
+| --- | --- |
+| the `x-goog-fieldmask` header is required | **no** — the same interval answers identically without it; asserted as equality of the two answers, not as "both succeeded" |
+| 32 bp chunking is required | **no** — a 128 bp interval answers in one call; the SDK's 32 bp sub-intervals are its *parallelism* strategy |
+| — | **`Interval.strand` must be a real member.** `Strand` has **no zero**: `STRAND_UNSPECIFIED = 0` is the proto3 default, so an omitted `strand` goes on the wire as a value the server rejects — as a bare `INVALID_ARGUMENT` naming no field. That was the entire failure |
+| — | **a filter is effectively required**: unfiltered, 32 bp answers with a **43 MB** message against a 4 MB receive limit |
+
+`AtlasClient.score_interval` shipped with RM192's commit for that reason — it is the client's missing
+half, it is now tested (offline and live), and leaving it out would have left the measurement
+unrecorded in code. **This item is now the drafting provider and nothing else.**
+
+**An upstream bug found on the way, and it is in the pagination:** the server returns a
+`next_page_token` on an exactly-full final page, and following it is `INVALID_ARGUMENT`. A 1,000 bp
+interval (3,000 variants, short last page) correctly omits the token; 1,024 bp (3,072 = six pages of
+512) does not. AIP-158 says an omitted token means no further pages, so a faithful client crashes on
+the one interval width that divides evenly. The SDK has the same loop and never trips it, because
+32 bp cannot fill a page. `score_interval` follows the token but also stops once the requested
+interval is covered, with an offline regression test.
+
+**Why the provider was not built.** Two reasons, neither of them the RPC:
+
+1. **It cannot be validated in one night.** Measured cost is ~1,091 SNVs/s, so a gene plus its
+   ±512 kb flanks is ~3.3 M SNVs and **~50 minutes per gene**. A drafting provider whose only
+   end-to-end test takes an hour per case is not something to land unattended.
+2. **Where the gene's coordinates come from is a design decision, not a detail.** The provider needs
+   a span before it can query one, and the tier has three candidates (the MANE lane, the Ensembl
+   snapshot, the module's own authored `gene`) with different currency and different failure modes.
+   `@gene-map-is-another-sources-attribution` says a source with no gene column is drafted through
+   another source's *per-record attribution*, never a span — and here AlphaGenome **is** the
+   attributing source, so the span is only a query hint and the attribution it returns is the claim.
+   Which of the three supplies the hint changes what a stale one does.
+
+**What still stands from the design**, unchanged and measured: gene attribution reaches **±512 kb**
+and stops dead beyond it (scores returned at +500 kb, nothing at +700 kb — the half-window of the
+model's 1 MB input); distal scores run **~10× lower** than at the gene, so a flat `--min-score`
+would silently keep only proximal variants and the **distance must be recorded beside the score**;
+and the lane needs a second source name, `alphagenome_atlas`, because `RNA_SEQ` output is ordinary
+non-commercial Output while the AVI artifact is the Permissive candidate — one `(source, layer)` key
+cannot carry two licence classes.
 
 ## RM195 — Permissive-class membership is unpinned, so AVI's `commercial_use` is `None`
 

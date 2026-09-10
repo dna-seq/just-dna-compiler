@@ -34,7 +34,38 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — RM193: the Atlas as a resolver, and a check that refuses to run unbounded
+## 2026-09-10 (latest) — the Atlas interval RPC works hand-built, and the reason it looked broken was one enum
+
+`AtlasClient.score_interval` lands, which is the half of the client RM192 deferred and the thing
+RM194 was waiting on. It is worth its own entry because what it cost was not what anyone expected.
+
+The blueprint recorded the interval RPC as unreachable from a hand-built client, needing "an
+`x-goog-fieldmask` header and 32 bp chunking". Measured against the live service:
+
+- **The field mask is optional.** The same interval answers identically without it — asserted as
+  equality of the two answers, not as "both calls succeeded".
+- **32 bp chunking is not a requirement.** A 128 bp interval answers in one call; the SDK's 32 bp
+  sub-intervals are how it parallelises, not what the protocol demands.
+- **`Interval.strand` was the whole thing.** The `Strand` enum has **no zero member** —
+  `STRAND_UNSPECIFIED = 0` is the proto3 default — so an `Interval` that omits `strand` goes on the
+  wire carrying a value the server rejects, and it rejects it as a bare `INVALID_ARGUMENT: Request
+  contains an invalid argument.` naming no field at all.
+- **A filter is effectively required**, which is a size limit rather than a rule: unfiltered, 32 bp
+  comes back as a **43 MB** message against a 4 MB receive default.
+
+**And an upstream bug, in the pagination.** The server returns a `next_page_token` on an
+*exactly-full final page*, and following it fails. A 1,000 bp interval — 3,000 variants, a short last
+page — correctly omits the token; 1,024 bp is 3,072, exactly six pages of 512, and page six carries
+one whose seventh request 400s. AIP-158 says an omitted token means there are no further pages, so a
+client that believes the token crashes on precisely the interval widths that divide evenly. The SDK's
+loop has the same shape and never trips it, because 32 bp cannot fill a page. `score_interval`
+follows the token *and* stops once the interval it asked for is covered, with an offline test that
+reproduces the lying token so this cannot come back as a live-only surprise.
+
+`Interval.start` is **0-based** while `Variant.position` next door is the 1-based VCF one, so the
+conversion happens at that boundary and callers of this module pass VCF positions throughout.
+
+## 2026-09-10 — RM193: the Atlas as a resolver, and a check that refuses to run unbounded
 
 `just-dna-enricher alphagenome check <spec>` cross-checks a module's variants against AlphaGenome's
 AVI scores. It reports and never repairs, and it exists for the three questions the nine-billion-row

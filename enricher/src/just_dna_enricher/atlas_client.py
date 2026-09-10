@@ -78,6 +78,48 @@ MAX_FLOAT32_QUANTILE = 1.0 - 2.0**-24
 MAX_REPRESENTABLE_PHRED = 72.24719895935549
 
 
+#: The response field mask the SDK sends. **Optional, measured** — the RPC answers without it — so it
+#: is a bandwidth choice rather than a protocol requirement: it trims the per-track metadata that a
+#: caller reading `scores`/`calibrated_scores` never looks at.
+LIST_FIELD_MASK: tuple[str, ...] = (
+    "interval",
+    "next_page_token",
+    "variant_scores.variant",
+    "variant_scores.scores.variant_scorer",
+    "variant_scores.scores.metadata.gene_scorers",
+    "variant_scores.scores.shape",
+    "variant_scores.scores.scores",
+    "variant_scores.scores.calibrated_scores",
+)
+
+#: How many variants one page carries, measured: a 1,024 bp interval comes back as 512 scores plus a
+#: `next_page_token`. Named so the pagination loop below is readable, never used as an assumption —
+#: the token is what decides whether there is more.
+OBSERVED_PAGE_SIZE = 512
+
+
+def _interval(chrom: str, start: int, end: int):
+    """A proto `Interval`, with `strand` set to a real member — and that is the whole trick.
+
+    **`Strand` has no zero member.** `STRAND_UNSPECIFIED = 0` is the proto3 default, so an `Interval`
+    that simply omits `strand` goes on the wire with a value the server rejects, and it rejects it as
+    a bare `INVALID_ARGUMENT: Request contains an invalid argument.` naming no field. That is what
+    made `ListDenseVariantScores` look unreachable from a hand-built client: the blueprint attributed
+    it to the missing field mask and to 32 bp chunking, and measurement on 2026-09-10 refuted both —
+    the mask is optional and a 128 bp interval answers in one call. Only the strand was wrong.
+
+    `start`/`end` are **0-based**, unlike `Variant.position` next door, which is the 1-based VCF one
+    (`@start-1based`). Two coordinate conventions in one proto file, so the conversion happens here
+    and callers of this module pass VCF positions throughout.
+    """
+    return dna_model_pb2.Interval(
+        chromosome=chrom,
+        start=start,
+        end=end,
+        strand=dna_model_pb2.STRAND_UNSTRANDED,
+    )
+
+
 class AtlasError(RuntimeError):
     """Base for every failure this client reports. No `grpc.RpcError` escapes past it."""
 
@@ -136,6 +178,17 @@ class VariantScore:
         return phred_from_quantile(self.quantile[0])
 
 
+@dataclass(frozen=True)
+class IntervalScore:
+    """One variant inside an interval, with the scorer block that came back for it."""
+
+    chrom: str
+    position: int
+    ref: str
+    alt: str
+    scores: tuple[VariantScore, ...]
+
+
 def phred_from_quantile(quantile: float) -> float:
     """`-10 log10(1 - q)`, the transform the published AVI file's `PHRED` column is.
 
@@ -177,6 +230,33 @@ def scorer_filter(*scorers: str) -> str:
     if not scorers:
         return ""
     return " OR ".join(f'scores.variant_scorer.name = "{s}"' for s in scorers)
+
+
+def interval_filter(
+    *, scorers: tuple[str, ...] = (), gene_names: tuple[str, ...] = ()
+) -> str:
+    """The AIP-160 filter an interval query needs, over scorers and/or attributed genes.
+
+    Two clauses ANDed, each an OR over its own members — the shape the SDK builds, reproduced here
+    because the filter is a *string* and is therefore the one part of the request a hand-built client
+    has to know rather than derive from the protos.
+
+    The gene clause is what makes a gene-scoped slice possible at all: the Atlas attributes a variant
+    to genes across the model's whole input window, so filtering by gene name is a server-side
+    selection rather than a coordinate range the caller guesses at.
+    """
+    clauses = []
+    if scorers:
+        clauses.append(
+            " OR ".join(f'scores.variant_scorer.name = "{s}"' for s in scorers)
+        )
+    if gene_names:
+        clauses.append(
+            " OR ".join(
+                f'scores.metadata.gene_scorers.metadata.name = "{g}"' for g in gene_names
+            )
+        )
+    return " AND ".join(f"({c})" for c in clauses)
 
 
 def _translate(error: grpc.RpcError, *, variant: str) -> AtlasError:
@@ -243,6 +323,88 @@ class AtlasClient:
             )
             for block in response.scores
         )
+
+    def score_interval(
+        self,
+        chrom: str,
+        start: int,
+        end: int,
+        *,
+        scorers: tuple[str, ...] = (),
+        gene_names: tuple[str, ...] = (),
+        field_mask: bool = True,
+    ) -> tuple[IntervalScore, ...]:
+        """Every scored variant in `[start, end)`, following `next_page_token` to the last page.
+
+        `start`/`end` are **1-based VCF positions**, converted to the proto's 0-based interval here
+        so this module speaks one coordinate convention throughout (`@start-1based`).
+
+        **A filter is effectively required, and that is a size limit rather than a rule.** Measured:
+        an unfiltered 32 bp interval answers with a 43 MB message and dies on the 4 MB client
+        default — `RESOURCE_EXHAUSTED: Received message larger than max`. So an unfiltered request is
+        not "slower", it fails, and the caller is told which knob to turn rather than left to read
+        a transport error.
+
+        Pagination, not chunking, is what bounds a page: a 1,024 bp interval comes back as 512
+        scores and a token. The SDK's 32 bp sub-intervals are its *parallelism* strategy, not a
+        protocol requirement — a 128 bp interval answers in one call.
+        """
+        if not scorers and not gene_names:
+            raise AtlasRefused(
+                f"{chrom}:{start}-{end}: an interval query needs a filter. Unfiltered, the Atlas "
+                "answers with every scorer for every variant — measured at 43 MB for 32 bp, against "
+                "a 4 MB default receive limit. Pass `scorers` and/or `gene_names`."
+            )
+        label = f"{chrom}:{start}-{end}"
+        metadata = self._metadata
+        if field_mask:
+            metadata = (*metadata, ("x-goog-fieldmask", ",".join(LIST_FIELD_MASK)))
+
+        request = atlas_service_pb2.ListDenseVariantScoresRequest(
+            interval=_interval(chrom, start - 1, end),
+            organism=dna_model_pb2.ORGANISM_HOMO_SAPIENS,
+            filter=interval_filter(scorers=scorers, gene_names=gene_names),
+        )
+        out: list[IntervalScore] = []
+        while True:
+            try:
+                response = self._stub.ListDenseVariantScores(request, metadata=metadata)
+            except grpc.RpcError as exc:
+                raise _translate(exc, variant=label) from exc
+            for entry in response.variant_scores:
+                out.append(
+                    IntervalScore(
+                        chrom=entry.variant.chromosome,
+                        position=entry.variant.position,
+                        ref=entry.variant.reference_bases,
+                        alt=entry.variant.alternate_bases,
+                        scores=tuple(
+                            VariantScore(
+                                scorer=block.variant_scorer.name,
+                                raw=unpack_float32(block.scores),
+                                quantile=unpack_float32(block.calibrated_scores),
+                                shape=tuple(block.shape),
+                            )
+                            for block in entry.scores
+                        ),
+                    )
+                )
+            if not response.next_page_token:
+                return tuple(out)
+            # **The server hands back a token on an exactly-full final page, and following it 400s.**
+            # Measured on 2026-09-10: a 1,000 bp interval is 3,000 variants over six pages and the
+            # short last page correctly omits the token, while a 1,024 bp interval is 3,072 — exactly
+            # six full pages of 512 — and page six carries a token whose seventh request comes back
+            # `INVALID_ARGUMENT`. That is AIP-158 violated in the one place a faithful client cannot
+            # survive it, and the SDK's own loop has the same shape; it never trips because the SDK
+            # only ever sends 32 bp sub-intervals, which cannot fill a page.
+            #
+            # So the token is followed but not *trusted* as the sole terminator: reaching the last
+            # base the caller asked for ends the walk too. Deriving it from the request rather than
+            # from a page-size constant keeps it right if the server's page size ever moves.
+            if out and max(score.position for score in out) >= end:
+                return tuple(out)
+            request.page_token = response.next_page_token
 
     def scorer_names(self) -> tuple[str, ...]:
         """Every scorer the Atlas serves. 22 of them at the time of writing."""
