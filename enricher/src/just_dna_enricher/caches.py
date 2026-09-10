@@ -295,6 +295,16 @@ class CacheLane:
     #: — shared rather than mirrored, because two spellings of one label do not fail, they simply
     #: never match.
     release_label: Callable[[Path], str | None] = _dataset_label
+    #: This lane's own publish command, for a lane that **cannot be reached by
+    #: `cache rebuild --publish`** (RM202). That loop walks lanes with a `rebuild` adapter, which is
+    #: every publishable lane but one: `alphagenome_avi` has a `publish_repo` and no adapter, because
+    #: its source is behind an eligibility gate and there is nothing for an unattended rebuild to
+    #: fetch. RM198 gave it the repo and left it unreachable — a field nothing could act on.
+    #:
+    #: Stated as a field rather than composed, for the reason `build_command` is one: a string an
+    #: operator is handed has to come from where the command is declared. The guard asserts the
+    #: biconditional — a lane that can publish is reachable by exactly one of the two routes.
+    publish_command: str | None = None
     #: The lanes this one is **derived from** (RM171). Empty for every lane that acquires its own
     #: bytes, which is all of them but `mitomap_miss`.
     #:
@@ -1009,6 +1019,7 @@ CACHE_LANES: list[CacheLane] = [
         rebuild=None,
         ensure=ensure_alphagenome_avi_snapshot,
         publish_repo=DEFAULT_ALPHAGENOME_AVI_REPO_ID,
+        publish_command="alphagenome publish",
         terms=ALPHAGENOME_AVI_TERMS,
         # **The lane that cannot acquire its own bytes.** Every other buildable lane's adapter starts
         # with a download; this one's input is 88.5 GB behind a sign-in whose eligibility clause is a

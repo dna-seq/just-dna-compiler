@@ -29,7 +29,7 @@ from just_dna_enricher.acmg import (
     verify_acmg_sf,
 )
 from just_dna_enricher.acmg import verification_record as acmg_record
-from just_dna_enricher.alphagenome_avi_build import AlphaGenomeBuildError
+from just_dna_enricher.alphagenome_avi_build import KNOT_FILENAME, AlphaGenomeBuildError
 from just_dna_enricher.alphagenome_avi_build import build_snapshot as build_alphagenome_snapshot
 from just_dna_enricher.alphagenome_check import (
     DEFAULT_REFINEMENT_CAP,
@@ -167,6 +167,7 @@ from just_dna_enricher.sequences import summarize_ref_mismatches
 from just_dna_enricher.strchive import StrchiveError, check_repeat_bands
 from just_dna_enricher.strchive_draft import StrchiveDraftError, draft_repeat_loci
 from just_dna_enricher.upload import (
+    DEFAULT_ALPHAGENOME_AVI_REPO_ID,
     DEFAULT_CLINPGX_REPO_ID,
     DEFAULT_CPIC_REPO_ID,
     DEFAULT_DRUG_LABELS_REPO_ID,
@@ -4536,6 +4537,61 @@ def _atlas_client_or_none():
         typer.secho(f"  the Atlas could not be reached ({exc}); nothing was refined.",
                     fg=typer.colors.YELLOW, err=True)
         return None
+
+
+@alphagenome_app.command("publish")
+def alphagenome_publish_(
+    snapshot: Path = typer.Argument(
+        repro_out("alphagenome_avi"), exists=True, file_okay=False,
+        help="The built snapshot directory. Defaults to where `alphagenome build` writes.",
+    ),
+    repo: str | None = typer.Option(
+        None, "--repo", help=f"Target HF dataset. Default: {DEFAULT_ALPHAGENOME_AVI_REPO_ID}.",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Show what would be uploaded. Reads the repo's file list; sends nothing.",
+    ),
+    message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
+) -> None:
+    """Publish the AVI snapshot to HuggingFace.
+
+    **Its own command because no other one can reach this lane** (RM202). `cache rebuild --publish`
+    walks lanes that have a `rebuild` adapter, and this lane cannot have one — its source is behind an
+    eligibility gate, so there is nothing for an unattended rebuild to fetch. RM198 gave the lane a
+    `publish_repo` and left it unreachable.
+
+    The upload is two commits and, above 5 GB, goes through the resumable uploader (RM199): the
+    payload first, then `release.json` — the description must never arrive before the bytes it
+    describes.
+    """
+    from just_dna_enricher.upload import plan_reference_snapshot, publish_reference_snapshot
+
+    target = repo or DEFAULT_ALPHAGENOME_AVI_REPO_ID
+    try:
+        if dry_run:
+            plan = plan_reference_snapshot(snapshot, target)
+            typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}:")
+            for name in plan.files:
+                size = (snapshot / name).stat().st_size if (snapshot / name).is_file() else 0
+                typer.echo(f"  {name}  ({size / 1e9:.2f} GB)" if size > 1e8 else f"  {name}")
+            typer.echo(
+                "  release.json is sent last, in its own commit — a description that arrives "
+                "before its bytes describes a snapshot nobody has."
+            )
+            return
+        plan = publish_reference_snapshot(snapshot, target, commit_message=message)
+    except (FileNotFoundError, PermissionError, ImportError, ValueError) as exc:
+        typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    if KNOT_FILENAME not in plan.files:
+        typer.secho(
+            f"  no {KNOT_FILENAME} in this snapshot — a puller would hold scores they cannot rank, "
+            "because PHRED is not stored. Rebuild with `alphagenome build`.",
+            fg=typer.colors.YELLOW, err=True,
+        )
+    typer.secho(
+        f"published: {snapshot} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN,
+    )
 
 
 if __name__ == "__main__":

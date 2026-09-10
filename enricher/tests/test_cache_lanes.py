@@ -238,6 +238,39 @@ def test_every_build_command_the_registry_names_is_one_the_cli_answers_to() -> N
         assert result.exit_code == 0, f"`{lane.build_command}` is not a command: {result.output}"
 
 
+def test_every_publishable_lane_can_actually_be_published() -> None:
+    """A `publish_repo` nothing can reach is a field, not a capability (RM202).
+
+    This is the guard the build side already had and the publish side did not, and the gap cost
+    exactly what it was shaped to cost: RM198 gave `alphagenome_avi` a `publish_repo`, asserted the
+    *field* was set, and shipped. `cache rebuild --publish` walks lanes with a `rebuild` adapter —
+    which is every publishable lane but that one, because its source is behind an eligibility gate
+    and there is nothing for an unattended rebuild to fetch. So the repo was wired and unreachable,
+    and the tests that passed were testing the registry's data rather than what an operator can run.
+
+    Two routes, and a lane that publishes must have exactly one: the rebuild loop, or a command of
+    its own. Walked against the real Typer tree, never a list — a second list has the first one's
+    failure mode.
+    """
+    runner = CliRunner()
+    for lane in CACHE_LANES:
+        if lane.publish_repo is None:
+            assert lane.publish_command is None, (
+                f"{lane.name} names a publish command but has no repo to publish to"
+            )
+            continue
+        assert (lane.rebuild is not None) != (lane.publish_command is not None), (
+            f"{lane.name} is publishable by {'both routes' if lane.rebuild else 'neither route'}: "
+            "it needs a rebuild adapter (so `cache rebuild --publish` reaches it) or its own "
+            "publish command, and exactly one of them"
+        )
+        if lane.publish_command:
+            result = runner.invoke(app, [*lane.publish_command.split(), "--help"])
+            assert result.exit_code == 0, (
+                f"`{lane.publish_command}` is not a command: {result.output}"
+            )
+
+
 # ── the rebuild endpoint ────────────────────────────────────────────────────────────────────────
 
 

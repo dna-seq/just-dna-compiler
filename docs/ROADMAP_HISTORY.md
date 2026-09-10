@@ -117,6 +117,40 @@ manifest models by the test helper `manifest_fields` already uses, not a second 
 boundary is on the field: presence of a path is all it says, and a value or membership predicate would
 be a separate field, audited per Principle 5 rather than grown onto this one.
 
+## RM202 — a `publish_repo` that nothing could reach, and the guard that was missing on one side
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 (`just-dna-enricher` only: one CLI command, one
+lane field, one guard) · **Owner** enricher · **Motivating case** the maintainer asked for the publish
+command and there wasn't one
+
+**What was wrong.** RM198 wired `alphagenome_avi`'s `publish_repo`, asserted the field was set, and
+shipped. `cache rebuild --publish` walks lanes that have a **`rebuild` adapter** — which is every
+publishable lane but this one, because its source sits behind an eligibility gate and there is nothing
+for an unattended rebuild to fetch. So the lane advertised a repo that no command could send anything
+to, and the only generic publisher was `clinvar publish`, which is the wrong name to hand an operator
+for AlphaGenome.
+
+**Why the tests passed.** They asserted the registry's *data* — `lane.publish_repo is not None`,
+`lane.unpublished is None` — and the one publish test called `plan_reference_snapshot` **directly**,
+bypassing the CLI. Nothing invoked a command. `@registry-completeness` is usually about a list that
+falls behind the set it lists; this is its neighbour: **a field can be set correctly and mean nothing,
+if no path acts on it.**
+
+**The guard already existed on the other side, which is the sharp part.**
+`test_every_build_command_the_registry_names_is_one_the_cli_answers_to` walks the real Typer tree for
+every lane's `build_command`, and it exists because `cache status` once printed two commands that do
+not exist. The publish side had no equivalent, so the same class of defect had one door open.
+
+**What shipped.** `just-dna-enricher alphagenome publish`, a `CacheLane.publish_command` field, and
+`test_every_publishable_lane_can_actually_be_published` — which asserts the **biconditional**: a lane
+with a `publish_repo` is reachable by a rebuild adapter **or** by its own publish command, exactly one
+of the two, and if it names a command that command answers `--help` in the real CLI. A lane that names
+a publish command with no repo fails too.
+
+Measured while scoping it: of nine lanes with a `publish_repo`, eight ride `cache rebuild --publish`
+and `alphagenome_avi` was the only unreachable one. The hole was exactly one lane wide, which is why
+nobody had met it.
+
 ## RM199 — the description is the last thing a publish sends
 
 **Severity** medium · **Status** ✅ shipped 2026-09-10 (`just-dna-enricher` only: a size threshold,
