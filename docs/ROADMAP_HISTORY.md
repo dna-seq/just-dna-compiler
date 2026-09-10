@@ -68,6 +68,55 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM201 — a declared correction said what a release did, never which modules it did it to
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-format` only: one
+optional field on `DeclaredChange`, one predicate, one filter on `RecompileAnswer`, three declarations
+filled; no parquet, manifest or vocabulary change) · **Owner** format · **Motivating case** S90
+(just-dna-registry, in CONSUMER_SUGGESTIONS_HISTORY.md), found adopting `needs_recompile` for a
+re-publish sweep
+
+**What it reproduced.** `DeclaredChange` had five fields and none of them stated reach. Over
+`0.6.6 → 0.7.0` the corrections are `gene_validity.classifications` (RM108) and `gene_metrics.parquet`
+plus `gene_metrics.signature` (RM110); each `detail` names the block it reaches in prose, and the model
+could not, so a sweep routing on `kind == "correction"` minted a fresh immutable PATCH for every module
+in a catalogue to repair a value most of them never carried. The consumer's two pre-checks were right
+too: `unmeasured` is a different axis (a module the sweep could not compare, not a change that applies
+to a subset), and `AUTHORED_ROW_DERIVED_FIELDS` cannot help because a compiled parquet is nothing a
+consumer can recompute locally.
+
+**Why the consumer was right to refuse the workaround.** `target` is spelled three ways — a dotted
+manifest path, a parquet filename, `file:column` — and reading its first segment as "the block a module
+must carry" works until a fourth spelling arrives, silently. That is a consumer re-deriving a rule
+from a field's spelling, and the rule is ours to state.
+
+**The shape, and the two candidates refused.** The consumer proposed `requires_block: str | None` with
+`None` meaning *every module*. Refused on the algebra: `None` is never a definite answer here, and the
+case that proves it is already in the table — RM121's `stats.genes` correction reached a real subset
+(modules whose lead table named no gene while another table did) that presence cannot spell, because
+every module carries the field. That correction must be able to say *unstated*, and a consumer must
+keep it; making `None` mean *every module* would make the honest answer and the definite one the same
+value. So `requires: tuple[str, ...] | None` — a conjunction of dotted manifest paths, spelled as
+`manifest_fields` spells them, `()` for every module, `None` for unstated. A prose `applies_when`
+beside `RosterEntry.condition` was the second candidate and was not taken: the roster's condition is
+checkable because `compilation.dropped_rows` shipped, and a prose-only reach here would be readable by an
+operator and filterable by nobody, which is the state the report describes.
+
+**A necessary condition, said out loud.** `("gene_metrics",)` over-approximates RM110's true reach —
+the snapshot route, `@constraint-two-releases` — in the safe direction, so `reaches()` is documented
+asymmetrically: `False` is the certain answer and the only one acted on, `True` is *not excluded by what
+the record states*, `None` is unstated. `declared_for` drops only `False`, the Kleene fold, because the
+two mistakes cost differently — a change kept needlessly is one wasted version number, bounded by the
+self-interval; a change dropped wrongly is a module serving a value we have said is wrong.
+
+**Forced rather than defaulted.** The record's own rule is that the measurement forces the declaration;
+this field gets the same treatment one level down: a test asserts, as an **equality**, that the
+corrections with an unstated reach are exactly RM121's pair, so a correction added without deciding its
+reach fails the suite instead of reading as unstated. Every required path is walked against the
+manifest models by the test helper `manifest_fields` already uses, not a second walker. The grammar's
+boundary is on the field: presence of a path is all it says, and a value or membership predicate would
+be a separate field, audited per Principle 5 rather than grown onto this one.
+
 ## RM199 — the description is the last thing a publish sends
 
 **Severity** medium · **Status** ✅ shipped 2026-09-10 (`just-dna-enricher` only: a size threshold,

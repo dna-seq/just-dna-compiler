@@ -16,9 +16,20 @@ to make impossible.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from just_dna_format.base import field_vocabularies
-from just_dna_format.manifest import ModuleManifest
+from just_dna_format.integrity import build_artifact
+from just_dna_format.manifest import (
+    Compilation,
+    Display,
+    GeneMetrics,
+    GeneValidity,
+    Identity,
+    ModuleManifest,
+    Stats,
+)
 from just_dna_format.release_records import (
     AUTHORED_ROW_DERIVED_FIELDS,
     DROPPED_ROWS_CONDITION,
@@ -28,6 +39,7 @@ from just_dna_format.release_records import (
     RELEASE_RECORDS,
     DeclaredChange,
     ReleaseRecord,
+    manifest_carries,
     needs_recompile,
     release_version,
 )
@@ -546,3 +558,121 @@ def test_absent_and_uncovered_are_both_unknown_but_not_the_same_answer() -> None
     assert absent.compiled_under is None
     assert uncovered.compiled_under == "2.0.0"
     assert absent.span[0] is None and uncovered.span[0] == "2.0.0"
+
+
+# ── S90 / RM201: a declaration states which modules it can reach ─────────────────────────────────
+
+
+def _manifest(tmp_path: Path, *, blocks: bool) -> ModuleManifest:
+    """A real manifest through the real constructor — with or without the two optional blocks."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "weights.parquet").write_bytes(b"w")
+    return ModuleManifest(
+        identity=Identity(
+            namespace="just-dna-seq",
+            name="reach_probe",
+            version="1.0.0",
+            canonical_id="just-dna-seq/reach_probe@1.0.0",
+        ),
+        display=Display(title="Reach probe", description="S90", report_title="Reach probe"),
+        stats=Stats(variant_count=1, study_count=0, gene_count=1, genes=["PALB2"], categories=[]),
+        compilation=Compilation(compile_success=True, compiler_version="just-dna-compiler 0.6.1"),
+        artifact=build_artifact(tmp_path, ["weights.parquet"]),
+        gene_metrics=GeneMetrics(row_count=1, genes=["PALB2"]) if blocks else None,
+        gene_validity=GeneValidity(row_count=1, genes=["PALB2"]) if blocks else None,
+    )
+
+
+def _shipped_corrections() -> dict[tuple[str, str], DeclaredChange]:
+    return {
+        (version, change.target): change
+        for version, record in RELEASE_RECORDS.items()
+        for change in record.declared
+        if change.kind == "correction"
+    }
+
+
+def test_every_required_path_resolves_through_the_manifest_models() -> None:
+    """A requirement naming a path the manifest cannot have would exclude nothing, forever."""
+    for version, record in RELEASE_RECORDS.items():
+        for change in record.declared:
+            for path in change.requires or ():
+                assert _manifest_path_exists(path), f"{version}: {change.target} requires {path}"
+
+
+def test_the_corrections_with_an_unstated_reach_are_exactly_the_two_presence_cannot_spell() -> None:
+    """An EQUALITY, so a correction added without deciding its reach fails here rather than
+    defaulting to unstated. RM121's pair is the one shape the grammar cannot express: every module
+    carries `stats.genes`, and the wrong value sat on the modules whose lead table named no gene."""
+    unstated = {key for key, change in _shipped_corrections().items() if change.requires is None}
+    assert unstated == {("0.6.6", "stats.genes"), ("0.6.6", "stats.gene_count")}
+
+
+def test_a_scoped_correction_is_excluded_by_a_manifest_without_its_block_and_kept_by_one_with_it(
+    tmp_path: Path,
+) -> None:
+    bare = _manifest(tmp_path / "bare", blocks=False)
+    full = _manifest(tmp_path / "full", blocks=True)
+    corrections = _shipped_corrections()
+    scoped = {key: change for key, change in corrections.items() if change.requires is not None}
+    assert scoped, "the 0.7.0 record declares three scoped corrections"
+    for key, change in scoped.items():
+        assert change.reaches(bare) is False, key
+        assert change.reaches(full) is True, key
+    for key, change in corrections.items():
+        if change.requires is None:
+            assert change.reaches(bare) is None and change.reaches(full) is None, key
+
+
+def test_declared_for_drops_only_a_certain_miss_and_keeps_the_unstated(tmp_path: Path) -> None:
+    """The Kleene fold a registry acts on: `None` is kept, because dropping it leaves a module
+    serving a value we have said is wrong, and keeping it costs one version number."""
+    bare = _manifest(tmp_path / "bare", blocks=False)
+    full = _manifest(tmp_path / "full", blocks=True)
+    answer = needs_recompile("just-dna-compiler 0.6.1", "0.7.0")
+    assert answer.complete
+    kept_bare = {(c.target, c.kind) for c in answer.declared_for(bare)}
+    kept_full = {(c.target, c.kind) for c in answer.declared_for(full)}
+    everything = {(c.target, c.kind) for c in answer.declared}
+    assert kept_full == everything
+    assert everything - kept_bare == {
+        ("gene_validity.classifications", "correction"),
+        ("gene_metrics.parquet", "correction"),
+        ("gene_metrics.signature", "correction"),
+    }
+    assert {c.target for c in answer.declared_for(bare) if c.kind == "correction"} == {
+        "stats.genes",
+        "stats.gene_count",
+    }
+
+
+def test_the_model_and_its_json_answer_alike(tmp_path: Path) -> None:
+    """A consumer holding `json.load(manifest.json)` gets the same predicate as one holding the model."""
+    for blocks in (False, True):
+        manifest = _manifest(tmp_path / str(blocks), blocks=blocks)
+        as_json = manifest.model_dump(mode="json")
+        for path in ("gene_metrics", "gene_validity", "gene_validity.classifications", "stats.genes",
+                     "identity.version_coerced_from", "no_such_block", "stats.no_such_leaf"):
+            assert manifest_carries(manifest, path) == manifest_carries(as_json, path), (blocks, path)
+        assert manifest_carries(manifest, "gene_metrics") is blocks
+        assert manifest_carries(manifest, "gene_validity.classifications") is blocks
+        assert manifest_carries(manifest, "stats.genes") is True
+        # An unset optional leaf is absent, the same as an absent block.
+        assert manifest_carries(manifest, "identity.version_coerced_from") is False
+
+
+def test_an_empty_requirement_reaches_every_module_and_is_not_unstated(tmp_path: Path) -> None:
+    bare = _manifest(tmp_path, blocks=False)
+    everywhere = DeclaredChange(axis="content_signature", target="content_signature",
+                                kind="correction", detail="synthetic", requires=())
+    unstated = DeclaredChange(axis="content_signature", target="content_signature",
+                              kind="correction", detail="synthetic")
+    assert everywhere.reaches(bare) is True
+    assert unstated.reaches(bare) is None
+
+
+def test_a_requirement_that_is_not_a_dotted_path_is_refused() -> None:
+    for bad in ("", "gene_metrics.", ".genes", "a..b"):
+        with pytest.raises(ValidationError, match="dotted manifest paths"):
+            DeclaredChange(axis="manifest_fields", target="stats.genes", kind="correction",
+                           detail="synthetic", requires=(bad,))

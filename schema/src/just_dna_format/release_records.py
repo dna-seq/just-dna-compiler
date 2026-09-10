@@ -39,12 +39,15 @@ outputs** — the manifest, the parquet schemas and the parquet bytes. Enricher-
 unchanged.
 """
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from just_dna_format.base import vocabulary
 from just_dna_format.identity import parse_version
+from just_dna_format.manifest import ModuleManifest
 from just_dna_format.vocab import (
     VALID_RELEASE_CHANGE_KINDS,
     VALID_RELEASE_OUTPUT_AXES,
@@ -121,16 +124,80 @@ class DeclaredChange(BaseModel):
         default=None,
         description="The roadmap item behind it (`RM120`), when there is one.",
     )
+    requires: tuple[str, ...] | None = Field(
+        default=None,
+        description=(
+            "Which modules the change can reach, as a NECESSARY condition: dotted manifest paths "
+            "(`gene_metrics`, spelled as `manifest_fields` spells them) a module must carry non-null "
+            "for the change to apply — all of them. `()` says every module; `None` says the reach "
+            "could not be stated in this grammar, and a consumer treats the change as reaching any "
+            "module. Presence of a path is the whole grammar: a value or membership predicate "
+            "would be a separate field (S90, RM201)."
+        ),
+    )
 
     @field_validator("axis")
     @classmethod
     def _check_axis(cls, value: str) -> str:
         return check_vocab(value, VALID_RELEASE_OUTPUT_AXES, "axis")
 
+    @field_validator("requires")
+    @classmethod
+    def _check_requires(cls, value: tuple[str, ...] | None) -> tuple[str, ...] | None:
+        if value is None:
+            return None
+        for path in value:
+            if not path or any(not segment for segment in path.split(".")):
+                raise ValueError(f"requires must name dotted manifest paths, got: {path!r}")
+        return tuple(value)
+
+    def reaches(self, manifest: ModuleManifest | Mapping[str, Any]) -> bool | None:
+        """Whether this change can reach the module `manifest` describes — three answers.
+
+        `False` is the certain one and the only one a consumer acts on: the manifest lacks a path
+        the change requires, so the value this change corrected or added was never in that module.
+        `True` means *not excluded by what the record states* — `requires` is a necessary condition,
+        not the exact reach. RM110 is the worked case: it reaches modules whose `gene_metrics` came
+        from the snapshot route, and `("gene_metrics",)` over-approximates that in the safe
+        direction. `None` means the record does not state the reach at all (RM121's `stats.genes`
+        correction reached modules whose lead table named no gene, which presence cannot spell), and
+        a consumer keeps the change — the house algebra, where unknown is never `False`.
+
+        The predicate lives here rather than in a consumer because the grammar is ours (S90): a
+        registry reading `target`'s first segment would break the day a target is spelled some
+        third way, and would be re-deriving the rule from a field's spelling.
+        """
+        if self.requires is None:
+            return None
+        return all(manifest_carries(manifest, path) for path in self.requires)
+
     @field_validator("kind")
     @classmethod
     def _check_kind(cls, value: str) -> str:
         return check_vocab(value, VALID_RELEASE_CHANGE_KINDS, "kind")
+
+
+_MISSING = object()
+
+
+def manifest_carries(manifest: ModuleManifest | Mapping[str, Any], path: str) -> bool:
+    """Whether a manifest carries `path` non-null — the one predicate `DeclaredChange.requires` uses.
+
+    Walks the dotted path block by block, over the pydantic model a consumer gets from
+    `read_manifest` or over the plain mapping they get from `json.load`, so the two spellings of a
+    manifest answer alike. A block that is `None` (an optional block the module never carried) fails
+    the walk at that segment; a leaf that is `None` is absent too, because the record's `manifest_fields`
+    grammar names published values and an unset optional field publishes none.
+    """
+    cursor: Any = manifest
+    for segment in path.split("."):
+        if isinstance(cursor, Mapping):
+            cursor = cursor.get(segment, _MISSING)
+        else:
+            cursor = getattr(cursor, segment, _MISSING)
+        if cursor is _MISSING or cursor is None:
+            return False
+    return True
 
 
 class ReleaseRecord(BaseModel):
@@ -314,6 +381,17 @@ class RecompileAnswer:
     @property
     def additions(self) -> tuple[DeclaredChange, ...]:
         return tuple(change for change in self.declared if change.kind == "addition")
+
+    def declared_for(self, manifest: ModuleManifest | Mapping[str, Any]) -> tuple[DeclaredChange, ...]:
+        """The declarations that can reach the module `manifest` describes (S90, RM201).
+
+        Drops a change only where `reaches` answers `False` — a stated requirement the manifest
+        does not meet. A change whose reach is unstated (`None`) is **kept**, not dropped: the
+        registry that filters `corrections` by this spends an immutable PATCH per module it keeps,
+        and the cost of keeping one it did not need is one version number, where the cost of
+        dropping one it needed is a module serving a value we have said is wrong.
+        """
+        return tuple(change for change in self.declared if change.reaches(manifest) is not False)
 
 
 def _unknown_axes() -> dict[str, bool | None]:
@@ -645,6 +723,10 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
                     "is serving it still."
                 ),
                 item="RM121",
+                # `requires` stays None on purpose (S90): the wrong value sat on modules whose
+                # lead table named no gene while another table did, and presence of a manifest
+                # path cannot spell that — every module carries `stats.genes`. Unstated, so a
+                # consumer keeps it for every module, which is the conservative arm.
             ),
             DeclaredChange(
                 axis="manifest_fields",
@@ -773,6 +855,7 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
                     "classifications, so the field is unchanged there."
                 ),
                 item="RM108",
+                requires=("gene_validity",),
             ),
             DeclaredChange(
                 axis="manifest_fields",
@@ -802,6 +885,9 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
                     "100% of snapshot rows where 3.9% are. One row in our corpus (`hboc_palb2`)."
                 ),
                 item="RM110",
+                # A necessary condition, not the reach: the snapshot route is what it reaches,
+                # and a module whose block came from the live route is kept, not excluded.
+                requires=("gene_metrics",),
             ),
             DeclaredChange(
                 axis="manifest_fields",
@@ -814,6 +900,7 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
                     "same modules."
                 ),
                 item="RM110",
+                requires=("gene_metrics",),
             ),
             DeclaredChange(
                 axis="parquet_schema",

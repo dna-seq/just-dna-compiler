@@ -493,6 +493,13 @@ Both spellings of a version are accepted — a bare `0.7.0` and the stamped
   loop over stored manifests survives one that stamped nothing. A present but unreadable stamp
   (`"0.7"`, `"v0.7.0"`, a trailing note) still raises `ValueError`, now quoting the whole stamp. Two
   fields widened to `str | None`: `RecompileAnswer.compiled_under` and `span[0]`.
+- **A declaration says which modules it can reach (S90, RM201).** `DeclaredChange.requires` names the
+  dotted manifest paths a module must carry for the change to apply — `("gene_metrics",)` on RM110's
+  corrections, `("gene_validity",)` on RM108's — and `change.reaches(manifest)` evaluates it for you,
+  three-valued: `False` is the only answer to act on (skip the module), `True` is *not excluded*, and
+  `None` is *unstated*, which a sweep keeps. `answer.declared_for(manifest)` is that filter over the
+  whole answer; `answer.corrections` after it is the set worth an immutable PATCH. Records written
+  before the field read `None` on every row, so a consumer ignoring it keeps today's behaviour exactly.
 
 ---
 

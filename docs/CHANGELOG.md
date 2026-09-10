@@ -34,7 +34,32 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-11 (latest) — RM200: the API has expression direction, and the scorer that looked most useful does not survive being measured
+## 2026-09-11 (latest) — RM201: a declared correction now says which modules it can reach
+
+`just-dna-format` only, inside the uncut 0.7.0. A registry adopting `needs_recompile` for its
+re-publish sweep reported (S90) that a correction declared for `gene_metrics.parquet` re-published every
+module in its catalogue, because nothing in `DeclaredChange` could say the change reaches only modules
+carrying that block — and it refused, correctly, to read the rule out of `target`'s first segment,
+since that is a consumer re-deriving our grammar from a field's spelling.
+
+- **`DeclaredChange.requires`** — an optional tuple of dotted manifest paths a module must carry
+  non-null for the change to apply, a *necessary* condition rather than the exact reach. `()` means
+  every module and `None` means unstated; the three scoped corrections in the 0.7.0 record now carry
+  `("gene_validity",)` (RM108) and `("gene_metrics",)` (RM110), and RM121's `stats.genes` pair stays
+  `None` on purpose, because every module carries the field and presence cannot spell "the modules whose
+  lead table named no gene".
+- **The predicate is ours.** `DeclaredChange.reaches(manifest)` is three-valued — `False` is the only
+  answer a consumer acts on — over the pydantic manifest or the mapping `json.load` returns alike
+  (`manifest_carries` is the walk); `RecompileAnswer.declared_for(manifest)` keeps everything but a
+  certain miss, so an unstated reach costs a version number rather than a wrong value left standing.
+- **Forced, not defaulted.** A test asserts as an equality which shipped corrections leave `requires`
+  unstated, so a future correction added without deciding its reach fails in the suite. Every required
+  path is walked against the manifest models, the same way `manifest_fields` already is.
+
+Additive: a new optional field on a package-level record, minor-legal, and a consumer that ignores it
+keeps the behaviour it has. Docs: SCHEMAS § The release record, INTEGRATION_0_7 § 2.8.
+
+## 2026-09-11 — RM200: the API has expression direction, and the scorer that looked most useful does not survive being measured
 
 The shipped AVI artifact is one number per variant with the sign discarded. The Atlas serves
 twenty-two scorers, and nobody had asked which of the other twenty-one a module could take. Measured

@@ -113,6 +113,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S87** overlay `reason` inside `content_signature` — accepted, RM180
 - **S88** `needs_recompile` crashed on an unstamped version — accepted, RM183
 - **S89** `CacheLane` lacked its override variable — accepted, RM184
+- **S90** a declared correction could not say which modules it reaches — accepted, RM201
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -7826,3 +7827,92 @@ resolver already passes to `_resolve_named_cache`, and `None` for a lane steered
 base. Nothing has to read it for the field to pay for itself: the registry's stated purpose is that a
 consumer stops keeping its own copy of what the lanes are, and the variable is the one attribute
 where that has not happened yet.
+
+# just-dna-registry, 2026-09-11 — a correction with no stated reach
+
+## S90 — a declared change says what a release did, never which artifacts it did it to
+
+**Status — accepted and shipped 2026-09-11 in the uncut 0.7.0 as
+[RM201](ROADMAP_HISTORY.md#rm201--a-declared-correction-said-what-a-release-did-never-which-modules-it-did-it-to).**
+Reproduced: `DeclaredChange` had five fields and none stated reach; the three scoped corrections named
+their block in `detail` prose and the model could not. Both of your pre-checks held — `unmeasured` is a
+different axis, and the roster cannot recompute a compiled parquet. Your refusal to read `target`'s
+first segment was the right call, and the predicate is now ours. What shipped is your candidate with
+one change of algebra: `DeclaredChange.requires: tuple[str, ...] | None` — dotted manifest paths a
+module must carry non-null, spelled as `manifest_fields` spells them, **all of them** — where `()` means
+every module and `None` means *unstated*, never *every module*. The case that decided it is already in
+the table: RM121's `stats.genes` correction reached a real subset (modules whose lead table named no
+gene while another table did) that presence cannot spell, because every module carries the field. It
+must be able to say unstated, and you must keep it; `None` as *every module* would give the honest
+answer and the definite one the same value. Behaviour for you is identical either way. The 0.7.0
+record now carries `("gene_validity",)` on RM108's correction and `("gene_metrics",)` on RM110's two;
+RM121's pair stays `None`, and a test asserts that set as an **equality**, so a future correction added
+without deciding its reach fails in our suite rather than defaulting to unstated. One asymmetry to hold
+onto: `requires` is a **necessary** condition, not the exact reach — `("gene_metrics",)` over-
+approximates RM110's *snapshot route* in the safe direction — so `change.reaches(manifest)` answers
+`False` (a required path is absent; the certain answer, the only one to act on), `True` (not excluded
+by what the record states) or `None` (unstated), over the pydantic manifest or the `json.load` mapping
+alike. **What to do now:** replace your filter with
+`[c for c in answer.declared_for(manifest) if c.kind == "correction"]` — `declared_for` drops only a
+`False` and keeps `None`, which is the fold you already argued for; nothing else about the call changed,
+and records written before the field read `None` on every row. <!-- triaged: 0.7.0 · sha a313b2e020d8 -->
+
+Adopting `release_records` in `just-dna-registry` 0.24 (the registry that publishes and re-publishes
+compiled modules). `needs_recompile` is exactly the derivation we had been reconstructing from version
+comparisons, and the `correction` / `addition` split is the part we could not have computed ourselves —
+we route on it: a correction means a value we published is wrong and is worth an immutable PATCH per
+affected module, an addition means a field was absent and is not.
+
+**What we ran.** For every published version, `needs_recompile(stamped_compiler, installed)` and then
+act on `answer.declared` filtered to `RECOMPILE_DRIVING_AXES` and `kind == "correction"`.
+
+**What we expected.** To re-publish the modules a correction actually reaches.
+
+**What happens.** We re-publish all of them. Over `0.6.6 → 0.7.0` the corrections are
+`gene_validity.classifications` (RM108), `gene_metrics.parquet` and `gene_metrics.signature` (RM110).
+All three are real and all three are narrow: RM110's own detail says it moves the signature "on any
+module compiled from the gnomAD v4.1 constraint snapshot", and RM108's applies to a module carrying a
+re-curated ClinGen claim. A module with no `gene_metrics` block and no `gene_validity` block is
+untouched by both — and nothing in `DeclaredChange` lets a consumer say so, so the sweep mints a fresh
+PATCH for every module in the catalog to repair a value most of them never carried. Published versions
+are immutable here, so each of those is permanent, and each one spends a version number.
+
+We are shipping it that way, deliberately, because the alternative is worse: the false positives are
+bounded at one wasted PATCH per module ever (the successor's interval is the self-interval, which
+declares nothing and converges), while guessing at applicability and guessing wrong leaves a module
+serving a value you have told us is wrong. So this is not blocking us.
+
+**What we did about it meanwhile.** Nothing, and we want to say why rather than leave it as an
+omission. `target` is documented as "a dotted manifest path, a parquet file or `file:column`", so we
+could read its first segment and check whether the manifest carries that block. We are not doing it:
+that is a consumer re-deriving the applicability rule from a field's spelling, it would break the day a
+target is spelled some third way, and our own rulebook forbids discriminating on a string where a
+structured member could exist. It is your grammar, so the predicate should be yours.
+
+**A candidate, and it is one you have already built one struct over.** `RosterEntry` carries
+`condition` — free prose naming when its recompute recipe holds. A `DeclaredChange.applies_when`, even
+as prose, would be readable by a human operator deciding whether to run a sweep. What would let a
+consumer *filter* is narrower and probably cheap, since the information is in the change already:
+
+```
+DeclaredChange(
+    axis="parquet_bytes",
+    target="gene_metrics.parquet",
+    kind="correction",
+    requires_block="gene_metrics",     # the manifest block a module must carry to be affected
+    detail="RM110: ...",
+)
+```
+
+`requires_block=None` would mean *every module* and would be the right default, so nothing already
+written changes meaning and no record has to be revised. A consumer that ignores the field keeps
+today's behaviour exactly.
+
+**One thing we checked before filing, in case it saves you the same look.** This is not
+`unmeasured` doing its job: `cyp2c9_warfarin_grch37` is genuinely unmeasured for `0.7.0` and we treat
+it as unknown, which is a different axis from a change that *was* measured and applies to a subset.
+Nor is it answerable from `AUTHORED_ROW_DERIVED_FIELDS` — that roster says which fields a consumer can
+recompute from stored inputs, and `gene_metrics.parquet` is a compiled parquet nothing local can
+recompute, which is the whole reason we are leaning on the record for it.
+
+— just-dna-registry, 2026-09-11

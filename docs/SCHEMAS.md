@@ -2640,6 +2640,22 @@ or `""`, or whitespace — answers every axis `None` with `complete=False`, `com
 present and unreadable is a different state and still raises `ValueError`, quoting the whole stamp:
 absent is unknown, malformed is a caller's bug.
 
+**A declaration states which modules it can reach (S90, RM201).** `DeclaredChange.requires` is a tuple
+of dotted manifest paths, spelled as `manifest_fields` spells them, that a module must carry non-null
+for the change to apply — a **necessary** condition, never the exact reach. `("gene_metrics",)` on
+RM110's two corrections over-approximates *the snapshot route* in the safe direction; `()` says every
+module; `None` says the reach could not be stated in this grammar at all, which is what RM121's
+`stats.genes` correction is — every module carries the field, and the wrong value sat on the ones whose
+lead table named no gene. Presence of a path is the whole grammar, and a value or membership predicate
+would be a separate field rather than a second spelling of this one. The predicate is ours rather than
+the consumer's: `DeclaredChange.reaches(manifest)` answers `False` (a required path is absent — the
+certain answer, the one a registry acts on), `True` (not excluded by what the record states) or `None`
+(unstated), over the pydantic manifest or the mapping `json.load` returns alike, and
+`RecompileAnswer.declared_for(manifest)` drops only the `False`s, because a correction kept needlessly
+costs one version number and a correction dropped wrongly leaves a module serving a value we have said
+is wrong. A test asserts, as an equality, which shipped corrections leave `requires` unstated — so a
+correction added without deciding its reach fails rather than defaulting to unstated.
+
 A record must answer **every** axis (the validator asserts an equality over the vocabulary, not a
 subset), and may answer `None` where a release could not measure one — which is how an axis added
 later stays honest about the intervals before it.
