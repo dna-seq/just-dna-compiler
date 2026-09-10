@@ -348,6 +348,12 @@ class AtlasClient:
         Pagination, not chunking, is what bounds a page: a 1,024 bp interval comes back as 512
         scores and a token. The SDK's 32 bp sub-intervals are its *parallelism* strategy, not a
         protocol requirement — a 128 bp interval answers in one call.
+
+        **The token cannot be trusted on its own**, and that is upstream's bug rather than a
+        precaution: the server returns one on an *exactly-full final page*, and the next request
+        comes back `INVALID_ARGUMENT`. So the walk also stops once the requested interval is
+        covered. The loop below has the measurement; a caller reading only this docstring would
+        otherwise re-derive the crash.
         """
         if not scorers and not gene_names:
             raise AtlasRefused(

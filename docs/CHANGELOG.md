@@ -34,7 +34,41 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — the Atlas interval RPC works hand-built, and the reason it looked broken was one enum
+## 2026-09-10 (latest) — the artifact is 34.2 GB, and the 43 GB was the tape measure
+
+A correction to the RM191 entries below, and the reason it gets its own heading is that the mistake
+generalises further than the number does.
+
+The first genome-wide build measured **4.878 B/row → 43.0 GB**, against the 34.4 GB the design had
+projected. That went into RM191's history entry, into a new RM197, and into a sentence saying the
+design's figure "reproduces in neither layout". **All of it was wrong, and the defect was in the
+thing doing the measuring.**
+
+The builder assembled each contig with `scan_parquet(...).sink_parquet(...)` — the memory-cheap way
+to concatenate — which fragments the result into one arrow chunk per morsel: **1,432 of them for
+chr22**. Parquet writes at least one row group per chunk, and a sorted `pos` column only
+delta-encodes *within* a row group. Varying nothing else on the same frame:
+
+| arrow chunks | B/row | genome-wide | `pos` alone |
+| ---: | ---: | ---: | ---: |
+| 1–64 | 3.871 | 34.1 GB | 1.249 |
+| 128 | 3.904 | 34.4 GB | — |
+| **1,432** | **4.892** | **43.1 GB** | **2.067** |
+
+Assembly now reads the chunk files in bounded groups, rechunks each group — one small copy at a
+time, rather than a 14 GB rechunk of chr1 for no gain — and the same contig writes at **3.882 B/row,
+34.2 GB**.
+
+**Two things worth carrying out of it.** Setting `row_group_size` explicitly is *worse at every
+value tried* (4.7–5.1 B/row against 3.88): the default adaptive sizing is what responds to the data,
+so the obvious knob moves it the wrong way. And what actually governs is **rows per chunk, not chunk
+count** — measured on two different slices, the cliff sits near twenty-odd thousand rows per chunk
+either way, so a cap expressed in chunks is data-dependent. The builder carries both.
+
+The lesson is the one this round keeps finding, pointed the other way: a measurement disagreed with
+a document, the document was assumed wrong, and **the disagreement was in the instrument**.
+
+## 2026-09-10 — the Atlas interval RPC works hand-built, and the reason it looked broken was one enum
 
 `AtlasClient.score_interval` lands, which is the half of the client RM192 deferred and the thing
 RM194 was waiting on. It is worth its own entry because what it cost was not what anyone expected.
@@ -135,11 +169,8 @@ with `raw_score_e5 / 1e5` disagrees with `float(printed)` on **53% of rows** —
 second time and lands one ulp away. Compare in the integer domain (`score >= 0.1` is
 `raw_score_e5 >= 10_000`) and it never arises.
 
-**Two figures from the proposal did not survive measurement**, and both are recorded rather than
-worked around. The artifact re-encodes to **43.0 GB** in the shipped one-row-per-SNV layout, not the
-34.4 GB the design quoted; a wide-by-position layout measures **29.7 GB**, so that deferred item now
-carries a number instead of "unmeasured". And `pos` alone costs 2.067 B/row for a monotone column of
-triplets, which is where the gap sits.
+**The artifact is 34.2 GB**, which is the figure the design quoted — see the entry above for why
+this said 43.0 GB for several hours and what the difference was.
 
 **Absence stays row-absence.** AVI covers about 95% of the assembly and writes 672,931 genuine
 zeros, so an unscored position has no row while a scored-zero position has a row holding zero.

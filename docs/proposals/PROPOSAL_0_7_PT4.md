@@ -382,6 +382,9 @@ File each as an `RMn` in ROADMAP if it becomes load-bearing:
 - A distance-aware threshold for RM194's distal variants.
 - Whether `PHRED` should ever be materialised for a thresholded export, and if so, whether it
   carries the interval or a point.
-- Wide-by-position layout for AVI (saved 17% on splicing; unmeasured here). **Measured
-  2026-09-10 while building RM191, and filed as RM197: 4.878 B/row long against 3.371 wide on
-  chr22, a 31% saving — and the 34.4 GB this file quotes reproduces in neither layout.**
+- Wide-by-position layout for AVI (saved 17% on splicing; unmeasured here). **Measured 2026-09-10
+  while building RM191 and filed as RM197: 3.882 B/row long against 3.371 wide on chr22, so a ~13%
+  question rather than a forcing one.** This line briefly said 31%, against a 4.878 B/row baseline
+  that was the *builder's* `sink_parquet` fragmenting the delta encoding rather than the layout's
+  cost — the 34.4 GB this file quotes was right, and the corrected build lands at 34.2. The episode
+  is `@a-disagreement-with-a-document-may-be-in-the-instrument`.

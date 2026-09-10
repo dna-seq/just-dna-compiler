@@ -3727,3 +3727,50 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   version read that as an outage and died on the first variant of the first real module), and **`pvalue: 0.0`
   is an underflow the source really publishes** (withhold the queryable number, keep the verbatim string,
   keep the row — an early version discarded whole associations over one derived column).
+
+- `@a-disagreement-with-a-document-may-be-in-the-instrument` — **When a fresh measurement contradicts
+  a recorded one, suspect the new instrument before the old document.** RM191's first genome-wide
+  build measured the AVI artifact at 4.878 B/row (43.0 GB) against the 34.4 GB the design projected.
+  That went into a ROADMAP_HISTORY entry, into a newly-filed RM197, into a CHANGELOG entry and into
+  the CLAUDE.md doc map — all four asserting the design's figure "reproduces in neither layout",
+  before anyone asked why a builder would disagree with a sizing done from the same bytes.
+
+  It was the builder. Assembly used `scan_parquet(...).sink_parquet(...)`, the memory-cheap way to
+  concatenate chunk files, which fragments the output into one arrow chunk per morsel — **1,432 of
+  them for chr22**. Parquet writes at least one row group per arrow chunk, and a sorted `pos` column
+  only delta-encodes *within* a row group, so the fragmentation quietly destroyed the encoding that
+  makes the artifact small. `pos` alone: **1.249 B/row at one chunk, 2.067 at 1,432.** Varying
+  nothing else, 1–64 chunks give 3.871 B/row, 128 give 3.904 (the design's 34.4 GB exactly), and
+  1,432 give 4.892. Repaired, the same contig writes **3.882 B/row → 34.2 GB**.
+
+  Three operative rules come out of it, and the third is the one to remember:
+
+  * **Do not set `row_group_size` to fix a size problem.** Every explicit value measured is worse
+    than not setting it — 4.735 at 250k, 4.835 at 1M, 5.019–5.061 at 4–5M, against 3.88 on the
+    default. The adaptive sizing is what responds to the data; the obvious knob moves it backwards.
+  * **What governs is rows per chunk, not chunk count.** Measured twice on different slices, the
+    cliff sits between 128 and 1,432 chunks on 117 M rows and between 512 and 1,432 on 30 M — about
+    twenty-odd thousand rows per chunk in both. A cap expressed in chunks is data-dependent; a floor
+    expressed in rows per chunk is not, and `alphagenome_avi_build` ships both.
+  * **A fresh number that contradicts a considered one is a hypothesis about the instrument first.**
+    This round was run under a standing rule of *measured, not inferred*, against a probe document
+    that had already lost four claims to later measurement — and the rule made contradicting the
+    document feel like the disciplined move. It is only disciplined once the measuring path has been
+    checked. Reproducing the old number under the new instrument is what would have caught it in
+    minutes: 128 chunks lands on 34.4 GB exactly.
+
+- `@two-agents-in-one-tree-cannot-use-name-matched-process-cleanup` — **Kill by process group id,
+  never by `pkill -f`/`pkill -x` on a name.** Two Claude sessions sharing this working tree ran
+  long jobs against the same 88.5 GB artifact on the same day: one had twelve `tabix` streams for a
+  genome-wide build, the other four for a ClinVar join. `pkill -x tabix` from either would have
+  taken both, and neither would have seen an error — just a truncated artifact and a job that
+  stopped. The near-miss was real and reported between the two sessions.
+
+  A `pkill -f` on one's *own* job is not safe either: matching `pkill -f 'pytest ... -q'` against a
+  background suite matched the invoking shell's own command line and killed the caller's process
+  group, which surfaced as an unexplained exit 144 mid-command.
+
+  So: `ps -eo pgid,pid,etime,cmd` to identify the group, `kill -9 -<pgid>` to end it, and tell the
+  other session which pgid is yours when both are running. A defunct-but-listed process after that
+  is a reaped zombie, not a survivor.
+

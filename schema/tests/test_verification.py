@@ -441,6 +441,11 @@ def test_every_check_name_is_a_verification_question() -> None:
         "regulator_label_agreement",
         "published_refutation",
         "evidence_status_currency",
+        # RM193. A *question*, like every name above it: does the module's variant agree with the
+        # score AlphaGenome published for it. Its own member rather than a second writer of
+        # `reference_allele`, which the Atlas also answers — two registries answering an overlapping
+        # question get two checks, or one source's outage writes a skip against the other's.
+        "variant_impact_agreement",
     } == VALID_VERIFICATION_CHECKS
 
 

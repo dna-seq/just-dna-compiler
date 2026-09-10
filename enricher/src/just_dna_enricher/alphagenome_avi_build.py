@@ -48,6 +48,7 @@ import logging
 import re
 import shutil
 import subprocess
+import threading
 from collections.abc import Iterator, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -96,6 +97,38 @@ RAW_SCORE_SCALE = 100_000
 #: this machine's memory while the pipe never starves: the cost of a smaller number is more polars
 #: calls, and the cost of a larger one is twelve times whatever it is.
 CHUNK_BYTES = 64 * 1024 * 1024
+
+#: **How many arrow chunks a finished contig may be written from, and it is a compression setting
+#: wearing a memory setting's clothes.** Parquet writes at least one row group per chunk, and a
+#: sorted `pos` column only delta-encodes well *within* a row group — so fragmenting a contig into
+#: thousands of chunks quietly destroys the encoding that makes this artifact small.
+#:
+#: Measured on chr22's 117,479,331 rows at `zstd` level 9, varying nothing but the chunk count:
+#:
+#: | chunks | B/row | genome-wide |
+#: | ---: | ---: | ---: |
+#: | 1 (rechunked) | 3.871 | 34.1 GB |
+#: | 4 – 64 | 3.871 – 3.874 | 34.1 GB |
+#: | 128 | 3.904 | 34.4 GB |
+#: | **1,432** (what `sink_parquet` produced) | **4.892** | **43.1 GB** |
+#:
+#: `pos` alone accounts for nearly all of it: 1.249 B/row at one chunk against 2.067 at 1,432. The
+#: flat region up to 64 is why this is a cap rather than a rechunk — a full rechunk of chr1 is a
+#: 14 GB copy for no measurable gain, while capping the count costs one small copy per group.
+#:
+#: Setting `row_group_size` explicitly does **not** substitute for this and makes it worse (4.7–5.1
+#: B/row at every value tried): the default sizing is what adapts to the data.
+MAX_CONTIG_CHUNKS = 64
+
+#: **The quantity that actually governs is rows per chunk, not chunks**, and the two caps are here
+#: together because only the second one is data-independent. Measured twice on different slices: the
+#: cliff sits between 128 and 1,432 chunks on chr22's 117 M rows and between 512 and 1,432 on a 30 M
+#: row slice — around twenty-odd thousand rows per chunk in both. So a cap of "64 chunks" is only
+#: safe for contigs of a certain size, while a floor of "at least this many rows in a chunk" holds
+#: for any input. The smallest contig here (chrY, 79 M rows) lands at 1.2 M rows per chunk under the
+#: chunk cap alone, so both are satisfied today; the floor is what keeps that true for a smaller
+#: contig, a filtered build, or a test fixture.
+MIN_ROWS_PER_CHUNK = 250_000
 
 #: `pos` is the **1-based VCF position, passed through unchanged** (`@start-1based`). `UInt32` holds
 #: chr1's 248,956,422 with three orders of magnitude to spare.
@@ -346,9 +379,7 @@ def _build_contig(
 
     path = out_dir / f"alphagenome_avi-{contig}.parquet"
     if part:
-        pl.scan_parquet(scratch / "*.parquet").sink_parquet(
-            path, compression="zstd", compression_level=9
-        )
+        _assemble_contig(sorted(scratch.glob("*.parquet")), path)
     else:  # pragma: no cover - a contig in the index with no rows behind it
         pl.DataFrame(schema={k: getattr(pl, v) for k, v in PARQUET_SCHEMA.items()}).write_parquet(
             path, compression="zstd", compression_level=9
@@ -370,6 +401,54 @@ def _build_contig(
     )
     logger.info("alphagenome %s: %d rows, %d knots", contig, rows, knots.height)
     return ContigResult(contig=contig, rows=rows, path=path), knots
+
+
+
+#: Only one contig is assembled at a time. The parse stage is happily twelve-wide — each worker holds
+#: one chunk of text — but assembly holds a **whole contig** in memory to write it as few chunks, and
+#: chr1 is ~720 M rows. Twelve of those at once is not a shape any machine here has, and the parse
+#: threads keep working while one of them assembles.
+_ASSEMBLY = threading.Semaphore(1)
+
+
+def _assemble_contig(parts: list[Path], path: Path) -> None:
+    """Write one contig's parquet from its chunk files, in at most `MAX_CONTIG_CHUNKS` chunks.
+
+    **This replaced a `scan_parquet(...).sink_parquet(...)` and the swap is worth 8.9 GB.** Streaming
+    the concat is the memory-cheap way to write the file and it fragments the result into one arrow
+    chunk per morsel — 1,432 of them for chr22 — which parquet turns into 1,432 row groups, inside
+    each of which a sorted `pos` has almost no run to delta-encode. The artifact came out 4.892 B/row
+    instead of 3.871.
+
+    The repair is not a rechunk. Chunk count only matters until about 64 (see `MAX_CONTIG_CHUNKS`),
+    so the files are read in groups and each **group** is rechunked — one bounded copy at a time —
+    and the groups are concatenated without a further one. A full rechunk of chr1 would be a 14 GB
+    copy to buy nothing.
+    """
+    rows = sum(pl.scan_parquet(f).select(pl.len()).collect().item() for f in parts)
+    # Two caps, and the second is the one that generalises — see `MIN_ROWS_PER_CHUNK`. A short
+    # contig, a `--contig` build or a test fixture can all put fewer rows behind 64 groups than the
+    # encoding needs, and then the chunk cap alone would be satisfied while the bytes were not.
+    groups = max(1, min(len(parts), MAX_CONTIG_CHUNKS, max(1, rows // MIN_ROWS_PER_CHUNK)))
+    step = (len(parts) + groups - 1) // groups
+    with _ASSEMBLY:
+        # `.rechunk()` explicitly per group rather than `pl.concat(..., rechunk=True)`, which did
+        # not collapse anything here — a chunk file reads back as one arrow chunk per row group, so
+        # the concat kept all 1,432 of them and the cap below caught it. The copy is bounded by one
+        # group, which is what makes this affordable on chr1.
+        frame = pl.concat(
+            [
+                pl.concat([pl.read_parquet(f) for f in parts[i : i + step]]).rechunk()
+                for i in range(0, len(parts), step)
+            ],
+            rechunk=False,
+        )
+        if frame.n_chunks() > MAX_CONTIG_CHUNKS:  # pragma: no cover - the grouping bounds it
+            raise AlphaGenomeBuildError(
+                f"{path.name}: assembled into {frame.n_chunks()} chunks, over the cap of "
+                f"{MAX_CONTIG_CHUNKS}. Writing it would cost ~26% more bytes than it should."
+            )
+        frame.write_parquet(path, compression="zstd", compression_level=9)
 
 
 def _sha256_file(path: Path) -> str | None:

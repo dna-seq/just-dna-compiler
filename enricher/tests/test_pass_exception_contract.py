@@ -270,6 +270,15 @@ def test_every_pass_taking_an_injected_client_is_covered() -> None:
         # really does happen.
         "civic_citations.draft_civic_citations",
         "civic_citations.check_evidence_status_currency",
+        # RM193, and the same shape a fifth time. `check_variant_impact` catches every `AtlasError`
+        # arm per variant and records that variant's own reason — `unreachable` for a transport
+        # failure, and deliberately *no finding*, since a service that did not answer has said
+        # nothing about the caller's data. So a run with the Atlas down still returns a complete
+        # report naming exactly which variants were never asked about, which is the withhold rather
+        # than a leak. It declares no `*Unavailable` type for the same reason: nothing would raise
+        # it. `AtlasClient` is covered in `test_client_exception_contract.py`, where the translation
+        # really does happen.
+        "alphagenome_check.check_variant_impact",
     }
     uncovered = discovered - covered
     assert uncovered == exempt, sorted(uncovered.symmetric_difference(exempt))

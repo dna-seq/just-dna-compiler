@@ -73,7 +73,7 @@ and for writing entries that can be contradicted, not for trusting any of the fo
 **Severity** medium · **Status** ✅ shipped 2026-09-10 in the uncut 0.7.0 (`just-dna-enricher` plus
 one new `VALID_VERIFICATION_CHECKS` member in `just-dna-format` — additive, minor-legal under P3/P8;
 no column, no table, no manifest field) · **Owner** enricher · **Motivating case**
-[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm193)
+[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm193--the-atlas-as-a-resolver-edge-cases-and-refusals-as-findings)
 
 **What shipped.** `alphagenome_check.py` and `just-dna-enricher alphagenome check <spec>`, plus the
 `variant_impact_agreement` check member. Reports, never repairs
@@ -135,7 +135,7 @@ axis for that.
 **Severity** medium · **Status** ✅ shipped 2026-09-10 in the uncut 0.7.0 (`just-dna-enricher` only:
 a new builder module, a new cache lane, a new CLI command, a new `SourceTerms` entry; no model, no
 authored column, no manifest field) · **Owner** enricher · **Motivating case**
-[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm191), against
+[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm191--the-avi-derived-artifact-an-int32-parquet-plus-the-knot-table), against
 [ALPHAGENOME_ATLAS.md §§ 1.4, 4.4–4.9](probes/ALPHAGENOME_ATLAS.md)
 
 **What shipped.** `alphagenome_avi_build.py` and `just-dna-enricher alphagenome build --input`,
@@ -158,13 +158,24 @@ knot straddles any integer threshold from 1 to 50**: `0.00076`, 676,356 rows, `P
 
 **Two measurements corrected the proposal, and both are recorded rather than worked around.**
 
-- **Size.** The proposal's 34.4 GB comes from the probe's § 4.9 whole-row table and **reproduces in
-  neither layout at these compression settings.** Built and measured on chr22 (117,479,331 rows):
-  the shipped long layout is **4.878 B/row → 43.0 GB genome-wide**, and a wide-by-position layout
-  (one row per position, three ALT columns) is **3.371 B/row → 29.7 GB**. Per column, `pos` alone
-  costs 2.067 B/row for a monotone column of triplets, which is where the gap sits. The long layout
-  is what the proposal specified and what shipped; the wide one is a schema change and the
-  maintainer's call, so the **debt item now carries a measurement instead of "unmeasured here"**.
+- **Size — and the correction is the finding, not the number.** The first build measured **4.878
+  B/row → 43.0 GB** and this entry said so, adding that the proposal's 34.4 GB "reproduces in
+  neither layout". **That was wrong, and it was wrong because the measuring instrument was the
+  defect.** The builder assembled each contig with `scan_parquet(...).sink_parquet(...)`, which
+  fragments the result into one arrow chunk per morsel — 1,432 for chr22 — and parquet writes at
+  least one row group per chunk, inside each of which a sorted `pos` has almost no run left to
+  delta-encode. Varying nothing but the chunk count on the same frame: **1–64 chunks 3.871 B/row,
+  128 chunks 3.904, 1,432 chunks 4.892**; `pos` alone goes 1.249 → 2.067. Reproduced independently
+  on a different slice, where the cliff sat between 512 and 1,432 — around twenty-odd thousand rows
+  per chunk both times, which is why the cap ships as a rows-per-chunk floor as well as a chunk
+  count. The shipped builder assembles in bounded groups and measures **3.882 B/row → 34.2 GB**, so
+  the proposal's figure was right all along.
+
+  Two things fell out of it. `row_group_size` set explicitly is **worse at every value tried**
+  (4.7–5.1 B/row) — the default adaptive sizing is what responds to the data, so the obvious tuning
+  knob is the wrong one. And a wide-by-position layout measures ~29.7 GB against ~34.2, a real but
+  much smaller gap than the first (bugged) comparison implied; **RM197 carries that as an open
+  question rather than as a 31% saving over a number that was never real.**
 - **Losslessness is about the decimal, not about a float round-trip.** `Int32`×10⁵ is exact for a
   value printed to five decimals, and the builder *checks* it — `_scaled_scores` refuses a value
   that does not land on the grid rather than rounding it, so the guarantee holds over every row
@@ -204,7 +215,7 @@ same property**, because this lane has the first and cannot have the second.
 **Severity** medium · **Status** ✅ shipped 2026-09-10 in the uncut 0.7.0 (`just-dna-enricher` only:
 a new `[atlas]` extra, two new modules, one new CLI command, the `alphagenome` extra deleted; no
 model, no parquet, no manifest field) · **Owner** enricher · **Motivating case**
-[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm192), against
+[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm192--the-atlas-client-on-two-packages-and-the-alphagenome-extra-deleted), against
 [ALPHAGENOME_ATLAS.md § 6.2](probes/ALPHAGENOME_ATLAS.md)
 
 **What it reproduced.** `uv add alphagenome` resolves to 81 packages and 255 MB — anndata, pandas,

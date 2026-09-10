@@ -320,38 +320,42 @@ you**, so check which `# ` heading you are under before writing the section, not
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
-## RM197 — the AVI lane's layout: 43.0 GB long against 29.7 GB wide, now measured
+## RM197 — wide-by-position for the AVI lane: ~29.7 GB against ~34.2, and the first comparison was bugged
 
-**Severity** low · **Status** open — **filed 2026-09-10 by RM191** · **Owner** maintainer ·
-**Motivating case** RM191 shipped the layout its proposal specified, and building it produced a
-number 25% off the one the proposal quoted
+**Severity** low · **Status** open — **filed 2026-09-10 by RM191, restated the same day** ·
+**Owner** maintainer · **Motivating case** the deferred "wide-by-position layout (saved 17% on
+splicing; unmeasured here)" now has a number, and getting it took two attempts
 
-[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md) listed *"wide-by-position layout for AVI (saved
-17% on splicing; unmeasured here)"* as deferred. It is measured now, because RM191's build supplied
-the comparison for free — on chr22's 117,479,331 rows, at `zstd` level 9:
+**Read the correction before the table.** This item was first filed claiming the shipped layout cost
+**43.0 GB** against 29.7 wide — a 31% saving — and that the proposal's 34.4 GB "reproduces in
+neither layout". Every part of that was an artifact of the builder that measured it: it assembled
+each contig with `sink_parquet`, fragmenting chr22 into 1,432 arrow chunks, and a sorted `pos` only
+delta-encodes *within* a row group. Fixed, the same contig writes at **3.882 B/row → 34.2 GB**.
 
-| layout | B/row | genome-wide |
+| layout | B/row (chr22) | genome-wide |
 | --- | ---: | ---: |
-| **long — one row per SNV** (shipped) | **4.878** | **43.0 GB** |
+| **long — one row per SNV** (shipped) | **3.882** | **34.2 GB** |
 | wide — one row per position, three ALT columns | 3.371 | 29.7 GB |
 
-**A 31% saving, and the proposal's own 34.4 GB reproduces in neither.** That figure comes from the
-probe's § 4.9 whole-row table; whatever it measured, it is not either of these at these settings.
+So the open question is a **~13% saving**, not 31%, and it is genuinely marginal against 4 TB of
+free disk. What makes it still worth recording is *where* the remaining gap is: `pos` costs 1.249
+B/row even perfectly encoded, and the wide layout's advantage is simply not storing it three times.
 
-The cost sits in one column. Per column on the shipped layout: `pos` **2.067 B/row**, `raw_score_e5`
-2.564, `ref` 0.134, `alt` 0.111. Two thirds of `pos` is pure redundancy — it is monotone and each
-value appears three times, once per ALT — so the wide layout is not a clever encoding, it is simply
-not writing the position twice more.
+**Two measurements that generalise past this lane**, and both are counter-intuitive enough to be
+worth the entry on their own:
 
-**Why this is not a decision the build round took.** It is a schema change to a shipped artifact:
-RM193's checks read `(pos, ref, alt)` rows, a wide table changes what a consumer joins against, and
-the three-ALT assumption needs checking against the ~5% of the assembly AVI does not cover densely.
-None of that is a night's work, and the size never binds — 43 GB against 4 TB free. So the number is
-recorded and the shape is left alone.
+- **Do not set `row_group_size`.** On a frame already rechunked to one chunk, the default adaptive
+  sizing gives 3.87–3.94 B/row while *every* explicit value tried is worse: 4.735 at 250k, 4.835 at
+  1M, 5.019–5.061 at 4–5M. The obvious tuning knob moves it the wrong way.
+- **What governs is rows per chunk, not chunk count.** Measured twice on different slices: the
+  cliff sits between 128 and 1,432 chunks on 117 M rows, and between 512 and 1,432 on 30 M — about
+  twenty-odd thousand rows per chunk both times. A cap expressed in chunks is therefore
+  data-dependent; the builder carries both, and `MIN_ROWS_PER_CHUNK` is the one that holds for a
+  short contig, a `--contig` build or a fixture.
 
-Two cheaper things were measured and are **not** worth taking on their own: `row_group_size=250_000`
-buys 2.6% (4.747 B/row) and larger groups cost more; dropping the constant `chrom` column buys 0.003
-B/row and loses a reader's ability to glob `data/*.parquet` into one frame.
+**Why the layout was not switched.** It is a schema change to a shipped artifact — RM193's checks
+join on `(chrom, pos, ref, alt)` rows — and the three-ALT assumption needs checking against the ~5%
+of the assembly AVI does not cover densely. The size never binds.
 
 ## RM196 — the Atlas bindings are a build product, and a wheel cannot build them
 
@@ -382,7 +386,7 @@ The three shapes, none of them taken here because the trade is the maintainer's:
 Whichever wins also decides where `grpc_service_config.json` lives: the channel reads it at connect
 time, and the generator copies it into `generated/` for exactly this reason. **Until then the extra
 is checkout-only, and that is stated in the extra's own comment rather than left for a consumer to
-discover.** [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm192).
+discover.** [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm192--the-atlas-client-on-two-packages-and-the-alphagenome-extra-deleted).
 
 ## RM194 — gene-scoped SNV subslices, and the ±512 kb horizon
 
@@ -390,7 +394,7 @@ discover.** [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm192).
 **Motivating case** slicing the artifact by gene *position* silently drops promoters, enhancers and
 other distal variants that act on a gene without sitting in it
 
-**The blocker this item carried is gone.** [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm194)
+**The blocker this item carried is gone.** [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm194--gene-scoped-subslices-and-the-512-kb-horizon)
 listed the interval RPC as the thing a first cut owes, "including the `x-goog-fieldmask` header and
 32 bp chunking that hand-built requests got wrong". Measured on 2026-09-10 and **none of that was
 the cause**:
@@ -446,7 +450,7 @@ The Additional Terms **define** the Permissive class and grant it commercial use
 AVI is in it, so the claim rests on a reading the repository cannot verify. **`commercial_use=None`,
 not `True`** — unknown is a value, `None` is never `False`, and `@no-named-licence` already says
 unknown commercial terms warn rather than gate. Resolves when that page is saved the way the four
-terms documents were. [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm195).
+terms documents were. [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm195--permissive-class-membership-is-unpinned-so-commercial_use-is-none).
 
 ## RM164 — `heteroplasmy.csv` is a shipped table kind with no source behind it
 

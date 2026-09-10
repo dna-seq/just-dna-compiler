@@ -101,13 +101,12 @@ class VariantImpactError(RuntimeError):
     """The check could not run in a way the caller must see. Never raised for an absent answer."""
 
 
-class VariantImpactUnavailable(VariantImpactError):
-    """The Atlas was never actually asked (RM101 shape).
-
-    A subclass so every existing `except VariantImpactError` still catches it (P3), and separate
-    because "the service did not answer" and "your module's table will not parse" are opposite
-    histories with opposite remedies.
-    """
+# **There is deliberately no `VariantImpactUnavailable`.** Every other pass in this tier owes one,
+# because a source it cannot reach is a run it cannot complete. This one can: a transport failure is
+# recorded against the variant as `unreachable` and the run returns a *complete* report saying which
+# variants were never asked about. A type nobody raises is a promise nobody keeps, so it is not
+# declared — the same call `enrich.enrich`, `litvar.check_literature_coverage` and the two
+# `civic_citations` passes make, and the reason all five are exempt from the pass-contract guard.
 
 
 @dataclass(frozen=True)
