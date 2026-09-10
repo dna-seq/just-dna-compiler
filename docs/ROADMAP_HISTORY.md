@@ -110,12 +110,24 @@ uncompressed `sha256`. The test asserts against **those bytes**, not against a c
 is dropped, or upstream reclassifies and it is re-saved, the test fails rather than going on
 asserting yesterday's permission.
 
-**`redistribution` stays `None`, and the reason changed rather than persisted.** It was unknown
-because nothing said; it is unknown now because the question is legal. The page classifies **use**.
-Prohibition 1 separately bars sharing with a commercial organization "aside from indirectly via a
-scientific publication, open source release or to support journalism", and whether an HF-published
-snapshot is an "open source release" is a reading of Google's terms that no document in
-`docs/vendor/` settles. The lane is `publish_repo=None` for that reason and no longer for this one.
+**`redistribution=True`, and it is the one value on this row that rests on judgement.** The page
+classifies **use**, not sharing. Prohibition 1 separately bars passing Output to a commercial
+organization "aside from indirectly via a scientific publication, open source release or to support
+journalism", and **the maintainer read an openly published snapshot as an open source release within
+that carve-out** on 2026-09-10. No document in `docs/vendor/` says so in as many words, which is why
+this entry names the reading as a reading.
+
+What makes it defensible in practice rather than only in principle is restriction 3b, which this
+lane already honours in fact: a published snapshot carries the "Use restrictions" section as
+`LICENSE.txt` beside the data, so a puller receives the terms *with the bytes* rather than a link to
+them, and `license_sha256` pins which version they got.
+
+**The three axes now rest on three different kinds of ground**, and the row cannot show that — a
+consumer reading `sources.csv` sees three booleans. `commercial_use=True` and `share_alike=False` are
+documented; `redistribution=True` is decided.
+`test_the_three_permission_axes_each_rest_on_a_different_kind_of_ground` is where that distinction is
+written down, so anyone revisiting the reading knows which of the three to revisit. Wiring the lane
+into `cache pull` / `upload` is **RM198**.
 
 ## RM193 — the three questions a nine-billion-row file on your own disk cannot answer
 

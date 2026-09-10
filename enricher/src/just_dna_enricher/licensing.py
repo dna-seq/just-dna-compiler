@@ -806,9 +806,17 @@ ALPHAGENOME_AVI_TERMS = SourceTerms(
     # RM195, resolved 2026-09-10: the download page classifies AVI as Permissive Use, "for
     # commercial and non-commercial use", and it is pinned in docs/vendor/.
     commercial_use=True,
-    # Still unknown, and for a different reason than commercial_use was: the § 2.4/1b "open source
-    # release" carve-out is a legal reading, not a missing document.
-    redistribution=None,
+    # **`True` on the maintainer's reading, recorded as a reading rather than as a fact a document
+    # states** (2026-09-10). Prohibition 1 bars sharing Output with a commercial organization
+    # "aside from indirectly via a scientific publication, open source release or to support
+    # journalism"; a snapshot published openly, under attribution, with the Use restrictions
+    # travelling inside it, is an open source release within that carve-out. Nothing in
+    # `docs/vendor/` says so in as many words — the download page settles *use*, not *sharing* — so
+    # this is the one value on this row that rests on judgement, and the ROADMAP_HISTORY entry for
+    # RM195 names whose. Restriction 3b is what makes the reading defensible in practice: a
+    # published snapshot carries the "Use restrictions" section as `LICENSE.txt`, so a downstream
+    # holder receives the terms with the bytes rather than a link to them.
+    redistribution=True,
 )
 
 TERMS_BY_SOURCE: dict[str, SourceTerms] = {

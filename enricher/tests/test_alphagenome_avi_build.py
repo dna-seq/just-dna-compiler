@@ -367,18 +367,28 @@ def test_the_permissive_class_is_asserted_from_a_pinned_page_and_not_from_a_read
     assert ALPHAGENOME_AVI_TERMS.commercial_use is True
 
 
-def test_redistribution_stays_unknown_for_a_different_reason_than_use_did() -> None:
-    """The two axes are not the same question, and only one of them a document could answer.
+def test_the_three_permission_axes_each_rest_on_a_different_kind_of_ground() -> None:
+    """Three values, three provenances, and the row does not distinguish them — so this test does.
 
-    The download page classifies **use**. Prohibition 1 separately bars sharing with a commercial
-    organization "aside from indirectly via a scientific publication, open source release or to
-    support journalism", and whether an HF-published snapshot is an "open source release" is a
-    reading of Google's terms rather than a fact a page states. So `redistribution` is `None` and
-    stays `None` — asserted with `is None` rather than falsiness, because `False` would mean the
-    terms forbid it, which nobody has established either.
+    * `commercial_use=True` is **documented**: the download page pinned in `docs/vendor/` classifies
+      AVI as Permissive Use, and the test above asserts against those bytes.
+    * `share_alike=False` is **documented**: the terms impose no copyleft.
+    * `redistribution=True` is a **reading**, taken by the maintainer on 2026-09-10. Prohibition 1
+      permits sharing "indirectly via … open source release", and an openly published snapshot that
+      carries the Use restrictions inside it (restriction 3b, honoured by the lane's `LICENSE.txt`)
+      is one. No document in `docs/vendor/` says that in as many words.
+
+    Pinned because the distinction vanishes at the row: a consumer reading `sources.csv` sees three
+    booleans and cannot tell which one somebody decided. If that reading is ever revisited, this is
+    the test that says where to look.
     """
-    assert ALPHAGENOME_AVI_TERMS.redistribution is None
-    assert ALPHAGENOME_AVI_TERMS.share_alike is False, "this one IS established: no copyleft"
+    assert ALPHAGENOME_AVI_TERMS.commercial_use is True
+    assert ALPHAGENOME_AVI_TERMS.share_alike is False
+    assert ALPHAGENOME_AVI_TERMS.redistribution is True
+
+    # The reading is defensible only while the snapshot really does carry the terms with it, so the
+    # two are tied together here rather than left to a reviewer to connect.
+    assert "Use restrictions" in ab.use_restrictions_text(_TERMS)
 
 
 def test_the_terms_row_pins_the_licence_text_it_ships_beside_the_data() -> None:
@@ -390,7 +400,7 @@ def test_the_terms_row_pins_the_licence_text_it_ships_beside_the_data() -> None:
         "annotation", declared_use="commercial", license_text=licence_text
     )
     assert row.commercial_use is True
-    assert row.redistribution is None, "the 'open source release' carve-out is unanswered"
+    assert row.redistribution is True, "the open-source-release reading (RM195); see the axes test"
     assert row.source == "alphagenome_avi", "one name cannot carry two licence classes"
     assert row.license_sha256 is not None and row.license_sha256.startswith("sha256:")
 

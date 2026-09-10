@@ -1029,10 +1029,9 @@ CACHE_LANES: list[CacheLane] = [
         # terms rather than an engineering question. `redistribution` is `None` for exactly that,
         # and a lane may not publish under a permission nobody has established.
         unpublished=(
-            "not publishable until one legal question is answered: whether an HF-published snapshot "
-            "counts as an 'open source release' under the Output Terms' prohibition 1 carve-out. "
-            "Use is settled (RM195 pinned the download page; commercial_use=True); redistribution "
-            "is not, and `redistribution=None` says so"
+            "publishable in principle since RM195 — use is documented and `redistribution=True` "
+            "records the maintainer's open-source-release reading — but not yet wired into "
+            "`cache pull`/`upload`, which is RM198"
         ),
     ),
 ]

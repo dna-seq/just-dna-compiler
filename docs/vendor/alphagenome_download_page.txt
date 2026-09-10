@@ -48,7 +48,9 @@ IT DOES NOT ANSWER `redistribution`. The classification is about USE. Prohibitio
 Output Terms separately bars sharing with a commercial organization 'aside from indirectly
 via a scientific publication, open source release or to support journalism', and whether a
 HuggingFace-published snapshot is an 'open source release' is a reading of Google's terms
-that nothing here settles. `redistribution` stays None.
+that nothing here settles. On 2026-09-10 the maintainer read an openly published snapshot as an
+"open source release" within that carve-out, and `redistribution=True` records that READING — see
+RM195 in ROADMAP_HISTORY.md. It is not stated by this page or by any document in this directory.
 
 
 CITING IT. The credit line on `alphagenome_avi`'s SourceRow is the paper rather than a URL:
