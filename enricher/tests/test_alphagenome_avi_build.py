@@ -25,7 +25,8 @@ from just_dna_enricher.licensing import ALPHAGENOME_AVI_TERMS
 from just_dna_format.layout import atomic_write_text
 
 _SLICE = Path(__file__).resolve().parents[2] / "assets" / "alphagenome" / "avi_chr22_slice.tsv.gz"
-_TERMS = Path(__file__).resolve().parents[2] / "docs" / "vendor" / "alphagenome_output_terms.txt"
+_VENDOR = Path(__file__).resolve().parents[2] / "docs" / "vendor"
+_TERMS = _VENDOR / "alphagenome_output_terms.txt"
 
 #: The one knot in the whole corpus whose `PHRED` interval contains an integer threshold. Domain
 #: constants — what the artifact prints — rather than counts read off a dump.
@@ -341,27 +342,56 @@ def test_the_use_restrictions_travel_inside_the_snapshot(built: Path) -> None:
     assert "Governing law" not in licence
 
 
-def test_the_terms_row_records_unknown_rather_than_permitted() -> None:
-    """RM195 as a property of the row, not a sentence in a comment.
+def test_the_permissive_class_is_asserted_from_a_pinned_page_and_not_from_a_reading() -> None:
+    """RM195, resolved: `commercial_use=True`, and the evidence is in the repository.
 
-    The Additional Terms define a Permissive Use class and grant it commercial use, then delegate
-    *membership* to a sign-in-gated page nothing in `docs/vendor/` pins. So this is the house
-    algebra applied to a licence: unknown is a value, `None` is never `False`, and
-    `@no-named-licence` already settles that unknown commercial terms **warn** rather than gate.
-    Asserted with `is None` rather than falsiness, because `False` would pass a truthiness check and
-    mean something entirely different.
+    The Additional Terms define the Permissive class and delegate *membership* to a sign-in-gated
+    page. For a day this shipped `None` — unknown is a value and `None` is never `False` — because a
+    permission nobody could check does not belong in a signed attribution ledger. The page is pinned
+    now, so the assertion has something behind it.
+
+    Asserted against the **pinned bytes**, not against a constant: the test re-reads the extraction
+    and requires it to classify AVI as commercial. If someone drops the vendor file, or upstream
+    reclassifies and the file is re-saved, this fails rather than going on asserting yesterday's
+    permission.
     """
+    extraction = _VENDOR / "alphagenome_download_page.txt"
+    assert extraction.is_file(), "the evidence for commercial_use=True is not in docs/vendor/"
+    text = extraction.read_text()
+    assert "Permissive Use Downloadable artifacts for commercial and non-commercial use" in text
+    avi_block = text.split("Permissive Use Downloadable artifacts", 1)[1].split("Downloadable artifacts for non-commercial", 1)[0]
+    assert "AVI SNV scores" in avi_block, "the page no longer puts AVI in the Permissive class"
+    for non_commercial in ("merged splicing", "feature importance"):
+        assert non_commercial not in avi_block, f"{non_commercial} must not be Permissive"
+
+    assert ALPHAGENOME_AVI_TERMS.commercial_use is True
+
+
+def test_redistribution_stays_unknown_for_a_different_reason_than_use_did() -> None:
+    """The two axes are not the same question, and only one of them a document could answer.
+
+    The download page classifies **use**. Prohibition 1 separately bars sharing with a commercial
+    organization "aside from indirectly via a scientific publication, open source release or to
+    support journalism", and whether an HF-published snapshot is an "open source release" is a
+    reading of Google's terms rather than a fact a page states. So `redistribution` is `None` and
+    stays `None` — asserted with `is None` rather than falsiness, because `False` would mean the
+    terms forbid it, which nobody has established either.
+    """
+    assert ALPHAGENOME_AVI_TERMS.redistribution is None
+    assert ALPHAGENOME_AVI_TERMS.share_alike is False, "this one IS established: no copyleft"
+
+
+def test_the_terms_row_pins_the_licence_text_it_ships_beside_the_data() -> None:
+    """`license_sha256` is over the bytes the snapshot carries, not over the whole terms document."""
     licence_text = ab.use_restrictions_text(_TERMS)
     # `annotation` because that is the layer a module carrying AVI scores would fill; the layer a
-    # *check* records under is RM193's decision, and this test is about the three permission axes.
+    # *check* records under is RM193's decision, and this test is about the permission axes.
     row = ALPHAGENOME_AVI_TERMS.row(
-        "annotation", declared_use="unstated", license_text=licence_text
+        "annotation", declared_use="commercial", license_text=licence_text
     )
-    assert row.commercial_use is None, "an unread page is unknown, not permission"
+    assert row.commercial_use is True
     assert row.redistribution is None, "the 'open source release' carve-out is unanswered"
-    assert row.share_alike is False, "this one IS established: the terms impose no copyleft"
     assert row.source == "alphagenome_avi", "one name cannot carry two licence classes"
-    # The pin is over the bytes the snapshot actually carries, not over the whole terms document.
     assert row.license_sha256 is not None and row.license_sha256.startswith("sha256:")
 
 

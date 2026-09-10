@@ -1020,18 +1020,19 @@ CACHE_LANES: list[CacheLane] = [
             "(ALPHAGENOME_ATLAS.md § 2.1), so the operator downloads it under their own acceptance "
             "and `alphagenome build --input` re-encodes the file they hold"
         ),
-        # Two independent blockers, and neither is a licence this tier has read as forbidding it.
-        # The first is that the terms **do not say** whether AVI is commercially usable at all
-        # (RM195), so publishing would put a snapshot into the world under an unknown permission.
-        # The second is narrower and would survive RM195: prohibition 1 bars sharing with a
-        # commercial organization "aside from indirectly via a scientific publication, open source
-        # release or to support journalism", and whether a HuggingFace snapshot is an "open source
-        # release" is a legal reading rather than an engineering one.
+        # **One blocker now, and it is legal rather than missing.** RM195 closed on 2026-09-10: the
+        # download page is pinned in `docs/vendor/` and classifies AVI as Permissive Use, so
+        # `commercial_use` is `True` and the lane's *use* is settled. What is not settled is
+        # *sharing*: prohibition 1 bars passing Output to a commercial organization "aside from
+        # indirectly via a scientific publication, open source release or to support journalism",
+        # and whether an HF-published snapshot is an "open source release" is a reading of Google's
+        # terms rather than an engineering question. `redistribution` is `None` for exactly that,
+        # and a lane may not publish under a permission nobody has established.
         unpublished=(
-            "not publishable while two questions are open: RM195 (the Permissive-class membership "
-            "that would make `commercial_use` True is stated only on a page nothing in docs/vendor "
-            "pins, so the row ships `None`), and whether an HF-published snapshot counts as an "
-            "'open source release' under the Output Terms' prohibition 1 carve-out"
+            "not publishable until one legal question is answered: whether an HF-published snapshot "
+            "counts as an 'open source release' under the Output Terms' prohibition 1 carve-out. "
+            "Use is settled (RM195 pinned the download page; commercial_use=True); redistribution "
+            "is not, and `redistribution=None` says so"
         ),
     ),
 ]

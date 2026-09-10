@@ -739,35 +739,56 @@ MITOMAP_TERMS = SourceTerms(
 )
 
 
-# AlphaGenome's AVI scores (RM191). The one entry here whose **`commercial_use` is `None` on purpose**,
-# and the reason is not caution — it is that nobody can read the answer from the repository.
+# AlphaGenome's AVI scores (RM191, RM195). **`commercial_use=True`, and it took a pinned web page
+# to earn it.**
 #
-# The Additional Terms **define** a "Permissive Use Downloadable Artifact" class and grant it
-# commercial use outright, then delegate *membership* of that class to "the 'Permissive Use
-# Downloadable Artifact' section of the AlphaGenome Services website" (§ 2.5). Four terms documents
-# are pinned in `docs/vendor/` and **none of them says which artifacts are Permissive**; that page is
-# a sign-in-gated single-page app. So the claim "AVI is commercially usable" rests on one reading of
-# one page this workspace cannot verify, which makes it **unknown**, not true and not false. `None`
-# is never `False` — `@no-named-licence` already settles what follows: unknown commercial terms
-# *warn*, they never gate. RM195 resolves it by saving one page, and then `True` becomes assertable.
+# The Additional Terms define a "Permissive Use Downloadable Artifact" class and grant it commercial
+# use, then delegate *membership* of that class to the download section of the Atlas website (§ 2.5).
+# None of the four terms documents in `docs/vendor/` said which artifacts were in it, and the page is
+# a sign-in-gated single-page app that serves navigation chrome to `curl` — so the single most
+# consequential claim about this source rested on a reading the repository could not check, and this
+# field shipped as `None` for a day. Unknown is a value, `None` is never `False`, and
+# `@no-named-licence` says unknown commercial terms warn rather than gate.
 #
-# `redistribution` is `None` for a second, independent reason: prohibition 1 bars sharing with a
-# commercial organization "aside from indirectly via a scientific publication, open source release or
-# to support journalism", and whether an HF-published snapshot is an "open source release" is a legal
-# question this workspace has not answered. Recorded as unasked rather than guessed either way.
+# The page was saved from a signed-in browser on 2026-09-10 and is pinned as
+# `docs/vendor/alphagenome_download_page.html.gz` with a greppable extraction beside it. It carries
+# its content as embedded JSON rather than markup, and says, verbatim:
+#
+#     "Permissive Use Downloadable artifacts for commercial and non-commercial use"
+#         AVI SNV scores — avi_scores_snvs_tabix.zip — 88.5 GB
+#     "Downloadable artifacts for non-commercial use only"
+#         AlphaGenome SNV merged splicing scores — 20.6 GB
+#         AVI SNV feature importance scores — 283.9 GB
+#
+# So AVI is Permissive and the other two are not, which confirms the probe's reading rather than
+# overturning it — and it is also why `alphagenome_avi_build` refuses those two artifacts by name.
+#
+# **`redistribution` stays `None`, and that is not caution left over from before.** The
+# classification above is about USE. Prohibition 1 separately bars sharing with a commercial
+# organization "aside from indirectly via a scientific publication, open source release or to support
+# journalism", and whether a HuggingFace-published snapshot is an "open source release" is a reading
+# of Google's terms that nothing in `docs/vendor/` settles. The lane is `publish_repo=None` for that
+# reason and not for this one.
 #
 # The source name is `alphagenome_avi`, not `alphagenome`. `@write-the-sourcerow` keys a row on
-# `(source, layer)` and **one name cannot carry two licence classes**: the AVI artifact is the
-# Permissive candidate while everything else the Atlas serves is ordinary non-commercial Output. The
-# second name, `alphagenome_atlas`, belongs to RM194 and is deliberately not declared here — a lane
-# that does not exist yet does not get a terms entry.
+# `(source, layer)` and **one name cannot carry two licence classes**: the page above is the proof
+# that they really are two. The second name, `alphagenome_atlas`, belongs to RM194 and is deliberately
+# not declared here — a lane that does not exist yet does not get a terms entry.
 ALPHAGENOME_AVI_TERMS = SourceTerms(
     source="alphagenome_avi",
     # No SPDX identifier exists: these are bespoke terms, and the open-string decision on
     # `SourceRow.license` is what lets that be said rather than approximated by the nearest CC code.
     license="AlphaGenome Services Additional Terms of Service (2026-09-08)",
     license_url="https://deepmind.google.com/science/alphagenome/terms",
-    attribution="AlphaGenome (Google DeepMind), https://deepmind.google.com/science/alphagenome",
+    # The paper, not a URL. `attribution` is "the credit line the licence requires — one lookup, not
+    # a reconstruction", and for a model the credit line is its citation. Taken from the maintainer's
+    # copy of the AlphaGenome references page on 2026-09-10, because the repository's own
+    # `references.md` on GitHub is stale.
+    attribution=(
+        "Avsec et al., Advancing regulatory variant effect prediction with AlphaGenome, "
+        "Nature 649(8099):1206-1218, 2026. doi:10.1038/s41586-025-10014-0 "
+        "(AlphaGenome, Google DeepMind — https://deepmind.google.com/science/alphagenome)"
+    ),
     notice=(
         "Output Terms of Use restriction 3a, verbatim: 'By using this information, you agree to "
         "AlphaGenome Output Terms of Use found at "
@@ -782,8 +803,12 @@ ALPHAGENOME_AVI_TERMS = SourceTerms(
         "generated, which is why release.json records the artifact's own timestamp."
     ),
     share_alike=False,
-    commercial_use=None,  # RM195 — unknown, and unknown is a value
-    redistribution=None,  # the § 2.4/1b "open source release" carve-out is unanswered
+    # RM195, resolved 2026-09-10: the download page classifies AVI as Permissive Use, "for
+    # commercial and non-commercial use", and it is pinned in docs/vendor/.
+    commercial_use=True,
+    # Still unknown, and for a different reason than commercial_use was: the § 2.4/1b "open source
+    # release" carve-out is a legal reading, not a missing document.
+    redistribution=None,
 )
 
 TERMS_BY_SOURCE: dict[str, SourceTerms] = {

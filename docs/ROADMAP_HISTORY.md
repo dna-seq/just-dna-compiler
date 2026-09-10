@@ -68,6 +68,55 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM195 — the most consequential claim about a source, resting on a page nobody had saved
+
+**Severity** medium · **Status** ✅ resolved 2026-09-10 (`just-dna-enricher` only: one `SourceTerms`
+field, one pinned vendor document, two tests) · **Owner** maintainer · **Motivating case** RM191
+needed to state whether AVI may be used commercially, and no document in the repository said
+
+**What it was.** The AlphaGenome Services Additional Terms **define** a "Permissive Use Downloadable
+Artifact" class and grant it commercial use outright — then delegate **membership** of that class to
+the download section of the Atlas website. Four terms documents were pinned in `docs/vendor/` and
+none of them named a single artifact. The page is a sign-in-gated single-page app that serves 185 KB
+of navigation chrome to `curl`. So the claim "AVI may be sold" — the most consequential single fact
+about this source, and one that would sit inside a signed module's attribution ledger — rested on
+one reading of one page the repository could not check.
+
+**What shipped in the meantime, and why it was not a placeholder.** `commercial_use=None`. Unknown is
+a value, `None` is never `False`, and `@no-named-licence` already settles what follows: unknown
+commercial terms **warn** rather than gate. So a module carrying AVI compiled under
+`declared_use=commercial` with a warning, rather than either refusing or silently asserting a
+permission nobody had established.
+
+**What resolved it.** The maintainer saved the page from a signed-in browser. It carries its content
+as **embedded JSON rather than markup**, which is why fetching it had failed and why the extraction
+beside it is the greppable half:
+
+> `"Permissive Use Downloadable artifacts for commercial and non-commercial use"` — **AVI SNV
+> scores**, `avi_scores_snvs_tabix.zip`, 88.5 GB
+>
+> `"Downloadable artifacts for non-commercial use only"` — AlphaGenome SNV merged splicing scores
+> (20.6 GB), AVI SNV feature importance scores (283.9 GB)
+
+**It confirmed the probe's reading rather than overturning it**, which is worth stating plainly:
+four of that document's claims had already been refuted by measurement, so the prior was not good.
+It is also independent confirmation of why `alphagenome_avi_build` refuses the other two artifacts by
+name — they really are a different licence class.
+
+`commercial_use=True`. The page is pinned as `docs/vendor/alphagenome_download_page.html.gz` (1.1 MB
+gzipped, from 7.1 MB — the complete document travels rather than an excerpt, and it stays under the
+Git LFS threshold) with `alphagenome_download_page.txt` beside it carrying the extraction and the
+uncompressed `sha256`. The test asserts against **those bytes**, not against a constant: if the file
+is dropped, or upstream reclassifies and it is re-saved, the test fails rather than going on
+asserting yesterday's permission.
+
+**`redistribution` stays `None`, and the reason changed rather than persisted.** It was unknown
+because nothing said; it is unknown now because the question is legal. The page classifies **use**.
+Prohibition 1 separately bars sharing with a commercial organization "aside from indirectly via a
+scientific publication, open source release or to support journalism", and whether an HF-published
+snapshot is an "open source release" is a reading of Google's terms that no document in
+`docs/vendor/` settles. The lane is `publish_repo=None` for that reason and no longer for this one.
+
 ## RM193 — the three questions a nine-billion-row file on your own disk cannot answer
 
 **Severity** medium · **Status** ✅ shipped 2026-09-10 in the uncut 0.7.0 (`just-dna-enricher` plus

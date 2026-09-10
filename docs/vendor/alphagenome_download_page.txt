@@ -1,0 +1,65 @@
+AlphaGenome Atlas — the download page's own artifact classification
+======================================================================
+
+Source URL : https://deepmind.google.com/science/alphagenome/terms
+Saved from a signed-in browser on 2026-09-10 as `Terms of Use _ AlphaGenome.html`.
+The complete page is beside this file as `alphagenome_download_page.html.gz`:
+  sha256 (uncompressed) : 2bc9a5c787799bbcee67bdd8f89767322d1f82583c018e3c1d23690e31025fac
+  bytes  (uncompressed) : 7,179,794
+
+WHY THIS FILE EXISTS (RM195). The AlphaGenome Services Additional Terms define a
+'Permissive Use Downloadable Artifact' class and grant it commercial use, then delegate
+MEMBERSHIP of that class to the download section of the Atlas website. None of the four
+terms documents pinned beside this one says which artifacts are in it, and the page is a
+sign-in-gated single-page app that serves navigation chrome to curl. So the single most
+consequential claim about this source — that AVI may be used commercially — rested on a
+reading the repository could not verify, and `SourceRow.commercial_use` shipped as None.
+
+The page carries its content as embedded JSON rather than as markup. The two headings and
+their artifact lists, extracted verbatim:
+
+  Permissive Use Downloadable artifacts for commercial and non-commercial use
+      - AVI SNV scores
+          size : 88.5 GB
+          file : avi_scores_snvs_tabix.zip
+          desc : AVI scores and Phred-scaled scores in Tabix format
+
+  Downloadable artifacts for non-commercial use only
+      - AlphaGenome SNV merged splicing scores
+          size : 20.6 GB
+          file : combined_splicing_snvs_tabix.zip
+          desc : AlphaGenome merged splicing scores in Tabix format
+      - AVI SNV feature importance scores
+          size : 283.9 GB
+          file : avi_feature_importances_snvs_tabix.zip
+          desc : AVI SHAP feature importance scores in Tabix format
+
+READ AGAINST THE TERMS:
+
+  AVI SNV scores                  -> Permissive: commercial AND non-commercial use
+  AlphaGenome SNV merged splicing -> non-commercial only
+  AVI SNV feature importance      -> non-commercial only
+
+This is the whole basis for `alphagenome_avi` carrying commercial_use=True, and for the
+AVI lane refusing the other two artifacts by name. It confirms the reading the probe
+recorded in ALPHAGENOME_ATLAS.md § 1 rather than overturning it.
+
+IT DOES NOT ANSWER `redistribution`. The classification is about USE. Prohibition 1 of the
+Output Terms separately bars sharing with a commercial organization 'aside from indirectly
+via a scientific publication, open source release or to support journalism', and whether a
+HuggingFace-published snapshot is an 'open source release' is a reading of Google's terms
+that nothing here settles. `redistribution` stays None.
+
+
+CITING IT. The credit line on `alphagenome_avi`'s SourceRow is the paper rather than a URL:
+
+    Avsec, Latysheva, Cheng, Novati, Taylor, Ward, Bycroft, Nicolaisen, Arvaniti, Pan, Thomas,
+    Dutordoir, Perino, De, Karollus, Gayoso, Sargeant, Mottram, Wong, Drotar, Kosiorek, Senior,
+    Tanburn, Applebaum, Basu, Hassabis and Kohli. "Advancing regulatory variant effect prediction
+    with AlphaGenome." Nature 649(8099):1206-1218, 2026. doi:10.1038/s41586-025-10014-0
+
+Recorded here because the project's own `references.md` on GitHub is stale as of 2026-09-10 and the
+maintainer supplied the current list from the documentation site. The three works AlphaGenome's
+references also cite, for anyone tracing what it builds on: GTEx Consortium (Science 369:1318,
+2020), Jaganathan et al. SpliceAI (Cell 176:535, 2019), and Linder et al. Borzoi (Nature Genetics,
+2025).

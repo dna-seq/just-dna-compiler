@@ -439,19 +439,6 @@ and the lane needs a second source name, `alphagenome_atlas`, because `RNA_SEQ` 
 non-commercial Output while the AVI artifact is the Permissive candidate — one `(source, layer)` key
 cannot carry two licence classes.
 
-## RM195 — Permissive-class membership is unpinned, so AVI's `commercial_use` is `None`
-
-**Severity** medium · **Status** open — **blocker on RM191, resolves by saving one page** ·
-**Owner** maintainer · **Motivating case** the four pinned terms documents do not say which
-artifacts are Permissive
-
-The Additional Terms **define** the Permissive class and grant it commercial use, but delegate
-**membership** to a sign-in-gated page on the Atlas website. Nothing in `docs/vendor/` states that
-AVI is in it, so the claim rests on a reading the repository cannot verify. **`commercial_use=None`,
-not `True`** — unknown is a value, `None` is never `False`, and `@no-named-licence` already says
-unknown commercial terms warn rather than gate. Resolves when that page is saved the way the four
-terms documents were. [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm195--permissive-class-membership-is-unpinned-so-commercial_use-is-none).
-
 ## RM164 — `heteroplasmy.csv` is a shipped table kind with no source behind it
 
 **Severity** medium · **Status** open — **PARKED to 0.8, decided 2026-09-01** · **Owner** enricher ·
