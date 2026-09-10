@@ -34,7 +34,37 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — a 502 KB knot table replaces both the `PHRED` column and the API refinement
+## 2026-09-10 (latest) — PROPOSAL 0.7 PT4: adopting AlphaGenome as RM191–RM195
+
+**The first live proposal since PT3 closed on 2026-09-03**, and the point at which eleven rounds of
+measurement in [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md) become a build.
+[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md) wins over the roadmap files until its items land.
+**Additive throughout — a cache lane, an optional extra, enricher checks and a drafting provider add
+no authored column at all**, so the round fits the uncut 0.7.0.
+
+- **RM191 — the AVI artifact as a derived cache lane.** 88.5 GB of tabix TSV to **34.4 GB** of parquet,
+  `raw_score` as `Int32`×10⁵ (exactly lossless; `Float32` is larger *and* lossy), and **`PHRED` not
+  stored at all** — the 466 KB knot table reconstructs it with zero threshold misclassifications.
+  Operator-built, never fetched: the source is 88.5 GB behind a sign-in.
+- **RM192 — the Atlas client on two packages, and the `alphagenome` extra deleted.** 22 MB in a new
+  `[atlas]` extra against 255 MB and 36 packages for the wheel, six of whose declared dependencies are
+  never imported on any scoring path. Already built and tested as `probes/alphagenome_poc/`.
+- **RM193 — the Atlas as a resolver, not a source.** Knot-straddle refinement (the API's `raw_score`
+  carries ~7 significant digits against the file's 4), `REF` validation that **names the real base**,
+  and `UNIMPLEMENTED` recorded as the third state. Reports, never repairs, and refuses an unbounded
+  refinement.
+- **RM194 — gene-scoped subslices, and the ±512 kb horizon.** Measured: gene-filtered scores reach
+  +500 kb and vanish at +700 kb. The filter is required rather than optional — unfiltered fails
+  `RESOURCE_EXHAUSTED` — and at ~50 minutes per gene this is a panel tool, never genome-wide.
+- **RM195 — `commercial_use=None`, not `True`.** The Terms define the Permissive class but delegate
+  membership to a page nothing in `docs/vendor/` pins, so the claim that AVI is commercially usable
+  rests on a reading the repository cannot verify. Unknown is a value; it resolves by saving one page.
+
+**The round's standing rule is measured-not-inferred**, and it is not rhetoric: four of the probe
+document's own claims were refuted by later measurement, every one a plausible reading of upstream
+prose that the bytes then contradicted.
+
+## 2026-09-10 — a 502 KB knot table replaces both the `PHRED` column and the API refinement
 
 Eleventh round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md) § 4.7.2. No `RMn`, no adoption.
 

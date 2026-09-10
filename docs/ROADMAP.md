@@ -320,6 +320,71 @@ you**, so check which `# ` heading you are under before writing the section, not
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
+## RM191 — AlphaGenome AVI as a derived cache lane: `Int32` parquet plus a knot table
+
+**Severity** medium · **Status** open — **planned 2026-09-10** · **Owner** enricher ·
+**Motivating case** the AlphaGenome Atlas launch, 2026-09-08
+
+An operator-built snapshot of the 88.5 GB AVI artifact, re-encoded to **34.4 GB** as parquet with
+`raw_score` as `Int32`×10⁵ — exactly lossless, since both published columns print at most 5 decimals,
+where `Float32` is both larger and lossy. The `PHRED` column is **not stored**: it is a within-corpus
+rank, and the 466 KB knot table reconstructs it with zero threshold misclassifications. Design and
+build in [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm191); evidence in
+[ALPHAGENOME_ATLAS](probes/ALPHAGENOME_ATLAS.md).
+
+## RM192 — the Atlas client on two packages, and the `alphagenome` extra deleted
+
+**Severity** medium · **Status** open — **planned 2026-09-10** · **Owner** enricher ·
+**Motivating case** `uv add alphagenome` costs 255 MB and 36 packages against a tier whose whole
+runtime list is httpx/tenacity/huggingface-hub
+
+The upstream wheel declares 20 flat dependencies including matplotlib, seaborn and pyfaidx, six of
+which are never imported on any scoring path. The `.proto` sources are Apache-2.0 and vendored, so
+`grpcio` + `protobuf` reach every Atlas RPC — **22 MB in a new `[atlas]` extra**, with the
+`alphagenome` extra deleted. Already built and tested as
+[alphagenome_poc](probes/alphagenome_poc/README.md); this item moves it into the package.
+[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm192).
+
+## RM193 — the Atlas as a resolver: knot-straddle refinement, `REF` mismatch, and not-scored
+
+**Severity** medium · **Status** open — **planned 2026-09-10** · **Owner** enricher ·
+**Motivating case** the local artifact cannot validate `REF` and cannot resolve an ambiguous knot
+
+Three capabilities the file provably lacks: the API's `raw_score` carries ~7 significant digits
+against the file's 4 and resolves the ~633,000 knot-straddling rows at one threshold; the Atlas
+validates `REF` against GRCh38 and **names the real base**, which is a finding `@va-omits-ref` says
+only the enricher can make; and an indel returns `UNIMPLEMENTED`, the third state, which must be
+recorded as could-not-ask and never as a zero. Reports, never repairs. The check **refuses** an
+unbounded refinement — rebuilding the column is 272 days and ~92 M RPCs.
+[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm193).
+
+## RM194 — gene-scoped SNV subslices, and the ±512 kb horizon
+
+**Severity** low · **Status** open — **planned 2026-09-10, most likely to be cut** · **Owner** enricher ·
+**Motivating case** slicing by gene position silently drops promoters, enhancers and distal
+regulatory variants
+
+Measured: gene-filtered Atlas scores are returned out to **+500 kb** and vanish at +700 kb — the
+half-window of the model's 1 MB input, a hard horizon. A gene-filtered interval query returns
+1,200 variants × 371 tracks in **1.1 s**, and the filter is **required**, not an optimisation: the
+unfiltered query fails with `RESOURCE_EXHAUSTED`. Cost is ~50 minutes per gene, so this is a panel
+tool and never genome-wide. Distal scores run ~10× lower, so a flat `--min-score` would silently keep
+only proximal variants — record the distance beside the score.
+[PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm194).
+
+## RM195 — Permissive-class membership is unpinned, so AVI's `commercial_use` is `None`
+
+**Severity** medium · **Status** open — **blocker on RM191, resolves by saving one page** ·
+**Owner** maintainer · **Motivating case** the four pinned terms documents do not say which
+artifacts are Permissive
+
+The Additional Terms **define** the Permissive class and grant it commercial use, but delegate
+**membership** to a sign-in-gated page on the Atlas website. Nothing in `docs/vendor/` states that
+AVI is in it, so the claim rests on a reading the repository cannot verify. **`commercial_use=None`,
+not `True`** — unknown is a value, `None` is never `False`, and `@no-named-licence` already says
+unknown commercial terms warn rather than gate. Resolves when that page is saved the way the four
+terms documents were. [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm195).
+
 ## RM164 — `heteroplasmy.csv` is a shipped table kind with no source behind it
 
 **Severity** medium · **Status** open — **PARKED to 0.8, decided 2026-09-01** · **Owner** enricher ·
