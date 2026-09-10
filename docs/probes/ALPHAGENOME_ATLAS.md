@@ -90,11 +90,11 @@ question.
    no expression direction anywhere in the model. The axis is benign ↔ damaging, not down ↔ up (§4.7).
 
 5m. **A `PHRED` threshold is a triage, not just a size dial** — the one thing §4.4.1 could not
-   settle. Against ClinVar (8 of 24 contigs, 959,844 joined rows): **`PHRED ≥ 20` keeps 97.5% of
-   pathogenic variants, discards 94.4% of benign ones and 99% of the corpus** — 97× the baseline,
-   586× at ≥ 30. Median `PHRED` runs 31.2 pathogenic against 7.3 benign. And the sign agrees
+   settle. Against ClinVar (21 of 24 contigs, 3,344,261 joined rows): **`PHRED ≥ 20` keeps 97.63% of
+   pathogenic variants, discards 94.3% of benign ones and 99% of the corpus** — 98× the baseline,
+   592× at ≥ 30. Median `PHRED` runs 31.4 pathogenic against 7.0 benign. And the sign agrees
    independently of §4.7's attribution reading: **0.16% of pathogenic variants score negative
-   against 33.20% of benign**. Read it with the ascertainment caveat — ClinVar's pathogenic set is
+   against 34.35% of benign**. Read it with the ascertainment caveat — ClinVar's pathogenic set is
    mostly coding, which is what AVI scores high for reasons already known (§4.10).
 
 5l. **Ship a 502 KB knot table instead of querying anything.** The `raw_score` value set is a fixed
@@ -1372,55 +1372,57 @@ the wrong container** — that is the general lesson, and it is not specific to 
 
 ### 4.10 The ClinVar spectrum — the threshold is a triage, and the sign agrees
 
-**Scope: 8 of 24 contigs, 959,844 joined rows**, taken while the remaining sixteen were still
-streaming. The shape is stable across the eight and the samples are large, but the numbers below
-are a partial pass and are labelled as one.
+**Scope: 21 of 24 contigs, 3,344,261 joined rows** — 86% of the 3,887,455 classified ClinVar SNVs
+selected. The three outstanding are the largest; an earlier 8-contig pass gave 97.49% where this
+gives 97.63%, so the shape is settled and the remainder will move the third decimal.
 
 §4.4.1 established that `PHRED` is an exact within-corpus rank, which makes any threshold a size
 dial. It says nothing on its own about whether the variants it keeps are the ones anyone cares
-about. Joining ClinVar's classified SNVs to the artifact answers that, and the answer is clear.
+about. This join answers that, and the answer is clear.
 
 | class | rows | median `PHRED` | median `raw_score` | negative `raw` |
 | --- | ---: | ---: | ---: | ---: |
-| **pathogenic** (P + LP) | 47,920 | **31.19** | 1.6265 | **0.16%** |
-| VUS | 561,022 | 21.53 | 0.6664 | 3.14% |
-| conflicting | 42,007 | 16.81 | 0.3973 | 12.97% |
-| **benign** (B + LB) | 308,895 | **7.27** | 0.0764 | **33.20%** |
+| **pathogenic** (P + LP) | 156,653 | **31.40** | 1.6400 | **0.16%** |
+| VUS | 1,947,487 | 21.41 | 0.6590 | 3.49% |
+| conflicting | 135,069 | 17.50 | 0.4279 | 13.71% |
+| **benign** (B + LB) | 1,105,052 | **7.01** | 0.0702 | **34.35%** |
 
 Share of each class at or above a threshold, against the corpus baseline `10^(-p/10)`:
 
 | `PHRED ≥` | corpus | pathogenic | benign | VUS | conflicting |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 1 | 79.43% | 99.89% | 76.98% | 98.02% | 90.38% |
-| 5 | 31.62% | 99.80% | 58.81% | 95.49% | 83.84% |
-| 10 | 10.00% | 99.45% | 40.19% | 87.08% | 69.87% |
-| 15 | 3.16% | 98.91% | 18.99% | 77.38% | 55.89% |
-| **20** | **1.00%** | **97.49%** | **5.60%** | 59.65% | 39.26% |
-| 25 | 0.32% | 88.59% | 0.61% | 20.76% | 15.22% |
-| **30** | **0.10%** | **58.59%** | **0.10%** | 4.18% | 4.64% |
-| 40 | 0.01% | 8.52% | 0.01% | 0.16% | 0.34% |
+| 1 | 79.43% | 99.89% | 75.83% | 97.76% | 89.62% |
+| 5 | 31.62% | 99.78% | 57.72% | 95.07% | 83.19% |
+| 10 | 10.00% | 99.49% | 39.35% | 86.20% | 70.83% |
+| 15 | 3.16% | 98.98% | 18.81% | 76.34% | 57.74% |
+| **20** | **1.00%** | **97.63%** | **5.73%** | 58.86% | 41.60% |
+| 25 | 0.32% | 88.91% | 0.69% | 20.65% | 15.61% |
+| **30** | **0.10%** | **59.22%** | **0.11%** | 4.16% | 4.66% |
+| 40 | 0.01% | 8.61% | 0.01% | 0.15% | 0.28% |
 
-**`PHRED ≥ 20` keeps 97.5% of pathogenic variants while discarding 94.4% of benign ones and 99% of
-the corpus.** That is a 97× enrichment over the baseline, and at `≥ 30` it is 586×. So the size
-dial is also a triage — which was not guaranteed and is the thing worth knowing before anyone
-picks a default.
+**`PHRED ≥ 20` keeps 97.63% of pathogenic variants while discarding 94.3% of benign ones and 99% of
+the corpus** — **98× the baseline**, and **592×** at `≥ 30`. So the size dial is also a triage,
+which was not guaranteed and is the thing worth knowing before anyone fixes a default. Note also
+where it *stops* working: at `≥ 30` more than 40% of pathogenic variants are already gone, so the
+extreme tail is a precision instrument and not a stronger version of the same filter.
 
 **The sign agrees, independently.** §4.7 read a negative `AVI` as evidence *against* functional
 impact, inferred from the feature attributions — one feature, the signed 241-way conservation
-score, carrying the whole of it. ClinVar confirms it from the other side without being asked:
-**0.16% of pathogenic variants score negative against 33.20% of benign ones**, a 200× ratio.
-Nothing in the join knew about the attributions.
+score, carrying nearly the whole of it. ClinVar confirms it from the other side without being
+asked: **0.16% of pathogenic variants score negative against 34.35% of benign ones**, a 212× ratio.
+Nothing in the join knew about the attributions, and nothing in the attributions knew about
+ClinVar.
 
 **Two cautions, and the first is serious.** ClinVar is an **ascertained** set: variants are in it
 because somebody looked. Pathogenic entries skew heavily to coding, nonsense and splice-disrupting
 changes — exactly what AVI scores high through `PROTEIN_TERMINATION`, `ALPHAMISSENSE` and
 `MERGED_SPLICING` (§4.7). So part of this enrichment is "AVI recognises coding damage", which is
-not news, and the table must not be read as evidence about **regulatory** variants, where the model
+not news, and **the table must not be read as evidence about regulatory variants**, where the model
 is interesting and ClinVar is nearly empty. The benign contrast is the more informative half:
 benign variants are ascertained too, and they score low.
 
 Second, this measures **agreement with a curated call**, not accuracy. A pathogenic variant AVI
-scores low is a disagreement between two sources and not a proven miss — which is the shape
+scores low is a disagreement between two sources, not a proven miss — the shape
 `@a-recorded-judgement-is-a-fact` already prescribes, and the reason RM193's check is named
 `variant_impact_agreement` rather than anything stronger.
 
