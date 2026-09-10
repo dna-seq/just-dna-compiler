@@ -1237,6 +1237,62 @@ rather than the absence of an exception.
 A join key that silently produces the corpus's own legitimate answer is worse than one that
 crashes. Assert a positive.
 
+### 4.7.4 Two defects that only exist at 8.8 billion rows
+
+The genome-wide build landed on 2026-09-10: **8,812,917,339 rows → 34,291,319,173 bytes over 24
+parquets, 3.891 B/row, 85 minutes** — the 34.4 GB of §4.4.3 reproduced from the artifact itself
+(`source_sha256 46434eab0ddc73ef…`). Two defects surfaced that no fixture could have shown, and
+both are the §4.7.3 lesson one level further down.
+
+#### A count that fits every part and not their sum
+
+`pl.len()` returns **`UInt32`**, and — the sharp edge — **`sum()` over a `UInt32` column stays
+`UInt32`**. Polars preserves the dtype rather than widening, so the sum wraps in silence.
+
+Every contig fits comfortably: `chr2` is 721 M rows against a `UInt32` ceiling of 4.29 billion. The
+corpus does not. The per-contig knot counts summed to **222,982,747** instead of 8,812,917,339 —
+short by exactly **2 × 2³²**. Reproduced in three lines:
+
+```python
+counts = [721_000_000]*12 + [180_243_945]
+d = pl.DataFrame({"n": pl.Series(counts, dtype=pl.UInt32)})
+d.select(pl.col("n").sum()).item()   # 242,309,353, dtype UInt32 — no exception
+d.select(pl.col("n").cast(pl.Int64).sum()).item()   # correct
+```
+
+The parquets were correct throughout, and the wrapped knot table *looked entirely plausible* while
+describing a fortieth of the data — the counts were internally consistent, monotone, and
+distributed the way a real knot table is. **The only thing that caught it was RM191's
+reconciliation check requiring `sum(n) == rows`**, 65 minutes into the build, which is exactly the
+kind of assertion that looks redundant when written.
+
+The general form is worth more than the instance: **a per-partition count that fits every partition
+need not fit their sum, and an aggregation that preserves its input's dtype will wrap without
+saying so.** Every `group_by(...).agg(pl.len())` followed by a `.sum()` over a corpus above 4.29
+billion has this bug, and none of them will raise.
+
+#### A join that pre-filters nowhere
+
+`alphagenome check` joined a module's variants against the snapshot *before* filtering it. On a
+fixture that is merely inelegant; against 34 GB the first smoke test was **OOM-killed on a
+twelve-variant module**. Pre-filtering by contig from the filename and by `pos` inside the scan
+takes **4 seconds**.
+
+CLAUDE.md has said "pre-filter before joining" since the compiler tier was written. It was written
+anyway, and only the real artifact made the difference between elegance and a killed process.
+
+#### Independent agreement at 41,474 rows
+
+The build's own knot table was compared against
+[`avi_knots.parquet`](alphagenome_knots/avi_knots.parquet) **knot by knot rather than by count**:
+zero raw values in one and not the other, zero `n` disagreements, zero `phred_lo` disagreements.
+Two implementations, two passes over the same bytes, agreeing at every one of 41,474 rows — and
+the build independently reproduced §1.4's **672,931 genuine zeros** and **49.30% negative**, and
+§4.7.3's single straddling knot (`0.00076`, n=676,356, 2.99961–3.00027).
+
+That is the strongest evidence in this document, and it is worth naming why: every other number
+here rests on one implementation reading one file. These two rest on two of each.
+
 ### 4.8 Does the 3.6e-4 residual actually rerank anything?
 
 Three questions, measured on a 36 M-row `chr21` slice against a curve built from `chr22`.
