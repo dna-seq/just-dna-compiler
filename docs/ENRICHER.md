@@ -989,6 +989,8 @@ a set, which is unreadable in practice.
 
 ## The caches
 
+**Adding a lane? [CACHE_SURFACE.md](CACHE_SURFACE.md) is the checklist**, and every line in it names the test that asserts it — written after a lane shipped with a `publish_repo` no command could reach.
+
 **Parquet snapshots, one base directory, one rule: locate, never download — except where you ask.**
 (The count used to be stated here and went stale twice while the table below grew; a number in prose
 is a registry nothing iterates. **Since RM176 the roster is `caches.CACHE_LANES`** — a walked registry
