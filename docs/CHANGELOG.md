@@ -34,7 +34,40 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — AVI measured whole, and its `PHRED` turns out to be a size dial
+## 2026-09-10 (latest) — where AVI's bytes go, whether `PHRED` is droppable, and what a negative means
+
+Seventh round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md), three measurements
+answering three questions the size table raised. No `RMn`, no adoption.
+
+- **The 88.5 GB → 69 GB gap is not container overhead** (§4.5). bgzip's block headers are 0.03% and
+  the `.tbi` is 3.2 MB. Uncompressed the TSV is **310 GB**, so DEFLATE already gets 3.5× on it. What
+  parquet cannot beat is the payload: written in isolation the two float columns are **54.7 of 67.9
+  GB — 80%** — while `pos` is 11.0 GB and `ref`/`alt`/`chrom` together 2.1 GB. Text holds up because
+  the values only ever had 4–6 significant digits and DEFLATE squeezes the rest, where an IEEE float
+  stores a full mantissa of noise the source never had. Quantising `raw_score` to `Int32`×10⁵ — its
+  real precision — costs **2.41 B/row against `Float32`'s 3.15**, and `Float64` beat `Float32` for the
+  same reason. An earlier draft of §4.4.3 labelled its float column `f32` when it was `f64`; corrected.
+- **`PHRED` is monotone in `raw_score` but not recomputable from it exactly** (§4.6). Zero negative
+  steps across `chr22`'s 40,204 distinct values, so there is one 1-D empirical curve. Applied to three
+  disjoint regions totalling 59.9 M rows, reconstruction gives mean `|Δ| 2.2e-5`, **max 3.56e-4**, and
+  `Σ|Δ|` of 322–765 against an `ε·N` budget of ~3e-9 — the machine-epsilon test fails by eleven orders
+  of magnitude. The cause is not float error: the file prints `raw_score` to **four** significant
+  digits and `PHRED` to **six**, so 2,001 raw values carry up to **68** distinct `PHRED`s each. It
+  reclassifies **zero rows** at `≥10` or `≥20`, so it is exact for triage and lossy for reporting a
+  rank — and the framing inverts: `raw_score` is published too coarsely to regenerate `PHRED`.
+- **A negative `AVI` is low conservation, not down-regulation** (§4.7). `AVI_SCORE_MODEL_FEATURES` and
+  `AVI_SCORE_FEATURE_IMPORTANCE` are Atlas scorers returning 18 values each, and they are the SHAP
+  file's columns in order — verified by matching feature 0 against the splicing artifact at two loci
+  (4.0252 vs 4.025, 0.0345 vs 0.03451) and against its absence at a third. At both negative variants
+  probed the whole score is one feature, the signed `CACTUS_241_WAY` at −20.0 and −11.5, with
+  attributions of −1.23 and −0.70 and everything else near zero. The nine regulatory features are all
+  `MAX_ABS_*` — sign discarded before the model sees them — so **no expression direction exists
+  anywhere in the feature set**. The axis is benign ↔ damaging. The positive extreme decomposes as a
+  stop-gain (attribution 1.63), a splicing effect (1.29) and AlphaMissense 0.92 (0.83). Also worth
+  noting: `ALPHAMISSENSE` comes back `nan` on non-coding variants, so one input distinguishes
+  unmeasured from zero where `MERGED_SPLICING` does not.
+
+## 2026-09-10 — AVI measured whole, and its `PHRED` turns out to be a size dial
 
 Sixth round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md): the 88.5 GB AVI
 artifact extracted and passed over in 46 minutes, 24 contigs, 12-way. No `RMn`, no adoption.

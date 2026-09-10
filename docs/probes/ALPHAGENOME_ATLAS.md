@@ -81,6 +81,23 @@ question.
    splicing pipeline never scored a position, so the source itself collapses unmeasured into
    no-effect (§1.5).
 
+5f. **A negative `AVI` is low conservation, not down-regulation.** The Atlas exposes the model's
+   own 18 inputs and attributions, and they are the SHAP file's columns in order (verified against
+   the splicing artifact to four significant figures). At both negative variants probed, essentially
+   the entire score is one feature — `CACTUS_241_WAY`, the signed 241-way comparative-genomics score,
+   at −20.0 and −11.5 — so a negative reads as **evidence against functional impact**. The nine
+   regulatory features are all `MAX_ABS_*`, magnitudes with the sign already discarded, so there is
+   no expression direction anywhere in the model. The axis is benign ↔ damaging, not down ↔ up (§4.7).
+
+5g. **`PHRED` cannot be recomputed from the published `raw_score` exactly**, and the obstacle is
+   precision, not floating point: the file prints `raw_score` to **four** significant digits and
+   `PHRED` to **six**, so 2,001 of `chr22`'s 40,204 distinct `raw_score` values carry up to **68**
+   distinct `PHRED`s. Reconstruction through the empirical curve is off by `max 3.6e-4` — eleven
+   orders of magnitude above `ε·N` — but reclassifies **zero rows** at any threshold. Exact for
+   triage, lossy for reporting a rank (§4.6). And the 88.5 GB → 69 GB gap is not container overhead:
+   the two float columns are **80% of the parquet** and text holds up because the values only ever
+   had 4–6 digits (§4.5).
+
 5e. **AVI's `PHRED` is a size dial, not a measurement.** Measured over all 8,812,917,339 rows,
    `PHRED ≥ p` keeps exactly `10^(-p/10)` of the corpus — to four significant figures across four
    orders of magnitude. So its histogram is a straight line by construction, there is no natural
@@ -784,12 +801,14 @@ something the published metadata says. Reading direction into it would be
 
 #### 4.4.3 Dataset size at each cut
 
-Measured on `chr22` (117,479,331 rows) and scaled by the genome-wide row counts above. `both int`
-stores `raw_score` and `PHRED` as scaled integers at the source's own 5 decimal places; `raw only`
+Measured on `chr22` (117,479,331 rows) and scaled by the genome-wide row counts above. The float
+column was measured as `Float64` — mislabelled `f32` in an earlier draft of this table, and
+`Float32` is barely cheaper (67.9 GB against 69.0 GB) for the reason §4.5 gives. `both int`
+stores `raw_score` and `PHRED` as scaled integers at the source's own decimal places; `raw only`
 drops `PHRED` entirely, which is defensible precisely because §4.4.1 shows it is a rank the
 threshold already encodes.
 
-| threshold | rows | % corpus | both `f32` | both int | `raw_score` only |
+| threshold | rows | % corpus | both `f64` | both int | `raw_score` only |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | all | 8,812,917,339 | 100% | 69.0 GB | 59.1 GB | **34.4 GB** |
 | ≥ 1 | 7,000,282,021 | 79.43% | 56.3 GB | 46.5 GB | 27.9 GB |
@@ -822,6 +841,142 @@ The same collision as §4.2 applies and is worse here: at any threshold a missin
 "not scored" or "scored below the cut", and AVI writes **672,931 exact zeros**, so `0.0` cannot be
 the sentinel either. A thresholded AVI artifact must record its own threshold or the ambiguity is
 unrecoverable.
+
+### 4.5 Where the bytes are, and why tabix is competitive
+
+The 88.5 GB artifact re-encodes to 69 GB, which is a 22% saving and not the order-of-magnitude one
+a columnar format usually gives. Decomposed on `chr22` (117,479,331 rows) and scaled:
+
+| representation | B/row | genome-wide |
+| --- | ---: | ---: |
+| uncompressed TSV | 35.17 | 310 GB |
+| **published `.tsv.gz`** (bgzip) | **10.04** | **88.5 GB** |
+| parquet + zstd-9, key + both `f64` | 7.83 | 69.0 GB |
+| parquet + zstd-9, key + both `f32` | 7.70 | 67.9 GB |
+| parquet + zstd-9, key + `raw` as `int32`×10⁵ | 3.90 | 34.4 GB |
+
+Per column, written in isolation:
+
+| column | B/row | genome-wide |
+| --- | ---: | ---: |
+| `chrom` (categorical) | 0.002 | 0.02 GB |
+| `pos` (`UInt32`) | 1.25 | 11.0 GB |
+| `ref` + `alt` (categorical) | 0.24 | 2.1 GB |
+| `raw_score` as `Float32` | 3.15 | 27.8 GB |
+| `raw_score` as `Float64` | 2.94 | 25.9 GB |
+| **`raw_score` as `Int32`×10⁵** | **2.41** | **21.3 GB** |
+| `PHRED` as `Float32` | 3.06 | 26.9 GB |
+| `PHRED` as `Float64` | 3.40 | 29.9 GB |
+
+**There is no container overhead to find.** bgzip's block headers are ~18 bytes per 64 KB (0.03%)
+and the `.tbi` index is 3.2 MB against 88.5 GB. The gap is not tabix being wasteful; it is that
+**the two float columns are 80% of the parquet** (54.7 of 67.9 GB) and they are nearly
+incompressible in either format.
+
+The reason text holds up so well is precision. §4.5.1 measures it: `raw_score` is printed to **four
+significant digits** and `PHRED` to **six**, so a decimal row carries only the digits that exist,
+and DEFLATE squeezes the rest — the repeated `chrom`, the near-constant leading digits of `POS`,
+the tab structure. An IEEE float, by contrast, stores a full 24- or 53-bit mantissa whose low bits
+are noise the source never had, and noise does not compress. That is the whole 22%.
+
+It is also why `Float64` beat `Float32` on `raw_score` (2.94 against 3.15 B/row): the `f64`
+representation of a 4-significant-digit decimal has long runs of zero mantissa bits, while the
+`f32` rounding scatters them. And it is why quantising to the source's real precision wins
+outright — **`Int32`×10⁵ at 2.41 B/row is 23% under `Float32`**, because it stores exactly the
+information the file contains and nothing else.
+
+#### 4.5.1 The two columns are not published at the same precision
+
+Measured over 2,000,000 `chr22` rows, counting significant digits:
+
+| column | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `raw_score` | 0.5% | 3.4% | 20.3% | **75.7%** | — | — | — |
+| `PHRED` | — | 0.1% | 0.8% | 5.0% | 24.7% | **66.5%** | 2.8% |
+
+`PHRED` is published at roughly **100× the resolution of `raw_score`**, which is the fact §4.6
+turns on.
+
+### 4.6 Can `PHRED` be dropped and recomputed? Not exactly, and the reason is not floating point
+
+§4.4.1 shows `PHRED` is a rank, so it is a **monotone function of `raw_score`** — confirmed
+directly: over `chr22`'s 40,204 distinct `raw_score` values sorted ascending, `PHRED` has **zero
+negative steps**. There is one 1-D curve, not a per-variant computation, and it is not a closed
+form either: it is an empirical quantile function, so reconstruction means carrying the curve (tens
+of thousands of knots, a few hundred KB) rather than a formula.
+
+Tested as asked. The curve was built from `chr22` (mean `PHRED` per distinct `raw_score`) and
+applied to three disjoint regions:
+
+| region | rows | `raw` unseen | mean \|Δ\| | p99 \|Δ\| | max \|Δ\| | Σ\|Δ\| | ε·N |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| chr21:20–30 Mb | 29,999,886 | 0.000% | 0.000026 | 0.000307 | 0.000356 | 764.9 | 6.7e-09 |
+| chr1:1–6 Mb | 14,869,476 | 0.001% | 0.000022 | 0.000302 | 0.000356 | 321.7 | 3.3e-09 |
+| chr7:50–55 Mb | 15,000,003 | 0.000% | 0.000025 | 0.000307 | 0.000356 | 369.2 | 3.3e-09 |
+
+**The `ε·N` test fails by about eleven orders of magnitude**, and the cause is not float error. It
+is §4.5.1: the file rounds `raw_score` to four significant digits while computing `PHRED` from the
+unrounded value, so **2,001 of `chr22`'s 40,204 distinct `raw_score` values carry more than one
+`PHRED`** — up to **68 distinct values** behind a single printed `raw_score`. The residual is that
+rounding, and it is bounded: `max |Δ| = 3.56e-4` everywhere tested.
+
+So the answer splits by use:
+
+- **For triage, it is exact.** Across 59.9 M rows in three regions, thresholding on the
+  reconstructed value reclassified **zero rows** at `PHRED ≥ 10` and **zero** at `≥ 20`. If the
+  column's job is to pick a slice, dropping it costs nothing measurable.
+- **For reporting a rank, it is lossy.** `PHRED` is the finer of the two published columns, so
+  "drop it and recompute" trades the artifact's highest-resolution field for its coarsest. A
+  consumer quoting a variant's percentile should keep it.
+
+The honest framing is therefore the reverse of the intuition: it is not that `PHRED` is redundant
+given `raw_score`; it is that **`raw_score` is published too coarsely to regenerate `PHRED`**, and
+the 34.4 GB `raw_score`-only build in §4.4.3 buys its size by accepting a 3.6e-4 rank error that no
+threshold can see.
+
+### 4.7 What the score means, and what a negative one is
+
+`AVI` is an **impact score, not a direction**. The Atlas exposes the model's own inputs and
+attributions as two more scorers — `AVI_SCORE_MODEL_FEATURES` and `AVI_SCORE_FEATURE_IMPORTANCE`,
+18 values each — and they are the SHAP artifact's 18 columns in order. Confirmed rather than
+assumed: feature 0 came back as 4.0252 and 0.0345 at two `chr22` loci where the splicing artifact
+independently says **4.025** and **0.03451**, and as 0.0 at a locus the splicing file does not
+cover at all — which is §1.5's zero-means-unscored finding arriving from the other side.
+
+Three variants, queried live:
+
+| | chr22:11249481 T>C | chr22:30000581 G>A | chr22:30339156 C>A |
+| --- | ---: | ---: | ---: |
+| **`AVI_SCORE`** | **−1.2592** | **−0.6592** | **+4.6258** |
+| `MERGED_SPLICING` | 0.0 | 0.0345 | 4.0252 |
+| `ALPHAMISSENSE` | `nan` | `nan` | 0.9241 |
+| **`CACTUS_241_WAY`** | **−20.0** | **−11.507** | **+8.898** |
+| `PROTEIN_TERMINATION` | 0.0 | 0.0 | 1.0 |
+| `PHASTCONS_470_WAY` | 0.0 | 0.0 | 1.0 |
+| *importance of* `CACTUS_241_WAY` | **−1.2258** | **−0.7049** | +0.6146 |
+| *importance of* `PROTEIN_TERMINATION` | 0.0 | 0.0 | **1.6255** |
+| *importance of* `MERGED_SPLICING` | 0.0 | 0.0103 | 1.2895 |
+
+**A negative AVI is conservation, not direction.** In both negative cases essentially the whole
+score is one feature: `CACTUS_241_WAY`, the 241-way comparative-genomics score, which is itself
+signed and strongly negative — sites evolving *faster* than neutral expectation. Its attribution is
+−1.226 and −0.705, and every other feature contributes near zero. So a negative `AVI` reads as
+**evidence against functional impact**: the site looks less constrained than baseline. It does not
+mean down-regulation, and there is no expression direction anywhere in the feature set — the nine
+regulatory features are all `MAX_ABS_*`, magnitudes with the sign already discarded before the
+model sees them.
+
+The positive extreme decomposes the way a deleteriousness score should: a stop-gain
+(`PROTEIN_TERMINATION` 1.0, the largest single attribution at 1.63), a strong splicing effect
+(4.03, attribution 1.29), a high AlphaMissense score (0.92, attribution 0.83) and positive
+conservation.
+
+**So the axis is closer to benign ↔ damaging than to down ↔ up**, with the caveat §4.4.2 already
+states: the Atlas does not mark `AVI_SCORE` as `is_signed`, so this reading comes from the feature
+attributions rather than from a declared semantics. `ALPHAMISSENSE` being `nan` on both non-coding
+variants is worth noting separately — the feature vector carries a genuine missing value, not a
+zero, so at least one input distinguishes *unmeasured* from *zero* even though `MERGED_SPLICING`
+does not.
 
 ## 5. The rarity axis — it exists, and it is 6% populated
 
