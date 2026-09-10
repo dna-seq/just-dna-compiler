@@ -151,8 +151,15 @@ class VariantImpactResult:
 
     @property
     def subjects(self) -> int:
-        """The denominator the attestation publishes: every variant this pass had an opinion about."""
-        return len(self.decided) + len(self.unanswered)
+        """The denominator the attestation publishes: every variant this pass had an opinion about.
+
+        **Distinct variants, not `len(decided) + len(unanswered)`**, because a variant can be in
+        both: the snapshot decides it, and then a threshold falling inside its knot leaves it
+        unresolved. A three-variant module reported four subjects until this counted a set — an
+        attestation whose denominator exceeds the rows it was computed over is worse than no
+        denominator, since it reads as coverage nobody had.
+        """
+        return len({*self.decided, *(label for label, _ in self.unanswered)})
 
 
 def _label(variant: VariantRow) -> str:
@@ -176,6 +183,16 @@ def load_module_variants(spec_dir: Path) -> list[VariantRow]:
         raise VariantImpactError(f"{VARIANTS_CSV}: {errors[0]}")
     return rows
 
+
+
+
+def _contig_of(path: Path) -> str:
+    """The contig a snapshot parquet holds, from its own name.
+
+    `alphagenome_avi-chr6.parquet` → `chr6`. Derived from the filename the builder writes rather
+    than by opening the file, because the point is to decide *not* to open it.
+    """
+    return path.stem.split("-", 1)[-1]
 
 
 def artifact_contig(chrom: str) -> str:
@@ -261,17 +278,44 @@ def read_local_scores(
         wanted, schema=["chrom", "pos", "ref", "alt", "label"], orient="row"
     ).with_columns(pl.col("pos").cast(pl.UInt32))
 
-    scored = (
-        pl.scan_parquet(parquets)
-        .with_columns(
-            pl.col("chrom").cast(pl.String),
-            pl.col("ref").cast(pl.String),
-            pl.col("alt").cast(pl.String),
+    # **Pre-filter, then join** (CLAUDE.md, polars in the compiler). The obvious spelling — scan
+    # every parquet, cast the categorical key columns, join the probe — reads 8,812,917,339 rows to
+    # answer a question about a handful, because the cast has to materialise before the join can use
+    # it. It does not merely run slowly: the first smoke test against the real 34 GB artifact was
+    # killed by the OOM killer, exit 137, on a module with twelve variants.
+    #
+    # Two filters do the work. The file names carry the contig, so a module on chr6 never opens the
+    # other twenty-three; and `pos` is filtered inside the scan, where parquet's row-group statistics
+    # skip almost everything before a row is decoded. Only then is there anything small enough to
+    # cast and join.
+    by_contig: dict[str, set[int]] = {}
+    for chrom, pos, *_ in wanted:
+        by_contig.setdefault(chrom, set()).add(pos)
+    relevant = [p for p in parquets if _contig_of(p) in by_contig]
+    if not relevant:
+        return {}
+
+    frames = []
+    for path in relevant:
+        positions = sorted(by_contig[_contig_of(path)])
+        frames.append(
+            pl.scan_parquet(path)
+            .filter(pl.col("pos").is_in(positions))
+            .with_columns(
+                pl.col("chrom").cast(pl.String),
+                pl.col("ref").cast(pl.String),
+                pl.col("alt").cast(pl.String),
+            )
+            .collect()
         )
-        .join(probe.lazy(), on=["chrom", "pos", "ref", "alt"], how="inner")
-        .join(pl.scan_parquet(knot_path), on="raw_score_e5", how="left")
+    matched = pl.concat(frames) if frames else None
+    if matched is None or not matched.height:
+        return {}
+
+    scored = (
+        matched.join(probe, on=["chrom", "pos", "ref", "alt"], how="inner")
+        .join(pl.read_parquet(knot_path), on="raw_score_e5", how="left")
         .select("label", "raw_score_e5", "phred_lo", "phred_hi")
-        .collect()
     )
     return {
         row["label"]: LocalScore(

@@ -194,6 +194,33 @@ thresholds with zero misclassifications; and that the one straddling knot really
 sides of 3.0 — without which the safety test would be `@tautology-zero`, which is why the slice was
 cut around that locus rather than anywhere.
 
+**Built genome-wide, and every number cross-checks against something measured independently.**
+The 88.5 GB artifact re-encodes in **85 minutes** on twelve tabix streams to **34,291,319,173 bytes
+over 24 parquets — 3.891 B/row**:
+
+| | built here | measured elsewhere |
+| --- | ---: | --- |
+| rows | 8,812,917,339 | the probe's corpus size, § 4.4 |
+| knots | **41,474** | 41,474 — the sibling session's independently-built table |
+| negative `raw_score` | 4,344,533,049 (49.30%) | 49.30%, § 1.4 |
+| genuine zeros | **672,931** | 672,931, § 1.4 |
+| straddling knots | **1** (`0.00076`, n=676,356, PHRED 2.99961–3.00027) | 1, and only at threshold 3 |
+
+The knot table was compared against `docs/probes/alphagenome_knots/avi_knots.parquet` — built by a
+different session, from a different pass over the same bytes — knot by knot rather than by count:
+**zero raw values in one and not the other, zero `n` disagreements, zero `phred_lo` disagreements.**
+`source_sha256` is `46434eab0ddc73ef…`, and `release.json` pins the artifact's own 2026-08-27 stamp,
+which is what § 2.7c resolves the applicable terms against.
+
+**Two defects the real artifact found that no fixture could.** `pl.len()` is `UInt32`, so summing
+the per-contig knot tables wrapped 8,812,917,339 to 222,982,747 — exactly `− 2·2³²` — and only the
+reconciliation guard saw it, after 65 minutes of building. And `read_local_scores` joined before
+filtering, which on 34 GB is not slow but fatal: the first smoke test was killed by the OOM killer
+on a twelve-variant module. It now selects parquets by contig from the filename and filters `pos`
+inside the scan, where row-group statistics skip almost everything; the same query takes 4 seconds.
+A third, smaller: `subjects` counted `decided + unanswered` and a straddling variant is legitimately
+in both, so a three-variant module published four.
+
 **"No threshold" was the right default, and the evidence arrived after the decision.** The artifact
 ships the whole corpus with the sign intact, on the argument that a cut is a consumer's slice. The
 ClinVar join measured beside this round (probe § 4.10, 21 of 24 contigs) shows a threshold *is* a

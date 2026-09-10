@@ -34,7 +34,43 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — the artifact is 34.2 GB, and the 43 GB was the tape measure
+## 2026-09-10 (latest) — the AVI lane built genome-wide: 8.8 billion rows, 34.3 GB, and two defects only the real thing found
+
+`just-dna-enricher alphagenome build` has now been run over the whole artifact. 88.5 GB of tabix TSV
+becomes **34,291,319,173 bytes over 24 parquets — 3.891 B/row — in 85 minutes** on twelve streams.
+
+**Every published number cross-checks against a measurement taken independently:** 8,812,917,339
+rows and 672,931 genuine zeros against the probe's own counts, 49.30% negative against its §1.4, and
+**41,474 knots against a table a different session built from a different pass over the same bytes**
+— compared knot by knot, not by count, with zero raw values in one and not the other, zero `n`
+disagreements and zero `phred_lo` disagreements. Exactly one knot straddles any integer `PHRED`
+threshold from 1 to 50: `0.00076`, 676,356 rows, spanning 2.99961 to 3.00027.
+
+**Two defects the real artifact found that no fixture could**, and both are the same shape — a thing
+that is correct at every size a test can reach and wrong at the size that matters.
+
+`pl.len()` is `UInt32`. Every contig fits it — chr2, the largest, is 721 M rows — and the corpus
+does not, so summing the per-contig knot tables wrapped 8,812,917,339 to **222,982,747**, which is
+`− 2·2³²` exactly. Nothing else in the pass would have noticed: the parquets were right, the
+per-contig counts were right, and the curve would have looked plausible while describing a fortieth
+of the data. The reconciliation check that requires `sum(n)` to equal the rows written is what
+caught it, 65 minutes in.
+
+And `alphagenome check` joined the module's variants against the snapshot *before* filtering it.
+On a fixture that is merely inelegant; on 34 GB it was fatal — the first smoke test was killed by
+the OOM killer on a module with twelve variants. It now picks parquets by contig from the filename
+and filters `pos` inside the scan, where parquet's row-group statistics skip almost everything
+before a row is decoded. The same query takes **4 seconds**.
+
+A third, smaller and caught in the same run: the check's `subjects` was `decided + unanswered`, and
+a variant whose knot straddles the threshold is legitimately in both — so a three-variant module
+published a denominator of four.
+
+Per-contig knot aggregates are now parked until the merge succeeds. They are built from `PHRED`,
+which the artifact deliberately does not store, so they cannot be recovered from the finished
+snapshot — which is why the overflow cost a full re-read rather than a retry.
+
+## 2026-09-10 — the artifact is 34.2 GB, and the 43 GB was the tape measure
 
 A correction to the RM191 entries below, and the reason it gets its own heading is that the mistake
 generalises further than the number does.

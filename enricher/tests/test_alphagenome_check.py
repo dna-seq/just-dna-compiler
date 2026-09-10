@@ -523,3 +523,28 @@ def test_the_two_contig_spellings_are_reconciled_at_the_boundary(
     assert len(a.decided) == len(b.decided)
     assert a.unanswered == b.unanswered == []
     assert ac.artifact_contig("22") == ac.artifact_contig("chr22") == "chr22"
+
+
+@needs_tabix
+def test_the_denominator_counts_variants_and_not_verdicts(snapshot: Path, tmp_path: Path) -> None:
+    """A variant the snapshot decided AND the threshold left unresolved is one subject, not two.
+
+    Found on the real artifact: a three-variant module reported four subjects, because a straddling
+    row is legitimately in `decided` (the snapshot has a score for it) and in `unanswered` (the
+    threshold falls inside its knot and nothing refined it). An attestation whose denominator
+    exceeds the rows it ran over reads as coverage nobody had, which is the opposite of what the
+    record is for.
+    """
+    straddling = _rows_at(snapshot, straddling=True)[:2]
+    spec = _module(tmp_path, straddling)
+
+    result = ac.check_variant_impact(
+        spec, reference=snapshot, client=_Stub(), threshold=STRADDLED_THRESHOLD, offline=True
+    )
+
+    assert len(result.decided) == len(straddling), "the snapshot really did decide these"
+    assert len(result.unanswered) == len(straddling), "and the threshold really did unresolve them"
+    assert result.subjects == len(straddling), "but there are only this many variants"
+
+    record = {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}[ac.CHECK]
+    assert record.skipped == "offline"
