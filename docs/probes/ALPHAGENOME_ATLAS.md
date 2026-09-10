@@ -89,6 +89,22 @@ question.
    regulatory features are all `MAX_ABS_*`, magnitudes with the sign already discarded, so there is
    no expression direction anywhere in the model. The axis is benign ↔ damaging, not down ↔ up (§4.7).
 
+5h. **The reconstruction residual reranks pervasively but microscopically, and rounding does not
+   mend it.** One row in six changes rank, but the largest move anywhere is 3,168 places in 36 M —
+   **0.0088 of a percentile**. Threshold flips are not smooth: **zero at every integer threshold
+   1–50 except one**, where 1,218 rows move together because a single printed `raw_score`
+   (`0.00076`, 8,443 rows) spans `PHRED` 2.99961–3.00027 and straddles 3.0. That makes safety
+   **decidable** — a threshold is unsafe iff it lands inside a knot's span, checkable against the
+   curve in advance. Rounding to 10⁻³ makes 97% of rows compare equal but raises the **worst case
+   from 3.6e-4 to 1.0e-3**, so it hides the common case and worsens the rare one (§4.8).
+
+5i. **Store the floats as `Int32`×10⁵ — lossless and 13% smaller than `Float32`.** Both columns
+   print at most 5 decimals, so the integer scale is exact while `Float32` is both larger *and*
+   lossy. Whole rows: 59.2 GB against 67.9 GB, or 34.4 GB keeping `raw_score` alone. The general
+   lesson is not AlphaGenome-specific: **wherever a source publishes fixed decimals, a float is the
+   wrong container** — its low mantissa bits are noise the source never had, and noise does not
+   compress (§4.9).
+
 5g. **`PHRED` cannot be recomputed from the published `raw_score` exactly**, and the obstacle is
    precision, not floating point: the file prints `raw_score` to **four** significant digits and
    `PHRED` to **six**, so 2,001 of `chr22`'s 40,204 distinct `raw_score` values carry up to **68**
@@ -977,6 +993,110 @@ attributions rather than from a declared semantics. `ALPHAMISSENSE` being `nan` 
 variants is worth noting separately — the feature vector carries a genuine missing value, not a
 zero, so at least one input distinguishes *unmeasured* from *zero* even though `MERGED_SPLICING`
 does not.
+
+### 4.8 Does the 3.6e-4 residual actually rerank anything?
+
+Three questions, measured on a 36 M-row `chr21` slice against a curve built from `chr22`.
+
+#### 4.8.1 Threshold flips are rare, lumpy, and predictable
+
+| threshold | selected (true) | rows flipped | flipped / selected |
+| ---: | ---: | ---: | ---: |
+| 1 | 26,626,452 | **0** | — |
+| **3** | 15,167,587 | **1,218** | 8.0e-05 |
+| 5 | 8,737,261 | **0** | — |
+| 10 | 2,252,898 | **0** | — |
+| 15 / 20 / 25 / 30 / 35 / 40 / 45 / 50 | … | **0** | — |
+
+A smooth model predicts a few thousand flips at low thresholds and fractions of a row above 40.
+The truth is nothing at all everywhere except **one threshold**, where 1,218 rows move at once —
+and the diagnosis is exact: **every one of those flips comes from a single printed `raw_score`.**
+
+`raw_score = 0.00076` appears 8,443 times on `chr22` and spans `PHRED` **2.99961 – 3.00027**. It
+straddles 3.0. The curve's mean for that knot is 2.999939, a hair below, so every row behind it
+reconstructs below the threshold and the ones truly at or above 3.0 flip together.
+
+That gives a **decidable rule** rather than an error bar. A knot is a printed `raw_score`; 2,001 of
+`chr22`'s 40,204 knots (4.98%) span more than one `PHRED`, and the **widest span is 0.000700**. A
+threshold is unsafe **iff it falls inside a knot's span**, which is checkable in advance against
+the curve — and across all fifty integer thresholds from 1 to 50, **exactly one is unsafe**. The
+"sharp 50" case the question raises is safe: no knot goes near it, and at that end the corpus is so
+thin (107 rows ≥ 50 in the whole slice) that atoms cannot form.
+
+So the remedy is not a tolerance, it is a lookup: build the curve, list the knots straddling your
+threshold, and either nudge the threshold off the atom or read those rows from the stored column.
+
+#### 4.8.2 Rounding does not mend it — it makes the worst case worse
+
+| rounding grid | identical after rounding | **max residual** | flips at 10/20/30 |
+| --- | ---: | ---: | ---: |
+| none | 85.34% | **3.56e-4** | 0 |
+| 1e-5 | 85.34% | 3.60e-4 | 0 |
+| 1e-4 | 86.60% | 4.00e-4 | 0 |
+| **1e-3** | 97.43% | **1.00e-3** | 0 |
+| 1e-2 | 99.71% | 1.00e-2 | 0 |
+
+Rounding to 10⁻³ makes 97% of rows compare equal, which looks like a fix and is not one: **the
+worst case rises from 3.6e-4 to 1.0e-3**, because two values 3.6e-4 apart can land on opposite
+sides of a grid line and be pushed a full step apart. Rounding buys agreement in the common case by
+making the rare case worse — the opposite of what a tolerance should do. It also cannot recover
+what §4.5.1 lost: the information is gone from `raw_score`'s fourth significant digit, and no
+post-hoc grid puts it back.
+
+#### 4.8.3 Reranking is pervasive but microscopic
+
+| | |
+| --- | --- |
+| rows whose rank changes at all | **15.74%** |
+| mean rank shift | 143 places |
+| p99 rank shift | 2,053 places |
+| **max rank shift** | **3,168 places** (of 36 M) |
+
+One row in six moves, so "the ordering is preserved" is false. But the largest move anywhere is
+3,168 places out of 35,999,777 — **0.0088 of a percentile**. No variant can cross another that is
+meaningfully different from it; the churn is entirely inside ties that `raw_score`'s rounding
+created. For a ranked shortlist of any practical length the reconstruction and the stored column
+give the same answer, and §4.8.1's rule covers the one case where they do not.
+
+### 4.9 Storing the noise-carriers as integers
+
+The floats are 80% of the parquet (§4.5) and their low mantissa bits are noise the source never
+had. Both columns are printed to **at most 5 decimals** — measured over all 117 M `chr22` rows,
+`raw_score` 70.2% at 5 decimals and `PHRED` 90.2%, neither ever more — so `Int32`×10⁵ is **exactly
+lossless** for both (`raw` reaches 608,100 and `PHRED` 8,945,120, both far inside `Int32`).
+
+| encoding | B/row | genome-wide | lossless? |
+| --- | ---: | ---: | --- |
+| `raw` `Float32` | 3.154 | 27.8 GB | no — rounds the 5th decimal |
+| `raw` `Float64` | 2.943 | 25.9 GB | yes |
+| **`raw` `Int32`×10⁵** | **2.413** | **21.3 GB** | **yes** |
+| `raw` dictionary code `UInt32` | 2.342 | 20.6 GB | yes |
+| `raw` `Int32`×10⁴ | 1.841 | 16.2 GB | **no** — 70% of values have 5 decimals |
+| `PHRED` `Float32` | 3.056 | 26.9 GB | no |
+| `PHRED` `Float64` | 3.397 | 29.9 GB | yes |
+| **`PHRED` `Int32`×10⁵** | **2.808** | **24.8 GB** | **yes** |
+| `PHRED` `Int32`×10³ | 1.972 | 17.4 GB | no |
+
+And whole rows:
+
+| layout | B/row | genome-wide |
+| --- | ---: | ---: |
+| key + both `Float32` | 7.700 | 67.9 GB |
+| **key + both `Int32`×10⁵** | **6.711** | **59.2 GB** |
+| key + `raw` `Int32`×10⁵ | 3.903 | 34.4 GB |
+| key + `raw` dictionary code | 3.828 | 33.7 GB |
+
+**Integer packing is a 13% saving at zero information cost** — it is strictly better than
+`Float32`, which is both larger *and* lossy here. The dictionary code is marginally smaller again
+(chr22 has only 40,204 distinct `raw_score` values, a consequence of the 4-significant-digit
+printing), but parquet already dictionary-encodes internally, which is why the gain over `Int32` is
+only 3%; an explicit dictionary would have to travel with the artifact to be decodable, so it buys
+little for a real cost.
+
+`Float64` beating `Float32` on `raw_score` (2.943 against 3.154) is the same effect seen from the
+other end: the `f64` representation of a 5-decimal value has long runs of zero mantissa bits, while
+`f32` rounding scatters them into noise. **Wherever a source publishes fixed decimals, the float is
+the wrong container** — that is the general lesson, and it is not specific to AlphaGenome.
 
 ## 5. The rarity axis — it exists, and it is 6% populated
 

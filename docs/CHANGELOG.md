@@ -34,7 +34,35 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — where AVI's bytes go, whether `PHRED` is droppable, and what a negative means
+## 2026-09-10 (latest) — the reconstruction residual reranks, but only inside ties the rounding made
+
+Eighth round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md), following the previous
+round's `3.56e-4` residual to its consequences. No `RMn`, no adoption.
+
+- **Threshold flips are lumpy, not smooth, and the lumps are diagnosable** (§4.8.1). Across a 36 M-row
+  slice, every integer threshold from 1 to 50 flips **zero rows** except **3**, which flips **1,218 at
+  once** — and all of them come from a single printed `raw_score`. `0.00076` occurs 8,443 times on
+  `chr22` and spans `PHRED` 2.99961–3.00027, straddling 3.0, so the curve's mean lands a hair below
+  and the whole atom moves together. That turns an error bar into a **decidable rule**: a threshold is
+  unsafe iff it falls inside a knot's span, 2,001 of 40,204 knots span more than one `PHRED`, the
+  widest span is 0.000700, and exactly one integer threshold in 1–50 is unsafe. A "sharp 50" is safe.
+- **Rounding does not mend it and makes the worst case worse** (§4.8.2). Rounding to 10⁻³ makes 97.4%
+  of rows compare equal, but the **maximum residual rises from 3.6e-4 to 1.0e-3**, because two values
+  3.6e-4 apart can land on opposite sides of a grid line. It hides the common case and worsens the
+  rare one, and it cannot recover what the fourth significant digit already lost.
+- **Reranking is pervasive but microscopic** (§4.8.3): **15.74%** of rows change rank, mean shift 143
+  places, but the **largest move anywhere is 3,168 of 36 M — 0.0088 of a percentile**. So "the
+  ordering is preserved" is false and "the ordering is usable" is true; the churn is entirely inside
+  ties that `raw_score`'s rounding created.
+- **Integer packing is strictly better than `Float32`** (§4.9). Both columns print **at most 5
+  decimals** (measured over all 117 M `chr22` rows), so `Int32`×10⁵ is **exactly lossless** while
+  `Float32` is larger *and* lossy. Whole rows: **59.2 GB against 67.9 GB**, and 34.4 GB keeping
+  `raw_score` alone. `Float64` beats `Float32` on `raw_score` for the same reason — a 5-decimal value
+  has long runs of zero mantissa bits in `f64` that `f32` rounding scatters into noise. The lesson
+  generalises past this source: **where a source publishes fixed decimals, a float is the wrong
+  container.**
+
+## 2026-09-10 — where AVI's bytes go, whether `PHRED` is droppable, and what a negative means
 
 Seventh round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md), three measurements
 answering three questions the size table raised. No `RMn`, no adoption.
