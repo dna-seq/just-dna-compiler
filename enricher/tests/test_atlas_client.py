@@ -288,10 +288,10 @@ class _RaisingStub:
     def __init__(self, error):
         self._error = error
 
-    def GetDenseVariantScores(self, request, metadata=None):  # noqa: N802 - the proto's name
+    def GetDenseVariantScores(self, request, metadata=None):  # camelCase: the proto's own method name
         raise self._error
 
-    def ListVariantScoresMetadata(self, request, metadata=None):  # noqa: N802
+    def ListVariantScoresMetadata(self, request, metadata=None):  # camelCase: the proto's own method name
         raise self._error
 
 
@@ -477,7 +477,7 @@ def test_the_interval_request_converts_from_one_based_to_the_protos_zero_based_s
     captured = {}
 
     class _Recorder:
-        def ListDenseVariantScores(self, request, metadata=None):  # noqa: N802
+        def ListDenseVariantScores(self, request, metadata=None):  # camelCase: the proto's own method name
             captured["interval"] = request.interval
             captured["filter"] = request.filter
             return atlas_service_pb2.ListDenseVariantScoresResponse()
@@ -513,7 +513,7 @@ def test_pagination_follows_the_token_rather_than_assuming_a_page_size():
         def __init__(self):
             self.tokens = []
 
-        def ListDenseVariantScores(self, request, metadata=None):  # noqa: N802
+        def ListDenseVariantScores(self, request, metadata=None):  # camelCase: the proto's own method name
             self.tokens.append(request.page_token)
             response = atlas_service_pb2.ListDenseVariantScoresResponse()
             if not request.page_token:
@@ -604,7 +604,7 @@ def test_a_token_on_an_exactly_full_final_page_does_not_send_a_seventh_request()
         def __init__(self):
             self.calls = 0
 
-        def ListDenseVariantScores(self, request, metadata=None):  # noqa: N802
+        def ListDenseVariantScores(self, request, metadata=None):  # camelCase: the proto's own method name
             self.calls += 1
             response = atlas_service_pb2.ListDenseVariantScoresResponse()
             if self.calls == 1:

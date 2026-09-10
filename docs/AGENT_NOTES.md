@@ -3759,6 +3759,22 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
     checked. Reproducing the old number under the new instrument is what would have caught it in
     minutes: 128 chunks lands on 34.4 GB exactly.
 
+  **The trigger, because re-checking everything is too expensive to be a rule.** Re-examine the
+  instrument when a result *contradicts common sense or common knowledge in the domain* — not when it
+  merely surprises. Three times in one round the alarm was available and twice it was not acted on:
+
+  | the result | the common-knowledge alarm | what it actually was |
+  | --- | --- | --- |
+  | artifact 25% larger than designed | a re-encode does not inflate a file | a writer fragmenting its own output |
+  | a locus with 2 of 3 ALTs | AVI publishes all three, and the file showed all three | a chunk boundary inside a locus |
+  | G-quadruplexes insensitive to SNVs | G4 stability is famously broken by one G→A in a tetrad | a probe sampling loop bases |
+
+  The third is the instructive one. The write-up *noticed* the oddity — it said G4 was "the motif
+  class one would expect to matter most" — and then filed it as a finding instead of treating it as
+  an alarm, and went on to reach for an explanation (a T2T-era training-data gap) that would have
+  made a wrong result permanent. **Noticing that a result is surprising and recording the surprise is
+  not the same as acting on it.** The maintainer caught it, not the measurement.
+
 - `@a-count-that-fits-every-partition-need-not-fit-their-sum` — **A per-partition count is narrower
   than its total, and in polars the reduction that combines them wraps silently.** Two separate
   facts, and the second is the one nobody expects.

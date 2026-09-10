@@ -341,6 +341,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - `annotations.parquet` carries **and keys on** `genotype`. `@annotations-keys-genotype`
 - A `mode="after"` validator cannot rescue a value the field's type rejects first. `@yaml-version-int`
 - A fresh measurement contradicting a recorded one is a hypothesis about the **instrument** first; reproduce the old number under the new tool. `@a-disagreement-with-a-document-may-be-in-the-instrument`
+- The trigger is a result **contradicting domain common knowledge**, not merely a surprising one — and noticing the surprise is not acting on it. `@a-disagreement-with-a-document-may-be-in-the-instrument`
 - Parquet size follows **rows per chunk**, not chunk count, and setting `row_group_size` makes it worse at every value. `@a-disagreement-with-a-document-may-be-in-the-instrument`
 - A count that fits every partition need not fit their sum, and polars' `sum()` **keeps the input dtype** — so `UInt32` counts wrap in the reduction, silently. `@a-count-that-fits-every-partition-need-not-fit-their-sum`
 - `content_signature` hashes the effective `curator`/`method`/`priority`, not the cell. `@effective-defaults-hash`

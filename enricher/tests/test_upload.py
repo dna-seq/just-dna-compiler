@@ -25,7 +25,7 @@ from just_dna_enricher.upload import (
     upload_module,
 )
 from just_dna_format.integrity import build_artifact
-from just_dna_format.layout import VERIFICATION_JSON  # noqa: F401
+from just_dna_format.layout import VERIFICATION_JSON
 from just_dna_format.manifest import (
     LOGO_EXTENSIONS,
     README_CANDIDATES,
