@@ -320,6 +320,36 @@ you**, so check which `# ` heading you are under before writing the section, not
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
+## RM199 — the publish path has never carried more than 200 MB, and the AVI lane is 32 GB
+
+**Severity** medium · **Status** open — **filed 2026-09-10 by RM198** · **Owner** enricher ·
+**Motivating case** `publish_reference_snapshot` uses `api.upload_folder`, which is one atomic
+commit, and the AVI snapshot is 32 GB over 26 files with a 2.7 GB largest member
+
+Every lane published so far is single-digit MB to roughly 200 MB (ClinVar's is the biggest). The AVI
+lane is two orders of magnitude past that, and nothing about the publish path was designed for it:
+
+- **`upload_folder` is a single commit.** A network failure part-way through means starting over,
+  with no resumption and no partial progress. Over 32 GB that is not a remote possibility.
+- **`upload_large_folder` exists** (`huggingface_hub` 1.31 has it, checked) and is what the Hub
+  documents for exactly this shape: it chunks into several commits, retries per file, resumes, and
+  takes `num_workers`. Its trade is that the upload is **no longer atomic**, which matters here
+  because `check_publish_orphans_no_sidecar` reasons about the remote tree — a half-uploaded
+  snapshot is a state that guard has never had to think about.
+- **`hf_transfer` is not installed**, so transfers run through pure Python. That is a speed question
+  rather than a correctness one, but at 32 GB it is the difference between minutes and hours.
+
+**Why this is not just "swap the call".** The two uploaders differ in atomicity, and the lane's
+`release.json` is what a puller uses to know what it holds. A publish that lands the parquets and
+then fails before `release.json` leaves a snapshot that looks provisioned and cannot say which
+release it is — the state `@a-publish-may-not-orphan-the-bytes-it-stops-describing` was written
+about, reached from the other direction. Ordering the commits so the description lands **last** is
+probably the answer, and it is a design decision rather than a parameter.
+
+**Not urgent for correctness.** Nothing publishes without an explicit `--publish`, and the operator
+can upload the 32 GB by hand today. This is filed so that whoever first runs
+`cache rebuild alphagenome_avi --publish` does not discover it at 30 GB.
+
 ## RM197 — wide-by-position for the AVI lane: ~29.7 GB against ~34.2, and the first comparison was bugged
 
 **Severity** low · **Status** open — **filed 2026-09-10 by RM191, restated the same day** ·

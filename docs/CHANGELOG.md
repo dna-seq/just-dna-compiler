@@ -34,7 +34,39 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — RM195 and RM196: a pinned page settles the licence, and the repository stops vendoring somebody else's source
+## 2026-09-10 (latest) — RM198: the AVI lane joins the cache surfaces, and the publisher nearly dropped the file that makes it usable
+
+With RM195 settled, the AVI lane is publishable, and wiring it into `cache status` / `pull` /
+`prepare` / `upload` took three fields — the lane registry means no per-lane branch anywhere. It is
+the first lane that is **pullable without being buildable**: this tier may not fetch the gated
+88.5 GB source, but the 32 GB re-encoding is Permissive-Use output, so an operator who cannot
+download the artifact can still provision the lane. That is the whole reason to publish it.
+
+**The defect wiring it found is the third of its exact shape.** `plan_reference_snapshot` collected
+`data/*.parquet`, the sidecar *directories*, and then a **hardcoded pair**: `release.json` and
+`LICENSE.txt`. `avi_knots.parquet` is a root-level sibling of `data/` — one small parquet rather than
+a directory of them — so it would have been dropped silently. The published snapshot would have
+looked complete, every score present and `release.json` valid, and **nothing on the other side could
+reconstruct a `PHRED`**, because the artifact deliberately does not store one.
+
+That pair was itself a repair: `LICENSE.txt` is only in it because a share-alike snapshot had already
+gone out without the terms it exists to carry. So the names moved to
+`locations.SNAPSHOT_ROOT_FILENAMES` and the publisher walks them — the same move `CACHE_LANES` is,
+one layer down — and a fourth such file added to a lane and not to the registry now fails a test
+rather than a publish.
+
+**Filed rather than improvised: RM199.** `publish_reference_snapshot` uses `upload_folder`, which is
+one atomic commit with no resumption, and every lane published so far is at most ~200 MB. The AVI
+snapshot is 32 GB over 26 files with a 2.7 GB largest member. `upload_large_folder` is what the Hub
+documents for that shape, but it is **not atomic** — and a publish that lands the parquets then fails
+before `release.json` leaves a snapshot that looks provisioned and cannot name its release. Commit
+ordering is a design decision, not a parameter, so it is written down rather than guessed at.
+
+The dataset repo exists at
+[`just-dna-seq/alphagenome_avi`](https://huggingface.co/datasets/just-dna-seq/alphagenome_avi) with a
+card and no data. Nothing publishes without an explicit `--publish`.
+
+## 2026-09-10 — RM195 and RM196: a pinned page settles the licence, and the repository stops vendoring somebody else's source
 
 Two of the AlphaGenome round's open items closed the same evening, and both are about what a
 repository should carry as evidence.
