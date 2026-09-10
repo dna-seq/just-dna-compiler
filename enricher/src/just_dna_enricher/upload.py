@@ -35,7 +35,6 @@ from pydantic import BaseModel, Field
 from just_dna_enricher.locations import (
     RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
-    SNAPSHOT_LICENSE_FILENAME,
     SNAPSHOT_ROOT_FILENAMES,
     SNAPSHOT_SIDECAR_DIRNAMES,
     load_env,
@@ -617,10 +616,11 @@ def plan_reference_snapshot(
                 f"no {payload} in {snapshot_dir} — build the snapshot first "
                 f"(e.g. `just-dna-enricher strchive build`)"
             )
+        # Same registry as the parquet branch below, and for the same reason: this branch had its own
+        # copy of the pair, so a payload-only lane that gained a root file would have dropped it
+        # exactly the way the parquet branch dropped `LICENSE.txt`.
         files = [payload]
-        for name in (RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME):
-            if (snapshot_dir / name).is_file():
-                files.append(name)
+        files.extend(name for name in SNAPSHOT_ROOT_FILENAMES if (snapshot_dir / name).is_file())
         return SnapshotPlan(repo_id=resolved_repo, files=files)
     data_dir = snapshot_dir / SNAPSHOT_DATA_DIRNAME
     parquet = sorted(p.name for p in data_dir.glob("*.parquet")) if data_dir.is_dir() else []
@@ -791,6 +791,32 @@ def prune_repo(plan: PrunePlan, token: str | None = None, commit_message: str | 
     return len(plan.candidates)
 
 
+
+#: Above this, `publish_reference_snapshot` uses `upload_large_folder` (RM199).
+#:
+#: **Not a performance dial — an atomicity one.** `upload_folder` is a single commit with no
+#: resumption, which is the right shape for a snapshot measured in megabytes and the wrong one for
+#: 32 GB: a transport failure at 30 GB starts over. `upload_large_folder` chunks into several
+#: commits, retries per file and resumes, at the cost of no longer being atomic — which is why the
+#: threshold exists at all rather than always using it. Every lane but AlphaGenome AVI is far below
+#: this; AVI is roughly a hundred times above.
+LARGE_UPLOAD_BYTES = 5 * 1024**3
+
+#: Parallel workers for the large path. Modest on purpose: the bottleneck is upstream bandwidth, and
+#: HF throttles a repo that opens too many connections.
+LARGE_UPLOAD_WORKERS = 4
+
+
+def _is_large(snapshot_dir: Path, files: list[str]) -> bool:
+    """Whether this publish needs the resumable uploader. Measured from the files, never guessed."""
+    total = 0
+    for name in files:
+        path = snapshot_dir / name
+        if path.is_file():
+            total += path.stat().st_size
+    return total > LARGE_UPLOAD_BYTES
+
+
 def publish_reference_snapshot(
     snapshot_dir: Path,
     repo_id: str | None = None,
@@ -826,22 +852,63 @@ def publish_reference_snapshot(
             ", ".join(shift.retires for shift in due), plan.repo_id,
             "; ".join(shift.reason for shift in due),
         )
-    api.upload_folder(
-        folder_path=str(snapshot_dir),
-        path_in_repo="",
-        repo_id=plan.repo_id,
-        repo_type="dataset",
-        # The retirement is a `delete_patterns` on the same call, so the new file arriving and the old
-        # one leaving are one commit rather than a window in which the repo has neither or both.
-        delete_patterns=[shift.retires for shift in due] or None,
-        # Derived from the plan rather than restated as a pattern list. The two had to agree and did
-        # not: `--dry-run` printed a file the patterns then dropped, which is the failure mode that
-        # lost `citations/` and `LICENSE.txt` in the first place. One list, computed once, so what a
-        # dry run promises is exactly what an upload sends (`@publisher-allowlist-derived`).
-        allow_patterns=list(plan.files),
-        commit_message=commit_message or (
-            f"Publish reference snapshot ({len(plan.files)} files)"
-            + (f", retiring {', '.join(s.retires for s in due)}" if due else "")
-        ),
-    )
+
+    # **The description goes last, always** (RM199). `release.json` is what a puller reads to learn
+    # which release it holds, so it must never arrive before the bytes it describes: a publish that
+    # lands the description and then fails leaves a snapshot that *reads as* provisioned and is not.
+    # That is `@a-publish-may-not-orphan-the-bytes-it-stops-describing` from the other direction, and
+    # it costs one extra commit on a path that is already several.
+    payload_files = [f for f in plan.files if f != RELEASE_FILENAME]
+    description = [f for f in plan.files if f == RELEASE_FILENAME]
+
+    if _is_large(snapshot_dir, payload_files):
+        if due:
+            # RM186's guarantee is one commit for the arrival and the departure. `upload_large_folder`
+            # is *inherently* multi-commit, so that guarantee cannot be honoured here — and silently
+            # weakening it is worse than refusing, because the whole point of the declaration is that
+            # a reader never sees the repo with neither file or both.
+            raise ValueError(
+                f"{plan.repo_id}: a declared layout shift retires "
+                f"{', '.join(s.retires for s in due)}, but this snapshot needs the large-folder "
+                "uploader, which cannot delete in the same commit (RM186 vs RM199). Retire the old "
+                "files in their own commit first, then publish."
+            )
+        api.upload_large_folder(
+            folder_path=str(snapshot_dir),
+            repo_id=plan.repo_id,
+            repo_type="dataset",
+            allow_patterns=payload_files,
+            num_workers=LARGE_UPLOAD_WORKERS,
+        )
+    else:
+        api.upload_folder(
+            folder_path=str(snapshot_dir),
+            path_in_repo="",
+            repo_id=plan.repo_id,
+            repo_type="dataset",
+            # The retirement is a `delete_patterns` on the same call, so the new file arriving and the
+            # old one leaving are one commit rather than a window in which the repo has neither or
+            # both.
+            delete_patterns=[shift.retires for shift in due] or None,
+            # Derived from the plan rather than restated as a pattern list. The two had to agree and
+            # did not: `--dry-run` printed a file the patterns then dropped, which is the failure mode
+            # that lost `citations/` and `LICENSE.txt` in the first place. One list, computed once, so
+            # what a dry run promises is exactly what an upload sends
+            # (`@publisher-allowlist-derived`).
+            allow_patterns=payload_files,
+            commit_message=commit_message or (
+                f"Publish reference snapshot ({len(payload_files)} files)"
+                + (f", retiring {', '.join(s.retires for s in due)}" if due else "")
+            ),
+        )
+
+    if description:
+        api.upload_folder(
+            folder_path=str(snapshot_dir),
+            path_in_repo="",
+            repo_id=plan.repo_id,
+            repo_type="dataset",
+            allow_patterns=description,
+            commit_message=f"Describe the snapshot ({RELEASE_FILENAME})",
+        )
     return plan

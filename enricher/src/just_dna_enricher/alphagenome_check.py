@@ -42,7 +42,11 @@ from pathlib import Path
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.spec import VariantRow
 
-from just_dna_enricher.alphagenome_avi_build import KNOT_FILENAME, RAW_SCORE_SCALE
+from just_dna_enricher.alphagenome_avi_build import (
+    KNOT_FILENAME,
+    RAW_SCORE_SCALE,
+    to_long,
+)
 from just_dna_enricher.licensing import ALPHAGENOME_AVI_TERMS
 from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
@@ -297,20 +301,19 @@ def read_local_scores(
 
     frames = []
     for path in relevant:
-        positions = sorted(by_contig[_contig_of(path)])
-        frames.append(
+        contig = _contig_of(path)
+        positions = sorted(by_contig[contig])
+        got = (
             pl.scan_parquet(path)
             .filter(pl.col("pos").is_in(positions))
-            .with_columns(
-                pl.col("chrom").cast(pl.String),
-                pl.col("ref").cast(pl.String),
-                pl.col("alt").cast(pl.String),
-            )
+            .with_columns(pl.col("ref").cast(pl.String))
             .collect()
         )
-    matched = pl.concat(frames) if frames else None
-    if matched is None or not matched.height:
+        if got.height:
+            frames.append(got.with_columns(pl.lit(contig).alias("chrom")))
+    if not frames:
         return {}
+    matched = to_long(pl.concat(frames))
 
     scored = (
         matched.join(probe, on=["chrom", "pos", "ref", "alt"], how="inner")
@@ -326,6 +329,7 @@ def read_local_scores(
         for row in scored.iter_rows(named=True)
         if row["phred_lo"] is not None
     }
+
 
 
 def _refine(client, variant: VariantRow, label: str, result: VariantImpactResult) -> None:

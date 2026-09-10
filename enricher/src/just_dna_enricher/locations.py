@@ -113,10 +113,15 @@ ALPHAGENOME_KNOTS_FILENAME = "avi_knots.parquet"
 #: (`@publisher-allowlist-derived`). The AVI knot table is the third such file and would have been
 #: the third such incident: a published snapshot missing it looks complete — every parquet present,
 #: `release.json` valid — and cannot answer the question the lane exists for.
+#: **The order is the publish order, and `RELEASE_FILENAME` is last on purpose** (RM199). It is the
+#: file a puller reads to learn which release it holds, so it must never arrive before the bytes it
+#: describes — a publish that lands the description and then fails leaves a snapshot that *reads as*
+#: provisioned and is not. Keeping the constraint in the tuple rather than in the publisher means the
+#: plan a `--dry-run` prints is already in the order the upload sends.
 SNAPSHOT_ROOT_FILENAMES: tuple[str, ...] = (
-    RELEASE_FILENAME,
     SNAPSHOT_LICENSE_FILENAME,
     ALPHAGENOME_KNOTS_FILENAME,
+    RELEASE_FILENAME,
 )
 
 ACMG_SNAPSHOT_FILENAME = "acmg_sf.csv"

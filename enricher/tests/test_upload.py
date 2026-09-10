@@ -3,6 +3,7 @@
 import json
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -10,6 +11,7 @@ import pytest
 import yaml
 from just_dna_compiler.compiler import ARTIFACT_PARQUETS, compile_module
 from just_dna_enricher.cli import app
+from just_dna_enricher.locations import RELEASE_FILENAME
 from just_dna_enricher.upload import (
     _ALLOW_PATTERNS,
     DEFAULT_CLINVAR_REPO_ID,
@@ -23,7 +25,7 @@ from just_dna_enricher.upload import (
     upload_module,
 )
 from just_dna_format.integrity import build_artifact
-from just_dna_format.layout import VERIFICATION_JSON
+from just_dna_format.layout import VERIFICATION_JSON  # noqa: F401
 from just_dna_format.manifest import (
     LOGO_EXTENSIONS,
     README_CANDIDATES,
@@ -510,16 +512,25 @@ def test_publish_reference_snapshot_creates_repo_then_uploads(tmp_path: Path) ->
     mock_api.create_repo.assert_called_once_with(
         repo_id="just-dna-seq/clinvar", repo_type="dataset", exist_ok=True
     )
-    kwargs: dict[str, Any] = mock_api.upload_folder.call_args.kwargs
-    assert kwargs["folder_path"] == str(snap)
-    assert kwargs["path_in_repo"] == ""
-    assert kwargs["repo_id"] == "just-dna-seq/clinvar"
-    assert kwargs["repo_type"] == "dataset"
+    calls = mock_api.upload_folder.call_args_list
+    # **Two commits, payload then description** (RM199). `release.json` is what a puller reads to
+    # learn which release it holds, so it must not arrive before the bytes it describes.
+    assert len(calls) == 2
+    payload, description = (c.kwargs for c in calls)
+    for kwargs in (payload, description):
+        assert kwargs["folder_path"] == str(snap)
+        assert kwargs["path_in_repo"] == ""
+        assert kwargs["repo_id"] == "just-dna-seq/clinvar"
+        assert kwargs["repo_type"] == "dataset"
+    assert RELEASE_FILENAME not in payload["allow_patterns"], "the description went out too early"
+    assert description["allow_patterns"] == [RELEASE_FILENAME]
     # The allowlist IS the plan's file list, not a parallel pattern list that has to agree with it
     # (`@publisher-allowlist-derived`). The two were separate statements of one thing, so a dry run
     # could print a file the upload then dropped — which is how `citations/` and `LICENSE.txt` each
-    # went a release unpublished.
-    assert kwargs["allow_patterns"] == plan.files
+    # went a release unpublished. Splitting the upload does not get to weaken that: the two calls
+    # together must still send exactly what the plan promised, which is why this is a union rather
+    # than a check on one call.
+    assert payload["allow_patterns"] + description["allow_patterns"] == plan.files
     assert plan.repo_id == "just-dna-seq/clinvar"
 
 
@@ -537,7 +548,9 @@ def test_a_snapshots_licence_travels_with_its_bytes(tmp_path: Path) -> None:
     with_licence = _snapshot(tmp_path / "clinpgx")
     (with_licence / "LICENSE.txt").write_text("CC BY-SA 4.0 …", encoding="utf-8")
     plan = plan_reference_snapshot(with_licence, "just-dna-seq/clinpgx")
-    assert plan.files == ["data/clinvar-chr1.parquet", "release.json", "LICENSE.txt"]
+    # `release.json` last: the plan's order IS the publish order since RM199, so the description
+    # cannot be sent before the bytes it describes.
+    assert plan.files == ["data/clinvar-chr1.parquet", "LICENSE.txt", "release.json"]
 
 
 def test_publish_reference_snapshot_requires_token(tmp_path: Path) -> None:
@@ -724,8 +737,13 @@ def test_the_dry_run_promises_exactly_what_the_upload_sends(tmp_path: Path) -> N
         patch("huggingface_hub.get_token", return_value="hf_test_token"),
     ):
         publish_reference_snapshot(snap, "just-dna-seq/clinpgx")
-    assert mock_api.upload_folder.call_args.kwargs["allow_patterns"] == promised
+    # Summed over both commits (RM199 split the upload), because the promise is about what *reaches*
+    # the repo and not about how many commits carried it. A check on one call would have started
+    # passing for the wrong reason the moment the publish was split.
+    sent = [f for c in mock_api.upload_folder.call_args_list for f in c.kwargs["allow_patterns"]]
+    assert sent == promised
     assert set(promised) >= {"citations/citations.parquet", "LICENSE.txt"}
+    assert sent[-1] == RELEASE_FILENAME, "the description must be the last thing sent"
 
 
 # ── a snapshot whose payload is one root file (STRchive; ACMG is the shape's second member) ─────
@@ -751,3 +769,120 @@ def test_a_payload_snapshot_with_nothing_built_is_refused_like_an_empty_parquet_
     (empty / "release.json").write_text("{}", encoding="utf-8")
     with pytest.raises(FileNotFoundError, match="no STRchive-loci.json"):
         plan_reference_snapshot(empty, DEFAULT_STRCHIVE_REPO_ID, payload="STRchive-loci.json")
+
+
+# ── the large-snapshot publish path (RM199) ─────────────────────────────────────────────────────
+
+
+def _snapshot_of_size(tmp_path: Path, payload_bytes: int) -> Path:
+    """A snapshot whose `data/` really is this big, so `_is_large` measures rather than is told."""
+    from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
+
+    snap = tmp_path / "snap"
+    (snap / SNAPSHOT_DATA_DIRNAME).mkdir(parents=True)
+    with (snap / SNAPSHOT_DATA_DIRNAME / "clinvar-chr1.parquet").open("wb") as fh:
+        fh.truncate(payload_bytes)
+    (snap / RELEASE_FILENAME).write_text('{"dataset": "2026-08-27"}')
+    return snap
+
+
+def test_a_small_snapshot_still_goes_out_as_one_payload_commit(tmp_path: Path) -> None:
+    """The threshold is a threshold: nothing below it changes shape.
+
+    Every lane but AlphaGenome AVI is orders of magnitude under `LARGE_UPLOAD_BYTES`, and
+    `upload_folder` is the right tool for them — one atomic commit, and a retirement can ride in it.
+    """
+    from just_dna_enricher.upload import publish_reference_snapshot
+
+    snap = _snapshot_of_size(tmp_path, 1024)
+    api = MagicMock()
+    api.list_repo_files.return_value = []
+    with (
+        patch("huggingface_hub.HfApi", return_value=api),
+        patch("huggingface_hub.get_token", return_value="hf_test_token"),
+    ):
+        publish_reference_snapshot(snap, "just-dna-seq/clinvar")
+
+    api.upload_large_folder.assert_not_called()
+    assert len(api.upload_folder.call_args_list) == 2, "payload then description"
+
+
+def test_a_large_snapshot_uses_the_resumable_uploader_and_still_describes_itself_last(
+    tmp_path: Path,
+) -> None:
+    """32 GB in one atomic commit has no resumption: a failure at 30 GB starts over (RM199).
+
+    `upload_large_folder` chunks, retries per file and resumes, at the cost of not being atomic. So
+    the payload goes through it and **`release.json` still goes last, through the ordinary uploader**
+    — because the description arriving before the bytes is the failure that matters, and it is one
+    small file that does not need chunking.
+    """
+    from just_dna_enricher.locations import RELEASE_FILENAME
+    from just_dna_enricher.upload import LARGE_UPLOAD_BYTES, publish_reference_snapshot
+
+    snap = _snapshot_of_size(tmp_path, LARGE_UPLOAD_BYTES + 1)
+    api = MagicMock()
+    api.list_repo_files.return_value = []
+    with (
+        patch("huggingface_hub.HfApi", return_value=api),
+        patch("huggingface_hub.get_token", return_value="hf_test_token"),
+    ):
+        plan = publish_reference_snapshot(snap, "just-dna-seq/alphagenome_avi")
+
+    large = api.upload_large_folder.call_args.kwargs
+    assert large["repo_id"] == "just-dna-seq/alphagenome_avi"
+    assert large["repo_type"] == "dataset"
+    assert RELEASE_FILENAME not in large["allow_patterns"], "the description went out with the bulk"
+
+    # …and the description is the only thing the ordinary uploader carried, after it.
+    assert len(api.upload_folder.call_args_list) == 1
+    assert api.upload_folder.call_args.kwargs["allow_patterns"] == [RELEASE_FILENAME]
+
+    # Union still equals the plan: splitting the upload may not drop a file
+    # (`@publisher-allowlist-derived`).
+    assert large["allow_patterns"] + [RELEASE_FILENAME] == plan.files
+
+
+def test_a_retirement_on_the_large_path_is_refused_rather_than_quietly_weakened(
+    tmp_path: Path,
+) -> None:
+    """RM186 promises one commit for the arrival and the departure. RM199's uploader cannot give one.
+
+    `upload_large_folder` is inherently multi-commit and takes no `delete_patterns`, so a declared
+    retirement cannot ride with the file that replaces it. Silently doing it in a separate commit
+    would leave exactly the window RM186 exists to close — a reader seeing the repo with neither file
+    or both — so the publish refuses and says which two rules collided.
+    """
+    from just_dna_enricher.upload import LARGE_UPLOAD_BYTES, publish_reference_snapshot
+
+    snap = _snapshot_of_size(tmp_path, LARGE_UPLOAD_BYTES + 1)
+    api = MagicMock()
+    api.list_repo_files.return_value = []
+    with (
+        patch("huggingface_hub.HfApi", return_value=api),
+        patch("huggingface_hub.get_token", return_value="hf_test_token"),
+        patch(
+            "just_dna_enricher.upload.layout_shifts_to_apply",
+            return_value=[SimpleNamespace(retires="data/old-*.parquet", reason="a test")],
+        ),
+        pytest.raises(ValueError, match="RM186 vs RM199"),
+    ):
+        publish_reference_snapshot(snap, "just-dna-seq/alphagenome_avi")
+
+    api.upload_large_folder.assert_not_called()
+    api.upload_folder.assert_not_called()
+
+
+def test_the_size_that_picks_the_uploader_is_measured_from_the_payload(tmp_path: Path) -> None:
+    """`_is_large` reads the files, so the choice cannot drift from what is actually being sent.
+
+    And it measures the **payload**, not the whole directory: `release.json` never goes through the
+    large path, so counting it toward the threshold would let a description tip the decision.
+    """
+    from just_dna_enricher.upload import LARGE_UPLOAD_BYTES, _is_large
+
+    snap = _snapshot_of_size(tmp_path, LARGE_UPLOAD_BYTES + 1)
+    payload = ["data/clinvar-chr1.parquet"]
+    assert _is_large(snap, payload) is True
+    assert _is_large(snap, []) is False
+    assert _is_large(snap, ["data/does-not-exist.parquet"]) is False, "absent files count as nothing"

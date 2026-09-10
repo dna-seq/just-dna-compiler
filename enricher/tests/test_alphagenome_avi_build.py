@@ -95,7 +95,7 @@ def test_the_stored_integer_reproduces_the_printed_score_exactly(built: Path) ->
     the obvious way would have quietly weakened the claim to whatever a tolerance admitted.
     """
     printed = _printed_rows()
-    stored = pl.read_parquet(built / "data" / "alphagenome_avi-chr22.parquet")
+    stored = ab.to_long(pl.read_parquet(built / "data" / "alphagenome_avi-chr22.parquet"))
     assert stored.height == printed.height
 
     joined = printed.join(
@@ -158,6 +158,7 @@ def test_phred_is_read_and_used_but_never_stored(built: Path) -> None:
     stored = pl.read_parquet(built / "data" / "alphagenome_avi-chr22.parquet")
     assert list(stored.columns) == list(ab.PARQUET_SCHEMA)
     assert "PHRED" not in stored.columns and "phred" not in stored.columns
+    assert "alt" not in stored.columns, "the wide layout names ALTs by column, not by value (RM197)"
     # …and the knot table is where it went.
     knots = pl.read_parquet(built / ab.KNOT_FILENAME)
     assert list(knots.columns) == list(ab.KNOT_COLUMNS)
@@ -171,7 +172,7 @@ def test_the_knot_table_accounts_for_every_row_the_build_wrote(built: Path) -> N
     data than exists, and a score with no knot means a consumer cannot reconstruct its `PHRED` at
     all. The builder already refuses on the first; this pins the second.
     """
-    stored = pl.read_parquet(built / "data" / "alphagenome_avi-chr22.parquet")
+    stored = ab.to_long(pl.read_parquet(built / "data" / "alphagenome_avi-chr22.parquet"))
     knots = pl.read_parquet(built / ab.KNOT_FILENAME)
 
     assert int(knots["n"].sum()) == stored.height
@@ -292,7 +293,7 @@ def test_absence_is_row_absence_and_a_stored_zero_is_a_scored_zero(built: Path) 
     "nothing to say" — is `@unreachable-not-absent` at nine-billion-row scale, and it is the single
     easiest mistake to make in a table this size.
     """
-    stored = pl.read_parquet(built / "data" / "alphagenome_avi-chr22.parquet")
+    stored = ab.to_long(pl.read_parquet(built / "data" / "alphagenome_avi-chr22.parquet"))
     printed = _printed_rows()
 
     # Set equality over the (pos, ref, alt) keys, in both directions. Left to right catches a row
@@ -437,9 +438,9 @@ def test_the_release_records_the_stamp_the_terms_resolve_against(built: Path) ->
     assert release["dataset"] == release["artifact_mtime"][:10]
     assert release["phred_stored"] is False
     assert release["raw_score_scale"] == ab.RAW_SCORE_SCALE
-    assert release["rows"] == pl.read_parquet(
-        built / "data" / "alphagenome_avi-chr22.parquet"
-    ).height
+    # `rows` counts the SNVs the source published, which is three per stored row (RM197).
+    wide = pl.read_parquet(built / "data" / "alphagenome_avi-chr22.parquet")
+    assert release["rows"] == 3 * wide.height == ab.to_long(wide).height
     assert release["contigs"] == ["chr22"]
 
 
@@ -542,3 +543,144 @@ def test_the_lane_is_pullable_exactly_because_it_is_publishable(built: Path) -> 
     assert lane.unpublished is None, "a lane that publishes may not also excuse itself"
     assert lane.rebuild is None and lane.unbuilt, "and it still cannot fetch its own source"
     assert lane.terms is not None and lane.terms.redistribution is True
+
+
+@needs_tabix
+def test_every_position_carries_the_three_non_ref_bases(built: Path) -> None:
+    """The property the wide layout rests on, re-proved on the fixture (RM197).
+
+    It was proved over the whole corpus once — all 24 contigs, all 8,812,917,339 rows, every position
+    carrying exactly three rows with strictly ascending distinct ALTs, none equal to REF. Three
+    distinct non-ref bases must be all three of them. That is what lets `alt` stop being stored.
+
+    A proof taken once is a proof about the artifact **that existed then**. This re-runs it on every
+    build, so a re-published source that changed shape fails here rather than producing a table whose
+    columns quietly mean something else.
+    """
+    printed = _printed_rows()
+    per_pos = printed.group_by("pos").agg(
+        pl.col("alt").sort().str.join("").alias("alts"), pl.col("ref").first()
+    )
+    expected = pl.col("ref").replace_strict(
+        {b: "".join(ab.alts_for_ref(b)) for b in ab.BASES}, default=None
+    )
+    assert per_pos.filter(pl.col("alts") != expected).height == 0
+    assert per_pos.height * 3 == printed.height
+
+
+def test_the_alt_columns_are_named_by_ref_alone() -> None:
+    """`alts_for_ref` is the whole interface between the layout and a reader.
+
+    No lookup table travels with the artifact: given `ref`, the three columns are `{A,C,G,T} − ref`
+    ascending. Asserted over all four bases rather than one, and with the ordering pinned, because a
+    reader indexing `alt1` gets a different variant if the order ever changes.
+    """
+    assert ab.alts_for_ref("A") == ("C", "G", "T")
+    assert ab.alts_for_ref("C") == ("A", "G", "T")
+    assert ab.alts_for_ref("G") == ("A", "C", "T")
+    assert ab.alts_for_ref("T") == ("A", "C", "G")
+    assert ab.alts_for_ref("g") == ("A", "C", "T"), "the source prints upper case; be forgiving"
+    for base in ab.BASES:
+        assert base not in ab.alts_for_ref(base)
+        assert list(ab.alts_for_ref(base)) == sorted(ab.alts_for_ref(base))
+    with pytest.raises(ab.AlphaGenomeBuildError, match="three-ALT complement"):
+        ab.alts_for_ref("N")
+
+
+@needs_tabix
+def test_wide_round_trips_to_long_without_the_source(built: Path) -> None:
+    """The claim that made RM197 adoptable rather than a schema break.
+
+    A consumer who wants `(chrom, pos, ref, alt, score)` rows gets exactly them back from the stored
+    artifact, with no `alt` column on disk and no table beside it. Compared against the **printed
+    source text** rather than against another derivation of the same parquet, so the round trip is
+    checked against what AlphaGenome published rather than against itself.
+    """
+    wide = pl.read_parquet(built / "data" / "alphagenome_avi-chr22.parquet")
+    long = ab.to_long(wide)
+    printed = _printed_rows()
+
+    assert long.height == printed.height == 3 * wide.height
+
+    def keyed(frame: pl.DataFrame, score: str) -> dict:
+        return {
+            (r["pos"], r["ref"], r["alt"]): r[score]
+            for r in frame.select("pos", "ref", "alt", score).iter_rows(named=True)
+        }
+
+    recovered = keyed(long, "raw_score_e5")
+    source = keyed(
+        printed.with_columns(
+            (pl.col("raw_printed").cast(pl.Float64) * ab.RAW_SCORE_SCALE)
+            .round().cast(pl.Int32).alias("e5")
+        ),
+        "e5",
+    )
+    assert recovered == source
+
+
+@needs_tabix
+def test_a_locus_missing_an_alt_is_refused_rather_than_padded(tmp_path: Path) -> None:
+    """A row with `alt2 = null` would silently redefine what `alt1` means at that locus.
+
+    So the builder stops. The property held over the entire corpus when it was measured, which is
+    exactly why a violation is worth refusing over: it means the source changed shape, and padding
+    would produce a table that reads fine and answers wrongly.
+    """
+    rows = subprocess.run(
+        ["tabix", str(_SLICE), "chr22:20000000-20000100"], capture_output=True, check=True
+    ).stdout.decode().splitlines()
+    first_pos = rows[0].split("\t")[1]
+    kept = [r for r in rows if r.split("\t")[1] != first_pos or r.split("\t")[3] != "A"]
+    assert len(kept) < len(rows), "the fixture's first locus has no A alt to drop"
+
+    doctored = tmp_path / "gap.tsv"
+    atomic_write_text(doctored, "\n".join(kept) + "\n")
+    subprocess.run(["bgzip", "-f", str(doctored)], check=True)
+    gz = doctored.with_suffix(".tsv.gz")
+    subprocess.run(["tabix", "-s1", "-b2", "-e2", "-f", str(gz)], check=True)
+
+    with pytest.raises(ab.AlphaGenomeBuildError, match="not 3"):
+        ab.build_snapshot(gz, tmp_path / "out", workers=1, hash_source=False)
+
+
+@needs_tabix
+def test_a_locus_split_across_a_chunk_boundary_is_reassembled(tmp_path: Path) -> None:
+    """The defect that the fixture could not see, because the fixture is one chunk.
+
+    `_stream_lines` yields whole *lines*; a locus is three lines. So a chunk boundary lands inside a
+    position roughly once per chunk, and `_widen` — which requires all three ALTs — refused. The
+    genome-wide build died at `chr1:1196920`, a locus that has all three in the file and two in the
+    chunk. Every test in this file passed while that was true, because the 4 MB slice fits in one
+    64 MB chunk.
+
+    So this builds the **same slice at a chunk size small enough to guarantee hundreds of split
+    loci** and asserts the result is byte-for-byte the same table. An assertion that the build merely
+    *succeeds* would have been satisfied by dropping the partial rows.
+    """
+    whole = tmp_path / "whole"
+    ab.build_snapshot(_SLICE, whole, workers=1, hash_source=False, terms_file=_TERMS)
+
+    split = tmp_path / "split"
+    result = ab.build_snapshot(
+        _SLICE, split, workers=1, hash_source=False, terms_file=_TERMS, chunk_bytes=64 * 1024
+    )
+
+    name = "data/alphagenome_avi-chr22.parquet"
+    a = pl.read_parquet(whole / name).sort("pos")
+    b = pl.read_parquet(split / name).sort("pos")
+    assert a.equals(b), "chunking changed the table"
+
+    # And the counts the release publishes are unaffected, including the last locus of the contig —
+    # which has no following chunk to be carried into and would otherwise be dropped in silence.
+    printed = _printed_rows()
+    assert result.rows == printed.height
+    assert b.height * 3 == printed.height
+    assert int(b["pos"].max()) == int(printed["pos"].max()), "the final locus went missing"
+
+    # The knot tables must agree too: they are aggregated per chunk and merged, so a carried locus
+    # counted twice would show up here and nowhere else.
+    ka = pl.read_parquet(whole / ab.KNOT_FILENAME).sort("raw_score_e5")
+    kb = pl.read_parquet(split / ab.KNOT_FILENAME).sort("raw_score_e5")
+    assert ka.equals(kb)
+    assert int(kb["n"].sum()) == printed.height

@@ -118,7 +118,9 @@ def test_a_publish_onto_an_unmigrated_repo_deletes_the_retired_file_in_the_same_
     api, snapshot = hf([_OLD, "release.json"])
     publish_reference_snapshot(snapshot, DEFAULT_CLINVAR_REPO_ID)
 
-    kwargs = api.upload_folder.call_args.kwargs
+    # The payload commit, not the description one: RM199 sends `release.json` in a second
+    # call, and a retirement belongs with the arrival of the file that replaces it (RM186).
+    kwargs = api.upload_folder.call_args_list[0].kwargs
     assert kwargs["delete_patterns"] == [_OLD]
     assert _OLD in kwargs["commit_message"], "the operator reads the deletion in the commit message"
     api.delete_files.assert_not_called()      # the deletion rides the upload; it is not a second write
@@ -128,13 +130,13 @@ def test_a_publish_onto_a_repo_that_has_moved_deletes_nothing(hf) -> None:
     """Today's ClinVar repo: both files present, so the declaration is spent and prune owns it."""
     api, snapshot = hf([_OLD, _NEW, "release.json"])
     publish_reference_snapshot(snapshot, DEFAULT_CLINVAR_REPO_ID)
-    assert api.upload_folder.call_args.kwargs["delete_patterns"] is None
+    assert api.upload_folder.call_args_list[0].kwargs["delete_patterns"] is None
 
 
 def test_a_publish_to_a_repo_with_no_declaration_deletes_nothing(hf) -> None:
     api, snapshot = hf(["data/anything.parquet"])
     publish_reference_snapshot(snapshot, "just-dna-seq/cpic")
-    assert api.upload_folder.call_args.kwargs["delete_patterns"] is None
+    assert api.upload_folder.call_args_list[0].kwargs["delete_patterns"] is None
 
 
 # ── the refusal: a publish may not orphan a sidecar ─────────────────────────────────────────────

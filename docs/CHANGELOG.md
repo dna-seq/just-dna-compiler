@@ -34,7 +34,52 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — RM198: the AVI lane joins the cache surfaces, and the publisher nearly dropped the file that makes it usable
+## 2026-09-10 (latest) — RM197 and RM199: the ALT column a proof removed, and the description a publish sends last
+
+**RM197 — wide by position.** The AVI lane stores one row per locus with three ALT-score columns and
+**no `alt` column at all**: `chrom, pos, ref, alt0, alt1, alt2`. **3.371 B/row against 3.882**, so
+29.7 GB rather than 34.2 — taken now because RM198 publishes the lane, and transfer size binds where
+local disk never did.
+
+The column disappears because of a **proof**, not an assumption. Which base each column means is
+`{A,C,G,T} − ref` ascending, a function of `ref` alone, so nothing travels beside the data — and that
+is only well-defined if every locus really carries all three. Measured over the whole corpus first:
+across 24 contigs and 8,812,917,339 rows, `rows == 3 × 2,937,639,113 positions` exactly, `pos`
+sorted, `alt` strictly ascending within a position, no `alt` equal to `ref`. Three *distinct
+non-ref* bases must be all three. Zero violations.
+
+Two earlier attempts at that check were **OOM-killed** — `group_by(pos)` and `n_unique` both hold
+billions of keys. Counting boundaries in a sorted column holds nothing and did the genome in 178
+seconds; the technique is the transferable part.
+
+**It is not a schema break.** `to_long()` recovers `(chrom, pos, ref, alt, score)` rows from the
+stored ones with no lookup table, so RM193's join is unchanged — it converts the handful of rows it
+already filtered to. The round trip is tested against the **published source text**, not against
+another derivation of the same parquet.
+
+**And the builder re-proves the property on every build**, refusing a locus that breaks it. Padding
+a missing ALT with a null would silently redefine what `alt1` means at that locus. That refusal
+immediately caught a defect of ours: `_stream_lines` yields whole *lines*, and a locus is three
+lines, so a chunk boundary split one — the genome-wide build stopped at `chr1:1196920`, a locus the
+file carries in full. Every test passed while that was true, because the 4 MB fixture fits in one
+64 MB chunk. The regression test builds the same slice at 64 KB and demands an identical table.
+
+**RM199 — `release.json` goes last.** It is what a puller reads to learn which release it holds, so a
+publish that lands the description and then fails leaves a snapshot that *reads as* provisioned and
+is not. Payload first, description second, on every path — and the ordering lives in
+`SNAPSHOT_ROOT_FILENAMES` rather than in the publisher, so a `--dry-run` prints the plan in the order
+the upload sends it.
+
+Above **5 GB** the payload goes through `upload_large_folder`. That is an atomicity choice rather
+than a speed one: `upload_folder` is a single commit with no resumption, right at megabytes and
+wrong at 32 GB where a failure at 30 GB starts over. The large uploader chunks, retries and resumes,
+at the cost of not being atomic — which is why there is a threshold instead of always using it.
+
+A declared retirement on that path is **refused**, naming both rules: RM186 promises the arrival and
+the departure are one commit, and the large uploader cannot give one. Doing the deletion quietly in
+a separate commit would leave exactly the window RM186 exists to close.
+
+## 2026-09-10 — RM198: the AVI lane joins the cache surfaces, and the publisher nearly dropped the file that makes it usable
 
 With RM195 settled, the AVI lane is publishable, and wiring it into `cache status` / `pull` /
 `prepare` / `upload` took three fields — the lane registry means no per-lane branch anywhere. It is

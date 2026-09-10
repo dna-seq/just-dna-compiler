@@ -59,7 +59,7 @@ def _rows_at(snapshot: Path, *, straddling: bool) -> list[dict]:
     Read out of the artifact rather than hardcoded, so the fixture and the module under test cannot
     drift apart silently — and so a re-cut slice fails loudly instead of testing nothing.
     """
-    data = pl.read_parquet(snapshot / "data" / "alphagenome_avi-chr22.parquet")
+    data = ab.to_long(pl.read_parquet(snapshot / "data" / "alphagenome_avi-chr22.parquet"))
     knots = pl.read_parquet(snapshot / ab.KNOT_FILENAME)
     spans = (pl.col("phred_lo") < STRADDLED_THRESHOLD) & (pl.col("phred_hi") > STRADDLED_THRESHOLD)
     keys = knots.filter(spans if straddling else ~spans)["raw_score_e5"]

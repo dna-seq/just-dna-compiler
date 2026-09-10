@@ -68,6 +68,109 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM199 — the description is the last thing a publish sends
+
+**Severity** medium · **Status** ✅ shipped 2026-09-10 (`just-dna-enricher` only: a size threshold,
+a two-phase publish, one registry reordered) · **Owner** enricher · **Motivating case** the AVI lane
+is 32 GB and `upload_folder` is a single atomic commit with no resumption
+
+**Two changes, and only one of them is about size.**
+
+**`release.json` goes last, on every path.** It is what a puller reads to learn which release it
+holds, so a publish that lands the description and then fails leaves a snapshot that *reads as*
+provisioned and is not — `@a-publish-may-not-orphan-the-bytes-it-stops-describing` reached from the
+other direction. The payload is one commit and the description is a second, which costs one extra
+commit on a path that was already going to be several.
+
+**The ordering lives in `SNAPSHOT_ROOT_FILENAMES`, not in the publisher.** Putting
+`RELEASE_FILENAME` last in the tuple means the plan a `--dry-run` prints is already in the order the
+upload sends, so the two cannot disagree. That is the same lesson as `@publisher-allowlist-derived`
+one turn further on: the promise and the act are one list.
+
+**Above 5 GB the payload goes through `upload_large_folder`.** Not a performance dial — an atomicity
+one. `upload_folder` is a single commit with no resumption, which is right for a snapshot measured
+in megabytes and wrong for 32 GB, where a transport failure at 30 GB starts over. The large uploader
+chunks, retries per file and resumes, at the cost of **not being atomic**, which is exactly why the
+threshold exists rather than always using it. Every lane but AVI is orders of magnitude below it.
+
+**A collision between two rules, refused rather than resolved silently.** RM186 promises that a
+declared retirement rides in the *same commit* as the file replacing it, so a reader never sees the
+repo with neither or both. `upload_large_folder` takes no `delete_patterns` and is inherently
+multi-commit, so that guarantee cannot be honoured on the large path. The publish **raises**, naming
+both rules, rather than quietly doing the deletion in a separate commit and leaving exactly the
+window RM186 exists to close. No lane is in that state today; the refusal is there for the one that
+will be.
+
+**A second copy of the root-file bug, fixed in passing.** `plan_reference_snapshot` has two
+branches, and only the parquet one had been moved onto the registry by RM198 — the payload-only
+branch (STRchive, ACMG) still carried its own hardcoded pair, so a lane of that shape gaining a root
+file would have dropped it exactly the way the parquet branch dropped `LICENSE.txt`. Both walk the
+registry now.
+
+**What the tests pin.** That the union of the two commits equals the plan, because splitting an
+upload may not drop a file; that `release.json` is in the second call and not the first; that a
+sub-threshold snapshot still goes out unchanged; that the large path is chosen by **measuring the
+payload** rather than the directory, so a description cannot tip the decision; and that a retirement
+on the large path refuses **before** either uploader is called.
+
+## RM197 — the ALT column that a proof made unnecessary
+
+**Severity** low · **Status** ✅ shipped 2026-09-10 (`just-dna-enricher` only: the lane's parquet
+schema, a widening step, a public `to_long`, five tests; no consumer-visible join change) · **Owner**
+maintainer · **Motivating case** the lane is published to HuggingFace now (RM198), so transfer size
+binds where local disk never did
+
+**What shipped.** One row per position with three ALT-score columns, and **no stored `alt`**:
+`chrom, pos, ref, alt0, alt1, alt2`. **3.371 B/row against 3.882 long — 29.7 GB rather than 34.2**, a
+13% saving that is simply not writing `pos` three times. `pos` costs 1.249 B/row even perfectly
+delta-encoded, so it is the whole of the difference.
+
+**The column disappears because of a proof, not an assumption.** Which base each column means is
+`{A,C,G,T} − ref` ascending — a function of `ref` alone, so nothing has to travel beside the data.
+That is only well-defined if every locus really carries all three, which was measured over the whole
+corpus before anything changed: across 24 contigs and **8,812,917,339 rows**, `rows == 3 × distinct
+positions` exactly (2,937,639,113 of them), `pos` sorted, `alt` strictly ascending within a position,
+and **no `alt` equal to `ref`** — so three *distinct non-ref* bases must be all three of them. Zero
+violations.
+
+Two earlier attempts at that check were **OOM-killed**: `group_by(pos).agg(...)` and `n_unique` both
+have to hold billions of keys. Counting boundaries in a sorted column holds nothing, and did the
+whole genome in 178 seconds. The measurement technique is the transferable part.
+
+**It is not a schema break, and that is the point.** `to_long()` recovers `(chrom, pos, ref, alt,
+score)` rows from the stored ones with no lookup table, so `alphagenome_check`'s join is unchanged —
+it converts the handful of rows it already filtered to. The test proves the round trip against **the
+published source text**, not against another derivation of the same parquet.
+
+**A proof taken once is a proof about the artifact that existed then**, so the builder re-runs it on
+every build and **refuses** a locus that breaks it. Padding a missing ALT with a null would silently
+redefine what `alt1` refers to at that locus — a table that reads fine and answers wrongly, which is
+the failure mode this whole round kept meeting.
+
+**The defect the genome-wide build found, and every test in the file passed while it was there.**
+`_stream_lines` yields whole *lines*; a locus is three lines. So a chunk boundary falls inside a
+position roughly once per chunk, `_widen` saw two ALTs where the file has three, and the build
+refused at `chr1:1196920` — a locus the source carries in full. The docstring on `_widen` asserted
+the opposite ("a chunk boundary cannot split a locus"), which is the same shape as everything else
+this round found: a plausible claim nobody had checked.
+
+`_build_contig` now carries the trailing partial locus into the next chunk and emits the final one
+after the loop — without that second half every contig would silently lose its last position. The
+fix belongs there rather than in `_widen`, which cannot tell a truncated locus from a malformed one
+and should not guess.
+
+**The fixture could not see it.** The committed slice is 4 MB and the chunk size is 64 MB, so every
+test built in one chunk. The regression test builds the *same slice* at 64 KB — hundreds of split
+loci — and asserts the table, the knot table and the row counts are identical to the single-chunk
+build, including that the contig's final position is still present. Demonstrated failing on the
+unfixed code before being kept: it refuses at `chr22:20000624`. An assertion that the build merely
+*succeeds* would have been satisfied by dropping the partial rows.
+
+**What was measured and rejected.** One column per base with the ref slot null — the obvious
+alternative — is **worse**: 3.677 B/row, because the nulls cost more than dropping `alt` saves. And
+setting `row_group_size` explicitly remains worse at every value tried; the default adaptive sizing
+is what responds to the data.
+
 ## RM198 — the lane that publishes a file the publisher did not know how to carry
 
 **Severity** medium · **Status** ✅ shipped 2026-09-10 (`just-dna-enricher` only: a layout registry,

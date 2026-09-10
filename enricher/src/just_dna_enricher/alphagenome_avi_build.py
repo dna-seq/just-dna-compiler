@@ -131,15 +131,52 @@ MAX_CONTIG_CHUNKS = 64
 #: contig, a filtered build, or a test fixture.
 MIN_ROWS_PER_CHUNK = 250_000
 
+#: **Wide by position: one row per locus, three ALT columns, and no stored `alt`** (RM197).
+#:
 #: `pos` is the **1-based VCF position, passed through unchanged** (`@start-1based`). `UInt32` holds
 #: chr1's 248,956,422 with three orders of magnitude to spare.
+#:
+#: `alt0`/`alt1`/`alt2` are the scores for the three ALTs **in ascending base order**, and which base
+#: each column means is a function of `ref` alone — see `alts_for_ref`. That is what lets the column
+#: disappear: there are exactly three bases other than REF, so naming them costs nothing once `ref`
+#: is known.
+#:
+#: **It rests on a property that was proved, not assumed.** Across all 24 contigs and all
+#: 8,812,917,339 rows: every position carries exactly three rows (`rows == 3 × distinct positions`),
+#: `pos` is sorted, `alt` is strictly ascending within a position, and no `alt` equals `ref`. Three
+#: distinct non-ref bases must be all three of them. `test_every_position_carries_the_three_non_ref_bases`
+#: re-proves it on the fixture, and the builder refuses a position that breaks it rather than
+#: writing a row whose columns would mean something else.
+#:
+#: Measured: **3.371 B/row against 3.882 long**, so 29.7 GB rather than 34.2 — the saving is simply
+#: not storing `pos` three times, and `pos` costs 1.249 B/row even perfectly delta-encoded.
 PARQUET_SCHEMA: dict[str, str] = {
     "chrom": "Categorical",
     "pos": "UInt32",
     "ref": "Categorical",
-    "alt": "Categorical",
-    "raw_score_e5": "Int32",
+    "alt0": "Int32",
+    "alt1": "Int32",
+    "alt2": "Int32",
 }
+
+#: The four bases, in the order `alt0`/`alt1`/`alt2` are assigned from.
+BASES = ("A", "C", "G", "T")
+
+
+def alts_for_ref(ref: str) -> tuple[str, str, str]:
+    """The three ALT bases a locus with this REF carries, in the order the columns hold them.
+
+    `{A,C,G,T} − ref`, ascending. This is the whole reason the wide layout costs nothing to read:
+    a caller with `(pos, ref, alt)` finds its column as `alts_for_ref(ref).index(alt)`, and a reader
+    reconstructing long rows walks the tuple. No lookup table travels with the artifact.
+    """
+    rest = tuple(b for b in BASES if b != ref.upper())
+    if len(rest) != 3:
+        raise AlphaGenomeBuildError(
+            f"ref {ref!r} is not one of {BASES}, so it has no three-ALT complement. AVI is SNV-only "
+            "and every REF it publishes is a single standard base."
+        )
+    return rest
 
 #: The knot table's own columns. `phred_lo`/`phred_hi` are the **interval** a printed `raw_score`
 #: spans, not a point: 2,001 of chr22's 40,204 distinct values carry up to 68 distinct `PHRED`s
@@ -369,11 +406,26 @@ def _build_contig(
     rows = 0
     knot_parts = []
     part = 0
+    #: The tail of the previous chunk, from the first row of its **last position** onward. A chunk
+    #: boundary falls between two lines, and a locus is three lines, so the last position in a chunk
+    #: is usually incomplete — carrying it forward is what makes `_widen`'s three-ALT requirement a
+    #: statement about the *source* rather than about where the reader happened to stop.
+    carried = None
     for block in _stream_lines(source, contig, chunk_bytes=chunk_bytes):
         frame = _read_block(block)
         if not frame.height:  # pragma: no cover - tabix does not emit empty blocks
             continue
         frame = _scaled_scores(frame, "raw_score", "raw_score_e5")
+        if carried is not None:
+            frame = pl.concat([carried, frame])
+        last_pos = frame.item(-1, "POS")
+        carried = frame.filter(pl.col("POS") == last_pos)
+        frame = frame.filter(pl.col("POS") != last_pos)
+        if not frame.height:
+            # A single locus spanning a whole chunk cannot happen at any sane chunk size, but a
+            # caller may pass a tiny one — a test does. Keep accumulating rather than emitting a
+            # partial locus.
+            continue
         knot_parts.append(
             frame.group_by("raw_score_e5").agg(
                 # **`UInt64`, and the cast is load-bearing.** `pl.len()` is `UInt32`, which holds any
@@ -388,14 +440,26 @@ def _build_contig(
                 pl.col("PHRED").max().alias("phred_hi"),
             )
         )
-        frame.select(
-            pl.col("#CHROM").cast(pl.Categorical).alias("chrom"),
-            pl.col("POS").alias("pos"),
-            pl.col("REF").cast(pl.Categorical).alias("ref"),
-            pl.col("ALT").cast(pl.Categorical).alias("alt"),
-            pl.col("raw_score_e5"),
-        ).write_parquet(scratch / f"{part:05d}.parquet", compression="zstd", compression_level=9)
+        _widen(frame, contig).write_parquet(
+            scratch / f"{part:05d}.parquet", compression="zstd", compression_level=9
+        )
         rows += frame.height
+        part += 1
+
+    # The final locus never sees a following chunk, so it is emitted here rather than dropped. This
+    # is the other half of the carry: without it every contig would silently lose its last position.
+    if carried is not None and carried.height:
+        knot_parts.append(
+            carried.group_by("raw_score_e5").agg(
+                pl.len().cast(pl.UInt64).alias("n"),
+                pl.col("PHRED").min().alias("phred_lo"),
+                pl.col("PHRED").max().alias("phred_hi"),
+            )
+        )
+        _widen(carried, contig).write_parquet(
+            scratch / f"{part:05d}.parquet", compression="zstd", compression_level=9
+        )
+        rows += carried.height
         part += 1
 
     path = out_dir / f"alphagenome_avi-{contig}.parquet"
@@ -433,6 +497,97 @@ def _build_contig(
 #: chr1 is ~720 M rows. Twelve of those at once is not a shape any machine here has, and the parse
 #: threads keep working while one of them assembles.
 _ASSEMBLY = threading.Semaphore(1)
+
+
+
+
+def to_long(wide):
+    """One row per `(chrom, pos, ref, alt)` from the artifact's wide rows (RM197).
+
+    **The inverse of the layout, and it needs nothing but `ref`.** The snapshot stores one row per
+    position with three score columns, and which base each column means is `{A,C,G,T} − ref`
+    ascending — so long form is recoverable with no stored `alt` and no lookup table travelling
+    beside the data. That is what made the wide layout adoptable rather than a schema break: a
+    consumer who wants `(pos, ref, alt, score)` rows calls this and gets them.
+
+    It lives here rather than in the reader because it is a fact about the **artifact**, and three
+    callers now need it to agree — `alphagenome_check`'s join, the tests, and anyone converting a
+    pulled snapshot back to long after download.
+
+    Apply it to a **filtered** frame. Over the whole corpus it is 2.9 billion loci becoming 8.8
+    billion rows, which is the shape the artifact exists to avoid storing.
+    """
+    _require_polars()
+    parts = [
+        wide.filter(pl.col("ref").cast(pl.String) == base).select(
+            "chrom", "pos",
+            pl.col("ref").cast(pl.String),
+            pl.lit(alt).alias("alt"),
+            pl.col(f"alt{i}").alias("raw_score_e5"),
+        )
+        for base in BASES
+        for i, alt in enumerate(alts_for_ref(base))
+    ]
+    present = [p for p in parts if p.height]
+    return pl.concat(present).sort(["pos", "alt"]) if present else wide.head(0)
+
+
+def _widen(frame, contig: str):
+    """Long rows → one row per position with three ALT-score columns (RM197).
+
+    **The caller must hand this whole loci.** `_stream_lines` yields whole *lines*, which is not the
+    same thing: a position's three rows sit next to each other in the source, so a chunk boundary
+    lands between two of them roughly once per chunk. This docstring claimed the opposite, and the
+    genome-wide build refused at `chr1:1196920` — a locus that has all three ALTs in the file and two
+    in the chunk. `_build_contig` now carries the trailing partial locus into the next chunk, which
+    is where the fix belongs: `_widen` cannot tell a truncated locus from a malformed one, and
+    should not try.
+
+    The refusal is the interesting part. The three-ALT property was *proved* over the whole corpus
+    (see `PARQUET_SCHEMA`), so a violation here means the source changed shape — and the honest
+    response is to stop, because every column in this layout means something only while it holds.
+    Writing a row with `alt2 = null` would silently redefine what `alt1` refers to for that locus.
+    """
+    wide = (
+        frame.sort(["POS", "ALT"])
+        .group_by("POS", maintain_order=True)
+        .agg(
+            pl.col("REF").first().alias("ref"),
+            pl.col("ALT").alias("alts"),
+            pl.col("raw_score_e5").alias("scores"),
+        )
+    )
+    ragged = wide.filter(pl.col("scores").list.len() != 3)
+    if ragged.height:
+        row = ragged.row(0, named=True)
+        raise AlphaGenomeBuildError(
+            f"{contig}:{row['POS']} carries {len(row['scores'])} ALT(s), not 3 "
+            f"({', '.join(row['alts'])}). The wide layout assigns alt0/alt1/alt2 by position in "
+            "`{A,C,G,T} - ref`, which is only meaningful when all three are present — this held "
+            "over all 8,812,917,339 rows when it was measured, so a violation means the artifact "
+            "changed shape and the layout has to be revisited rather than padded."
+        )
+    mismatched = wide.filter(
+        pl.col("alts").list.join("") != pl.col("ref").replace_strict(_ALT_SETS, default=None)
+    )
+    if mismatched.height:
+        row = mismatched.row(0, named=True)
+        raise AlphaGenomeBuildError(
+            f"{contig}:{row['POS']} has ref {row['ref']} with ALTs {', '.join(row['alts'])}, which "
+            f"is not {{A,C,G,T}} minus ref. `alts_for_ref` is what a reader uses to name these "
+            "columns, so a locus that disagrees with it would be read as three different variants."
+        )
+    return wide.select(
+        pl.lit(contig).cast(pl.Categorical).alias("chrom"),
+        pl.col("POS").alias("pos"),
+        pl.col("ref").cast(pl.Categorical),
+        *(pl.col("scores").list.get(i).alias(f"alt{i}") for i in range(3)),
+    )
+
+
+#: `ref` → its three ALTs concatenated, for the vectorised check in `_widen`. Derived from
+#: `alts_for_ref` rather than written out, so the two cannot disagree.
+_ALT_SETS = {base: "".join(alts_for_ref(base)) for base in BASES}
 
 
 def _assemble_contig(parts: list[Path], path: Path) -> None:
