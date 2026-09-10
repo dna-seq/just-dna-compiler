@@ -95,6 +95,30 @@ SNAPSHOT_LICENSE_FILENAME = "LICENSE.txt"
 #: `SNAPSHOT_LICENSE_FILENAME` were pulled up here to stop: a resolver, a builder and a reader each
 #: have to agree on the name, and a resolver living in this module cannot import the reader's copy
 #: without a cycle. One definition, in the module that already owns the layout.
+#: The AVI lane's reconstruction curve, a **root-level sibling of `data/`** rather than a sidecar
+#: directory (RM191). It is one small parquet, not a directory of them, and it is not optional: the
+#: artifact deliberately does not store `PHRED`, so without this file a puller holds scores they
+#: cannot rank and `alphagenome check` refuses outright. Named here rather than in the builder for
+#: the reason this whole section exists — the builder writes it, the publisher has to carry it, and
+#: the provisioner has to fetch it, so a name only one of the three knows is a name the other two
+#: will silently drop.
+ALPHAGENOME_KNOTS_FILENAME = "avi_knots.parquet"
+
+#: Every file a snapshot may carry **beside** `data/` and its sidecar directories, as the publisher
+#: and the provisioner must agree on it.
+#:
+#: **This is a registry because the alternative already failed twice.** `plan_reference_snapshot`
+#: iterated a hardcoded pair, `release.json` and `LICENSE.txt`, and the second of those is only in it
+#: because publishing a share-alike snapshot had silently dropped the terms it exists to carry
+#: (`@publisher-allowlist-derived`). The AVI knot table is the third such file and would have been
+#: the third such incident: a published snapshot missing it looks complete — every parquet present,
+#: `release.json` valid — and cannot answer the question the lane exists for.
+SNAPSHOT_ROOT_FILENAMES: tuple[str, ...] = (
+    RELEASE_FILENAME,
+    SNAPSHOT_LICENSE_FILENAME,
+    ALPHAGENOME_KNOTS_FILENAME,
+)
+
 ACMG_SNAPSHOT_FILENAME = "acmg_sf.csv"
 STRCHIVE_CATALOGUE_FILENAME = "STRchive-loci.json"
 

@@ -65,6 +65,7 @@ from just_dna_enricher import (
 from just_dna_enricher.clinvar import clinvar_dataset_label
 from just_dna_enricher.download import (
     SnapshotNotPublished,
+    ensure_alphagenome_avi_snapshot,
     ensure_civic_snapshot,
     ensure_clinpgx_snapshot,
     ensure_clinvar_snapshot,
@@ -150,6 +151,7 @@ from just_dna_enricher.locations import (
     resolve_strchive_reference,
 )
 from just_dna_enricher.upload import (
+    DEFAULT_ALPHAGENOME_AVI_REPO_ID,
     DEFAULT_CIVIC_REPO_ID,
     DEFAULT_CLINPGX_REPO_ID,
     DEFAULT_CLINVAR_REPO_ID,
@@ -1005,8 +1007,8 @@ CACHE_LANES: list[CacheLane] = [
         resolve=resolve_alphagenome_avi_reference,
         default_dir=default_alphagenome_avi_cache_dir,
         rebuild=None,
-        ensure=None,
-        publish_repo=None,
+        ensure=ensure_alphagenome_avi_snapshot,
+        publish_repo=DEFAULT_ALPHAGENOME_AVI_REPO_ID,
         terms=ALPHAGENOME_AVI_TERMS,
         # **The lane that cannot acquire its own bytes.** Every other buildable lane's adapter starts
         # with a download; this one's input is 88.5 GB behind a sign-in whose eligibility clause is a
@@ -1028,11 +1030,6 @@ CACHE_LANES: list[CacheLane] = [
         # and whether an HF-published snapshot is an "open source release" is a reading of Google's
         # terms rather than an engineering question. `redistribution` is `None` for exactly that,
         # and a lane may not publish under a permission nobody has established.
-        unpublished=(
-            "publishable in principle since RM195 — use is documented and `redistribution=True` "
-            "records the maintainer's open-source-release reading — but not yet wired into "
-            "`cache pull`/`upload`, which is RM198"
-        ),
     ),
 ]
 

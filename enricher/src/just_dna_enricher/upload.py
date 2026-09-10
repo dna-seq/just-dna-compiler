@@ -36,6 +36,7 @@ from just_dna_enricher.locations import (
     RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_LICENSE_FILENAME,
+    SNAPSHOT_ROOT_FILENAMES,
     SNAPSHOT_SIDECAR_DIRNAMES,
     load_env,
     missing_credential_reason,
@@ -123,6 +124,13 @@ DEFAULT_DRUG_LABELS_REPO_ID = "just-dna-seq/clinpgx_drug_labels"
 #: on purpose: it pins the digests of two parents, and a puller who does not hold those parents would
 #: be handed an increment its own currency check cannot verify.
 DEFAULT_MITOMAP_REPO_ID = "just-dna-seq/mitomap"
+
+#: AlphaGenome AVI (RM198). Publishable on a **recorded reading** rather than a quoted clause: RM195
+#: pinned the page that makes AVI Permissive Use, and `redistribution=True` carries the maintainer's
+#: reading that an open publication falls inside prohibition 1's "open source release" carve-out.
+#: What makes that defensible in practice is that the snapshot carries the Use restrictions as
+#: `LICENSE.txt`, so a puller receives the terms with the bytes.
+DEFAULT_ALPHAGENOME_AVI_REPO_ID = "just-dna-seq/alphagenome_avi"
 
 
 def _hf_api(repo_id: str, token: str | None = None):
@@ -628,7 +636,12 @@ def plan_reference_snapshot(
         directory = snapshot_dir / sidecar
         if directory.is_dir():
             files.extend(f"{sidecar}/{p.name}" for p in sorted(directory.glob("*.parquet")))
-    for name in (RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME):
+    # Walked from `locations.SNAPSHOT_ROOT_FILENAMES`, never listed here. A file this function does
+    # not name is a file the publish silently drops, and the snapshot still looks complete on the
+    # other side — which is how a share-alike snapshot went out without its terms
+    # (`@publisher-allowlist-derived`). Absence stays normal: only ClinPGx carries a licence and only
+    # the AVI lane carries a knot table.
+    for name in SNAPSHOT_ROOT_FILENAMES:
         if (snapshot_dir / name).is_file():
             files.append(name)
     return SnapshotPlan(repo_id=resolved_repo, files=files)

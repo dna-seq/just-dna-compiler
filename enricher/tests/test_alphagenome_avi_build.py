@@ -490,3 +490,55 @@ def test_a_count_past_thirty_two_bits_survives_the_knot_aggregation() -> None:
     )
     assert int(merged["n"].sum()) == total
     assert total > 2**32, "the constant has to exceed the type this is guarding against"
+
+
+@needs_tabix
+def test_a_publish_carries_the_knot_table_and_not_only_the_scores(built: Path) -> None:
+    """The file that would have gone missing, and the snapshot would have looked complete without it.
+
+    `plan_reference_snapshot` collects `data/*.parquet`, the sidecar *directories*, and a list of
+    root-level files. `avi_knots.parquet` is a root-level sibling of `data/` — one small parquet, not
+    a directory of them — so a publisher iterating a hardcoded `(release.json, LICENSE.txt)` pair
+    drops it silently. Every score present, `release.json` valid, and **nothing on the other side can
+    reconstruct a `PHRED`**, because the artifact deliberately does not store one.
+
+    That is the third time this exact shape has come up: `@publisher-allowlist-derived` exists
+    because a share-alike snapshot went out without the terms it was built to carry. So the names
+    live in `locations.SNAPSHOT_ROOT_FILENAMES` and the publisher walks them, and this asserts the
+    walk over a real built snapshot rather than the constant over itself.
+    """
+    from just_dna_enricher.locations import SNAPSHOT_ROOT_FILENAMES
+    from just_dna_enricher.upload import plan_reference_snapshot
+
+    plan = plan_reference_snapshot(built, "just-dna-seq/alphagenome_avi")
+
+    assert ab.KNOT_FILENAME in plan.files, (
+        "the curve did not make it into the publish; a puller would hold scores they cannot rank"
+    )
+    assert "release.json" in plan.files and "LICENSE.txt" in plan.files
+    assert any(f.startswith("data/") and f.endswith(".parquet") for f in plan.files)
+
+    # Every root file this snapshot actually has is carried — an equality over what is on disk,
+    # so a fourth such file added to a lane and not to the registry fails here.
+    on_disk = {name for name in SNAPSHOT_ROOT_FILENAMES if (built / name).is_file()}
+    assert on_disk <= set(plan.files)
+    assert ab.KNOT_FILENAME in on_disk, "the fixture build stopped writing a knot table"
+
+
+@needs_tabix
+def test_the_lane_is_pullable_exactly_because_it_is_publishable(built: Path) -> None:
+    """The roster's biconditional, and this lane is the one that nearly broke it (RM198).
+
+    A lane this tier can publish must be one a deployment can pull, or `cache status` advertises a
+    repo nobody can use. The AVI lane is unusual on both halves: it cannot *build* without a file
+    behind an eligibility gate, and it can publish anyway, because the re-encoded snapshot is
+    Permissive-Use output and `redistribution=True` records the reading that an open publication is
+    inside prohibition 1's carve-out.
+    """
+    from just_dna_enricher.caches import LANES_BY_NAME
+
+    lane = LANES_BY_NAME["alphagenome_avi"]
+    assert lane.publish_repo is not None and lane.ensure is not None
+    assert lane.unpublished is None, "a lane that publishes may not also excuse itself"
+    assert lane.rebuild is None and lane.unbuilt, "and it still cannot fetch its own source"
+    assert lane.terms is not None and lane.terms.redistribution is True

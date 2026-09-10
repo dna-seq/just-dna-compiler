@@ -68,6 +68,44 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM198 — the lane that publishes a file the publisher did not know how to carry
+
+**Severity** medium · **Status** ✅ shipped 2026-09-10 (`just-dna-enricher` only: a layout registry,
+a provisioner, a repo id, three lane fields) · **Owner** enricher · **Motivating case** the AVI lane
+became publishable when RM195 closed, and wiring it found the publisher would have dropped the one
+file that makes the snapshot usable
+
+**What it wires.** `ensure_alphagenome_avi_snapshot`, `DEFAULT_ALPHAGENOME_AVI_REPO_ID`, and the
+lane's `ensure` / `publish_repo`, with `unpublished` removed — the roster asserts that
+biconditional, so a lane cannot both publish and excuse itself. `cache status`, `cache pull`,
+`prepare` and `upload` all pick it up from the registry with no per-lane branch, which is what
+RM176's registry was for.
+
+**The lane is still the odd one out on the build half.** `rebuild` stays `None` with its `unbuilt`
+reason intact: this tier cannot fetch the 88.5 GB source, because the eligibility clause bars
+classes of holder outright. So it is **pullable without being buildable** — an operator who may not
+download the artifact can still provision the re-encoded snapshot, which is the entire point of
+publishing it.
+
+**The defect it found, and it is the third of its exact shape.** `plan_reference_snapshot` collected
+`data/*.parquet`, the sidecar *directories*, and then a **hardcoded pair** — `release.json` and
+`LICENSE.txt`. `avi_knots.parquet` is a root-level sibling of `data/`: one small parquet, not a
+directory of them. It would have been dropped silently, and the published snapshot would have looked
+complete — every score present, `release.json` valid — while **nothing on the other side could
+reconstruct a `PHRED`**, because the artifact deliberately does not store one. `alphagenome check`
+refuses such a snapshot outright, so the failure would have surfaced far from its cause.
+
+That pair was itself a repair: `LICENSE.txt` is only in it because publishing a share-alike snapshot
+had already gone out without the terms it exists to carry (`@publisher-allowlist-derived`). So the
+names moved to `locations.SNAPSHOT_ROOT_FILENAMES` and the publisher walks them — the same move
+`CACHE_LANES` is, one layer down. A fourth such file added to a lane and not to the registry now
+fails a test rather than a publish.
+
+**What the test asserts** is the walk over a **real built snapshot**, not the constant against
+itself: the plan for the fixture build must contain the knot table, and every root file actually on
+disk must be carried. A test comparing `SNAPSHOT_ROOT_FILENAMES` to a literal would have passed
+while the publisher ignored it.
+
 ## RM196 — the repository stopped carrying somebody else's source and started carrying a pin
 
 **Severity** medium · **Status** ✅ shipped 2026-09-10 (`just-dna-enricher` only: a build-backend

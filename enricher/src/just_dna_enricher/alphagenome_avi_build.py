@@ -59,6 +59,7 @@ from pathlib import Path
 from just_dna_format.layout import atomic_write_text
 
 from just_dna_enricher.locations import (
+    ALPHAGENOME_KNOTS_FILENAME,
     RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_LICENSE_FILENAME,
@@ -150,7 +151,9 @@ PARQUET_SCHEMA: dict[str, str] = {
 #: not, and it wraps rather than raising.
 KNOT_COLUMNS = ("raw_score_e5", "n", "phred_lo", "phred_hi")
 
-KNOT_FILENAME = "avi_knots.parquet"
+#: Re-exported from `locations`, which owns it: the publisher and the provisioner have to agree with
+#: this builder about the name, and a constant defined here would be a name only the writer knows.
+KNOT_FILENAME = ALPHAGENOME_KNOTS_FILENAME
 
 #: Where a contig's own knot aggregate is parked until the merge succeeds. **A contig's knots cannot
 #: be recovered from the finished artifact** — they are built from `PHRED`, which the artifact

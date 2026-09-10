@@ -23,6 +23,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_LICENSE_FILENAME,
     SNAPSHOT_SIDECAR_DIRNAMES,
     STRCHIVE_CATALOGUE_FILENAME,
+    default_alphagenome_avi_cache_dir,
     default_civic_cache_dir,
     default_clinpgx_cache_dir,
     default_clinvar_cache_dir,
@@ -88,6 +89,14 @@ _DRUG_LABELS_FILES = "*.parquet"
 _MITOMAP_HF_PREFIX = "datasets/just-dna-seq/mitomap/data"
 _MITOMAP_FILES = "mitomap-*.parquet"
 
+#: AlphaGenome AVI, added with the publish half rather than after it (RM198). The lane is the first
+#: whose snapshot is **useless without a root-level sidecar**: `PHRED` is not stored, so a pull that
+#: brought only `data/*.parquet` would hand over scores nobody can rank. `_provision_snapshot` fetches
+#: the root files from `SNAPSHOT_ROOT_FILENAMES` for every lane, so this needs no special case — it
+#: needed the registry to exist, which is the other half of RM198.
+_ALPHAGENOME_AVI_HF_PREFIX = "datasets/just-dna-seq/alphagenome_avi/data"
+_ALPHAGENOME_AVI_FILES = "alphagenome_avi-*.parquet"
+
 #: STRchive's repo root, not a `data/` prefix: this snapshot is the upstream catalogue verbatim beside
 #: its provenance, and it holds no parquet at all.
 _STRCHIVE_HF_REPO = "datasets/just-dna-seq/strchive"
@@ -113,6 +122,7 @@ SNAPSHOT_FILE_GLOBS: dict[str, str] = {
     "drug_labels": _DRUG_LABELS_FILES,
     "civic": _CIVIC_FILES,
     "mitomap": _MITOMAP_FILES,
+    "alphagenome_avi": _ALPHAGENOME_AVI_FILES,
 }
 
 
@@ -445,6 +455,30 @@ def ensure_mitomap_snapshot(mitomap_cache: Path | None = None) -> Path:
     return _provision_snapshot(
         cache_dir, _MITOMAP_HF_PREFIX, label="MITOMAP", error_cls=OpenSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["mitomap"],
+    )
+
+
+def ensure_alphagenome_avi_snapshot(alphagenome_avi_cache: Path | None = None) -> Path:
+    """Provision the AVI snapshot from HuggingFace Hub (RM198).
+
+    **A pull, never a build.** The 88.5 GB source is behind an eligibility gate that bars classes of
+    holder outright, so this tier cannot acquire it — but the *re-encoded* snapshot is 34 GB of
+    Permissive-Use output (RM195), and `redistribution=True` records the reading that publishing it
+    openly falls inside prohibition 1's carve-out. So an operator who cannot download the artifact can
+    still pull the lane, which is the whole point of publishing it.
+
+    It is also the first lane whose snapshot is **incomplete without a root-level file**: `PHRED` is
+    not stored and `avi_knots.parquet` is what reconstructs it, so a pull that brought only the
+    parquets would hand over scores nobody can rank. That file travels because
+    `SNAPSHOT_ROOT_FILENAMES` names it, not because this function does.
+    """
+    cache_dir = (
+        Path(alphagenome_avi_cache) if alphagenome_avi_cache is not None
+        else default_alphagenome_avi_cache_dir()
+    )
+    return _provision_snapshot(
+        cache_dir, _ALPHAGENOME_AVI_HF_PREFIX, label="AlphaGenome AVI",
+        error_cls=OpenSnapshotError, filename_glob=SNAPSHOT_FILE_GLOBS["alphagenome_avi"],
     )
 
 
