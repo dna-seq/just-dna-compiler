@@ -1117,22 +1117,51 @@ written above. Each is corrected in place; this section records what moved and w
 pattern is the one the whole document keeps hitting — a measurement taken one way, generalised one
 step too far.
 
-#### `34.4 GB` is a **writer setting**, not a property of the schema
+#### `34.4 GB` was right, and the writer that contradicted it was fragmenting its own output
 
-§4.9's whole-row figure came from `write_parquet` with polars' default row-group size. The shipped
-builder writes 1,000,000-row groups, and that alone costs **22%**. Re-measured on a 30 M-row
-`chr22` slice, same schema, same `zstd-9`:
+The build first measured **43.0 GB** and reported that 34.4 reproduced in no layout. It does
+reproduce; the 43 GB was the builder's own writer. The knob is **arrow chunk count**, and neither
+of the first two guesses — the schema, then `row_group_size` — was it.
 
-| row groups | B/row | genome-wide |
-| --- | ---: | ---: |
-| polars default | 3.963 | **34.9 GB** |
-| `row_group_size=1_000_000` | 4.835 | **42.6 GB** |
+Parquet writes **at least one row group per arrow chunk**, and a sorted column only delta-encodes
+*within* a row group. Fragment the frame and you destroy precisely the encoding that makes this
+artifact small. Measured on a 30 M-row `chr22` slice, varying **nothing but the chunk count** —
+same schema, same `zstd-9`:
 
-Almost all of the difference is `pos`: **1.250 B/row standalone against 2.067 in the shipped
-file**, because a smaller row group truncates the delta-encoding run that a sorted position column
-depends on. So the artifact's size is set by a knob nobody named, and "34.4 GB" was only ever true
-of the default. **Both numbers are right about different files** — the tradeoff is size against
-random-access granularity, which is a real choice and now an item (RM197).
+| arrow chunks | rows/chunk | B/row | genome-wide | `pos` alone |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 | 30,000,003 | 3.940 | 34.7 GB | 1.250 |
+| 4 | 7.5 M | 3.940 | 34.7 GB | 1.250 |
+| 64 | 469 K | 3.963 | 34.9 GB | 1.251 |
+| 512 | 58.6 K | 3.964 | 34.9 GB | 1.251 |
+| **1,432** | **21 K** | **4.957** | **43.7 GB** | **2.069** |
+
+Flat to ~500 chunks, then a cliff. The whole of it is `pos`: **1.250 B/row against 2.069**, a
+sorted 32-bit column that delta-encodes to almost nothing until its runs are cut up.
+
+The builder had streamed per-contig files through `scan_parquet(...).sink_parquet(...)`, which
+emits one chunk per morsel — 1,432 of them for `chr22`. So the fragmentation was self-inflicted and
+invisible: the output is correct, complete and 26% too large, and nothing in the API mentions
+chunks.
+
+**And setting `row_group_size` explicitly does not fix it — it is worse at every value tried**, on
+a frame already rechunked to one:
+
+| `row_group_size` | B/row | genome-wide |
+| ---: | ---: | ---: |
+| *(default, adaptive)* | **3.940** | **34.7 GB** |
+| 250,000 | 4.795 | 42.3 GB |
+| 1,000,000 | 4.835 | 42.6 GB |
+| 4,000,000 | 5.019 | 44.2 GB |
+
+So the guidance is the opposite of the obvious one: **do not tune the row group, keep the chunks
+few**, and let the default sizing adapt. A full `rechunk()` is not required either — anything under
+a few hundred chunks is on the flat, which matters because rechunking `chr1` would be a 14 GB copy
+for no gain.
+
+This correction is worth more than the number it fixes. A measurement disagreed with a document,
+the document was assumed wrong, and the disagreement was the measuring instrument all along — the
+same failure this round keeps finding, pointed the other way.
 
 #### "Exactly lossless" is true of the encoding and **not** of the obvious way to decode it
 
