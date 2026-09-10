@@ -89,6 +89,16 @@ question.
    regulatory features are all `MAX_ABS_*`, magnitudes with the sign already discarded, so there is
    no expression direction anywhere in the model. The axis is benign ↔ damaging, not down ↔ up (§4.7).
 
+5k. **The precision the file lost exists on the API, and neither surface is a superset of the
+   other.** The Atlas returns `raw_score` as `float32` — ~7 significant digits against the file's 4
+   — and at the exact atom that causes every threshold-3 flip, six rows the file prints identically
+   come back distinct and in the right order, reproducing the published `PHRED` **exactly at five
+   decimals**. So the 3.56e-4 residual is a publishing artefact, not a model limit. But the file
+   still wins above `PHRED` 72.247, where the API's `float32` quantile saturates at 1.0 (§6.3). No
+   other download helps: splicing and SHAP publish at the same four digits, and SHAP carries no AVI
+   column. The shape this implies is **bulk build plus targeted API refinement**, and §4.8.1 says
+   exactly which rows need it (§4.7.1).
+
 5h. **The reconstruction residual reranks pervasively but microscopically, and rounding does not
    mend it.** One row in six changes rank, but the largest move anywhere is 3,168 places in 36 M —
    **0.0088 of a percentile**. Threshold flips are not smooth: **zero at every integer threshold
@@ -999,6 +1009,46 @@ attributions rather than from a declared semantics. `ALPHAMISSENSE` being `nan` 
 variants is worth noting separately — the feature vector carries a genuine missing value, not a
 zero, so at least one input distinguishes *unmeasured* from *zero* even though `MERGED_SPLICING`
 does not.
+
+### 4.7.1 The lost precision exists — on the API, not in any file
+
+The 3.56e-4 residual of §4.6 is a **publishing artefact of the TSV**, not a property of the model.
+The Atlas returns `raw_score` as a `float32`, roughly **seven significant digits** against the
+file's four, and that is precisely the information the reconstruction is missing.
+
+Tested where it matters — the `raw_score = 0.00076` atom that causes every threshold-3 flip in
+§4.8.1. Six rows the file cannot tell apart:
+
+| variant | file `raw` | **API `raw`** | file `PHRED` | `PHRED` derived from API `raw` | Δ |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| chr22:10535072 A>C | 0.00076 | **0.000758832** | 2.99986 | 2.99986 | **0.00000** |
+| chr22:10513191 G>T | 0.00076 | **0.000759043** | 2.99987 | 2.99987 | **0.00000** |
+| chr22:10537946 C>G | 0.00076 | **0.000759331** | 2.99989 | 2.99989 | **0.00000** |
+| chr22:10553451 T>G | 0.00076 | **0.000761419** | 3.00003 | 3.00003 | **0.00000** |
+| chr22:10513734 C>T | 0.00076 | **0.000761990** | 3.00007 | 3.00007 | **0.00000** |
+| chr22:10520436 G>A | 0.00076 | **0.000764675** | 3.00025 | 3.00025 | **0.00000** |
+
+Sorted by the API's `raw_score`, the file's `PHRED` is **perfectly monotone**. The tie is not a tie
+in the model; it is six distinct values printed to four significant digits. With the API's
+precision the derived `PHRED` reproduces the published column **exactly at its full five decimals**
+for all six.
+
+**So each surface is more precise than the other, in a different place.** The API wins on
+`raw_score`, everywhere — seven digits against four. The file wins on `PHRED` above 72.247, where
+§6.3 showed the API's `float32` quantile saturates at exactly 1.0 while the file still carries
+values to 89.451. Neither is a superset of the other, which is `@two-surfaces-two-denominators`
+stated as sharply as it can be: **there is no single surface that carries the artifact at full
+fidelity.**
+
+**No other download helps.** The splicing artifact publishes its own score at the same four
+significant digits, and the SHAP artifact carries the eighteen model *features* — also at four —
+and **no AVI score column at all**. Its `AVI_SCORE_FEATURE_IMPORTANCE` sibling, which does sum to
+the score, exists only as an Atlas scorer and not as a file.
+
+The practical consequence is a two-stage shape rather than a choice: build the bulk artifact from
+the download, and **refine a shortlist through the API** where the fourth digit is load-bearing.
+§4.8.1's rule says exactly when that is — a threshold falling inside a knot's span — so the refine
+step is targetable rather than blanket, and at 161 ms per variant a few thousand rows is minutes.
 
 ### 4.8 Does the 3.6e-4 residual actually rerank anything?
 

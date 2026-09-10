@@ -34,7 +34,28 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-10 (latest) — sixteen bits for `PHRED` is dominated by not storing it at all
+## 2026-09-10 (latest) — the precision the file lost is on the API, and neither surface is a superset
+
+Tenth round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md) § 4.7.1. No `RMn`, no adoption.
+
+- **The 3.56e-4 residual is a publishing artefact of the TSV, not a model limit.** The Atlas returns
+  `raw_score` as a `float32` — about **seven significant digits against the file's four**. Tested at
+  the exact atom that causes every threshold-3 flip: six rows the file prints identically as `0.00076`
+  come back as `0.000758832 … 0.000764675`, in an order that makes the file's own `PHRED` **perfectly
+  monotone**, and the `PHRED` derived from them reproduces the published column **exactly at all five
+  decimals**. The tie was never a tie in the model.
+- **Neither surface is a superset of the other**, which is `@two-surfaces-two-denominators` as sharp as
+  it gets. The API wins on `raw_score` everywhere; the **file** wins on `PHRED` above 72.247, where the
+  API's `float32` quantile saturates at exactly 1.0 and the file still carries values to 89.451. There
+  is no single surface carrying the artifact at full fidelity.
+- **No other download helps.** The splicing artifact publishes at the same four significant digits, and
+  the SHAP artifact carries the eighteen model *features* — also four — and **no AVI score column at
+  all**. `AVI_SCORE_FEATURE_IMPORTANCE`, which does sum to the score, exists only as an Atlas scorer.
+- So the shape this suggests is not a choice between surfaces but **a bulk build plus targeted API
+  refinement**, with §4.8.1's knot rule saying exactly which rows need it — a threshold inside a knot's
+  span — and 161 ms per variant making a few thousand of them a matter of minutes.
+
+## 2026-09-10 — sixteen bits for `PHRED` is dominated by not storing it at all
 
 Ninth round on [probes/ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md) § 4.9.1, one question:
 `PHRED` rescaled into `UInt16` rather than `Int32`×10⁵. No `RMn`, no adoption.
