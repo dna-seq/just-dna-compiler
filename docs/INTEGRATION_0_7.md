@@ -71,7 +71,7 @@ re-pin at the version boundary if you cache digests, gate on them, or diff a rec
 stored value. If you key on `content_signature`, **no action** — it did not move on any measured
 module, which is the whole point of having two identities.
 
-### One old-reader break, and it is not where you would look
+### Two old-reader breaks, and neither is where you would look
 
 The 0.6 document could say a `v0.5.4` client parsed every 0.6 manifest. **That does not hold across
 this boundary, for one field.** Measured here, by parsing all sixteen freshly compiled 0.7 manifests
@@ -97,6 +97,26 @@ So: **a consumer that reads `verification` must upgrade `just-dna-format` to 0.7
 that `warnings_summary`'s closed vocabulary carries and that COMPILER.md already states for warning
 codes — *additive* describes the writer, never the reader — but it had not been said about
 `VerificationRecord`, and it is the sharper case because it needs no new vocabulary member to fire.
+
+**And the second break is the case that does need one.** RM193 added `variant_impact_agreement` to
+`VALID_VERIFICATION_CHECKS`, and `VerificationRecord.check` is validated against that vocabulary by a
+field validator — not merely annotated with it. Measured against a real `just-dna-format==0.6.6` in a
+clean environment:
+
+```
+rsid_currency              ACCEPTED by 0.6.6
+variant_impact_agreement   REJECTED by 0.6.6 — "check must be one of [...]"
+```
+
+**It does not move the 15/16 row above**, and the reason is worth stating rather than leaving to be
+inferred: no reference module runs `alphagenome check`, so no corpus manifest carries the member. The
+row measures the corpus, and the corpus has not changed. A *consumer's* module that runs the check
+does carry it, and a 0.6.6 reader refuses that manifest outright.
+
+The two breaks compose in the direction you would hope: both are `VerificationRecord`, both are
+fixed by the same upgrade, and a consumer that ignores `verification` meets neither. What they share
+is the shape worth carrying — **a vocabulary is additive for the writer and closed for the reader**,
+so every new member is a compatibility event for anybody validating against their own copy of it.
 
 ### Four checks can newly refuse
 
@@ -310,7 +330,10 @@ The registry `reference()` / `authoring_reference()` walks now renders **31 mode
 ### 2.5 CLI
 
 One new compiler command, several new enricher commands, four new `enrich` flags. Nothing was removed
-or retyped. **Two behaviour changes for anyone scripting a builder**: `clinpgx build` refuses the
+or retyped — **except one extra**: `just-dna-enricher[alphagenome]` is gone, replaced by
+`[atlas]` (RM192). It pulled the upstream SDK at 255 MB and 81 packages; the replacement is
+`grpcio` + `protobuf`, measured at 19 MB and +2. Nothing in the tier imported the old one, so the
+only breakage is a deployment that named it in an install line. **Two behaviour changes for anyone scripting a builder**: `clinpgx build` refuses the
 retired `clinicalAnnotations.zip` member names and exits 1 naming `summaryAnnotations.zip` (RM175 —
 the old filename still answers 200 and serves a frozen 2025 object), and every builder's `--out` now
 defaults to `data/repro/<lane>/` — `cpic build`, `clinpgx build`, `clinpgx build-labels` and
@@ -326,6 +349,9 @@ write into the working directory, and `civic reproduce` moved to `data/repro/civ
 | **`just-dna-enricher cache prepare`** | RM176. **The one a deployment wants.** Leaves the machine with every cache it can have: pulls the published snapshots, builds the five that are unpublished for recorded reasons (PharmVar, PubMind, MANE, ACMG, and the derived `mitomap_miss`, which would only pin somebody else's ClinVar if it travelled). A present cache is left alone, so it is idempotent. |
 | **`just-dna-enricher cache rebuild`** | RM176. Re-derives every lane into `<base>/<lane>/` (default `data/caches`), **never in place**, with `--publish` to upload each. The complement of `prepare`: rebuild cuts a fresh set, prepare fills in what is missing. |
 | **`just-dna-enricher strchive publish`** / **`clinpgx publish-labels`** / **`acmg build`** / **`mane build`** / **`strchive build`** / **`clinpgx build-labels`** | RM176 and RM168. Three lanes gained a publish command; three gained a cache and a resolver. |
+| **`just-dna-enricher alphagenome build --input <file>`** | RM191. Re-encodes AlphaGenome's AVI artifact into a cache lane. `--input` is **required** and there is no default URL — the source is behind an eligibility gate, so this tier never fetches it. |
+| **`just-dna-enricher alphagenome check <spec>`** | RM193. Cross-checks a module's variants against those scores; reports, never repairs. Offline unless `--threshold` names a cut the local artifact cannot decide, and it **refuses** to refine more than `--refinement-cap` rows over the network. |
+| **`just-dna-enricher atlas generate`** | RM192/RM196. Fetches the pinned upstream `.proto` sources and builds the gRPC bindings. Once per checkout; a released wheel carries them already. Needs the `[dev]` group for `grpcio-tools`. |
 
 | `enrich` flag | default | note |
 | --- | --- | --- |
@@ -505,6 +531,61 @@ combination profile is visible as one — a composite is the inequality of the t
 `release.json` as `composite_profile_rows` (RM174).
 
 
+### AlphaGenome — a new source, one new vocabulary member, and a build-backend change (RM191–RM199)
+
+**Almost none of this is a schema change.** No column, no table, no manifest field, no signature. A
+consumer that never runs the enricher sees one thing only: the new `variant_impact_agreement` check
+member, which is the second old-reader break in § 1.
+
+| Surface | What it is |
+|---|---|
+| `just-dna-enricher alphagenome build --input <file>` | Re-encodes AlphaGenome's AVI artifact into a cache lane. **`--input` is required and there is no default URL** — the 88.5 GB source sits behind a sign-in whose eligibility clause bars *classes of holder*, so acquisition is the operator's act under their own acceptance |
+| `just-dna-enricher alphagenome check <spec>` | Cross-checks a module's variants against those scores. Reports, never repairs. Mostly offline: without `--threshold` there is no question the local snapshot cannot answer |
+| `just-dna-enricher atlas generate` | Builds the Atlas gRPC bindings from pinned upstream sources. Once per checkout; a released wheel carries them already |
+| `--alphagenome-avi-cache` / `$JUST_DNA_ALPHAGENOME_AVI_CACHE` | Points at a built or pulled snapshot |
+| `just-dna-enricher[atlas]` | **New extra**: `grpcio` + `protobuf`, measured at 19 MB and +2 packages. The `alphagenome` extra is **deleted** — it was 255 MB and 81 packages |
+| `variant_impact_agreement` | **New `VALID_VERIFICATION_CHECKS` member.** The one thing here a format-tier consumer sees |
+| `ALPHAGENOME_AVI_TERMS` in `licensing.py` | `commercial_use=True`, `share_alike=False`, `redistribution=True`. A module drafted from it lands `alphagenome_avi` in `sources.csv` |
+
+**Three things that will surprise a consumer**, and none is a schema question:
+
+**The lane is pullable but not buildable by the tier.** It is the first with `rebuild=None` *and* a
+builder: this tier cannot fetch the source, but the re-encoded snapshot is publishable, so an operator
+who may not download the artifact can still `cache pull` it. `cache status` reports it like any other
+lane.
+
+**The stored scores are integers, and you should compare them as integers.** `raw_score` is `Int32` at
+a scale of 10⁵ — exactly lossless, since the source prints at most five decimals. Recovering a float
+with `raw_score_e5 / 1e5` disagrees with the printed value on **53% of rows**, because the division
+rounds a second time. `score >= 0.1` is `raw_score_e5 >= 10_000`.
+
+**`PHRED` is not stored, and the file that reconstructs it is not optional.** It is an exact
+within-corpus rank, so `avi_knots.parquet` carries the curve in 466 KB instead — as an *interval* per
+printed score, which makes threshold safety decidable in advance: a threshold is unsafe iff it lands
+inside a knot's span. Genome-wide exactly one does, at 3. A snapshot without that file holds scores
+nobody can rank, and `alphagenome check` refuses it.
+
+**The artifact is wide by position** (RM197): one row per locus, `chrom, pos, ref, alt0, alt1, alt2`,
+and **no `alt` column**. Which base each column means is `{A,C,G,T} − ref` ascending — a function of
+`ref` alone, so nothing travels beside the data. `alphagenome_avi_build.to_long()` recovers
+`(chrom, pos, ref, alt, score)` rows if you want them. Apply it to a *filtered* frame: over the whole
+corpus it is 2.9 billion loci becoming 8.8 billion rows, which is the shape the layout exists to avoid
+storing.
+
+**One change that is not about AlphaGenome at all.** `just-dna-enricher`'s build backend moved from
+`uv_build` to **hatchling** (RM196), because the Atlas bindings are generated at build time and
+`uv_build` has no build hook. Backends are declared per package, so `just-dna-format` and
+`just-dna-compiler` are untouched. **This matters only if you build the enricher from source**; a
+wheel or an editable install behaves as before. The `.proto` sources are no longer vendored in the
+repository — it carries a commit id and a sha256 per file, and the build fetches and verifies them —
+so a source build needs network **once**, and a released sdist carries the files already.
+
+**And publishing a snapshot is now two commits** (RM199): the payload, then `release.json`. The
+description is what tells a puller which release it holds, so it must never arrive before the bytes it
+describes. Above 5 GB the payload goes through `upload_large_folder`, which resumes but is not atomic;
+a declared layout retirement on that path is **refused** rather than silently split, because RM186
+promises the arrival and the departure are one commit.
+
 ## 3. Per-consumer check / change lists
 
 ### just-dna-registry (spec storage / re-publish)
@@ -542,7 +623,12 @@ combination profile is visible as one — a composite is the inequality of the t
    cleared, it has not been asked.
 2. **Upgrade `just-dna-format` to 0.7 before serving 0.7-enriched modules.** § 1: a 0.6.6
    `ModuleManifest` refuses a manifest whose `verification.checks` carries `producer`, and it refuses
-   on the null. If you parse manifests to build a catalog, this is the one hard break in the release.
+   on the null. If you parse manifests to build a catalog, this is the hard break in the release —
+   and since RM193 there is a **second** one on the same model, a `check` of
+   `variant_impact_agreement` that 0.6.6's vocabulary validator rejects. One upgrade fixes both. The
+   general form is worth building against rather than patching per member: **a vocabulary is additive
+   for the writer and closed for the reader**, so validating a manifest against your own copy of one
+   makes every future member a break.
 3. **Three new parquets may appear in a file list.** Derive from `ARTIFACT_PARQUETS`, not from a
    hand-kept list.
 4. Surface `clin_sig_concordance` on a module page if you render provenance. Render `opposed_count`
@@ -616,6 +702,31 @@ combination profile is visible as one — a composite is the inequality of the t
 9. **`direction` may now read `contested`** (RM150). If you switch on it, add the branch. It means the
    sources disagree about the *sign*, where `unknown` means nobody assessed it — an absence and a
    finding, which used to share one member. No existing module's rows change.
+
+### Anyone who might touch the AlphaGenome lane (RM191–RM199)
+
+**Check**
+
+1. **Nothing is required of you.** No module carries AlphaGenome data unless somebody drafts it in,
+   and no reference module does. The only surface that reaches a format-tier consumer is the new
+   check member above.
+2. **If you parse `sources.csv`**, a module built on this source carries `alphagenome_avi` with
+   `commercial_use=True`, `share_alike=False`, `redistribution=True`. The first two are documented —
+   the classifying page is pinned in `docs/vendor/` — and **the third is a recorded reading** of the
+   Output Terms' "open source release" carve-out, not a quoted clause. The row cannot show that
+   difference; ROADMAP_HISTORY RM195 names it.
+3. **Two obligations travel with the data and are not expressible on a `SourceRow`**: no training of
+   variant-effect models, and Google may demand deletion of Output already in your possession on
+   breach — not only on termination. If you redistribute a module carrying these scores, the
+   snapshot's `LICENSE.txt` has to travel with it; restriction 3b makes that an enforceable provision
+   rather than a courtesy.
+
+**Change**
+
+4. **Read scores as integers.** `raw_score_e5` is exact; dividing it back disagrees with the
+   published value on 53% of rows.
+5. **Do not treat a missing row as a zero.** The corpus covers ~95% of the assembly and contains
+   672,931 genuine zeros. Absence is absence.
 
 ### just-dna-pipelines (compiler / discovery)
 
