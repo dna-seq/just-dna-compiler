@@ -3759,6 +3759,41 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
     checked. Reproducing the old number under the new instrument is what would have caught it in
     minutes: 128 chunks lands on 34.4 GB exactly.
 
+- `@a-count-that-fits-every-partition-need-not-fit-their-sum` — **A per-partition count is narrower
+  than its total, and in polars the reduction that combines them wraps silently.** Two separate
+  facts, and the second is the one nobody expects.
+
+  `pl.len()` returns `UInt32`. That holds any single partition here — chr2, the largest contig, is
+  721 M rows — and not the corpus, which is 8,812,917,339. The part that makes it a trap rather than
+  an oversight is that **`sum()` preserves its input's dtype**: summing a `UInt32` column produces a
+  `UInt32`, so the overflow happens inside the reduction, in the expression path, the `Series.sum()`
+  path and `group_by(...).agg(...)` alike, and none of them raise. Measured:
+
+  ```python
+  counts = [721_000_000] * 12 + [180_243_945]          # true total 8,832,243,945
+  d = pl.DataFrame({"n": counts}).with_columns(pl.col("n").cast(pl.UInt32))
+  d.select(pl.col("n").sum()).item()                    # 242,309,353   ← wrapped, dtype UInt32
+  d.select(pl.col("n").cast(pl.Int64).sum()).item()     # 8,832,243,945
+  ```
+
+  So **every `group_by(...).agg(pl.len())` whose counts are later summed over a corpus past 4.29
+  billion has this**, and the one-token repair — `.cast(pl.Int64)` before the sum, or `pl.len()`
+  cast at the aggregation — reads as superstition unless the reason travels with it. Write the
+  reason.
+
+  It shipped in RM191's knot table, where the genome-wide sum came back as 222,982,747: exactly
+  `8,812,917,339 − 2·2³²`. **What the wrapped table looked like is the lesson.** Not corrupt —
+  internally consistent, monotone in `raw_score`, distributed like a real knot table, and describing
+  a fortieth of the data it claimed to cover. Nothing downstream could have noticed: the parquets
+  were correct and a consumer reconstructing a `PHRED` from that curve would have got plausible
+  numbers. The **only** thing that caught it was the check requiring `sum(n)` to equal the rows
+  actually written — an equality between two independently-derived quantities, which is what
+  `@registry-completeness` asks for in a different costume.
+
+  A reader takes the cast too, not just the writer: `threshold_is_safe` reads `n` from a snapshot on
+  disk, and a snapshot built before this was understood carries the narrow column. The writer being
+  fixed is not something the reader gets to assume.
+
 - `@two-agents-in-one-tree-cannot-use-name-matched-process-cleanup` — **Kill by process group id,
   never by `pkill -f`/`pkill -x` on a name.** Two Claude sessions sharing this working tree ran
   long jobs against the same 88.5 GB artifact on the same day: one had twelve `tabix` streams for a

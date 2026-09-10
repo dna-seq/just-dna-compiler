@@ -550,7 +550,13 @@ def threshold_is_safe(reference: Path, threshold: float) -> tuple[bool, int]:
     spanning = knots.filter(
         (pl.col("phred_lo") < threshold) & (pl.col("phred_hi") > threshold)
     )
-    return spanning.height == 0, int(spanning["n"].sum()) if spanning.height else 0
+    # `cast(Int64)` before summing, and it is not superstition: polars' `sum()` **preserves the
+    # input dtype**, so a `UInt32` count column wraps in the reduction itself with no exception.
+    # This reader takes the column from a snapshot on disk, and a snapshot built before that was
+    # understood carries `n` as `UInt32` — where a threshold matching most of the corpus would come
+    # back as a plausible small number. The writer is fixed; the reader does not get to assume it.
+    affected = int(spanning["n"].cast(pl.Int64).sum()) if spanning.height else 0
+    return spanning.height == 0, affected
 
 
 def score_to_threshold(score: float) -> int:
