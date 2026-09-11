@@ -774,8 +774,8 @@ MITOMAP_TERMS = SourceTerms(
 #
 # The source name is `alphagenome_avi`, not `alphagenome`. `@write-the-sourcerow` keys a row on
 # `(source, layer)` and **one name cannot carry two licence classes**: the page above is the proof
-# that they really are two. The second name, `alphagenome_atlas`, belongs to RM194 and is deliberately
-# not declared here — a lane that does not exist yet does not get a terms entry.
+# that they really are two. The second name, `alphagenome_atlas`, is declared below: RM194/RM200
+# built the lane that needed it, and a lane that exists gets its terms entry.
 ALPHAGENOME_AVI_TERMS = SourceTerms(
     source="alphagenome_avi",
     # No SPDX identifier exists: these are bespoke terms, and the open-string decision on
@@ -821,6 +821,61 @@ ALPHAGENOME_AVI_TERMS = SourceTerms(
     redistribution=True,
 )
 
+# **The Atlas API's Output, which is a different licence class from the AVI artifact next door**
+# (RM194/RM200). One `(source, layer)` key cannot carry two classes, which is the whole reason this is
+# a second name rather than a second layer on `alphagenome_avi`.
+#
+# **`commercial_use=False` is DOCUMENTED, and it is worth saying which way.** AVI's `True` took a
+# maintainer's browser session to establish, because the Additional Terms define the Permissive class
+# and delegate membership to a sign-in-gated page. This row needs no such page: the Output Terms of Use
+# say in their own opening sentence that Output is made available "for non-commercial use only"
+# (`docs/vendor/alphagenome_output_terms.txt`), and the Additional Terms' prohibition 1a says only
+# individuals and non-commercial organizations may use the Assets and only for non-commercial
+# purposes, "except for the AVI Score". So this is a **stated prohibition** rather than an absent
+# grant — the sturdiest of the three kinds of ground a permission axis can rest on here, and the
+# opposite kind from the one holding up the row above.
+#
+# **`redistribution=True` is the same reading of the same clause the maintainer took for
+# `alphagenome_avi` on 2026-09-10, applied rather than re-taken.** Prohibition 1b bars sharing Output
+# with a commercial organization "in each case aside from indirectly via a scientific publication,
+# open source release or to support journalism", and the carve-out is in the general prohibition
+# rather than in the Permissive exception — so it reaches this source with exactly the words it
+# reached that one. Recording `False` here would contradict a reading already taken on identical
+# text; recording `None` would claim the terms could not be established, which is not true, since the
+# clause is pinned in `docs/vendor/` and says what it says. What is uncertain is a reading, not a
+# fact, and this row records readings the way the one above does: as the value, with the ground named.
+# `@redistribution-ungated` means nothing gates on it either way until RM27 designs the axis.
+ALPHAGENOME_ATLAS_TERMS = SourceTerms(
+    source="alphagenome_atlas",
+    # Two documents bind, not one, and they are not the same document that binds AVI. The Additional
+    # Terms govern *access* to the Services; the Output Terms govern what comes back out of them.
+    license="AlphaGenome Output Terms of Use (2026-09-08), under the AlphaGenome Services Additional Terms",
+    license_url="https://deepmind.google.com/science/alphagenome/output-terms",
+    # The paper, as on the row above: for a model the credit line the licence requires is its citation.
+    attribution=(
+        "Avsec et al., Advancing regulatory variant effect prediction with AlphaGenome, "
+        "Nature 649(8099):1206-1218, 2026. doi:10.1038/s41586-025-10014-0 "
+        "(AlphaGenome, Google DeepMind — https://deepmind.google.com/science/alphagenome)"
+    ),
+    notice=(
+        "Output Terms of Use restriction 3, verbatim: 'By using this information, you agree to "
+        "AlphaGenome Output Terms of Use found at "
+        "http://deepmind.google.com/science/alphagenome/output-terms'. Output is available for "
+        "NON-COMMERCIAL USE ONLY (Output Terms, opening sentence; Additional Terms prohibition 1a), "
+        "and unlike the AVI Score there is no Permissive-class carve-out for this scorer. Three "
+        "further bars have no axis on this row and are stated here because they bind anyway: no "
+        "training of variant-effect models (restriction 2), no use for HIPAA-regulated health "
+        "information (Additional Terms prohibition 2), and an ELIGIBILITY bar on the holder rather "
+        "than on the use — the AlphaGenome Assets 'aren't available for any other types of "
+        "organization, even if conducting non-commercial work' (prohibition 1a), which no column "
+        "here can express. The applicable version of the terms is the one effective on the date the "
+        "Output was generated, which is why `dataset` carries that date."
+    ),
+    share_alike=False,
+    commercial_use=False,
+    redistribution=True,
+)
+
 TERMS_BY_SOURCE: dict[str, SourceTerms] = {
     terms.source: terms
     for terms in (
@@ -841,6 +896,7 @@ TERMS_BY_SOURCE: dict[str, SourceTerms] = {
         STRCHIVE_TERMS,
         MITOMAP_TERMS,
         ALPHAGENOME_AVI_TERMS,
+        ALPHAGENOME_ATLAS_TERMS,
     )
 }
 
