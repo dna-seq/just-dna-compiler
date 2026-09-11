@@ -28,14 +28,21 @@ is the maintained one, and where the two disagree this one is what a consumer ma
 | `normalize` | Inject-only authority-key stripper, `normalize_version` | — (stdlib leaf) |
 | `vrs` | GA4GH VRS allele ids: `derive_vrs_allele_id`, the GRCh38 refget table, the `vrs_id` cell codec and the PAR geometry (stdlib only) | — (stdlib leaf) |
 | `alleles` | Reference-free allele algebra: `parsimony_reduce`, `event_profile` — what two spellings of one indel have in common (0.5, RM31) — plus `split_genotype`, the genotype cell → allele list rule every tier and every consumer reads (0.6, S30) | — (stdlib leaf) |
+| `layout` | Where a module's machine-written sidecars live, what they may be called, and the atomic write that puts one there (S66) | — (stdlib leaf) |
 | `base` | `AuthoredModel` + `derive_variant_key` | `vocab`, `vrs` |
 | `manifest` | The `manifest.json` contract | `identity`, `vocab` |
+| `findings` | `CodedWarning` — a `str` subclass carrying the code its emission site named, and the carried/actionable split (0.7, RM131) | `vocab` |
 | `release_records` | What each release changed about compiled output + `needs_recompile` + the recomputation roster (0.7, RM126) | `base`, `identity`, `vocab` |
 | `resolution` | `ResolutionRow` (the 0.5 resolution table) | `vocab`, `vrs` |
 | `frequency` | `FrequencyRow` (the 0.5 allele-frequency table) | `vocab`, `vrs` |
 | `gene_metrics` | `GeneMetricsRow` (the 0.5 gene-constraint table) | `vocab` |
 | `literature` | `LiteratureRow` (the 0.5 citation table) | `spec`, `vocab` |
 | `sources` | `SourceRow` (the 0.5 data-source licensing table) | `vocab` |
+| `gene_validity` | `GeneValidityRow` (the 0.6 gene–disease validity table, RM24) | `base`, `normalize`, `vocab` |
+| `assertions` | `ClinicalAssertionRow` (the 0.6 clinical-assertion table, RM25) | `base`, `normalize`, `vocab` |
+| `gwas` | `GwasEffectRow` (the 0.6 GWAS-effect table, RM90) | `base`, `normalize`, `vocab` |
+| `concordance` | `ClinSigConcordanceRow` + `AuthorityCallRow` (the 0.7 paired concordance record, RM130) | `base`, `normalize`, `vocab` |
+| `expression` | `ExpressionEffectRow` (the 0.7 expression-effect table, RM194/RM200) | `base`, `normalize`, `vocab` |
 | `spec` | Authored DSL — `ModuleSpecConfig`, `VariantRow`, `StudyRow` | `base`, `derive`, `identity`, `manifest`, `vocab` |
 | `binning` | Measure→phenotype binning rows (4 table kinds) | `base`, `vocab` |
 | `pgx` | PGx star-allele rows (4 table kinds) | `base`, `vocab` |
@@ -43,6 +50,7 @@ is the maintained one, and where the two disagree this one is what a consumer ma
 | `overrides` | `OverrideRow` + `OVERRIDABLE_TABLES` + `apply_overrides` — the 0.7 authored overlay over the covered derived tables (RM124) | `base`, `normalize`, `vocab`, and the covered derived row models |
 | `integrity` | SHA-256 hashing, the signatures, Ed25519 verify | `manifest`, `resolution`, `frequency`, `gene_metrics`, `literature`, `sources`, `cryptography` |
 | `signing` | Ed25519 private-key signing (over `artifact.digest`) | `integrity`, `manifest`, `cryptography` |
+| `verification` | `verification.json` — the attestation's binding, its proof-of-work and the table's fact hash (0.6, RM45) | `integrity`, `layout`, `manifest`, `signing` |
 | `reference` | Drift-proof authoring reference generated from live models | spec/binning/pgx/pgs/manifest/normalize/vocab |
 | `aggregate` | Cross-version log/provenance union | `manifest` |
 
