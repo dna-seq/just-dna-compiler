@@ -60,10 +60,13 @@ unattended rebuild to fetch — but the *re-encoded* snapshot is publishable. Su
 the two routes exists and that a named command answers `--help` in the real Typer tree.
 
 **Publishing sends the description last.** The payload is one commit and `release.json` a second
-(RM199), because a description that arrives before its bytes describes a snapshot nobody has. Above
-5 GB the payload goes through `upload_large_folder`, which resumes but is **not atomic** — and a
-declared layout retirement on that path is *refused*, because RM186 promises the arrival and the
-departure are one commit.
+(RM199), because a description that arrives before its bytes describes a snapshot nobody has. That
+is the whole of what this tier adds: a single `upload_folder` carries the payload at any size, since
+`huggingface_hub` 1.x made it multi-commit and deprecated `upload_large_folder`. A declared layout
+retirement rides the payload call as `delete_patterns`, so RM186's arrival-and-departure stays one
+operation. **A large upload is several commits either way**, which is upstream's business rather than
+this tier's — the one-commit guarantee holds for payloads that fit in one and is the Hub's to keep
+for those that do not.
 
 **A root-level file must be in the registry or it is silently dropped.** `SNAPSHOT_ROOT_FILENAMES`
 carries them in publish order. This has bitten twice: a share-alike snapshot published without the

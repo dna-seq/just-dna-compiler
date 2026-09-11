@@ -589,9 +589,9 @@ so a source build needs network **once**, and a released sdist carries the files
 
 **And publishing a snapshot is now two commits** (RM199): the payload, then `release.json`. The
 description is what tells a puller which release it holds, so it must never arrive before the bytes it
-describes. Above 5 GB the payload goes through `upload_large_folder`, which resumes but is not atomic;
-a declared layout retirement on that path is **refused** rather than silently split, because RM186
-promises the arrival and the departure are one commit.
+describes. That is the only thing this tier adds to the upload — `huggingface_hub` 1.x made
+`upload_folder` multi-commit and deprecated `upload_large_folder`, so one call carries a payload at
+any size and a declared layout retirement rides it as `delete_patterns`.
 
 ## 3. Per-consumer check / change lists
 
