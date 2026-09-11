@@ -28,7 +28,8 @@ deferral is filed against the release that will decide it:
   RM55's fix, RM72, RM82, RM84 and RM87. It is authoritative for those five, and for three of them the
   probe overturned what the roadmap entry says.
 - **[ROADMAP_0_8.md](ROADMAP_0_8.md)** — items legal in a minor, each waiting on a design question, a
-  corpus or a caller. RM10 closed there, folded into RM28. **It succeeded `ROADMAP_0_7.md` at the 0.7
+  corpus or a caller. **0.8 is a stabilization and competitor-parity release, decided 2026-09-11 with
+  the maintainer**; the theme is stated in that file's header and does not itself admit an item. RM10 closed there, folded into RM28. **It succeeded `ROADMAP_0_7.md` at the 0.7
   cut** — that round is closed in [history/](history/ROADMAP_0_7.md), which keeps four of the five
   records the line above names; only RM84 is still waiting and still here. **Read the membership rule in its header, not a list here**:
   these two bullets carried per-item enumerations until 2026-08-27 and both had gone stale, which is

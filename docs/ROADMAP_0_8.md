@@ -15,6 +15,19 @@ five taken back into 0.6 and the two that built in 0.7 — and everything still 
 the next minor: the deferral file is named for the release that will decide its contents, so a cut
 closes one and opens the next.
 
+**What 0.8 is, decided 2026-09-11 with the maintainer: a stabilization and competitor-parity
+release.** Stabilization is the first half — the items below are mostly a specified thing nobody
+implemented (RM122), a prose behaviour two readers split on (RM149), a digest that says *something*
+changed and not what (RM181) — and parity is the second, with **RM188 as its spine**: running
+Calwbio's and genomi's pipelines on real input and re-folding what their reports do into module
+mechanics is the mechanism that *files* the parity items, so most of them do not exist as numbers yet.
+
+**The theme does not admit an item and does not reorder one.** Membership is still the rule in the
+paragraph below — legal in a minor, waiting on a design question, a corpus or a caller — and legality
+is still decided by Principles 3/4/8 first. A theme says what a release is *about* when it is cut and
+what a reviewer weighs when two legal items compete for the same round; it is not a second gate, and
+nothing below was moved, re-severitied or re-scoped to fit it.
+
 Everything here is **additive under Principles 3/4/8** — a new optional column or table — so none of it
 is waiting on a version. Each waits on a design question, a corpus, or a consumer. An item waiting on a
 **version** belongs in [ROADMAP_1_0.md](ROADMAP_1_0.md) instead, and RM69 moved there on 2026-08-27 for
