@@ -34,7 +34,36 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-11 (latest) — RM228: drafting stops being seven grassroots implementations of one mechanism
+## 2026-09-11 (latest) — RM230: a leak an exemption hid, a remedy no flag could reach, and a debt that was not owed
+
+**`EuropePmcClient.lookup` leaked all three failure legs** — `httpx.HTTPStatusError`,
+`httpx.ConnectError` and `json.JSONDecodeError` — into `enrich_literature`, whose `try:` has only a
+`finally:` and no `except`. It was hidden because the contract suite exempted the **class** behind a
+note about what one **method** promises: `fulltext` really does withhold correctly, and that sentence
+silently covered a sibling nobody had read. Third form of one shape this round — RM208 was a guard
+inheriting a roster's exemptions, RM225 a comment outliving the code it described. Removing it also
+showed `covered` was keyed on the module and could not express "one class here is covered, two are
+not".
+
+**`check-identifiers` gains `--use`.** PGS rows were built with `declared_use="unstated"`, hardcoded,
+and the `academic_research_only` class is `commercial_use=False` at the `annotation` layer — exactly
+where the compile gate reads. So the compile refused and told the operator to *"re-run the enricher
+with a declared use (`--use non-commercial`)"*, a flag that did not exist, on a file
+`merge_sources_csv` will never clobber. The audit left "is any live score in that class" undetermined,
+so it was measured: **6 of the first 250 Catalog scores**, PGS000013–PGS000017 among them. Reachable,
+not latent.
+
+**And a debt disproved by writing its test first.** RM228 recorded that `clinvar_draft` and
+`pubmind_draft` write their licence row unconditionally. They do not — both return early at "nothing
+matched" *before* the write. The test that would have proved the bug passes unchanged, so it is kept
+as a pin on the early return, which is the thing actually holding the rule and which nothing else
+asserted.
+
+**[DRAFTING_MATURITY.md](DRAFTING_MATURITY.md)** is new: the post-RM228 read on what drafting still
+needs to be a mechanism rather than seven grassroots implementations, written after the migration
+because four of its findings were invisible until the copies sat side by side.
+
+## 2026-09-11 — RM228: drafting stops being seven grassroots implementations of one mechanism
 
 Seven `*_draft.py` providers turn a snapshot into authored rows, and they grew one at a time. By 0.7
 each carried its own copy of the same four decisions and the copies had drifted: `clinpgx_draft` and

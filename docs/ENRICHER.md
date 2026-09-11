@@ -1611,9 +1611,12 @@ inherited rather than remembered: `test_drafting_scaffold.py` asserts the regist
 `*_draft.py` modules on disk, and walks each module's AST to refuse a hand-listed identity column or a
 direct `merge_sources_file` / `withdraw_stale_dataset` / `record_source_terms` call.
 
-**Still open here:** `clinvar_draft` and `pubmind_draft` write their licence row on any non-dry run
-rather than gating on `covered`, which is the shape RM222 found wrong in `civic_draft`. Both migrated
-with `covered=True` to reproduce them exactly; changing it is a behaviour change and owes its own test.
+**One thing that looks open here and is not.** `clinvar_draft` and `pubmind_draft` write their licence
+row on any non-dry run rather than gating on `covered`, which is the shape RM222 found wrong in
+`civic_draft`. Both are nonetheless correct: each returns early — "nothing matched; no rows drafted" —
+*before* the write, so the property holds upstream of the gate.
+`test_draft_licence_row_needs_coverage.py` pins that early return, because it is what actually holds
+the rule and nothing else asserted it.
 
 ## CIViC — the direction axis, and a source whose coordinates are all on the wrong build (RM152)
 

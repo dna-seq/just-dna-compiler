@@ -36,6 +36,7 @@ from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadSettings
 from just_dna_enricher.grch37 import Grch37Client
 from just_dna_enricher.gwas import GwasCatalogClient, GwasError
 from just_dna_enricher.identifiers import IdentifierUnavailable, OntologyClient
+from just_dna_enricher.literature import EuropePmcClient, LiteratureUnavailable
 from just_dna_enricher.litvar import LitvarClient, LitvarUnavailable
 from just_dna_enricher.net import PacingGate
 from just_dna_enricher.pgs import PgsCatalogClient, PgsCatalogUnavailable
@@ -173,9 +174,30 @@ def _gwas(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], ob
     return lambda: client.associations_for("rs1801133")
 
 
+def _europepmc(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    """Europe PMC's `lookup`, joined to the roster by RM230 rather than exempted from it.
+
+    The class was exempt with a note reading "`EuropePmcClient.fulltext` is deliberately *not* a
+    leak". That is true of `fulltext`, which catches httpx and returns `None` — the tri-state withhold
+    — and it is not true of `lookup`, which called `_get` bare and then `.json()` on the result, so
+    all three legs escaped as `httpx.HTTPStatusError`, `httpx.ConnectError` and
+    `json.JSONDecodeError`. **An exemption is per class and that justification was per method**, so
+    the note exempted a method nobody had looked at.
+
+    `lookup` is the entry point tested rather than `fulltext`, because it is the one a pass calls:
+    `enrich_literature` calls it inside a `try:` whose only companion is `finally:`.
+    """
+    client = EuropePmcClient(gate=_instant_gate())
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    return lambda: client.lookup(["11111111"])
+
+
 #: `(label, builder, the error type this client's callers are told to catch)`.
 CLIENTS = [
     ("gnomad", _gnomad, GnomadError),
+    # `LiteratureUnavailable` rather than its parent: the stronger assertion, and every failure of
+    # this probe really is "the source could not be asked" (RM230).
+    ("europepmc", _europepmc, LiteratureUnavailable),
     ("eutils", _eutils, EutilsError),
     ("cpic", _cpic, CpicError),
     ("cpic.row_count", _cpic_row_count, CpicError),
@@ -249,14 +271,31 @@ def test_every_network_client_in_the_tier_is_covered() -> None:
             discovered.add(f"{module_info.name}.{name}")
 
     covered = {label.split(".")[0] for label, _builder, _error in CLIENTS}
+
+    #: Rows that cover **one class** in a module where the other classes are still exempt.
+    #:
+    #: The line above keys coverage on the *module*, which was fine while every client in a module
+    #: shared a contract. `literature` broke that in RM230: `EuropePmcClient` joined the roster while
+    #: `CrossrefClient` and `PmcIdConverterClient` stayed exempt, and a module-level `covered` cannot
+    #: say so — it would silently mark all three as covered, which is the same blind spot as an
+    #: exemption whose reason names one method (see `_europepmc`). So a per-class row is named here
+    #: and subtracted explicitly.
+    covered_classes = {"literature.EuropePmcClient"}
     #: Named rather than silently skipped, so each exemption is a decision a reader can dispute.
     exempt = {
-        # These three share a base whose retry story differs, and are exercised by their own suite
+        # These two share a base whose retry story differs, and are exercised by their own suite
         # against real recorded payloads. Extending the contract to them is worth doing and is wider
-        # than this item. `EuropePmcClient.fulltext` is deliberately *not* a leak: it catches httpx
-        # and returns `None`, the tri-state withhold this tier uses for "could not be retrieved".
+        # than this item.
+        #
+        # **`literature.EuropePmcClient` came off this list in RM230, and how it survived on it is the
+        # lesson.** The note above said `EuropePmcClient.fulltext` is not a leak, which is true — it
+        # catches httpx and returns `None`, the tri-state withhold. But an exemption is per *class*
+        # and the reason given was per *method*: `lookup`, on the same class, called `_get` bare and
+        # then `.json()`, so all three legs escaped as `httpx.HTTPStatusError`,
+        # `httpx.ConnectError` and `json.JSONDecodeError`. A justification that names one method
+        # exempts every other method beside it. When adding a name here, say what the **class**
+        # promises, or the next reader inherits a blind spot that reads as a decision.
         "literature.CrossrefClient",
-        "literature.EuropePmcClient",
         "literature.PmcIdConverterClient",
         # Raises nothing at all: every httpx path returns `None` or `[]`, which is the withhold. A
         # contract test asserting an error type would be asserting the wrong contract — the one in
@@ -272,7 +311,9 @@ def test_every_network_client_in_the_tier_is_covered() -> None:
         # exception here would pin the opposite of what this client promises.
         "clingen_allele.ClingenAlleleClient",
     }
-    uncovered = {name for name in discovered if name.split(".")[0] not in covered}
+    uncovered = {
+        name for name in discovered if name.split(".")[0] not in covered and name not in covered_classes
+    }
     assert uncovered == exempt, sorted(uncovered.symmetric_difference(exempt))
 
 

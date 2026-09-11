@@ -990,7 +990,9 @@ def compare_pgs_metadata(rows: list[BaseModel], records: dict[str, dict]) -> Pgs
     return comparison
 
 
-def _pgs_source_rows(statuses: list[PgsStatus], release: str | None, asked: bool) -> list[SourceRow]:
+def _pgs_source_rows(
+    statuses: list[PgsStatus], release: str | None, asked: bool, declared_use: str = "unstated"
+) -> list[SourceRow]:
     """The `sources.csv` rows this run owes: the floor, plus one per score whose licence was read.
 
     **`@write-the-sourcerow`, and the per-score half is a correctness requirement rather than
@@ -1007,13 +1009,23 @@ def _pgs_source_rows(statuses: list[PgsStatus], release: str | None, asked: bool
     """
     if not asked:
         return []
-    rows = [PGS_TERMS.row("annotation", declared_use="unstated", dataset=release)]
+    # **`declared_use` is a parameter because a PGS score really can taint** (RM230). It was
+    # hardcoded `"unstated"`, and the `academic_research_only` class is
+    # `ScoreRights(commercial_use=False)` at the `annotation` layer — which is exactly what
+    # `taints_commercial_use` reads, so the compile refuses and its message says *"Re-run the enricher
+    # with a declared use (`--use non-commercial`)"*. `check-identifiers` had no `--use` flag, and
+    # `merge_sources_csv` is never-clobber, so the only way out was editing the file by hand.
+    #
+    # Measured against the live Catalog on 2026-09-11: **6 of the first 250 scores** are in that class
+    # (PGS000013–PGS000017 among them, "Freely available to the academic community for research
+    # use"), so this was reachable rather than theoretical.
+    rows = [PGS_TERMS.row("annotation", declared_use=declared_use, dataset=release)]
     for status in statuses:
         if status.state != "known" or status.license is None:
             continue
         rows.append(
             pgs_score_terms(status.pgs_id, status.license).row(
-                "annotation", declared_use="unstated", license_text=status.license
+                "annotation", declared_use=declared_use, license_text=status.license
             )
         )
     return rows
@@ -1044,6 +1056,7 @@ def _check_pgs(
     *,
     client: PgsCatalogClient | None,
     write: bool,
+    declared_use: str = "unstated",
 ) -> None:
     """Fill the report's PGS half: the accession verdicts, the drift comparison and the source rows.
 
@@ -1100,7 +1113,7 @@ def _check_pgs(
             catalog.close()
 
     report.pgs_metadata = compare_pgs_metadata(rows, records)
-    report.pgs_sources = _pgs_source_rows(report.pgs, report.pgs_release, asked)
+    report.pgs_sources = _pgs_source_rows(report.pgs, report.pgs_release, asked, declared_use)
     if write and report.pgs_sources:
         # **The release is withdrawn before the merge, never re-stamped over it.** `merge_sources_csv`
         # is never-clobber, so a floor row written under an older release would otherwise hold that
@@ -1139,6 +1152,7 @@ def check_identifiers(
     client: OntologyClient | None = None,
     pgs_client: PgsCatalogClient | None = None,
     write: bool = True,
+    declared_use: str = "unstated",
 ) -> IdentifierReport:
     """Ontology-term, gene-symbol and PGS-accession currency for one module's authored identifiers.
 
@@ -1255,7 +1269,7 @@ def check_identifiers(
             ) = _gene_locus_conflicts(variants, report.genes, Path(spec_dir) if spec_dir else None)
 
     if check_pgs and spec_dir is not None:
-        _check_pgs(report, Path(spec_dir), client=pgs_client, write=write)
+        _check_pgs(report, Path(spec_dir), client=pgs_client, write=write, declared_use=declared_use)
     elif check_pgs:
         # **`unsupported`, never `nothing_to_check`.** With rows passed in there is no `pgs_id`-bearing
         # table to read at all — `VariantRow` has no such column — so saying "no row carries a pgs_id"

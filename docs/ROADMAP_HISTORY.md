@@ -68,6 +68,59 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM230 — a leak an exemption hid, a remedy no flag could reach, and a debt that was not owed
+
+**Severity** high · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 · **Owner** enricher ·
+**Motivating case** the last three items of the 2026-09-11 re-derivation's enricher tail (C3, 7.6(a))
+plus the debt RM228 recorded against itself
+
+**C3 — `EuropePmcClient.lookup` leaked all three legs, and the exemption that hid it was argued per
+method.** `lookup` called `_get` bare and then `.json()` on the result, so a persistent 503 escaped as
+`httpx.HTTPStatusError`, a refused connection as `httpx.ConnectError`, and a 200 that is not JSON as
+`json.JSONDecodeError` — the exact fourth leg `test_client_exception_contract.py` exists for. Where it
+lands is what makes it high: `enrich_literature` calls this inside a `try:` whose only companion is
+`finally:`, verbatim the shape `test_pass_exception_contract.py` was written to refuse, and that
+suite's stub raises earlier on the eutils call so the leg was never driven.
+
+**The class sat in the contract suite's `exempt` set behind a note reading "`EuropePmcClient.fulltext`
+is deliberately *not* a leak".** That is true of `fulltext`, which catches httpx and returns `None`
+— the tri-state withhold. **An exemption is per class and that justification was per method**, so it
+silently exempted a sibling nobody had looked at. This is the RM101/RM208 blind spot in a third form:
+first a roster's `exempt` set, then a guard inheriting the roster's exemptions, now an exemption whose
+*reason* is narrower than its *scope*. The note now says to argue from what the class promises.
+
+Removing it exposed a second limitation: `covered` was keyed on the **module**, so it could not say
+that one `literature` client is covered while two remain exempt — it would have marked all three
+covered. A per-class `covered_classes` set is named explicitly beside it.
+
+**7.6(a) — the compile named a remedy that did not exist, and the trap is live.**
+`identifiers._pgs_source_rows` built every PGS row with `declared_use="unstated"`, hardcoded. The
+`academic_research_only` class is `ScoreRights(commercial_use=False)` at the `annotation` layer, which
+is exactly where `taints_commercial_use` reads — so the compile refused, saying *"Re-run the enricher
+with a declared use (`--use non-commercial`)"*, and `check-identifiers` had no `--use` option.
+`merge_sources_csv` is never-clobber, so a re-run could not correct the cell either: the only exit was
+a hand edit. A refusal naming an unreachable remedy is worse than one naming none, because it sends an
+operator to a flag they cannot find and implies they mistyped it.
+
+The audit left "does any live score classify that way" undetermined from code, so it was **measured**:
+`GET /rest/score/all?limit=250` on 2026-09-11 returned three distinct licence strings, and **6 of
+those 250** matched the phrase — PGS000013 through PGS000017 among them. Reachable, not latent, which
+is what decided it got a flag rather than a note. The hyphenated spelling the refusal prints is pinned
+in a test, because the vocabulary member is `non_commercial` and it only works through
+`check_vocab`'s separator normalization (`@vocab-separator-slip`).
+
+**The debt RM228 recorded against itself, disproved by writing the test first.** That entry said
+`clinvar_draft` and `pubmind_draft` write their licence row on any non-dry run — the shape RM222 found
+wrong in `civic_draft` — and owed a fix. They do not: **both return early**, at "nothing matched; no
+rows drafted", *before* the licence write, so the property holds upstream of the gate and `covered=True`
+is correct for each. Measured: a `--gene` filter matching nothing ends with `reports == []` and an
+empty spec directory. The test that would have proved the bug passes unchanged, and that is the
+finding. It is kept as a pin on the **early return** — the thing actually holding the rule, which
+nothing else asserted — so deleting it as redundant, or reordering the licence write above it, fails
+loudly rather than shipping the RM222 defect into two more providers. RM228's entry and ENRICHER.md
+are corrected rather than left claiming a debt that does not exist.
+`@client-exception-contract` · `@write-the-sourcerow`
+
 ## RM228 — drafting was seven grassroots implementations of one mechanism
 
 **Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 · **Owner** enricher ·
@@ -134,9 +187,14 @@ one of the seven pre-migration.
 provider's *covered* predicate, and the stale-label wording — two providers ship two sentences and a
 published warning is an API (`@warning-text-is-api`).
 
-**Recorded, not fixed:** `clinvar_draft` and `pubmind_draft` write their licence row on any non-dry
-run rather than gating on `covered` — the shape RM222 found wrong in `civic_draft`. Both migrated with
-`covered=True`, reproducing them exactly; changing it owes its own test. `@drafting-scaffold`
+**A debt this entry recorded and then disproved.** It said `clinvar_draft` and `pubmind_draft` write
+their licence row on any non-dry run — the shape RM222 found wrong in `civic_draft` — and owed a fix.
+Writing the test first refuted it: **both return early**, at "nothing matched; no rows drafted",
+*before* the licence write is reached, so the unconditional-looking gate is guarded upstream and
+`covered=True` is correct for both. The test that would have proved the bug passes unchanged, which is
+the finding. It is kept as a pin on the early return — the thing actually holding the property, which
+nothing else asserted — so removing it as redundant, or reordering the licence write above it, fails
+loudly instead of shipping the RM222 defect into two more providers. `@drafting-scaffold`
 
 ## RM229 — `CacheLane` declared no size, so an onboarding offer had to `du` a box to price one
 

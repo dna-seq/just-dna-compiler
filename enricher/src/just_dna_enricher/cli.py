@@ -1125,6 +1125,15 @@ def check_identifiers_(
         "--pgs/--no-pgs",
         help="Check pgs_id against the PGS Catalog, and the two authored cells beside it.",
     ),
+    use: str = typer.Option(
+        "unstated",
+        "--use",
+        help=(
+            "Declared use: unstated | non-commercial | commercial. A PGS score licensed for academic "
+            "research only bars sale, so a module citing one compiles ONLY with a declaration — and "
+            "this flag is the one the compile's own refusal tells you to re-run with."
+        ),
+    ),
 ) -> None:
     """Report obsolete trait terms, retired gene symbols and unrecognised PGS accessions (online).
 
@@ -1143,7 +1152,13 @@ def check_identifiers_(
     try:
         # `spec_dir=` rather than loading the rows here (RM41). This command was the workspace's own
         # evidence that the row-taking form leaves every caller reaching for a private loader.
-        report = check_identifiers(spec_dir=spec_dir, check_traits=traits, check_genes=genes, check_pgs=pgs)
+        report = check_identifiers(
+            spec_dir=spec_dir,
+            check_traits=traits,
+            check_genes=genes,
+            check_pgs=pgs,
+            declared_use=use,
+        )
     except ValueError as exc:
         # A module whose rows will not load: nothing is attested, because there are no bytes for an
         # attestation to bind to and no question was reached.

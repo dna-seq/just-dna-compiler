@@ -354,7 +354,32 @@ class EuropePmcClient:
         out: dict[str, dict] = {}
         for batch in batched(dedupe(pmids), self.batch_size):
             query = " OR ".join(f"EXT_ID:{pmid}" for pmid in batch)
-            payload = self._get("search", {"query": query, "resultType": "core", "format": "json"}).json()
+            # **Translate, do not leak** (`@client-exception-contract`, RM230). `_get` retries the
+            # transport legs and re-raises what survives; this method used to call it bare and then
+            # `.json()` the result, so all three failure legs escaped as their httpx/json types:
+            # a persistent 503 as `httpx.HTTPStatusError`, a refused connection as
+            # `httpx.ConnectError`, and a 200 that is not JSON as `json.JSONDecodeError`. The last is
+            # the exact fourth leg `test_client_exception_contract.py` was written for, and every
+            # sibling client in this tier closes it in its own module.
+            #
+            # It mattered where it landed: `enrich_literature` calls this inside a `try:` whose only
+            # companion is `finally:` — no `except` — which is verbatim the shape
+            # `test_pass_exception_contract.py` exists to refuse. The pass-level suite never drove
+            # this leg because its stub raises earlier, on the eutils call.
+            #
+            # `fulltext` below is deliberately NOT changed: it catches httpx and returns `None`, the
+            # tri-state withhold this tier uses for "could not be retrieved". The two methods answer
+            # different questions, which is why the class's contract-suite exemption named `fulltext`
+            # and silently covered `lookup` too.
+            try:
+                response = self._get("search", {"query": query, "resultType": "core", "format": "json"})
+                payload = response.json()
+            except httpx.HTTPError as exc:
+                raise LiteratureUnavailable(f"Europe PMC could not be asked: {exc}") from exc
+            except ValueError as exc:
+                raise LiteratureUnavailable(
+                    f"Europe PMC answered {response.status_code} with a body that is not JSON: {exc}"
+                ) from exc
             for record in (payload.get("resultList") or {}).get("result") or []:
                 pmid = str(record.get("pmid") or "")
                 if not pmid:
