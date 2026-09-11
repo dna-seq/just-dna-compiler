@@ -15,13 +15,15 @@ kinds materialize with enforced table-level coherence.
 > Companion docs: **[SCHEMAS.md](SCHEMAS.md)** (the models it compiles), **[ENRICHER.md](ENRICHER.md)**
 > (what produces `resolution.csv`), **[CONSTITUTION.md](CONSTITUTION.md)** (the invariants).
 
-## Read beside this: the 2026-08-18 code-first re-derivation
+## Read beside this: the 2026-09-11 code-first re-derivation
 
-**A second reading of this tier, written from the code alone on 2026-08-18, is in
-[audit/COMPILER_FROM_CODE.md](audit/COMPILER_FROM_CODE.md)** — the 17-step pipeline, per-parquet column
-lists, and a validation table with validate/compile/severity columns. It is the instrument that found
-RM93 and RM94, both fixed in 0.6.1 — so the parity this document asserts is now a property of the
-binaries too. Evidence, not contract: this document is the maintained one.
+**A second reading of this tier, written from the code alone on 2026-09-11, is in
+[audit/COMPILER_FROM_CODE.md](audit/COMPILER_FROM_CODE.md)** — the pipeline in execution order,
+per-parquet column lists, and a validation table with validate/compile/severity columns. It is the
+instrument that found RM93 and RM94 in 0.6.1 and **RM207** in 0.7 — the last of which is why the
+parity this document asserts is a property of the binaries rather than of its own prose. Evidence, not
+contract: this document is the maintained one. The method is
+[BLIND_REDERIVATION.md](BLIND_REDERIVATION.md).
 
 ## Public API
 
@@ -1280,6 +1282,7 @@ fails in `strict` — enumerated and enforced in `compiler/tests/test_resolution
 | coordinate + alt, rsid resolved | ✅ | ✅ | stable |
 | coordinate only, rsid **and** alt resolved | ✅ | ✅ | stable |
 | pair (rsid + coordinate), table agrees | ✅ | ✅ | stable |
+| **withdrawn** — the table records the rsid as *retracted by dbSNP* | ❌ **refuses** | ❌ refuses | — |
 | **ambiguous** — several rsIDs for one allele | ⚠️ warning | ❌ refuses | stable |
 | expansion drops a locus that cannot host the genotype | ⚠️ warning | ❌ refuses | unstable |
 | every candidate locus contradicts the genotype → unresolved | ⚠️ warning | ❌ refuses | unstable |
@@ -1288,7 +1291,16 @@ fails in `strict` — enumerated and enforced in `compiler/tests/test_resolution
 | authored `ref` contradicts the table | ⚠️ warning | ❌ refuses | unstable |
 | authored coordinate contradicts the table | ⚠️ warning | ❌ refuses | unstable |
 
-Three things the table encodes that are worth saying out loud:
+Four things the table encodes that are worth saying out loud:
+
+**`withdrawn` is the only row that refuses in `best_effort`, and both sides ask it.** A merged or
+absent rsID leaves the annotation intact — the module is dated, or the label is unserved. A withdrawn
+one is dbSNP repudiating the variant, so the annotation may be describing something that does not
+exist, and carrying it under `best_effort` would publish a claim its own source has retracted. It is
+never produced by the automated check (a retraction is indistinguishable from a never-assigned id
+through the live API), so it fires only where a curator recorded it deliberately. **`validate` refuses
+it too, in both modes** — it reads the injected table's own column and no resolved row, so the
+compile-only exemption does not cover it (RM207); the same is true of `ambiguous` under `strict`.
 
 **Instability always means the *table* cannot be reproduced, never the bytes.** `artifact.digest` is a
 fixed point in every row above, including the unstable ones — a module that compiles at all compiles to

@@ -216,10 +216,12 @@ from pydantic import BaseModel, ValidationError
 
 from just_dna_compiler.models import ClosureResult, CompilationResult, ValidationResult
 from just_dna_compiler.resolution import (
+    ambiguous_refusals,
     hosting_verdict,
     resolve_from_table,
     resolve_positional_rows,
     unresolved_subjects,
+    withdrawn_refusals,
 )
 
 # `validate_spec`/`compile_module` return their findings on a result object, which is the right shape
@@ -4349,6 +4351,35 @@ def _validate_spec(
                 f"positions after resolution: {unplaceable}. A partial artifact would not be "
                 f"byte-reproducible; inject a complete Ensembl reference (ensembl_cache=) or "
                 f"compile without strict."
+            )
+
+    # The two refusals `resolve_from_table` raises over the injected table itself, asked here for the
+    # same reason the coverage check above is: they read the table's own columns and no *resolved*
+    # row, so the standing compile-only exemption does not cover them (`@validate-refuses-all`).
+    # `withdrawn` is fatal in **both** modes and was the sharper gap — a green `validate --strict`
+    # followed by a plain `compile` refusing is the exact sequence this pre-flight exists to prevent,
+    # and it was reproducible on a reference example with one column changed (RM207).
+    #
+    # Both sentences come from the shared helpers rather than being re-phrased here, so there is one
+    # of each text. Neither embeds a count, which is what makes asking them on both sides safe
+    # (`@no-rerun-with-counts`); `compile_module` de-duplicates errors the way it already does for
+    # `rsid_unresolved`'s warnings.
+    #
+    # **The prefixes are copied deliberately.** `compile_module` publishes these two as
+    # `resolution: …` and `strict resolution: …`, and that text is what a consumer greps
+    # (`@warning-text-is-api`). Emitting the bare sentence here would change the published string on
+    # every module that carries one — so the *sentence* is shared, from one helper, and only the
+    # channel label is restated. The pre-flight's own mode is not `compile_module`'s: it always runs
+    # this side in best_effort, so the `strict` arm below is `validate --strict`'s, and the compile
+    # reaches the identical text by its own strict path.
+    if variants and resolve_with_ensembl and membership_table:
+        all_errors.extend(
+            f"resolution: {e}" for e in withdrawn_refusals(variants, membership_table, declared_build)
+        )
+        if strict:
+            all_errors.extend(
+                f"strict resolution: {e}"
+                for e in ambiguous_refusals(variants, membership_table, declared_build)
             )
 
     # Same rule about where a check belongs: the VCF pointer columns are authored cells read against

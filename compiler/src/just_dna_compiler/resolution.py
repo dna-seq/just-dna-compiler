@@ -14,6 +14,7 @@ rows on `(locus_index, chrom, start, ref)`, matching the resolver's `ORDER BY id
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from just_dna_format.alleles import (
@@ -268,40 +269,18 @@ def resolve_from_table(
             CodedWarning("rsid_expanded_to_multiple_loci", _expansion_warning(rsid, per_row, genome_build))
         )
 
-    for variant in patched:
-        for locus in resolution.get(variant.variant_key or "", []):
-            if locus.rsid_status == "withdrawn":
-                # The one resolution finding that is fatal in BOTH modes. A merged or absent rsID
-                # leaves the annotation intact — the module is dated, or the label is unserved. A
-                # *withdrawn* one is dbSNP repudiating the variant, so the annotation may be describing
-                # something that does not exist; carrying it under `best_effort` would be publishing a
-                # claim its own source has retracted. Never produced by the automated check (a
-                # retraction is indistinguishable from a never-assigned id through the live API), so
-                # this fires only where a curator recorded it deliberately.
-                errors.append(
-                    f"{variant.variant_key}: dbSNP has WITHDRAWN {locus.rsid} — the variant itself was "
-                    f"retracted, so the annotation resting on it may be describing nothing. Remove the "
-                    f"row or re-key it onto a coordinate; this refuses in best_effort too, unlike a "
-                    f"merged or absent rsid."
-                )
-                break
-            if locus.status == "ambiguous":
-                strict_errors.append(
-                    f"{variant.variant_key}: the resolution table marks this rsid ambiguous"
-                    + (f" (candidates: {locus.rsid_alternates})" if locus.rsid_alternates else "")
-                    + ". The label is a deterministic pick among equals, not a fact; an "
-                    "all-or-nothing artifact should not rest on it. Resolve it by hand in "
-                    "resolution.csv, or compile without strict."
-                )
-                warnings.append(
-                    CodedWarning(
-                        "rsid_ambiguous",
-                        f"{variant.variant_key}: rsid resolved as AMBIGUOUS"
-                        + (f" among {locus.rsid_alternates}" if locus.rsid_alternates else "")
-                        + " — the deterministic pick is carried, and it is a pick, not a finding.",
-                    )
-                )
-                break
+    # **The table is keyed by the AUTHORED key, so these two are asked over `variants`, not `patched`.**
+    # An expansion rewrites `variant_key` to the locus's `ga4gh:VA.…` id, and a lookup of that id in a
+    # table keyed by the rsID the author wrote misses every time — so the refusal the comment below
+    # calls fatal in both modes was silently skipped on exactly the rows that expanded (RM207). Both
+    # arms are also asked by the pre-flight through the shared helpers, which is what keeps a green
+    # `validate` from being followed by a refusal (`@validate-refuses-all`).
+    errors.extend(withdrawn_refusals(variants, resolution, genome_build))
+    strict_errors.extend(ambiguous_refusals(variants, resolution, genome_build))
+    warnings.extend(
+        CodedWarning("rsid_ambiguous", text)
+        for text in ambiguous_warnings(variants, resolution, genome_build)
+    )
 
     return ResolutionOutcome(
         variants=patched,
@@ -468,6 +447,102 @@ def _usable_loci(rows: list[ResolutionRow] | None, genome_build: str) -> list[Re
         return []
     return [
         r for r in rows if r.genome_build == genome_build and r.status != "not_found" and r.chrom is not None
+    ]
+
+
+def _first_locus(
+    variant: VariantRow,
+    resolution: dict[str, list[ResolutionRow]],
+    predicate: Callable[[ResolutionRow], bool],
+) -> ResolutionRow | None:
+    """The first locus recorded for this variant's **authored** key matching `predicate`.
+
+    One walk behind three reports, so the three cannot disagree about which locus they are describing.
+    First-match-only is the original behaviour and is kept: a second withdrawn locus under one key
+    says nothing the first did not, and repeating the sentence per locus is the per-row noise
+    `no_rsid` was collapsed for.
+
+    **One behaviour did change, and it is a widening.** The single loop this replaced `break`'d out of
+    the whole locus list on either condition, so a variant whose first locus was withdrawn never had
+    its `ambiguous` locus reported, and whichever condition a locus happened to satisfy first silenced
+    the other. The two are separate questions about the same table and are asked separately now.
+    Nothing downstream moves: `withdrawn` refuses in both modes either way, so the extra `ambiguous`
+    line beside it changes what a reader is told and not what the compile does.
+    """
+    return next((lo for lo in resolution.get(variant.variant_key or "", []) if predicate(lo)), None)
+
+
+def withdrawn_refusals(
+    variants: list[VariantRow], resolution: dict[str, list[ResolutionRow]], genome_build: str
+) -> list[str]:
+    """The one resolution refusal that is fatal in **both** modes, as finished sentences (RM207).
+
+    A merged or absent rsID leaves the annotation intact — the module is dated, or the label is
+    unserved. A *withdrawn* one is dbSNP repudiating the variant, so the annotation may be describing
+    something that does not exist; carrying it under `best_effort` would be publishing a claim its own
+    source has retracted. Never produced by the automated check (a retraction is indistinguishable
+    from a never-assigned id through the live API), so it fires only where a curator recorded it.
+
+    **Sentences rather than names**, which is where this differs from `unresolved_subjects` beside it.
+    That one returns subjects and lets each caller phrase them, because both phrasings are one short
+    clause. This message names two things — the subject *and* the retracted rsID — and the standing
+    rule is to share the predicate and copy the error; copying a sentence with two interpolations into
+    a second caller is how the two drift, so the sentence is shared too and there is one of it.
+
+    Empty for a non-GRCh38 module, where `resolve_from_table` skips resolving wholesale.
+    """
+    if genome_build != "GRCh38":
+        return []
+    out: list[str] = []
+    for v in variants:
+        locus = _first_locus(v, resolution, lambda lo: lo.rsid_status == "withdrawn")
+        if locus is not None:
+            out.append(
+                f"{v.variant_key}: dbSNP has WITHDRAWN {locus.rsid} — the variant itself was "
+                f"retracted, so the annotation resting on it may be describing nothing. Remove the "
+                f"row or re-key it onto a coordinate; this refuses in best_effort too, unlike a "
+                f"merged or absent rsid."
+            )
+    return out
+
+
+def _ambiguous_loci(
+    variants: list[VariantRow], resolution: dict[str, list[ResolutionRow]], genome_build: str
+) -> list[tuple[VariantRow, ResolutionRow]]:
+    """The `(variant, locus)` pairs the two ambiguous reports share, so they cannot disagree."""
+    if genome_build != "GRCh38":
+        return []
+    pairs: list[tuple[VariantRow, ResolutionRow]] = []
+    for v in variants:
+        locus = _first_locus(v, resolution, lambda lo: lo.status == "ambiguous")
+        if locus is not None:
+            pairs.append((v, locus))
+    return pairs
+
+
+def ambiguous_refusals(
+    variants: list[VariantRow], resolution: dict[str, list[ResolutionRow]], genome_build: str
+) -> list[str]:
+    """`strict`-only: the table marks this rsid ambiguous, so the pick is deterministic, not a fact."""
+    return [
+        f"{v.variant_key}: the resolution table marks this rsid ambiguous"
+        + (f" (candidates: {lo.rsid_alternates})" if lo.rsid_alternates else "")
+        + ". The label is a deterministic pick among equals, not a fact; an "
+        "all-or-nothing artifact should not rest on it. Resolve it by hand in "
+        "resolution.csv, or compile without strict."
+        for v, lo in _ambiguous_loci(variants, resolution, genome_build)
+    ]
+
+
+def ambiguous_warnings(
+    variants: list[VariantRow], resolution: dict[str, list[ResolutionRow]], genome_build: str
+) -> list[str]:
+    """The `best_effort` half of the same finding — the pick is carried, and said to be a pick."""
+    return [
+        f"{v.variant_key}: rsid resolved as AMBIGUOUS"
+        + (f" among {lo.rsid_alternates}" if lo.rsid_alternates else "")
+        + " — the deterministic pick is carried, and it is a pick, not a finding."
+        for v, lo in _ambiguous_loci(variants, resolution, genome_build)
     ]
 
 
