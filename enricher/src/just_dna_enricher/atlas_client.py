@@ -1,6 +1,6 @@
 """The AlphaGenome Atlas client — precomputed variant scores over gRPC, on two packages (RM192).
 
-**The `[atlas]` extra, not core.** `uv add alphagenome` costs 255 MB and 36 packages against a tier
+**The `[atlas]` extra, not core.** `uv add alphagenome` costs 255 MB and 81 packages against a tier
 whose entire runtime list is httpx/tenacity/huggingface-hub, and six of the twenty dependencies that
 wheel declares are never imported on any scoring path. The `.proto` sources are Apache-2.0, so
 `grpcio` + `protobuf` reach every Atlas RPC — **22 MB**, with score payloads decoding through
@@ -8,10 +8,14 @@ wheel declares are never imported on any scoring path. The `.proto` sources are 
 [ALPHAGENOME_ATLAS.md § 6.2](../../../docs/probes/ALPHAGENOME_ATLAS.md), and pinned by
 `test_imports_stay_within_the_declared_floor` rather than left as a claim in prose.
 
-The bindings are **generated, not committed**: `just-dna-enricher atlas generate` builds them from
-`docs/vendor/alphagenome_protos/` into a git-ignored `generated/` package. So this module's import
-is guarded, and a checkout that has not run the generator gets a message naming the command instead
-of a traceback from protobuf. An installed wheel cannot run it at all — that is RM196.
+The bindings are **generated, not committed**, and neither are the sources they come from:
+`just-dna-enricher atlas generate` fetches the `.proto` files from `google-deepmind/alphagenome` at
+the commit and per-file sha256 `atlas_protos.py` pins, then builds them into a git-ignored
+`generated/` package. So this module's import is guarded, and a checkout that has not run the
+generator gets a message naming the command instead of a traceback from protobuf. The repository
+carries the pin and the distribution carries the files — `hatch_build.py` runs the same fetch at
+wheel-build time, which is what made an installed wheel work at all. That is RM196, and
+`docs/vendor/alphagenome_protos/README.md` is where the vendored copy used to be.
 
 Three house rules shape the code rather than the wire format:
 

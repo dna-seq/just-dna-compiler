@@ -763,9 +763,11 @@ MITOMAP_TERMS = SourceTerms(
 # So AVI is Permissive and the other two are not, which confirms the probe's reading rather than
 # overturning it — and it is also why `alphagenome_avi_build` refuses those two artifacts by name.
 #
-# **`redistribution` stays `None`, and that is not caution left over from before.** The
-# classification above is about USE. Prohibition 1 separately bars sharing with a commercial
-# organization "aside from indirectly via a scientific publication, open source release or to support
+# **`redistribution` is `True`, and it is the one value on this row that is a reading rather than a
+# document.** The heading here read *"stays `None`"* for a day after the value moved, contradicting
+# its own next sentence — which is the shape a half-applied correction leaves behind, and the reason
+# this one names the value it is about. The classification above is about USE. Prohibition 1
+# separately bars sharing with a commercial organization "aside from indirectly via a scientific publication, open source release or to support
 # journalism", and whether a HuggingFace-published snapshot is an "open source release" is a reading
 # of Google's terms that nothing in `docs/vendor/` settles — so the `True` below is a **reading**,
 # taken by the maintainer on 2026-09-10, and the only value on this row that is not documented.

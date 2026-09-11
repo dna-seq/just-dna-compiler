@@ -467,7 +467,7 @@ no authored column at all**, so the round fits the uncut 0.7.0.
   stored at all** — the 466 KB knot table reconstructs it with zero threshold misclassifications.
   Operator-built, never fetched: the source is 88.5 GB behind a sign-in.
 - **RM192 — the Atlas client on two packages, and the `alphagenome` extra deleted.** 22 MB in a new
-  `[atlas]` extra against 255 MB and 36 packages for the wheel, six of whose declared dependencies are
+  `[atlas]` extra against 255 MB and 81 packages for the wheel, six of whose declared dependencies are
   never imported on any scoring path. Already built and tested as `probes/alphagenome_poc/`.
 - **RM193 — the Atlas as a resolver, not a source.** Knot-straddle refinement (the API's `raw_score`
   carries ~7 significant digits against the file's 4), `REF` validation that **names the real base**,

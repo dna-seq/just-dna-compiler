@@ -51,10 +51,12 @@ just-dna-enricher = "just_dna_enricher.cli:app"
 # SDK's own import path costs 242 MB (ALPHAGENOME_ATLAS.md § 6.2, which measured 22 MB at the
 # grpcio release current then).
 #
-# The `.proto` sources are Apache-2.0 and vendored in `docs/vendor/alphagenome_protos/`, which is
-# what makes the light path **declarable** rather than a `pip install --no-deps` recipe. That was
-# the open question until commit `1f9a84a` closed it by doing the vendoring; this file argued the
-# opposite until RM192, and the argument is deleted rather than left standing.
+# The `.proto` sources are Apache-2.0 and reached by a **pin** — a commit id plus a sha256 per file
+# in `atlas_protos.py`, fetched by `hatch_build.py` at wheel-build time — which is what makes the
+# light path **declarable** rather than a `pip install --no-deps` recipe. They were vendored in
+# `docs/vendor/alphagenome_protos/` from commit `1f9a84a` until RM196 replaced the copy with the pin,
+# because a vendored copy goes stale silently and a digest cannot. This file argued against the light
+# path until RM192, and the argument is deleted rather than left standing.
 #
 # `protobuf` is a **runtime** dependency, not a build one — the generated `_pb2` modules
 # `from google.protobuf import descriptor`, so it is imported on every call. Only `grpcio-tools` is
