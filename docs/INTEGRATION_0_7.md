@@ -21,8 +21,11 @@ the maintainer, one at a time, and all twelve shipped. RM140 landed after the ro
 addendum, and RM139 / RM141 / RM142 landed on top of it from three more consumer reports. They are one
 release because the version bump happened once; read this document as covering the whole interval.
 
-**One item is in the working tree and not committed** — RM143 (S78), a new `strict` refusal. It is
-called out in § 1 and § 2.6 with that label on it. Do not plan against its wording.
+**Everything this document describes is committed.** RM143 (S78) carried an "in the working tree and
+not committed" label for a while; it **shipped on 2026-08-31** and the label outlived it in two places
+while § 5 already said it had landed. A status claim here goes stale the moment the work lands —
+[RM_TOC.md](RM_TOC.md) is the per-item file that is actually maintained, so check any status sentence
+in this document against it rather than reading one as normative.
 
 ---
 
@@ -142,12 +145,13 @@ None of them is a schema change, and each is a fix:
   not asked-and-absent, and `--no-resolve` silences the check the way it silences the fill.
 - **RM91's `effect_allele` check and RM48's wrong-build arithmetic are unchanged from 0.6** and are
   listed here only so nobody re-derives them from a corpus run that does not fire them.
-- **RM143 (S78) — in the working tree, uncommitted.** `compile --strict` refuses a module whose
+- **RM143 (S78) — shipped 2026-08-31.** `compile --strict` refuses a module whose
   `verification.json` records a `genome_build_agreement` finding: the enricher has already diagnosed
   the rows as another assembly's, and the compiler was discarding that answer. It gates on a *record*,
   adds no reference and no network, is silent when no attestation exists, and `best_effort` still
-  builds and warns. No reference example carries such a finding. **The wording may move before the
-  cut** — S78 is still open in the inbox.
+  builds and warns. No reference example carries such a finding. `build_disagreement_error` is wired
+  into **both** `validate_spec` and `compile_module`, so the refusal arrives at validate time
+  (`@validate-refuses-all`). S78 is answered and archived.
 
 ---
 
@@ -168,6 +172,7 @@ corrected `gene_validity` facet:
 | `authority_precedence` | `list[str]` | the authorities this module's curator weighted, most-trusted first (RM134 § B). **Nothing computes with it** — no tier, no check, no verdict. Empty means the module has not said, which is not the same as saying they weigh equally. Out of both identity halves. |
 | `verification.checks[].producer` | `str \| null` | tool and version that put **this** check. Read it, not the block-level `producer`, when asking whether a record predates a fix — `merge_records` carries an older run's record across and restamps the block-level one (S71). See § 1 for what it does to an old reader. |
 | `identity.version_coerced_from` | `str \| null` | RM103. The `module.version` the author actually wrote, when the model rewrote it — `"v2"` beside `"2.0.0"`, `"abc"` beside `"0.0.0"`. **Absent means the authored value was already canonical SemVer**, never that nothing was authored. Advisory like `version` itself. |
+| `expression_effects` | block or absent | RM194 + RM200. Summary of the tenth derived-fact sidecar: `signature`, `sources`, `datasets`, `row_count`, `variant_count`, `genes`, `measures`, `with_direction` / `without_direction`, **`without_distance`** and `max_distance_to_gene`. `without_distance` is the one to read before a join — the distance comes from the MANE lane, and a deployment without it records the absence rather than an interval edge, so a whole table of nulls is visible up front. |
 | `gene_validity.superseded_count` | `int` | RM108. How many rows a later curation of the same claim replaced. **Derived, not stored** — no column exists — so nothing hashes on it and `gene_validity.signature` did not move. `0` is a real answer. |
 | `gene_validity.classifications` | `list[str]` | **CHANGED, and it is a correction.** It now spans the **current** rows rather than every row, so a module carrying a re-curated claim publishes one verdict where it published a pair as far apart as `["definitive", "refuted"]`. A group nothing can order (a tie on `classification_date`, or a member stating none) still contributes all of its classifications. |
 
@@ -202,14 +207,17 @@ than calling `integrity.content_signature`, drop those columns via
 
 ### 2.2 Parquets
 
-**Three new files, so `ARTIFACT_PARQUETS` goes 19 → 22.** Derive from the constant; do not hand-keep a
-list. The 0.6 guide says the same thing and it is the defect that broke the publisher.
+**Four new files, so `ARTIFACT_PARQUETS` goes 19 → `len(ARTIFACT_PARQUETS)`.** Derive from the
+constant; do not hand-keep a list — the count in this sentence was written when there were three and
+is exactly the drift being warned about. The 0.6 guide says the same thing and it is the defect that
+broke the publisher.
 
 | parquet | when it appears |
 | --- | --- |
 | `clin_sig_concordance.parquet` | the module carries the concordance record (RM130) |
 | `clin_sig_authority_calls.parquet` | ditto — the paired per-authority detail |
 | `overrides.parquet` | the module carries an authored overlay (RM124) |
+| `expression_effects.parquet` | the module carries per-gene expression effects (RM194 + RM200) |
 
 `artifact.files` is name-sorted before hashing, so tuple position is invisible to the digest and these
 land alphabetically rather than at the end.
@@ -244,11 +252,14 @@ the proof lives" are different axes.
 | `overrides.csv` | **authored** | the overlay (RM124). Columns `table`, `subject`, `member`, `field`, `operation`, `value`, `reason`, `decided_by`, `decided_at`, with **`reason` required** — that is what makes it a record rather than a knob. Operations are `update` / `insert` / `suppress`. |
 | `clin_sig_concordance.csv` | derived | contested subjects, keyed `(variant_key, genotype)` |
 | `clin_sig_authority_calls.csv` | derived | what each authority said, keyed `(variant_key, genotype, authority)` |
+| `expression_effects.csv` | derived | per-gene expression direction, keyed `(variant_key, gene)` (RM194 + RM200). An `overrides.csv` target on that key |
 | `.<name>.staging/` | transient | `enrich`'s staged raw answers (RM128). Removed on a successful commit unless `--keep-staging`; **a killed run leaves them either way, and the next run resumes from them.** |
 
-**The overlay makes seven derived tables pure build products** — `resolution.csv`, `frequencies.csv`,
-`gene_metrics.csv`, `gene_validity.csv`, `clinical_assertions.csv`, `literature.csv`,
-`gwas_effects.csv`, plus `clin_sig_concordance.csv` as the eighth. `derived = f(source, overlay)`, so
+**The overlay makes every covered derived table a pure build product** — the set is
+`OVERRIDABLE_TABLES`, today `resolution.csv`, `frequencies.csv`, `gene_metrics.csv`,
+`gene_validity.csv`, `clinical_assertions.csv`, `literature.csv`, `gwas_effects.csv`,
+`clin_sig_concordance.csv` and `expression_effects.csv`. **Walk the constant rather than this
+sentence**; it has been a count twice and gone stale twice. `derived = f(source, overlay)`, so
 deleting one and re-running is now free, which is what dissolved RM83. `licensing.csv` / `sources.csv`
 is deliberately **outside** the covered set: it has its own merge path and is the one derived table a
 human is told to write.
@@ -503,6 +514,11 @@ Both spellings of a version are accepted — a bare `0.7.0` and the stamped
   first call like a filled one, and the per-request build-and-close six legs did is gone. `close()`
   walks `CLIENT_FIELDS`. A `lookup_*` call given no bundle now closes the one it built. Nothing
   changes for a host that fills every field; a host that fills some can stop.
+- **`PacingGate.spent` (S95, RM203).** Admissions so far, one per `wait()` that returned, bumped under
+  the slot lock. That is one upstream **attempt** rather than one call, because the clients wait inside
+  their retry loop — so a host meters egress from it instead of charging by request shape. A `waited`
+  total was refused deliberately: the sleep is outside the lock by design
+  (`@shared-pacing-gate`), so a figure for it would be a number nothing guarantees.
 - **The hint payload names lanes, not paths (S93, RM205).** `VariantHint.checked` holds labels only
   (`ensembl`, `clinvar`, `ensembl-rest`), the unreadable-snapshot finding interpolates the label, and
   the new `VariantHint.snapshots` (label → path) is the one field carrying a filesystem path — drop it
@@ -553,11 +569,23 @@ combination profile is visible as one — a composite is the inequality of the t
 `release.json` as `composite_profile_rows` (RM174).
 
 
-### AlphaGenome — a new source, one new vocabulary member, and a build-backend change (RM191–RM199)
+### AlphaGenome — two sources under one name, and one of them is non-commercial (RM191–RM200)
 
-**Almost none of this is a schema change.** No column, no table, no manifest field, no signature. A
-consumer that never runs the enricher sees one thing only: the new `variant_impact_agreement` check
-member, which is the second old-reader break in § 1.
+**RM191–RM199 was almost none of a schema change**; **RM194 + RM200, which landed on 2026-09-11,
+is one.** The first round added no column, no table, no manifest field and no signature — a consumer
+that never runs the enricher saw one thing only, the new `variant_impact_agreement` check member,
+which is the second old-reader break in § 1. The second round added the **tenth derived-fact
+sidecar**: `expression_effects.csv` → `expression_effects.parquet`, `expression_effect_signature`, a
+`manifest.expression_effects` block, an `overrides.csv` target keyed `(variant_key, gene)` and the
+`expression_effect` source layer. All of that is in § 2.1–2.3 with the rest of the surface delta;
+none of it is authored, so `content_signature` does not move.
+
+**The one thing to take from this section if you take nothing else: `alphagenome_avi` and
+`alphagenome_atlas` are two source names, and they carry two different licence classes.** The AVI
+artifact is Permissive Use and a module drafted from it stays sellable; the Atlas API's output is
+**non-commercial only**. One `(source, layer)` key cannot carry two licence classes, which is why the
+second name exists rather than a second row. A consumer that reads "AlphaGenome is permissive" off the
+AVI row and then joins a table produced by `alphagenome expression` has mis-licensed the module.
 
 | Surface | What it is |
 |---|---|
@@ -568,6 +596,8 @@ member, which is the second old-reader break in § 1.
 | `just-dna-enricher[atlas]` | **New extra**: `grpcio` + `protobuf`, measured at 19 MB and +2 packages. The `alphagenome` extra is **deleted** — it was **550 MB and 47 packages** |
 | `variant_impact_agreement` | **New `VALID_VERIFICATION_CHECKS` member.** The one thing here a format-tier consumer sees |
 | `ALPHAGENOME_AVI_TERMS` in `licensing.py` | `commercial_use=True`, `share_alike=False`, `redistribution=True`. A module drafted from it lands `alphagenome_avi` in `sources.csv` |
+| `just-dna-enricher alphagenome expression <spec> --gene <SYMBOL>` | Fills `expression_effects.csv` from the Atlas (RM194 + RM200). `--gene` is mandatory in **both** span forms — the server-side filter is a requirement, not an optimisation. **`--use non-commercial` is required or the run writes nothing** |
+| `ALPHAGENOME_ATLAS_TERMS` in `licensing.py` | `commercial_use=False`. A module fed by `alphagenome expression` lands **`alphagenome_atlas`** in `sources.csv`, at the `expression_effect` layer |
 
 **Three things that will surprise a consumer**, and none is a schema question:
 
@@ -767,9 +797,9 @@ any size and a declared layout retirement rides it as `delete_patterns`.
 **Check**
 
 4. **Re-baseline digest-comparison CI.** 14/15 measured modules move `artifact.digest`.
-5. **A spec that passed `validate --strict` at 0.6.6 can newly fail it** — RM141, and possibly RM143
-   when it lands. Both are cases where `compile --strict` was already going to refuse, so this moves
-   the failure earlier rather than adding one.
+5. **A spec that passed `validate --strict` at 0.6.6 can newly fail it** — RM141 and RM143, both
+   shipped. Both are cases where `compile --strict` was already going to refuse, so this moves the
+   failure earlier rather than adding one.
 6. New optional authored columns are available and nothing forces them: `statistical_test`,
    `confidence`/`confidence_unit` on `studies.csv`, `requires_callable` on the two PGx locus tables,
    `pharm_variants.pmid`, and the `authority_precedence:` block in `module_spec.yaml`.
@@ -819,7 +849,7 @@ validates against — see § 1's second break.
 | 0.6.6 → 0.7.0 release sweep | 15 measured, **gate exit 0** at `a6f31f8`, and again at `0d73268` before the fixes: content_signature 0/15, manifest_fields 15/15, parquet_bytes 14/15, parquet_schema 14/15, warnings 3/15, `cyp2c9_warfarin_grch37` unmeasured (its `requires_callable` column does not exist under 0.6.6, so the BEFORE side refuses it). The record covers every field that moved. Re-run the gate whenever a `DeclaredChange` is added, not only at the cut |
 | 0.6.6 client parses 0.7 manifests | **15 / 16** (corpus unchanged; and see below — a *consumer's* module that runs `alphagenome check` is a sixteenth case this row does not cover) — re-measured at `a6f31f8` by parsing the sweep's AFTER manifests with `just-dna-format==0.6.6`. **The previous row's stated basis was wrong**: it said nothing had touched the manifest surface since 2026-08-31, and RM160 then added a `verification.checks` member. The result held anyway, on the same one field: `mt_common_deletion`, `verification.checks[].producer`, now across its four check records rather than one. The basis of this row is a measurement, not a claim about the diff |
 | Open consumer inbox | **empty** at `a6f31f8` (`triage-state.py`: nothing pending). S87–S89 were answered 2026-09-03 as RM180/RM183/RM184 |
-| Open roadmap items in format scope | **none**. RM164 is parked to 0.8 (enricher scope), RM7 is marked not format scope, everything else in ROADMAP is queued for 1.0. The AlphaGenome round (RM191–RM199) closed on 2026-09-10; RM194 stays open and is enricher scope |
+| Open roadmap items in format scope | **none**. RM164 is parked to 0.8 (enricher scope), RM7 is marked not format scope, everything else in ROADMAP is queued for 1.0. The AlphaGenome round closed in two parts — RM191–RM199 on 2026-09-10, then **RM194 + RM200 on 2026-09-11**, both enricher scope. RM201 and RM203–RM206 also shipped 2026-09-11 |
 | AlphaGenome lane, built genome-wide | **8,812,917,339 rows → 29.8 GB** over 24 parquets at `54b1f6a`, and every published number cross-checked against an independent measurement: 41,474 knots **knot-for-knot** against a table built by a different session from a different pass, 672,931 zeros, 49.30% negative, one straddling knot at threshold 3 |
 
 **The blocker this section carried is gone.** RM143 shipped and S78 was answered, and the 2026-08-31
