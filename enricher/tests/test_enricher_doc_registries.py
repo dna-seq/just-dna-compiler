@@ -1,4 +1,4 @@
-"""`ENRICHER.md`'s two registries are walked against the code, because nothing walked them before.
+"""`ENRICHER.md`'s three registries are walked against the code, because nothing walked them before.
 
 **This tier's reference was the only one no test read.** `test_counted_prose.py` reads `SCHEMAS.md`
 and `COMPILER.md`, `test_warning_codes.py` reads `COMPILER.md`'s warning catalogue, `test_doc_links.py`
@@ -28,12 +28,18 @@ authored rows` runs outside `enrich()` entirely. So the invariant is: every emit
 `VALID_VERIFICATION_CHECKS` appears in the fourth column, every `code`-shaped entry in that column is
 a member, and the two members the vocabulary marks RESERVED appear nowhere — parsed from `vocab.py`'s
 own comments rather than restated here, so retiring a reservation moves one thing.
+
+The licence roster is an **equality** again, for the reason the table states about itself: it says it
+is *every* key in `TERMS_BY_SOURCE`, so a row naming something the registry does not hold promises
+terms no `SourceRow` can ever carry. It is deliberately not the PGx picture above it, which is scoped
+to the PGx sources and dated to its probe.
 """
 
 import re
 from pathlib import Path
 
 import just_dna_enricher
+from just_dna_enricher import licensing
 from just_dna_format import vocab
 
 _PACKAGE = Path(just_dna_enricher.__file__).resolve().parent
@@ -110,3 +116,25 @@ def test_a_reserved_member_is_claimed_by_no_row() -> None:
     """A reservation exists because no pass puts the check; a row here would report one that did."""
     claimed = _reserved_members() & _attested_in_the_check_table()
     assert not claimed, f"reserved members shown as attested: {sorted(claimed)}"
+
+
+def _licence_roster() -> set[str]:
+    """The source names in `ENRICHER.md`'s complete-roster table."""
+    header = "### The complete roster — `TERMS_BY_SOURCE`, every source this tier has terms for"
+    doc = _doc()
+    assert header in doc, f"the licence roster's heading moved; looked for {header!r}"
+    section = doc.split(header)[1].split("\n### ")[0]
+    return set(re.findall(r"^\| `(\w+)` \|", section, re.MULTILINE))
+
+
+def test_the_licence_roster_names_every_source_with_recorded_terms() -> None:
+    """A source whose terms are recorded and unlisted is one a reader cannot check before drafting.
+
+    Equality, not containment: the roster's own sentence says it is *every* key in
+    `TERMS_BY_SOURCE`, so a row naming something the registry does not hold is as wrong as a missing
+    one — it would promise terms no `SourceRow` can ever carry. This is the table the PGx picture
+    above it is deliberately *not*: that one is scoped to the PGx sources and dated to its probe.
+    """
+    listed = _licence_roster()
+    recorded = set(licensing.TERMS_BY_SOURCE)
+    assert listed == recorded, f"licence roster drifted: {listed ^ recorded}"

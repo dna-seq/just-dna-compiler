@@ -3756,6 +3756,46 @@ sell; read the surrounding terms. Since the coordinate
 layer is already covered by Ensembl/dbSNP, ClinPGx and CPIC are deliberately **never** wired as
 resolution links — that keeps coordinates unrestricted and leaves nothing to declare there.
 
+### The complete roster — `TERMS_BY_SOURCE`, every source this tier has terms for
+
+The table above is the **PGx** picture and is scoped to it. This one is the registry: every key in
+`licensing.TERMS_BY_SOURCE`, which is what a pass reaches for when it writes a `SourceRow`. A source
+absent from it has no recorded terms, which is a different state from having permissive ones —
+`@no-named-licence`, and the reason every column below can read `—`.
+
+| Source | Licence | Sellable | Share-alike | Redistributable | Note the column cannot hold |
+|---|---|---|---|---|---|
+| `clinvar` | public domain | ✅ | — | ✅ | |
+| `ensembl` | Apache-2.0 | ✅ | — | ✅ | |
+| `gnomad` | CC0-1.0 | ✅ | — | ✅ | |
+| `clingen` | CC0-1.0 | ✅ | — | ✅ | |
+| `gencc` | CC0-1.0 | ✅ | — | ✅ | |
+| `civic` | CC0-1.0 | ✅ | — | ✅ | the only annotation snapshot that may be published |
+| `strchive` | MIT | ✅ | — | ✅ | |
+| `mitomap` | CC BY 3.0 | ✅ | — | ✅ | a **floor**: the host grants it "unless otherwise noted", so a per-record note outranks it |
+| `alphagenome_avi` | AlphaGenome Services Additional Terms | ✅ | — | ✅ | Permissive Use (RM195); the *sign-in* bars classes of holder, which no column says |
+| `clinpgx` | CC BY-SA 4.0 | ❌ | ✅ | ✅ | + a contractual bar on sale, on top of the CC grant |
+| `cpic` | CC BY-SA 4.0 | ❌ | ✅ | ✅ | `cpicpgx.org/license/` 302s to ClinPGx's policy |
+| `pharmvar` | CC BY-SA 4.0 | ❌ | ✅ | ✅ | research-use-only, and the key is **personal and non-transferable** |
+| `alphagenome_atlas` | AlphaGenome Output Terms of Use | ❌ | — | ✅ | a **second name** for one service, because one `(source, layer)` key cannot carry two licence classes |
+| `pubmind` | — | ❓ | ❓ | ❓ | publishes no data terms at all; the software licence and the paper's are not the table's |
+| `mane` | — | ❓ | ❓ | ❓ | NCBI states a *policy* rather than a licence — nothing to refuse and nothing to permit |
+| `pgs_catalog` | — | ❓ | ❓ | ❓ | a **floor**: terms are per score, so `PGS_LICENSE_CLASSES` is consulted per record |
+| `gwas_catalog` | — | ❓ | ❓ | ✅ | redistribution is stated; the other two are not |
+| `clingen_allele_registry` | — | ❓ | ❓ | ❓ | |
+
+**`❓` is `None` and never `False`.** A source whose terms could not be established has not been shown
+to permit anything, and "we could not read the terms" is not a finding that they forbid anything
+either — so it is skipped in every `--use` column with a message saying which of the two it is. That
+is the house algebra landing on a licence: unknown never becomes permission, and it never becomes a
+refusal either.
+
+**Four of the eighteen are a floor rather than a total**, and that is a property of the source, not of
+the constant: `mitomap` grants site-wide "unless otherwise noted", `pgs_catalog` is per score,
+`gwas_catalog` states one axis of three, and `alphagenome_avi`'s permissive *Output* terms sit behind
+an eligibility clause about the holder that no column models
+(`@a-hosts-terms-are-not-its-contents-terms`).
+
 ### `declared_use` — a third axis, not a mode
 
 `--use` is `unstated` (default) | `non-commercial` | `commercial`, threaded to `enrich_pgx(declared_use=)`.
@@ -5343,3 +5383,123 @@ a quarter of the FDA content ClinPGx already carries, in a shape that has to be 
 are unestablished. *"US government work is public domain"* is a rule with exceptions and the page does
 not settle it. Licence diversification for this lane is still worth doing, and it wants its own entry
 with candidates chosen for their terms first, which is the opposite of how this one chose.
+
+## AlphaGenome — a local artifact, a live service, and two licence classes (`alphagenome_*`, `atlas_*`) — RM191–RM200
+
+AlphaGenome is the only source in this tier reached on **two surfaces that are not the same source**.
+One is a bulk artifact an operator already holds, re-encoded into a cache lane and read offline; the
+other is a gRPC service queried per variant. They answer different questions, carry different terms,
+and — since RM200 — write **two different `sources.csv` rows**, because one `(source, layer)` key
+cannot carry two licence classes.
+
+| Surface | Module | What it answers | Licence class |
+|---|---|---|---|
+| **AVI artifact** → the `alphagenome_avi` lane | `alphagenome_avi_build` | how much does AlphaGenome think this variant matters, for 8.8 billion SNVs, offline | **Permissive Use** (RM195), `commercial_use=True` — so a module drafted from it stays sellable |
+| **Atlas API** (`gdmscience.googleapis.com`) | `atlas_client`, `atlas_protos` | the scores the artifact discarded — per gene, per tissue, **with direction** | **non-commercial only**; an undeclared run writes nothing |
+
+**The split is not a convenience.** `ALPHAGENOME_AVI_TERMS` and `ALPHAGENOME_ATLAS_TERMS` are separate
+`SourceTerms` constants under separate source names, and a module that used both would declare both
+rows — which is the only way `sources.taints_commercial_use` can reach the right verdict. Reading the
+Atlas under `--use unstated` is refused at acquisition, not at write time (`@acquisition-gate-is-not-a-read-gate`).
+
+### `alphagenome build` — the artifact, re-encoded (RM191, RM197, RM198)
+
+**Nothing here fetches, and that is not the usual inject-only rule** — this is the network tier, so it
+is allowed to. The AVI artifact is 88.5 GB behind a sign-in whose eligibility clause bars whole
+*classes of holder*, so acquisition is the operator's own act under their own acceptance of the terms.
+`--input` is required and has **no default URL**, which is that rule expressed as a flag.
+
+Three properties of the built lane a consumer has to know, each of which is a measured decision rather
+than a format choice:
+
+- **The scores are integers and should be compared as integers.** `raw_score` is `Int32` at a scale of
+  10⁵ — exactly lossless, since the source prints at most five decimals. Recovering a float with
+  `raw_score_e5 / 1e5` disagrees with the printed value on **53% of rows**, because the division rounds
+  a second time. `score >= 0.1` is `raw_score_e5 >= 10_000`.
+- **`PHRED` is not stored, and the file that reconstructs it is not optional** (RM198). It is an exact
+  within-corpus rank, so `avi_knots.parquet` carries the curve in 466 KB instead — as an *interval* per
+  printed score, which makes threshold safety decidable in advance: a threshold is unsafe iff it lands
+  inside a knot's span. Genome-wide exactly one does, at 3. A snapshot without that file holds scores
+  nobody can rank, and `alphagenome check` refuses it. It is a **sibling of `data/`**, which is why
+  `locations.SNAPSHOT_ROOT_FILENAMES` exists.
+- **The artifact is wide by position** (RM197): one row per locus — `chrom, pos, ref, alt0, alt1, alt2`
+  — and **no `alt` column**. Which base each column means is `{A,C,G,T} − ref` ascending, a function of
+  `ref` alone, so nothing has to travel beside the data. `alphagenome_avi_build.to_long()` recovers
+  `(chrom, pos, ref, alt, score)` rows; apply it to a **filtered** frame, since over the whole corpus it
+  is 2.9 billion loci becoming 8.8 billion rows, which is the shape the layout exists to avoid storing.
+
+The lane is **the first with a builder and `rebuild=None`**: this tier cannot fetch the source, but the
+re-encoded snapshot is publishable, so an operator who may not download the artifact can still
+`cache pull` it. Having a builder and being rebuildable unattended are two different properties
+(`@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing`).
+
+### `alphagenome check` — the Atlas as a resolver, for the three questions the artifact cannot answer (RM193)
+
+Attests as **`variant_impact_agreement`**, its own member rather than a second writer of
+`reference_allele` — the Atlas answers that too, and two registries answering an overlapping question
+get two names, or one source's outage writes a skip against the other's
+(`@one-registrys-outage-may-not-speak-for-another`). Reports, never repairs. Mostly offline: without
+`--threshold` there is no question the local snapshot cannot answer, so the live leg is the exception
+rather than the path. Raises `VariantImpactError` / `VariantImpactUnavailable` — see *Exception contract*.
+
+### `alphagenome expression` — the axis the AVI artifact threw away (RM194 + RM200)
+
+Fills `expression_effects.csv`: one row per `(variant, gene)` saying which way a variant moves that
+gene's predicted expression, how many of AlphaGenome's 371 tissue tracks agree, and how far the variant
+sits from the gene. A **recording pass** — it writes a derived sidecar, compares nothing authored, and
+therefore has no verification-check member.
+
+**One scorer of twenty-two, and the other twenty-one are a measured refusal.** `RNA_SEQ` is the only
+one with a gene axis — its shape is `(genes, tracks)`, the gene count varying with the window — so
+**AlphaGenome makes the gene attribution itself**, which is what `@gene-map-is-another-sources-attribution`
+requires. `CHIP_TF` looked like the useful one and was refused on measurement: over 751 factors the top
+three carry 1–3% of the mass, the concentration does not track effect size, and every leading factor is
+a singleton track, so the "top TF" is whichever one happens to be measured once. `*_ACTIVE` is an
+activity **level** rather than a variant effect — it describes the locus, not the variant.
+
+**`--gene` is mandatory in both span forms**, because the server-side gene filter is a requirement and
+not an optimisation; an unfiltered interval query is refused before it is sent. The span comes from
+`--chrom/--start/--end` when given, otherwise from the **MANE lane** widened by the ±512 kb horizon —
+the Ensembl snapshot is eliminated by its own schema, which has no gene column at all.
+
+**`distance_to_gene` is the column that makes the table usable, and null is one of its values.** Distal
+scores run ~10× lower than scores at the gene, so a flat `--min-score` keeps only the proximal rows
+while looking like it filtered on effect — the failure this pass exists to prevent. The MANE lane is
+consulted even when the interval was supplied by hand, because those are two questions and an explicit
+interval only answers the first; with no lane the column is null and the manifest publishes
+`without_distance`, so a whole table of them is visible before a join. Never an interval edge
+(`@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`).
+
+`--max-rows` defaults to 50,000 and **refuses** rather than truncating; raising it is a deliberate act.
+`--offline` is a no-op with a warning — this pass reads the Atlas, not a snapshot, so there is no
+offline answer to give and pretending otherwise would report nobody-asked as nothing-found.
+
+### `atlas generate` — the bindings, and why neither the sources nor the generated code is committed (RM192, RM196)
+
+`uv add alphagenome` costs **550 MB and 47 packages** against a tier whose entire runtime list is
+httpx/tenacity/huggingface-hub, and six of the twenty dependencies that wheel declares are never
+imported on any scoring path. The `.proto` sources are Apache-2.0, so `grpcio` + `protobuf` reach every
+Atlas RPC — **22 MB** — with score payloads decoding through `struct.unpack` from the standard library.
+That is the `[atlas]` extra; the `alphagenome` extra is **deleted**.
+
+The repository carries neither the upstream sources nor the generated bindings. It carries the **pin** —
+a commit id and a sha256 per file — which is what makes a fetch verifiable rather than merely
+convenient, and what keeps a copy of somebody else's file from going stale silently. `atlas generate`
+runs once per checkout; a released wheel carries them already. This is also why `just-dna-enricher`'s
+build backend is **hatchling** rather than `uv_build` (RM196): the bindings are generated at build time
+and `uv_build` has no build hook. Backends are declared per package, so the other two tiers are
+untouched.
+
+**Three defects only real execution could find**, each one a case where every offline fixture agreed
+with the code that built it: the Atlas wants `chr22` on the wire where a module stores `22` (now fixed
+by the client owning the spelling, as it already owns the 0-based/1-based conversion); a snapshot's
+`summary.parquet` lives under `data/` rather than at its root; and a lane *directory* existing is not
+the same as a lane being built. A fourth is upstream's: the server returns a `next_page_token` on an
+**exactly-full final page** and following it answers `INVALID_ARGUMENT`, so a faithful client crashes on
+the one interval width that divides evenly — `score_interval` follows the token but also stops once the
+requested interval is covered.
+
+And one that cost a day: `Interval.strand` has **no zero member**. `STRAND_UNSPECIFIED = 0` is the
+proto3 default, so an omitted `strand` goes on the wire as a value the server rejects, reported as a
+bare `INVALID_ARGUMENT` naming no field. Neither the `x-goog-fieldmask` header nor 32 bp chunking was
+ever required — both were measured and both are the SDK's own choices.
