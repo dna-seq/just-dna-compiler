@@ -137,8 +137,25 @@ def merge_key(row: BaseModel) -> tuple:
 
     Raises `AttributeError` for a model declaring no key, which is the honest failure: a caller
     reaching here for an unkeyed kind has a bug, and a silent `()` would merge every row into one.
+
+    **An EMPTY `_KEY_FIELDS` is the same bug and used to slip through** (RM213). `MeasureBinRow`
+    declares `()` as a base-class default meaning *subclasses set this*, and every subclass does — but
+    a bare `MeasureBinRow`, or a future kind that inherits the default and forgets, reached here and
+    got `()` back. Two rows differing in every column returned equal keys, which is exactly the
+    collapse the paragraph above says this function raises to prevent. Measured, not argued.
+
+    `hints.table_key` treats the same falsy value as *no declared key* and returns `None`; that is the
+    right answer to a different question (does this table publish a key?) and is deliberately not
+    changed. Here the question is what two rows' identity IS, and there is no such thing as an empty
+    answer to it.
     """
-    primary = tuple(getattr(row, name) for name in row._KEY_FIELDS)  # type: ignore[attr-defined]
+    declared: tuple[str, ...] = row._KEY_FIELDS  # type: ignore[attr-defined]
+    if not declared:
+        raise AttributeError(
+            f"{type(row).__name__} declares an empty `_KEY_FIELDS`, so it has no merge identity. "
+            f"A subclass pins the real key; merging on `()` would collapse every row into one."
+        )
+    primary = tuple(getattr(row, name) for name in declared)
     fallback: tuple[str, ...] = getattr(row, "_KEY_FALLBACK_FIELDS", ())
     if not fallback or any(v is not None and v != "" for v in primary):
         return ("id", *primary) if fallback else primary
@@ -876,10 +893,22 @@ class AuthoredModel(BaseModel):
                     raise ValueError(
                         f"genotype alleles must be {_GENOTYPE_ALLELE_GRAMMAR}, got: {allele!r} in {v!r}"
                     )
-            if parts != sorted(parts):
+            # **Sorted case-insensitively, because the grammar is** (RM214). `ALLELE_PATTERN` carries
+            # `re.IGNORECASE`, so a lowercase allele is legal — and an ASCII sort puts every uppercase
+            # letter before every lowercase one, so `A/g` was accepted and `a/G` refused. The same
+            # unordered pair, two answers, decided by which half the author happened to shift. The key
+            # is `str.casefold` and the sort is stable, so a value that sorted before still sorts and
+            # nothing already authored moves; this only stops refusing the mirror spelling.
+            #
+            # It does **not** make the pair canonical, and that is left open rather than hidden: `A/g`
+            # and `a/G` are both accepted and hash differently under `content_signature`, because the
+            # cell is stored verbatim (`@verbatim-except-order` — only the ORDER is normalized here).
+            # Normalizing the case would move the signature of every module carrying a lowercase
+            # allele, which is a 1.0 question about what an identity key means, not a minor one.
+            if parts != sorted(parts, key=str.casefold):
                 raise ValueError(
                     f"unphased genotype alleles must be alphabetically sorted: "
-                    f"expected {'/'.join(sorted(parts))!r}, got: {v!r}"
+                    f"expected {'/'.join(sorted(parts, key=str.casefold))!r}, got: {v!r}"
                 )
             return v
         # Reached only for three or more slash-separated alleles: the one- and two-allele arms above
