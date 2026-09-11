@@ -34,9 +34,7 @@ VCF = SLICE / "civic_accepted_and_submitted.vcf"
 @pytest.fixture
 def snapshot(tmp_path) -> Path:
     """The wider basis, which is the only one this class can appear on."""
-    result = build_snapshot(
-        EVIDENCE, VARIANTS, PROFILES, tmp_path / "snap", release="01-Aug-2026", vcf=VCF
-    )
+    result = build_snapshot(EVIDENCE, VARIANTS, PROFILES, tmp_path / "snap", release="01-Aug-2026", vcf=VCF)
     return result.out_dir
 
 
@@ -102,9 +100,7 @@ def test_an_authored_direction_beside_a_refutation_is_a_finding(snapshot):
     # Both sides quoted with their statuses, because which side an editor signed off is the thing an
     # author weighs — and the basis, because on the narrow one this class is empty by construction.
     frame = _frame(snapshot)
-    at_locus = frame.filter(
-        (pl.col("chrom") == locus["chrom"]) & (pl.col("start") == locus["start"])
-    )
+    at_locus = frame.filter((pl.col("chrom") == locus["chrom"]) & (pl.col("start") == locus["start"]))
     expected_refuting = set(
         at_locus.filter(pl.col("evidence_direction_raw") == CIVIC_REFUTES)["evidence_id"]
         .cast(pl.Utf8)
@@ -112,9 +108,10 @@ def test_an_authored_direction_beside_a_refutation_is_a_finding(snapshot):
     )
     assert {ref.evidence_id for ref in finding.refuting} == expected_refuting
     assert finding.supporting, "the claim side must be quoted too, or the pair is not legible"
-    assert finding.status_basis == json.loads(
-        (snapshot / RELEASE_FILENAME).read_text(encoding="utf-8")
-    )["status_basis"]
+    assert (
+        finding.status_basis
+        == json.loads((snapshot / RELEASE_FILENAME).read_text(encoding="utf-8"))["status_basis"]
+    )
     assert finding.status_basis in finding.restate()
 
 
@@ -170,9 +167,7 @@ def test_one_refutation_over_two_variants_is_one_finding(snapshot, tmp_path):
     """
     locus = _refuted_locus(snapshot)
     frame = _frame(snapshot)
-    at_locus = frame.filter(
-        (pl.col("chrom") == locus["chrom"]) & (pl.col("start") == locus["start"])
-    )
+    at_locus = frame.filter((pl.col("chrom") == locus["chrom"]) & (pl.col("start") == locus["start"]))
     # The same evidence ids, fanned onto a second locus — exactly what the builder does today for a
     # combination profile, and the reason the parquet cannot distinguish the two cases itself.
     second = at_locus.with_columns(
@@ -216,8 +211,14 @@ def test_an_unreadable_snapshot_is_not_a_pass_either(tmp_path):
 def test_an_authored_row_the_snapshot_does_not_carry_is_counted_apart(snapshot):
     """Asked and unanswerable is not asked and answered — the count that would otherwise vanish."""
     absent = VariantRow(
-        variant_key="1:1000:A:G", chrom="1", start=1000, ref="A", genotype="GG", state="risk",
-        direction="risk", conclusion="not in the snapshot"
+        variant_key="1:1000:A:G",
+        chrom="1",
+        start=1000,
+        ref="A",
+        genotype="GG",
+        state="risk",
+        direction="risk",
+        conclusion="not in the snapshot",
     )
     resolution = ResolutionRow(
         variant_key=absent.variant_key, chrom="1", start=1000, ref="A", alts="G", status="resolved"

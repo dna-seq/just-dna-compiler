@@ -36,7 +36,14 @@ from just_dna_format.overrides import OVERRIDABLE_TABLES
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 _HEADER = [
-    "table", "subject", "member", "field", "operation", "value", "reason", "decided_by",
+    "table",
+    "subject",
+    "member",
+    "field",
+    "operation",
+    "value",
+    "reason",
+    "decided_by",
     "decided_at",
 ]
 
@@ -94,14 +101,42 @@ def test_a_module_with_an_overlay_is_a_principle_7_fixed_point(tmp_path: Path) -
     _write_overlay(
         spec,
         [
-            ["resolution.csv", corrected, "0", "source", "update", "manual",
-             *_why("re-checked against dbSNP by hand")],
-            ["gwas_effects.csv", dropped, "", "", "suppress", "",
-             *_why("the association was retracted upstream")],
-            ["resolution.csv", "rs_curated_only", "0", "chrom", "insert", "6",
-             *_why("the source has no answer for this locus")],
-            ["resolution.csv", "rs_curated_only", "0", "start", "insert", "26093141",
-             *_why("the source has no answer for this locus")],
+            [
+                "resolution.csv",
+                corrected,
+                "0",
+                "source",
+                "update",
+                "manual",
+                *_why("re-checked against dbSNP by hand"),
+            ],
+            [
+                "gwas_effects.csv",
+                dropped,
+                "",
+                "",
+                "suppress",
+                "",
+                *_why("the association was retracted upstream"),
+            ],
+            [
+                "resolution.csv",
+                "rs_curated_only",
+                "0",
+                "chrom",
+                "insert",
+                "6",
+                *_why("the source has no answer for this locus"),
+            ],
+            [
+                "resolution.csv",
+                "rs_curated_only",
+                "0",
+                "start",
+                "insert",
+                "26093141",
+                *_why("the source has no answer for this locus"),
+            ],
         ],
     )
 
@@ -133,10 +168,7 @@ def test_a_module_with_an_overlay_is_a_principle_7_fixed_point(tmp_path: Path) -
     assert second.success, second.errors
     assert first.manifest.artifact.digest == second.manifest.artifact.digest
     assert first.manifest.content_signature == second.manifest.content_signature
-    assert (
-        first.manifest.compilation.resolution_signature
-        == second.manifest.compilation.resolution_signature
-    )
+    assert first.manifest.compilation.resolution_signature == second.manifest.compilation.resolution_signature
 
     reverse_module(tmp_path / "a2", tmp_path / "rev2")
     third = compile_module(tmp_path / "rev2", tmp_path / "a3")
@@ -156,8 +188,17 @@ def test_the_overlay_survives_reverse_cell_for_cell(tmp_path: Path) -> None:
     pmid_free_subject = _read(spec / "resolution.csv")[0]["variant_key"]
     _write_overlay(
         spec,
-        [["resolution.csv", pmid_free_subject, "0", "source", "update", "manual",
-          *_why("re-checked against dbSNP by hand")]],
+        [
+            [
+                "resolution.csv",
+                pmid_free_subject,
+                "0",
+                "source",
+                "update",
+                "manual",
+                *_why("re-checked against dbSNP by hand"),
+            ]
+        ],
     )
     compile_module(spec, tmp_path / "art")
     reverse_module(tmp_path / "art", tmp_path / "rev")
@@ -184,8 +225,17 @@ def test_the_derived_file_on_disk_is_never_touched(tmp_path: Path) -> None:
     subject = _read(spec / "resolution.csv")[0]["variant_key"]
     _write_overlay(
         spec,
-        [["resolution.csv", subject, "0", "source", "update", "manual",
-          *_why("re-checked against dbSNP by hand")]],
+        [
+            [
+                "resolution.csv",
+                subject,
+                "0",
+                "source",
+                "update",
+                "manual",
+                *_why("re-checked against dbSNP by hand"),
+            ]
+        ],
     )
     result = compile_module(spec, tmp_path / "art")
     assert result.success, result.errors
@@ -200,8 +250,17 @@ def test_a_suppress_removes_the_row_from_the_parquet_and_the_manifest_count(
     gwas = _read(spec / "gwas_effects.csv")
     _write_overlay(
         spec,
-        [["gwas_effects.csv", gwas[0]["association_id"], "", "", "suppress", "",
-          *_why("the association was retracted upstream")]],
+        [
+            [
+                "gwas_effects.csv",
+                gwas[0]["association_id"],
+                "",
+                "",
+                "suppress",
+                "",
+                *_why("the association was retracted upstream"),
+            ]
+        ],
     )
     result = compile_module(spec, tmp_path / "art")
     assert result.success, result.errors
@@ -223,8 +282,15 @@ def test_an_inserted_row_lands_at_the_end_of_its_subjects_group(tmp_path: Path) 
     _write_overlay(
         spec,
         [
-            ["gwas_effects.csv", "GCST_CURATED", "", column, "insert", template[column],
-             *_why("published in a supplement the catalog has not indexed")]
+            [
+                "gwas_effects.csv",
+                "GCST_CURATED",
+                "",
+                column,
+                "insert",
+                template[column],
+                *_why("published in a supplement the catalog has not indexed"),
+            ]
             for column in ("variant_key", "dataset", "source", "status")
         ],
     )
@@ -280,9 +346,7 @@ def test_the_overlay_parquet_is_registered_last_and_it_is_absence_that_protects_
     assert artifact_digest(entries[:1]) != artifact_digest(entries)
 
 
-@pytest.mark.parametrize(
-    "example", ["hfe_hemochromatosis", "cyp2c9_warfarin_grch37"], ids=lambda n: n
-)
+@pytest.mark.parametrize("example", ["hfe_hemochromatosis", "cyp2c9_warfarin_grch37"], ids=lambda n: n)
 def test_a_module_with_no_overlay_keeps_both_identities(tmp_path: Path, example: str) -> None:
     """The additive promise (Principle 3), asserted against the corpus rather than argued.
 
@@ -337,8 +401,17 @@ def test_correcting_a_table_the_module_does_not_carry_warns_in_both_modes(
     assert not (spec / "frequencies.csv").exists()
     _write_overlay(
         spec,
-        [["frequencies.csv", "rs1800562", "global", "source", "update", "gnomad",
-          *_why("the pass has not been run yet")]],
+        [
+            [
+                "frequencies.csv",
+                "rs1800562",
+                "global",
+                "source",
+                "update",
+                "gnomad",
+                *_why("the pass has not been run yet"),
+            ]
+        ],
     )
     phrase = "An overlay lies on top of a derived table and never creates one"
     for strict in (False, True):
@@ -356,8 +429,17 @@ def test_an_update_reaching_no_row_warns_once_across_both_passes(tmp_path: Path)
     spec = _example(tmp_path)
     _write_overlay(
         spec,
-        [["resolution.csv", "rs_not_in_this_module", "0", "source", "update", "manual",
-          *_why("re-checked by hand")]],
+        [
+            [
+                "resolution.csv",
+                "rs_not_in_this_module",
+                "0",
+                "source",
+                "update",
+                "manual",
+                *_why("re-checked by hand"),
+            ]
+        ],
     )
     result = compile_module(spec, tmp_path / "art")
     assert result.success, result.errors
@@ -378,9 +460,7 @@ def test_a_misplaced_overlay_under_derived_is_reported_rather_than_tolerated(
     with (spec / "derived" / "overrides.csv").open("w", newline="", encoding="utf-8") as handle:
         csv.writer(handle).writerow(_HEADER)
     result = validate_spec(spec)
-    assert any(
-        "overrides.csv is an authored table sitting in derived/" in w for w in result.warnings
-    )
+    assert any("overrides.csv is an authored table sitting in derived/" in w for w in result.warnings)
 
 
 def test_a_table_that_fails_to_load_is_still_a_table_the_module_carries(tmp_path: Path) -> None:
@@ -403,8 +483,17 @@ def test_a_table_that_fails_to_load_is_still_a_table_the_module_carries(tmp_path
     target.write_text(f"{header}\n" + ",".join(["not-a-number"] * len(header.split(","))) + "\n")
     _write_overlay(
         spec,
-        [["gwas_effects.csv", "GCST000001", "", "effect_measure", "update", "beta",
-          *_why("re-checked by hand")]],
+        [
+            [
+                "gwas_effects.csv",
+                "GCST000001",
+                "",
+                "effect_measure",
+                "update",
+                "beta",
+                *_why("re-checked by hand"),
+            ]
+        ],
     )
 
     result = validate_spec(spec)

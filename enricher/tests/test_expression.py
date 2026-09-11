@@ -80,8 +80,9 @@ def _tracks(down: int, up: int) -> tuple:
 
 
 def _score(position: int, *, down: int = 300, up: int = 71, ref: str = "G", alt: str = "A") -> _Score:
-    return _Score("chr6", position, ref, alt,
-                  (_Block("RNA_SEQ", _tracks(down, up), (1, down + up), _HFE_GENE),))
+    return _Score(
+        "chr6", position, ref, alt, (_Block("RNA_SEQ", _tracks(down, up), (1, down + up), _HFE_GENE),)
+    )
 
 
 def _spec(tmp_path: Path) -> Path:
@@ -93,8 +94,13 @@ def _spec(tmp_path: Path) -> Path:
 
 def _run(spec: Path, stub: _Stub, **kw):
     """The pass with the licence declared and no MANE lane, which is the ordinary offline case."""
-    args = {"chrom": "6", "start": 26089000, "end": 26091000,
-            "declared_use": "non_commercial", "mane_cache": spec / "no-mane-lane"}
+    args = {
+        "chrom": "6",
+        "start": 26089000,
+        "end": 26091000,
+        "declared_use": "non_commercial",
+        "mane_cache": spec / "no-mane-lane",
+    }
     args.update(kw)
     return enrich_expression(spec, "HFE", client=stub, **args)
 
@@ -189,8 +195,9 @@ def test_a_block_with_more_than_one_gene_is_withheld_rather_than_guessed_at(tmp_
     `@gene-map-is-another-sources-attribution` exists to forbid — so it is refused under a counted
     reason, which is what keeps the candidate accounting honest instead of quietly dropping a row.
     """
-    unfiltered = _Score("chr6", 26090000, "G", "A",
-                        (_Block("RNA_SEQ", tuple([0.1] * 10), (2, 5), _HFE_GENE),))
+    unfiltered = _Score(
+        "chr6", 26090000, "G", "A", (_Block("RNA_SEQ", tuple([0.1] * 10), (2, 5), _HFE_GENE),)
+    )
     result = _run(_spec(tmp_path), _Stub((unfiltered,)))
     assert result.written == 0
     assert result.withheld == {"no_gene_axis": 1}
@@ -277,8 +284,7 @@ def test_an_undeclared_run_skips_in_the_sources_own_words_before_any_request(tmp
     """
     spec = _spec(tmp_path)
     stub = _Stub((_score(26090000),))
-    result = enrich_expression(spec, "HFE", client=stub, chrom="6", start=1, end=2,
-                               mane_cache=spec / "none")
+    result = enrich_expression(spec, "HFE", client=stub, chrom="6", start=1, end=2, mane_cache=spec / "none")
     assert result.skipped
     assert stub.asked == [], "the gate must run before the request, not after it"
     assert not (spec / SIDECAR_NAME).exists()
@@ -338,15 +344,27 @@ def test_distance_is_measured_from_the_mane_span_even_when_the_interval_was_expl
     mane = tmp_path / "mane"
     mane.mkdir(parents=True)
     pl.DataFrame(
-        [{"symbol": "HFE", "grch38_chr": "NC_000006.12", "chr_start": 26087281,
-          "chr_end": 26098343, "mane_status": "MANE Select"}],
-        schema={"symbol": pl.Utf8, "grch38_chr": pl.Utf8, "chr_start": pl.Int64,
-                "chr_end": pl.Int64, "mane_status": pl.Utf8},
+        [
+            {
+                "symbol": "HFE",
+                "grch38_chr": "NC_000006.12",
+                "chr_start": 26087281,
+                "chr_end": 26098343,
+                "mane_status": "MANE Select",
+            }
+        ],
+        schema={
+            "symbol": pl.Utf8,
+            "grch38_chr": pl.Utf8,
+            "chr_start": pl.Int64,
+            "chr_end": pl.Int64,
+            "mane_status": pl.Utf8,
+        },
     ).write_parquet(mane / "summary.parquet")
 
     spec = _spec(tmp_path)
-    inside = _score(26090000)                       # within the gene
-    upstream = _score(26000000, ref="C", alt="T")   # 87,281 bp before it starts
+    inside = _score(26090000)  # within the gene
+    upstream = _score(26000000, ref="C", alt="T")  # 87,281 bp before it starts
     result = _run(spec, _Stub((inside, upstream)), mane_cache=mane)
 
     by_position = {row.start: row.distance_to_gene for row in result.rows}
@@ -436,8 +454,11 @@ def test_the_service_really_does_return_one_gene_axis_and_name_it(tmp_path: Path
 
     spec = _spec(tmp_path)
     result = enrich_expression(
-        spec, "TBX1",
-        chrom="22", start=19756703, end=19757103,
+        spec,
+        "TBX1",
+        chrom="22",
+        start=19756703,
+        end=19757103,
         client=connect(API_KEY),
         declared_use="non_commercial",
         mane_cache=spec / "no-mane-lane",

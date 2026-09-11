@@ -32,9 +32,7 @@ def _load_private_key(private_key_pem: bytes) -> ed25519.Ed25519PrivateKey:
 
 
 def _public_key_b64(public_key: ed25519.Ed25519PublicKey) -> str:
-    raw = public_key.public_bytes(
-        encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw
-    )
+    raw = public_key.public_bytes(encoding=serialization.Encoding.Raw, format=serialization.PublicFormat.Raw)
     return base64.b64encode(raw).decode("ascii")
 
 
@@ -53,9 +51,7 @@ def generate_private_key_pem() -> bytes:
     )
 
 
-def sign_digest(
-    digest: str, private_key_pem: bytes, *, signed_at: str | None = None
-) -> Signature:
+def sign_digest(digest: str, private_key_pem: bytes, *, signed_at: str | None = None) -> Signature:
     """Sign the `artifact.digest` string with an Ed25519 PEM private key.
 
     The signed message is the digest string's UTF-8 bytes (e.g. `b"sha256:9f2c...ab"`)."""

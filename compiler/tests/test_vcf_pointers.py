@@ -165,10 +165,7 @@ def test_the_collision_half_covers_every_pointer_column_not_just_the_one_with_a_
     of the check read different constants on purpose."""
     assert set(VCF_POINTER_FIELDS) == {"source_field", "callable_from", "quality_from"}
     declared = {
-        field
-        for model in _ALL_MODELS.values()
-        for field in VCF_POINTER_FIELDS
-        if field in model.model_fields
+        field for model in _ALL_MODELS.values() for field in VCF_POINTER_FIELDS if field in model.model_fields
     }
     assert declared == set(VCF_POINTER_FIELDS), "a pointer column nothing declares is a stale name"
     assert set(VCF_POINTER_COMPANIONS.values()) < set(VCF_POINTER_FIELDS)
@@ -234,7 +231,7 @@ def test_it_declines_to_ask_where_no_column_could_answer(tmp_path: Path) -> None
 
 
 def test_every_element_rule_says_whether_the_reference_counts() -> None:
-    """"Larger" has two answers on a `Number=R` field, so a member silent about it repeats the defect
+    """ "Larger" has two answers on a `Number=R` field, so a member silent about it repeats the defect
     one level down. Totality is what makes the map the answer rather than a partial gloss."""
     assert set(ELEMENT_RULE_MEANINGS) == set(VALID_ELEMENT_RULES)
     for member, meaning in ELEMENT_RULE_MEANINGS.items():
@@ -295,8 +292,13 @@ def test_the_vocabulary_reaches_an_author_through_the_reference_surface() -> Non
 def test_a_separator_slip_canonicalizes_like_every_other_closed_vocabulary() -> None:
     assert match_vocab("largest-alt", VALID_ELEMENT_RULES) == "largest_alt"
     row = RepeatAlleleRow(
-        gene="HTT", repeat_unit="CAG", measure_kind="repeat_count", measure_min=40,
-        conclusion="x", source_field="FORMAT/REPCN", source_element="largest-alt",
+        gene="HTT",
+        repeat_unit="CAG",
+        measure_kind="repeat_count",
+        measure_min=40,
+        conclusion="x",
+        source_field="FORMAT/REPCN",
+        source_element="largest-alt",
     )
     assert row.source_element == "largest_alt", "the stored cell is always the declared spelling"
 
@@ -304,8 +306,13 @@ def test_a_separator_slip_canonicalizes_like_every_other_closed_vocabulary() -> 
 def test_a_non_member_is_refused_with_the_full_list() -> None:
     with pytest.raises(ValidationError, match="source_element must be one of"):
         RepeatAlleleRow(
-            gene="HTT", repeat_unit="CAG", measure_kind="repeat_count", measure_min=40,
-            conclusion="x", source_field="FORMAT/REPCN", source_element="max",
+            gene="HTT",
+            repeat_unit="CAG",
+            measure_kind="repeat_count",
+            measure_min=40,
+            conclusion="x",
+            source_field="FORMAT/REPCN",
+            source_element="max",
         )
 
 
@@ -313,15 +320,26 @@ def test_an_element_rule_with_nothing_to_qualify_is_refused() -> None:
     """The rule says *which* value of a field; with no field beside it the cell names nothing."""
     with pytest.raises(ValidationError, match="there is no field for it to select from"):
         RepeatAlleleRow(
-            gene="HTT", repeat_unit="CAG", measure_kind="repeat_count", measure_min=40,
-            conclusion="x", source_element="largest",
+            gene="HTT",
+            repeat_unit="CAG",
+            measure_kind="repeat_count",
+            measure_min=40,
+            conclusion="x",
+            source_element="largest",
         )
     # The converse is the ordinary case and must stay legal — a scalar field needs no selection, and
     # demanding one would break every module carrying a pointer today (P3).
-    assert RepeatAlleleRow(
-        gene="HTT", repeat_unit="CAG", measure_kind="repeat_count", measure_min=40,
-        conclusion="x", source_field="FORMAT/REPCN",
-    ).source_element is None
+    assert (
+        RepeatAlleleRow(
+            gene="HTT",
+            repeat_unit="CAG",
+            measure_kind="repeat_count",
+            measure_min=40,
+            conclusion="x",
+            source_field="FORMAT/REPCN",
+        ).source_element
+        is None
+    )
 
 
 def test_every_companion_in_the_map_is_a_real_column_beside_its_pointer() -> None:
@@ -344,8 +362,16 @@ def test_every_companion_in_the_map_is_a_real_column_beside_its_pointer() -> Non
 @pytest.mark.parametrize(
     "model, valid",
     [
-        (RepeatAlleleRow, {"gene": "HTT", "repeat_unit": "CAG", "measure_kind": "repeat_count",
-                           "measure_min": 40, "conclusion": "x"}),
+        (
+            RepeatAlleleRow,
+            {
+                "gene": "HTT",
+                "repeat_unit": "CAG",
+                "measure_kind": "repeat_count",
+                "measure_min": 40,
+                "conclusion": "x",
+            },
+        ),
     ],
 )
 def test_every_companion_column_really_rejects_a_non_member(model, valid) -> None:

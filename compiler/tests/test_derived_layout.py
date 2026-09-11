@@ -221,9 +221,7 @@ def test_an_authored_table_does_not_get_a_second_home(tmp_path: Path) -> None:
 
     result = compile_module(spec_dir, tmp_path / "out", resolve_with_ensembl=True)
     assert not result.success, "an authored table in derived/ must not read as a module without one"
-    assert any(
-        f"{DERIVED_SUBDIR}/variants.csv" in w for w in result.warnings
-    ), result.warnings
+    assert any(f"{DERIVED_SUBDIR}/variants.csv" in w for w in result.warnings), result.warnings
 
 
 def test_a_misplaced_authored_table_is_named_on_a_module_that_still_compiles(
@@ -248,9 +246,9 @@ def test_a_misplaced_authored_table_is_named_on_a_module_that_still_compiles(
     assert result.success, result.errors
     assert result.stats["weights_rows"] == 0, "the premise: those rows really are being dropped"
     assert result.stats["table_rows"], "and the module still compiles because another table survived"
-    assert any(
-        f"{DERIVED_SUBDIR}/variants.csv" in w and "silently ignored" in w for w in result.warnings
-    ), result.warnings
+    assert any(f"{DERIVED_SUBDIR}/variants.csv" in w and "silently ignored" in w for w in result.warnings), (
+        result.warnings
+    )
 
 
 def test_a_typo_of_an_authored_name_in_the_subdirectory_is_caught(tmp_path: Path) -> None:
@@ -266,8 +264,7 @@ def test_a_typo_of_an_authored_name_in_the_subdirectory_is_caught(tmp_path: Path
     result = compile_module(spec_dir, tmp_path / "out", resolve_with_ensembl=True)
     assert result.success, result.errors
     assert any(
-        "varaints.csv" in w and "one small edit" in w and "variants.csv" in w
-        for w in result.warnings
+        "varaints.csv" in w and "one small edit" in w and "variants.csv" in w for w in result.warnings
     ), result.warnings
 
 
@@ -281,9 +278,9 @@ def test_a_derived_sidecar_at_the_spec_root_is_not_flagged(tmp_path: Path) -> No
     result = compile_module(spec_dir, tmp_path / "out", resolve_with_ensembl=True)
 
     assert result.success, result.errors
-    assert not any(
-        "one small edit" in w or "authored table sitting" in w for w in result.warnings
-    ), result.warnings
+    assert not any("one small edit" in w or "authored table sitting" in w for w in result.warnings), (
+        result.warnings
+    )
 
 
 def test_a_non_table_document_in_the_subdirectory_is_not_called_a_table(tmp_path: Path) -> None:
@@ -300,9 +297,9 @@ def test_a_non_table_document_in_the_subdirectory_is_not_called_a_table(tmp_path
 
     result = compile_module(spec_dir, tmp_path / "out", resolve_with_ensembl=True)
     assert result.success, result.errors
-    assert not any(
-        "provenance.json" in w or "module_spec.yaml" in w for w in result.warnings
-    ), result.warnings
+    assert not any("provenance.json" in w or "module_spec.yaml" in w for w in result.warnings), (
+        result.warnings
+    )
 
 
 def test_the_near_miss_guard_follows_into_the_subdirectory(tmp_path: Path) -> None:

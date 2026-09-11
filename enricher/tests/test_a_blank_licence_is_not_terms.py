@@ -58,7 +58,7 @@ class _CreateThenRaiseFS:
 
     def __init__(self, parquet_bytes: bytes, present: set[str]) -> None:
         self.parquet_bytes = parquet_bytes
-        self.present = present               # remote basenames the repo actually has
+        self.present = present  # remote basenames the repo actually has
         self.attempted: list[str] = []
 
     def ls(self, prefix: str, detail: bool = True):
@@ -70,7 +70,7 @@ class _CreateThenRaiseFS:
         name = remote_path.rstrip("/").rsplit("/", 1)[-1]
         self.attempted.append(name)
         Path(local_path).parent.mkdir(parents=True, exist_ok=True)
-        Path(local_path).write_bytes(b"")    # opened for writing before the remote is resolved
+        Path(local_path).write_bytes(b"")  # opened for writing before the remote is resolved
         if name not in self.present:
             raise FileNotFoundError(remote_path)
         Path(local_path).write_bytes(self.parquet_bytes)
@@ -100,8 +100,11 @@ def hub(monkeypatch, tmp_path: Path):
 
 def _provision(cache: Path) -> Path:
     return dl._provision_snapshot(
-        cache, "datasets/just-dna-seq/example/data", label="Example",
-        error_cls=dl.OpenSnapshotError, filename_glob="*.parquet",
+        cache,
+        "datasets/just-dna-seq/example/data",
+        label="Example",
+        error_cls=dl.OpenSnapshotError,
+        filename_glob="*.parquet",
     )
 
 
@@ -125,8 +128,12 @@ def test_an_empty_licence_would_have_pinned_the_empty_string(tmp_path: Path) -> 
     present and empty is indistinguishable from real terms to an `is_file()` guard, and the hash it
     produces is a definite claim.
     """
-    assert CLINPGX_TERMS.row("annotation", declared_use="non_commercial",
-                             license_text="real terms").license_sha256 != _EMPTY_SHA
+    assert (
+        CLINPGX_TERMS.row(
+            "annotation", declared_use="non_commercial", license_text="real terms"
+        ).license_sha256
+        != _EMPTY_SHA
+    )
     assert hashlib.sha256(b"").hexdigest() in _EMPTY_SHA  # the value that used to be recorded
 
 
@@ -153,9 +160,7 @@ def test_a_re_pull_does_not_truncate_a_good_local_copy(hub, tmp_path: Path) -> N
     (cache / SNAPSHOT_LICENSE_FILENAME).write_text("the terms that governed these bytes\n")
     _provision(cache)
 
-    assert (cache / SNAPSHOT_LICENSE_FILENAME).read_text() == (
-        "the terms that governed these bytes\n"
-    )
+    assert (cache / SNAPSHOT_LICENSE_FILENAME).read_text() == ("the terms that governed these bytes\n")
 
 
 # ── half two: blank answers None wherever a licence is read ─────────────────────────────────────
@@ -199,12 +204,15 @@ def test_the_drafter_warns_instead_of_pinning_an_empty_file(tmp_path: Path) -> N
     """
     snapshot = tmp_path / "snapshot"
     shutil.copytree(_SNAPSHOT, snapshot, ignore=shutil.ignore_patterns("*.zip"))
-    (snapshot / SNAPSHOT_LICENSE_FILENAME).write_text("")   # what the 0-byte pull left behind
+    (snapshot / SNAPSHOT_LICENSE_FILENAME).write_text("")  # what the 0-byte pull left behind
 
     spec = tmp_path / "spec"
     spec.mkdir()
     result = draft_pharm_variants(
-        spec, snapshot=snapshot, genes=["CYP2C19"], declared_use="non_commercial",
+        spec,
+        snapshot=snapshot,
+        genes=["CYP2C19"],
+        declared_use="non_commercial",
     )
     assert not result.skipped, result.warnings
 

@@ -105,10 +105,12 @@ def test_a_relabelled_disease_term_does_not_move_the_hash() -> None:
     disease would hash differently on label vintage alone, and a MONDO relabel would move the
     signature of assertions nobody touched.
     """
-    clingen_wording = _row(disease_id="MONDO:0017146",
-                           disease_label="sickle cell disease and related diseases")
-    gencc_wording = _row(disease_id="MONDO:0017146",
-                         disease_label="obsolete sickle cell disease and related diseases")
+    clingen_wording = _row(
+        disease_id="MONDO:0017146", disease_label="sickle cell disease and related diseases"
+    )
+    gencc_wording = _row(
+        disease_id="MONDO:0017146", disease_label="obsolete sickle cell disease and related diseases"
+    )
     assert gene_validity_signature([clingen_wording]) == gene_validity_signature([gencc_wording])
     # ...while the CURIE that *identifies* the disease still moves it.
     assert gene_validity_signature([clingen_wording]) != gene_validity_signature(
@@ -120,8 +122,14 @@ def test_provenance_is_outside_the_hash_and_the_assertion_is_inside() -> None:
     """The producer-independence every fact table buys, proved both ways on one row."""
     base = _row()
     assert gene_validity_signature([base]) == gene_validity_signature(
-        [_row(source="gencc", status="resolved", fetched_at="2026-08-13T00:00:00Z",
-              report_url="https://example.invalid/whatever")]
+        [
+            _row(
+                source="gencc",
+                status="resolved",
+                fetched_at="2026-08-13T00:00:00Z",
+                report_url="https://example.invalid/whatever",
+            )
+        ]
     )
     for changed in (
         {"classification": "limited"},

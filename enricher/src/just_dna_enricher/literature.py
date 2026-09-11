@@ -195,30 +195,30 @@ class LiteratureResult:
     """
 
     rows: list[LiteratureRow]
-    missing: list[str] = field(default_factory=list)          # PMIDs PubMed has no record of
+    missing: list[str] = field(default_factory=list)  # PMIDs PubMed has no record of
     doi_conflicts: list[DoiConflict] = field(default_factory=list)
     pmcid_conflicts: list[PmcidConflict] = field(default_factory=list)
-    cited: list[str] = field(default_factory=list)             # the PMIDs the module cites right now
-    existence_checked: int = 0                                 # of those, the ones carrying a verdict
-    unresolved_citations: int = 0                              # of those, the ones resolving nowhere
-    doi_verdicts_stale: int = 0                                # pinned DOI answers about another DOI
-    doi_never_checked: int = 0                                 # cited DOIs no run has resolved
-    noncommercial_quoted: list[str] = field(default_factory=list)   # quoted under a no-sale licence
-    titles_as_quotes: list[str] = field(default_factory=list)      # PMIDs whose quote IS the title (S54)
-    fulltext_requested: bool = True                            # --fulltext/--no-fulltext, as run
+    cited: list[str] = field(default_factory=list)  # the PMIDs the module cites right now
+    existence_checked: int = 0  # of those, the ones carrying a verdict
+    unresolved_citations: int = 0  # of those, the ones resolving nowhere
+    doi_verdicts_stale: int = 0  # pinned DOI answers about another DOI
+    doi_never_checked: int = 0  # cited DOIs no run has resolved
+    noncommercial_quoted: list[str] = field(default_factory=list)  # quoted under a no-sale licence
+    titles_as_quotes: list[str] = field(default_factory=list)  # PMIDs whose quote IS the title (S54)
+    fulltext_requested: bool = True  # --fulltext/--no-fulltext, as run
     quotes_authored: int = 0
     quotes_found: int = 0
-    quotes_checked: int = 0                                    # quotes a retrieved text settled
-    quotes_unchecked: int = 0                                  # unretrievable + never examined
-    quotes_unexamined: int = 0                                 # authored after the sidecar pinned the row
+    quotes_checked: int = 0  # quotes a retrieved text settled
+    quotes_unchecked: int = 0  # unretrievable + never examined
+    quotes_unexamined: int = 0  # authored after the sidecar pinned the row
     fulltext_checked: list[str] = field(default_factory=list)  # PMIDs whose fulltext was read
     abstract_checked: list[str] = field(default_factory=list)  # PMIDs matched against the abstract only
-    doi_missing: list[str] = field(default_factory=list)       # DOIs Crossref has no record of
-    identifiers_authored: int = 0                              # citations carrying an authored doi/PMC id
-    identifiers_compared: int = 0                              # of those, the ones PubMed also named one for
-    identifiers_conflicting: int = 0                           # of those, the ones where the two disagree
-    identifiers_unmatched: int = 0                             # of those, the ones PubMed named none for
-    identifiers_foreign: int = 0                               # of those, the ones a curator wrote
+    doi_missing: list[str] = field(default_factory=list)  # DOIs Crossref has no record of
+    identifiers_authored: int = 0  # citations carrying an authored doi/PMC id
+    identifiers_compared: int = 0  # of those, the ones PubMed also named one for
+    identifiers_conflicting: int = 0  # of those, the ones where the two disagree
+    identifiers_unmatched: int = 0  # of those, the ones PubMed named none for
+    identifiers_foreign: int = 0  # of those, the ones a curator wrote
     sources: list[str] = field(default_factory=list)
     mode: str = "best_effort"
     skipped_offline: bool = False
@@ -263,10 +263,7 @@ class LiteratureResult:
             # `--no-fulltext` leaves every quote unchecked, and the generic wording below would call
             # that "nothing retrievable" — a claim about articles nobody tried to fetch, and one the
             # verification record for the same run contradicts by saying `not_requested`.
-            return (
-                f"{self.quotes_authored} authored quote(s) not matched against anything: "
-                f"--no-fulltext"
-            )
+            return f"{self.quotes_authored} authored quote(s) not matched against anything: --no-fulltext"
         parts = [
             f"checked {self.quotes_checked} of {self.quotes_authored} authored quote(s) against "
             f"retrieved text"
@@ -357,9 +354,7 @@ class EuropePmcClient:
         out: dict[str, dict] = {}
         for batch in batched(dedupe(pmids), self.batch_size):
             query = " OR ".join(f"EXT_ID:{pmid}" for pmid in batch)
-            payload = self._get(
-                "search", {"query": query, "resultType": "core", "format": "json"}
-            ).json()
+            payload = self._get("search", {"query": query, "resultType": "core", "format": "json"}).json()
             for record in (payload.get("resultList") or {}).get("result") or []:
                 pmid = str(record.get("pmid") or "")
                 if not pmid:
@@ -476,9 +471,7 @@ class CrossrefClient:
         if response.status_code == 404:
             return False
         if response.status_code != 200:
-            logger.warning(
-                "Crossref answered HTTP %s for %s; not checked", response.status_code, doi
-            )
+            logger.warning("Crossref answered HTTP %s for %s; not checked", response.status_code, doi)
             return None
         return True
 
@@ -630,9 +623,7 @@ def _regex_worker(pattern: str, text: str, sink) -> None:
     sink.put(re.compile(pattern, re.IGNORECASE).search(text) is not None)
 
 
-def regex_matches(
-    pattern: str, fulltext: str, *, timeout: float = DEFAULT_REGEX_TIMEOUT
-) -> bool | None:
+def regex_matches(pattern: str, fulltext: str, *, timeout: float = DEFAULT_REGEX_TIMEOUT) -> bool | None:
     """`True`/`False`, or **`None` when the match could not be completed in time**.
 
     The three-way return is the point: a pattern that runs long has not failed to match, it has failed
@@ -667,7 +658,10 @@ def regex_matches(
             worker.join(1.0)
             logger.warning(
                 "provenance_regex %r exceeded %.1fs against a %d-character fulltext; recorded as "
-                "NOT CHECKED (never as not-found)", pattern, timeout, len(fulltext),
+                "NOT CHECKED (never as not-found)",
+                pattern,
+                timeout,
+                len(fulltext),
             )
             return None
         return sink.get_nowait() if not sink.empty() else None
@@ -683,9 +677,7 @@ def regex_matches(
 # ── the pass ────────────────────────────────────────────────────────────────────────────────────
 
 
-def _citations(
-    studies: list[StudyRow], table_pmids: list[str] | None = None
-) -> dict[str, list[StudyRow]]:
+def _citations(studies: list[StudyRow], table_pmids: list[str] | None = None) -> dict[str, list[StudyRow]]:
     """`pmid -> [study rows citing it]`, in first-occurrence order (deterministic emission, P7).
 
     One study row can carry several PMIDs (`pmid` is free-form and may hold a `;`-joined list), so this
@@ -801,23 +793,31 @@ def enrich_literature(
             _write_literature_csv(out, output_path)
         return _attest(
             LiteratureResult(
-                rows=out, mode=mode, skipped_offline=True,
+                rows=out,
+                mode=mode,
+                skipped_offline=True,
                 sources=sorted({r.source for r in out if r.source}),
                 cited=sorted(citations, key=int),
                 quotes_authored=authored_total,
                 fulltext_requested=check_fulltext,
             ),
-            spec_dir, write=write, check_fulltext=check_fulltext, check_doi=check_doi,
+            spec_dir,
+            write=write,
+            check_fulltext=check_fulltext,
+            check_doi=check_doi,
         )
 
     # Against the rows rather than the dict's keys, which are merge-key tuples and not bare PMIDs.
     have = {row.pmid for row in existing.values()}
     wanted = [pmid for pmid in citations if pmid not in have]
     fetched_at = now_utc_iso()
-    result = LiteratureResult(rows=list(existing.values()), mode=mode,
-                              cited=sorted(citations, key=int),
-                              quotes_authored=authored_total,
-                              fulltext_requested=check_fulltext)
+    result = LiteratureResult(
+        rows=list(existing.values()),
+        mode=mode,
+        cited=sorted(citations, key=int),
+        quotes_authored=authored_total,
+        fulltext_requested=check_fulltext,
+    )
 
     # **Titles are needed for MERGED rows too, which is the correction S54's reporter filed against
     # their own report.** A pinned row is not in `wanted`, so the fetch loop never sees it — and on
@@ -874,9 +874,7 @@ def enrich_literature(
                 if check_doi and target_doi:
                     doi_exists = crossref.exists(target_doi)
 
-                quotes = [
-                    s for s in citations[pmid] if s.provenance_quote or s.provenance_regex
-                ]
+                quotes = [s for s in citations[pmid] if s.provenance_quote or s.provenance_regex]
                 found: int | None = None
                 quote_source: str | None = None
                 if check_fulltext and quotes:
@@ -895,8 +893,7 @@ def enrich_literature(
                             quote_source = "abstract"
                     if text:
                         found = sum(
-                            1 for s in quotes
-                            if _study_quote_found(s, text, regex_timeout=regex_timeout)
+                            1 for s in quotes if _study_quote_found(s, text, regex_timeout=regex_timeout)
                         )
                 # Costs no request: the title arrived in the same `esummary` response that answered
                 # existence. Outside the `check_fulltext` guard deliberately — this compares the quote
@@ -910,7 +907,10 @@ def enrich_literature(
                 # to merged rows as well as fresh ones.
                 result.rows.append(
                     LiteratureRow(
-                        pmid=pmid, doi=doi, pmcid=pmcid, exists=exists,
+                        pmid=pmid,
+                        doi=doi,
+                        pmcid=pmcid,
+                        exists=exists,
                         is_open_access=is_open,
                         license=license_name,
                         share_alike=terms.share_alike,
@@ -986,9 +986,7 @@ def enrich_literature(
         )
     if write:
         _write_literature_csv(result.rows, output_path)
-    return _attest(
-        result, spec_dir, write=write, check_fulltext=check_fulltext, check_doi=check_doi
-    )
+    return _attest(result, spec_dir, write=write, check_fulltext=check_fulltext, check_doi=check_doi)
 
 
 def _doi_to_check(studies: list[StudyRow], registry_doi: str | None) -> str | None:
@@ -1123,9 +1121,7 @@ def _tally_quotes(result: LiteratureResult, citations: dict[str, list[StudyRow]]
     result.quotes_unchecked = unchecked + unexamined
 
 
-def _compare_identifiers(
-    result: LiteratureResult, citations: dict[str, list[StudyRow]]
-) -> None:
+def _compare_identifiers(result: LiteratureResult, citations: dict[str, list[StudyRow]]) -> None:
     """Authored DOIs and PMC ids against the registry's own, for every row — merged ones included.
 
     This used to happen inside the fetch loop, which meant it happened only for citations this run
@@ -1312,7 +1308,7 @@ def _verification_records(
                 "citation_identifier",
                 "offline",
                 detail="the registry's own DOI and PMC id arrive with the existence lookup, which "
-                       "did not run",
+                "did not run",
                 source="pubmed",
             )
         )
@@ -1337,8 +1333,7 @@ def _verification_records(
         reasons = []
         if result.identifiers_unmatched:
             reasons.append(
-                f"{result.identifiers_unmatched} citation(s) PubMed reports no identifier of its "
-                f"own for"
+                f"{result.identifiers_unmatched} citation(s) PubMed reports no identifier of its own for"
             )
         if result.identifiers_foreign:
             reasons.append(
@@ -1360,8 +1355,7 @@ def _verification_records(
         parts = []
         if result.identifiers_conflicting:
             parts.append(
-                f"{len(result.doi_conflicts)} DOI and {len(result.pmcid_conflicts)} PMC id "
-                f"disagreement(s)"
+                f"{len(result.doi_conflicts)} DOI and {len(result.pmcid_conflicts)} PMC id disagreement(s)"
             )
         if result.identifiers_unmatched:
             parts.append(
@@ -1410,10 +1404,7 @@ def _verification_records(
             skipped(
                 "provenance_quote",
                 "nothing_to_check",
-                detail=(
-                    "no provenance quote or regex on any citation, so none of them asked this "
-                    "question"
-                ),
+                detail=("no provenance quote or regex on any citation, so none of them asked this question"),
                 source="europepmc",
             )
         )
@@ -1536,9 +1527,7 @@ def bibliographic(summary: dict) -> dict[str, str | None]:
     return out
 
 
-def _doi_conflicts(
-    pmid: str, studies: list[StudyRow], registry_doi: str | None
-) -> list[DoiConflict]:
+def _doi_conflicts(pmid: str, studies: list[StudyRow], registry_doi: str | None) -> list[DoiConflict]:
     """Authored DOIs that disagree with the registry's, de-duplicated and order-stable.
 
     `StudyRow.doi` is free-form and may be wrapped in a URL, so both sides are reduced to the DOI token
@@ -1557,9 +1546,7 @@ def _doi_conflicts(
     return conflicts
 
 
-def _pmcid_conflicts(
-    pmid: str, studies: list[StudyRow], registry_pmcid: str | None
-) -> list[PmcidConflict]:
+def _pmcid_conflicts(pmid: str, studies: list[StudyRow], registry_pmcid: str | None) -> list[PmcidConflict]:
     """Authored PMC ids that disagree with PubMed's for the same record (RM50).
 
     Read out of the **authored `pmid` cell**, which is free-form: a curator who writes
@@ -1579,9 +1566,7 @@ def _pmcid_conflicts(
         authored_pmcid for study in studies for authored_pmcid in extract_pmcids(study.pmid)
     ):
         if authored != expected:
-            conflicts.append(
-                PmcidConflict(pmid=pmid, authored=authored, registry=expected)
-            )
+            conflicts.append(PmcidConflict(pmid=pmid, authored=authored, registry=expected))
     return conflicts
 
 

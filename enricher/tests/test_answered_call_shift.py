@@ -149,9 +149,7 @@ def test_a_re_released_archive_saying_the_same_thing_has_not_moved(tmp_path: Pat
 
 def test_a_call_that_moved_under_an_answer_is_reported(tmp_path: Path) -> None:
     spec = _spec(tmp_path, [_answer()], [_call("benign", dataset="clinvar_2026-08-01")])
-    report = answered_call_shift(
-        spec, [_call("likely_pathogenic", dataset="clinvar_2026-09-01")]
-    )
+    report = answered_call_shift(spec, [_call("likely_pathogenic", dataset="clinvar_2026-09-01")])
 
     assert report.moved_subjects == 1
     assert report.subjects == 1
@@ -350,8 +348,17 @@ def test_an_answer_naming_one_genotype_leaves_the_other_alone(tmp_path: Path) ->
 #: convention. Matched on a word boundary: "unchecked" contains no verdict, and neither does
 #: "recorded".
 _ADJUDICATING = (
-    "correct", "incorrect", "right", "wrong", "mistaken", "invalid",
-    "vindicated", "proved", "disproved", "confirmed", "refuted",
+    "correct",
+    "incorrect",
+    "right",
+    "wrong",
+    "mistaken",
+    "invalid",
+    "vindicated",
+    "proved",
+    "disproved",
+    "confirmed",
+    "refuted",
 )
 
 
@@ -425,8 +432,13 @@ def test_the_overlay_key_and_the_record_key_share_one_canonical_form() -> None:
     target = OVERRIDABLE_TABLES[CONCORDANCE_CSV]
     for raw in (" rs334 ", "rs334", "A/T ", " 0/1"):
         overlay = OverrideRow(
-            table=CONCORDANCE_CSV, subject=raw, member=raw, field="authored_clin_sig",
-            operation="update", value="pathogenic", reason="probe",
+            table=CONCORDANCE_CSV,
+            subject=raw,
+            member=raw,
+            field="authored_clin_sig",
+            operation="update",
+            value="pathogenic",
+            reason="probe",
         )
         record = ClinSigAuthorityCallRow(
             variant_key=raw, genotype=raw, authority="clinvar", status="unchecked"
@@ -467,8 +479,7 @@ def test_the_pure_comparison_needs_no_files_at_all() -> None:
 
 
 _SPEC_YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+    "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
 )
 _SPEC_VARIANTS = "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c\n"
 
@@ -568,9 +579,6 @@ def test_the_run_reads_the_baseline_before_the_commit_overwrites_it() -> None:
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef)
         and node.lineno <= lines["answered_call_shift"][0] <= (node.end_lineno or 0)
-        and any(
-            node.lineno <= line <= (node.end_lineno or 0)
-            for line in lines["write_concordance_tables"]
-        )
+        and any(node.lineno <= line <= (node.end_lineno or 0) for line in lines["write_concordance_tables"])
     ]
     assert enclosing, "the read and the write are in different functions, so their order is not fixed"

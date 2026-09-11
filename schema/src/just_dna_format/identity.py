@@ -27,9 +27,7 @@ def is_valid_name(name: str) -> bool:
 def validate_name(name: str) -> str:
     """Return `name` if valid, else raise `ValueError`."""
     if not is_valid_name(name):
-        raise ValueError(
-            f"module name must be lowercase alphanumeric with underscores, got: {name!r}"
-        )
+        raise ValueError(f"module name must be lowercase alphanumeric with underscores, got: {name!r}")
     return name
 
 
@@ -41,9 +39,7 @@ def is_valid_namespace(namespace: str) -> bool:
 def validate_namespace(namespace: str) -> str:
     """Return `namespace` if valid, else raise `ValueError`."""
     if not is_valid_namespace(namespace):
-        raise ValueError(
-            f"namespace must be lowercase alphanumeric with hyphens, got: {namespace!r}"
-        )
+        raise ValueError(f"namespace must be lowercase alphanumeric with hyphens, got: {namespace!r}")
     return namespace
 
 

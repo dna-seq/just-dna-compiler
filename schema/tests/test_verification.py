@@ -45,12 +45,18 @@ _HASH = "sha256:" + "ab" * 32
 def _records() -> list[VerificationRecord]:
     return [
         VerificationRecord(
-            check="clinical_significance", subjects=12, findings=1,
-            source="clinvar", release="2026-06-27", checked_at="2026-08-13T00:00:00Z",
+            check="clinical_significance",
+            subjects=12,
+            findings=1,
+            source="clinvar",
+            release="2026-06-27",
+            checked_at="2026-08-13T00:00:00Z",
         ),
         VerificationRecord(
-            check="reference_allele", skipped="offline",
-            detail="no sequence access this run", checked_at="2026-08-13T00:00:00Z",
+            check="reference_allele",
+            skipped="offline",
+            detail="no sequence access this run",
+            checked_at="2026-08-13T00:00:00Z",
         ),
     ]
 
@@ -80,9 +86,7 @@ def test_ran_against_nothing_is_not_the_same_value_as_did_not_run() -> None:
 def test_the_two_vocabularies_are_closed_and_canonicalizing() -> None:
     """A separator slip is absorbed (`vocab.match_vocab`); a value naming nothing still fails."""
     assert VerificationRecord(check="reference-allele").check == "reference_allele"
-    assert VerificationRecord(check="rsid_currency", skipped="not-requested").skipped == (
-        "not_requested"
-    )
+    assert VerificationRecord(check="rsid_currency", skipped="not-requested").skipped == ("not_requested")
     with pytest.raises(ValueError):
         VerificationRecord(check="whatever_i_felt_like")
     with pytest.raises(ValueError):
@@ -97,8 +101,11 @@ def test_a_document_carries_at_most_one_record_per_check() -> None:
     ]
     with pytest.raises(ValueError, match="more than once"):
         VerificationDoc(
-            module_hash=_HASH, signature=verification_signature(doubled),
-            difficulty=_EASY, nonce=0, records=doubled,
+            module_hash=_HASH,
+            signature=verification_signature(doubled),
+            difficulty=_EASY,
+            nonce=0,
+            records=doubled,
         )
 
 
@@ -185,8 +192,7 @@ def test_edited_records_fail_on_the_signature() -> None:
 
 def test_a_hand_assembled_nonce_fails_on_the_work() -> None:
     doc = attest(_records(), _HASH, difficulty=_EASY)
-    reason = attestation_failure(doc.model_copy(update={"nonce": doc.nonce + 1}), _HASH,
-                                 difficulty=_EASY)
+    reason = attestation_failure(doc.model_copy(update={"nonce": doc.nonce + 1}), _HASH, difficulty=_EASY)
     assert reason is not None and "proof-of-work" in reason
 
 
@@ -230,7 +236,9 @@ def test_a_skip_does_not_replace_an_answer_the_document_already_holds() -> None:
     """
     answered, _ = _records()
     stale = VerificationRecord(
-        check=answered.check, skipped="offline", detail="no snapshot and no egress",
+        check=answered.check,
+        skipped="offline",
+        detail="no snapshot and no egress",
     )
     kept = {r.check: r for r in merge_records([answered], [stale])}[answered.check]
     assert (kept.subjects, kept.findings, kept.skipped) == (12, 1, None)
@@ -242,10 +250,7 @@ def test_newest_wins_between_two_records_of_the_same_disposition() -> None:
     newer_answer = VerificationRecord(check=answered.check, subjects=30, findings=2)
     newer_skip = VerificationRecord(check=skipped_record.check, skipped="not_requested")
 
-    by_check = {
-        r.check: r
-        for r in merge_records([answered, skipped_record], [newer_answer, newer_skip])
-    }
+    by_check = {r.check: r for r in merge_records([answered, skipped_record], [newer_answer, newer_skip])}
     assert (by_check[answered.check].subjects, by_check[answered.check].findings) == (30, 2)
     assert by_check[skipped_record.check].skipped == "not_requested"
 
@@ -260,9 +265,9 @@ def test_an_answer_about_bytes_that_have_moved_does_not_outrank_this_run() -> No
     """
     answered, _ = _records()
     fresh = VerificationRecord(check=answered.check, skipped="offline", detail="rows changed")
-    kept = {
-        r.check: r for r in merge_records([answered], [fresh], existing_still_binds=False)
-    }[answered.check]
+    kept = {r.check: r for r in merge_records([answered], [fresh], existing_still_binds=False)}[
+        answered.check
+    ]
     assert kept.skipped == "offline" and kept.subjects == 0
 
 

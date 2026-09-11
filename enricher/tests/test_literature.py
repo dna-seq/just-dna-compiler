@@ -46,13 +46,12 @@ _EPMC_SEARCH = json.loads((_ASSETS / "europepmc_search_payload.json").read_text(
 _FULLTEXT_XML = (_ASSETS / "europepmc_fulltext_PMC5753237.xml").read_text()
 _CROSSREF = json.loads((_ASSETS / "crossref_works_payload.json").read_text())
 
-_REAL = "29165669"        # ClinVar paper: exists, open access, in PMC
-_PAYWALLED = "12345678"   # real PubMed record, NOT in PMC
-_ABSENT = "99999999"      # no PubMed record at all (checked, not assumed)
+_REAL = "29165669"  # ClinVar paper: exists, open access, in PMC
+_PAYWALLED = "12345678"  # real PubMed record, NOT in PMC
+_ABSENT = "99999999"  # no PubMed record at all (checked, not assumed)
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+    "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
 )
 
 
@@ -100,17 +99,13 @@ def _crossref() -> CrossrefClient:
 def _spec(d: Path, studies: str) -> Path:
     d.mkdir(parents=True, exist_ok=True)
     (d / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
-    (d / "variants.csv").write_text(
-        "rsid,genotype,state,conclusion\nrs334,A/T,risk,c\n", encoding="utf-8"
-    )
+    (d / "variants.csv").write_text("rsid,genotype,state,conclusion\nrs334,A/T,risk,c\n", encoding="utf-8")
     (d / "studies.csv").write_text(studies, encoding="utf-8")
     return d
 
 
 def _run(spec: Path, **kw):
-    return enrich_literature(
-        spec, eutils=_eutils(), europepmc=_epmc(), crossref=_crossref(), **kw
-    )
+    return enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(), crossref=_crossref(), **kw)
 
 
 # ── existence ───────────────────────────────────────────────────────────────────────────────────
@@ -154,7 +149,7 @@ def test_doi_and_pmcid_are_filled_from_the_same_response(tmp_path: Path) -> None
 
     assert row.doi == expected["doi"]
     assert row.pmcid == expected["pmc"]
-    assert row.pmcid.startswith("PMC")           # the bare form, not the `pmc-id: …;` wrapper
+    assert row.pmcid.startswith("PMC")  # the bare form, not the `pmc-id: …;` wrapper
 
 
 def test_an_absent_authored_doi_is_filled_in_the_sidecar_not_in_studies_csv(tmp_path: Path) -> None:
@@ -169,9 +164,7 @@ def test_an_absent_authored_doi_is_filled_in_the_sidecar_not_in_studies_csv(tmp_
 
 
 def test_a_contradicting_authored_doi_is_reported_never_repaired(tmp_path: Path) -> None:
-    spec = _spec(
-        tmp_path / "s", f"rsid,pmid,doi\nrs334,{_REAL},10.9999/definitely-not-this-paper\n"
-    )
+    spec = _spec(tmp_path / "s", f"rsid,pmid,doi\nrs334,{_REAL},10.9999/definitely-not-this-paper\n")
     result = _run(spec)
 
     assert len(result.doi_conflicts) == 1
@@ -184,9 +177,7 @@ def test_a_contradicting_authored_doi_is_reported_never_repaired(tmp_path: Path)
 
 def test_a_url_wrapped_doi_is_not_a_conflict(tmp_path: Path) -> None:
     """`https://doi.org/10.1/x` and `10.1/x` are the same identifier written two ways."""
-    spec = _spec(
-        tmp_path / "s", f"rsid,pmid,doi\nrs334,{_REAL},https://doi.org/10.1093/nar/gkx1153\n"
-    )
+    spec = _spec(tmp_path / "s", f"rsid,pmid,doi\nrs334,{_REAL},https://doi.org/10.1093/nar/gkx1153\n")
     assert _run(spec).doi_conflicts == []
 
 
@@ -208,9 +199,7 @@ def test_a_quote_present_in_the_real_article_is_found(tmp_path: Path) -> None:
     phrase = "variant interpretations"
     assert phrase in text.casefold()
 
-    spec = _spec(
-        tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},{phrase}\n"
-    )
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},{phrase}\n")
     result = _run(spec)
 
     assert result.fulltext_checked == [_REAL]
@@ -226,7 +215,7 @@ def test_a_quote_absent_from_the_article_is_reported_as_checked_and_not_found(tm
     )
     result = _run(spec)
 
-    assert result.rows[0].quotes_found == 0        # zero: checked, not found
+    assert result.rows[0].quotes_found == 0  # zero: checked, not found
     assert result.quotes_unchecked == 0
 
 
@@ -236,16 +225,14 @@ def test_a_paywalled_article_is_never_checked_rather_than_failed(tmp_path: Path)
     A quote in an article we could not read has not failed to match. Recording it as 0-found would
     describe the pass's own reach as a defect in the module.
     """
-    spec = _spec(
-        tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_PAYWALLED},anything at all\n"
-    )
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_PAYWALLED},anything at all\n")
     result = _run(spec)
 
-    assert result.rows[0].quotes_found is None     # null: not checked
+    assert result.rows[0].quotes_found is None  # null: not checked
     assert result.rows[0].quotes_authored == 1
     assert result.quotes_unchecked == 1
     assert result.fulltext_checked == []
-    assert result.abstract_checked == []      # this one has no abstract either
+    assert result.abstract_checked == []  # this one has no abstract either
     assert result.rows[0].quote_source is None
     assert "1 with nothing retrievable" in result.coverage
 
@@ -254,8 +241,7 @@ def test_coverage_is_stated_as_a_fraction(tmp_path: Path) -> None:
     """Counted in quotes, not citations: one citation can carry a settled quote and an unread one."""
     spec = _spec(
         tmp_path / "s",
-        f"rsid,pmid,provenance_quote\nrs334,{_REAL},variant interpretations\n"
-        f"rs334,{_PAYWALLED},something\n",
+        f"rsid,pmid,provenance_quote\nrs334,{_REAL},variant interpretations\nrs334,{_PAYWALLED},something\n",
     )
     result = _run(spec)
     assert result.coverage == (
@@ -272,7 +258,7 @@ def test_a_citation_with_no_quote_is_not_counted_as_unretrievable(tmp_path: Path
     spec = _spec(tmp_path / "s", f"rsid,pmid\nrs334,{_REAL}\n")
     result = _run(spec)
 
-    assert result.rows[0].is_open_access is True          # it IS retrievable
+    assert result.rows[0].is_open_access is True  # it IS retrievable
     assert "nothing to check against fulltext" in result.coverage
     assert "no retrievable fulltext" not in result.coverage
 
@@ -285,7 +271,9 @@ def test_a_404_fulltext_falls_back_to_the_abstract(tmp_path: Path) -> None:
     what tells a reader that this 0 is not a verdict."""
     spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},anything\n")
     result = enrich_literature(
-        spec, eutils=_eutils(), europepmc=_epmc(fulltext=None, fulltext_status=404),
+        spec,
+        eutils=_eutils(),
+        europepmc=_epmc(fulltext=None, fulltext_status=404),
         crossref=_crossref(),
     )
     assert result.rows[0].quote_source == "abstract"
@@ -349,9 +337,7 @@ def test_offline_is_a_no_op_with_a_warning(tmp_path: Path) -> None:
 
 def test_rows_are_emitted_in_a_deterministic_order(tmp_path: Path) -> None:
     """Emission order feeds parquet bytes, so it is pinned rather than left to dict iteration."""
-    spec = _spec(
-        tmp_path / "s", f"rsid,pmid\nrs334,{_ABSENT}\nrs334,{_REAL}\nrs334,{_PAYWALLED}\n"
-    )
+    spec = _spec(tmp_path / "s", f"rsid,pmid\nrs334,{_ABSENT}\nrs334,{_REAL}\nrs334,{_PAYWALLED}\n")
     result = _run(spec)
     assert [r.pmid for r in result.rows] == sorted([_REAL, _PAYWALLED, _ABSENT], key=int)
 
@@ -392,7 +378,7 @@ def test_live_services_still_behave_as_recorded() -> None:
 
     with CrossrefClient() as crossref:
         assert crossref.exists("10.1093/nar/gkx1153") is True
-        assert crossref.exists("10.1101/2024.06.17.599351") is True   # preprint, no PMID
+        assert crossref.exists("10.1101/2024.06.17.599351") is True  # preprint, no PMID
         assert crossref.exists("10.9999/definitely-not-a-real-doi") is False
 
 
@@ -411,19 +397,23 @@ def test_a_paywalled_article_with_an_abstract_is_still_searched(tmp_path: Path) 
     stale assertion passing.
     """
     record = next(
-        r for r in _EPMC_SEARCH["resultList"]["result"] if r.get("abstractText")
-        and r.get("isOpenAccess") == "N"
+        r
+        for r in _EPMC_SEARCH["resultList"]["result"]
+        if r.get("abstractText") and r.get("isOpenAccess") == "N"
     )
     pmid, abstract = record["pmid"], record["abstractText"]
     phrase = " ".join(abstract.split()[3:8]).replace('"', "")
 
     spec = _spec(tmp_path / "s", f'rsid,pmid,provenance_quote\nrs334,{pmid},"{phrase}"\n')
     result = enrich_literature(
-        spec, eutils=_eutils(), europepmc=_epmc(), crossref=_crossref(),
+        spec,
+        eutils=_eutils(),
+        europepmc=_epmc(),
+        crossref=_crossref(),
     )
     row = next(r for r in result.rows if r.pmid == pmid)
-    assert row.is_open_access is False        # genuinely paywalled...
-    assert row.quote_source == "abstract"     # ...and still checked
+    assert row.is_open_access is False  # genuinely paywalled...
+    assert row.quote_source == "abstract"  # ...and still checked
     assert row.quotes_found == 1
     assert pmid in result.abstract_checked
 
@@ -435,8 +425,9 @@ def test_an_abstract_hit_settles_a_quote_but_a_miss_does_not(tmp_path: Path) -> 
     abstract says nothing about the body, so it stays counted as unchecked rather than as a failure.
     """
     record = next(
-        r for r in _EPMC_SEARCH["resultList"]["result"] if r.get("abstractText")
-        and r.get("isOpenAccess") == "N"
+        r
+        for r in _EPMC_SEARCH["resultList"]["result"]
+        if r.get("abstractText") and r.get("isOpenAccess") == "N"
     )
     pmid = record["pmid"]
     spec = _spec(
@@ -444,11 +435,14 @@ def test_an_abstract_hit_settles_a_quote_but_a_miss_does_not(tmp_path: Path) -> 
         f'rsid,pmid,provenance_quote\nrs334,{pmid},"certainly not in this abstract at all"\n',
     )
     result = enrich_literature(
-        spec, eutils=_eutils(), europepmc=_epmc(), crossref=_crossref(),
+        spec,
+        eutils=_eutils(),
+        europepmc=_epmc(),
+        crossref=_crossref(),
     )
     row = next(r for r in result.rows if r.pmid == pmid)
     assert (row.quote_source, row.quotes_found) == ("abstract", 0)
-    assert result.quotes_unchecked == 1       # a miss in an abstract is not a verdict
+    assert result.quotes_unchecked == 1  # a miss in an abstract is not a verdict
     assert "not a verdict" in result.coverage
 
 
@@ -464,15 +458,13 @@ def test_crossref_confirms_a_real_doi_and_rejects_a_fabricated_one() -> None:
     """
     client = _crossref()
     assert client.exists("10.1093/nar/gkx1153") is True
-    assert client.exists("10.1101/2024.06.17.599351") is True    # bioRxiv preprint, no PMID
+    assert client.exists("10.1101/2024.06.17.599351") is True  # bioRxiv preprint, no PMID
     assert client.exists("10.9999/definitely-not-a-real-doi") is False
     assert _CROSSREF["10.1101/2024.06.17.599351"]["message"]["type"] == "posted-content"
 
 
 def test_a_doi_crossref_cannot_resolve_is_reported(tmp_path: Path) -> None:
-    spec = _spec(
-        tmp_path / "s", f"rsid,pmid,doi\nrs334,{_REAL},10.9999/definitely-not-a-real-doi\n"
-    )
+    spec = _spec(tmp_path / "s", f"rsid,pmid,doi\nrs334,{_REAL},10.9999/definitely-not-a-real-doi\n")
     result = _run(spec)
     # The AUTHORED doi is what gets checked — the registry's own would exist by construction.
     assert result.doi_missing == ["10.9999/definitely-not-a-real-doi"]
@@ -481,6 +473,7 @@ def test_a_doi_crossref_cannot_resolve_is_reported(tmp_path: Path) -> None:
 
 def test_an_unreachable_crossref_records_not_checked_never_absent(tmp_path: Path) -> None:
     """A transport failure must not be reported as "this DOI does not exist"."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("no route to host")
 
@@ -514,7 +507,7 @@ def test_the_three_checks_are_recorded_with_their_own_denominators(tmp_path: Pat
     records = _records(spec)
 
     assert set(records) == {"citation_existence", "citation_identifier", "provenance_quote"}
-    assert all(r.release is None for r in records.values())      # neither service publishes one
+    assert all(r.release is None for r in records.values())  # neither service publishes one
 
     existence = records["citation_existence"]
     assert existence.skipped is None
@@ -529,8 +522,8 @@ def test_the_three_checks_are_recorded_with_their_own_denominators(tmp_path: Pat
 
     quote = records["provenance_quote"]
     assert quote.skipped is None and quote.source == "europepmc"
-    assert quote.subjects == result.quotes_checked == 1     # only the open-access one was read
-    assert quote.findings == 0                              # and the quote is in it
+    assert quote.subjects == result.quotes_checked == 1  # only the open-access one was read
+    assert quote.findings == 0  # and the quote is in it
 
 
 def test_a_quote_the_article_does_not_carry_is_a_finding(tmp_path: Path) -> None:
@@ -552,9 +545,7 @@ def test_an_article_nobody_could_read_is_a_skip_never_a_clean_run(tmp_path: Path
     confirmed either. `no_reference` says which, and the authored count rides in `detail` so the
     reader can see the size of what went unread.
     """
-    spec = _spec(
-        tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_PAYWALLED},anything at all\n"
-    )
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_PAYWALLED},anything at all\n")
     result = _run(spec)
 
     quote = _records(spec)["provenance_quote"]
@@ -568,9 +559,7 @@ def test_a_citation_that_resolves_in_neither_registry_is_one_finding(tmp_path: P
     """PubMed's `exists` and Crossref's `doi_exists` answer the same question for one citation, so a
     row failing both is one unresolved citation rather than two — which is also what keeps findings a
     subset of subjects."""
-    spec = _spec(
-        tmp_path / "s", f"rsid,pmid,doi\nrs334,{_ABSENT},10.9999/definitely-not-a-real-doi\n"
-    )
+    spec = _spec(tmp_path / "s", f"rsid,pmid,doi\nrs334,{_ABSENT},10.9999/definitely-not-a-real-doi\n")
     result = _run(spec)
 
     assert result.missing == [_ABSENT] and result.doi_missing == ["10.9999/definitely-not-a-real-doi"]
@@ -581,9 +570,7 @@ def test_a_citation_that_resolves_in_neither_registry_is_one_finding(tmp_path: P
 
 
 def test_an_authored_identifier_is_compared_and_the_disagreement_recorded(tmp_path: Path) -> None:
-    spec = _spec(
-        tmp_path / "s", f"rsid,pmid,doi\nrs334,{_REAL},10.9999/definitely-not-this-paper\n"
-    )
+    spec = _spec(tmp_path / "s", f"rsid,pmid,doi\nrs334,{_REAL},10.9999/definitely-not-this-paper\n")
     result = _run(spec)
 
     record = _records(spec)["citation_identifier"]
@@ -667,7 +654,7 @@ def test_a_curators_own_identifier_is_never_called_the_registrys(tmp_path: Path)
 
     assert result.doi_conflicts == []
     assert (result.identifiers_authored, result.identifiers_foreign) == (1, 1)
-    assert result.identifiers_unmatched == 0     # PubMed was not the reason, and must not be blamed
+    assert result.identifiers_unmatched == 0  # PubMed was not the reason, and must not be blamed
     record = _records(spec)["citation_identifier"]
     assert record.skipped == "no_reference"
     assert "a curator wrote" in (record.detail or "")
@@ -762,7 +749,7 @@ def test_a_citation_removed_from_studies_stops_being_counted(tmp_path: Path) -> 
     assert [r.pmid for r in result.rows] == sorted([_REAL, _ABSENT], key=int)  # the row is kept
     record = _records(spec)["citation_existence"]
     assert (record.subjects, record.findings) == (1, 0)
-    _run(spec, mode="strict")       # and the module is compilable again without deleting anything
+    _run(spec, mode="strict")  # and the module is compilable again without deleting anything
 
 
 def test_a_quote_removed_since_the_pin_is_not_a_finding_about_the_module(tmp_path: Path) -> None:
@@ -800,9 +787,7 @@ def test_coverage_never_calls_a_pinned_verdict_unretrievable(tmp_path: Path) -> 
     1 with nothing retrievable" for an open-access article it had read minutes earlier — one line
     above `quotes: 1/1 found`.
     """
-    spec = _spec(
-        tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},variant interpretations\n"
-    )
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},variant interpretations\n")
     first = _run(spec)
     second = _run(spec)
 
@@ -818,9 +803,7 @@ def test_the_no_doi_note_does_not_contradict_its_own_counts(tmp_path: Path) -> N
     the same holds of a record's `detail`, and "only PubMed was asked" printed beside "1 cited DOI(s)
     do not resolve in Crossref" is one sentence disagreeing with itself.
     """
-    spec = _spec(
-        tmp_path / "s", f"rsid,pmid,doi\nrs334,{_REAL},10.9999/definitely-not-a-real-doi\n"
-    )
+    spec = _spec(tmp_path / "s", f"rsid,pmid,doi\nrs334,{_REAL},10.9999/definitely-not-a-real-doi\n")
     _run(spec)
     _run(spec, check_doi=False)
 
@@ -840,23 +823,19 @@ def test_correcting_a_doi_clears_the_finding_it_caused(tmp_path: Path) -> None:
     else. The row is still kept — deleting a row is not this pass's call — its verdict simply stops
     being attributed to a DOI it was never about.
     """
-    spec = _spec(
-        tmp_path / "s", f"rsid,pmid,doi\nrs334,{_REAL},10.9999/definitely-not-a-real-doi\n"
-    )
+    spec = _spec(tmp_path / "s", f"rsid,pmid,doi\nrs334,{_REAL},10.9999/definitely-not-a-real-doi\n")
     first = _run(spec)
     assert first.doi_missing == ["10.9999/definitely-not-a-real-doi"]
     assert first.rows[0].doi_checked == "10.9999/definitely-not-a-real-doi"
 
-    (spec / "studies.csv").write_text(
-        f"rsid,pmid,doi\nrs334,{_REAL},10.1093/nar/gkx1153\n", encoding="utf-8"
-    )
+    (spec / "studies.csv").write_text(f"rsid,pmid,doi\nrs334,{_REAL},10.1093/nar/gkx1153\n", encoding="utf-8")
     result = _run(spec)
 
     assert result.doi_missing == [] and result.doi_verdicts_stale == 1
     record = _records(spec)["citation_existence"]
     assert record.findings == 0
     assert "no longer cites" in (record.detail or "")
-    _run(spec, mode="strict")       # and strict stops refusing, without deleting the sidecar
+    _run(spec, mode="strict")  # and strict stops refusing, without deleting the sidecar
 
 
 def test_no_fulltext_does_not_erase_an_answer_the_pin_already_holds(tmp_path: Path) -> None:
@@ -866,9 +845,7 @@ def test_no_fulltext_does_not_erase_an_answer_the_pin_already_holds(tmp_path: Pa
     record contradict the run that wrote it: `_tally_quotes` had just read a settled verdict off the
     pin, so "no authored quote was matched against any retrieved text" was false by its own tally.
     """
-    spec = _spec(
-        tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},variant interpretations\n"
-    )
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},variant interpretations\n")
     _run(spec)
     before = _records(spec)["provenance_quote"]
     assert (before.subjects, before.findings, before.skipped) == (1, 0, None)
@@ -876,16 +853,14 @@ def test_no_fulltext_does_not_erase_an_answer_the_pin_already_holds(tmp_path: Pa
     result = _run(spec, check_fulltext=False)
     after = _records(spec)["provenance_quote"]
 
-    assert result.quotes_checked == 1                    # the pin still answers it
+    assert result.quotes_checked == 1  # the pin still answers it
     assert (after.subjects, after.findings, after.skipped) == (1, 0, None)
     assert after.checked_at == before.checked_at
 
 
 def test_no_fulltext_on_a_module_with_no_answer_still_says_the_caller_declined(tmp_path: Path) -> None:
     """The other half: silence is only right when it protects an answer."""
-    spec = _spec(
-        tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},variant interpretations\n"
-    )
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},variant interpretations\n")
     _run(spec, check_fulltext=False)
     assert _records(spec)["provenance_quote"].skipped == "not_requested"
 
@@ -902,7 +877,7 @@ def test_a_doi_no_run_ever_resolved_is_counted_apart_from_a_stale_one(tmp_path: 
     result = _run(spec)
 
     assert result.rows[0].doi_exists is None and result.doi_never_checked == 1
-    assert result.doi_verdicts_stale == 0            # nothing stale: nothing was ever answered
+    assert result.doi_verdicts_stale == 0  # nothing stale: nothing was ever answered
     detail = _records(spec)["citation_existence"].detail or ""
     assert "never been resolved in Crossref" in detail
 
@@ -914,9 +889,7 @@ def test_no_fulltext_coverage_does_not_call_an_unfetched_article_unretrievable(t
     retrievable" — about articles nobody tried to fetch — while the record for the same run said
     `not_requested`.
     """
-    spec = _spec(
-        tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},variant interpretations\n"
-    )
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},variant interpretations\n")
     result = _run(spec, check_fulltext=False)
 
     assert "nothing retrievable" not in result.coverage
@@ -1035,7 +1008,7 @@ def test_a_paywalled_article_is_still_compared_against_its_title(tmp_path: Path)
     title = _title_of(_PAYWALLED)
     spec = _spec(tmp_path / "s", f'rsid,pmid,provenance_quote\nrs334,{_PAYWALLED},"{title}"\n')
     result = _run(spec)
-    assert result.rows[0].quotes_found is None      # never checked — no fulltext
+    assert result.rows[0].quotes_found is None  # never checked — no fulltext
     assert result.titles_as_quotes == [_PAYWALLED]
 
 
@@ -1070,9 +1043,7 @@ def test_a_title_quote_is_reported_even_when_the_sidecar_row_is_already_pinned(
 
 def test_a_pinned_row_whose_quote_is_a_real_passage_is_not_reported(tmp_path: Path) -> None:
     """The negative half on the same path, so the merged branch is not just always-true."""
-    spec = _spec(
-        tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},variant interpretations\n"
-    )
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},variant interpretations\n")
     (spec / "literature.csv").write_text(
         "pmid,doi,pmcid,exists,is_open_access,quotes_authored,quotes_found,source,status,fetched_at\n"
         f"{_REAL},10.1093/nar/gkx1153,,true,,0,,pubmed,resolved,2026-08-04T21:58:24Z\n",

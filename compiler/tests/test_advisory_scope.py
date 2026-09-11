@@ -70,7 +70,12 @@ def test_the_unscoped_columns_are_the_ones_with_more_than_one_reader() -> None:
     citation site of several — a binning row's since RM47, a `pharm_variants.csv` row's since RM132 —
     so scoping any of them would suppress a true advisory."""
     assert set(REDUNDANCY_BEARING) - set(REDUNDANCY_BEARING_TABLES) == {
-        "rsid", "chrom", "start", "ref", "alts", "pmid",
+        "rsid",
+        "chrom",
+        "start",
+        "ref",
+        "alts",
+        "pmid",
     }
 
 
@@ -113,9 +118,7 @@ def test_clin_sig_on_variants_keeps_the_original_reason() -> None:
 def test_a_binning_pmid_keeps_the_vacuous_reason_because_a_bin_really_is_a_citation() -> None:
     """RM47's second citation site: `enricher.literature` reads bin-row pmids through
     `table_citations`, so this advisory was always true and must stay unscoped."""
-    message = _advisory(
-        "repeat_alleles.csv", _head("htt_repeat_expansion", "repeat_alleles.csv"), "pmid"
-    )
+    message = _advisory("repeat_alleles.csv", _head("htt_repeat_expansion", "repeat_alleles.csv"), "pmid")
     assert message is not None
     assert _UNSCOPED_REASON in message
 

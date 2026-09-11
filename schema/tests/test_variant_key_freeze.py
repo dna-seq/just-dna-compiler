@@ -13,7 +13,7 @@ def _v(**kw) -> VariantRow:
 
 
 def test_variant_key_backfilled_at_load() -> None:
-    assert _v(rsid="rs1").variant_key == "rs1"                     # rsid uniquely identifies
+    assert _v(rsid="rs1").variant_key == "rs1"  # rsid uniquely identifies
     assert _v(chrom="1", start=100, ref="A").variant_key == "1:100:A"  # position-only → coord
     assert _v(rsid="rs1", chrom="1", start=100, ref="A").variant_key == "rs1"  # rsid wins
 
@@ -44,9 +44,7 @@ def test_variant_key_absent_from_authoring_reference() -> None:
 def test_reversed_csv_shape_without_variant_key_validates() -> None:
     # reverse_module never writes a variant_key column; a row lacking it must still validate
     # (the field defaults to None, then the validator stamps it) — extra="forbid" is unaffected.
-    row = VariantRow.model_validate(
-        {"rsid": "rs1", "genotype": "A/G", "state": "neutral", "conclusion": "c"}
-    )
+    row = VariantRow.model_validate({"rsid": "rs1", "genotype": "A/G", "state": "neutral", "conclusion": "c"})
     assert row.variant_key == "rs1"
 
 

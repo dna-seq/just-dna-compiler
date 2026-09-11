@@ -60,15 +60,23 @@ def test_pick_is_independent_of_row_order(gene: str) -> None:
 
 def test_pick_falls_back_to_canonical_then_gives_up() -> None:
     ensembl_canonical = {
-        "gene_id": "ENSG00000000001", "transcript": "ENST1", "mane_select": "false",
+        "gene_id": "ENSG00000000001",
+        "transcript": "ENST1",
+        "mane_select": "false",
         "canonical": "true",
     }
-    other = {"gene_id": "ENSG00000000001", "transcript": "ENST2", "mane_select": "false",
-             "canonical": "false"}
+    other = {
+        "gene_id": "ENSG00000000001",
+        "transcript": "ENST2",
+        "mane_select": "false",
+        "canonical": "false",
+    }
     assert _pick_row([other, ensembl_canonical]) == ensembl_canonical
     # Only RefSeq rows: there is no ENSG identity to carry, so the honest answer is "none".
-    assert _pick_row([{"gene_id": "672", "transcript": "NM_1", "mane_select": "true",
-                       "canonical": "true"}]) is None
+    assert (
+        _pick_row([{"gene_id": "672", "transcript": "NM_1", "mane_select": "true", "canonical": "true"}])
+        is None
+    )
     assert _pick_row([]) is None
 
 
@@ -79,10 +87,10 @@ def test_snapshot_is_one_row_per_gene_on_the_ensembl_transcript(snapshot) -> Non
     result, frame = snapshot
     assert result.gene_count == frame.height
     assert frame["gene"].to_list() == sorted({r["gene"] for r in _all_rows()})
-    assert frame["gene"].n_unique() == frame.height          # one row per gene
+    assert frame["gene"].n_unique() == frame.height  # one row per gene
     assert all(g.startswith("ENSG") for g in frame["gene_id"].to_list())
     assert all(t.startswith("ENST") for t in frame["transcript"].to_list())
-    assert result.source_rows > frame.height                 # many transcripts reduced to few genes
+    assert result.source_rows > frame.height  # many transcripts reduced to few genes
 
 
 def test_metric_values_match_the_source_row(snapshot) -> None:

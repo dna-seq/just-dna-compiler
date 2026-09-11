@@ -33,19 +33,13 @@ from just_dna_format.resolution import ResolutionRow
 _LICENCE_CSV = preferred_spelling(SOURCES_CSV)
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+    "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
 )
 
 #: Three subjects, all rsid-only, so every one of them reaches the live link and nothing resolves off
 #: an authored coordinate. Deliberate: a subject the chain never asks about cannot be journaled, and a
 #: fixture full of those would let a broken journal still pass every assertion below.
-_VARIANTS = (
-    "rsid,genotype,state,conclusion\n"
-    "rs1801133,A/G,risk,c\n"
-    "rs429358,C/T,risk,c\n"
-    "rs7412,C/T,risk,c\n"
-)
+_VARIANTS = "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c\nrs429358,C/T,risk,c\nrs7412,C/T,risk,c\n"
 
 #: What the stub resolver answers for each rsid — one locus each, distinct positions.
 _ANSWERS: dict[str, list[dict]] = {
@@ -322,7 +316,7 @@ def test_a_resume_drops_a_staged_answer_from_a_link_this_run_has_switched_off(
     assert "switched off this run" in caplog.text
     row = next(r for r in result.rows if r.rsid == "rs1801133")
     assert row.source != "gnomad"
-    assert row.start == _ANSWERS["rs1801133"][0]["start"]   # the live link was asked instead
+    assert row.start == _ANSWERS["rs1801133"][0]["start"]  # the live link was asked instead
     assert "rs1801133" in stub.asked
 
 
@@ -417,6 +411,7 @@ def test_a_filesystem_that_refuses_the_lock_degrades_loudly_too(
     `flock` is untested here on the network filesystems a consumer may use, so the branch that says so
     is exercised rather than merely written — an unreached refusal branch is not an API.
     """
+
     def refuse(fd: int, operation: int) -> None:
         raise OSError(37, "No locks available")
 
@@ -459,7 +454,9 @@ def test_progress_reports_done_and_total_over_subjects_monotonically(tmp_path: P
     spec = _spec(tmp_path / "spec")
     calls: list[tuple[int, int]] = []
     result = _run(
-        spec, tmp_path, resolver=_StubResolver(),
+        spec,
+        tmp_path,
+        resolver=_StubResolver(),
         progress=lambda done, total: calls.append((done, total)),
     )
 
@@ -490,9 +487,17 @@ def _recorded(rsid: str, chrom: str, start: int, ref: str, alts: str) -> Resolut
     would then be comparing against a table the code fills in on its way past.
     """
     return ResolutionRow(
-        variant_key=rsid, rsid=rsid, chrom=chrom, start=start, ref=ref, alts=alts,
-        genome_build="GRCh38", locus_index=0, source="ensembl-rest",
-        authority=resolution_authority("ensembl-rest"), status="resolved",
+        variant_key=rsid,
+        rsid=rsid,
+        chrom=chrom,
+        start=start,
+        ref=ref,
+        alts=alts,
+        genome_build="GRCh38",
+        locus_index=0,
+        source="ensembl-rest",
+        authority=resolution_authority("ensembl-rest"),
+        status="resolved",
     )
 
 
@@ -521,11 +526,16 @@ def test_rederive_names_the_subjects_whose_source_changed_its_answer(
 ) -> None:
     """The canary, performed. A source that quietly revises an answer moves no signature and no digest
     on an ordinary run, because an ordinary run never re-asks about a recorded row."""
-    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c\nrs7412,C/T,risk,c\n")
-    _write_recorded(spec, [
-        _recorded("rs1801133", "1", 999, "G", "A"),                       # the source now says 11856377
-        _recorded("rs7412", "19", 44908822, "C", "T"),                    # unchanged
-    ])
+    spec = _spec(
+        tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c\nrs7412,C/T,risk,c\n"
+    )
+    _write_recorded(
+        spec,
+        [
+            _recorded("rs1801133", "1", 999, "G", "A"),  # the source now says 11856377
+            _recorded("rs7412", "19", 44908822, "C", "T"),  # unchanged
+        ],
+    )
 
     with caplog.at_level(logging.WARNING):
         result = _run(spec, tmp_path, resolver=_StubResolver(), rederive=True)
@@ -551,10 +561,13 @@ def test_the_rederive_denominator_counts_only_the_subjects_that_were_re_asked(
         tmp_path / "spec",
         "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c\nrs6567160,C/T,risk,c\n",
     )
-    _write_recorded(spec, [
-        _recorded("rs1801133", "1", 999, "G", "A"),          # the source now says 11856377
-        _recorded("rs6567160", "6", 98865669, "C", "T"),     # the request fails: never asked
-    ])
+    _write_recorded(
+        spec,
+        [
+            _recorded("rs1801133", "1", 999, "G", "A"),  # the source now says 11856377
+            _recorded("rs6567160", "6", 98865669, "C", "T"),  # the request fails: never asked
+        ],
+    )
 
     with caplog.at_level(logging.WARNING):
         result = _run(spec, tmp_path, resolver=_UnreachableFor("rs6567160"), rederive=True)
@@ -591,7 +604,9 @@ def test_rederive_keeps_the_rows_of_a_subject_no_source_could_be_asked_about(
     once. A fresh table committed from that would replace a full one with an empty one, and nothing
     downstream could tell it from a module whose author resolved less.
     """
-    spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c\nrs7412,C/T,risk,c\n")
+    spec = _spec(
+        tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c\nrs7412,C/T,risk,c\n"
+    )
     recorded = [
         _recorded("rs1801133", "1", 11856377, "G", "A"),
         _recorded("rs7412", "19", 44908822, "C", "T"),
@@ -603,8 +618,8 @@ def test_rederive_keeps_the_rows_of_a_subject_no_source_could_be_asked_about(
         result = _run(spec, tmp_path, offline=True, rederive=True)
 
     assert {r.variant_key for r in result.rows} == {r.variant_key for r in recorded}
-    assert result.unresolved == []          # they are resolved; they simply were not re-asked
-    assert result.rederived == []           # nothing was compared, so nothing moved
+    assert result.unresolved == []  # they are resolved; they simply were not re-asked
+    assert result.rederived == []  # nothing was compared, so nothing moved
     assert "kept the recorded rows for" in caplog.text
     assert _table(spec).read_bytes() == before
 
@@ -617,13 +632,19 @@ def test_rederive_prunes_a_recorded_row_for_a_variant_the_author_deleted(tmp_pat
     table would make `--rederive` resurrect rows a plain re-run prunes.
     """
     spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs7412,C/T,risk,c\n")
-    _write_recorded(spec, [
-        _recorded("rs7412", "19", 44908822, "C", "T"),
-        _recorded("rs1801133", "1", 11856377, "G", "A"),   # no longer authored anywhere
-    ])
+    _write_recorded(
+        spec,
+        [
+            _recorded("rs7412", "19", 44908822, "C", "T"),
+            _recorded("rs1801133", "1", 11856377, "G", "A"),  # no longer authored anywhere
+        ],
+    )
 
-    plain = _run(_deleted_variant_copy(spec, tmp_path / "plain"), tmp_path,
-                 resolver=_StubResolver(refuse=frozenset({"rs7412"})))
+    plain = _run(
+        _deleted_variant_copy(spec, tmp_path / "plain"),
+        tmp_path,
+        resolver=_StubResolver(refuse=frozenset({"rs7412"})),
+    )
     rederived = _run(spec, tmp_path, resolver=_StubResolver(), rederive=True)
 
     assert {r.rsid for r in rederived.rows} == {r.rsid for r in plain.rows} == {"rs7412"}
@@ -700,7 +721,7 @@ def test_the_settled_count_grows_whether_or_not_a_callback_is_listening() -> Non
     calls: list[tuple[int, int]] = []
     watched = SubjectProgress(3, lambda done, total: calls.append((done, total)))
     watched.settle(["a", "b"])
-    watched.settle(["b"])          # already settled: no second report
+    watched.settle(["b"])  # already settled: no second report
     assert watched.settled == silent.settled
     assert calls == [(0, 3), (2, 3)]
 
@@ -720,10 +741,23 @@ def test_the_written_columns_are_derived_from_the_model(tmp_path: Path) -> None:
     assert _FIELDNAMES == list(ResolutionRow.model_fields)
 
     full = ResolutionRow(
-        variant_key="rs334", rsid="rs334", chrom="11", start=5227002, ref="T", alts="A",
-        genome_build="GRCh38", locus_index=0, vrs_id="ga4gh:VA.JGrSjQEcYOJ14vlkvm7sIyYSgHfpC5UG", vrs_spec="2.0",
-        caid="CA127301", source="ensembl-rest", authority=resolution_authority("ensembl-rest"),
-        status="resolved", rsid_alternates="rs77121243", rsid_current="rs334", rsid_status="live",
+        variant_key="rs334",
+        rsid="rs334",
+        chrom="11",
+        start=5227002,
+        ref="T",
+        alts="A",
+        genome_build="GRCh38",
+        locus_index=0,
+        vrs_id="ga4gh:VA.JGrSjQEcYOJ14vlkvm7sIyYSgHfpC5UG",
+        vrs_spec="2.0",
+        caid="CA127301",
+        source="ensembl-rest",
+        authority=resolution_authority("ensembl-rest"),
+        status="resolved",
+        rsid_alternates="rs77121243",
+        rsid_current="rs334",
+        rsid_status="live",
         fetched_at="2026-09-09T00:00:00Z",
     )
     # Every field set, so a column the renderer skipped would show as a blank cell on reload.

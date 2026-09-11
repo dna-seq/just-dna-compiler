@@ -156,9 +156,7 @@ def fetch_curation_list(url: str = DEFAULT_CLINGEN_URL, *, timeout: float = 60.0
         response = httpx.get(url, timeout=timeout, follow_redirects=True)
         response.raise_for_status()
     except httpx.HTTPError as exc:
-        raise ClinGenUnavailable(
-            f"could not fetch the ClinGen curation list from {url}: {exc}"
-        ) from exc
+        raise ClinGenUnavailable(f"could not fetch the ClinGen curation list from {url}: {exc}") from exc
     return response.text
 
 

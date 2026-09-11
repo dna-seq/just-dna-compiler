@@ -131,9 +131,7 @@ class CivicDraftResult:
 
     def outcome_for(self, csv_name: str, outcome: str) -> int:
         """How many `variants.csv` rows landed in one outcome — added, already_present, invalid."""
-        return sum(
-            len(getattr(r, outcome)) for r in self.reports if r.csv_name == csv_name
-        )
+        return sum(len(getattr(r, outcome)) for r in self.reports if r.csv_name == csv_name)
 
     def accounts_for_every_candidate(self) -> bool:
         """Every admitted row is either drafted, already there, refused, or withheld by name.
@@ -184,8 +182,7 @@ def _release_payload(reference: Path | None) -> dict:
     if reference is None:
         return {}
     release = (
-        reference / RELEASE_FILENAME if reference.is_dir()
-        else reference.parent.parent / RELEASE_FILENAME
+        reference / RELEASE_FILENAME if reference.is_dir() else reference.parent.parent / RELEASE_FILENAME
     )
     if not release.exists():
         return {}
@@ -326,9 +323,7 @@ def _snapshot_status_basis(reference: Path) -> str | None:
     return _release_payload(reference).get("status_basis")
 
 
-def _note_refuted(
-    result: "CivicDraftResult", row: dict, refuting: dict[int, list[str]]
-) -> None:
+def _note_refuted(result: "CivicDraftResult", row: dict, refuting: dict[int, list[str]]) -> None:
     """Record a written row whose variant this snapshot also refutes, once per variant.
 
     Once per variant rather than once per row: a variant with three supporting items and one
@@ -342,9 +337,7 @@ def _note_refuted(
     )
 
 
-def _refuted_warning(
-    refuted: Sequence[tuple[str, str, str]], basis: str | None
-) -> list[str]:
+def _refuted_warning(refuted: Sequence[tuple[str, str, str]], basis: str | None) -> list[str]:
     """The RM170 sign: rows this run WROTE whose variant the same snapshot also rebuts.
 
     Not a withholding line, which is why it is not in `_withheld_warnings`: every row it names was
@@ -362,9 +355,9 @@ def _refuted_warning(
     """
     if not refuted:
         return []
-    named = examples([
-        f"{name} (supporting {supporting} vs {refuting})" for name, supporting, refuting in refuted
-    ])
+    named = examples(
+        [f"{name} (supporting {supporting} vs {refuting})" for name, supporting, refuting in refuted]
+    )
     stated = f" Snapshot basis `{basis}`." if basis else ""
     return [
         f"{len(refuted)} variant(s) were drafted with a direction the same snapshot also REFUTES, "
@@ -423,7 +416,6 @@ def _withheld_warnings(withheld: dict[str, int], contested: Sequence[str]) -> li
             f"rows are real; what CIViC states about their position is not a position."
         )
     return lines
-
 
 
 def _needs_the_registry(row: dict) -> bool:
@@ -500,8 +492,7 @@ def draft_panel_from_civic(
             camps.setdefault(int(row["variant_id"]), set()).add(str(row["direction"]))
     contested_ids = {vid for vid, seen in camps.items() if len(seen) > 1}
     contested_names = sorted(
-        {str(r["variant_name"] or r["variant_id"]) for r in admitted
-         if int(r["variant_id"]) in contested_ids}
+        {str(r["variant_name"] or r["variant_id"]) for r in admitted if int(r["variant_id"]) in contested_ids}
     )
 
     # RM170 — the same group-first rule, one slot over. A refutation is **not** a camp: it withholds a
@@ -606,9 +597,7 @@ def draft_panel_from_civic(
             append_partial_rows(spec_dir, "variants.csv", variant_partials, dry_run=dry_run)
         )
     if study_partials:
-        result.reports.append(
-            append_partial_rows(spec_dir, "studies.csv", study_partials, dry_run=dry_run)
-        )
+        result.reports.append(append_partial_rows(spec_dir, "studies.csv", study_partials, dry_run=dry_run))
     result.warnings.extend(_withheld_warnings(result.withheld, contested_names))
     result.warnings.extend(_refuted_warning(result.refuted_beside_claim, result.refutation_basis))
 
@@ -622,7 +611,10 @@ def draft_panel_from_civic(
         # lookup rather than derived from the snapshot's contents.
         consulted = [CIVIC_SOURCE] + ([CLINGEN_ALLELE_REGISTRY_TERMS.source] if consulted_registry else [])
         record_source_terms(
-            consulted, "annotation", spec_dir,
-            error=CivicDraftError, declared_use=declared_use,
+            consulted,
+            "annotation",
+            spec_dir,
+            error=CivicDraftError,
+            declared_use=declared_use,
         )
     return result

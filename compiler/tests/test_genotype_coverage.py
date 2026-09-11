@@ -38,9 +38,7 @@ def test_a_site_with_one_genotype_is_a_rule_not_a_gap() -> None:
     drafted-then-curated module, and a legitimate one: a rule that fires on the risk genotype and says
     nothing otherwise is a rule. Reporting those would put a line on almost every module in existence.
     """
-    assert (
-        _findings([_variant("A/G", chrom="1", start=100, ref="G", alts="A", rsid=None)]) == []
-    )
+    assert _findings([_variant("A/G", chrom="1", start=100, ref="G", alts="A", rsid=None)]) == []
 
 
 def test_the_missing_homozygous_alternate_is_the_reported_case() -> None:
@@ -76,8 +74,7 @@ def test_an_alt_alt_pair_is_never_demanded() -> None:
     the site is complete — with `A/T` absent.
     """
     rows = [
-        _variant(gt, chrom="1", start=100, ref="G", alts="A,T")
-        for gt in ("G/G", "A/G", "G/T", "A/A", "T/T")
+        _variant(gt, chrom="1", start=100, ref="G", alts="A,T") for gt in ("G/G", "A/G", "G/T", "A/A", "T/T")
     ]
     assert _findings(rows) == []
 
@@ -115,7 +112,9 @@ def test_the_reference_allele_comes_from_the_injected_table_when_no_row_authors_
 
     table = {
         "rs1800562": [
-            ResolutionRow(variant_key="rs1800562", rsid="rs1800562", chrom="6", start=26092913, ref="G", alts="A")
+            ResolutionRow(
+                variant_key="rs1800562", rsid="rs1800562", chrom="6", start=26092913, ref="G", alts="A"
+            )
         ]
     }
     findings = _findings(rows, table)
@@ -170,11 +169,7 @@ def test_the_corpus_findings_are_exactly_these(module: str, expected: set[str]) 
     Asserted as set equality on the *sites*, so both a widening and a narrowing of scope fail here.
     """
     warnings = [w for w in validate_spec(_EXAMPLES / module).warnings if "have no row:" in w]
-    found = {
-        example.strip()
-        for warning in warnings
-        for example in warning.split("e.g. ", 1)[1].split(";")
-    }
+    found = {example.strip() for warning in warnings for example in warning.split("e.g. ", 1)[1].split(";")}
     assert found == expected
 
 
@@ -187,7 +182,6 @@ def test_the_rest_of_the_corpus_is_silent() -> None:
     noisy = {
         d.name
         for d in sorted(_EXAMPLES.iterdir())
-        if (d / "module_spec.yaml").is_file()
-        and any("have no row:" in w for w in validate_spec(d).warnings)
+        if (d / "module_spec.yaml").is_file() and any("have no row:" in w for w in validate_spec(d).warnings)
     }
     assert noisy == {"grch37_build", "hfe_hemochromatosis", "pathogenic_clinvar"}

@@ -118,10 +118,10 @@ ALTERATION_KINDS: frozenset[str] = frozenset({"normalized", "derived", "advisory
 REFUSAL_REASONS: frozenset[str] = frozenset(
     {
         "redundancy_bearing",  # a Class-2 check compares this cell against a source
-        "identity_bearing",    # writing it would re-key the row (variant_key / authored_ident)
-        "intent_bearing",      # only the author knows (effect_allele, which paper, which trait)
+        "identity_bearing",  # writing it would re-key the row (variant_key / authored_ident)
+        "intent_bearing",  # only the author knows (effect_allele, which paper, which trait)
         "derived_not_stored",  # the compiler materializes it; storing it duplicates a fact
-        "attestation_bearing", # the cell asserts that a HUMAN read something (provenance_quote)
+        "attestation_bearing",  # the cell asserts that a HUMAN read something (provenance_quote)
     }
 )
 
@@ -427,8 +427,7 @@ def key_fields(csv_name: str) -> TableKey | None:
         rule=rule,
         stamped=tuple(c for c in columns if c not in authored),
         fallback=tuple(
-            _authored_spelling(model, name)
-            for name in getattr(model, "_KEY_FALLBACK_FIELDS", ())
+            _authored_spelling(model, name) for name in getattr(model, "_KEY_FALLBACK_FIELDS", ())
         ),
     )
 
@@ -485,8 +484,12 @@ def describe_table(csv_name: str) -> dict[str, Any]:
         # went stale (S48). `None` for a kind with no declared key, never an empty tuple: no key and a
         # key of no columns are different claims.
         "key": (
-            {"columns": list(table_key.columns), "rule": table_key.rule,
-             "stamped": list(table_key.stamped), "fallback": list(table_key.fallback)}
+            {
+                "columns": list(table_key.columns),
+                "rule": table_key.rule,
+                "stamped": list(table_key.stamped),
+                "fallback": list(table_key.fallback),
+            }
             if (table_key := key_fields(csv_name)) is not None
             else None
         ),
@@ -587,7 +590,9 @@ def _report_ragged(ragged: list[tuple[int, int]], declared: int, report: HintRep
         )
 
 
-def _parse(csv_text: str, fieldnames: list[str]) -> tuple[list[dict[str, str]], list[str], int, list[tuple[int, int]]]:
+def _parse(
+    csv_text: str, fieldnames: list[str]
+) -> tuple[list[dict[str, str]], list[str], int, list[tuple[int, int]]]:
     """Split CSV text into rows, tolerating a missing header line.
 
     Returns `(rows, header, header_lines, ragged)`. `header_lines` is 1 when a header was consumed and
@@ -611,12 +616,9 @@ def _parse(csv_text: str, fieldnames: list[str]) -> tuple[list[dict[str, str]], 
     body = lines[1:] if has_header else lines
     split = [next(csv.reader([line])) for line in body]
     rows = [
-        {name: (values[i] if i < len(values) else "") for i, name in enumerate(header)}
-        for values in split
+        {name: (values[i] if i < len(values) else "") for i, name in enumerate(header)} for values in split
     ]
-    ragged = [
-        (index, len(values)) for index, values in enumerate(split) if len(values) != len(header)
-    ]
+    ragged = [(index, len(values)) for index, values in enumerate(split) if len(values) != len(header)]
     return rows, header, (1 if has_header else 0), ragged
 
 
@@ -740,9 +742,7 @@ def _tables_for(model: type[BaseModel]) -> frozenset[str]:
     return frozenset(name for name, other in DRAFTABLE.items() if other is model)
 
 
-def _flag_advisory_columns(
-    rows: list[dict[str, str]], model: type[BaseModel], report: HintReport
-) -> None:
+def _flag_advisory_columns(rows: list[dict[str, str]], model: type[BaseModel], report: HintReport) -> None:
     """Explain, once per column, which cells are deliberately left to the author.
 
     Keyed on the *model's* columns rather than the ones the input happens to carry: an rsid-only row
@@ -800,9 +800,7 @@ def _check_duplicate_keys(parsed: list[BaseModel | None], report: HintReport) ->
         seen[key] = index
 
 
-def _check_bins(
-    parsed: list[BaseModel | None], model: type[BaseModel], report: HintReport
-) -> None:
+def _check_bins(parsed: list[BaseModel | None], model: type[BaseModel], report: HintReport) -> None:
     """Overlap, coverage gaps and the tiling notices, via the schema tier's own `validate_bins`.
 
     An overlap raises there and a gap is returned as a warning, so both are caught: the highest-value

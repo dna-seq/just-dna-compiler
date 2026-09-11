@@ -101,8 +101,14 @@ DRAFT_PROJECTIONS: dict[str, DraftProjection] = {
     "clinpgx": DraftProjection(
         table="pharm_variants.csv",
         identity=(
-            "rsid", "chrom", "start", "ref",
-            "drug", "genotype", "phenotype_category", "annotation_id",
+            "rsid",
+            "chrom",
+            "start",
+            "ref",
+            "drug",
+            "genotype",
+            "phenotype_category",
+            "annotation_id",
         ),
         checked=("evidence_level",),
     ),
@@ -141,8 +147,7 @@ def draft_digest(spec_dir: Path, source: str) -> str | None:
         # space an editor left behind is not an edit to the claim, and treating it as one would
         # re-enable the full check for nothing.
         projected = sorted(
-            _UNIT.join((row.get(name) or "").strip() for name in columns)
-            for row in csv.DictReader(handle)
+            _UNIT.join((row.get(name) or "").strip() for name in columns) for row in csv.DictReader(handle)
         )
     if not projected:
         return None
@@ -150,9 +155,7 @@ def draft_digest(spec_dir: Path, source: str) -> str | None:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def stamp_draft_digest(
-    spec_dir: Path, source: str, layer: str, *, error: type[Exception]
-) -> str | None:
+def stamp_draft_digest(spec_dir: Path, source: str, layer: str, *, error: type[Exception]) -> str | None:
     """Record the current digest onto the `(source, layer)` licence row. Returns what it wrote.
 
     **This exists because `merge_sources_file` is never-clobber**, which is right for terms a curator
@@ -200,9 +203,7 @@ def drafted_unchanged(spec_dir: Path, source: str, sources: list[SourceRow]) -> 
     check (`clinical.tautology_reason`'s existing rule) and skips only when both hold.
     """
     recorded = [
-        row.draft_digest
-        for row in sources
-        if row.source == source and (row.draft_digest or "").strip()
+        row.draft_digest for row in sources if row.source == source and (row.draft_digest or "").strip()
     ]
     if not recorded:
         return None

@@ -193,9 +193,7 @@ class EutilsClient:
         wanted = dedupe(i for i in ids if i)
         out: dict[str, dict[str, Any]] = {}
         for batch in batched(wanted, self.settings.batch_size):
-            payload = self._get(
-                "esummary.fcgi", {"db": db, "id": ",".join(batch), "retmode": "json"}
-            )
+            payload = self._get("esummary.fcgi", {"db": db, "id": ",".join(batch), "retmode": "json"})
             result = payload.get("result") or {}
             for uid in batch:
                 record = result.get(uid)

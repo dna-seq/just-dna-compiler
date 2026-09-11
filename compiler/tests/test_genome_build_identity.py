@@ -42,9 +42,7 @@ def _spec(tmp_path: Path, build: str, start: int) -> Path:
         f"6,{start},G,A,A/A,risk,HFE C282Y homozygote,HFE\n",
         encoding="utf-8",
     )
-    (spec / "studies.csv").write_text(
-        f"chrom,start,ref,pmid\n6,{start},G,10453733\n", encoding="utf-8"
-    )
+    (spec / "studies.csv").write_text(f"chrom,start,ref,pmid\n6,{start},G,10453733\n", encoding="utf-8")
     return spec
 
 
@@ -91,8 +89,9 @@ def test_the_fallback_is_stated_rather_than_silent(tmp_path: Path) -> None:
 
 def test_grch38_is_untouched_and_emits_nothing(tmp_path: Path) -> None:
     """A no-op on every module that exists today (P3): same keys, no new warning."""
-    row = VariantRow(chrom="6", start=_C282Y_GRCH38, ref="G", alts="A",
-                     genotype="A/A", state="risk", conclusion="c")
+    row = VariantRow(
+        chrom="6", start=_C282Y_GRCH38, ref="G", alts="A", genotype="A/A", state="risk", conclusion="c"
+    )
     before = row.variant_key
     assert _restamp_for_build([row], "GRCh38") == []
     assert row.variant_key == before

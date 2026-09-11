@@ -202,8 +202,7 @@ def test_the_row_count_is_the_product_not_the_locus_count(tmp_path: Path) -> Non
     # And the row the report was about is really there: the authored `TA/TA` beside the *other*
     # locus's reference allele, a well-formed reference homozygote carrying a pathogenic conclusion.
     reference_homozygotes = weights.filter(
-        (pl.col("genotype").list.first() == pl.col("ref"))
-        & (pl.col("genotype").list.last() == pl.col("ref"))
+        (pl.col("genotype").list.first() == pl.col("ref")) & (pl.col("genotype").list.last() == pl.col("ref"))
     )
     assert reference_homozygotes.height == 1
     assert reference_homozygotes["conclusion"].to_list() == ["pathogenic"]
@@ -259,9 +258,7 @@ def test_resolution_switched_off_leaves_the_counts_unestablished(tmp_path: Path)
     `pathogenic_clinvar` has nine one-to-many keys, so `0` here would be a false negative rather than
     an absent measurement, and a catalog reading it would badge the module as expansion-free.
     """
-    result = compile_module(
-        _EXAMPLES / "pathogenic_clinvar", tmp_path / "out", resolve_with_ensembl=False
-    )
+    result = compile_module(_EXAMPLES / "pathogenic_clinvar", tmp_path / "out", resolve_with_ensembl=False)
     assert result.success, result.errors
     assert result.manifest is not None
     assert result.manifest.compilation.expanded_keys is None
@@ -287,9 +284,7 @@ def _expansion_groups(weights: pl.DataFrame) -> dict[tuple, list[dict]]:
     for row in weights.iter_rows(named=True):
         if row["locus_count"] <= 1:
             continue
-        key = tuple(
-            tuple(row[c]) if isinstance(row[c], list) else row[c] for c in _MEMBER_GROUP
-        )
+        key = tuple(tuple(row[c]) if isinstance(row[c], list) else row[c] for c in _MEMBER_GROUP)
         groups[key].append(row)
     return groups
 
@@ -547,8 +542,12 @@ def test_the_marker_is_outside_content_signature() -> None:
     # exist on the model, so `extra="forbid"` cannot see the column, and nothing else would ever
     # correct it — a non-expanded row is marked by the defaults, with no stamp-at-load pass.
     hand_written = VariantRow(
-        rsid="rs1801133", genotype="A/G", state="risk", conclusion="c",
-        locus_index=7, locus_count=9,
+        rsid="rs1801133",
+        genotype="A/G",
+        state="risk",
+        conclusion="c",
+        locus_index=7,
+        locus_count=9,
     )
     assert (hand_written.locus_index, hand_written.locus_count) == (0, 1)
 

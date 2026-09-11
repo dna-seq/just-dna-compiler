@@ -149,6 +149,7 @@ OVERRIDABLE_TABLES: dict[str, OverlayTarget] = {
     "expression_effects.csv": OverlayTarget(ExpressionEffectRow, "variant_key", "gene"),
 }
 
+
 def _by_column(field: str) -> str:
     """`\u0060col\u0060 for a/b/c, \u0060col\u0060 for d` — the registry's own grouping, spelled for a field description."""
     groups: dict[str, list[str]] = {}
@@ -232,13 +233,15 @@ class OverrideRow(AuthoredModel):
         ),
         json_schema_extra={**vocabulary("overridable_table", VALID_OVERRIDE_TABLES), **since("0.7.0")},
     )
-    subject: str = Field(json_schema_extra=since("0.7.0"), 
+    subject: str = Field(
+        json_schema_extra=since("0.7.0"),
         description=(
             "The value identifying the group of derived rows this corrects, in the named table's own "
             f"subject column: {_by_column('subject_field')}."
-        )
+        ),
     )
-    member: str | None = Field(json_schema_extra=since("0.7.0"), 
+    member: str | None = Field(
+        json_schema_extra=since("0.7.0"),
         default=None,
         description=(
             "The within-group discriminator, in the named table's own member column — "
@@ -246,7 +249,8 @@ class OverrideRow(AuthoredModel):
             "row, and empty on a grouped table means group-scoped, which only `update` accepts."
         ),
     )
-    field: str | None = Field(json_schema_extra=since("0.7.0"), 
+    field: str | None = Field(
+        json_schema_extra=since("0.7.0"),
         default=None,
         description=(
             "The column being written, for `update` and `insert`. Empty (and required empty) for "
@@ -257,11 +261,13 @@ class OverrideRow(AuthoredModel):
     )
     operation: str = Field(
         description="What this row does: update|insert|suppress",
-        json_schema_extra={**vocabulary(
-            "override_operation", VALID_OVERRIDE_OPERATIONS, notes=_OPERATION_MEANINGS
-        ), **since("0.7.0")},
+        json_schema_extra={
+            **vocabulary("override_operation", VALID_OVERRIDE_OPERATIONS, notes=_OPERATION_MEANINGS),
+            **since("0.7.0"),
+        },
     )
-    value: str | None = Field(json_schema_extra=since("0.7.0"), 
+    value: str | None = Field(
+        json_schema_extra=since("0.7.0"),
         default=None,
         description=(
             "The value to write, read with the target column's own type (so '5' lands in an int "
@@ -271,17 +277,21 @@ class OverrideRow(AuthoredModel):
     )
     # The three provenance columns are marked `OUTSIDE_CONTENT_IDENTITY` — outside
     # `content_signature`, inside every other surface. The class docstring has the rule (S87).
-    reason: str = Field(json_schema_extra={**OUTSIDE_CONTENT_IDENTITY, **since("0.7.0")}, 
+    reason: str = Field(
+        json_schema_extra={**OUTSIDE_CONTENT_IDENTITY, **since("0.7.0")},
         description=(
             "Why this correction was made, in a sentence. REQUIRED, and that is what makes the "
             "overlay a record rather than a knob: a derived cell that disagrees with its source is a "
             "claim, and a claim with no reason beside it is indistinguishable from a mistake."
-        )
+        ),
     )
-    decided_by: str | None = Field(json_schema_extra={**OUTSIDE_CONTENT_IDENTITY, **since("0.7.0")}, 
-        default=None, description="Who decided it (a curator, a panel, a tool run)"
+    decided_by: str | None = Field(
+        json_schema_extra={**OUTSIDE_CONTENT_IDENTITY, **since("0.7.0")},
+        default=None,
+        description="Who decided it (a curator, a panel, a tool run)",
     )
-    decided_at: str | None = Field(json_schema_extra={**OUTSIDE_CONTENT_IDENTITY, **since("0.7.0")}, 
+    decided_at: str | None = Field(
+        json_schema_extra={**OUTSIDE_CONTENT_IDENTITY, **since("0.7.0")},
         default=None,
         description=(
             "When it was decided — ISO-8601, canonicalized to UTC on load. A bare date is accepted "
@@ -400,9 +410,7 @@ class OverrideRow(AuthoredModel):
                     f"correct one column, use operation=update."
                 )
             if self.value is not None and self.value.strip():
-                raise ValueError(
-                    f"suppress writes nothing, so value must be empty (got {self.value!r})."
-                )
+                raise ValueError(f"suppress writes nothing, so value must be empty (got {self.value!r}).")
             return self
 
         if not field:
@@ -657,11 +665,7 @@ def apply_overrides(
             index
             for index, row in enumerate(result)
             if _cell(row, target.subject_field) == subject_key
-            and (
-                target.member_field is None
-                or not member
-                or _cell(row, target.member_field) == member_key
-            )
+            and (target.member_field is None or not member or _cell(row, target.member_field) == member_key)
         ]
 
         if operation == "update":
@@ -710,9 +714,7 @@ def apply_overrides(
             # end of its group — a row-order difference, and parquet bytes follow row order.
             built_subject = _cell(built, target.subject_field)
             tail = [
-                index
-                for index, row in enumerate(result)
-                if _cell(row, target.subject_field) == built_subject
+                index for index, row in enumerate(result) if _cell(row, target.subject_field) == built_subject
             ]
             result.insert(tail[-1] + 1 if tail else len(result), built)
 
@@ -760,11 +762,7 @@ def update_targets(
         member_key = _canonical_key_cell(sample, target.member_field, member)
         matched = any(
             _cell(row, target.subject_field) == subject_key
-            and (
-                target.member_field is None
-                or not member
-                or _cell(row, target.member_field) == member_key
-            )
+            and (target.member_field is None or not member or _cell(row, target.member_field) == member_key)
             for row in result
         )
         targets.append((key, matched))
@@ -788,9 +786,7 @@ LOSSY_OVERLAY_TABLES: frozenset[str] = frozenset({"literature.csv", "resolution.
 VINDICATING_OVERLAY_TABLE: str = "clin_sig_concordance.csv"
 
 
-def classify_vindicated_answers(
-    table: str, targets: Sequence[tuple[tuple[str, str], bool]]
-) -> list[str]:
+def classify_vindicated_answers(table: str, targets: Sequence[tuple[tuple[str, str], bool]]) -> list[str]:
     """An overlay answer whose conflict the archive has since resolved — the author was right (RM117).
 
     **This is the one trust signal in the format that is available nowhere else, and it costs nobody a
@@ -813,14 +809,16 @@ def classify_vindicated_answers(
     resolved = [key for key, matched in targets if not matched]
     if table != VINDICATING_OVERLAY_TABLE or not resolved:
         return []
-    return [CodedWarning(
-        "overlay_answer_vindicated",
-        f"overrides.csv: {len(resolved)} answered subject(s) are no longer contested — the "
-        f"authorities now agree where they disagreed when the correction was written: "
-        f"{_render_keys(resolved)}. The record holds contested subjects only and is rewritten whole, "
-        f"so a subject leaving it means the disagreement ended. The overlay row can be retired; "
-        f"nothing forces it, and keeping it costs only this line."
-    )]
+    return [
+        CodedWarning(
+            "overlay_answer_vindicated",
+            f"overrides.csv: {len(resolved)} answered subject(s) are no longer contested — the "
+            f"authorities now agree where they disagreed when the correction was written: "
+            f"{_render_keys(resolved)}. The record holds contested subjects only and is rewritten whole, "
+            f"so a subject leaving it means the disagreement ended. The overlay row can be retired; "
+            f"nothing forces it, and keeping it costs only this line.",
+        )
+    ]
 
 
 def classify_update_targets(
@@ -861,29 +859,31 @@ def classify_update_targets(
     # asymmetry is the stability: reachability is a property of the module, so it answers the same on
     # both laps, while "did it match" is exactly the quantity a reverse moves.
     unreachable = [key for key, _matched in targets if not target_survives(key[0])]
-    reachable = [
-        key for key, matched in targets if target_survives(key[0]) and not matched
-    ]
+    reachable = [key for key, matched in targets if target_survives(key[0]) and not matched]
     findings: list[str] = []
     if reachable:
-        findings.append(CodedWarning(
-            "overlay_update_unmatched",
-            f"overrides.csv: {len(reachable)} update override(s) name a row {table} does not carry, "
-            f"though this module could carry it: {_render_keys(reachable)}. The subject is cited or "
-            f"positioned, so the table is short rather than the correction wrong — re-run the "
-            f"enrichment pass that writes {table}. Neither an insert nor a suppress reports this: an "
-            f"insert creates the row and a suppress is satisfied by its absence."
-        ))
+        findings.append(
+            CodedWarning(
+                "overlay_update_unmatched",
+                f"overrides.csv: {len(reachable)} update override(s) name a row {table} does not carry, "
+                f"though this module could carry it: {_render_keys(reachable)}. The subject is cited or "
+                f"positioned, so the table is short rather than the correction wrong — re-run the "
+                f"enrichment pass that writes {table}. Neither an insert nor a suppress reports this: an "
+                f"insert creates the row and a suppress is satisfied by its absence.",
+            )
+        )
     if unreachable:
-        findings.append(CodedWarning(
-            "overlay_update_target_unreachable",
-            f"overrides.csv: {len(unreachable)} update override(s) name a {table} row no artifact of "
-            f"this module can carry: {_render_keys(unreachable)}. Two readings and nothing here "
-            f"separates them — the subject may be mistyped, or the correction may be aimed at a row "
-            f"the compiler drops before the parquet (an uncited citation, an unresolved locus), in "
-            f"which case the correction is fine and simply has nothing to reach. Reported the same "
-            f"way whether or not the row is present today, so a module and its own round trip agree."
-        ))
+        findings.append(
+            CodedWarning(
+                "overlay_update_target_unreachable",
+                f"overrides.csv: {len(unreachable)} update override(s) name a {table} row no artifact of "
+                f"this module can carry: {_render_keys(unreachable)}. Two readings and nothing here "
+                f"separates them — the subject may be mistyped, or the correction may be aimed at a row "
+                f"the compiler drops before the parquet (an uncited citation, an unresolved locus), in "
+                f"which case the correction is fine and simply has nothing to reach. Reported the same "
+                f"way whether or not the row is present today, so a module and its own round trip agree.",
+            )
+        )
     return findings
 
 
@@ -908,19 +908,19 @@ def _unmatched_warnings(table: str, unmatched: Sequence[tuple[str, str]]) -> lis
     """
     if not unmatched:
         return []
-    shown = ", ".join(
-        f"{subject}" + (f"[{member}]" if member else "") for subject, member in unmatched[:5]
-    )
+    shown = ", ".join(f"{subject}" + (f"[{member}]" if member else "") for subject, member in unmatched[:5])
     more = "" if len(unmatched) <= 5 else f" (+{len(unmatched) - 5} more)"
-    return [CodedWarning(
-        "overlay_update_unmatched",
-        f"overrides.csv: {len(unmatched)} update override(s) name a row {table} does not carry: "
-        f"{shown}{more}. Three readings and nothing here separates them — the subject/member may be "
-        f"mistyped, the source may have stopped publishing the row the correction was about, or the "
-        f"compiler dropped the row before the parquet so a reversed module cannot carry it. "
-        f"Neither an insert nor a suppress reports this: an insert creates the row and a suppress "
-        f"is satisfied by its absence."
-    )]
+    return [
+        CodedWarning(
+            "overlay_update_unmatched",
+            f"overrides.csv: {len(unmatched)} update override(s) name a row {table} does not carry: "
+            f"{shown}{more}. Three readings and nothing here separates them — the subject/member may be "
+            f"mistyped, the source may have stopped publishing the row the correction was about, or the "
+            f"compiler dropped the row before the parquet so a reversed module cannot carry it. "
+            f"Neither an insert nor a suppress reports this: an insert creates the row and a suppress "
+            f"is satisfied by its absence.",
+        )
+    ]
 
 
 #: The fragment a consumer keys on to find the suppression record, for the reason every named phrase

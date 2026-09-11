@@ -118,14 +118,23 @@ EDIT_DATE = [
 ]
 
 BLOCKS = [
-    ('COPY mitomap.mmutation (id, locus, dz, allele, "position", refna, regna, aa, cons, contr, '
-     "homo, hetero, status, cfrm_date) FROM stdin;", MMUTATION),
-    ('COPY mitomap.rtmutation (id, locus, dz, allele, "position", refna, regna, rna, cons, contr, '
-     "homo, hetero, status, cfrm_date) FROM stdin;", RTMUTATION),
+    (
+        'COPY mitomap.mmutation (id, locus, dz, allele, "position", refna, regna, aa, cons, contr, '
+        "homo, hetero, status, cfrm_date) FROM stdin;",
+        MMUTATION,
+    ),
+    (
+        'COPY mitomap.rtmutation (id, locus, dz, allele, "position", refna, regna, rna, cons, contr, '
+        "homo, hetero, status, cfrm_date) FROM stdin;",
+        RTMUTATION,
+    ),
     ("COPY mitomap.mmutation_reference (mmutation_id, reference_id) FROM stdin;", MMUTATION_REFERENCE),
     ("COPY mitomap.rtmutation_reference (rtmutation_id, reference_id) FROM stdin;", RTMUTATION_REFERENCE),
-    ("COPY mitomap.reference (id, authors, title, publication, editors, volume, number, pages, "
-     "date, city, publisher, keywords, abstract, nlmid) FROM stdin;", REFERENCE),
+    (
+        "COPY mitomap.reference (id, authors, title, publication, editors, volume, number, pages, "
+        "date, city, publisher, keywords, abstract, nlmid) FROM stdin;",
+        REFERENCE,
+    ),
     ("COPY mitomap.edit_date (id, table_name, date) FROM stdin;", EDIT_DATE),
 ]
 
@@ -133,8 +142,15 @@ BLOCKS = [
 def write_mitomap_dump(path: Path, blocks=BLOCKS) -> Path:
     """A gzipped `pg_dump` fragment in the shape the real one has, plus a table nothing reads."""
     lines = [
-        "--", "-- PostgreSQL database dump", "--", "SET statement_timeout = 0;", "",
-        "COPY mitomap.code (id, codon, aa) FROM stdin;", "1\tTTT\tPhe", "\\.", "",
+        "--",
+        "-- PostgreSQL database dump",
+        "--",
+        "SET statement_timeout = 0;",
+        "",
+        "COPY mitomap.code (id, codon, aa) FROM stdin;",
+        "1\tTTT\tPhe",
+        "\\.",
+        "",
     ]
     for header, rows in blocks:
         lines.extend([header, *rows, "\\.", ""])
@@ -220,6 +236,7 @@ def build_clinvar_mt(tmp_path: Path):
     A factory rather than a plain fixture because one test needs the *same directory* rebuilt from a
     newer file — which is precisely the case the child's parent pin exists to catch.
     """
+
     def build(vcf_text: str = CLINVAR_MT_VCF) -> Path:
         vcf = tmp_path / "clinvar.vcf.gz"
         with gzip.open(vcf, "wt", encoding="utf-8") as handle:
@@ -244,4 +261,3 @@ def mitomap_miss_snapshot(tmp_path: Path, mitomap_snapshot: Path, build_clinvar_
     """The derived increment, built from both parents through the real join."""
     build_miss_snapshot(mitomap_snapshot, build_clinvar_mt(), tmp_path / "miss")
     return tmp_path / "miss"
-

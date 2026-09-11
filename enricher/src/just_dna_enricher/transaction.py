@@ -194,7 +194,8 @@ class ResolutionJournal:
                 "seeded — after that run committed they are what produced the recorded table, so "
                 "seeding them would compare the table against its own provenance and report no drift "
                 "for exactly the subjects being re-checked. Those subjects are asked again.",
-                gapfilled, self.path,
+                gapfilled,
+                self.path,
             )
         if foreign:
             logger.warning(
@@ -202,7 +203,8 @@ class ResolutionJournal:
                 "(%d row(s)): a coordinate is valid on either assembly, it is simply a different "
                 "base, so seeding them here would record another build's position as this module's "
                 "own. They are re-asked from the sources.",
-                self.path, foreign,
+                self.path,
+                foreign,
             )
         self.answers = loaded
         self._rederived = rederived
@@ -211,7 +213,8 @@ class ResolutionJournal:
                 "Resuming from %d staged answer(s) at %s — a previous run was interrupted after the "
                 "sources answered and before the table was committed, so those subjects are not "
                 "asked again.",
-                len(loaded), self.path,
+                len(loaded),
+                self.path,
             )
         return self.answers
 

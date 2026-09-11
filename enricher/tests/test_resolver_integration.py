@@ -25,9 +25,7 @@ pytestmark = pytest.mark.integration
 def reference() -> Path:
     ref = resolve_ensembl_reference()
     if ref is None:
-        pytest.skip(
-            "no Ensembl cache found — set JUST_DNA_PIPELINES_CACHE_DIR or JUST_DNA_ENSEMBL_CACHE"
-        )
+        pytest.skip("no Ensembl cache found — set JUST_DNA_PIPELINES_CACHE_DIR or JUST_DNA_ENSEMBL_CACHE")
     return ref
 
 
@@ -54,8 +52,7 @@ def test_reference_resolves_from_env(reference: Path) -> None:
 
 
 def test_rsid_resolves_to_position(reference: Path, sample_variant: dict) -> None:
-    v = VariantRow(rsid=sample_variant["rsid"], genotype="A/G", weight=0.0,
-                   state="neutral", conclusion="t")
+    v = VariantRow(rsid=sample_variant["rsid"], genotype="A/G", weight=0.0, state="neutral", conclusion="t")
     patched, _ = resolve_variants([v], reference)
     assert patched[0].chrom == sample_variant["chrom"]
     assert patched[0].start == sample_variant["start"]
@@ -63,24 +60,37 @@ def test_rsid_resolves_to_position(reference: Path, sample_variant: dict) -> Non
 
 
 def test_position_resolves_to_rsid(reference: Path, sample_variant: dict) -> None:
-    v = VariantRow(chrom=sample_variant["chrom"], start=sample_variant["start"],
-                   ref=sample_variant["ref"], genotype="A/G", weight=0.0,
-                   state="neutral", conclusion="t")
+    v = VariantRow(
+        chrom=sample_variant["chrom"],
+        start=sample_variant["start"],
+        ref=sample_variant["ref"],
+        genotype="A/G",
+        weight=0.0,
+        state="neutral",
+        conclusion="t",
+    )
     patched, _ = resolve_variants([v], reference)
     assert patched[0].rsid == sample_variant["rsid"]
 
 
 def test_complete_variant_untouched(reference: Path, sample_variant: dict) -> None:
-    v = VariantRow(rsid=sample_variant["rsid"], chrom=sample_variant["chrom"],
-                   start=sample_variant["start"], ref=sample_variant["ref"], alts="A",
-                   genotype="A/G", weight=0.0, state="risk", conclusion="complete")
+    v = VariantRow(
+        rsid=sample_variant["rsid"],
+        chrom=sample_variant["chrom"],
+        start=sample_variant["start"],
+        ref=sample_variant["ref"],
+        alts="A",
+        genotype="A/G",
+        weight=0.0,
+        state="risk",
+        conclusion="complete",
+    )
     patched, warnings = resolve_variants([v], reference)
     assert patched[0].start == sample_variant["start"] and not warnings
 
 
 def test_unknown_rsid_warns(reference: Path, sample_variant: dict) -> None:
-    v = VariantRow(rsid="rs99999999999999", genotype="A/G", weight=0.0,
-                   state="neutral", conclusion="t")
+    v = VariantRow(rsid="rs99999999999999", genotype="A/G", weight=0.0, state="neutral", conclusion="t")
     patched, warnings = resolve_variants([v], reference)
     assert patched[0].chrom is None
     assert any("rs99999999999999" in w for w in warnings)

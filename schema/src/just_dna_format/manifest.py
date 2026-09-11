@@ -120,9 +120,7 @@ class Identity(BaseModel):
             "the registry stamps the canonical identity on publish — and out of `artifact.digest`."
         ),
     )
-    canonical_id: str | None = Field(
-        default=None, description="namespace/name@version"
-    )
+    canonical_id: str | None = Field(default=None, description="namespace/name@version")
 
     @field_validator("name")
     @classmethod
@@ -151,10 +149,12 @@ class Display(BaseModel):
     # author what `icon_set` accepts said nothing whatever about the line a browsing consumer reads
     # first. What each one is for is stated here; how long it should be is a norm rather than a rule,
     # and deliberately not a `max_length` (see below).
-    title: str = Field(json_schema_extra=since("0.2.0"), 
-        description="Human-readable module name — the heading a consumer shows for this module."
+    title: str = Field(
+        json_schema_extra=since("0.2.0"),
+        description="Human-readable module name — the heading a consumer shows for this module.",
     )
-    description: str = Field(json_schema_extra=since("0.2.0"), 
+    description: str = Field(
+        json_schema_extra=since("0.2.0"),
         description=(
             "One short sentence — roughly 5–15 words — saying what this module is *about*. It is the "
             "subtitle beside the title wherever a module is listed, so its job is to tell this module "
@@ -163,23 +163,28 @@ class Display(BaseModel):
             "`authorship:` and `README.md`. A sentence several of your modules share describes none of "
             "them. Not length-checked, because verbosity is a matter of taste rather than of "
             "correctness and a ceiling would refuse a spec after the prose was written."
-        )
+        ),
     )
-    report_title: str = Field(json_schema_extra=since("0.2.0"), 
+    report_title: str = Field(
+        json_schema_extra=since("0.2.0"),
         description=(
             "Heading for the rendered per-consumer report, where that differs from `title` — `title` "
             "names the module in a catalog, this names the section a reader sees in their own results."
-        )
+        ),
     )
-    icon: str = Field(json_schema_extra=since("0.2.0"), 
-        default="database", description="Icon name within `icon_set` — the no-logo fallback glyph"
+    icon: str = Field(
+        json_schema_extra=since("0.2.0"),
+        default="database",
+        description="Icon name within `icon_set` — the no-logo fallback glyph",
     )
     icon_set: str = Field(
         default="fomantic",
         json_schema_extra={**vocabulary("icon_set", VALID_ICON_SETS), **since("0.2.0")},
         description="Icon family for `icon`: 'fomantic' or 'awesome' (FontAwesome)",
     )
-    color: str = Field(json_schema_extra=since("0.2.0"), default="#6435c9", description="Hex color for UI theming")
+    color: str = Field(
+        json_schema_extra=since("0.2.0"), default="#6435c9", description="Hex color for UI theming"
+    )
 
     @field_validator("color")
     @classmethod
@@ -773,9 +778,7 @@ class GwasEffects(BaseModel):
             "are on different scales and must not be pooled."
         ),
     )
-    traits: list[str] = Field(
-        default_factory=list, description="Sorted union of the EFO trait ids present"
-    )
+    traits: list[str] = Field(default_factory=list, description="Sorted union of the EFO trait ids present")
     not_found_count: int = Field(
         default=0,
         description=(
@@ -822,9 +825,7 @@ class Literature(BaseModel):
             "it counted the whole table and the two could differ with nothing wrong in the module."
         ),
     )
-    open_access_count: int = Field(
-        default=0, description="Citations with retrievable open-access fulltext"
-    )
+    open_access_count: int = Field(default=0, description="Citations with retrievable open-access fulltext")
     abstract_only_count: int = Field(
         default=0,
         description=(
@@ -950,15 +951,11 @@ class Sources(BaseModel):
         default=None,
         description="Fact-hash of sources.csv (integrity.source_signature); out of artifact.digest",
     )
-    sources: list[str] = Field(
-        default_factory=list, description="Sorted union of SourceRow.source values"
-    )
+    sources: list[str] = Field(default_factory=list, description="Sorted union of SourceRow.source values")
     layers: list[str] = Field(
         default_factory=list, description="Sorted union of the layers any source contributed to"
     )
-    licenses: list[str] = Field(
-        default_factory=list, description="Sorted union of SourceRow.license values"
-    )
+    licenses: list[str] = Field(default_factory=list, description="Sorted union of SourceRow.license values")
     attributions: list[str] = Field(
         default_factory=list,
         description="Sorted union of required credit lines — what a redistributor must reproduce",
@@ -1055,17 +1052,26 @@ class GenePanelSpec(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    source: str = Field(json_schema_extra=since("0.2.0"), description="Reference the panel resolves against, e.g. 'clinvar'")
-    reference: str | None = Field(json_schema_extra=since("0.2.0"), 
-        default=None, description="Reference release/version id, e.g. a ClinVar release date"
+    source: str = Field(
+        json_schema_extra=since("0.2.0"), description="Reference the panel resolves against, e.g. 'clinvar'"
     )
-    reference_sha256: str | None = Field(json_schema_extra=since("0.2.0"), 
-        default=None, description="Digest pinning the exact reference resource (sha256:...)"
+    reference: str | None = Field(
+        json_schema_extra=since("0.2.0"),
+        default=None,
+        description="Reference release/version id, e.g. a ClinVar release date",
     )
-    genes: list[str] = Field(json_schema_extra=since("0.2.0"), 
-        default_factory=list, description="Panel gene symbols; empty = genome-wide (no gene filter)"
+    reference_sha256: str | None = Field(
+        json_schema_extra=since("0.2.0"),
+        default=None,
+        description="Digest pinning the exact reference resource (sha256:...)",
     )
-    significance: list[str] = Field(json_schema_extra=since("0.2.0"), 
+    genes: list[str] = Field(
+        json_schema_extra=since("0.2.0"),
+        default_factory=list,
+        description="Panel gene symbols; empty = genome-wide (no gene filter)",
+    )
+    significance: list[str] = Field(
+        json_schema_extra=since("0.2.0"),
         default_factory=list,
         description="Significance predicate, e.g. ['pathogenic', 'likely_pathogenic']",
     )
@@ -1230,14 +1236,16 @@ class VerificationRecord(BaseModel):
         json_schema_extra={**vocabulary("verification_check", VALID_VERIFICATION_CHECKS), **since("0.6.0")},
         description=f"Which question was put (VALID_VERIFICATION_CHECKS). {UNTRUSTED_NOTE}",
     )
-    subjects: int = Field(json_schema_extra=since("0.6.0"), 
+    subjects: int = Field(
+        json_schema_extra=since("0.6.0"),
         default=0,
         description=(
             "Rows the check was evaluated over — the denominator. 0 with no `skipped` means the "
             f"check ran and had nothing in scope, which is not the same as not running. {UNTRUSTED_NOTE}"
         ),
     )
-    findings: int = Field(json_schema_extra=since("0.6.0"), 
+    findings: int = Field(
+        json_schema_extra=since("0.6.0"),
         default=0,
         description=f"Of those, how many disagreed with the source. {UNTRUSTED_NOTE}",
     )
@@ -1245,25 +1253,27 @@ class VerificationRecord(BaseModel):
         default=None,
         json_schema_extra={**vocabulary("verification_skip", VALID_VERIFICATION_SKIPS), **since("0.6.0")},
         description=(
-            "Why the check did not run (VALID_VERIFICATION_SKIPS), or null when it did. "
-            f"{UNTRUSTED_NOTE}"
+            f"Why the check did not run (VALID_VERIFICATION_SKIPS), or null when it did. {UNTRUSTED_NOTE}"
         ),
     )
-    detail: str | None = Field(json_schema_extra=since("0.6.0"), 
+    detail: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "The human sentence beside the machine key — the reason in full, or a note about what "
             f"was compared. Outside the fact set, so rewording it moves no signature. {UNTRUSTED_NOTE}"
         ),
     )
-    source: str | None = Field(json_schema_extra=since("0.6.0"), 
+    source: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "Which source answered, joining to the `source` column the licensing table keys on "
             f"(e.g. 'clinvar', 'hgnc', 'pubmed'). Null when the check needed none. {UNTRUSTED_NOTE}"
         ),
     )
-    release: str | None = Field(json_schema_extra=since("0.6.0"), 
+    release: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "Which release of that source it was checked against, as the source states it (a "
@@ -1271,14 +1281,16 @@ class VerificationRecord(BaseModel):
             f"PubMed is continuously updated and has nothing true to put here. {UNTRUSTED_NOTE}"
         ),
     )
-    checked_at: str | None = Field(json_schema_extra=since("0.6.0"), 
+    checked_at: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "ISO-8601 UTC timestamp of the run that put this check. Producer noise, so it is outside "
             f"the fact set. {UNTRUSTED_NOTE}"
         ),
     )
-    producer: str | None = Field(json_schema_extra=since("0.7.0"), 
+    producer: str | None = Field(
+        json_schema_extra=since("0.7.0"),
         default=None,
         description=(
             "Tool and version that put **this** check, beside the `source`/`release`/`checked_at` "
@@ -1367,9 +1379,7 @@ class VerificationDoc(BaseModel):
             "changes no value an attestation could be about (RM82); every other byte counts."
         )
     )
-    signature: str = Field(
-        description="Fact-hash of `records` (`verification.verification_signature`)"
-    )
+    signature: str = Field(description="Fact-hash of `records` (`verification.verification_signature`)")
     difficulty: int = Field(
         description=(
             "Leading zero bits the proof-of-work meets. Recorded rather than assumed so a document "
@@ -1498,21 +1508,30 @@ class Contribution(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    who: str = Field(json_schema_extra=since("0.4.0"), description="Contributor identity: a name, handle, or model id")
+    who: str = Field(
+        json_schema_extra=since("0.4.0"), description="Contributor identity: a name, handle, or model id"
+    )
     role: str = Field(
         json_schema_extra={**vocabulary("author_role", VALID_AUTHOR_ROLES), **since("0.4.0")},
         description="What this contributor did (created|edited|audited|reviewed)",
     )
     kind: list[str] = Field(
         default_factory=list,
-        json_schema_extra={**vocabulary("author_kind", RECOMMENDED_AUTHOR_KINDS, closed=False), **since("0.4.0")},
+        json_schema_extra={
+            **vocabulary("author_kind", RECOMMENDED_AUTHOR_KINDS, closed=False),
+            **since("0.4.0"),
+        },
         description=(
             "Multi-valued tag set describing the contributor — human ladder {human, human_expert, "
             "human_certified} or {ai} + scale {agent, team, swarm}. Open (recommended seed); route "
             "scrutiny by it."
         ),
     )
-    at: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="ISO-8601 date/timestamp of the contribution")
+    at: str | None = Field(
+        json_schema_extra=since("0.4.0"),
+        default=None,
+        description="ISO-8601 date/timestamp of the contribution",
+    )
 
     @field_validator("who")
     @classmethod
@@ -1574,14 +1593,16 @@ class Weighting(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    scale: str | None = Field(json_schema_extra=since("0.6.0"), 
+    scale: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "What the numbers mean and over what range, e.g. '0-1, curator-set, arbitrary' or "
             "'log(OR), from the cited meta-analyses'. Free text."
         ),
     )
-    method: str | None = Field(json_schema_extra=since("0.6.0"), 
+    method: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "How the weights were arrived at, e.g. 'literature triage, no GWAS input'. Distinct from "
@@ -1589,7 +1610,8 @@ class Weighting(BaseModel):
             "Free text."
         ),
     )
-    note: str | None = Field(json_schema_extra=since("0.6.0"), 
+    note: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "Anything a consumer must know before combining these weights — most usefully whether "
@@ -1832,7 +1854,5 @@ def read_manifest(path: Path) -> ModuleManifest:
 def write_manifest(manifest: ModuleManifest, path: Path) -> Path:
     """Write a manifest to disk as indented JSON. Returns the path written."""
     path = Path(path)
-    path.write_text(
-        manifest.model_dump_json(indent=2, exclude_none=False) + "\n", encoding="utf-8"
-    )
+    path.write_text(manifest.model_dump_json(indent=2, exclude_none=False) + "\n", encoding="utf-8")
     return path

@@ -99,19 +99,14 @@ def test_an_accepted_row_and_a_submitted_row_are_not_the_same_row(tmp_path: Path
     """
     both = _spec(
         tmp_path / "both",
-        study_rows=(
-            f"rs1800562,{_PMID},accepted,{_UNIT}\n"
-            f"rs1800562,{_PMID},submitted,{_UNIT}\n"
-        ),
+        study_rows=(f"rs1800562,{_PMID},accepted,{_UNIT}\nrs1800562,{_PMID},submitted,{_UNIT}\n"),
     )
     compiled = compile_module(both, tmp_path / "out")
     assert compiled.success, compiled.errors
     studies = pl.read_parquet(tmp_path / "out" / "studies.parquet")
     assert sorted(studies["confidence"].to_list()) == ["accepted", "submitted"]
 
-    only_submitted = _spec(
-        tmp_path / "one", study_rows=f"rs1800562,{_PMID},submitted,{_UNIT}\n"
-    )
+    only_submitted = _spec(tmp_path / "one", study_rows=f"rs1800562,{_PMID},submitted,{_UNIT}\n")
     other = compile_module(only_submitted, tmp_path / "one_out")
     assert other.success, other.errors
     assert other.manifest.content_signature != compiled.manifest.content_signature

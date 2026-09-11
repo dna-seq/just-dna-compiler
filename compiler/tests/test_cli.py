@@ -14,13 +14,11 @@ from typer.testing import CliRunner
 runner = CliRunner()
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+    "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
 )
 _STUDIES = "rsid,pmid\nrs1801133,9545397\n"
 _POSITIONED = (
-    "rsid,chrom,start,ref,genotype,state,conclusion,gene\n"
-    "rs1801133,1,11856378,A,A/G,risk,MTHFR risk,MTHFR\n"
+    "rsid,chrom,start,ref,genotype,state,conclusion,gene\nrs1801133,1,11856378,A,A/G,risk,MTHFR risk,MTHFR\n"
 )
 _RSID_ONLY = "rsid,genotype,state,conclusion,gene\nrs1801133,A/G,risk,MTHFR risk,MTHFR\n"
 
@@ -73,7 +71,9 @@ def test_signature_command_prints_sha(tmp_path: Path) -> None:
 def test_reverse_roundtrips(tmp_path: Path) -> None:
     spec = _spec(tmp_path / "spec", _POSITIONED)
     runner.invoke(app, ["compile", str(spec), str(tmp_path / "out"), "--no-resolve"])
-    result = runner.invoke(app, ["reverse", str(tmp_path / "out"), str(tmp_path / "rev"), "--version", "1.2.3"])
+    result = runner.invoke(
+        app, ["reverse", str(tmp_path / "out"), str(tmp_path / "rev"), "--version", "1.2.3"]
+    )
     assert result.exit_code == 0, result.output
     assert "version: 1.2.3" in (tmp_path / "rev" / "module_spec.yaml").read_text(encoding="utf-8")
 
@@ -121,17 +121,29 @@ def test_sign_then_verify_round_trips_and_a_wrong_key_fails(tmp_path: Path) -> N
     signed = runner.invoke(app, ["sign", str(out), "--private-key", str(key_path)])
     assert signed.exit_code == 0, signed.output
 
-    good = runner.invoke(app, [
-        "verify", str(out), "--no-require-marketplace",
-        "--public-key", public_key_b64_from_pem(pem),
-    ])
+    good = runner.invoke(
+        app,
+        [
+            "verify",
+            str(out),
+            "--no-require-marketplace",
+            "--public-key",
+            public_key_b64_from_pem(pem),
+        ],
+    )
     assert good.exit_code == 0, good.output
     assert "verified against the pinned key" in good.stdout
 
-    other = runner.invoke(app, [
-        "verify", str(out), "--no-require-marketplace",
-        "--public-key", public_key_b64_from_pem(generate_private_key_pem()),
-    ])
+    other = runner.invoke(
+        app,
+        [
+            "verify",
+            str(out),
+            "--no-require-marketplace",
+            "--public-key",
+            public_key_b64_from_pem(generate_private_key_pem()),
+        ],
+    )
     assert other.exit_code == 1
     assert "VERIFY FAILED" in other.output
 
@@ -146,9 +158,16 @@ def test_a_signature_does_not_survive_editing_the_artifact(tmp_path: Path) -> No
     target = out / "studies.parquet"
     target.write_bytes(target.read_bytes() + b"\x00")
 
-    result = runner.invoke(app, [
-        "verify", str(out), "--no-require-marketplace", "--public-key", public_key_b64_from_pem(pem),
-    ])
+    result = runner.invoke(
+        app,
+        [
+            "verify",
+            str(out),
+            "--no-require-marketplace",
+            "--public-key",
+            public_key_b64_from_pem(pem),
+        ],
+    )
     assert result.exit_code == 1
 
 

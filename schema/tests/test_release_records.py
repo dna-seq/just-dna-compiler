@@ -215,9 +215,7 @@ def test_the_stamped_compiler_version_is_accepted_as_the_key_a_consumer_holds() 
     """
     assert release_version("just-dna-compiler 0.6.1") == "0.6.1"
     assert release_version("0.6.1") == "0.6.1"
-    assert needs_recompile("just-dna-compiler 0.6.1", "0.6.6").axes == needs_recompile(
-        "0.6.1", "0.6.6"
-    ).axes
+    assert needs_recompile("just-dna-compiler 0.6.1", "0.6.6").axes == needs_recompile("0.6.1", "0.6.6").axes
     for malformed in ("just-dna-compiler unknown", "0.6", "", "v1"):
         with pytest.raises(ValueError):
             release_version(malformed)
@@ -243,9 +241,10 @@ def test_the_axis_vocabulary_is_closed_in_all_three_places() -> None:
     assert markers["kind"]["options"] == sorted(VALID_RELEASE_CHANGE_KINDS)
 
     # Enforced, not merely advertised — and the `-`/`_` slip canonicalises to the declared member.
-    assert DeclaredChange(
-        axis="parquet-schema", target="t", kind="addition", detail="d"
-    ).axis == "parquet_schema"
+    assert (
+        DeclaredChange(axis="parquet-schema", target="t", kind="addition", detail="d").axis
+        == "parquet_schema"
+    )
     with pytest.raises(ValidationError, match="must be one of"):
         DeclaredChange(axis="parquet_colour", target="t", kind="addition", detail="d")
     with pytest.raises(ValidationError, match="must be one of"):
@@ -418,8 +417,11 @@ def _manifest_path_exists(path: str) -> bool:
         if field is None:
             return False
         model = next(
-            (arg for arg in getattr(field.annotation, "__args__", (field.annotation,))
-             if hasattr(arg, "model_fields")),
+            (
+                arg
+                for arg in getattr(field.annotation, "__args__", (field.annotation,))
+                if hasattr(arg, "model_fields")
+            ),
             None,
         )
         if model is None:
@@ -430,8 +432,9 @@ def _manifest_path_exists(path: str) -> bool:
 def test_the_roster_names_only_fields_the_manifest_actually_has() -> None:
     """Walked against the models, so a manifest rename cannot leave the roster pointing at nothing."""
     assert AUTHORED_ROW_DERIVED_FIELDS
-    unresolved = [entry.field for entry in AUTHORED_ROW_DERIVED_FIELDS
-                  if not _manifest_path_exists(entry.field)]
+    unresolved = [
+        entry.field for entry in AUTHORED_ROW_DERIVED_FIELDS if not _manifest_path_exists(entry.field)
+    ]
     assert unresolved == []
 
 
@@ -651,8 +654,15 @@ def test_the_model_and_its_json_answer_alike(tmp_path: Path) -> None:
     for blocks in (False, True):
         manifest = _manifest(tmp_path / str(blocks), blocks=blocks)
         as_json = manifest.model_dump(mode="json")
-        for path in ("gene_metrics", "gene_validity", "gene_validity.classifications", "stats.genes",
-                     "identity.version_coerced_from", "no_such_block", "stats.no_such_leaf"):
+        for path in (
+            "gene_metrics",
+            "gene_validity",
+            "gene_validity.classifications",
+            "stats.genes",
+            "identity.version_coerced_from",
+            "no_such_block",
+            "stats.no_such_leaf",
+        ):
             assert manifest_carries(manifest, path) == manifest_carries(as_json, path), (blocks, path)
         assert manifest_carries(manifest, "gene_metrics") is blocks
         assert manifest_carries(manifest, "gene_validity.classifications") is blocks
@@ -663,10 +673,16 @@ def test_the_model_and_its_json_answer_alike(tmp_path: Path) -> None:
 
 def test_an_empty_requirement_reaches_every_module_and_is_not_unstated(tmp_path: Path) -> None:
     bare = _manifest(tmp_path, blocks=False)
-    everywhere = DeclaredChange(axis="content_signature", target="content_signature",
-                                kind="correction", detail="synthetic", requires=())
-    unstated = DeclaredChange(axis="content_signature", target="content_signature",
-                              kind="correction", detail="synthetic")
+    everywhere = DeclaredChange(
+        axis="content_signature",
+        target="content_signature",
+        kind="correction",
+        detail="synthetic",
+        requires=(),
+    )
+    unstated = DeclaredChange(
+        axis="content_signature", target="content_signature", kind="correction", detail="synthetic"
+    )
     assert everywhere.reaches(bare) is True
     assert unstated.reaches(bare) is None
 
@@ -674,5 +690,10 @@ def test_an_empty_requirement_reaches_every_module_and_is_not_unstated(tmp_path:
 def test_a_requirement_that_is_not_a_dotted_path_is_refused() -> None:
     for bad in ("", "gene_metrics.", ".genes", "a..b"):
         with pytest.raises(ValidationError, match="dotted manifest paths"):
-            DeclaredChange(axis="manifest_fields", target="stats.genes", kind="correction",
-                           detail="synthetic", requires=(bad,))
+            DeclaredChange(
+                axis="manifest_fields",
+                target="stats.genes",
+                kind="correction",
+                detail="synthetic",
+                requires=(bad,),
+            )

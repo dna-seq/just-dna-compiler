@@ -151,9 +151,7 @@ VALID_LABEL_CONCORDANCE: frozenset[str] = frozenset(
 #: other on import and disagree about their members is a silent wrong answer waiting for the first
 #: module that reads both, so this one carries the lane's prefix the way `VALID_LABEL_CONCORDANCE`
 #: does beside `VALID_AUTHORITY_CONCORDANCE`.
-VALID_LABEL_POSITION: frozenset[str] = frozenset(
-    {"opposed", "unplaced", "unchecked", "absent", "no_label"}
-)
+VALID_LABEL_POSITION: frozenset[str] = frozenset({"opposed", "unplaced", "unchecked", "absent", "no_label"})
 
 #: What the module says about the pair, read from `recommendation_strength` alone.
 VALID_LABEL_ACTION: frozenset[str] = frozenset({"recommends", "declines", "absent"})
@@ -202,9 +200,7 @@ _POSITION_SENTENCES: dict[str, str] = {
 #: have read a blank cell as `No Clinical PGx`, which is the one reading this whole module forswears.
 #: The silent ones are named by `{silent}` instead, so nothing about them is dropped.
 _FINDING_SENTENCES: dict[str, str] = {
-    "regulators_disagree": (
-        "{count} label(s) reaching this pair at the {tier} tier state {levels}{silent}"
-    ),
+    "regulators_disagree": ("{count} label(s) reaching this pair at the {tier} tier state {levels}{silent}"),
     "recommendation_without_label_pgx": (
         "the module recommends here, and {count} label(s) reaching this pair at the {tier} "
         f"tier state {NO_CLINICAL_PGX!r}" + "{silent}"
@@ -639,8 +635,7 @@ def calls_for(index: DrugLabelIndex, subject: LabelSubject) -> tuple[LabelCall, 
     """
     if not subject.allele:
         return tuple(
-            LabelCall(row=row, matched_on=subject.gene)
-            for row in index.by_gene(subject.gene, subject.drug)
+            LabelCall(row=row, matched_on=subject.gene) for row in index.by_gene(subject.gene, subject.drug)
         )
     calls: list[LabelCall] = []
     seen: set[str] = set()
@@ -742,21 +737,15 @@ def check_drug_labels(
             continue
         result.compared.append(subject)
         result.tier_subjects[subject.tier] += 1
-        result.unstated_labels.update(
-            call.row.label_id for call in calls if not call.stated
-        )
+        result.unstated_labels.update(call.row.label_id for call in calls if not call.stated)
         verdict = classify_labels(action, calls)
         result.verdicts[subject] = verdict
-        result.concordance_arms[verdict.concordance] = (
-            result.concordance_arms.get(verdict.concordance, 0) + 1
-        )
+        result.concordance_arms[verdict.concordance] = result.concordance_arms.get(verdict.concordance, 0) + 1
         result.position_arms[verdict.position] = result.position_arms.get(verdict.position, 0) + 1
         if verdict.concordance == "discordant":
             result.findings.append(LabelFinding("regulators_disagree", subject, calls))
         if verdict.position == "opposed":
-            result.findings.append(
-                LabelFinding("recommendation_without_label_pgx", subject, calls)
-            )
+            result.findings.append(LabelFinding("recommendation_without_label_pgx", subject, calls))
 
     for finding in result.findings:
         logger.warning("Regulator-label difference — %s", finding)
@@ -794,8 +783,7 @@ def arm_summary(result: DrugLabelResult) -> str:
         ("position", result.position_arms, _POSITION_SENTENCES),
     )
     return "; ".join(
-        f"{axis}: "
-        + ", ".join(f"{count} {arm} ({sentences[arm]})" for arm, count in sorted(arms.items()))
+        f"{axis}: " + ", ".join(f"{count} {arm} ({sentences[arm]})" for arm, count in sorted(arms.items()))
         for axis, arms, sentences in axes
         if arms
     )

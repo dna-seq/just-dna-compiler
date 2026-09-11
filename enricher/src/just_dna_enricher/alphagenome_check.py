@@ -188,8 +188,6 @@ def load_module_variants(spec_dir: Path) -> list[VariantRow]:
     return rows
 
 
-
-
 def _contig_of(path: Path) -> str:
     """The contig a snapshot parquet holds, from its own name.
 
@@ -230,8 +228,7 @@ def _polars():
         import polars as pl
     except ImportError as exc:  # pragma: no cover - the [dev] extra declares it
         raise VariantImpactError(
-            "polars is required to read the AlphaGenome snapshot: "
-            "`pip install 'just-dna-enricher[dev]'`"
+            "polars is required to read the AlphaGenome snapshot: `pip install 'just-dna-enricher[dev]'`"
         ) from exc
     return pl
 
@@ -256,9 +253,7 @@ class LocalScore:
         return self.phred_lo >= threshold
 
 
-def read_local_scores(
-    reference: Path, variants: list[VariantRow]
-) -> dict[str, LocalScore]:
+def read_local_scores(reference: Path, variants: list[VariantRow]) -> dict[str, LocalScore]:
     """Look the module's variants up in the snapshot, keyed by `_label`.
 
     A variant with no row is **absent from the result**, never present with a zero: the artifact
@@ -287,9 +282,9 @@ def read_local_scores(
     if not wanted:
         return {}
 
-    probe = pl.DataFrame(
-        wanted, schema=["chrom", "pos", "ref", "alt", "label"], orient="row"
-    ).with_columns(pl.col("pos").cast(pl.UInt32))
+    probe = pl.DataFrame(wanted, schema=["chrom", "pos", "ref", "alt", "label"], orient="row").with_columns(
+        pl.col("pos").cast(pl.UInt32)
+    )
 
     # **Pre-filter, then join** (CLAUDE.md, polars in the compiler). The obvious spelling — scan
     # every parquet, cast the categorical key columns, join the probe — reads 8,812,917,339 rows to
@@ -338,7 +333,6 @@ def read_local_scores(
         for row in scored.iter_rows(named=True)
         if row["phred_lo"] is not None
     }
-
 
 
 def _refine(client, variant: VariantRow, label: str, result: VariantImpactResult) -> None:
@@ -444,7 +438,9 @@ def check_variant_impact(
         result.warnings.append(note)
         logger.warning("%s", note)
         return _attest(
-            result, spec_dir, write=write,
+            result,
+            spec_dir,
+            write=write,
             record=skipped(CHECK, "no_reference", detail=note, source=SOURCE_NAME),
         )
 
@@ -462,20 +458,32 @@ def check_variant_impact(
 
     if threshold is None:
         return _attest(
-            result, spec_dir, write=write,
-            record=ran(CHECK, subjects=result.subjects, findings=len(result.findings),
-                       source=SOURCE_NAME, release=result.dataset),
+            result,
+            spec_dir,
+            write=write,
+            record=ran(
+                CHECK,
+                subjects=result.subjects,
+                findings=len(result.findings),
+                source=SOURCE_NAME,
+                release=result.dataset,
+            ),
         )
 
     by_label = {_label(row): row for row in variants}
-    result.straddling = sorted(
-        label for label, score in local.items() if score.straddles(threshold)
-    )
+    result.straddling = sorted(label for label, score in local.items() if score.straddles(threshold))
     if not result.straddling:
         return _attest(
-            result, spec_dir, write=write,
-            record=ran(CHECK, subjects=result.subjects, findings=len(result.findings),
-                       source=SOURCE_NAME, release=result.dataset),
+            result,
+            spec_dir,
+            write=write,
+            record=ran(
+                CHECK,
+                subjects=result.subjects,
+                findings=len(result.findings),
+                source=SOURCE_NAME,
+                release=result.dataset,
+            ),
         )
 
     # **The refusal, and it is decided offline.** Both the cap and the reason come from the knot
@@ -501,7 +509,9 @@ def check_variant_impact(
         )
         result.warnings.append(note)
         return _attest(
-            result, spec_dir, write=write,
+            result,
+            spec_dir,
+            write=write,
             record=skipped(CHECK, "offline", detail=note, source=SOURCE_NAME),
         )
 
@@ -517,7 +527,9 @@ def check_variant_impact(
             result.unanswered.append((label, "no_client"))
         result.warnings.append(note)
         return _attest(
-            result, spec_dir, write=write,
+            result,
+            spec_dir,
+            write=write,
             record=skipped(CHECK, "unchecked", detail=note, source=SOURCE_NAME),
         )
 
@@ -529,9 +541,16 @@ def check_variant_impact(
             logger.warning("atlas refinement failed for %s: %s", label, exc)
 
     return _attest(
-        result, spec_dir, write=write,
-        record=ran(CHECK, subjects=result.subjects, findings=len(result.findings),
-                   source=SOURCE_NAME, release=result.dataset),
+        result,
+        spec_dir,
+        write=write,
+        record=ran(
+            CHECK,
+            subjects=result.subjects,
+            findings=len(result.findings),
+            source=SOURCE_NAME,
+            release=result.dataset,
+        ),
     )
 
 
@@ -541,9 +560,7 @@ def _dataset_of(reference: Path) -> str | None:
     return (read_release(reference) or {}).get("dataset") or None
 
 
-def _attest(
-    result: VariantImpactResult, spec_dir: Path, *, write: bool, record
-) -> VariantImpactResult:
+def _attest(result: VariantImpactResult, spec_dir: Path, *, write: bool, record) -> VariantImpactResult:
     """Record what this pass checked, merging into whatever another command already wrote."""
     if write:
         record_verification([record], spec_dir, error=VariantImpactError)
@@ -560,9 +577,7 @@ def threshold_is_safe(reference: Path, threshold: float) -> tuple[bool, int]:
     """
     pl = _polars()
     knots = pl.read_parquet(reference / KNOT_FILENAME)
-    spanning = knots.filter(
-        (pl.col("phred_lo") < threshold) & (pl.col("phred_hi") > threshold)
-    )
+    spanning = knots.filter((pl.col("phred_lo") < threshold) & (pl.col("phred_hi") > threshold))
     # `cast(Int64)` before summing, and it is not superstition: polars' `sum()` **preserves the
     # input dtype**, so a `UInt32` count column wraps in the reduction itself with no exception.
     # This reader takes the column from a snapshot on disk, and a snapshot built before that was

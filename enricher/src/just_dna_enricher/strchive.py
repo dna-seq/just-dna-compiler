@@ -353,9 +353,7 @@ _FINDING_SENTENCES: dict[str, str] = {
         "the module's lowest bound is {value}, inside {other}, so {source} classifies counts below it "
         "that no bin in this module answers for"
     ),
-    "ceiling_disagreement": (
-        "the highest bound is {value} in the module and {source_value} in {source}"
-    ),
+    "ceiling_disagreement": ("the highest bound is {value} in the module and {source_value} in {source}"),
     "ceiling_only_in_source": (
         "{source} closes the axis at {source_value} where the module's top bin is open above; this is "
         "a corpus maximum, not a clinical bound, and it is reported rather than written — a longer "
@@ -419,9 +417,7 @@ def _intervals(bins: Sequence[MeasureBinRow]) -> list[Band]:
     ordered = sorted(
         bins, key=lambda r: (r.measure_min is not None, r.measure_min if r.measure_min is not None else 0.0)
     )
-    return [
-        Band(row.phenotype or "bin", row.measure_min, row.measure_max) for row in ordered
-    ]
+    return [Band(row.phenotype or "bin", row.measure_min, row.measure_max) for row in ordered]
 
 
 def _floor(intervals: Sequence[Band]) -> float | None:
@@ -448,9 +444,7 @@ def _cuts(intervals: Sequence[Band]) -> list[float]:
     floor undefined, and then every finite lower bound is a division.
     """
     floor = _floor(intervals)
-    return sorted(
-        {iv.lo for iv in intervals if iv.lo is not None and (floor is None or iv.lo > floor)}
-    )
+    return sorted({iv.lo for iv in intervals if iv.lo is not None and (floor is None or iv.lo > floor)})
 
 
 def _source_cut_windows(bands: Sequence[Band]) -> list[tuple[float, float, Band, Band]]:
@@ -533,31 +527,32 @@ def compare_bands(
         if cut is not None:
             findings.append(
                 BandFinding(
-                    "floor_only_in_module", group_key, locus.locus_id,
-                    value=module_floor, other=cut, source_value=_floor(source),
+                    "floor_only_in_module",
+                    group_key,
+                    locus.locus_id,
+                    value=module_floor,
+                    other=cut,
+                    source_value=_floor(source),
                 )
             )
 
     module_ceiling, source_ceiling = _ceiling(authored), _ceiling(source)
     if module_ceiling is None and source_ceiling is not None:
         findings.append(
-            BandFinding(
-                "ceiling_only_in_source", group_key, locus.locus_id, source_value=source_ceiling
-            )
+            BandFinding("ceiling_only_in_source", group_key, locus.locus_id, source_value=source_ceiling)
         )
     elif module_ceiling is not None and source_ceiling is None and source:
         findings.append(
             BandFinding("ceiling_only_in_module", group_key, locus.locus_id, value=module_ceiling)
         )
-    elif (
-        module_ceiling is not None
-        and source_ceiling is not None
-        and module_ceiling != source_ceiling
-    ):
+    elif module_ceiling is not None and source_ceiling is not None and module_ceiling != source_ceiling:
         findings.append(
             BandFinding(
-                "ceiling_disagreement", group_key, locus.locus_id,
-                value=module_ceiling, source_value=source_ceiling,
+                "ceiling_disagreement",
+                group_key,
+                locus.locus_id,
+                value=module_ceiling,
+                source_value=source_ceiling,
             )
         )
     return findings
@@ -613,7 +608,9 @@ def check_repeat_bands(
         )
         result.warnings.append(note)
         return _attest(
-            result, spec_dir, write=write,
+            result,
+            spec_dir,
+            write=write,
             record=skipped("repeat_band_agreement", "nothing_to_check", detail=note, source=SOURCE_NAME),
         )
 
@@ -627,13 +624,13 @@ def check_repeat_bands(
         result.warnings.append(note)
         logger.warning("%s", note)
         return _attest(
-            result, spec_dir, write=write,
+            result,
+            spec_dir,
+            write=write,
             record=skipped("repeat_band_agreement", "no_reference", detail=note, source=SOURCE_NAME),
         )
 
-    loaded = (
-        catalogue if isinstance(catalogue, StrchiveCatalogue) else load_strchive_catalogue(catalogue)
-    )
+    loaded = catalogue if isinstance(catalogue, StrchiveCatalogue) else load_strchive_catalogue(catalogue)
     result.dataset = loaded.dataset
     index = loaded.by_gene_and_motif()
     known_genes = loaded.genes()
@@ -665,9 +662,7 @@ def check_repeat_bands(
             continue
         locus = candidates[0]
         if not locus.bands:
-            reason = (
-                f"{format_group_key(group_key)}: {SOURCE_NAME}'s {locus.locus_id} states no bands"
-            )
+            reason = f"{format_group_key(group_key)}: {SOURCE_NAME}'s {locus.locus_id} states no bands"
             result.withheld.append((group_key, reason))
             continue
         tiling = resolve_tiling(bins).value

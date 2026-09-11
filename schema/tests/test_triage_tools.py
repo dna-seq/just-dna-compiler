@@ -74,7 +74,7 @@ Three properties we would need, in descending order of how much they matter to u
 def test_a_flush_left_comment_inside_a_fence_does_not_end_a_section(ledger):
     """The defect itself, on S62's real shape: the span must reach the last line of the report."""
     lines = S62_SHAPE.splitlines()
-    (ident, _, body), = ledger.sections(lines)
+    ((ident, _, body),) = ledger.sections(lines)
     assert ident == "S62"
     assert body[-1].startswith("**Reproduced against**"), (
         "the span stopped early — everything after it would be left behind by an archive"
@@ -121,11 +121,14 @@ def test_a_sound_document_reports_nothing(ledger):
     assert ledger.fence_findings(S62_SHAPE.splitlines()) == []
 
 
-@pytest.mark.parametrize("doc", [
-    "docs/CONSUMER_SUGGESTIONS.md",
-    "docs/CONSUMER_SUGGESTIONS_HISTORY.md",
-    "docs/history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md",
-])
+@pytest.mark.parametrize(
+    "doc",
+    [
+        "docs/CONSUMER_SUGGESTIONS.md",
+        "docs/CONSUMER_SUGGESTIONS_HISTORY.md",
+        "docs/history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md",
+    ],
+)
 def test_the_real_documents_are_structurally_sound(ledger, doc):
     """The repair of S55 and S62 stays repaired, and a new report cannot reintroduce the shape."""
     findings = ledger.fence_findings((ROOT / doc).read_text().splitlines())
@@ -137,11 +140,16 @@ def test_every_archived_section_is_marked_and_matches(ledger):
 
     This is what catches a mis-archive, and it is the check that would have caught S55 vanishing.
     """
-    for doc in ("docs/CONSUMER_SUGGESTIONS_HISTORY.md",
-                "docs/history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md"):
+    for doc in (
+        "docs/CONSUMER_SUGGESTIONS_HISTORY.md",
+        "docs/history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md",
+    ):
         out = subprocess.run(
             [sys.executable, str(CLAUDE / "triage-state.py"), str(ROOT / doc)],
-            capture_output=True, text=True, check=True, cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=ROOT,
         ).stdout
         bad = [line for line in out.splitlines() if line and not line.startswith("current")]
         assert not bad, f"{doc}:\n" + "\n".join(bad)
@@ -177,7 +185,9 @@ def test_the_archiver_refuses_a_document_whose_fences_are_broken(tmp_path):
 
     result = subprocess.run(
         [sys.executable, str(claude / "triage-archive.py"), "S62"],
-        capture_output=True, text=True, cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
     )
     assert result.returncode != 0
     assert "refusing to archive" in result.stderr

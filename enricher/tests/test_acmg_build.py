@@ -47,13 +47,26 @@ V33_ADDITIONS = {"ABCD1", "CYP27A1", "PLN"}
 #: The real sheet's headers, typo and trailing space included. Reused so the synthetic workbooks
 #: exercise the same prefix-matching the real file needs.
 _HEADERS = (
-    "Gene", "Gene MIM", "Disease/Phentyope", "Disorder MIM",
-    "Phenotype Category", "Inheritance ", "SF List Version", "Variants to report",
+    "Gene",
+    "Gene MIM",
+    "Disease/Phentyope",
+    "Disorder MIM",
+    "Phenotype Category",
+    "Inheritance ",
+    "SF List Version",
+    "Variants to report",
 )
 
 
-def _workbook(tmp_path: Path, rows, *, title="ACMG SF v3.3 Gene List", headers=_HEADERS,
-              banner="The ACMG Secondary Findings v3.3 list is provided here", name="wb.xlsx") -> Path:
+def _workbook(
+    tmp_path: Path,
+    rows,
+    *,
+    title="ACMG SF v3.3 Gene List",
+    headers=_HEADERS,
+    banner="The ACMG Secondary Findings v3.3 list is provided here",
+    name="wb.xlsx",
+) -> Path:
     """A minimal sheet with the real file's layout: banner, blank row, headers, data."""
     book = openpyxl.Workbook()
     sheet = book.active
@@ -68,8 +81,17 @@ def _workbook(tmp_path: Path, rows, *, title="ACMG SF v3.3 Gene List", headers=_
     return path
 
 
-def _entry(gene, *, mim="123456", disease="Some condition", disorder="654321",
-           category="Cancer", inheritance="AD", since="1", report="All P and LP"):
+def _entry(
+    gene,
+    *,
+    mim="123456",
+    disease="Some condition",
+    disorder="654321",
+    category="Cancer",
+    inheritance="AD",
+    since="1",
+    report="All P and LP",
+):
     return (gene, mim, disease, disorder, category, inheritance, since, report)
 
 
@@ -123,8 +145,9 @@ def test_strict_refuses_on_a_real_mismatch_but_not_on_an_unverifiable_one(no_amb
     assert page.superseded_by == KNOWN_LATEST_SF_VERSION
 
     # A gene on no SF list in any version — that disagreement is real whatever the version.
-    junk = [VariantRow(rsid="rs1800562", genotype="A/A", state="risk", conclusion="x",
-                       gene="HBB", acmg_sf=True)]
+    junk = [
+        VariantRow(rsid="rs1800562", genotype="A/A", state="risk", conclusion="x", gene="HBB", acmg_sf=True)
+    ]
     # Against the stale page: unverifiable, so strict passes.
     verify_acmg_sf(junk, mode="strict", page_text=_V32_PAGE)
 
@@ -152,8 +175,13 @@ def test_prose_in_the_gene_column_is_not_a_gene(tmp_path):
 
 def test_an_unreadable_symbol_on_a_populated_row_refuses_rather_than_dropping_a_gene(tmp_path):
     """The other side of the same guard: refusing beats returning a list short by a gene."""
-    path = _workbook(tmp_path, [*_enough_rows(), ("a gene name we cannot read", "123456", "X",
-                                                 "1", "Cancer", "AD", "1", "All P and LP")])
+    path = _workbook(
+        tmp_path,
+        [
+            *_enough_rows(),
+            ("a gene name we cannot read", "123456", "X", "1", "Cancer", "AD", "1", "All P and LP"),
+        ],
+    )
     with pytest.raises(AcmgSfError, match="not ACMG's trailing disclaimer"):
         parse_acmg_workbook(path)
 
@@ -178,22 +206,35 @@ def test_a_sheet_with_no_version_refuses(tmp_path):
 
 def test_a_tab_and_a_banner_that_disagree_on_the_version_refuse(tmp_path):
     """A renamed tab beside unrenamed contents reports the wrong version alongside the right genes."""
-    path = _workbook(tmp_path, _enough_rows(), title="ACMG SF v3.3 Gene List",
-                     banner="The ACMG Secondary Findings v3.2 list is provided here")
+    path = _workbook(
+        tmp_path,
+        _enough_rows(),
+        title="ACMG SF v3.3 Gene List",
+        banner="The ACMG Secondary Findings v3.2 list is provided here",
+    )
     with pytest.raises(AcmgSfError, match="refusing rather than reporting against a version"):
         parse_acmg_workbook(path)
 
 
 def test_columns_are_resolved_by_name_so_a_reorder_moves_the_reader(tmp_path):
     """Positional reads would silently shift every value; `Gene` vs `Gene MIM` is the hard case."""
-    reordered = ("Variants to report", "Gene MIM", "Gene", "Disorder MIM",
-                 "SF List Version", "Inheritance ", "Phenotype Category", "Disease/Phentyope")
-    rows = [("All P and LP", "123456", f"GENE{i}", "654321", "1", "AD", "Cancer", "Cond")
-            for i in range(MIN_GENES + 5)]
+    reordered = (
+        "Variants to report",
+        "Gene MIM",
+        "Gene",
+        "Disorder MIM",
+        "SF List Version",
+        "Inheritance ",
+        "Phenotype Category",
+        "Disease/Phentyope",
+    )
+    rows = [
+        ("All P and LP", "123456", f"GENE{i}", "654321", "1", "AD", "Cancer", "Cond")
+        for i in range(MIN_GENES + 5)
+    ]
     sf_list = parse_acmg_workbook(_workbook(tmp_path, rows, headers=reordered))
     assert {f.gene for f in sf_list.findings} == {f"GENE{i}" for i in range(MIN_GENES + 5)}
-    assert all(f.gene_mim == "123456" and f.variants_to_report == "All P and LP"
-               for f in sf_list.findings)
+    assert all(f.gene_mim == "123456" and f.variants_to_report == "All P and LP" for f in sf_list.findings)
 
 
 def test_a_missing_column_refuses(tmp_path):
@@ -205,8 +246,10 @@ def test_a_missing_column_refuses(tmp_path):
 
 def test_embedded_newlines_and_padding_are_collapsed_not_preserved(tmp_path):
     """Three real cells carry line breaks; a value written on two lines is the same value."""
-    rows = [*_enough_rows(), _entry("GLA", category="Cardiovascular\nMetabolic",
-                                    inheritance="XL ", disorder="204100,\n613794")]
+    rows = [
+        *_enough_rows(),
+        _entry("GLA", category="Cardiovascular\nMetabolic", inheritance="XL ", disorder="204100,\n613794"),
+    ]
     entry = next(f for f in parse_acmg_workbook(_workbook(tmp_path, rows)).findings if f.gene == "GLA")
     assert entry.phenotype_category == "Cardiovascular Metabolic"
     assert entry.inheritance == "XL"
@@ -225,9 +268,18 @@ def test_a_none_release_label_becomes_null_not_the_string(tmp_path):
 
 def test_the_snapshot_reads_back_to_the_same_list(tmp_path):
     """Build → read is lossless on everything a verdict or a message uses."""
-    rows = [*_enough_rows(), _entry("HFE", mim="613609", disease="Hereditary hemochromatosis",
-                                    category="Other", inheritance="AR", since="1",
-                                    report="p.C282Y homozygotes only")]
+    rows = [
+        *_enough_rows(),
+        _entry(
+            "HFE",
+            mim="613609",
+            disease="Hereditary hemochromatosis",
+            category="Other",
+            inheritance="AR",
+            since="1",
+            report="p.C282Y homozygotes only",
+        ),
+    ]
     built = build_acmg_snapshot(_workbook(tmp_path, rows), tmp_path / "snap")
     loaded = load_acmg_snapshot(tmp_path / "snap")
 
@@ -281,11 +333,13 @@ def test_an_injected_snapshot_makes_the_check_work_offline(tmp_path):
     """
     rows = [*_enough_rows(), _entry("HFE", disease="Hereditary hemochromatosis")]
     build_acmg_snapshot(_workbook(tmp_path, rows), tmp_path / "snap")
-    variants = [VariantRow(rsid="rs1800562", genotype="A/A", state="risk", conclusion="x",
-                           gene="HFE", acmg_sf=True)]
+    variants = [
+        VariantRow(rsid="rs1800562", genotype="A/A", state="risk", conclusion="x", gene="HFE", acmg_sf=True)
+    ]
 
-    report = verify_acmg_sf(variants, offline=True, snapshot_dir=tmp_path / "snap",
-                            url="http://acmg.invalid/")
+    report = verify_acmg_sf(
+        variants, offline=True, snapshot_dir=tmp_path / "snap", url="http://acmg.invalid/"
+    )
     assert report.version == "3.3"
     assert report.checked == 1
     assert [v.verdict for v in report.verdicts] == ["agree"]
@@ -293,8 +347,9 @@ def test_an_injected_snapshot_makes_the_check_work_offline(tmp_path):
 
 
 def test_offline_without_a_snapshot_is_still_unchecked_not_absent(tmp_path, no_ambient_caches):
-    variants = [VariantRow(rsid="rs1800562", genotype="A/A", state="risk", conclusion="x",
-                           gene="ABCD1", acmg_sf=True)]
+    variants = [
+        VariantRow(rsid="rs1800562", genotype="A/A", state="risk", conclusion="x", gene="ABCD1", acmg_sf=True)
+    ]
     report = verify_acmg_sf(variants, offline=True)
     assert [v.verdict for v in report.verdicts] == ["unchecked"]
     assert report.checked == 0

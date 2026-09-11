@@ -24,10 +24,7 @@ import polars as pl
 import pytest
 from just_dna_enricher.enrich import enrich, select_par_representative
 
-_YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: par\n  title: PAR\n  description: d\n  report_title: PAR\n"
-)
+_YAML = "schema_version: '1.0'\nmodule:\n  name: par\n  title: PAR\n  description: d\n  report_title: PAR\n"
 
 
 def _locus(chrom: str, start: int, ref: str, alts: str) -> dict:
@@ -123,9 +120,11 @@ def par_cache(tmp_path: Path) -> Path:
     pl.DataFrame(
         {
             "id": [
-                "rs184115031", "rs184115031",     # SPRY3, PAR2 — X and Y
-                "rs779201129", "rs779201129",     # SPRY3, PAR2 — X and Y
-                "rs376745839",                    # XG, past the PAR1 boundary — X only
+                "rs184115031",
+                "rs184115031",  # SPRY3, PAR2 — X and Y
+                "rs779201129",
+                "rs779201129",  # SPRY3, PAR2 — X and Y
+                "rs376745839",  # XG, past the PAR1 boundary — X only
             ],
             "chrom": ["X", "Y", "X", "Y", "X"],
             "start": [155773979, 56960499, 155773926, 56960446, 2782081],
@@ -177,14 +176,12 @@ def test_keep_par_twin_records_both_contigs(par_cache: Path, tmp_path: Path) -> 
     assert _loci(result) == {
         "rs184115031": {("X", 155773979), ("Y", 56960499)},
         "rs779201129": {("X", 155773926), ("Y", 56960446)},
-        "rs376745839": {("X", 2782081)},          # still one — it is not a PAR locus
+        "rs376745839": {("X", 2782081)},  # still one — it is not a PAR locus
     }
     assert len(result.rows) == 5
 
 
-def test_the_report_is_one_aggregated_line_not_one_per_locus(
-    par_cache: Path, tmp_path: Path, caplog
-) -> None:
+def test_the_report_is_one_aggregated_line_not_one_per_locus(par_cache: Path, tmp_path: Path, caplog) -> None:
     """Two PAR loci here and ten in the SHOX panel. A line each would bury every other finding —
     the aggregation rule this repo has needed four separate times."""
     with caplog.at_level(logging.INFO, logger="just_dna_enricher.enrich"):
@@ -203,8 +200,9 @@ def test_nothing_is_reported_when_no_locus_is_pseudoautosomal(tmp_path: Path, ca
     author to ignore it."""
     data = tmp_path / "cache" / "data"
     data.mkdir(parents=True)
-    pl.DataFrame({"id": ["rs376745839"], "chrom": ["X"], "start": [2782081],
-                  "ref": ["C"], "alt": ["T"]}).write_parquet(data / "chr.parquet")
+    pl.DataFrame(
+        {"id": ["rs376745839"], "chrom": ["X"], "start": [2782081], "ref": ["C"], "alt": ["T"]}
+    ).write_parquet(data / "chr.parquet")
     spec = tmp_path / "spec"
     spec.mkdir()
     (spec / "module_spec.yaml").write_text(_YAML, encoding="utf-8")

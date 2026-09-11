@@ -25,17 +25,30 @@ FIXTURE = Path(__file__).parents[2] / "assets" / "clinvar_GRCh38_slice.vcf.gz"
 REAL_VCF = Path("/data/just-dna-cache/clinvar/clinvar_GRCh38.vcf.gz")
 
 _EXPECTED_COLUMNS = {
-    "chrom", "start", "ref", "alt", "rsid", "variation_id", "allele_id", "gene", "genes",
-    "clin_sig", "clin_sig_raw", "review_status", "review_stars", "condition",
-    "molecular_consequence", "variant_type", "origin",
+    "chrom",
+    "start",
+    "ref",
+    "alt",
+    "rsid",
+    "variation_id",
+    "allele_id",
+    "gene",
+    "genes",
+    "clin_sig",
+    "clin_sig_raw",
+    "review_status",
+    "review_stars",
+    "condition",
+    "molecular_consequence",
+    "variant_type",
+    "origin",
 }
 
 _ACGT = re.compile(r"^[ACGT]+$")
 _VALID_CHROMS = frozenset([str(i) for i in range(1, 23)] + ["X", "Y", "MT"])
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+    "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
 )
 
 
@@ -61,10 +74,7 @@ def _parse_fixture_alleles(vcf: Path) -> set[tuple[str, int, str, str]]:
             pos, ref, alt_field = int(cols[1]), cols[3].upper(), cols[4]
             for alt in alt_field.split(","):
                 alt = alt.upper()
-                if (
-                    _ACGT.match(ref) and _ACGT.match(alt) and ref != alt
-                    and len(ref) <= 50 and len(alt) <= 50
-                ):
+                if _ACGT.match(ref) and _ACGT.match(alt) and ref != alt and len(ref) <= 50 and len(alt) <= 50:
                     out.add((chrom, pos, ref, alt))
     return out
 
@@ -178,8 +188,13 @@ def test_one_to_many_clinvar_expansion(tmp_path: Path) -> None:
         tmp_path,
         # Both loci `A>T`, so both can host the authored `A/T` — forward resolution is allele-aware
         # since 0.5 and would otherwise drop the second, testing nothing.
-        {"rsid": ["rs777", "rs777"], "chrom": ["5", "6"], "start": [500, 600],
-         "ref": ["A", "A"], "alt": ["T", "T"]},
+        {
+            "rsid": ["rs777", "rs777"],
+            "chrom": ["5", "6"],
+            "start": [500, 600],
+            "ref": ["A", "A"],
+            "alt": ["T", "T"],
+        },
     )
     spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs777,A/T,risk,c\n")
     enrich(spec, offline=True, ensembl_cache=tmp_path / "noens", clinvar_cache=cv)
@@ -200,8 +215,13 @@ def test_a_record_the_genotype_cannot_host_is_left_out_of_the_table(tmp_path: Pa
     """
     cv = _synthetic_clinvar(
         tmp_path,
-        {"rsid": ["rs777", "rs777", "rs777"], "chrom": ["5", "5", "5"],
-         "start": [500, 500, 500], "ref": ["G", "GT", "GTT"], "alt": ["GT", "G", "G"]},
+        {
+            "rsid": ["rs777", "rs777", "rs777"],
+            "chrom": ["5", "5", "5"],
+            "start": [500, 500, 500],
+            "ref": ["G", "GT", "GTT"],
+            "alt": ["GT", "G", "G"],
+        },
     )
     spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs777,G/GT,risk,c\n")
     enrich(spec, offline=True, ensembl_cache=tmp_path / "noens", clinvar_cache=cv)
@@ -276,19 +296,13 @@ def test_ensembl_cache_wins_when_both_present(tmp_path: Path) -> None:
     assert dig_b.manifest.compilation.resolution_sources == ["cache"]
     # The fact hash is the right instrument: producer-independent by construction, so it answers
     # "are these the same resolved facts" without answering "were they fetched at the same instant".
-    assert (
-        dig_b.manifest.compilation.resolution_signature
-        == dig_e.manifest.compilation.resolution_signature
-    )
+    assert dig_b.manifest.compilation.resolution_signature == dig_e.manifest.compilation.resolution_signature
 
     # ClinVar-only genuinely resolves different facts (alts differ) — the reason it sits after the cache.
     spec_c = _spec(tmp_path / "sc", variants)
     enrich(spec_c, offline=True, ensembl_cache=tmp_path / "noens", clinvar_cache=cv)
     dig_c = compile_module(spec_c, tmp_path / "oc", ensembl_cache=None)
-    assert (
-        dig_c.manifest.compilation.resolution_signature
-        != dig_e.manifest.compilation.resolution_signature
-    )
+    assert dig_c.manifest.compilation.resolution_signature != dig_e.manifest.compilation.resolution_signature
     # ...yet the authored content is identical across all three (only resolution-side identity moves).
     assert dig_c.manifest.content_signature == dig_e.manifest.content_signature
     assert dig_b.manifest.content_signature == dig_e.manifest.content_signature
@@ -308,8 +322,13 @@ def test_reverse_backfill_is_allele_aware_and_flags_ambiguity(tmp_path: Path) ->
     #   C>CAT → rsid null (don't guess an allele-blind rsID), source=authored
     cv = _synthetic_clinvar(
         tmp_path,
-        {"rsid": ["rs1000", "rs1001", "rs9", None], "chrom": ["1", "1", "1", "1"],
-         "start": [100, 100, 100, 200], "ref": ["A", "A", "A", "C"], "alt": ["T", "T", "G", "CAT"]},
+        {
+            "rsid": ["rs1000", "rs1001", "rs9", None],
+            "chrom": ["1", "1", "1", "1"],
+            "start": [100, 100, 100, 200],
+            "ref": ["A", "A", "A", "C"],
+            "alt": ["T", "T", "G", "CAT"],
+        },
     )
     variants = (
         "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
@@ -322,8 +341,8 @@ def test_reverse_backfill_is_allele_aware_and_flags_ambiguity(tmp_path: Path) ->
     by_alt = {r.alts: r for r in _resolution_rows(spec)}
 
     assert by_alt["T"].status == "ambiguous"
-    assert by_alt["T"].rsid == "rs1000"                       # deterministic pick (lowest id)
-    assert by_alt["T"].rsid_alternates == "rs1000,rs1001"     # full candidate list, inspectable
+    assert by_alt["T"].rsid == "rs1000"  # deterministic pick (lowest id)
+    assert by_alt["T"].rsid_alternates == "rs1000,rs1001"  # full candidate list, inspectable
     assert by_alt["G"].status == "resolved" and by_alt["G"].rsid == "rs9"  # allele-exact, no contamination
     assert by_alt["G"].rsid_alternates is None
     assert by_alt["CAT"].rsid is None and by_alt["CAT"].source == "authored"  # never guessed
@@ -339,13 +358,14 @@ def test_reverse_roundtrip_is_a_fixpoint(tmp_path: Path) -> None:
         tmp_path / "spec",
         "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
         "rs334,,,,,A/T,risk,pathogenic\n"
-        ",11,5226762,C,CAAAG,C/CAAAG,risk,pathogenic\n",   # the un-rs'd insertion from finding 7
+        ",11,5226762,C,CAAAG,C/CAAAG,risk,pathogenic\n",  # the un-rs'd insertion from finding 7
     )
     enrich(spec, offline=True, ensembl_cache=tmp_path / "noens", clinvar_cache=cv)
     r1 = compile_module(spec, tmp_path / "o1", ensembl_cache=None)
     assert r1.success, r1.errors
 
     from just_dna_compiler.compiler import reverse_module
+
     reverse_module(tmp_path / "o1", tmp_path / "rev1", write_resolution=True)
     r2 = compile_module(tmp_path / "rev1", tmp_path / "o2", ensembl_cache=None)
     reverse_module(tmp_path / "o2", tmp_path / "rev2", write_resolution=True)
@@ -382,7 +402,7 @@ _CITATIONS_TSV = (
     "#AlleleID\tVariationID\trs\tnsv\tcitation_source\tcitation_id\torganization_ids\n"
     "15041\t2\t397704705\t\tPubMed\t20613862\t1,3\n"
     "15041\t2\t397704705\t\tPubMed\t20613861\t1\n"
-    "15042\t3\t\t\tPubMedBookArticle\t99999999\t1\n"   # not PubMed → dropped
+    "15042\t3\t\t\tPubMedBookArticle\t99999999\t1\n"  # not PubMed → dropped
 )
 
 
@@ -399,7 +419,7 @@ def test_citations_build_writes_the_sidecar_and_keeps_only_pubmed(tmp_path: Path
     build_snapshot(FIXTURE, snapshot)
     result = build_citations(_citations_txt(tmp_path), snapshot)
 
-    assert result.row_count == 2                      # the PubMedBookArticle row is not a PMID
+    assert result.row_count == 2  # the PubMedBookArticle row is not a PMID
     # The input is hashed even when no caller supplied a digest: the bytes are on disk, so recording
     # "unknown" would be an unknown we chose not to establish.
     assert result.source_sha256 and len(result.source_sha256) == 64
@@ -421,7 +441,9 @@ def test_citations_provenance_is_merged_not_overwritten(tmp_path: Path) -> None:
     before = json.loads((snapshot / "release.json").read_text())
 
     result = build_citations(
-        _citations_txt(tmp_path), snapshot, source_url="http://example/var_citations.txt",
+        _citations_txt(tmp_path),
+        snapshot,
+        source_url="http://example/var_citations.txt",
         source_sha256="abc123",
     )
     after = json.loads((snapshot / "release.json").read_text())
@@ -459,7 +481,7 @@ def test_an_unreadable_release_json_is_left_alone_and_reported(tmp_path: Path, c
     with caplog.at_level("WARNING"):
         result = build_citations(_citations_txt(tmp_path), snapshot)
     assert not result.release_updated
-    assert (snapshot / "release.json").read_text() == "{not json"       # untouched
+    assert (snapshot / "release.json").read_text() == "{not json"  # untouched
     assert "unreadable" in "\n".join(r.getMessage() for r in caplog.records)
     # …and the citations table itself was still written: the provenance failure is not a data failure.
     assert (snapshot / clinvar.CITATIONS_DIRNAME / "citations.parquet").is_file()

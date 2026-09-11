@@ -33,16 +33,31 @@ class TestModuleSpecConfig:
 class TestVariantRow:
     def test_valid_row_with_both(self) -> None:
         row = VariantRow(
-            rsid="rs1801133", chrom="1", start=11796321, ref="G", alts="A",
-            genotype="A/G", weight=-0.5, state="risk", conclusion="Heterozygous",
-            gene="MTHFR", phenotype="Reduced methylation", category="methylation",
+            rsid="rs1801133",
+            chrom="1",
+            start=11796321,
+            ref="G",
+            alts="A",
+            genotype="A/G",
+            weight=-0.5,
+            state="risk",
+            conclusion="Heterozygous",
+            gene="MTHFR",
+            phenotype="Reduced methylation",
+            category="methylation",
         )
         assert row.variant_key == "rs1801133"
 
     def test_position_only_valid(self) -> None:
         row = VariantRow(
-            chrom="10", start=94781859, ref="G", alts="A", genotype="A/G",
-            weight=-0.5, state="risk", conclusion="Position-only",
+            chrom="10",
+            start=94781859,
+            ref="G",
+            alts="A",
+            genotype="A/G",
+            weight=-0.5,
+            state="risk",
+            conclusion="Position-only",
         )
         assert row.rsid is None
         # A resolved substitution keys on its GA4GH VRS allele id (0.5) — content-addressed and
@@ -94,23 +109,37 @@ class TestVariantRow:
 
     def test_chrom_normalization(self) -> None:
         row = VariantRow(
-            rsid="rs123", chrom="chr1", start=100, genotype="A/G",
-            weight=0.0, state="neutral", conclusion="Test",
+            rsid="rs123",
+            chrom="chr1",
+            start=100,
+            genotype="A/G",
+            weight=0.0,
+            state="neutral",
+            conclusion="Test",
         )
         assert row.chrom == "1"
 
     def test_partial_position_rejected(self) -> None:
         with pytest.raises(Exception, match="chrom and start are required"):
             VariantRow(
-                rsid="rs123", chrom="1", start=None, genotype="A/G",
-                weight=0.0, state="neutral", conclusion="Test",
+                rsid="rs123",
+                chrom="1",
+                start=None,
+                genotype="A/G",
+                weight=0.0,
+                state="neutral",
+                conclusion="Test",
             )
 
     def test_ref_without_position_rejected(self) -> None:
         with pytest.raises(Exception, match="ref/alts require chrom and start"):
             VariantRow(
-                rsid="rs123", ref="A", genotype="A/G", weight=0.0,
-                state="neutral", conclusion="Test",
+                rsid="rs123",
+                ref="A",
+                genotype="A/G",
+                weight=0.0,
+                state="neutral",
+                conclusion="Test",
             )
 
 

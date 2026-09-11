@@ -93,7 +93,11 @@ def test_no_fourth_copy_of_the_separator_rule_can_arrive_quietly() -> None:
     root = Path(__file__).resolve().parents[2]
     offenders = [
         f"{path.relative_to(root)}:{i}"
-        for package in ("schema/src/just_dna_format", "compiler/src/just_dna_compiler", "enricher/src/just_dna_enricher")
+        for package in (
+            "schema/src/just_dna_format",
+            "compiler/src/just_dna_compiler",
+            "enricher/src/just_dna_enricher",
+        )
         for path in sorted((root / package).rglob("*.py"))
         if (path.parent.name, path.name) not in _ALLOWED
         for i, line in enumerate(path.read_text().splitlines(), start=1)

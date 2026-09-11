@@ -125,9 +125,7 @@ def _schema() -> dict:
     return dict.fromkeys(LABEL_COLUMNS, pl.Utf8)
 
 
-def download_drug_labels_zip(
-    dest: Path, url: str = DEFAULT_DRUG_LABELS_URL
-) -> tuple[Path, str]:
+def download_drug_labels_zip(dest: Path, url: str = DEFAULT_DRUG_LABELS_URL) -> tuple[Path, str]:
     """Stream `drugLabels.zip` to `dest` (atomic `.part` rename), returning `(path, sha256)`.
 
     Core `httpx` with the hash taken while streaming, the shape every bulk builder here uses —
@@ -139,7 +137,10 @@ def download_drug_labels_zip(
     `HTTPStatusError` traceback. The half-written `.part` goes with it.
     """
     streamed = stream_to_file(
-        dest, url, error_cls=DrugLabelUnavailable, what="the ClinPGx drug-label archive",
+        dest,
+        url,
+        error_cls=DrugLabelUnavailable,
+        what="the ClinPGx drug-label archive",
         remedy="Pass --zip <archive> to build from a copy you already hold.",
     )
     return streamed.path, streamed.sha256
@@ -161,14 +162,9 @@ def _rows(archive: zipfile.ZipFile) -> list[dict[str, str | None]]:
         if missing:
             # Structural: a renamed upstream column would otherwise land as a whole column of nulls,
             # and a check reading `testing_level` would then report five regulators saying nothing.
-            raise DrugLabelError(
-                f"{LABELS_MEMBER} is missing {len(missing)} expected column(s): {missing}"
-            )
+            raise DrugLabelError(f"{LABELS_MEMBER} is missing {len(missing)} expected column(s): {missing}")
         return [
-            {
-                target: ((row.get(source) or "").strip() or None)
-                for source, target in COLUMN_MAP.items()
-            }
+            {target: ((row.get(source) or "").strip() or None) for source, target in COLUMN_MAP.items()}
             for row in reader
         ]
 
@@ -211,9 +207,7 @@ def build_drug_label_snapshot(
     except zipfile.BadZipFile as exc:
         raise DrugLabelError(f"{zip_path} is not a readable zip archive: {exc}") from exc
     if not records:
-        raise DrugLabelError(
-            f"{source_url} parsed to zero labels; refusing to record it as a snapshot"
-        )
+        raise DrugLabelError(f"{source_url} parsed to zero labels; refusing to record it as a snapshot")
 
     data_dir = out_dir / SNAPSHOT_DATA_DIRNAME
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -227,9 +221,7 @@ def build_drug_label_snapshot(
         # file rather than `release.json`'s stated hash, so the two must describe the same bytes.
         license_path = out_dir / SNAPSHOT_LICENSE_FILENAME
         atomic_write_text(license_path, license_text)
-        license_sha = "sha256:" + hashlib.sha256(
-            license_path.read_bytes()
-        ).hexdigest()
+        license_sha = "sha256:" + hashlib.sha256(license_path.read_bytes()).hexdigest()
 
     regulators = sorted({r["regulator"] for r in records if r["regulator"]})
     levels = sorted({r["testing_level"] for r in records if r["testing_level"]})
@@ -249,7 +241,10 @@ def build_drug_label_snapshot(
 
     logger.info(
         "Drug-label snapshot: %d label(s) from %d regulator(s) (%s) → %s",
-        len(records), len(regulators), created or "undated", parquet_path,
+        len(records),
+        len(regulators),
+        created or "undated",
+        parquet_path,
     )
     return DrugLabelBuildResult(
         out_dir=out_dir,

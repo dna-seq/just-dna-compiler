@@ -269,14 +269,15 @@ def download_clinvar_vcf(dest: Path, url: str = DEFAULT_CLINVAR_URL) -> Path:
     makes. Both are `net.stream_to_file`'s job now.
     """
     return stream_to_file(
-        dest, url, error_cls=ClinVarUnavailable, what="the ClinVar VCF",
+        dest,
+        url,
+        error_cls=ClinVarUnavailable,
+        what="the ClinVar VCF",
         remedy="Pass --source clinvar=<vcf> to build from a copy you already hold.",
     ).path
 
 
-def download_var_citations(
-    dest: Path, url: str = DEFAULT_CITATIONS_URL
-) -> tuple[Path, str]:
+def download_var_citations(dest: Path, url: str = DEFAULT_CITATIONS_URL) -> tuple[Path, str]:
     """Stream ClinVar's `var_citations.txt` to `dest`, the same way the VCF is fetched.
 
     A *separate* download because ClinVar publishes it separately — the VCF carries no PMIDs. That
@@ -288,7 +289,10 @@ def download_var_citations(
     the artifact carries two ClinVar releases and `release.json` describes one of them.
     """
     streamed = stream_to_file(
-        dest, url, error_cls=ClinVarUnavailable, what="the ClinVar citations table",
+        dest,
+        url,
+        error_cls=ClinVarUnavailable,
+        what="the ClinVar citations table",
     )
     return streamed.path, streamed.sha256
 
@@ -334,7 +338,10 @@ def build_citations(
             "surface with `pip install 'just-dna-enricher[dev]'` (or `uv sync --group dev`)."
         )
     frame = pl.read_csv(
-        citations_txt, separator="\t", has_header=True, infer_schema_length=0,
+        citations_txt,
+        separator="\t",
+        has_header=True,
+        infer_schema_length=0,
         truncate_ragged_lines=True,
     )
     columns = {name.lstrip("#").strip(): name for name in frame.columns}
@@ -369,7 +376,8 @@ def build_citations(
     if unusable:
         logger.warning(
             "Dropped %d citation(s) filed under PubMed whose id is not a PMID (kept %d).",
-            unusable, kept.height,
+            unusable,
+            kept.height,
         )
     target = Path(out_dir) / CITATIONS_DIRNAME
     target.mkdir(parents=True, exist_ok=True)
@@ -392,7 +400,9 @@ def build_citations(
         },
     )
     return CitationsResult(
-        row_count=kept.height, source_sha256=digest, release_updated=updated,
+        row_count=kept.height,
+        source_sha256=digest,
+        release_updated=updated,
         unusable_citations=unusable,
     )
 
@@ -434,7 +444,10 @@ def _merge_release_block(out_dir: Path, name: str, block: dict) -> bool:
         except (ValueError, OSError) as exc:
             logger.warning(
                 "%s is present but unreadable (%s); leaving it alone rather than overwriting the "
-                "snapshot's provenance. The %s block was not recorded.", path, exc, name,
+                "snapshot's provenance. The %s block was not recorded.",
+                path,
+                exc,
+                name,
             )
             return False
         if not isinstance(release, dict):
@@ -542,8 +555,12 @@ def build_snapshot(
     logger.info(
         "Built ClinVar snapshot: %d rows across %d chromosomes → %s "
         "(skipped: non-ACGT %d, too-long %d, off-target chrom %d)",
-        record_count, len(written_chroms), data_dir,
-        skipped_non_acgt, skipped_too_long, skipped_bad_chrom,
+        record_count,
+        len(written_chroms),
+        data_dir,
+        skipped_non_acgt,
+        skipped_too_long,
+        skipped_bad_chrom,
     )
     return BuildResult(
         out_dir=out_dir,

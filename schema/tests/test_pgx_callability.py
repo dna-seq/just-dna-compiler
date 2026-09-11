@@ -118,7 +118,5 @@ def test_exactly_three_row_models_carry_a_callability_flag() -> None:
     locus, which is the one outcome the design rejected. Walked over `_ALL_MODELS` so a model added
     without being registered cannot hide either.
     """
-    carriers = {
-        name for name, model in _ALL_MODELS.items() if "requires_callable" in model.model_fields
-    }
+    carriers = {name for name, model in _ALL_MODELS.items() if "requires_callable" in model.model_fields}
     assert carriers == {"VariantRow", "HaplotypeRow", "PharmVariantRow"}

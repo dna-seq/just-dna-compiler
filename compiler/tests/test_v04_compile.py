@@ -41,8 +41,12 @@ _PHARM = (
 
 # The parquet kinds the composed fixture materializes.
 _COMPOSED_PARQUETS = (
-    "weights.parquet", "annotations.parquet", "studies.parquet",
-    "repeat_alleles.parquet", "diplotypes.parquet", "pharm_variants.parquet",
+    "weights.parquet",
+    "annotations.parquet",
+    "studies.parquet",
+    "repeat_alleles.parquet",
+    "diplotypes.parquet",
+    "pharm_variants.parquet",
 )
 
 
@@ -163,9 +167,7 @@ def _write_per_genotype_pharm(d: Path, csv_text: str = _PHARM_PER_GENOTYPE) -> P
 def test_per_genotype_pharm_annotations_compile(tmp_path: Path) -> None:
     """One (variant, drug) pair carrying a distinct annotation per genotype must survive."""
     out = tmp_path / "out"
-    result = compile_module(
-        _write_per_genotype_pharm(tmp_path / "spec"), out, resolve_with_ensembl=False
-    )
+    result = compile_module(_write_per_genotype_pharm(tmp_path / "spec"), out, resolve_with_ensembl=False)
     assert result.success, result.errors
     df = pl.read_parquet(out / "pharm_variants.parquet")
     # All three genotypes kept, and each keeps its own conclusion — the poly-genotype effect that
@@ -190,7 +192,8 @@ def test_one_variant_drug_genotype_carries_several_annotations(tmp_path: Path) -
     """Three distinct findings about one call must all survive, distinguished by category."""
     out = tmp_path / "out"
     result = compile_module(
-        _write_per_genotype_pharm(tmp_path / "spec", _PHARM_THREE_CATEGORIES), out,
+        _write_per_genotype_pharm(tmp_path / "spec", _PHARM_THREE_CATEGORIES),
+        out,
         resolve_with_ensembl=False,
     )
     assert result.success, result.errors
@@ -209,7 +212,8 @@ def test_annotation_id_is_the_last_resort_tie_break(tmp_path: Path) -> None:
         "rs1045642,ABCB1,A/A,rifampin,Efficacy,222,3,second curation\n"
     )
     result = compile_module(
-        _write_per_genotype_pharm(tmp_path / "spec", same_category), tmp_path / "out",
+        _write_per_genotype_pharm(tmp_path / "spec", same_category),
+        tmp_path / "out",
         resolve_with_ensembl=False,
     )
     assert result.success, result.errors
@@ -223,9 +227,7 @@ def test_duplicate_genotype_is_still_a_duplicate(tmp_path: Path) -> None:
     collided = _PHARM_PER_GENOTYPE.replace(",C/T,", ",C/C,")
     result = validate_spec(_write_per_genotype_pharm(tmp_path / "spec", collided))
     assert not result.valid
-    assert any(
-        "duplicate row" in e and "'C/C'" in e for e in result.errors
-    ), result.errors
+    assert any("duplicate row" in e and "'C/C'" in e for e in result.errors), result.errors
 
 
 def test_per_genotype_pharm_roundtrips(tmp_path: Path) -> None:
@@ -267,11 +269,7 @@ _HETEROPLASMY = (
     "MT-TL1,NC_012920.1,blood,allele_fraction,0.6,1.0,risk,pathogenic,MELAS,MONDO_0010789,high burden,false\n"
     "MT-TL1,NC_012920.1,blood,allele_fraction,,,,,,,not called,true\n"
 )
-_HAPLOTYPES = (
-    "haplotype_name,rsid,allele,gene\n"
-    "*4,rs3892097,A,CYP2D6\n"
-    "*10,rs1065852,T,CYP2D6\n"
-)
+_HAPLOTYPES = "haplotype_name,rsid,allele,gene\n*4,rs3892097,A,CYP2D6\n*10,rs1065852,T,CYP2D6\n"
 _ALLELE_FUNCTION = (
     "gene,allele,activity_value,function_status\n"
     "CYP2D6,*1,1.0,normal_function\n"
@@ -284,8 +282,12 @@ _PGS = (
 )
 
 _QUANT_PARQUETS = (
-    "activity_phenotype.parquet", "copynumbers.parquet", "heteroplasmy.parquet",
-    "haplotypes.parquet", "allele_function.parquet", "pgs.parquet",
+    "activity_phenotype.parquet",
+    "copynumbers.parquet",
+    "heteroplasmy.parquet",
+    "haplotypes.parquet",
+    "allele_function.parquet",
+    "pgs.parquet",
 )
 
 
@@ -446,9 +448,7 @@ def test_position_only_haplotypes_differ_by_ref(tmp_path: Path) -> None:
     spec.mkdir()
     (spec / "module_spec.yaml").write_text(_YAML.replace("composed", "haplo"), encoding="utf-8")
     (spec / "haplotypes.csv").write_text(
-        "haplotype_name,chrom,start,ref,allele,gene\n"
-        "*2,22,42130692,C,A,CYP2D6\n"
-        "*2,22,42130692,G,A,CYP2D6\n",
+        "haplotype_name,chrom,start,ref,allele,gene\n*2,22,42130692,C,A,CYP2D6\n*2,22,42130692,G,A,CYP2D6\n",
         encoding="utf-8",
     )
     result = validate_spec(spec)
@@ -466,22 +466,18 @@ def test_reserved_column_gives_specific_compile_error_typo_gives_generic(tmp_pat
 
     # A reserved name on variants.csv → specific diagnosis.
     (spec / "variants.csv").write_text(
-        "rsid,genotype,state,conclusion,reference_db\n"
-        "rs1,A/G,risk,x,pharmvar-6.2.14\n",
+        "rsid,genotype,state,conclusion,reference_db\nrs1,A/G,risk,x,pharmvar-6.2.14\n",
         encoding="utf-8",
     )
     reserved = validate_spec(spec)
     assert not reserved.valid
-    assert any(
-        "reserved column name" in e and "reference_db" in e for e in reserved.errors
-    ), reserved.errors
+    assert any("reserved column name" in e and "reference_db" in e for e in reserved.errors), reserved.errors
 
     # A typo of a real column, AND a dropped consumer-side name (`caller`), both → generic extra-forbid
     # message, never the reserved diagnosis. `caller` is no longer specially barred.
     for stray in ("directon", "caller"):
         (spec / "variants.csv").write_text(
-            f"rsid,genotype,state,conclusion,{stray}\n"
-            "rs1,A/G,risk,x,v\n",
+            f"rsid,genotype,state,conclusion,{stray}\nrs1,A/G,risk,x,v\n",
             encoding="utf-8",
         )
         result = validate_spec(spec)
@@ -495,8 +491,7 @@ def test_module_authorship_carried_into_manifest(tmp_path: Path) -> None:
     spec = tmp_path / "authored"
     spec.mkdir()
     (spec / "module_spec.yaml").write_text(
-        _YAML.replace("composed", "authored")
-        + "authorship:\n"
+        _YAML.replace("composed", "authored") + "authorship:\n"
         "  - who: just-dna-agents@1.4\n"
         "    role: created\n"
         "    kind: [ai, swarm]\n"

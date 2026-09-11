@@ -48,18 +48,46 @@ from just_dna_enricher.locations import resolve_constraint_reference
 logger = logging.getLogger(__name__)
 
 _FIELDNAMES = [
-    "gene", "gene_id", "transcript", "mane_select",
-    "pli", "loeuf", "oe_lof", "oe_lof_lower", "lof_z", "mis_z", "syn_z", "oe_mis",
-    "obs_lof", "exp_lof", "constraint_flags",
+    "gene",
+    "gene_id",
+    "transcript",
+    "mane_select",
+    "pli",
+    "loeuf",
+    "oe_lof",
+    "oe_lof_lower",
+    "lof_z",
+    "mis_z",
+    "syn_z",
+    "oe_mis",
+    "obs_lof",
+    "exp_lof",
+    "constraint_flags",
     # 0.5: ClinGen's columns. This pass never fills them, but it REWRITES THE WHOLE TABLE, so leaving
     # them out of the field list would silently strip every row `clingen.py` wrote.
-    "haploinsufficiency", "triplosensitivity",
-    "dataset", "source", "status", "fetched_at",
+    "haploinsufficiency",
+    "triplosensitivity",
+    "dataset",
+    "source",
+    "status",
+    "fetched_at",
 ]
 # The metric columns the snapshot and the live route both fill, so one writer serves both.
 _METRIC_FIELDS = (
-    "gene_id", "transcript", "mane_select", "pli", "loeuf", "oe_lof", "oe_lof_lower",
-    "lof_z", "mis_z", "syn_z", "oe_mis", "obs_lof", "exp_lof", "constraint_flags",
+    "gene_id",
+    "transcript",
+    "mane_select",
+    "pli",
+    "loeuf",
+    "oe_lof",
+    "oe_lof_lower",
+    "lof_z",
+    "mis_z",
+    "syn_z",
+    "oe_mis",
+    "obs_lof",
+    "exp_lof",
+    "constraint_flags",
 )
 
 
@@ -271,7 +299,8 @@ def enrich_gene_metrics(
             except Exception as exc:
                 logger.warning(
                     "gnomAD constraint snapshot provisioning failed (%s); continuing with the live "
-                    "API, which serves v2.1.1 rather than v4.1.", exc,
+                    "API, which serves v2.1.1 rather than v4.1.",
+                    exc,
                 )
         if reference is not None:
             from_snapshot = lookup_snapshot(reference, wanted)
@@ -290,9 +319,7 @@ def enrich_gene_metrics(
         try:
             from_api = gnomad.fetch_gene_constraint(still_missing)
         except GnomadError as exc:
-            raise GeneMetricsUnavailable(
-                f"the gnomAD constraint API could not be reached: {exc}"
-            ) from exc
+            raise GeneMetricsUnavailable(f"the gnomAD constraint API could not be reached: {exc}") from exc
         finally:
             if owned:
                 gnomad.close()
@@ -332,7 +359,10 @@ def enrich_gene_metrics(
                 continue
             out.append(
                 GeneMetricsRow(
-                    gene=gene, dataset=absent_from, source="gnomad", status="not_found",
+                    gene=gene,
+                    dataset=absent_from,
+                    source="gnomad",
+                    status="not_found",
                     fetched_at=fetched_at,
                 )
             )
@@ -340,7 +370,10 @@ def enrich_gene_metrics(
         covered.append(gene)
         out.append(
             GeneMetricsRow(
-                gene=gene, dataset=row_dataset, source=source, status="resolved",
+                gene=gene,
+                dataset=row_dataset,
+                source=source,
+                status="resolved",
                 fetched_at=fetched_at,
                 **{k: payload.get(k) for k in _METRIC_FIELDS},
             )
@@ -350,7 +383,8 @@ def enrich_gene_metrics(
             "%d gene(s) fell back to the live gnomAD API, which serves v2.1.1 constraint rather than "
             "v4.1 (labelled %s). Provision the v4.1 snapshot with `just-dna-enricher gnomad "
             "constraint build|publish` for current numbers.",
-            len(from_api), API_CONSTRAINT_DATASET_LABEL,
+            len(from_api),
+            API_CONSTRAINT_DATASET_LABEL,
         )
 
     out.sort(key=lambda r: (r.gene, r.dataset))

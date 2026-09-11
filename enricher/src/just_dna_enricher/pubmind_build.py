@@ -67,9 +67,7 @@ logger = logging.getLogger(__name__)
 
 #: The open substitute the PubMind README offers for the licensed full database, redistributed by
 #: ANNOVAR. It is the only channel that answers "what does PubMind say about this coordinate".
-DEFAULT_PUBMIND_URL = (
-    "https://www.openbioinformatics.org/annovar/download/hg38_pubmind_db.txt.gz"
-)
+DEFAULT_PUBMIND_URL = "https://www.openbioinformatics.org/annovar/download/hg38_pubmind_db.txt.gz"
 
 #: Recorded rather than implied: the file is `hg38_`, and a reader must be able to see the assembly
 #: without inferring it from a filename.
@@ -130,7 +128,14 @@ _COL_SIG = "PubMindDB_pathogenicity_sum"
 _COL_SCORE = "PubMindDB_paper_level_pathogenicity_score"
 _COL_CONFIDENCE = "PubMindDB_confidence"
 _REQUIRED_COLUMNS: tuple[str, ...] = (
-    _COL_CHROM, _COL_START, _COL_REF, _COL_ALT, _COL_PVID, _COL_SIG, _COL_SCORE, _COL_CONFIDENCE,
+    _COL_CHROM,
+    _COL_START,
+    _COL_REF,
+    _COL_ALT,
+    _COL_PVID,
+    _COL_SIG,
+    _COL_SCORE,
+    _COL_CONFIDENCE,
 )
 
 
@@ -199,9 +204,7 @@ class PubMindBuildResult:
     dataset: str | None = None
 
 
-def download_pubmind_table(
-    dest: Path, url: str = DEFAULT_PUBMIND_URL
-) -> PubMindDownload:
+def download_pubmind_table(dest: Path, url: str = DEFAULT_PUBMIND_URL) -> PubMindDownload:
     """Stream the ANNOVAR-redistributed table to `dest` (atomic `.part` rename).
 
     Mirrors `clinvar_build.download_clinvar_vcf`, and additionally keeps the `ETag` and
@@ -211,15 +214,21 @@ def download_pubmind_table(
     # **This handler used to leave its `.part` behind** — the only one of the eleven that forgot,
     # which is the drift a shared body ends (`@a-failed-fetch-is-not-a-no-op`).
     streamed = stream_to_file(
-        dest, url, error_cls=PubMindUnavailable, what="the PubMind table",
+        dest,
+        url,
+        error_cls=PubMindUnavailable,
+        what="the PubMind table",
         remedy=(
             "It is a single dated bulk file on a third party's server, so a move or a rotation "
             "looks exactly like this — pass `--table` with a copy you already hold."
         ),
     )
     return PubMindDownload(
-        path=streamed.path, sha256=streamed.sha256, url=url,
-        etag=streamed.etag, last_modified=streamed.last_modified,
+        path=streamed.path,
+        sha256=streamed.sha256,
+        url=url,
+        etag=streamed.etag,
+        last_modified=streamed.last_modified,
     )
 
 
@@ -232,14 +241,14 @@ def _schema() -> dict:
     """
     return {
         "chrom": pl.Utf8,
-        "start": pl.Int64,          # the 1-based VCF position, never converted
+        "start": pl.Int64,  # the 1-based VCF position, never converted
         "ref": pl.Utf8,
         "alt": pl.Utf8,
-        "pvid": pl.Utf8,            # their *record* id, not a variant id
-        "clin_sig": pl.Utf8,        # normalized into VALID_CLIN_SIG, by the one shared normalizer
-        "clin_sig_raw": pl.Utf8,    # the source token verbatim, so the mapping stays auditable
-        "pathogenicity_score": pl.Float64,   # null means *not computed*, never 0.0
-        "confidence": pl.Int64,     # 0–3, PubMind's evidence-depth count, not ClinVar's stars
+        "pvid": pl.Utf8,  # their *record* id, not a variant id
+        "clin_sig": pl.Utf8,  # normalized into VALID_CLIN_SIG, by the one shared normalizer
+        "clin_sig_raw": pl.Utf8,  # the source token verbatim, so the mapping stays auditable
+        "pathogenicity_score": pl.Float64,  # null means *not computed*, never 0.0
+        "confidence": pl.Int64,  # 0–3, PubMind's evidence-depth count, not ClinVar's stars
         "derivation": pl.Utf8,
     }
 
@@ -446,9 +455,13 @@ def build_snapshot(
     logger.info(
         "Built the PubMind snapshot: %d of %d row(s) kept → %s (dropped: %s; %d contested key(s) of "
         "%d, worst %d PVIDs)",
-        result.record_count, result.input_rows, parquet_file,
+        result.record_count,
+        result.input_rows,
+        parquet_file,
         ", ".join(f"{name} {count}" for name, count in dropped.items()),
-        result.contested_keys, result.allele_keys, result.max_pvids_per_key,
+        result.contested_keys,
+        result.allele_keys,
+        result.max_pvids_per_key,
     )
     return result
 

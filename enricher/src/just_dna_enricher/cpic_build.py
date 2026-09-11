@@ -80,7 +80,7 @@ def _schemas() -> dict[str, dict]:
     return {
         GENES_PARQUET: {
             "gene": pl.Utf8,
-            "chrom": pl.Utf8,          # normalized off `gene.chr` — `chr10` → `10`
+            "chrom": pl.Utf8,  # normalized off `gene.chr` — `chr10` → `10`
             "ensembl_id": pl.Utf8,
             "hgnc_id": pl.Utf8,
             "lookup_method": pl.Utf8,
@@ -104,7 +104,7 @@ def _schemas() -> dict[str, dict]:
             "allele": pl.Utf8,
             "rsid": pl.Utf8,
             "chrom": pl.Utf8,
-            "start": pl.Int64,         # GRCh38, 1-based — the VCF convention, never converted
+            "start": pl.Int64,  # GRCh38, 1-based — the VCF convention, never converted
             "variant_allele": pl.Utf8,
         },
         RECOMMENDATIONS_PARQUET: {
@@ -112,7 +112,7 @@ def _schemas() -> dict[str, dict]:
             "phenotype": pl.Utf8,
             "drug": pl.Utf8,
             "population": pl.Utf8,
-            "classification": pl.Utf8,   # verbatim ("Strong"); mapped at read time
+            "classification": pl.Utf8,  # verbatim ("Strong"); mapped at read time
             "recommendation": pl.Utf8,
             "implication": pl.Utf8,
             "activity_score": pl.Utf8,
@@ -167,12 +167,8 @@ def build_snapshot(
     cpic = client or CpicClient(endpoint)
     try:
         genes = _fetch_all(cpic, "gene", "symbol,chr,ensemblid,hgncid,lookupmethod")
-        alleles = _fetch_all(
-            cpic, "allele", "genesymbol,name,activityvalue,clinicalfunctionalstatus"
-        )
-        diplotypes = _fetch_all(
-            cpic, "diplotype", "genesymbol,diplotype,generesult,totalactivityscore"
-        )
+        alleles = _fetch_all(cpic, "allele", "genesymbol,name,activityvalue,clinicalfunctionalstatus")
+        diplotypes = _fetch_all(cpic, "diplotype", "genesymbol,diplotype,generesult,totalactivityscore")
         definitions = _fetch_all(cpic, "allele_definition", "id,name,genesymbol")
         locations = _fetch_all(
             cpic,
@@ -182,17 +178,14 @@ def build_snapshot(
         recommendations = _fetch_all(
             cpic,
             "recommendation",
-            "drugid,phenotypes,implications,drugrecommendation,classification,population,"
-            "activityscore",
+            "drugid,phenotypes,implications,drugrecommendation,classification,population,activityscore",
         )
         drugs = _fetch_all(cpic, "drug", "drugid,name")
     finally:
         if owned:
             cpic.close()
 
-    chrom_by_gene = {
-        (row.get("symbol") or ""): normalize_chrom(row.get("chr")) for row in genes
-    }
+    chrom_by_gene = {(row.get("symbol") or ""): normalize_chrom(row.get("chr")) for row in genes}
     gene_records = _sorted(
         [
             {
@@ -282,9 +275,7 @@ def build_snapshot(
                     "gene_count": len(phenotypes),
                 }
             )
-    recommendation_records = _sorted(
-        recommendation_records, ["gene", "drug", "population", "phenotype"]
-    )
+    recommendation_records = _sorted(recommendation_records, ["gene", "drug", "population", "phenotype"])
 
     schemas = _schemas()
     by_file = {
@@ -296,9 +287,7 @@ def build_snapshot(
     }
     counts: dict[str, int] = {}
     for name, records in by_file.items():
-        pl.DataFrame(records, schema=schemas[name]).write_parquet(
-            data_dir / name, compression="zstd"
-        )
+        pl.DataFrame(records, schema=schemas[name]).write_parquet(data_dir / name, compression="zstd")
         counts[name] = len(records)
 
     digest = _content_digest(by_file)
@@ -315,18 +304,17 @@ def build_snapshot(
         "built_at": now_utc_iso(),
         "builder_version": _builder_version(),
     }
-    atomic_write_text(
-        (out_dir / RELEASE_FILENAME), json.dumps(release, indent=2, sort_keys=True) + "\n"
-    )
+    atomic_write_text((out_dir / RELEASE_FILENAME), json.dumps(release, indent=2, sort_keys=True) + "\n")
     logger.info(
-        "CPIC snapshot: %d genes, %d alleles, %d diplotypes, %d defining variants, "
-        "%d recommendations → %s",
-        len(gene_records), len(allele_records), len(diplotype_records), len(defining_records),
-        len(recommendation_records), data_dir,
+        "CPIC snapshot: %d genes, %d alleles, %d diplotypes, %d defining variants, %d recommendations → %s",
+        len(gene_records),
+        len(allele_records),
+        len(diplotype_records),
+        len(defining_records),
+        len(recommendation_records),
+        data_dir,
     )
-    return CpicBuildResult(
-        out_dir=out_dir, row_counts=counts, gene_count=len(gene_records), dataset=dataset
-    )
+    return CpicBuildResult(out_dir=out_dir, row_counts=counts, gene_count=len(gene_records), dataset=dataset)
 
 
 def _score_text(value: Any) -> str | None:
@@ -354,9 +342,7 @@ def _content_digest(by_file: dict[str, list[dict]]) -> str:
     for name in sorted(by_file):
         hasher.update(name.encode("utf-8"))
         hasher.update(
-            json.dumps(by_file[name], sort_keys=True, default=str, ensure_ascii=False).encode(
-                "utf-8"
-            )
+            json.dumps(by_file[name], sort_keys=True, default=str, ensure_ascii=False).encode("utf-8")
         )
     return "sha256:" + hasher.hexdigest()
 
@@ -377,4 +363,3 @@ def _builder_version() -> str:
         return version("just-dna-enricher")
     except PackageNotFoundError:  # pragma: no cover - only if run from an uninstalled tree
         return "0+unknown"
-

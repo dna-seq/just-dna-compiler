@@ -38,10 +38,10 @@ class _FakeFS:
     """
 
     def __init__(self, tree: dict[str, dict[str, str]], release: str | None = None) -> None:
-        self.tree = tree                     # dirname -> {filename: column name (its schema)}
-        self.release = release               # the repo-root release.json body, or None
+        self.tree = tree  # dirname -> {filename: column name (its schema)}
+        self.release = release  # the repo-root release.json body, or None
         self.fetched: list[str] = []
-        self.asked: list[str] = []           # the repo prefixes listed, so a lane cannot ask another's
+        self.asked: list[str] = []  # the repo prefixes listed, so a lane cannot ask another's
 
     def ls(self, prefix: str, detail: bool = True):
         self.asked.append(prefix)
@@ -100,16 +100,19 @@ def test_a_stale_remote_file_is_not_downloaded(fake_hub, tmp_path: Path) -> None
     and every query would fail on `Referenced column "clin_sig" not found` — which is exactly how a
     locally-built old snapshot broke the clin_sig cross-check.
     """
-    fs = fake_hub({
-        "clinvar-chr1.parquet": "clin_sig",
-        "clinvar-chr2.parquet": "clin_sig",
-        "clinvar.parquet": "clnsig",          # the stale one, still in the published repo
-    })
+    fs = fake_hub(
+        {
+            "clinvar-chr1.parquet": "clin_sig",
+            "clinvar-chr2.parquet": "clin_sig",
+            "clinvar.parquet": "clnsig",  # the stale one, still in the published repo
+        }
+    )
     cache = tmp_path / "cv"
     dl.ensure_clinvar_snapshot(cache)
 
     assert sorted(f for f in fs.fetched if f.endswith(".parquet")) == [
-        "data/clinvar-chr1.parquet", "data/clinvar-chr2.parquet",
+        "data/clinvar-chr1.parquet",
+        "data/clinvar-chr2.parquet",
     ]
     assert not (cache / "data" / "clinvar.parquet").exists()
     # …and the cache is queryable as one relation, which is the property that actually matters.
@@ -126,8 +129,11 @@ def test_the_old_unfiltered_behaviour_broke_the_cache(fake_hub, tmp_path: Path) 
     fake_hub({"clinvar-chr1.parquet": "clin_sig", "clinvar.parquet": "clnsig"})
     cache = tmp_path / "unfiltered"
     dl._provision_snapshot(
-        cache, "datasets/x/data", label="ClinVar", error_cls=dl.ClinVarReferenceError,
-        filename_glob="*.parquet",                      # what the code used to do implicitly
+        cache,
+        "datasets/x/data",
+        label="ClinVar",
+        error_cls=dl.ClinVarReferenceError,
+        filename_glob="*.parquet",  # what the code used to do implicitly
     )
     con = duckdb.connect(":memory:")
     try:
@@ -157,7 +163,7 @@ def test_each_snapshot_asks_for_its_own_files(fake_hub, tmp_path: Path) -> None:
         (dl.ensure_constraint_snapshot, "gnomad_constraint.parquet"),
     ):
         fs = fake_hub(remote)
-        ensure(tmp_path / expected)          # a distinct cache dir per snapshot
+        ensure(tmp_path / expected)  # a distinct cache dir per snapshot
         assert [f for f in fs.fetched if f.endswith(".parquet")] == [f"data/{expected}"]
 
 
@@ -218,7 +224,7 @@ def test_release_json_is_provisioned_with_the_data(fake_hub, tmp_path: Path) -> 
 
 def test_a_repo_without_release_json_still_provisions(fake_hub, tmp_path: Path) -> None:
     """Absence is not an error: a repo published before the builder wrote one is still usable."""
-    fake_hub({"clinvar-chr1.parquet": "clin_sig"})     # no release
+    fake_hub({"clinvar-chr1.parquet": "clin_sig"})  # no release
     cache = tmp_path / "cv"
     dl.ensure_clinvar_snapshot(cache)
     assert (cache / "data" / "clinvar-chr1.parquet").is_file()
@@ -258,7 +264,7 @@ def test_a_repo_without_citations_still_provisions(fake_hub, tmp_path: Path) -> 
     """Ensembl and constraint have no sidecar, and a ClinVar snapshot built without running
     `clinvar citations` has none either. Absence is normal, not an error — `citations_for` already
     reads it as "no citations available" rather than "no literature exists"."""
-    fake_hub({"clinvar-chr1.parquet": "clin_sig"})          # no citations dir
+    fake_hub({"clinvar-chr1.parquet": "clin_sig"})  # no citations dir
     cache = tmp_path / "cv"
     dl.ensure_clinvar_snapshot(cache)
     assert (cache / "data" / "clinvar-chr1.parquet").is_file()
@@ -273,7 +279,7 @@ def test_a_present_citations_file_is_not_refetched(fake_hub, tmp_path: Path) -> 
     )
     cache = tmp_path / "cv"
     _write_parquet(cache / CITATIONS_DIRNAME / "citations.parquet", "variation_id")
-    dl.ensure_clinvar_snapshot(cache)                        # data/ is empty, so it does provision
+    dl.ensure_clinvar_snapshot(cache)  # data/ is empty, so it does provision
     assert "citations/citations.parquet" not in fs.fetched
 
 
@@ -328,7 +334,8 @@ def test_a_catalogue_snapshot_is_fetched_whole_or_not_at_all(monkeypatch, tmp_pa
 
 
 def test_a_present_catalogue_is_trusted_without_touching_the_network(
-    monkeypatch, tmp_path: Path,
+    monkeypatch,
+    tmp_path: Path,
 ) -> None:
     """The populated-cache skip the parquet lanes get, with `json.loads` standing in for the footer."""
     import huggingface_hub

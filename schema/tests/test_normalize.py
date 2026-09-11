@@ -120,9 +120,7 @@ def test_either_family_can_be_injected_without_the_other() -> None:
 def test_a_block_carrying_neither_family_is_untouched_by_the_union() -> None:
     """Absent the keys, everything behaves exactly as it did before — nothing is added or reordered."""
     block = _module_block(version="v2")
-    clean, dropped = strip_authority_keys(
-        block, IDENTITY_AUTHORITY_KEYS | PRESENTATION_AUTHORITY_KEYS
-    )
+    clean, dropped = strip_authority_keys(block, IDENTITY_AUTHORITY_KEYS | PRESENTATION_AUTHORITY_KEYS)
     assert dropped == []
     assert clean == block and list(clean) == list(block)
     assert ModuleInfo(**clean).version == "2.0.0"
@@ -301,8 +299,21 @@ def test_parse_p_value_round_trips_the_authored_number() -> None:
 
 def test_parse_p_value_returns_none_for_anything_not_a_definite_value() -> None:
     # An unreadable cell is not a disagreement — reading one would manufacture false findings.
-    for text in ("<0.001", "> 0.05", "NS", "not significant", "5e-8 (adjusted)", "p=5e-8", "", "  ",
-                 "0", "0.0", "1e", "e-8", "5e-8, 3e-4"):
+    for text in (
+        "<0.001",
+        "> 0.05",
+        "NS",
+        "not significant",
+        "5e-8 (adjusted)",
+        "p=5e-8",
+        "",
+        "  ",
+        "0",
+        "0.0",
+        "1e",
+        "e-8",
+        "5e-8, 3e-4",
+    ):
         assert parse_p_value(text) is None, text
     assert parse_p_value(None) is None
 
@@ -372,13 +383,17 @@ def test_an_unreadable_timestamp_raises_rather_than_passing_through() -> None:
         (ResolutionRow, {"variant_key": "rs334", "source": "cache", "status": "resolved"}),
         (
             FrequencyRow,
-            {"variant_key": "rs334", "population": "global", "dataset": "gnomad_v4.1_joint",
-             "source": "gnomad", "status": "resolved"},
+            {
+                "variant_key": "rs334",
+                "population": "global",
+                "dataset": "gnomad_v4.1_joint",
+                "source": "gnomad",
+                "status": "resolved",
+            },
         ),
         (
             GeneMetricsRow,
-            {"gene": "HFE", "dataset": "gnomad_v4.1_constraint", "source": "gnomad",
-             "status": "resolved"},
+            {"gene": "HFE", "dataset": "gnomad_v4.1_constraint", "source": "gnomad", "status": "resolved"},
         ),
     ],
 )

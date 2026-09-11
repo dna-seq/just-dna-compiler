@@ -1,14 +1,14 @@
 """Command-line front door for the enricher (Typer) — the network tier's user-facing command.
 
-    just-dna-enricher enrich spec/ --strict --offline
-    just-dna-enricher frequencies spec/                 # pass 2: allele frequency (online only)
-    just-dna-enricher gene-metrics spec/                # pass 3: gene constraint (offline capable)
-    just-dna-enricher literature spec/                  # pass 4: citations (online only)
-    just-dna-enricher gene-validity spec/ --source gencc  # curated gene-disease assertions (online)
-    just-dna-enricher assertions spec/                  # ClinVar call + review tier (offline capable)
-    just-dna-enricher enrich-and-compile spec/ out/ --frequencies --gene-metrics
-    just-dna-enricher gnomad constraint build --download --out gnomad_constraint/   # [dev]
-    just-dna-enricher upload out/coronary --repo just-dna-seq/annotators            # [dev]
+just-dna-enricher enrich spec/ --strict --offline
+just-dna-enricher frequencies spec/                 # pass 2: allele frequency (online only)
+just-dna-enricher gene-metrics spec/                # pass 3: gene constraint (offline capable)
+just-dna-enricher literature spec/                  # pass 4: citations (online only)
+just-dna-enricher gene-validity spec/ --source gencc  # curated gene-disease assertions (online)
+just-dna-enricher assertions spec/                  # ClinVar call + review tier (offline capable)
+just-dna-enricher enrich-and-compile spec/ out/ --frequencies --gene-metrics
+just-dna-enricher gnomad constraint build --download --out gnomad_constraint/   # [dev]
+just-dna-enricher upload out/coronary --repo just-dna-seq/annotators            # [dev]
 """
 
 import json
@@ -220,9 +220,7 @@ def _use(value: str) -> str:
     """
     matched = match_vocab(value.strip().lower(), VALID_DECLARED_USE)
     if matched is None:
-        raise typer.BadParameter(
-            f"--use must be one of {sorted(VALID_DECLARED_USE)}, got: {value!r}"
-        )
+        raise typer.BadParameter(f"--use must be one of {sorted(VALID_DECLARED_USE)}, got: {value!r}")
     return matched
 
 
@@ -231,7 +229,9 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail unless every variant resolves."),
     offline: bool = typer.Option(False, "--offline", help="Cache-only: never touch the network."),
-    ensembl_cache: Path | None = typer.Option(None, "--ensembl-cache", help="Explicit Ensembl cache dir/.duckdb."),
+    ensembl_cache: Path | None = typer.Option(
+        None, "--ensembl-cache", help="Explicit Ensembl cache dir/.duckdb."
+    ),
     clinvar_cache: Path | None = typer.Option(None, "--clinvar-cache", help="Explicit ClinVar snapshot dir."),
     pubmind_cache: Path | None = typer.Option(
         None,
@@ -242,56 +242,78 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
             "with neither, PubMind's leg reads unchecked rather than agreement."
         ),
     ),
-    use_clinvar: bool = typer.Option(True, "--clinvar/--no-clinvar", help="Use the ClinVar link (after the Ensembl cache)."),
-    use_gnomad: bool = typer.Option(True, "--gnomad/--no-gnomad", help="Use the gnomAD link (last, after live Ensembl)."),
-    mint_vrs: bool = typer.Option(True, "--vrs/--no-vrs", help="Mint GA4GH VRS allele ids onto resolved rows."),
+    use_clinvar: bool = typer.Option(
+        True, "--clinvar/--no-clinvar", help="Use the ClinVar link (after the Ensembl cache)."
+    ),
+    use_gnomad: bool = typer.Option(
+        True, "--gnomad/--no-gnomad", help="Use the gnomAD link (last, after live Ensembl)."
+    ),
+    mint_vrs: bool = typer.Option(
+        True, "--vrs/--no-vrs", help="Mint GA4GH VRS allele ids onto resolved rows."
+    ),
     verify_ref: bool = typer.Option(
-        True, "--verify-ref/--no-verify-ref",
+        True,
+        "--verify-ref/--no-verify-ref",
         help="Check each authored ref against the reference sequence and report disagreements.",
     ),
     verify_clinsig: bool = typer.Option(
-        True, "--verify-clinsig/--no-verify-clinsig",
+        True,
+        "--verify-clinsig/--no-verify-clinsig",
         help="Check each authored clin_sig against the ClinVar snapshot's own (warns, never fails).",
     ),
     verify_rsids: bool = typer.Option(
-        True, "--verify-rsids/--no-verify-rsids",
+        True,
+        "--verify-rsids/--no-verify-rsids",
         help="Check each authored rsID against dbSNP for merges/withdrawals (online only).",
     ),
     verify_datasets: bool = typer.Option(
-        True, "--verify-datasets/--no-verify-datasets",
+        True,
+        "--verify-datasets/--no-verify-datasets",
         help="Check each release recorded in sources.csv against the one that source publishes now, "
-             "and report the gap. One request per source, and the cheap question to put before "
-             "--rederive: it tells you whether re-asking every subject is worth the run.",
+        "and report the gap. One request per source, and the cheap question to put before "
+        "--rederive: it tells you whether re-asking every subject is worth the run.",
     ),
     keep_par_twin: bool = typer.Option(
-        False, "--keep-par-twin",
+        False,
+        "--keep-par-twin",
         help="Record both contigs of a pseudoautosomal locus. Default keeps only the X spelling, "
-             "which is the one every annotation source uses and the only one a hard-masked GRCh38 "
-             "analysis set can match.",
+        "which is the one every annotation source uses and the only one a hard-masked GRCh38 "
+        "analysis set can match.",
     ),
     rederive: bool = typer.Option(
-        False, "--rederive",
+        False,
+        "--rederive",
         help="Re-ask every source about every subject, including the ones already recorded, and "
-             "report which of them changed value. An ordinary run gap-fills and never re-asks, so a "
-             "source that quietly revised an answer moves nothing you could notice.",
+        "report which of them changed value. An ordinary run gap-fills and never re-asks, so a "
+        "source that quietly revised an answer moves nothing you could notice.",
     ),
     keep_staging: bool = typer.Option(
-        False, "--keep-staging",
+        False,
+        "--keep-staging",
         help="Leave the staged answers beside resolution.csv after a successful run. They are "
-             "removed by default; a killed run leaves them either way, and the next run resumes "
-             "from them.",
+        "removed by default; a killed run leaves them either way, and the next run resumes "
+        "from them.",
     ),
 ) -> None:
     """Resolve a spec's variants into resolution.csv beside the spec. Exit 1 in strict mode if unresolved."""
     try:
         result = enrich(
-            spec_dir, mode=_mode(strict), offline=offline,
-            ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache,
-            pubmind_cache=pubmind_cache, use_clinvar=use_clinvar,
-            use_gnomad=use_gnomad, mint_vrs=mint_vrs, verify_ref=verify_ref,
-            verify_clinsig=verify_clinsig, verify_rsids=verify_rsids,
-            verify_datasets=verify_datasets, keep_par_twin=keep_par_twin,
-            rederive=rederive, keep_staging=keep_staging,
+            spec_dir,
+            mode=_mode(strict),
+            offline=offline,
+            ensembl_cache=ensembl_cache,
+            clinvar_cache=clinvar_cache,
+            pubmind_cache=pubmind_cache,
+            use_clinvar=use_clinvar,
+            use_gnomad=use_gnomad,
+            mint_vrs=mint_vrs,
+            verify_ref=verify_ref,
+            verify_clinsig=verify_clinsig,
+            verify_rsids=verify_rsids,
+            verify_datasets=verify_datasets,
+            keep_par_twin=keep_par_twin,
+            rederive=rederive,
+            keep_staging=keep_staging,
         )
     except EnrichmentError as exc:
         typer.secho(f"ENRICH FAILED: {exc}", fg=typer.colors.RED, err=True)
@@ -303,7 +325,9 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
         f"enriched: {sidecar_path(spec_dir, 'resolution.csv', error=EnrichmentError)}",
         fg=typer.colors.GREEN,
     )
-    typer.echo(f"rows: {len(result.rows)}  fully_resolved: {result.fully_resolved}  sources: {result.sources}")
+    typer.echo(
+        f"rows: {len(result.rows)}  fully_resolved: {result.fully_resolved}  sources: {result.sources}"
+    )
     if result.unresolved:
         typer.secho(f"  unresolved: {result.unresolved}", fg=typer.colors.YELLOW, err=True)
     if result.par_twins_dropped:
@@ -390,13 +414,20 @@ def enrich_(  # `enrich` command; function name avoids shadowing the imported en
 @app.command("frequencies")
 def frequencies_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
-    strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail unless every resolved allele has a frequency."),
-    offline: bool = typer.Option(False, "--offline", help="No-op with a warning: gnomAD frequency has no offline snapshot."),
+    strict: bool = typer.Option(
+        False, "--strict/--best-effort", help="Fail unless every resolved allele has a frequency."
+    ),
+    offline: bool = typer.Option(
+        False, "--offline", help="No-op with a warning: gnomAD frequency has no offline snapshot."
+    ),
     populations: str | None = typer.Option(
-        None, "--populations",
+        None,
+        "--populations",
         help="Comma-separated ancestry groups to keep (e.g. 'global' for one row per allele). Default: all.",
     ),
-    dataset: str | None = typer.Option(None, "--dataset", help="Override the dataset label recorded on each row."),
+    dataset: str | None = typer.Option(
+        None, "--dataset", help="Override the dataset label recorded on each row."
+    ),
 ) -> None:
     """Fill frequencies.csv from the coordinates already in resolution.csv (pass 2, online only)."""
     from just_dna_enricher.gnomad import FREQUENCY_DATASET_LABEL
@@ -404,7 +435,10 @@ def frequencies_(
     groups = [p.strip() for p in populations.split(",") if p.strip()] if populations else None
     try:
         result = enrich_frequencies(
-            spec_dir, mode=_mode(strict), offline=offline, populations=groups,
+            spec_dir,
+            mode=_mode(strict),
+            offline=offline,
+            populations=groups,
             dataset=dataset or FREQUENCY_DATASET_LABEL,
         )
     except FrequencyEnrichmentError as exc:
@@ -428,9 +462,13 @@ def frequencies_(
 @app.command("gene-metrics")
 def gene_metrics_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
-    strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail unless every gene has constraint metrics."),
+    strict: bool = typer.Option(
+        False, "--strict/--best-effort", help="Fail unless every gene has constraint metrics."
+    ),
     offline: bool = typer.Option(False, "--offline", help="Snapshot only: never touch the network."),
-    constraint_cache: Path | None = typer.Option(None, "--constraint-cache", help="Explicit gnomAD constraint snapshot dir."),
+    constraint_cache: Path | None = typer.Option(
+        None, "--constraint-cache", help="Explicit gnomAD constraint snapshot dir."
+    ),
 ) -> None:
     """Fill gene_metrics.csv for the genes variants.csv mentions (pass 3, snapshot then live API).
 
@@ -441,7 +479,10 @@ def gene_metrics_(
     """
     try:
         result = enrich_gene_metrics(
-            spec_dir, mode=_mode(strict), offline=offline, constraint_cache=constraint_cache,
+            spec_dir,
+            mode=_mode(strict),
+            offline=offline,
+            constraint_cache=constraint_cache,
         )
     except GeneMetricsEnrichmentError as exc:
         typer.secho(f"GENE METRICS FAILED: {exc}", fg=typer.colors.RED, err=True)
@@ -461,14 +502,18 @@ def gene_metrics_(
 @app.command("dosage")
 def dosage_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
-    strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail unless every gene is ClinGen-curated."),
+    strict: bool = typer.Option(
+        False, "--strict/--best-effort", help="Fail unless every gene is ClinGen-curated."
+    ),
     offline: bool = typer.Option(
-        False, "--offline",
+        False,
+        "--offline",
         help="No-op with a warning: ClinGen's curation list is a live download with no snapshot.",
     ),
     url: str = typer.Option(DEFAULT_CLINGEN_URL, "--url", help="ClinGen gene-curation list URL."),
     use: str = typer.Option(
-        "unstated", "--use",
+        "unstated",
+        "--use",
         help=(
             "Declared use: unstated | non-commercial | commercial. ClinGen is CC0, so no declaration "
             "is refused here — it is recorded into sources.csv beside the rows it justifies."
@@ -506,14 +551,16 @@ def dosage_(
 def gene_validity_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     source: str = typer.Option(
-        CLINGEN_VALIDITY_SOURCE, "--source",
+        CLINGEN_VALIDITY_SOURCE,
+        "--source",
         help="Which submitter to read: clingen (expert panels) or gencc (an aggregate of nineteen).",
     ),
     strict: bool = typer.Option(
         False, "--strict/--best-effort", help="Fail unless every gene carries a curated assertion."
     ),
     offline: bool = typer.Option(
-        False, "--offline",
+        False,
+        "--offline",
         help="No-op with a warning: neither ClinGen nor GenCC publishes an offline snapshot.",
     ),
     url: str | None = typer.Option(None, "--url", help="Override the submitter's export URL."),
@@ -526,8 +573,7 @@ def gene_validity_(
     which is the thing it exists to publish.
     """
     try:
-        result = enrich_gene_validity(spec_dir, source=source, mode=_mode(strict), offline=offline,
-                                      url=url)
+        result = enrich_gene_validity(spec_dir, source=source, mode=_mode(strict), offline=offline, url=url)
     except GeneValidityError as exc:
         typer.secho(f"GENE VALIDITY FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
@@ -544,9 +590,7 @@ def gene_validity_(
         f"gene validity: {sidecar_path(spec_dir, 'gene_validity.csv', error=GeneValidityError)}",
         fg=typer.colors.GREEN,
     )
-    typer.echo(
-        f"dataset: {result.dataset}  rows: {len(result.rows)}  genes curated: {len(result.covered)}"
-    )
+    typer.echo(f"dataset: {result.dataset}  rows: {len(result.rows)}  genes curated: {len(result.covered)}")
     if result.missing:
         # Both submitters curate a subset by design, so this is information rather than a problem.
         typer.secho(f"  no {source} assertion: {result.missing}", fg=typer.colors.YELLOW)
@@ -554,7 +598,8 @@ def gene_validity_(
         typer.secho(
             f"  wordings this release does not model (kept verbatim in classification_raw): "
             f"{result.unmapped}",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
 
 
@@ -568,16 +613,18 @@ def gwas_(
         False, "--offline", help="No-op with a warning: this pass reads the REST API, not a snapshot."
     ),
     use: str = typer.Option(
-        "unstated", "--use",
+        "unstated",
+        "--use",
         help="Declared use recorded on the licence row: unstated|non-commercial|commercial.",
     ),
     study_facts: bool = typer.Option(
-        True, "--study-facts/--no-study-facts",
+        True,
+        "--study-facts/--no-study-facts",
         help="Follow each association's study and trait links. Costs 2 requests per association; "
-             "measured at 382 requests for one real module. Off keeps effects, drops pmid/trait/ancestry "
-             "PERMANENTLY for the rows it writes: the merge is keyed on association_id, so a later run "
-             "with study facts on skips those rows rather than back-filling. Delete gwas_effects.csv to "
-             "re-derive them.",
+        "measured at 382 requests for one real module. Off keeps effects, drops pmid/trait/ancestry "
+        "PERMANENTLY for the rows it writes: the merge is keyed on association_id, so a later run "
+        "with study facts on skips those rows rather than back-filling. Delete gwas_effects.csv to "
+        "re-derive them.",
     ),
 ) -> None:
     """Fill gwas_effects.csv with the GWAS Catalog's published effect sizes for this module's rsIDs.
@@ -592,14 +639,16 @@ def gwas_(
     counted in the manifest, never dropped.
     """
     try:
-        result = enrich_gwas(spec_dir, mode=_mode(strict), offline=offline, declared_use=_use(use),
-                             study_facts=study_facts)
+        result = enrich_gwas(
+            spec_dir, mode=_mode(strict), offline=offline, declared_use=_use(use), study_facts=study_facts
+        )
     except GwasError as exc:
         typer.secho(f"GWAS FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     if result.skipped_offline:
-        typer.secho("skipped: --offline (the GWAS Catalog pass has no offline snapshot)",
-                    fg=typer.colors.YELLOW)
+        typer.secho(
+            "skipped: --offline (the GWAS Catalog pass has no offline snapshot)", fg=typer.colors.YELLOW
+        )
         return
     # Both halves of the request budget, because the pass computed them and an operator spending
     # somebody else's rate limit is the person who needs the number.
@@ -641,7 +690,10 @@ def assertions_(
     """
     try:
         result = enrich_clinical_assertions(
-            spec_dir, mode=_mode(strict), offline=offline, clinvar_cache=clinvar_cache,
+            spec_dir,
+            mode=_mode(strict),
+            offline=offline,
+            clinvar_cache=clinvar_cache,
         )
     except ClinicalAssertionError as exc:
         typer.secho(f"ASSERTIONS FAILED: {exc}", fg=typer.colors.RED, err=True)
@@ -657,29 +709,34 @@ def assertions_(
         f"{sidecar_path(spec_dir, 'clinical_assertions.csv', error=ClinicalAssertionError)}",
         fg=typer.colors.GREEN,
     )
-    typer.echo(
-        f"dataset: {result.dataset}  rows: {len(result.rows)}  alleles covered: {len(result.covered)}"
-    )
+    typer.echo(f"dataset: {result.dataset}  rows: {len(result.rows)}  alleles covered: {len(result.covered)}")
     if result.missing:
         typer.secho(f"  no ClinVar record: {result.missing}", fg=typer.colors.YELLOW)
     if result.off_build:
         typer.secho(
             f"  not on {ASSERTION_GENOME_BUILD}, so never queried: {result.off_build}",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
 
 
 @app.command("literature")
 def literature_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
-    strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail if a cited PMID does not resolve."),
-    offline: bool = typer.Option(False, "--offline", help="No-op with a warning: there is no offline PubMed snapshot."),
+    strict: bool = typer.Option(
+        False, "--strict/--best-effort", help="Fail if a cited PMID does not resolve."
+    ),
+    offline: bool = typer.Option(
+        False, "--offline", help="No-op with a warning: there is no offline PubMed snapshot."
+    ),
     check_fulltext: bool = typer.Option(
-        True, "--fulltext/--no-fulltext",
+        True,
+        "--fulltext/--no-fulltext",
         help="Also match provenance quotes against fulltext, falling back to the abstract.",
     ),
     check_doi: bool = typer.Option(
-        True, "--doi/--no-doi",
+        True,
+        "--doi/--no-doi",
         help="Also confirm the authored DOI resolves in Crossref (covers preprints/books).",
     ),
 ) -> None:
@@ -691,7 +748,10 @@ def literature_(
     """
     try:
         result = enrich_literature(
-            spec_dir, mode=_mode(strict), offline=offline, check_fulltext=check_fulltext,
+            spec_dir,
+            mode=_mode(strict),
+            offline=offline,
+            check_fulltext=check_fulltext,
             check_doi=check_doi,
         )
     except LiteratureEnrichmentError as exc:
@@ -711,8 +771,9 @@ def literature_(
     # for a citation the author has since deleted, and counting it here would put a number in front
     # of the author that nothing else in the run agrees with.
     typer.echo(f"citations: {len(result.cited)}  {result.coverage}")
-    typer.echo(f"quotes: {result.quotes_found}/{result.quotes_authored} found, "
-               f"{result.quotes_unchecked} not checked")
+    typer.echo(
+        f"quotes: {result.quotes_found}/{result.quotes_authored} found, {result.quotes_unchecked} not checked"
+    )
     if result.quotes_unexamined:
         # Split out rather than left inside "not checked": an article whose text could not be read
         # and a quote nobody went looking for have different remedies, and only this one is the
@@ -763,21 +824,30 @@ def literature_(
 @app.command("pgx")
 def pgx_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
-    strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail on an allele-function discrepancy."),
+    strict: bool = typer.Option(
+        False, "--strict/--best-effort", help="Fail on an allele-function discrepancy."
+    ),
     offline: bool = typer.Option(
-        False, "--offline", help="Snapshots only: never reach PharmVar or CPIC live.",
+        False,
+        "--offline",
+        help="Snapshots only: never reach PharmVar or CPIC live.",
     ),
     use: str = typer.Option(
-        "unstated", "--use",
+        "unstated",
+        "--use",
         help=(
             "Declared use: unstated | non-commercial | commercial. Sources that forbid sale are "
             "SKIPPED when unstated and REFUSED when commercial."
         ),
     ),
-    use_pharmvar: bool = typer.Option(True, "--pharmvar/--no-pharmvar", help="Consult PharmVar (needs PHARMVAR_API_KEY)."),
+    use_pharmvar: bool = typer.Option(
+        True, "--pharmvar/--no-pharmvar", help="Consult PharmVar (needs PHARMVAR_API_KEY)."
+    ),
     use_cpic: bool = typer.Option(True, "--cpic/--no-cpic", help="Consult CPIC (open, no key)."),
     cpic_cache: Path | None = typer.Option(None, "--cpic-cache", help="Explicit CPIC snapshot dir."),
-    pharmvar_cache: Path | None = typer.Option(None, "--pharmvar-cache", help="Explicit PharmVar snapshot dir."),
+    pharmvar_cache: Path | None = typer.Option(
+        None, "--pharmvar-cache", help="Explicit PharmVar snapshot dir."
+    ),
 ) -> None:
     """Cross-check star-allele tables against PharmVar/CPIC and record terms into sources.csv.
 
@@ -787,9 +857,14 @@ def pgx_(
     """
     try:
         result = enrich_pgx(
-            spec_dir, mode=_mode(strict), offline=offline, declared_use=_use(use),
-            use_pharmvar=use_pharmvar, use_cpic=use_cpic,
-            cpic_cache=cpic_cache, pharmvar_cache=pharmvar_cache,
+            spec_dir,
+            mode=_mode(strict),
+            offline=offline,
+            declared_use=_use(use),
+            use_pharmvar=use_pharmvar,
+            use_cpic=use_cpic,
+            cpic_cache=cpic_cache,
+            pharmvar_cache=pharmvar_cache,
         )
     except LicenseRefusal as exc:
         typer.secho(f"REFUSED: {exc}", fg=typer.colors.RED, err=True)
@@ -799,9 +874,7 @@ def pgx_(
         raise typer.Exit(code=1) from exc
     if result.rows:
         # The file the pass actually wrote, not a guessed name — the module may carry either spelling.
-        typer.secho(
-            f"sources: {sources_path(spec_dir, error=PgxEnrichmentError)}", fg=typer.colors.GREEN
-        )
+        typer.secho(f"sources: {sources_path(spec_dir, error=PgxEnrichmentError)}", fg=typer.colors.GREEN)
     typer.echo(f"sources recorded: {len(result.rows)}  declared use: {result.declared_use}")
     if result.routes:
         typer.echo("  routes: " + ", ".join(f"{s}={r}" for s, r in sorted(result.routes.items())))
@@ -831,11 +904,14 @@ def clinpgx_build_(
         repro_out("clinpgx"), "--out", file_okay=False, help="Snapshot output directory."
     ),
     zip_path: Path | None = typer.Option(
-        None, "--zip",
+        None,
+        "--zip",
         help=f"An existing {CURRENT_ARCHIVE.archive} (else downloaded).",
     ),
     url: str = typer.Option(DEFAULT_CLINPGX_URL, "--url", help="ClinPGx bulk download URL."),
-    use: str = typer.Option("unstated", "--use", help="Declared use: unstated | non-commercial | commercial."),
+    use: str = typer.Option(
+        "unstated", "--use", help="Declared use: unstated | non-commercial | commercial."
+    ),
 ) -> None:
     """Download + build the ClinPGx snapshot (dev surface; needs polars)."""
     declared = _use(use)
@@ -871,14 +947,19 @@ def clinpgx_build_(
 def clinpgx_check_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     snapshot: Path | None = typer.Option(
-        None, "--snapshot",
+        None,
+        "--snapshot",
         help="Explicit ClinPGx snapshot dir. Omit it and the cache is used, or one is downloaded.",
     ),
     offline: bool = typer.Option(
-        False, "--offline", help="Use a local snapshot only: never download one.",
+        False,
+        "--offline",
+        help="Use a local snapshot only: never download one.",
     ),
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail on a stale evidence level."),
-    use: str = typer.Option("unstated", "--use", help="Declared use: unstated | non-commercial | commercial."),
+    use: str = typer.Option(
+        "unstated", "--use", help="Declared use: unstated | non-commercial | commercial."
+    ),
 ) -> None:
     """Cross-check pharm_variants.csv against the ClinPGx snapshot.
 
@@ -887,7 +968,10 @@ def clinpgx_check_(
     """
     try:
         result = enrich_clinpgx(
-            spec_dir, mode=_mode(strict), declared_use=_use(use), snapshot=snapshot,
+            spec_dir,
+            mode=_mode(strict),
+            declared_use=_use(use),
+            snapshot=snapshot,
             offline=offline,
         )
     except LicenseRefusal as exc:
@@ -908,11 +992,13 @@ def draft_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     gene: list[str] = typer.Option(..., "--gene", help="Gene to draft from CPIC (repeatable)."),
     drug: list[str] = typer.Option(
-        [], "--drug",
+        [],
+        "--drug",
         help="Also draft CPIC's prescribing recommendations for this drug (repeatable).",
     ),
     allele: list[str] = typer.Option(
-        [], "--allele",
+        [],
+        "--allele",
         help=(
             "Draft only these star alleles, in all three tables (repeatable; `*1` is always kept). "
             "A caller emits a bounded allele set, and n alleles is n(n+1)/2 pairs — CYP2D6 is 16,290 "
@@ -920,18 +1006,22 @@ def draft_(
         ),
     ),
     population: str | None = typer.Option(
-        None, "--population",
+        None,
+        "--population",
         help="Draft only this CPIC clinical context (e.g. 'NVI'). Default: every context, as rows.",
     ),
     use: str = typer.Option(
-        "unstated", "--use",
+        "unstated",
+        "--use",
         help=(
             "Declared use: unstated | non-commercial | commercial. CPIC forbids sale, so a draft is "
             "SKIPPED when unstated and REFUSED when commercial."
         ),
     ),
     offline: bool = typer.Option(
-        False, "--offline", help="Draft from a built CPIC snapshot only; never reach CPIC live.",
+        False,
+        "--offline",
+        help="Draft from a built CPIC snapshot only; never reach CPIC live.",
     ),
     cpic_cache: Path | None = typer.Option(None, "--cpic-cache", help="Explicit CPIC snapshot dir."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be added; write nothing."),
@@ -950,15 +1040,23 @@ def draft_(
         typer.secho(
             f"--allele needs exactly one --gene (got {len(gene)}): a star-allele name means a "
             f"different allele in each gene. Draft one gene at a time; the command is additive.",
-            fg=typer.colors.RED, err=True,
+            fg=typer.colors.RED,
+            err=True,
         )
         raise typer.Exit(code=2)
     total_added = 0
     for name in gene:
         try:
             result = draft_gene(
-                spec_dir, name, drugs=drug, alleles=allele, population=population,
-                declared_use=declared, dry_run=dry_run, offline=offline, cpic_cache=cpic_cache,
+                spec_dir,
+                name,
+                drugs=drug,
+                alleles=allele,
+                population=population,
+                declared_use=declared,
+                dry_run=dry_run,
+                offline=offline,
+                cpic_cache=cpic_cache,
             )
         except (CpicError, *_DRAFT_PRECONDITION_ERRORS) as exc:
             typer.secho(f"DRAFT FAILED ({name}): {exc}", fg=typer.colors.RED, err=True)
@@ -1012,7 +1110,8 @@ def check_identifiers_(
     traits: bool = typer.Option(True, "--traits/--no-traits", help="Check trait_efo_id against OLS4."),
     genes: bool = typer.Option(True, "--genes/--no-genes", help="Check gene symbols against HGNC."),
     pgs: bool = typer.Option(
-        True, "--pgs/--no-pgs",
+        True,
+        "--pgs/--no-pgs",
         help="Check pgs_id against the PGS Catalog, and the two authored cells beside it.",
     ),
 ) -> None:
@@ -1033,9 +1132,7 @@ def check_identifiers_(
     try:
         # `spec_dir=` rather than loading the rows here (RM41). This command was the workspace's own
         # evidence that the row-taking form leaves every caller reaching for a private loader.
-        report = check_identifiers(
-            spec_dir=spec_dir, check_traits=traits, check_genes=genes, check_pgs=pgs
-        )
+        report = check_identifiers(spec_dir=spec_dir, check_traits=traits, check_genes=genes, check_pgs=pgs)
     except ValueError as exc:
         # A module whose rows will not load: nothing is attested, because there are no bytes for an
         # attestation to bind to and no question was reached.
@@ -1054,9 +1151,7 @@ def check_identifiers_(
         # the comment above says needs it most. The comment already named the right shape one clause
         # over; the type now matches it.
         _attest_on_the_way_out(
-            identifier_unreachable(
-                check_traits=traits, check_genes=genes, check_pgs=pgs, detail=str(exc)
-            ),
+            identifier_unreachable(check_traits=traits, check_genes=genes, check_pgs=pgs, detail=str(exc)),
             spec_dir,
         )
         typer.secho(f"IDENTIFIER CHECK FAILED: {exc}", fg=typer.colors.RED, err=True)
@@ -1177,17 +1272,12 @@ def check_identifiers_(
         # **"Current" out of nothing is the same unreadable zero one level up (S86).** With both
         # checks off, or with every id-bearing table absent, `report.clean` is vacuously true and the
         # green line asserted a pass over a question nobody put. It says what it read instead.
-        looked_at = (
-            len(report.trait_tables_read)
-            + len(report.gene_tables_read)
-            + len(report.pgs_tables_read)
-        )
+        looked_at = len(report.trait_tables_read) + len(report.gene_tables_read) + len(report.pgs_tables_read)
         if not report.traits and not report.genes and not report.pgs:
             typer.secho(
                 "no identifiers were checked"
                 + (
-                    f" — {looked_at} table(s) read and none carries a trait id, gene symbol or PGS "
-                    f"accession"
+                    f" — {looked_at} table(s) read and none carries a trait id, gene symbol or PGS accession"
                     if looked_at
                     else " — no table carrying identifiers was read"
                 ),
@@ -1230,10 +1320,15 @@ def _attest_on_the_way_out(records: list[VerificationRecord], spec_dir: Path) ->
 def check_acmg_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Exit 1 if any acmg_sf disagrees."),
-    offline: bool = typer.Option(False, "--offline", help="No network. Needs --sf-list, else nothing is checked."),
+    offline: bool = typer.Option(
+        False, "--offline", help="No network. Needs --sf-list, else nothing is checked."
+    ),
     url: str = typer.Option(DEFAULT_ACMG_URL, "--url", help="ACMG secondary-findings page URL (fallback)."),
     sf_list: Path | None = typer.Option(
-        None, "--sf-list", exists=True, file_okay=False,
+        None,
+        "--sf-list",
+        exists=True,
+        file_okay=False,
         help=(
             "Built ACMG SF snapshot (see `acmg build`). Preferred: NCBI's page still serves "
             "v3.2. Omit it and a snapshot in $JUST_DNA_ACMG_CACHE (or the shared cache base) "
@@ -1284,15 +1379,19 @@ def check_acmg_(
     # Unverifiable disagreements are printed like mismatches and excluded from the exit code: the
     # module may be right and the list old. They are the loud half of the stale-list fix.
     for gene, rows, message in AcmgReport.by_gene(report.unverifiable):
-        typer.secho(f"  unverifiable: {gene} ({len(rows)} row(s), first at {rows[0]}): {message}",
-                    fg=typer.colors.YELLOW, err=True)
+        typer.secho(
+            f"  unverifiable: {gene} ({len(rows)} row(s), first at {rows[0]}): {message}",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
     # Grouped by gene: every verdict is a statement about a gene, so a per-row list prints one
     # sentence once per variant in it.
     for gene, rows, message in AcmgReport.by_gene(report.notes):
         typer.secho(f"  note: {gene} ({len(rows)} row(s)): {message}", fg=typer.colors.CYAN)
     for gene, rows, message in AcmgReport.by_gene(report.mismatches):
-        typer.secho(f"  {gene} ({len(rows)} row(s), first at {rows[0]}): {message}",
-                    fg=typer.colors.YELLOW, err=True)
+        typer.secho(
+            f"  {gene} ({len(rows)} row(s), first at {rows[0]}): {message}", fg=typer.colors.YELLOW, err=True
+        )
     # After the report, for `check-identifiers`' reason: the check ran and its answer is above, so an
     # attestation that cannot be written must not take the answer down with it. `vrs mint`'s shape —
     # the message says which of the two failed, because saying "the check failed" would be false.
@@ -1311,18 +1410,32 @@ def enrich_and_compile(
     output_dir: Path = typer.Argument(..., file_okay=False, help="Output dir for parquet + manifest.json"),
     strict: bool = typer.Option(False, "--strict/--best-effort", help="Fail unless every variant resolves."),
     offline: bool = typer.Option(False, "--offline", help="Cache-only: never touch the network."),
-    ensembl_cache: Path | None = typer.Option(None, "--ensembl-cache", help="Explicit Ensembl cache dir/.duckdb."),
+    ensembl_cache: Path | None = typer.Option(
+        None, "--ensembl-cache", help="Explicit Ensembl cache dir/.duckdb."
+    ),
     clinvar_cache: Path | None = typer.Option(None, "--clinvar-cache", help="Explicit ClinVar snapshot dir."),
-    use_clinvar: bool = typer.Option(True, "--clinvar/--no-clinvar", help="Use the ClinVar link (after the Ensembl cache)."),
-    use_gnomad: bool = typer.Option(True, "--gnomad/--no-gnomad", help="Use the gnomAD link (last, after live Ensembl)."),
-    frequencies: bool = typer.Option(False, "--frequencies", help="Also run the frequency pass (writes frequencies.csv)."),
-    gene_metrics: bool = typer.Option(False, "--gene-metrics", help="Also run the gene-constraint pass (writes gene_metrics.csv)."),
+    use_clinvar: bool = typer.Option(
+        True, "--clinvar/--no-clinvar", help="Use the ClinVar link (after the Ensembl cache)."
+    ),
+    use_gnomad: bool = typer.Option(
+        True, "--gnomad/--no-gnomad", help="Use the gnomAD link (last, after live Ensembl)."
+    ),
+    frequencies: bool = typer.Option(
+        False, "--frequencies", help="Also run the frequency pass (writes frequencies.csv)."
+    ),
+    gene_metrics: bool = typer.Option(
+        False, "--gene-metrics", help="Also run the gene-constraint pass (writes gene_metrics.csv)."
+    ),
 ) -> None:
     """Enrich, then compile from the produced resolution.csv (offline, deterministic). Exit 1 on failure."""
     try:
         enrich(
-            spec_dir, mode=_mode(strict), offline=offline,
-            ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache, use_clinvar=use_clinvar,
+            spec_dir,
+            mode=_mode(strict),
+            offline=offline,
+            ensembl_cache=ensembl_cache,
+            clinvar_cache=clinvar_cache,
+            use_clinvar=use_clinvar,
             use_gnomad=use_gnomad,
         )
         # The sidecar passes run between enrich and compile so one command produces every input the
@@ -1466,17 +1579,26 @@ app.add_typer(acmg_app, name="acmg")
 @acmg_app.command("build")
 def acmg_build_(
     workbook: Path = typer.Argument(
-        ..., exists=True, dir_okay=False, help="ACMG SF supplementary workbook (.xlsx), downloaded by you.",
+        ...,
+        exists=True,
+        dir_okay=False,
+        help="ACMG SF supplementary workbook (.xlsx), downloaded by you.",
     ),
     out: Path = typer.Option(
-        repro_out("acmg_sf"), "--out", file_okay=False,
+        repro_out("acmg_sf"),
+        "--out",
+        file_okay=False,
         help="Output snapshot directory (writes acmg_sf.csv + release.json).",
     ),
     source_url: str | None = typer.Option(
-        None, "--source-url", help="Where the workbook came from, recorded in release.json.",
+        None,
+        "--source-url",
+        help="Where the workbook came from, recorded in release.json.",
     ),
     doi: str | None = typer.Option(
-        None, "--doi", help="DOI of the statement the workbook accompanies, recorded in release.json.",
+        None,
+        "--doi",
+        help="DOI of the statement the workbook accompanies, recorded in release.json.",
     ),
 ) -> None:
     """Convert ACMG's SF workbook into the snapshot `check-acmg --sf-list` reads.
@@ -1514,14 +1636,21 @@ app.add_typer(clinvar_app, name="clinvar")
 @clinvar_app.command("build")
 def clinvar_build_(
     vcf: Path | None = typer.Option(
-        None, "--vcf", exists=True, dir_okay=False,
+        None,
+        "--vcf",
+        exists=True,
+        dir_okay=False,
         help="Local ClinVar VCF (.vcf.gz). Omit and pass --download to fetch from NCBI.",
     ),
     download: bool = typer.Option(
-        False, "--download", help="Download the NCBI ClinVar GRCh38 VCF into --out first.",
+        False,
+        "--download",
+        help="Download the NCBI ClinVar GRCh38 VCF into --out first.",
     ),
     out: Path = typer.Option(
-        repro_out("clinvar"), "--out", file_okay=False,
+        repro_out("clinvar"),
+        "--out",
+        file_okay=False,
         help="Output snapshot directory (writes data/*.parquet + release.json).",
     ),
 ) -> None:
@@ -1552,14 +1681,20 @@ def clinvar_build_(
 @clinvar_app.command("publish")
 def clinvar_publish_(
     snapshot_dir: Path = typer.Argument(
-        ..., exists=True, file_okay=False, help="Built snapshot directory (data/*.parquet + release.json).",
+        ...,
+        exists=True,
+        file_okay=False,
+        help="Built snapshot directory (data/*.parquet + release.json).",
     ),
     repo_id: str | None = typer.Option(
-        None, "--repo", help="Target HF dataset (owner/name). Default: just-dna-seq/clinvar.",
+        None,
+        "--repo",
+        help="Target HF dataset (owner/name). Default: just-dna-seq/clinvar.",
     ),
     commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
     dry_run: bool = typer.Option(
-        False, "--dry-run",
+        False,
+        "--dry-run",
         help="Show what would be uploaded. Reads the repo's file list; uploads nothing.",
     ),
 ) -> None:
@@ -1591,7 +1726,8 @@ def clinvar_publish_(
         typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     typer.secho(
-        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN,
+        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)",
+        fg=typer.colors.GREEN,
     )
 
 
@@ -1704,10 +1840,13 @@ def cache_status_() -> None:
 @cache_app.command("pull")
 def cache_pull_(
     only: list[str] = typer.Option(
-        [], "--only", help="Pull just these caches (repeatable). Default: every publishable one.",
+        [],
+        "--only",
+        help="Pull just these caches (repeatable). Default: every publishable one.",
     ),
     use: str = typer.Option(
-        "unstated", "--use",
+        "unstated",
+        "--use",
         help=(
             "Declared use for the licence-gated snapshots. They forbid sale, so they are SKIPPED "
             "when unstated and REFUSED when commercial — downloading is taking the data."
@@ -1729,7 +1868,7 @@ def cache_pull_(
     failures = 0
     for lane in lanes:
         if lane.ensure is None:
-            if lane.name in wanted:   # asked for by name, so say why it is not coming
+            if lane.name in wanted:  # asked for by name, so say why it is not coming
                 typer.secho(f"  {lane.name}: {lane.unpublished}", fg=typer.colors.YELLOW, err=True)
             continue
         if lane.terms is not None:
@@ -1766,16 +1905,24 @@ def cache_pull_(
 @cache_app.command("prepare")
 def cache_prepare_(
     only: list[str] = typer.Option(
-        [], "--only", help="Prepare just these caches (repeatable). Default: every one.",
+        [],
+        "--only",
+        help="Prepare just these caches (repeatable). Default: every one.",
     ),
     use: str = typer.Option(
-        "unstated", "--use", help=f"Declared use: one of {sorted(VALID_DECLARED_USE)}.",
+        "unstated",
+        "--use",
+        help=f"Declared use: one of {sorted(VALID_DECLARED_USE)}.",
     ),
     pin: list[str] = typer.Option(
-        [], "--pin", help="lane=release, repeatable, for the lanes that are built rather than pulled.",
+        [],
+        "--pin",
+        help="lane=release, repeatable, for the lanes that are built rather than pulled.",
     ),
     source: list[str] = typer.Option(
-        [], "--source", help="lane=path, repeatable: build from a file you already hold.",
+        [],
+        "--source",
+        help="lane=path, repeatable: build from a file you already hold.",
     ),
 ) -> None:
     """Leave this machine with every cache it can have — pull what is published, build what is not.
@@ -1807,11 +1954,14 @@ def cache_prepare_(
     )
     for outcome in outcomes:
         colour = {
-            True: typer.colors.GREEN, False: typer.colors.RED, None: typer.colors.YELLOW,
+            True: typer.colors.GREEN,
+            False: typer.colors.RED,
+            None: typer.colors.YELLOW,
         }[outcome.ready]
         typer.secho(
             f"  {outcome.lane:11} {outcome.label:10} {outcome.detail}",
-            fg=colour, err=outcome.ready is not True,
+            fg=colour,
+            err=outcome.ready is not True,
         )
     ready = [o for o in outcomes if o.ready is True]
     failed = [o for o in outcomes if o.ready is False]
@@ -1829,10 +1979,14 @@ def cache_prepare_(
 @cache_app.command("prune")
 def cache_prune_(
     only: list[str] = typer.Option(
-        [], "--only", help="Prune just these caches (repeatable). Default: every published one.",
+        [],
+        "--only",
+        help="Prune just these caches (repeatable). Default: every published one.",
     ),
     yes: bool = typer.Option(
-        False, "--yes", help="Delete without asking. Without it this prints the plan and stops.",
+        False,
+        "--yes",
+        help="Delete without asking. Without it this prints the plan and stops.",
     ),
 ) -> None:
     """Say what a published snapshot repo carries that its lane is not made of, and offer to delete it.
@@ -1857,22 +2011,30 @@ def cache_prune_(
     planned = 0
     for lane in lanes:
         if lane.publish_repo is None:
-            typer.secho(f"  {lane.name:13} skipped  — {lane.unpublished or 'published elsewhere'}",
-                        fg=typer.colors.YELLOW)
+            typer.secho(
+                f"  {lane.name:13} skipped  — {lane.unpublished or 'published elsewhere'}",
+                fg=typer.colors.YELLOW,
+            )
             continue
         glob = SNAPSHOT_FILE_GLOBS.get(lane.name)
         if glob is None:
             # STRchive's snapshot is one JSON at the repo root: there is no `data/` for a file to be
             # outside of, so there is nothing this command can name. Said rather than skipped
             # silently, because "prune found nothing" and "prune cannot look" are different answers.
-            typer.secho(f"  {lane.name:13} n/a      — this snapshot has no {SNAPSHOT_DATA_DIRNAME}/ "
-                        f"to be made of anything", fg=typer.colors.YELLOW)
+            typer.secho(
+                f"  {lane.name:13} n/a      — this snapshot has no {SNAPSHOT_DATA_DIRNAME}/ "
+                f"to be made of anything",
+                fg=typer.colors.YELLOW,
+            )
             continue
         try:
             plan = plan_prune(lane.publish_repo, glob)
         except Exception as exc:
-            typer.secho(f"  {lane.name:13} FAILED   — could not read {lane.publish_repo}: {exc}",
-                        fg=typer.colors.RED, err=True)
+            typer.secho(
+                f"  {lane.name:13} FAILED   — could not read {lane.publish_repo}: {exc}",
+                fg=typer.colors.RED,
+                err=True,
+            )
             continue
         if not plan.candidates:
             typer.secho(f"  {lane.name:13} clean    {lane.publish_repo}", fg=typer.colors.GREEN)
@@ -1880,7 +2042,8 @@ def cache_prune_(
         planned += len(plan.candidates)
         typer.secho(
             f"  {lane.name:13} {len(plan.candidates)} file(s), {plan.total_bytes / 1e6:.1f} MB in "
-            f"{lane.publish_repo}", fg=typer.colors.YELLOW,
+            f"{lane.publish_repo}",
+            fg=typer.colors.YELLOW,
         )
         for candidate in plan.candidates:
             size = "" if candidate.size is None else f" ({candidate.size / 1e6:.1f} MB)"
@@ -1888,8 +2051,7 @@ def cache_prune_(
         if not yes:
             continue
         deleted = prune_repo(plan)
-        typer.secho(f"      deleted {deleted} file(s) from {lane.publish_repo}",
-                    fg=typer.colors.GREEN)
+        typer.secho(f"      deleted {deleted} file(s) from {lane.publish_repo}", fg=typer.colors.GREEN)
     if planned and not yes:
         typer.echo("Nothing was deleted. Re-run with --yes to remove the files listed above.")
 
@@ -1897,23 +2059,32 @@ def cache_prune_(
 @cache_app.command("rebuild")
 def cache_rebuild_(
     out: Path = typer.Option(
-        Path(CACHES_DIRNAME), "--out", file_okay=False,
+        Path(CACHES_DIRNAME),
+        "--out",
+        file_okay=False,
         help=(
             "Base directory. Each lane is built into <base>/<lane>/, never in place. The default is "
             "under data/, which this workspace git-ignores wholesale."
         ),
     ),
     only: list[str] = typer.Option(
-        [], "--only", help="Rebuild just these caches (repeatable). Default: every one that can be.",
+        [],
+        "--only",
+        help="Rebuild just these caches (repeatable). Default: every one that can be.",
     ),
     use: str = typer.Option(
-        "unstated", "--use", help=f"Declared use: one of {sorted(VALID_DECLARED_USE)}.",
+        "unstated",
+        "--use",
+        help=f"Declared use: one of {sorted(VALID_DECLARED_USE)}.",
     ),
     pin: list[str] = typer.Option(
-        [], "--pin", help="lane=release, repeatable. e.g. --pin mane=1.5 --pin civic=2026-08-01.",
+        [],
+        "--pin",
+        help="lane=release, repeatable. e.g. --pin mane=1.5 --pin civic=2026-08-01.",
     ),
     source: list[str] = typer.Option(
-        [], "--source",
+        [],
+        "--source",
         help=(
             "lane=path, repeatable: build from a file you already hold instead of downloading. "
             "Required for acmg; the offline off-switch for clinvar, constraint, clinpgx, "
@@ -1921,10 +2092,14 @@ def cache_rebuild_(
         ),
     ),
     publish: bool = typer.Option(
-        False, "--publish", help="Also upload each rebuilt snapshot to its HuggingFace repo.",
+        False,
+        "--publish",
+        help="Also upload each rebuilt snapshot to its HuggingFace repo.",
     ),
     dry_run: bool = typer.Option(
-        False, "--dry-run", help="With --publish: show what would be uploaded, send nothing.",
+        False,
+        "--dry-run",
+        help="With --publish: show what would be uploaded, send nothing.",
     ),
 ) -> None:
     """Rebuild every cache this tier builds — acquire, convert, and optionally publish (RM176).
@@ -1961,11 +2136,14 @@ def cache_rebuild_(
         outcome = rebuild_lane(lane, request)
         outcomes.append(outcome)
         colour = {
-            True: typer.colors.GREEN, False: typer.colors.RED, None: typer.colors.YELLOW,
+            True: typer.colors.GREEN,
+            False: typer.colors.RED,
+            None: typer.colors.YELLOW,
         }[outcome.built]
         typer.secho(
             f"  {lane.name:13} {outcome.label:8} {outcome.detail}",
-            fg=colour, err=outcome.built is not True,
+            fg=colour,
+            err=outcome.built is not True,
         )
         if outcome.built and publish:
             _publish_rebuilt(lane, outcome, dry_run=dry_run)
@@ -2002,7 +2180,8 @@ def _publish_rebuilt(lane: CacheLane, outcome: RebuildOutcome, *, dry_run: bool)
     if snapshot_dir is None:
         typer.secho(
             f"    not published — {lane.name} named no output directory",
-            fg=typer.colors.RED, err=True,
+            fg=typer.colors.RED,
+            err=True,
         )
         return
     payload = STRCHIVE_CATALOGUE_FILENAME if lane.name == "strchive" else None
@@ -2045,7 +2224,9 @@ def cpic_build_(
         repro_out("cpic"), "--out", file_okay=False, help="Snapshot output directory."
     ),
     endpoint: str = typer.Option(DEFAULT_CPIC_ENDPOINT, "--endpoint", help="CPIC PostgREST base URL."),
-    use: str = typer.Option("unstated", "--use", help="Declared use: unstated | non-commercial | commercial."),
+    use: str = typer.Option(
+        "unstated", "--use", help="Declared use: unstated | non-commercial | commercial."
+    ),
 ) -> None:
     """Fetch CPIC whole into `data/*.parquet` + release.json (dev surface; needs polars).
 
@@ -2076,10 +2257,15 @@ def cpic_build_(
 @cpic_app.command("publish")
 def cpic_publish_(
     snapshot_dir: Path = typer.Argument(
-        ..., exists=True, file_okay=False, help="Built snapshot directory (data/*.parquet + release.json).",
+        ...,
+        exists=True,
+        file_okay=False,
+        help="Built snapshot directory (data/*.parquet + release.json).",
     ),
     repo: str = typer.Option(
-        DEFAULT_CPIC_REPO_ID, "--repo", help="Target HuggingFace dataset repo (owner/name).",
+        DEFAULT_CPIC_REPO_ID,
+        "--repo",
+        help="Target HuggingFace dataset repo (owner/name).",
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be uploaded; send nothing."),
     commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
@@ -2098,17 +2284,23 @@ def cpic_publish_(
         return
     plan = publish_reference_snapshot(snapshot_dir, repo, commit_message=commit_message)
     typer.secho(
-        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN,
+        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)",
+        fg=typer.colors.GREEN,
     )
 
 
 @clinpgx_app.command("publish")
 def clinpgx_publish_(
     snapshot_dir: Path = typer.Argument(
-        ..., exists=True, file_okay=False, help="Built snapshot directory (data/*.parquet + release.json).",
+        ...,
+        exists=True,
+        file_okay=False,
+        help="Built snapshot directory (data/*.parquet + release.json).",
     ),
     repo: str = typer.Option(
-        DEFAULT_CLINPGX_REPO_ID, "--repo", help="Target HuggingFace dataset repo (owner/name).",
+        DEFAULT_CLINPGX_REPO_ID,
+        "--repo",
+        help="Target HuggingFace dataset repo (owner/name).",
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be uploaded; send nothing."),
     commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
@@ -2126,7 +2318,8 @@ def clinpgx_publish_(
         return
     plan = publish_reference_snapshot(snapshot_dir, repo, commit_message=commit_message)
     typer.secho(
-        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN,
+        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)",
+        fg=typer.colors.GREEN,
     )
 
 
@@ -2143,7 +2336,9 @@ def pharmvar_build_(
     out_dir: Path = typer.Option(
         repro_out("pharmvar"), "--out", file_okay=False, help="Snapshot output directory."
     ),
-    use: str = typer.Option("unstated", "--use", help="Declared use: unstated | non-commercial | commercial."),
+    use: str = typer.Option(
+        "unstated", "--use", help="Declared use: unstated | non-commercial | commercial."
+    ),
 ) -> None:
     """Fetch PharmVar whole into `data/*.parquet` + release.json (dev surface; needs polars + a key).
 
@@ -2193,30 +2388,43 @@ app.add_typer(civic_app, name="civic")
 @civic_app.command("build")
 def civic_build_(
     release: str | None = typer.Option(
-        None, "--release",
+        None,
+        "--release",
         help=(
             "Dated CIViC release to download, e.g. 01-Aug-2026. A DATED release, never the nightly: "
             "a snapshot that cannot name its input is one nothing can reproduce."
         ),
     ),
     evidence: Path | None = typer.Option(
-        None, "--evidence", exists=True, dir_okay=False,
+        None,
+        "--evidence",
+        exists=True,
+        dir_okay=False,
         help="Local ClinicalEvidenceSummaries.tsv. Use instead of --release to build offline.",
     ),
     variants: Path | None = typer.Option(
-        None, "--variants", exists=True, dir_okay=False,
+        None,
+        "--variants",
+        exists=True,
+        dir_okay=False,
         help="Local VariantSummaries.tsv.",
     ),
     profiles: Path | None = typer.Option(
-        None, "--profiles", exists=True, dir_okay=False,
+        None,
+        "--profiles",
+        exists=True,
+        dir_okay=False,
         help="Local MolecularProfileSummaries.tsv.",
     ),
     out: Path = typer.Option(
-        repro_out("civic"), "--out", file_okay=False,
+        repro_out("civic"),
+        "--out",
+        file_okay=False,
         help="Output snapshot directory (writes data/civic.parquet + release.json).",
     ),
     submitted: bool = typer.Option(
-        False, "--submitted",
+        False,
+        "--submitted",
         help=(
             "Also read the release's civic_accepted_and_submitted.vcf, so evidence a curator entered "
             "but no editor signed off joins the snapshot. Over 01-Aug-2026 that widens the direction "
@@ -2226,7 +2434,10 @@ def civic_build_(
         ),
     ),
     vcf: Path | None = typer.Option(
-        None, "--vcf", exists=True, dir_okay=False,
+        None,
+        "--vcf",
+        exists=True,
+        dir_okay=False,
         help="Local civic_accepted_and_submitted.vcf. Use with the local TSV flags to build offline.",
     ),
 ) -> None:
@@ -2290,7 +2501,10 @@ def civic_build_(
             vcf_path = got.path
 
     result = build_snapshot(
-        evidence_path, variant_path, profile_path, out,
+        evidence_path,
+        variant_path,
+        profile_path,
+        out,
         release=release,
         evidence_sha256=shas.get(CIVIC_EVIDENCE_FILE),
         variant_sha256=shas.get(CIVIC_VARIANT_FILE),
@@ -2324,11 +2538,15 @@ def civic_build_(
 def civic_citations_(
     spec: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory."),
     snapshot: Path | None = typer.Option(
-        None, "--snapshot", exists=True, file_okay=False,
+        None,
+        "--snapshot",
+        exists=True,
+        file_okay=False,
         help="CIViC snapshot to map authored rows through. Default: the provisioned cache.",
     ),
     variant_id: list[int] = typer.Option(
-        [], "--variant-id",
+        [],
+        "--variant-id",
         help=(
             "Ask about a CIViC variant id directly, repeatable. Its citations ground the MODULE "
             "rather than a variant, which is the only route to a record CIViC publishes no identity "
@@ -2336,11 +2554,14 @@ def civic_citations_(
         ),
     ),
     offline: bool = typer.Option(
-        False, "--offline",
+        False,
+        "--offline",
         help="Do not fetch. Every subject is recorded as not-asked; no row is written.",
     ),
     dry_run: bool = typer.Option(
-        False, "--dry-run", help="Report what would be appended, write nothing.",
+        False,
+        "--dry-run",
+        help="Report what would be appended, write nothing.",
     ),
 ) -> None:
     """Append the citations a CIViC variant carries that the dated bulk release cannot reach (RM160).
@@ -2415,14 +2636,21 @@ def civic_citations_(
 @civic_app.command("publish")
 def civic_publish_(
     snapshot_dir: Path = typer.Argument(
-        ..., exists=True, file_okay=False, help="Built snapshot directory (data/civic.parquet + release.json).",
+        ...,
+        exists=True,
+        file_okay=False,
+        help="Built snapshot directory (data/civic.parquet + release.json).",
     ),
     repo_id: str | None = typer.Option(
-        None, "--repo", help="Target HF dataset (owner/name). Default: just-dna-seq/civic.",
+        None,
+        "--repo",
+        help="Target HF dataset (owner/name). Default: just-dna-seq/civic.",
     ),
     commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
     dry_run: bool = typer.Option(
-        False, "--dry-run", help="Show what would be uploaded without contacting HuggingFace.",
+        False,
+        "--dry-run",
+        help="Show what would be uploaded without contacting HuggingFace.",
     ),
 ) -> None:
     """Upload a built CIViC snapshot to a HuggingFace dataset repo (publisher/dev).
@@ -2464,29 +2692,35 @@ def civic_publish_(
     typer.secho(f"Published {len(plan.files)} file(s) to {plan.repo_id}", fg=typer.colors.GREEN)
 
 
-
 @civic_app.command("reproduce")
 def civic_reproduce_(
     release: str = typer.Option(
-        "01-Aug-2026", "--release",
+        "01-Aug-2026",
+        "--release",
         help="Dated CIViC release to reproduce, e.g. 01-Aug-2026.",
     ),
     out: Path = typer.Option(
-        repro_out("civic_reproduce"), "--out", file_okay=False,
+        repro_out("civic_reproduce"),
+        "--out",
+        file_okay=False,
         help=(
             "Working directory. The release files and two independent builds land here. The default "
             "is under data/, which this workspace git-ignores wholesale."
         ),
     ),
     keep: bool = typer.Option(
-        False, "--keep", help="Leave the downloaded release files in place for inspection.",
+        False,
+        "--keep",
+        help="Leave the downloaded release files in place for inspection.",
     ),
     offline: bool = typer.Option(
-        False, "--offline",
+        False,
+        "--offline",
         help="Skip the reference cross-check. The build and determinism checks still run.",
     ),
     submitted: bool = typer.Option(
-        False, "--submitted",
+        False,
+        "--submitted",
         help=(
             "Reproduce the wider basis: also download the release's "
             "civic_accepted_and_submitted.vcf and build with it, so the submitted rows and their "
@@ -2559,14 +2793,18 @@ def civic_reproduce_(
 
     # 2 ── two builds, byte for byte
     typer.echo("\n2. Building twice")
-    first = build_snapshot(*paths, out / "build-a", release=release,
-                           evidence_sha256=shas[CIVIC_EVIDENCE_FILE],
-                           variant_sha256=shas[CIVIC_VARIANT_FILE],
-                           profile_sha256=shas[CIVIC_PROFILE_FILE],
-                           vcf=vcf_path, vcf_sha256=shas.get(CIVIC_VCF_FILE))
+    first = build_snapshot(
+        *paths,
+        out / "build-a",
+        release=release,
+        evidence_sha256=shas[CIVIC_EVIDENCE_FILE],
+        variant_sha256=shas[CIVIC_VARIANT_FILE],
+        profile_sha256=shas[CIVIC_PROFILE_FILE],
+        vcf=vcf_path,
+        vcf_sha256=shas.get(CIVIC_VCF_FILE),
+    )
     second = build_snapshot(*paths, out / "build-b", release=release, vcf=vcf_path)
-    typer.echo(f"     {first.record_count} rows on {first.variants} variants "
-               f"({first.status_basis})")
+    typer.echo(f"     {first.record_count} rows on {first.variants} variants ({first.status_basis})")
     if first.status_counts:
         typer.echo("     " + " · ".join(f"{k} {v}" for k, v in sorted(first.status_counts.items())))
     check(
@@ -2587,8 +2825,11 @@ def civic_reproduce_(
     # 5 ── what would be published
     plan = plan_reference_snapshot(first.out_dir, DEFAULT_CIVIC_REPO_ID)
     expected = {f"data/{first.parquet_file.name}", RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME}
-    check(set(plan.files) == expected, "the publish plan is data + release.json + LICENSE",
-          ", ".join(sorted(plan.files)))
+    check(
+        set(plan.files) == expected,
+        "the publish plan is data + release.json + LICENSE",
+        ", ".join(sorted(plan.files)),
+    )
 
     frame = pl.read_parquet(first.parquet_file) if (pl := _polars()) else None
     if frame is not None:
@@ -2597,14 +2838,19 @@ def civic_reproduce_(
     # 3 ── the external check, and the reason this command needs a network
     typer.echo("\n3. Cross-checking placed coordinates against the GRCh38 reference")
     if offline or frame is None:
-        typer.secho("     SKIPPED (--offline) — a check that did not run is not a check that passed",
-                    fg=typer.colors.YELLOW)
+        typer.secho(
+            "     SKIPPED (--offline) — a check that did not run is not a check that passed",
+            fg=typer.colors.YELLOW,
+        )
     else:
         placed = frame.filter(pl.col("chrom").is_not_null() & pl.col("ref").is_not_null())
         rows = [
             ResolutionRow(
                 variant_key=f"{r['chrom']}:{r['start']}:{r['ref']}",
-                status="resolved", chrom=r["chrom"], start=r["start"], ref=r["ref"],
+                status="resolved",
+                chrom=r["chrom"],
+                start=r["start"],
+                ref=r["ref"],
             )
             for r in placed.iter_rows(named=True)
         ]
@@ -2612,7 +2858,8 @@ def civic_reproduce_(
         if result.not_checked:
             typer.secho(
                 f"     SKIPPED — {result.not_checked}. A check that could not run is not a check "
-                f"that passed.", fg=typer.colors.YELLOW,
+                f"that passed.",
+                fg=typer.colors.YELLOW,
             )
         else:
             # `subjects` rather than `len(rows)`: a row the service answered nothing about is outside
@@ -2621,8 +2868,7 @@ def civic_reproduce_(
             check(
                 not result.mismatches,
                 "every placed ref matches the GRCh38 reference sequence",
-                f"{result.subjects} of {len(rows)} coordinate(s) read, "
-                f"{len(result.mismatches)} mismatch(es)",
+                f"{result.subjects} of {len(rows)} coordinate(s) read, {len(result.mismatches)} mismatch(es)",
             )
             for m in result.mismatches[:5]:
                 typer.secho(f"     {m}", fg=typer.colors.RED)
@@ -2633,11 +2879,13 @@ def civic_reproduce_(
 
     typer.echo("")
     if failures:
-        typer.secho(f"REPRODUCTION FAILED: {len(failures)} check(s) — {'; '.join(failures)}",
-                    fg=typer.colors.RED, err=True)
+        typer.secho(
+            f"REPRODUCTION FAILED: {len(failures)} check(s) — {'; '.join(failures)}",
+            fg=typer.colors.RED,
+            err=True,
+        )
         raise typer.Exit(code=1)
-    typer.secho(f"Reproduced {release}: {first.record_count} rows, all checks passed",
-                fg=typer.colors.GREEN)
+    typer.secho(f"Reproduced {release}: {first.record_count} rows, all checks passed", fg=typer.colors.GREEN)
 
 
 def _polars():
@@ -2650,13 +2898,9 @@ def _polars():
         return None
 
 
-
 pubmind_app = typer.Typer(
     add_completion=False,
-    help=(
-        "Build the PubMind literature-derived snapshot. Operator-built and inject-only; "
-        "never published."
-    ),
+    help=("Build the PubMind literature-derived snapshot. Operator-built and inject-only; never published."),
     no_args_is_help=True,
 )
 app.add_typer(pubmind_app, name="pubmind")
@@ -2677,14 +2921,21 @@ PUBMIND_PUBLISH_REFUSAL = (
 @pubmind_app.command("build")
 def pubmind_build_(
     table: Path | None = typer.Option(
-        None, "--table", exists=True, dir_okay=False,
+        None,
+        "--table",
+        exists=True,
+        dir_okay=False,
         help="Local hg38_pubmind_db.txt.gz. Omit and pass --download to fetch it from ANNOVAR.",
     ),
     download: bool = typer.Option(
-        False, "--download", help="Download the ANNOVAR-distributed PubMind table into --out first.",
+        False,
+        "--download",
+        help="Download the ANNOVAR-distributed PubMind table into --out first.",
     ),
     out: Path = typer.Option(
-        repro_out("pubmind"), "--out", file_okay=False,
+        repro_out("pubmind"),
+        "--out",
+        file_okay=False,
         help="Output snapshot directory (writes data/pubmind.parquet + release.json).",
     ),
 ) -> None:
@@ -2725,8 +2976,7 @@ def pubmind_build_(
         + "  ".join(f"{name}: {count}" for name, count in sorted(result.derivations.items()))
     )
     typer.secho(
-        "  dropped: "
-        + ", ".join(f"{name} {count}" for name, count in result.dropped.items()),
+        "  dropped: " + ", ".join(f"{name} {count}" for name, count in result.dropped.items()),
         fg=typer.colors.YELLOW,
     )
     typer.secho(
@@ -2771,14 +3021,21 @@ gnomad_app.add_typer(constraint_app, name="constraint")
 @constraint_app.command("build")
 def constraint_build_(
     tsv: Path | None = typer.Option(
-        None, "--tsv", exists=True, dir_okay=False,
+        None,
+        "--tsv",
+        exists=True,
+        dir_okay=False,
         help="Local gnomAD constraint metrics TSV. Omit and pass --download to fetch it.",
     ),
     download: bool = typer.Option(
-        False, "--download", help="Download the gnomAD v4.1 constraint TSV (95.5 MB) into --out first.",
+        False,
+        "--download",
+        help="Download the gnomAD v4.1 constraint TSV (95.5 MB) into --out first.",
     ),
     out: Path = typer.Option(
-        repro_out("gnomad_constraint"), "--out", file_okay=False,
+        repro_out("gnomad_constraint"),
+        "--out",
+        file_okay=False,
         help="Output snapshot directory (writes data/gnomad_constraint.parquet + release.json).",
     ),
 ) -> None:
@@ -2789,8 +3046,8 @@ def constraint_build_(
         typer.secho("Provide --tsv PATH or --download.", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
     try:
-        source = tsv if tsv is not None else download_constraint_tsv(
-            out / "gnomad.v4.1.constraint_metrics.tsv"
+        source = (
+            tsv if tsv is not None else download_constraint_tsv(out / "gnomad.v4.1.constraint_metrics.tsv")
         )
         result = build_snapshot(source, out)
     except (FileNotFoundError, ImportError) as exc:
@@ -2808,14 +3065,21 @@ def constraint_build_(
 @constraint_app.command("publish")
 def constraint_publish_(
     snapshot_dir: Path = typer.Argument(
-        ..., exists=True, file_okay=False, help="Built snapshot directory (data/*.parquet + release.json).",
+        ...,
+        exists=True,
+        file_okay=False,
+        help="Built snapshot directory (data/*.parquet + release.json).",
     ),
     repo_id: str | None = typer.Option(
-        None, "--repo", help="Target HF dataset (owner/name). Default: just-dna-seq/gnomad_constraint.",
+        None,
+        "--repo",
+        help="Target HF dataset (owner/name). Default: just-dna-seq/gnomad_constraint.",
     ),
     commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
     dry_run: bool = typer.Option(
-        False, "--dry-run", help="Show what would be uploaded without contacting HuggingFace.",
+        False,
+        "--dry-run",
+        help="Show what would be uploaded without contacting HuggingFace.",
     ),
 ) -> None:
     """Create-or-update the dataset repo and upload the built constraint snapshot (publisher/dev)."""
@@ -2838,7 +3102,8 @@ def constraint_publish_(
         typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     typer.secho(
-        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN,
+        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)",
+        fg=typer.colors.GREEN,
     )
 
 
@@ -2882,7 +3147,8 @@ def _mint_record(result: MintResult) -> VerificationRecord:
 def vrs_mint_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     offline: bool = typer.Option(
-        False, "--offline",
+        False,
+        "--offline",
         help="Substitutions only: indels need the reference sequence, which means a network call.",
     ),
 ) -> None:
@@ -2951,7 +3217,8 @@ def hint_variant_(
     ensembl_cache: Path | None = typer.Option(None, "--ensembl-cache", help="Explicit Ensembl cache."),
     clinvar_cache: Path | None = typer.Option(None, "--clinvar-cache", help="Explicit ClinVar snapshot."),
     pubmind_cache: Path | None = typer.Option(
-        None, "--pubmind-cache",
+        None,
+        "--pubmind-cache",
         help="Explicit PubMind snapshot (see `pubmind build`); $JUST_DNA_PUBMIND_CACHE otherwise.",
     ),
     as_json: bool = typer.Option(False, "--json", help="Emit the full machine answer."),
@@ -2966,24 +3233,38 @@ def hint_variant_(
         typer.secho("give --rsid, or --chrom and --start", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1)
     hint = lookup_variant(
-        rsid=rsid, chrom=chrom, start=start, ref=ref, alts=alts,
-        ambiguity=ambiguity, frequencies=frequencies, offline=offline,
-        ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache, pubmind_cache=pubmind_cache,
+        rsid=rsid,
+        chrom=chrom,
+        start=start,
+        ref=ref,
+        alts=alts,
+        ambiguity=ambiguity,
+        frequencies=frequencies,
+        offline=offline,
+        ensembl_cache=ensembl_cache,
+        clinvar_cache=clinvar_cache,
+        pubmind_cache=pubmind_cache,
     )
     if as_json:
-        typer.echo(json.dumps({
-            "rsid": hint.rsid,
-            "rsid_status": str(hint.rsid_status) if hint.rsid_status else None,
-            "loci": hint.loci,
-            "rsid_candidates": hint.rsid_candidates,
-            "populations": hint.populations,
-            "clin_sig": hint.clin_sig,
-            "pubmind": hint.pubmind,
-            "vrs_id": hint.vrs_id,
-            "ambiguous": hint.ambiguous,
-            "advisory": as_report_rows(hint),
-            "findings": [f"{f.level}: {f.message}" for f in hint.findings],
-        }, indent=2, default=str))
+        typer.echo(
+            json.dumps(
+                {
+                    "rsid": hint.rsid,
+                    "rsid_status": str(hint.rsid_status) if hint.rsid_status else None,
+                    "loci": hint.loci,
+                    "rsid_candidates": hint.rsid_candidates,
+                    "populations": hint.populations,
+                    "clin_sig": hint.clin_sig,
+                    "pubmind": hint.pubmind,
+                    "vrs_id": hint.vrs_id,
+                    "ambiguous": hint.ambiguous,
+                    "advisory": as_report_rows(hint),
+                    "findings": [f"{f.level}: {f.message}" for f in hint.findings],
+                },
+                indent=2,
+                default=str,
+            )
+        )
         return
     for locus in hint.loci:
         typer.echo(f"locus\t{locus['chrom']}:{locus['start']}\t{locus.get('ref')}>{locus.get('alts')}")
@@ -3021,20 +3302,24 @@ def hint_recover_(
     becomes the row's only witness to itself. Nothing is written — the rs-number is the row's
     identity, and a machine filling one migrates `variant_key` with no authored edit anywhere.
     """
-    hint = lookup_old_assembly(
-        chrom=chrom, start=start, ref=ref, alts=alts, offline=offline
-    )
+    hint = lookup_old_assembly(chrom=chrom, start=start, ref=ref, alts=alts, offline=offline)
     if as_json:
-        typer.echo(json.dumps({
-            "chrom": hint.recovery.chrom,
-            "start": hint.recovery.start,
-            "genome_build": GRCH37_BUILD,
-            "outcome": hint.recovery.outcome,
-            "rsids": hint.recovery.rsids,
-            "candidates": hint.recovery.candidates,
-            "advisory": as_report_rows(hint),
-            "findings": [f"{f.level}: {f.message}" for f in hint.findings],
-        }, indent=2, default=str))
+        typer.echo(
+            json.dumps(
+                {
+                    "chrom": hint.recovery.chrom,
+                    "start": hint.recovery.start,
+                    "genome_build": GRCH37_BUILD,
+                    "outcome": hint.recovery.outcome,
+                    "rsids": hint.recovery.rsids,
+                    "candidates": hint.recovery.candidates,
+                    "advisory": as_report_rows(hint),
+                    "findings": [f"{f.level}: {f.message}" for f in hint.findings],
+                },
+                indent=2,
+                default=str,
+            )
+        )
         return
     for candidate in hint.recovery.candidates:
         typer.echo(
@@ -3075,22 +3360,28 @@ def hint_citation_(
         raise typer.Exit(code=1)
     hint = lookup_citation(pmid=pmid, doi=doi, pmcid=pmcid, offline=offline)
     if as_json:
-        typer.echo(json.dumps({
-            "pmid": hint.pmid,
-            "doi": hint.doi,
-            "pmid_exists": hint.pmid_exists,
-            "doi_exists": hint.doi_exists,
-            "registry_doi": hint.registry_doi,
-            "pmcid": hint.pmcid,
-            "open_access": hint.open_access,
-            "abstract_available": hint.abstract_available,
-            "title": hint.title,
-            "journal": hint.journal,
-            "year": hint.year,
-            "first_author": hint.first_author,
-            "advisory": as_report_rows(hint),
-            "findings": [f"{f.level}: {f.message}" for f in hint.findings],
-        }, indent=2, default=str))
+        typer.echo(
+            json.dumps(
+                {
+                    "pmid": hint.pmid,
+                    "doi": hint.doi,
+                    "pmid_exists": hint.pmid_exists,
+                    "doi_exists": hint.doi_exists,
+                    "registry_doi": hint.registry_doi,
+                    "pmcid": hint.pmcid,
+                    "open_access": hint.open_access,
+                    "abstract_available": hint.abstract_available,
+                    "title": hint.title,
+                    "journal": hint.journal,
+                    "year": hint.year,
+                    "first_author": hint.first_author,
+                    "advisory": as_report_rows(hint),
+                    "findings": [f"{f.level}: {f.message}" for f in hint.findings],
+                },
+                indent=2,
+                default=str,
+            )
+        )
         return
     for label, value in (("pmid_exists", hint.pmid_exists), ("doi_exists", hint.doi_exists)):
         typer.echo(f"{label}\t{'unknown' if value is None else value}")
@@ -3125,7 +3416,10 @@ def hint_gene_(symbol: str = typer.Argument(..., help="Gene symbol, e.g. MTHFR")
 def draft_clinpgx_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     snapshot: Path = typer.Option(
-        ..., "--snapshot", exists=True, file_okay=False,
+        ...,
+        "--snapshot",
+        exists=True,
+        file_okay=False,
         help="Built ClinPGx snapshot (see `clinpgx build`). Inject-only; nothing is downloaded.",
     ),
     drug: list[str] = typer.Option([], "--drug", help="Only annotations naming this drug (repeatable)."),
@@ -3134,7 +3428,8 @@ def draft_clinpgx_(
         None, "--min-evidence-level", help="Keep annotations at least this strong: 1A|1B|2A|2B|3|4."
     ),
     use: str = typer.Option(
-        "unstated", "--use",
+        "unstated",
+        "--use",
         help="Declared use: unstated | non-commercial | commercial. ClinPGx forbids sale.",
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be added; write nothing."),
@@ -3146,8 +3441,13 @@ def draft_clinpgx_(
     """
     try:
         result = draft_pharm_variants(
-            spec_dir, snapshot=snapshot, genes=gene, drugs=drug,
-            min_evidence_level=min_evidence_level, declared_use=_use(use), dry_run=dry_run,
+            spec_dir,
+            snapshot=snapshot,
+            genes=gene,
+            drugs=drug,
+            min_evidence_level=min_evidence_level,
+            declared_use=_use(use),
+            dry_run=dry_run,
         )
     except (ClinPgxEnrichmentError, DraftError) as exc:
         typer.secho(f"DRAFT FAILED: {exc}", fg=typer.colors.RED, err=True)
@@ -3193,14 +3493,16 @@ def _panel_source(spelling: str) -> str | None:
 def draft_panel_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     gene: list[str] = typer.Option(
-        [], "--gene",
+        [],
+        "--gene",
         help=(
             "Gene to draft rows for (repeatable). Required for every source but mitomap-miss, whose "
             "increment is asked for as a whole and where --gene only filters."
         ),
     ),
     source: str = typer.Option(
-        "clinvar", "--source",
+        "clinvar",
+        "--source",
         help=(
             "Which authority to draft the calls from: clinvar (the default); pubmind — an LLM's "
             "reading of the literature, which needs an operator-built snapshot and still reads the "
@@ -3211,21 +3513,30 @@ def draft_panel_(
         ),
     ),
     mitomap_miss_cache: Path | None = typer.Option(
-        None, "--mitomap-miss-cache", exists=True, file_okay=False,
+        None,
+        "--mitomap-miss-cache",
+        exists=True,
+        file_okay=False,
         help=(
             "Built MITOMAP-miss snapshot (see `mitomap miss`). Only read under "
             "--source mitomap-miss; omit it and $JUST_DNA_MITOMAP_MISS_CACHE is used."
         ),
     ),
     civic_cache: Path | None = typer.Option(
-        None, "--civic-cache", exists=True, file_okay=False,
+        None,
+        "--civic-cache",
+        exists=True,
+        file_okay=False,
         help=(
             "Built CIViC snapshot (see `civic build`). Only read under --source civic; omit it and "
             "$JUST_DNA_CIVIC_CACHE is used."
         ),
     ),
     snapshot: Path | None = typer.Option(
-        None, "--snapshot", exists=True, file_okay=False,
+        None,
+        "--snapshot",
+        exists=True,
+        file_okay=False,
         help=(
             "Built ClinVar snapshot (see `clinvar build`). Omit it and the cache is used, or the "
             "published snapshot downloaded — the citations table comes with it, which is what a panel "
@@ -3234,38 +3545,53 @@ def draft_panel_(
         ),
     ),
     pubmind_cache: Path | None = typer.Option(
-        None, "--pubmind-cache", exists=True, file_okay=False,
+        None,
+        "--pubmind-cache",
+        exists=True,
+        file_okay=False,
         help=(
             "Built PubMind snapshot (see `pubmind build`), for --source pubmind. Omit it and "
             "$JUST_DNA_PUBMIND_CACHE is read; there is no published one to download."
         ),
     ),
     offline: bool = typer.Option(
-        False, "--offline", help="Use a local snapshot only: never download one.",
+        False,
+        "--offline",
+        help="Use a local snapshot only: never download one.",
     ),
     download: bool = typer.Option(
-        True, "--download/--no-download",
+        True,
+        "--download/--no-download",
         help="Provision the published snapshot when no local one is found. Fetching it is this "
-             "command's only network use, so --no-download coincides with --offline today; it is a "
-             "separate switch because it says 'do not go and get one', not 'make no request'.",
+        "command's only network use, so --no-download coincides with --offline today; it is a "
+        "separate switch because it says 'do not go and get one', not 'make no request'.",
     ),
     clin_sig: str | None = typer.Option(
-        None, "--clin-sig",
+        None,
+        "--clin-sig",
         help="Comma-separated calls to include. Default: pathogenic,likely_pathogenic.",
     ),
     min_review_stars: int = typer.Option(
-        2, "--min-review-stars", min=0, max=4,
+        2,
+        "--min-review-stars",
+        min=0,
+        max=4,
         help="Review-status floor, --source clinvar only. 2 = multiple submitters, no conflicts.",
     ),
     max_citations: int = typer.Option(
-        3, "--max-citations", min=0,
+        3,
+        "--max-citations",
+        min=0,
         help="Study rows to draft per variant from ClinVar's literature links. 0 disables. "
-             "--source clinvar only: PubMind's channel carries no PMID.",
+        "--source clinvar only: PubMind's channel carries no PMID.",
     ),
     min_confidence: int = typer.Option(
-        DEFAULT_MIN_CONFIDENCE, "--min-confidence", min=0, max=3,
+        DEFAULT_MIN_CONFIDENCE,
+        "--min-confidence",
+        min=0,
+        max=3,
         help="Evidence-depth floor, --source pubmind only. PubMind's confidence counts how much of "
-             "the literature spoke, 0-3; 1 means more than a single mention.",
+        "the literature spoke, 0-3; 1 means more than a single mention.",
     ),
     use: str = typer.Option("unstated", "--use", help="Declared use (ClinVar is public domain)."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be added; write nothing."),
@@ -3283,7 +3609,8 @@ def draft_panel_(
         typer.secho(
             f"--source {source!r} is not an authority this command drafts from. "
             f"Known: {', '.join(sorted(PANEL_SOURCES))}.",
-            fg=typer.colors.RED, err=True,
+            fg=typer.colors.RED,
+            err=True,
         )
         raise typer.Exit(code=1)
     source = resolved
@@ -3294,12 +3621,11 @@ def draft_panel_(
             f"--source {source} drafts a gene panel and needs at least one --gene. Only "
             f"--source {MITOMAP_MISS_SOURCE} is asked for as a whole, because its snapshot IS the "
             f"increment.",
-            fg=typer.colors.RED, err=True,
+            fg=typer.colors.RED,
+            err=True,
         )
         raise typer.Exit(code=2)
-    calls = (
-        frozenset(c.strip() for c in clin_sig.split(",") if c.strip()) if clin_sig else None
-    )
+    calls = frozenset(c.strip() for c in clin_sig.split(",") if c.strip()) if clin_sig else None
     # A dial belonging to the other authority, set to something other than its default, is named
     # rather than silently ignored: a run that honoured neither the flag nor the author's expectation
     # is the failure this reports before it happens.
@@ -3310,9 +3636,9 @@ def draft_panel_(
     ):
         if value != default and source != belongs:
             typer.secho(
-                f"  warning: {dial} is a --source {belongs} dial and does nothing under "
-                f"--source {source}",
-                fg=typer.colors.YELLOW, err=True,
+                f"  warning: {dial} is a --source {belongs} dial and does nothing under --source {source}",
+                fg=typer.colors.YELLOW,
+                err=True,
             )
     # `--clin-sig` is the third dial belonging elsewhere, and it is named outside the loop above
     # because it is not merely inert under --source civic: CIViC's germline clinical-significance
@@ -3323,7 +3649,8 @@ def draft_panel_(
         typer.secho(
             "  warning: --clin-sig does nothing under --source civic, which drafts the "
             "direction axis (risk/protective) rather than clinical significance",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
     # And the fourth, for its own reason again: MITOMAP's increment is already filtered to the five
     # documented VCEP classes, and everything outside them is *withheld* rather than assigned. A
@@ -3332,35 +3659,57 @@ def draft_panel_(
         typer.secho(
             f"  warning: --clin-sig does nothing under --source {MITOMAP_MISS_SOURCE}, which drafts "
             f"exactly the five documented ClinGen mtDNA VCEP classes and withholds everything else",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
     try:
         if source == MITOMAP_MISS_SOURCE:
             result = draft_panel_from_mitomap_miss(
-                spec_dir, gene, snapshot=mitomap_miss_cache,
-                declared_use=_use(use), dry_run=dry_run,
+                spec_dir,
+                gene,
+                snapshot=mitomap_miss_cache,
+                declared_use=_use(use),
+                dry_run=dry_run,
             )
         elif source == "civic":
             result = draft_panel_from_civic(
-                spec_dir, gene, snapshot=civic_cache,
-                declared_use=_use(use), offline=offline, dry_run=dry_run,
+                spec_dir,
+                gene,
+                snapshot=civic_cache,
+                declared_use=_use(use),
+                offline=offline,
+                dry_run=dry_run,
             )
         elif source == "pubmind":
             result = draft_gene_panel_from_pubmind(
-                spec_dir, gene, snapshot=snapshot, pubmind_snapshot=pubmind_cache,
-                offline=offline, download=download,
+                spec_dir,
+                gene,
+                snapshot=snapshot,
+                pubmind_snapshot=pubmind_cache,
+                offline=offline,
+                download=download,
                 **({"clin_sig": calls} if calls else {}),
-                min_confidence=min_confidence, declared_use=_use(use), dry_run=dry_run,
+                min_confidence=min_confidence,
+                declared_use=_use(use),
+                dry_run=dry_run,
             )
         else:
             result = draft_gene_panel(
-                spec_dir, gene, snapshot=snapshot, offline=offline, download=download,
+                spec_dir,
+                gene,
+                snapshot=snapshot,
+                offline=offline,
+                download=download,
                 **({"clin_sig": calls} if calls else {}),
-                min_review_stars=min_review_stars, max_citations=max_citations,
-                declared_use=_use(use), dry_run=dry_run,
+                min_review_stars=min_review_stars,
+                max_citations=max_citations,
+                declared_use=_use(use),
+                dry_run=dry_run,
             )
     except (
-        ClinVarDraftError, PubMindDraftError, MitomapDraftError,
+        ClinVarDraftError,
+        PubMindDraftError,
+        MitomapDraftError,
         *_DRAFT_PRECONDITION_ERRORS,
     ) as exc:
         typer.secho(f"DRAFT FAILED: {exc}", fg=typer.colors.RED, err=True)
@@ -3380,9 +3729,7 @@ def draft_panel_(
     verb = "would add" if dry_run else "added"
     # Per table, never a rolled-up total. The draft writes `variants.csv` AND `studies.csv`, so a single
     # number matches neither file — `ClinVarDraftResult.added` says as much in its own docstring.
-    breakdown = ", ".join(
-        f"{r.csv_name} {len(r.added)}" for r in result.reports
-    ) or "nothing"
+    breakdown = ", ".join(f"{r.csv_name} {len(r.added)}" for r in result.reports) or "nothing"
     typer.secho(f"{verb}: {breakdown} — in {spec_dir}", fg=typer.colors.GREEN)
 
 
@@ -3426,7 +3773,8 @@ def clinvar_citations_(
         typer.secho(
             f"  could not record the citations provenance in {out / RELEASE_FILENAME} — the snapshot "
             f"will not say which citations release it carries",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
 
 
@@ -3444,7 +3792,9 @@ app.add_typer(litvar_app, name="litvar")
 @litvar_app.command("coverage")
 def litvar_coverage_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
-    offline: bool = typer.Option(False, "--offline", help="No network; every locus is recorded as unchecked."),
+    offline: bool = typer.Option(
+        False, "--offline", help="No network; every locus is recorded as unchecked."
+    ),
     quiet: bool = typer.Option(False, "--quiet", help="Only the tier summary, not a line per locus."),
 ) -> None:
     """Report LitVar's literature coverage per locus, naming the tier that answered.
@@ -3469,9 +3819,7 @@ def litvar_coverage_(
         # No attestation, for `check-identifiers`' reason: with no rsID-bearing row there is no
         # question to record having put, and minting a nonce would create a `verification.json` on a
         # module that never asked for one.
-        typer.secho(
-            "no authored table names an rsID — nothing to ask LitVar about", fg=typer.colors.YELLOW
-        )
+        typer.secho("no authored table names an rsID — nothing to ask LitVar about", fg=typer.colors.YELLOW)
         return
     typer.echo(
         f"loci: {len(report.loci)}"
@@ -3502,9 +3850,7 @@ def litvar_coverage_(
                 )
     for tier in ("allele", "position", "absent", "unchecked"):
         typer.echo(f"{tier}: {len(report.at(tier))}")
-    typer.echo(
-        f"papers on a position node that no allele node claims: {report.position_only_residue}"
-    )
+    typer.echo(f"papers on a position node that no allele node claims: {report.position_only_residue}")
     if report.degraded:
         typer.secho(
             f"allele-level questions answered position-level: "
@@ -3564,37 +3910,53 @@ app.add_typer(mane_app, name="mane")
 @mane_app.command("build")
 def mane_build_(
     download: bool = typer.Option(
-        False, "--download",
+        False,
+        "--download",
         help=(
             "Fetch the release from NCBI. Without --release the newest version is discovered from "
             "current/README_versions.txt and then pinned to its versioned directory."
         ),
     ),
     release: str | None = typer.Option(
-        None, "--release",
+        None,
+        "--release",
         help="MANE version to pin, e.g. 1.5. Resolves to release_<version>/, never current/.",
     ),
     summary: Path | None = typer.Option(
-        None, "--summary", exists=True, dir_okay=False,
+        None,
+        "--summary",
+        exists=True,
+        dir_okay=False,
         help="Local MANE.GRCh38.v<ver>.summary.txt.gz. Use instead of --download to build offline.",
     ),
     changed: Path | None = typer.Option(
-        None, "--changed", exists=True, dir_okay=False,
+        None,
+        "--changed",
+        exists=True,
+        dir_okay=False,
         help="Local MANE.GRCh38.v<ver>.changed_select_accessions.txt.gz.",
     ),
     not_in_mane: Path | None = typer.Option(
-        None, "--not-in-mane", exists=True, dir_okay=False,
+        None,
+        "--not-in-mane",
+        exists=True,
+        dir_okay=False,
         help="Local MANE.GRCh38.v<ver>.protein_coding_genes_not_in_mane.txt.gz.",
     ),
     versions: Path | None = typer.Option(
-        None, "--versions", exists=True, dir_okay=False,
+        None,
+        "--versions",
+        exists=True,
+        dir_okay=False,
         help=(
             "Local README_versions.txt. Optional, and the only way an offline build can name its "
             "release: a filename is never parsed for one."
         ),
     ),
     out: Path = typer.Option(
-        repro_out("mane"), "--out", file_okay=False,
+        repro_out("mane"),
+        "--out",
+        file_okay=False,
         help="Output snapshot directory (writes data/*.parquet + release.json).",
     ),
 ) -> None:
@@ -3627,8 +3989,11 @@ def mane_build_(
         mane_versions_url,
     )
 
-    local = {"summary": summary, "changed_select_accessions": changed,
-             "protein_coding_genes_not_in_mane": not_in_mane}
+    local = {
+        "summary": summary,
+        "changed_select_accessions": changed,
+        "protein_coding_genes_not_in_mane": not_in_mane,
+    }
     given = {name: path for name, path in local.items() if path is not None}
     if download and given:
         raise typer.BadParameter(
@@ -3663,9 +4028,7 @@ def mane_build_(
         if download:
             pinned = release or discover_current_release()
             out.mkdir(parents=True, exist_ok=True)
-            fetched_versions = download_mane_file(
-                out / MANE_VERSIONS_FILENAME, mane_versions_url(pinned)
-            )
+            fetched_versions = download_mane_file(out / MANE_VERSIONS_FILENAME, mane_versions_url(pinned))
             versions_file = fetched_versions.path
             for table in MANE_TABLES:
                 filename = f"MANE.GRCh38.v{pinned}.{table.source_suffix}"
@@ -3742,15 +4105,21 @@ app.add_typer(strchive_app, name="strchive")
 @strchive_app.command("build")
 def strchive_build_(
     out: Path = typer.Option(
-        repro_out("strchive"), "--out", file_okay=False,
+        repro_out("strchive"),
+        "--out",
+        file_okay=False,
         help="Output snapshot directory (writes STRchive-loci.json + release.json).",
     ),
     catalogue: Path | None = typer.Option(
-        None, "--catalogue", exists=True, dir_okay=False,
+        None,
+        "--catalogue",
+        exists=True,
+        dir_okay=False,
         help="A STRchive-loci.json you already have. Without it the file is downloaded.",
     ),
     release: str | None = typer.Option(
-        None, "--release",
+        None,
+        "--release",
         help="Upstream release tag to pin, e.g. v2.26.0. Without it, the default branch, unlabelled.",
     ),
 ) -> None:
@@ -3775,18 +4144,23 @@ def strchive_build_(
         typer.secho(
             "  no --release was pinned, so this snapshot carries no release label and the check "
             "will not be able to say which version it compared against",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
 
 
 @strchive_app.command("publish")
 def strchive_publish_(
     snapshot_dir: Path = typer.Argument(
-        ..., exists=True, file_okay=False,
+        ...,
+        exists=True,
+        file_okay=False,
         help="Built snapshot directory (STRchive-loci.json + release.json).",
     ),
     repo: str = typer.Option(
-        DEFAULT_STRCHIVE_REPO_ID, "--repo", help="Target HuggingFace dataset repo (owner/name).",
+        DEFAULT_STRCHIVE_REPO_ID,
+        "--repo",
+        help="Target HuggingFace dataset repo (owner/name).",
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be uploaded; send nothing."),
     commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
@@ -3808,23 +4182,26 @@ def strchive_publish_(
         typer.secho(
             "  this snapshot carries no release label, so everyone who pulls it inherits a "
             "comparison that cannot name its own reference. Rebuild with `strchive build --release`.",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
     try:
         if dry_run:
-            plan = plan_reference_snapshot(
-                snapshot_dir, repo, payload=STRCHIVE_CATALOGUE_FILENAME
-            )
+            plan = plan_reference_snapshot(snapshot_dir, repo, payload=STRCHIVE_CATALOGUE_FILENAME)
             typer.echo(f"would upload {len(plan.files)} file(s) to {plan.repo_id}: {plan.files}")
             return
         plan = publish_reference_snapshot(
-            snapshot_dir, repo, commit_message=commit_message, payload=STRCHIVE_CATALOGUE_FILENAME,
+            snapshot_dir,
+            repo,
+            commit_message=commit_message,
+            payload=STRCHIVE_CATALOGUE_FILENAME,
         )
     except (FileNotFoundError, PermissionError, ImportError) as exc:
         typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     typer.secho(
-        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN,
+        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)",
+        fg=typer.colors.GREEN,
     )
 
 
@@ -3842,11 +4219,16 @@ app.add_typer(mitomap_app, name="mitomap")
 @mitomap_app.command("build")
 def mitomap_build_(
     out: Path = typer.Option(
-        repro_out("mitomap"), "--out", file_okay=False,
+        repro_out("mitomap"),
+        "--out",
+        file_okay=False,
         help="Output snapshot directory (writes data/mitomap-*.parquet + release.json).",
     ),
     dump: Path | None = typer.Option(
-        None, "--dump", exists=True, dir_okay=False,
+        None,
+        "--dump",
+        exists=True,
+        dir_okay=False,
         help=(
             "A mitomap.dump.sql.gz you already have. Without it the dump is downloaded — the data "
             "surface answers plain curl, unlike the web surface. A local dump carries no "
@@ -3854,7 +4236,9 @@ def mitomap_build_(
         ),
     ),
     url: str = typer.Option(
-        DEFAULT_MITOMAP_URL, "--url", help="Source URL for the dump (used only when --dump is absent).",
+        DEFAULT_MITOMAP_URL,
+        "--url",
+        help="Source URL for the dump (used only when --dump is absent).",
     ),
 ) -> None:
     """Cut the two curated mtDNA variant tables, their citations and the references out of the dump.
@@ -3876,7 +4260,10 @@ def mitomap_build_(
         else:
             fetched = download_mitomap_dump(out / "mitomap.dump.sql.gz", url)
             result = build_snapshot(
-                fetched.path, out, source_url=fetched.url, source_sha256=fetched.sha256,
+                fetched.path,
+                out,
+                source_url=fetched.url,
+                source_sha256=fetched.sha256,
                 source_last_modified=fetched.last_modified,
             )
     except (MitomapError, ImportError, OSError) as exc:
@@ -3884,7 +4271,9 @@ def mitomap_build_(
         raise typer.Exit(code=1) from exc
     typer.secho(f"built: {result.out_dir}", fg=typer.colors.GREEN)
     for name, count in result.rows.items():
-        typer.echo(f"  {name} {count} rows, curated through {result.edit_dates.get(name) or 'an undated pass'}")
+        typer.echo(
+            f"  {name} {count} rows, curated through {result.edit_dates.get(name) or 'an undated pass'}"
+        )
     typer.echo(
         f"  {result.citation_links} citation links from {result.reference_rows} references "
         f"({result.references_without_nlmid} state no nlmid, "
@@ -3908,22 +4297,31 @@ def mitomap_build_(
             "  the dump states no edit_date for one of its variant tables, so this snapshot has no "
             "release label and the miss lane built from it cannot name the MITOMAP release it "
             "compared",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
 
 
 @mitomap_app.command("miss")
 def mitomap_miss_(
     out: Path = typer.Option(
-        repro_out("mitomap_miss"), "--out", file_okay=False,
+        repro_out("mitomap_miss"),
+        "--out",
+        file_okay=False,
         help="Output snapshot directory (writes data/mitomap_miss.parquet + release.json).",
     ),
     mitomap_cache: Path | None = typer.Option(
-        None, "--mitomap-cache", exists=True, file_okay=False,
+        None,
+        "--mitomap-cache",
+        exists=True,
+        file_okay=False,
         help="Built MITOMAP snapshot (see `mitomap build`). Omit it and $JUST_DNA_MITOMAP_CACHE is used.",
     ),
     clinvar_cache: Path | None = typer.Option(
-        None, "--clinvar-cache", exists=True, file_okay=False,
+        None,
+        "--clinvar-cache",
+        exists=True,
+        file_okay=False,
         help="Built ClinVar snapshot (see `clinvar build`). Omit it and $JUST_DNA_CLINVAR_CACHE is used.",
     ),
 ) -> None:
@@ -3954,7 +4352,8 @@ def mitomap_miss_(
             f"with `cache prepare --only {' --only '.join(missing)}`, or name one with "
             f"--mitomap-cache/--clinvar-cache. An increment computed without a parent is not an "
             f"empty increment.",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
         raise typer.Exit(code=2)
     try:
@@ -3971,15 +4370,15 @@ def mitomap_miss_(
     )
     if result.rated_miss_by_class:
         typer.echo(
-            "  rated misses by class: "
-            + ", ".join(f"{k} {v}" for k, v in result.rated_miss_by_class.items())
+            "  rated misses by class: " + ", ".join(f"{k} {v}" for k, v in result.rated_miss_by_class.items())
         )
     if result.rated_miss_indels:
         typer.secho(
             f"  {result.rated_miss_indels} of {result.rated_misses} rated miss(es) key on an indel. "
             f"The join is exact and neither side is left-aligned here, so one of those is an "
             f"absence or a difference of anchor and this lane cannot tell you which.",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
     if result.withheld_in_miss:
         typer.secho(
@@ -3997,10 +4396,15 @@ def mitomap_miss_(
 @mitomap_app.command("publish")
 def mitomap_publish_(
     snapshot_dir: Path = typer.Argument(
-        ..., exists=True, file_okay=False, help="Built snapshot directory (data/ + release.json).",
+        ...,
+        exists=True,
+        file_okay=False,
+        help="Built snapshot directory (data/ + release.json).",
     ),
     repo: str = typer.Option(
-        DEFAULT_MITOMAP_REPO_ID, "--repo", help="Target HuggingFace dataset repo (owner/name).",
+        DEFAULT_MITOMAP_REPO_ID,
+        "--repo",
+        help="Target HuggingFace dataset repo (owner/name).",
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be uploaded; send nothing."),
     commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
@@ -4019,7 +4423,8 @@ def mitomap_publish_(
         typer.secho(
             "  this snapshot carries no release label (it was built from a local dump), so everyone "
             "who pulls it inherits a comparison that cannot name its own MITOMAP release.",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
     try:
         if dry_run:
@@ -4031,7 +4436,8 @@ def mitomap_publish_(
         typer.secho(f"PUBLISH FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     typer.secho(
-        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN,
+        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)",
+        fg=typer.colors.GREEN,
     )
 
 
@@ -4039,17 +4445,24 @@ def mitomap_publish_(
 def draft_repeats_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     genes: list[str] = typer.Option(
-        [], "--gene", "-g", help="Restrict to these genes. Repeatable; omit for every catalogue locus.",
+        [],
+        "--gene",
+        "-g",
+        help="Restrict to these genes. Repeatable; omit for every catalogue locus.",
     ),
     catalogue: Path | None = typer.Option(
-        None, "--catalogue", exists=True,
+        None,
+        "--catalogue",
+        exists=True,
         help=(
             "Built STRchive snapshot directory (see `strchive build`), or a STRchive-loci.json. "
             "Omit it and $JUST_DNA_STRCHIVE_CACHE (or the shared cache base) is used."
         ),
     ),
     use: str = typer.Option(
-        "unstated", "--use", help=f"Declared use: one of {sorted(VALID_DECLARED_USE)}.",
+        "unstated",
+        "--use",
+        help=f"Declared use: one of {sorted(VALID_DECLARED_USE)}.",
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be added; write nothing."),
 ) -> None:
@@ -4066,7 +4479,11 @@ def draft_repeats_(
     """
     try:
         result = draft_repeat_loci(
-            spec_dir, genes, catalogue=catalogue, declared_use=_use(use), dry_run=dry_run,
+            spec_dir,
+            genes,
+            catalogue=catalogue,
+            declared_use=_use(use),
+            dry_run=dry_run,
         )
     except (StrchiveError, StrchiveDraftError, DraftError) as exc:
         typer.secho(f"DRAFT FAILED: {exc}", fg=typer.colors.RED, err=True)
@@ -4093,11 +4510,14 @@ def draft_repeats_(
 def check_repeat_bands_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     catalogue: Path | None = typer.Option(
-        None, "--catalogue", exists=True,
+        None,
+        "--catalogue",
+        exists=True,
         help="Built STRchive snapshot directory (see `strchive build`), or a STRchive-loci.json.",
     ),
     strict: bool = typer.Option(
-        False, "--strict/--best-effort",
+        False,
+        "--strict/--best-effort",
         help="Carried into the report. A band difference NEVER fails, in either mode.",
     ),
 ) -> None:
@@ -4145,12 +4565,17 @@ def clinpgx_build_labels_(
         repro_out("drug_labels"), "--out", file_okay=False, help="Snapshot output directory."
     ),
     zip_path: Path | None = typer.Option(
-        None, "--zip", exists=True, dir_okay=False,
+        None,
+        "--zip",
+        exists=True,
+        dir_okay=False,
         help="A drugLabels.zip you already have. Without it the archive is downloaded.",
     ),
     url: str = typer.Option(DEFAULT_DRUG_LABELS_URL, "--url", help="ClinPGx bulk download URL."),
     use: str = typer.Option(
-        "unstated", "--use", help=f"Declared use: one of {sorted(VALID_DECLARED_USE)}.",
+        "unstated",
+        "--use",
+        help=f"Declared use: one of {sorted(VALID_DECLARED_USE)}.",
     ),
 ) -> None:
     """Download + build the regulator drug-label snapshot (dev surface; needs polars).
@@ -4181,9 +4606,7 @@ def clinpgx_build_labels_(
     try:
         if zip_path is None:
             zip_path, source_sha = download_drug_labels_zip(Path(out_dir) / "drugLabels.zip", url)
-        result = build_drug_label_snapshot(
-            zip_path, out_dir, source_url=url, source_sha256=source_sha
-        )
+        result = build_drug_label_snapshot(zip_path, out_dir, source_url=url, source_sha256=source_sha)
     except (DrugLabelError, OSError) as exc:
         typer.secho(f"DRUG-LABEL BUILD FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
@@ -4199,7 +4622,8 @@ def clinpgx_build_labels_(
         typer.secho(
             "  the archive carried no CREATED_<date>.txt, so this snapshot has no release label and "
             "the check will not be able to say which version it compared against",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
 
 
@@ -4207,18 +4631,24 @@ def clinpgx_build_labels_(
 def clinpgx_check_labels_(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     snapshot: Path | None = typer.Option(
-        None, "--snapshot", exists=True, file_okay=False,
+        None,
+        "--snapshot",
+        exists=True,
+        file_okay=False,
         help=(
             "Built drug-label snapshot directory (see `clinpgx build-labels`). Omit it and "
             "$JUST_DNA_DRUG_LABELS_CACHE (or the shared cache base) is used."
         ),
     ),
     strict: bool = typer.Option(
-        False, "--strict/--best-effort",
+        False,
+        "--strict/--best-effort",
         help="Carried into the report. A label difference NEVER fails, in either mode.",
     ),
     use: str = typer.Option(
-        "unstated", "--use", help=f"Declared use: one of {sorted(VALID_DECLARED_USE)}.",
+        "unstated",
+        "--use",
+        help=f"Declared use: one of {sorted(VALID_DECLARED_USE)}.",
     ),
 ) -> None:
     """Compare a module's gene/allele/drug claims against the drug labels five regulators publish.
@@ -4235,7 +4665,10 @@ def clinpgx_check_labels_(
     """
     try:
         result = check_drug_labels(
-            spec_dir, snapshot=snapshot, mode=_mode(strict), declared_use=_use(use),
+            spec_dir,
+            snapshot=snapshot,
+            mode=_mode(strict),
+            declared_use=_use(use),
         )
     except LicenseRefusal as exc:
         typer.secho(f"REFUSED: {exc}", fg=typer.colors.RED, err=True)
@@ -4278,11 +4711,15 @@ def clinpgx_check_labels_(
 @clinpgx_app.command("publish-labels")
 def clinpgx_publish_labels_(
     snapshot_dir: Path = typer.Argument(
-        ..., exists=True, file_okay=False,
+        ...,
+        exists=True,
+        file_okay=False,
         help="Built snapshot directory (data/drug_labels.parquet + LICENSE.txt + release.json).",
     ),
     repo: str = typer.Option(
-        DEFAULT_DRUG_LABELS_REPO_ID, "--repo", help="Target HuggingFace dataset repo (owner/name).",
+        DEFAULT_DRUG_LABELS_REPO_ID,
+        "--repo",
+        help="Target HuggingFace dataset repo (owner/name).",
     ),
     dry_run: bool = typer.Option(False, "--dry-run", help="Show what would be uploaded; send nothing."),
     commit_message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
@@ -4312,10 +4749,12 @@ def clinpgx_publish_labels_(
         typer.secho(
             f"  no {SNAPSHOT_LICENSE_FILENAME} in this snapshot, so `license_sha256` pins nothing "
             f"for whoever pulls it. Rebuild with `clinpgx build-labels`.",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
     typer.secho(
-        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN,
+        f"published: {snapshot_dir} → {plan.repo_id} ({len(plan.files)} files)",
+        fg=typer.colors.GREEN,
     )
 
 
@@ -4336,7 +4775,8 @@ app.add_typer(atlas_app, name="atlas")
 @atlas_app.command("generate")
 def atlas_generate_(
     refetch: bool = typer.Option(
-        False, "--refetch",
+        False,
+        "--refetch",
         help="Re-download the pinned sources even if they are already on disk and match.",
     ),
 ) -> None:
@@ -4361,7 +4801,8 @@ def atlas_generate_(
         typer.secho(
             f"GENERATE FAILED: grpcio-tools is not installed ({exc}). It is build-time only and "
             "lives in the [dev] group: `uv sync` from a checkout, or `pip install grpcio-tools`.",
-            fg=typer.colors.RED, err=True,
+            fg=typer.colors.RED,
+            err=True,
         )
         raise typer.Exit(code=1) from exc
     typer.secho(f"bindings written to {out}", fg=typer.colors.GREEN)
@@ -4384,7 +4825,10 @@ app.add_typer(alphagenome_app, name="alphagenome")
 @alphagenome_app.command("build")
 def alphagenome_avi_build_(
     input_: Path = typer.Option(
-        ..., "--input", exists=True, dir_okay=False,
+        ...,
+        "--input",
+        exists=True,
+        dir_okay=False,
         help=(
             "The extracted alphagenome_variant_impact_score_snvs.tsv.gz (its .tbi must be beside "
             "it). Required, and there is no default URL: acquisition is yours, under your own "
@@ -4392,19 +4836,25 @@ def alphagenome_avi_build_(
         ),
     ),
     out: Path = typer.Option(
-        repro_out("alphagenome_avi"), "--out", file_okay=False,
+        repro_out("alphagenome_avi"),
+        "--out",
+        file_okay=False,
         help="Output snapshot directory (writes data/alphagenome_avi-*.parquet, avi_knots.parquet, release.json, LICENSE.txt).",
     ),
     contig: list[str] = typer.Option(
-        None, "--contig",
+        None,
+        "--contig",
         help="Build only these contigs, repeatable. Omit for every contig the .tbi index knows.",
     ),
     workers: int = typer.Option(
-        12, "--workers", min=1,
+        12,
+        "--workers",
+        min=1,
         help="How many contigs to read at once. Twelve ran 24 contigs in 41-46 minutes; one takes about four times as long.",
     ),
     no_hash: bool = typer.Option(
-        False, "--no-hash",
+        False,
+        "--no-hash",
         help="Skip the source sha256. It is a few minutes over 88.5 GB; release.json then records null, which is unknown rather than unpinned.",
     ),
 ) -> None:
@@ -4417,8 +4867,11 @@ def alphagenome_avi_build_(
     """
     try:
         result = build_alphagenome_snapshot(
-            input_, out, contigs=list(contig) if contig else None,
-            workers=workers, hash_source=not no_hash,
+            input_,
+            out,
+            contigs=list(contig) if contig else None,
+            workers=workers,
+            hash_source=not no_hash,
         )
     except AlphaGenomeBuildError as exc:
         typer.secho(f"BUILD FAILED: {exc}", fg=typer.colors.RED, err=True)
@@ -4436,7 +4889,8 @@ def alphagenome_avi_build_(
             "  the artifact's own timestamp could not be read, so release.json records no dataset. "
             "The Output Terms pin the applicable version to the date the Output was generated, so "
             "that date is worth recovering before the snapshot is relied on.",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
     typer.echo(
         "  AVI is Permissive Use — commercial and non-commercial (RM195, and the download page that "
@@ -4450,22 +4904,29 @@ def alphagenome_avi_build_(
 def alphagenome_check_(
     spec: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     reference: Path | None = typer.Option(
-        None, "--reference", exists=True, file_okay=False,
+        None,
+        "--reference",
+        exists=True,
+        file_okay=False,
         help="An AVI snapshot directory. Omit to use $JUST_DNA_ALPHAGENOME_AVI_CACHE.",
     ),
     threshold: float | None = typer.Option(
-        None, "--threshold",
+        None,
+        "--threshold",
         help=(
             "A PHRED cut to check the module's variants against. Without one the pass is entirely "
             "offline: there is no question the local artifact cannot answer."
         ),
     ),
     offline: bool = typer.Option(
-        False, "--offline",
+        False,
+        "--offline",
         help="Never reach the Atlas. Straddling variants are recorded as nobody-asked, not as decided.",
     ),
     refinement_cap: int = typer.Option(
-        DEFAULT_REFINEMENT_CAP, "--refinement-cap", min=1,
+        DEFAULT_REFINEMENT_CAP,
+        "--refinement-cap",
+        min=1,
         help="Refuse rather than refine more than this many variants over the network in one run.",
     ),
     strict: bool = typer.Option(False, "--strict", help="Carried for the report; see the docstring."),
@@ -4481,8 +4942,12 @@ def alphagenome_check_(
         if threshold is not None and not offline:
             client = _atlas_client_or_none()
         result = check_variant_impact(
-            spec, reference=reference, client=client, threshold=threshold,
-            mode="strict" if strict else "best_effort", offline=offline,
+            spec,
+            reference=reference,
+            client=client,
+            threshold=threshold,
+            mode="strict" if strict else "best_effort",
+            offline=offline,
             refinement_cap=refinement_cap,
         )
     except VariantImpactError as exc:
@@ -4526,7 +4991,8 @@ def _atlas_client_or_none():
         typer.secho(
             "  no ALPHAGENOME_API_KEY, so nothing was refined. The knot table's interval is still "
             "the honest answer for those rows.",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
         return None
     # Imported here, not at module level, and this is the guarded-optional-dependency exception to
@@ -4539,14 +5005,18 @@ def _atlas_client_or_none():
         typer.secho(
             f"  no Atlas client, so nothing was refined ({exc}). Install the extra with "
             "`pip install 'just-dna-enricher[atlas]'` and run `just-dna-enricher atlas generate`.",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
         return None
     try:
         return connect(key)
     except AtlasError as exc:
-        typer.secho(f"  the Atlas could not be reached ({exc}); nothing was refined.",
-                    fg=typer.colors.YELLOW, err=True)
+        typer.secho(
+            f"  the Atlas could not be reached ({exc}); nothing was refined.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
         return None
 
 
@@ -4573,9 +5043,12 @@ def _resolve_avi_snapshot() -> Path | None:
     # the workspace marker rather than assuming the caller stands at the root.
     candidates = [repro_out("alphagenome_avi")]
     root = next(
-        (d for d in Path.cwd().resolve().parents
-         if (d / "pyproject.toml").is_file()
-         and "[tool.uv.workspace]" in (d / "pyproject.toml").read_text()),
+        (
+            d
+            for d in Path.cwd().resolve().parents
+            if (d / "pyproject.toml").is_file()
+            and "[tool.uv.workspace]" in (d / "pyproject.toml").read_text()
+        ),
         None,
     )
     if root is not None:
@@ -4590,7 +5063,9 @@ def _resolve_avi_snapshot() -> Path | None:
 @alphagenome_app.command("publish")
 def alphagenome_publish_(
     snapshot: Path | None = typer.Argument(
-        None, exists=True, file_okay=False,
+        None,
+        exists=True,
+        file_okay=False,
         help=(
             "The built snapshot directory. Omit to use the resolved cache "
             "($JUST_DNA_ALPHAGENOME_AVI_CACHE, then the cache base), falling back to where "
@@ -4598,10 +5073,14 @@ def alphagenome_publish_(
         ),
     ),
     repo: str | None = typer.Option(
-        None, "--repo", help=f"Target HF dataset. Default: {DEFAULT_ALPHAGENOME_AVI_REPO_ID}.",
+        None,
+        "--repo",
+        help=f"Target HF dataset. Default: {DEFAULT_ALPHAGENOME_AVI_REPO_ID}.",
     ),
     dry_run: bool = typer.Option(
-        False, "--dry-run", help="Show what would be uploaded. Reads the repo's file list; sends nothing.",
+        False,
+        "--dry-run",
+        help="Show what would be uploaded. Reads the repo's file list; sends nothing.",
     ),
     message: str | None = typer.Option(None, "--message", "-m", help="Commit message."),
 ) -> None:
@@ -4627,7 +5106,8 @@ def alphagenome_publish_(
                 f"$JUST_DNA_ALPHAGENOME_AVI_CACHE, the cache base, and "
                 f"{repro_out('alphagenome_avi').resolve()}. Build one with `alphagenome build "
                 "--input <the artifact you downloaded>`, or pass the directory explicitly.",
-                fg=typer.colors.RED, err=True,
+                fg=typer.colors.RED,
+                err=True,
             )
             raise typer.Exit(code=1)
         typer.echo(f"  using {snapshot}")
@@ -4651,10 +5131,12 @@ def alphagenome_publish_(
         typer.secho(
             f"  no {KNOT_FILENAME} in this snapshot — a puller would hold scores they cannot rank, "
             "because PHRED is not stored. Rebuild with `alphagenome build`.",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
     typer.secho(
-        f"published: {snapshot} → {plan.repo_id} ({len(plan.files)} files)", fg=typer.colors.GREEN,
+        f"published: {snapshot} → {plan.repo_id} ({len(plan.files)} files)",
+        fg=typer.colors.GREEN,
     )
 
 

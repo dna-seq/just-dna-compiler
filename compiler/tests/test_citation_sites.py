@@ -76,9 +76,7 @@ def _spec_with_cited_bins(tmp_path: Path, *, pmid: str | None = _PMID) -> Path:
     return spec
 
 
-def _spec_with_cited_pharm_rows(
-    tmp_path: Path, *, pmid: str = _PGX_PMID, name: str = "cited_pharm"
-) -> Path:
+def _spec_with_cited_pharm_rows(tmp_path: Path, *, pmid: str = _PGX_PMID, name: str = "cited_pharm") -> Path:
     """The SLCO1B1/simvastatin example with a `pmid` written onto the toxicity rows only.
 
     Onto *some* rows rather than all of them on purpose: the toxicity claim is what the SEARCH paper
@@ -98,9 +96,7 @@ def _spec_with_cited_pharm_rows(
     writer = csv.DictWriter(buffer, fieldnames=fieldnames, lineterminator="\n")
     writer.writeheader()
     for row in rows:
-        writer.writerow(
-            {**row, "pmid": pmid if row["phenotype_category"] == "Toxicity" else ""}
-        )
+        writer.writerow({**row, "pmid": pmid if row["phenotype_category"] == "Toxicity" else ""})
     (spec / "pharm_variants.csv").write_text(buffer.getvalue(), encoding="utf-8")
     return spec
 
@@ -140,6 +136,7 @@ def test_a_cited_bin_round_trips_through_compile_and_reverse(tmp_path: Path) -> 
     again = tmp_path / "again"
     assert compile_module(back, again).success
     import json
+
     first = json.loads((out / "manifest.json").read_text())
     second = json.loads((again / "manifest.json").read_text())
     assert first["content_signature"] == second["content_signature"]
@@ -149,6 +146,7 @@ def test_the_pointer_changes_the_content_signature(tmp_path: Path) -> None:
     """It is authored data, so it must be inside the authored identity — an optional column left
     unset is omitted from the hash, but one an author filled is content."""
     import json
+
     uncited = tmp_path / "plain"
     uncited.mkdir()
     (uncited / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
@@ -216,7 +214,10 @@ def test_a_bin_cited_paper_is_not_an_orphan_in_literature_csv() -> None:
     bins = {
         "repeat_alleles.csv": [
             RepeatAlleleRow(
-                gene="HTT", repeat_unit="CAG", measure_min=40, conclusion="fully penetrant",
+                gene="HTT",
+                repeat_unit="CAG",
+                measure_min=40,
+                conclusion="fully penetrant",
                 pmid=_PMID,
             )
         ]
@@ -281,8 +282,7 @@ def test_two_subject_less_rows_citing_one_paper_are_still_a_duplicate(tmp_path: 
     spec.mkdir()
     (spec / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
     (spec / "variants.csv").write_text(
-        "rsid,gene,genotype,weight,state,conclusion\n"
-        "rs1800562,HFE,A/A,1.0,risk,C282Y homozygote\n",
+        "rsid,gene,genotype,weight,state,conclusion\nrs1800562,HFE,A/A,1.0,risk,C282Y homozygote\n",
         encoding="utf-8",
     )
     (spec / "studies.csv").write_text(
@@ -297,9 +297,7 @@ def test_two_subject_less_rows_citing_one_paper_are_still_a_duplicate(tmp_path: 
 def test_quoting_a_noncommercial_article_warns_and_never_gates(tmp_path: Path) -> None:
     """It follows the ClinVar `clin_sig` precedent: warning in both modes, because refusing would
     make the format arbitrate a copyright question."""
-    studies = [
-        StudyRow(rsid="rs1800562", pmid=_PMID, provenance_quote="a passage from the paper")
-    ]
+    studies = [StudyRow(rsid="rs1800562", pmid=_PMID, provenance_quote="a passage from the paper")]
     rows = [LiteratureRow(pmid=_PMID, exists=True, license="cc by-nc", commercial_use=False)]
     findings = _check_quoted_article_licenses(rows, studies)
     assert len(findings) == 1
@@ -310,8 +308,7 @@ def test_quoting_a_noncommercial_article_warns_and_never_gates(tmp_path: Path) -
     spec.mkdir()
     (spec / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
     (spec / "variants.csv").write_text(
-        "rsid,gene,genotype,weight,state,conclusion\n"
-        "rs1800562,HFE,A/A,1.0,risk,C282Y homozygote\n",
+        "rsid,gene,genotype,weight,state,conclusion\nrs1800562,HFE,A/A,1.0,risk,C282Y homozygote\n",
         encoding="utf-8",
     )
     (spec / "studies.csv").write_text(
@@ -319,8 +316,7 @@ def test_quoting_a_noncommercial_article_warns_and_never_gates(tmp_path: Path) -
         encoding="utf-8",
     )
     (spec / "literature.csv").write_text(
-        "pmid,doi,pmcid,exists,license,commercial_use\n"
-        f"{_PMID},,,true,cc by-nc,false\n",
+        f"pmid,doi,pmcid,exists,license,commercial_use\n{_PMID},,,true,cc by-nc,false\n",
         encoding="utf-8",
     )
     # The claim is that this finding NEVER gates — so it must stay a warning in both modes and must
@@ -358,9 +354,7 @@ def test_the_notice_is_aggregated_by_licence() -> None:
     """One line per licence, never one per citation: a panel cites in the hundreds."""
     pmids = ["8458085", "9545397", "21551363"]
     studies = [StudyRow(rsid="rs1800562", pmid=p, provenance_quote="q") for p in pmids]
-    rows = [
-        LiteratureRow(pmid=p, exists=True, license="cc by-nc", commercial_use=False) for p in pmids
-    ]
+    rows = [LiteratureRow(pmid=p, exists=True, license="cc by-nc", commercial_use=False) for p in pmids]
     findings = _check_quoted_article_licenses(rows, studies)
     assert len(findings) == 1
     assert all(p in findings[0] for p in pmids)
@@ -391,13 +385,10 @@ def test_the_literature_registry_is_not_reported_as_undeclared(tmp_path: Path) -
     spec.mkdir()
     (spec / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
     (spec / "variants.csv").write_text(
-        "rsid,gene,genotype,weight,state,conclusion\n"
-        "rs1800562,HFE,A/A,1.0,risk,C282Y homozygote\n",
+        "rsid,gene,genotype,weight,state,conclusion\nrs1800562,HFE,A/A,1.0,risk,C282Y homozygote\n",
         encoding="utf-8",
     )
-    (spec / "studies.csv").write_text(
-        f"rsid,pmid,conclusion\nrs1800562,{_PMID},x\n", encoding="utf-8"
-    )
+    (spec / "studies.csv").write_text(f"rsid,pmid,conclusion\nrs1800562,{_PMID},x\n", encoding="utf-8")
     (spec / "literature.csv").write_text(
         f"pmid,exists,source,status\n{_PMID},true,pubmed,resolved\n", encoding="utf-8"
     )
@@ -427,14 +418,11 @@ def test_a_stale_quote_counter_is_reported_with_both_numbers() -> None:
     stale = [LiteratureRow(pmid=_PMID, exists=True, quotes_authored=0)]
     findings = _cross_check_literature(stale, studies, {})
     assert any(
-        "quotes_authored disagrees" in w and "records 0 but 2 quote(s) cite it" in w
-        for w in findings
+        "quotes_authored disagrees" in w and "records 0 but 2 quote(s) cite it" in w for w in findings
     ), findings
 
     current = [LiteratureRow(pmid=_PMID, exists=True, quotes_authored=2)]
-    assert not any("quotes_authored disagrees" in w for w in _cross_check_literature(
-        current, studies, {}
-    ))
+    assert not any("quotes_authored disagrees" in w for w in _cross_check_literature(current, studies, {}))
 
 
 def test_a_regex_counts_as_an_authored_locator_here_too() -> None:
@@ -445,9 +433,7 @@ def test_a_regex_counts_as_an_authored_locator_here_too() -> None:
     """
     studies = [StudyRow(rsid="rs1800562", pmid=_PMID, provenance_regex="located.{0,20}passage")]
     rows = [LiteratureRow(pmid=_PMID, exists=True, quotes_authored=1)]
-    assert not any(
-        "quotes_authored disagrees" in w for w in _cross_check_literature(rows, studies, {})
-    )
+    assert not any("quotes_authored disagrees" in w for w in _cross_check_literature(rows, studies, {}))
 
 
 def test_an_article_read_and_not_used_is_an_uncited_row_and_no_source_obligation(tmp_path: Path) -> None:
@@ -472,9 +458,7 @@ def test_an_article_read_and_not_used_is_an_uncited_row_and_no_source_obligation
     (spec / "studies.csv").write_text(f"rsid,pmid\nrs1800562,{_PMID}\n", encoding="utf-8")
     # Two articles: the one a study row cites, and one that was read and yielded nothing.
     (spec / "literature.csv").write_text(
-        "pmid,exists\n"
-        f"{_PMID},true\n"
-        "16199547,true\n",
+        f"pmid,exists\n{_PMID},true\n16199547,true\n",
         encoding="utf-8",
     )
     (spec / "resolution.csv").write_text(
@@ -504,15 +488,16 @@ def test_a_bin_only_citation_carries_a_denominator_of_zero_rather_than_being_ski
     bins = {
         "repeat_alleles.csv": [
             RepeatAlleleRow(
-                gene="HTT", repeat_unit="CAG", measure_min=40, conclusion="fully penetrant",
+                gene="HTT",
+                repeat_unit="CAG",
+                measure_min=40,
+                conclusion="fully penetrant",
                 pmid=_PMID,
             )
         ]
     }
     rows = [LiteratureRow(pmid=_PMID, exists=True, quotes_authored=0)]
-    assert not any(
-        "quotes_authored disagrees" in w for w in _cross_check_literature(rows, [], bins)
-    )
+    assert not any("quotes_authored disagrees" in w for w in _cross_check_literature(rows, [], bins))
 
 
 # ── RM132: the third citation site, and the registry that will find the fourth ──────────────────
@@ -535,7 +520,10 @@ def test_the_citing_kinds_are_exactly_the_table_kinds_declaring_a_pmid() -> None
     citing = {csv_name for csv_name, _model in _CITING_TABLE_KINDS}
     binning = {csv_name for csv_name, _model in _BINNING_TABLE_KINDS}
     assert citing == {
-        "activity_phenotype.csv", "copynumbers.csv", "repeat_alleles.csv", "heteroplasmy.csv",
+        "activity_phenotype.csv",
+        "copynumbers.csv",
+        "repeat_alleles.csv",
+        "heteroplasmy.csv",
         "pharm_variants.csv",
     }
     assert binning < citing
@@ -569,9 +557,7 @@ def test_a_cited_pharm_row_round_trips_through_compile_and_reverse(tmp_path: Pat
 
     again = tmp_path / "again"
     assert compile_module(back, again).success
-    assert (again / "pharm_variants.parquet").read_bytes() == (
-        out / "pharm_variants.parquet"
-    ).read_bytes()
+    assert (again / "pharm_variants.parquet").read_bytes() == (out / "pharm_variants.parquet").read_bytes()
     first = json.loads((out / "manifest.json").read_text())
     second = json.loads((again / "manifest.json").read_text())
     assert first["content_signature"] == second["content_signature"]
@@ -618,15 +604,18 @@ def test_a_pharm_cited_paper_is_not_an_orphan_in_literature_csv() -> None:
     pharm = {
         "pharm_variants.csv": [
             PharmVariantRow(
-                rsid="rs4149056", gene="SLCO1B1", genotype="C/C", drug="simvastatin",
-                phenotype_category="Toxicity", conclusion="higher myopathy risk", pmid=_PGX_PMID,
+                rsid="rs4149056",
+                gene="SLCO1B1",
+                genotype="C/C",
+                drug="simvastatin",
+                phenotype_category="Toxicity",
+                conclusion="higher myopathy risk",
+                pmid=_PGX_PMID,
             )
         ]
     }
     blind = _cross_check_literature(rows, studies, {})
-    assert any(
-        _PGX_PMID in w and "no study, bin or pharm row in this module cites" in w for w in blind
-    )
+    assert any(_PGX_PMID in w and "no study, bin or pharm row in this module cites" in w for w in blind)
     seeing = _cross_check_literature(rows, studies, pharm)
     assert not any("no study, bin or pharm row in this module cites" in w for w in seeing)
 
@@ -642,15 +631,17 @@ def test_a_pharm_only_citation_carries_a_denominator_of_zero_rather_than_being_s
     pharm = {
         "pharm_variants.csv": [
             PharmVariantRow(
-                rsid="rs4149056", gene="SLCO1B1", genotype="C/C", drug="simvastatin",
-                conclusion="higher myopathy risk", pmid=_PGX_PMID,
+                rsid="rs4149056",
+                gene="SLCO1B1",
+                genotype="C/C",
+                drug="simvastatin",
+                conclusion="higher myopathy risk",
+                pmid=_PGX_PMID,
             )
         ]
     }
     rows = [LiteratureRow(pmid=_PGX_PMID, exists=True, quotes_authored=0)]
-    assert not any(
-        "quotes_authored disagrees" in w for w in _cross_check_literature(rows, [], pharm)
-    )
+    assert not any("quotes_authored disagrees" in w for w in _cross_check_literature(rows, [], pharm))
 
 
 def test_the_public_readers_answer_over_every_citing_kind(tmp_path: Path) -> None:

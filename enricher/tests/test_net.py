@@ -65,7 +65,7 @@ def test_a_gate_shared_across_threads_still_honours_the_budget() -> None:
     start = threading.Barrier(workers)
 
     def call() -> None:
-        start.wait()          # every thread inside `wait()` at once, which is the whole point
+        start.wait()  # every thread inside `wait()` at once, which is the whole point
         gate.wait()
 
     threads = [threading.Thread(target=call) for _ in range(workers)]
@@ -77,7 +77,7 @@ def test_a_gate_shared_across_threads_still_honours_the_budget() -> None:
     # The slot each caller was cleared for, read from what it was told to wait rather than from
     # `gate.last` — which another thread may already have advanced, so observing it after the fact
     # would be the same race the test is about.
-    slots = sorted([0.0] + clock.slept)          # one caller proceeds at once, the rest wait
+    slots = sorted([0.0] + clock.slept)  # one caller proceeds at once, the rest wait
     assert len(slots) == workers
     gaps = [round(later - earlier, 6) for earlier, later in zip(slots, slots[1:], strict=False)]
     assert gaps == [interval] * (workers - 1), f"slots must be spaced by the interval, got {gaps}"
@@ -142,7 +142,6 @@ def test_spent_counts_every_admission_including_the_ones_that_never_slept() -> N
     for thread in threads:
         thread.join()
     assert shared.spent == 20 == len(clock.slept) + 1
-
 
     items = list(range(7))
     batches = list(batched(items, 3))

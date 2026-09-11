@@ -49,9 +49,7 @@ class IntegrityError(Exception):
     """Raised when a file hash, artifact digest, or trust check fails verification."""
 
 
-def verify_signature(
-    digest: str, signature: Signature, *, trusted_public_key: str | None = None
-) -> None:
+def verify_signature(digest: str, signature: Signature, *, trusted_public_key: str | None = None) -> None:
     """Verify a `Signature` over the `artifact.digest` string. Raises `IntegrityError` on failure.
 
     When `trusted_public_key` (base64 raw) is given, the signature MUST have been made by that key
@@ -155,11 +153,7 @@ def newline_normalized_file_entries(directory: Path, names: list[str]) -> list[F
     table kinds it uses, so an absent name is the ordinary case rather than a failure.
     """
     directory = Path(directory)
-    return [
-        newline_normalized_file_entry(directory, name)
-        for name in names
-        if (directory / name).is_file()
-    ]
+    return [newline_normalized_file_entry(directory, name) for name in names if (directory / name).is_file()]
 
 
 def artifact_digest(files: list[FileEntry]) -> str:
@@ -534,15 +528,13 @@ def verify_manifest(
         actual = sha256_file(path)
         if actual != entry.sha256:
             raise IntegrityError(
-                f"artifact hash mismatch for {entry.name}: "
-                f"declared {entry.sha256}, computed {actual}"
+                f"artifact hash mismatch for {entry.name}: declared {entry.sha256}, computed {actual}"
             )
 
     recomputed = artifact_digest(manifest.artifact.files)
     if recomputed != manifest.artifact.digest:
         raise IntegrityError(
-            f"artifact digest mismatch: declared {manifest.artifact.digest}, "
-            f"computed {recomputed}"
+            f"artifact digest mismatch: declared {manifest.artifact.digest}, computed {recomputed}"
         )
 
     if require_marketplace:
@@ -562,8 +554,7 @@ def verify_manifest(
             actual = sha256_file(path)
             if actual != entry.sha256:
                 raise IntegrityError(
-                    f"input hash mismatch for {entry.name}: "
-                    f"declared {entry.sha256}, computed {actual}"
+                    f"input hash mismatch for {entry.name}: declared {entry.sha256}, computed {actual}"
                 )
 
     if check_logs:
@@ -574,8 +565,7 @@ def verify_manifest(
             actual = sha256_file(path)
             if actual != entry.sha256:
                 raise IntegrityError(
-                    f"log hash mismatch for {entry.name}: "
-                    f"declared {entry.sha256}, computed {actual}"
+                    f"log hash mismatch for {entry.name}: declared {entry.sha256}, computed {actual}"
                 )
 
     if check_derived:
@@ -598,8 +588,7 @@ def verify_manifest(
                 actual = sha256_file(path)
                 if actual != prov.sha256:
                     raise IntegrityError(
-                        f"provenance hash mismatch for {prov.file}: "
-                        f"declared {prov.sha256}, computed {actual}"
+                        f"provenance hash mismatch for {prov.file}: declared {prov.sha256}, computed {actual}"
                     )
 
     if check_logo and manifest.logo is not None:
@@ -623,8 +612,6 @@ def verify_manifest(
                 )
 
     if manifest.signature is not None:
-        verify_signature(
-            manifest.artifact.digest, manifest.signature, trusted_public_key=public_key
-        )
+        verify_signature(manifest.artifact.digest, manifest.signature, trusted_public_key=public_key)
     elif public_key is not None:
         raise IntegrityError("public_key pinned but manifest carries no signature")

@@ -18,15 +18,25 @@ import textwrap
 # Top-level module names that mean "this tier can talk to something". `urllib`/`http` are stdlib but
 # are still the shape of a network surface, so they count.
 _NETWORK_MODULES = (
-    "ga4gh", "requests", "httpx", "urllib3", "urllib.request", "http.client",
-    "duckdb", "huggingface_hub", "seqrepo", "socket",
+    "ga4gh",
+    "requests",
+    "httpx",
+    "urllib3",
+    "urllib.request",
+    "http.client",
+    "duckdb",
+    "huggingface_hub",
+    "seqrepo",
+    "socket",
 )
 
 
 def _in_fresh_interpreter(body: str) -> str:
     result = subprocess.run(
         [sys.executable, "-c", textwrap.dedent(body)],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True,
+        text=True,
+        timeout=120,
     )
     assert result.returncode == 0, f"subprocess failed:\n{result.stdout}\n{result.stderr}"
     return result.stdout.strip()

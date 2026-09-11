@@ -19,10 +19,7 @@ import polars as pl
 import pytest
 from just_dna_enricher.enrich import enrich
 
-_YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: s85\n  title: S85\n  description: d\n  report_title: S85\n"
-)
+_YAML = "schema_version: '1.0'\nmodule:\n  name: s85\n  title: S85\n  description: d\n  report_title: S85\n"
 
 
 def _spec(tmp_path: Path, genotype: str) -> Path:
@@ -39,15 +36,17 @@ def _spec(tmp_path: Path, genotype: str) -> Path:
 def _cache(tmp_path: Path, rsid: str, ref: str, alt: str) -> Path:
     data = tmp_path / "cache" / "data"
     data.mkdir(parents=True, exist_ok=True)
-    pl.DataFrame({"id": [rsid], "chrom": ["1"], "start": [11856378],
-                  "ref": [ref], "alt": [alt]}).write_parquet(data / "chr.parquet")
+    pl.DataFrame(
+        {"id": [rsid], "chrom": ["1"], "start": [11856378], "ref": [ref], "alt": [alt]}
+    ).write_parquet(data / "chr.parquet")
     return tmp_path / "cache"
 
 
 def test_a_rejected_locus_is_recorded_as_a_mismatch_not_as_an_absence(tmp_path: Path) -> None:
     """The reported case: the snapshot HAS rs61849494, and the authored alleles are its complement."""
     result = enrich(
-        _spec(tmp_path, "A/G"), offline=True,
+        _spec(tmp_path, "A/G"),
+        offline=True,
         ensembl_cache=_cache(tmp_path, "rs61849494", "C", "T"),
     )
     assert [m.rsid for m in result.allele_mismatches] == ["rs61849494"]
@@ -67,7 +66,8 @@ def test_a_source_that_genuinely_lacks_the_rsid_records_no_mismatch(tmp_path: Pa
     stop: `not_found` is a *fact* when the source was asked and has no record, and stays one.
     """
     result = enrich(
-        _spec(tmp_path, "A/G"), offline=True,
+        _spec(tmp_path, "A/G"),
+        offline=True,
         ensembl_cache=_cache(tmp_path, "rs99999999", "A", "G"),
     )
     assert result.allele_mismatches == []
@@ -84,10 +84,16 @@ def test_the_two_states_were_indistinguishable_in_the_row_and_still_are(tmp_path
     and the distinction lives in the result object, where a caller can surface it. Pinning it here
     means a later change to the row cannot happen silently.
     """
-    absent = enrich(_spec(tmp_path / "a", "A/G"), offline=True,
-                    ensembl_cache=_cache(tmp_path / "a", "rs99999999", "A", "G"))
-    rejected = enrich(_spec(tmp_path / "b", "A/G"), offline=True,
-                      ensembl_cache=_cache(tmp_path / "b", "rs61849494", "C", "T"))
+    absent = enrich(
+        _spec(tmp_path / "a", "A/G"),
+        offline=True,
+        ensembl_cache=_cache(tmp_path / "a", "rs99999999", "A", "G"),
+    )
+    rejected = enrich(
+        _spec(tmp_path / "b", "A/G"),
+        offline=True,
+        ensembl_cache=_cache(tmp_path / "b", "rs61849494", "C", "T"),
+    )
 
     def shape(result):
         return [(r.rsid, r.status, r.chrom, r.start) for r in result.rows]
@@ -106,10 +112,12 @@ def test_the_run_reports_the_mismatch_once_and_names_the_strand(
     line is what stops that, so it says the source *has* them in as many words.
     """
     with caplog.at_level(logging.WARNING, logger="just_dna_enricher.enrich"):
-        enrich(_spec(tmp_path, "A/G"), offline=True,
-               ensembl_cache=_cache(tmp_path, "rs61849494", "C", "T"))
-    lines = [r.getMessage() for r in caplog.records if "cannot host" in r.getMessage()
-             and "rsID(s)" in r.getMessage()]
+        enrich(_spec(tmp_path, "A/G"), offline=True, ensembl_cache=_cache(tmp_path, "rs61849494", "C", "T"))
+    lines = [
+        r.getMessage()
+        for r in caplog.records
+        if "cannot host" in r.getMessage() and "rsID(s)" in r.getMessage()
+    ]
     assert len(lines) == 1
     assert "The source HAS these variants" in lines[0]
     assert "other strand" in lines[0] and "rs61849494" in lines[0]

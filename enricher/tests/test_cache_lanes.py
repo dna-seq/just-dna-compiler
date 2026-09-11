@@ -64,12 +64,12 @@ def _builder_modules() -> set[str]:
     return {p.name.removesuffix("_build.py") for p in _SRC.glob("*_build.py")}
 
 
-
 def _unwrapped(result) -> str:
     """A Typer/Rich result's text with its box drawing and line wrapping collapsed to single spaces."""
     raw = result.output + (result.stderr if result.stderr_bytes else "")
     stripped = "".join(" " if ch in "\u2502\u2500\u256d\u256e\u256f\u2570\n" else ch for ch in raw)
     return " ".join(stripped.split())
+
 
 def test_every_builder_module_has_a_lane_and_every_lane_but_one_has_a_builder() -> None:
     """The equality the old list could not state, in both directions.
@@ -189,7 +189,8 @@ def test_the_clinvar_label_is_the_one_the_drafter_writes(tmp_path: Path) -> None
     directory = tmp_path / "clinvar"
     directory.mkdir()
     (directory / locations.RELEASE_FILENAME).write_text(
-        json.dumps({"clinvar_file_date": "2026-08-29", "record_count": 4460499}), encoding="utf-8",
+        json.dumps({"clinvar_file_date": "2026-08-29", "record_count": 4460499}),
+        encoding="utf-8",
     )
     lane = LANES_BY_NAME["clinvar"]
     assert lane.release_label(directory) == clinvar_dataset_label(directory)
@@ -212,9 +213,13 @@ def test_the_licence_gated_lanes_are_the_ones_carrying_terms() -> None:
     unestablished permission is a `None` one.
     """
     gated = {lane.name: lane.terms.source for lane in CACHE_LANES if lane.terms is not None}
-    assert gated == {"alphagenome_avi": "alphagenome_avi",
-                     "clinpgx": "clinpgx", "cpic": "cpic", "drug_labels": "clinpgx",
-                     "pharmvar": "pharmvar"}
+    assert gated == {
+        "alphagenome_avi": "alphagenome_avi",
+        "clinpgx": "clinpgx",
+        "cpic": "cpic",
+        "drug_labels": "clinpgx",
+        "pharmvar": "pharmvar",
+    }
 
 
 def test_lanes_by_name_is_derived_from_the_registry() -> None:
@@ -269,16 +274,15 @@ def test_every_publishable_lane_can_actually_be_published() -> None:
         )
         if lane.publish_command:
             result = runner.invoke(app, [*lane.publish_command.split(), "--help"])
-            assert result.exit_code == 0, (
-                f"`{lane.publish_command}` is not a command: {result.output}"
-            )
+            assert result.exit_code == 0, f"`{lane.publish_command}` is not a command: {result.output}"
 
 
 # ── the rebuild endpoint ────────────────────────────────────────────────────────────────────────
 
 
 def test_a_lane_that_cannot_run_unattended_is_not_a_failure(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Four lanes land in the third state for four different reasons, and none of them is an error.
 
@@ -294,8 +298,20 @@ def test_a_lane_that_cannot_run_unattended_is_not_a_failure(
     monkeypatch.setattr(caches, "_checkout_assets", list)
     result = CliRunner().invoke(
         app,
-        ["cache", "rebuild", "--out", str(tmp_path), "--only", "acmg", "--only", "civic",
-         "--only", "pharmvar", "--only", "ensembl"],
+        [
+            "cache",
+            "rebuild",
+            "--out",
+            str(tmp_path),
+            "--only",
+            "acmg",
+            "--only",
+            "civic",
+            "--only",
+            "pharmvar",
+            "--only",
+            "ensembl",
+        ],
     )
     assert result.exit_code == 0, result.output
     printed = result.output + (result.stderr if result.stderr_bytes else "")
@@ -320,9 +336,7 @@ def test_an_unknown_cache_name_is_refused_by_every_flag_that_takes_one(tmp_path:
 
 def test_a_pin_without_a_value_is_refused_rather_than_read_as_empty(tmp_path: Path) -> None:
     """`--pin mane=` would otherwise pin the empty string, which builds the moving default silently."""
-    result = CliRunner().invoke(
-        app, ["cache", "rebuild", "--out", str(tmp_path), "--pin", "mane="]
-    )
+    result = CliRunner().invoke(app, ["cache", "rebuild", "--out", str(tmp_path), "--pin", "mane="])
     assert result.exit_code != 0
     printed = result.output + (result.stderr if result.stderr_bytes else "")
     assert "lane=value" in printed
@@ -375,7 +389,8 @@ def test_an_unpinned_strchive_build_is_built_and_says_it_cannot_name_its_release
     """
     slice_file = Path(__file__).resolve().parents[2] / "assets" / "strchive_loci_slice.json"
     outcome = rebuild_lane(
-        LANES_BY_NAME["strchive"], RebuildRequest(out_dir=tmp_path / "s", source=slice_file),
+        LANES_BY_NAME["strchive"],
+        RebuildRequest(out_dir=tmp_path / "s", source=slice_file),
     )
     assert outcome.built is True
     assert "unlabelled" in outcome.detail
@@ -383,7 +398,8 @@ def test_an_unpinned_strchive_build_is_built_and_says_it_cannot_name_its_release
 
 @pytest.mark.parametrize("lane_name", ["mane", "civic"])
 def test_the_three_file_lanes_refuse_a_single_source_rather_than_half_using_it(
-    lane_name: str, tmp_path: Path,
+    lane_name: str,
+    tmp_path: Path,
 ) -> None:
     """Two of three is not a build for either, so `--source` is refused instead of partly honoured."""
     outcome = rebuild_lane(
@@ -395,7 +411,8 @@ def test_the_three_file_lanes_refuse_a_single_source_rather_than_half_using_it(
 
 
 def test_a_relative_source_path_builds_rather_than_raising(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`Path("./x.xlsx").as_uri()` raises, and a relative path is what an operator types.
 
@@ -418,7 +435,8 @@ def test_a_relative_source_path_builds_rather_than_raising(
 
 
 def test_pharmvar_separates_no_key_from_a_key_that_failed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """No key is the designed third state; a configured key that then fails is asked-and-failed.
 
@@ -438,7 +456,8 @@ def test_pharmvar_separates_no_key_from_a_key_that_failed(
 
     monkeypatch.setenv(pharmvar.API_KEY_ENV, "a-key-that-will-not-work")
     monkeypatch.setattr(
-        caches.pharmvar_build, "build_snapshot",
+        caches.pharmvar_build,
+        "build_snapshot",
         lambda *a, **k: (_ for _ in ()).throw(pharmvar.PharmVarError("PharmVar rejected the key")),
     )
     with_key = rebuild_lane(
@@ -475,8 +494,16 @@ def test_a_source_path_that_does_not_exist_is_refused_before_anything_downloads(
     """
     result = CliRunner().invoke(
         app,
-        ["cache", "rebuild", "--out", str(tmp_path), "--only", "acmg",
-         "--source", f"acmg={tmp_path / 'nope.xlsx'}"],
+        [
+            "cache",
+            "rebuild",
+            "--out",
+            str(tmp_path),
+            "--only",
+            "acmg",
+            "--source",
+            f"acmg={tmp_path / 'nope.xlsx'}",
+        ],
     )
     assert result.exit_code != 0
     # Rich wraps the refusal inside a box, so a phrase is split across lines by border characters at
@@ -503,8 +530,16 @@ def test_a_source_path_may_be_written_with_a_tilde(tmp_path: Path) -> None:
     runner = CliRunner()
     result = runner.invoke(
         app,
-        ["cache", "rebuild", "--out", str(tmp_path / "out"), "--only", "acmg",
-         "--source", "acmg=~/acmg.xlsx"],
+        [
+            "cache",
+            "rebuild",
+            "--out",
+            str(tmp_path / "out"),
+            "--only",
+            "acmg",
+            "--source",
+            "acmg=~/acmg.xlsx",
+        ],
         env={"HOME": str(staged.parent)},
     )
     assert "not a readable file" not in _unwrapped(result), result.output
@@ -532,14 +567,16 @@ def test_a_named_workbook_still_outranks_the_checkouts(tmp_path: Path) -> None:
     copied = tmp_path / "mine.xlsx"
     copied.write_bytes(workbook.read_bytes())
     outcome = rebuild_lane(
-        LANES_BY_NAME["acmg"], RebuildRequest(out_dir=tmp_path / "acmg", source=copied),
+        LANES_BY_NAME["acmg"],
+        RebuildRequest(out_dir=tmp_path / "acmg", source=copied),
     )
     assert outcome.built is True, outcome.detail
     assert "mine.xlsx" in outcome.detail
 
 
 def test_two_workbooks_are_reported_rather_than_ordered(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A directory with v3.3 and v3.4 has two answers and nothing orders them.
 
@@ -560,7 +597,8 @@ def test_two_workbooks_are_reported_rather_than_ordered(
 
 
 def test_no_checkout_falls_back_to_the_operator_supplied_message(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`assets/` is deliberately not in the wheel, so a plain install must still say what it needs.
 
@@ -588,7 +626,8 @@ def test_the_glob_is_not_pinned_to_one_version() -> None:
 
 
 def test_prepare_picks_each_lanes_route_from_the_registry(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The routing rule, asserted over the whole registry rather than sampled.
 
@@ -599,9 +638,10 @@ def test_prepare_picks_each_lanes_route_from_the_registry(
     """
     pulled: list[str] = []
     built: list[str] = []
+
     def stub_build(lane, req):
         built.append(lane.name)
-        req.out_dir.mkdir(parents=True, exist_ok=True)   # a real builder writes; so does this one
+        req.out_dir.mkdir(parents=True, exist_ok=True)  # a real builder writes; so does this one
         return caches.RebuildOutcome(lane.name, True, "stub", req.out_dir)
 
     monkeypatch.setattr(caches, "rebuild_lane", stub_build)
@@ -610,17 +650,21 @@ def test_prepare_picks_each_lanes_route_from_the_registry(
         base = tmp_path / lane.name
         stub_ensure = None
         if lane.ensure is not None:
+
             def stub_ensure(_name=lane.name, _base=base):
                 pulled.append(_name)
                 _base.mkdir(parents=True, exist_ok=True)
                 return _base
-        lanes.append(dataclasses.replace(
-            lane,
-            ensure=stub_ensure,
-            resolve=lambda: None,
-            default_dir=lambda _base=base: _base,
-            terms=None,
-        ))
+
+        lanes.append(
+            dataclasses.replace(
+                lane,
+                ensure=stub_ensure,
+                resolve=lambda: None,
+                default_dir=lambda _base=base: _base,
+                terms=None,
+            )
+        )
     outcomes = caches.prepare_caches(lanes)
 
     by_name = {o.lane: o for o in outcomes}
@@ -628,9 +672,7 @@ def test_prepare_picks_each_lanes_route_from_the_registry(
         expected = "pulled" if lane.ensure is not None else ("built" if lane.rebuild else "none")
         assert by_name[lane.name].route == expected, lane.name
     assert set(pulled) == {x.name for x in CACHE_LANES if x.ensure is not None}
-    assert set(built) == {
-        x.name for x in CACHE_LANES if x.ensure is None and x.rebuild is not None
-    }
+    assert set(built) == {x.name for x in CACHE_LANES if x.ensure is None and x.rebuild is not None}
 
 
 def test_prepare_leaves_a_present_cache_alone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -654,7 +696,8 @@ def test_prepare_leaves_a_present_cache_alone(tmp_path: Path, monkeypatch: pytes
 
 
 def test_a_built_lane_is_staged_and_moved_rather_than_written_in_place(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The build target is never the live directory while the build is running.
 
@@ -674,7 +717,9 @@ def test_a_built_lane_is_staged_and_moved_rather_than_written_in_place(
 
     monkeypatch.setattr(caches, "rebuild_lane", fake_rebuild)
     lane = dataclasses.replace(
-        LANES_BY_NAME["acmg"], resolve=lambda: None, default_dir=lambda: target,
+        LANES_BY_NAME["acmg"],
+        resolve=lambda: None,
+        default_dir=lambda: target,
     )
     outcome = caches.prepare_lane(lane, RebuildRequest(out_dir=target))
 
@@ -685,7 +730,8 @@ def test_a_built_lane_is_staged_and_moved_rather_than_written_in_place(
 
 
 def test_a_failed_build_leaves_no_half_snapshot_behind(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A lane that fails must not leave a directory a later `cache status` calls present."""
     target = tmp_path / "acmg_sf"
@@ -697,7 +743,9 @@ def test_a_failed_build_leaves_no_half_snapshot_behind(
 
     monkeypatch.setattr(caches, "rebuild_lane", failing)
     lane = dataclasses.replace(
-        LANES_BY_NAME["acmg"], resolve=lambda: None, default_dir=lambda: target,
+        LANES_BY_NAME["acmg"],
+        resolve=lambda: None,
+        default_dir=lambda: target,
     )
     outcome = caches.prepare_lane(lane, RebuildRequest(out_dir=target))
     assert outcome.ready is False
@@ -706,15 +754,19 @@ def test_a_failed_build_leaves_no_half_snapshot_behind(
 
 
 def test_a_repo_nobody_has_published_is_unavailable_rather_than_failed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`prepare`'s job is to leave the machine usable, and an unpublished repo is a fact about the
     world that no retry changes — so it is the third state, and the exit code stays clean."""
+
     def unpublished():
         raise caches.SnapshotNotPublished("nothing at datasets/x/data")
 
     lane = dataclasses.replace(
-        LANES_BY_NAME["civic"], resolve=lambda: None, ensure=unpublished,
+        LANES_BY_NAME["civic"],
+        resolve=lambda: None,
+        ensure=unpublished,
         default_dir=lambda: tmp_path / "civic",
     )
     outcome = caches.prepare_lane(lane, RebuildRequest(out_dir=tmp_path / "civic"))
@@ -725,7 +777,8 @@ def test_a_repo_nobody_has_published_is_unavailable_rather_than_failed(
 def test_a_gated_lane_is_skipped_when_no_use_is_declared(tmp_path: Path) -> None:
     """Downloading is taking the data, so the terms are accepted here exactly as in `cache pull`."""
     lane = dataclasses.replace(
-        LANES_BY_NAME["cpic"], resolve=lambda: None,
+        LANES_BY_NAME["cpic"],
+        resolve=lambda: None,
         ensure=lambda: pytest.fail("the gate did not run before the download"),
         default_dir=lambda: tmp_path / "cpic",
     )
@@ -748,7 +801,8 @@ def test_rebuild_caches_and_prepare_caches_are_the_cli_loops(tmp_path: Path) -> 
 
 
 def test_a_builder_that_writes_nothing_is_a_failure_not_a_crash(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`built is True` has to mean a snapshot exists, and this is where that is established.
 
@@ -756,11 +810,14 @@ def test_a_builder_that_writes_nothing_is_a_failure_not_a_crash(
     has never heard of — a generic rejection where a specific one is a fix.
     """
     monkeypatch.setattr(
-        caches, "rebuild_lane",
+        caches,
+        "rebuild_lane",
         lambda lane, req: caches.RebuildOutcome(lane.name, True, "claimed success", req.out_dir),
     )
     lane = dataclasses.replace(
-        LANES_BY_NAME["acmg"], resolve=lambda: None, default_dir=lambda: tmp_path / "acmg_sf",
+        LANES_BY_NAME["acmg"],
+        resolve=lambda: None,
+        default_dir=lambda: tmp_path / "acmg_sf",
     )
     outcome = caches.prepare_lane(lane, RebuildRequest(out_dir=tmp_path / "acmg_sf"))
     assert outcome.ready is False
@@ -802,7 +859,8 @@ def test_the_variables_the_module_reads_are_exactly_the_ones_the_lanes_claim() -
     naming one no resolver reads, fails here rather than drifting.
     """
     declared = {
-        value for value in vars(locations).values()
+        value
+        for value in vars(locations).values()
         if isinstance(value, str) and value.startswith("JUST_DNA_")
     }
     claimed = {lane.env_var for lane in CACHE_LANES}
@@ -816,7 +874,8 @@ def test_the_variables_the_module_reads_are_exactly_the_ones_the_lanes_claim() -
 
 
 def test_a_payload_less_target_is_refused_before_a_build_is_spent_on_it(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`resolve()` answering `None` means the target holds no payload — not that it is absent.
 
@@ -828,14 +887,19 @@ def test_a_payload_less_target_is_refused_before_a_build_is_spent_on_it(
     """
     target = tmp_path / "acmg_sf"
     target.mkdir()
-    (target / "release.json").write_text("{}", encoding="utf-8")   # a residue, no payload
+    (target / "release.json").write_text("{}", encoding="utf-8")  # a residue, no payload
     built: list[Path] = []
     monkeypatch.setattr(
-        caches, "rebuild_lane",
-        lambda lane, req: built.append(req.out_dir) or caches.RebuildOutcome(lane.name, True, "x", req.out_dir),
+        caches,
+        "rebuild_lane",
+        lambda lane, req: (
+            built.append(req.out_dir) or caches.RebuildOutcome(lane.name, True, "x", req.out_dir)
+        ),
     )
     lane = dataclasses.replace(
-        LANES_BY_NAME["acmg"], resolve=lambda: None, default_dir=lambda: target,
+        LANES_BY_NAME["acmg"],
+        resolve=lambda: None,
+        default_dir=lambda: target,
     )
     outcome = caches.prepare_lane(lane, RebuildRequest(out_dir=target))
     assert outcome.ready is False
@@ -845,10 +909,12 @@ def test_a_payload_less_target_is_refused_before_a_build_is_spent_on_it(
 
 
 def test_one_lane_crashing_does_not_sink_the_others_report(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The per-lane isolation `cache pull` has had all along, now on `prepare` too: a raise out of
     one lane is that lane's FAILED outcome, and the lanes after it still run and still print."""
+
     def boom(lane, request):
         if lane.name == "acmg":
             raise OSError(39, "Directory not empty")
@@ -918,7 +984,10 @@ def test_a_present_lane_reports_its_release_or_that_the_release_is_unreadable(
         monkeypatch.setenv(lane.env_var, str(directory))
     by_name = {status.lane.name: status for status in lane_status()}
     assert by_name[named.name].state == "present" and by_name[named.name].path == tmp_path / named.name
-    assert (by_name[named.name].release, by_name[named.name].release_unreadable) == ("probe_2026-09-11", False)
+    assert (by_name[named.name].release, by_name[named.name].release_unreadable) == (
+        "probe_2026-09-11",
+        False,
+    )
     assert by_name[broken.name].state == "present"
     assert (by_name[broken.name].release, by_name[broken.name].release_unreadable) == (None, True)
     result = CliRunner().invoke(app, ["cache", "status"])

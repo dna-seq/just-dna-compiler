@@ -76,13 +76,13 @@ def test_pacing_gate_enforces_the_interval_on_a_fake_clock() -> None:
         now[0] += seconds
 
     gate = PacingGate(interval=6.0, clock=lambda: now[0], sleeper=sleeper)
-    gate.wait()                 # first call is free — nothing to wait behind
+    gate.wait()  # first call is free — nothing to wait behind
     assert slept == []
-    gate.wait()                 # immediately after: must wait the full interval
+    gate.wait()  # immediately after: must wait the full interval
     assert slept == [6.0]
-    now[0] += 10.0              # more than an interval has passed on its own
+    now[0] += 10.0  # more than an interval has passed on its own
     gate.wait()
-    assert slept == [6.0]       # so no additional sleep
+    assert slept == [6.0]  # so no additional sleep
     now[0] += 2.0
     gate.wait()
     assert slept == [6.0, 4.0]  # partial wait: only the remainder
@@ -102,7 +102,7 @@ def test_requests_are_batched_by_batch_size() -> None:
     recorder = _Recorder([{"data": {}}])
     client = _client(recorder, batch_size=20)
     client.fetch_frequencies([f"1-{i}-A-G" for i in range(45)])
-    assert len(recorder.queries) == 3          # ceil(45 / 20)
+    assert len(recorder.queries) == 3  # ceil(45 / 20)
     assert recorder.queries[0].count("variant(") == 20
     assert recorder.queries[2].count("variant(") == 5
 
@@ -128,7 +128,7 @@ def test_per_alias_errors_do_not_discard_the_batch(payload: dict) -> None:
     recorder = _Recorder([remapped])
     client = _client(recorder)
     result = client.fetch_frequencies(["11-5227002-T-A", "1-11796321-G-A", "9-1-A-G"])
-    assert set(result) == {"11-5227002-T-A", "1-11796321-G-A"}   # the failing alias is simply absent
+    assert set(result) == {"11-5227002-T-A", "1-11796321-G-A"}  # the failing alias is simply absent
 
 
 def test_a_pathless_not_found_keeps_the_batch(payload: dict) -> None:
@@ -146,13 +146,13 @@ def test_a_pathless_not_found_keeps_the_batch(payload: dict) -> None:
     }
     client = _client(_Recorder([remapped]))
     result = client.fetch_frequencies(["11-5227002-T-A", "1-176842737-C-G"])
-    assert set(result) == {"11-5227002-T-A"}   # the good row survives; the absent one is just absent
+    assert set(result) == {"11-5227002-T-A"}  # the good row survives; the absent one is just absent
 
 
 def test_a_whole_request_error_is_raised_not_swallowed() -> None:
     # An error with no alias path is our bug (a bad query), not a missing record. Returning "nothing
     # found" would hide a broken query behind an innocent empty table.
-    recorder = _Recorder([{"errors": [{"message": "Cannot query field \"nope\""}]}])
+    recorder = _Recorder([{"errors": [{"message": 'Cannot query field "nope"'}]}])
     client = _client(recorder)
     with pytest.raises(GnomadError, match="Cannot query field"):
         client.fetch_frequencies(["11-5227002-T-A"])
@@ -174,13 +174,9 @@ def test_multiple_variants_error_reroutes_through_variant_search(payload: dict) 
     result = client.resolve_rsids(["rs1801133", "rs334"])
 
     assert "variant_search" in recorder.queries[1]
-    assert result["rs1801133"] == [
-        {"chrom": "1", "start": 11796321, "ref": "G", "alts": "A"}
-    ]
+    assert result["rs1801133"] == [{"chrom": "1", "start": 11796321, "ref": "G", "alts": "A"}]
     # Both alleles gnomAD knows at the locus, aggregated into one locus with a sorted alt list.
-    assert result["rs334"] == [
-        {"chrom": "11", "start": 5227002, "ref": "T", "alts": "A,G"}
-    ]
+    assert result["rs334"] == [{"chrom": "11", "start": 5227002, "ref": "T", "alts": "A,G"}]
 
 
 # ── the population list ─────────────────────────────────────────────────────────────────────────
@@ -198,9 +194,9 @@ def test_population_cleanup_on_the_real_payload(payload: dict) -> None:
     rows = _populations_from_joint(joint)
     populations = [r["population"] for r in rows]
 
-    assert len(populations) == len(set(populations))            # duplicates collapsed
+    assert len(populations) == len(set(populations))  # duplicates collapsed
     assert not any("xx" in p or "xy" in p for p in populations)  # sex axis dropped entirely
-    assert "global" in populations                               # bare id mapped to `global`
+    assert "global" in populations  # bare id mapped to `global`
     # Emitted in the canonical order, never the server's.
     assert populations == sorted(populations, key=lambda p: POPULATION_ORDER.index(p))
     assert populations[0] == "global"
@@ -242,9 +238,7 @@ def test_missing_faf95_leaves_every_row_null() -> None:
 
 
 def test_variant_ids_fold_into_deterministically_ordered_loci() -> None:
-    loci = _loci_from_variant_ids(
-        ["16-2000-A-G", "1-1000-A-T", "1-1000-A-G", "not-a-variant-id"]
-    )
+    loci = _loci_from_variant_ids(["16-2000-A-G", "1-1000-A-T", "1-1000-A-G", "not-a-variant-id"])
     assert loci == [
         {"chrom": "1", "start": 1000, "ref": "A", "alts": "G,T"},  # alts sorted, one locus
         {"chrom": "16", "start": 2000, "ref": "A", "alts": "G"},
@@ -268,7 +262,7 @@ def test_gene_constraint_maps_oe_lof_upper_to_loeuf(gene_payload: dict) -> None:
     assert brca1["mane_select"] is True
     # A cheap but real sanity relation: the point estimate sits inside its own confidence interval.
     assert brca1["oe_lof_lower"] <= brca1["oe_lof"] <= brca1["loeuf"]
-    assert myh7["loeuf"] < brca1["loeuf"]   # MYH7 is the more LoF-constrained of the two
+    assert myh7["loeuf"] < brca1["loeuf"]  # MYH7 is the more LoF-constrained of the two
     assert myh7["constraint_flags"] is None  # empty flag list → null, not ""
 
 

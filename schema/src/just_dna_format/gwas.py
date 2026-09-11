@@ -104,17 +104,20 @@ class GwasEffectRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # ── identity ──
-    association_id: str = Field(json_schema_extra=since("0.6.0"), 
+    association_id: str = Field(
+        json_schema_extra=since("0.6.0"),
         description=(
             "The Catalog's own association id. Identity, the same source-accession pattern as "
             "`PgsRow.pgs_id` and `PharmVariantRow.annotation_id` — one variant carries dozens of "
             "associations and only the archive's id tells them apart."
-        )
+        ),
     )
-    variant_key: str = Field(json_schema_extra=since("0.6.0"), 
-        description="Coordinate-derived identity of the locus (matches the post-expansion weights key)"
+    variant_key: str = Field(
+        json_schema_extra=since("0.6.0"),
+        description="Coordinate-derived identity of the locus (matches the post-expansion weights key)",
     )
-    rsid: str | None = Field(json_schema_extra=since("0.6.0"), 
+    rsid: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "dbSNP identifier, as the Catalog itself names it. Position-level, so it names the locus "
@@ -123,7 +126,8 @@ class GwasEffectRow(BaseModel):
     )
 
     # ── the effect ──
-    effect_allele: str | None = Field(json_schema_extra=since("0.6.0"), 
+    effect_allele: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "The allele `effect_size` is stated relative to, parsed from the Catalog's "
@@ -134,13 +138,17 @@ class GwasEffectRow(BaseModel):
             "a fact a consumer needs, not a defect to hide."
         ),
     )
-    effect_size: float | None = Field(json_schema_extra=since("0.6.0"), 
+    effect_size: float | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description="The reported magnitude. Its meaning is `effect_measure`; its scale is `effect_unit`.",
     )
     effect_measure: str | None = Field(
         default=None,
-        json_schema_extra={**vocabulary("effect_measure", RECOMMENDED_EFFECT_MEASURES, closed=False), **since("0.6.0")},
+        json_schema_extra={
+            **vocabulary("effect_measure", RECOMMENDED_EFFECT_MEASURES, closed=False),
+            **since("0.6.0"),
+        },
         description=(
             "What kind of magnitude it is — `OR` or `beta` in practice. The Catalog keeps these in "
             "two mutually exclusive fields (`orPerCopyNum`, `betaNum`) rather than the single "
@@ -148,7 +156,8 @@ class GwasEffectRow(BaseModel):
             "matching `StudyRow.effect_measure`."
         ),
     )
-    effect_unit: str | None = Field(json_schema_extra=since("0.6.0"), 
+    effect_unit: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "The unit a `beta` is in, verbatim from the source — 'umol/l', 'unit', 'cm'. **Kept "
@@ -168,10 +177,14 @@ class GwasEffectRow(BaseModel):
             "them apart (`betaDirection`) and so does this."
         ),
     )
-    standard_error: float | None = Field(json_schema_extra=since("0.6.0"), 
-        default=None, ge=0, description="Standard error of the effect size, when the study reported one."
+    standard_error: float | None = Field(
+        json_schema_extra=since("0.6.0"),
+        default=None,
+        ge=0,
+        description="Standard error of the effect size, when the study reported one.",
     )
-    confidence_interval: str | None = Field(json_schema_extra=since("0.6.0"), 
+    confidence_interval: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "The reported 95% CI, verbatim — '[0.14-0.17]', and also '[NR]' where the study reported "
@@ -179,7 +192,8 @@ class GwasEffectRow(BaseModel):
             "parsing it into two floats here would discard the cases that do not fit."
         ),
     )
-    risk_allele_frequency: float | None = Field(json_schema_extra=since("0.6.0"), 
+    risk_allele_frequency: float | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         ge=0,
         le=1,
@@ -190,10 +204,13 @@ class GwasEffectRow(BaseModel):
     )
 
     # ── the evidence ──
-    p_value: str | None = Field(json_schema_extra=since("0.6.0"), 
-        default=None, description="Raw p-value string, verbatim, mirroring `StudyRow.p_value`."
+    p_value: str | None = Field(
+        json_schema_extra=since("0.6.0"),
+        default=None,
+        description="Raw p-value string, verbatim, mirroring `StudyRow.p_value`.",
     )
-    p_value_num: float | None = Field(json_schema_extra=since("0.6.0"), 
+    p_value_num: float | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         gt=0,
         le=1,
@@ -205,7 +222,8 @@ class GwasEffectRow(BaseModel):
             "curated-module one' does, and a module cites tens of associations, not millions."
         ),
     )
-    trait: str | None = Field(json_schema_extra=since("0.6.0"), 
+    trait: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "The reported trait in the Catalog's words. Descriptive — it is re-worded between "
@@ -213,17 +231,23 @@ class GwasEffectRow(BaseModel):
             "makes the row readable."
         ),
     )
-    trait_efo_id: str | None = Field(json_schema_extra=since("0.6.0"), 
-        default=None, description="EFO trait id(s) — the join back to `VariantRow.trait_efo_id`."
+    trait_efo_id: str | None = Field(
+        json_schema_extra=since("0.6.0"),
+        default=None,
+        description="EFO trait id(s) — the join back to `VariantRow.trait_efo_id`.",
     )
-    pmid: str | None = Field(json_schema_extra=since("0.6.0"), 
+    pmid: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description="PubMed id of the publication, free-form under the same grammar as `StudyRow.pmid`.",
     )
-    study_accession: str | None = Field(json_schema_extra=since("0.6.0"), 
-        default=None, description="The Catalog's study accession, e.g. 'GCST001234'."
+    study_accession: str | None = Field(
+        json_schema_extra=since("0.6.0"),
+        default=None,
+        description="The Catalog's study accession, e.g. 'GCST001234'.",
     )
-    ancestry: str | None = Field(json_schema_extra=since("0.6.0"), 
+    ancestry: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "The study population, free text as the Catalog records it ('European', 'East Asian', "
@@ -233,15 +257,17 @@ class GwasEffectRow(BaseModel):
             "forbids collapsing two ancestry vocabularies into one."
         ),
     )
-    dataset: str = Field(json_schema_extra=since("0.6.0"), 
+    dataset: str = Field(
+        json_schema_extra=since("0.6.0"),
         description=(
             "Which Catalog release this row came from, e.g. 'gwas_catalog_2026-08-01'. A FACT: the "
             "Catalog re-curates, and an association whose effect size moved is a different fact."
-        )
+        ),
     )
 
     # ── provenance (EXCLUDED from gwas_effect_signature) ──
-    source: str | None = Field(json_schema_extra=since("0.6.0"), 
+    source: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "The licensed data source: gwas_catalog|manual|reversed (open). Joins "
@@ -257,7 +283,8 @@ class GwasEffectRow(BaseModel):
             "which has no row at all."
         ),
     )
-    fetched_at: str | None = Field(json_schema_extra=since("0.6.0"), 
+    fetched_at: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "ISO-8601 UTC timestamp, second resolution. Canonicalized on load; records when this row "

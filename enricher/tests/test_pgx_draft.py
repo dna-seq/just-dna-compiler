@@ -33,34 +33,67 @@ _YAML = (
 )
 
 _ALLELES = [
-    {"genesymbol": "CYP2C19", "name": "*1", "activityvalue": "1.0",
-     "clinicalfunctionalstatus": "Normal function"},
-    {"genesymbol": "CYP2C19", "name": "*2", "activityvalue": "0.0",
-     "clinicalfunctionalstatus": "No function"},
-    {"genesymbol": "CYP2C19", "name": "*17", "activityvalue": None,
-     "clinicalfunctionalstatus": "Increased function"},
+    {
+        "genesymbol": "CYP2C19",
+        "name": "*1",
+        "activityvalue": "1.0",
+        "clinicalfunctionalstatus": "Normal function",
+    },
+    {
+        "genesymbol": "CYP2C19",
+        "name": "*2",
+        "activityvalue": "0.0",
+        "clinicalfunctionalstatus": "No function",
+    },
+    {
+        "genesymbol": "CYP2C19",
+        "name": "*17",
+        "activityvalue": None,
+        "clinicalfunctionalstatus": "Increased function",
+    },
 ]
 _DIPLOTYPES = [
-    {"genesymbol": "CYP2C19", "diplotype": "*1/*1", "generesult": "Normal Metabolizer",
-     "totalactivityscore": "2.0"},
-    {"genesymbol": "CYP2C19", "diplotype": "*1/*2", "generesult": "Intermediate Metabolizer",
-     "totalactivityscore": "1.0"},
+    {
+        "genesymbol": "CYP2C19",
+        "diplotype": "*1/*1",
+        "generesult": "Normal Metabolizer",
+        "totalactivityscore": "2.0",
+    },
+    {
+        "genesymbol": "CYP2C19",
+        "diplotype": "*1/*2",
+        "generesult": "Intermediate Metabolizer",
+        "totalactivityscore": "1.0",
+    },
     # The inequality shape: a bound, not a number.
-    {"genesymbol": "CYP2C19", "diplotype": "*17/*17", "generesult": "Ultrarapid Metabolizer",
-     "totalactivityscore": "≥3.0"},
+    {
+        "genesymbol": "CYP2C19",
+        "diplotype": "*17/*17",
+        "generesult": "Ultrarapid Metabolizer",
+        "totalactivityscore": "≥3.0",
+    },
 ]
 _DEFINITIONS = [
     {"id": 1, "name": "*2", "genesymbol": "CYP2C19"},
     {"id": 2, "name": "*17", "genesymbol": "CYP2C19"},
 ]
 _LOCATIONS = [
-    {"alleledefinitionid": 1, "variantallele": "A",
-     "sequence_location": {"genesymbol": "CYP2C19", "dbsnpid": "rs4244285", "position": 94781859}},
+    {
+        "alleledefinitionid": 1,
+        "variantallele": "A",
+        "sequence_location": {"genesymbol": "CYP2C19", "dbsnpid": "rs4244285", "position": 94781859},
+    },
     # The IUPAC shape: `R` is "A or G", not a definite nucleotide.
-    {"alleledefinitionid": 1, "variantallele": "R",
-     "sequence_location": {"genesymbol": "CYP2C19", "dbsnpid": "rs58973490", "position": 94781999}},
-    {"alleledefinitionid": 2, "variantallele": "T",
-     "sequence_location": {"genesymbol": "CYP2C19", "dbsnpid": "rs12248560", "position": 94761900}},
+    {
+        "alleledefinitionid": 1,
+        "variantallele": "R",
+        "sequence_location": {"genesymbol": "CYP2C19", "dbsnpid": "rs58973490", "position": 94781999},
+    },
+    {
+        "alleledefinitionid": 2,
+        "variantallele": "T",
+        "sequence_location": {"genesymbol": "CYP2C19", "dbsnpid": "rs12248560", "position": 94761900},
+    },
 ]
 
 
@@ -114,8 +147,7 @@ def test_drafting_a_gene_produces_a_module_that_validates(tmp_path: Path) -> Non
     assert functions == {"*1": "normal_function", "*2": "no_function", "*17": "increased_function"}
 
     diplotypes = {
-        (r.haplotype_a, r.haplotype_b): r.phenotype
-        for r in _rows(spec, "diplotypes.csv", DiplotypeRow)
+        (r.haplotype_a, r.haplotype_b): r.phenotype for r in _rows(spec, "diplotypes.csv", DiplotypeRow)
     }
     assert diplotypes[("*1", "*2")] == "Intermediate Metabolizer"
 
@@ -185,7 +217,9 @@ def test_a_commercial_declaration_refuses_before_anything_is_fetched(tmp_path: P
     spec = _spec(tmp_path)
     with pytest.raises(LicenseRefusal):
         draft_gene(
-            spec, "CYP2C19", declared_use="commercial",
+            spec,
+            "CYP2C19",
+            declared_use="commercial",
             client=CpicClient(client=httpx.Client(transport=httpx.MockTransport(handler))),
         )
     assert fetched == []
@@ -213,8 +247,15 @@ def test_an_unstated_declaration_skips_rather_than_failing(tmp_path: Path) -> No
 
 
 def _variant(**kw) -> CpicDefiningVariant:
-    base = {'gene': "CYP2C9", 'allele': "*57", 'rsid': None, 'chrom': None, 'start': None,
-                'variant_allele': "T", 'unusable': None}
+    base = {
+        "gene": "CYP2C9",
+        "allele": "*57",
+        "rsid": None,
+        "chrom": None,
+        "start": None,
+        "variant_allele": "T",
+        "unusable": None,
+    }
     base.update(kw)
     return CpicDefiningVariant(**base)
 
@@ -239,26 +280,39 @@ def test_cpic_supplies_the_chromosome_from_its_gene_table(tmp_path: Path) -> Non
     unconditionally, since it never asked — the row is refused by the very guard above, and with it
     supplied the row is written and validates. Real CYP2C9 shape: a position and no rsID.
     """
+
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if path.endswith("/gene"):
             return httpx.Response(200, json=[{"symbol": "CYP2C9", "chr": "chr10"}])
         if path.endswith("/allele"):
-            return httpx.Response(200, json=[
-                {"genesymbol": "CYP2C9", "name": "*57", "activityvalue": None,
-                 "clinicalfunctionalstatus": "Uncertain function"},
-            ])
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "genesymbol": "CYP2C9",
+                        "name": "*57",
+                        "activityvalue": None,
+                        "clinicalfunctionalstatus": "Uncertain function",
+                    },
+                ],
+            )
         if path.endswith("/diplotype"):
             return httpx.Response(200, json=[])
         if path.endswith("/allele_definition"):
             return httpx.Response(200, json=[{"id": 9, "name": "*57", "genesymbol": "CYP2C9"}])
         if path.endswith("/allele_location_value"):
-            return httpx.Response(200, json=[
-                # CPIC's real shape for these: a position, no dbsnpid.
-                {"alleledefinitionid": 9, "variantallele": "G",
-                 "sequence_location": {"genesymbol": "CYP2C9", "dbsnpid": None,
-                                       "position": 94947907}},
-            ])
+            return httpx.Response(
+                200,
+                json=[
+                    # CPIC's real shape for these: a position, no dbsnpid.
+                    {
+                        "alleledefinitionid": 9,
+                        "variantallele": "G",
+                        "sequence_location": {"genesymbol": "CYP2C9", "dbsnpid": None, "position": 94947907},
+                    },
+                ],
+            )
         return httpx.Response(404, json=[])
 
     client = CpicClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
@@ -288,17 +342,23 @@ def test_the_guard_matches_the_models_own_rule() -> None:
     A guard that does not match the model it builds is not a guard — which is exactly how the crash
     got shipped."""
     cases = [
-        _variant(rsid="rs1799853"),                       # rsid alone: accepted
-        _variant(chrom="10", start=94947907),             # full coordinate: accepted
-        _variant(start=94947907),                         # position only: refused by the model
-        _variant(chrom="10"),                             # chromosome only: refused by the model
-        _variant(),                                       # nothing: refused by the model
+        _variant(rsid="rs1799853"),  # rsid alone: accepted
+        _variant(chrom="10", start=94947907),  # full coordinate: accepted
+        _variant(start=94947907),  # position only: refused by the model
+        _variant(chrom="10"),  # chromosome only: refused by the model
+        _variant(),  # nothing: refused by the model
     ]
     for case in cases:
         kept = bool(_haplotype_rows([case])[0])
         try:
-            HaplotypeRow(haplotype_name=case.allele, rsid=case.rsid, chrom=case.chrom,
-                         start=case.start, allele=case.variant_allele, gene=case.gene)
+            HaplotypeRow(
+                haplotype_name=case.allele,
+                rsid=case.rsid,
+                chrom=case.chrom,
+                start=case.start,
+                allele=case.variant_allele,
+                gene=case.gene,
+            )
             model_accepts = True
         except Exception:
             model_accepts = False
@@ -307,9 +367,7 @@ def test_the_guard_matches_the_models_own_rule() -> None:
 
 def test_an_allele_the_format_cannot_hold_is_still_skipped() -> None:
     for value, reason in (("R", "ambiguity"), ("DELTCT", "notation")):
-        rows, _ = _haplotype_rows(
-            [_variant(rsid="rs1799853", variant_allele=value, unusable=reason)]
-        )
+        rows, _ = _haplotype_rows([_variant(rsid="rs1799853", variant_allele=value, unusable=reason)])
         assert rows == [], value
 
 
@@ -325,8 +383,8 @@ def test_the_two_unusable_shapes_are_named_for_what_they_are() -> None:
     assert unusable_allele_reason("A") is None
     assert unusable_allele_reason("AT") is None
     assert unusable_allele_reason("") is None
-    assert unusable_allele_reason("R") == "ambiguity"      # A or G
-    assert unusable_allele_reason("S") == "ambiguity"      # C or G
+    assert unusable_allele_reason("R") == "ambiguity"  # A or G
+    assert unusable_allele_reason("S") == "ambiguity"  # C or G
     assert unusable_allele_reason("DELTCT") == "notation"
     assert unusable_allele_reason("AAAGGGGCG(2)") == "notation"
     assert unusable_allele_reason("GGA(1)") == "notation"
@@ -345,14 +403,12 @@ def test_the_unusable_alleles_are_reported_once_per_reason_with_a_count() -> Non
     assert "5 defining allele(s) skipped" in ambiguity and "(+2 more)" in ambiguity
     notation = next(line for line in lines if "RM5" in line)
     assert "1 defining allele(s) skipped" in notation and "DELTCT" in notation
-    assert "IUPAC" not in notation      # the claim that was wrong
+    assert "IUPAC" not in notation  # the claim that was wrong
 
 
 def test_variants_with_no_locus_are_reported_once_with_the_count() -> None:
     """Ten lines for CYP2D6 `*1` alone, before this — the third aggregation in this provider."""
-    rows, warnings = _haplotype_rows(
-        [_variant(rsid=None, chrom=None, start=42126625 + i) for i in range(4)]
-    )
+    rows, warnings = _haplotype_rows([_variant(rsid=None, chrom=None, start=42126625 + i) for i in range(4)])
     assert rows == []
     assert len(warnings) == 1
     assert "4 defining variant(s) skipped" in warnings[0] and "(+1 more)" in warnings[0]
@@ -363,8 +419,12 @@ def test_variants_with_no_locus_are_reported_once_with_the_count() -> None:
 
 def _rec(phenotype: str, population: str, classification: str = "strong") -> CpicRecommendation:
     return CpicRecommendation(
-        gene="CYP2C19", phenotype=phenotype, drug="clopidogrel", population=population,
-        classification=classification, recommendation="Avoid standard dose.",
+        gene="CYP2C19",
+        phenotype=phenotype,
+        drug="clopidogrel",
+        population=population,
+        classification=classification,
+        recommendation="Avoid standard dose.",
         implication="Reduced active metabolite.",
     )
 
@@ -391,8 +451,7 @@ def test_the_contexts_are_distinct_rows_under_the_compilers_own_key() -> None:
     """The point of the column: these must not be duplicates, and the compiler decides that."""
     from just_dna_compiler.compiler import _TABLE_DUPE_KEYS
 
-    recs = [_rec("Poor Metabolizer", "NVI", "moderate"),
-            _rec("Poor Metabolizer", "CVI ACS PCI", "strong")]
+    recs = [_rec("Poor Metabolizer", "NVI", "moderate"), _rec("Poor Metabolizer", "CVI ACS PCI", "strong")]
     rows, _ = _recommendation_rows(_DIPS, recs, population=None)
     key = _TABLE_DUPE_KEYS[DiplotypeRow]
     assert len({key(r) for r in rows}) == len(rows) == 2
@@ -401,8 +460,7 @@ def test_the_contexts_are_distinct_rows_under_the_compilers_own_key() -> None:
 
 
 def test_population_still_filters_for_an_author_who_wants_one_context() -> None:
-    recs = [_rec("Poor Metabolizer", "NVI", "moderate"),
-            _rec("Poor Metabolizer", "CVI ACS PCI", "strong")]
+    recs = [_rec("Poor Metabolizer", "NVI", "moderate"), _rec("Poor Metabolizer", "CVI ACS PCI", "strong")]
     rows, _ = _recommendation_rows(_DIPS, recs, population="NVI")
     assert [(r.clinical_context, r.recommendation_strength) for r in rows] == [("NVI", "moderate")]
 
@@ -415,8 +473,7 @@ def test_a_single_population_needs_no_choice() -> None:
 
 def test_the_chosen_population_is_the_one_used() -> None:
     """The populations really differ — this is why the choice cannot be defaulted."""
-    recs = [_rec("Poor Metabolizer", "NVI", "moderate"),
-            _rec("Poor Metabolizer", "CVI ACS PCI", "strong")]
+    recs = [_rec("Poor Metabolizer", "NVI", "moderate"), _rec("Poor Metabolizer", "CVI ACS PCI", "strong")]
     strong, _ = _recommendation_rows(_DIPS, recs, population="CVI ACS PCI")
     moderate, _ = _recommendation_rows(_DIPS, recs, population="NVI")
     assert strong[0].recommendation_strength == "strong"
@@ -445,9 +502,7 @@ def test_the_allele_filter_applies_to_all_three_tables(tmp_path: Path) -> None:
     diplotype naming it goes — while `*1/*2` survives because `*1` is always kept.
     """
     spec = _spec(tmp_path)
-    result = draft_gene(
-        spec, "CYP2C19", alleles=["*2"], declared_use="non_commercial", client=_client()
-    )
+    result = draft_gene(spec, "CYP2C19", alleles=["*2"], declared_use="non_commercial", client=_client())
     assert result.added > 0
 
     assert {r.allele for r in _rows(spec, "allele_function.csv", AlleleFunctionRow)} == {"*1", "*2"}
@@ -463,9 +518,7 @@ def test_the_reference_allele_is_kept_even_when_not_asked_for(tmp_path: Path) ->
     """`*1` carries no defining variants, so keeping it costs nothing — and dropping it would make
     `*1/*2`, the commonest real diplotype, undraftable for an author who asked for `*2`."""
     spec = _spec(tmp_path)
-    result = draft_gene(
-        spec, "CYP2C19", alleles=["*2"], declared_use="non_commercial", client=_client()
-    )
+    result = draft_gene(spec, "CYP2C19", alleles=["*2"], declared_use="non_commercial", client=_client())
     assert "*1" in {r.allele for r in _rows(spec, "allele_function.csv", AlleleFunctionRow)}
     assert any("`*1` is always kept" in w for w in result.warnings)
 
@@ -473,9 +526,7 @@ def test_the_reference_allele_is_kept_even_when_not_asked_for(tmp_path: Path) ->
 def test_what_the_filter_dropped_is_stated_with_the_count(tmp_path: Path) -> None:
     """No silent caps: a filtered draft says how much of the source it left out."""
     spec = _spec(tmp_path)
-    result = draft_gene(
-        spec, "CYP2C19", alleles=["*2"], declared_use="non_commercial", client=_client()
-    )
+    result = draft_gene(spec, "CYP2C19", alleles=["*2"], declared_use="non_commercial", client=_client())
     line = next(w for w in result.warnings if "--allele" in w)
     assert "2 of 3 diplotype(s) drafted" in line
     assert "['*1', '*2']" in line
@@ -485,12 +536,16 @@ def test_an_unknown_allele_refuses_and_lists_what_cpic_publishes(tmp_path: Path)
     """A typo must not quietly produce a smaller module."""
     with pytest.raises(CpicError, match=r"publishes no allele"):
         draft_gene(
-            _spec(tmp_path), "CYP2C19", alleles=["*2A"],
-            declared_use="non_commercial", client=_client(),
+            _spec(tmp_path),
+            "CYP2C19",
+            alleles=["*2A"],
+            declared_use="non_commercial",
+            client=_client(),
         )
     try:
-        draft_gene(_spec(tmp_path), "CYP2C19", alleles=["*2A"],
-                   declared_use="non_commercial", client=_client())
+        draft_gene(
+            _spec(tmp_path), "CYP2C19", alleles=["*2A"], declared_use="non_commercial", client=_client()
+        )
     except CpicError as exc:
         assert "*17" in str(exc) and "*2" in str(exc)
 
@@ -550,6 +605,7 @@ def test_an_unanswerable_knows_drug_keeps_the_draft_and_says_it_could_not_ask(tm
     fatal. Translation from `httpx.HTTPStatusError` to `CpicError` is R2-13's test; what is under
     test here is what `draft_gene` does with the `CpicError`.
     """
+
     def handler(request: httpx.Request) -> httpx.Response:
         # `/drug` empty is what makes `recommendations` return nothing and `knows_drug` be asked.
         if request.url.path.endswith("/drug"):
@@ -564,9 +620,7 @@ def test_an_unanswerable_knows_drug_keeps_the_draft_and_says_it_could_not_ask(tm
     client.knows_drug = _unreachable  # type: ignore[method-assign]
 
     spec = _spec(tmp_path)
-    result = draft_gene(
-        spec, "CYP2C19", drugs=["warfarin"], client=client, declared_use="non_commercial"
-    )
+    result = draft_gene(spec, "CYP2C19", drugs=["warfarin"], client=client, declared_use="non_commercial")
 
     # The draft survived, whole — before the repair this call raised and `spec` was left with nothing.
     assert not result.skipped

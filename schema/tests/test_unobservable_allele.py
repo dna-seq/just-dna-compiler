@@ -44,8 +44,13 @@ _CHROM, _START, _REF, _ALT = "11", 5225649, "A", "T"
 def _variant(genotype: str, **extra: object) -> VariantRow:
     """A real overlapped HBB site, spelled the way a joint-called VCF spells it."""
     return VariantRow(
-        chrom=_CHROM, start=_START, ref=_REF, alts=f"{_ALT},{UNOBSERVABLE_ALLELE}",
-        genotype=genotype, state="risk", gene="HBB",
+        chrom=_CHROM,
+        start=_START,
+        ref=_REF,
+        alts=f"{_ALT},{UNOBSERVABLE_ALLELE}",
+        genotype=genotype,
+        state="risk",
+        gene="HBB",
         conclusion="the second allele at this position was not observable",
         **extra,
     )
@@ -57,9 +62,9 @@ def _variant(genotype: str, **extra: object) -> VariantRow:
 @pytest.mark.parametrize(
     "genotype",
     [
-        f"{UNOBSERVABLE_ALLELE}/{_ALT}",      # unphased pair — the GT=0/2 case, canonically sorted
-        f"{UNOBSERVABLE_ALLELE}|{_ALT}",      # phased pair
-        UNOBSERVABLE_ALLELE,                  # hemizygous single — the one allele was not observable
+        f"{UNOBSERVABLE_ALLELE}/{_ALT}",  # unphased pair — the GT=0/2 case, canonically sorted
+        f"{UNOBSERVABLE_ALLELE}|{_ALT}",  # phased pair
+        UNOBSERVABLE_ALLELE,  # hemizygous single — the one allele was not observable
         f"{UNOBSERVABLE_ALLELE}/{UNOBSERVABLE_ALLELE}",  # neither allele could be observed
     ],
 )
@@ -78,8 +83,11 @@ def test_the_helper_and_the_model_agree_about_every_member() -> None:
     Checked as set equality over a mixed bag rather than member by member: a widening that leaked into
     `N` or `.` would pass a per-member assertion on `*` and be caught here.
     """
-    accepted = {a for a in (UNOBSERVABLE_ALLELE, "A", "AC", "<DEL:1500>", "<*>", "N", ".", "")
-                if genotype_allele_ok(a)}
+    accepted = {
+        a
+        for a in (UNOBSERVABLE_ALLELE, "A", "AC", "<DEL:1500>", "<*>", "N", ".", "")
+        if genotype_allele_ok(a)
+    }
     assert accepted == {UNOBSERVABLE_ALLELE, "A", "AC", "<DEL:1500>"}
 
 
@@ -128,9 +136,16 @@ def test_is_unobservable_allele_claims_only_the_one_token() -> None:
     substring test here would claim every one of them.
     """
     probes = (
-        UNOBSERVABLE_ALLELE, f" {UNOBSERVABLE_ALLELE} ",   # the marker, bare and padded
-        "*1", "*2", "*17",                                  # PGx star-allele names, really in the corpus
-        "<*>", "**", "A*", "A", "",
+        UNOBSERVABLE_ALLELE,
+        f" {UNOBSERVABLE_ALLELE} ",  # the marker, bare and padded
+        "*1",
+        "*2",
+        "*17",  # PGx star-allele names, really in the corpus
+        "<*>",
+        "**",
+        "A*",
+        "A",
+        "",
     )
     claimed = {a for a in probes if is_unobservable_allele(a)}
     assert claimed == {UNOBSERVABLE_ALLELE, f" {UNOBSERVABLE_ALLELE} "}
@@ -176,8 +191,14 @@ def test_non_nucleotide_reason_separates_all_five_kinds() -> None:
     may widen* — permanently false here, because there is no sequence for any grammar to hold. Asserted
     as one mapping so a future arm cannot quietly absorb a neighbour.
     """
-    probes = {UNOBSERVABLE_ALLELE: "unobservable", MISSING_ALLELE: "missing",
-              "<DEL:1500>": "symbolic", "DELTCT": "notation", "R": "ambiguity", _REF: None}
+    probes = {
+        UNOBSERVABLE_ALLELE: "unobservable",
+        MISSING_ALLELE: "missing",
+        "<DEL:1500>": "symbolic",
+        "DELTCT": "notation",
+        "R": "ambiguity",
+        _REF: None,
+    }
     assert {a: non_nucleotide_reason(a) for a in probes} == probes
 
 

@@ -132,9 +132,7 @@ class PharmVarAllele:
     variants: list[PharmVarVariant] = field(default_factory=list)
 
 
-def parse_genomic_variant(
-    payload: dict[str, Any], *, build: str = PHARMVAR_GENOME_BUILD
-) -> PharmVarVariant:
+def parse_genomic_variant(payload: dict[str, Any], *, build: str = PHARMVAR_GENOME_BUILD) -> PharmVarVariant:
     """One `variants[]` entry → a coordinate, when it names one **on `build`**.
 
     A variant appears several times per allele, once per reference sequence. Only the `NC_` genomic
@@ -312,7 +310,8 @@ class PharmVarClient:
         because a module's own tables say which genes it is about.
         """
         payload = self._get(
-            "genes", params={"exclude-sub-alleles": "true"} if not include_sub_alleles else {},
+            "genes",
+            params={"exclude-sub-alleles": "true"} if not include_sub_alleles else {},
         )
         entries = payload if isinstance(payload, list) else [payload]
         out: dict[str, list[PharmVarAllele]] = {}
@@ -350,9 +349,7 @@ class PharmVarSnapshotClient:
             )
         self._data_dir = data_dir
         release_path = self.reference / RELEASE_FILENAME
-        self.release: dict[str, Any] = (
-            json.loads(release_path.read_text()) if release_path.is_file() else {}
-        )
+        self.release: dict[str, Any] = json.loads(release_path.read_text()) if release_path.is_file() else {}
 
     @property
     def configured(self) -> bool:

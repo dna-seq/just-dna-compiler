@@ -63,7 +63,9 @@ def _run(repo: pathlib.Path, *args: str) -> subprocess.CompletedProcess[str]:
     """The CLI surface, run as a process — where argument parsing actually happens."""
     return subprocess.run(
         [sys.executable, str(repo / ".claude" / "rm-next.py"), *args],
-        cwd=repo, capture_output=True, text=True,
+        cwd=repo,
+        capture_output=True,
+        text=True,
     )
 
 
@@ -81,7 +83,10 @@ def _allocate_concurrently(repo: pathlib.Path, n: int = 8) -> list[str]:
     procs = [
         subprocess.Popen(
             [sys.executable, str(repo / ".claude" / "rm-next.py")],
-            cwd=repo, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+            cwd=repo,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
         )
         for _ in range(n)
     ]

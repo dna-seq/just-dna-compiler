@@ -202,9 +202,7 @@ class MintResult:
         ]
         lines.extend(
             f"  {count} allele(s): {reason}"
-            for reason, count in sorted(
-                self.unmintable_reasons.items(), key=lambda kv: (-kv[1], kv[0])
-            )
+            for reason, count in sorted(self.unmintable_reasons.items(), key=lambda kv: (-kv[1], kv[0]))
         )
         return lines
 
@@ -312,9 +310,7 @@ class VrsMinter:
             )
         return "an indel/MNV whose normalization failed (see the warning logged for it)"
 
-    def _mint_normalized(
-        self, chrom: str, start: int, ref: str, alt: str, build: str
-    ) -> str | None:
+    def _mint_normalized(self, chrom: str, start: int, ref: str, alt: str, build: str) -> str | None:
         """Justify an indel/MNV against the reference and mint its id, or return `None`."""
         proxy = self._data_proxy()
         if proxy is None:
@@ -340,7 +336,11 @@ class VrsMinter:
         except Exception as exc:
             logger.warning(
                 "VRS normalization failed for %s:%s %s>%s (%s); leaving vrs_id unset",
-                chrom, start, ref, alt, exc,
+                chrom,
+                start,
+                ref,
+                alt,
+                exc,
             )
             return None
 
@@ -403,10 +403,7 @@ def mint_resolution_rows(
                     result.identified += 1
                 else:
                     result.unmintable_reasons["already recorded with a hole, left as authored"] = (
-                        result.unmintable_reasons.get(
-                            "already recorded with a hole, left as authored", 0
-                        )
-                        + 1
+                        result.unmintable_reasons.get("already recorded with a hole, left as authored", 0) + 1
                     )
         else:
             minted: list[str | None] = []
@@ -415,9 +412,7 @@ def mint_resolution_rows(
                 minted.append(vrs_id)
                 if vrs_id is None:
                     result.skipped_unmintable += 1
-                    reason = minter.why_not(
-                        row.chrom, row.start, row.ref, alt, build=row.genome_build
-                    )
+                    reason = minter.why_not(row.chrom, row.start, row.ref, alt, build=row.genome_build)
                     result.unmintable_reasons[reason] = result.unmintable_reasons.get(reason, 0) + 1
                     continue
                 result.identified += 1
@@ -436,9 +431,7 @@ def mint_resolution_rows(
         # never against the whole cell — on a multi-allelic row the joined value could not match any
         # single-allele id a source has, and the check would fire on every such row forever.
         if reported and row.vrs_id and reported not in split_vrs_ids(row.vrs_id):
-            message = (
-                f"{row.variant_key}: source reported vrs_id {reported} but we minted {row.vrs_id}"
-            )
+            message = f"{row.variant_key}: source reported vrs_id {reported} but we minted {row.vrs_id}"
             logger.warning("%s — keeping the minted value", message)
             result.mismatches.append(message)
     return result

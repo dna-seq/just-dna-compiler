@@ -178,6 +178,7 @@ def alts_for_ref(ref: str) -> tuple[str, str, str]:
         )
     return rest
 
+
 #: The knot table's own columns. `phred_lo`/`phred_hi` are the **interval** a printed `raw_score`
 #: spans, not a point: 2,001 of chr22's 40,204 distinct values carry up to 68 distinct `PHRED`s
 #: because the file prints `raw_score` to four significant digits and `PHRED` to six. Publishing a
@@ -253,8 +254,7 @@ def _require_polars() -> None:
     """
     if pl is None:  # pragma: no cover - exercised only where the [dev] extra is absent
         raise AlphaGenomeBuildError(
-            "polars is required to build the AlphaGenome snapshot: "
-            "`pip install 'just-dna-enricher[dev]'`"
+            "polars is required to build the AlphaGenome snapshot: `pip install 'just-dna-enricher[dev]'`"
         )
 
 
@@ -287,9 +287,7 @@ def list_contigs(source: Path) -> tuple[str, ...]:
     property of the artifact, and a hand-kept roster is how a build silently skips a contig.
     """
     try:
-        out = subprocess.run(
-            ["tabix", "-l", str(source)], capture_output=True, text=True, check=True
-        ).stdout
+        out = subprocess.run(["tabix", "-l", str(source)], capture_output=True, text=True, check=True).stdout
     except FileNotFoundError as exc:
         raise AlphaGenomeBuildError(
             "tabix is not on PATH. The AVI artifact is a bgzipped TSV with a .tbi index, and the "
@@ -314,9 +312,7 @@ def _stream_lines(source: Path, contig: str, *, chunk_bytes: int = CHUNK_BYTES) 
     newline, with the tail carried into the next — a chunk boundary that split a row would produce a
     ragged CSV, and `@ragged-csv-row` is a diagnosis, not something to create.
     """
-    proc = subprocess.Popen(
-        ["tabix", str(source), contig], stdout=subprocess.PIPE, stderr=subprocess.PIPE
-    )
+    proc = subprocess.Popen(["tabix", str(source), contig], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     assert proc.stdout is not None
     remainder = b""
     try:
@@ -366,9 +362,7 @@ def _scaled_scores(frame, column: str, out: str):
             "decimals when this builder was written; if upstream widened the column, the scale has "
             "to widen with it rather than round."
         )
-    return frame.with_columns(
-        (pl.col(column) * RAW_SCORE_SCALE).round().cast(pl.Int32).alias(out)
-    )
+    return frame.with_columns((pl.col(column) * RAW_SCORE_SCALE).round().cast(pl.Int32).alias(out))
 
 
 def _read_block(block: bytes):
@@ -491,14 +485,11 @@ def _build_contig(
     return ContigResult(contig=contig, rows=rows, path=path), knots
 
 
-
 #: Only one contig is assembled at a time. The parse stage is happily twelve-wide — each worker holds
 #: one chunk of text — but assembly holds a **whole contig** in memory to write it as few chunks, and
 #: chr1 is ~720 M rows. Twelve of those at once is not a shape any machine here has, and the parse
 #: threads keep working while one of them assembles.
 _ASSEMBLY = threading.Semaphore(1)
-
-
 
 
 def to_long(wide):
@@ -520,7 +511,8 @@ def to_long(wide):
     _require_polars()
     parts = [
         wide.filter(pl.col("ref").cast(pl.String) == base).select(
-            "chrom", "pos",
+            "chrom",
+            "pos",
             pl.col("ref").cast(pl.String),
             pl.lit(alt).alias("alt"),
             pl.col(f"alt{i}").alias("raw_score_e5"),
@@ -669,9 +661,7 @@ def use_restrictions_text(terms_file: Path) -> str:
     return section + "\n"
 
 
-def _write_release_json(
-    out_dir: Path, result: AviBuildResult, *, artifact_stamp: str | None
-) -> Path:
+def _write_release_json(out_dir: Path, result: AviBuildResult, *, artifact_stamp: str | None) -> Path:
     """The snapshot's provenance — and one field of it is legally load-bearing.
 
     The Output Terms pin the applicable version to **the date the relevant Output was generated**
@@ -756,9 +746,7 @@ def build_snapshot(
         .sort("raw_score_e5")
         .select(list(KNOT_COLUMNS))
     )
-    knot_table.write_parquet(
-        out_dir / KNOT_FILENAME, compression="zstd", compression_level=9
-    )
+    knot_table.write_parquet(out_dir / KNOT_FILENAME, compression="zstd", compression_level=9)
     # The per-contig aggregates have served their purpose. Removed only after the merged table is on
     # disk, so a crash anywhere before this point leaves the expensive half of the build recoverable.
     shutil.rmtree(out_dir / KNOT_PARTS_DIRNAME, ignore_errors=True)

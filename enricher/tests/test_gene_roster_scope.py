@@ -22,8 +22,7 @@ from just_dna_enricher.gene_validity import _module_genes as validity_genes
 from just_dna_enricher.identifiers import _id_bearing_tables, authored_identifiers
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: rm157\n  title: RM157\n  description: d\n  report_title: RM157\n"
+    "schema_version: '1.0'\nmodule:\n  name: rm157\n  title: RM157\n  description: d\n  report_title: RM157\n"
 )
 _HAPLOTYPES = "haplotype_name,rsid,start,allele,gene\n*2,rs4244285,94781859,A,CYP2C19\n"
 _ALLELE_FUNCTION = "gene,allele,function_status\nCYP2C19,*1,normal_function\n"

@@ -45,8 +45,7 @@ _PUBLISHED_CELLS: dict[str, str | None] = {
     '["no_exp_lof","outlier_mis","outlier_syn"]': "no_exp_lof|outlier_mis|outlier_syn",
     '["outlier_lof","outlier_mis","outlier_syn"]': "outlier_lof|outlier_mis|outlier_syn",
     '["no_exp_lof","no_exp_syn","no_variants"]': "no_exp_lof|no_exp_syn|no_variants",
-    '["no_exp_lof","no_exp_mis","no_exp_syn","no_variants"]':
-        "no_exp_lof|no_exp_mis|no_exp_syn|no_variants",
+    '["no_exp_lof","no_exp_mis","no_exp_syn","no_variants"]': "no_exp_lof|no_exp_mis|no_exp_syn|no_variants",
 }
 
 
@@ -179,7 +178,10 @@ def test_a_flagged_gene_survives_as_its_own_tokens(tmp_path: Path) -> None:
 def _row(cell: object) -> GeneMetricsRow:
     """A minimal valid row carrying `cell`, so the assertions are about that column alone."""
     return GeneMetricsRow(
-        gene="X", dataset="gnomad_v4.1_constraint", source="gnomad", status="resolved",
+        gene="X",
+        dataset="gnomad_v4.1_constraint",
+        source="gnomad",
+        status="resolved",
         constraint_flags=cell,
     )
 

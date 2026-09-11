@@ -116,9 +116,7 @@ def test_best_effort_warns_on_both_sides_with_the_identical_sentence(tmp_path: P
     assert validated.valid
     assert compiled.success, compiled.errors
     assert _unplaced(validated) == _unplaced(compiled)
-    assert _unplaced(compiled) == [
-        f"{_UNCOVERED}: not found in resolution table, position remains unset"
-    ]
+    assert _unplaced(compiled) == [f"{_UNCOVERED}: not found in resolution table, position remains unset"]
 
 
 def test_the_finding_is_reported_once_though_two_passes_produce_it(tmp_path: Path) -> None:

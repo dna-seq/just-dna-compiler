@@ -108,9 +108,7 @@ def test_an_unset_effect_allele_leaves_the_authored_identity_alone(tmp_path: Pat
     without.mkdir()
     (without / "module_spec.yaml").write_text(_SPEC_YAML)
     (without / "variants.csv").write_text(_VARIANTS)
-    (without / "studies.csv").write_text(
-        f"rsid,pmid,effect_size,effect_measure\nrs1800562,{_PMID},1.7,OR\n"
-    )
+    (without / "studies.csv").write_text(f"rsid,pmid,effect_size,effect_measure\nrs1800562,{_PMID},1.7,OR\n")
     (without / "resolution.csv").write_text(_RESOLUTION)
 
     a = compile_module(with_column, tmp_path / "oa")

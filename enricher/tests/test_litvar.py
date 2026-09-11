@@ -44,8 +44,7 @@ SLICE = Path(__file__).resolve().parents[2] / "assets" / "litvar_slice"
 INDEX: dict[str, dict] = json.loads((SLICE / "index.json").read_text(encoding="utf-8"))
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: rm167\n  title: RM167\n  description: d\n  report_title: RM167\n"
+    "schema_version: '1.0'\nmodule:\n  name: rm167\n  title: RM167\n  description: d\n  report_title: RM167\n"
 )
 
 
@@ -56,9 +55,7 @@ def _body(url: str) -> str:
 def _recorded_pmids(node_id: str) -> frozenset[int]:
     """The PMID set a recorded `publications` response holds, read straight off the fixture."""
     for url, entry in INDEX.items():
-        if url.endswith("/publications") and node_id.replace("@", "%40").replace(
-            "#", "%23"
-        ) in url:
+        if url.endswith("/publications") and node_id.replace("@", "%40").replace("#", "%23") in url:
             payload = json.loads((SLICE / entry["file"]).read_text(encoding="utf-8"))
             return frozenset(payload["pmids"])
     raise AssertionError(f"no recorded publications response for {node_id}")
@@ -77,12 +74,8 @@ def _instant_gate() -> PacingGate:
     return PacingGate(interval=0.0, clock=lambda: 0.0, sleeper=lambda _s: None)
 
 
-def _clients(
-    handler=_replay, registry_handler=None
-) -> tuple[LitvarClient, ClingenAlleleClient]:
-    index = LitvarClient(
-        client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate()
-    )
+def _clients(handler=_replay, registry_handler=None) -> tuple[LitvarClient, ClingenAlleleClient]:
+    index = LitvarClient(client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate())
     registry = ClingenAlleleClient(
         client=httpx.Client(transport=httpx.MockTransport(registry_handler or handler))
     )
@@ -164,15 +157,13 @@ def test_nothing_in_this_lane_calls_json_on_a_response() -> None:
     and `json.loads` raise the identical type, so banning the former protects nothing. `_read_json` is
     what makes an unreadable answer this tier's own error, and the test below is what pins it.
     """
-    source = (
-        Path(__file__).resolve().parents[1] / "src" / "just_dna_enricher" / "litvar.py"
-    ).read_text(encoding="utf-8")
+    source = (Path(__file__).resolve().parents[1] / "src" / "just_dna_enricher" / "litvar.py").read_text(
+        encoding="utf-8"
+    )
     calls = [
         node
         for node in ast.walk(ast.parse(source))
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Attribute)
-        and node.func.attr == "json"
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "json"
     ]
     assert calls == [], "litvar.py calls .json() — one endpoint serves Python repr() and it raises"
 
@@ -204,8 +195,7 @@ def test_an_allele_node_answers_and_the_position_only_residue_is_counted_separat
     spec = _spec(
         tmp_path,
         variants__csv=(
-            "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
-            "rs429358,19,44908684,T,C,C/T,risk,c\n"
+            "rsid,chrom,start,ref,alts,genotype,state,conclusion\nrs429358,19,44908684,T,C,C/T,risk,c\n"
         ),
     )
     report = _cover(spec)
@@ -214,7 +204,9 @@ def test_an_allele_node_answers_and_the_position_only_residue_is_counted_separat
     allele = _recorded_pmids("litvar@CA127512#rs429358##")
 
     assert (locus.tier, locus.asked_tier, locus.reason) == (
-        "allele", "allele", "allele_node_matched",
+        "allele",
+        "allele",
+        "allele_node_matched",
     )
     assert locus.matched_caids == ("CA127512",)
     assert locus.allele_pmids == len(allele)
@@ -240,8 +232,7 @@ def test_a_locus_with_no_allele_node_is_answered_at_position_tier(tmp_path: Path
     spec = _spec(
         tmp_path,
         variants__csv=(
-            "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
-            "rs9366637,6,26098474,C,T,C/T,risk,c\n"
+            "rsid,chrom,start,ref,alts,genotype,state,conclusion\nrs9366637,6,26098474,C,T,C/T,risk,c\n"
         ),
     )
     (locus,) = _cover(spec).loci
@@ -264,14 +255,15 @@ def test_an_absent_rsid_is_the_third_outcome_and_not_a_zero_pmid_allele_answer(
     spec = _spec(
         tmp_path,
         variants__csv=(
-            "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
-            "rs776994377,6,26090951,G,C,C/C,risk,c\n"
+            "rsid,chrom,start,ref,alts,genotype,state,conclusion\nrs776994377,6,26090951,G,C,C/C,risk,c\n"
         ),
     )
     (locus,) = _cover(spec).loci
     assert (locus.tier, locus.reason) == ("absent", "no_node_for_rsid")
     assert (locus.allele_pmids, locus.position_pmids, locus.position_only_pmids) == (
-        None, None, None,
+        None,
+        None,
+        None,
     )
     assert not locus.degraded, "an absence is not an allele question answered at position level"
 
@@ -285,8 +277,7 @@ def test_allele_nodes_that_name_other_alleles_withhold_the_allele_answer(tmp_pat
     spec = _spec(
         tmp_path,
         variants__csv=(
-            "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
-            "rs146519482,6,26091475,G,A,A/G,risk,c\n"
+            "rsid,chrom,start,ref,alts,genotype,state,conclusion\nrs146519482,6,26091475,G,A,A/G,risk,c\n"
         ),
     )
     (locus,) = _cover(spec).loci
@@ -307,8 +298,7 @@ def test_a_multi_caid_locus_takes_the_residue_over_every_allele_node_not_just_th
     spec = _spec(
         tmp_path,
         variants__csv=(
-            "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
-            "rs146519482,6,26091475,G,C,C/G,risk,c\n"
+            "rsid,chrom,start,ref,alts,genotype,state,conclusion\nrs146519482,6,26091475,G,C,C/G,risk,c\n"
         ),
     )
     (locus,) = _cover(spec).loci
@@ -335,7 +325,9 @@ def test_a_module_that_names_no_allele_asks_a_position_level_question(tmp_path: 
     )
     (locus,) = _cover(spec).loci
     assert (locus.asked_tier, locus.tier, locus.reason) == (
-        "position", "position", "row_names_no_allele",
+        "position",
+        "position",
+        "row_names_no_allele",
     )
     assert not locus.degraded
     assert verification_records(_cover(spec))[0].findings == 0
@@ -356,13 +348,10 @@ def test_an_unreachable_registry_is_unchecked_rather_than_a_position_level_answe
     spec = _spec(
         tmp_path,
         variants__csv=(
-            "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
-            "rs429358,19,44908684,T,C,C/T,risk,c\n"
+            "rsid,chrom,start,ref,alts,genotype,state,conclusion\nrs429358,19,44908684,T,C,C/T,risk,c\n"
         ),
     )
-    report = _cover(
-        spec, registry_handler=lambda request: httpx.Response(503, json={"detail": "down"})
-    )
+    report = _cover(spec, registry_handler=lambda request: httpx.Response(503, json={"detail": "down"}))
     (locus,) = report.loci
     assert (locus.tier, locus.reason) == ("unchecked", "registry_unreachable")
     # The half that is genuinely unknown is withheld; the half that was fetched travels
@@ -381,8 +370,7 @@ def test_an_unreachable_index_is_unchecked_and_says_which_source_was_not_reached
     spec = _spec(
         tmp_path,
         variants__csv=(
-            "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
-            "rs429358,19,44908684,T,C,C/T,risk,c\n"
+            "rsid,chrom,start,ref,alts,genotype,state,conclusion\nrs429358,19,44908684,T,C,C/T,risk,c\n"
         ),
     )
     report = _cover(spec, handler=lambda request: httpx.Response(503, json={"detail": "down"}))
@@ -395,8 +383,7 @@ def test_offline_asks_nothing_and_records_a_skip_rather_than_an_absence(tmp_path
     spec = _spec(
         tmp_path,
         variants__csv=(
-            "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
-            "rs429358,19,44908684,T,C,C/T,risk,c\n"
+            "rsid,chrom,start,ref,alts,genotype,state,conclusion\nrs429358,19,44908684,T,C,C/T,risk,c\n"
         ),
     )
     report = check_literature_coverage(spec, offline=True)
@@ -421,9 +408,7 @@ def test_a_400_saying_variant_not_found_is_an_answer_and_any_other_400_is_not() 
     absent = LitvarClient(
         client=httpx.Client(
             transport=httpx.MockTransport(
-                lambda request: httpx.Response(
-                    400, json={"detail": "Variant not found: litvar@rs1##"}
-                )
+                lambda request: httpx.Response(400, json={"detail": "Variant not found: litvar@rs1##"})
             )
         ),
         gate=_instant_gate(),
@@ -488,8 +473,7 @@ def test_a_locus_asked_about_twice_is_one_request(tmp_path: Path) -> None:
     spec = _spec(
         tmp_path,
         variants__csv=(
-            "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
-            "rs429358,19,44908684,T,C,C/T,risk,c\n"
+            "rsid,chrom,start,ref,alts,genotype,state,conclusion\nrs429358,19,44908684,T,C,C/T,risk,c\n"
         ),
         studies__csv="rsid,pmid\nrs429358,25741868\n",
         haplotypes__csv="haplotype_name,rsid,chrom,start,ref,allele,gene\ne4,rs429358,19,44908684,T,C,APOE\n",
@@ -506,12 +490,11 @@ def test_an_answer_that_is_not_json_arrives_as_this_tiers_own_error() -> None:
     the per-locus handler and took the whole run's report with it: every other locus's answer lost to
     one bad response. All three JSON legs are driven, because each parses its own body.
     """
+
     def html(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text="<html>we are down</html>")
 
-    client = LitvarClient(
-        client=httpx.Client(transport=httpx.MockTransport(html)), gate=_instant_gate()
-    )
+    client = LitvarClient(client=httpx.Client(transport=httpx.MockTransport(html)), gate=_instant_gate())
     for call in (
         lambda: client.autocomplete("rs429358"),
         lambda: client.node("litvar@rs429358##"),
@@ -549,9 +532,7 @@ def test_a_pmid_that_is_not_one_raises_rather_than_shortening_the_answer() -> No
     """Dropping an unreadable member would report a short list as the node's literature."""
     payload = '{"pmids": [1, "2", null], "pmids_count": 3}'
     client = LitvarClient(
-        client=httpx.Client(
-            transport=httpx.MockTransport(lambda _r: httpx.Response(200, text=payload))
-        ),
+        client=httpx.Client(transport=httpx.MockTransport(lambda _r: httpx.Response(200, text=payload))),
         gate=_instant_gate(),
     )
     with pytest.raises(LitvarError) as caught:
@@ -576,9 +557,7 @@ def test_the_served_set_is_checked_against_the_total_the_same_payload_states(
 
     short = '{"pmids": [1, 2], "pmids_count": 9}'
     client = LitvarClient(
-        client=httpx.Client(
-            transport=httpx.MockTransport(lambda _r: httpx.Response(200, text=short))
-        ),
+        client=httpx.Client(transport=httpx.MockTransport(lambda _r: httpx.Response(200, text=short))),
         gate=_instant_gate(),
     )
     with caplog.at_level("WARNING"):
@@ -629,13 +608,9 @@ def test_a_one_sided_indel_is_anchored_with_the_modules_own_base(tmp_path: Path)
     The chromosome, the interbase position and the deleted base all come off the recorded registry
     payload; only the anchor base is the module's, which is the whole design.
     """
-    registry_payload = json.loads(
-        (SLICE / "registry_CA167019.json").read_text(encoding="utf-8")
-    )
+    registry_payload = json.loads((SLICE / "registry_CA167019.json").read_text(encoding="utf-8"))
     grch38 = next(
-        allele
-        for allele in registry_payload["genomicAlleles"]
-        if allele.get("referenceGenome") == "GRCh38"
+        allele for allele in registry_payload["genomicAlleles"] if allele.get("referenceGenome") == "GRCh38"
     )
     coordinate = grch38["coordinates"][0]
     chrom, start = grch38["chromosome"], coordinate["start"]
@@ -736,22 +711,16 @@ def test_the_locus_roster_is_every_rsid_bearing_authored_table(tmp_path: Path) -
     walked = {
         name
         for name, model in DRAFTABLE.items()
-        if isinstance(model, type)
-        and issubclass(model, AuthoredModel)
-        and "rsid" in model.model_fields
+        if isinstance(model, type) and issubclass(model, AuthoredModel) and "rsid" in model.model_fields
     }
     assert set(rsid_bearing_tables()) == walked
 
     spec = _spec(
         tmp_path,
         variants__csv=(
-            "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
-            "rs429358,19,44908684,T,C,C/T,risk,c\n"
+            "rsid,chrom,start,ref,alts,genotype,state,conclusion\nrs429358,19,44908684,T,C,C/T,risk,c\n"
         ),
-        haplotypes__csv=(
-            "haplotype_name,rsid,chrom,start,ref,allele,gene\n"
-            "e4,rs7412,19,44908822,C,C,APOE\n"
-        ),
+        haplotypes__csv=("haplotype_name,rsid,chrom,start,ref,allele,gene\ne4,rs7412,19,44908822,C,C,APOE\n"),
     )
     roster = module_loci(spec)
     # Both tables contributed, and the allele columns came off the models rather than a list here.
@@ -772,17 +741,14 @@ def test_a_caid_recorded_in_resolution_csv_answers_without_a_registry_lookup(
     spec = _spec(
         tmp_path,
         variants__csv=(
-            "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
-            "rs429358,19,44908684,T,C,C/T,risk,c\n"
+            "rsid,chrom,start,ref,alts,genotype,state,conclusion\nrs429358,19,44908684,T,C,C/T,risk,c\n"
         ),
         resolution__csv=(
             "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,caid,source,status\n"
             "rs429358,rs429358,19,44908684,T,C,GRCh38,0,CA127512,manual,resolved\n"
         ),
     )
-    report = _cover(
-        spec, registry_handler=lambda request: httpx.Response(503, json={"detail": "down"})
-    )
+    report = _cover(spec, registry_handler=lambda request: httpx.Response(503, json={"detail": "down"}))
     (locus,) = report.loci
     assert (locus.tier, locus.matched_caids) == ("allele", ("CA127512",))
     assert "resolution.csv" in report.tables_read
@@ -818,9 +784,7 @@ def test_the_record_names_the_tier_and_counts_the_degraded_loci(tmp_path: Path) 
     assert "rs9366637" in record.detail
     assert str(report.position_only_residue) in record.detail
     # The residue is the sum over the loci that have one, not over the loci.
-    assert report.position_only_residue == sum(
-        locus.position_only_pmids or 0 for locus in report.loci
-    )
+    assert report.position_only_residue == sum(locus.position_only_pmids or 0 for locus in report.loci)
 
 
 def test_a_module_naming_no_rsid_records_nothing_to_check(tmp_path: Path) -> None:

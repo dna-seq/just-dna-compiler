@@ -33,7 +33,9 @@ pytest.importorskip("grpc", reason="the [atlas] extra is what makes the Atlas re
 import grpc  # noqa: E402
 
 if not (atlas_protos.OUT_DIR / atlas_protos.STAGE_PREFIX).exists():  # pragma: no cover - first run
-    pytest.importorskip("grpc_tools", reason="run `just-dna-enricher atlas generate`, or install grpcio-tools")
+    pytest.importorskip(
+        "grpc_tools", reason="run `just-dna-enricher atlas generate`, or install grpcio-tools"
+    )
     atlas_protos.generate()
 
 from just_dna_enricher import atlas_client as ac  # noqa: E402
@@ -123,7 +125,8 @@ def test_a_file_that_does_not_match_its_pin_is_refused_rather_than_used(tmp_path
     next build would find the files present and skip the check.
     """
     monkeypatch.setattr(
-        atlas_protos.urllib.request, "urlopen",
+        atlas_protos.urllib.request,
+        "urlopen",
         lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not fetch after a mismatch")),
     )
     target = tmp_path / "protos"
@@ -165,7 +168,7 @@ def test_the_resolved_sources_are_byte_identical_to_what_protoc_was_given_minus_
             'import "alphagenome/protos/',
             'import "just_dna_enricher/generated/_alphagenome_atlas_protos/',
         )
-        assert 'package google.gdm.gdmscience.alphagenome' in staged, (
+        assert "package google.gdm.gdmscience.alphagenome" in staged, (
             "the protobuf package must not move — descriptor names are the wire format"
         )
 
@@ -429,9 +432,7 @@ def test_the_interval_filter_builds_both_clauses_and_ands_them():
     discovering against the live service.
     """
     assert ac.interval_filter(scorers=("AVI_SCORE",)) == '(scores.variant_scorer.name = "AVI_SCORE")'
-    assert ac.interval_filter(gene_names=("HFE",)) == (
-        '(scores.metadata.gene_scorers.metadata.name = "HFE")'
-    )
+    assert ac.interval_filter(gene_names=("HFE",)) == ('(scores.metadata.gene_scorers.metadata.name = "HFE")')
     both = ac.interval_filter(scorers=("RNA_SEQ",), gene_names=("HFE", "TFR2"))
     assert both == (
         '(scores.variant_scorer.name = "RNA_SEQ") AND '
@@ -524,9 +525,7 @@ def test_pagination_follows_the_token_rather_than_assuming_a_page_size():
             return response
 
     stub = _Paged()
-    out = ac.AtlasClient(stub, api_key="x").score_interval(
-        "chr22", 1, 33, scorers=("AVI_SCORE",)
-    )
+    out = ac.AtlasClient(stub, api_key="x").score_interval("chr22", 1, 33, scorers=("AVI_SCORE",))
     assert stub.tokens == ["", "more"], "the second call must carry the token from the first"
     assert [s.position for s in out] == [1, 2]
     assert out[0].scores[0].raw == pytest.approx((0.5,))
@@ -543,9 +542,7 @@ def test_the_interval_rpc_answers_on_the_two_package_tier():
     """
     client = ac.connect(API_KEY)
     width = 32
-    scores = client.score_interval(
-        "chr22", 20002001, 20002000 + width, scorers=("AVI_SCORE",)
-    )
+    scores = client.score_interval("chr22", 20002001, 20002000 + width, scorers=("AVI_SCORE",))
     assert len(scores) == width * 3, "three ALTs per position"
     assert {s.chrom for s in scores} == {"chr22"}
     assert min(s.position for s in scores) == 20002001, "the 0-based conversion is off by one"
@@ -562,12 +559,8 @@ def test_the_field_mask_is_a_bandwidth_choice_and_not_a_requirement():
     """
     client = ac.connect(API_KEY)
     masked = client.score_interval("chr22", 20002001, 20002032, scorers=("AVI_SCORE",))
-    plain = client.score_interval(
-        "chr22", 20002001, 20002032, scorers=("AVI_SCORE",), field_mask=False
-    )
-    assert [(s.position, s.ref, s.alt) for s in masked] == [
-        (s.position, s.ref, s.alt) for s in plain
-    ]
+    plain = client.score_interval("chr22", 20002001, 20002032, scorers=("AVI_SCORE",), field_mask=False)
+    assert [(s.position, s.ref, s.alt) for s in masked] == [(s.position, s.ref, s.alt) for s in plain]
 
 
 @live
@@ -579,9 +572,7 @@ def test_an_interval_wider_than_one_page_is_followed_to_the_end():
     """
     client = ac.connect(API_KEY)
     width = 1024
-    scores = client.score_interval(
-        "chr22", 20002001, 20002000 + width, scorers=("AVI_SCORE",)
-    )
+    scores = client.score_interval("chr22", 20002001, 20002000 + width, scorers=("AVI_SCORE",))
     assert len(scores) > ac.OBSERVED_PAGE_SIZE, "this interval must span more than one page"
     assert len(scores) == width * 3
     assert len({(s.position, s.alt) for s in scores}) == len(scores), "a page was repeated"

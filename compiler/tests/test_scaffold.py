@@ -33,10 +33,20 @@ from just_dna_format.spec import ModuleSpecConfig
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 
 _FILL = {
-    "rsid": "rs1801133", "genotype": "A/G", "state": "risk", "conclusion": "MTHFR C677T",
-    "pmid": "12345678", "gene": "HTT", "repeat_unit": "CAG", "haplotype_name": "*4",
-    "haplotype_a": "*1", "haplotype_b": "*4", "pgs_id": "PGS000135", "drug": "warfarin",
-    "tissue": "blood", "reference_sequence": "NC_012920.1",
+    "rsid": "rs1801133",
+    "genotype": "A/G",
+    "state": "risk",
+    "conclusion": "MTHFR C677T",
+    "pmid": "12345678",
+    "gene": "HTT",
+    "repeat_unit": "CAG",
+    "haplotype_name": "*4",
+    "haplotype_a": "*1",
+    "haplotype_b": "*4",
+    "pgs_id": "PGS000135",
+    "drug": "warfarin",
+    "tissue": "blood",
+    "reference_sequence": "NC_012920.1",
 }
 _FILL_BY_KIND = {"allele_function.csv": {"allele": "*4"}, "haplotypes.csv": {"allele": "A"}}
 
@@ -219,8 +229,8 @@ def test_the_c282y_pair_is_what_makes_the_genotype_a_human_decision() -> None:
     ]
     by_genotype = {row["genotype"]: row for row in rows}
     assert set(by_genotype) == {"A/A", "A/G"}
-    assert {row["clin_sig"] for row in rows} == {"pathogenic"}   # the allele's call is the same
-    assert by_genotype["A/A"]["state"] == "risk"                 # the finding's is not
+    assert {row["clin_sig"] for row in rows} == {"pathogenic"}  # the allele's call is the same
+    assert by_genotype["A/A"]["state"] == "risk"  # the finding's is not
     assert by_genotype["A/G"]["state"] == "neutral"
 
 
@@ -239,8 +249,10 @@ def test_every_study_row_grounds_a_variant_the_module_carries() -> None:
 
     def key(row: dict) -> str:
         return derive_variant_key(
-            row["rsid"] or None, row["chrom"] or None,
-            int(row["start"]) if row["start"] else None, row["ref"] or None,
+            row["rsid"] or None,
+            row["chrom"] or None,
+            int(row["start"]) if row["start"] else None,
+            row["ref"] or None,
         )
 
     variants = {key(r) for r in csv.DictReader(io.StringIO((_HFE / "variants.csv").read_text()))}
@@ -266,6 +278,7 @@ def test_the_cyp2c19_example_compiles_and_is_a_fixed_point(tmp_path: Path) -> No
 def test_every_star_allele_it_uses_is_one_it_defines() -> None:
     """The curation the new cross-table warning prompted: CPIC pairs alleles it does not define, and
     a caller can never emit one of those — so the example carries none, and validates clean."""
+
     def rows(name: str) -> list[dict]:
         return list(csv.DictReader(io.StringIO((_CYP2C19 / name).read_text())))
 
@@ -327,6 +340,7 @@ def test_the_drug_rows_sit_beside_the_phenotype_rows_not_instead_of_them() -> No
     drugged = [r for r in rows if r["drug"]]
     assert plain and drugged
     assert {r["drug"] for r in drugged} == {"clopidogrel"}
+
     # the same pair appears once per question, never twice for the same one
     def pairs(rs):
         return [(r["gene"], r["haplotype_a"], r["haplotype_b"]) for r in rs]
@@ -338,17 +352,17 @@ def test_the_drug_rows_sit_beside_the_phenotype_rows_not_instead_of_them() -> No
 def test_evidence_level_stays_empty_because_it_is_a_different_axis() -> None:
     """PharmGKB grades the evidence; CPIC grades the action. One column for both would repeat the
     `state`-overloading mistake, so the CPIC provider fills only `recommendation_strength`."""
-    rows = [
-        r
-        for r in csv.DictReader(io.StringIO((_CYP2C19 / "diplotypes.csv").read_text()))
-        if r["drug"]
-    ]
+    rows = [r for r in csv.DictReader(io.StringIO((_CYP2C19 / "diplotypes.csv").read_text())) if r["drug"]]
     # Absent from the header entirely, not merely blank: drafting only adds columns its rows fill,
     # so a column nothing writes never appears — which is the stronger statement.
     assert all(not r.get("evidence_level") for r in rows)
     assert "evidence_level" not in rows[0]
     assert {r["recommendation_strength"] for r in rows} <= {
-        "strong", "moderate", "optional", "no_recommendation", ""
+        "strong",
+        "moderate",
+        "optional",
+        "no_recommendation",
+        "",
     }
     assert any(r["recommendation_strength"] for r in rows)
 
@@ -383,7 +397,9 @@ def test_a_two_snp_haplotype_needs_no_predicate() -> None:
 
 def test_every_diplotype_pairs_defined_haplotypes() -> None:
     diplotypes = list(csv.DictReader(io.StringIO((_APOE / "diplotypes.csv").read_text())))
-    defined = {r["haplotype_name"] for r in csv.DictReader(io.StringIO((_APOE / "haplotypes.csv").read_text()))}
+    defined = {
+        r["haplotype_name"] for r in csv.DictReader(io.StringIO((_APOE / "haplotypes.csv").read_text()))
+    }
     used = {h for r in diplotypes for h in (r["haplotype_a"], r["haplotype_b"])}
     assert used <= defined
     # all six pairs over three haplotypes, none repeated

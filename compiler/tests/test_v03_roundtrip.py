@@ -78,21 +78,18 @@ def test_authoring_row_order_is_preserved(tmp_path: Path) -> None:
         "rs1801133,A/G,0.5,protective,first\n"
         "rs429358,C,-0.3,risk,second\n"
     )
-    studies = (
-        "rsid,pmid\nrs7412,111\nrs1801133,222\nrs429358,333\n"
-    )
+    studies = "rsid,pmid\nrs7412,111\nrs1801133,222\nrs429358,333\n"
     expected = ["rs7412", "rs1801133", "rs429358"]
 
     compile_module(
-        _write_spec(tmp_path / "spec", variants, studies), tmp_path / "orig",
+        _write_spec(tmp_path / "spec", variants, studies),
+        tmp_path / "orig",
         resolve_with_ensembl=False,
     )
     assert pl.read_parquet(tmp_path / "orig" / "weights.parquet")["rsid"].to_list() == expected
 
     reverse_module(tmp_path / "orig", tmp_path / "reversed")
-    reversed_rows = list(
-        csv.DictReader((tmp_path / "reversed" / "variants.csv").read_text().splitlines())
-    )
+    reversed_rows = list(csv.DictReader((tmp_path / "reversed" / "variants.csv").read_text().splitlines()))
     assert [r["rsid"] for r in reversed_rows] == expected
 
     compile_module(tmp_path / "reversed", tmp_path / "recompiled", resolve_with_ensembl=False)

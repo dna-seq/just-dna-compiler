@@ -33,15 +33,21 @@ from just_dna_format.vocab import ACTIONABLE_WARNING_CODES, VALID_WARNING_CODES
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 _CONCORDANCE_HEADER = (
-    "variant_key,genotype,authored_clin_sig,authority_concordance,authored_position,opposed,"
-    "checked_at\n"
+    "variant_key,genotype,authored_clin_sig,authority_concordance,authored_position,opposed,checked_at\n"
 )
 _CALLS_HEADER = (
     "variant_key,genotype,authority,status,clin_sig,clin_sig_raw,confidence,confidence_unit,"
     "dataset,checked_at\n"
 )
 _OVERLAY_HEADER = [
-    "table", "subject", "member", "field", "operation", "value", "reason", "decided_by",
+    "table",
+    "subject",
+    "member",
+    "field",
+    "operation",
+    "value",
+    "reason",
+    "decided_by",
     "decided_at",
 ]
 _VINDICATED = "no longer contested"
@@ -75,9 +81,7 @@ def _write_record(spec: Path, subjects: list[tuple[str, str]]) -> None:
     concordance = [_CONCORDANCE_HEADER]
     calls = [_CALLS_HEADER]
     for key, genotype in subjects:
-        concordance.append(
-            f"{key},{genotype},pathogenic,single,matches_none,true,2026-08-28T00:00:00Z\n"
-        )
+        concordance.append(f"{key},{genotype},pathogenic,single,matches_none,true,2026-08-28T00:00:00Z\n")
         calls.append(
             f"{key},{genotype},clinvar,recorded,benign,Benign,3,review_stars,"
             f"clinvar_2026-08-01,2026-08-28T00:00:00Z\n"
@@ -95,9 +99,15 @@ def _write_overlay(spec: Path, rows: list[list[str]]) -> None:
 
 def _answer(key: str, genotype: str) -> list[str]:
     return [
-        "clin_sig_concordance.csv", key, genotype, "authored_clin_sig", "update", "pathogenic",
+        "clin_sig_concordance.csv",
+        key,
+        genotype,
+        "authored_clin_sig",
+        "update",
+        "pathogenic",
         "two panels call this pathogenic; the archive's benign call predates them",
-        "curator", "2026-08-31",
+        "curator",
+        "2026-08-31",
     ]
 
 

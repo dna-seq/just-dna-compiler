@@ -224,9 +224,7 @@ def test_strict_reports_exactly_what_best_effort_reports(
     strict = check_repeat_bands(
         _module(tmp_path, name, into="strict"), catalogue=catalogue, mode="strict", write=False
     )
-    lenient = check_repeat_bands(
-        _module(tmp_path, name, into="lenient"), catalogue=catalogue, write=False
-    )
+    lenient = check_repeat_bands(_module(tmp_path, name, into="lenient"), catalogue=catalogue, write=False)
     assert [str(f) for f in strict.findings] == [str(f) for f in lenient.findings]
     assert strict.mode == "strict" and lenient.mode == "best_effort"
 
@@ -293,15 +291,21 @@ def test_the_same_division_spelled_for_either_tiling_agrees_with_the_source(
     bands = list(locus.bands)
     assert len(bands) >= 3 and all(b.lo is not None and b.hi is not None for b in bands)
 
-    quantised = _spec(tmp_path, [
-        f"HTT,CAG,repeat_count,{int(b.lo)},{int(b.hi)},quantised,'{b.label}',false" for b in bands
-    ], name="quantised")
+    quantised = _spec(
+        tmp_path,
+        [f"HTT,CAG,repeat_count,{int(b.lo)},{int(b.hi)},quantised,'{b.label}',false" for b in bands],
+        name="quantised",
+    )
     # The same divisions with the endpoint shared: each bin starts where the previous one ended.
-    continuous = _spec(tmp_path, [
-        f"HTT,CAG,repeat_count,{int(bands[0].lo if i == 0 else bands[i - 1].hi)},{int(b.hi)},"
-        f"continuous,'{b.label}',false"
-        for i, b in enumerate(bands)
-    ], name="continuous")
+    continuous = _spec(
+        tmp_path,
+        [
+            f"HTT,CAG,repeat_count,{int(bands[0].lo if i == 0 else bands[i - 1].hi)},{int(b.hi)},"
+            f"continuous,'{b.label}',false"
+            for i, b in enumerate(bands)
+        ],
+        name="continuous",
+    )
 
     verdicts = {}
     for spec in (quantised, continuous):
@@ -319,9 +323,7 @@ def test_a_contested_gene_and_motif_key_is_withheld_rather_than_resolved_by_file
     `ARX` carries two loci under one `(gene, motif)` key in the published file. Comparing against the
     first would make the verdict depend on the order records happen to appear in.
     """
-    gene, motif = next(
-        key for key, loci in catalogue.by_gene_and_motif().items() if len(loci) > 1
-    )
+    gene, motif = next(key for key, loci in catalogue.by_gene_and_motif().items() if len(loci) > 1)
     spec = _spec(tmp_path, [f"{gene},{motif},repeat_count,1,9,,'a bin',false"])
     result = check_repeat_bands(spec, catalogue=catalogue, write=False)
 
@@ -353,9 +355,7 @@ def test_an_unmatched_group_says_whether_the_gene_or_the_motif_is_the_miss(
     """
     known = _locus(catalogue, "HD_HTT")
     unknown_gene = _spec(tmp_path, ["NOTAGENE,CAG,repeat_count,1,9,,'a bin',false"], name="gene")
-    wrong_motif = _spec(
-        tmp_path, [f"{known.gene},AAAAT,repeat_count,1,9,,'a bin',false"], name="motif"
-    )
+    wrong_motif = _spec(tmp_path, [f"{known.gene},AAAAT,repeat_count,1,9,,'a bin',false"], name="motif")
 
     gene_reason = check_repeat_bands(unknown_gene, catalogue=catalogue, write=False).withheld[0][1]
     motif_reason = check_repeat_bands(wrong_motif, catalogue=catalogue, write=False).withheld[0][1]
@@ -446,9 +446,12 @@ def test_a_module_that_bins_only_the_actionable_range_is_not_disagreeing_about_a
     """
     locus = _locus(catalogue, "HD_HTT")
     pathogenic = next(band for band in locus.bands if band.label == "pathogenic")
-    spec = _spec(tmp_path, [
-        f"HTT,CAG,repeat_count,{int(pathogenic.lo)},,,'only the actionable range',false",
-    ])
+    spec = _spec(
+        tmp_path,
+        [
+            f"HTT,CAG,repeat_count,{int(pathogenic.lo)},,,'only the actionable range',false",
+        ],
+    )
     result = check_repeat_bands(spec, catalogue=catalogue, write=False)
     assert len(result.compared) == 1
     assert [f.kind for f in result.findings if f.kind.startswith("floor")] == []
@@ -561,7 +564,12 @@ def test_a_snapshot_built_from_a_release_tag_records_a_verifiable_digest(tmp_pat
 
     release = _json.loads(built.release_file.read_text(encoding="utf-8"))
     assert set(release) >= {
-        "source_url", "source_sha256", "dataset", "built_at", "builder_version", "locus_count",
+        "source_url",
+        "source_sha256",
+        "dataset",
+        "built_at",
+        "builder_version",
+        "locus_count",
     }
     assert release["locus_count"] == len(load_strchive_catalogue(_SLICE).loci)
 
@@ -605,11 +613,14 @@ def test_both_motif_orientations_join_because_the_module_has_no_orientation_colu
     A minus-strand locus is legitimately authored either way, so the join reads the union — and the
     reference spelling comes first so a locus that publishes both is still one entry per spelling.
     """
-    locus = parse_locus({
-        "id": "X_Y", "gene": "Y",
-        "pathogenic_motif_reference_orientation": ["CAG"],
-        "pathogenic_motif_gene_orientation": ["CTG", "CAG"],
-    })
+    locus = parse_locus(
+        {
+            "id": "X_Y",
+            "gene": "Y",
+            "pathogenic_motif_reference_orientation": ["CAG"],
+            "pathogenic_motif_gene_orientation": ["CTG", "CAG"],
+        }
+    )
     assert locus.motifs == ("CAG", "CTG")
 
 
@@ -624,9 +635,7 @@ def test_the_partition_is_the_one_the_overlap_rule_is_enforced_over(
     """
     spec = tmp_path / "two-traits"
     spec.mkdir()
-    header = (
-        "gene,repeat_unit,measure_kind,measure_min,measure_max,trait_efo_id,conclusion,unresolved"
-    )
+    header = "gene,repeat_unit,measure_kind,measure_min,measure_max,trait_efo_id,conclusion,unresolved"
     (spec / "repeat_alleles.csv").write_text(
         f"{header}\n"
         "HTT,CAG,repeat_count,6,26,MONDO_0007739,'a',false\n"
@@ -657,8 +666,12 @@ def test_the_finding_renders_a_whole_number_as_one() -> None:
     `26.0` in one release and `26` in the next would move a module's bytes with nothing else changed.
     """
     finding = BandFinding(
-        "floor_only_in_module", ("HTT", "CAG", None), "HD_HTT",
-        value=6.0, source_value=5.0, other=Band("benign", 5.0, 44.0),
+        "floor_only_in_module",
+        ("HTT", "CAG", None),
+        "HD_HTT",
+        value=6.0,
+        source_value=5.0,
+        other=Band("benign", 5.0, 44.0),
     )
     assert "6.0" not in str(finding) and " 6," in str(finding)
     assert str(Band("benign", 6.0, 26.0)) == "benign [6, 26]"

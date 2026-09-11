@@ -59,9 +59,7 @@ _DELINS_PAYLOAD = {
         {
             "referenceGenome": "GRCh38",
             "chromosome": "3",
-            "coordinates": [
-                {"allele": "AA", "end": 10142120, "referenceAllele": "TC", "start": 10142118}
-            ],
+            "coordinates": [{"allele": "AA", "end": 10142120, "referenceAllele": "TC", "start": 10142118}],
         },
     ],
     "externalRecords": {},
@@ -148,9 +146,7 @@ def _indel_payload(ref: str, alt: str, start: int = 10142013) -> dict:
             {
                 "referenceGenome": "GRCh38",
                 "chromosome": "3",
-                "coordinates": [
-                    {"allele": alt, "end": start, "referenceAllele": ref, "start": start}
-                ],
+                "coordinates": [{"allele": alt, "end": start, "referenceAllele": ref, "start": start}],
             }
         ],
         "externalRecords": {},
@@ -185,6 +181,7 @@ def test_anchoring_produces_the_left_aligned_vcf_representation():
     `G` at a position whose reference base is `G`, so the row is `G>GG`. A duplication and an
     insertion of the same base are the same VCF row, which is why that record is the useful control.
     """
+
     def read(chrom: str, pos: int) -> str | None:
         return {10142013: "G", 10142177: "C"}.get(pos)
 
@@ -227,6 +224,7 @@ def test_a_transport_failure_is_unchecked_rather_than_an_absence():
     A variant the registry could not be asked about is unplaced, not unplaceable, and a later run may
     place it. Reporting it as `no_identity` would make a network blip permanent.
     """
+
     def boom(request):
         raise httpx.ConnectError("no route to host")
 
@@ -245,7 +243,9 @@ def test_every_outcome_the_client_can_produce_is_in_the_declared_set():
 
     produced = {
         ClingenAlleleClient(offline=True).resolve("CA1").outcome,
-        _client(lambda r: httpx.Response(404)).outcome if False else _client(lambda r: httpx.Response(404)).resolve("CA1").outcome,
+        _client(lambda r: httpx.Response(404)).outcome
+        if False
+        else _client(lambda r: httpx.Response(404)).resolve("CA1").outcome,
         _client(lambda r: httpx.Response(503)).resolve("CA1").outcome,
         _client(lambda r: httpx.Response(200, text=json.dumps(_PAYLOAD))).resolve("CA1").outcome,
     }
@@ -275,6 +275,8 @@ def test_a_blank_caid_is_an_absence_and_never_a_request(caid):
         raise AssertionError("a blank CAID must not be looked up")
 
     assert _client(boom).resolve(caid).outcome == "no_identity"
+
+
 def test_a_one_sided_allele_travels_even_when_an_rs_number_already_settled_the_outcome():
     """`unanchored` was parsed and then dropped on every record that also carried a dbSNP id.
 
@@ -294,9 +296,7 @@ def test_a_one_sided_allele_travels_even_when_an_rs_number_already_settled_the_o
             {
                 "referenceGenome": "GRCh38",
                 "chromosome": "16",
-                "coordinates": [
-                    {"allele": "", "referenceAllele": "C", "start": 23603658, "end": 23603659}
-                ],
+                "coordinates": [{"allele": "", "referenceAllele": "C", "start": 23603658, "end": 23603659}],
             }
         ],
     }

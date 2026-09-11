@@ -217,16 +217,18 @@ def test_the_pass_is_merge_not_clobber_and_keyed_per_association(tmp_path: Path)
     """
     spec = _spec(tmp_path)
     enrich_gwas(spec, client=_FakeClient(associations=[_ASSOCIATIONS[0]]), dataset="d")
-    hand_edited = (spec / "gwas_effects.csv").read_text().replace(
-        "Bilirubin levels", "Bilirubin levels (checked by hand)"
+    hand_edited = (
+        (spec / "gwas_effects.csv")
+        .read_text()
+        .replace("Bilirubin levels", "Bilirubin levels (checked by hand)")
     )
     (spec / "gwas_effects.csv").write_text(hand_edited)
 
     result = enrich_gwas(spec, client=_FakeClient(), dataset="d")
     by_id = {r.association_id: r for r in result.rows}
     assert len(result.rows) == 2
-    assert by_id["13069"].trait == "Bilirubin levels (checked by hand)"   # not clobbered
-    assert "55421052" in by_id                                            # the new one still arrived
+    assert by_id["13069"].trait == "Bilirubin levels (checked by hand)"  # not clobbered
+    assert "55421052" in by_id  # the new one still arrived
 
 
 def test_emission_is_deterministic(tmp_path: Path) -> None:
@@ -346,6 +348,7 @@ def test_a_404_is_the_empty_answer_not_an_outage(tmp_path: Path) -> None:
     this path is the Catalog answering "no record", and the only thing that must not happen is the
     reverse: a real outage read as "no associations", which would write a confident negative.
     """
+
     def handler(request: httpx.Request) -> httpx.Response:
         if "rs111033563" in str(request.url):
             return httpx.Response(404, json={"error": "Not Found"})
@@ -385,7 +388,7 @@ def test_a_p_value_below_float64_range_withholds_the_number_and_keeps_the_row(
     row = result.rows[0]
     assert row.p_value_num is None
     assert row.p_value == "0.0"
-    assert row.effect_size == 0.05          # the association itself is intact
+    assert row.effect_size == 0.05  # the association itself is intact
     assert result.p_value_underflows == 1
 
 
@@ -401,8 +404,8 @@ def test_skipping_study_facts_costs_one_request_per_variant(tmp_path: Path) -> N
     assert result.requests_made == 1
     assert [c for c in client.calls if c.startswith("http")] == []
     assert len(result.rows) == 2
-    assert result.rows[0].effect_unit is not None      # the effect survived
-    assert all(r.pmid is None for r in result.rows)    # the linked facts did not
+    assert result.rows[0].effect_unit is not None  # the effect survived
+    assert all(r.pmid is None for r in result.rows)  # the linked facts did not
 
 
 def _rows(spec: Path) -> list[dict]:

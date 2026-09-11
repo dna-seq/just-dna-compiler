@@ -72,9 +72,7 @@ def test_contested_is_a_direction_and_unknown_still_means_what_it_meant() -> Non
 
 def test_an_authored_row_can_carry_it() -> None:
     """The end-to-end claim: a curator can write the finding down."""
-    row = VariantRow(
-        rsid="rs1801133", genotype="C/T", state="neutral", conclusion="x", direction="contested"
-    )
+    row = VariantRow(rsid="rs1801133", genotype="C/T", state="neutral", conclusion="x", direction="contested")
     assert row.direction == "contested"
 
 
@@ -85,7 +83,9 @@ def test_the_legacy_state_map_deliberately_gains_nothing() -> None:
     FROM. A module upgraded off the legacy column can never produce `contested`; only an author
     writing `direction` directly can.
     """
-    assert "contested" not in set(_STATE_VALUES := {"protective", "risk", "neutral", "significant", "alt", "ref"})
+    assert "contested" not in set(
+        _STATE_VALUES := {"protective", "risk", "neutral", "significant", "alt", "ref"}
+    )
     assert all(direction_from_state(state) != "contested" for state in _STATE_VALUES)
 
 
@@ -133,9 +133,7 @@ def test_upgraded_really_projects_contested_and_stays_idempotent() -> None:
 
     The second half is Principle 7: `upgraded()` must stay idempotent with the new member.
     """
-    row = VariantRow(
-        rsid="rs1801133", genotype="C/T", state="risk", conclusion="x", direction="contested"
-    )
+    row = VariantRow(rsid="rs1801133", genotype="C/T", state="risk", conclusion="x", direction="contested")
     once = row.upgraded()
     twice = once.upgraded()
 

@@ -92,9 +92,7 @@ def test_the_rsid_does_not_move_the_hash_because_it_is_not_the_archives() -> Non
     unresolved = _row(rsid=None)
     assert clinical_assertion_signature([resolved]) == clinical_assertion_signature([unresolved])
     # ...while the allele the row is actually keyed on still moves it (`alt` defaults to G here).
-    assert clinical_assertion_signature([resolved]) != clinical_assertion_signature(
-        [_row(alt="T")]
-    )
+    assert clinical_assertion_signature([resolved]) != clinical_assertion_signature([_row(alt="T")])
 
 
 def test_provenance_is_outside_the_hash_and_the_record_is_inside() -> None:
@@ -110,9 +108,9 @@ def test_provenance_is_outside_the_hash_and_the_record_is_inside() -> None:
         {"dataset": "clinvar_2026-08-01"},
         {"genome_build": "GRCh37"},
     ):
-        assert clinical_assertion_signature([base]) != clinical_assertion_signature(
-            [_row(**changed)]
-        ), changed
+        assert clinical_assertion_signature([base]) != clinical_assertion_signature([_row(**changed)]), (
+            changed
+        )
 
 
 def test_the_hash_is_order_independent() -> None:

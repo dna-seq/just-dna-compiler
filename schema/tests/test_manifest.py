@@ -34,8 +34,13 @@ def _manifest(tmp_path: Path) -> ModuleManifest:
             icon="heart-pulse",
             color="#21ba45",
         ),
-        stats=Stats(variant_count=16, study_count=5, gene_count=8, genes=["CGAS", "TERT"],
-                    categories=["cGAS-STING pathway"]),
+        stats=Stats(
+            variant_count=16,
+            study_count=5,
+            gene_count=8,
+            genes=["CGAS", "TERT"],
+            categories=["cGAS-STING pathway"],
+        ),
         compilation=Compilation(compile_success=True, compiled_by="marketplace-server"),
         artifact=artifact,
     )
@@ -117,7 +122,9 @@ def test_authorship_survives_manifest_write_read(tmp_path: Path) -> None:
     write_manifest(manifest, tmp_path / "manifest.json")
     reloaded = read_manifest(tmp_path / "manifest.json")
     assert [c.who for c in reloaded.authorship] == [
-        "just-dna-agents@1.4", "Dr. A. Geneticist", "claude-opus-4-8"
+        "just-dna-agents@1.4",
+        "Dr. A. Geneticist",
+        "claude-opus-4-8",
     ]
     audited = [c for c in reloaded.authorship if c.role == "audited"]
     assert {"human_certified"} == set(audited[0].kind)

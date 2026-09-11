@@ -25,8 +25,15 @@ _PMC_DIGITS = "3110566"
 class TestPmcIsNotAPmid:
     @pytest.mark.parametrize(
         "cell",
-        ["PMC3110566", "PMC 3110566", "pmcid: PMC3110566", "pmcid: 3110566", "PMC-3110566",
-         "PMCID 3110566", "pmc3110566"],
+        [
+            "PMC3110566",
+            "PMC 3110566",
+            "pmcid: PMC3110566",
+            "pmcid: 3110566",
+            "PMC-3110566",
+            "PMCID 3110566",
+            "pmc3110566",
+        ],
     )
     def test_no_spacing_of_a_pmc_id_yields_a_pmid(self, cell: str) -> None:
         """The spaced form is the one that used to slip through, so parametrizing is the test."""
@@ -96,18 +103,22 @@ class TestTheSharedGrammar:
         """The bin pointer is a different column on a different model and must not drift."""
         with pytest.raises(Exception) as exc:
             RepeatAlleleRow(
-                gene="HTT", repeat_unit="CAG", measure_min=40, conclusion="fully penetrant",
+                gene="HTT",
+                repeat_unit="CAG",
+                measure_min=40,
+                conclusion="fully penetrant",
                 pmid=_PMC,
             )
         assert _PMC in str(exc.value)
 
     def test_a_bin_pointer_is_optional_and_kept_verbatim(self) -> None:
-        bare = RepeatAlleleRow(
-            gene="HTT", repeat_unit="CAG", measure_min=40, conclusion="fully penetrant"
-        )
+        bare = RepeatAlleleRow(gene="HTT", repeat_unit="CAG", measure_min=40, conclusion="fully penetrant")
         assert bare.pmid is None
         cited = RepeatAlleleRow(
-            gene="HTT", repeat_unit="CAG", measure_min=40, conclusion="fully penetrant",
+            gene="HTT",
+            repeat_unit="CAG",
+            measure_min=40,
+            conclusion="fully penetrant",
             pmid="[PMID: 8458085]",
         )
         assert cited.pmid == "[PMID: 8458085]"
@@ -131,9 +142,7 @@ class TestASubjectlessCitationRow:
         assert StudyRow(rsid="rs1800562", pmid="8458085").variant_key == "rs1800562"
         assert StudyRow(chrom="4", pmid="8458085").variant_key == "4:None:None"
 
-    @pytest.mark.parametrize(
-        "partial", [{"start": 94781859}, {"ref": "G"}, {"start": 94781859, "ref": "G"}]
-    )
+    @pytest.mark.parametrize("partial", [{"start": 94781859}, {"ref": "G"}, {"start": 94781859, "ref": "G"}])
     def test_half_a_coordinate_is_still_refused(self, partial: dict) -> None:
         """The relaxation legalises an *empty* subject, never a partial one.
 

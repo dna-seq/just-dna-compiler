@@ -74,9 +74,7 @@ def built(tmp_path_factory) -> tuple[Path, dict[str, pl.DataFrame], dict]:
     """One build of the fixture, its three frames and its `release.json`."""
     out = tmp_path_factory.mktemp("mane")
     result = build_snapshot(INPUTS, out, versions_file=VERSIONS)
-    frames = {
-        name: pl.read_parquet(result.parquet_files[name]) for name in MANE_TABLE_NAMES
-    }
+    frames = {name: pl.read_parquet(result.parquet_files[name]) for name in MANE_TABLE_NAMES}
     release = json.loads((out / "release.json").read_text(encoding="utf-8"))
     return out, frames, release
 
@@ -117,11 +115,7 @@ def test_the_versions_file_is_copied_label_for_label() -> None:
     """
     text = VERSIONS.read_text(encoding="utf-8")
     parsed = parse_versions(text)
-    expected = {
-        line.split("\t")[0]: line.split("\t")[1]
-        for line in text.splitlines()
-        if "\t" in line
-    }
+    expected = {line.split("\t")[0]: line.split("\t")[1] for line in text.splitlines() if "\t" in line}
     assert parsed == expected
     assert MANE_VERSION_LABEL in parsed
 
@@ -221,15 +215,11 @@ def test_update_affects_cds_is_a_tri_state_beside_the_source_token(built) -> Non
     }
     expected_true = sum(1 for row in raw if row["Update_Affects_CDS"].casefold() == "yes")
     assert changed.filter(pl.col("update_affects_cds")).height == expected_true
-    assert (
-        changed.filter(pl.col("update_affects_cds").is_null()).height
-        == release["unparsable_update_affects_cds"]
-        + sum(1 for row in raw if not row["Update_Affects_CDS"].strip())
-    )
+    assert changed.filter(pl.col("update_affects_cds").is_null()).height == release[
+        "unparsable_update_affects_cds"
+    ] + sum(1 for row in raw if not row["Update_Affects_CDS"].strip())
     # The raw column is the source's own spelling, never re-cased or re-spelled.
-    assert set(changed["update_affects_cds_raw"].to_list()) == {
-        row["Update_Affects_CDS"] for row in raw
-    }
+    assert set(changed["update_affects_cds_raw"].to_list()) == {row["Update_Affects_CDS"] for row in raw}
 
 
 def test_the_exclusion_reason_vocabulary_is_derived_from_the_file(built) -> None:
@@ -242,8 +232,7 @@ def test_the_exclusion_reason_vocabulary_is_derived_from_the_file(built) -> None
     _, frames, release = built
     raw = _raw_rows(NOT_IN_MANE)
     expected = {
-        status: sum(1 for row in raw if row["status"] == status)
-        for status in {row["status"] for row in raw}
+        status: sum(1 for row in raw if row["status"] == status) for status in {row["status"] for row in raw}
     }
     assert release["excluded_reasons"] == expected
     assert set(frames["protein_coding_genes_not_in_mane"]["status"].to_list()) == set(expected)
@@ -417,8 +406,18 @@ def test_a_file_named_gz_that_is_not_one_fails_as_this_tiers_own_error(tmp_path)
     assert "really is gzipped" in str(excinfo.value)
     result = _runner.invoke(
         app,
-        ["mane", "build", "--summary", str(fake), "--changed", str(CHANGED),
-         "--not-in-mane", str(NOT_IN_MANE), "--out", str(tmp_path / "cli")],
+        [
+            "mane",
+            "build",
+            "--summary",
+            str(fake),
+            "--changed",
+            str(CHANGED),
+            "--not-in-mane",
+            str(NOT_IN_MANE),
+            "--out",
+            str(tmp_path / "cli"),
+        ],
     )
     assert result.exit_code == 1
     assert "MANE BUILD FAILED" in result.output + (result.stderr or "")
@@ -492,8 +491,20 @@ def test_the_command_builds_from_local_files_and_prints_what_it_measured(tmp_pat
     out = tmp_path / "snap"
     result = _runner.invoke(
         app,
-        ["mane", "build", "--summary", str(SUMMARY), "--changed", str(CHANGED),
-         "--not-in-mane", str(NOT_IN_MANE), "--versions", str(VERSIONS), "--out", str(out)],
+        [
+            "mane",
+            "build",
+            "--summary",
+            str(SUMMARY),
+            "--changed",
+            str(CHANGED),
+            "--not-in-mane",
+            str(NOT_IN_MANE),
+            "--versions",
+            str(VERSIONS),
+            "--out",
+            str(out),
+        ],
     )
     assert result.exit_code == 0, result.output
     release = json.loads((out / "release.json").read_text(encoding="utf-8"))
@@ -528,8 +539,20 @@ def test_release_without_download_is_refused_rather_than_believed(tmp_path) -> N
     """
     result = _runner.invoke(
         app,
-        ["mane", "build", "--release", "1.5", "--summary", str(SUMMARY), "--changed", str(CHANGED),
-         "--not-in-mane", str(NOT_IN_MANE), "--out", str(tmp_path / "snap")],
+        [
+            "mane",
+            "build",
+            "--release",
+            "1.5",
+            "--summary",
+            str(SUMMARY),
+            "--changed",
+            str(CHANGED),
+            "--not-in-mane",
+            str(NOT_IN_MANE),
+            "--out",
+            str(tmp_path / "snap"),
+        ],
     )
     assert result.exit_code != 0
     assert "README_versions.txt" in result.output + (result.stderr or "")
@@ -579,9 +602,7 @@ def test_there_is_no_publish_and_no_use_flag() -> None:
 # ── the live source (opt-in) ────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.skipif(
-    not os.getenv("JUST_DNA_NETWORK_TESTS"), reason="set JUST_DNA_NETWORK_TESTS=1 to run"
-)
+@pytest.mark.skipif(not os.getenv("JUST_DNA_NETWORK_TESTS"), reason="set JUST_DNA_NETWORK_TESTS=1 to run")
 def test_current_discovers_a_version_that_resolves_to_a_versioned_directory() -> None:
     """`current/` is read to discover, never to download from.
 
@@ -594,7 +615,5 @@ def test_current_discovers_a_version_that_resolves_to_a_versioned_directory() ->
     pinned.raise_for_status()
     assert parse_versions(pinned.text)[MANE_VERSION_LABEL] == release
     for table in MANE_TABLES:
-        head = httpx.head(
-            mane_release_url(release, table.source_suffix), timeout=60.0, follow_redirects=True
-        )
+        head = httpx.head(mane_release_url(release, table.source_suffix), timeout=60.0, follow_redirects=True)
         assert head.status_code == 200, table.name

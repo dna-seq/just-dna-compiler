@@ -169,24 +169,16 @@ def test_flags_unknown_tags_surface_as_info_not_warning(tmp_path: Path) -> None:
 
 def test_mt_two_allele_genotype_warns(tmp_path: Path) -> None:
     variants = (
-        "chrom,start,ref,alts,genotype,state,conclusion\n"
-        "MT,3243,A,G,A/G,risk,MELAS diploid-looking (wrong)\n"
+        "chrom,start,ref,alts,genotype,state,conclusion\nMT,3243,A,G,A/G,risk,MELAS diploid-looking (wrong)\n"
     )
-    spec = _write_spec(
-        tmp_path, variants=variants, studies="chrom,start,ref,pmid\nMT,3243,A,12345\n"
-    )
+    spec = _write_spec(tmp_path, variants=variants, studies="chrom,start,ref,pmid\nMT,3243,A,12345\n")
     result = validate_spec(spec)
     assert any("MT is not diploid" in w for w in result.warnings)
 
 
 def test_mt_single_allele_genotype_ok(tmp_path: Path) -> None:
-    variants = (
-        "chrom,start,ref,alts,genotype,state,conclusion\n"
-        "MT,3243,A,G,G,risk,homoplasmic m.3243A>G\n"
-    )
-    spec = _write_spec(
-        tmp_path, variants=variants, studies="chrom,start,ref,pmid\nMT,3243,A,12345\n"
-    )
+    variants = "chrom,start,ref,alts,genotype,state,conclusion\nMT,3243,A,G,G,risk,homoplasmic m.3243A>G\n"
+    spec = _write_spec(tmp_path, variants=variants, studies="chrom,start,ref,pmid\nMT,3243,A,12345\n")
     result = validate_spec(spec)
     assert result.valid
     assert not any("MT is not diploid" in w for w in result.warnings)
@@ -248,10 +240,7 @@ def test_study_new_columns_materialize(tmp_path: Path) -> None:
 
 
 def test_hemizygous_and_single_allele_survive_compile(tmp_path: Path) -> None:
-    variants = (
-        "rsid,genotype,state,conclusion\n"
-        "rs1050828,T,risk,hemizygous deficient\n"
-    )
+    variants = "rsid,genotype,state,conclusion\nrs1050828,T,risk,hemizygous deficient\n"
     spec = _write_spec(tmp_path / "spec", variants=variants)
     out = tmp_path / "out"
     assert compile_module(spec, out, resolve_with_ensembl=False).success
@@ -263,9 +252,12 @@ def test_hemizygous_and_single_allele_survive_compile(tmp_path: Path) -> None:
 
 
 def test_study_row_vocab_validation() -> None:
-    assert StudyRow.model_validate(
-        {"rsid": "rs1", "pmid": "123", "stat_significance": "not_significant"}
-    ).stat_significance == "not_significant"
+    assert (
+        StudyRow.model_validate(
+            {"rsid": "rs1", "pmid": "123", "stat_significance": "not_significant"}
+        ).stat_significance
+        == "not_significant"
+    )
     with pytest.raises(ValidationError):
         StudyRow.model_validate({"rsid": "rs1", "pmid": "123", "stat_significance": "maybe"})
     with pytest.raises(ValidationError):
@@ -307,9 +299,7 @@ def test_study_provenance_columns_materialize_and_roundtrip(tmp_path: Path) -> N
 def test_study_doi_and_regex_validation() -> None:
     # DOI: a bare token and a doi.org URL both pass; a non-DOI string is rejected.
     assert StudyRow.model_validate({"pmid": "1", "rsid": "rs1", "doi": "10.1038/nature12373"}).doi
-    assert StudyRow.model_validate(
-        {"pmid": "1", "rsid": "rs1", "doi": "https://doi.org/10.1000/abc"}
-    ).doi
+    assert StudyRow.model_validate({"pmid": "1", "rsid": "rs1", "doi": "https://doi.org/10.1000/abc"}).doi
     with pytest.raises(ValidationError):
         StudyRow.model_validate({"pmid": "1", "rsid": "rs1", "doi": "not-a-doi"})
     # provenance_regex: a valid pattern passes; a malformed one is caught at author time.
@@ -341,9 +331,7 @@ def test_the_likely_columns_are_unauthorable_and_always_false() -> None:
     for column in _UNWRITABLE_BOOLEANS:
         assert column not in authored, f"{column} became authorable — SCHEMAS.md now lies"
         with pytest.raises(ValidationError):
-            VariantRow(
-                rsid="rs1", genotype="A/G", state="risk", conclusion="c", **{column: True}
-            )
+            VariantRow(rsid="rs1", genotype="A/G", state="risk", conclusion="c", **{column: True})
     # the tier distinction is carried here instead, and this vocabulary is the contract
     assert {"pathogenic", "likely_pathogenic", "benign", "likely_benign"} <= VALID_CLIN_SIG
 

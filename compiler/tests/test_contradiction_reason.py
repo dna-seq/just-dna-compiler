@@ -45,9 +45,9 @@ def test_every_false_shape_gets_a_reason_and_no_two_arms_share_one() -> None:
     without a reason of its own fails this rather than shipping a plausible-sounding wrong cause.
     """
     shapes = {
-        "strand flip":   ("A/G", "C", "T"),
-        "substitution":  ("A/G", "C", "G"),
-        "event length":  ("G/GT", "GTT", "G"),
+        "strand flip": ("A/G", "C", "T"),
+        "substitution": ("A/G", "C", "G"),
+        "event length": ("G/GT", "GTT", "G"),
     }
     for label, (genotype, ref, alts) in shapes.items():
         assert hosting_verdict(genotype, ref, alts) is False, label

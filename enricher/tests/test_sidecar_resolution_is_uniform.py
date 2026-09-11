@@ -26,8 +26,7 @@ import pytest
 from just_dna_format.layout import sidecar_write_path
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: split\n  title: Split\n  description: d\n  report_title: Split\n"
+    "schema_version: '1.0'\nmodule:\n  name: split\n  title: Split\n  description: d\n  report_title: Split\n"
 )
 
 #: Every machine-written sidecar a pass may create, and the pass that owns it. Names come from the
@@ -118,9 +117,7 @@ def test_the_roster_covers_every_writable_sidecar() -> None:
 
 
 @pytest.mark.parametrize("name", sorted(SIDECAR_OWNERS), ids=sorted(SIDECAR_OWNERS))
-def test_the_resolver_follows_a_split_module_for_every_sidecar(
-    split_spec: Path, name: str
-) -> None:
+def test_the_resolver_follows_a_split_module_for_every_sidecar(split_spec: Path, name: str) -> None:
     """And the behavioural half: the resolver these passes now call really does follow `derived/`.
 
     Without this, the source-level guard above would be satisfied by a pass calling a resolver that

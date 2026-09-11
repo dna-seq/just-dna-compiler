@@ -142,9 +142,7 @@ class ClosureResult(_Findings):
     path: Path | None = Field(
         default=None, description="The `verification.json` written (None when nothing was closed)"
     )
-    module_hash: str | None = Field(
-        default=None, description="The authored bytes the closure was bound to"
-    )
+    module_hash: str | None = Field(default=None, description="The authored bytes the closure was bound to")
     signed: bool = Field(default=False, description="Whether the closure carries an Ed25519 signature")
     dropped_checks: list[str] = Field(
         default_factory=list,

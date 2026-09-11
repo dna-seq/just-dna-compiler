@@ -64,7 +64,7 @@ def test_start_position_must_be_non_negative() -> None:
 
 
 def test_p_value_num_must_be_a_probability() -> None:
-    StudyRow(rsid="rs1", pmid="12345", p_value_num=1.0)      # p == 1 is legal
+    StudyRow(rsid="rs1", pmid="12345", p_value_num=1.0)  # p == 1 is legal
     StudyRow(rsid="rs1", pmid="12345", p_value_num=5e-8)
     for bad in (0.0, -1e-8, 1.5):
         with pytest.raises(ValidationError):
@@ -76,8 +76,8 @@ def test_neg_log10_p_is_derived_and_ordered() -> None:
         return StudyRow(rsid="rs1", pmid="12345", p_value_num=p)
 
     assert StudyRow(rsid="rs1", pmid="12345").neg_log10_p is None
-    assert study(1.0).neg_log10_p == 0.0     # p == 1 → 0, and not the -0.0 of a bare negation
-    assert study(1e-8).neg_log10_p == 8.0    # exact on a power of ten
+    assert study(1.0).neg_log10_p == 0.0  # p == 1 → 0, and not the -0.0 of a bare negation
+    assert study(1e-8).neg_log10_p == 8.0  # exact on a power of ten
     # Monotone decreasing in p: a smaller p-value is a larger -log10, so ordering by the derived
     # column ascending reproduces the p-values descending.
     ps = [0.05, 5e-8, 1e-30]

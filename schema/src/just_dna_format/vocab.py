@@ -43,14 +43,10 @@ from just_dna_format.alleles import (
 #
 # Adding a member obliges an explicit entry in `derive._DIRECTION_TO_STATE` — see the rule stated
 # there, and the test that walks this set against it.
-VALID_DIRECTIONS: frozenset[str] = frozenset(
-    {"protective", "risk", "neutral", "unknown", "contested"}
-)
+VALID_DIRECTIONS: frozenset[str] = frozenset({"protective", "risk", "neutral", "unknown", "contested"})
 # Graduated statistical significance (named `stat_significance`, NOT `significance` — that is the
 # clinical axis).
-VALID_SIGNIFICANCE: frozenset[str] = frozenset(
-    {"significant", "suggestive", "not_significant", "unknown"}
-)
+VALID_SIGNIFICANCE: frozenset[str] = frozenset({"significant", "suggestive", "not_significant", "unknown"})
 # ClinVar / ACMG clinical significance (VEP `CLIN_SIG` vocabulary). Distinct from `direction`.
 VALID_CLIN_SIG: frozenset[str] = frozenset(
     {
@@ -101,9 +97,7 @@ MULTI_SEP: re.Pattern[str] = re.compile(r"[,;|]")
 VCF_NAMESPACES: frozenset[str] = frozenset({"INFO", "FORMAT"})
 _VCF_KEY = r"(?:[A-Za-z_][0-9A-Za-z_.]*|1000G)"
 _VCF_POINTER_ATOM = rf"(?:(?:INFO|FORMAT)/)?{_VCF_KEY}"
-SOURCE_FIELD_PATTERN: re.Pattern[str] = re.compile(
-    rf"^{_VCF_POINTER_ATOM}(?:\|{_VCF_POINTER_ATOM})*$"
-)
+SOURCE_FIELD_PATTERN: re.Pattern[str] = re.compile(rf"^{_VCF_POINTER_ATOM}(?:\|{_VCF_POINTER_ATOM})*$")
 
 # ── The VCF field model: namespace, and cardinality (RM53 / RM54) ────────────────────────────────
 # A VCF field is identified by *namespace* (which of the two reserved-key tables it is drawn from) and
@@ -118,9 +112,7 @@ SOURCE_FIELD_PATTERN: re.Pattern[str] = re.compile(
 
 #: Keys reserved in **both** namespaces with different meanings. A bare one of these is ambiguous in a
 #: way that costs a wrong answer rather than a parse error, which is why it earns its own warning.
-VCF_COLLIDING_KEYS: frozenset[str] = frozenset(
-    {"DP", "AD", "ADF", "ADR", "MQ", "AF", "CN"}
-)
+VCF_COLLIDING_KEYS: frozenset[str] = frozenset({"DP", "AD", "ADF", "ADR", "MQ", "AF", "CN"})
 
 #: What each collision *costs* — the two readings, so a message can name them rather than saying
 #: "ambiguous". Total over `VCF_COLLIDING_KEYS` (a test pins that).
@@ -133,12 +125,8 @@ VCF_COLLISION_REASONS: dict[str, str] = {
         "INFO/AD is the total read depth per allele across samples; FORMAT/AD is this sample's per "
         "allele depth"
     ),
-    "ADF": (
-        "INFO/ADF is the total forward-strand read depth per allele; FORMAT/ADF is this sample's"
-    ),
-    "ADR": (
-        "INFO/ADR is the total reverse-strand read depth per allele; FORMAT/ADR is this sample's"
-    ),
+    "ADF": ("INFO/ADF is the total forward-strand read depth per allele; FORMAT/ADF is this sample's"),
+    "ADR": ("INFO/ADR is the total reverse-strand read depth per allele; FORMAT/ADR is this sample's"),
     "MQ": (
         "INFO/MQ is an RMS mapping quality typed Float; FORMAT/MQ is an RMS mapping quality typed "
         "Integer — the two differ in type, not only in scope"
@@ -531,9 +519,7 @@ VALID_PHENOTYPE_CATEGORIES: frozenset[str] = frozenset(
 )
 
 
-def validate_phenotype_categories(
-    value: str | None, field_name: str = "phenotype_category"
-) -> str | None:
+def validate_phenotype_categories(value: str | None, field_name: str = "phenotype_category") -> str | None:
     """Validate a multi-valued phenotype-category cell against `VALID_PHENOTYPE_CATEGORIES`.
 
     Accepts ClinPGx's own spellings (`Metabolism/PK`) case-insensitively and normalizes them to the
@@ -550,8 +536,7 @@ def validate_phenotype_categories(
         canonical = token.lower().replace("/", "_").replace(" ", "_").replace("-", "_")
         if canonical not in VALID_PHENOTYPE_CATEGORIES:
             raise ValueError(
-                f"{field_name} tokens must be one of "
-                f"{sorted(VALID_PHENOTYPE_CATEGORIES)}, got: {token!r}"
+                f"{field_name} tokens must be one of {sorted(VALID_PHENOTYPE_CATEGORIES)}, got: {token!r}"
             )
         normalized.append(canonical)
     return ";".join(normalized) if normalized else None
@@ -788,90 +773,90 @@ VALID_AUTHORITY_CALL_STATUS: frozenset[str] = frozenset({"recorded", "no_record"
 VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
     {
         # ── wired: `enrich` writes these six at the end of its run ──
-        "reference_allele",           # authored `ref` vs the actual reference sequence — `enrich`
-        "rsid_currency",              # authored rsID vs dbSNP (live / merged / absent) — `enrich`
-        "clinical_significance",      # authored `clin_sig` vs ClinVar's own, allele-exactly — `enrich`
+        "reference_allele",  # authored `ref` vs the actual reference sequence — `enrich`
+        "rsid_currency",  # authored rsID vs dbSNP (live / merged / absent) — `enrich`
+        "clinical_significance",  # authored `clin_sig` vs ClinVar's own, allele-exactly — `enrich`
         "rsid_coordinate_agreement",  # an authored rsID+coordinate PAIR vs the reference — `enrich`
-        "genome_build_agreement",     # authored coordinates vs the declared assembly — `enrich`
-        "dataset_currency",           # a recorded `SourceRow.dataset` vs the release that source
-                                      #   publishes NOW — `enrich`. The subject is the module's own
-                                      #   claim about where its rows came from, which is why this is a
-                                      #   check and not a recording pass: it compares something the
-                                      #   module asserts against what the source says.
-        "variant_impact_agreement",   # a module's variants vs AlphaGenome's AVI scores —
-                                      #   `alphagenome check` (RM193). Its own member rather than a
-                                      #   second writer of `reference_allele`: the Atlas answers the
-                                      #   REF question too, and letting one registry's outage write a
-                                      #   skip against another's check is exactly what
-                                      #   `@one-registrys-outage-may-not-speak-for-another` forbids.
+        "genome_build_agreement",  # authored coordinates vs the declared assembly — `enrich`
+        "dataset_currency",  # a recorded `SourceRow.dataset` vs the release that source
+        #   publishes NOW — `enrich`. The subject is the module's own
+        #   claim about where its rows came from, which is why this is a
+        #   check and not a recording pass: it compares something the
+        #   module asserts against what the source says.
+        "variant_impact_agreement",  # a module's variants vs AlphaGenome's AVI scores —
+        #   `alphagenome check` (RM193). Its own member rather than a
+        #   second writer of `reference_allele`: the Atlas answers the
+        #   REF question too, and letting one registry's outage write a
+        #   skip against another's check is exactly what
+        #   `@one-registrys-outage-may-not-speak-for-another` forbids.
         # ── wired: one command each ──
-        "citation_existence",         # an authored `pmid`/`doi` vs PubMed and Crossref — `literature`
-        "citation_identifier",        # an authored `doi` vs the registry's own for that PMID — `literature`
-        "provenance_quote",           # `provenance_quote`/`provenance_regex` vs the text — `literature`
-        "allele_function",            # authored `function_status` vs PharmVar and CPIC — `pgx`
-        "pgx_evidence_level",         # authored `evidence_level` vs ClinPGx's own — `clinpgx check`
-        "vrs_allele_id",              # a recorded `ga4gh:VA.…` vs the re-minted one — `vrs mint`
-        "acmg_secondary_findings",    # authored `acmg_sf` vs the published SF gene list — `check-acmg`
-        "gene_symbol_currency",       # authored `gene` vs HGNC approved / previous — `check-identifiers`
-        "trait_currency",             # authored `trait_efo_id` vs OLS4 (obsolete + replacement) — `check-identifiers`
-        "gene_locus_agreement",       # the row's `gene` vs the chromosome its variant sits on — `check-identifiers`
-        "pgs_accession_currency",     # an authored `pgs_id` vs the PGS Catalog's own record for it —
-                                      #   `check-identifiers`. The Catalog answers 200 with `{}` for a
-                                      #   never-assigned id AND for a malformed one, so the check reads
-                                      #   the body; the verdict is about the accession, never the status.
-        "pgs_metadata_agreement",     # authored `training_ancestry`/`training_cohort` vs the score
-                                      #   record's `ancestry_distribution`/`samples_training` —
-                                      #   `check-identifiers`. Its own member rather than a second
-                                      #   finding under the line above: currency asks whether the id
-                                      #   still names a score, and this asks whether two cells beside it
-                                      #   still match. Two questions, two subjects, so two records.
-        "repeat_band_agreement",      # an authored `repeat_alleles.csv` band table vs a published
-                                      #   repeat-locus catalogue's bands — `check-repeat-bands`.
-                                      #   Reports and never repairs: the corpus has one module the
-                                      #   catalogue agrees with and one it is a band coarser than, and
-                                      #   the format does not arbitrate between its own authorities.
-        "literature_coverage",        # which papers a variant–literature index holds for a module's
-                                      #   alleles, and AT WHICH TIER — `litvar coverage`. Allele-
-                                      #   resolved, position-only and absent are three outcomes, and a
-                                      #   position-level answer to an allele-level question is recorded
-                                      #   as such rather than reported as the allele's.
+        "citation_existence",  # an authored `pmid`/`doi` vs PubMed and Crossref — `literature`
+        "citation_identifier",  # an authored `doi` vs the registry's own for that PMID — `literature`
+        "provenance_quote",  # `provenance_quote`/`provenance_regex` vs the text — `literature`
+        "allele_function",  # authored `function_status` vs PharmVar and CPIC — `pgx`
+        "pgx_evidence_level",  # authored `evidence_level` vs ClinPGx's own — `clinpgx check`
+        "vrs_allele_id",  # a recorded `ga4gh:VA.…` vs the re-minted one — `vrs mint`
+        "acmg_secondary_findings",  # authored `acmg_sf` vs the published SF gene list — `check-acmg`
+        "gene_symbol_currency",  # authored `gene` vs HGNC approved / previous — `check-identifiers`
+        "trait_currency",  # authored `trait_efo_id` vs OLS4 (obsolete + replacement) — `check-identifiers`
+        "gene_locus_agreement",  # the row's `gene` vs the chromosome its variant sits on — `check-identifiers`
+        "pgs_accession_currency",  # an authored `pgs_id` vs the PGS Catalog's own record for it —
+        #   `check-identifiers`. The Catalog answers 200 with `{}` for a
+        #   never-assigned id AND for a malformed one, so the check reads
+        #   the body; the verdict is about the accession, never the status.
+        "pgs_metadata_agreement",  # authored `training_ancestry`/`training_cohort` vs the score
+        #   record's `ancestry_distribution`/`samples_training` —
+        #   `check-identifiers`. Its own member rather than a second
+        #   finding under the line above: currency asks whether the id
+        #   still names a score, and this asks whether two cells beside it
+        #   still match. Two questions, two subjects, so two records.
+        "repeat_band_agreement",  # an authored `repeat_alleles.csv` band table vs a published
+        #   repeat-locus catalogue's bands — `check-repeat-bands`.
+        #   Reports and never repairs: the corpus has one module the
+        #   catalogue agrees with and one it is a band coarser than, and
+        #   the format does not arbitrate between its own authorities.
+        "literature_coverage",  # which papers a variant–literature index holds for a module's
+        #   alleles, and AT WHICH TIER — `litvar coverage`. Allele-
+        #   resolved, position-only and absent are three outcomes, and a
+        #   position-level answer to an allele-level question is recorded
+        #   as such rather than reported as the allele's.
         "regulator_label_agreement",  # authored gene/allele/drug claims vs the drug-label annotations
-                                      #   five regulators publish — `clinpgx check-labels`. Named for
-                                      #   the labels rather than for any one agency, because the file
-                                      #   carries five and baking an authority into a published key is
-                                      #   the mistake RM134 caught in `ClinSigConflict` before it
-                                      #   shipped. Reports at two join tiers, allele and gene, and
-                                      #   never escalates under `strict`.
-        "published_refutation",       # an authored `direction` against the refutations CIViC publishes
-                                      #   — `enrich`, folded in when a CIViC snapshot is available, the
-                                      #   same way the ClinVar `clin_sig` leg is. Two findings under one
-                                      #   record because they share a subject *set*: the source asserts
-                                      #   and refutes, or the source has only ever refuted and the module
-                                      #   asserts anyway. Never escalates under `strict` — a source
-                                      #   disagreeing with itself is not an authoring error — and the
-                                      #   record names its `status_basis`, because on the `accepted`
-                                      #   basis the class is empty by construction.
-        "evidence_status_currency",    # a recorded `StudyRow.confidence` — a curation status a
-                                      #   citing source published when the row was drafted — against
-                                      #   what that source says about the same item NOW: accepted
-                                      #   since, rejected since, or a citation added since. `enrich`,
-                                      #   for the CIViC citations `civic citations` recovers from the
-                                      #   API. A sibling of `dataset_currency` and deliberately not
-                                      #   the same member: that one asks which release a table came
-                                      #   from, this one asks whether a per-item judgement has moved,
-                                      #   and the two currency findings stay apart. Never escalates
-                                      #   under `strict` — a source re-curating is not an authoring
-                                      #   error.
+        #   five regulators publish — `clinpgx check-labels`. Named for
+        #   the labels rather than for any one agency, because the file
+        #   carries five and baking an authority into a published key is
+        #   the mistake RM134 caught in `ClinSigConflict` before it
+        #   shipped. Reports at two join tiers, allele and gene, and
+        #   never escalates under `strict`.
+        "published_refutation",  # an authored `direction` against the refutations CIViC publishes
+        #   — `enrich`, folded in when a CIViC snapshot is available, the
+        #   same way the ClinVar `clin_sig` leg is. Two findings under one
+        #   record because they share a subject *set*: the source asserts
+        #   and refutes, or the source has only ever refuted and the module
+        #   asserts anyway. Never escalates under `strict` — a source
+        #   disagreeing with itself is not an authoring error — and the
+        #   record names its `status_basis`, because on the `accepted`
+        #   basis the class is empty by construction.
+        "evidence_status_currency",  # a recorded `StudyRow.confidence` — a curation status a
+        #   citing source published when the row was drafted — against
+        #   what that source says about the same item NOW: accepted
+        #   since, rejected since, or a citation added since. `enrich`,
+        #   for the CIViC citations `civic citations` recovers from the
+        #   API. A sibling of `dataset_currency` and deliberately not
+        #   the same member: that one asks which release a table came
+        #   from, this one asks whether a per-item judgement has moved,
+        #   and the two currency findings stay apart. Never escalates
+        #   under `strict` — a source re-curating is not an authoring
+        #   error.
         # ── RESERVED: no emitter, deliberately. Adding one later is legal; adding the *name* late
         #    would leave the release that needs it with nothing to write (the `withdrawn` precedent).
-        "gene_disease_validity",      # RESERVED — see the bullet above: `enrich_gene_validity` RECORDS
-                                      #   ClinGen/GenCC verdicts into a derived table and compares
-                                      #   nothing authored, so it does not emit this. The member is for
-                                      #   a future pass that checks an authored gene/phenotype pair.
-        "dosage_sensitivity",         # RESERVED — `enrich_dosage_sensitivity` is the same shape: it
-                                      #   records ClinGen's haplo/triplo curation into `gene_metrics.csv`
-                                      #   and no model carries an authored dosage claim to compare it
-                                      #   against. The member is for the pass that gains one.
+        "gene_disease_validity",  # RESERVED — see the bullet above: `enrich_gene_validity` RECORDS
+        #   ClinGen/GenCC verdicts into a derived table and compares
+        #   nothing authored, so it does not emit this. The member is for
+        #   a future pass that checks an authored gene/phenotype pair.
+        "dosage_sensitivity",  # RESERVED — `enrich_dosage_sensitivity` is the same shape: it
+        #   records ClinGen's haplo/triplo curation into `gene_metrics.csv`
+        #   and no model carries an authored dosage claim to compare it
+        #   against. The member is for the pass that gains one.
     }
 )
 
@@ -893,14 +878,14 @@ VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
 # — which is the whole point: those six spellings are what a consumer would otherwise have to learn.
 VALID_VERIFICATION_SKIPS: frozenset[str] = frozenset(
     {
-        "not_requested",   # the caller switched this check off
-        "offline",         # the check needs egress and the run had none
-        "no_reference",    # no snapshot / sequence / list was provisioned to compare against
-        "unreachable",     # the source was asked and never answered (a failed request, not a no)
+        "not_requested",  # the caller switched this check off
+        "offline",  # the check needs egress and the run had none
+        "no_reference",  # no snapshot / sequence / list was provisioned to compare against
+        "unreachable",  # the source was asked and never answered (a failed request, not a no)
         "nothing_to_check",  # the module carries no row this check applies to
-        "tautology",       # the module was drafted from the very source the check reads (S4)
-        "unsupported",     # this tier cannot put the question for these rows (e.g. an unbuilt assembly)
-        "not_permitted",   # a source's terms bar the fetch under the declared use (`check_declared_use`)
+        "tautology",  # the module was drafted from the very source the check reads (S4)
+        "unsupported",  # this tier cannot put the question for these rows (e.g. an unbuilt assembly)
+        "not_permitted",  # a source's terms bar the fetch under the declared use (`check_declared_use`)
     }
 )
 
@@ -917,17 +902,17 @@ VALID_VERIFICATION_SKIPS: frozenset[str] = frozenset(
 # reports under a bare empty id). Unknown labels are normalized and kept, not rejected.
 RECOMMENDED_ANCESTRY_GROUPS: frozenset[str] = frozenset(
     {
-        "global",       # the whole dataset — every source has this row, however it spells it
-        "afr",          # African / African-American
-        "ami",          # Amish
-        "amr",          # Admixed American
-        "asj",          # Ashkenazi Jewish
-        "eas",          # East Asian
-        "fin",          # Finnish
-        "mid",          # Middle Eastern
-        "nfe",          # Non-Finnish European
-        "sas",          # South Asian
-        "remaining",    # v4's name for what v2 called `oth` — individuals not assigned above
+        "global",  # the whole dataset — every source has this row, however it spells it
+        "afr",  # African / African-American
+        "ami",  # Amish
+        "amr",  # Admixed American
+        "asj",  # Ashkenazi Jewish
+        "eas",  # East Asian
+        "fin",  # Finnish
+        "mid",  # Middle Eastern
+        "nfe",  # Non-Finnish European
+        "sas",  # South Asian
+        "remaining",  # v4's name for what v2 called `oth` — individuals not assigned above
     }
 )
 # This is NOT `pgs.VALID_TRAINING_ANCESTRY` and must never be merged with it. Those are 1000G
@@ -943,7 +928,17 @@ RECOMMENDED_ANCESTRY_GROUPS: frozenset[str] = frozenset(
 # drift. A label outside this list sorts after all of them, alphabetically, so an unseeded source's
 # groups are still emitted deterministically.
 POPULATION_ORDER: tuple[str, ...] = (
-    "global", "afr", "ami", "amr", "asj", "eas", "fin", "mid", "nfe", "remaining", "sas",
+    "global",
+    "afr",
+    "ami",
+    "amr",
+    "asj",
+    "eas",
+    "fin",
+    "mid",
+    "nfe",
+    "remaining",
+    "sas",
 )
 
 
@@ -1125,9 +1120,7 @@ def vcf_field_number(namespace: str | None, key: str) -> str | None:
     if namespace is not None:
         return VCF_FIELD_NUMBER.get(f"{namespace}/{key}")
     known = [
-        VCF_FIELD_NUMBER[f"{ns}/{key}"]
-        for ns in sorted(VCF_NAMESPACES)
-        if f"{ns}/{key}" in VCF_FIELD_NUMBER
+        VCF_FIELD_NUMBER[f"{ns}/{key}"] for ns in sorted(VCF_NAMESPACES) if f"{ns}/{key}" in VCF_FIELD_NUMBER
     ]
     if key in VCF_COLLIDING_KEYS and len(known) < len(VCF_NAMESPACES):
         return None
@@ -1229,8 +1222,7 @@ def validate_trait_ids(value: str | None, field_name: str = "trait_efo_id") -> s
         tok = tok.strip()
         if tok and not TRAIT_ID_PATTERN.match(tok):
             raise ValueError(
-                f"{field_name} tokens must be ontology CURIEs like EFO_0004340 / "
-                f"MONDO:0005265, got: {tok!r}"
+                f"{field_name} tokens must be ontology CURIEs like EFO_0004340 / MONDO:0005265, got: {tok!r}"
             )
     return value
 
@@ -1336,11 +1328,11 @@ def validate_finite(value: float | None, field_name: str) -> float | None:
 # excluded set either, because a **new** warning can be a real signal — hence its own declared axis.
 VALID_RELEASE_OUTPUT_AXES: frozenset[str] = frozenset(
     {
-        "parquet_schema",     # a parquet gained, lost or retyped a column
-        "parquet_bytes",      # the compiled bytes moved (`artifact.digest` / a per-file hash)
+        "parquet_schema",  # a parquet gained, lost or retyped a column
+        "parquet_bytes",  # the compiled bytes moved (`artifact.digest` / a per-file hash)
         "content_signature",  # the authored-content identity moved — the loud one
-        "manifest_fields",    # a published manifest field moved, the excluded set aside
-        "warnings",           # `compilation.warnings` moved; NOT a recompile driver, see above
+        "manifest_fields",  # a published manifest field moved, the excluded set aside
+        "warnings",  # `compilation.warnings` moved; NOT a recompile driver, see above
     }
 )
 
@@ -1397,91 +1389,91 @@ VALID_RELEASE_CHANGE_KINDS: frozenset[str] = frozenset({"correction", "addition"
 VALID_WARNING_CODES: frozenset[str] = frozenset(
     {
         # ── spec directory and module_spec.yaml ──
-        "table_file_misplaced",             # an authored table sitting in `derived/`, read from nowhere
-        "table_file_near_miss",             # a stray file one edit from a table name — probably a typo
-        "sidecar_spelling_deprecated",      # a machine-written sidecar under a superseded filename
-        "module_version_coerced",           # `module.version` was read as SemVer from another spelling
-        "panel_block_deprecated",           # `panel:` is deprecated in 0.6 and removed at 1.0
+        "table_file_misplaced",  # an authored table sitting in `derived/`, read from nowhere
+        "table_file_near_miss",  # a stray file one edit from a table name — probably a typo
+        "sidecar_spelling_deprecated",  # a machine-written sidecar under a superseded filename
+        "module_version_coerced",  # `module.version` was read as SemVer from another spelling
+        "panel_block_deprecated",  # `panel:` is deprecated in 0.6 and removed at 1.0
         # ── coordinates and the genome build ──
-        "non_grch38_variant_keys",          # VRS identity is GRCh38-only, so rows are coordinate-keyed
-        "contig_ploidy_undecidable",        # chrom=Y on a build with no pseudoautosomal table here
-        "contig_ploidy_mismatch",           # a two-allele genotype on a contig that is not diploid
+        "non_grch38_variant_keys",  # VRS identity is GRCh38-only, so rows are coordinate-keyed
+        "contig_ploidy_undecidable",  # chrom=Y on a build with no pseudoautosomal table here
+        "contig_ploidy_mismatch",  # a two-allele genotype on a contig that is not diploid
         # ── resolution ──
-        "resolution_disabled",              # `--no-resolve` switched off an injected table that exists
-        "resolution_not_injected",          # nothing was injected, so unpositioned rows stay unresolved
-        "resolution_skipped_cross_build",   # resolution is GRCh38-bound and this module is not (RM15)
-        "positional_identity_contradicted", # a positional row's authored identity the table disagrees with
-        "positional_rows_unjoinable",       # positional rows with no chrom+start, so they join by rsID only
-        "rsid_unresolved",                  # an rsID the resolution table does not place
-        "rsid_without_resolution_label",    # coordinate-authored rows the table knows no rsID for
-        "rsid_expanded_to_multiple_loci",   # one authored row became several, because the source says so
-        "rsid_ambiguous",                   # the table marks the rsID ambiguous; the pick is a pick
-        "rsid_coordinate_disagrees",        # an authored rsID+coordinate pair the table contradicts
-        "locus_hosting_undecidable",        # whether a locus can host the genotype could not be decided
-        "locus_cannot_host_genotype",       # a locus contradicts the authored genotype and was dropped
-        "rsid_no_hosting_locus",            # every candidate locus contradicts the authored genotype
+        "resolution_disabled",  # `--no-resolve` switched off an injected table that exists
+        "resolution_not_injected",  # nothing was injected, so unpositioned rows stay unresolved
+        "resolution_skipped_cross_build",  # resolution is GRCh38-bound and this module is not (RM15)
+        "positional_identity_contradicted",  # a positional row's authored identity the table disagrees with
+        "positional_rows_unjoinable",  # positional rows with no chrom+start, so they join by rsID only
+        "rsid_unresolved",  # an rsID the resolution table does not place
+        "rsid_without_resolution_label",  # coordinate-authored rows the table knows no rsID for
+        "rsid_expanded_to_multiple_loci",  # one authored row became several, because the source says so
+        "rsid_ambiguous",  # the table marks the rsID ambiguous; the pick is a pick
+        "rsid_coordinate_disagrees",  # an authored rsID+coordinate pair the table contradicts
+        "locus_hosting_undecidable",  # whether a locus can host the genotype could not be decided
+        "locus_cannot_host_genotype",  # a locus contradicts the authored genotype and was dropped
+        "rsid_no_hosting_locus",  # every candidate locus contradicts the authored genotype
         # ── VRS ──
-        "vrs_id_unverifiable",              # a recorded `ga4gh:VA.` this tier cannot recompute
-        "vrs_coverage_incomplete",          # alleles in resolution.csv that carry no VA at all
+        "vrs_id_unverifiable",  # a recorded `ga4gh:VA.` this tier cannot recompute
+        "vrs_coverage_incomplete",  # alleles in resolution.csv that carry no VA at all
         # ── variants.csv coherence ──
         "weight_sign_disagrees_with_effect",  # `weight`'s sign contradicts `state` or `direction`
-        "genotype_allele_not_at_locus",     # a genotype names an allele the locus does not carry
-        "effect_allele_not_at_locus",       # `effect_allele` is not among the locus's alleles
-        "genotype_coverage_gap",            # a site states two or more genotypes and misses one
-        "quality_floor_inverted",           # a QUAL floor read against the reference record
-        "missing_allele_marker_in_alts",    # `.` in `alts` — VCF's no-alternate marker, not an allele
-        "vcf_pointer_key_collision",        # a pointer key INFO and FORMAT both define
-        "vcf_pointer_unselected_element",   # a pointer at a multi-valued field with no element rule
-        "composite_gene_cell",              # a single-valued `gene` cell that looks like a list
-        "symbolic_allele_unusable",         # a symbolic allele this format cannot apply; the
-                                            #   sentence says whether the row is dropped or fatal
+        "genotype_allele_not_at_locus",  # a genotype names an allele the locus does not carry
+        "effect_allele_not_at_locus",  # `effect_allele` is not among the locus's alleles
+        "genotype_coverage_gap",  # a site states two or more genotypes and misses one
+        "quality_floor_inverted",  # a QUAL floor read against the reference record
+        "missing_allele_marker_in_alts",  # `.` in `alts` — VCF's no-alternate marker, not an allele
+        "vcf_pointer_key_collision",  # a pointer key INFO and FORMAT both define
+        "vcf_pointer_unselected_element",  # a pointer at a multi-valued field with no element rule
+        "composite_gene_cell",  # a single-valued `gene` cell that looks like a list
+        "symbolic_allele_unusable",  # a symbolic allele this format cannot apply; the
+        #   sentence says whether the row is dropped or fatal
         # ── binning tables ──
-        "bin_tiling_inferred",              # the tiling was read off the data rather than declared
-        "bin_tiling_contradicted",          # a declared `quantised` grid the data does not sit on
-        "bin_coverage_gap",                 # no bin covers an interior stretch of the measure axis
-        "bins_ungrounded",                  # a threshold with no studies.csv row and no bin `pmid`
-        "measure_field_fractional",         # whole-number bins over a field that carries fractions
-        "measurement_spans_bins",           # a measurement whose interval straddles a boundary (RM56)
-        "deprecated_bin_modifier",          # a bin column deprecated in 0.6 and removed at 1.0
+        "bin_tiling_inferred",  # the tiling was read off the data rather than declared
+        "bin_tiling_contradicted",  # a declared `quantised` grid the data does not sit on
+        "bin_coverage_gap",  # no bin covers an interior stretch of the measure axis
+        "bins_ungrounded",  # a threshold with no studies.csv row and no bin `pmid`
+        "measure_field_fractional",  # whole-number bins over a field that carries fractions
+        "measurement_spans_bins",  # a measurement whose interval straddles a boundary (RM56)
+        "deprecated_bin_modifier",  # a bin column deprecated in 0.6 and removed at 1.0
         # ── PGx tables ──
-        "star_allele_undefined",            # a star allele used but never defined in haplotypes.csv
+        "star_allele_undefined",  # a star allele used but never defined in haplotypes.csv
         "diplotype_definitions_identical",  # diplotype rows naming haplotypes defined identically
-        "diplotype_phase_ambiguous",        # diplotype rows indistinguishable without phase
+        "diplotype_phase_ambiguous",  # diplotype rows indistinguishable without phase
         # ── studies and literature ──
-        "study_variant_orphan",             # a studies.csv row naming a variant the module does not carry
-        "duplicate_study_citation",         # two study rows on one (variant, pmid)
-        "p_value_encodings_disagree",       # `p_value` and `p_value_num` are two readings of one number
-        "study_effect_allele_not_at_locus", # a study's `effect_allele` is not among the resolved alleles
-        "citation_not_in_pubmed",           # a `pmid` PubMed has no record of
-        "literature_row_uncited",           # a literature row nothing in the module cites — kept in the CSV
-        "quote_counter_stale",              # `quotes_authored` disagrees with the quotes that cite it
+        "study_variant_orphan",  # a studies.csv row naming a variant the module does not carry
+        "duplicate_study_citation",  # two study rows on one (variant, pmid)
+        "p_value_encodings_disagree",  # `p_value` and `p_value_num` are two readings of one number
+        "study_effect_allele_not_at_locus",  # a study's `effect_allele` is not among the resolved alleles
+        "citation_not_in_pubmed",  # a `pmid` PubMed has no record of
+        "literature_row_uncited",  # a literature row nothing in the module cites — kept in the CSV
+        "quote_counter_stale",  # `quotes_authored` disagrees with the quotes that cite it
         "quoted_article_license_restrictive",  # a quote from an article whose licence forbids sale
         # ── sources and licensing ──
-        "source_row_unused",                # a sources.csv row no table in this module uses
-        "source_terms_unrecorded",          # a source the fact tables cite with no sources.csv row
-        "declared_license_disagrees",       # the module's licence and its sources report differently
+        "source_row_unused",  # a sources.csv row no table in this module uses
+        "source_terms_unrecorded",  # a source the fact tables cite with no sources.csv row
+        "declared_license_disagrees",  # the module's licence and its sources report differently
         # ── the injected fact tables ──
-        "derived_row_orphan",               # a fact row about something no variant in the module names
-        "faf95_exceeds_frequency",          # a 95% CI lower bound above its own point estimate
-        "oe_lof_outside_interval",          # a point estimate outside the interval published beside it
-        "oe_lof_disagrees_with_counts",     # obs/exp and `oe_lof` are one quantity and they differ
-        "clin_sig_contradicts_frequency",   # a pathogenic call above the BA1 frequency threshold
-        "clin_sig_concordance_contested",   # the concordance record names subjects still unanswered
+        "derived_row_orphan",  # a fact row about something no variant in the module names
+        "faf95_exceeds_frequency",  # a 95% CI lower bound above its own point estimate
+        "oe_lof_outside_interval",  # a point estimate outside the interval published beside it
+        "oe_lof_disagrees_with_counts",  # obs/exp and `oe_lof` are one quantity and they differ
+        "clin_sig_contradicts_frequency",  # a pathogenic call above the BA1 frequency threshold
+        "clin_sig_concordance_contested",  # the concordance record names subjects still unanswered
         # ── gene-disease validity currency (RM108) ──
-        "gene_validity_superseded",         # a later curation of the same claim replaced an earlier one
+        "gene_validity_superseded",  # a later curation of the same claim replaced an earlier one
         "gene_validity_currency_undecidable",  # several curations of one claim and nothing orders them
         # ── the overlay (overrides.csv) ──
-        "overlay_update_unmatched",         # an `update` naming a row the target table does not carry
+        "overlay_update_unmatched",  # an `update` naming a row the target table does not carry
         "overlay_update_target_unreachable",  # an `update` naming a row no artifact of this module can carry
-        "overlay_answer_vindicated",        # a contested subject the authorities have since agreed on
-        "overlay_targets_missing_table",    # an overlay correcting a table this module does not carry
-        "overlay_rows_suppressed",          # rows removed by a `suppress`, invisible in the build product
+        "overlay_answer_vindicated",  # a contested subject the authorities have since agreed on
+        "overlay_targets_missing_table",  # an overlay correcting a table this module does not carry
+        "overlay_rows_suppressed",  # rows removed by a `suppress`, invisible in the build product
         # ── verification and closure ──
-        "verification_two_copies",          # an attestation under two legal spellings; neither is preferred
-        "verification_unreadable",          # a `verification.json` that could not be read
-        "verification_stale",               # an attestation that no longer describes these bytes
-        "verification_findings_recorded",   # a check recorded a disagreement with a source
-        "module_not_closed",                # nothing in the module says authoring is finished
+        "verification_two_copies",  # an attestation under two legal spellings; neither is preferred
+        "verification_unreadable",  # a `verification.json` that could not be read
+        "verification_stale",  # an attestation that no longer describes these bytes
+        "verification_findings_recorded",  # a check recorded a disagreement with a source
+        "module_not_closed",  # nothing in the module says authoring is finished
         "closure_discarded_unreadable_record",  # `close` replaced a record it could not read
     }
 )

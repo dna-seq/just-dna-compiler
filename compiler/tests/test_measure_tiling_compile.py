@@ -64,9 +64,7 @@ _DEPRECATED = (
 )
 
 #: Its replacement, holding a dosage the integer column cannot.
-_FRACTIONAL_MODIFIER = (
-    "SMN1,SMN2,,2.5,copy_number,,0,0,SMA with a partial SMN2 duplication,false\n"
-)
+_FRACTIONAL_MODIFIER = "SMN1,SMN2,,2.5,copy_number,,0,0,SMA with a partial SMN2 duplication,false\n"
 
 
 def _spec(tmp_path: Path, copynumbers: str, name: str = "spec") -> Path:
@@ -176,9 +174,7 @@ def test_the_inference_line_reaches_the_published_manifest(tmp_path: Path) -> No
     spec = _spec(tmp_path, _QUANTISED.replace("2,2,two copies", "2,2.5,about two copies"))
     result = compile_module(spec, tmp_path / "out")
     assert result.success, result.errors
-    published = json.loads((tmp_path / "out" / "manifest.json").read_text())["compilation"][
-        "warnings"
-    ]
+    published = json.loads((tmp_path / "out" / "manifest.json").read_text())["compilation"]["warnings"]
     inferred = _matching(published, "tiling inferred")
     assert len(inferred) == 1
     assert "2.5" in inferred[0]
@@ -189,8 +185,7 @@ def test_the_inference_line_reaches_the_published_manifest(tmp_path: Path) -> No
 def test_conflicting_declarations_in_one_group_refuse_the_compile(tmp_path: Path) -> None:
     """An error, not a warning: the rules run per group and there is no tiling to run them under."""
     conflicting = (
-        "SMN1,,,,copy_number,quantised,0,1,low,false\n"
-        "SMN1,,,,copy_number,continuous,2,3,high,false\n"
+        "SMN1,,,,copy_number,quantised,0,1,low,false\nSMN1,,,,copy_number,continuous,2,3,high,false\n"
     )
     result = compile_module(_spec(tmp_path, conflicting), tmp_path / "out")
     assert not result.success
@@ -215,9 +210,7 @@ def test_the_deprecated_column_still_compiles_in_both_modes(tmp_path: Path) -> N
     and behaves exactly as before, and `strict` has nothing to escalate."""
     lax = _warnings(_spec(tmp_path, _DEPRECATED, "lax"), tmp_path / "outl", strict=False)
     strict = _warnings(_spec(tmp_path, _DEPRECATED, "str"), tmp_path / "outs", strict=True)
-    assert _matching(lax, DEPRECATED_MODIFIER_PHRASE) == _matching(
-        strict, DEPRECATED_MODIFIER_PHRASE
-    )
+    assert _matching(lax, DEPRECATED_MODIFIER_PHRASE) == _matching(strict, DEPRECATED_MODIFIER_PHRASE)
 
 
 def test_the_replacement_column_says_nothing(tmp_path: Path) -> None:
@@ -245,9 +238,7 @@ def test_both_dosage_columns_on_one_row_refuse_at_load(tmp_path: Path) -> None:
     ],
     ids=["RM55 conditional", "modifier_cn deprecation", "inferred tiling"],
 )
-def test_validate_reports_exactly_what_compile_reports(
-    tmp_path: Path, rows: str, phrase: str
-) -> None:
+def test_validate_reports_exactly_what_compile_reports(tmp_path: Path, rows: str, phrase: str) -> None:
     """The author's pre-flight must not be quieter than the compile that follows it — all three are
     pure computation over authored bytes with no `output_dir`, which is the standing rule."""
     spec = _spec(tmp_path, rows)

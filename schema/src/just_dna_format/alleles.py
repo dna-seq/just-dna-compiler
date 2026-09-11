@@ -202,6 +202,7 @@ def symbolic_allele_defect(value: str | None) -> str | None:
         return "no_length"
     return None
 
+
 #: VCF's MISSING marker (§1.6.1.5). In an ALT column it does not name an allele at all — it states that
 #: *there are no alternate alleles*, which is a monomorphic reference record, and §1.1's own worked
 #: example carries one. It is spelled out here because the difference between "an allele we cannot hold"

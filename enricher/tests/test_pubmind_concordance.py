@@ -56,8 +56,7 @@ _CLINVAR_SLICE = Path(__file__).parents[2] / "assets" / "clinvar_GRCh38_slice.vc
 _CHROM, _START, _REF = "11", 5227002, "T"
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+    "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
 )
 
 _PUBMIND_HEADER = (
@@ -108,16 +107,29 @@ def _no_pubmind(tmp_path: Path) -> Path:
 
 def _variant(clin_sig: str, genotype: str, **kw) -> VariantRow:
     return VariantRow(
-        chrom=_CHROM, start=_START, ref=_REF, alts="A,G", genotype=genotype,
-        state="risk", conclusion="c", clin_sig=clin_sig, **kw
+        chrom=_CHROM,
+        start=_START,
+        ref=_REF,
+        alts="A,G",
+        genotype=genotype,
+        state="risk",
+        conclusion="c",
+        clin_sig=clin_sig,
+        **kw,
     )
 
 
 def _resolution(variant: VariantRow) -> list[ResolutionRow]:
     return [
         ResolutionRow(
-            variant_key=variant.variant_key, rsid="rs334", chrom=_CHROM, start=_START,
-            ref=_REF, alts="A,G", source="clinvar", status="resolved",
+            variant_key=variant.variant_key,
+            rsid="rs334",
+            chrom=_CHROM,
+            start=_START,
+            ref=_REF,
+            alts="A,G",
+            source="clinvar",
+            status="resolved",
         )
     ]
 
@@ -153,9 +165,7 @@ def test_with_no_pubmind_snapshot_the_record_names_exactly_the_two_way_findings(
     assert len(record.parents) == len({(p.variant_key, p.genotype) for p in record.parents})
 
 
-def test_a_pubmind_snapshot_with_no_record_here_contests_nothing_new(
-    clinvar: Path, tmp_path: Path
-) -> None:
+def test_a_pubmind_snapshot_with_no_record_here_contests_nothing_new(clinvar: Path, tmp_path: Path) -> None:
     """Absence is not disagreement. A variant missing from PubMind means no paper in the corpus was
     kept by its triage stage — not that the literature is silent, and certainly not that the variant
     is benign. So a snapshot that has nothing to say about this locus must leave the contested set
@@ -192,8 +202,12 @@ def test_unchecked_is_not_none_and_is_never_agreement(clinvar: Path, tmp_path: P
 
     unasked = clin_sig_concordance([variant], rows, reference=clinvar)
     absent = clin_sig_concordance(
-        [variant], rows, reference=clinvar,
-        pubmind_reference=_pubmind(tmp_path / "absent", [("7", 117559590, "G", "A", "PV1", "Benign", "0.1", "1")]),
+        [variant],
+        rows,
+        reference=clinvar,
+        pubmind_reference=_pubmind(
+            tmp_path / "absent", [("7", 117559590, "G", "A", "PV1", "Benign", "0.1", "1")]
+        ),
     )
     spoke = clin_sig_concordance([variant], rows, reference=clinvar, pubmind_reference=agreeing)
     assert unasked is not None and absent is not None and spoke is not None
@@ -224,7 +238,8 @@ def test_the_two_authorities_can_disagree_with_each_other(clinvar: Path, tmp_pat
     assert [p.opposed for p in record.parents] == [True]
     # Nothing on the record picks a winner, and no column says which authority was preferred.
     assert not [
-        name for name in type(record.parents[0]).model_fields
+        name
+        for name in type(record.parents[0]).model_fields
         if name in {"majority", "consensus", "resolved_clin_sig", "winner"}
     ]
 
@@ -245,9 +260,7 @@ def test_each_authoritys_confidence_stays_in_its_own_units(clinvar: Path, tmp_pa
     assert _call_for(record, CLINVAR_AUTHORITY).dataset == clinvar_dataset_label(clinvar)
 
 
-def test_the_detail_rows_come_out_in_the_declared_authority_order(
-    clinvar: Path, tmp_path: Path
-) -> None:
+def test_the_detail_rows_come_out_in_the_declared_authority_order(clinvar: Path, tmp_path: Path) -> None:
     """Row order is parquet-visible, so it cannot depend on which snapshot answered first."""
     pubmind = _pubmind(tmp_path / "pm", [(_CHROM, _START, "T", "A", "PV1", "Benign", "0.1", "1")])
     variant = _variant("pathogenic", "A/T")
@@ -273,10 +286,13 @@ def test_several_pvids_that_straddle_the_camps_fold_to_conflicting_not_to_the_se
     ordering nobody defined, over records nobody compared. `conflicting` is the vocabulary's own word
     for the situation and sits in the camp that opposes nothing.
     """
-    contested = _pubmind(tmp_path / "pm", [
-        (_CHROM, _START, "T", "A", "PV1", "Pathogenic", "0.9", "2"),
-        (_CHROM, _START, "T", "A", "PV2", "Benign", "0.1", "1"),
-    ])
+    contested = _pubmind(
+        tmp_path / "pm",
+        [
+            (_CHROM, _START, "T", "A", "PV1", "Pathogenic", "0.9", "2"),
+            (_CHROM, _START, "T", "A", "PV2", "Benign", "0.1", "1"),
+        ],
+    )
     # Authored `benign`, so the subject is contested by ClinVar either way and the record exists
     # under the mutation too — otherwise removing the guard would fail this test by emptying the
     # record, and the assertion that matters would never be reached.
@@ -300,10 +316,12 @@ def test_several_pvids_that_straddle_the_camps_fold_to_conflicting_not_to_the_se
 def test_within_one_camp_the_fold_is_the_shared_normalizers_own_severity_rule() -> None:
     """Two records saying `Benign` and `Likely benign` fold exactly as the single composite token
     `Benign/Likely benign` does — one rule applied twice, not a second rule invented here."""
-    folded, raw, contested = fold_authority_records([
-        {"clin_sig": "benign", "clin_sig_raw": "Benign"},
-        {"clin_sig": "likely_benign", "clin_sig_raw": "Likely benign"},
-    ])
+    folded, raw, contested = fold_authority_records(
+        [
+            {"clin_sig": "benign", "clin_sig_raw": "Benign"},
+            {"clin_sig": "likely_benign", "clin_sig_raw": "Likely benign"},
+        ]
+    )
     assert (folded, contested) == ("likely_benign", False)
     assert raw == "Benign|Likely benign"
 
@@ -392,8 +410,14 @@ def _resolution_for(variants: list[VariantRow], snapshot: Path) -> list[Resoluti
         chrom, start, ref, alts = found
         rows.append(
             ResolutionRow(
-                variant_key=variant.variant_key, rsid=variant.rsid, chrom=chrom, start=start,
-                ref=ref, alts=",".join(sorted(alts)), source="clinvar", status="resolved",
+                variant_key=variant.variant_key,
+                rsid=variant.rsid,
+                chrom=chrom,
+                start=start,
+                ref=ref,
+                alts=",".join(sorted(alts)),
+                source="clinvar",
+                status="resolved",
             )
         )
     return rows
@@ -421,17 +445,24 @@ def test_a_module_drafted_from_clinvar_still_gets_a_record_out_of_the_other_auth
     variants = _read_variants(spec)
     resolution = _resolution_for(variants, clinvar)
     assert resolution, "the drafted rows must resolve, or nothing is compared and this proves nothing"
-    disagreeing = _pubmind(tmp_path / "pm", [
-        (row.chrom, row.start, row.ref, alt, f"PV{i}{j}", "Benign", "0.1", "1")
-        for i, row in enumerate(resolution)
-        for j, alt in enumerate((row.alts or "").split(","))
-        if alt
-    ])
+    disagreeing = _pubmind(
+        tmp_path / "pm",
+        [
+            (row.chrom, row.start, row.ref, alt, f"PV{i}{j}", "Benign", "0.1", "1")
+            for i, row in enumerate(resolution)
+            for j, alt in enumerate((row.alts or "").split(","))
+            if alt
+        ],
+    )
     sources = read_sources_file(spec)
 
     record = clin_sig_concordance(
-        variants, resolution, reference=clinvar, pubmind_reference=disagreeing,
-        sources=sources, spec_dir=spec,
+        variants,
+        resolution,
+        reference=clinvar,
+        pubmind_reference=disagreeing,
+        sources=sources,
+        spec_dir=spec,
     )
     assert record is not None
     assert record.consulted == (PUBMIND_AUTHORITY,)
@@ -441,9 +472,7 @@ def test_a_module_drafted_from_clinvar_still_gets_a_record_out_of_the_other_auth
     assert record.parents, "the authority that copied nothing found a real disagreement"
 
 
-def test_where_every_leg_is_hollow_or_unasked_no_record_is_written(
-    clinvar: Path, tmp_path: Path
-) -> None:
+def test_where_every_leg_is_hollow_or_unasked_no_record_is_written(clinvar: Path, tmp_path: Path) -> None:
     """The defect this release has now caught five times, in the place it is likeliest to reappear.
 
     ClinVar tautological and no PubMind snapshot leaves nobody who could have disagreed. Two empty
@@ -455,10 +484,16 @@ def test_where_every_leg_is_hollow_or_unasked_no_record_is_written(
     variants = _read_variants(spec)
     resolution = _resolution_for(variants, clinvar)
     assert resolution, "the drafted rows must resolve, or the skip is untested"
-    assert clin_sig_concordance(
-        variants, resolution, reference=clinvar,
-        sources=read_sources_file(spec), spec_dir=spec,
-    ) is None
+    assert (
+        clin_sig_concordance(
+            variants,
+            resolution,
+            reference=clinvar,
+            sources=read_sources_file(spec),
+            spec_dir=spec,
+        )
+        is None
+    )
     # A run that could not put the question reports no zero either.
     assert concordance_sentences(None) == []
     assert concordance_notes(None) == []
@@ -493,7 +528,9 @@ def test_the_pubmind_leg_reads_its_skip_from_the_projection_registry_rather_than
     merge_sources_file(
         [
             SourceRow(
-                source=PUBMIND_AUTHORITY, layer="annotation", declared_use="non_commercial",
+                source=PUBMIND_AUTHORITY,
+                layer="annotation",
+                declared_use="non_commercial",
                 dataset=pubmind_dataset_label(pubmind),
                 draft_digest=draft_digest(spec, PUBMIND_AUTHORITY),
             )
@@ -504,8 +541,12 @@ def test_the_pubmind_leg_reads_its_skip_from_the_projection_registry_rather_than
     sources = read_sources_file(spec)
 
     record = clin_sig_concordance(
-        [variant], _resolution(variant), reference=clinvar, pubmind_reference=pubmind,
-        sources=sources, spec_dir=spec,
+        [variant],
+        _resolution(variant),
+        reference=clinvar,
+        pubmind_reference=pubmind,
+        sources=sources,
+        spec_dir=spec,
     )
     assert record is not None
     states = {leg.authority: leg.state for leg in record.legs}
@@ -518,8 +559,12 @@ def test_the_pubmind_leg_reads_its_skip_from_the_projection_registry_rather_than
     # Move one checked cell and the leg runs again in full — the digest half of the conjunction.
     _write_variants(spec, [_variant("benign", "A/T")])
     moved = clin_sig_concordance(
-        [_variant("benign", "A/T")], _resolution(variant), reference=clinvar,
-        pubmind_reference=pubmind, sources=read_sources_file(spec), spec_dir=spec,
+        [_variant("benign", "A/T")],
+        _resolution(variant),
+        reference=clinvar,
+        pubmind_reference=pubmind,
+        sources=read_sources_file(spec),
+        spec_dir=spec,
     )
     assert moved is not None
     assert {leg.authority: leg.state for leg in moved.legs}[PUBMIND_AUTHORITY] == "consulted"
@@ -596,9 +641,13 @@ def test_the_real_pair_of_authorities_grows_to_five_without_a_new_member(
     assert record is not None
     real = [
         AuthorityCall(
-            authority=call.authority, status=call.status, clin_sig=call.clin_sig,
-            clin_sig_raw=call.clin_sig_raw, confidence=call.confidence,
-            confidence_unit=call.confidence_unit, dataset=call.dataset,
+            authority=call.authority,
+            status=call.status,
+            clin_sig=call.clin_sig,
+            clin_sig_raw=call.clin_sig_raw,
+            confidence=call.confidence,
+            confidence_unit=call.confidence_unit,
+            dataset=call.dataset,
         )
         for call in record.calls
     ]
@@ -626,11 +675,15 @@ def test_every_leg_state_is_reachable_from_a_real_run(clinvar: Path, tmp_path: P
 
     observed: set[str] = set()
     for record in (
-        clin_sig_concordance([variant], rows, reference=clinvar),                       # unchecked
+        clin_sig_concordance([variant], rows, reference=clinvar),  # unchecked
         clin_sig_concordance([variant], rows, reference=clinvar, pubmind_reference=pubmind),
-        clin_sig_concordance(                                                           # tautological
-            drafted, drafted_rows, reference=clinvar, pubmind_reference=pubmind,
-            sources=read_sources_file(spec), spec_dir=spec,
+        clin_sig_concordance(  # tautological
+            drafted,
+            drafted_rows,
+            reference=clinvar,
+            pubmind_reference=pubmind,
+            sources=read_sources_file(spec),
+            spec_dir=spec,
         ),
     ):
         assert record is not None
@@ -656,8 +709,15 @@ def test_a_contested_module_never_refuses_a_strict_run(clinvar: Path, tmp_path: 
 
     for mode in ("best_effort", "strict"):
         result = enrich(
-            spec, mode=mode, offline=True, clinvar_cache=clinvar, pubmind_cache=pubmind,
-            use_gnomad=False, verify_rsids=False, verify_datasets=False, mint_vrs=False,
+            spec,
+            mode=mode,
+            offline=True,
+            clinvar_cache=clinvar,
+            pubmind_cache=pubmind,
+            use_gnomad=False,
+            verify_rsids=False,
+            verify_datasets=False,
+            mint_vrs=False,
         )
         assert result.clin_sig_record is not None, mode
         assert result.clin_sig_record.parents, mode
@@ -676,8 +736,14 @@ def test_the_two_way_skip_and_the_leg_note_do_not_both_print_the_same_sentence(
     pubmind = _pubmind(tmp_path / "pm", [(_CHROM, _START, "T", "A", "PV1", "Benign", "0.1", "1")])
     with caplog.at_level("INFO", logger="just_dna_enricher.enrich"):
         result = enrich(
-            spec, offline=True, clinvar_cache=clinvar, pubmind_cache=pubmind, use_gnomad=False,
-            verify_rsids=False, verify_datasets=False, mint_vrs=False,
+            spec,
+            offline=True,
+            clinvar_cache=clinvar,
+            pubmind_cache=pubmind,
+            use_gnomad=False,
+            verify_rsids=False,
+            verify_datasets=False,
+            mint_vrs=False,
         )
     sentence = result.clin_sig_not_checked
     assert sentence and "drafted from" in sentence
@@ -699,8 +765,7 @@ def test_the_reported_sentences_carry_their_denominator_and_the_authorities_that
     assert record is not None
     sentences = concordance_sentences(record)
     assert any(
-        f"{record.contested} of {record.subjects} subject(s) put to the authorities are contested"
-        in line
+        f"{record.contested} of {record.subjects} subject(s) put to the authorities are contested" in line
         for line in sentences
     )
     assert any("Authorities consulted: clinvar, pubmind" in line for line in sentences)
@@ -746,16 +811,32 @@ def test_a_record_survives_a_run_that_could_not_replace_it(clinvar: Path, tmp_pa
     (spec / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
     _write_variants(spec, [_variant("benign", "A/T", rsid="rs334")])
 
-    enrich(spec, offline=True, clinvar_cache=clinvar, pubmind_cache=_no_pubmind(tmp_path),
-           use_gnomad=False, verify_rsids=False, verify_datasets=False, mint_vrs=False)
+    enrich(
+        spec,
+        offline=True,
+        clinvar_cache=clinvar,
+        pubmind_cache=_no_pubmind(tmp_path),
+        use_gnomad=False,
+        verify_rsids=False,
+        verify_datasets=False,
+        mint_vrs=False,
+    )
     written = (spec / CONCORDANCE_CSV).read_text(encoding="utf-8")
     assert len(written.splitlines()) > 1, "the first run really did record a contested subject"
 
     # Now take the snapshot away: nobody can be asked, so nothing may be rewritten.
     empty = tmp_path / "empty"
     empty.mkdir()
-    result = enrich(spec, offline=True, clinvar_cache=empty, pubmind_cache=_no_pubmind(tmp_path),
-                    use_gnomad=False, verify_rsids=False, verify_datasets=False, mint_vrs=False)
+    result = enrich(
+        spec,
+        offline=True,
+        clinvar_cache=empty,
+        pubmind_cache=_no_pubmind(tmp_path),
+        use_gnomad=False,
+        verify_rsids=False,
+        verify_datasets=False,
+        mint_vrs=False,
+    )
     assert result.clin_sig_record is None
     assert (spec / CONCORDANCE_CSV).read_text(encoding="utf-8") == written
 
@@ -768,16 +849,26 @@ def test_a_refused_strict_run_leaves_no_record_behind(
     spec = tmp_path / "spec"
     spec.mkdir()
     (spec / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
-    _write_variants(spec, [
-        _variant("benign", "A/T", rsid="rs334"),
-        # A well-formed rsID with no coordinate anywhere, so `strict` refuses on `unresolved`.
-        VariantRow(rsid="rs999999999", genotype="A/G", state="risk",
-                   conclusion="c", clin_sig="benign"),
-    ])
+    _write_variants(
+        spec,
+        [
+            _variant("benign", "A/T", rsid="rs334"),
+            # A well-formed rsID with no coordinate anywhere, so `strict` refuses on `unresolved`.
+            VariantRow(rsid="rs999999999", genotype="A/G", state="risk", conclusion="c", clin_sig="benign"),
+        ],
+    )
     with pytest.raises(Exception):
-        enrich(spec, mode="strict", offline=True, clinvar_cache=clinvar,
-               pubmind_cache=_no_pubmind(tmp_path), use_gnomad=False,
-               verify_rsids=False, verify_datasets=False, mint_vrs=False)
+        enrich(
+            spec,
+            mode="strict",
+            offline=True,
+            clinvar_cache=clinvar,
+            pubmind_cache=_no_pubmind(tmp_path),
+            use_gnomad=False,
+            verify_rsids=False,
+            verify_datasets=False,
+            mint_vrs=False,
+        )
     assert not (spec / CONCORDANCE_CSV).exists()
     assert not (spec / AUTHORITY_CALLS_CSV).exists()
 

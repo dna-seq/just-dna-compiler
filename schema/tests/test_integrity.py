@@ -36,18 +36,15 @@ def _module_dir(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _manifest_for(module_dir: Path, *, compiled_by: str = MARKETPLACE_COMPILED_BY,
-                  compile_success: bool = True) -> ModuleManifest:
-    artifact = build_artifact(
-        module_dir, ["weights.parquet", "annotations.parquet", "studies.parquet"]
-    )
+def _manifest_for(
+    module_dir: Path, *, compiled_by: str = MARKETPLACE_COMPILED_BY, compile_success: bool = True
+) -> ModuleManifest:
+    artifact = build_artifact(module_dir, ["weights.parquet", "annotations.parquet", "studies.parquet"])
     return ModuleManifest(
         identity=Identity(name="demo"),
         display=Display(title="Demo", description="d", report_title="Demo Report"),
         stats=Stats(),
-        compilation=Compilation(
-            compile_success=compile_success, compiled_by=compiled_by
-        ),
+        compilation=Compilation(compile_success=compile_success, compiled_by=compiled_by),
         artifact=artifact,
     )
 

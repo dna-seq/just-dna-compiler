@@ -129,9 +129,7 @@ def _alleles_from_resolution(
             # here, and the default would mint a GRCh38 identity whatever the row says. The off-build
             # skip above already guarantees the two agree; passing it anyway is what keeps that true
             # if the guard is ever loosened.
-            key = derive_variant_key(
-                None, row.chrom, row.start, row.ref, alt, build=row.genome_build
-            )
+            key = derive_variant_key(None, row.chrom, row.start, row.ref, alt, build=row.genome_build)
             # The rsID travels from the resolution row rather than from the archive, and that is the
             # cheaper of two honest routes: `clinvar.lookup_clin_sig` does not select it, and widening
             # a reader two other callers share — one of them a query-plan guard asserting the returned
@@ -201,9 +199,7 @@ def enrich_clinical_assertions(
 
     existing_rows: list[ClinicalAssertionRow] = []
     if assertions_path.exists():
-        parsed, errors, _ = load_csv_rows(
-            assertions_path, ClinicalAssertionRow, assertions_path.name
-        )
+        parsed, errors, _ = load_csv_rows(assertions_path, ClinicalAssertionRow, assertions_path.name)
         if errors:
             raise ClinicalAssertionError(f"existing {assertions_path.name} is invalid: {errors[0]}")
         existing_rows = parsed
@@ -217,7 +213,10 @@ def enrich_clinical_assertions(
             "ClinVar snapshot is %s-only and its lookup key carries no assembly, so a coordinate "
             "from another build would return a different variant's record under this module's key. "
             "Examples: %s",
-            len(off_build), ASSERTION_GENOME_BUILD, ASSERTION_GENOME_BUILD, off_build[:3],
+            len(off_build),
+            ASSERTION_GENOME_BUILD,
+            ASSERTION_GENOME_BUILD,
+            off_build[:3],
         )
 
     reference = resolve_clinvar_reference(clinvar_cache)
@@ -239,8 +238,9 @@ def enrich_clinical_assertions(
         out = sorted(existing_rows, key=_sort_key)
         if write and existing_rows:
             _write_assertions_csv(out, assertions_path)
-        return ClinicalAssertionResult(rows=out, mode=mode, skipped_no_snapshot=True,
-                                       off_build=sorted(set(off_build)))
+        return ClinicalAssertionResult(
+            rows=out, mode=mode, skipped_no_snapshot=True, off_build=sorted(set(off_build))
+        )
 
     dataset = snapshot_dataset(reference)
     # **Every in-scope allele is asked about on every run, and that is a deliberate departure from
@@ -265,13 +265,16 @@ def enrich_clinical_assertions(
         """
         logger.warning(
             "ClinVar reference at %s is present but not usable (%s); the clinical-assertion pass "
-            "is skipped this run. Rebuild it with `just-dna-enricher clinvar build`.", reference, reason,
+            "is skipped this run. Rebuild it with `just-dna-enricher clinvar build`.",
+            reference,
+            reason,
         )
         kept = sorted(existing_rows, key=_sort_key)
         if write and existing_rows:
             _write_assertions_csv(kept, assertions_path)
-        return ClinicalAssertionResult(rows=kept, mode=mode, skipped_no_snapshot=True,
-                                       off_build=sorted(set(off_build)))
+        return ClinicalAssertionResult(
+            rows=kept, mode=mode, skipped_no_snapshot=True, off_build=sorted(set(off_build))
+        )
 
     try:
         records = lookup_clin_sig(reference, [(c, s, r, a) for _k, _rs, c, s, r, a in wanted])
@@ -301,9 +304,17 @@ def enrich_clinical_assertions(
             seen.add((key, None))
             out.append(
                 ClinicalAssertionRow(
-                    variant_key=key, rsid=rsid, chrom=chrom, start=start, ref=ref, alt=alt,
-                    genome_build=ASSERTION_GENOME_BUILD, dataset=dataset,
-                    source=CLINVAR_SOURCE, status="not_found", fetched_at=fetched_at,
+                    variant_key=key,
+                    rsid=rsid,
+                    chrom=chrom,
+                    start=start,
+                    ref=ref,
+                    alt=alt,
+                    genome_build=ASSERTION_GENOME_BUILD,
+                    dataset=dataset,
+                    source=CLINVAR_SOURCE,
+                    status="not_found",
+                    fetched_at=fetched_at,
                 )
             )
             continue
@@ -323,7 +334,10 @@ def enrich_clinical_assertions(
                     ClinicalAssertionRow(
                         variant_key=key,
                         rsid=rsid,
-                        chrom=chrom, start=start, ref=ref, alt=alt,
+                        chrom=chrom,
+                        start=start,
+                        ref=ref,
+                        alt=alt,
                         genome_build=ASSERTION_GENOME_BUILD,
                         clin_sig=_text(record.get("clin_sig")),
                         clin_sig_raw=_text(record.get("clin_sig_raw")),

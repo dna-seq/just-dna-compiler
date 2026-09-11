@@ -27,10 +27,7 @@ from typer.testing import CliRunner
 
 runner = CliRunner()
 
-_YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: parity\n  title: P\n  description: d\n  report_title: P\n"
-)
+_YAML = "schema_version: '1.0'\nmodule:\n  name: parity\n  title: P\n  description: d\n  report_title: P\n"
 _VARIANTS = "rsid,genotype,state,conclusion\nrs1800562,A/A,risk,c\n"
 _STUDIES = "rsid,pmid\nrs1800562,10453733\n"
 
@@ -57,9 +54,7 @@ def test_the_whole_sign_then_verify_loop_runs_from_the_cli_alone(tmp_path: Path)
     keygen = runner.invoke(app, ["keygen", "--out", str(key)])
     assert keygen.exit_code == 0, keygen.output
     public_key = next(
-        line.split("public key:")[1].strip()
-        for line in keygen.output.splitlines()
-        if "public key:" in line
+        line.split("public key:")[1].strip() for line in keygen.output.splitlines() if "public key:" in line
     )
 
     assert runner.invoke(app, ["sign", str(module), "--private-key", str(key)]).exit_code == 0

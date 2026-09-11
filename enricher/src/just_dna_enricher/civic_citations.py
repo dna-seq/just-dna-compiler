@@ -178,15 +178,11 @@ class CivicSubject:
         cells = self.identity_cells
         if not (cells.get("rsid") or cells.get("chrom")):
             return None
-        return derive_variant_key(
-            cells.get("rsid"), cells.get("chrom"), cells.get("start"), cells.get("ref")
-        )
+        return derive_variant_key(cells.get("rsid"), cells.get("chrom"), cells.get("start"), cells.get("ref"))
 
     def restate(self) -> str:
         """`CIViC variant 1955 (VHL P71fs (c.211insT))` — what a line puts in front of an author."""
-        return f"CIViC variant {self.variant_id}" + (
-            f" ({self.civic_name})" if self.civic_name else ""
-        )
+        return f"CIViC variant {self.variant_id}" + (f" ({self.civic_name})" if self.civic_name else "")
 
 
 @dataclass
@@ -223,9 +219,7 @@ class CivicCitationsResult:
 # ── mapping a module onto CIViC variant ids ─────────────────────────────────────────────────────
 
 
-def read_module(
-    spec_dir: Path, *, genome_build: str
-) -> tuple[list[VariantRow], list[ResolutionRow]]:
+def read_module(spec_dir: Path, *, genome_build: str) -> tuple[list[VariantRow], list[ResolutionRow]]:
     """The two authored/injected tables this lane joins on, loaded the way every other reader does.
 
     **The build re-stamp is not optional** (`@restamp-for-build`). `VariantRow._freeze_identity` runs
@@ -273,11 +267,11 @@ def read_studies(spec_dir: Path) -> list[StudyRow]:
     if errors:
         logger.warning(
             "studies.csv could not be read (%s), so no recorded CIViC citation was re-asked about; "
-            "the compiler reports this table's own errors.", errors[0],
+            "the compiler reports this table's own errors.",
+            errors[0],
         )
         return []
     return rows
-
 
 
 def _snapshot_variant_ids(reference: Path | None) -> dict[tuple[str, int, str, str], tuple[int, str | None]]:
@@ -308,8 +302,7 @@ def _curated_variant_ids() -> dict[tuple[str, int, str, str], tuple[int, str | N
     identifier for. Built from the shipped tuple rather than restated, so the two cannot drift.
     """
     return {
-        (row.chrom, row.start, row.ref, row.alt): (row.variant_id, row.name)
-        for row in CIVIC_NAME_IDENTITIES
+        (row.chrom, row.start, row.ref, row.alt): (row.variant_id, row.name) for row in CIVIC_NAME_IDENTITIES
     }
 
 
@@ -409,18 +402,16 @@ class RecoveredCitation:
         When the API was asked is on the `SourceRow`; putting it here would fold the moment of a read
         into `content_signature`, where only claims belong.
         """
-        quoted = ", ".join(
-            item.restate() for item in sorted(self.items, key=lambda i: i.evidence_id)
-        )
+        quoted = ", ".join(item.restate() for item in sorted(self.items, key=lambda i: i.evidence_id))
         return (
             f"{self.subject.restate()}: {quoted}. Recovered from CIViC's GraphQL API, which "
             f"publishes evidence at every curation status; the dated bulk release does not carry it."
         )
 
 
-def _citations(subject: CivicSubject, items: Sequence[CivicEvidenceItem]) -> tuple[
-    list[RecoveredCitation], dict[str, int]
-]:
+def _citations(
+    subject: CivicSubject, items: Sequence[CivicEvidenceItem]
+) -> tuple[list[RecoveredCitation], dict[str, int]]:
     """Group one variant's items into citations, with what was withheld and why.
 
     Grouped by PMID because that is `studies.csv`'s grain — a `(variant_key, pmid)` pair is one row,
@@ -494,12 +485,8 @@ def draft_civic_citations(
     different facts (`@unreachable-not-absent`).
     """
     spec_dir = Path(spec_dir)
-    result = CivicCitationsResult(
-        withheld=dict.fromkeys(CIVIC_CITATION_WITHHELD_REASONS, 0), offline=offline
-    )
-    subjects, unmapped = plan_subjects(
-        variants, resolution_rows, reference=reference, requested=requested
-    )
+    result = CivicCitationsResult(withheld=dict.fromkeys(CIVIC_CITATION_WITHHELD_REASONS, 0), offline=offline)
+    subjects, unmapped = plan_subjects(variants, resolution_rows, reference=reference, requested=requested)
     result.subjects = subjects
     result.unmapped_rows = unmapped
     if not subjects:
@@ -525,8 +512,7 @@ def draft_civic_citations(
             # CIViC answered with something this client cannot read. Still nobody-asked as far as this
             # variant's citations go, and it must not read as an absence.
             result.unreachable[subject.variant_id] = "unreadable"
-            logger.warning("CIViC's answer for variant %s could not be read (%s)",
-                           subject.variant_id, exc)
+            logger.warning("CIViC's answer for variant %s could not be read (%s)", subject.variant_id, exc)
             continue
         citations, withheld = _citations(subject, items)
         for reason, count in withheld.items():
@@ -543,9 +529,7 @@ def draft_civic_citations(
             partials.append(_study_partial(citation))
 
     if partials:
-        result.reports.append(
-            append_partial_rows(spec_dir, "studies.csv", partials, dry_run=dry_run)
-        )
+        result.reports.append(append_partial_rows(spec_dir, "studies.csv", partials, dry_run=dry_run))
     if result.unreachable:
         result.warnings.append(
             f"{len(result.unreachable)} of {len(subjects)} subject(s) could not be asked "
@@ -630,9 +614,7 @@ class EvidenceStatusCheck:
                 "curation status to re-ask about"
             )
         if self.skip == "offline":
-            return (
-                f"--offline, so none of the {self.recorded} recorded CIViC citation(s) was re-asked"
-            )
+            return f"--offline, so none of the {self.recorded} recorded CIViC citation(s) was re-asked"
         if self.skip == "no_reference":
             return (
                 f"none of the {self.recorded} recorded CIViC citation(s) could be mapped back to a "
@@ -690,12 +672,13 @@ def grounding_civic_citations(studies: Sequence[StudyRow]) -> int:
     publishes no identity for. The cost is that no later run can map one back to a CIViC variant id,
     and that is a fact about the check's reach: counted and published, never read as agreement.
     """
-    return len([
-        row for row in studies
-        if row.variant_key is None
-        and (row.confidence_unit or "") == CIVIC_STATUS_UNIT
-        and row.confidence
-    ])
+    return len(
+        [
+            row
+            for row in studies
+            if row.variant_key is None and (row.confidence_unit or "") == CIVIC_STATUS_UNIT and row.confidence
+        ]
+    )
 
 
 def cited_pmids(studies: Sequence[StudyRow]) -> dict[str, set[str]]:
@@ -770,8 +753,7 @@ def check_evidence_status_currency(
             continue
         except CivicApiError as exc:
             check.unreachable[subject.variant_id] = "unreadable"
-            logger.warning("CIViC's answer for variant %s could not be read (%s)",
-                           subject.variant_id, exc)
+            logger.warning("CIViC's answer for variant %s could not be read (%s)", subject.variant_id, exc)
             continue
         check.subjects += 1
         citations, _withheld = _citations(subject, items)
@@ -792,15 +774,11 @@ def check_evidence_status_currency(
                 )
                 continue
             if citation.status is not None and citation.status != was:
-                check.findings.append(
-                    MovedCitation(CIVIC_STATUS_MOVED, subject, pmid, was, citation.status)
-                )
+                check.findings.append(MovedCitation(CIVIC_STATUS_MOVED, subject, pmid, was, citation.status))
         for pmid, citation in current.items():
             if pmid not in cited:
                 check.findings.append(
-                    MovedCitation(
-                        CIVIC_CITATION_ADDED, subject, pmid, None, citation.status or "unstated"
-                    )
+                    MovedCitation(CIVIC_CITATION_ADDED, subject, pmid, None, citation.status or "unstated")
                 )
     if not check.subjects:
         check.skip = "unreachable"

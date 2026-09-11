@@ -87,10 +87,7 @@ def _files() -> list[Path]:
     return sorted(
         path
         for path in _ROOT.rglob("*.md")
-        if not any(
-            part.startswith(".") or part in _SKIP_DIRS
-            for part in path.relative_to(_ROOT).parts
-        )
+        if not any(part.startswith(".") or part in _SKIP_DIRS for part in path.relative_to(_ROOT).parts)
     )
 
 
@@ -122,9 +119,7 @@ def _verbatim_lines(body: str) -> set[int]:
     out: set[int] = set()
     for n, start in enumerate(starts):
         end = starts[n + 1] if n + 1 < len(starts) else len(lines)
-        marker = next(
-            (j for j in range(start, end) if _TRIAGE_MARKER.search(lines[j])), None
-        )
+        marker = next((j for j in range(start, end) if _TRIAGE_MARKER.search(lines[j])), None)
         first = start if marker is None else marker + 1
         out.update(range(first + 1, end + 1))
     return out
@@ -204,8 +199,6 @@ def test_every_relative_doc_link_resolves() -> None:
             if resolved not in anchors:
                 anchors[resolved] = _anchors(resolved.read_text())
             if fragment not in anchors[resolved]:
-                findings.append(
-                    f"{where} -> {target}: {resolved.name} has no heading with that anchor"
-                )
+                findings.append(f"{where} -> {target}: {resolved.name} has no heading with that anchor")
 
     assert not findings, "dead documentation links:\n" + "\n".join(findings)

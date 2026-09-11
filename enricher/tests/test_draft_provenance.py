@@ -39,10 +39,20 @@ def _variants(spec: Path, rows: list[dict]) -> Path:
 def _drafted_rows() -> list[dict]:
     """What `clinvar_draft` writes: identity and `clin_sig` filled, `genotype` still a stub."""
     return [
-        {"rsid": "rs334", "genotype": TEMPLATE_PLACEHOLDER, "state": "risk",
-         "conclusion": "a", "clin_sig": "pathogenic"},
-        {"rsid": "rs1799945", "genotype": TEMPLATE_PLACEHOLDER, "state": "risk",
-         "conclusion": "b", "clin_sig": "benign"},
+        {
+            "rsid": "rs334",
+            "genotype": TEMPLATE_PLACEHOLDER,
+            "state": "risk",
+            "conclusion": "a",
+            "clin_sig": "pathogenic",
+        },
+        {
+            "rsid": "rs1799945",
+            "genotype": TEMPLATE_PLACEHOLDER,
+            "state": "risk",
+            "conclusion": "b",
+            "clin_sig": "benign",
+        },
     ]
 
 
@@ -132,8 +142,11 @@ def test_a_source_that_drafts_nothing_has_no_digest(tmp_path: Path) -> None:
 
 def _licence_row(dataset: str = "clinvar_2026-06-27", digest: str | None = None) -> SourceRow:
     return SourceRow(
-        source="clinvar", layer="annotation", license="public-domain",
-        dataset=dataset, draft_digest=digest,
+        source="clinvar",
+        layer="annotation",
+        license="public-domain",
+        dataset=dataset,
+        draft_digest=digest,
     )
 
 
@@ -203,14 +216,22 @@ def test_the_digest_survives_a_round_trip_because_it_rides_the_licence_parquet(
     from just_dna_compiler.compiler import compile_module, reverse_module
     from just_dna_format.layout import SOURCES_CSV, resolve_sidecar
 
-    spec = _variants(tmp_path / "spec", [
-        {"rsid": "rs334", "genotype": "A/T", "state": "risk", "conclusion": "a",
-         "clin_sig": "pathogenic"},
-    ])
+    spec = _variants(
+        tmp_path / "spec",
+        [
+            {
+                "rsid": "rs334",
+                "genotype": "A/T",
+                "state": "risk",
+                "conclusion": "a",
+                "clin_sig": "pathogenic",
+            },
+        ],
+    )
     (spec / "studies.csv").write_text("rsid,pmid\nrs334,12345678\n", encoding="utf-8")
     (spec / "module_spec.yaml").write_text(
         'schema_version: "1.0"\nmodule:\n  name: demo\n  title: T\n  description: d\n'
-        '  report_title: R\ngenome_build: GRCh38\n',
+        "  report_title: R\ngenome_build: GRCh38\n",
         encoding="utf-8",
     )
     write_sources_csv([_licence_row()], spec / "sources.csv")

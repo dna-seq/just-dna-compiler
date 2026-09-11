@@ -213,9 +213,7 @@ def atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> Path
 
 
 @contextmanager
-def atomic_writer(
-    path: Path, *, encoding: str = "utf-8", newline: str | None = None
-) -> Iterator[TextIO]:
+def atomic_writer(path: Path, *, encoding: str = "utf-8", newline: str | None = None) -> Iterator[TextIO]:
     """A text handle whose writes land at `path` only if the block completes.
 
     The `csv.DictWriter` half of the same guarantee — the writers pass `newline=""` exactly as they do

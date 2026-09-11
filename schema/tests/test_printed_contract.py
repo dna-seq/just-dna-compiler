@@ -199,9 +199,17 @@ def test_a_dyadic_bound_is_unaffected_in_either_direction() -> None:
     """`0.0`, `0.5`, `1.0` are exactly representable, so the rule is about which decimals an author
     writes rather than about every bound."""
     row = HeteroplasmyRow(
-        chrom="MT", start=3243, ref="A", alts="G", gene="MT-TL1",
-        reference_sequence="NC_012920.1", tissue="blood", measure_kind="allele_fraction",
-        measure_min=0.5, measure_max=1.0, conclusion="MELAS spectrum.",
+        chrom="MT",
+        start=3243,
+        ref="A",
+        alts="G",
+        gene="MT-TL1",
+        reference_sequence="NC_012920.1",
+        tissue="blood",
+        measure_kind="allele_fraction",
+        measure_min=0.5,
+        measure_max=1.0,
+        conclusion="MELAS spectrum.",
     )
     assert row.measure_min is not None and _as_float32(row.measure_min) == row.measure_min
     assert row.measure_max is not None and _as_float32(row.measure_max) == row.measure_max
@@ -345,7 +353,7 @@ def test_no_shipped_example_uses_a_superseded_member() -> None:
     for path in sorted(root.glob("*/variants.csv")):
         with path.open(newline="", encoding="utf-8") as handle:
             for row in csv.DictReader(handle):
-                if (value := (row.get("state") or "").strip()):
+                if value := (row.get("state") or "").strip():
                     used.add(value)
 
     assert used, "no reference example authored a `state` cell — the corpus moved"

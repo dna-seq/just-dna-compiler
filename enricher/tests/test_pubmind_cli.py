@@ -122,9 +122,7 @@ def test_the_cache_resolver_finds_a_built_snapshot_and_withholds_otherwise(
     assert resolve_pubmind_reference(load_dotenv_file=False) is None
 
     out = tmp_path / "snap"
-    assert _runner.invoke(
-        app, ["pubmind", "build", "--table", str(_SLICE), "--out", str(out)]
-    ).exit_code == 0
+    assert _runner.invoke(app, ["pubmind", "build", "--table", str(_SLICE), "--out", str(out)]).exit_code == 0
     monkeypatch.setenv("JUST_DNA_PUBMIND_CACHE", str(out))
     assert resolve_pubmind_reference(load_dotenv_file=False) == out
 

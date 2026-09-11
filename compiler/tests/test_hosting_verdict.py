@@ -68,9 +68,9 @@ def test_the_verdict_matrix(label, genotype, ref, alts, expected) -> None:
 def test_genotype_fits_keeps_what_it_cannot_decide() -> None:
     """The boolean face collapses `None` into "keep", which is the module's standing doctrine: only a
     positive contradiction rejects, exactly as a locus with no recorded alleles is kept."""
-    assert genotype_fits("C/C", "AGAG", "AG") is True        # undecided → kept
-    assert genotype_fits("G/GT", "GTT", "G") is False        # decided against → dropped
-    assert genotype_fits("C/CAG", "AGAG", "AG") is True      # reconciled
+    assert genotype_fits("C/C", "AGAG", "AG") is True  # undecided → kept
+    assert genotype_fits("G/GT", "GTT", "G") is False  # decided against → dropped
+    assert genotype_fits("C/CAG", "AGAG", "AG") is True  # reconciled
 
 
 # ── the property that protects every already-compiled module ────────────────────────────────────
@@ -180,11 +180,11 @@ def test_a_non_nucleotide_locus_allele_is_diagnosed_as_spelling_not_genotype() -
     """
     from just_dna_compiler.resolution import hosting_verdict, spelling_caveat
 
-    assert hosting_verdict("C/T", "T", "Y") is False        # unchanged: the verdict was never wrong
+    assert hosting_verdict("C/T", "T", "Y") is False  # unchanged: the verdict was never wrong
     caveat = spelling_caveat("T", "Y")
     assert "IUPAC ambiguity code" in caveat
-    assert "never expanded" in caveat                        # an uncertainty, so it cannot be resolved
-    assert spelling_caveat("T", "A,G") == ""                 # nucleotides say nothing extra
+    assert "never expanded" in caveat  # an uncertainty, so it cannot be resolved
+    assert spelling_caveat("T", "A,G") == ""  # nucleotides say nothing extra
 
 
 def test_the_two_reasons_carry_their_own_consequence_and_never_each_others() -> None:

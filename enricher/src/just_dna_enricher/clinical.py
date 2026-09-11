@@ -147,11 +147,7 @@ def _effect_allele(variant: VariantRow, ref: str, alts: list[str]) -> str | None
     """
     if variant.effect_allele:
         return variant.effect_allele.upper()
-    alleles = {
-        allele.upper()
-        for allele in variant.genotype.replace("|", "/").split("/")
-        if allele
-    }
+    alleles = {allele.upper() for allele in variant.genotype.replace("|", "/").split("/") if allele}
     non_reference = sorted(alleles - {ref.upper()})
     if len(non_reference) == 1 and non_reference[0] in {a.upper() for a in alts}:
         return non_reference[0]
@@ -348,10 +344,7 @@ def comparison_plan(
         for row in resolved[variant.variant_key]:
             alts = [a.strip() for a in (row.alts or "").split(",") if a.strip()]
             chosen = _effect_allele(variant, row.ref or "", alts)
-            targets = [
-                (row.chrom, row.start, row.ref, alt)
-                for alt in ([chosen] if chosen else alts)
-            ]
+            targets = [(row.chrom, row.start, row.ref, alt) for alt in ([chosen] if chosen else alts)]
             for target in targets:
                 if target not in seen:
                     seen.add(target)
@@ -464,7 +457,9 @@ def compare_clin_sig(
         # compared, and a zeroed breakdown would say the opposite.
         logger.warning(
             "ClinVar reference at %s is present but not queryable (%s); the clin_sig cross-check is "
-            "skipped this run. Rebuild it with `just-dna-enricher clinvar build`.", reference, exc,
+            "skipped this run. Rebuild it with `just-dna-enricher clinvar build`.",
+            reference,
+            exc,
         )
         return None
 
@@ -499,7 +494,8 @@ def compare_clin_sig(
         if any(CLIN_SIG_CAMP.get(r["clin_sig"], "undecided") == authored_camp for _t, r in candidates):
             continue
         opinionated = [
-            (t, r) for t, r in candidates
+            (t, r)
+            for t, r in candidates
             if CLIN_SIG_CAMP.get(r["clin_sig"], "undecided") not in {"undecided", "orthogonal"}
         ]
         if not opinionated:
@@ -510,7 +506,10 @@ def compare_clin_sig(
         conflict = ClinSigConflict(
             variant_key=variant.variant_key or "",
             genotype=variant.genotype,
-            chrom=chrom, start=start, ref=ref, alt=alt,
+            chrom=chrom,
+            start=start,
+            ref=ref,
+            alt=alt,
             authored=authored,
             authority_clin_sig=record["clin_sig"],
             review_stars=record.get("review_stars"),
@@ -524,7 +523,9 @@ def compare_clin_sig(
         if entry.locus_wide:
             logger.debug(
                 "%s: compared against the whole locus (the annotation's ALT could not be determined "
-                "from genotype %s)", variant.variant_key, variant.genotype,
+                "from genotype %s)",
+                variant.variant_key,
+                variant.genotype,
             )
     return ClinSigComparison(
         compared=compared,
@@ -870,7 +871,9 @@ def _pubmind_calls_by_subject(
         logger.warning(
             "PubMind reference at %s is present but not queryable (%s); its leg of the clin_sig "
             "concordance check reads unchecked this run. Rebuild it with "
-            "`just-dna-enricher pubmind build`.", reference, exc,
+            "`just-dna-enricher pubmind build`.",
+            reference,
+            exc,
         )
         return None
 
@@ -958,9 +961,7 @@ def clin_sig_concordance(
     # ── the legs, walked from AUTHORITY_ORDER so the record cannot silently lose one ──────────────
     clinvar_dataset = clinvar_dataset_label(reference)
     pubmind_dataset = pubmind_dataset_label(pubmind_reference)
-    clinvar_taut = (
-        tautology_reason(recorded_sources, reference, spec_dir) if sources is not None else None
-    )
+    clinvar_taut = tautology_reason(recorded_sources, reference, spec_dir) if sources is not None else None
     pubmind_taut = (
         leg_tautology_note(recorded_sources, PUBMIND_AUTHORITY, pubmind_dataset, spec_dir)
         if sources is not None
@@ -982,16 +983,15 @@ def clin_sig_concordance(
             comparison = compare_clin_sig(variants, resolution_rows, reference=reference)
         if comparison is None:
             outcomes[CLINVAR_AUTHORITY] = AuthorityLegOutcome(
-                CLINVAR_AUTHORITY, "unchecked", clinvar_dataset,
+                CLINVAR_AUTHORITY,
+                "unchecked",
+                clinvar_dataset,
                 "no ClinVar snapshot was provisioned, or the one present would not answer",
             )
         else:
-            outcomes[CLINVAR_AUTHORITY] = AuthorityLegOutcome(
-                CLINVAR_AUTHORITY, "consulted", clinvar_dataset
-            )
+            outcomes[CLINVAR_AUTHORITY] = AuthorityLegOutcome(CLINVAR_AUTHORITY, "consulted", clinvar_dataset)
             by_authority[CLINVAR_AUTHORITY] = {
-                (subject.variant_key, subject.genotype): subject.calls[0]
-                for subject in comparison.subjects
+                (subject.variant_key, subject.genotype): subject.calls[0] for subject in comparison.subjects
             }
 
     if pubmind_taut is not None:
@@ -1000,7 +1000,9 @@ def clin_sig_concordance(
         )
     elif pubmind_reference is None:
         outcomes[PUBMIND_AUTHORITY] = AuthorityLegOutcome(
-            PUBMIND_AUTHORITY, "unchecked", pubmind_dataset,
+            PUBMIND_AUTHORITY,
+            "unchecked",
+            pubmind_dataset,
             "no PubMind snapshot was provisioned; it is operator-built and nothing provisions it "
             "for you (`just-dna-enricher pubmind build`)",
         )
@@ -1008,14 +1010,14 @@ def clin_sig_concordance(
         answered = _pubmind_calls_by_subject(pubmind_reference, plan, wanted, pubmind_dataset)
         if answered is None:
             outcomes[PUBMIND_AUTHORITY] = AuthorityLegOutcome(
-                PUBMIND_AUTHORITY, "unchecked", pubmind_dataset,
+                PUBMIND_AUTHORITY,
+                "unchecked",
+                pubmind_dataset,
                 "the PubMind snapshot is present and would not answer",
             )
         else:
             pubmind_calls, multi_record_subjects, internally_contested = answered
-            outcomes[PUBMIND_AUTHORITY] = AuthorityLegOutcome(
-                PUBMIND_AUTHORITY, "consulted", pubmind_dataset
-            )
+            outcomes[PUBMIND_AUTHORITY] = AuthorityLegOutcome(PUBMIND_AUTHORITY, "consulted", pubmind_dataset)
             by_authority[PUBMIND_AUTHORITY] = pubmind_calls
 
     legs = tuple(outcomes[authority] for authority in AUTHORITY_ORDER)

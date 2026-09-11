@@ -118,7 +118,7 @@ def test_position_only_row_is_coord_keyed_after_resolution(cache: Path) -> None:
     # The P7 regression that motivated the work: a position-only row resolves to an rsid, but its
     # frozen key must STAY the coordinate — it must not flip to the resolved rsid.
     patched, _ = resolve_variants([_v(chrom="1", start=11856377, ref="G")], cache)
-    assert patched[0].rsid == "rs1801133"       # rsid filled
+    assert patched[0].rsid == "rs1801133"  # rsid filled
     assert patched[0].variant_key == "1:11856377:G"  # key did NOT flip to the rsid
 
 
@@ -161,7 +161,7 @@ def test_expansion_order_is_deterministic(tmp_path: Path) -> None:
     pl.DataFrame(
         {
             "id": ["rs555", "rs555"],
-            "chrom": ["16", "1"],       # deliberately reversed
+            "chrom": ["16", "1"],  # deliberately reversed
             "start": [2000, 1000],
             "ref": ["A", "A"],
             "alt": ["G", "G"],
@@ -189,9 +189,7 @@ def test_both_identifiers_contradiction_warns(cache: Path) -> None:
 
 def test_consistency_skipped_when_reference_silent(cache: Path) -> None:
     # Neither the rsid nor the coordinate is in the reference → unverifiable → no warning.
-    _, warnings = resolve_variants(
-        [_v(rsid="rs00000001", chrom="7", start=42, ref="C")], cache
-    )
+    _, warnings = resolve_variants([_v(rsid="rs00000001", chrom="7", start=42, ref="C")], cache)
     assert not any("disagreement" in w for w in warnings)
 
 

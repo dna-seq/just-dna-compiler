@@ -97,9 +97,7 @@ class SourceTerms:
             license=self.license,
             license_url=self.license_url,
             license_sha256=(
-                "sha256:" + hashlib.sha256(pinned.encode("utf-8")).hexdigest()
-                if pinned is not None
-                else None
+                "sha256:" + hashlib.sha256(pinned.encode("utf-8")).hexdigest() if pinned is not None else None
             ),
             attribution=self.attribution,
             notice=self.notice,
@@ -282,13 +280,14 @@ GNOMAD_TERMS = SourceTerms(
 #: a gap: `authored` is the module's own bytes, `reversed` is the compiler rebuilding the table from
 #: parquet, and `manual` is a human. Recording a licensed source for any of those would invent one.
 RESOLUTION_AUTHORITY_BY_LINK: dict[str, str] = {
-    "cache": "ensembl",          # the Ensembl snapshot — same data, offline
+    "cache": "ensembl",  # the Ensembl snapshot — same data, offline
     "ensembl": "ensembl",
     "ensembl-rest": "ensembl",
     "ensembl-graphql": "ensembl",
     "clinvar": "clinvar",
     "gnomad": "gnomad",
 }
+
 
 @dataclass(frozen=True)
 class ArticleTerms:
@@ -501,8 +500,7 @@ MANE_TERMS = SourceTerms(
     license=None,
     license_url="https://www.ncbi.nlm.nih.gov/home/about/policies/",
     attribution=(
-        "MANE (Matched Annotation from NCBI and EMBL-EBI), "
-        "https://www.ncbi.nlm.nih.gov/refseq/MANE/"
+        "MANE (Matched Annotation from NCBI and EMBL-EBI), https://www.ncbi.nlm.nih.gov/refseq/MANE/"
     ),
     notice=(
         "NCBI states a policy rather than a licence: it 'places no restrictions on the use or "
@@ -638,7 +636,8 @@ def pgs_license_class(license_text: str | None) -> tuple[str | None, str | None,
             return name, licence, rights
     logger.warning(
         "A PGS Catalog score states a licence this tier has not read (%r); its terms are recorded "
-        "verbatim with every right left unknown. Unknown is not permission.", text,
+        "verbatim with every right left unknown. Unknown is not permission.",
+        text,
     )
     return None, None, ScoreRights()
 
@@ -937,9 +936,7 @@ def record_source_terms(
     terms = [TERMS_BY_SOURCE[name] for name in sorted(set(source_names)) if name in TERMS_BY_SOURCE]
     if not terms:
         return []
-    return merge_sources_file(
-        [t.row(layer, declared_use=declared_use) for t in terms], spec_dir, error=error
-    )
+    return merge_sources_file([t.row(layer, declared_use=declared_use) for t in terms], spec_dir, error=error)
 
 
 def check_declared_use(terms: SourceTerms, declared_use: str) -> str | None:
@@ -1056,9 +1053,7 @@ def sources_path(spec_dir: Path, *, error: type[Exception]) -> Path:
     return sidecar_path(spec_dir, SOURCES_CSV, error=error)
 
 
-def merge_sources_file(
-    rows: list[SourceRow], spec_dir: Path, *, error: type[Exception]
-) -> list[SourceRow]:
+def merge_sources_file(rows: list[SourceRow], spec_dir: Path, *, error: type[Exception]) -> list[SourceRow]:
     """Read the module's licence table if it is there, merge `rows` in, and write it back.
 
     The read-merge-write every terms-emitting pass performs, in one place: a pass that consulted a
@@ -1142,9 +1137,7 @@ def read_sources_file(spec_dir: Path) -> list[SourceRow]:
     return rows
 
 
-def overlaid_input_rows(
-    spec_dir: Path, table: str, rows: list, *, error: type[Exception]
-) -> list:
+def overlaid_input_rows(spec_dir: Path, table: str, rows: list, *, error: type[Exception]) -> list:
     """A derived table as the module **asserts** it, for a pass reading it as an INPUT (RM136).
 
     The compiler applies `overrides.csv` before any check reads a row, which is the whole point: a

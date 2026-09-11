@@ -51,7 +51,7 @@ def spec_dir(tmp_path: Path) -> Path:
 def test_validate_spec_emits_gene_and_category_lists(spec_dir: Path) -> None:
     result = validate_spec(spec_dir)
     assert result.valid, result.errors
-    assert result.stats["genes"] == ["APOE", "MTHFR"]        # sorted, None filtered
+    assert result.stats["genes"] == ["APOE", "MTHFR"]  # sorted, None filtered
     assert result.stats["categories"] == ["lipids", "metabolism"]
     assert result.stats["variant_count"] == 2
     assert result.stats["gene_count"] == 2
@@ -73,15 +73,12 @@ def test_ragged_row_with_surplus_cell_is_an_error(tmp_path: Path) -> None:
     (tmp_path / "module_spec.yaml").write_text(_MODULE_YAML, encoding="utf-8")
     (tmp_path / "studies.csv").write_text(_STUDIES_CSV, encoding="utf-8")
     (tmp_path / "variants.csv").write_text(
-        "rsid,genotype,state,conclusion\n"
-        "rs1801133,A/G,protective,ok,SURPLUS_SHIFTED_VALUE\n",
+        "rsid,genotype,state,conclusion\nrs1801133,A/G,protective,ok,SURPLUS_SHIFTED_VALUE\n",
         encoding="utf-8",
     )
     result = validate_spec(tmp_path)
     assert not result.valid
-    assert any(
-        "more values than header columns" in e and "line 2" in e for e in result.errors
-    ), result.errors
+    assert any("more values than header columns" in e and "line 2" in e for e in result.errors), result.errors
 
 
 def test_an_unknown_file_is_tolerated_and_changes_no_digest(spec_dir: Path, tmp_path: Path) -> None:
@@ -107,9 +104,7 @@ def test_an_unknown_file_is_tolerated_and_changes_no_digest(spec_dir: Path, tmp_
     assert after.success, after.errors
     assert after.manifest.artifact.digest == before.manifest.artifact.digest
     assert after.manifest.content_signature == before.manifest.content_signature
-    assert {f.name for f in after.manifest.artifact.files} == {
-        f.name for f in before.manifest.artifact.files
-    }
+    assert {f.name for f in after.manifest.artifact.files} == {f.name for f in before.manifest.artifact.files}
     # The readme is attested; the receipt is genuinely ignored — that is the line the contract draws.
     assert after.manifest.readme is not None and after.manifest.readme.name == "README.md"
     assert before.manifest.readme is None
@@ -153,7 +148,9 @@ def test_compile_emits_parquets_and_manifest(spec_dir: Path, tmp_path: Path) -> 
     assert manifest.compilation.compile_success is True
     assert manifest.compilation.compiler_version.startswith("just-dna-compiler")
     assert {f.name for f in manifest.artifact.files} == {
-        "weights.parquet", "annotations.parquet", "studies.parquet"
+        "weights.parquet",
+        "annotations.parquet",
+        "studies.parquet",
     }
     # The on-disk manifest matches the returned one.
     assert read_manifest(out / "manifest.json") == manifest
@@ -169,9 +166,7 @@ def test_input_hashes_match_hashlib(spec_dir: Path, tmp_path: Path) -> None:
         assert by_name[fname].sha256 == expected
 
 
-def test_local_compile_is_untrusted_but_marketplace_compile_verifies(
-    spec_dir: Path, tmp_path: Path
-) -> None:
+def test_local_compile_is_untrusted_but_marketplace_compile_verifies(spec_dir: Path, tmp_path: Path) -> None:
     # Local compile leaves compiled_by=None -> marketplace trust check rejects it.
     local = tmp_path / "local"
     compile_module(spec_dir, local, resolve_with_ensembl=False)

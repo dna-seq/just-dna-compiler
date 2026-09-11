@@ -72,9 +72,8 @@ def test_position_only_variant_keeps_annotation(tmp_path: Path) -> None:
     assert row["category"] == "cancer"
     # variant_key is materialized so the reverse lookup matches a null-rsid row.
     assert row["variant_key"] == "1:100:A"
-    assert (
-        pl.read_parquet(orig / "annotations.parquet")
-        .equals(pl.read_parquet(recompiled / "annotations.parquet"))
+    assert pl.read_parquet(orig / "annotations.parquet").equals(
+        pl.read_parquet(recompiled / "annotations.parquet")
     )
 
 
@@ -118,20 +117,13 @@ def test_position_only_study_survives_roundtrip(tmp_path: Path) -> None:
     s = pl.read_parquet(recompiled / "studies.parquet").row(0, named=True)
     assert s["rsid"] is None
     assert (s["chrom"], s["start"], s["ref"]) == ("1", 100, "A")
-    assert (
-        pl.read_parquet(orig / "studies.parquet")
-        .equals(pl.read_parquet(recompiled / "studies.parquet"))
-    )
+    assert pl.read_parquet(orig / "studies.parquet").equals(pl.read_parquet(recompiled / "studies.parquet"))
 
 
 def test_partial_priority_is_not_fabricated(tmp_path: Path) -> None:
     # r1 sets priority=high, r2 leaves it unset and there is no defaults.priority: the unset row must
     # STAY unset across the round-trip, not inherit r1's value as an inferred default.
-    variants = (
-        "rsid,genotype,state,conclusion,priority\n"
-        "rs1,A/G,risk,c,high\n"
-        "rs2,A/G,risk,c,\n"
-    )
+    variants = "rsid,genotype,state,conclusion,priority\nrs1,A/G,risk,c,high\nrs2,A/G,risk,c,\n"
     studies = "rsid,pmid\nrs1,12345678\nrs2,12345678\n"
     orig, recompiled = _roundtrip(tmp_path, variants, studies)
 
@@ -145,23 +137,18 @@ def test_partial_priority_is_not_fabricated(tmp_path: Path) -> None:
 
 def test_explicit_false_clinvar_booleans_survive(tmp_path: Path) -> None:
     # False is distinct from None ("stated not-pathogenic" vs "unstated"). It must round-trip.
-    variants = (
-        "rsid,genotype,state,conclusion,clinvar,pathogenic,benign\n"
-        "rs1,A/G,risk,c,true,false,true\n"
-    )
+    variants = "rsid,genotype,state,conclusion,clinvar,pathogenic,benign\nrs1,A/G,risk,c,true,false,true\n"
     studies = "rsid,pmid\nrs1,12345678\n"
     orig, recompiled = _roundtrip(tmp_path, variants, studies)
 
     for d in (orig, recompiled):
         w = pl.read_parquet(d / "weights.parquet").row(0, named=True)
         assert w["clinvar"] is True
-        assert w["pathogenic"] is False   # NOT None
+        assert w["pathogenic"] is False  # NOT None
         assert w["benign"] is True
 
     # And the read-time alias stays False (the curator's explicit call), not derived-away.
-    reversed_row = next(
-        r for r in _read_csv(tmp_path / "reversed" / "variants.csv")
-    )
+    reversed_row = next(r for r in _read_csv(tmp_path / "reversed" / "variants.csv"))
     row = VariantRow.model_validate({k: v for k, v in reversed_row.items() if v != ""})
     assert row.pathogenic is False
     assert row.effective_pathogenic is False
@@ -193,17 +180,12 @@ def test_callable_from_survives_roundtrip(tmp_path: Path) -> None:
         w = pl.read_parquet(d / "weights.parquet").sort("rsid")
         assert w["callable_from"].to_list() == ["DP|GQ", "FT", None]
     # An absent pointer stays absent rather than being fabricated as a default field name.
-    assert pl.read_parquet(orig / "weights.parquet").equals(
-        pl.read_parquet(recompiled / "weights.parquet")
-    )
+    assert pl.read_parquet(orig / "weights.parquet").equals(pl.read_parquet(recompiled / "weights.parquet"))
 
 
 def test_callable_from_is_a_pointer_not_an_expression(tmp_path: Path) -> None:
     # Principle 1: the column names *where* the signal lives; it can never become a computation.
-    variants = (
-        "rsid,genotype,state,conclusion,callable_from\n"
-        "rs1,A/G,risk,c,DP > 10\n"
-    )
+    variants = "rsid,genotype,state,conclusion,callable_from\nrs1,A/G,risk,c,DP > 10\n"
     studies = "rsid,pmid\nrs1,12345678\n"
     spec = _write(tmp_path / "spec", variants, studies)
     result = validate_spec(spec)
@@ -215,20 +197,13 @@ def test_callable_from_is_a_pointer_not_an_expression(tmp_path: Path) -> None:
 
 # Coordinates + alts are carried so a `strict=True` compile has nothing left to resolve and the
 # allele-membership check has a locus to check `A/G` against — neither is what these tests are about.
-_P_VARIANTS = (
-    "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
-    "rs1,1,100,A,G,A/G,risk,c\n"
-)
+_P_VARIANTS = "rsid,chrom,start,ref,alts,genotype,state,conclusion\nrs1,1,100,A,G,A/G,risk,c\n"
 
 
 def test_p_value_num_survives_roundtrip_and_neg_log10_is_derived(tmp_path: Path) -> None:
     # The number is authored and must come back unchanged; neg_log10_p is derived on write, so it must
     # be IN the parquet and ABSENT from the reversed CSV (the `allele_frequency` contract).
-    studies = (
-        "rsid,pmid,p_value,p_value_num\n"
-        "rs1,12345678,5e-8,5e-8\n"
-        "rs1,22222222,0.03,0.03\n"
-    )
+    studies = "rsid,pmid,p_value,p_value_num\nrs1,12345678,5e-8,5e-8\nrs1,22222222,0.03,0.03\n"
     orig, recompiled = _roundtrip(tmp_path, _P_VARIANTS, studies)
 
     for d in (orig, recompiled):
@@ -288,9 +263,7 @@ def test_p_value_cross_check_stays_silent_on_indefinite_and_rounded_strings(tmp_
     )
     spec = _write(tmp_path / "spec", _P_VARIANTS, studies)
     for strict in (False, True):
-        result = compile_module(
-            spec, tmp_path / f"out_{strict}", resolve_with_ensembl=False, strict=strict
-        )
+        result = compile_module(spec, tmp_path / f"out_{strict}", resolve_with_ensembl=False, strict=strict)
         assert result.success, result.errors
         assert not [m for m in result.warnings + result.errors if "disagree" in m]
 
@@ -317,9 +290,7 @@ def test_annotations_carry_the_genotype_that_distinguishes_their_rows(tmp_path: 
         # the second one is the fix. Both statements are asserted so the reason survives.
         keys = [r["variant_key"] for r in ann.iter_rows(named=True)]
         assert len(set(keys)) == 1 and len(keys) == 2
-        by_genotype = {
-            r["genotype"]: (r["phenotype"], r["category"]) for r in ann.iter_rows(named=True)
-        }
+        by_genotype = {r["genotype"]: (r["phenotype"], r["category"]) for r in ann.iter_rows(named=True)}
         assert by_genotype == {
             "A/G": ("MildTrait", "catA"),
             "A/A": ("SevereTrait", "catB"),
@@ -347,9 +318,8 @@ def test_two_genotypes_sharing_one_conclusion_stay_two_annotation_rows(tmp_path:
     assert len(effect_pairs) == 1, "the old key really is blind to the genotype here"
     assert ann.height == 2, "the shipped key keeps both rows"
     assert {r["genotype"] for r in ann.iter_rows(named=True)} == {"A/G", "A/A"}
-    assert (
-        pl.read_parquet(orig / "annotations.parquet")
-        .equals(pl.read_parquet(recompiled / "annotations.parquet"))
+    assert pl.read_parquet(orig / "annotations.parquet").equals(
+        pl.read_parquet(recompiled / "annotations.parquet")
     )
 
 
@@ -375,9 +345,10 @@ def test_a_phased_genotype_still_finds_its_annotation(tmp_path: Path) -> None:
 
     for d in (orig, recompiled):
         ann = pl.read_parquet(d / "annotations.parquet")
-        assert {
-            r["genotype"]: (r["phenotype"], r["category"]) for r in ann.iter_rows(named=True)
-        } == {"G|A": ("PhasedTrait", "catP"), "A/G": ("UnphasedTrait", "catU")}
+        assert {r["genotype"]: (r["phenotype"], r["category"]) for r in ann.iter_rows(named=True)} == {
+            "G|A": ("PhasedTrait", "catP"),
+            "A/G": ("UnphasedTrait", "catU"),
+        }
 
     # The reversed CSV kept both annotations: an empty gene/phenotype here is exactly the silent loss
     # a key the probe cannot reproduce would cause.
@@ -455,19 +426,31 @@ def test_every_column_the_studies_writer_declares_is_actually_written(tmp_path: 
     from just_dna_format.spec import StudyRow
 
     filled = {
-        "rsid": "rs1", "pmid": "12345678", "population": "EUR", "p_value": "5e-8",
-        "conclusion": "an association", "study_design": "GWAS", "stat_significance": "significant",
-        "effect_size": "1.4", "effect_measure": "OR", "effect_allele": "A",
-        "trait_efo_id": "EFO:0000305", "doi": "10.1000/demo", "provenance_quote": "a passage",
-        "provenance_regex": "a[a-z ]+passage", "curator": "claude-opus-5", "p_value_num": "5e-8",
+        "rsid": "rs1",
+        "pmid": "12345678",
+        "population": "EUR",
+        "p_value": "5e-8",
+        "conclusion": "an association",
+        "study_design": "GWAS",
+        "stat_significance": "significant",
+        "effect_size": "1.4",
+        "effect_measure": "OR",
+        "effect_allele": "A",
+        "trait_efo_id": "EFO:0000305",
+        "doi": "10.1000/demo",
+        "provenance_quote": "a passage",
+        "provenance_regex": "a[a-z ]+passage",
+        "curator": "claude-opus-5",
+        "p_value_num": "5e-8",
         "statistical_test": "logistic regression adjusted for age and sex",
         # RM160's pair. They travel together — a magnitude with no instrument beside it is refused at
         # the model — so the guard fills both or neither.
-        "confidence": "submitted", "confidence_unit": "civic_evidence_status",
+        "confidence": "submitted",
+        "confidence_unit": "civic_evidence_status",
     }
     # Derived from the model, so a column added to StudyRow without a value here fails loudly rather
     # than being quietly excluded from the guard.
-    authored = set(StudyRow.model_fields) - {"chrom", "start", "ref"}   # position half, unset here
+    authored = set(StudyRow.model_fields) - {"chrom", "start", "ref"}  # position half, unset here
     assert authored <= set(filled), f"give the guard a value for {sorted(authored - set(filled))}"
 
     header = ",".join(filled)

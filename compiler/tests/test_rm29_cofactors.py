@@ -124,20 +124,35 @@ def test_the_floor_materializes_and_round_trips(tmp_path: Path) -> None:
 def test_cpics_trailing_whitespace_would_otherwise_split_one_setting_in_two() -> None:
     """Three of CPIC's sixteen live values carry trailing whitespace, and the column is in the key."""
     padded = DiplotypeRow(
-        gene="CYP2C19", haplotype_a="*2", haplotype_b="*2", conclusion="c",
-        drug="clopidogrel", clinical_context="CVI ACS PCI ",
+        gene="CYP2C19",
+        haplotype_a="*2",
+        haplotype_b="*2",
+        conclusion="c",
+        drug="clopidogrel",
+        clinical_context="CVI ACS PCI ",
     )
     clean = DiplotypeRow(
-        gene="CYP2C19", haplotype_a="*2", haplotype_b="*2", conclusion="c",
-        drug="clopidogrel", clinical_context="CVI ACS PCI",
+        gene="CYP2C19",
+        haplotype_a="*2",
+        haplotype_b="*2",
+        conclusion="c",
+        drug="clopidogrel",
+        clinical_context="CVI ACS PCI",
     )
     key = _TABLE_DUPE_KEYS[DiplotypeRow]
     assert padded.clinical_context == "CVI ACS PCI"
     assert key(padded) == key(clean)
     # An all-whitespace cell is an absence, not a context named " ".
-    assert DiplotypeRow(
-        gene="G", haplotype_a="*1", haplotype_b="*1", conclusion="c", clinical_context="   ",
-    ).clinical_context is None
+    assert (
+        DiplotypeRow(
+            gene="G",
+            haplotype_a="*1",
+            haplotype_b="*1",
+            conclusion="c",
+            clinical_context="   ",
+        ).clinical_context
+        is None
+    )
 
 
 def test_the_context_is_not_the_ancestry_population_column() -> None:
@@ -159,10 +174,16 @@ def test_the_context_is_not_the_ancestry_population_column() -> None:
     # where it actually lives: `FrequencyRow` refuses a value off its list and `DiplotypeRow` takes one.
     with pytest.raises(ValidationError):
         FrequencyRow(variant_key="rs1", population="not-an-ancestry-group", dataset="d")
-    assert DiplotypeRow(
-        gene="CYP2C19", haplotype_a="*1", haplotype_b="*2", conclusion="intermediate metabolizer",
-        clinical_context="a scoping nobody has used before",
-    ).clinical_context == "a scoping nobody has used before"
+    assert (
+        DiplotypeRow(
+            gene="CYP2C19",
+            haplotype_a="*1",
+            haplotype_b="*2",
+            conclusion="intermediate metabolizer",
+            clinical_context="a scoping nobody has used before",
+        ).clinical_context
+        == "a scoping nobody has used before"
+    )
 
 
 def test_three_disagreeing_contexts_survive_the_compile_as_three_rows(tmp_path: Path) -> None:
@@ -182,9 +203,7 @@ def test_without_the_context_the_same_three_rows_are_duplicates(tmp_path: Path) 
     """The failure RM29b removes, demonstrated rather than asserted: strip the column and the
     compiler rejects the very rows CPIC publishes."""
     spec = _write(tmp_path / "spec")
-    stripped = "\n".join(
-        line.rsplit(",", 1)[0] for line in _DIPLOTYPES.strip().splitlines()
-    ) + "\n"
+    stripped = "\n".join(line.rsplit(",", 1)[0] for line in _DIPLOTYPES.strip().splitlines()) + "\n"
     (spec / "diplotypes.csv").write_text(stripped, encoding="utf-8")
     result = compile_module(spec, tmp_path / "out2", resolve_with_ensembl=False)
     assert not result.success

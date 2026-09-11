@@ -31,15 +31,13 @@ _GRCH37_POS = 26_093_141
 def _spec(d: Path, build: str | None) -> Path:
     d.mkdir(parents=True, exist_ok=True)
     yaml = (
-        "schema_version: '1.0'\n"
-        "module:\n  name: hfe\n  title: HFE\n  description: d\n  report_title: HFE\n"
+        "schema_version: '1.0'\nmodule:\n  name: hfe\n  title: HFE\n  description: d\n  report_title: HFE\n"
     )
     if build is not None:
         yaml += f"genome_build: {build}\n"
     (d / "module_spec.yaml").write_text(yaml, encoding="utf-8")
     (d / "variants.csv").write_text(
-        "rsid,genotype,state,conclusion,gene\n"
-        "rs1800562,A/A,risk,C282Y homozygote,HFE\n",
+        "rsid,genotype,state,conclusion,gene\nrs1800562,A/A,risk,C282Y homozygote,HFE\n",
         encoding="utf-8",
     )
     (d / "studies.csv").write_text("rsid,pmid\nrs1800562,8696333\n", encoding="utf-8")
@@ -101,9 +99,7 @@ def test_an_authored_coordinate_is_still_transcribed_on_another_build(tmp_path: 
         f"6,{_GRCH37_POS},G,A,A/A,risk,C282Y homozygote,HFE\n",
         encoding="utf-8",
     )
-    (spec / "studies.csv").write_text(
-        f"chrom,start,ref,pmid\n6,{_GRCH37_POS},G,8696333\n", encoding="utf-8"
-    )
+    (spec / "studies.csv").write_text(f"chrom,start,ref,pmid\n6,{_GRCH37_POS},G,8696333\n", encoding="utf-8")
     result = enrich(spec, offline=True)
 
     assert len(result.rows) == 1
@@ -121,12 +117,26 @@ def test_minting_skips_an_unsupported_build_instead_of_aborting_the_run() -> Non
     """
     rows = [
         ResolutionRow(
-            variant_key=f"6:{_GRCH37_POS}:G:A", rsid="rs1800562", chrom="6", start=_GRCH37_POS,
-            ref="G", alts="A", genome_build="GRCh37", source="authored", status="resolved",
+            variant_key=f"6:{_GRCH37_POS}:G:A",
+            rsid="rs1800562",
+            chrom="6",
+            start=_GRCH37_POS,
+            ref="G",
+            alts="A",
+            genome_build="GRCh37",
+            source="authored",
+            status="resolved",
         ),
         ResolutionRow(
-            variant_key="6:26092913:G:A", rsid="rs1800562", chrom="6", start=26_092_913,
-            ref="G", alts="A", genome_build="GRCh38", source="authored", status="resolved",
+            variant_key="6:26092913:G:A",
+            rsid="rs1800562",
+            chrom="6",
+            start=26_092_913,
+            ref="G",
+            alts="A",
+            genome_build="GRCh38",
+            source="authored",
+            status="resolved",
         ),
     ]
     result = mint_resolution_rows(rows, minter=VrsMinter(offline=True))
@@ -148,12 +158,26 @@ def test_the_frequency_pass_declines_a_row_from_another_build(caplog) -> None:
     """
     rows = [
         ResolutionRow(
-            variant_key=f"6:{_GRCH37_POS}:G:A", rsid="rs1800562", chrom="6", start=_GRCH37_POS,
-            ref="G", alts="A", genome_build="GRCh37", source="authored", status="resolved",
+            variant_key=f"6:{_GRCH37_POS}:G:A",
+            rsid="rs1800562",
+            chrom="6",
+            start=_GRCH37_POS,
+            ref="G",
+            alts="A",
+            genome_build="GRCh37",
+            source="authored",
+            status="resolved",
         ),
         ResolutionRow(
-            variant_key="6:26092913:G:A", rsid="rs1800562", chrom="6", start=26_092_913,
-            ref="G", alts="A", genome_build="GRCh38", source="authored", status="resolved",
+            variant_key="6:26092913:G:A",
+            rsid="rs1800562",
+            chrom="6",
+            start=26_092_913,
+            ref="G",
+            alts="A",
+            genome_build="GRCh38",
+            source="authored",
+            status="resolved",
         ),
     ]
     alleles, off_build = _alleles_from_resolution(rows)

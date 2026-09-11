@@ -127,9 +127,7 @@ def test_a_module_with_no_variants_asks_nothing_and_attests_nothing(tmp_path: Pa
 
 
 @needs_tabix
-def test_without_a_threshold_the_pass_never_reaches_the_network(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_without_a_threshold_the_pass_never_reaches_the_network(snapshot: Path, tmp_path: Path) -> None:
     """No threshold means no question the local artifact cannot answer, so no request is made.
 
     Asserted on the stub's call log rather than on a mock's `assert_not_called`, because what is
@@ -160,14 +158,14 @@ def test_the_straddling_scope_is_computed_from_the_knots_before_any_request(
     spec = _module(tmp_path, straddling)
 
     in_scope = ac.check_variant_impact(
-        spec, reference=snapshot, client=_Stub(*[[] for _ in straddling]),
+        spec,
+        reference=snapshot,
+        client=_Stub(*[[] for _ in straddling]),
         threshold=STRADDLED_THRESHOLD,
     )
     assert len(in_scope.straddling) == len(straddling)
 
-    out_of_scope = ac.check_variant_impact(
-        spec, reference=snapshot, client=_Stub(), threshold=20.0
-    )
+    out_of_scope = ac.check_variant_impact(spec, reference=snapshot, client=_Stub(), threshold=20.0)
     assert out_of_scope.straddling == []
 
 
@@ -211,16 +209,17 @@ def test_an_unbounded_refinement_is_refused_and_names_the_cheaper_answer(
 
     with pytest.raises(ac.VariantImpactError, match="over the cap"):
         ac.check_variant_impact(
-            spec, reference=snapshot, client=stub,
-            threshold=STRADDLED_THRESHOLD, refinement_cap=1,
+            spec,
+            reference=snapshot,
+            client=stub,
+            threshold=STRADDLED_THRESHOLD,
+            refinement_cap=1,
         )
     assert stub.calls == [], "the refusal must cost nothing"
 
 
 @needs_tabix
-def test_a_missing_knot_table_is_refused_rather_than_read_around(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_a_missing_knot_table_is_refused_rather_than_read_around(snapshot: Path, tmp_path: Path) -> None:
     """The curve and the scores are two halves of one artifact.
 
     Without the knots a `PHRED` cannot be reconstructed at all, so a snapshot that lost them can
@@ -266,9 +265,7 @@ def test_offline_is_nobody_asked_and_not_a_decision(snapshot: Path, tmp_path: Pa
 
 
 @needs_tabix
-def test_an_indel_is_recorded_as_no_answer_rather_than_a_low_score(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_an_indel_is_recorded_as_no_answer_rather_than_a_low_score(snapshot: Path, tmp_path: Path) -> None:
     """`UNIMPLEMENTED` is the third state: the request was legal and the answer does not exist.
 
     A caller that stored zero here would be asserting AlphaGenome scored the variant as harmless,
@@ -278,9 +275,7 @@ def test_an_indel_is_recorded_as_no_answer_rather_than_a_low_score(
     spec = _module(tmp_path, straddling)
     stub = _Stub(AtlasNotScored("chr22:1 AC>A is not in the precomputed Atlas (indels are not scored)"))
 
-    result = ac.check_variant_impact(
-        spec, reference=snapshot, client=stub, threshold=STRADDLED_THRESHOLD
-    )
+    result = ac.check_variant_impact(spec, reference=snapshot, client=stub, threshold=STRADDLED_THRESHOLD)
 
     assert [reason for _, reason in result.unanswered] == ["not_scored"]
     assert result.refined == []
@@ -309,9 +304,7 @@ def test_a_ref_mismatch_becomes_a_finding_carrying_the_base_the_server_named(
         )
     )
 
-    result = ac.check_variant_impact(
-        spec, reference=snapshot, client=stub, threshold=STRADDLED_THRESHOLD
-    )
+    result = ac.check_variant_impact(spec, reference=snapshot, client=stub, threshold=STRADDLED_THRESHOLD)
 
     (finding,) = result.findings
     assert finding.kind == "ref_mismatch"
@@ -321,9 +314,7 @@ def test_a_ref_mismatch_becomes_a_finding_carrying_the_base_the_server_named(
 
 
 @needs_tabix
-def test_an_unreachable_service_is_neither_a_finding_nor_an_answer(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_an_unreachable_service_is_neither_a_finding_nor_an_answer(snapshot: Path, tmp_path: Path) -> None:
     """A transport failure says nothing about the variant, so it produces no finding at all.
 
     This is the arm most likely to be collapsed into the others, and it is the one that must not be:
@@ -334,9 +325,7 @@ def test_an_unreachable_service_is_neither_a_finding_nor_an_answer(
     spec = _module(tmp_path, straddling)
     stub = _Stub(AtlasUnavailable("UNAVAILABLE: connection refused"))
 
-    result = ac.check_variant_impact(
-        spec, reference=snapshot, client=stub, threshold=STRADDLED_THRESHOLD
-    )
+    result = ac.check_variant_impact(spec, reference=snapshot, client=stub, threshold=STRADDLED_THRESHOLD)
 
     assert result.findings == []
     assert [reason for _, reason in result.unanswered] == ["unreachable"]
@@ -359,12 +348,13 @@ def test_the_four_no_answer_reasons_stay_apart(snapshot: Path, tmp_path: Path) -
         AtlasRefused("x: PERMISSION_DENIED: bad key"),
     )
 
-    result = ac.check_variant_impact(
-        spec, reference=snapshot, client=stub, threshold=STRADDLED_THRESHOLD
-    )
+    result = ac.check_variant_impact(spec, reference=snapshot, client=stub, threshold=STRADDLED_THRESHOLD)
 
     assert sorted(reason for _, reason in result.unanswered) == [
-        "not_scored", "ref_mismatch", "refused", "unreachable",
+        "not_scored",
+        "ref_mismatch",
+        "refused",
+        "unreachable",
     ]
 
 
@@ -377,9 +367,7 @@ def test_a_refined_answer_is_recorded_as_refined_rather_than_as_locally_decided(
     spec = _module(tmp_path, straddling)
     stub = _Stub([_Block(3.00019)])
 
-    result = ac.check_variant_impact(
-        spec, reference=snapshot, client=stub, threshold=STRADDLED_THRESHOLD
-    )
+    result = ac.check_variant_impact(spec, reference=snapshot, client=stub, threshold=STRADDLED_THRESHOLD)
 
     assert len(result.refined) == 1
     assert result.unanswered == []
@@ -388,9 +376,7 @@ def test_a_refined_answer_is_recorded_as_refined_rather_than_as_locally_decided(
 
 
 @needs_tabix
-def test_a_saturated_quantile_is_no_answer_rather_than_a_ceiling(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_a_saturated_quantile_is_no_answer_rather_than_a_ceiling(snapshot: Path, tmp_path: Path) -> None:
     """Where the API runs out before the data does, the file is the better source and unknown is honest.
 
     `calibrated_scores` is a `float32`, capping a derived `PHRED` at 72.247 while the published
@@ -401,18 +387,14 @@ def test_a_saturated_quantile_is_no_answer_rather_than_a_ceiling(
     spec = _module(tmp_path, straddling)
     stub = _Stub([_Block(None)])  # `VariantScore.phred` withholds on saturation
 
-    result = ac.check_variant_impact(
-        spec, reference=snapshot, client=stub, threshold=STRADDLED_THRESHOLD
-    )
+    result = ac.check_variant_impact(spec, reference=snapshot, client=stub, threshold=STRADDLED_THRESHOLD)
 
     assert result.refined == []
     assert [reason for _, reason in result.unanswered] == ["not_scored"]
 
 
 @needs_tabix
-def test_a_variant_the_snapshot_does_not_carry_is_its_own_reason(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_a_variant_the_snapshot_does_not_carry_is_its_own_reason(snapshot: Path, tmp_path: Path) -> None:
     """Absent from the artifact is not "not scored" and is certainly not zero.
 
     AVI covers ~95% of the assembly. A position outside the snapshot may be uncovered, may be an
@@ -497,9 +479,7 @@ def test_an_absent_snapshot_is_a_skip_with_a_reason_not_an_empty_result(tmp_path
 
 
 @needs_tabix
-def test_the_two_contig_spellings_are_reconciled_at_the_boundary(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_the_two_contig_spellings_are_reconciled_at_the_boundary(snapshot: Path, tmp_path: Path) -> None:
     """`22` and `chr22` are the same contig, and getting this wrong is silent rather than loud.
 
     `VariantRow` normalizes through `vrs.normalize_chrom` and stores `22`; AlphaGenome ships
@@ -513,7 +493,9 @@ def test_the_two_contig_spellings_are_reconciled_at_the_boundary(
     a floor would not see it.
     """
     rows = _rows_at(snapshot, straddling=False)
-    plain = _module(tmp_path, [{**row, "chrom": row["chrom"].removeprefix("chr")} for row in rows], name="plain")
+    plain = _module(
+        tmp_path, [{**row, "chrom": row["chrom"].removeprefix("chr")} for row in rows], name="plain"
+    )
     prefixed = _module(tmp_path, rows, name="prefixed")
 
     a = ac.check_variant_impact(plain, reference=snapshot)

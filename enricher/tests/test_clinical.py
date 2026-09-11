@@ -33,8 +33,7 @@ from just_dna_format.spec import VariantRow
 FIXTURE = Path(__file__).parents[2] / "assets" / "clinvar_GRCh38_slice.vcf.gz"
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+    "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
 )
 
 # The HBB locus both of the slice's opposed rs334 records sit at.
@@ -51,16 +50,29 @@ def snapshot(tmp_path_factory) -> Path:
 
 def _variant(clin_sig: str, genotype: str, alts: str = "A,G", **kw) -> VariantRow:
     return VariantRow(
-        chrom=_CHROM, start=_START, ref=_REF, alts=alts, genotype=genotype,
-        state="risk", conclusion="c", clin_sig=clin_sig, **kw
+        chrom=_CHROM,
+        start=_START,
+        ref=_REF,
+        alts=alts,
+        genotype=genotype,
+        state="risk",
+        conclusion="c",
+        clin_sig=clin_sig,
+        **kw,
     )
 
 
 def _resolution(variant: VariantRow, alts: str = "A,G") -> list[ResolutionRow]:
     return [
         ResolutionRow(
-            variant_key=variant.variant_key, rsid="rs334", chrom=_CHROM, start=_START,
-            ref=_REF, alts=alts, source="clinvar", status="resolved",
+            variant_key=variant.variant_key,
+            rsid="rs334",
+            chrom=_CHROM,
+            start=_START,
+            ref=_REF,
+            alts=alts,
+            source="clinvar",
+            status="resolved",
         )
     ]
 
@@ -106,18 +118,38 @@ def test_clinvar_having_no_opinion_is_not_a_conflict(snapshot: Path) -> None:
     Uses the slice's real 1:66926 `AG>A`, which ClinVar classifies as uncertain.
     """
     variant = VariantRow(
-        chrom="1", start=66926, ref="AG", alts="A", genotype="A/AG",
-        state="risk", conclusion="c", clin_sig="pathogenic",
+        chrom="1",
+        start=66926,
+        ref="AG",
+        alts="A",
+        genotype="A/AG",
+        state="risk",
+        conclusion="c",
+        clin_sig="pathogenic",
     )
-    rows = [ResolutionRow(variant_key=variant.variant_key, chrom="1", start=66926, ref="AG",
-                          alts="A", source="clinvar", status="resolved")]
+    rows = [
+        ResolutionRow(
+            variant_key=variant.variant_key,
+            chrom="1",
+            start=66926,
+            ref="AG",
+            alts="A",
+            source="clinvar",
+            status="resolved",
+        )
+    ]
     assert verify_clin_sig([variant], rows, reference=snapshot) == []
 
 
 def test_a_module_making_no_clinical_claim_is_not_compared(snapshot: Path) -> None:
     variant = VariantRow(
-        chrom=_CHROM, start=_START, ref=_REF, alts="A", genotype="A/T",
-        state="risk", conclusion="c",
+        chrom=_CHROM,
+        start=_START,
+        ref=_REF,
+        alts="A",
+        genotype="A/T",
+        state="risk",
+        conclusion="c",
     )
     assert verify_clin_sig([variant], _resolution(variant, alts="A"), reference=snapshot) == []
 
@@ -149,11 +181,26 @@ def test_the_locus_fallback_still_reports_a_wholly_unsupported_call(snapshot: Pa
     the locus pathogenic is reported even though the ALT could not be pinned down.
     """
     variant = VariantRow(
-        chrom="1", start=943234, ref="A", alts="G,C", genotype="C/G",
-        state="risk", conclusion="c", clin_sig="pathogenic",
+        chrom="1",
+        start=943234,
+        ref="A",
+        alts="G,C",
+        genotype="C/G",
+        state="risk",
+        conclusion="c",
+        clin_sig="pathogenic",
     )
-    rows = [ResolutionRow(variant_key=variant.variant_key, chrom="1", start=943234, ref="A",
-                          alts="G,C", source="clinvar", status="resolved")]
+    rows = [
+        ResolutionRow(
+            variant_key=variant.variant_key,
+            chrom="1",
+            start=943234,
+            ref="A",
+            alts="G,C",
+            source="clinvar",
+            status="resolved",
+        )
+    ]
     conflicts = verify_clin_sig([variant], rows, reference=snapshot)
     assert len(conflicts) == 1
     assert (conflicts[0].authored, conflicts[0].clinvar) == ("pathogenic", "likely_benign")
@@ -176,9 +223,7 @@ def _spec(d: Path, clin_sig: str, genotype: str) -> Path:
 
 
 @pytest.mark.parametrize("mode", ["best_effort", "strict"])
-def test_strict_does_not_escalate_a_clinical_disagreement(
-    snapshot: Path, tmp_path: Path, mode: str
-) -> None:
+def test_strict_does_not_escalate_a_clinical_disagreement(snapshot: Path, tmp_path: Path, mode: str) -> None:
     """The one check whose severity deliberately does NOT follow the mode.
 
     Failing a strict compile here would have the format decide that ClinVar is right and the curator
@@ -247,9 +292,7 @@ def test_the_source_digest_names_the_release_when_the_file_date_does_not(
     assert clinvar_dataset_label(undated) == f"clinvar_sha256:{release['source_sha256']}"
 
 
-def test_a_release_label_alone_no_longer_skips_the_check(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_a_release_label_alone_no_longer_skips_the_check(snapshot: Path, tmp_path: Path) -> None:
     """The skip is a conjunction since RM73, and this is the half that used to carry it alone.
 
     A licence row naming this release says the rows *were* copied out of the snapshot. It says nothing
@@ -260,18 +303,14 @@ def test_a_release_label_alone_no_longer_skips_the_check(
     Note the direction of the change. Nothing that was *checked* stopped being checked; a module that
     was being waved through on a claim is now examined.
     """
-    spec = _licenced(
-        tmp_path / "labelled", "benign", "A/T", dataset=clinvar_dataset_label(snapshot) or ""
-    )
+    spec = _licenced(tmp_path / "labelled", "benign", "A/T", dataset=clinvar_dataset_label(snapshot) or "")
     result = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
 
     assert result.clin_sig_not_checked is None
     assert [c.authored for c in result.clin_sig_conflicts] == ["benign"]
 
 
-def test_a_licence_row_naming_another_release_still_runs_the_check(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_a_licence_row_naming_another_release_still_runs_the_check(snapshot: Path, tmp_path: Path) -> None:
     """A different release is not this one, so the comparison is real again."""
     spec = _licenced(tmp_path / "stale", "benign", "A/T", dataset="clinvar_1999-01-01")
     result = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
@@ -288,8 +327,11 @@ def test_a_resolution_layer_row_is_not_a_claim_that_annotations_were_copied(
     the row every ClinVar-resolved module ends up carrying, so keying on the source alone would
     silence the check across the whole corpus."""
     spec = _licenced(
-        tmp_path / "resolution-layer", "benign", "A/T",
-        dataset=clinvar_dataset_label(snapshot) or "", layer="resolution",
+        tmp_path / "resolution-layer",
+        "benign",
+        "A/T",
+        dataset=clinvar_dataset_label(snapshot) or "",
+        layer="resolution",
     )
     result = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False)
 
@@ -400,14 +442,13 @@ def _drafted_panel(spec: Path, snapshot: Path) -> Path:
     return spec
 
 
-def test_drafting_records_which_release_the_rows_were_copied_out_of(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_drafting_records_which_release_the_rows_were_copied_out_of(snapshot: Path, tmp_path: Path) -> None:
     """The whole route, through the shipped surface: the drafting pass stamps the release, and the
     check reads it back and skips itself. Neither side was told the label by the test."""
     spec = _drafted_panel(tmp_path / "panel", snapshot)
     recorded = [
-        row for row in csv.DictReader(
+        row
+        for row in csv.DictReader(
             io.StringIO((spec / preferred_spelling(SOURCES_CSV)).read_text(encoding="utf-8"))
         )
         if row["source"] == "clinvar" and row["layer"] == "annotation"
@@ -443,7 +484,8 @@ def test_widening_from_a_newer_release_withdraws_the_label_rather_than_re_labell
 
     licence = spec / preferred_spelling(SOURCES_CSV)
     recorded = [
-        row for row in csv.DictReader(io.StringIO(licence.read_text(encoding="utf-8")))
+        row
+        for row in csv.DictReader(io.StringIO(licence.read_text(encoding="utf-8")))
         if row["source"] == "clinvar" and row["layer"] == "annotation"
     ]
     assert [row["dataset"] for row in recorded] == [""]
@@ -469,7 +511,8 @@ def test_a_re_draft_that_adds_nothing_leaves_the_label_alone(snapshot: Path, tmp
     assert again.added_for("variants.csv") == 0
 
     recorded = [
-        row for row in csv.DictReader(
+        row
+        for row in csv.DictReader(
             io.StringIO((spec / preferred_spelling(SOURCES_CSV)).read_text(encoding="utf-8"))
         )
         if row["source"] == "clinvar" and row["layer"] == "annotation"
@@ -492,9 +535,7 @@ def test_strict_looks_every_row_up_and_reports_the_split(snapshot: Path, tmp_pat
         assert result.clin_sig_conflicts == [], mode
 
 
-def test_a_hand_edit_re_enables_the_check_in_both_modes(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_a_hand_edit_re_enables_the_check_in_both_modes(snapshot: Path, tmp_path: Path) -> None:
     """The hole RM4 shipped knowingly, closed (RM73).
 
     A cell edited after the draft is no longer a copy of anything, and no module-level fact could see
@@ -523,9 +564,7 @@ def test_a_hand_edit_re_enables_the_check_in_both_modes(
         assert result.clin_sig_comparison.compared == len(edited)
 
 
-def test_filling_a_genotype_stub_does_not_re_enable_the_check(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_filling_a_genotype_stub_does_not_re_enable_the_check(snapshot: Path, tmp_path: Path) -> None:
     """Why the digest is scoped to the checked COLUMN rather than the row.
 
     `clinvar_draft` leaves `genotype` as a placeholder the human is required to fill, so a
@@ -594,11 +633,26 @@ def test_a_locus_clinvar_says_nothing_about_is_counted_not_folded_in(snapshot: P
     conflict list carries its reason rather than standing alone.
     """
     variant = VariantRow(
-        chrom="7", start=117559590, ref="A", alts="G", genotype="A/G",
-        state="risk", conclusion="c", clin_sig="pathogenic",
+        chrom="7",
+        start=117559590,
+        ref="A",
+        alts="G",
+        genotype="A/G",
+        state="risk",
+        conclusion="c",
+        clin_sig="pathogenic",
     )
-    rows = [ResolutionRow(variant_key=variant.variant_key, chrom="7", start=117559590, ref="A",
-                          alts="G", source="clinvar", status="resolved")]
+    rows = [
+        ResolutionRow(
+            variant_key=variant.variant_key,
+            chrom="7",
+            start=117559590,
+            ref="A",
+            alts="G",
+            source="clinvar",
+            status="resolved",
+        )
+    ]
     audit = compare_clin_sig([variant], rows, reference=snapshot)
 
     assert audit is not None
@@ -606,9 +660,7 @@ def test_a_locus_clinvar_says_nothing_about_is_counted_not_folded_in(snapshot: P
     assert "1 had no ClinVar record" in str(audit)
 
 
-def test_a_hand_authored_module_is_never_skipped_as_a_tautology(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_a_hand_authored_module_is_never_skipped_as_a_tautology(snapshot: Path, tmp_path: Path) -> None:
     """A module that never claimed a draft records no digest, so nothing is established and the check
     runs in full.
 
@@ -640,9 +692,7 @@ def test_an_unusable_snapshot_says_so_rather_than_reporting_a_pass(tmp_path: Pat
     assert result.clin_sig_conflicts == []
 
 
-def test_not_running_the_check_is_distinguishable_from_running_it(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_not_running_the_check_is_distinguishable_from_running_it(snapshot: Path, tmp_path: Path) -> None:
     """An empty conflict list means two opposite things, so the reason travels beside it."""
     spec = _spec(tmp_path / "off", "pathogenic", "A/T")
     off = enrich(spec, offline=True, clinvar_cache=snapshot, use_gnomad=False, verify_clinsig=False)
@@ -660,9 +710,7 @@ def test_an_unusable_snapshot_degrades_instead_of_raising(tmp_path: Path) -> Non
 
     broken = tmp_path / "broken" / "data"
     broken.mkdir(parents=True)
-    pl.DataFrame({"totally": ["unrelated"], "columns": ["here"]}).write_parquet(
-        broken / "chr.parquet"
-    )
+    pl.DataFrame({"totally": ["unrelated"], "columns": ["here"]}).write_parquet(broken / "chr.parquet")
     variant = _variant("benign", "A/T")
     assert verify_clin_sig([variant], _resolution(variant), reference=tmp_path / "broken") == []
 
@@ -687,12 +735,8 @@ def test_the_record_names_exactly_the_rows_the_check_reports(snapshot: Path) -> 
     assert record is not None
     parents, calls = record.parents, record.calls
 
-    assert {(p.variant_key, p.genotype) for p in parents} == {
-        (c.variant_key, c.genotype) for c in conflicts
-    }
-    assert {(c.variant_key, c.genotype) for c in calls} == {
-        (p.variant_key, p.genotype) for p in parents
-    }
+    assert {(p.variant_key, p.genotype) for p in parents} == {(c.variant_key, c.genotype) for c in conflicts}
+    assert {(c.variant_key, c.genotype) for c in calls} == {(p.variant_key, p.genotype) for p in parents}
 
 
 def test_the_record_carries_clinvars_own_call_and_its_stars_in_clinvars_units(snapshot: Path) -> None:
@@ -746,9 +790,7 @@ def test_a_run_with_no_snapshot_writes_no_record_rather_than_an_empty_one(snapsh
     assert clin_sig_concordance([variant], _resolution(variant), reference=None) is None
 
 
-def test_a_module_drafted_from_this_snapshot_gets_no_record_either(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_a_module_drafted_from_this_snapshot_gets_no_record_either(snapshot: Path, tmp_path: Path) -> None:
     """The tautology reaches the record too, and an empty record would be the S4 defect in a new place.
 
     Where the `clin_sig` was copied out of the snapshot it would be compared against, the comparison
@@ -762,9 +804,9 @@ def test_a_module_drafted_from_this_snapshot_gets_no_record_either(
     sources = _read_sources(spec)
     variants = _read_variants(spec)
     resolution = [row for v in variants for row in _resolution(v)]
-    assert clin_sig_concordance(
-        variants, resolution, reference=snapshot, sources=sources, spec_dir=spec
-    ) is None
+    assert (
+        clin_sig_concordance(variants, resolution, reference=snapshot, sources=sources, spec_dir=spec) is None
+    )
 
     # Not passing the licence table establishes nothing, so the comparison runs — an unknown is
     # never a permission to skip.

@@ -44,29 +44,59 @@ from typer.testing import CliRunner
 #: ClinVar's attribution" is testable rather than assumed.
 _CLINVAR = [
     {
-        "chrom": "17", "start": 43093220, "ref": "C", "alt": "T", "rsid": "rs80357382",
-        "gene": "BRCA1", "clin_sig": "pathogenic", "review_status": "criteria_provided",
-        "review_stars": 2, "condition": "Breast-ovarian cancer", "variation_id": "17661",
+        "chrom": "17",
+        "start": 43093220,
+        "ref": "C",
+        "alt": "T",
+        "rsid": "rs80357382",
+        "gene": "BRCA1",
+        "clin_sig": "pathogenic",
+        "review_status": "criteria_provided",
+        "review_stars": 2,
+        "condition": "Breast-ovarian cancer",
+        "variation_id": "17661",
     },
     {
-        "chrom": "17", "start": 43093240, "ref": "G", "alt": "A", "rsid": "rs80357906",
-        "gene": "BRCA1", "clin_sig": "uncertain_significance",
-        "review_status": "criteria_provided", "review_stars": 1,
-        "condition": "Breast-ovarian cancer", "variation_id": "17662",
+        "chrom": "17",
+        "start": 43093240,
+        "ref": "G",
+        "alt": "A",
+        "rsid": "rs80357906",
+        "gene": "BRCA1",
+        "clin_sig": "uncertain_significance",
+        "review_status": "criteria_provided",
+        "review_stars": 1,
+        "condition": "Breast-ovarian cancer",
+        "variation_id": "17662",
     },
     {
-        "chrom": "17", "start": 43093260, "ref": "A", "alt": "G", "rsid": "rs28897696",
-        "gene": "BRCA2", "clin_sig": "benign", "review_status": "criteria_provided",
-        "review_stars": 2, "condition": "Breast-ovarian cancer", "variation_id": "17663",
+        "chrom": "17",
+        "start": 43093260,
+        "ref": "A",
+        "alt": "G",
+        "rsid": "rs28897696",
+        "gene": "BRCA2",
+        "clin_sig": "benign",
+        "review_status": "criteria_provided",
+        "review_stars": 2,
+        "condition": "Breast-ovarian cancer",
+        "variation_id": "17663",
     },
 ]
 
 
 def _pubmind_record(**overrides) -> dict:
     record = {
-        "chrom": "17", "start": 43093220, "ref": "C", "alt": "T", "pvid": "PV1",
-        "clin_sig": "pathogenic", "clin_sig_raw": "Pathogenic",
-        "pathogenicity_score": 0.9, "confidence": 2, "derivation": "direct",
+        "chrom": "17",
+        "start": 43093220,
+        "ref": "C",
+        "alt": "T",
+        "pvid": "PV1",
+        "clin_sig": "pathogenic",
+        "clin_sig_raw": "Pathogenic",
+        "pathogenicity_score": 0.9,
+        "confidence": 2,
+        "derivation": "direct",
     }
     record.update(overrides)
     return record
@@ -75,17 +105,16 @@ def _pubmind_record(**overrides) -> dict:
 def _clinvar_snapshot(tmp_path: Path, records: list[dict] | None = None) -> Path:
     root = tmp_path / "clinvar"
     (root / "data").mkdir(parents=True, exist_ok=True)
-    pl.DataFrame(records if records is not None else _CLINVAR).write_parquet(
-        root / "data" / "chr.parquet"
-    )
-    (root / "release.json").write_text(
-        '{"clinvar_file_date": "2026-06-27"}', encoding="utf-8"
-    )
+    pl.DataFrame(records if records is not None else _CLINVAR).write_parquet(root / "data" / "chr.parquet")
+    (root / "release.json").write_text('{"clinvar_file_date": "2026-06-27"}', encoding="utf-8")
     return root
 
 
 def _pubmind_snapshot(
-    tmp_path: Path, records: list[dict], *, dataset: str | None = "pubmind_abcdef123456",
+    tmp_path: Path,
+    records: list[dict],
+    *,
+    dataset: str | None = "pubmind_abcdef123456",
     name: str = "pubmind",
 ) -> Path:
     """A PubMind snapshot through the builder's own schema, so a rename upstream fails here."""
@@ -116,14 +145,13 @@ def _rows(path: Path) -> list[dict]:
 
 def _tree(spec: Path) -> dict[str, bytes]:
     """Every byte under a spec directory, so "wrote nothing" is measured rather than sampled."""
-    return {
-        str(p.relative_to(spec)): p.read_bytes() for p in sorted(spec.rglob("*")) if p.is_file()
-    }
+    return {str(p.relative_to(spec)): p.read_bytes() for p in sorted(spec.rglob("*")) if p.is_file()}
 
 
 def _draft(spec: Path, tmp_path: Path, pubmind: list[dict], **kwargs):
     return draft_gene_panel_from_pubmind(
-        spec, ["BRCA1"],
+        spec,
+        ["BRCA1"],
         snapshot=_clinvar_snapshot(tmp_path),
         pubmind_snapshot=_pubmind_snapshot(tmp_path, pubmind),
         **kwargs,
@@ -161,7 +189,8 @@ def test_a_gene_clinvar_does_not_record_refuses_with_the_reason_rather_than_draf
     tmp_path: Path,
 ) -> None:
     result = draft_gene_panel_from_pubmind(
-        _spec(tmp_path), ["NOTAGENE"],
+        _spec(tmp_path),
+        ["NOTAGENE"],
         snapshot=_clinvar_snapshot(tmp_path),
         pubmind_snapshot=_pubmind_snapshot(tmp_path, [_pubmind_record()]),
     )
@@ -178,14 +207,23 @@ def test_a_position_two_requested_genes_claim_leaves_the_cell_empty_and_says_so(
     overlapping = [
         *_CLINVAR,
         {
-            "chrom": "17", "start": 43093220, "ref": "C", "alt": "T", "rsid": "rs80357382",
-            "gene": "BRCA2", "clin_sig": "pathogenic", "review_status": "criteria_provided",
-            "review_stars": 2, "condition": "Breast-ovarian cancer", "variation_id": "17664",
+            "chrom": "17",
+            "start": 43093220,
+            "ref": "C",
+            "alt": "T",
+            "rsid": "rs80357382",
+            "gene": "BRCA2",
+            "clin_sig": "pathogenic",
+            "review_status": "criteria_provided",
+            "review_stars": 2,
+            "condition": "Breast-ovarian cancer",
+            "variation_id": "17664",
         },
     ]
     spec = _spec(tmp_path)
     result = draft_gene_panel_from_pubmind(
-        spec, ["BRCA1", "BRCA2"],
+        spec,
+        ["BRCA1", "BRCA2"],
         snapshot=_clinvar_snapshot(tmp_path, overlapping),
         pubmind_snapshot=_pubmind_snapshot(tmp_path, [_pubmind_record()]),
     )
@@ -214,7 +252,8 @@ def test_the_missing_clinvar_snapshot_is_this_passs_own_error_and_says_why_it_ne
     monkeypatch.setenv("JUST_DNA_CLINVAR_CACHE", str(tmp_path / "empty"))
     with pytest.raises(PubMindDraftError) as excinfo:
         draft_gene_panel_from_pubmind(
-            _spec(tmp_path), ["BRCA1"],
+            _spec(tmp_path),
+            ["BRCA1"],
             pubmind_snapshot=_pubmind_snapshot(tmp_path, [_pubmind_record()]),
             offline=True,
         )
@@ -249,7 +288,8 @@ def test_the_dataset_label_is_read_back_rather_than_re_derived(tmp_path: Path) -
 def test_a_missing_snapshot_names_the_command_that_builds_one(tmp_path: Path) -> None:
     with pytest.raises(PubMindDraftError) as excinfo:
         draft_gene_panel_from_pubmind(
-            _spec(tmp_path), ["BRCA1"],
+            _spec(tmp_path),
+            ["BRCA1"],
             snapshot=_clinvar_snapshot(tmp_path),
             pubmind_snapshot=tmp_path / "nowhere",
         )
@@ -307,7 +347,8 @@ def test_a_contested_coordinate_is_withheld_and_every_pvid_and_call_is_named(
     the finding, so no row is written and both calls are reported."""
     spec = _spec(tmp_path)
     result = _draft(
-        spec, tmp_path,
+        spec,
+        tmp_path,
         [_pubmind_record(), _pubmind_record(pvid="PV1b", clin_sig="benign", clin_sig_raw="Benign")],
     )
     assert result.withheld["contested_key"] == 1
@@ -324,9 +365,7 @@ def test_an_agreeing_multi_record_coordinate_is_one_row_that_says_how_many_agree
     """Agreement is not contestation: several PVIDs saying the same thing collapse to one row, and
     the record count and every PVID stay visible in the transcription."""
     spec = _spec(tmp_path)
-    result = _draft(
-        spec, tmp_path, [_pubmind_record(), _pubmind_record(pvid="PV1b", confidence=3)]
-    )
+    result = _draft(spec, tmp_path, [_pubmind_record(), _pubmind_record(pvid="PV1b", confidence=3)])
     (row,) = _rows(spec / "variants.csv")
     assert result.drafted == 1
     assert "2 record(s)" in row["conclusion"]
@@ -344,8 +383,11 @@ def test_a_filter_cannot_make_a_contested_coordinate_look_uncontested(tmp_path: 
     spec = _spec(tmp_path)
     # the dissenter is outside --clin-sig AND below the floor, so either dial would have hidden it
     result = _draft(
-        spec, tmp_path, [_pubmind_record(), dissenting],
-        clin_sig=frozenset({"pathogenic"}), min_confidence=2,
+        spec,
+        tmp_path,
+        [_pubmind_record(), dissenting],
+        clin_sig=frozenset({"pathogenic"}),
+        min_confidence=2,
     )
     assert result.withheld["contested_key"] == 1
     assert result.drafted == 0
@@ -365,11 +407,12 @@ def test_every_candidate_is_drafted_or_withheld_under_exactly_one_walked_reason(
     """An equality over the reason set, never a floor: a sixth reason cannot arrive without joining
     the sum, and a key counted twice or not at all breaks it."""
     records = [
-        _pubmind_record(),                                                    # drafted
+        _pubmind_record(),  # drafted
         _pubmind_record(pvid="PVc", clin_sig="benign", clin_sig_raw="Benign"),  # contested with PV1
         _pubmind_record(start=43093240, ref="G", alt="GA", pvid="PVi", derivation="indel"),
-        _pubmind_record(start=43093240, ref="G", alt="A", pvid="PVb",
-                        clin_sig="benign", clin_sig_raw="Benign"),            # outside --clin-sig
+        _pubmind_record(
+            start=43093240, ref="G", alt="A", pvid="PVb", clin_sig="benign", clin_sig_raw="Benign"
+        ),  # outside --clin-sig
         _pubmind_record(start=43093240, ref="G", alt="C", pvid="PVn", confidence=None),
         _pubmind_record(start=43093240, ref="G", alt="T", pvid="PVl", confidence=0),
     ]
@@ -378,8 +421,11 @@ def test_every_candidate_is_drafted_or_withheld_under_exactly_one_walked_reason(
     assert result.candidates == 5
     assert result.accounts_for_every_candidate()
     assert result.withheld == {
-        "contested_key": 1, "indel_derivation": 1, "clin_sig_not_selected": 1,
-        "confidence_not_stated": 1, "below_min_confidence": 1,
+        "contested_key": 1,
+        "indel_derivation": 1,
+        "clin_sig_not_selected": 1,
+        "confidence_not_stated": 1,
+        "below_min_confidence": 1,
     }
 
 
@@ -390,12 +436,14 @@ def test_a_confidence_the_source_did_not_state_is_not_a_confidence_below_the_flo
     invent a reading, so the two classes are counted and reported apart."""
     unstated = _pubmind_record(confidence=None)
     below = _pubmind_record(confidence=0)
-    assert _withhold_reason(
-        _key_of([unstated]), clin_sig=frozenset({"pathogenic"}), min_confidence=1
-    ) == "confidence_not_stated"
-    assert _withhold_reason(
-        _key_of([below]), clin_sig=frozenset({"pathogenic"}), min_confidence=1
-    ) == "below_min_confidence"
+    assert (
+        _withhold_reason(_key_of([unstated]), clin_sig=frozenset({"pathogenic"}), min_confidence=1)
+        == "confidence_not_stated"
+    )
+    assert (
+        _withhold_reason(_key_of([below]), clin_sig=frozenset({"pathogenic"}), min_confidence=1)
+        == "below_min_confidence"
+    )
 
     result = _draft(_spec(tmp_path), tmp_path, [unstated])
     lines = [w for w in result.warnings if "confidence" in w and "coordinate(s)" in w]
@@ -424,9 +472,7 @@ def test_absence_in_the_corpus_is_reported_as_absence_rather_than_agreement(
 
 
 def test_the_indel_class_names_left_normalization_as_the_reason(tmp_path: Path) -> None:
-    result = _draft(
-        _spec(tmp_path), tmp_path, [_pubmind_record(ref="C", alt="CT", derivation="indel")]
-    )
+    result = _draft(_spec(tmp_path), tmp_path, [_pubmind_record(ref="C", alt="CT", derivation="indel")])
     (line,) = [w for w in result.warnings if "length-changing" in w]
     assert "left-normalized" in line
 
@@ -464,7 +510,8 @@ def test_the_worklist_names_pubmind_as_the_publisher_of_the_alleles(tmp_path: Pa
 
 def test_the_state_stub_line_names_pubmind_and_groups_by_the_call(tmp_path: Path) -> None:
     result = _draft(
-        _spec(tmp_path), tmp_path,
+        _spec(tmp_path),
+        tmp_path,
         [_pubmind_record(clin_sig="uncertain_significance", clin_sig_raw="Uncertain significance")],
         clin_sig=frozenset({"uncertain_significance"}),
     )
@@ -503,15 +550,14 @@ def test_the_licence_row_records_null_on_every_term_and_the_draft_is_not_skipped
     spec = _spec(tmp_path)
     result = _draft(spec, tmp_path, [_pubmind_record()])
     assert result.added_for("variants.csv") == 1
-    assert any("terms of the ANNOVAR-redistributed table could not be established" in w
-               for w in result.warnings)
+    assert any(
+        "terms of the ANNOVAR-redistributed table could not be established" in w for w in result.warnings
+    )
 
     rows, errors, _ = load_csv_rows(sources_path(spec, error=RuntimeError), SourceRow, "sources.csv")
     assert not errors
     (row,) = [r for r in rows if r.source == PUBMIND_TERMS.source]
-    assert (row.license, row.share_alike, row.commercial_use, row.redistribution) == (
-        None, None, None, None
-    )
+    assert (row.license, row.share_alike, row.commercial_use, row.redistribution) == (None, None, None, None)
     assert row.dataset == "pubmind_abcdef123456"
     assert row.declared_use == "unstated"
     # What § A pinned, restated over the row this provider actually wrote: an unknown does not taint,
@@ -580,11 +626,14 @@ def _hint(tmp_path: Path, records: list[dict] | None):
     `records=None` means *no snapshot*: an explicit path that holds no parquet resolves to `None`
     through the same ladder the command uses, so the third state is produced rather than mocked.
     """
-    cache = (
-        _pubmind_snapshot(tmp_path, records) if records is not None else tmp_path / "no-snapshot"
-    )
+    cache = _pubmind_snapshot(tmp_path, records) if records is not None else tmp_path / "no-snapshot"
     return lookup_variant(
-        chrom="17", start=43093220, ref="C", alts="T", offline=True, pubmind_cache=cache,
+        chrom="17",
+        start=43093220,
+        ref="C",
+        alts="T",
+        offline=True,
+        pubmind_cache=cache,
     )
 
 
@@ -648,10 +697,16 @@ def _invoke(spec: Path, tmp_path: Path, records: list[dict], *extra: str):
     return _runner.invoke(
         app,
         [
-            "draft-panel", str(spec), "--gene", "BRCA1",
-            "--snapshot", str(_clinvar_snapshot(tmp_path)),
-            "--pubmind-cache", str(_pubmind_snapshot(tmp_path, records)),
-            "--offline", *extra,
+            "draft-panel",
+            str(spec),
+            "--gene",
+            "BRCA1",
+            "--snapshot",
+            str(_clinvar_snapshot(tmp_path)),
+            "--pubmind-cache",
+            str(_pubmind_snapshot(tmp_path, records)),
+            "--offline",
+            *extra,
         ],
     )
 
@@ -673,8 +728,14 @@ def test_a_dial_belonging_to_the_other_authority_is_named_rather_than_ignored(
     """A run that honoured neither the flag nor the author's expectation is the failure worth
     reporting before it happens — and the flag that *does* apply stays quiet."""
     result = _invoke(
-        _spec(tmp_path), tmp_path, [_pubmind_record()],
-        "--source", "pubmind", "--min-review-stars", "3", "--dry-run",
+        _spec(tmp_path),
+        tmp_path,
+        [_pubmind_record()],
+        "--source",
+        "pubmind",
+        "--min-review-stars",
+        "3",
+        "--dry-run",
     )
     assert result.exit_code == 0
     output = result.output + (result.stderr or "")
@@ -688,8 +749,14 @@ def test_the_clinvar_path_is_untouched_by_the_new_flag(tmp_path: Path) -> None:
     result = _runner.invoke(
         app,
         [
-            "draft-panel", str(_spec(tmp_path)), "--gene", "BRCA1",
-            "--snapshot", str(_clinvar_snapshot(tmp_path)), "--offline", "--dry-run",
+            "draft-panel",
+            str(_spec(tmp_path)),
+            "--gene",
+            "BRCA1",
+            "--snapshot",
+            str(_clinvar_snapshot(tmp_path)),
+            "--offline",
+            "--dry-run",
         ],
     )
     assert result.exit_code == 0

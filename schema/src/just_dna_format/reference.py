@@ -186,12 +186,7 @@ _ALL_MODELS: dict[str, type[BaseModel]] = {
 
 def _type_name(annotation: Any) -> str:
     """A readable type label (`Optional[str]`, `list[str]`, `int`) from a field annotation."""
-    return (
-        str(annotation)
-        .replace("typing.", "")
-        .replace("<class '", "")
-        .replace("'>", "")
-    )
+    return str(annotation).replace("typing.", "").replace("<class '", "").replace("'>", "")
 
 
 def _collect_vocabularies(*, closed: bool) -> dict[str, list[str]]:

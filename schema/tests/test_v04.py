@@ -44,23 +44,39 @@ from pydantic import ValidationError
 def test_repeat_allele_bins_accept_open_and_closed_ranges() -> None:
     # HTT CAG: open-ended (>=40), closed range (36-39), sharp handled elsewhere.
     full = RepeatAlleleRow(
-        gene="HTT", repeat_unit="CAG", measure_min=40, direction="risk",
-        clin_sig="pathogenic", phenotype="HD (full penetrance)",
-        trait_efo_id="MONDO_0007739", conclusion=">=40 CAG",
+        gene="HTT",
+        repeat_unit="CAG",
+        measure_min=40,
+        direction="risk",
+        clin_sig="pathogenic",
+        phenotype="HD (full penetrance)",
+        trait_efo_id="MONDO_0007739",
+        conclusion=">=40 CAG",
     )
     assert full.measure_kind == "repeat_count"
     assert full.measure_max is None
     reduced = RepeatAlleleRow(
-        gene="HTT", repeat_unit="CAG", measure_min=36, measure_max=39,
-        direction="risk", clin_sig="pathogenic", conclusion="36-39 CAG",
+        gene="HTT",
+        repeat_unit="CAG",
+        measure_min=36,
+        measure_max=39,
+        direction="risk",
+        clin_sig="pathogenic",
+        conclusion="36-39 CAG",
     )
     assert (reduced.measure_min, reduced.measure_max) == (36.0, 39.0)
 
 
 def test_copy_number_sharp_is_min_equals_max_and_modifier_pair() -> None:
     sharp = CopyNumberRow(
-        gene="SMN1", measure_min=0, measure_max=0, modifier_gene="SMN2", modifier_cn=3,
-        direction="risk", clin_sig="pathogenic", conclusion="0 SMN1 / 3 SMN2",
+        gene="SMN1",
+        measure_min=0,
+        measure_max=0,
+        modifier_gene="SMN2",
+        modifier_cn=3,
+        direction="risk",
+        clin_sig="pathogenic",
+        conclusion="0 SMN1 / 3 SMN2",
     )
     assert sharp.measure_min == sharp.measure_max == 0.0
     assert (sharp.modifier_gene, sharp.modifier_cn) == ("SMN2", 3)
@@ -94,14 +110,16 @@ def test_copy_number_rejects_half_set_modifier() -> None:
 
 def test_heteroplasmy_fraction_bounds_constrained_to_unit_interval() -> None:
     ok = HeteroplasmyRow(
-        gene="MT-TL1", reference_sequence="NC_012920.1", measure_min=0.1, measure_max=0.6,
-        direction="risk", conclusion="above penetrance threshold",
+        gene="MT-TL1",
+        reference_sequence="NC_012920.1",
+        measure_min=0.1,
+        measure_max=0.6,
+        direction="risk",
+        conclusion="above penetrance threshold",
     )
     assert ok.measure_kind == "allele_fraction"
     with pytest.raises(ValidationError):
-        HeteroplasmyRow(
-            gene="MT-TL1", reference_sequence="NC_012920.1", measure_min=1.5, conclusion="x"
-        )
+        HeteroplasmyRow(gene="MT-TL1", reference_sequence="NC_012920.1", measure_min=1.5, conclusion="x")
 
 
 def test_measure_kind_is_pinned_per_table() -> None:
@@ -113,9 +131,10 @@ def test_measure_kind_is_pinned_per_table() -> None:
 
 
 def test_measure_kinds_vocabulary_is_frozen() -> None:
-    assert frozenset(
-        {"activity_score", "copy_number", "repeat_count", "allele_fraction", "prs_percentile"}
-    ) == VALID_MEASURE_KINDS
+    assert (
+        frozenset({"activity_score", "copy_number", "repeat_count", "allele_fraction", "prs_percentile"})
+        == VALID_MEASURE_KINDS
+    )
 
 
 # ── PGx four-table model ──────────────────────────────────────────────────────────────────────
@@ -129,8 +148,11 @@ def test_haplotype_junction_requires_identifier_and_nucleotide_allele() -> None:
 
 def test_allele_function_star_string_verbatim_and_conveniences() -> None:
     dup = AlleleFunctionRow(
-        gene="CYP2D6", allele="*1x2", activity_value=2.0,
-        function_status="increased_function", copy_number=2,
+        gene="CYP2D6",
+        allele="*1x2",
+        activity_value=2.0,
+        function_status="increased_function",
+        copy_number=2,
     )
     assert dup.allele == "*1x2"
     tandem = AlleleFunctionRow(gene="CYP2D6", allele="*36+*10", activity_value=0.25, suballele="10.001")
@@ -154,19 +176,30 @@ def test_diplotype_pair_is_canonicalized() -> None:
 
 
 def test_function_status_vocabulary_is_frozen() -> None:
-    assert frozenset(
-        {
-            "no_function", "decreased_function", "normal_function",
-            "increased_function", "uncertain_function", "unknown_function",
-        }
-    ) == VALID_FUNCTION_STATUS
+    assert (
+        frozenset(
+            {
+                "no_function",
+                "decreased_function",
+                "normal_function",
+                "increased_function",
+                "uncertain_function",
+                "unknown_function",
+            }
+        )
+        == VALID_FUNCTION_STATUS
+    )
 
 
 # ── PGS declared interface ────────────────────────────────────────────────────────────────────
 def test_pgs_row_accepts_ancestry_validity_fields() -> None:
     p = PgsRow(
-        pgs_id="PGS000135", trait_efo_id="EFO_0000692", training_ancestry="EUR|EAS",
-        training_cohort="UK Biobank NW-EUR", match_rate_floor=0.8, research_tier="research_only",
+        pgs_id="PGS000135",
+        trait_efo_id="EFO_0000692",
+        training_ancestry="EUR|EAS",
+        training_cohort="UK Biobank NW-EUR",
+        match_rate_floor=0.8,
+        research_tier="research_only",
         note="SCZ",
     )
     assert p.training_ancestry == ["EUR", "EAS"]
@@ -276,8 +309,15 @@ def test_a_model_that_declares_the_column_is_untouched() -> None:
     Derived from the models rather than listed: any authored model declaring a name in
     `MISPLACED_COLUMN_REASONS` must accept it, or the diagnosis has broken the tables it describes."""
     row = FrequencyRow(
-        variant_key="rs1", chrom="1", start=1, ref="A", population="afr",
-        allele_count=1, allele_number=2, source="gnomad", dataset="gnomad_v4.1",
+        variant_key="rs1",
+        chrom="1",
+        start=1,
+        ref="A",
+        population="afr",
+        allele_count=1,
+        allele_number=2,
+        source="gnomad",
+        dataset="gnomad_v4.1",
     )
     assert row.source == "gnomad"
     for name in MISPLACED_COLUMN_REASONS:
@@ -287,9 +327,15 @@ def test_a_model_that_declares_the_column_is_untouched() -> None:
 # ── adoption pass: 3 general axes on VariantRow ─────────────────────────────────────────────────
 def test_variant_row_general_axes() -> None:
     v = VariantRow(
-        rsid="rs80357906", genotype="A/AT", state="risk", conclusion="BRCA1 pathogenic",
-        gene="BRCA1", clin_sig="pathogenic",
-        requires_callable=True, acmg_sf=True, actionability="preventable",
+        rsid="rs80357906",
+        genotype="A/AT",
+        state="risk",
+        conclusion="BRCA1 pathogenic",
+        gene="BRCA1",
+        clin_sig="pathogenic",
+        requires_callable=True,
+        acmg_sf=True,
+        actionability="preventable",
     )
     assert v.requires_callable and v.acmg_sf and v.actionability == "preventable"
     with pytest.raises(ValidationError):  # actionability closed-validated against the seed
@@ -301,8 +347,12 @@ def test_variant_row_general_axes() -> None:
 # ── adoption pass: PharmGKB (PharmVariantRow + DiplotypeRow columns) ─────────────────────────────
 def test_pharm_variant_row() -> None:
     p = PharmVariantRow(
-        rsid="rs9923231", gene="VKORC1", drug="warfarin",
-        response="reduced dose requirement", evidence_level="1A", conclusion="lower warfarin dose",
+        rsid="rs9923231",
+        gene="VKORC1",
+        drug="warfarin",
+        response="reduced dose requirement",
+        evidence_level="1A",
+        conclusion="lower warfarin dose",
     )
     assert p.drug == "warfarin" and p.evidence_level == "1A" and p.variant_key == "rs9923231"
     with pytest.raises(ValidationError):
@@ -318,17 +368,15 @@ def test_pharm_variant_genotype_uses_the_shared_grammar() -> None:
     grammar `VariantRow` does — same accepts, same rejects, from one definition."""
     accepted = ["C/C", "C/T", "T/T", "C", "C|T"]  # hom, het, hom-alt, hemizygous, phased
     for g in accepted:
-        assert PharmVariantRow(
-            rsid="rs4149056", drug="simvastatin", genotype=g, conclusion="x"
-        ).genotype == g
+        assert PharmVariantRow(rsid="rs4149056", drug="simvastatin", genotype=g, conclusion="x").genotype == g
 
     # Every rejection below is the shared grammar's, proven by asserting VariantRow agrees.
     rejected = [
-        "T/C",        # unphased alleles must be alphabetically sorted
-        "C|T|G",      # phased must be exactly two alleles
-        "C/T/G",      # more than two alleles
-        "del/del",    # symbolic allele — RM5, deliberately NOT widened for PharmGKB
-        "*1",         # star allele belongs on DiplotypeRow, not here
+        "T/C",  # unphased alleles must be alphabetically sorted
+        "C|T|G",  # phased must be exactly two alleles
+        "C/T/G",  # more than two alleles
+        "del/del",  # symbolic allele — RM5, deliberately NOT widened for PharmGKB
+        "*1",  # star allele belongs on DiplotypeRow, not here
     ]
     for g in rejected:
         with pytest.raises(ValidationError):
@@ -342,14 +390,18 @@ def test_pharm_variant_genotype_uses_the_shared_grammar() -> None:
 
 def test_diplotype_row_pharm_columns() -> None:
     d = DiplotypeRow(
-        gene="CYP2D6", haplotype_a="*1", haplotype_b="*4", phenotype="IM",
-        conclusion="reduced codeine activation", drug="codeine",
-        response="reduced analgesia", evidence_level="1A",
+        gene="CYP2D6",
+        haplotype_a="*1",
+        haplotype_b="*4",
+        phenotype="IM",
+        conclusion="reduced codeine activation",
+        drug="codeine",
+        response="reduced analgesia",
+        evidence_level="1A",
     )
     assert d.drug == "codeine" and d.evidence_level == "1A"
     with pytest.raises(ValidationError):
-        DiplotypeRow(gene="CYP2D6", haplotype_a="*1", haplotype_b="*4", conclusion="x",
-                     evidence_level="9")
+        DiplotypeRow(gene="CYP2D6", haplotype_a="*1", haplotype_b="*4", conclusion="x", evidence_level="9")
 
 
 def test_recommendation_strength_is_a_separate_axis_from_evidence_level() -> None:
@@ -357,8 +409,13 @@ def test_recommendation_strength_is_a_separate_axis_from_evidence_level() -> Non
     # CPIC says how firmly to act on it. A well-evidenced association carrying an optional action is a
     # real and common combination, so the two must be independently settable.
     d = DiplotypeRow(
-        gene="CYP2C19", haplotype_a="*2", haplotype_b="*17", conclusion="c", drug="clopidogrel",
-        evidence_level="1A", recommendation_strength="optional",
+        gene="CYP2C19",
+        haplotype_a="*2",
+        haplotype_b="*17",
+        conclusion="c",
+        drug="clopidogrel",
+        evidence_level="1A",
+        recommendation_strength="optional",
     )
     assert (d.evidence_level, d.recommendation_strength) == ("1A", "optional")
     assert set(VALID_RECOMMENDATION_STRENGTH).isdisjoint(VALID_EVIDENCE_LEVELS)
@@ -374,22 +431,51 @@ def test_recommendation_strength_is_a_separate_axis_from_evidence_level() -> Non
 
 def test_model_level_roundtrip_is_lossless_and_idempotent() -> None:
     rows = [
-        RepeatAlleleRow(gene="HTT", repeat_unit="CAG", measure_min=36, measure_max=39,
-                        direction="risk", clin_sig="pathogenic", conclusion="36-39"),
-        CopyNumberRow(gene="SMN1", measure_min=0, measure_max=0, modifier_gene="SMN2",
-                      modifier_cn=3, direction="risk", clin_sig="pathogenic", conclusion="0/3"),
+        RepeatAlleleRow(
+            gene="HTT",
+            repeat_unit="CAG",
+            measure_min=36,
+            measure_max=39,
+            direction="risk",
+            clin_sig="pathogenic",
+            conclusion="36-39",
+        ),
+        CopyNumberRow(
+            gene="SMN1",
+            measure_min=0,
+            measure_max=0,
+            modifier_gene="SMN2",
+            modifier_cn=3,
+            direction="risk",
+            clin_sig="pathogenic",
+            conclusion="0/3",
+        ),
         CopyNumberRow(gene="SMN1", unresolved=True, conclusion="not resolved"),
-        HeteroplasmyRow(gene="MT-TL1", reference_sequence="NC_012920.1", measure_min=0.1,
-                        measure_max=0.6, conclusion="threshold"),
-        ActivityPhenotypeRow(gene="CYP2D6", measure_min=0, measure_max=0, phenotype="PM",
-                             conclusion="poor metabolizer"),
+        HeteroplasmyRow(
+            gene="MT-TL1",
+            reference_sequence="NC_012920.1",
+            measure_min=0.1,
+            measure_max=0.6,
+            conclusion="threshold",
+        ),
+        ActivityPhenotypeRow(
+            gene="CYP2D6", measure_min=0, measure_max=0, phenotype="PM", conclusion="poor metabolizer"
+        ),
         HaplotypeRow(haplotype_name="*4", rsid="rs3892097", allele="A", gene="CYP2D6"),
         AlleleFunctionRow(gene="CYP2D6", allele="*36+*10", activity_value=0.25, suballele="10.001"),
         DiplotypeRow(gene="CYP2D6", haplotype_a="*4", haplotype_b="*1", phenotype="IM", conclusion="c"),
-        DiplotypeRow(gene="CYP2C19", haplotype_a="*2", haplotype_b="*17", conclusion="c",
-                     drug="clopidogrel", evidence_level="1A", recommendation_strength="optional"),
-        PgsRow(pgs_id="PGS000135", training_ancestry="EUR", match_rate_floor=0.8,
-               research_tier="research_only"),
+        DiplotypeRow(
+            gene="CYP2C19",
+            haplotype_a="*2",
+            haplotype_b="*17",
+            conclusion="c",
+            drug="clopidogrel",
+            evidence_level="1A",
+            recommendation_strength="optional",
+        ),
+        PgsRow(
+            pgs_id="PGS000135", training_ancestry="EUR", match_rate_floor=0.8, research_tier="research_only"
+        ),
     ]
     for row in rows:
         reparsed = type(row).model_validate(row.model_dump())
@@ -400,12 +486,18 @@ def test_model_level_roundtrip_is_lossless_and_idempotent() -> None:
 
 # ── round-2: source_field (VCF binding pointer, not code) ───────────────────────────────────────
 def test_source_field_is_a_pointer_not_an_expression() -> None:
-    assert RepeatAlleleRow(
-        gene="HTT", repeat_unit="CAG", measure_min=40, conclusion=">=40", source_field="REPCN"
-    ).source_field == "REPCN"
-    assert CopyNumberRow(
-        gene="SMN1", measure_min=0, measure_max=0, conclusion="0", source_field="CN|DS"
-    ).source_field == "CN|DS"
+    assert (
+        RepeatAlleleRow(
+            gene="HTT", repeat_unit="CAG", measure_min=40, conclusion=">=40", source_field="REPCN"
+        ).source_field
+        == "REPCN"
+    )
+    assert (
+        CopyNumberRow(
+            gene="SMN1", measure_min=0, measure_max=0, conclusion="0", source_field="CN|DS"
+        ).source_field
+        == "CN|DS"
+    )
     for bad in ("AF*DP", "AF + 1", "AF DP", "AF;DP"):
         with pytest.raises(ValidationError):
             RepeatAlleleRow(gene="HTT", repeat_unit="CAG", measure_min=40, conclusion="x", source_field=bad)
@@ -414,8 +506,13 @@ def test_source_field_is_a_pointer_not_an_expression() -> None:
 # ── round-2 Q6: heteroplasmy tissue + legacy reference guard ────────────────────────────────────
 def test_heteroplasmy_tissue_fields_and_legacy_reference_guard() -> None:
     ok = HeteroplasmyRow(
-        gene="MT-TL1", reference_sequence="NC_012920.1", measure_min=0.8, measure_max=1.0,
-        conclusion="high", tissue="blood", assay_context="WGS",
+        gene="MT-TL1",
+        reference_sequence="NC_012920.1",
+        measure_min=0.8,
+        measure_max=1.0,
+        conclusion="high",
+        tissue="blood",
+        assay_context="WGS",
     )
     assert ok.tissue == "blood" and ok.assay_context == "WGS"
     for legacy in ("NC_001807", "NC_001807.4"):
@@ -427,8 +524,14 @@ def test_heteroplasmy_tissue_fields_and_legacy_reference_guard() -> None:
 def _htt_bins() -> list[RepeatAlleleRow]:
     spans = [(6, 26, "normal"), (27, 35, "int"), (36, 39, "reduced"), (40, None, "full")]
     return [
-        RepeatAlleleRow(gene="HTT", repeat_unit="CAG", measure_min=lo, measure_max=hi,
-                        trait_efo_id="MONDO_0007739", conclusion=c)
+        RepeatAlleleRow(
+            gene="HTT",
+            repeat_unit="CAG",
+            measure_min=lo,
+            measure_max=hi,
+            trait_efo_id="MONDO_0007739",
+            conclusion=c,
+        )
         for lo, hi, c in spans
     ]
 
@@ -441,8 +544,14 @@ def test_validate_bins_accepts_contiguous_rejects_overlap_warns_gap() -> None:
     assert warns and "no bin covers" in warns[0]
     # an overlapping resolved range is rejected outright
     overlap = _htt_bins() + [
-        RepeatAlleleRow(gene="HTT", repeat_unit="CAG", measure_min=38, measure_max=45,
-                        trait_efo_id="MONDO_0007739", conclusion="oops")
+        RepeatAlleleRow(
+            gene="HTT",
+            repeat_unit="CAG",
+            measure_min=38,
+            measure_max=45,
+            trait_efo_id="MONDO_0007739",
+            conclusion="oops",
+        )
     ]
     with pytest.raises(ValueError):
         validate_bins(overlap)
@@ -452,12 +561,24 @@ def test_validate_bins_warns_on_continuous_fraction_gap() -> None:
     # allele_fraction is a _CONTINUOUS_GAP_KIND: any positive hole between authored bins warns
     # (unlike integer kinds, which tolerate an adjacent [.,35],[36,.] as contiguous).
     het = [
-        HeteroplasmyRow(gene="MT-TL1", reference_sequence="NC_012920.1", tissue="blood",
-                        measure_min=0.0, measure_max=0.2, trait_efo_id="MONDO_0010789",
-                        conclusion="low"),
-        HeteroplasmyRow(gene="MT-TL1", reference_sequence="NC_012920.1", tissue="blood",
-                        measure_min=0.4, measure_max=1.0, trait_efo_id="MONDO_0010789",
-                        conclusion="high"),
+        HeteroplasmyRow(
+            gene="MT-TL1",
+            reference_sequence="NC_012920.1",
+            tissue="blood",
+            measure_min=0.0,
+            measure_max=0.2,
+            trait_efo_id="MONDO_0010789",
+            conclusion="low",
+        ),
+        HeteroplasmyRow(
+            gene="MT-TL1",
+            reference_sequence="NC_012920.1",
+            tissue="blood",
+            measure_min=0.4,
+            measure_max=1.0,
+            trait_efo_id="MONDO_0010789",
+            conclusion="high",
+        ),
     ]
     warns = validate_bins(het)
     assert warns and "no bin covers (0.2, 0.4)" in warns[0]
@@ -476,27 +597,52 @@ def test_validate_bins_ignores_activity_score_interior_gaps() -> None:
 def test_measure_bounds_reject_non_finite() -> None:
     for bad in (float("nan"), float("inf")):
         with pytest.raises(ValidationError):
-            RepeatAlleleRow(gene="HTT", repeat_unit="CAG", measure_min=6, measure_max=bad,
-                            conclusion="x")
+            RepeatAlleleRow(gene="HTT", repeat_unit="CAG", measure_min=6, measure_max=bad, conclusion="x")
 
 
 def test_validate_bins_differentiates_by_modifier_and_trait() -> None:
     # two sharp [0,0] SMN1 rows differing only by SMN2 modifier are distinct keys, not an overlap
     smn = [
-        CopyNumberRow(gene="SMN1", measure_min=0, measure_max=0, modifier_gene="SMN2", modifier_cn=3,
-                      trait_efo_id="MONDO_0001516", conclusion="milder"),
-        CopyNumberRow(gene="SMN1", measure_min=0, measure_max=0, modifier_gene="SMN2", modifier_cn=1,
-                      trait_efo_id="MONDO_0001516", conclusion="severe"),
+        CopyNumberRow(
+            gene="SMN1",
+            measure_min=0,
+            measure_max=0,
+            modifier_gene="SMN2",
+            modifier_cn=3,
+            trait_efo_id="MONDO_0001516",
+            conclusion="milder",
+        ),
+        CopyNumberRow(
+            gene="SMN1",
+            measure_min=0,
+            measure_max=0,
+            modifier_gene="SMN2",
+            modifier_cn=1,
+            trait_efo_id="MONDO_0001516",
+            conclusion="severe",
+        ),
     ]
     assert validate_bins(smn) == []
     # unresolved sentinels are ignored (no range to overlap)
-    assert validate_bins(_htt_bins() + [
-        RepeatAlleleRow(gene="HTT", repeat_unit="CAG", unresolved=True,
-                        trait_efo_id="MONDO_0007739", conclusion="CI")
-    ]) == []
+    assert (
+        validate_bins(
+            _htt_bins()
+            + [
+                RepeatAlleleRow(
+                    gene="HTT",
+                    repeat_unit="CAG",
+                    unresolved=True,
+                    trait_efo_id="MONDO_0007739",
+                    conclusion="CI",
+                )
+            ]
+        )
+        == []
+    )
 
 
 # ── RM30: one rule for a haplotype name, across all three PGx tables (0.5.1) ─────────────────────
+
 
 def test_the_three_pgx_tables_agree_on_what_a_haplotype_name_is() -> None:
     """`AlleleFunctionRow.allele` used to demand a leading `*` while the other two accepted anything,
@@ -510,8 +656,10 @@ def test_the_three_pgx_tables_agree_on_what_a_haplotype_name_is() -> None:
         for label, build in (
             ("allele_function", lambda: AlleleFunctionRow(gene="APOE", allele=name)),
             ("haplotypes", lambda: HaplotypeRow(haplotype_name=name, rsid="rs429358", allele="C")),
-            ("diplotypes", lambda: DiplotypeRow(
-                gene="APOE", haplotype_a=name, haplotype_b="e3", conclusion="c")),
+            (
+                "diplotypes",
+                lambda: DiplotypeRow(gene="APOE", haplotype_a=name, haplotype_b="e3", conclusion="c"),
+            ),
         ):
             try:
                 build()

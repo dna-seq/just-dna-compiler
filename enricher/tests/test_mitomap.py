@@ -125,8 +125,11 @@ def test_the_shared_normalizer_answers_the_same_for_both_sides_raw_tokens() -> N
     sources would report our own two maps disagreeing.
     """
     pairs = {
-        "P": "Pathogenic", "LP": "Likely_pathogenic", "VUS": "Uncertain_significance",
-        "LB": "Likely_benign", "B": "Benign",
+        "P": "Pathogenic",
+        "LP": "Likely_pathogenic",
+        "VUS": "Uncertain_significance",
+        "LB": "Likely_benign",
+        "B": "Benign",
     }
     assert set(pairs) == MITOMAP_VCEP_CLASSES
     for abbreviation, clinvar_wording in pairs.items():
@@ -140,7 +143,7 @@ def test_the_shared_normalizer_answers_the_same_for_both_sides_raw_tokens() -> N
     ("ref", "alt", "reason"),
     [
         ("G", "A", None),
-        ("A", "AA", None),                       # an insertion, right-anchored the way VCF spells one
+        ("A", "AA", None),  # an insertion, right-anchored the way VCF spells one
         ("TA", ":", "right_anchored_deletion"),  # needs an rCRS base at position-1; P2 forbids the fetch
         ("24bp_deletion", None, "non_nucleotide"),
         ("A", "A", "ref_equals_alt"),
@@ -192,13 +195,15 @@ def test_a_locus_that_is_not_one_gene_withholds_rather_than_picking() -> None:
 # ── the dump reader ─────────────────────────────────────────────────────────────────────────────
 
 
-def test_the_reader_keeps_the_tables_asked_for_and_nothing_else(
-    mitomap_dump: Path, mitomap_corpus
-) -> None:
+def test_the_reader_keeps_the_tables_asked_for_and_nothing_else(mitomap_dump: Path, mitomap_corpus) -> None:
     tables = read_dump_tables(mitomap_dump)
     assert set(tables) == {
-        "mmutation", "rtmutation", "mmutation_reference", "rtmutation_reference",
-        "reference", "edit_date",
+        "mmutation",
+        "rtmutation",
+        "mmutation_reference",
+        "rtmutation_reference",
+        "reference",
+        "edit_date",
     }
     assert len(tables["mmutation"]) == len(mitomap_corpus.mmutation)
     assert tables["mmutation"][0]["locus"] == "MT-ND1"
@@ -215,9 +220,7 @@ def test_a_table_the_dump_does_not_publish_is_absent_rather_than_empty(
     assert tables["mmutation"], "and the tables that are there still parsed"
 
 
-def test_a_dump_missing_a_table_is_refused_rather_than_built_short(
-    tmp_path: Path, mitomap_corpus
-) -> None:
+def test_a_dump_missing_a_table_is_refused_rather_than_built_short(tmp_path: Path, mitomap_corpus) -> None:
     short = mitomap_corpus.write(tmp_path / "short.sql.gz", mitomap_corpus.without("rtmutation"))
     with pytest.raises(MitomapError, match="rtmutation"):
         build_snapshot(short, tmp_path / "out")
@@ -235,7 +238,9 @@ def test_the_snapshot_holds_one_parquet_per_table_and_counts_what_it_read(
     )
     data = tmp_path / "out" / "data"
     assert {p.name for p in data.glob("*.parquet")} == {
-        *VARIANT_PARQUET.values(), CITATIONS_PARQUET, REFERENCES_PARQUET,
+        *VARIANT_PARQUET.values(),
+        CITATIONS_PARQUET,
+        REFERENCES_PARQUET,
     }
     for table, name in VARIANT_PARQUET.items():
         frame = pl.read_parquet(data / name)
@@ -288,9 +293,7 @@ def test_the_snapshot_records_the_withheld_brackets_and_the_unmintable_alleles(
     """Both are computed by the build, so both are published rather than recomputed by every reader."""
     build_snapshot(mitomap_dump, tmp_path / "out")
     release = json.loads((tmp_path / "out" / "release.json").read_text())
-    frames = [
-        pl.read_parquet(tmp_path / "out" / "data" / name) for name in VARIANT_PARQUET.values()
-    ]
+    frames = [pl.read_parquet(tmp_path / "out" / "data" / name) for name in VARIANT_PARQUET.values()]
     withheld = pl.concat(frames).filter(pl.col("withheld_bracket").is_not_null())
     assert release["withheld_brackets"] == dict(
         sorted(withheld["withheld_bracket"].value_counts().iter_rows())
@@ -299,14 +302,10 @@ def test_the_snapshot_records_the_withheld_brackets_and_the_unmintable_alleles(
         "a withheld bracket may never carry a clin_sig"
     )
     unmintable = pl.concat(frames).filter(pl.col("allele_defect").is_not_null())
-    assert release["unmintable"] == dict(
-        sorted(unmintable["allele_defect"].value_counts().iter_rows())
-    )
+    assert release["unmintable"] == dict(sorted(unmintable["allele_defect"].value_counts().iter_rows()))
 
 
-def test_a_rebuild_from_the_same_bytes_is_byte_identical(
-    mitomap_dump: Path, tmp_path: Path
-) -> None:
+def test_a_rebuild_from_the_same_bytes_is_byte_identical(mitomap_dump: Path, tmp_path: Path) -> None:
     """Principle 7. `release.json`'s `built_at` is the only per-run-varying byte and lives outside."""
     first = build_snapshot(mitomap_dump, tmp_path / "a")
     second = build_snapshot(mitomap_dump, tmp_path / "b")
@@ -361,7 +360,7 @@ def test_the_terms_are_the_live_read_and_the_gate_never_fires() -> None:
 
 
 def test_the_licence_row_is_written_as_a_floor() -> None:
-    """"Unless otherwise noted" is the floor-plus-per-record-override shape.
+    """ "Unless otherwise noted" is the floor-plus-per-record-override shape.
 
     Pinned on the notice text because that is where a reader of a published module meets it, and
     because the first repair anyone proposes is to read the site default as "every cell is CC BY 3.0"

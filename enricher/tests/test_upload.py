@@ -149,9 +149,7 @@ def test_every_logo_the_compiler_can_ship_is_a_logo_the_publisher_uploads(tmp_pa
     Set equality, not a floor — a floor passes on the pre-fix tree, since two of the three were
     already listed.
     """
-    assert {p for p in _ALLOW_PATTERNS if p.startswith("logo.")} == {
-        f"logo.{ext}" for ext in LOGO_EXTENSIONS
-    }
+    assert {p for p in _ALLOW_PATTERNS if p.startswith("logo.")} == {f"logo.{ext}" for ext in LOGO_EXTENSIONS}
 
     for ext in sorted(LOGO_EXTENSIONS):
         module_dir = _compiled_module(tmp_path / f"logo-{ext}")
@@ -377,9 +375,7 @@ def test_upload_module_calls_hf_api(tmp_path: Path) -> None:
         )
     api_cls.assert_called_once_with(token="hf_test_token")
     # upload routes through ensure_repo → create-or-update the repo, then writes both paths.
-    mock_api.create_repo.assert_called_once_with(
-        repo_id=DEFAULT_REPO_ID, repo_type="dataset", exist_ok=True
-    )
+    mock_api.create_repo.assert_called_once_with(repo_id=DEFAULT_REPO_ID, repo_type="dataset", exist_ok=True)
     # Two calls, flat first: `upload_folder` commits per call, so this is deliberately two commits and
     # the path everything reads today is the one refreshed first.
     assert [c.kwargs["path_in_repo"] for c in mock_api.upload_folder.call_args_list] == [
@@ -483,7 +479,9 @@ def test_plan_reference_snapshot_carries_the_citations_sidecar(tmp_path: Path) -
     (snap / "citations" / "citations.parquet").write_bytes(b"PAR1payloadPAR1")
     plan = plan_reference_snapshot(snap)
     assert plan.files == [
-        "data/clinvar-chr1.parquet", "citations/citations.parquet", "release.json",
+        "data/clinvar-chr1.parquet",
+        "citations/citations.parquet",
+        "release.json",
     ]
 
 
@@ -608,9 +606,9 @@ def test_a_versioned_path_holding_a_different_artifact_refuses(tmp_path: Path) -
     message = str(caught.value)
     assert "data/test_module/v1.2.3" in message
     assert "--force" in message
-    assert "version:" in message                       # names the fix, not just the fault
-    assert "newer compiler" in message                 # pre-answers "but I changed nothing"
-    api.upload_folder.assert_not_called()              # refused BEFORE either write
+    assert "version:" in message  # names the fix, not just the fault
+    assert "newer compiler" in message  # pre-answers "but I changed nothing"
+    api.upload_folder.assert_not_called()  # refused BEFORE either write
 
 
 def test_the_same_artifact_republished_is_not_a_collision(tmp_path: Path) -> None:
@@ -680,9 +678,7 @@ def test_the_flat_path_is_deliberately_not_guarded(tmp_path: Path) -> None:
     assert api.upload_folder.call_args.kwargs["path_in_repo"] == "data/test_module"
 
 
-def test_an_unreadable_published_manifest_proceeds_with_a_warning(
-    tmp_path: Path, caplog
-) -> None:
+def test_an_unreadable_published_manifest_proceeds_with_a_warning(tmp_path: Path, caplog) -> None:
     """**Fails open, deliberately.** Nothing established a collision, so nothing may assert one —
     the house algebra withholds on unknown. Failing closed would make a network flake demand
     `--force`, which trains an author to pass it by default and turns the gate into one people route
@@ -802,8 +798,9 @@ def test_a_publish_never_reaches_for_the_deprecated_large_uploader(tmp_path: Pat
             patch("huggingface_hub.HfApi", return_value=api),
             patch("huggingface_hub.get_token", return_value="hf_test_token"),
         ):
-            publish_reference_snapshot(_snapshot_of_size(tmp_path / str(payload), payload),
-                                       "just-dna-seq/alphagenome_avi")
+            publish_reference_snapshot(
+                _snapshot_of_size(tmp_path / str(payload), payload), "just-dna-seq/alphagenome_avi"
+            )
         api.upload_large_folder.assert_not_called()
         assert len(api.upload_folder.call_args_list) == 2, "payload then description"
 
@@ -825,8 +822,7 @@ def test_a_retirement_still_rides_the_payload_commit_at_any_size(tmp_path: Path)
             return_value=[SimpleNamespace(retires="data/old-*.parquet", reason="a test")],
         ),
     ):
-        publish_reference_snapshot(_snapshot_of_size(tmp_path, 6 * 1024**3),
-                                   "just-dna-seq/alphagenome_avi")
+        publish_reference_snapshot(_snapshot_of_size(tmp_path, 6 * 1024**3), "just-dna-seq/alphagenome_avi")
 
     payload, description = (c.kwargs for c in api.upload_folder.call_args_list)
     assert payload["delete_patterns"] == ["data/old-*.parquet"]

@@ -115,9 +115,7 @@ def test_the_release_label_names_this_archive_and_not_the_annotation_lane(snapsh
     been retired outright — so a label that could be confused with the annotation snapshot's would put
     one archive's date on another's rows.
     """
-    created = next(
-        path.name for path in _SLICE.iterdir() if path.name.startswith("CREATED_")
-    )
+    created = next(path.name for path in _SLICE.iterdir() if path.name.startswith("CREATED_"))
     date = created.removeprefix("CREATED_").removesuffix(".txt")
     assert snapshot.created_date == date
     assert snapshot.dataset == f"{SOURCE_NAME}_drug_labels_{date}"
@@ -131,10 +129,7 @@ def test_a_rebuild_is_byte_identical_apart_from_the_release_timestamp(tmp_path: 
     second = build_drug_label_snapshot(archive, tmp_path / "two")
     assert first.parquet_path.read_bytes() == second.parquet_path.read_bytes()
 
-    releases = [
-        json.loads((result.out_dir / RELEASE_FILENAME).read_text())
-        for result in (first, second)
-    ]
+    releases = [json.loads((result.out_dir / RELEASE_FILENAME).read_text()) for result in (first, second)]
     for release in releases:
         release.pop("built_at")
     assert releases[0] == releases[1]

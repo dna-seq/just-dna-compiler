@@ -74,12 +74,12 @@ def test_position_only_resolves_but_reverses_position_only(tmp_path: Path, cache
     assert m1.success, m1.errors
 
     w = pl.read_parquet(tmp_path / "o1" / "weights.parquet").row(0, named=True)
-    assert w["rsid"] == "rs1801133"          # rsid was resolved
+    assert w["rsid"] == "rs1801133"  # rsid was resolved
     assert w["variant_key"] == "1:11856377:G"  # key did NOT flip to the rsid
 
     reverse_module(tmp_path / "o1", tmp_path / "rev")
     row = _read_csv(tmp_path / "rev" / "variants.csv")[0]
-    assert row["rsid"] == ""                 # resolved rsid dropped → authored (position-only) shape
+    assert row["rsid"] == ""  # resolved rsid dropped → authored (position-only) shape
     assert (row["chrom"], row["start"], row["ref"]) == ("1", "11856377", "G")
 
     assert validate_spec(tmp_path / "rev").valid
@@ -164,9 +164,7 @@ def test_mixed_authoring_no_false_inconsistency(tmp_path: Path) -> None:
     # must not treat the absent position as a conflicting one (it compares only positioned rows).
     spec = _write(
         tmp_path / "spec",
-        "rsid,chrom,start,ref,genotype,state,conclusion\n"
-        "rs1,1,100,A,A/G,risk,c\n"
-        "rs1,,,,A/A,risk,c\n",
+        "rsid,chrom,start,ref,genotype,state,conclusion\nrs1,1,100,A,A/G,risk,c\nrs1,,,,A/A,risk,c\n",
         "rsid,pmid\nrs1,12345678\n",
     )
     result = validate_spec(spec)

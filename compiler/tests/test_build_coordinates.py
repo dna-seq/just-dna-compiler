@@ -94,9 +94,7 @@ class TestPositionPastTheEndOfItsContig:
 
     def test_many_rows_of_one_cause_are_one_line(self, tmp_path) -> None:
         """Grouped by reason, not by row: a whole panel authored on hg19 is a one-line fix."""
-        rows = "".join(
-            f",1,{_GRCH37_TAIL + n},G,A,A/A,risk,row {n}\n" for n in range(0, 60, 2)
-        )
+        rows = "".join(f",1,{_GRCH37_TAIL + n},G,A,A/A,risk,row {n}\n" for n in range(0, 60, 2))
         spec = _spec(tmp_path, variants=rows)
         found = _fires(_errors(spec), "past the end of 1 on GRCh38")
         assert len(found) == 1
@@ -108,8 +106,7 @@ class TestPositionPastTheEndOfItsContig:
         spec = _spec(
             tmp_path,
             variants=(
-                ",6,26092913,A,G,G/G,risk,a real GRCh38 HFE locus\n"
-                ",6,0,A,G,G/G,risk,a telomeric position\n"
+                ",6,26092913,A,G,G/G,risk,a real GRCh38 HFE locus\n,6,0,A,G,G/G,risk,a telomeric position\n"
             ),
         )
         assert _fires(_errors(spec), "past the end of") == []

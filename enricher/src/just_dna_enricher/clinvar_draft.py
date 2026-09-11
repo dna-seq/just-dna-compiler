@@ -76,6 +76,7 @@ DEFAULT_CLIN_SIG: frozenset[str] = frozenset({"pathogenic", "likely_pathogenic"}
 #: `gnomad.FREQUENCY_GENOME_BUILD` is, since every build confusion in this package began as a literal.
 CLINVAR_GENOME_BUILD = "GRCh38"
 
+
 @dataclass
 class ClinVarDraftResult:
     """What a panel draft did."""
@@ -199,9 +200,7 @@ def sole_expressible_genotype(record: dict) -> str | None:
     start = record.get("start")
     if not alt or "," in alt or chrom not in ("MT", "Y"):
         return None
-    if chrom == "Y" and (
-        start is None or in_pseudoautosomal_region("Y", int(start)) is not False
-    ):
+    if chrom == "Y" and (start is None or in_pseudoautosomal_region("Y", int(start)) is not False):
         return None
     return alt
 
@@ -416,9 +415,7 @@ def _state_stub_warnings(
     by_call: dict[str, list[str]] = {}
     for signature, row in tasks:
         record = record_by_signature.get(signature) or row or {}
-        by_call.setdefault((record.get("clin_sig") or "").strip() or "no call", []).append(
-            _label(record)
-        )
+        by_call.setdefault((record.get("clin_sig") or "").strip() or "no call", []).append(_label(record))
     lines: list[str] = []
     for call, labels in sorted(by_call.items()):
         shown = ", ".join(labels[:6]) + (f", … and {len(labels) - 6} more" if len(labels) > 6 else "")
@@ -581,9 +578,7 @@ def _study_rows(
     return rows, dropped, unusable
 
 
-def _resolve_snapshot(
-    snapshot: Path | None, *, offline: bool, download: bool
-) -> tuple[Path, list[str]]:
+def _resolve_snapshot(snapshot: Path | None, *, offline: bool, download: bool) -> tuple[Path, list[str]]:
     """Find a ClinVar snapshot to draft from, provisioning the published one if there is none.
 
     The ladder `enrich()` already uses — explicit path → the cache locations → HuggingFace — so an
@@ -616,8 +611,7 @@ def _resolve_snapshot(
             "no ClinVar snapshot found. "
             + (f"Drop {blocked} to download the published one, or pass " if blocked else "Pass ")
             + "--snapshot PATH, or build it yourself with `just-dna-enricher clinvar build "
-            "--download`."
-            + (f" ({warnings[0]})" if warnings else "")
+            "--download`." + (f" ({warnings[0]})" if warnings else "")
         )
     return Path(reference), warnings
 
@@ -665,9 +659,7 @@ def draft_gene_panel(
     build_warning = source_build_mismatch(spec_dir, "the ClinVar snapshot", CLINVAR_GENOME_BUILD)
 
     reference, provisioning_warnings = _resolve_snapshot(snapshot, offline=offline, download=download)
-    records = select_by_gene(
-        reference, list(genes), clin_sig=clin_sig, min_review_stars=min_review_stars
-    )
+    records = select_by_gene(reference, list(genes), clin_sig=clin_sig, min_review_stars=min_review_stars)
     warnings: list[str] = list(provisioning_warnings)
     # The snapshot is built from NCBI's `vcf_GRCh38/clinvar.vcf.gz`, and `_row_cells` writes the full
     # coordinate for any record this pass cannot key by rsID — so a module on another build is about
@@ -731,9 +723,7 @@ def draft_gene_panel(
     if not partials:
         return ClinVarDraftResult(warnings=warnings + ["nothing matched; no rows drafted"])
 
-    report = append_partial_rows(
-        spec_dir, "variants.csv", partials, group_by=("gene",), dry_run=dry_run
-    )
+    report = append_partial_rows(spec_dir, "variants.csv", partials, group_by=("gene",), dry_run=dry_run)
     reports = [report]
     warnings.extend(_superseded_rsid_rows(report.path, ambiguous))
 
@@ -750,9 +740,7 @@ def draft_gene_panel(
     else:
         studies, dropped, unusable = _study_rows(records, links, max_citations, ambiguous)
         if studies:
-            reports.append(
-                append_rows(spec_dir, "studies.csv", studies, group_by=("rsid",), dry_run=dry_run)
-            )
+            reports.append(append_rows(spec_dir, "studies.csv", studies, group_by=("rsid",), dry_run=dry_run))
         if dropped:
             warnings.append(
                 f"{dropped} further ClinVar citation(s) not drafted (--max-citations {max_citations})."
@@ -794,8 +782,7 @@ def draft_gene_panel(
         withheld = [
             (row or {}).get("gene") or ""
             for signature, row in genotype_stubs
-            if signature not in record_by_signature
-            or not _publishes_alleles(record_by_signature[signature])
+            if signature not in record_by_signature or not _publishes_alleles(record_by_signature[signature])
         ]
         if withheld:
             genes = examples(sorted({gene.strip() for gene in withheld if gene.strip()}))
@@ -811,9 +798,7 @@ def draft_gene_panel(
             )
 
     warnings.extend(
-        _state_stub_warnings(
-            _open_stubs(report, "state", stubbed_by_signature), record_by_signature
-        )
+        _state_stub_warnings(_open_stubs(report, "state", stubbed_by_signature), record_by_signature)
     )
 
     # The non-diploid notice stays scoped to what this run WROTE, deliberately: it reports a reading
@@ -825,9 +810,7 @@ def draft_gene_panel(
         if o.key in record_by_signature and "genotype" not in stubbed_by_signature.get(o.key, ())
     ]
     if written_records:
-        contigs = ", ".join(
-            sorted({normalize_chrom(str(r.get("chrom") or "")) for r in written_records})
-        )
+        contigs = ", ".join(sorted({normalize_chrom(str(r.get("chrom") or "")) for r in written_records}))
         warnings.append(
             f"{len(written_records)} row(s) on non-diploid contigs ({contigs}) were written with "
             f"a single-allele genotype: exactly one is expressible there, so no zygosity decision "

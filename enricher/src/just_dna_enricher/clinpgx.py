@@ -185,9 +185,7 @@ def enrich_clinpgx(
 
     pharm_path = spec_dir / "pharm_variants.csv"
     if not pharm_path.exists():
-        result.warnings.append(
-            "ClinPGx cross-check skipped: the module carries no pharm_variants.csv."
-        )
+        result.warnings.append("ClinPGx cross-check skipped: the module carries no pharm_variants.csv.")
         # **Not attested, and this is the one skip that must not be.** The others say "this check
         # applies to your module and did not run"; this one says the check does not apply at all, and
         # a module with no PGx table has no claim for it to have an opinion about. Recording it would
@@ -239,7 +237,8 @@ def enrich_clinpgx(
     # `clinical.tautology_reason`: this release **and** an unmoved digest, either half missing runs
     # the check in full.
     recorded = [
-        row for row in read_sources_file(spec_dir)
+        row
+        for row in read_sources_file(spec_dir)
         if row.source == CLINPGX_TERMS.source and row.layer == "annotation"
     ]
     if (
@@ -340,9 +339,7 @@ def enrich_clinpgx(
 
     # The licence hash comes from the snapshot's release.json, which the builder took from the
     # LICENSE.txt inside the very archive the data came from.
-    row = CLINPGX_TERMS.row(
-        "annotation", declared_use=declared_use, dataset=result.dataset
-    )
+    row = CLINPGX_TERMS.row("annotation", declared_use=declared_use, dataset=result.dataset)
     recorded_hash = release.get("license_sha256")
     if recorded_hash:
         row = row.model_copy(update={"license_sha256": recorded_hash})

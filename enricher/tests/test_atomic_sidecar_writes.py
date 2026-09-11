@@ -64,9 +64,7 @@ def _opens_for_truncating_write(node: ast.AST) -> list[str]:
             continue
         modes = [a.value for a in sub.args if isinstance(a, ast.Constant) and isinstance(a.value, str)]
         modes += [
-            kw.value.value
-            for kw in sub.keywords
-            if kw.arg == "mode" and isinstance(kw.value, ast.Constant)
+            kw.value.value for kw in sub.keywords if kw.arg == "mode" and isinstance(kw.value, ast.Constant)
         ]
         if any("w" in m for m in modes):
             found.append(ast.unparse(sub))

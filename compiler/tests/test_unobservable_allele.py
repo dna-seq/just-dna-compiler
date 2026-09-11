@@ -56,18 +56,14 @@ _OVERLAPPED = (
 )
 
 #: The deletion doing the overlapping, authored plainly. Real ClinVar record, 13 bp.
-_DELETION = (
-    "rs2494292050,11,5225640,CACTTTCTGATAGG,C,C/CACTTTCTGATAGG,risk,"
-    "a 13 bp HBB deletion,HBB\n"
-)
+_DELETION = "rs2494292050,11,5225640,CACTTTCTGATAGG,C,C/CACTTTCTGATAGG,risk,a 13 bp HBB deletion,HBB\n"
 
 _RSIDS = ("rs281864530", "rs2494292050")
 
 
 #: The rsid-authored spelling of the same call — no coordinate, so resolution has to place it.
 _OVERLAPPED_BY_RSID = (
-    f"rs281864530,,,,,{UNOBSERVABLE_ALLELE}/T,risk,"
-    "the second allele here was not observable,HBB\n"
+    f"rs281864530,,,,,{UNOBSERVABLE_ALLELE}/T,risk,the second allele here was not observable,HBB\n"
 )
 
 #: What a resolver actually returns for that rsid. **No `*` anywhere** — Ensembl, ClinVar and dbSNP
@@ -93,9 +89,7 @@ def _spec(directory: Path, variant_rows: str, resolution: str | None = None) -> 
     # module does not carry earns its own warning, which would sit in `result.warnings` next to the
     # ones these tests assert about and make a passing run look noisier than it is.
     cited = [row.split(",", 1)[0] for row in variant_rows.splitlines() if row.strip()]
-    (directory / "studies.csv").write_text(
-        "rsid,pmid\n" + "".join(f"{rsid},16199547\n" for rsid in cited)
-    )
+    (directory / "studies.csv").write_text("rsid,pmid\n" + "".join(f"{rsid},16199547\n" for rsid in cited))
     return directory
 
 
@@ -131,9 +125,7 @@ def test_the_observable_half_is_still_a_real_contradiction() -> None:
 
 def test_a_call_that_observed_nothing_is_undecided_never_false() -> None:
     """`*/*` is the house algebra: nothing was seen, so nothing about the locus can be decided."""
-    assert hosting_verdict(
-        f"{UNOBSERVABLE_ALLELE}/{UNOBSERVABLE_ALLELE}", "A", "T"
-    ) is None
+    assert hosting_verdict(f"{UNOBSERVABLE_ALLELE}/{UNOBSERVABLE_ALLELE}", "A", "T") is None
 
 
 def test_abstention_only_ever_adds_acceptances() -> None:
@@ -145,7 +137,7 @@ def test_abstention_only_ever_adds_acceptances() -> None:
     unchanged = {
         ("A/T", "A", "T"): True,
         ("C/G", "A", "T"): False,
-        ("C/CAG", "AGAG", "AG"): True,   # RM31's SHOX deletion, two spellings of one event
+        ("C/CAG", "AGAG", "AG"): True,  # RM31's SHOX deletion, two spellings of one event
     }
     assert {k: hosting_verdict(*k) for k in unchanged} == unchanged
 
@@ -180,8 +172,8 @@ def test_a_starred_module_validates_and_compiles_in_both_modes(tmp_path: Path, s
 @pytest.mark.parametrize(
     "call",
     [
-        f"{UNOBSERVABLE_ALLELE}/T",   # unphased, and therefore sorted
-        f"T|{UNOBSERVABLE_ALLELE}",   # phased: order is significant and deliberately NOT sorted
+        f"{UNOBSERVABLE_ALLELE}/T",  # unphased, and therefore sorted
+        f"T|{UNOBSERVABLE_ALLELE}",  # phased: order is significant and deliberately NOT sorted
     ],
 )
 def test_the_round_trip_is_a_fixed_point(tmp_path: Path, call: str) -> None:
@@ -207,8 +199,9 @@ def test_the_round_trip_is_a_fixed_point(tmp_path: Path, call: str) -> None:
 
     for out in (tmp_path / "out", tmp_path / "out2"):
         assert (out / "manifest.json").exists()
-    assert _weights(tmp_path / "out2")["genotype"].to_list() == \
-        _weights(tmp_path / "out")["genotype"].to_list()
+    assert (
+        _weights(tmp_path / "out2")["genotype"].to_list() == _weights(tmp_path / "out")["genotype"].to_list()
+    )
     assert first.manifest.content_signature == second.manifest.content_signature
 
 
@@ -317,10 +310,10 @@ def test_every_undecided_cause_gets_its_own_reason() -> None:
     uncovered branch here is exactly the silent inheritance the pairing exists to prevent.
     """
     cases = {
-        ("*/*", "A", "T"): "observed no allele",                    # RM59, the call
-        ("A/T", "*", "*"): "records no allele",                     # RM59, the locus
-        ("<DEL:1500>/A", "A", "AT"): "deliberately unspelled",      # RM5
-        ("C/C", "AGAG", "AG"): "carries no flank",                  # homozygous, no frame
+        ("*/*", "A", "T"): "observed no allele",  # RM59, the call
+        ("A/T", "*", "*"): "records no allele",  # RM59, the locus
+        ("<DEL:1500>/A", "A", "AT"): "deliberately unspelled",  # RM5
+        ("C/C", "AGAG", "AG"): "carries no flank",  # homozygous, no frame
         # A 2 bp insertion of `CT` against the locus's 2 bp `AG` deletion: same event size, different
         # bases, which is the one case only a reference sequence can settle — the original cause.
         ("C/CCT", "AGAG", "AG"): "same size but different content",
@@ -348,7 +341,13 @@ def test_both_spelling_builders_have_an_arm_for_every_reason() -> None:
     # `MISSING_ALLELE` is in the list because lane I's `.` answer landed beside this one, and the guard
     # is only worth anything if it covers every reason the classifier can actually produce.
     probes = [
-        "R", "<DEL:1500>", UNOBSERVABLE_ALLELE, MISSING_ALLELE, "DELTCT", "AAAGGGGCG(2)", "<FOO>",
+        "R",
+        "<DEL:1500>",
+        UNOBSERVABLE_ALLELE,
+        MISSING_ALLELE,
+        "DELTCT",
+        "AAAGGGGCG(2)",
+        "<FOO>",
     ]
     reasons = {r for r in (non_nucleotide_reason(a) for a in probes) if r is not None}
     assert reasons == {"ambiguity", "symbolic", "unobservable", "missing", "notation"}, reasons

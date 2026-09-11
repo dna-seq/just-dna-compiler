@@ -67,7 +67,10 @@ EDIT_DATE_TABLE = "edit_date"
 #: Every table `read_dump_tables` is asked for by the builder. Derived from the four above so a new
 #: variant table brings its link table with it rather than being added to a second list.
 DUMP_TABLES: tuple[str, ...] = (
-    *VARIANT_TABLES, *LINK_TABLES.values(), REFERENCE_TABLE, EDIT_DATE_TABLE,
+    *VARIANT_TABLES,
+    *LINK_TABLES.values(),
+    REFERENCE_TABLE,
+    EDIT_DATE_TABLE,
 )
 
 #: `edit_date.table_name` for each variant table. The dump abbreviates (`mMut`, `rtMut`), so this is a
@@ -90,8 +93,8 @@ MITOMAP_CONFIRMATION_TOKENS: tuple[str, ...] = ("Conflicting reports", "Reported
 #: this tier may not fetch, the second is prose in an allele column, the third is not an event.
 ALLELE_DEFECTS: tuple[str, ...] = (
     "right_anchored_deletion",  # regna is ":" — the VCF form needs the base at position-1
-    "non_nucleotide",           # "24bp_deletion", or an absent cell
-    "ref_equals_alt",           # no event to key
+    "non_nucleotide",  # "24bp_deletion", or an absent cell
+    "ref_equals_alt",  # no event to key
 )
 
 _BRACKET = re.compile(r"\[([^\]]*)\]")
@@ -123,7 +126,13 @@ class MitomapUnavailable(MitomapError):
 #: Postgres' COPY text escapes. `\\N` is the null marker and is handled before this map is consulted,
 #: because it is a whole-field sentinel rather than a character escape.
 _COPY_ESCAPES = {
-    "b": "\b", "f": "\f", "n": "\n", "r": "\r", "t": "\t", "v": "\v", "\\": "\\",
+    "b": "\b",
+    "f": "\f",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "v": "\v",
+    "\\": "\\",
 }
 
 
@@ -154,7 +163,7 @@ def _copy_header(line: str) -> tuple[str, list[str]] | None:
     """`COPY mitomap.mmutation (id, locus, …) FROM stdin;` → `("mmutation", [columns])`."""
     if not line.startswith("COPY mitomap."):
         return None
-    head = line[len("COPY mitomap."):]
+    head = line[len("COPY mitomap.") :]
     name, _, rest = head.partition(" ")
     if "(" not in rest:
         return None
@@ -241,17 +250,15 @@ def parse_status(raw: str | None) -> MitomapStatus:
         return MitomapStatus(raw="", confirmation=None, bracket=None, qualifier=None)
     match = _BRACKET.search(text)
     bracket = match.group(1).strip() if match else None
-    residue = (text[: match.start()] + " " + text[match.end():]) if match else text
+    residue = (text[: match.start()] + " " + text[match.end() :]) if match else text
     confirmation = None
     for token in MITOMAP_CONFIRMATION_TOKENS:
         if residue.strip().startswith(token):
             confirmation = token
-            residue = residue.strip()[len(token):]
+            residue = residue.strip()[len(token) :]
             break
     qualifier = residue.strip(" -/;,:") or None
-    return MitomapStatus(
-        raw=text, confirmation=confirmation, bracket=bracket or None, qualifier=qualifier
-    )
+    return MitomapStatus(raw=text, confirmation=confirmation, bracket=bracket or None, qualifier=qualifier)
 
 
 def vcep_clin_sig(status: MitomapStatus) -> str | None:
@@ -369,7 +376,7 @@ def single_gene(locus: str | None) -> str | None:
 
 
 def variant_rows(
-    tables: dict[str, list[dict[str, str | None]]]
+    tables: dict[str, list[dict[str, str | None]]],
 ) -> Iterator[tuple[str, dict[str, str | None]]]:
     """Every curated variant row across the tables that are present, tagged with its table name.
 

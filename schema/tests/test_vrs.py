@@ -32,8 +32,8 @@ from just_dna_format.vrs import (
 #     gnomAD API — independent, third-party confirmation of both the algorithm and the accession.
 #   * the rest were computed with `ga4gh.vrs` 2.3.3, the reference implementation.
 GROUND_TRUTH: dict[tuple[str, int, str, str], str] = {
-    ("1", 11796321, "G", "A"): "ga4gh:VA.SOEVGpU16hxYQtJNeRyfq0V-B0rSOGK-",   # * live gnomAD
-    ("11", 5227002, "T", "A"): "ga4gh:VA.JGrSjQEcYOJ14vlkvm7sIyYSgHfpC5UG",   # * live gnomAD
+    ("1", 11796321, "G", "A"): "ga4gh:VA.SOEVGpU16hxYQtJNeRyfq0V-B0rSOGK-",  # * live gnomAD
+    ("11", 5227002, "T", "A"): "ga4gh:VA.JGrSjQEcYOJ14vlkvm7sIyYSgHfpC5UG",  # * live gnomAD
     ("11", 5227002, "T", "G"): "ga4gh:VA.e5PJxIQWWaNTNNscgUsYSG6g18D7kQOc",
     ("7", 117559590, "G", "A"): "ga4gh:VA.g6hCjBY-ZKkkJuvmK3dia9Fq0zCNjU7A",
     ("13", 32340301, "A", "G"): "ga4gh:VA.dMu1HnP-6A46n3jcfOYY--MwgCrmBOkq",
@@ -52,9 +52,7 @@ def test_sha512t24u_is_32_unpadded_base64url_chars() -> None:
     digest = sha512t24u(b"anything at all")
     assert len(digest) == 32
     assert "=" not in digest
-    assert set(digest) <= set(
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-    )
+    assert set(digest) <= set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
 
 
 # ── minting ─────────────────────────────────────────────────────────────────────────────────────
@@ -83,9 +81,7 @@ def test_ref_is_not_part_of_the_allele_digest() -> None:
     # VRS addresses the *place and the alt*; the reference base at a position is a fact of the genome,
     # so it is not serialized. Pinned deliberately, because it is surprising and it is exactly why the
     # compiler carries a separate "inconsistent reference allele" check.
-    assert derive_vrs_allele_id("11", 5227002, "T", "A") == derive_vrs_allele_id(
-        "11", 5227002, "C", "A"
-    )
+    assert derive_vrs_allele_id("11", 5227002, "T", "A") == derive_vrs_allele_id("11", 5227002, "C", "A")
 
 
 @pytest.mark.parametrize(
@@ -103,9 +99,7 @@ def test_ref_is_not_part_of_the_allele_digest() -> None:
         ("MT", 16570, "T", "A", "position past the end of the contig"),
     ],
 )
-def test_returns_none_rather_than_guessing(
-    chrom: str, start: int, ref: str, alt: str, why: str
-) -> None:
+def test_returns_none_rather_than_guessing(chrom: str, start: int, ref: str, alt: str, why: str) -> None:
     assert derive_vrs_allele_id(chrom, start, ref, alt) is None, why
 
 
@@ -168,7 +162,12 @@ def test_validators_accept_well_formed_and_reject_malformed() -> None:
 
 def test_resolved_substitution_keys_on_its_va() -> None:
     row = VariantRow(
-        chrom="11", start=5227002, ref="T", alts="A", genotype="A/T", state="risk",
+        chrom="11",
+        start=5227002,
+        ref="T",
+        alts="A",
+        genotype="A/T",
+        state="risk",
         conclusion="carrier",
     )
     assert row.variant_key == GROUND_TRUTH[("11", 5227002, "T", "A")]
@@ -195,9 +194,7 @@ def test_resolved_substitution_keys_on_its_va() -> None:
         ),
     ],
 )
-def test_unmintable_rows_keep_the_coordinate_fallback(
-    kwargs: dict, expected: str, why: str
-) -> None:
+def test_unmintable_rows_keep_the_coordinate_fallback(kwargs: dict, expected: str, why: str) -> None:
     row = VariantRow(genotype="A/A", state="risk", conclusion="x", **kwargs)
     assert row.variant_key == expected, why
 
@@ -233,9 +230,7 @@ def test_stdlib_agrees_with_the_reference_library() -> None:
     for (chrom, pos, _ref, alt), expected in GROUND_TRUTH.items():
         allele = vrs_models.Allele(
             location=vrs_models.SequenceLocation(
-                sequenceReference=vrs_models.SequenceReference(
-                    refgetAccession=REFGET_GRCh38[chrom]
-                ),
+                sequenceReference=vrs_models.SequenceReference(refgetAccession=REFGET_GRCh38[chrom]),
                 start=pos - 1,
                 end=pos,
             ),

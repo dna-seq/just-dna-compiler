@@ -39,8 +39,9 @@ def test_no_logs_is_valid(tmp_path: Path) -> None:
 def test_logs_discovered_copied_and_hashed(tmp_path: Path) -> None:
     spec = _spec(tmp_path, with_logs=True)
     out = tmp_path / "out"
-    manifest = compile_module(spec, out, resolve_with_ensembl=False,
-                              compiled_by="marketplace-server").manifest
+    manifest = compile_module(
+        spec, out, resolve_with_ensembl=False, compiled_by="marketplace-server"
+    ).manifest
     assert manifest is not None
     by_name = {e.name: e for e in manifest.logs}
     assert set(by_name) == {"run.log", "logs/researcher.log", "logs/reviewer.log"}
@@ -62,8 +63,10 @@ def test_logs_discovered_copied_and_hashed(tmp_path: Path) -> None:
 
 def test_logs_do_not_change_artifact_digest(tmp_path: Path) -> None:
     # Compile the same spec twice, once with logs and once without: identical artifact digest.
-    without = compile_module(_spec(tmp_path / "a", with_logs=False), tmp_path / "oa",
-                             resolve_with_ensembl=False).manifest
-    with_logs = compile_module(_spec(tmp_path / "b", with_logs=True), tmp_path / "ob",
-                               resolve_with_ensembl=False).manifest
+    without = compile_module(
+        _spec(tmp_path / "a", with_logs=False), tmp_path / "oa", resolve_with_ensembl=False
+    ).manifest
+    with_logs = compile_module(
+        _spec(tmp_path / "b", with_logs=True), tmp_path / "ob", resolve_with_ensembl=False
+    ).manifest
     assert without.artifact.digest == with_logs.artifact.digest

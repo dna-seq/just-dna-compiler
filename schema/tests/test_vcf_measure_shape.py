@@ -32,7 +32,10 @@ def _htt_bins() -> list[RepeatAlleleRow]:
     bounds = [(6, 26), (27, 35), (36, 39), (40, None)]
     return [
         RepeatAlleleRow(
-            gene="HTT", repeat_unit="CAG", measure_min=lo, measure_max=hi,
+            gene="HTT",
+            repeat_unit="CAG",
+            measure_min=lo,
+            measure_max=hi,
             conclusion=f"{lo}-{hi} CAG",
         )
         for lo, hi in bounds
@@ -42,8 +45,7 @@ def _htt_bins() -> list[RepeatAlleleRow]:
 def _smn_bins() -> list[CopyNumberRow]:
     """A sharp-integer SMN1 dosage tiling — the shape `CopyNumberRow`'s own docstring describes."""
     rows = [
-        CopyNumberRow(gene="SMN1", measure_min=n, measure_max=n, conclusion=f"{n} copies")
-        for n in (0, 1, 2)
+        CopyNumberRow(gene="SMN1", measure_min=n, measure_max=n, conclusion=f"{n} copies") for n in (0, 1, 2)
     ]
     rows.append(CopyNumberRow(gene="SMN1", measure_min=3, conclusion="3+ copies"))
     return rows
@@ -143,7 +145,10 @@ def test_both_integer_kinds_warn_and_nothing_else_does() -> None:
 
     fraction_bins = [
         HeteroplasmyRow(
-            gene="MT-TL1", reference_sequence="NC_012920.1", measure_min=lo, measure_max=hi,
+            gene="MT-TL1",
+            reference_sequence="NC_012920.1",
+            measure_min=lo,
+            measure_max=hi,
             conclusion=f"{lo}-{hi}",
         )
         for lo, hi in ((0.0, 0.1), (0.1, 0.6), (0.6, 1.0))
@@ -178,9 +183,7 @@ def test_the_spanning_warning_needs_a_threshold_to_span() -> None:
     assert len(measurement_shape_warnings(one_bin)) == 1  # RM55 only
 
     htt = _htt_bins()
-    touched = {
-        _selected(htt, x).conclusion for x in range(33, 44) if _selected(htt, x) is not None
-    }
+    touched = {_selected(htt, x).conclusion for x in range(33, 44) if _selected(htt, x) is not None}
     assert len(touched) == 3, touched  # benign, uncertain and fully penetrant, from one call
     assert len(measurement_shape_warnings(htt)) == 2
 
@@ -215,7 +218,11 @@ def test_a_group_is_the_unit_a_measurement_could_span() -> None:
     # across the groups would report a span no single call could make.
     smn_by_modifier = [
         CopyNumberRow(
-            gene="SMN1", modifier_gene="SMN2", modifier_cn=n, measure_min=0, measure_max=0,
+            gene="SMN1",
+            modifier_gene="SMN2",
+            modifier_cn=n,
+            measure_min=0,
+            measure_max=0,
             conclusion=f"SMA with SMN2={n}",
         )
         for n in (2, 3, 4)
@@ -251,7 +258,8 @@ def test_the_missing_marker_is_reported_per_allele_with_its_own_reason() -> None
     assert non_nucleotide_alleles("A", ".") == {".": "missing"}
     assert non_nucleotide_alleles("A", "<DEL>,.") == {"<DEL>": "symbolic", ".": "missing"}
     assert non_nucleotide_alleles("A", "AAAGGGGCG(2),.") == {
-        "AAAGGGGCG(2)": "notation", ".": "missing",
+        "AAAGGGGCG(2)": "notation",
+        ".": "missing",
     }
 
 
@@ -265,9 +273,7 @@ def test_the_missing_marker_splits_the_variant_key_of_a_coordinate_row() -> None
     with_marker = VariantRow(
         chrom="1", start=1, ref="A", alts=".", genotype="A/A", state="ref", conclusion="x"
     )
-    without = VariantRow(
-        chrom="1", start=1, ref="A", genotype="A/A", state="ref", conclusion="x"
-    )
+    without = VariantRow(chrom="1", start=1, ref="A", genotype="A/A", state="ref", conclusion="x")
     assert with_marker.variant_key != without.variant_key
     assert without.variant_key == derive_variant_key(None, "1", 1, "A")
     # No `ga4gh:VA.…` is minted for it either — `is_substitution` refuses a non-nucleotide alt — so the
@@ -278,8 +284,13 @@ def test_the_missing_marker_splits_the_variant_key_of_a_coordinate_row() -> None
 def test_an_rsid_row_carries_the_marker_without_the_identity_split() -> None:
     """An rsid short-circuits the key, so the cell is wrong and the identity is not — say only that."""
     row = HeteroplasmyRow(
-        gene="MT-TL1", rsid="rs199474657", alts=".", reference_sequence="NC_012920.1",
-        measure_min=0.1, measure_max=0.5, conclusion="x",
+        gene="MT-TL1",
+        rsid="rs199474657",
+        alts=".",
+        reference_sequence="NC_012920.1",
+        measure_min=0.1,
+        measure_max=0.5,
+        conclusion="x",
     )
     assert row.variant_key == "rs199474657"
     assert non_nucleotide_reason(row.alts) == "missing"
@@ -291,8 +302,15 @@ def test_an_rsid_row_carries_the_marker_without_the_identity_split() -> None:
 @pytest.mark.parametrize(
     "spelling, expected",
     [
-        ("MT", "MT"), ("chrMT", "MT"), ("chrM", "MT"), ("M", "MT"),
-        ("7", "7"), ("chr7", "7"), ("CHR7", "7"), ("x", "X"), ("chrY", "Y"),
+        ("MT", "MT"),
+        ("chrMT", "MT"),
+        ("chrM", "MT"),
+        ("M", "MT"),
+        ("7", "7"),
+        ("chr7", "7"),
+        ("CHR7", "7"),
+        ("x", "X"),
+        ("chrY", "Y"),
     ],
 )
 def test_every_accepted_spelling_stores_the_declared_member(spelling: str, expected: str) -> None:
@@ -317,7 +335,12 @@ def test_the_gate_and_the_normalizer_now_agree() -> None:
     for member in sorted(VALID_CHROMOSOMES):
         for spelling in (member, f"chr{member}", member.lower()):
             row = VariantRow(
-                chrom=spelling, start=1, ref="A", alts="G", genotype="A", state="risk",
+                chrom=spelling,
+                start=1,
+                ref="A",
+                alts="G",
+                genotype="A",
+                state="risk",
                 conclusion="x",
             )
             assert row.chrom == normalize_chrom(spelling) == member
@@ -334,6 +357,4 @@ def test_an_off_assembly_contig_is_still_refused(rejected: str) -> None:
     against a sequence the format has no accession for.
     """
     with pytest.raises(ValueError):
-        VariantRow(
-            chrom=rejected, start=1, ref="A", alts="G", genotype="A", state="risk", conclusion="x"
-        )
+        VariantRow(chrom=rejected, start=1, ref="A", alts="G", genotype="A", state="risk", conclusion="x")

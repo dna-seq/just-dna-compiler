@@ -407,9 +407,7 @@ def draft_pharm_variants(
         # used to leave behind, and a drafter that silently recorded no hash for it would say nothing
         # about a snapshot whose terms cannot be pinned.
         license_path = Path(snapshot) / SNAPSHOT_LICENSE_FILENAME
-        license_text = (
-            license_path.read_text(encoding="utf-8") if license_path.is_file() else None
-        )
+        license_text = license_path.read_text(encoding="utf-8") if license_path.is_file() else None
         if not (license_text or "").strip():
             license_text = None
             warnings.append(
@@ -433,7 +431,5 @@ def draft_pharm_variants(
         # `evidence_level` straight out of the snapshot that `clinpgx` then compares it against —
         # RM4's tautology, one source over (RM73). Restamped explicitly because `merge_sources_file`
         # is never-clobber; see `provenance.stamp_draft_digest`.
-        stamp_draft_digest(
-            spec_dir, CLINPGX_TERMS.source, "annotation", error=ClinPgxEnrichmentError
-        )
+        stamp_draft_digest(spec_dir, CLINPGX_TERMS.source, "annotation", error=ClinPgxEnrichmentError)
     return ClinPgxDraftResult(reports=reports, warnings=warnings)

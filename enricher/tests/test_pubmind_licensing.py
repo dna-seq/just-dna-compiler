@@ -82,18 +82,14 @@ def test_the_acquisition_gate_skips_rather_than_refusing_or_permitting() -> None
     # Walked from the vocabulary, never restated: a fourth `declared_use` member added upstream must
     # be exercised here, because the "no `--use` flag" decision rests on EVERY declaration answering
     # the same way. A hand-kept tuple silently exempts the new member from the claim.
-    reasons = {
-        declared: check_declared_use(PUBMIND_TERMS, declared) for declared in VALID_DECLARED_USE
-    }
+    reasons = {declared: check_declared_use(PUBMIND_TERMS, declared) for declared in VALID_DECLARED_USE}
     assert set(reasons) == set(VALID_DECLARED_USE)
     assert all(isinstance(r, str) for r in reasons.values()), reasons
     assert all("terms could not be established" in r for r in reasons.values())
 
 
 @pytest.mark.parametrize("declared_use", ["non_commercial", "unstated"])
-def test_a_module_carrying_pubmind_compiles_under_any_declaration(
-    tmp_path: Path, declared_use: str
-) -> None:
+def test_a_module_carrying_pubmind_compiles_under_any_declaration(tmp_path: Path, declared_use: str) -> None:
     """Unknown terms warn, they never gate — including with the declaration stripped to `unstated`.
 
     The parametrisation is the "strip `declared_use`" case the brief asked for, asserting what the

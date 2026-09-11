@@ -25,10 +25,7 @@ from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import in_pseudoautosomal_region
 
-_YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: ploidy\n  title: P\n  description: d\n  report_title: P\n"
-)
+_YAML = "schema_version: '1.0'\nmodule:\n  name: ploidy\n  title: P\n  description: d\n  report_title: P\n"
 
 
 def _variant(**kwargs) -> VariantRow:
@@ -51,15 +48,15 @@ def _spec(tmp_path: Path, variants: str, studies: str) -> Path:
 @pytest.mark.parametrize(
     "chrom, start, expected",
     [
-        ("Y", 359845, True),        # PAR1, and the same base as X:359845
-        ("X", 359845, True),        # PAR1 has identical coordinates on both contigs in GRCh38
-        ("Y", 56953897, True),      # PAR2 on Y
-        ("X", 155767377, True),     # PAR2 on X — a *different* coordinate from Y's
-        ("Y", 2789135, False),      # male-specific region, genuinely hemizygous
-        ("Y", 2781479, True),       # the last base of PAR1, inclusive
-        ("Y", 2781480, False),      # the first base after it
-        ("MT", 3243, None),         # no PAR on MT, and the table says so by absence
-        ("7", 117559591, None),     # an autosome has no PAR question
+        ("Y", 359845, True),  # PAR1, and the same base as X:359845
+        ("X", 359845, True),  # PAR1 has identical coordinates on both contigs in GRCh38
+        ("Y", 56953897, True),  # PAR2 on Y
+        ("X", 155767377, True),  # PAR2 on X — a *different* coordinate from Y's
+        ("Y", 2789135, False),  # male-specific region, genuinely hemizygous
+        ("Y", 2781479, True),  # the last base of PAR1, inclusive
+        ("Y", 2781480, False),  # the first base after it
+        ("MT", 3243, None),  # no PAR on MT, and the table says so by absence
+        ("7", 117559591, None),  # an autosome has no PAR question
     ],
 )
 def test_the_par_table_answers_three_ways(chrom, start, expected) -> None:
@@ -91,13 +88,9 @@ def test_a_male_specific_y_locus_still_warns() -> None:
 
 def test_mt_never_depends_on_a_coordinate() -> None:
     """MT has no pseudoautosomal region at all, so its verdict is unconditional."""
-    (warning,) = _check_contig_ploidy(
-        [_variant(chrom="MT", start=3243, ref="A", alts="G", genotype="A/G")]
-    )
+    (warning,) = _check_contig_ploidy([_variant(chrom="MT", start=3243, ref="A", alts="G", genotype="A/G")])
     assert "chrom=MT" in warning
-    assert _check_contig_ploidy(
-        [_variant(chrom="MT", start=3243, ref="A", alts="G", genotype="G")]
-    ) == []
+    assert _check_contig_ploidy([_variant(chrom="MT", start=3243, ref="A", alts="G", genotype="G")]) == []
 
 
 def test_x_is_still_never_warned_about() -> None:
@@ -122,8 +115,7 @@ def test_an_unresolved_row_says_nothing() -> None:
 _MT_BY_RSID = "rsid,genotype,state,conclusion,gene\nrs199474657,A/G,risk,MELAS m.3243A>G,MT-TL1\n"
 _MT_STUDY = "rsid,pmid\nrs199474657,1738844\n"
 _MT_BY_COORD = (
-    "chrom,start,ref,alts,genotype,state,conclusion,gene\n"
-    "MT,3243,A,G,A/G,risk,MELAS m.3243A>G,MT-TL1\n"
+    "chrom,start,ref,alts,genotype,state,conclusion,gene\nMT,3243,A,G,A/G,risk,MELAS m.3243A>G,MT-TL1\n"
 )
 _MT_COORD_STUDY = "chrom,start,ref,pmid\nMT,3243,A,1738844\n"
 _RESOLUTION = (
@@ -191,8 +183,16 @@ def test_a_one_to_many_par_rsid_expands_to_a_y_row_that_is_not_warned_about(tmp_
 
 def _locus(chrom: str, start: int, ref: str, alts: str, index: int) -> ResolutionRow:
     return ResolutionRow(
-        variant_key="k", rsid="rs1", chrom=chrom, start=start, ref=ref, alts=alts,
-        genome_build="GRCh38", locus_index=index, source="ensembl-rest", status="resolved",
+        variant_key="k",
+        rsid="rs1",
+        chrom=chrom,
+        start=start,
+        ref=ref,
+        alts=alts,
+        genome_build="GRCh38",
+        locus_index=index,
+        source="ensembl-rest",
+        status="resolved",
     )
 
 

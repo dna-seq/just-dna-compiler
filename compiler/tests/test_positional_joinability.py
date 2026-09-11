@@ -36,8 +36,7 @@ _PGX = _EXAMPLES / "pgx_slco1b1_simvastatin"
 _STARS = _EXAMPLES / "cyp2c19_star_alleles"
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+    "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
 )
 
 
@@ -77,8 +76,7 @@ def test_a_half_coordinate_is_counted_apart_because_it_looks_like_a_position(
     deceptive shape and is still counted apart."""
     spec = _pharm_spec(tmp_path / "half", coordinates=False, resolution=False)
     (spec / "pharm_variants.csv").write_text(
-        "rsid,gene,genotype,drug,conclusion,start\n"
-        "rs4149056,SLCO1B1,C/C,simvastatin,c,21178615\n",
+        "rsid,gene,genotype,drug,conclusion,start\nrs4149056,SLCO1B1,C/C,simvastatin,c,21178615\n",
         encoding="utf-8",
     )
     finding = _finding(validate_spec(spec).warnings, "pharm_variants.csv")
@@ -124,7 +122,7 @@ def test_a_table_that_carries_its_coordinates_is_not_warned_about(tmp_path: Path
 
 
 def test_without_a_resolution_table_the_message_does_not_claim_one(tmp_path: Path) -> None:
-    """"The coordinates exist and are not applied" and "nothing has resolved this" are different
+    """ "The coordinates exist and are not applied" and "nothing has resolved this" are different
     situations, and the author's next move differs."""
     spec = _pharm_spec(tmp_path / "bare", coordinates=False, resolution=False)
     finding = _finding(validate_spec(spec).warnings, "pharm_variants.csv")
@@ -142,17 +140,16 @@ def test_a_gene_keyed_table_is_never_flagged(tmp_path: Path) -> None:
 
 def test_the_key_is_derived_the_way_the_enricher_derives_it() -> None:
     """Two spellings of one key would make this check disagree with the table it reads."""
-    pharm = PharmVariantRow(rsid="rs4149056", gene="SLCO1B1", genotype="C/C", drug="simvastatin",
-                            conclusion="c")
+    pharm = PharmVariantRow(
+        rsid="rs4149056", gene="SLCO1B1", genotype="C/C", drug="simvastatin", conclusion="c"
+    )
     assert _table_row_key(pharm, "GRCh38") == pharm.variant_key
 
     # `HaplotypeRow` stamps the column since 0.6 (RM43); before that it had none at all and
     # `enrich._collect_subjects` derived one inline. The stamped value must be that same expression —
     # without `alts`, because a haplotype's defining allele is not its identity.
     hap = HaplotypeRow(haplotype_name="*2", rsid="rs4244285", allele="A", gene="CYP2C19")
-    assert _table_row_key(hap, "GRCh38") == derive_variant_key(
-        hap.rsid, hap.chrom, hap.start, hap.ref
-    )
+    assert _table_row_key(hap, "GRCh38") == derive_variant_key(hap.rsid, hap.chrom, hap.start, hap.ref)
     assert hap.variant_key == derive_variant_key(hap.rsid, hap.chrom, hap.start, hap.ref)
 
 

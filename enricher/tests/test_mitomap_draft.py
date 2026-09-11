@@ -205,12 +205,14 @@ def test_a_run_that_drafted_nothing_writes_no_source_row(spec_dir: Path, mitomap
     assert not (spec_dir / "licensing.csv").exists()
 
 
-def test_the_gene_filter_is_counted_apart_from_the_withholding(spec_dir: Path, mitomap_miss_snapshot: Path) -> None:
-    """"The increment has nothing for this gene" and "it has something we would not write" differ."""
+def test_the_gene_filter_is_counted_apart_from_the_withholding(
+    spec_dir: Path, mitomap_miss_snapshot: Path
+) -> None:
+    """ "The increment has nothing for this gene" and "it has something we would not write" differ."""
     unfiltered = draft_panel_from_mitomap_miss(spec_dir, snapshot=mitomap_miss_snapshot, dry_run=True)
     gene = next(
-        row["gene"] for row in
-        pl.read_parquet(mitomap_miss_snapshot / "data" / "mitomap_miss.parquet")
+        row["gene"]
+        for row in pl.read_parquet(mitomap_miss_snapshot / "data" / "mitomap_miss.parquet")
         .filter((pl.col("bucket") == "rated_miss") & pl.col("gene").is_not_null())
         .to_dicts()
     )
@@ -249,10 +251,18 @@ def test_the_source_is_reachable_from_the_command_line_by_either_spelling(
 ) -> None:
     runner = CliRunner()
     for spelling in ("mitomap-miss", "mitomap_miss"):
-        result = runner.invoke(app, [
-            "draft-panel", str(spec_dir), "--source", spelling,
-            "--mitomap-miss-cache", str(mitomap_miss_snapshot), "--dry-run",
-        ])
+        result = runner.invoke(
+            app,
+            [
+                "draft-panel",
+                str(spec_dir),
+                "--source",
+                spelling,
+                "--mitomap-miss-cache",
+                str(mitomap_miss_snapshot),
+                "--dry-run",
+            ],
+        )
         assert result.exit_code == 0, result.output
         assert "would add" in result.output
 
@@ -268,11 +278,23 @@ def test_a_gene_scoped_source_still_needs_a_gene(spec_dir: Path) -> None:
     assert "needs at least one --gene" in printed
 
 
-def test_a_clin_sig_dial_is_named_as_inert_under_this_source(spec_dir: Path, mitomap_miss_snapshot: Path) -> None:
+def test_a_clin_sig_dial_is_named_as_inert_under_this_source(
+    spec_dir: Path, mitomap_miss_snapshot: Path
+) -> None:
     """The increment is already exactly the five documented classes; a filter cannot widen it."""
-    result = CliRunner().invoke(app, [
-        "draft-panel", str(spec_dir), "--source", "mitomap-miss",
-        "--mitomap-miss-cache", str(mitomap_miss_snapshot), "--clin-sig", "pathogenic", "--dry-run",
-    ])
+    result = CliRunner().invoke(
+        app,
+        [
+            "draft-panel",
+            str(spec_dir),
+            "--source",
+            "mitomap-miss",
+            "--mitomap-miss-cache",
+            str(mitomap_miss_snapshot),
+            "--clin-sig",
+            "pathogenic",
+            "--dry-run",
+        ],
+    )
     printed = result.output + (result.stderr if result.stderr_bytes else "")
     assert "--clin-sig does nothing" in printed

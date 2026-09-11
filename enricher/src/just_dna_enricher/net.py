@@ -69,9 +69,7 @@ class PacingGate:
     spent: int = 0
     # Not part of the value: two gates with the same interval are the same gate, and a lock has no
     # useful repr. `default_factory` so every instance gets its own.
-    _lock: threading.Lock = dataclasses.field(
-        default_factory=threading.Lock, repr=False, compare=False
-    )
+    _lock: threading.Lock = dataclasses.field(default_factory=threading.Lock, repr=False, compare=False)
 
     def wait(self) -> None:
         with self._lock:
@@ -153,7 +151,9 @@ def retry_attempts(default: int) -> int:
     except ValueError:
         logger.warning(
             "%s=%r is not an integer; using this client's own %d attempt(s).",
-            RETRY_ATTEMPTS_ENV, raw, default,
+            RETRY_ATTEMPTS_ENV,
+            raw,
+            default,
         )
         return default
     return max(default, configured)

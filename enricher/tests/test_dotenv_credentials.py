@@ -154,11 +154,18 @@ def test_an_exported_variable_still_outranks_the_dotenv(workspace: Path) -> None
     env["HF_HOME"] = str(workspace / "empty-hf-home")
     env["HF_TOKEN"] = "hf_exported_wins"
     done = subprocess.run(
-        [sys.executable, "-c",
-         "from just_dna_enricher.locations import load_env\n"
-         "load_env()\n"
-         "import os; print(os.environ['HF_TOKEN'])"],
-        cwd=workspace, env=env, capture_output=True, text=True, check=True,
+        [
+            sys.executable,
+            "-c",
+            "from just_dna_enricher.locations import load_env\n"
+            "load_env()\n"
+            "import os; print(os.environ['HF_TOKEN'])",
+        ],
+        cwd=workspace,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     assert done.stdout.strip() == "hf_exported_wins"
 
@@ -185,8 +192,12 @@ def test_an_exported_empty_variable_is_diagnosed_as_itself(workspace: Path) -> N
     env["HF_HOME"] = str(workspace / "empty-hf-home")
     env["PHARMVAR_API_KEY"] = ""
     done = subprocess.run(
-        [sys.executable, "-c", _REASON], cwd=workspace, env=env,
-        capture_output=True, text=True, check=True,
+        [sys.executable, "-c", _REASON],
+        cwd=workspace,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     assert "EMPTY" in done.stdout
     assert "unset PHARMVAR_API_KEY" in done.stdout, "the remedy differs from the absent case's"
@@ -210,13 +221,19 @@ def test_the_empty_variable_really_does_beat_the_dotenv(workspace: Path) -> None
     env = {k: v for k, v in os.environ.items() if k not in _STRIPPED}
     env["HF_HOME"] = str(workspace / "empty-hf-home")
 
-    absent = subprocess.run([sys.executable, "-c", probe], cwd=workspace, env=env,
-                            capture_output=True, text=True, check=True)
+    absent = subprocess.run(
+        [sys.executable, "-c", probe], cwd=workspace, env=env, capture_output=True, text=True, check=True
+    )
     assert "a-key-from-the-dotenv" in absent.stdout, "deleting it lets the file supply one"
 
-    empty = subprocess.run([sys.executable, "-c", probe], cwd=workspace,
-                           env={**env, "PHARMVAR_API_KEY": ""},
-                           capture_output=True, text=True, check=True)
+    empty = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=workspace,
+        env={**env, "PHARMVAR_API_KEY": ""},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
     assert empty.stdout.strip() == "''", "and setting it empty stops the file supplying one"
 
 
@@ -233,6 +250,7 @@ def test_the_hf_refusal_names_the_same_two_states(workspace: Path) -> None:
     env = {k: v for k, v in os.environ.items() if k not in _STRIPPED}
     env["HF_HOME"] = str(workspace / "empty-hf-home")
     env["HF_TOKEN"] = ""
-    done = subprocess.run([sys.executable, "-c", probe], cwd=workspace, env=env,
-                          capture_output=True, text=True, check=True)
+    done = subprocess.run(
+        [sys.executable, "-c", probe], cwd=workspace, env=env, capture_output=True, text=True, check=True
+    )
     assert "EMPTY" in done.stdout and "unset HF_TOKEN" in done.stdout, done.stdout

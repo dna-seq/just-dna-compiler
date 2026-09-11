@@ -244,8 +244,12 @@ def test_the_build_diagnosis_denominator_is_what_it_examined_not_what_existed() 
     from just_dna_enricher.sequences import RefCheck
 
     diagnosis = BuildDiagnosis(
-        variant_key="6:26093141:G", chrom="6", start=26093141, claimed="G",
-        reason="dbsnp_corroborated", rsids=["rs1800562"],
+        variant_key="6:26093141:G",
+        chrom="6",
+        start=26093141,
+        claimed="G",
+        reason="dbsnp_corroborated",
+        rsids=["rs1800562"],
     )
     build = BuildDiagnosisResult(diagnoses=[diagnosis], examined=50, total=328)
     records = _records_for(RefCheck([], 12), build)
@@ -264,9 +268,7 @@ def test_no_ref_mismatch_means_nothing_to_check_not_a_clean_build() -> None:
     from just_dna_enricher.grch37 import BuildDiagnosisResult
     from just_dna_enricher.sequences import RefCheck
 
-    records = _records_for(
-        RefCheck([], 12), BuildDiagnosisResult(not_checked="no_ref_mismatches")
-    )
+    records = _records_for(RefCheck([], 12), BuildDiagnosisResult(not_checked="no_ref_mismatches"))
     assert records["genome_build_agreement"].skipped == "nothing_to_check"
     # And the reference-allele check beside it DID run, over its own denominator.
     assert (records["reference_allele"].subjects, records["reference_allele"].findings) == (12, 0)
@@ -499,14 +501,23 @@ def hgnc(monkeypatch):
     (`client or OntologyClient()`), so replacing the name in its module is what lets the command —
     argument parsing, report, records, write — run exactly as it does in production.
     """
+
     def handler(request: httpx.Request) -> httpx.Response:
         symbol = str(request.url).rsplit("/", 1)[-1]
         band = _HGNC_BANDS.get(symbol)
         if band is None or "prev_symbol" in str(request.url):
             return httpx.Response(200, json={"response": {"numFound": 0, "docs": []}})
-        return httpx.Response(200, json={"response": {"numFound": 1, "docs": [
-            {"symbol": symbol, "status": "Approved", "hgnc_id": "HGNC:4886", "location": band}
-        ]}})
+        return httpx.Response(
+            200,
+            json={
+                "response": {
+                    "numFound": 1,
+                    "docs": [
+                        {"symbol": symbol, "status": "Approved", "hgnc_id": "HGNC:4886", "location": band}
+                    ],
+                }
+            },
+        )
 
     def build() -> OntologyClient:
         client = OntologyClient()
@@ -546,9 +557,7 @@ def test_check_identifiers_records_the_three_questions_it_put(tmp_path: Path, hg
     assert (symbols.source, loci.source) == ("hgnc", "hgnc")
 
 
-def test_check_identifiers_records_nothing_to_check_apart_from_not_requested(
-    tmp_path: Path, hgnc
-) -> None:
+def test_check_identifiers_records_nothing_to_check_apart_from_not_requested(tmp_path: Path, hgnc) -> None:
     """A module authoring no trait CURIE has nothing to ask OLS4 — which is not the same absence.
 
     Both spellings live in one document here on purpose: `not_requested` is a caller's choice and
@@ -575,6 +584,7 @@ def test_check_identifiers_attests_when_the_registry_never_answers(tmp_path: Pat
     it is false exactly where a reader needs it. The command exits 1 and says which registry failed;
     the document says `unreachable`, which is not the same as an absence (S20).
     """
+
     def refuse(*_args, **_kwargs):
         raise httpx.ConnectError("connection refused")
 
@@ -669,9 +679,10 @@ def test_an_offline_re_run_does_not_downgrade_the_answer_the_document_holds(tmp_
     """
     spec = _module(tmp_path)
     snapshot = _acmg_snapshot(tmp_path)
-    assert CliRunner().invoke(
-        app, ["check-acmg", str(spec), "--offline", "--sf-list", str(snapshot)]
-    ).exit_code == 0
+    assert (
+        CliRunner().invoke(app, ["check-acmg", str(spec), "--offline", "--sf-list", str(snapshot)]).exit_code
+        == 0
+    )
     answered = {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}[
         "acmg_secondary_findings"
     ]
@@ -686,7 +697,9 @@ def test_an_offline_re_run_does_not_downgrade_the_answer_the_document_holds(tmp_
     ]
     assert kept.skipped is None
     assert (kept.subjects, kept.findings, kept.release) == (
-        answered.subjects, answered.findings, answered.release
+        answered.subjects,
+        answered.findings,
+        answered.release,
     )
 
 
@@ -702,9 +715,10 @@ def test_an_answer_over_bytes_that_moved_gives_way_to_this_runs_skip(
     """
     spec = _module(tmp_path)
     snapshot = _acmg_snapshot(tmp_path)
-    assert CliRunner().invoke(
-        app, ["check-acmg", str(spec), "--offline", "--sf-list", str(snapshot)]
-    ).exit_code == 0
+    assert (
+        CliRunner().invoke(app, ["check-acmg", str(spec), "--offline", "--sf-list", str(snapshot)]).exit_code
+        == 0
+    )
 
     rows = (spec / "variants.csv").read_text(encoding="utf-8").splitlines(keepends=True)
     (spec / "variants.csv").write_text("".join(rows[:-1]), encoding="utf-8")
@@ -780,9 +794,18 @@ def _conflict(key: str, authored: str, clinvar: str, *, opposed: bool):
     from just_dna_enricher.clinical import ClinSigConflict
 
     return ClinSigConflict(
-        variant_key=key, genotype="A/G", chrom="1", start=1, ref="A", alt="G",
-        authored=authored, authority_clin_sig=clinvar, review_stars=2, review_status="criteria_provided",
-        condition=None, opposed=opposed,
+        variant_key=key,
+        genotype="A/G",
+        chrom="1",
+        start=1,
+        ref="A",
+        alt="G",
+        authored=authored,
+        authority_clin_sig=clinvar,
+        review_stars=2,
+        review_status="criteria_provided",
+        condition=None,
+        opposed=opposed,
     )
 
 

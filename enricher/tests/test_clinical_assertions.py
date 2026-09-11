@@ -42,28 +42,61 @@ genome_build: {build}
 # single-submitter record under a different condition; rs334 (HBB) is 2-star.
 _RECORDS = [
     {
-        "chrom": "19", "start": 38449938, "ref": "C", "alt": "T", "rsid": "rs118192172",
-        "variation_id": "133", "allele_id": "1", "gene": "RYR1", "genes": "RYR1",
-        "clin_sig": "pathogenic", "clin_sig_raw": "Pathogenic",
-        "review_status": "practice_guideline", "review_stars": 4,
+        "chrom": "19",
+        "start": 38449938,
+        "ref": "C",
+        "alt": "T",
+        "rsid": "rs118192172",
+        "variation_id": "133",
+        "allele_id": "1",
+        "gene": "RYR1",
+        "genes": "RYR1",
+        "clin_sig": "pathogenic",
+        "clin_sig_raw": "Pathogenic",
+        "review_status": "practice_guideline",
+        "review_stars": 4,
         "condition": "Malignant hyperthermia susceptibility",
-        "molecular_consequence": None, "variant_type": None, "origin": None,
+        "molecular_consequence": None,
+        "variant_type": None,
+        "origin": None,
     },
     {
-        "chrom": "19", "start": 38449938, "ref": "C", "alt": "T", "rsid": "rs118192172",
-        "variation_id": "134", "allele_id": "2", "gene": "RYR1", "genes": "RYR1",
-        "clin_sig": "uncertain_significance", "clin_sig_raw": "Uncertain_significance",
-        "review_status": "criteria_provided,_single_submitter", "review_stars": 1,
+        "chrom": "19",
+        "start": 38449938,
+        "ref": "C",
+        "alt": "T",
+        "rsid": "rs118192172",
+        "variation_id": "134",
+        "allele_id": "2",
+        "gene": "RYR1",
+        "genes": "RYR1",
+        "clin_sig": "uncertain_significance",
+        "clin_sig_raw": "Uncertain_significance",
+        "review_status": "criteria_provided,_single_submitter",
+        "review_stars": 1,
         "condition": "Central core disease",
-        "molecular_consequence": None, "variant_type": None, "origin": None,
+        "molecular_consequence": None,
+        "variant_type": None,
+        "origin": None,
     },
     {
-        "chrom": "11", "start": 5227002, "ref": "T", "alt": "A", "rsid": "rs334",
-        "variation_id": "15333", "allele_id": "3", "gene": "HBB", "genes": "HBB",
-        "clin_sig": "pathogenic", "clin_sig_raw": "Pathogenic",
-        "review_status": "criteria_provided,_multiple_submitters,_no_conflicts", "review_stars": 2,
+        "chrom": "11",
+        "start": 5227002,
+        "ref": "T",
+        "alt": "A",
+        "rsid": "rs334",
+        "variation_id": "15333",
+        "allele_id": "3",
+        "gene": "HBB",
+        "genes": "HBB",
+        "clin_sig": "pathogenic",
+        "clin_sig_raw": "Pathogenic",
+        "review_status": "criteria_provided,_multiple_submitters,_no_conflicts",
+        "review_stars": 2,
         "condition": "Sickle cell anemia",
-        "molecular_consequence": None, "variant_type": None, "origin": None,
+        "molecular_consequence": None,
+        "variant_type": None,
+        "origin": None,
     },
 ]
 
@@ -101,8 +134,7 @@ def _spec(tmp_path: Path, *, build: str = "GRCh38", resolution: str | None = Non
         encoding="utf-8",
     )
     (spec / "studies.csv").write_text(
-        "chrom,start,ref,pmid,conclusion\n"
-        "19,38449938,C,12345678,RYR1 and malignant hyperthermia\n",
+        "chrom,start,ref,pmid,conclusion\n19,38449938,C,12345678,RYR1 and malignant hyperthermia\n",
         encoding="utf-8",
     )
     (spec / "resolution.csv").write_text(
@@ -250,7 +282,9 @@ def test_the_emitted_order_is_deterministic_and_independent_of_the_resolution_or
     # ...and the order is the writer's own (by locus), not whichever the resolution table happened to
     # list — which is what makes the two runs above agree in the first place.
     assert [(r.chrom, r.start, r.variation_id) for r in a.rows] == [
-        ("11", 5227002, "15333"), ("19", 38449938, "133"), ("19", 38449938, "134"),
+        ("11", 5227002, "15333"),
+        ("19", 38449938, "133"),
+        ("19", 38449938, "134"),
     ]
 
 

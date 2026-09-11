@@ -81,7 +81,9 @@ class SequenceProxy:
             except Exception as exc:
                 logger.warning(
                     "Could not reach the sequence service at %s (%s); sequence-dependent work "
-                    "(indel VRS ids, the reference-allele check) is skipped this run.", self.uri, exc,
+                    "(indel VRS ids, the reference-allele check) is skipped this run.",
+                    self.uri,
+                    exc,
                 )
                 return None
         return self._proxy
@@ -284,8 +286,13 @@ def verify_reference_alleles(
             continue
         mismatches.append(
             RefMismatch(
-                variant_key=row.variant_key, chrom=row.chrom, start=row.start,
-                claimed=claimed, actual=actual, genome_build=row.genome_build, shift=shift,
+                variant_key=row.variant_key,
+                chrom=row.chrom,
+                start=row.start,
+                claimed=claimed,
+                actual=actual,
+                genome_build=row.genome_build,
+                shift=shift,
             )
         )
     return RefCheck(mismatches, subjects)

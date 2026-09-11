@@ -250,9 +250,9 @@ def layout_shifts_to_apply(repo_files: Iterable[str], repo_id: str) -> list[Layo
         if shift.repo_id != repo_id:
             continue
         if shift.retires not in remote:
-            continue                                   # already retired, or never there
+            continue  # already retired, or never there
         if any(fnmatch(name, shift.introduces) for name in remote):
-            continue                                   # the repo has already moved: not this one's job
+            continue  # the repo has already moved: not this one's job
         due.append(shift)
     return due
 
@@ -376,9 +376,7 @@ def _attested_parquets(module_dir: Path) -> list[str] | None:
     if not isinstance(entries, list):
         return None
     return [
-        entry["name"]
-        for entry in entries
-        if isinstance(entry, dict) and isinstance(entry.get("name"), str)
+        entry["name"] for entry in entries if isinstance(entry, dict) and isinstance(entry.get("name"), str)
     ]
 
 
@@ -484,9 +482,7 @@ def _versioned_digest_conflict(api, plan: "UploadPlan", local_digest: str | None
     try:
         from huggingface_hub import hf_hub_download
 
-        if not api.file_exists(
-            repo_id=plan.repo_id, filename=remote_manifest, repo_type="dataset"
-        ):
+        if not api.file_exists(repo_id=plan.repo_id, filename=remote_manifest, repo_type="dataset"):
             return None
         local_copy = hf_hub_download(
             repo_id=plan.repo_id,
@@ -499,7 +495,8 @@ def _versioned_digest_conflict(api, plan: "UploadPlan", local_digest: str | None
         logger.warning(
             "Could not read the published manifest at %s (%s); publishing without the "
             "already-published check. Nothing established a collision, so nothing asserts one.",
-            remote_manifest, exc,
+            remote_manifest,
+            exc,
         )
         return None
     artifact = published.get("artifact") if isinstance(published, dict) else None
@@ -550,9 +547,7 @@ def upload_module(
     """
     plan = plan_upload(module_dir, name, repo_id)
     api = ensure_repo(plan.repo_id, token)
-    published_digest = None if force else _versioned_digest_conflict(
-        api, plan, _artifact_digest(module_dir)
-    )
+    published_digest = None if force else _versioned_digest_conflict(api, plan, _artifact_digest(module_dir))
     if published_digest is not None:
         raise PublishCollisionError(
             f"{name}: {plan.versioned_path_in_repo}/ is already published with a different artifact "
@@ -681,16 +676,15 @@ def check_publish_orphans_no_sidecar(plan: SnapshotPlan, api=None, token: str | 
     except Exception as exc:
         # Nobody has published here yet, or the listing failed. Neither is an orphan, and a publish
         # that cannot read the repo will fail on its own terms a moment later with a better message.
-        logger.info("Could not list %s (%s); publishing without the sidecar check.",
-                    plan.repo_id, type(exc).__name__)
+        logger.info(
+            "Could not list %s (%s); publishing without the sidecar check.", plan.repo_id, type(exc).__name__
+        )
         return
     carried = {path.split("/", 1)[0] for path in plan.files if "/" in path}
     for sidecar in SNAPSHOT_SIDECAR_DIRNAMES:
         if sidecar in carried:
             continue
-        orphaned = sorted(
-            f for f in remote if f.startswith(f"{sidecar}/") and f.endswith(".parquet")
-        )
+        orphaned = sorted(f for f in remote if f.startswith(f"{sidecar}/") and f.endswith(".parquet"))
         if not orphaned:
             continue
         raise OrphanedSidecarError(
@@ -742,8 +736,7 @@ def plan_prune(repo_id: str, filename_glob: str, api=None) -> PrunePlan:
             raise ImportError("huggingface_hub is required to inspect a published repo") from exc
         load_env()
         api = HfApi(token=get_token())
-    entries = list(api.list_repo_tree(repo_id=repo_id, repo_type="dataset", recursive=True,
-                                      expand=True))
+    entries = list(api.list_repo_tree(repo_id=repo_id, repo_type="dataset", recursive=True, expand=True))
     sizes = {getattr(e, "path", ""): getattr(e, "size", None) for e in entries}
     remote = [path for path in sizes if path]
 
@@ -752,10 +745,11 @@ def plan_prune(repo_id: str, filename_glob: str, api=None) -> PrunePlan:
     for path in sorted(remote):
         if not (path.startswith(prefix) and path.endswith(".parquet")):
             continue
-        if fnmatch(path[len(prefix):], filename_glob):
+        if fnmatch(path[len(prefix) :], filename_glob):
             continue
         candidates[path] = PruneCandidate(
-            path=path, size=sizes.get(path),
+            path=path,
+            size=sizes.get(path),
             reason=f"under {SNAPSHOT_DATA_DIRNAME}/ but outside this snapshot ({filename_glob})",
         )
     for shift in LAYOUT_SHIFTS:
@@ -764,7 +758,8 @@ def plan_prune(repo_id: str, filename_glob: str, api=None) -> PrunePlan:
         # A declared retirement wins the reason slot: it says *when* and *why* the file stopped being
         # part of the snapshot, which "outside the glob" does not.
         candidates[shift.retires] = PruneCandidate(
-            path=shift.retires, size=sizes.get(shift.retires),
+            path=shift.retires,
+            size=sizes.get(shift.retires),
             reason=f"declared retired — {shift.reason}",
         )
     return PrunePlan(repo_id=repo_id, candidates=[candidates[k] for k in sorted(candidates)])
@@ -784,13 +779,10 @@ def prune_repo(plan: PrunePlan, token: str | None = None, commit_message: str | 
         repo_id=plan.repo_id,
         delete_patterns=[c.path for c in plan.candidates],
         repo_type="dataset",
-        commit_message=commit_message or (
-            f"Prune {len(plan.candidates)} file(s) that are not part of this snapshot"
-        ),
+        commit_message=commit_message
+        or (f"Prune {len(plan.candidates)} file(s) that are not part of this snapshot"),
     )
     return len(plan.candidates)
-
-
 
 
 def publish_reference_snapshot(
@@ -818,14 +810,16 @@ def publish_reference_snapshot(
     try:
         remote = list(api.list_repo_files(repo_id=plan.repo_id, repo_type="dataset"))
     except Exception as exc:
-        logger.info("Could not list %s (%s); no declared retirement can apply.",
-                    plan.repo_id, type(exc).__name__)
+        logger.info(
+            "Could not list %s (%s); no declared retirement can apply.", plan.repo_id, type(exc).__name__
+        )
         remote = []
     due = layout_shifts_to_apply(remote, plan.repo_id)
     if due:
         logger.info(
             "Retiring %s from %s in this commit: %s",
-            ", ".join(shift.retires for shift in due), plan.repo_id,
+            ", ".join(shift.retires for shift in due),
+            plan.repo_id,
             "; ".join(shift.reason for shift in due),
         )
 
@@ -865,7 +859,8 @@ def publish_reference_snapshot(
         # lost `citations/` and `LICENSE.txt` in the first place. One list, computed once, so what a
         # dry run promises is exactly what an upload sends (`@publisher-allowlist-derived`).
         allow_patterns=payload_files,
-        commit_message=commit_message or (
+        commit_message=commit_message
+        or (
             f"Publish reference snapshot ({len(payload_files)} files)"
             + (f", retiring {', '.join(s.retires for s in due)}" if due else "")
         ),

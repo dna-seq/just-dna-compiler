@@ -331,9 +331,7 @@ def _open_table(path: Path, expected: tuple[str, ...]) -> Iterator[dict[str, str
             # `restval=None` and a `restkey`, so a ragged row is *visible*: a short row leaves `None`
             # in the columns it never reached, and a long one parks its surplus under the restkey. A
             # genuinely empty cell is `""`, so neither is a false positive.
-            reader = csv.DictReader(
-                handle, delimiter="\t", restkey=_RAGGED_EXTRA, restval=None
-            )
+            reader = csv.DictReader(handle, delimiter="\t", restkey=_RAGGED_EXTRA, restval=None)
             fieldnames = list(reader.fieldnames or [])
             if fieldnames:
                 fieldnames = [fieldnames[0].lstrip("#"), *fieldnames[1:]]
@@ -366,12 +364,30 @@ def _open_table(path: Path, expected: tuple[str, ...]) -> Iterator[dict[str, str
 # ── the three tables ────────────────────────────────────────────────────────────────────────────
 
 _SUMMARY_COLUMNS: tuple[str, ...] = (
-    "NCBI_GeneID", "Ensembl_Gene", "HGNC_ID", "symbol", "name", "RefSeq_nuc", "RefSeq_prot",
-    "Ensembl_nuc", "Ensembl_prot", "MANE_status", "GRCh38_chr", "chr_start", "chr_end", "chr_strand",
+    "NCBI_GeneID",
+    "Ensembl_Gene",
+    "HGNC_ID",
+    "symbol",
+    "name",
+    "RefSeq_nuc",
+    "RefSeq_prot",
+    "Ensembl_nuc",
+    "Ensembl_prot",
+    "MANE_status",
+    "GRCh38_chr",
+    "chr_start",
+    "chr_end",
+    "chr_strand",
 )
 _CHANGED_COLUMNS: tuple[str, ...] = (
-    "NCBI_GeneID", "Symbol", "Current_MANE_Select_RefSeq", "Current_MANE_Select_Ensembl",
-    "Current_MANE_Version", "Old_MANE_Select_RefSeq", "Old_MANE_Select_Ensembl", "Old_MANE_Version",
+    "NCBI_GeneID",
+    "Symbol",
+    "Current_MANE_Select_RefSeq",
+    "Current_MANE_Select_Ensembl",
+    "Current_MANE_Version",
+    "Old_MANE_Select_RefSeq",
+    "Old_MANE_Select_Ensembl",
+    "Old_MANE_Version",
     "Update_Affects_CDS",
 )
 _NOT_IN_MANE_COLUMNS: tuple[str, ...] = ("GeneID", "HGNC_id", "gene_symbol", "status")
@@ -558,12 +574,19 @@ def download_mane_file(dest: Path, url: str) -> ManeDownload:
     `.part` left behind is the one residue a re-run would have to reason about.
     """
     streamed = stream_to_file(
-        dest, url, error_cls=ManeUnavailable, what=f"the MANE file {Path(url).name}", timeout=120.0,
+        dest,
+        url,
+        error_cls=ManeUnavailable,
+        what=f"the MANE file {Path(url).name}",
+        timeout=120.0,
         remedy="Pass the local file instead of --download if you already hold a copy.",
     )
     return ManeDownload(
-        path=streamed.path, sha256=streamed.sha256, url=url,
-        etag=streamed.etag, last_modified=streamed.last_modified,
+        path=streamed.path,
+        sha256=streamed.sha256,
+        url=url,
+        etag=streamed.etag,
+        last_modified=streamed.last_modified,
     )
 
 
@@ -693,7 +716,8 @@ def _read_versions(versions_file: Path | None) -> dict[str, str]:
     except OSError as exc:
         logger.warning(
             "Could not read %s (%s); recording an unknown release rather than guessing one.",
-            versions_file, exc,
+            versions_file,
+            exc,
         )
         return {}
     return parse_versions(text)
@@ -749,9 +773,7 @@ def _write_release_json(
         "versions": result.versions,
         "genome_build": MANE_GENOME_BUILD,
         "release_url": (
-            mane_release_dir_url(result.release)
-            if downloads and result.release is not None
-            else None
+            mane_release_dir_url(result.release) if downloads and result.release is not None else None
         ),
         "source_url": _per_input(downloads, "url"),
         "source_sha256": result.source_sha256,

@@ -34,14 +34,26 @@ from just_dna_enricher.pgx_draft import CPIC_GENOME_BUILD, draft_gene
 # on the wrong assembly.
 _GENES = [{"symbol": "CYP2C19", "chr": "chr10"}]
 _ALLELES = [
-    {"genesymbol": "CYP2C19", "name": "*1", "activityvalue": "1.0",
-     "clinicalfunctionalstatus": "Normal function"},
-    {"genesymbol": "CYP2C19", "name": "*2", "activityvalue": "0.0",
-     "clinicalfunctionalstatus": "No function"},
+    {
+        "genesymbol": "CYP2C19",
+        "name": "*1",
+        "activityvalue": "1.0",
+        "clinicalfunctionalstatus": "Normal function",
+    },
+    {
+        "genesymbol": "CYP2C19",
+        "name": "*2",
+        "activityvalue": "0.0",
+        "clinicalfunctionalstatus": "No function",
+    },
 ]
 _DIPLOTYPES = [
-    {"genesymbol": "CYP2C19", "diplotype": "*1/*2", "generesult": "Intermediate Metabolizer",
-     "totalactivityscore": "1.0"},
+    {
+        "genesymbol": "CYP2C19",
+        "diplotype": "*1/*2",
+        "generesult": "Intermediate Metabolizer",
+        "totalactivityscore": "1.0",
+    },
 ]
 _DEFINITIONS = [{"id": 1, "genesymbol": "CYP2C19", "name": "*2"}]
 #: **The key is `sequence_location`, and it was `location` until R2-3.** `cpic.defining_variants`
@@ -52,10 +64,16 @@ _DEFINITIONS = [{"id": 1, "genesymbol": "CYP2C19", "name": "*2"}]
 #: its name says. `test_the_cpic_provider_warns_and_still_drafts` now asserts the coordinate reaches
 #: `haplotypes.csv`, which is what makes the key matter.
 _LOCATIONS = [
-    {"alleledefinitionid": 1, "variantallele": "A",
-     "sequence_location": {"chromosomelocation": "NC_000010.11:g.94781859G>A",
-                           "position": 94781859, "dbsnpid": "rs4244285",
-                           "genesymbol": "CYP2C19"}},
+    {
+        "alleledefinitionid": 1,
+        "variantallele": "A",
+        "sequence_location": {
+            "chromosomelocation": "NC_000010.11:g.94781859G>A",
+            "position": 94781859,
+            "dbsnpid": "rs4244285",
+            "genesymbol": "CYP2C19",
+        },
+    },
 ]
 
 
@@ -97,11 +115,9 @@ def test_a_non_default_build_is_named_against_the_source(tmp_path: Path, build: 
 
 
 def test_the_agreeing_case_is_silent(tmp_path: Path) -> None:
-    """"The builds agree" is not a finding, and a warning on every ordinary draft is noise."""
+    """ "The builds agree" is not a finding, and a warning on every ordinary draft is noise."""
     assert source_build_mismatch(_spec(tmp_path, "GRCh38"), "CPIC", CPIC_GENOME_BUILD) is None
-    assert (
-        source_build_mismatch(_spec(tmp_path, "GRCh38"), "ClinVar", CLINVAR_GENOME_BUILD) is None
-    )
+    assert source_build_mismatch(_spec(tmp_path, "GRCh38"), "ClinVar", CLINVAR_GENOME_BUILD) is None
 
 
 def test_a_spec_with_no_yaml_is_the_default_build(tmp_path: Path) -> None:
@@ -142,9 +158,7 @@ def test_the_cpic_provider_warns_and_still_drafts(tmp_path: Path) -> None:
 
 def test_the_default_build_draft_is_unchanged(tmp_path: Path) -> None:
     """The GRCh38 path emits no build warning at all — the regression guard on the fix itself."""
-    result = draft_gene(
-        _spec(tmp_path, "GRCh38"), "CYP2C19", client=_client(), declared_use="non_commercial"
-    )
+    result = draft_gene(_spec(tmp_path, "GRCh38"), "CYP2C19", client=_client(), declared_use="non_commercial")
     assert not [w for w in result.warnings if "coordinates and this module declares" in w]
 
 

@@ -35,12 +35,14 @@ import sys
 DOCS = pathlib.Path(__file__).resolve().parent.parent / "docs"
 DEFAULT_DOC = DOCS / "CONSUMER_SUGGESTIONS.md"
 
+
 # Every file an `Sn` can be sitting in, found rather than listed: the live inbox, the history file, and
 # the archived halves of the history file, which live in a subdirectory and will be joined by more of
 # them. `next_id` is wrong the moment one of these is missed — it would hand out an id that is already
 # taken — and a hard-coded list is exactly the thing that goes stale when a file is split off.
 def corpus() -> list[pathlib.Path]:
     return [DEFAULT_DOC, *sorted(DOCS.rglob("CONSUMER_SUGGESTIONS_HISTORY*.md"))]
+
 
 # A section is a top-level `## Sn` heading. `###` sub-headings fold into their parent:
 # they are part of what the consumer wrote, so they belong in the parent's fingerprint.
@@ -300,14 +302,13 @@ def main() -> int:
     for complaint in fence_findings(lines):
         print(f"STRUCTURE  {doc.name}:{complaint}", file=sys.stderr)
     covered = block_replies(lines)
-    rows = [(ident, line, *classify(body, ident in covered))
-            for ident, line, body in sections(lines)]
+    rows = [(ident, line, *classify(body, ident in covered)) for ident, line, body in sections(lines)]
     pending = [r for r in rows if r[2] in {"new", "revised", "unmarked-reply"}]
 
     if "--backfill" in flags:
         return backfill(doc, lines, rows, covered)
 
-    for ident, line, verdict, current, stored in (pending if "--pending" in flags else rows):
+    for ident, line, verdict, current, stored in pending if "--pending" in flags else rows:
         note = f"  (was {stored})" if verdict == "revised" else ""
         if verdict == "unmarked-reply" and ident in covered:
             note = "  (block reply)"
@@ -316,8 +317,11 @@ def main() -> int:
     if not pending:
         print(f"\nnothing pending — {len(rows)} section(s) all current", file=sys.stderr)
     else:
-        tally = ", ".join(f"{sum(1 for r in pending if r[2] == v)} {v}" for v in
-                          ("new", "revised", "unmarked-reply") if any(r[2] == v for r in pending))
+        tally = ", ".join(
+            f"{sum(1 for r in pending if r[2] == v)} {v}"
+            for v in ("new", "revised", "unmarked-reply")
+            if any(r[2] == v for r in pending)
+        )
         print(f"\n{len(pending)} of {len(rows)} pending: {tally}", file=sys.stderr)
     return 0
 

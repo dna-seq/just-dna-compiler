@@ -28,14 +28,24 @@ def _snapshot(tmp_path: Path, rows: list[dict]) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     pl.DataFrame(
         rows,
-        schema={"symbol": pl.Utf8, "grch38_chr": pl.Utf8, "chr_start": pl.Int64,
-                "chr_end": pl.Int64, "mane_status": pl.Utf8},
+        schema={
+            "symbol": pl.Utf8,
+            "grch38_chr": pl.Utf8,
+            "chr_start": pl.Int64,
+            "chr_end": pl.Int64,
+            "mane_status": pl.Utf8,
+        },
     ).write_parquet(out / "summary.parquet")
     return out
 
 
-_HFE = {"symbol": "HFE", "grch38_chr": "NC_000006.12", "chr_start": 26087281,
-        "chr_end": 26098343, "mane_status": "MANE Select"}
+_HFE = {
+    "symbol": "HFE",
+    "grch38_chr": "NC_000006.12",
+    "chr_start": 26087281,
+    "chr_end": 26098343,
+    "mane_status": "MANE Select",
+}
 
 
 def test_a_symbol_resolves_to_the_span_mane_places_it_at(tmp_path: Path) -> None:
@@ -52,8 +62,7 @@ def test_two_rows_for_one_symbol_are_unioned_rather_than_chosen_between(tmp_path
     transcripts. The union is the widest window, and the costs are asymmetric: too wide spends query
     time, too narrow drops the distal variants the item exists to find.
     """
-    plus = {**_HFE, "chr_start": 26080000, "chr_end": 26099999,
-            "mane_status": "MANE Plus Clinical"}
+    plus = {**_HFE, "chr_start": 26080000, "chr_end": 26099999, "mane_status": "MANE Plus Clinical"}
     found = gene_span("HFE", mane_cache=_snapshot(tmp_path, [_HFE, plus]))
     assert (found.span.start, found.span.end) == (26080000, 26099999)
     assert found.span.mane_status == ("MANE Plus Clinical", "MANE Select")

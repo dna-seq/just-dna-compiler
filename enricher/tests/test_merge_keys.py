@@ -67,8 +67,7 @@ def test_a_fallback_is_only_declared_where_the_primary_key_can_be_absent() -> No
         if (key := key_fields(csv_name)) is not None
         and key.fallback
         and all(
-            (f := _model(csv_name).model_fields.get(c)) is not None and f.is_required()
-            for c in key.columns
+            (f := _model(csv_name).model_fields.get(c)) is not None and f.is_required() for c in key.columns
         )
     }
     assert contradictions == {}
@@ -101,7 +100,12 @@ def test_gene_validity_falls_back_to_the_grain_and_the_two_levels_cannot_collide
 
     assert merge_key(with_id) == ("id", "CGGV:assertion_1")
     assert merge_key(without_id) == (
-        "grain", "HFE", "MONDO:0000001", "autosomal_recessive", "ClinGen", "clingen_2026",
+        "grain",
+        "HFE",
+        "MONDO:0000001",
+        "autosomal_recessive",
+        "ClinGen",
+        "clingen_2026",
     )
     assert merge_key(with_id) != merge_key(without_id)
 
@@ -119,8 +123,14 @@ def test_a_clinvar_absence_row_keys_apart_from_every_record_for_the_same_allele(
     could not express.
     """
     common = {
-        "variant_key": "1:100:A:G", "chrom": "1", "start": 100, "ref": "A", "alt": "G",
-        "genome_build": "GRCh38", "dataset": "clinvar_2026", "source": "clinvar",
+        "variant_key": "1:100:A:G",
+        "chrom": "1",
+        "start": 100,
+        "ref": "A",
+        "alt": "G",
+        "genome_build": "GRCh38",
+        "dataset": "clinvar_2026",
+        "source": "clinvar",
         "fetched_at": "2026-08-20T00:00:00Z",
     }
     absent = ClinicalAssertionRow(**common, status="not_found")
@@ -144,9 +154,17 @@ def test_resolution_publishes_a_subject_rule_because_several_rows_share_its_key(
 
     loci = [
         ResolutionRow(
-            variant_key="rs1801133", rsid="rs1801133", chrom="1", start=11796321,
-            ref="G", alts="A", genome_build="GRCh38", locus_index=i,
-            source="ensembl", status="resolved", fetched_at="2026-08-20T00:00:00Z",
+            variant_key="rs1801133",
+            rsid="rs1801133",
+            chrom="1",
+            start=11796321,
+            ref="G",
+            alts="A",
+            genome_build="GRCh38",
+            locus_index=i,
+            source="ensembl",
+            status="resolved",
+            fetched_at="2026-08-20T00:00:00Z",
         )
         for i in range(2)
     ]

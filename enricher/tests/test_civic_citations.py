@@ -92,9 +92,7 @@ def _client(bodies: dict[int, dict]) -> CivicApiClient:
             return httpx.Response(404, json={"errors": [{"message": "not recorded"}]})
         return httpx.Response(200, json=bodies[variant_id])
 
-    return CivicApiClient(
-        client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate()
-    )
+    return CivicApiClient(client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate())
 
 
 def _spec(directory: Path, *, variants: str = "", studies: str = "", resolution: str = "") -> Path:
@@ -112,8 +110,14 @@ def _spec(directory: Path, *, variants: str = "", studies: str = "", resolution:
 def _authored(chrom: str, start: int, ref: str, alt: str, rsid: str | None = None) -> tuple[str, str]:
     """`(variants.csv, resolution.csv)` for one row at a coordinate, as CSV text."""
     row = VariantRow(
-        rsid=rsid, chrom=chrom, start=start, ref=ref, alts=alt,
-        genotype=f"{alt}/{alt}", state="risk", conclusion="authored for this test",
+        rsid=rsid,
+        chrom=chrom,
+        start=start,
+        ref=ref,
+        alts=alt,
+        genotype=f"{alt}/{alt}",
+        state="risk",
+        conclusion="authored for this test",
     )
     variants = (
         "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
@@ -138,8 +142,7 @@ def test_a_recorded_response_parses_into_the_items_it_carries() -> None:
     assert [item.evidence_id for item in items] == [node["id"] for node in recorded]
     assert [item.status for item in items] == [node["status"].lower() for node in recorded]
     assert {item.pmid for item in items} == {
-        node["source"]["citationId"] for node in recorded
-        if node["source"]["sourceType"] == "PUBMED"
+        node["source"]["citationId"] for node in recorded if node["source"]["sourceType"] == "PUBMED"
     }
     # The whole point of the lane: the two items on this variant differ in exactly this, and the
     # submitted one is the citation no dated file carries.
@@ -167,9 +170,7 @@ def test_the_client_pages_and_a_second_ask_is_not_a_second_request() -> None:
         page["pageInfo"] = {"hasNextPage": first, "endCursor": "cursor" if first else None}
         return httpx.Response(200, json={"data": {"evidenceItems": page}})
 
-    client = CivicApiClient(
-        client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate()
-    )
+    client = CivicApiClient(client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate())
     items = client.evidence_items(WIDE_VARIANT)
     assert [item.evidence_id for item in items] == [node["id"] for node in nodes]
     assert requests == [None, "cursor"]
@@ -281,12 +282,14 @@ def test_the_motivating_citation_is_recovered_and_a_second_run_adds_nothing(tmp_
     client = _client({MOTIVATING_VARIANT: _body(MOTIVATING_VARIANT)})
 
     result = draft_civic_citations(
-        spec, variants=[], resolution_rows=[], reference=None,
-        requested=[MOTIVATING_VARIANT], client=client,
+        spec,
+        variants=[],
+        resolution_rows=[],
+        reference=None,
+        requested=[MOTIVATING_VARIANT],
+        client=client,
     )
-    recorded = [
-        node for node in _nodes(MOTIVATING_VARIANT) if node["source"]["sourceType"] == "PUBMED"
-    ]
+    recorded = [node for node in _nodes(MOTIVATING_VARIANT) if node["source"]["sourceType"] == "PUBMED"]
     expected = {node["source"]["citationId"]: node["status"].lower() for node in recorded}
     assert result.added == len(expected)
 
@@ -299,8 +302,12 @@ def test_the_motivating_citation_is_recovered_and_a_second_run_adds_nothing(tmp_
     assert all("T0" not in (row.conclusion or "") for row in studies)
 
     again = draft_civic_citations(
-        spec, variants=[], resolution_rows=[], reference=None,
-        requested=[MOTIVATING_VARIANT], client=_client({MOTIVATING_VARIANT: _body(MOTIVATING_VARIANT)}),
+        spec,
+        variants=[],
+        resolution_rows=[],
+        reference=None,
+        requested=[MOTIVATING_VARIANT],
+        client=_client({MOTIVATING_VARIANT: _body(MOTIVATING_VARIANT)}),
     )
     assert again.added == 0
     assert read_studies(spec) == studies
@@ -314,8 +321,12 @@ def test_the_drafted_rows_carry_their_pin_on_the_source_row(tmp_path) -> None:
     """
     spec = _spec(tmp_path / "spec", studies="rsid,pmid\n")
     result = draft_civic_citations(
-        spec, variants=[], resolution_rows=[], reference=None,
-        requested=[MOTIVATING_VARIANT], client=_client({MOTIVATING_VARIANT: _body(MOTIVATING_VARIANT)}),
+        spec,
+        variants=[],
+        resolution_rows=[],
+        reference=None,
+        requested=[MOTIVATING_VARIANT],
+        client=_client({MOTIVATING_VARIANT: _body(MOTIVATING_VARIANT)}),
     )
     row = next(r for r in result.sources if r.layer == CIVIC_CITATION_LAYER)
     assert row.source == "civic"
@@ -343,7 +354,11 @@ def test_a_run_that_appends_nothing_writes_no_source_row(tmp_path) -> None:
     """
     spec = _spec(tmp_path / "spec", studies="rsid,pmid\n")
     result = draft_civic_citations(
-        spec, variants=[], resolution_rows=[], reference=None, requested=[],
+        spec,
+        variants=[],
+        resolution_rows=[],
+        reference=None,
+        requested=[],
         client=_client({}),
     )
     assert result.added == 0 and result.sources == []
@@ -363,8 +378,13 @@ def test_offline_records_every_subject_as_not_asked_and_writes_nothing(tmp_path)
         offline=True,
     )
     result = draft_civic_citations(
-        spec, variants=[], resolution_rows=[], reference=None,
-        requested=[MOTIVATING_VARIANT], client=client, offline=True,
+        spec,
+        variants=[],
+        resolution_rows=[],
+        reference=None,
+        requested=[MOTIVATING_VARIANT],
+        client=client,
+        offline=True,
     )
     assert result.added == 0
     assert result.unreachable == {MOTIVATING_VARIANT: "offline"}
@@ -388,14 +408,15 @@ def test_a_rejected_only_citation_is_withheld_and_counted(tmp_path) -> None:
 
     spec = _spec(tmp_path / "spec", studies="rsid,pmid\n")
     result = draft_civic_citations(
-        spec, variants=[], resolution_rows=[], reference=None,
+        spec,
+        variants=[],
+        resolution_rows=[],
+        reference=None,
         requested=[REJECTING_VARIANT],
         client=_client({REJECTING_VARIANT: {"data": {"evidenceItems": listing}}}),
     )
     assert result.added == 0
-    assert result.withheld["rejected_by_source"] == len(
-        {node["source"]["citationId"] for node in rejected}
-    )
+    assert result.withheld["rejected_by_source"] == len({node["source"]["citationId"] for node in rejected})
 
 
 def test_a_rejected_item_beside_a_live_one_does_not_decide_the_row(tmp_path) -> None:
@@ -405,25 +426,25 @@ def test_a_rejected_item_beside_a_live_one_does_not_decide_the_row(tmp_path) -> 
     """
     spec = _spec(tmp_path / "spec", studies="rsid,pmid\n")
     draft_civic_citations(
-        spec, variants=[], resolution_rows=[], reference=None,
+        spec,
+        variants=[],
+        resolution_rows=[],
+        reference=None,
         requested=[REJECTING_VARIANT],
         client=_client({REJECTING_VARIANT: _body(REJECTING_VARIANT)}),
     )
     nodes = _nodes(REJECTING_VARIANT)
-    contested = {
-        node["source"]["citationId"]
-        for node in nodes
-        if node["status"] == "REJECTED"
-    } & {
-        node["source"]["citationId"]
-        for node in nodes
-        if node["status"] != "REJECTED"
+    contested = {node["source"]["citationId"] for node in nodes if node["status"] == "REJECTED"} & {
+        node["source"]["citationId"] for node in nodes if node["status"] != "REJECTED"
     }
     assert contested, "the fixture must carry a paper cited by a rejected AND a live item"
     by_pmid = {row.pmid: row.confidence for row in read_studies(spec)}
     for pmid in contested:
-        live = {node["status"].lower() for node in nodes
-                if node["source"]["citationId"] == pmid and node["status"] != "REJECTED"}
+        live = {
+            node["status"].lower()
+            for node in nodes
+            if node["source"]["citationId"] == pmid and node["status"] != "REJECTED"
+        }
         assert by_pmid[pmid] == (live.pop() if len(live) == 1 else None)
 
 
@@ -449,20 +470,18 @@ def snapshot(tmp_path) -> Path:
 def test_an_authored_row_reaches_a_variant_id_through_the_snapshot(snapshot, tmp_path) -> None:
     """The ordinary route, through the same resolved-coordinate plan the refutation leg uses."""
     row = next(
-        r for r in civic_snapshot_rows(snapshot)
+        r
+        for r in civic_snapshot_rows(snapshot)
         if r.get("chrom") and r.get("start") is not None and r.get("ref") and r.get("alt")
     )
     variants_csv, resolution_csv = _authored(
         str(row["chrom"]), int(row["start"]), str(row["ref"]), str(row["alt"])
     )
-    spec = _spec(tmp_path / "spec", variants=variants_csv, resolution=resolution_csv,
-                 studies="rsid,pmid\n")
+    spec = _spec(tmp_path / "spec", variants=variants_csv, resolution=resolution_csv, studies="rsid,pmid\n")
     variants, resolution = read_module(spec, genome_build="GRCh38")
     subjects, unmapped = plan_subjects(variants, resolution, reference=snapshot)
     assert unmapped == 0
-    assert [(s.variant_id, s.route) for s in subjects] == [
-        (int(row["variant_id"]), "snapshot_coordinate")
-    ]
+    assert [(s.variant_id, s.route) for s in subjects] == [(int(row["variant_id"]), "snapshot_coordinate")]
 
 
 def test_a_variant_with_no_published_identity_reaches_one_through_the_curated_table(
@@ -480,20 +499,16 @@ def test_a_variant_with_no_published_identity_reaches_one_through_the_curated_ta
         if r.get("chrom") and r.get("start") is not None and r.get("ref") and r.get("alt")
     }
     identity = next(
-        row for row in CIVIC_NAME_IDENTITIES
-        if (row.chrom, row.start, row.ref, row.alt) not in placed
+        row for row in CIVIC_NAME_IDENTITIES if (row.chrom, row.start, row.ref, row.alt) not in placed
     )
     variants_csv, resolution_csv = _authored(
         identity.chrom, identity.start, identity.ref, identity.alt, rsid=identity.rsid
     )
-    spec = _spec(tmp_path / "spec", variants=variants_csv, resolution=resolution_csv,
-                 studies="rsid,pmid\n")
+    spec = _spec(tmp_path / "spec", variants=variants_csv, resolution=resolution_csv, studies="rsid,pmid\n")
     variants, resolution = read_module(spec, genome_build="GRCh38")
     subjects, unmapped = plan_subjects(variants, resolution, reference=snapshot)
     assert unmapped == 0
-    assert [(s.variant_id, s.route) for s in subjects] == [
-        (identity.variant_id, "curated_name_identity")
-    ]
+    assert [(s.variant_id, s.route) for s in subjects] == [(identity.variant_id, "curated_name_identity")]
 
     # And a drafted citation off that route carries the SAME identity the variant row got — rsID
     # where there is one, the coordinate otherwise, never both. A row carrying both has a different
@@ -501,7 +516,10 @@ def test_a_variant_with_no_published_identity_reaches_one_through_the_curated_ta
     # append a row under one `(variant_key, pmid)` and the compiler would call them duplicates.
     subject = subjects[0]
     result = draft_civic_citations(
-        spec, variants=variants, resolution_rows=resolution, reference=snapshot,
+        spec,
+        variants=variants,
+        resolution_rows=resolution,
+        reference=snapshot,
         client=_client({subject.variant_id: _body(MOTIVATING_VARIANT)}),
     )
     assert result.added
@@ -524,17 +542,18 @@ def _drafted_module(tmp_path: Path, snapshot: Path) -> tuple[Path, int]:
         if r.get("chrom") and r.get("start") is not None and r.get("ref") and r.get("alt")
     }
     identity = next(
-        row for row in CIVIC_NAME_IDENTITIES
-        if (row.chrom, row.start, row.ref, row.alt) not in placed
+        row for row in CIVIC_NAME_IDENTITIES if (row.chrom, row.start, row.ref, row.alt) not in placed
     )
     variants_csv, resolution_csv = _authored(
         identity.chrom, identity.start, identity.ref, identity.alt, rsid=identity.rsid
     )
-    spec = _spec(tmp_path / "spec", variants=variants_csv, resolution=resolution_csv,
-                 studies="rsid,pmid\n")
+    spec = _spec(tmp_path / "spec", variants=variants_csv, resolution=resolution_csv, studies="rsid,pmid\n")
     variants, resolution = read_module(spec, genome_build="GRCh38")
     draft_civic_citations(
-        spec, variants=variants, resolution_rows=resolution, reference=snapshot,
+        spec,
+        variants=variants,
+        resolution_rows=resolution,
+        reference=snapshot,
         client=_client({identity.variant_id: _body(WIDE_VARIANT)}),
     )
     return spec, identity.variant_id
@@ -545,7 +564,10 @@ def test_an_unchanged_answer_is_a_check_that_ran_and_found_nothing(snapshot, tmp
     spec, variant_id = _drafted_module(tmp_path, snapshot)
     variants, resolution = read_module(spec, genome_build="GRCh38")
     check = check_evidence_status_currency(
-        variants, resolution, read_studies(spec), reference=snapshot,
+        variants,
+        resolution,
+        read_studies(spec),
+        reference=snapshot,
         client=_client({variant_id: _body(WIDE_VARIANT)}),
     )
     assert check.skip is None and check.subjects == 1
@@ -569,7 +591,10 @@ def test_a_status_that_moved_is_named_with_the_variant_it_moved_on(snapshot, tmp
 
     variants, resolution = read_module(spec, genome_build="GRCh38")
     check = check_evidence_status_currency(
-        variants, resolution, read_studies(spec), reference=snapshot,
+        variants,
+        resolution,
+        read_studies(spec),
+        reference=snapshot,
         client=_client({variant_id: _body(WIDE_VARIANT)}),
     )
     moved = [f for f in check.findings if f.code == CIVIC_STATUS_MOVED]
@@ -590,7 +615,10 @@ def test_a_citation_added_since_the_draft_is_its_own_finding(snapshot, tmp_path)
 
     variants, resolution = read_module(spec, genome_build="GRCh38")
     check = check_evidence_status_currency(
-        variants, resolution, read_studies(spec), reference=snapshot,
+        variants,
+        resolution,
+        read_studies(spec),
+        reference=snapshot,
         client=_client({variant_id: _body(WIDE_VARIANT)}),
     )
     added = [f for f in check.findings if f.code == CIVIC_CITATION_ADDED]
@@ -617,24 +645,31 @@ def test_a_citation_another_lane_already_wrote_is_neither_re_added_nor_re_report
         if r.get("chrom") and r.get("start") is not None and r.get("ref") and r.get("alt")
     }
     identity = next(
-        row for row in CIVIC_NAME_IDENTITIES
+        row
+        for row in CIVIC_NAME_IDENTITIES
         if (row.chrom, row.start, row.ref, row.alt) not in placed and row.rsid
     )
     # One citation the payload really returns, written the way the other lanes write one.
     already = next(
-        node["source"]["citationId"] for node in _nodes(WIDE_VARIANT)
+        node["source"]["citationId"]
+        for node in _nodes(WIDE_VARIANT)
         if node["source"]["sourceType"] == "PUBMED"
     )
     variants_csv, resolution_csv = _authored(
         identity.chrom, identity.start, identity.ref, identity.alt, rsid=identity.rsid
     )
     spec = _spec(
-        tmp_path / "spec", variants=variants_csv, resolution=resolution_csv,
+        tmp_path / "spec",
+        variants=variants_csv,
+        resolution=resolution_csv,
         studies=f"rsid,pmid\n{identity.rsid},{already}\n",
     )
     variants, resolution = read_module(spec, genome_build="GRCh38")
     result = draft_civic_citations(
-        spec, variants=variants, resolution_rows=resolution, reference=snapshot,
+        spec,
+        variants=variants,
+        resolution_rows=resolution,
+        reference=snapshot,
         client=_client({identity.variant_id: _body(WIDE_VARIANT)}),
     )
     outcomes = [outcome.status for report in result.reports for outcome in report.outcomes]
@@ -646,7 +681,10 @@ def test_a_citation_another_lane_already_wrote_is_neither_re_added_nor_re_report
     assert len({(row.variant_key, row.pmid) for row in studies}) == len(studies)
 
     check = check_evidence_status_currency(
-        variants, resolution, studies, reference=snapshot,
+        variants,
+        resolution,
+        studies,
+        reference=snapshot,
         client=_client({identity.variant_id: _body(WIDE_VARIANT)}),
     )
     assert [f.pmid for f in check.findings if f.code == CIVIC_CITATION_ADDED] == []
@@ -671,7 +709,10 @@ def test_a_row_whose_confidence_was_withheld_is_still_a_row(snapshot, tmp_path) 
     studies = read_studies(spec)
     assert any(row.confidence is None for row in studies)
     check = check_evidence_status_currency(
-        variants, resolution, studies, reference=snapshot,
+        variants,
+        resolution,
+        studies,
+        reference=snapshot,
         client=_client({variant_id: _body(WIDE_VARIANT)}),
     )
     assert [f.restate() for f in check.findings if f.code == CIVIC_CITATION_ADDED] == []
@@ -711,8 +752,12 @@ def test_a_row_that_cannot_be_mapped_back_is_named_rather_than_counted_as_agreem
     """
     spec = _spec(tmp_path / "spec", studies="rsid,pmid\n")
     draft_civic_citations(
-        spec, variants=[], resolution_rows=[], reference=None,
-        requested=[MOTIVATING_VARIANT], client=_client({MOTIVATING_VARIANT: _body(MOTIVATING_VARIANT)}),
+        spec,
+        variants=[],
+        resolution_rows=[],
+        reference=None,
+        requested=[MOTIVATING_VARIANT],
+        client=_client({MOTIVATING_VARIANT: _body(MOTIVATING_VARIANT)}),
     )
     check = check_evidence_status_currency([], [], read_studies(spec), reference=None)
     assert check.skip == "no_reference"

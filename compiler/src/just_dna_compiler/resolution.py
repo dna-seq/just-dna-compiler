@@ -123,10 +123,12 @@ def resolve_from_table(
         if v.rsid is not None and v.chrom is None:
             # need position: fill from the table, or expand a one-to-many rsid
             if not loci:
-                warnings.append(CodedWarning(
-                    "rsid_unresolved",
-                    f"{v.rsid}: not found in resolution table, position remains unset",
-                ))
+                warnings.append(
+                    CodedWarning(
+                        "rsid_unresolved",
+                        f"{v.rsid}: not found in resolution table, position remains unset",
+                    )
+                )
                 patched.append(v)
             elif len(loci) == 1:
                 patched.append(v.model_copy(update=_coord_update(loci[0])))
@@ -139,12 +141,14 @@ def resolve_from_table(
                     # a different variant, which is what the old message asserted. `undecided_reason`
                     # supplies *which* of the four ways it withheld, rather than naming one of them for
                     # all four.
-                    warnings.append(CodedWarning(
-                        "locus_hosting_undecidable",
-                        f"{v.rsid}: whether {locus.chrom}:{locus.start} {locus.ref}>{locus.alts} can "
-                        f"host the authored genotype {v.genotype} could not be decided here — "
-                        f"{undecided_reason(v.genotype, locus.ref, locus.alts)}. The locus is kept.",
-                    ))
+                    warnings.append(
+                        CodedWarning(
+                            "locus_hosting_undecidable",
+                            f"{v.rsid}: whether {locus.chrom}:{locus.start} {locus.ref}>{locus.alts} can "
+                            f"host the authored genotype {v.genotype} could not be decided here — "
+                            f"{undecided_reason(v.genotype, locus.ref, locus.alts)}. The locus is kept.",
+                        )
+                    )
                 for locus in rejected:
                     # Dropping a locus makes the emitted table smaller than the injected one, so the
                     # round-trip cannot reproduce it — strict must refuse rather than silently prune.
@@ -155,22 +159,26 @@ def resolve_from_table(
                         f"compile non-reproducible from the injected table; fix the genotype or the "
                         f"table, or compile without strict.{caveat}"
                     )
-                    warnings.append(CodedWarning(
-                        "locus_cannot_host_genotype",
-                        f"{v.rsid} maps to {locus.chrom}:{locus.start} {locus.ref}>{locus.alts}, "
-                        f"which cannot host the authored genotype {v.genotype} — that locus is "
-                        f"dropped from the expansion rather than emitted as a row asserting an "
-                        f"allele it does not have.{caveat}",
-                    ))
+                    warnings.append(
+                        CodedWarning(
+                            "locus_cannot_host_genotype",
+                            f"{v.rsid} maps to {locus.chrom}:{locus.start} {locus.ref}>{locus.alts}, "
+                            f"which cannot host the authored genotype {v.genotype} — that locus is "
+                            f"dropped from the expansion rather than emitted as a row asserting an "
+                            f"allele it does not have.{caveat}",
+                        )
+                    )
                 if not usable:
                     # Every candidate contradicts the genotype: the rsid and the genotype cannot both
                     # be right. Leave the row unresolved rather than pick one — `_cross_validate` and
                     # the strict gate then treat it as the unresolved variant it is.
-                    warnings.append(CodedWarning(
-                        "rsid_no_hosting_locus",
-                        f"{v.rsid}: none of its {len(loci)} loci can host the authored genotype "
-                        f"{v.genotype}; position remains unset",
-                    ))
+                    warnings.append(
+                        CodedWarning(
+                            "rsid_no_hosting_locus",
+                            f"{v.rsid}: none of its {len(loci)} loci can host the authored genotype "
+                            f"{v.genotype}; position remains unset",
+                        )
+                    )
                     patched.append(v)
                 elif len(usable) == 1:
                     patched.append(v.model_copy(update=_coord_update(usable[0])))
@@ -191,7 +199,11 @@ def resolve_from_table(
                         # correct-by-a-distant-guard, and every instance of this bug so far was a
                         # guard that existed somewhere else.
                         update["variant_key"] = derive_variant_key(
-                            None, locus.chrom, locus.start, locus.ref, locus.alts,
+                            None,
+                            locus.chrom,
+                            locus.start,
+                            locus.ref,
+                            locus.alts,
                             build=genome_build,
                         )
                         # The expansion marker (RM87). This is the only site that knows a row is a
@@ -239,13 +251,15 @@ def resolve_from_table(
             patched.append(v)
 
     if no_rsid:
-        warnings.append(CodedWarning(
-            "rsid_without_resolution_label",
-            f"{len(no_rsid)} coordinate-authored row(s) have no rsid in the resolution table, so they "
-            f"stay coordinate-keyed: {_examples(no_rsid)}. Not an error — a coordinate is a complete "
-            f"identity and an rsID is a label on top of it; re-run the enricher if you want the labels "
-            f"back-filled.",
-        ))
+        warnings.append(
+            CodedWarning(
+                "rsid_without_resolution_label",
+                f"{len(no_rsid)} coordinate-authored row(s) have no rsid in the resolution table, so they "
+                f"stay coordinate-keyed: {_examples(no_rsid)}. Not an error — a coordinate is a complete "
+                f"identity and an rsID is a label on top of it; re-run the enricher if you want the labels "
+                f"back-filled.",
+            )
+        )
 
     expanded_rows = 0
     for rsid, per_row in expansions.items():
@@ -279,17 +293,23 @@ def resolve_from_table(
                     "all-or-nothing artifact should not rest on it. Resolve it by hand in "
                     "resolution.csv, or compile without strict."
                 )
-                warnings.append(CodedWarning(
-                    "rsid_ambiguous",
-                    f"{variant.variant_key}: rsid resolved as AMBIGUOUS"
-                    + (f" among {locus.rsid_alternates}" if locus.rsid_alternates else "")
-                    + " — the deterministic pick is carried, and it is a pick, not a finding.",
-                ))
+                warnings.append(
+                    CodedWarning(
+                        "rsid_ambiguous",
+                        f"{variant.variant_key}: rsid resolved as AMBIGUOUS"
+                        + (f" among {locus.rsid_alternates}" if locus.rsid_alternates else "")
+                        + " — the deterministic pick is carried, and it is a pick, not a finding.",
+                    )
+                )
                 break
 
     return ResolutionOutcome(
-        variants=patched, warnings=warnings, strict_errors=strict_errors, errors=errors,
-        expanded_keys=len(expansions), expanded_rows=expanded_rows,
+        variants=patched,
+        warnings=warnings,
+        strict_errors=strict_errors,
+        errors=errors,
+        expanded_keys=len(expansions),
+        expanded_rows=expanded_rows,
     )
 
 
@@ -366,9 +386,7 @@ def resolve_positional_rows(
                 report.unplaced_absent += 1
             continue
         statement = _stated_allele(row)
-        candidates = (
-            loci if len(loci) == 1 or statement is None else _hostable_loci(loci, statement)[0]
-        )
+        candidates = loci if len(loci) == 1 or statement is None else _hostable_loci(loci, statement)[0]
         if len(candidates) != 1:
             if row.chrom is None or row.start is None:
                 report.unplaced_ambiguous += 1
@@ -444,16 +462,12 @@ def _examples(labels: list[str], limit: int = 3) -> str:
     return shown if len(labels) <= limit else f"{shown} … and {len(labels) - limit} more"
 
 
-def _usable_loci(
-    rows: list[ResolutionRow] | None, genome_build: str
-) -> list[ResolutionRow]:
+def _usable_loci(rows: list[ResolutionRow] | None, genome_build: str) -> list[ResolutionRow]:
     """Rows that are for this build and record an actual locus (not a `not_found` sentinel)."""
     if not rows:
         return []
     return [
-        r
-        for r in rows
-        if r.genome_build == genome_build and r.status != "not_found" and r.chrom is not None
+        r for r in rows if r.genome_build == genome_build and r.status != "not_found" and r.chrom is not None
     ]
 
 
@@ -482,8 +496,7 @@ def unresolved_subjects(
     return sorted(
         v.rsid or v.variant_key or ""
         for v in variants
-        if v.chrom is None
-        and not _usable_loci(resolution.get(v.variant_key or ""), genome_build)
+        if v.chrom is None and not _usable_loci(resolution.get(v.variant_key or ""), genome_build)
     )
 
 
@@ -803,9 +816,7 @@ def _par_pairs(loci: list[ResolutionRow], genome_build: str) -> list[tuple[str, 
     return pairs
 
 
-def _expansion_warning(
-    rsid: str, per_row: list[list[ResolutionRow]], genome_build: str
-) -> str:
+def _expansion_warning(rsid: str, per_row: list[list[ResolutionRow]], genome_build: str) -> str:
     """Describe a one-to-many expansion — and say which KIND of many it is.
 
     A paralogous rsID and a pseudoautosomal one produce the same row count for opposite reasons: the
@@ -959,14 +970,10 @@ def _spelling_clauses(offenders: dict[str, str]) -> str:
 
 def _sorted_loci(loci: list[ResolutionRow]) -> list[ResolutionRow]:
     """Deterministic expansion order, matching the resolver's `ORDER BY id, chrom, start, ref`."""
-    return sorted(
-        loci, key=lambda r: (r.locus_index, r.chrom or "", r.start or 0, r.ref or "")
-    )
+    return sorted(loci, key=lambda r: (r.locus_index, r.chrom or "", r.start or 0, r.ref or ""))
 
 
-def _verify(
-    v: VariantRow, loci: list[ResolutionRow], warnings: list[str], strict_errors: list[str]
-) -> None:
+def _verify(v: VariantRow, loci: list[ResolutionRow], warnings: list[str], strict_errors: list[str]) -> None:
     """Report when an authored rsid↔coordinate pair disagrees with the table.
 
     Warning in `best_effort`, refusal in `strict`. The authored value wins either way — the row keeps
@@ -975,9 +982,7 @@ def _verify(
     instability, not merely a difference of opinion.
     """
     coordkey = derive_variant_key(None, v.chrom, v.start, v.ref)
-    keys = {
-        derive_variant_key(None, lo.chrom, lo.start, lo.ref) for lo in loci
-    }
+    keys = {derive_variant_key(None, lo.chrom, lo.start, lo.ref) for lo in loci}
     if keys and coordkey not in keys:
         message = (
             f"{v.rsid} authored at {coordkey}, but the resolution table maps it to "

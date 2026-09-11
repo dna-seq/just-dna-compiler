@@ -249,9 +249,7 @@ class CivicApiClient:
         after: str | None = None
         stated: int | None = None
         while True:
-            payload = self._post(
-                {"id": int(variant_id), "after": after, "n": _PAGE_SIZE}
-            )
+            payload = self._post({"id": int(variant_id), "after": after, "n": _PAGE_SIZE})
             listing = payload.get("evidenceItems")
             if not isinstance(listing, dict):
                 raise CivicApiError(
@@ -283,7 +281,9 @@ class CivicApiClient:
             logger.warning(
                 "CIViC says variant %s has %d evidence item(s) and served %d — the citations "
                 "recovered for it are the served set, and it is short of what the API claims.",
-                variant_id, stated, len(items),
+                variant_id,
+                stated,
+                len(items),
             )
         return items
 

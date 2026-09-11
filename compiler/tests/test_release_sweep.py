@@ -77,12 +77,8 @@ _VARIANTS_HEADER = "rsid,chrom,start,ref,alts,genotype,state,conclusion,gene,eff
 #: Real ClinVar GRCh38 records, reused from `test_symbolic_alleles.py` so no coordinate is invented.
 #: `rs1667266283` is a 926 bp MSH2 deletion; `rs2469808710` a GLI2 deletion at chr2:120926480, spelled
 #: here **without** its length, which is the defect that makes the compiler drop the row.
-_USABLE_MSH2 = (
-    "rs1667266283,2,47475521,G,<DEL:926>,<DEL:926>/G,risk,a 926 bp MSH2 deletion,MSH2,<DEL:926>\n"
-)
-_LENGTHLESS_GLI2 = (
-    "rs2469808710,2,120926480,A,<DEL>,<DEL>/A,risk,a deletion with no stated length,GLI2,\n"
-)
+_USABLE_MSH2 = "rs1667266283,2,47475521,G,<DEL:926>,<DEL:926>/G,risk,a 926 bp MSH2 deletion,MSH2,<DEL:926>\n"
+_LENGTHLESS_GLI2 = "rs2469808710,2,120926480,A,<DEL>,<DEL>/A,risk,a deletion with no stated length,GLI2,\n"
 
 
 def _sole_gene_dropped_spec(directory: Path) -> Path:
@@ -92,9 +88,7 @@ def _sole_gene_dropped_spec(directory: Path) -> Path:
     (directory / "variants.csv").write_text(_VARIANTS_HEADER + _USABLE_MSH2 + _LENGTHLESS_GLI2)
     # A real PMID already cited by `reference_examples/hfe_hemochromatosis`; grounding is mandatory
     # whenever `variants.csv` is present and nothing here tests citation content.
-    (directory / "studies.csv").write_text(
-        "rsid,pmid\nrs1667266283,16199547\nrs2469808710,16199547\n"
-    )
+    (directory / "studies.csv").write_text("rsid,pmid\nrs1667266283,16199547\nrs2469808710,16199547\n")
     return directory
 
 
@@ -133,9 +127,7 @@ def test_compiling_one_spec_twice_moves_no_axis(tmp_path: Path) -> None:
     second.manifest["compilation"]["compiled_by"] = "somebody else"
     delta = compare_module(first, second)
 
-    assert first.manifest["compilation"]["compiled_at"] != second.manifest["compilation"][
-        "compiled_at"
-    ]
+    assert first.manifest["compilation"]["compiled_at"] != second.manifest["compilation"]["compiled_at"]
     assert set(delta.axes) == set(VALID_RELEASE_OUTPUT_AXES)
     assert set(delta.axes.values()) == {False}
     assert delta.manifest_fields == ()
@@ -143,14 +135,18 @@ def test_compiling_one_spec_twice_moves_no_axis(tmp_path: Path) -> None:
 
 def test_the_compiler_version_never_counts_as_a_changed_manifest_field() -> None:
     """It moves on every release by construction; counting it would make the record tautological."""
-    before = {"compilation": {"compiler_version": "just-dna-compiler 0.6.1", "warnings": ["a"]},
-              "artifact": {"digest": "sha256:aa", "files": []},
-              "content_signature": "sha256:bb",
-              "stats": {"genes": ["HFE"]}}
-    after = {"compilation": {"compiler_version": "just-dna-compiler 0.6.6", "warnings": ["b"]},
-             "artifact": {"digest": "sha256:cc", "files": [{"name": "x"}]},
-             "content_signature": "sha256:dd",
-             "stats": {"genes": ["HFE"]}}
+    before = {
+        "compilation": {"compiler_version": "just-dna-compiler 0.6.1", "warnings": ["a"]},
+        "artifact": {"digest": "sha256:aa", "files": []},
+        "content_signature": "sha256:bb",
+        "stats": {"genes": ["HFE"]},
+    }
+    after = {
+        "compilation": {"compiler_version": "just-dna-compiler 0.6.6", "warnings": ["b"]},
+        "artifact": {"digest": "sha256:cc", "files": [{"name": "x"}]},
+        "content_signature": "sha256:dd",
+        "stats": {"genes": ["HFE"]},
+    }
 
     assert changed_manifest_fields(before, after) == ()
 
@@ -183,10 +179,16 @@ def test_the_warnings_axis_is_reported_and_is_not_a_recompile_driver() -> None:
     RM131's `carried` split is what will make the two decidable — a finding the author cannot clear
     moving is noise, one they can clear appearing is not.
     """
-    before = {"compilation": {"compiler_version": "just-dna-compiler 0.6.1", "warnings": ["old"]},
-              "artifact": {"digest": "sha256:aa"}, "content_signature": "sha256:bb"}
-    after = {"compilation": {"compiler_version": "just-dna-compiler 0.6.1", "warnings": ["new"]},
-             "artifact": {"digest": "sha256:aa"}, "content_signature": "sha256:bb"}
+    before = {
+        "compilation": {"compiler_version": "just-dna-compiler 0.6.1", "warnings": ["old"]},
+        "artifact": {"digest": "sha256:aa"},
+        "content_signature": "sha256:bb",
+    }
+    after = {
+        "compilation": {"compiler_version": "just-dna-compiler 0.6.1", "warnings": ["new"]},
+        "artifact": {"digest": "sha256:aa"},
+        "content_signature": "sha256:bb",
+    }
     delta = compare_module(_as_output("m", before), _as_output("m", after))
 
     assert delta.axes["warnings"] is True
@@ -252,8 +254,13 @@ def _measurement(tmp_path: Path, **moved: bool):
     base = compare_outputs(before, before)
     axes = dict(base.axes)
     axes.update(moved)
-    return replace(base, axes=axes, before="1.0.0", after="1.0.1",
-                   manifest_fields=("stats.genes",) if axes["manifest_fields"] else ())
+    return replace(
+        base,
+        axes=axes,
+        before="1.0.0",
+        after="1.0.1",
+        manifest_fields=("stats.genes",) if axes["manifest_fields"] else (),
+    )
 
 
 def test_the_gate_fails_a_release_with_no_record_at_all(tmp_path: Path) -> None:
@@ -340,9 +347,7 @@ def test_a_module_the_previous_release_could_not_compile_fails_until_the_record_
     measurement = replace(_measurement(tmp_path), only_after=("cyp2c9_warfarin_grch37",))
 
     findings, notes = gate_findings(measurement, "1.0.1", {"1.0.1": _zero_record()})
-    assert any(
-        UNDECLARED_UNMEASURED_PHRASE in f and "cyp2c9_warfarin_grch37" in f for f in findings
-    )
+    assert any(UNDECLARED_UNMEASURED_PHRASE in f and "cyp2c9_warfarin_grch37" in f for f in findings)
 
     declared = _zero_record(unmeasured=["cyp2c9_warfarin_grch37"])
     findings, notes = gate_findings(measurement, "1.0.1", {"1.0.1": declared})
@@ -377,8 +382,11 @@ def test_a_measurement_carrying_a_regression_cannot_mint_a_record(tmp_path: Path
     gate exists to refuse, one layer earlier and with a signature on it.
     """
     measurement = replace(
-        _measurement(tmp_path), before="1.0.0", after="1.0.1",
-        only_before=("cyp2c19_star_alleles",), only_after=("apoe_epsilon",),
+        _measurement(tmp_path),
+        before="1.0.0",
+        after="1.0.1",
+        only_before=("cyp2c19_star_alleles",),
+        only_after=("apoe_epsilon",),
     )
     with pytest.raises(ValueError, match="cannot mint a record"):
         measurement.as_record(version="1.0.1", previous="1.0.0")
@@ -400,13 +408,9 @@ def test_the_gate_refuses_a_sweep_with_no_module_in_common(tmp_path: Path) -> No
 def test_the_gate_accepts_the_stamped_spelling_of_the_release_it_gates(tmp_path: Path) -> None:
     """`release_version` exists so one convention does not become three; the gate uses it too."""
     axes: dict[str, bool | None] = dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False)
-    record = ReleaseRecord(
-        version="1.0.1", previous="1.0.0", axes=axes, evidence="measured zero"
-    )
+    record = ReleaseRecord(version="1.0.1", previous="1.0.0", axes=axes, evidence="measured zero")
     bare, _ = gate_findings(_measurement(tmp_path), "1.0.1", {"1.0.1": record})
-    stamped, _ = gate_findings(
-        _measurement(tmp_path), "just-dna-compiler 1.0.1", {"1.0.1": record}
-    )
+    stamped, _ = gate_findings(_measurement(tmp_path), "just-dna-compiler 1.0.1", {"1.0.1": record})
 
     assert bare == stamped == []
 
@@ -440,9 +444,7 @@ def test_the_gate_fails_a_measured_move_no_record_declares(tmp_path: Path) -> No
         axes=dict.fromkeys(VALID_RELEASE_OUTPUT_AXES, False),
         evidence="claims nothing moved",
     )
-    findings, notes = gate_findings(
-        _measurement(tmp_path, manifest_fields=True), "1.0.1", {"1.0.1": record}
-    )
+    findings, notes = gate_findings(_measurement(tmp_path, manifest_fields=True), "1.0.1", {"1.0.1": record})
 
     assert notes == []
     assert any(UNDECLARED_AXIS_PHRASE in f and "manifest_fields" in f for f in findings)
@@ -468,9 +470,7 @@ def test_the_gate_passes_a_release_whose_record_covers_the_measurement(tmp_path:
         ],
         evidence="measured",
     )
-    findings, notes = gate_findings(
-        _measurement(tmp_path, manifest_fields=True), "1.0.1", {"1.0.1": record}
-    )
+    findings, notes = gate_findings(_measurement(tmp_path, manifest_fields=True), "1.0.1", {"1.0.1": record})
 
     assert findings == []
     assert notes == []
@@ -486,9 +486,7 @@ def test_a_declaration_the_sweep_did_not_see_is_a_note_and_not_a_failure(tmp_pat
         previous="1.0.0",
         axes=axes,
         manifest_fields=["stats.categories"],
-        declared=[
-            DeclaredChange(axis="parquet_schema", target="pgs.parquet", kind="addition", detail="d")
-        ],
+        declared=[DeclaredChange(axis="parquet_schema", target="pgs.parquet", kind="addition", detail="d")],
         evidence="measured elsewhere",
     )
     findings, notes = gate_findings(_measurement(tmp_path), "1.0.1", {"1.0.1": record})
@@ -546,9 +544,7 @@ def test_the_json_output_is_the_whole_of_stdout_even_with_the_gate_running(tmp_p
     a success line and still exits 0 — the case that would corrupt the stream.
     """
     before, after = _restamped_pair(tmp_path, "0.6.1", "0.6.6")
-    result = runner.invoke(
-        app, ["sweep", str(before), str(after), "--json", "--release", "0.6.6"]
-    )
+    result = runner.invoke(app, ["sweep", str(before), str(after), "--json", "--release", "0.6.6"])
 
     assert result.exit_code == 0, result.output
     payload = json.loads(result.stdout)
@@ -642,7 +638,8 @@ def test_the_roster_agrees_with_the_manifest_when_nothing_was_dropped(tmp_path: 
             assert recomputed[key] == getattr(result.manifest.stats, key), f"{spec.name}.{key}"
             checked += 1
     conditional_stats = [
-        entry for entry in AUTHORED_ROW_DERIVED_FIELDS
+        entry
+        for entry in AUTHORED_ROW_DERIVED_FIELDS
         if entry.condition is not None and entry.field.startswith("stats.")
     ]
     # An equality over what was walked, not a floor plus a modulo: `checked > 0` passes on one

@@ -138,9 +138,7 @@ def test_the_five_authority_split_reads_as_a_relation_to_the_set_and_resolves_no
     assert verdict.opposed is True
     assert verdict.contested is True
     # Nothing on the verdict, or on the rows it produces, names a winner.
-    parents, _calls = concordance_tables(
-        [ConcordanceSubject("rs1", "A/G", "pathogenic", tuple(calls))]
-    )
+    parents, _calls = concordance_tables([ConcordanceSubject("rs1", "A/G", "pathogenic", tuple(calls))])
     assert not {"majority", "consensus", "resolved", "winner"} & set(ClinSigConcordanceRow.model_fields)
 
 
@@ -331,8 +329,11 @@ def test_a_consultation_with_nothing_to_report_carries_no_classification(status:
     """An unknown is withheld, never filled in with a value nobody gave."""
     with pytest.raises(ValueError, match="clin_sig"):
         ClinSigAuthorityCallRow(
-            variant_key="rs1", genotype="A/G", authority="clinvar",
-            status=status, clin_sig="pathogenic",
+            variant_key="rs1",
+            genotype="A/G",
+            authority="clinvar",
+            status=status,
+            clin_sig="pathogenic",
         )
 
 
@@ -340,22 +341,16 @@ def test_a_recorded_call_must_name_the_classification_it_recorded() -> None:
     """The inverse: `recorded` with no value claims a consultation that produced an answer and
     then names none, which is an unknown wearing an answer's clothes."""
     with pytest.raises(ValueError, match="must carry the classification"):
-        ClinSigAuthorityCallRow(
-            variant_key="rs1", genotype="A/G", authority="clinvar", status="recorded"
-        )
+        ClinSigAuthorityCallRow(variant_key="rs1", genotype="A/G", authority="clinvar", status="recorded")
 
 
 def test_the_call_status_vocabulary_is_closed_and_accepts_a_separator_slip() -> None:
     """Closed (Principle 6), and the validator RETURNS `check_vocab` so a `-` spelling is stored as
     the declared member rather than passed through unchanged."""
     with pytest.raises(ValueError, match="status must be one of"):
-        ClinSigAuthorityCallRow(
-            variant_key="rs1", genotype="A/G", authority="clinvar", status="maybe"
-        )
+        ClinSigAuthorityCallRow(variant_key="rs1", genotype="A/G", authority="clinvar", status="maybe")
     assert set(VALID_AUTHORITY_CALL_STATUS) == {"recorded", "no_record", "unchecked"}
-    row = ClinSigAuthorityCallRow(
-        variant_key="rs1", genotype="A/G", authority="clinvar", status="no-record"
-    )
+    row = ClinSigAuthorityCallRow(variant_key="rs1", genotype="A/G", authority="clinvar", status="no-record")
     assert row.status == "no_record"
 
 
@@ -363,17 +358,23 @@ def test_the_two_verdict_vocabularies_are_closed_and_canonicalize_a_separator_sl
     """Both parent vocabularies, same rule, same reason."""
     with pytest.raises(ValueError, match="authority_concordance must be one of"):
         ClinSigConcordanceRow(
-            variant_key="rs1", genotype="A/G",
-            authority_concordance="mostly", authored_position="matches_all",
+            variant_key="rs1",
+            genotype="A/G",
+            authority_concordance="mostly",
+            authored_position="matches_all",
         )
     with pytest.raises(ValueError, match="authored_position must be one of"):
         ClinSigConcordanceRow(
-            variant_key="rs1", genotype="A/G",
-            authority_concordance="concordant", authored_position="sort_of",
+            variant_key="rs1",
+            genotype="A/G",
+            authority_concordance="concordant",
+            authored_position="sort_of",
         )
     row = ClinSigConcordanceRow(
-        variant_key="rs1", genotype="A/G",
-        authority_concordance="concordant", authored_position="matches-all",
+        variant_key="rs1",
+        genotype="A/G",
+        authority_concordance="concordant",
+        authored_position="matches-all",
     )
     assert row.authored_position == "matches_all"
 
@@ -412,7 +413,9 @@ def test_the_written_rows_reload_through_their_own_models(tmp_path: Path) -> Non
     """A cell the writer renders must be a cell the model accepts, or the compiler cannot read what
     the enricher wrote — the silent seam between the two tiers this repo has paid for before."""
     subject = ConcordanceSubject(
-        "rs1", "A/G", "pathogenic",
+        "rs1",
+        "A/G",
+        "pathogenic",
         (_spoke("clinvar", "benign", confidence="3"), _unreachable("pubmind")),
     )
     parents, calls = concordance_tables([subject])

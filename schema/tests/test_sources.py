@@ -24,10 +24,14 @@ def _row(**kw) -> SourceRow:
 
 def test_layer_and_declared_use_are_closed_vocabularies() -> None:
     assert {
-        "resolution", "frequency", "gene_metrics", "literature",
+        "resolution",
+        "frequency",
+        "gene_metrics",
+        "literature",
         # 0.6 (RM24/RM25) — fact-class like the four above, so neither taints; each is written by the
         # pass that owns the table it names.
-        "gene_validity", "clinical_assertion",
+        "gene_validity",
+        "clinical_assertion",
         # 0.6 (RM90) — the GWAS Catalog's published effect sizes, same fact class.
         "gwas_effect",
         # 0.7 (RM194/RM200) — AlphaGenome's per-gene expression effects, written by
@@ -38,7 +42,7 @@ def test_layer_and_declared_use_are_closed_vocabularies() -> None:
     } == VALID_SOURCE_LAYERS
     assert {"unstated", "non_commercial", "commercial"} == VALID_DECLARED_USE
     with pytest.raises(ValidationError):
-        _row(layer="annotations")          # plural typo
+        _row(layer="annotations")  # plural typo
     with pytest.raises(ValidationError):
         _row(declared_use="noncommercial")  # missing underscore
 
@@ -76,8 +80,8 @@ def test_redistribution_is_a_third_axis_not_a_shade_of_commercial_use() -> None:
     """The two answer different questions, so they must be independently settable and separately
     tainting. CC BY-NC forbids sale while expressly ALLOWING sharing; an academic-use-only source
     (OMIM, dbNSFP) forbids both. Collapsing them would record the second as merely the first."""
-    non_commercial = _row(commercial_use=False, redistribution=True)   # CC BY-NC
-    academic_only = _row(commercial_use=False, redistribution=False)   # OMIM / dbNSFP class
+    non_commercial = _row(commercial_use=False, redistribution=True)  # CC BY-NC
+    academic_only = _row(commercial_use=False, redistribution=False)  # OMIM / dbNSFP class
     assert source_signature([non_commercial]) != source_signature([academic_only])
 
     assert taints_redistribution(academic_only) is True
@@ -105,12 +109,8 @@ def test_signature_is_producer_independent_but_fact_sensitive() -> None:
         [_row(**base, fetched_at="2019-01-01T00:00:00Z")]
     )
     # Every fact column moves it — spot-check the two that carry legal meaning plus the declaration.
-    assert source_signature([_row(**base)]) != source_signature(
-        [_row(**{**base, "share_alike": False})]
-    )
-    assert source_signature([_row(**base)]) != source_signature(
-        [_row(**base, declared_use="non_commercial")]
-    )
+    assert source_signature([_row(**base)]) != source_signature([_row(**{**base, "share_alike": False})])
+    assert source_signature([_row(**base)]) != source_signature([_row(**base, declared_use="non_commercial")])
 
 
 def test_source_is_inside_the_fact_set_unlike_the_other_tables() -> None:

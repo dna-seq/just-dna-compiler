@@ -63,7 +63,7 @@ def test_the_only_primary_contig_of_equal_length_is_MT() -> None:
 
 
 def test_the_two_exclusive_contig_sets_are_disjoint_and_carry_no_primary_contig() -> None:
-    """"Only in build X" must mean it — a name in both sets, or a primary name in either, is a bug."""
+    """ "Only in build X" must mean it — a name in both sets, or a primary name in either, is a bug."""
     assert not CONTIGS_ONLY_IN["GRCh37"] & CONTIGS_ONLY_IN["GRCh38"]
     primary = set(PRIMARY_CONTIG_LENGTHS["GRCh38"])
     for build in _BUILDS:
@@ -82,8 +82,8 @@ class TestContigLength:
     @pytest.mark.parametrize(
         ("chrom", "build"),
         [
-            (None, "GRCh38"),          # no contig given
-            ("1", "T2T-CHM13v2.0"),    # a build with no table
+            (None, "GRCh38"),  # no contig given
+            ("1", "T2T-CHM13v2.0"),  # a build with no table
             ("GL000209.1", "GRCh37"),  # a real contig of that build, but not a primary one
             ("KI270728.1", "GRCh38"),
         ],
@@ -125,9 +125,9 @@ class TestSoleBuildNamingContig:
     @pytest.mark.parametrize(
         ("chrom", "expected"),
         [
-            ("GL000209.1", "GRCh37"),   # an hg19 unplaced scaffold
-            ("KI270728.1", "GRCh38"),   # a GRCh38 one
-            ("gl000209.1", "GRCh37"),   # a spelling slip is a slip, not a build question
+            ("GL000209.1", "GRCh37"),  # an hg19 unplaced scaffold
+            ("KI270728.1", "GRCh38"),  # a GRCh38 one
+            ("gl000209.1", "GRCh37"),  # a spelling slip is a slip, not a build question
         ],
     )
     def test_an_exclusive_scaffold_names_its_build_in_either_direction(self, chrom, expected) -> None:
@@ -136,9 +136,11 @@ class TestSoleBuildNamingContig:
     @pytest.mark.parametrize(
         "chrom",
         [
-            "1", "MT", "X",     # spelled identically in both builds, so they settle nothing
-            "GL000194.1",       # a scaffold BOTH builds carry
-            "GL000205",         # unversioned: `.1` is GRCh37's and `.2` is GRCh38's
+            "1",
+            "MT",
+            "X",  # spelled identically in both builds, so they settle nothing
+            "GL000194.1",  # a scaffold BOTH builds carry
+            "GL000205",  # unversioned: `.1` is GRCh37's and `.2` is GRCh38's
             "HSCHR6_MHC_APD_CTG1",  # an alt locus, in no top-level listing at all
             None,
         ],
@@ -217,9 +219,7 @@ def test_the_contig_tables_match_the_two_live_ensembl_services() -> None:
 
     for build, regions in top_level.items():
         live_primary = {
-            name: length
-            for name, length in regions.items()
-            if name in PRIMARY_CONTIG_LENGTHS[build]
+            name: length for name, length in regions.items() if name in PRIMARY_CONTIG_LENGTHS[build]
         }
         assert live_primary == PRIMARY_CONTIG_LENGTHS[build], build
     assert set(top_level["GRCh38"]) - set(top_level["GRCh37"]) == CONTIGS_ONLY_IN["GRCh38"]

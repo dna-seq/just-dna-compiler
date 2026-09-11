@@ -69,7 +69,9 @@ def test_the_download_page_does_not_put_this_scorer_in_the_permissive_class() ->
         "Downloadable artifacts for non-commercial", 1
     )[0]
     assert "AVI SNV scores" in permissive
-    assert "RNA_SEQ" not in permissive, "the page now classifies a scorer — re-read it before trusting this row"
+    assert "RNA_SEQ" not in permissive, (
+        "the page now classifies a scorer — re-read it before trusting this row"
+    )
 
 
 def test_the_redistribution_carve_out_is_the_general_clause_not_the_permissive_one() -> None:

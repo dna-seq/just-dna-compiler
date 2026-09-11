@@ -107,9 +107,7 @@ def index(tmp_path_factory: pytest.TempPathFactory) -> DrugLabelIndex:
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as handle:
         for path in sorted(_SLICE.iterdir()):
             handle.write(path, path.name)
-    result = build_drug_label_snapshot(
-        archive, tmp / "snap", source_url="file://clinpgx_drug_labels_slice"
-    )
+    result = build_drug_label_snapshot(archive, tmp / "snap", source_url="file://clinpgx_drug_labels_slice")
     return load_drug_labels(result.out_dir)
 
 
@@ -142,8 +140,7 @@ def test_the_attestation_member_is_the_published_one() -> None:
     assert CHECK_NAME in VALID_VERIFICATION_CHECKS
     #: Named for the labels, never for an agency — the file carries five of them.
     assert not any(
-        agency.casefold() in CHECK_NAME.casefold()
-        for agency in {row["Source"] for row in _fixture_rows()}
+        agency.casefold() in CHECK_NAME.casefold() for agency in {row["Source"] for row in _fixture_rows()}
     )
 
 
@@ -328,9 +325,7 @@ def test_an_unstated_level_never_establishes_an_agreement_on_its_own() -> None:
     silent = LabelRow("PA3", "C", None, ("G",), ("d",), ())
     call = lambda row: LabelCall(row=row, matched_on="G")  # noqa: E731
 
-    assert classify_labels("absent", [call(stated), call(other), call(silent)]).concordance == (
-        "discordant"
-    )
+    assert classify_labels("absent", [call(stated), call(other), call(silent)]).concordance == ("discordant")
     assert classify_labels("absent", [call(stated), call(silent)]).concordance == "unstated"
     assert classify_labels("absent", [call(stated), call(stated)]).concordance == "concordant"
     assert classify_labels("absent", [call(stated)]).concordance == "single"
@@ -341,10 +336,9 @@ def test_an_unstated_level_never_establishes_an_agreement_on_its_own() -> None:
 
 def test_only_the_negative_level_is_placed_against_an_authored_recommendation() -> None:
     """The three middle levels are stated and unplaced — no invented ladder."""
+
     def _row(level: str | None) -> LabelCall:
-        return LabelCall(
-            row=LabelRow("PA1", "A", level, ("G",), ("d",), ()), matched_on="G"
-        )
+        return LabelCall(row=LabelRow("PA1", "A", level, ("G",), ("d",), ()), matched_on="G")
 
     assert classify_labels("recommends", [_row(NO_CLINICAL_PGX)]).position == "opposed"
     for level in sorted(VALID_TESTING_LEVELS - {NO_CLINICAL_PGX}):
@@ -361,9 +355,10 @@ def test_only_the_negative_level_is_placed_against_an_authored_recommendation() 
     assert classify_labels("recommends", [_row(None), _row(None)]).position == "unchecked"
     # And a second agency stating something else takes the opposition back to unplaced, because
     # "every label that stated a level" is then false.
-    assert classify_labels(
-        "recommends", [_row(NO_CLINICAL_PGX), _row("Testing Required")]
-    ).position == "unplaced"
+    assert (
+        classify_labels("recommends", [_row(NO_CLINICAL_PGX), _row("Testing Required")]).position
+        == "unplaced"
+    )
 
 
 def test_a_recommendation_against_a_wholly_negative_pair_is_the_one_authored_finding(
@@ -453,9 +448,7 @@ def test_an_allele_whose_gene_tier_sibling_is_also_unlabelled_is_withheld_not_co
     withheld_pairs = {(subject.gene, subject.drug) for subject, _note in result.withheld}
     assert withheld_pairs, "the corpus must state a pair the slice does not label"
     # No allele may be reported as gene-tier-covered when its own gene tier was withheld.
-    assert not any(
-        (subject.gene, subject.drug) in withheld_pairs for subject in result.unnamed_alleles
-    )
+    assert not any((subject.gene, subject.drug) in withheld_pairs for subject in result.unnamed_alleles)
     # And the alleles of a withheld pair are withheld too, rather than silently dropped: every
     # authored subject lands in exactly one of the three buckets.
     buckets = (
@@ -547,20 +540,23 @@ def test_strict_reports_exactly_what_best_effort_reports_and_refuses_nothing(
     """Five expert regulators disagreeing is not a defect in the module (`@clinsig-never-escalates`)."""
     lenient = check_drug_labels(
         _module(tmp_path / "a", "cyp2c19_star_alleles"),
-        snapshot=index, declared_use="non_commercial", write=False,
+        snapshot=index,
+        declared_use="non_commercial",
+        write=False,
     )
     strict = check_drug_labels(
         _module(tmp_path / "b", "cyp2c19_star_alleles"),
-        snapshot=index, mode="strict", declared_use="non_commercial", write=False,
+        snapshot=index,
+        mode="strict",
+        declared_use="non_commercial",
+        write=False,
     )
     assert lenient.findings, "the module must actually disagree, or this proves nothing"
     assert [str(f) for f in strict.findings] == [str(f) for f in lenient.findings]
     assert strict.contested == lenient.contested
 
 
-def test_a_malformed_authored_table_refuses_in_both_modes(
-    index: DrugLabelIndex, tmp_path: Path
-) -> None:
+def test_a_malformed_authored_table_refuses_in_both_modes(index: DrugLabelIndex, tmp_path: Path) -> None:
     """`strict` not escalating a source disagreement says nothing about a file that will not load."""
     for mode in ("best_effort", "strict"):
         spec = tmp_path / mode
@@ -571,9 +567,7 @@ def test_a_malformed_authored_table_refuses_in_both_modes(
             encoding="utf-8",
         )
         with pytest.raises(DrugLabelError, match="diplotypes.csv"):
-            check_drug_labels(
-                spec, snapshot=index, mode=mode, declared_use="non_commercial", write=False
-            )
+            check_drug_labels(spec, snapshot=index, mode=mode, declared_use="non_commercial", write=False)
 
 
 def test_the_check_writes_no_sources_row_and_leaves_the_licence_table_alone(
@@ -666,9 +660,7 @@ def test_a_module_nothing_reaches_aggregates_its_withheld_notes(
     assert record["detail"].count("no regulator in this snapshot labels") == DETAIL_LIMIT
 
 
-def test_a_module_with_no_pgx_table_is_not_attested_at_all(
-    index: DrugLabelIndex, tmp_path: Path
-) -> None:
+def test_a_module_with_no_pgx_table_is_not_attested_at_all(index: DrugLabelIndex, tmp_path: Path) -> None:
     """Recording a skip would mine a nonce and create a `verification.json` nobody asked for."""
     spec = tmp_path / "no_pgx"
     spec.mkdir()
@@ -711,9 +703,7 @@ def test_the_authored_action_vocabulary_is_the_one_the_classifier_accepts() -> N
     assert _authored_action([None, None]) == "absent"
     assert _authored_action(["no_recommendation"]) == "declines"
     assert _authored_action(["no_recommendation", "strong"]) == "recommends"
-    assert {_authored_action(v) for v in ([], ["no_recommendation"], ["strong"])} == (
-        VALID_LABEL_ACTION
-    )
+    assert {_authored_action(v) for v in ([], ["no_recommendation"], ["strong"])} == (VALID_LABEL_ACTION)
     with pytest.raises(DrugLabelError):
         classify_labels("maybe", [])
 
@@ -734,7 +724,9 @@ def test_the_live_snapshot_still_answers_the_corpus(tmp_path: Path) -> None:
 
     for name in _CORPUS:
         result = check_drug_labels(
-            _module(tmp_path / name, name), snapshot=live, declared_use="non_commercial",
+            _module(tmp_path / name, name),
+            snapshot=live,
+            declared_use="non_commercial",
             write=False,
         )
         assert len(result.compared) + len(result.withheld) > 0

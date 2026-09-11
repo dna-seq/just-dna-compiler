@@ -83,6 +83,7 @@ _MATCH_ON: tuple[str, ...] = ("chrom", "start", "ref", "alts")
 #: shown. `state` is stubbed *per row*, only where the fold has no answer, so it is not in here.
 _STUBBED: tuple[str, ...] = ("genotype", "conclusion")
 
+
 @dataclass
 class MitomapDraftResult:
     """What was drafted, and an account of every row in the increment that was not."""
@@ -194,9 +195,7 @@ def _study_rows(rows: Sequence[dict], citations: Sequence[dict]) -> tuple[list[S
                 continue
             seen.add(key)
             try:
-                out.append(
-                    StudyRow(chrom=CONTIG, start=row.get("start"), ref=row.get("ref"), pmid=pmid)
-                )
+                out.append(StudyRow(chrom=CONTIG, start=row.get("start"), ref=row.get("ref"), pmid=pmid))
             except ValidationError:
                 unusable += 1
     return out, unusable
@@ -231,9 +230,11 @@ def draft_panel_from_mitomap_miss(
     withholding the attribution rather than guessing it.
     """
     spec_dir = Path(spec_dir)
-    result = MitomapDraftResult(withheld=dict.fromkeys(
-        ("photocopy", "unrated_miss", "unmintable", "gene_not_requested", "incomplete_row"), 0
-    ))
+    result = MitomapDraftResult(
+        withheld=dict.fromkeys(
+            ("photocopy", "unrated_miss", "unmintable", "gene_not_requested", "incomplete_row"), 0
+        )
+    )
 
     # CC BY 3.0 states commercial and clinical use free, so this always answers `None`. Kept because
     # the gate is per source and a reader of this file should see which answer it gives.
@@ -278,9 +279,7 @@ def draft_panel_from_mitomap_miss(
                 )
             continue
         cells = _cells(row)
-        missing = [
-            name for name in ("chrom", "start", "ref", "alts", "clin_sig") if name not in cells
-        ]
+        missing = [name for name in ("chrom", "start", "ref", "alts", "clin_sig") if name not in cells]
         if missing:
             # Not reachable from a well-formed miss snapshot — a rated miss has all five by
             # construction — and guarded anyway, because the alternative is a raw ValidationError
@@ -289,9 +288,7 @@ def draft_panel_from_mitomap_miss(
             incomplete.append(f"{row.get('table')}/{row.get('record_id')} ({', '.join(missing)})")
             continue
         stubbed = tuple(name for name in (*_STUBBED, "state") if name not in cells)
-        partials.append(
-            PartialRow(model=VariantRow, cells=cells, stubbed=stubbed, match_on=_MATCH_ON)
-        )
+        partials.append(PartialRow(model=VariantRow, cells=cells, stubbed=stubbed, match_on=_MATCH_ON))
         drafted.append(row)
         if str(row.get("key_shape")) == "indel":
             result.indel_keys += 1
@@ -302,9 +299,7 @@ def draft_panel_from_mitomap_miss(
             )
 
     if partials:
-        result.reports.append(
-            append_partial_rows(spec_dir, VARIANTS_CSV, partials, dry_run=dry_run)
-        )
+        result.reports.append(append_partial_rows(spec_dir, VARIANTS_CSV, partials, dry_run=dry_run))
         studies, unusable = _study_rows(drafted, _snapshot_rows(reference, CITATIONS_PARQUET))
         if studies:
             result.reports.append(append_rows(spec_dir, STUDIES_CSV, studies, dry_run=dry_run))
@@ -331,7 +326,11 @@ def draft_panel_from_mitomap_miss(
         )
         if result.added:
             superseded = withdraw_stale_dataset(
-                spec_dir, SOURCE_NAME, "annotation", result.dataset, error=MitomapDraftError,
+                spec_dir,
+                SOURCE_NAME,
+                "annotation",
+                result.dataset,
+                error=MitomapDraftError,
             )
             if superseded is not None:
                 result.warnings.append(
@@ -342,9 +341,7 @@ def draft_panel_from_mitomap_miss(
     return result
 
 
-def _notes(
-    result: MitomapDraftResult, drafted: Sequence[dict], incomplete: Sequence[str]
-) -> list[str]:
+def _notes(result: MitomapDraftResult, drafted: Sequence[dict], incomplete: Sequence[str]) -> list[str]:
     """Aggregated notes — one sentence per reason, never one per row, plus the per-row worklist.
 
     The worklist is the exception and is uncapped on purpose: each line is a decision the author has
@@ -370,7 +367,8 @@ def _notes(
     if result.withheld.get("unrated_miss"):
         brackets = (
             " " + ", ".join(f"{token} {count}" for token, count in sorted(result.withheld_brackets.items()))
-            if result.withheld_brackets else ""
+            if result.withheld_brackets
+            else ""
         )
         notes.append(
             f"{result.withheld['unrated_miss']} MITOMAP row(s) are absent from ClinVar and carry no "

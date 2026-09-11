@@ -12,7 +12,6 @@ applying it to an already-derived value is a no-op (CONSTITUTION Principle 7). S
 "Upgrade derivation" section of docs/COMPILER.md.
 """
 
-
 # The "Upgrade derivation" mapping (docs/COMPILER.md): legacy `state` → (direction, stat_significance).
 # **Deliberately gains no `contested` entry, and the asymmetry with `_DIRECTION_TO_STATE` is correct**
 # (RM150). The two maps look like they should mirror, and they do not: no legacy `state` value means
@@ -90,9 +89,7 @@ def trimmed_state(direction: str) -> str:
     return _DIRECTION_TO_STATE.get(direction, "neutral")
 
 
-def clin_sig_from_booleans(
-    pathogenic: bool | None, benign: bool | None, clinvar: bool | None
-) -> str | None:
+def clin_sig_from_booleans(pathogenic: bool | None, benign: bool | None, clinvar: bool | None) -> str | None:
     """Derive a `clin_sig` tier from the lossy legacy ClinVar booleans.
 
     `pathogenic` → pathogenic; `benign` → benign; in-ClinVar with neither flag →

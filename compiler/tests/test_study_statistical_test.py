@@ -36,10 +36,7 @@ _SPEC_YAML = (
 #: `rs117385980` is the SIRT6 variant the two runs disagreed on. Coordinates are not needed for this
 #: column, so the row is rsID-keyed and carries no injected resolution — the dedup key is
 #: `(variant_key, pmid)` either way.
-_VARIANTS = (
-    "rsid,genotype,state,conclusion,gene\n"
-    "rs117385980,C/T,neutral,carrier of the minor allele,SIRT6\n"
-)
+_VARIANTS = "rsid,genotype,state,conclusion,gene\nrs117385980,C/T,neutral,carrier of the minor allele,SIRT6\n"
 
 _PMID = "41249831"
 
@@ -90,9 +87,7 @@ def test_the_analysis_reaches_the_parquet_and_survives_the_round_trip(tmp_path: 
     assert second.success, second.errors
     assert second.manifest.artifact.digest == first.manifest.artifact.digest
     assert second.manifest.content_signature == first.manifest.content_signature
-    assert pl.read_parquet(tmp_path / "a2" / "studies.parquet")["statistical_test"].to_list() == [
-        _FISHER
-    ]
+    assert pl.read_parquet(tmp_path / "a2" / "studies.parquet")["statistical_test"].to_list() == [_FISHER]
 
 
 def test_an_unset_analysis_leaves_the_authored_identity_alone(tmp_path: Path) -> None:
@@ -137,8 +132,7 @@ def test_two_analyses_of_one_association_are_two_rows_not_a_duplicate(tmp_path: 
     spec = _spec(
         tmp_path / "spec",
         study_rows=(
-            f"rs117385980,{_PMID},0.36,1.42,OR,{_FISHER}\n"
-            f"rs117385980,{_PMID},0.75,1.42,OR,{_LOGISTIC}\n"
+            f"rs117385980,{_PMID},0.36,1.42,OR,{_FISHER}\nrs117385980,{_PMID},0.75,1.42,OR,{_LOGISTIC}\n"
         ),
     )
     assert _duplicates(validate_spec(spec, strict=True)) == []
@@ -148,9 +142,10 @@ def test_two_analyses_of_one_association_are_two_rows_not_a_duplicate(tmp_path: 
     compiled = compile_module(spec, tmp_path / "out")
     assert compiled.success, compiled.errors
     assert _duplicates(compiled) == []
-    assert pl.read_parquet(tmp_path / "out" / "studies.parquet")[
-        "statistical_test"
-    ].to_list() == [_FISHER, _LOGISTIC]
+    assert pl.read_parquet(tmp_path / "out" / "studies.parquet")["statistical_test"].to_list() == [
+        _FISHER,
+        _LOGISTIC,
+    ]
 
 
 def test_an_absent_analysis_is_unknown_and_never_suppresses(tmp_path: Path) -> None:
@@ -165,16 +160,9 @@ def test_an_absent_analysis_is_unknown_and_never_suppresses(tmp_path: Path) -> N
     - one states an analysis and the other does not, in either order — unknown against stated.
     """
     both_null = f"rs117385980,{_PMID},0.36,1.42,OR,\nrs117385980,{_PMID},0.75,1.42,OR,\n"
-    same = (
-        f"rs117385980,{_PMID},0.36,1.42,OR,{_FISHER}\n"
-        f"rs117385980,{_PMID},0.75,1.42,OR,{_FISHER}\n"
-    )
-    stated_first = (
-        f"rs117385980,{_PMID},0.36,1.42,OR,{_FISHER}\nrs117385980,{_PMID},0.75,1.42,OR,\n"
-    )
-    stated_second = (
-        f"rs117385980,{_PMID},0.36,1.42,OR,\nrs117385980,{_PMID},0.75,1.42,OR,{_LOGISTIC}\n"
-    )
+    same = f"rs117385980,{_PMID},0.36,1.42,OR,{_FISHER}\nrs117385980,{_PMID},0.75,1.42,OR,{_FISHER}\n"
+    stated_first = f"rs117385980,{_PMID},0.36,1.42,OR,{_FISHER}\nrs117385980,{_PMID},0.75,1.42,OR,\n"
+    stated_second = f"rs117385980,{_PMID},0.36,1.42,OR,\nrs117385980,{_PMID},0.75,1.42,OR,{_LOGISTIC}\n"
     for name, rows in (
         ("both null", both_null),
         ("same analysis", same),

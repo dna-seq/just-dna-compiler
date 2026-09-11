@@ -135,15 +135,16 @@ def main() -> int:
     # it ends, and the move's own verification cannot catch that: fingerprints cover the consumer's
     # prose, so a truncated span hashes identically on both sides of a cut that lost half a report.
     # This is the guard S62 and S55 both needed and neither had.
-    complaints = [f"{doc.name}:{c}" for doc in (LIVE, HISTORY)
-                  for c in fence_findings(doc.read_text().splitlines())]
+    complaints = [
+        f"{doc.name}:{c}" for doc in (LIVE, HISTORY) for c in fence_findings(doc.read_text().splitlines())
+    ]
     if complaints:
         raise SystemExit(
             "refusing to archive — a fenced block breaks the section boundaries:\n  "
             + "\n  ".join(complaints)
             + "\n\nA span that ends at the wrong line moves the wrong bytes, and the fingerprint\n"
-              "check cannot see it. Repair the document first; do NOT edit the consumer's prose to\n"
-              "suit the tool — a missing fence usually means an earlier pass already split a report."
+            "check cannot see it. Repair the document first; do NOT edit the consumer's prose to\n"
+            "suit the tool — a missing fence usually means an earlier pass already split a report."
         )
 
     before = fingerprints(LIVE)
@@ -195,13 +196,17 @@ def main() -> int:
         print(f"  {ident}: sha {before[ident]} -> {after.get(ident, 'MISSING')}")
     if broken:
         raise SystemExit(f"\nFINGERPRINT CHANGED for {', '.join(broken)} — the prose was not moved verbatim")
-    print(f"\n{len(idents)} section(s) archived, every fingerprint intact."
-          f"\nNow add each one's line to {HISTORY.name}'s contents list.")
+    print(
+        f"\n{len(idents)} section(s) archived, every fingerprint intact."
+        f"\nNow add each one's line to {HISTORY.name}'s contents list."
+    )
     if ungrouped:
-        print(f"\nNo group heading travelled with {', '.join(ungrouped)} — the section sat under the "
-              f"live file's title, which is not a group. Add a `# ` heading above it in "
-              f"{HISTORY.name} (who reported it, and when) so it does not read as part of the "
-              f"group above.")
+        print(
+            f"\nNo group heading travelled with {', '.join(ungrouped)} — the section sat under the "
+            f"live file's title, which is not a group. Add a `# ` heading above it in "
+            f"{HISTORY.name} (who reported it, and when) so it does not read as part of the "
+            f"group above."
+        )
     return 0
 
 

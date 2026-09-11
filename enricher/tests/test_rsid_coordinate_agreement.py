@@ -28,8 +28,7 @@ _CHECK = "rsid_coordinate_agreement"
 _EASY = 8
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+    "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
 )
 _HEADER = "rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
 
@@ -165,9 +164,7 @@ def test_a_pair_the_snapshot_never_heard_of_is_not_an_agreement(tmp_path: Path, 
     assert "rs1799945" in (record.detail or ""), "what was NOT compared has to be stated"
 
 
-def test_a_snapshot_that_knows_none_of_the_pairs_records_no_reference(
-    tmp_path: Path, cache: Path
-) -> None:
+def test_a_snapshot_that_knows_none_of_the_pairs_records_no_reference(tmp_path: Path, cache: Path) -> None:
     """Zero comparable pairs is `no_reference`, never `ran(0, 0)`."""
     spec = _spec(tmp_path, "rs1799945,6,26090951,C,G,C/G,risk,not in the snapshot\n")
     _enrich(spec, cache)
@@ -192,9 +189,7 @@ def test_a_non_grch38_module_records_unsupported(tmp_path: Path, cache: Path) ->
     assert record.skipped == "unsupported"
 
 
-def test_a_disagreement_is_reported_in_both_modes_and_refuses_neither(
-    tmp_path: Path, cache: Path
-) -> None:
+def test_a_disagreement_is_reported_in_both_modes_and_refuses_neither(tmp_path: Path, cache: Path) -> None:
     """A dbSNP merge or a build difference is not something an authored edit is owed — P5.
 
     `strict` means *reproducible artifact*; the compiler's half of this question escalates because the
@@ -269,9 +264,7 @@ def test_an_indel_anchored_a_base_earlier_is_undecided_not_a_disagreement(tmp_pa
     assert "rs869312907" in (record.detail or "")
 
 
-def test_an_unqueryable_cache_does_not_become_fatal_because_of_this_check(
-    tmp_path: Path
-) -> None:
+def test_an_unqueryable_cache_does_not_become_fatal_because_of_this_check(tmp_path: Path) -> None:
     """A check that gates nothing must not turn a broken cache into a failed run.
 
     A located cache can still refuse to answer — a stale snapshot, or a parquet another tool wrote. A
@@ -333,5 +326,8 @@ def test_the_record_is_byte_stable_across_a_no_op_re_run(tmp_path: Path, cache: 
     second = read_verification(spec / VERIFICATION_JSON)
 
     assert (first.module_hash, first.signature, first.nonce, first.difficulty) == (
-        second.module_hash, second.signature, second.nonce, second.difficulty
+        second.module_hash,
+        second.signature,
+        second.nonce,
+        second.difficulty,
     )

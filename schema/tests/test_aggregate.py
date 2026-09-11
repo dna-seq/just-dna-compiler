@@ -1,6 +1,5 @@
 """Cross-version log aggregation (ROADMAP item 3): full provenance = union of every version's logs."""
 
-
 from just_dna_format.aggregate import aggregate_logs, aggregate_provenance
 from just_dna_format.manifest import (
     Artifact,
@@ -12,9 +11,7 @@ from just_dna_format.manifest import (
 )
 
 
-def _manifest(
-    logs: list[FileEntry] | None = None, provenance: Provenance | None = None
-) -> ModuleManifest:
+def _manifest(logs: list[FileEntry] | None = None, provenance: Provenance | None = None) -> ModuleManifest:
     return ModuleManifest(
         identity=Identity(name="m"),
         display=Display(title="t", description="d", report_title="r"),
@@ -36,8 +33,8 @@ def test_aggregate_is_deduplicated_union() -> None:
     result = aggregate_logs([v1, v2, v3])
     got = {(e.name, e.sha256) for e in result}
     assert got == {
-        ("run.log", "sha256:aa"),          # v1/v2 run.log
-        ("run.log", "sha256:cc"),          # v3 run.log (distinct bytes → kept)
+        ("run.log", "sha256:aa"),  # v1/v2 run.log
+        ("run.log", "sha256:cc"),  # v3 run.log (distinct bytes → kept)
         ("logs/reviewer.log", "sha256:bb"),  # collapsed across v2+v3
     }
 
@@ -52,9 +49,9 @@ def test_aggregate_empty() -> None:
 def test_aggregate_provenance_collapses_by_hash() -> None:
     shared = Provenance(generator="agent", item_count=3, file="provenance.json", sha256="sha256:pp")
     v1 = _manifest(provenance=shared)
-    v2 = _manifest(provenance=shared)          # same doc re-emitted unchanged → one entry
+    v2 = _manifest(provenance=shared)  # same doc re-emitted unchanged → one entry
     v3_prov = Provenance(generator="agent2", item_count=5, file="provenance.json", sha256="sha256:qq")
-    v3 = _manifest(provenance=v3_prov)         # changed doc → distinct entry
+    v3 = _manifest(provenance=v3_prov)  # changed doc → distinct entry
 
     result = aggregate_provenance([v1, v2, v3])
     assert {p.sha256 for p in result} == {"sha256:pp", "sha256:qq"}

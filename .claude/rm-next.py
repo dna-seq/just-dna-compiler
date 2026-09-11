@@ -198,8 +198,10 @@ def allocate(note: str | None, dry_run: bool) -> int:
         if dry_run:
             print(f"--dry-run: would reserve RM{number} (nothing written)", file=sys.stderr)
             return number
-        print("warning: " + LOCK_UNAVAILABLE.format(docs=DOCS, why="this platform has no fcntl",
-                                                    n=number), file=sys.stderr)
+        print(
+            "warning: " + LOCK_UNAVAILABLE.format(docs=DOCS, why="this platform has no fcntl", n=number),
+            file=sys.stderr,
+        )
         TOC.write_text(_insert(TOC.read_text(), _row(number, note)))
         return number
 
@@ -211,8 +213,9 @@ def allocate(note: str | None, dry_run: bool) -> int:
         used = used_numbers()
         number = next_free(used)
         if degraded is not None:
-            print("warning: " + LOCK_UNAVAILABLE.format(docs=DOCS, why=degraded.why, n=number),
-                  file=sys.stderr)
+            print(
+                "warning: " + LOCK_UNAVAILABLE.format(docs=DOCS, why=degraded.why, n=number), file=sys.stderr
+            )
         TOC.write_text(_insert(TOC.read_text(), _row(number, note)))
         return number
     finally:
@@ -239,10 +242,7 @@ def release(number: int) -> int:
         if number not in standing:
             print(f"RM{number} is not a standing reservation in {TOC.name}", file=sys.stderr)
             return 1
-        kept = [
-            _tombstone(number) if line == standing[number] else line
-            for line in text.splitlines()
-        ]
+        kept = [_tombstone(number) if line == standing[number] else line for line in text.splitlines()]
         TOC.write_text("\n".join(kept) + "\n")
         print(f"released RM{number} — the number stays spent, so the next allocation moves past it")
         return 0

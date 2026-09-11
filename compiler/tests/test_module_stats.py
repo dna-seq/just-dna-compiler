@@ -124,12 +124,8 @@ def test_a_derived_sidecars_gene_is_not_a_gene_the_module_claims(tmp_path: Path)
     spec = tmp_path / "spec"
     spec.mkdir()
     (spec / "module_spec.yaml").write_text(_SPEC_YAML)
-    (spec / "allele_function.csv").write_text(
-        "gene,allele,function_status\nCYP2C19,*2,no_function\n"
-    )
-    (spec / "gene_metrics.csv").write_text(
-        "gene,dataset,status\nBRCA1,gnomad_v4.1_constraint,resolved\n"
-    )
+    (spec / "allele_function.csv").write_text("gene,allele,function_status\nCYP2C19,*2,no_function\n")
+    (spec / "gene_metrics.csv").write_text("gene,dataset,status\nBRCA1,gnomad_v4.1_constraint,resolved\n")
     result = compile_module(spec, tmp_path / "out")
     assert result.success, result.errors
     assert _stats(tmp_path / "out")["genes"] == ["CYP2C19"]
@@ -152,9 +148,7 @@ def test_dropping_the_last_row_naming_a_gene_removes_it_from_the_manifest(tmp_pa
     spec = tmp_path / "spec"
     spec.mkdir()
     (spec / "module_spec.yaml").write_text(_SPEC_YAML)
-    (spec / "allele_function.csv").write_text(
-        "gene,allele,function_status\nCYP2C19,*2,no_function\n"
-    )
+    (spec / "allele_function.csv").write_text("gene,allele,function_status\nCYP2C19,*2,no_function\n")
     header = "rsid,chrom,start,ref,genotype,gene,drug,conclusion\n"
     kept_row = "rs2469808710,2,120926480,A,A/AT,GLI2,warfarin,a spelled insertion\n"
     (spec / "pharm_variants.csv").write_text(
@@ -169,9 +163,7 @@ def test_dropping_the_last_row_naming_a_gene_removes_it_from_the_manifest(tmp_pa
 
     # Give the same deletion its published length and the row survives — so does its gene.
     (spec / "pharm_variants.csv").write_text(
-        header
-        + "rs2104016493,2,47410090,T,<DEL:913>/T,MSH2,warfarin,a 913 bp MSH2 deletion\n"
-        + kept_row
+        header + "rs2104016493,2,47410090,T,<DEL:913>/T,MSH2,warfarin,a 913 bp MSH2 deletion\n" + kept_row
     )
     kept = compile_module(spec, tmp_path / "kept")
     assert kept.success, kept.errors
@@ -221,9 +213,7 @@ def test_a_kind_table_drop_moves_a_published_counter(tmp_path: Path) -> None:
     spec = tmp_path / "spec"
     spec.mkdir()
     (spec / "module_spec.yaml").write_text(_SPEC_YAML)
-    (spec / "allele_function.csv").write_text(
-        "gene,allele,function_status\nCYP2C19,*2,no_function\n"
-    )
+    (spec / "allele_function.csv").write_text("gene,allele,function_status\nCYP2C19,*2,no_function\n")
     header = "rsid,chrom,start,ref,genotype,gene,drug,conclusion\n"
     kept_row = "rs2469808710,2,120926480,A,A/AT,GLI2,warfarin,a spelled insertion\n"
     (spec / "pharm_variants.csv").write_text(
@@ -238,9 +228,7 @@ def test_a_kind_table_drop_moves_a_published_counter(tmp_path: Path) -> None:
     assert dropped.manifest.stats.variant_count == 0
 
     (spec / "pharm_variants.csv").write_text(
-        header
-        + "rs2104016493,2,47410090,T,<DEL:913>/T,MSH2,warfarin,a 913 bp MSH2 deletion\n"
-        + kept_row
+        header + "rs2104016493,2,47410090,T,<DEL:913>/T,MSH2,warfarin,a 913 bp MSH2 deletion\n" + kept_row
     )
     kept = compile_module(spec, tmp_path / "kept")
     assert kept.success, kept.errors

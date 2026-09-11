@@ -48,7 +48,8 @@ PUBMIND_TOKENS: tuple[str, ...] = (
 
 
 @pytest.mark.parametrize(
-    "clinvar_spelling,pubmind_spelling,member", SAME_CONCEPT_BOTH_SPELLINGS,
+    "clinvar_spelling,pubmind_spelling,member",
+    SAME_CONCEPT_BOTH_SPELLINGS,
     ids=[c[2] + "-" + c[1].replace(" ", "_") for c in SAME_CONCEPT_BOTH_SPELLINGS],
 )
 def test_both_sources_spellings_of_one_concept_reach_one_member(
@@ -127,8 +128,7 @@ def test_the_clinvar_builder_calls_the_shared_normalizer_and_holds_no_map_of_its
     leftover = {
         name
         for name, obj in vars(clinvar_build).items()
-        if isinstance(obj, dict | tuple | set | frozenset)
-        and VALID_CLIN_SIG & _hashable_members(obj)
+        if isinstance(obj, dict | tuple | set | frozenset) and VALID_CLIN_SIG & _hashable_members(obj)
     }
     assert leftover == set(), sorted(leftover)
 

@@ -58,7 +58,7 @@ _CONSTRAINT_HF_PREFIX = "datasets/just-dna-seq/gnomad_constraint/data"
 # them (`clinvar_build`, `constraint_build`) — and it is the cheapest place to stop a stale remote file
 # from becoming a local one.
 _ENSEMBL_FILES = "homo_sapiens-*.parquet"
-_CLINVAR_FILES = "clinvar-*.parquet"          # deliberately excludes the flat `clinvar.parquet`
+_CLINVAR_FILES = "clinvar-*.parquet"  # deliberately excludes the flat `clinvar.parquet`
 _CONSTRAINT_FILES = "gnomad_constraint.parquet"
 # The two gated snapshots that may be published (RM38). Both are multi-table, so the glob is the whole
 # directory rather than one name — `cpic_build` writes five parquets and `clinpgx_build` one, and both
@@ -213,7 +213,9 @@ def _provision_snapshot(
             "%s cache holds %s, which is not part of this snapshot (expected %s). The reader globs "
             "data/*.parquet, so a file with another schema makes every query fail — move it aside, or "
             "rebuild the snapshot from source.",
-            label, path.name, filename_glob,
+            label,
+            path.name,
+            filename_glob,
         )
     corrupt = [p for p in existing if not _parquet_footer_ok(p)]
     if existing and not corrupt:
@@ -251,7 +253,9 @@ def _provision_snapshot(
     if ignored:
         logger.info(
             "Ignoring %d remote parquet file(s) outside this snapshot (%s): %s",
-            len(ignored), filename_glob, ", ".join(ignored),
+            len(ignored),
+            filename_glob,
+            ", ".join(ignored),
         )
     if not remote_files:
         raise error_cls(
@@ -335,8 +339,9 @@ def _provision_snapshot(
             tmp_path.replace(target)
         except Exception as exc:
             tmp_path.unlink(missing_ok=True)
-            logger.info("No %s in the %s repo (%s); the cache carries data only.",
-                        optional, label, type(exc).__name__)
+            logger.info(
+                "No %s in the %s repo (%s); the cache carries data only.", optional, label, type(exc).__name__
+            )
     logger.info("Download complete: %s", cache_dir)
     return cache_dir
 
@@ -345,7 +350,10 @@ def ensure_snapshot(ensembl_cache: Path | None = None) -> Path:
     """Provision the Ensembl parquet cache from HuggingFace Hub, returning the cache directory."""
     cache_dir = Path(ensembl_cache) if ensembl_cache is not None else default_ensembl_cache_dir()
     return _provision_snapshot(
-        cache_dir, _ENSEMBL_HF_PREFIX, label="Ensembl", error_cls=EnsemblReferenceError,
+        cache_dir,
+        _ENSEMBL_HF_PREFIX,
+        label="Ensembl",
+        error_cls=EnsemblReferenceError,
         filename_glob=SNAPSHOT_FILE_GLOBS["ensembl"],
     )
 
@@ -354,7 +362,10 @@ def ensure_clinvar_snapshot(clinvar_cache: Path | None = None) -> Path:
     """Provision the ClinVar parquet cache from HuggingFace Hub, returning the cache directory."""
     cache_dir = Path(clinvar_cache) if clinvar_cache is not None else default_clinvar_cache_dir()
     return _provision_snapshot(
-        cache_dir, _CLINVAR_HF_PREFIX, label="ClinVar", error_cls=ClinVarReferenceError,
+        cache_dir,
+        _CLINVAR_HF_PREFIX,
+        label="ClinVar",
+        error_cls=ClinVarReferenceError,
         filename_glob=SNAPSHOT_FILE_GLOBS["clinvar"],
     )
 
@@ -365,12 +376,13 @@ def ensure_constraint_snapshot(constraint_cache: Path | None = None) -> Path:
     The third caller of one download body — the plumbing generalized when ClinVar landed, so this is
     parameterization rather than new machinery.
     """
-    cache_dir = (
-        Path(constraint_cache) if constraint_cache is not None else default_constraint_cache_dir()
-    )
+    cache_dir = Path(constraint_cache) if constraint_cache is not None else default_constraint_cache_dir()
     return _provision_snapshot(
-        cache_dir, _CONSTRAINT_HF_PREFIX, label="gnomAD constraint",
-        error_cls=ConstraintReferenceError, filename_glob=SNAPSHOT_FILE_GLOBS["constraint"],
+        cache_dir,
+        _CONSTRAINT_HF_PREFIX,
+        label="gnomAD constraint",
+        error_cls=ConstraintReferenceError,
+        filename_glob=SNAPSHOT_FILE_GLOBS["constraint"],
     )
 
 
@@ -385,7 +397,10 @@ def ensure_clinpgx_snapshot(clinpgx_cache: Path | None = None) -> Path:
     """
     cache_dir = Path(clinpgx_cache) if clinpgx_cache is not None else default_clinpgx_cache_dir()
     return _provision_snapshot(
-        cache_dir, _CLINPGX_HF_PREFIX, label="ClinPGx", error_cls=GatedSnapshotError,
+        cache_dir,
+        _CLINPGX_HF_PREFIX,
+        label="ClinPGx",
+        error_cls=GatedSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["clinpgx"],
     )
 
@@ -404,7 +419,10 @@ def ensure_cpic_snapshot(cpic_cache: Path | None = None) -> Path:
     """
     cache_dir = Path(cpic_cache) if cpic_cache is not None else default_cpic_cache_dir()
     return _provision_snapshot(
-        cache_dir, _CPIC_HF_PREFIX, label="CPIC", error_cls=GatedSnapshotError,
+        cache_dir,
+        _CPIC_HF_PREFIX,
+        label="CPIC",
+        error_cls=GatedSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["cpic"],
     )
 
@@ -419,7 +437,10 @@ def ensure_civic_snapshot(civic_cache: Path | None = None) -> Path:
     """
     cache_dir = Path(civic_cache) if civic_cache is not None else default_civic_cache_dir()
     return _provision_snapshot(
-        cache_dir, _CIVIC_HF_PREFIX, label="CIViC", error_cls=OpenSnapshotError,
+        cache_dir,
+        _CIVIC_HF_PREFIX,
+        label="CIViC",
+        error_cls=OpenSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["civic"],
     )
 
@@ -433,12 +454,13 @@ def ensure_drug_labels_snapshot(drug_labels_cache: Path | None = None) -> Path:
     along with the parquet, because a share-alike snapshot whose terms did not travel pins nothing
     for whoever holds the bytes.
     """
-    cache_dir = (
-        Path(drug_labels_cache) if drug_labels_cache is not None else default_drug_labels_cache_dir()
-    )
+    cache_dir = Path(drug_labels_cache) if drug_labels_cache is not None else default_drug_labels_cache_dir()
     return _provision_snapshot(
-        cache_dir, _DRUG_LABELS_HF_PREFIX, label="ClinPGx drug labels",
-        error_cls=GatedSnapshotError, filename_glob=SNAPSHOT_FILE_GLOBS["drug_labels"],
+        cache_dir,
+        _DRUG_LABELS_HF_PREFIX,
+        label="ClinPGx drug labels",
+        error_cls=GatedSnapshotError,
+        filename_glob=SNAPSHOT_FILE_GLOBS["drug_labels"],
     )
 
 
@@ -453,7 +475,10 @@ def ensure_mitomap_snapshot(mitomap_cache: Path | None = None) -> Path:
     """
     cache_dir = Path(mitomap_cache) if mitomap_cache is not None else default_mitomap_cache_dir()
     return _provision_snapshot(
-        cache_dir, _MITOMAP_HF_PREFIX, label="MITOMAP", error_cls=OpenSnapshotError,
+        cache_dir,
+        _MITOMAP_HF_PREFIX,
+        label="MITOMAP",
+        error_cls=OpenSnapshotError,
         filename_glob=SNAPSHOT_FILE_GLOBS["mitomap"],
     )
 
@@ -473,12 +498,16 @@ def ensure_alphagenome_avi_snapshot(alphagenome_avi_cache: Path | None = None) -
     `SNAPSHOT_ROOT_FILENAMES` names it, not because this function does.
     """
     cache_dir = (
-        Path(alphagenome_avi_cache) if alphagenome_avi_cache is not None
+        Path(alphagenome_avi_cache)
+        if alphagenome_avi_cache is not None
         else default_alphagenome_avi_cache_dir()
     )
     return _provision_snapshot(
-        cache_dir, _ALPHAGENOME_AVI_HF_PREFIX, label="AlphaGenome AVI",
-        error_cls=OpenSnapshotError, filename_glob=SNAPSHOT_FILE_GLOBS["alphagenome_avi"],
+        cache_dir,
+        _ALPHAGENOME_AVI_HF_PREFIX,
+        label="AlphaGenome AVI",
+        error_cls=OpenSnapshotError,
+        filename_glob=SNAPSHOT_FILE_GLOBS["alphagenome_avi"],
     )
 
 
@@ -493,11 +522,12 @@ def ensure_strchive_snapshot(strchive_cache: Path | None = None) -> Path:
     is renamed into place, which is the same guarantee the footer check gives the parquet lanes —
     an interrupted download never lands under the real name.
     """
-    cache_dir = (
-        Path(strchive_cache) if strchive_cache is not None else default_strchive_cache_dir()
-    )
+    cache_dir = Path(strchive_cache) if strchive_cache is not None else default_strchive_cache_dir()
     return _provision_root_file_snapshot(
-        cache_dir, _STRCHIVE_HF_REPO, payload=STRCHIVE_CATALOGUE_FILENAME, label="STRchive",
+        cache_dir,
+        _STRCHIVE_HF_REPO,
+        payload=STRCHIVE_CATALOGUE_FILENAME,
+        label="STRchive",
         error_cls=OpenSnapshotError,
     )
 
@@ -554,8 +584,12 @@ def _provision_root_file_snapshot(
     try:
         fs.get(f"{hf_repo}/{RELEASE_FILENAME}", str(cache_dir / RELEASE_FILENAME))
     except Exception as exc:
-        logger.info("No %s in the %s repo (%s); the snapshot carries no release label.",
-                    RELEASE_FILENAME, label, type(exc).__name__)
+        logger.info(
+            "No %s in the %s repo (%s); the snapshot carries no release label.",
+            RELEASE_FILENAME,
+            label,
+            type(exc).__name__,
+        )
     logger.info("Download complete: %s", cache_dir)
     return cache_dir
 

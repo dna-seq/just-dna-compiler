@@ -19,7 +19,7 @@ from just_dna_format.identity import (
         ("longevity_variants_2026", True),
         ("coronary", True),
         ("a1", True),
-        ("1abc", False),      # must start with a letter
+        ("1abc", False),  # must start with a letter
         ("Has_Caps", False),
         ("has-hyphen", False),  # hyphens are for namespaces, not names
         ("", False),
@@ -42,7 +42,7 @@ def test_validate_name_raises_on_bad() -> None:
         ("With_Underscore", False),
         ("-lead", False),
         ("trail-", False),  # hyphens separate segments — no trailing empty part
-        ("a--b", False),    # no doubled hyphen (no empty interior segment)
+        ("a--b", False),  # no doubled hyphen (no empty interior segment)
     ],
 )
 def test_namespace_rule(ns: str, valid: bool) -> None:

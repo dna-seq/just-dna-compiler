@@ -48,9 +48,7 @@ def current_list():
 
 
 def _variant(gene, acmg_sf=None, rsid="rs1800562"):
-    return VariantRow(
-        rsid=rsid, genotype="A/A", state="risk", conclusion="x", gene=gene, acmg_sf=acmg_sf
-    )
+    return VariantRow(rsid=rsid, genotype="A/A", state="risk", conclusion="x", gene=gene, acmg_sf=acmg_sf)
 
 
 # ── the parse ──────────────────────────────────────────────────────────────────────────────────
@@ -123,7 +121,10 @@ def test_acmg_scopes_hfe_to_one_genotype_and_the_parse_keeps_that_text(sf_list):
         (lambda t: t.replace("ACMG SF v3.2", "ACMG SF vNEXT"), "declares no"),
         (lambda t: t.replace(EXPECTED_HEADERS[2], "Gene"), "re-laid out"),
         # Drop one cell from the first data row: the count stops dividing by four.
-        (lambda t: t.replace("<td>Adenomatous polyposis coli", "Adenomatous polyposis coli", 1), "not a multiple"),
+        (
+            lambda t: t.replace("<td>Adenomatous polyposis coli", "Adenomatous polyposis coli", 1),
+            "not a multiple",
+        ),
     ],
 )
 def test_a_changed_page_refuses_rather_than_returning_a_short_list(mutate, expected):
@@ -139,8 +140,10 @@ def test_a_gene_cell_that_lost_its_link_refuses(sf_list):
 
 
 def test_a_truncated_response_trips_the_floor():
-    head = _PAGE[: _PAGE.find("<table")] + "<table>" + "".join(
-        f"<tr><th>{h}</th></tr>" for h in EXPECTED_HEADERS
+    head = (
+        _PAGE[: _PAGE.find("<table")]
+        + "<table>"
+        + "".join(f"<tr><th>{h}</th></tr>" for h in EXPECTED_HEADERS)
     )
     # A header-only table: every guard past the header must still refuse rather than return nothing.
     with pytest.raises(AcmgSfError):

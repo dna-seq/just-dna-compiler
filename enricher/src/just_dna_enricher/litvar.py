@@ -304,9 +304,9 @@ class LitvarClient:
         key = query.strip()
         if key not in self._nodes:
             status, body = self._request(f"/variant/autocomplete/?query={urllib.parse.quote(key)}")
-            self._nodes[key] = [] if status is None else [
-                LitvarNode.parse(record) for record in _as_list(body)
-            ]
+            self._nodes[key] = (
+                [] if status is None else [LitvarNode.parse(record) for record in _as_list(body)]
+            )
         return list(self._nodes[key])
 
     def node(self, node_id: str) -> dict | None:
@@ -331,9 +331,7 @@ class LitvarClient:
         it would report a short list as the node's literature.
         """
         if node_id not in self._pmids:
-            status, body = self._request(
-                f"/variant/get/{urllib.parse.quote(node_id, safe='')}/publications"
-            )
+            status, body = self._request(f"/variant/get/{urllib.parse.quote(node_id, safe='')}/publications")
             payload = {} if status is None else _as_dict(body)
             values = payload.get("pmids") or []
             pmids = frozenset(_as_pmid(value, node_id) for value in values)
@@ -342,7 +340,9 @@ class LitvarClient:
                 logger.warning(
                     "LitVar says %s holds %d paper(s) and served %d — the coverage number for this "
                     "node is the served set, and it is short of what the index claims.",
-                    node_id, stated, len(pmids),
+                    node_id,
+                    stated,
+                    len(pmids),
                 )
             self._pmids[node_id] = pmids
         return self._pmids[node_id]
@@ -375,8 +375,7 @@ class LitvarClient:
             if exc.response.status_code == 400 and detail.startswith(_NOT_FOUND_DETAIL):
                 return None, ""
             raise LitvarUnavailable(
-                f"LitVar answered {exc.response.status_code} for {path}"
-                + (f" ({detail})" if detail else "")
+                f"LitVar answered {exc.response.status_code} for {path}" + (f" ({detail})" if detail else "")
             ) from exc
         except httpx.HTTPError as exc:
             raise LitvarUnavailable(f"LitVar could not be reached for {path} ({exc})") from exc
@@ -481,9 +480,7 @@ def rsid_bearing_tables() -> dict[str, type[AuthoredModel]]:
     return {
         name: model
         for name, model in DRAFTABLE.items()
-        if isinstance(model, type)
-        and issubclass(model, AuthoredModel)
-        and "rsid" in model.model_fields
+        if isinstance(model, type) and issubclass(model, AuthoredModel) and "rsid" in model.model_fields
     }
 
 
@@ -571,9 +568,7 @@ def module_loci(spec_dir: Path) -> LocusRoster:
     return roster
 
 
-def _read_table(
-    spec_dir: Path, name: str, model: type
-) -> tuple[list, str | None]:
+def _read_table(spec_dir: Path, name: str, model: type) -> tuple[list, str | None]:
     """Rows, or the reason they were not read. A read-only pass never dies on an unparseable table."""
     try:
         path = resolve_sidecar(spec_dir, name) or spec_dir / name
@@ -751,9 +746,7 @@ def check_literature_coverage(
     total = len(rsids)
     if offline:
         report.loci = [
-            LocusCoverage(
-                rsid=rsid, asked_tier=_asked_tier(roster, rsid), tier="unchecked", reason="offline"
-            )
+            LocusCoverage(rsid=rsid, asked_tier=_asked_tier(roster, rsid), tier="unchecked", reason="offline")
             for rsid in rsids
         ]
         return report
@@ -786,22 +779,16 @@ def _one_locus(
     try:
         node = index.position_node(rsid)
         if node is None:
-            return LocusCoverage(
-                rsid=rsid, asked_tier=asked, tier="absent", reason="no_node_for_rsid"
-            )
+            return LocusCoverage(rsid=rsid, asked_tier=asked, tier="absent", reason="no_node_for_rsid")
         detail = index.node(node.node_id) or {}
-        caids = tuple(
-            str(caid).upper() for caid in (detail.get("clingen_ids") or []) if str(caid).strip()
-        )
+        caids = tuple(str(caid).upper() for caid in (detail.get("clingen_ids") or []) if str(caid).strip())
         position = index.pmids(node.node_id)
         # Every allele node at the locus, matched or not: the residue is *papers no allele node
         # claims*, so it is the union that comes out of it, not the module's own node alone.
         allele_pmids = {caid: index.pmids(n.node_id) for caid, n in _allele_nodes(index, caids)}
     except LitvarError as exc:
         logger.warning("LitVar could not answer for %s (%s)", rsid, exc)
-        return LocusCoverage(
-            rsid=rsid, asked_tier=asked, tier="unchecked", reason="index_unreachable"
-        )
+        return LocusCoverage(rsid=rsid, asked_tier=asked, tier="unchecked", reason="index_unreachable")
 
     residue = len(position - frozenset().union(*allele_pmids.values()))
     common = {
@@ -940,9 +927,7 @@ def verification_records(report: LiteratureCoverageReport) -> list[VerificationR
             skipped(
                 "literature_coverage",
                 "nothing_to_check",
-                detail=(
-                    "no authored table names an rsID, so there was no locus to ask LitVar about"
-                ),
+                detail=("no authored table names an rsID, so there was no locus to ask LitVar about"),
                 source=LITVAR_SOURCE,
             )
         ]

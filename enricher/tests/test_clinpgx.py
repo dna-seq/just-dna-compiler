@@ -87,14 +87,17 @@ def _archive(tmp_path: Path, vintage: ArchiveVintage = CURRENT_ARCHIVE) -> Path:
     return dest
 
 
-_YAML = (
-    'schema_version: "1.0"\n'
-    "module:\n  name: slco\n  title: T\n  report_title: T\n  description: d\n"
-)
+_YAML = 'schema_version: "1.0"\nmodule:\n  name: slco\n  title: T\n  report_title: T\n  description: d\n'
 
 _PHARM_COLUMNS = (
-    "rsid", "gene", "genotype", "drug", "phenotype_category", "annotation_id",
-    "evidence_level", "conclusion",
+    "rsid",
+    "gene",
+    "genotype",
+    "drug",
+    "phenotype_category",
+    "annotation_id",
+    "evidence_level",
+    "conclusion",
 )
 
 
@@ -204,8 +207,7 @@ def test_snapshot_grain_is_annotation_times_genotype(snapshot: Path) -> None:
     summaries = _slice_rows(CURRENT_ARCHIVE.annotations)
     known = {row[CURRENT_ARCHIVE.id_column] for row in summaries}
     children = [
-        row for row in _slice_rows(CURRENT_ARCHIVE.alleles)
-        if row[CURRENT_ARCHIVE.id_column] in known
+        row for row in _slice_rows(CURRENT_ARCHIVE.alleles) if row[CURRENT_ARCHIVE.id_column] in known
     ]
     frame = pl.read_parquet(snapshot / "data" / "annotations.parquet")
     assert frame.height == len(children)  # one row per (annotation, genotype), the joined grain
@@ -296,9 +298,7 @@ def test_three_annotations_for_one_variant_drug_are_not_false_conflicts(
     """
     faithful = _faithful_rows()
     assert len({row["evidence_level"] for row in faithful}) > 1, "the collision must survive a re-cut"
-    result = enrich_clinpgx(
-        _spec(tmp_path, _csv(faithful)), snapshot=snapshot, declared_use="non_commercial"
-    )
+    result = enrich_clinpgx(_spec(tmp_path, _csv(faithful)), snapshot=snapshot, declared_use="non_commercial")
     assert result.conflicts == []
     assert result.unmatched == []
 
@@ -306,16 +306,14 @@ def test_three_annotations_for_one_variant_drug_are_not_false_conflicts(
 def test_a_genuinely_stale_level_is_still_caught(snapshot: Path, tmp_path: Path) -> None:
     """The fix must not have made the check silent."""
     rows, moved = _stale(_faithful_rows())
-    result = enrich_clinpgx(
-        _spec(tmp_path, _csv(rows)), snapshot=snapshot, declared_use="non_commercial"
-    )
+    result = enrich_clinpgx(_spec(tmp_path, _csv(rows)), snapshot=snapshot, declared_use="non_commercial")
     assert len(result.conflicts) == 1
     reported = next(
-        row["evidence_level"] for row in _faithful_rows()
-        if row["annotation_id"] == moved["annotation_id"]
+        row["evidence_level"] for row in _faithful_rows() if row["annotation_id"] == moved["annotation_id"]
     )
     assert (result.conflicts[0].authored, result.conflicts[0].reported) == (
-        moved["evidence_level"], reported,
+        moved["evidence_level"],
+        reported,
     )
 
 
@@ -324,7 +322,9 @@ def test_strict_refuses_a_stale_level(snapshot: Path, tmp_path: Path) -> None:
     rows, _ = _stale(_faithful_rows())
     with pytest.raises(ClinPgxEnrichmentError):
         enrich_clinpgx(
-            _spec(tmp_path, _csv(rows)), snapshot=snapshot, mode="strict",
+            _spec(tmp_path, _csv(rows)),
+            snapshot=snapshot,
+            mode="strict",
             declared_use="non_commercial",
         )
 
@@ -338,13 +338,13 @@ def test_an_ambiguous_row_is_reported_not_guessed(snapshot: Path, tmp_path: Path
     assert any("was not checked" in w for w in result.warnings)
 
 
-def test_genotype_spelling_is_normalized_across_the_two_conventions(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_genotype_spelling_is_normalized_across_the_two_conventions(snapshot: Path, tmp_path: Path) -> None:
     """ClinPGx writes `CT`; this workspace writes `C/T`. They must match."""
     rows = [{**row, "genotype": _spelled("CT")} for row in _faithful_rows()]
     result = enrich_clinpgx(
-        _spec(tmp_path, _csv(rows)), snapshot=snapshot, declared_use="non_commercial",
+        _spec(tmp_path, _csv(rows)),
+        snapshot=snapshot,
+        declared_use="non_commercial",
     )
     assert result.conflicts == [] and result.unmatched == []
 
@@ -364,12 +364,11 @@ def test_declared_use_gate_applies_offline_too(snapshot: Path, tmp_path: Path) -
     faithful = _csv(_faithful_rows())
     with pytest.raises(LicenseRefusal):
         enrich_clinpgx(
-            _spec(tmp_path, faithful, "commercial"), snapshot=snapshot,
+            _spec(tmp_path, faithful, "commercial"),
+            snapshot=snapshot,
             declared_use="commercial",
         )
-    result = enrich_clinpgx(
-        _spec(tmp_path, faithful, "unstated"), snapshot=snapshot
-    )  # unstated
+    result = enrich_clinpgx(_spec(tmp_path, faithful, "unstated"), snapshot=snapshot)  # unstated
     assert result.rows == [] and result.warnings
 
 
@@ -386,9 +385,7 @@ def _records(spec_dir: Path) -> dict:
     return {r.check: r for r in read_verification(spec_dir / VERIFICATION_JSON).records}
 
 
-def test_a_run_that_compared_levels_records_what_it_compared(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_a_run_that_compared_levels_records_what_it_compared(snapshot: Path, tmp_path: Path) -> None:
     """The denominator comes from the pass, so the manifest cannot claim more than was looked up."""
     spec = _spec(tmp_path, _csv(_faithful_rows()))
     result = enrich_clinpgx(spec, snapshot=snapshot, declared_use="non_commercial")
@@ -409,9 +406,7 @@ def test_a_stale_level_is_recorded_as_a_finding(snapshot: Path, tmp_path: Path) 
     assert (record.subjects, record.findings) == (len(rows), 1)
 
 
-def test_an_ambiguous_row_counts_as_compared_and_not_as_a_finding(
-    snapshot: Path, tmp_path: Path
-) -> None:
+def test_an_ambiguous_row_counts_as_compared_and_not_as_a_finding(snapshot: Path, tmp_path: Path) -> None:
     """It WAS looked up; the answer was "cannot tell". That is a comparison, not an absence of one.
 
     Recording it as unexamined would understate the denominator and make the pass look like it skipped
@@ -434,9 +429,7 @@ def test_a_licensing_skip_is_not_spelled_offline(snapshot: Path, tmp_path: Path)
     assert record.subjects == 0 and record.detail
 
 
-def test_no_snapshot_records_the_skip_rather_than_a_clean_pass(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_no_snapshot_records_the_skip_rather_than_a_clean_pass(tmp_path: Path, monkeypatch) -> None:
     """The case the whole item is about: nothing ran, and the record has to say so.
 
     Without a record here the module is indistinguishable from one whose levels were all confirmed —

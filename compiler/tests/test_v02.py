@@ -66,9 +66,7 @@ _PROVENANCE = {
 }
 
 
-def _write_spec(
-    d: Path, *, provenance: bool = True, logo: bool = True, readme: bool = True
-) -> Path:
+def _write_spec(d: Path, *, provenance: bool = True, logo: bool = True, readme: bool = True) -> Path:
     d.mkdir(parents=True, exist_ok=True)
     (d / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
     (d / "variants.csv").write_text(_VARIANTS, encoding="utf-8")
@@ -133,9 +131,7 @@ def test_the_panel_block_still_compiles_and_says_it_is_going(tmp_path: Path) -> 
     # And a module without the block is silent: a deprecation nobody triggered is not a finding.
     plain = tmp_path / "plain"
     _write_spec(plain)
-    (plain / "module_spec.yaml").write_text(
-        _YAML[: _YAML.index("panel:")], encoding="utf-8"
-    )
+    (plain / "module_spec.yaml").write_text(_YAML[: _YAML.index("panel:")], encoding="utf-8")
     quiet = compile_module(plain, tmp_path / "o2", resolve_with_ensembl=False)
     assert quiet.success and not [w for w in quiet.warnings if "`panel:` block" in w]
 
@@ -221,9 +217,7 @@ def test_unsupported_readme_extension_rejected(tmp_path: Path) -> None:
     spec = _write_spec(tmp_path / "s", readme=False)
     doc = spec / "README.docx"
     doc.write_bytes(b"PK\x03\x04not-really-a-docx")
-    result = compile_module(
-        spec, tmp_path / "o", resolve_with_ensembl=False, readme_file=doc
-    )
+    result = compile_module(spec, tmp_path / "o", resolve_with_ensembl=False, readme_file=doc)
     assert not result.success
     assert any("readme must be one of" in e for e in result.errors)
 
@@ -345,9 +339,7 @@ def test_verify_catches_a_tampered_sidecar_but_tolerates_an_absent_one(tmp_path:
 def test_verify_manifest_checks_optional_files(tmp_path: Path) -> None:
     out = tmp_path / "o"
     m = _compile(_write_spec(tmp_path / "s"), out)
-    verify_manifest(
-        out, m, check_logs=True, check_provenance=True, check_logo=True, check_readme=True
-    )
+    verify_manifest(out, m, check_logs=True, check_provenance=True, check_logo=True, check_readme=True)
 
     (out / "provenance.json").write_text("tampered", encoding="utf-8")
     with pytest.raises(IntegrityError, match="provenance hash mismatch"):
@@ -453,9 +445,9 @@ def test_an_outrank_record_stays_out_of_both_identities(tmp_path: Path) -> None:
     bare = _write_spec(tmp_path / "bare", provenance=False)
     marked = _write_spec(tmp_path / "marked", provenance=False)
     (marked / "provenance.json").write_text(
-        json.dumps({**_PROVENANCE, "items": [
-            {"variant_key": "rs1801133", "outranks": {"clin_sig": "retraction"}}
-        ]}),
+        json.dumps(
+            {**_PROVENANCE, "items": [{"variant_key": "rs1801133", "outranks": {"clin_sig": "retraction"}}]}
+        ),
         encoding="utf-8",
     )
 
@@ -584,9 +576,7 @@ def attested(monkeypatch):
     return _write
 
 
-def test_a_check_that_found_something_is_said_where_the_author_is_standing(
-    tmp_path: Path, attested
-) -> None:
+def test_a_check_that_found_something_is_said_where_the_author_is_standing(tmp_path: Path, attested) -> None:
     """Nothing read `VerificationRecord.findings`, so fifty-two contested rows were silent (S70).
 
     The counts do reach `manifest.verification.checks[]`, so a consumer that goes looking finds them —
@@ -598,8 +588,13 @@ def test_a_check_that_found_something_is_said_where_the_author_is_standing(
     spec = attested(
         _write_spec(tmp_path / "s"),
         [
-            VerificationRecord(check="clinical_significance", subjects=141_616, findings=20,
-                               source="clinvar", detail="20 opposed: 1:100:A:G (pathogenic vs benign)"),
+            VerificationRecord(
+                check="clinical_significance",
+                subjects=141_616,
+                findings=20,
+                source="clinvar",
+                detail="20 opposed: 1:100:A:G (pathogenic vs benign)",
+            ),
             VerificationRecord(check="reference_allele", subjects=300, findings=0, source="ensembl"),
         ],
     )
@@ -698,9 +693,7 @@ def test_load_spec_strips_injected_authority_keys(tmp_path: Path) -> None:
     spec = _write_spec(tmp_path / "s")
     path = spec / "module_spec.yaml"
     path.write_text(
-        path.read_text(encoding="utf-8").replace(
-            "module:\n", "module:\n  namespace: someregistry\n", 1
-        ),
+        path.read_text(encoding="utf-8").replace("module:\n", "module:\n  namespace: someregistry\n", 1),
         encoding="utf-8",
     )
 

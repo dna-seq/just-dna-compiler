@@ -87,9 +87,7 @@ def test_an_already_canonical_version_records_no_coercion() -> None:
 
 
 @pytest.mark.parametrize("authored,coerced", sorted(_COERCED.items()))
-def test_the_manifest_publishes_what_the_author_wrote(
-    tmp_path: Path, authored: str, coerced: str
-) -> None:
+def test_the_manifest_publishes_what_the_author_wrote(tmp_path: Path, authored: str, coerced: str) -> None:
     """The whole additive ask: the fabrication is auditable in the artifact, not only in a build log.
 
     Asserted against `identity.version` in the same breath, because the claim is that the two cells
@@ -130,9 +128,7 @@ def test_the_compiler_still_warns_naming_both_values(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("authored", sorted(_COERCED))
-def test_the_published_field_is_a_fixed_point_across_the_round_trip(
-    tmp_path: Path, authored: str
-) -> None:
+def test_the_published_field_is_a_fixed_point_across_the_round_trip(tmp_path: Path, authored: str) -> None:
     """The defect this item could have shipped, in the same release as the item filed about it.
 
     `reverse_module` takes its `version` from the caller, who has `manifest.identity.version` — the

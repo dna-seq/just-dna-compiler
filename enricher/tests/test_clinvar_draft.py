@@ -46,9 +46,16 @@ _needs_snapshot = pytest.mark.skipif(
 )
 
 _RECORD = {
-    "chrom": "1", "start": 11796321, "ref": "G", "alt": "A", "rsid": "rs1801133",
-    "gene": "MTHFR", "clin_sig": "pathogenic", "review_stars": 2,
-    "condition": "Homocystinuria", "variation_id": "3520",
+    "chrom": "1",
+    "start": 11796321,
+    "ref": "G",
+    "alt": "A",
+    "rsid": "rs1801133",
+    "gene": "MTHFR",
+    "clin_sig": "pathogenic",
+    "review_stars": 2,
+    "condition": "Homocystinuria",
+    "variation_id": "3520",
 }
 
 
@@ -61,9 +68,7 @@ def test_identity_is_the_rsid_or_the_whole_coordinate_never_a_subset() -> None:
     partial coordinate would silently change which variant the row *is*."""
     assert _identity_cells(_RECORD) == {"rsid": "rs1801133"}
     positional = {**_RECORD, "rsid": ""}
-    assert _identity_cells(positional) == {
-        "chrom": "1", "start": 11796321, "ref": "G", "alts": "A"
-    }
+    assert _identity_cells(positional) == {"chrom": "1", "start": 11796321, "ref": "G", "alts": "A"}
     assert _identity_cells({**positional, "ref": ""}) is None  # incomplete → refused, not partial
 
 
@@ -74,8 +79,17 @@ def test_only_the_sources_own_call_is_folded_never_invented() -> None:
     assert cells["clinvar"] is True
     assert "benign" not in cells
     # nothing ClinVar does not publish
-    for never in ("weight", "direction", "effect_size", "effect_measure", "trait_efo_id",
-                  "acmg_sf", "curator", "method", "genotype"):
+    for never in (
+        "weight",
+        "direction",
+        "effect_size",
+        "effect_measure",
+        "trait_efo_id",
+        "acmg_sf",
+        "curator",
+        "method",
+        "genotype",
+    ):
         assert never not in cells
 
 
@@ -127,7 +141,9 @@ def test_widening_an_earlier_gene_inserts_into_its_block_without_touching_cells(
     before_cells = {tuple(r.items()) for r in before}
 
     result = draft_gene_panel(
-        tmp_path, ["MTHFR"], snapshot=_SNAPSHOT,
+        tmp_path,
+        ["MTHFR"],
+        snapshot=_SNAPSHOT,
         clin_sig=frozenset({"benign", "likely_benign"}),
     )
     assert result.added_for("variants.csv") > 0
@@ -178,9 +194,7 @@ def test_an_explicit_snapshot_is_taken_as_given(monkeypatch, tmp_path: Path) -> 
 
     monkeypatch.setattr(clinvar_draft, "resolve_clinvar_reference", explode)
     monkeypatch.setattr(clinvar_draft, "ensure_clinvar_snapshot", explode)
-    reference, warnings = clinvar_draft._resolve_snapshot(
-        tmp_path / "explicit", offline=False, download=True
-    )
+    reference, warnings = clinvar_draft._resolve_snapshot(tmp_path / "explicit", offline=False, download=True)
     assert reference == tmp_path / "explicit" and warnings == []
 
 
@@ -189,7 +203,8 @@ def test_a_cached_snapshot_is_used_without_downloading(monkeypatch, tmp_path: Pa
 
     monkeypatch.setattr(clinvar_draft, "resolve_clinvar_reference", lambda: tmp_path / "cached")
     monkeypatch.setattr(
-        clinvar_draft, "ensure_clinvar_snapshot",
+        clinvar_draft,
+        "ensure_clinvar_snapshot",
         lambda *_a, **_k: pytest.fail("provisioned despite a usable cache"),
     )
     reference, warnings = clinvar_draft._resolve_snapshot(None, offline=False, download=True)
@@ -213,7 +228,8 @@ def test_offline_without_a_snapshot_refuses_and_says_how_to_get_one(monkeypatch)
 
     monkeypatch.setattr(clinvar_draft, "resolve_clinvar_reference", lambda: None)
     monkeypatch.setattr(
-        clinvar_draft, "ensure_clinvar_snapshot",
+        clinvar_draft,
+        "ensure_clinvar_snapshot",
         lambda *_a, **_k: pytest.fail("--offline reached the network"),
     )
     with pytest.raises(ClinVarDraftError, match="no ClinVar snapshot found"):
@@ -229,7 +245,8 @@ def test_the_refusal_names_the_switch_that_actually_stopped_it(monkeypatch) -> N
 
     monkeypatch.setattr(clinvar_draft, "resolve_clinvar_reference", lambda: None)
     monkeypatch.setattr(
-        clinvar_draft, "ensure_clinvar_snapshot",
+        clinvar_draft,
+        "ensure_clinvar_snapshot",
         lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("HF unreachable")),
     )
     with pytest.raises(ClinVarDraftError) as offline:
@@ -281,7 +298,9 @@ def test_an_undecided_call_stubs_state_instead_of_refusing_the_row(tmp_path: Pat
         VariantRow(**cells, genotype="A/G")
     # The fix: stub it, like `genotype`, and the row validates by omission.
     partial = PartialRow(
-        model=VariantRow, cells=cells, stubbed=("genotype", "state"),
+        model=VariantRow,
+        cells=cells,
+        stubbed=("genotype", "state"),
         match_on=("rsid", "chrom", "start", "ref", "alts"),
     )
     assert partial.validation_errors() == []
@@ -290,7 +309,9 @@ def test_an_undecided_call_stubs_state_instead_of_refusing_the_row(tmp_path: Pat
 def test_a_decided_call_is_not_given_a_state_stub(tmp_path: Path) -> None:
     """Otherwise the fix would make work where the source already answered."""
     partial = PartialRow(
-        model=VariantRow, cells=_row_cells(_RECORD), stubbed=("genotype",),
+        model=VariantRow,
+        cells=_row_cells(_RECORD),
+        stubbed=("genotype",),
         match_on=("rsid", "chrom", "start", "ref", "alts"),
     )
     assert partial.validation_errors() == []
@@ -327,8 +348,11 @@ def test_an_undecided_panel_drafts_every_row_and_explains_the_state_stub(tmp_pat
     """End to end on real records. XG has 1★+ uncertain variants; before the fix this drafted zero
     variant rows and emitted one raw pydantic line per record."""
     result = draft_gene_panel(
-        tmp_path, ["XG"], snapshot=_SNAPSHOT,
-        clin_sig={"uncertain_significance"}, min_review_stars=1,
+        tmp_path,
+        ["XG"],
+        snapshot=_SNAPSHOT,
+        clin_sig={"uncertain_significance"},
+        min_review_stars=1,
     )
     rows = _rows(tmp_path / "variants.csv")
     assert result.added_for("variants.csv") == len(rows) > 0
@@ -359,13 +383,15 @@ def test_the_genotype_worklist_covers_the_open_rows_and_no_others(tmp_path: Path
     RM71 the scope is the file's open stubs rather than a single run's additions — a re-run therefore
     adds nothing and still reports the same worklist, which is the whole point of the widening.
     """
-    first = draft_gene_panel(tmp_path, ["XG"], snapshot=_SNAPSHOT,
-                             clin_sig={"uncertain_significance"}, min_review_stars=1)
+    first = draft_gene_panel(
+        tmp_path, ["XG"], snapshot=_SNAPSHOT, clin_sig={"uncertain_significance"}, min_review_stars=1
+    )
     worklist = [w for w in first.warnings if w.strip().startswith("genotype for ")]
     assert len(worklist) == first.added_for("variants.csv")
 
-    again = draft_gene_panel(tmp_path, ["XG"], snapshot=_SNAPSHOT,
-                             clin_sig={"uncertain_significance"}, min_review_stars=1)
+    again = draft_gene_panel(
+        tmp_path, ["XG"], snapshot=_SNAPSHOT, clin_sig={"uncertain_significance"}, min_review_stars=1
+    )
     assert again.added_for("variants.csv") == 0
     assert [w for w in again.warnings if w.strip().startswith("genotype for ")] == worklist
     assert [w for w in again.warnings if "`state` placeholder" in w] == [
@@ -404,7 +430,7 @@ def test_chr_y_is_decided_per_locus_because_par1_and_par2_are_diploid() -> None:
     The expectation is computed from the same predicate the compiler's ploidy check uses rather than
     hardcoded, so a corrected PAR interval moves both together.
     """
-    par = {**_RECORD, "chrom": "Y", "start": 500_000, "ref": "C", "alt": "T"}   # inside PAR1
+    par = {**_RECORD, "chrom": "Y", "start": 500_000, "ref": "C", "alt": "T"}  # inside PAR1
     outside = {**_RECORD, "chrom": "Y", "start": 2_787_207, "ref": "G", "alt": "A"}  # SRY
     assert in_pseudoautosomal_region("Y", par["start"]) is True
     assert in_pseudoautosomal_region("Y", outside["start"]) is False
@@ -450,8 +476,7 @@ def test_the_compiler_accepts_what_the_provider_wrote_for_a_haploid_contig(tmp_p
     """
     draft_gene_panel(tmp_path, ["MT-TL1"], snapshot=_SNAPSHOT, min_review_stars=1)
     (tmp_path / "module_spec.yaml").write_text(
-        "schema_version: '1.0'\nmodule:\n  name: mt\n  title: MT\n  description: d\n"
-        "  report_title: MT\n",
+        "schema_version: '1.0'\nmodule:\n  name: mt\n  title: MT\n  description: d\n  report_title: MT\n",
         encoding="utf-8",
     )
     drafted = compile_module(tmp_path, tmp_path / "out", resolve_with_ensembl=False)
@@ -522,10 +547,7 @@ def test_every_draft_panel_parameter_is_reachable_from_the_command_line() -> Non
 
     from just_dna_enricher.cli import draft_panel_
 
-    api = {
-        _CLI_SPELLINGS.get(name, name)
-        for name in inspect.signature(draft_gene_panel).parameters
-    }
+    api = {_CLI_SPELLINGS.get(name, name) for name in inspect.signature(draft_gene_panel).parameters}
     assert api <= set(inspect.signature(draft_panel_).parameters)
 
 
@@ -537,12 +559,11 @@ def test_no_download_refuses_instead_of_provisioning(monkeypatch, tmp_path: Path
 
     monkeypatch.setattr(clinvar_draft, "resolve_clinvar_reference", lambda: None)
     monkeypatch.setattr(
-        clinvar_draft, "ensure_clinvar_snapshot",
+        clinvar_draft,
+        "ensure_clinvar_snapshot",
         lambda *_a, **_k: pytest.fail("--no-download provisioned a snapshot"),
     )
-    result = CliRunner().invoke(
-        app, ["draft-panel", str(tmp_path), "--gene", "HBB", "--no-download"]
-    )
+    result = CliRunner().invoke(app, ["draft-panel", str(tmp_path), "--gene", "HBB", "--no-download"])
     assert result.exit_code == 1
     assert "no ClinVar snapshot found" in result.output
 
@@ -559,12 +580,30 @@ def test_no_download_refuses_instead_of_provisioning(monkeypatch, tmp_path: Path
 #: record is the one that was being dropped, because `select_by_gene` orders by `ref` before
 #: `review_stars DESC` and the survivor is therefore decided by allele spelling.
 _MIRROR_PAIR = [
-    {**_RECORD, "rsid": "rs80359609", "chrom": "13", "start": 32340301, "ref": "A", "alt": "AT",
-     "gene": "BRCA2", "review_stars": 1, "condition": "Hereditary breast ovarian cancer syndrome",
-     "variation_id": "111111"},
-    {**_RECORD, "rsid": "rs80359609", "chrom": "13", "start": 32340301, "ref": "ATT", "alt": "A",
-     "gene": "BRCA2", "review_stars": 3, "condition": "Breast-ovarian cancer, familial 2",
-     "variation_id": "52138"},
+    {
+        **_RECORD,
+        "rsid": "rs80359609",
+        "chrom": "13",
+        "start": 32340301,
+        "ref": "A",
+        "alt": "AT",
+        "gene": "BRCA2",
+        "review_stars": 1,
+        "condition": "Hereditary breast ovarian cancer syndrome",
+        "variation_id": "111111",
+    },
+    {
+        **_RECORD,
+        "rsid": "rs80359609",
+        "chrom": "13",
+        "start": 32340301,
+        "ref": "ATT",
+        "alt": "A",
+        "gene": "BRCA2",
+        "review_stars": 3,
+        "condition": "Breast-ovarian cancer, familial 2",
+        "variation_id": "52138",
+    },
 ]
 
 
@@ -587,9 +626,7 @@ def test_a_dup_del_mirror_pair_does_not_collapse_onto_one_identity() -> None:
     """
     signatures = _drafted_signatures(_MIRROR_PAIR)
     assert None not in signatures, "both records carry a complete coordinate, so neither is unkeyable"
-    assert len(set(signatures)) == len(_MIRROR_PAIR), (
-        f"the mirror pair collapsed onto {set(signatures)}"
-    )
+    assert len(set(signatures)) == len(_MIRROR_PAIR), f"the mirror pair collapsed onto {set(signatures)}"
     assert multi_allelic_rsids(_MIRROR_PAIR) == {"rs80359609"}
 
 
@@ -599,6 +636,7 @@ def test_the_pair_really_did_collapse_under_the_old_grouping() -> None:
     Without this the test above proves the identities differ, not that they ever did not — and the
     old rule is three lines, so restating it is cheaper than trusting the claim.
     """
+
     def _old_predicate(records):
         alts_by_site: dict[tuple, set[str]] = {}
         for record in records:
@@ -667,8 +705,10 @@ def test_no_identity_collapses_on_a_real_cancer_panel(tmp_path: Path) -> None:
     from just_dna_enricher.clinvar import select_by_gene
 
     records = select_by_gene(
-        _SNAPSHOT, ["BRCA1", "BRCA2", "ATM", "MLH1", "MSH2"],
-        clin_sig=sorted(DEFAULT_CLIN_SIG), min_review_stars=0,
+        _SNAPSHOT,
+        ["BRCA1", "BRCA2", "ATM", "MLH1", "MSH2"],
+        clin_sig=sorted(DEFAULT_CLIN_SIG),
+        min_review_stars=0,
     )
     assert records, "the snapshot must hold these genes or this proves nothing"
     signatures = _drafted_signatures(records)
@@ -829,12 +869,23 @@ def test_a_real_re_draft_reports_every_row_the_fix_supersedes(tmp_path: Path) ->
 # nor a network. The real-snapshot tests above still cover the same paths against 4.4M records.
 
 _PANEL_RECORD = {
-    "chrom": "16", "start": 23603601, "ref": "G", "alt": "T", "rsid": "rs118203998",
-    "variation_id": "126595", "allele_id": "1", "gene": "PALB2", "genes": "PALB2",
-    "clin_sig": "pathogenic", "clin_sig_raw": "Pathogenic",
-    "review_status": "criteria_provided,_multiple_submitters,_no_conflicts", "review_stars": 2,
+    "chrom": "16",
+    "start": 23603601,
+    "ref": "G",
+    "alt": "T",
+    "rsid": "rs118203998",
+    "variation_id": "126595",
+    "allele_id": "1",
+    "gene": "PALB2",
+    "genes": "PALB2",
+    "clin_sig": "pathogenic",
+    "clin_sig_raw": "Pathogenic",
+    "review_status": "criteria_provided,_multiple_submitters,_no_conflicts",
+    "review_stars": 2,
     "condition": "Hereditary breast ovarian cancer syndrome",
-    "molecular_consequence": None, "variant_type": None, "origin": None,
+    "molecular_consequence": None,
+    "variant_type": None,
+    "origin": None,
 }
 
 
@@ -878,9 +929,7 @@ def _named_in(lines: list[str]) -> set[str]:
 
 def _tree(spec: Path) -> dict[str, bytes]:
     """Every byte under a spec directory, so "wrote nothing" is measured rather than sampled."""
-    return {
-        str(p.relative_to(spec)): p.read_bytes() for p in sorted(spec.rglob("*")) if p.is_file()
-    }
+    return {str(p.relative_to(spec)): p.read_bytes() for p in sorted(spec.rglob("*")) if p.is_file()}
 
 
 def test_a_second_run_reprints_the_worklist_because_the_stubs_are_still_open(tmp_path: Path) -> None:
@@ -916,9 +965,15 @@ def test_the_state_stub_is_reported_off_the_file_too_or_its_denominator_dangles(
     """
     undecided = [
         _panel_record(clin_sig="uncertain_significance", clin_sig_raw="Uncertain_significance"),
-        _panel_record(start=23619207, ref="C", alt="A", rsid="rs180177102",
-                      variation_id="126596", clin_sig="uncertain_significance",
-                      clin_sig_raw="Uncertain_significance"),
+        _panel_record(
+            start=23619207,
+            ref="C",
+            alt="A",
+            rsid="rs180177102",
+            variation_id="126596",
+            clin_sig="uncertain_significance",
+            clin_sig_raw="Uncertain_significance",
+        ),
     ]
     snapshot = _snapshot_of(tmp_path, undecided)
     spec = _spec_dir(tmp_path)
@@ -944,7 +999,11 @@ def test_a_settled_row_leaves_the_worklist_and_a_refused_row_never_enters_it(tmp
     and a settled one no longer carries the placeholder.
     """
     refused = _panel_record(
-        start=23640000, ref="T", alt="C", rsid="rs2000000001", variation_id="126598",
+        start=23640000,
+        ref="T",
+        alt="C",
+        rsid="rs2000000001",
+        variation_id="126598",
         clin_sig="not_a_clinvar_call",
     )
     snapshot = _snapshot_of(tmp_path, [*_PALB2, refused])
@@ -1005,8 +1064,16 @@ def test_a_placeholder_row_this_run_cannot_describe_is_named_with_its_alleles_wi
     withheld, never guessed — but the rows are still work, so they are counted and their genes named.
     """
     other = [
-        _panel_record(chrom="17", start=43045703, ref="C", alt="T", rsid="rs80357906",
-                      gene="BRCA1", genes="BRCA1", variation_id="17662"),
+        _panel_record(
+            chrom="17",
+            start=43045703,
+            ref="C",
+            alt="T",
+            rsid="rs80357906",
+            gene="BRCA1",
+            genes="BRCA1",
+            variation_id="17662",
+        ),
     ]
     snapshot = _snapshot_of(tmp_path, [*_PALB2, *other])
     spec = _spec_dir(tmp_path)
@@ -1030,8 +1097,14 @@ def test_a_haploid_row_is_written_whole_so_it_never_becomes_worklist(tmp_path: P
     """`sole_expressible_genotype` decided that row, so naming it would be work that does not exist —
     the defect the worklist was first narrowed to fix, which the widening must not reintroduce."""
     mito = _panel_record(
-        chrom="MT", start=3243, ref="A", alt="G", rsid="rs199474657", gene="MT-TL1",
-        genes="MT-TL1", variation_id="9611",
+        chrom="MT",
+        start=3243,
+        ref="A",
+        alt="G",
+        rsid="rs199474657",
+        gene="MT-TL1",
+        genes="MT-TL1",
+        variation_id="9611",
     )
     snapshot = _snapshot_of(tmp_path, [*_PALB2, mito])
     spec = _spec_dir(tmp_path)
@@ -1081,9 +1154,9 @@ def test_a_scaffolded_template_row_is_not_drafting_work(tmp_path: Path) -> None:
     assert not [w for w in result.warnings if "alleles this run cannot state" in w], (
         "and it must not be reported as a row whose alleles some other run could state"
     )
-    assert TEMPLATE_PLACEHOLDER not in "".join(
-        w for w in result.warnings if "`state` placeholder" in w
-    ), "the sentinel is never a row label"
+    assert TEMPLATE_PLACEHOLDER not in "".join(w for w in result.warnings if "`state` placeholder" in w), (
+        "the sentinel is never a row label"
+    )
 
 
 def test_both_stub_lists_name_a_row_the_same_way(tmp_path: Path) -> None:
@@ -1093,8 +1166,13 @@ def test_both_stub_lists_name_a_row_the_same_way(tmp_path: Path) -> None:
     way to cross-reference the two lists."""
     multi = [
         _panel_record(clin_sig="uncertain_significance", clin_sig_raw="Uncertain_significance"),
-        _panel_record(ref="G", alt="C", variation_id="126599",
-                      clin_sig="uncertain_significance", clin_sig_raw="Uncertain_significance"),
+        _panel_record(
+            ref="G",
+            alt="C",
+            variation_id="126599",
+            clin_sig="uncertain_significance",
+            clin_sig_raw="Uncertain_significance",
+        ),
     ]
     snapshot = _snapshot_of(tmp_path, multi)
     spec = _spec_dir(tmp_path)

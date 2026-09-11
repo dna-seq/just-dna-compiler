@@ -39,9 +39,7 @@ logger = logging.getLogger(__name__)
 
 #: The catalogue on the default branch. Used when no release is pinned, and named here rather than
 #: assembled at the call site so `release.json` records the URL the bytes actually came from.
-DEFAULT_STRCHIVE_URL = (
-    "https://raw.githubusercontent.com/dashnowlab/STRchive/main/data/STRchive-loci.json"
-)
+DEFAULT_STRCHIVE_URL = "https://raw.githubusercontent.com/dashnowlab/STRchive/main/data/STRchive-loci.json"
 
 
 def catalogue_url(release: str | None = None) -> str:
@@ -86,7 +84,10 @@ def download_catalogue(dest: Path, url: str = DEFAULT_STRCHIVE_URL) -> tuple[Pat
     directory as it found it.
     """
     streamed = stream_to_file(
-        dest, url, error_cls=StrchiveUnavailable, what="the STRchive catalogue",
+        dest,
+        url,
+        error_cls=StrchiveUnavailable,
+        what="the STRchive catalogue",
         remedy="Pass --catalogue <file> to build from a copy you already hold.",
     )
     return streamed.path, streamed.sha256

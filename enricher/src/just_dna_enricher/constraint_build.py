@@ -69,7 +69,7 @@ _COLUMN_MAP: dict[str, str] = {
     "gene_id": "gene_id",
     "transcript": "transcript",
     "lof.pLI": "pli",
-    "lof.oe_ci.upper": "loeuf",   # LOEUF — stored under the name clinical readers ask for it by
+    "lof.oe_ci.upper": "loeuf",  # LOEUF — stored under the name clinical readers ask for it by
     "lof.oe": "oe_lof",
     "lof.oe_ci.lower": "oe_lof_lower",
     "lof.z_score": "lof_z",
@@ -240,7 +240,10 @@ def download_constraint_tsv(dest: Path, url: str = DEFAULT_CONSTRAINT_URL) -> Pa
     one rule rather than eleven copies of one (RM187).
     """
     return stream_to_file(
-        dest, url, error_cls=ConstraintUnavailable, what="the gnomAD constraint TSV",
+        dest,
+        url,
+        error_cls=ConstraintUnavailable,
+        what="the gnomAD constraint TSV",
         remedy="Pass --source constraint=<tsv> to build from a copy you already hold.",
     ).path
 
@@ -301,7 +304,10 @@ def build_snapshot(
     logger.info(
         "Built gnomAD constraint snapshot: %d genes from %d transcript rows → %s "
         "(%d gene(s) had no MANE/canonical Ensembl row and were dropped)",
-        frame.height, source_rows, parquet_path, len(unresolved),
+        frame.height,
+        source_rows,
+        parquet_path,
+        len(unresolved),
     )
     return ConstraintBuildResult(
         out_dir=out_dir,

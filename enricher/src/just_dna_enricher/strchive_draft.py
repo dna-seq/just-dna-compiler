@@ -85,9 +85,9 @@ DRAFTED_COLUMNS: tuple[str, ...] = ("gene", "repeat_unit", "measure_kind", "trai
 #: What a drafted row never carries. Derived, and it is what the band half of the split means in code:
 #: `measure_min`, `measure_max`, `measure_tiling` and the per-band `direction`/`clin_sig`/`phenotype`
 #: are all in here, and a test asserts so by name because those are the ones the measurement was about.
-WITHHELD_COLUMNS: frozenset[str] = frozenset(
-    authored_field_names(RepeatAlleleRow)
-) - set(DRAFTED_COLUMNS) - set(_STUBBED)
+WITHHELD_COLUMNS: frozenset[str] = (
+    frozenset(authored_field_names(RepeatAlleleRow)) - set(DRAFTED_COLUMNS) - set(_STUBBED)
+)
 
 #: How a MONDO id is spelled as a `trait_efo_id`. STRchive publishes the bare numeric part.
 _MONDO_PREFIX = "MONDO_"
@@ -130,9 +130,9 @@ class StrchiveDraftResult:
 #: Why a locus was not drafted. Named rather than counted anonymously: each one sends the author
 #: somewhere different, and a bare "12 skipped" is the aggregate that hides all three.
 WITHHELD_REASONS: tuple[str, ...] = (
-    "no_motif",          # the catalogue publishes no pathogenic motif, so the row has no key
-    "contested_key",     # several loci share (gene, motif); picking one would depend on file order
-    "incomplete_row",    # a required cell the source does not supply — derived from the model
+    "no_motif",  # the catalogue publishes no pathogenic motif, so the row has no key
+    "contested_key",  # several loci share (gene, motif); picking one would depend on file order
+    "incomplete_row",  # a required cell the source does not supply — derived from the model
 )
 
 
@@ -155,7 +155,7 @@ def _trait_curie(locus: StrchiveLocus) -> str | None:
     stripped = raw
     for prefix in (_MONDO_PREFIX, "MONDO:"):
         if stripped.upper().startswith(prefix.upper()):
-            stripped = stripped[len(prefix):]
+            stripped = stripped[len(prefix) :]
             break
     return f"{_MONDO_PREFIX}{stripped}" if stripped else None
 
@@ -199,9 +199,7 @@ def _partial(locus: StrchiveLocus, motif: str) -> tuple[PartialRow | None, list[
     missing = _missing_required(cells)
     if missing:
         return None, missing
-    return PartialRow(
-        model=RepeatAlleleRow, cells=cells, stubbed=_STUBBED, match_on=_MATCH_ON
-    ), []
+    return PartialRow(model=RepeatAlleleRow, cells=cells, stubbed=_STUBBED, match_on=_MATCH_ON), []
 
 
 def draft_repeat_loci(
@@ -241,15 +239,11 @@ def draft_repeat_loci(
     if refusal is not None:  # pragma: no cover - unreachable while the terms stay permissive
         raise StrchiveDraftError(refusal)
 
-    loaded = (
-        catalogue if isinstance(catalogue, StrchiveCatalogue) else load_strchive_catalogue(catalogue)
-    )
+    loaded = catalogue if isinstance(catalogue, StrchiveCatalogue) else load_strchive_catalogue(catalogue)
     result.dataset = loaded.dataset
 
     wanted = {g.strip().upper() for g in genes if g.strip()}
-    admitted = [
-        locus for locus in loaded.loci if not wanted or locus.gene.upper() in wanted
-    ]
+    admitted = [locus for locus in loaded.loci if not wanted or locus.gene.upper() in wanted]
     result.candidates = len(admitted)
 
     # Over the admitted set, before any row is built.
@@ -285,9 +279,7 @@ def draft_repeat_loci(
         partials.append(row)
 
     if partials:
-        result.report = append_partial_rows(
-            spec_dir, REPEAT_ALLELES_CSV, partials, dry_run=dry_run
-        )
+        result.report = append_partial_rows(spec_dir, REPEAT_ALLELES_CSV, partials, dry_run=dry_run)
 
     # Carried on the result, not logged: every caller here renders `warnings` itself, and
     # `civic_draft`/`clinvar_draft` do the same. Logging them as well printed each note twice.
@@ -315,7 +307,10 @@ def draft_repeat_loci(
         # actually being added, since a re-draft that added none changed nothing to be honest about.
         if result.drafted:
             superseded = withdraw_stale_dataset(
-                spec_dir, STRCHIVE_TERMS.source, "annotation", result.dataset,
+                spec_dir,
+                STRCHIVE_TERMS.source,
+                "annotation",
+                result.dataset,
                 error=StrchiveDraftError,
             )
             if superseded is not None:

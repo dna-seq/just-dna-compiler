@@ -287,8 +287,9 @@ class ReleaseRecord(BaseModel):
         making the silence illegal is what forces a new axis to be answered — with `None` if it
         cannot be measured — on every record rather than defaulting to whatever the reader assumes.
         """
-        canonical = {check_vocab(name, VALID_RELEASE_OUTPUT_AXES, "axes"): moved
-                     for name, moved in value.items()}
+        canonical = {
+            check_vocab(name, VALID_RELEASE_OUTPUT_AXES, "axes"): moved for name, moved in value.items()
+        }
         if set(canonical) != set(VALID_RELEASE_OUTPUT_AXES):
             missing = sorted(VALID_RELEASE_OUTPUT_AXES - set(canonical))
             raise ValueError(f"axes must name every release output axis; missing: {missing}")
@@ -604,8 +605,7 @@ DROPPED_ROWS_CONDITION: str = (
 #: `load_csv_rows` output directly gives a different answer, because the fold is the part that
 #: silently produces a wrong one.
 _STATS_RECIPE: str = (
-    "rows, _build = spec_tables(spec_dir); "
-    "module_stats(rows.get('variants.csv', []), rows)[{key!r}]"
+    "rows, _build = spec_tables(spec_dir); module_stats(rows.get('variants.csv', []), rows)[{key!r}]"
 )
 
 AUTHORED_ROW_DERIVED_FIELDS: tuple[RosterEntry, ...] = (
@@ -877,7 +877,7 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
                 kind="correction",
                 detail=(
                     "RM110 normalized gnomAD's flag list, which the snapshot route had stored as a "
-                    "JSON array literal — `\"[]\"` on 17,403 of the published v4.1 snapshot's 18,111 "
+                    'JSON array literal — `"[]"` on 17,403 of the published v4.1 snapshot\'s 18,111 '
                     "rows, a real literal on the other 708, and not one row null. The cell changes "
                     "value, so `gene_metrics.parquet` and `artifact.digest` move on any module "
                     "compiled from that snapshot. A CORRECTION, not an addition: the value we "
@@ -992,7 +992,7 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
             "carrying that table. `content_signature` stayed at 0/15 through it. "
             "`cyp2c9_warfarin_grch37` is unmeasured rather than unchanged: RM70 added "
             "`requires_callable` to its `pharm_variants.csv`, which 0.6.6 refuses under "
-            "`extra=\"forbid\"`, so its authored input is not byte-identical across the interval and "
+            '`extra="forbid"`, so its authored input is not byte-identical across the interval and '
             "no like-for-like comparison exists for it."
         ),
     ),

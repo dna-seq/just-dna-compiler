@@ -69,8 +69,11 @@ def _unattested(spec: Path) -> Path:
 def _records() -> list[VerificationRecord]:
     return [
         VerificationRecord(
-            check="clinical_significance", subjects=7, findings=1,
-            source="clinvar", release="2026-06-27",
+            check="clinical_significance",
+            subjects=7,
+            findings=1,
+            source="clinvar",
+            release="2026-06-27",
         ),
         VerificationRecord(check="reference_allele", skipped="offline", detail="no egress"),
     ]

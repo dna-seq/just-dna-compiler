@@ -34,10 +34,25 @@ _DOCS = Path(__file__).resolve().parents[2] / "docs"
 #: number parser: the point is to read the words these two files actually use, and a word outside
 #: this map should fail loudly as an unreadable claim rather than be silently skipped.
 _WORDS: dict[str, int] = {
-    "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
-    "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
-    "nineteen": 19, "twenty": 20, "twenty-one": 21, "twenty-two": 22, "twenty-three": 23,
-    "twenty-four": 24, "twenty-five": 25,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+    "twenty-one": 21,
+    "twenty-two": 22,
+    "twenty-three": 23,
+    "twenty-four": 24,
+    "twenty-five": 25,
 }
 
 
@@ -57,9 +72,7 @@ _NOT_PER_TABLE = {"fact_signature", "content_signature", "verify_signature"}
 
 
 def _per_table_signatures() -> set[str]:
-    return {
-        name for name in dir(integrity) if name.endswith("_signature")
-    } - _NOT_PER_TABLE
+    return {name for name in dir(integrity) if name.endswith("_signature")} - _NOT_PER_TABLE
 
 
 def test_schemas_states_the_sidecar_count_it_says_it_derives() -> None:
@@ -102,7 +115,11 @@ def test_the_two_spelled_numbers_agree_with_the_roster() -> None:
     ("pattern", "expected", "what"),
     [
         (r"(\w+[- ]?\w*) names\. `LEAD_PARQUETS`", lambda: len(ARTIFACT_PARQUETS), "ARTIFACT_PARQUETS"),
-        (r"applied to the (\w+) covered derived tables", lambda: len(OVERRIDABLE_TABLES), "OVERRIDABLE_TABLES"),
+        (
+            r"applied to the (\w+) covered derived tables",
+            lambda: len(OVERRIDABLE_TABLES),
+            "OVERRIDABLE_TABLES",
+        ),
     ],
 )
 def test_compiler_doc_counts_match_the_registries(pattern: str, expected, what: str) -> None:

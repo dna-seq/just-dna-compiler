@@ -204,8 +204,12 @@ def generate(
     try:
         subprocess.run(
             [
-                sys.executable, "-m", "grpc_tools.protoc",
-                f"-I{root}", f"--python_out={root}", f"--grpc_python_out={root}",
+                sys.executable,
+                "-m",
+                "grpc_tools.protoc",
+                f"-I{root}",
+                f"--python_out={root}",
+                f"--grpc_python_out={root}",
                 *(f"{staged_prefix}{name}" for name in PROTOS),
             ],
             check=True,

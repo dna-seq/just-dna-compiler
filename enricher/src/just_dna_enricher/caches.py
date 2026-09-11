@@ -363,9 +363,7 @@ def _rebuild_clinvar(request: RebuildRequest) -> RebuildOutcome:
     """
     request.out_dir.mkdir(parents=True, exist_ok=True)
     try:
-        vcf = request.source or clinvar_build.download_clinvar_vcf(
-            request.out_dir / "clinvar.vcf.gz"
-        )
+        vcf = request.source or clinvar_build.download_clinvar_vcf(request.out_dir / "clinvar.vcf.gz")
         result = clinvar_build.build_snapshot(vcf, request.out_dir)
     except (clinvar_build.ClinVarBuildError, FileNotFoundError, ImportError, OSError) as exc:
         return RebuildOutcome("clinvar", False, str(exc))
@@ -373,12 +371,11 @@ def _rebuild_clinvar(request: RebuildRequest) -> RebuildOutcome:
         citations_txt, citations_sha = clinvar_build.download_var_citations(
             request.out_dir / "var_citations.txt"
         )
-        citations = clinvar_build.build_citations(
-            citations_txt, request.out_dir, source_sha256=citations_sha
-        )
+        citations = clinvar_build.build_citations(citations_txt, request.out_dir, source_sha256=citations_sha)
     except (clinvar_build.ClinVarBuildError, FileNotFoundError, ImportError, OSError) as exc:
         return RebuildOutcome(
-            "clinvar", False,
+            "clinvar",
+            False,
             f"the records built ({result.record_count} over {len(result.chromosomes)} "
             f"chromosomes) but the citations half did not: {exc}. The snapshot in "
             f"{request.out_dir} carries no citations table, so publishing it would describe one "
@@ -387,7 +384,8 @@ def _rebuild_clinvar(request: RebuildRequest) -> RebuildOutcome:
             None,
         )
     return RebuildOutcome(
-        "clinvar", True,
+        "clinvar",
+        True,
         f"{result.record_count} records over {len(result.chromosomes)} chromosomes, "
         f"clinvar_file_date {result.clinvar_file_date}, "
         f"{citations.row_count} citation links",
@@ -403,12 +401,17 @@ def _rebuild_constraint(request: RebuildRequest) -> RebuildOutcome:
         )
         result = constraint_build.build_snapshot(tsv, request.out_dir)
     except (
-        constraint_build.ConstraintBuildError, FileNotFoundError, ImportError, OSError,
+        constraint_build.ConstraintBuildError,
+        FileNotFoundError,
+        ImportError,
+        OSError,
     ) as exc:
         return RebuildOutcome("constraint", False, str(exc))
     return RebuildOutcome(
-        "constraint", True,
-        f"{result.gene_count} genes from {result.source_rows} transcript rows", result.out_dir,
+        "constraint",
+        True,
+        f"{result.gene_count} genes from {result.source_rows} transcript rows",
+        result.out_dir,
     )
 
 
@@ -425,13 +428,16 @@ def _rebuild_clinpgx(request: RebuildRequest) -> RebuildOutcome:
                 request.out_dir / clinpgx_build.CURRENT_ARCHIVE.archive
             )
         result = clinpgx_build.build_snapshot(
-            archive, request.out_dir,
-            source_url=clinpgx_build.DEFAULT_CLINPGX_URL, source_sha256=sha,
+            archive,
+            request.out_dir,
+            source_url=clinpgx_build.DEFAULT_CLINPGX_URL,
+            source_sha256=sha,
         )
     except (clinpgx_build.ClinPgxArchiveError, ImportError, OSError) as exc:
         return RebuildOutcome("clinpgx", False, str(exc))
     return RebuildOutcome(
-        "clinpgx", True,
+        "clinpgx",
+        True,
         f"{result.annotation_count} annotations over {len(result.genes)} genes, "
         f"release {result.created_date}",
         result.parquet_path.parent.parent,
@@ -447,7 +453,10 @@ def _rebuild_cpic(request: RebuildRequest) -> RebuildOutcome:
     except (cpic_build.CpicBuildError, ImportError, OSError) as exc:
         return RebuildOutcome("cpic", False, str(exc))
     return RebuildOutcome(
-        "cpic", True, f"{result.total_rows} rows over {result.gene_count} genes", result.out_dir,
+        "cpic",
+        True,
+        f"{result.total_rows} rows over {result.gene_count} genes",
+        result.out_dir,
     )
 
 
@@ -471,7 +480,8 @@ def _rebuild_pharmvar(request: RebuildRequest) -> RebuildOutcome:
     load_env()
     if not os.environ.get(pharmvar.API_KEY_ENV):
         return RebuildOutcome(
-            "pharmvar", None,
+            "pharmvar",
+            None,
             f"{missing_credential_reason(pharmvar.API_KEY_ENV)}. PharmVar's terms §2 make the key "
             f"personal and non-transferable, so there is nothing to fall back to",
         )
@@ -480,7 +490,8 @@ def _rebuild_pharmvar(request: RebuildRequest) -> RebuildOutcome:
     except (ImportError, OSError, pharmvar.PharmVarError) as exc:
         return RebuildOutcome("pharmvar", False, str(exc))
     return RebuildOutcome(
-        "pharmvar", True,
+        "pharmvar",
+        True,
         f"{result.allele_count} alleles over {result.gene_count} genes on {result.genome_build}",
         result.out_dir,
     )
@@ -489,13 +500,15 @@ def _rebuild_pharmvar(request: RebuildRequest) -> RebuildOutcome:
 def _rebuild_civic(request: RebuildRequest) -> RebuildOutcome:
     if request.pin is None:
         return RebuildOutcome(
-            "civic", None,
+            "civic",
+            None,
             "needs a release date to pin (--pin civic=<YYYY-MM-DD>): CIViC publishes dated bulk "
             "files and a build from an unnamed one cannot be re-run",
         )
     if request.source is not None:
         return RebuildOutcome(
-            "civic", None,
+            "civic",
+            None,
             "takes three input files (evidence, variants, profiles) and --source can name one, so "
             "a local build goes through `civic build` — two of the three is not a build",
         )
@@ -519,7 +532,10 @@ def _rebuild_civic(request: RebuildRequest) -> RebuildOutcome:
             for name in names
         }
         result = civic_build.build_snapshot(
-            got[names[0]].path, got[names[1]].path, got[names[2]].path, request.out_dir,
+            got[names[0]].path,
+            got[names[1]].path,
+            got[names[2]].path,
+            request.out_dir,
             release=request.pin,
             evidence_sha256=got[names[0]].sha256,
             variant_sha256=got[names[1]].sha256,
@@ -528,7 +544,8 @@ def _rebuild_civic(request: RebuildRequest) -> RebuildOutcome:
     except (civic_build.CivicBuildError, ImportError, OSError) as exc:
         return RebuildOutcome("civic", False, str(exc))
     return RebuildOutcome(
-        "civic", True,
+        "civic",
+        True,
         f"{result.record_count} rows over {result.variants} variants, dataset {result.dataset}, "
         f"status basis {result.status_basis}",
         result.parquet_file.parent.parent,
@@ -541,18 +558,20 @@ def _rebuild_pubmind(request: RebuildRequest) -> RebuildOutcome:
         if request.source is not None:
             result = pubmind_build.build_snapshot(request.source, request.out_dir)
         else:
-            fetched = pubmind_build.download_pubmind_table(
-                request.out_dir / "hg38_pubmind_db.txt.gz"
-            )
+            fetched = pubmind_build.download_pubmind_table(request.out_dir / "hg38_pubmind_db.txt.gz")
             result = pubmind_build.build_snapshot(
-                fetched.path, request.out_dir,
-                source_url=fetched.url, source_sha256=fetched.sha256,
-                source_etag=fetched.etag, source_last_modified=fetched.last_modified,
+                fetched.path,
+                request.out_dir,
+                source_url=fetched.url,
+                source_sha256=fetched.sha256,
+                source_etag=fetched.etag,
+                source_last_modified=fetched.last_modified,
             )
     except (pubmind_build.PubMindBuildError, ImportError, OSError) as exc:
         return RebuildOutcome("pubmind", False, str(exc))
     return RebuildOutcome(
-        "pubmind", True,
+        "pubmind",
+        True,
         f"{result.record_count} of {result.input_rows} rows kept, dataset {result.dataset}",
         result.parquet_file.parent.parent,
     )
@@ -561,7 +580,8 @@ def _rebuild_pubmind(request: RebuildRequest) -> RebuildOutcome:
 def _rebuild_mane(request: RebuildRequest) -> RebuildOutcome:
     if request.source is not None:
         return RebuildOutcome(
-            "mane", None,
+            "mane",
+            None,
             "takes three input files (summary, changed accessions, negative roster) and --source "
             "can name one, so a local build goes through `mane build` — two of the three is not a "
             "snapshot",
@@ -583,13 +603,17 @@ def _rebuild_mane(request: RebuildRequest) -> RebuildOutcome:
             for table in mane_build.MANE_TABLES
         }
         result = mane_build.build_snapshot(
-            {name: got.path for name, got in downloads.items()}, request.out_dir,
-            versions_file=versions.path, release=pinned, downloads=downloads,
+            {name: got.path for name, got in downloads.items()},
+            request.out_dir,
+            versions_file=versions.path,
+            release=pinned,
+            downloads=downloads,
         )
     except (mane_build.ManeBuildError, FileNotFoundError, ImportError, OSError) as exc:
         return RebuildOutcome("mane", False, str(exc))
     return RebuildOutcome(
-        "mane", True,
+        "mane",
+        True,
         f"dataset {result.dataset}, " + ", ".join(f"{n} {c}" for n, c in result.rows.items()),
         result.out_dir,
     )
@@ -598,7 +622,9 @@ def _rebuild_mane(request: RebuildRequest) -> RebuildOutcome:
 def _rebuild_strchive(request: RebuildRequest) -> RebuildOutcome:
     try:
         result = strchive_build.build_strchive_snapshot(
-            request.out_dir, catalogue=request.source, release=request.pin,
+            request.out_dir,
+            catalogue=request.source,
+            release=request.pin,
         )
     except (strchive_build.StrchiveError, OSError) as exc:
         return RebuildOutcome("strchive", False, str(exc))
@@ -606,13 +632,16 @@ def _rebuild_strchive(request: RebuildRequest) -> RebuildOutcome:
         # Built, and honestly unlabelled. Not a failure: the catalogue is usable, and the thing it
         # cannot do — name the release a comparison ran against — is stated rather than papered over.
         return RebuildOutcome(
-            "strchive", True,
+            "strchive",
+            True,
             f"{result.locus_count} loci from the default branch, unlabelled (pass --pin "
             f"strchive=<tag> for a snapshot that can name its release)",
             result.catalogue_file.parent,
         )
     return RebuildOutcome(
-        "strchive", True, f"{result.locus_count} loci, dataset {result.dataset}",
+        "strchive",
+        True,
+        f"{result.locus_count} loci, dataset {result.dataset}",
         result.catalogue_file.parent,
     )
 
@@ -630,13 +659,16 @@ def _rebuild_drug_labels(request: RebuildRequest) -> RebuildOutcome:
                 request.out_dir / "drugLabels.zip", drug_labels_build.DEFAULT_DRUG_LABELS_URL
             )
         result = drug_labels_build.build_drug_label_snapshot(
-            archive, request.out_dir,
-            source_url=drug_labels_build.DEFAULT_DRUG_LABELS_URL, source_sha256=sha,
+            archive,
+            request.out_dir,
+            source_url=drug_labels_build.DEFAULT_DRUG_LABELS_URL,
+            source_sha256=sha,
         )
     except (drug_labels_build.DrugLabelError, ImportError, OSError) as exc:
         return RebuildOutcome("drug_labels", False, str(exc))
     return RebuildOutcome(
-        "drug_labels", True,
+        "drug_labels",
+        True,
         f"{result.label_count} labels from {', '.join(result.regulators)}, "
         f"release {result.created_date or 'undated'}",
         result.out_dir,
@@ -700,28 +732,32 @@ def _rebuild_acmg(request: RebuildRequest) -> RebuildOutcome:
         source, ambiguous = _acmg_workbook_in_the_checkout()
     if source is None:
         return RebuildOutcome(
-            "acmg", None,
-            ambiguous or (
+            "acmg",
+            None,
+            ambiguous
+            or (
                 "needs the ACMG SF workbook (--source acmg=<file.xlsx>): it is Elsevier "
                 "supplementary material, so nothing fetches it. A checkout's own "
                 f"assets/{ACMG_WORKBOOK_GLOB} is used when there is one and this is not a checkout"
             ),
         )
     request = RebuildRequest(
-        out_dir=request.out_dir, declared_use=request.declared_use, pin=request.pin, source=source,
+        out_dir=request.out_dir,
+        declared_use=request.declared_use,
+        pin=request.pin,
+        source=source,
     )
     try:
         # `.resolve()` first: `Path("./x.xlsx").as_uri()` raises on a relative path, and a
         # relative path is what an operator types — `--source acmg=./acmg_sf_v3.3.xlsx` is the
         # documented invocation, so the documented one was the one that produced a traceback.
         workbook = request.source.resolve()
-        sf_list = acmg_build.build_acmg_snapshot(
-            workbook, request.out_dir, source_url=workbook.as_uri()
-        )
+        sf_list = acmg_build.build_acmg_snapshot(workbook, request.out_dir, source_url=workbook.as_uri())
     except (acmg_build.AcmgSfError, ImportError, OSError) as exc:
         return RebuildOutcome("acmg", False, str(exc))
     return RebuildOutcome(
-        "acmg", True,
+        "acmg",
+        True,
         f"SF v{sf_list.version}: {len(sf_list.genes)} genes over {len(sf_list.findings)} rows, "
         f"from {workbook.name}",
         request.out_dir,
@@ -737,18 +773,19 @@ def _rebuild_mitomap(request: RebuildRequest) -> RebuildOutcome:
             # labelled from an mtime — a file's modification time is a fact about this disk.
             result = mitomap_build.build_snapshot(request.source, request.out_dir)
         else:
-            fetched = mitomap_build.download_mitomap_dump(
-                request.out_dir / "mitomap.dump.sql.gz"
-            )
+            fetched = mitomap_build.download_mitomap_dump(request.out_dir / "mitomap.dump.sql.gz")
             result = mitomap_build.build_snapshot(
-                fetched.path, request.out_dir,
-                source_url=fetched.url, source_sha256=fetched.sha256,
+                fetched.path,
+                request.out_dir,
+                source_url=fetched.url,
+                source_sha256=fetched.sha256,
                 source_last_modified=fetched.last_modified,
             )
     except (mitomap.MitomapError, ImportError, OSError) as exc:
         return RebuildOutcome("mitomap", False, str(exc))
     return RebuildOutcome(
-        "mitomap", True,
+        "mitomap",
+        True,
         f"{', '.join(f'{name} {count}' for name, count in result.rows.items())}, "
         f"{result.citation_links} citation links, dataset {result.dataset or 'unlabelled'}",
         result.out_dir,
@@ -765,12 +802,15 @@ def _rebuild_mitomap_miss(request: RebuildRequest) -> RebuildOutcome:
     request.out_dir.mkdir(parents=True, exist_ok=True)
     try:
         result = mitomap_miss_build.build_miss_snapshot(
-            request.parents["mitomap"], request.parents["clinvar"], request.out_dir,
+            request.parents["mitomap"],
+            request.parents["clinvar"],
+            request.out_dir,
         )
     except (mitomap.MitomapError, ImportError, OSError) as exc:
         return RebuildOutcome("mitomap_miss", False, str(exc))
     return RebuildOutcome(
-        "mitomap_miss", True,
+        "mitomap_miss",
+        True,
         ", ".join(f"{name} {count}" for name, count in result.buckets.items())
         + f" against {result.clinvar_keys} ClinVar chrMT alleles",
         result.out_dir,
@@ -1064,9 +1104,7 @@ def lane_name(spelling: str) -> str | None:
     return folded if folded in LANES_BY_NAME else None
 
 
-def parent_snapshots(
-    lane: CacheLane, request: RebuildRequest
-) -> tuple[dict[str, Path], list[str]]:
+def parent_snapshots(lane: CacheLane, request: RebuildRequest) -> tuple[dict[str, Path], list[str]]:
     """Where each parent's snapshot is, and the parents that are not anywhere.
 
     The caller's `request.parents` wins, then the parent lane's own resolver. Both halves are needed
@@ -1161,14 +1199,18 @@ def rebuild_lane(lane: CacheLane, request: RebuildRequest) -> RebuildOutcome:
                 for name in (entry.split(" ", 1)[0],)
             )
             return RebuildOutcome(
-                lane.name, None,
+                lane.name,
+                None,
                 f"derived from {' and '.join(lane.parents)}; not on disk: {how}. A miss set computed "
                 f"without a parent would be an increment measured against a comparison that never "
                 f"ran, not an empty one",
             )
         request = RebuildRequest(
-            out_dir=request.out_dir, declared_use=request.declared_use, pin=request.pin,
-            source=request.source, parents=resolved,
+            out_dir=request.out_dir,
+            declared_use=request.declared_use,
+            pin=request.pin,
+            source=request.source,
+            parents=resolved,
         )
     logger.info("Rebuilding the %s snapshot into %s ...", lane.name, request.out_dir)
     return lane.rebuild(request)
@@ -1226,9 +1268,7 @@ def lane_status(lanes: list[CacheLane] | None = None) -> list[LaneStatus]:
         looked_in = Path(override).expanduser() if override else lane.default_dir()
         if path is not None:
             release = lane.release_label(path)
-            unreadable = (
-                release is None and (path / RELEASE_FILENAME).exists() and read_release(path) is None
-            )
+            unreadable = release is None and (path / RELEASE_FILENAME).exists() and read_release(path) is None
             out.append(LaneStatus(lane, "present", looked_in, path, release, unreadable))
             continue
         occupied = looked_in.is_file() or (looked_in.is_dir() and any(looked_in.iterdir()))
@@ -1317,21 +1357,32 @@ def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
     target = lane.default_dir()
     if target.exists() and any(target.iterdir()):
         return PrepareOutcome(
-            lane.name, False, "built",
+            lane.name,
+            False,
+            "built",
             f"{target} exists and holds no {lane.name} snapshot; prepare never deletes, so move it "
             f"aside (or `cache prune --only {lane.name}` if it is a retired file) and re-run",
         )
     staging = target.parent / f"{target.name}.incoming"
     if staging.exists():
         shutil.rmtree(staging)
-    outcome = rebuild_lane(lane, RebuildRequest(
-        out_dir=staging, declared_use=request.declared_use, pin=request.pin, source=request.source,
-        parents=request.parents,
-    ))
+    outcome = rebuild_lane(
+        lane,
+        RebuildRequest(
+            out_dir=staging,
+            declared_use=request.declared_use,
+            pin=request.pin,
+            source=request.source,
+            parents=request.parents,
+        ),
+    )
     if outcome.built is not True:
         shutil.rmtree(staging, ignore_errors=True)
         return PrepareOutcome(
-            lane.name, outcome.built, "built" if outcome.built is False else "none", outcome.detail,
+            lane.name,
+            outcome.built,
+            "built" if outcome.built is False else "none",
+            outcome.detail,
         )
     if not staging.is_dir():
         # A builder that reports success and writes nothing. Not reachable through today's adapters,
@@ -1340,7 +1391,9 @@ def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
         # specific one is a fix (`@specific-rejection`). It also keeps the contract on the visible
         # side: `built is True` means a snapshot exists, and this is where that is established.
         return PrepareOutcome(
-            lane.name, False, "built",
+            lane.name,
+            False,
+            "built",
             f"the {lane.name} builder reported success but wrote nothing to {staging}",
         )
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -1379,9 +1432,14 @@ def prepare_caches(
             # failure it can foresee as an outcome; this is for the one it cannot, and the
             # alternative is a traceback that hides which lanes DID provision.
             logger.exception("preparing the %s cache raised", lane.name)
-            outcomes.append(PrepareOutcome(
-                lane.name, False, "pulled" if lane.ensure is not None else "built", str(exc),
-            ))
+            outcomes.append(
+                PrepareOutcome(
+                    lane.name,
+                    False,
+                    "pulled" if lane.ensure is not None else "built",
+                    str(exc),
+                )
+            )
     return outcomes
 
 
@@ -1408,12 +1466,15 @@ def rebuild_caches(
     # disk — and joining the live cache instead would produce a child whose `release.json` pins two
     # parents that are not the ones beside it.
     return [
-        rebuild_lane(lane, RebuildRequest(
-            out_dir=out / lane.name,
-            declared_use=declared_use,
-            pin=pins.get(lane.name),
-            source=sources.get(lane.name),
-            parents=parents_from_rebuild_dir(lane, out),
-        ))
+        rebuild_lane(
+            lane,
+            RebuildRequest(
+                out_dir=out / lane.name,
+                declared_use=declared_use,
+                pin=pins.get(lane.name),
+                source=sources.get(lane.name),
+                parents=parents_from_rebuild_dir(lane, out),
+            ),
+        )
         for lane in (lanes if lanes is not None else CACHE_LANES)
     ]

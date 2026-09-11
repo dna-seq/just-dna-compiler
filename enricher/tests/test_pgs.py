@@ -71,8 +71,7 @@ ASSETS = Path(__file__).resolve().parents[2] / "assets" / "pgs_catalog"
 _ASSIGNED = ("PGS000001", "PGS000004", "PGS000008", "PGS000013", "PGS000116")
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: rm163\n  title: RM163\n  description: d\n  report_title: RM163\n"
+    "schema_version: '1.0'\nmodule:\n  name: rm163\n  title: RM163\n  description: d\n  report_title: RM163\n"
 )
 
 
@@ -141,9 +140,7 @@ def test_every_ancestry_category_the_recorded_payloads_serve_is_in_the_map() -> 
         for stage in (_payload(accession).get("ancestry_distribution") or {}).values()
         for code in (stage.get("dist") or {})
     }
-    assert observed - set(PGS_ANCESTRY_CATEGORIES) == set(), sorted(
-        observed - set(PGS_ANCESTRY_CATEGORIES)
-    )
+    assert observed - set(PGS_ANCESTRY_CATEGORIES) == set(), sorted(observed - set(PGS_ANCESTRY_CATEGORIES))
     # And the premise the withhold rule rests on: the recorded corpus really does serve categories
     # the format has no member for. Without one, the withhold arm below would never be exercised.
     assert {c for c in observed if PGS_ANCESTRY_CATEGORIES[c] is None}
@@ -162,8 +159,7 @@ def test_only_the_development_and_evaluation_stages_are_compared() -> None:
         payload = _payload(accession)
         distribution = payload.get("ancestry_distribution") or {}
         gwas = {
-            PGS_ANCESTRY_CATEGORIES.get(code)
-            for code in (distribution.get("gwas") or {}).get("dist") or {}
+            PGS_ANCESTRY_CATEGORIES.get(code) for code in (distribution.get("gwas") or {}).get("dist") or {}
         } - {None}
         published, _ = score_ancestries(payload)
         widened = widened or bool(gwas - published)
@@ -183,7 +179,8 @@ def test_a_multi_ancestry_category_answers_a_positive_and_blocks_a_negative() ->
     from just_dna_enricher.pgs import _UNENUMERABLE_CATEGORIES
 
     bagged = [
-        a for a in _ASSIGNED
+        a
+        for a in _ASSIGNED
         if score_ancestries(_payload(a))[1] and score_ancestries(_payload(a))[1] <= _UNENUMERABLE_CATEGORIES
     ]
     assert bagged, "no recorded score's only unresolved categories are the multi-ancestry ones"
@@ -216,7 +213,9 @@ def test_the_three_accession_states_are_distinguishable_and_each_has_its_own_rea
     malformed = classify_pgs_accession("PGSXXXX", _payload("PGS999999"))
 
     assert {known.state, unrecognised.state, malformed.state} == {
-        "known", "unrecognised", "malformed",
+        "known",
+        "unrecognised",
+        "malformed",
     }
     reasons = [str(known), str(unrecognised), str(malformed)]
     assert len(set(reasons)) == 3, reasons
@@ -273,9 +272,12 @@ def test_the_verdict_is_read_off_the_body_and_never_off_the_status() -> None:
     def _gone(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(404, json={"detail": "not found"})
 
-    with PgsCatalogClient(
-        client=httpx.Client(transport=httpx.MockTransport(_gone)), gate=_instant_gate()
-    ) as client, pytest.raises(PgsCatalogUnavailable):
+    with (
+        PgsCatalogClient(
+            client=httpx.Client(transport=httpx.MockTransport(_gone)), gate=_instant_gate()
+        ) as client,
+        pytest.raises(PgsCatalogUnavailable),
+    ):
         client.score("PGS000001")
 
 
@@ -288,11 +290,15 @@ def test_a_live_and_a_never_assigned_accession_are_reported_apart(tmp_path: Path
     spec = _spec(tmp_path, "pgs_id\nPGS000001\nPGS999999\n")
     catalog = _Catalog()
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False,
-        pgs_client=catalog.client(), write=False,
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=catalog.client(),
+        write=False,
     )
     assert {s.pgs_id: s.state for s in report.pgs} == {
-        "PGS000001": "known", "PGS999999": "unrecognised",
+        "PGS000001": "known",
+        "PGS999999": "unrecognised",
     }
     assert report.pgs_tables_read == ["pgs.csv"]
     assert [s.pgs_id for s in report.stale_pgs] == ["PGS999999"]
@@ -317,8 +323,11 @@ def test_a_malformed_accession_never_reaches_the_catalog_because_the_schema_refu
     spec = _spec(tmp_path, "pgs_id\nPGS000001\nPGSXXXX\n")
     catalog = _Catalog()
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False,
-        pgs_client=catalog.client(), write=False,
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=catalog.client(),
+        write=False,
     )
     assert report.pgs == []
     assert report.pgs_tables_read == []
@@ -394,14 +403,15 @@ def test_an_authored_ancestry_the_catalog_contradicts_is_reported(tmp_path: Path
     """The drift arm. The disagreeing code is derived from the payload, never named in the test:
     quoting one would break the day the Catalog re-curates that score."""
     accession, _payload_, published = _ancestry_case()
-    disagreeing = sorted(
-        code for code in VALID_TRAINING_ANCESTRY if not ancestry_agrees(code, published)
-    )
+    disagreeing = sorted(code for code in VALID_TRAINING_ANCESTRY if not ancestry_agrees(code, published))
     assert disagreeing, "the case needs a code the published set does not cover"
     spec = _spec(tmp_path, f"pgs_id,training_ancestry\n{accession},{disagreeing[0]}\n")
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False,
-        pgs_client=_Catalog().client(), write=False,
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=_Catalog().client(),
+        write=False,
     )
     drift = report.pgs_metadata.drift
     assert [(d.pgs_id, d.field_name) for d in drift] == [(accession, "training_ancestry")]
@@ -416,8 +426,11 @@ def test_an_authored_ancestry_the_catalog_agrees_with_is_silent(tmp_path: Path) 
     assert agreeing, "the case needs a code the published set does cover"
     spec = _spec(tmp_path, f"pgs_id,training_ancestry\n{accession},{agreeing[0]}\n")
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False,
-        pgs_client=_Catalog().client(), write=False,
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=_Catalog().client(),
+        write=False,
     )
     assert report.pgs_metadata.drift == []
     assert [(c[0], c[1]) for c in report.pgs_metadata.compared] == [(accession, "training_ancestry")]
@@ -444,8 +457,11 @@ def test_an_ancestry_the_catalog_cannot_spell_is_withheld_rather_than_reported(
     assert missing, "the case needs a code the published set does not cover"
     spec = _spec(tmp_path, f"pgs_id,training_ancestry\n{accession},{missing[0]}\n")
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False,
-        pgs_client=_Catalog().client(), write=False,
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=_Catalog().client(),
+        write=False,
     )
     comparison = report.pgs_metadata
     assert comparison.drift == []
@@ -461,8 +477,11 @@ def test_an_empty_cell_is_skipped_rather_than_withheld(tmp_path: Path) -> None:
     accession, _payload_, _published = _ancestry_case()
     spec = _spec(tmp_path, f"pgs_id,training_ancestry,training_cohort\n{accession},,\n")
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False,
-        pgs_client=_Catalog().client(), write=False,
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=_Catalog().client(),
+        write=False,
     )
     comparison = report.pgs_metadata
     assert comparison.authored == []
@@ -494,12 +513,13 @@ def test_the_free_text_cohort_comparison_is_three_valued(tmp_path: Path) -> None
 
     spec = _spec(tmp_path, f"pgs_id,training_cohort\n{accession},Zzyzx Nonesuch\n")
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False,
-        pgs_client=_Catalog().client(), write=False,
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=_Catalog().client(),
+        write=False,
     )
-    assert [(d.pgs_id, d.field_name) for d in report.pgs_metadata.drift] == [
-        (accession, "training_cohort")
-    ]
+    assert [(d.pgs_id, d.field_name) for d in report.pgs_metadata.drift] == [(accession, "training_cohort")]
 
 
 def test_a_score_with_no_training_samples_withholds_the_cohort_cell(tmp_path: Path) -> None:
@@ -511,8 +531,11 @@ def test_a_score_with_no_training_samples_withholds_the_cohort_cell(tmp_path: Pa
     assert bare is not None, "no recorded score is missing its training samples"
     spec = _spec(tmp_path, f"pgs_id,training_cohort\n{bare},UK Biobank\n")
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False,
-        pgs_client=_Catalog().client(), write=False,
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=_Catalog().client(),
+        write=False,
     )
     comparison = report.pgs_metadata
     assert comparison.drift == []
@@ -530,12 +553,16 @@ def test_the_two_columns_the_catalog_has_no_opinion_about_are_not_checked(tmp_pa
         f"pgs_id,match_rate_floor,research_tier\n{accession},0.9,research_only\n",
     )
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False,
-        pgs_client=_Catalog().client(), write=False,
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=_Catalog().client(),
+        write=False,
     )
     assert report.pgs_metadata.authored == []
     record = next(
-        r for r in verification_records(report, check_traits=False, check_genes=False)
+        r
+        for r in verification_records(report, check_traits=False, check_genes=False)
         if r.check == "pgs_metadata_agreement"
     )
     # A skip, never `ran(0, 0)`: a check that cannot fail must not report a zero, and a zero out of
@@ -556,8 +583,11 @@ def test_one_accession_on_two_rows_is_one_cell(tmp_path: Path) -> None:
         f"{accession},MONDO:0005010,{agreeing}\n",
     )
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False,
-        pgs_client=_Catalog().client(), write=False,
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=_Catalog().client(),
+        write=False,
     )
     assert [(c[0], c[1]) for c in report.pgs_metadata.compared] == [(accession, "training_ancestry")]
     # And the accession itself is one subject, not two.
@@ -584,8 +614,11 @@ def test_two_rows_stating_different_values_are_two_claims(tmp_path: Path) -> Non
             name=name,
         )
         report = check_identifiers(
-            spec_dir=spec, check_traits=False, check_genes=False,
-            pgs_client=_Catalog().client(), write=False,
+            spec_dir=spec,
+            check_traits=False,
+            check_genes=False,
+            pgs_client=_Catalog().client(),
+            write=False,
         )
         assert len(report.pgs_metadata.compared) == 2, f"{name}: both claims must be put"
         assert [d.authored for d in report.pgs_metadata.drift] == [drifting], name
@@ -604,9 +637,7 @@ def test_a_source_disagreement_never_fails_the_strict_gate(tmp_path: Path) -> No
 
     accession, _payload_, published = _ancestry_case()
     drifting = min(c for c in VALID_TRAINING_ANCESTRY if not ancestry_agrees(c, published))
-    drifted = _spec(
-        tmp_path, f"pgs_id,training_ancestry\n{accession},{drifting}\n", name="drifted"
-    )
+    drifted = _spec(tmp_path, f"pgs_id,training_ancestry\n{accession},{drifting}\n", name="drifted")
     stale = _spec(tmp_path, "pgs_id\nPGS999999\n", name="stale")
 
     catalog = _Catalog()
@@ -659,8 +690,7 @@ def test_an_academic_use_only_score_does_not_carry_the_generic_terms() -> None:
     Catalog's generic terms — unknown on every axis, which never gates — for a score whose own
     licence bars sale outright."""
     academic = [
-        a for a in _ASSIGNED
-        if pgs_license_class(_payload(a)["license"])[0] == "academic_research_only"
+        a for a in _ASSIGNED if pgs_license_class(_payload(a)["license"])[0] == "academic_research_only"
     ]
     assert academic, "no recorded score carries the academic-use-only licence"
     accession = academic[0]
@@ -692,7 +722,10 @@ def test_the_pass_writes_a_source_row_per_score_and_a_floor_row(tmp_path: Path) 
     accessions = sorted(by_class.values())[:2]
     spec = _spec(tmp_path, "pgs_id\n" + "".join(f"{a}\n" for a in accessions))
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False, pgs_client=_Catalog().client(),
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=_Catalog().client(),
     )
     written = {row.source: row for row in read_sources_file(spec)}
     assert set(written) == {PGS_SOURCE, *(f"{PGS_SOURCE}:{a}" for a in accessions)}
@@ -724,14 +757,19 @@ def test_the_reported_rows_are_this_sources_and_the_merge_never_clobbers(tmp_pat
         encoding="utf-8",
     )
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False, pgs_client=_Catalog().client(),
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=_Catalog().client(),
     )
     assert {row.source for row in report.pgs_sources} == {PGS_SOURCE, f"{PGS_SOURCE}:{accession}"}
     per_score = next(r for r in report.pgs_sources if r.source.endswith(accession))
     assert per_score.license == "A licence a human wrote", "existing rows win the merge"
     # ...and the foreign row is still in the file, untouched.
     assert {row.source for row in read_sources_file(spec)} == {
-        "clinvar", PGS_SOURCE, f"{PGS_SOURCE}:{accession}",
+        "clinvar",
+        PGS_SOURCE,
+        f"{PGS_SOURCE}:{accession}",
     }
 
 
@@ -740,7 +778,10 @@ def test_a_run_that_asks_nothing_writes_no_source_row(tmp_path: Path) -> None:
     this run covered rather than on the table being present."""
     spec = _spec(tmp_path, "pgs_id,note\n")
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False, pgs_client=_Catalog().client(),
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=_Catalog().client(),
     )
     assert report.pgs_sources == []
     assert not (spec / "sources.csv").exists()
@@ -754,12 +795,14 @@ def test_a_release_that_has_moved_is_withdrawn_rather_than_left_standing(tmp_pat
     accession = _ASSIGNED[0]
     spec = _spec(tmp_path, f"pgs_id\n{accession}\n")
     (spec / "licensing.csv").write_text(
-        "source,layer,dataset\n"
-        f"{PGS_SOURCE},annotation,{PGS_DATASET_PREFIX}1999-01-01\n",
+        f"source,layer,dataset\n{PGS_SOURCE},annotation,{PGS_DATASET_PREFIX}1999-01-01\n",
         encoding="utf-8",
     )
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False, pgs_client=_Catalog().client(),
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=_Catalog().client(),
     )
     assert report.pgs_release and report.pgs_release != f"{PGS_DATASET_PREFIX}1999-01-01"
     floor = next(r for r in read_sources_file(spec) if r.source == PGS_SOURCE)
@@ -786,8 +829,11 @@ def test_the_label_the_pass_stamps_is_the_label_the_probe_answers(tmp_path: Path
     catalog = _Catalog()
     spec = _spec(tmp_path, "pgs_id\nPGS000001\n")
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False,
-        pgs_client=catalog.client(), write=False,
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=catalog.client(),
+        write=False,
     )
     probe = default_probes(pgs_catalog=catalog.client())[PGS_SOURCE]
     assert report.pgs_release == probe()
@@ -826,7 +872,11 @@ def test_an_unreadable_release_does_not_sink_the_accession_check(tmp_path: Path)
     )
     spec = _spec(tmp_path, "pgs_id\nPGS000001\n")
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False, pgs_client=client, write=False,
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=client,
+        write=False,
     )
     assert report.pgs_release is None
     assert [s.state for s in report.pgs] == ["known"]
@@ -851,15 +901,17 @@ def test_a_catalog_that_never_answers_is_unreachable_and_only_its_own_records_sa
     )
     spec = _spec(tmp_path, "pgs_id\nPGS000001\n")
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False, pgs_client=client, write=False,
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=client,
+        write=False,
     )
     assert report.pgs_not_checked is not None
     assert report.pgs_not_checked[0] == "unreachable"
     # Nothing was read, so nothing is claimed and no terms are recorded.
     assert report.pgs == [] and report.pgs_sources == []
-    records = {
-        r.check: r for r in verification_records(report, check_traits=False, check_genes=False)
-    }
+    records = {r.check: r for r in verification_records(report, check_traits=False, check_genes=False)}
     assert records["pgs_accession_currency"].skipped == "unreachable"
     assert records["pgs_metadata_agreement"].skipped == "unreachable"
     # ...and the two registries this run never asked keep their own, different reason.
@@ -873,9 +925,7 @@ def test_the_calling_form_with_rows_says_unsupported_rather_than_nothing_to_chec
     roster machinery exists to keep honest."""
     report = check_identifiers(variants=[], check_traits=False, check_genes=False)
     assert report.pgs_not_checked is not None and report.pgs_not_checked[0] == "unsupported"
-    records = {
-        r.check: r for r in verification_records(report, check_traits=False, check_genes=False)
-    }
+    records = {r.check: r for r in verification_records(report, check_traits=False, check_genes=False)}
     assert records["pgs_accession_currency"].skipped == "unsupported"
     assert "pass spec_dir=" in records["pgs_accession_currency"].detail
 
@@ -893,17 +943,16 @@ def test_the_two_records_have_different_subjects_and_different_denominators(
     agreeing = min(code for code in VALID_TRAINING_ANCESTRY if ancestry_agrees(code, published))
     spec = _spec(
         tmp_path,
-        "pgs_id,training_ancestry\n"
-        f"{accession},{agreeing}\n"
-        "PGS999999,\n",
+        f"pgs_id,training_ancestry\n{accession},{agreeing}\nPGS999999,\n",
     )
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False,
-        pgs_client=_Catalog().client(), write=False,
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=_Catalog().client(),
+        write=False,
     )
-    records = {
-        r.check: r for r in verification_records(report, check_traits=False, check_genes=False)
-    }
+    records = {r.check: r for r in verification_records(report, check_traits=False, check_genes=False)}
     currency = records["pgs_accession_currency"]
     metadata = records["pgs_metadata_agreement"]
     assert currency.subjects == len(report.pgs)
@@ -930,19 +979,21 @@ def test_switching_the_leg_off_is_not_requested_on_both_records() -> None:
 def test_withheld_cells_travel_with_the_finding_rather_than_vanishing(tmp_path: Path) -> None:
     """`@dont-discard-computed`: a reader who cannot see them reads the agreement count as covering
     every authored cell."""
-    withheld_case = next(
-        (a for a in _ASSIGNED if score_ancestries(_payload(a))[1]), None
-    )
+    withheld_case = next((a for a in _ASSIGNED if score_ancestries(_payload(a))[1]), None)
     assert withheld_case is not None
     published, _ = score_ancestries(_payload(withheld_case))
     missing = min(c for c in VALID_TRAINING_ANCESTRY if not ancestry_agrees(c, published))
     spec = _spec(tmp_path, f"pgs_id,training_ancestry\n{withheld_case},{missing}\n")
     report = check_identifiers(
-        spec_dir=spec, check_traits=False, check_genes=False,
-        pgs_client=_Catalog().client(), write=False,
+        spec_dir=spec,
+        check_traits=False,
+        check_genes=False,
+        pgs_client=_Catalog().client(),
+        write=False,
     )
     record = next(
-        r for r in verification_records(report, check_traits=False, check_genes=False)
+        r
+        for r in verification_records(report, check_traits=False, check_genes=False)
         if r.check == "pgs_metadata_agreement"
     )
     assert record.skipped == "no_reference"
@@ -968,7 +1019,8 @@ def test_the_command_attests_both_records_end_to_end(tmp_path: Path, monkeypatch
     assert "PGS accessions checked: 2" in result.output
     # And the terms landed beside the attestation, per score.
     assert {row.source for row in read_sources_file(spec)} == {
-        PGS_SOURCE, f"{PGS_SOURCE}:PGS000001",
+        PGS_SOURCE,
+        f"{PGS_SOURCE}:PGS000001",
     }
 
 

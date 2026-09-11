@@ -43,48 +43,89 @@ def _cpic_snapshot(root: Path) -> Path:
     data = root / SNAPSHOT_DATA_DIRNAME
     data.mkdir(parents=True, exist_ok=True)
     pl.DataFrame(
-        {"gene": ["CYP2C19", "CYP2C9"], "chrom": ["10", "10"], "ensembl_id": [None, None],
-         "hgnc_id": [None, None], "lookup_method": ["PHENOTYPE", "ACTIVITY_SCORE"]},
-        schema={"gene": pl.Utf8, "chrom": pl.Utf8, "ensembl_id": pl.Utf8, "hgnc_id": pl.Utf8,
-                "lookup_method": pl.Utf8},
+        {
+            "gene": ["CYP2C19", "CYP2C9"],
+            "chrom": ["10", "10"],
+            "ensembl_id": [None, None],
+            "hgnc_id": [None, None],
+            "lookup_method": ["PHENOTYPE", "ACTIVITY_SCORE"],
+        },
+        schema={
+            "gene": pl.Utf8,
+            "chrom": pl.Utf8,
+            "ensembl_id": pl.Utf8,
+            "hgnc_id": pl.Utf8,
+            "lookup_method": pl.Utf8,
+        },
     ).write_parquet(data / "genes.parquet")
     pl.DataFrame(
         # CPIC's own prose, verbatim — the mapping happens at read time, not in the builder.
-        {"gene": ["CYP2C19", "CYP2C19"], "allele": ["*1", "*2"], "activity_value": [1.0, 0.0],
-         "clinical_function_status": ["Normal function", "No function"]},
-        schema={"gene": pl.Utf8, "allele": pl.Utf8, "activity_value": pl.Float64,
-                "clinical_function_status": pl.Utf8},
+        {
+            "gene": ["CYP2C19", "CYP2C19"],
+            "allele": ["*1", "*2"],
+            "activity_value": [1.0, 0.0],
+            "clinical_function_status": ["Normal function", "No function"],
+        },
+        schema={
+            "gene": pl.Utf8,
+            "allele": pl.Utf8,
+            "activity_value": pl.Float64,
+            "clinical_function_status": pl.Utf8,
+        },
     ).write_parquet(data / "alleles.parquet")
     pl.DataFrame(
-        {"gene": ["CYP2C19", "CYP2C19"], "diplotype": ["*1/*1", "*1/*2"],
-         "phenotype": ["Normal Metabolizer", "Intermediate Metabolizer"],
-         "activity_score": ["2.0", "1.0"]},
-        schema={"gene": pl.Utf8, "diplotype": pl.Utf8, "phenotype": pl.Utf8,
-                "activity_score": pl.Utf8},
+        {
+            "gene": ["CYP2C19", "CYP2C19"],
+            "diplotype": ["*1/*1", "*1/*2"],
+            "phenotype": ["Normal Metabolizer", "Intermediate Metabolizer"],
+            "activity_score": ["2.0", "1.0"],
+        },
+        schema={"gene": pl.Utf8, "diplotype": pl.Utf8, "phenotype": pl.Utf8, "activity_score": pl.Utf8},
     ).write_parquet(data / "diplotypes.parquet")
     pl.DataFrame(
         # Row two is the real CYP2C9 shape the chromosome fix unblocked: a position and no rsID.
-        {"gene": ["CYP2C19", "CYP2C9"], "allele": ["*2", "*57"],
-         "rsid": ["rs4244285", None], "chrom": ["10", "10"], "start": [94781859, 94947907],
-         "variant_allele": ["A", "G"]},
-        schema={"gene": pl.Utf8, "allele": pl.Utf8, "rsid": pl.Utf8, "chrom": pl.Utf8,
-                "start": pl.Int64, "variant_allele": pl.Utf8},
+        {
+            "gene": ["CYP2C19", "CYP2C9"],
+            "allele": ["*2", "*57"],
+            "rsid": ["rs4244285", None],
+            "chrom": ["10", "10"],
+            "start": [94781859, 94947907],
+            "variant_allele": ["A", "G"],
+        },
+        schema={
+            "gene": pl.Utf8,
+            "allele": pl.Utf8,
+            "rsid": pl.Utf8,
+            "chrom": pl.Utf8,
+            "start": pl.Int64,
+            "variant_allele": pl.Utf8,
+        },
     ).write_parquet(data / "allele_definitions.parquet")
     pl.DataFrame(
         # Two rows for one phenotype+drug: CPIC scopes clopidogrel to three clinical contexts. The
         # third row names two genes, so the reader must drop it exactly as the live client does.
-        {"gene": ["CYP2C19", "CYP2C19", "CYP2C19"],
-         "phenotype": ["Intermediate Metabolizer"] * 3,
-         "drug": ["clopidogrel"] * 3,
-         "population": ["CVI ACS PCI", "NVI", "general"],
-         "classification": ["Strong", "Moderate", "Strong"],
-         "recommendation": ["Use prasugrel", "Standard dosing", "n/a"],
-         "implication": ["Reduced activation", "Reduced activation", "n/a"],
-         "activity_score": [None, None, None],
-         "gene_count": [1, 1, 2]},
-        schema={"gene": pl.Utf8, "phenotype": pl.Utf8, "drug": pl.Utf8, "population": pl.Utf8,
-                "classification": pl.Utf8, "recommendation": pl.Utf8, "implication": pl.Utf8,
-                "activity_score": pl.Utf8, "gene_count": pl.Int64},
+        {
+            "gene": ["CYP2C19", "CYP2C19", "CYP2C19"],
+            "phenotype": ["Intermediate Metabolizer"] * 3,
+            "drug": ["clopidogrel"] * 3,
+            "population": ["CVI ACS PCI", "NVI", "general"],
+            "classification": ["Strong", "Moderate", "Strong"],
+            "recommendation": ["Use prasugrel", "Standard dosing", "n/a"],
+            "implication": ["Reduced activation", "Reduced activation", "n/a"],
+            "activity_score": [None, None, None],
+            "gene_count": [1, 1, 2],
+        },
+        schema={
+            "gene": pl.Utf8,
+            "phenotype": pl.Utf8,
+            "drug": pl.Utf8,
+            "population": pl.Utf8,
+            "classification": pl.Utf8,
+            "recommendation": pl.Utf8,
+            "implication": pl.Utf8,
+            "activity_score": pl.Utf8,
+            "gene_count": pl.Int64,
+        },
     ).write_parquet(data / "recommendations.parquet")
     (root / RELEASE_FILENAME).write_text(
         json.dumps({"dataset": "cpic_snapshot_deadbeef1234", "content_sha256": "sha256:deadbeef"}),
@@ -97,17 +138,42 @@ def _pharmvar_snapshot(root: Path) -> Path:
     data = root / SNAPSHOT_DATA_DIRNAME
     data.mkdir(parents=True, exist_ok=True)
     pl.DataFrame(
-        {"gene": ["CYP2C19", "CYP2C19"], "allele": ["CYP2C19*1", "CYP2C19*2"],
-         "function": ["normal function", "no function"], "activity_value": [None, None],
-         "evidence_level": ["1", "1"]},
-        schema={"gene": pl.Utf8, "allele": pl.Utf8, "function": pl.Utf8,
-                "activity_value": pl.Float64, "evidence_level": pl.Utf8},
+        {
+            "gene": ["CYP2C19", "CYP2C19"],
+            "allele": ["CYP2C19*1", "CYP2C19*2"],
+            "function": ["normal function", "no function"],
+            "activity_value": [None, None],
+            "evidence_level": ["1", "1"],
+        },
+        schema={
+            "gene": pl.Utf8,
+            "allele": pl.Utf8,
+            "function": pl.Utf8,
+            "activity_value": pl.Float64,
+            "evidence_level": pl.Utf8,
+        },
     ).write_parquet(data / "alleles.parquet")
     pl.DataFrame(
-        {"gene": ["CYP2C19"], "allele": ["CYP2C19*2"], "variant_index": [0],
-         "rsid": ["rs4244285"], "chrom": ["10"], "start": [94781859], "ref": ["G"], "alt": ["A"]},
-        schema={"gene": pl.Utf8, "allele": pl.Utf8, "variant_index": pl.Int64, "rsid": pl.Utf8,
-                "chrom": pl.Utf8, "start": pl.Int64, "ref": pl.Utf8, "alt": pl.Utf8},
+        {
+            "gene": ["CYP2C19"],
+            "allele": ["CYP2C19*2"],
+            "variant_index": [0],
+            "rsid": ["rs4244285"],
+            "chrom": ["10"],
+            "start": [94781859],
+            "ref": ["G"],
+            "alt": ["A"],
+        },
+        schema={
+            "gene": pl.Utf8,
+            "allele": pl.Utf8,
+            "variant_index": pl.Int64,
+            "rsid": pl.Utf8,
+            "chrom": pl.Utf8,
+            "start": pl.Int64,
+            "ref": pl.Utf8,
+            "alt": pl.Utf8,
+        },
     ).write_parquet(data / "variants.parquet")
     (root / RELEASE_FILENAME).write_text(
         json.dumps({"dataset": "pharmvar_snapshot_cafe12345678", "genome_build": "GRCh38"}),
@@ -158,14 +224,16 @@ def test_a_snapshot_answers_exactly_what_the_live_client_would(tmp_path: Path) -
     client = CpicSnapshotClient(_cpic_snapshot(tmp_path / "cpic"))
     alleles = client.alleles_for_gene("CYP2C19")
     assert [(a.allele, a.function_status) for a in alleles] == [
-        ("*1", "normal_function"), ("*2", "no_function"),
+        ("*1", "normal_function"),
+        ("*2", "no_function"),
     ]
     assert client.chrom_for_gene("CYP2C19") == "10"
     assert client.dataset == "cpic_snapshot_deadbeef1234"
 
     diplotypes = client.diplotypes_for_gene("CYP2C19")
     assert [(d.diplotype, d.phenotype) for d in diplotypes] == [
-        ("*1/*1", "Normal Metabolizer"), ("*1/*2", "Intermediate Metabolizer"),
+        ("*1/*1", "Normal Metabolizer"),
+        ("*1/*2", "Intermediate Metabolizer"),
     ]
     # A gene the snapshot does not cover is an empty answer, never an error.
     assert client.alleles_for_gene("TPMT") == []
@@ -179,9 +247,10 @@ def test_a_multi_gene_recommendation_is_dropped_by_the_snapshot_too(tmp_path: Pa
     `gene_count` is a column — the fixture's third row has `gene_count=2` and must not appear.
     """
     client = CpicSnapshotClient(_cpic_snapshot(tmp_path / "cpic"))
-    recommendations = client.recommendations("CYP2C19", "Clopidogrel")   # case-insensitive, as live
+    recommendations = client.recommendations("CYP2C19", "Clopidogrel")  # case-insensitive, as live
     assert [(r.population, r.classification) for r in recommendations] == [
-        ("CVI ACS PCI", "strong"), ("NVI", "moderate"),
+        ("CVI ACS PCI", "strong"),
+        ("NVI", "moderate"),
     ]
     assert all(r.gene == "CYP2C19" for r in recommendations)
 
@@ -190,9 +259,7 @@ def test_defining_variants_from_a_snapshot_carry_the_chromosome(tmp_path: Path) 
     """The 36 coordinate-only variants are usable from the cache as well as live."""
     client = CpicSnapshotClient(_cpic_snapshot(tmp_path / "cpic"))
     variants, warnings = client.defining_variants("CYP2C9")
-    assert [(v.allele, v.rsid, v.chrom, v.start) for v in variants] == [
-        ("*57", None, "10", 94947907)
-    ]
+    assert [(v.allele, v.rsid, v.chrom, v.start) for v in variants] == [("*57", None, "10", 94947907)]
     assert warnings == []
 
 
@@ -214,14 +281,17 @@ def test_the_pgx_pass_runs_fully_offline_off_snapshots_and_records_the_route(tmp
     """
     spec = _spec(tmp_path)
     result = enrich_pgx(
-        spec, offline=True, declared_use="non_commercial",
+        spec,
+        offline=True,
+        declared_use="non_commercial",
         cpic_cache=_cpic_snapshot(tmp_path / "cpic"),
         pharmvar_cache=_pharmvar_snapshot(tmp_path / "pharmvar"),
     )
     assert result.routes == {"cpic": "snapshot", "pharmvar": "snapshot"}
     assert result.skipped_offline == []
     assert {(c.source, c.allele, c.reported) for c in result.conflicts} == {
-        ("cpic", "*2", "no_function"), ("pharmvar", "*2", "no_function"),
+        ("cpic", "*2", "no_function"),
+        ("pharmvar", "*2", "no_function"),
     }
     by_source = {r.source: r for r in result.rows}
     assert by_source["cpic"].dataset == "cpic_snapshot_deadbeef1234"
@@ -240,7 +310,8 @@ def test_a_pharmvar_snapshot_stands_in_for_the_personal_key(tmp_path: Path) -> N
     assert client.configured and client.genome_build == "GRCh38"
     alleles = client.alleles_for_gene("CYP2C19")
     assert [(a.allele, a.function) for a in alleles] == [
-        ("CYP2C19*1", "normal function"), ("CYP2C19*2", "no function"),
+        ("CYP2C19*1", "normal function"),
+        ("CYP2C19*2", "no function"),
     ]
     variant = alleles[1].variants[0]
     assert (variant.rsid, variant.chrom, variant.start) == ("rs4244285", "10", 94781859)
@@ -261,14 +332,20 @@ def test_drafting_offline_from_a_snapshot_produces_the_same_rows(tmp_path: Path)
     """
     spec = _spec(tmp_path)
     skipped = draft_gene(
-        spec, "CYP2C19", declared_use="non_commercial", offline=True,
+        spec,
+        "CYP2C19",
+        declared_use="non_commercial",
+        offline=True,
         cpic_cache=tmp_path / "absent",
     )
     assert skipped.skipped and skipped.added == 0
     assert any("--offline and no built snapshot" in w for w in skipped.warnings)
 
     drafted = draft_gene(
-        spec, "CYP2C19", declared_use="non_commercial", offline=True,
+        spec,
+        "CYP2C19",
+        declared_use="non_commercial",
+        offline=True,
         cpic_cache=_cpic_snapshot(tmp_path / "cpic"),
     )
     assert drafted.added > 0
@@ -286,6 +363,7 @@ def test_dosage_offline_is_a_noop_with_a_reason_not_a_silent_download(
     Demonstrated rather than asserted about: `fetch_curation_list` is replaced by something that fails
     the test if it is called at all, which is exactly what the old code would have done.
     """
+
     def _must_not_fetch(*args: object, **kwargs: object) -> str:
         raise AssertionError("offline must not reach ClinGen")
 
@@ -315,7 +393,7 @@ def test_dosage_offline_still_honours_an_injected_file(tmp_path: Path) -> None:
     assert result.skipped_offline is False
     assert result.covered == ["CYP2C19"]
     assert result.rows[0].haploinsufficiency is not None
-    assert result.rows[0].triplosensitivity is None      # "Not yet evaluated" is an absence
+    assert result.rows[0].triplosensitivity is None  # "Not yet evaluated" is an absence
 
 
 # ── RM41: the loader, and the two checks that made every caller reach for it ────────────────────
@@ -366,7 +444,7 @@ def test_the_row_taking_checks_take_a_spec_dir_too(tmp_path: Path, no_ambient_ca
 
 # ── RM42: the retry ceiling a deployment could not raise ────────────────────────────────────────
 def test_the_retry_ceiling_is_a_floor_that_preserves_per_client_tuning(
-    monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A server inside an unattended publish wants more persistence than an author at a terminal.
 
@@ -393,7 +471,7 @@ def test_the_retry_ceiling_is_a_floor_that_preserves_per_client_tuning(
 
 
 def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
-    monkeypatch: pytest.MonkeyPatch
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Pinned across the whole tier, so a tenth client cannot arrive with a frozen `stop`.
 
@@ -467,9 +545,9 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
         "pgs.PgsCatalogClient._request",
         "pharmvar.PharmVarClient._request",
     }, sorted(found)
-    assert all(isinstance(p.stop, attempt_floor) for p in found.values()), (
-        [type(p.stop) for p in found.values()]
-    )
+    assert all(isinstance(p.stop, attempt_floor) for p in found.values()), [
+        type(p.stop) for p in found.values()
+    ]
     # The two tightest budgets keep their own, higher default.
     defaults = {p.stop.default for p in found.values()}
     assert defaults == {3, 4}
@@ -478,6 +556,6 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
         attempt_number = 5
 
     monkeypatch.setenv(RETRY_ATTEMPTS_ENV, "")
-    assert attempt_floor(3)(_State()) is True         # 5 >= 3: stop
+    assert attempt_floor(3)(_State()) is True  # 5 >= 3: stop
     monkeypatch.setenv(RETRY_ATTEMPTS_ENV, "9")
-    assert attempt_floor(3)(_State()) is False        # 5 >= 9 is false: keep going
+    assert attempt_floor(3)(_State()) is False  # 5 >= 9 is false: keep going

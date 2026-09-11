@@ -36,9 +36,7 @@ _VARIANTS_HEADER = "rsid,chrom,start,ref,alts,genotype,state,conclusion,gene,eff
 #: Real ClinVar GRCh38 records. `rs1667266283` is a 926 bp MSH2 deletion (chr2:47475521, Pathogenic);
 #: `rs2104016493` a 913 bp MSH2 deletion (chr2:47410090); `rs2469808710` a 967 bp GLI2 deletion
 #: (chr2:120926480). Read out of the ClinVar VCF, not invented.
-_USABLE = (
-    "rs1667266283,2,47475521,G,<DEL:926>,<DEL:926>/G,risk,a 926 bp MSH2 deletion,MSH2,<DEL:926>\n"
-)
+_USABLE = "rs1667266283,2,47475521,G,<DEL:926>,<DEL:926>/G,risk,a 926 bp MSH2 deletion,MSH2,<DEL:926>\n"
 _NO_LENGTH = "rs2104016493,2,47410090,T,<DEL>,<DEL>/T,risk,a deletion with no stated length,MSH2,\n"
 _SPELLED = "rs2469808710,2,120926480,A,AT,A/AT,neutral,an ordinary spelled insertion,GLI2,\n"
 
@@ -52,10 +50,7 @@ def _spec(directory: Path, variant_rows: str, **extra: str) -> Path:
     # hfe_hemochromatosis`; it is here to satisfy that requirement, not as a claim that the paper is
     # about these deletions — nothing in this file tests citation content, and inventing a plausible
     # 8-digit number to look authoritative is exactly the failure mode `CitationHint` exists for.
-    (directory / "studies.csv").write_text(
-        "rsid,pmid\n"
-        + "".join(f"{rsid},16199547\n" for rsid in _RSIDS)
-    )
+    (directory / "studies.csv").write_text("rsid,pmid\n" + "".join(f"{rsid},16199547\n" for rsid in _RSIDS))
     for name, content in extra.items():
         (directory / name.replace("__", ".")).write_text(content)
     return directory
@@ -143,9 +138,7 @@ def test_a_module_of_nothing_but_unusable_rows_refuses_in_both_modes(tmp_path: P
     for strict in (False, True):
         compiled = compile_module(spec, tmp_path / f"out_{strict}", strict=strict)
         assert not compiled.success, strict
-    assert any("every row would be dropped" in e for e in compile_module(
-        spec, tmp_path / "out_again"
-    ).errors)
+    assert any("every row would be dropped" in e for e in compile_module(spec, tmp_path / "out_again").errors)
     # The pre-flight reaches the same verdict, in the same mode.
     assert not validate_spec(spec).valid
     assert any("every row would be dropped" in e for e in validate_spec(spec).errors)
@@ -293,9 +286,10 @@ def test_a_haplotype_definition_refuses_rather_than_losing_a_defining_variant(
 def test_the_findings_are_byte_stable_across_runs(tmp_path: Path) -> None:
     """They reach `manifest.compilation.warnings`, so their order is artifact-visible: an ordering
     derived from set/dict iteration would move a published manifest between two identical compiles."""
-    rows = "".join(
-        f"rs{100 + i},2,{47475521 + i},G,<DEL>,<DEL>/G,risk,row {i},MSH2,\n" for i in range(8)
-    ) + _USABLE
+    rows = (
+        "".join(f"rs{100 + i},2,{47475521 + i},G,<DEL>,<DEL>/G,risk,row {i},MSH2,\n" for i in range(8))
+        + _USABLE
+    )
     spec = _spec(tmp_path / "spec", rows)
 
     first = validate_spec(spec).warnings
@@ -333,10 +327,7 @@ def test_a_kept_symbolic_allele_survives_compile_reverse_compile(tmp_path: Path)
     # …and the cycle is a fixed point on all three identities.
     assert second.manifest.artifact.digest == third.manifest.artifact.digest
     assert second.manifest.content_signature == third.manifest.content_signature
-    assert (
-        second.manifest.compilation.resolution_signature
-        == third.manifest.compilation.resolution_signature
-    )
+    assert second.manifest.compilation.resolution_signature == third.manifest.compilation.resolution_signature
 
 
 def test_a_symbolic_allele_is_keyed_by_coordinate_not_by_a_minted_identity(

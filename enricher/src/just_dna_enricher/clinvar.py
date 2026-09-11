@@ -99,12 +99,8 @@ def lookup_loci(
     warnings: list[str] = []
     con = _connect(reference)
     try:
-        rsid_to_loci = (
-            _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings) if rsids else {}
-        )
-        pos_candidates = (
-            _lookup_rsid_candidates(con, "clinvar", "rsid", positions) if positions else {}
-        )
+        rsid_to_loci = _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings) if rsids else {}
+        pos_candidates = _lookup_rsid_candidates(con, "clinvar", "rsid", positions) if positions else {}
     finally:
         con.close()
     return rsid_to_loci, pos_candidates, warnings
@@ -186,9 +182,7 @@ def _lookup_positions_by_rsid(
     ).fetchall()
     result: dict[str, list[dict]] = defaultdict(list)
     for rsid, chrom, start, ref, alts in rows:
-        result[rsid].append(
-            {"chrom": str(chrom), "start": int(start), "ref": str(ref), "alts": str(alts)}
-        )
+        result[rsid].append({"chrom": str(chrom), "start": int(start), "ref": str(ref), "alts": str(alts)})
     for rsid in rsids:
         if rsid not in result:
             # `resolver.lookup_loci`'s twin, and it owes the same two silences: an injected snapshot

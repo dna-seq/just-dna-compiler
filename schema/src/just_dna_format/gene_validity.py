@@ -33,7 +33,6 @@ without grading it; the cell is then empty, which is this codebase's answer to a
 else. It is not the same as `no_known_disease_relationship`, which is a graded verdict *against*.
 """
 
-
 from collections.abc import Sequence
 from typing import ClassVar
 
@@ -107,10 +106,12 @@ class GeneValidityRow(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     # ── the gene ──
-    gene: str = Field(json_schema_extra=since("0.6.0"), 
-        description="HGNC-style symbol, matching the `gene` column authored in variants.csv"
+    gene: str = Field(
+        json_schema_extra=since("0.6.0"),
+        description="HGNC-style symbol, matching the `gene` column authored in variants.csv",
     )
-    gene_id: str | None = Field(json_schema_extra=since("0.6.0"), 
+    gene_id: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "HGNC id (`HGNC:20`) — the stable identity behind the mutable symbol, which both sources "
@@ -120,7 +121,8 @@ class GeneValidityRow(BaseModel):
     )
 
     # ── the disease ──
-    disease_id: str | None = Field(json_schema_extra=since("0.6.0"), 
+    disease_id: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "CURIE for the disease term, as the source states it — `MONDO:0013212` from ClinGen and "
@@ -128,7 +130,8 @@ class GeneValidityRow(BaseModel):
             "is an identity, and rewriting one across ontologies is a claim this tier cannot make."
         ),
     )
-    disease_label: str | None = Field(json_schema_extra=since("0.6.0"), 
+    disease_label: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "The term's human-readable name as the source publishes it, so the table is legible "
@@ -161,7 +164,8 @@ class GeneValidityRow(BaseModel):
         ),
         json_schema_extra={**vocabulary("gene_validity", VALID_GENE_VALIDITY), **since("0.6.0")},
     )
-    classification_raw: str | None = Field(json_schema_extra=since("0.6.0"), 
+    classification_raw: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "The submitter's verbatim wording (`Disputed Evidence`, `Definitive`), kept so the "
@@ -169,7 +173,8 @@ class GeneValidityRow(BaseModel):
             "Same role `clin_sig_raw` plays beside `clin_sig`."
         ),
     )
-    classification_date: str | None = Field(json_schema_extra=since("0.6.0"), 
+    classification_date: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "ISO-8601 UTC timestamp of the curation itself — when the panel ruled, not when this row "
@@ -177,7 +182,8 @@ class GeneValidityRow(BaseModel):
             "is a new fact."
         ),
     )
-    submitter: str | None = Field(json_schema_extra=since("0.6.0"), 
+    submitter: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "Who made the assertion — 'Charcot-Marie-Tooth Disease Gene Curation Expert Panel' from "
@@ -185,7 +191,8 @@ class GeneValidityRow(BaseModel):
             "pair routinely carries several submitters at different strengths, and they are all data."
         ),
     )
-    assertion_id: str | None = Field(json_schema_extra=since("0.6.0"), 
+    assertion_id: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "The source's own stable id for this assertion (ClinGen's `CGGV:assertion_…`, GenCC's "
@@ -193,19 +200,22 @@ class GeneValidityRow(BaseModel):
             "and this one is inside."
         ),
     )
-    report_url: str | None = Field(json_schema_extra=since("0.6.0"), 
+    report_url: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description="Where a human can read the curation. Outside the fact set — a location, not a fact.",
     )
-    dataset: str = Field(json_schema_extra=since("0.6.0"), 
+    dataset: str = Field(
+        json_schema_extra=since("0.6.0"),
         description=(
             "Which release this assertion is from, e.g. 'clingen_gene_validity_2026-08-13'. A FACT, "
             "for the reason it is one on every sibling table: two releases are two facts."
-        )
+        ),
     )
 
     # ── provenance (EXCLUDED from gene_validity_signature) ──
-    source: str | None = Field(json_schema_extra=since("0.6.0"), 
+    source: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "The licensed data source this assertion came from: clingen|gencc|manual|reversed (open). "
@@ -218,7 +228,8 @@ class GeneValidityRow(BaseModel):
         description="Outcome: resolved|not_found|ambiguous (the ResolutionRow vocabulary)",
         json_schema_extra={**vocabulary("resolution_status", VALID_RESOLUTION_STATUS), **since("0.6.0")},
     )
-    fetched_at: str | None = Field(json_schema_extra=since("0.6.0"), 
+    fetched_at: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "ISO-8601 UTC timestamp, second resolution (e.g. '2026-08-13T02:03:23Z'). Canonicalized "
@@ -354,14 +365,12 @@ def classify_currency(rows: "Sequence[GeneValidityRow]") -> list[str | None]:
             continue
         dates = [rows[i].classification_date for i in members]
         if any(d is None for d in dates):
-            continue          # undated row in the group — nothing can be placed
+            continue  # undated row in the group — nothing can be placed
         newest = max(dates)
         if dates.count(newest) > 1:
-            continue          # a tie orders nothing
+            continue  # a tie orders nothing
         for index in members:
-            verdicts[index] = (
-                CURRENT if rows[index].classification_date == newest else SUPERSEDED
-            )
+            verdicts[index] = CURRENT if rows[index].classification_date == newest else SUPERSEDED
     return verdicts
 
 

@@ -294,9 +294,13 @@ def test_a_signed_closure_verifies_and_a_tampered_one_drops_the_block(tmp_path: 
     assert block.closure.closed_by == "curator"
 
     doc = read_verification(spec / VERIFICATION_JSON)
-    forged = doc.closure.signature.model_copy(update={"signature": "AA" + doc.closure.signature.signature[2:]})
-    write_verification(doc.model_copy(update={"closure": doc.closure.model_copy(update={"signature": forged})}),
-                       spec / VERIFICATION_JSON)
+    forged = doc.closure.signature.model_copy(
+        update={"signature": "AA" + doc.closure.signature.signature[2:]}
+    )
+    write_verification(
+        doc.model_copy(update={"closure": doc.closure.model_copy(update={"signature": forged})}),
+        spec / VERIFICATION_JSON,
+    )
 
     tampered = _compile(spec, tmp_path / "tampered")
     assert tampered.manifest.verification is None
@@ -360,9 +364,7 @@ def test_closing_does_not_claim_to_have_put_the_checks_it_kept(tmp_path: Path) -
     assert after.model_copy(update={"closure": None}) == before, "only the closure was added"
 
 
-def test_reverse_names_the_closure_it_drops_and_says_whose_job_it_is(
-    tmp_path: Path, caplog
-) -> None:
+def test_reverse_names_the_closure_it_drops_and_says_whose_job_it_is(tmp_path: Path, caplog) -> None:
     """The warning has to describe what was actually lost, not what usually is.
 
     Reverse cannot re-emit the attestation, and its notice said *the checks were put by the enricher …

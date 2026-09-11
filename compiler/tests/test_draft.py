@@ -59,16 +59,24 @@ def _function(gene: str, allele: str, **kw) -> AlleleFunctionRow:
 
 def test_drafting_a_second_gene_adds_to_the_first(tmp_path: Path) -> None:
     spec = _spec(tmp_path)
-    first = append_rows(spec, "allele_function.csv", [
-        _function("CYP2C19", "*2", function_status="no_function"),
-        _function("CYP2C19", "*17", function_status="increased_function"),
-    ])
+    first = append_rows(
+        spec,
+        "allele_function.csv",
+        [
+            _function("CYP2C19", "*2", function_status="no_function"),
+            _function("CYP2C19", "*17", function_status="increased_function"),
+        ],
+    )
     assert len(first.added) == 2 and first.written
     after_first = (spec / "allele_function.csv").read_text(encoding="utf-8")
 
-    second = append_rows(spec, "allele_function.csv", [
-        _function("CYP2D6", "*4", function_status="no_function"),
-    ])
+    second = append_rows(
+        spec,
+        "allele_function.csv",
+        [
+            _function("CYP2D6", "*4", function_status="no_function"),
+        ],
+    )
     assert len(second.added) == 1
 
     text = (spec / "allele_function.csv").read_text(encoding="utf-8")
@@ -97,9 +105,13 @@ def test_a_row_that_disagrees_is_reported_and_left_alone(tmp_path: Path) -> None
     append_rows(spec, "allele_function.csv", [_function("CYP2C19", "*2", function_status="no_function")])
     before = (spec / "allele_function.csv").read_text(encoding="utf-8")
 
-    report = append_rows(spec, "allele_function.csv", [
-        _function("CYP2C19", "*2", function_status="decreased_function"),
-    ])
+    report = append_rows(
+        spec,
+        "allele_function.csv",
+        [
+            _function("CYP2C19", "*2", function_status="decreased_function"),
+        ],
+    )
     assert len(report.differs) == 1
     outcome = report.differs[0]
     assert outcome.differences["function_status"] == ("no_function", "decreased_function")
@@ -110,12 +122,20 @@ def test_a_row_that_disagrees_is_reported_and_left_alone(tmp_path: Path) -> None
 def test_unset_source_columns_are_not_counted_as_disagreement(tmp_path: Path) -> None:
     # A scaffold that fills three of twelve columns is not claiming the other nine are empty.
     spec = _spec(tmp_path)
-    append_rows(spec, "allele_function.csv", [
-        _function("CYP2C19", "*2", function_status="no_function", activity_value=0.0),
-    ])
-    report = append_rows(spec, "allele_function.csv", [
-        _function("CYP2C19", "*2", function_status="no_function"),  # no activity_value
-    ])
+    append_rows(
+        spec,
+        "allele_function.csv",
+        [
+            _function("CYP2C19", "*2", function_status="no_function", activity_value=0.0),
+        ],
+    )
+    report = append_rows(
+        spec,
+        "allele_function.csv",
+        [
+            _function("CYP2C19", "*2", function_status="no_function"),  # no activity_value
+        ],
+    )
     assert report.differs == [] and len(report.already_present) == 1
 
 
@@ -132,10 +152,14 @@ def test_dry_run_reports_without_writing(tmp_path: Path) -> None:
 
 def test_a_duplicate_inside_one_batch_is_caught_too(tmp_path: Path) -> None:
     spec = _spec(tmp_path)
-    report = append_rows(spec, "allele_function.csv", [
-        _function("CYP2C19", "*2", function_status="no_function"),
-        _function("CYP2C19", "*2", function_status="no_function"),
-    ])
+    report = append_rows(
+        spec,
+        "allele_function.csv",
+        [
+            _function("CYP2C19", "*2", function_status="no_function"),
+            _function("CYP2C19", "*2", function_status="no_function"),
+        ],
+    )
     assert len(report.added) == 1 and len(report.already_present) == 1
 
 
@@ -147,21 +171,26 @@ def test_the_keys_are_the_compilers_own(tmp_path: Path) -> None:
     # reject as a duplicate. A parallel key definition here would drift.
     assert natural_key(_function("CYP2D6", "*4")) == ("CYP2D6", "*4")
     assert natural_key(VariantRow(rsid="rs1", genotype="A/G", state="risk", conclusion="c")) == (
-        "rs1", "A/G",
+        "rs1",
+        "A/G",
     )
     assert natural_key(StudyRow(rsid="rs1", pmid="12345678")) == ("rs1", "12345678")
     # A binning row has no equality key on purpose: its duplicate rule is overlap, judged at compile.
-    assert natural_key(RepeatAlleleRow(
-        gene="HTT", repeat_unit="CAG", measure_min=40, conclusion=">=40"
-    )) is None
+    assert (
+        natural_key(RepeatAlleleRow(gene="HTT", repeat_unit="CAG", measure_min=40, conclusion=">=40")) is None
+    )
 
 
 def test_an_unkeyed_kind_is_appended_and_the_overlap_is_left_to_the_compiler(tmp_path: Path) -> None:
     spec = _spec(tmp_path)
-    report = append_rows(spec, "repeat_alleles.csv", [
-        RepeatAlleleRow(gene="HTT", repeat_unit="CAG", measure_min=27, measure_max=35, conclusion="i"),
-        RepeatAlleleRow(gene="HTT", repeat_unit="CAG", measure_min=36, measure_max=39, conclusion="r"),
-    ])
+    report = append_rows(
+        spec,
+        "repeat_alleles.csv",
+        [
+            RepeatAlleleRow(gene="HTT", repeat_unit="CAG", measure_min=27, measure_max=35, conclusion="i"),
+            RepeatAlleleRow(gene="HTT", repeat_unit="CAG", measure_min=36, measure_max=39, conclusion="r"),
+        ],
+    )
     assert [o.status for o in report.outcomes] == ["appended_unkeyed"] * 2
 
 
@@ -170,9 +199,13 @@ def test_a_new_column_widens_the_header_without_reformatting_existing_cells(tmp_
     (spec / "allele_function.csv").write_text(
         "gene,allele,function_status\nCYP2C19,*2,no_function\n", encoding="utf-8"
     )
-    report = append_rows(spec, "allele_function.csv", [
-        _function("CYP2D6", "*4", function_status="no_function", activity_value=0.0),
-    ])
+    report = append_rows(
+        spec,
+        "allele_function.csv",
+        [
+            _function("CYP2D6", "*4", function_status="no_function", activity_value=0.0),
+        ],
+    )
     assert report.header_extended == ["activity_value"]
     lines = (spec / "allele_function.csv").read_text(encoding="utf-8").strip().splitlines()
     assert lines[0] == "gene,allele,function_status,activity_value"
@@ -182,14 +215,28 @@ def test_a_new_column_widens_the_header_without_reformatting_existing_cells(tmp_
 def test_a_drafted_table_compiles_and_round_trips(tmp_path: Path) -> None:
     # The real contract: what the helper writes must be a module, not just a plausible CSV.
     spec = _spec(tmp_path)
-    append_rows(spec, "allele_function.csv", [
-        _function("CYP2C19", "*1", function_status="normal_function", activity_value=1.0),
-        _function("CYP2C19", "*2", function_status="no_function", activity_value=0.0),
-    ])
-    append_rows(spec, "diplotypes.csv", [
-        DiplotypeRow(gene="CYP2C19", haplotype_a="*1", haplotype_b="*2", phenotype="IM",
-                     conclusion="intermediate metabolizer", recommendation_strength="moderate"),
-    ])
+    append_rows(
+        spec,
+        "allele_function.csv",
+        [
+            _function("CYP2C19", "*1", function_status="normal_function", activity_value=1.0),
+            _function("CYP2C19", "*2", function_status="no_function", activity_value=0.0),
+        ],
+    )
+    append_rows(
+        spec,
+        "diplotypes.csv",
+        [
+            DiplotypeRow(
+                gene="CYP2C19",
+                haplotype_a="*1",
+                haplotype_b="*2",
+                phenotype="IM",
+                conclusion="intermediate metabolizer",
+                recommendation_strength="moderate",
+            ),
+        ],
+    )
     assert validate_spec(spec).valid
 
     out = tmp_path / "out"
@@ -199,9 +246,7 @@ def test_a_drafted_table_compiles_and_round_trips(tmp_path: Path) -> None:
     second = compile_module(tmp_path / "reversed", tmp_path / "out2", resolve_with_ensembl=False)
     assert second.success, second.errors
     assert first.manifest.artifact.digest == second.manifest.artifact.digest
-    assert pl.read_parquet(out / "diplotypes.parquet")["recommendation_strength"].to_list() == [
-        "moderate"
-    ]
+    assert pl.read_parquet(out / "diplotypes.parquet")["recommendation_strength"].to_list() == ["moderate"]
 
 
 def test_appending_does_not_move_an_already_compiled_digest_for_untouched_rows(tmp_path: Path) -> None:
@@ -242,10 +287,14 @@ def _study(rsid: str, pmid: str) -> StudyRow:
 
 def test_a_drafted_variants_table_reloads_and_compiles(tmp_path: Path) -> None:
     spec = _spec(tmp_path)
-    append_rows(spec, "variants.csv", [
-        _variant("rs1801133", "C/T", gene="MTHFR"),
-        _variant("rs334", "A/A", gene="HBB"),
-    ])
+    append_rows(
+        spec,
+        "variants.csv",
+        [
+            _variant("rs1801133", "C/T", gene="MTHFR"),
+            _variant("rs334", "A/A", gene="HBB"),
+        ],
+    )
     append_rows(spec, "studies.csv", [_study("rs1801133", "12345678"), _study("rs334", "23456789")])
     header = (spec / "variants.csv").read_text(encoding="utf-8").splitlines()[0].split(",")
     assert {"variant_key", "authored_ident"}.isdisjoint(header)
@@ -310,9 +359,13 @@ def test_a_source_naming_fewer_identity_columns_is_not_a_disagreement(tmp_path: 
     # differs between the two rows, but that is a fact about how each was written, not a claim about
     # the variant — reporting it would put a `differs` on every hand-annotated row.
     spec = _spec(tmp_path)
-    append_rows(spec, "variants.csv", [
-        _variant("rs1801133", "C/T", chrom="1", start=11796321, ref="G"),
-    ])
+    append_rows(
+        spec,
+        "variants.csv",
+        [
+            _variant("rs1801133", "C/T", chrom="1", start=11796321, ref="G"),
+        ],
+    )
     report = append_rows(spec, "variants.csv", [_variant("rs1801133", "C/T")])
     assert [o.status for o in report.outcomes] == ["already_present"]
     assert report.differs == []
@@ -364,13 +417,11 @@ def test_a_second_row_for_the_same_source_and_layer_is_not_appended(tmp_path: Pa
     cpic = SourceRow(source="cpic", layer="annotation", license="CC-BY-SA-4.0", commercial_use=False)
     first = append_rows(tmp_path, "sources.csv", [cpic])
     again = append_rows(tmp_path, "sources.csv", [cpic])
-    other_layer = append_rows(
-        tmp_path, "sources.csv", [SourceRow(source="cpic", layer="frequency")]
-    )
+    other_layer = append_rows(tmp_path, "sources.csv", [SourceRow(source="cpic", layer="frequency")])
 
     assert len(first.added) == 1 and len(again.added) == 0
     assert len(again.already_present) == 1
-    assert len(other_layer.added) == 1        # same source, different layer — a genuinely new row
+    assert len(other_layer.added) == 1  # same source, different layer — a genuinely new row
     assert (tmp_path / "sources.csv").read_text().count("cpic") == 2
 
 
@@ -402,7 +453,7 @@ def test_the_htt_reference_example_compiles_and_is_a_fixed_point(tmp_path: Path)
     """
     example = Path(__file__).resolve().parents[2] / "reference_examples" / "htt_repeat_expansion"
     assert not (example / "variants.csv").exists()  # one CSV = one concern
-    assert not (example / "studies.csv").exists()   # required only where variants are
+    assert not (example / "studies.csv").exists()  # required only where variants are
 
     validation = validate_spec(example)
     assert validation.valid, validation.errors
@@ -431,7 +482,8 @@ def test_the_htt_bins_cover_every_count_with_exactly_one_answer(tmp_path: Path) 
 
     def selected(count: int) -> list[str]:
         return [
-            r.conclusion for r in resolved
+            r.conclusion
+            for r in resolved
             if (r.measure_min is None or count >= r.measure_min)
             and (r.measure_max is None or count <= r.measure_max)
         ]
@@ -454,10 +506,20 @@ def test_the_htt_bins_cover_every_count_with_exactly_one_answer(tmp_path: Path) 
 #: One valid value per stubbed column, for filling a template in the tests below. Domain constants,
 #: which CLAUDE.md's testing rules explicitly allow hardcoding — unlike row counts.
 _FILL = {
-    "rsid": "rs1801133", "genotype": "A/G", "state": "risk", "conclusion": "an interpretation",
-    "pmid": "12345678", "gene": "HTT", "repeat_unit": "CAG", "haplotype_name": "*4",
-    "haplotype_a": "*1", "haplotype_b": "*4", "pgs_id": "PGS000135", "drug": "warfarin",
-    "tissue": "blood", "reference_sequence": "NC_012920.1",
+    "rsid": "rs1801133",
+    "genotype": "A/G",
+    "state": "risk",
+    "conclusion": "an interpretation",
+    "pmid": "12345678",
+    "gene": "HTT",
+    "repeat_unit": "CAG",
+    "haplotype_name": "*4",
+    "haplotype_a": "*1",
+    "haplotype_b": "*4",
+    "pgs_id": "PGS000135",
+    "drug": "warfarin",
+    "tissue": "blood",
+    "reference_sequence": "NC_012920.1",
 }
 _FILL_BY_KIND = {
     # `allele` is a star-allele here and a nucleotide on HaplotypeRow — same name, different grammar.

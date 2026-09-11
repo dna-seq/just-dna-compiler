@@ -50,17 +50,11 @@ _VARIANT_HEADER = (
     "requires_callable,quality_from,min_quality\n"
 )
 #: A monomorphic HFE record written the way VCF spells one — `.` in ALT (RM58).
-_MISSING_MARKER_ROW = (
-    ",6,26093141,G,.,G/G,ref,C282Y absent on a monomorphic record,HFE,benign,true,,,\n"
-)
+_MISSING_MARKER_ROW = ",6,26093141,G,.,G/G,ref,C282Y absent on a monomorphic record,HFE,benign,true,,,\n"
 #: The reassurance row whose evidence is the reference record, floored against QUAL (RM57).
-_QUAL_FLOOR_ROW = (
-    "rs113993960,,,,,G/G,ref,F508del absent,CFTR,benign,true,true,QUAL,30\n"
-)
+_QUAL_FLOOR_ROW = "rs113993960,,,,,G/G,ref,F508del absent,CFTR,benign,true,true,QUAL,30\n"
 #: The same row done right: a per-sample confidence field.
-_GQ_FLOOR_ROW = (
-    "rs113993960,,,,,G/G,ref,F508del absent,CFTR,benign,true,true,GQ,30\n"
-)
+_GQ_FLOOR_ROW = "rs113993960,,,,,G/G,ref,F508del absent,CFTR,benign,true,true,GQ,30\n"
 
 
 def _spec(tmp_path: Path, variants: str) -> Path:
@@ -112,9 +106,7 @@ def test_neither_finding_escalates_under_strict(tmp_path: Path) -> None:
     lax = _warnings(_HTT, tmp_path, strict=False)
     strict = _warnings(_HTT, tmp_path, strict=True)
     assert _matching(lax, FRACTIONAL_MEASURE_PHRASE) == _matching(strict, FRACTIONAL_MEASURE_PHRASE)
-    assert _matching(lax, SPANNING_MEASUREMENT_PHRASE) == _matching(
-        strict, SPANNING_MEASUREMENT_PHRASE
-    )
+    assert _matching(lax, SPANNING_MEASUREMENT_PHRASE) == _matching(strict, SPANNING_MEASUREMENT_PHRASE)
 
 
 def test_the_sentences_reach_the_published_manifest(tmp_path: Path) -> None:
@@ -225,9 +217,14 @@ def test_the_missing_marker_gets_its_own_clause_and_borrows_neither_other_one() 
         # same release and moved it — and moved `RM5` itself out of the notation clause and into the
         # symbolic one — so the two are asserted separately rather than through one allele that no
         # longer carries both.
-        together = clauses({
-            "Y": "ambiguity", "<DEL>": "symbolic", "AAAGGGGCG(2)": "notation", ".": "missing",
-        })
+        together = clauses(
+            {
+                "Y": "ambiguity",
+                "<DEL>": "symbolic",
+                "AAAGGGGCG(2)": "notation",
+                ".": "missing",
+            }
+        )
         assert "ambiguity code" in together and "RM5" in together and "MISSING marker" in together
         assert "grammar gap" in together
         # Four reasons, four clauses — none absorbed into another.
@@ -309,9 +306,7 @@ def test_validate_reports_exactly_what_compile_reports(tmp_path: Path, row: str)
     from_compile = set(_warnings(spec, tmp_path))
     assert from_validate <= from_compile
     for phrase in (compiler_mod.QUAL_INVERSION_PHRASE, compiler_mod.MISSING_ALLELE_PHRASE):
-        assert bool(_matching(list(from_validate), phrase)) == bool(
-            _matching(list(from_compile), phrase)
-        )
+        assert bool(_matching(list(from_validate), phrase)) == bool(_matching(list(from_compile), phrase))
 
 
 @pytest.mark.parametrize(
@@ -321,9 +316,7 @@ def test_validate_reports_exactly_what_compile_reports(tmp_path: Path, row: str)
         ("htt", SPANNING_MEASUREMENT_PHRASE),
     ],
 )
-def test_a_check_living_in_both_passes_prints_once(
-    tmp_path: Path, spec_dir_name: str, phrase: str
-) -> None:
+def test_a_check_living_in_both_passes_prints_once(tmp_path: Path, spec_dir_name: str, phrase: str) -> None:
     """`compile_module` runs `validate_spec` internally, so an un-deduplicated check emits twice.
 
     185 alleles printing 370 lines is the precedent; four bins printing eight is the same defect at a
@@ -348,9 +341,7 @@ def test_the_positional_comment_no_longer_claims_repeats_have_no_coordinates() -
     `_POSITIONAL_TABLE_KINDS` is correct and stays (the columns are 0.7+ work), which is why that is
     asserted rather than the reverse.
     """
-    source = (
-        _REPO / "compiler" / "src" / "just_dna_compiler" / "compiler.py"
-    ).read_text(encoding="utf-8")
+    source = (_REPO / "compiler" / "src" / "just_dna_compiler" / "compiler.py").read_text(encoding="utf-8")
     false_claim = "property of what they describe rather than a gap"
     assert source.count(false_claim) == 1
     preamble = source[max(0, source.index(false_claim) - 400) : source.index(false_claim)]

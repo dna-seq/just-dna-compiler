@@ -165,7 +165,9 @@ class ExpressionEffectRow(BaseModel):
         ),
     )
     ref: str | None = Field(
-        json_schema_extra=since("0.7.0"), default=None, description="Reference allele, as the source scored it."
+        json_schema_extra=since("0.7.0"),
+        default=None,
+        description="Reference allele, as the source scored it.",
     )
     alt: str | None = Field(
         json_schema_extra=since("0.7.0"),

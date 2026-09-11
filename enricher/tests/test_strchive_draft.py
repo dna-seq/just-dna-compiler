@@ -132,8 +132,7 @@ def test_the_drafted_trait_reproduces_the_hand_authored_one(
     authored = {
         row["trait_efo_id"]
         for row in csv.DictReader(
-            (_EXAMPLES / "htt_repeat_expansion" / REPEAT_ALLELES_CSV)
-            .read_text(encoding="utf-8").splitlines()
+            (_EXAMPLES / "htt_repeat_expansion" / REPEAT_ALLELES_CSV).read_text(encoding="utf-8").splitlines()
         )
         if row["trait_efo_id"]
     }
@@ -159,9 +158,11 @@ def test_a_locus_naming_several_diseases_has_its_trait_withheld(
     draft_repeat_loci(spec, [locus.gene], catalogue=catalogue)
     assert [row["trait_efo_id"] for row in _rows(spec)] == [""]
 
-    shipped = list(csv.DictReader(
-        (_EXAMPLES / "fmr1_cgg_repeat" / REPEAT_ALLELES_CSV).read_text(encoding="utf-8").splitlines()
-    ))
+    shipped = list(
+        csv.DictReader(
+            (_EXAMPLES / "fmr1_cgg_repeat" / REPEAT_ALLELES_CSV).read_text(encoding="utf-8").splitlines()
+        )
+    )
     assert {row.get("trait_efo_id") for row in shipped} <= {None, ""}
 
 
@@ -174,7 +175,8 @@ def test_a_contested_gene_and_motif_key_is_drafted_for_neither_locus(
     below cannot leave one claimant looking uncontested.
     """
     gene = next(
-        locus.gene for locus, in ((x,) for x in catalogue.loci)
+        locus.gene
+        for (locus,) in ((x,) for x in catalogue.loci)
         if len([o for o in catalogue.loci if o.gene == locus.gene]) > 1
     )
     spec = _spec(tmp_path)
@@ -268,9 +270,9 @@ def test_rows_land_at_the_end_of_a_table_that_already_has_some(
     draft_repeat_loci(spec, catalogue=catalogue)
     after = _rows(spec)
     assert after[: len(before)] == before, "an existing cell was rewritten or a row moved"
-    assert all(row["conclusion"] == TEMPLATE_PLACEHOLDER for row in after[len(before):])
+    assert all(row["conclusion"] == TEMPLATE_PLACEHOLDER for row in after[len(before) :])
     # The finished gene is not drafted a second time — `match_on` still recognises it.
-    assert [row["gene"] for row in after[len(before):]].count(first_gene) == 0
+    assert [row["gene"] for row in after[len(before) :]].count(first_gene) == 0
 
 
 def test_the_drafted_table_cannot_compile_until_a_human_has_finished_it(
@@ -284,9 +286,7 @@ def test_the_drafted_table_cannot_compile_until_a_human_has_finished_it(
     assert REPEAT_ALLELES_CSV in DRAFTABLE
     spec = _spec(tmp_path)
     draft_repeat_loci(spec, catalogue=catalogue)
-    _rows_loaded, errors, _ = load_csv_rows(
-        spec / REPEAT_ALLELES_CSV, RepeatAlleleRow, REPEAT_ALLELES_CSV
-    )
+    _rows_loaded, errors, _ = load_csv_rows(spec / REPEAT_ALLELES_CSV, RepeatAlleleRow, REPEAT_ALLELES_CSV)
     assert errors and any("conclusion" in message for message in errors), errors
 
 
@@ -315,7 +315,9 @@ def test_the_terms_are_the_mit_grant_and_the_source_is_registered() -> None:
     """
     assert TERMS_BY_SOURCE[STRCHIVE_TERMS.source] is STRCHIVE_TERMS
     assert (STRCHIVE_TERMS.share_alike, STRCHIVE_TERMS.commercial_use, STRCHIVE_TERMS.redistribution) == (
-        False, True, True,
+        False,
+        True,
+        True,
     )
     assert STRCHIVE_TERMS.license == "MIT" and STRCHIVE_TERMS.attribution
     # The grant covers every declaration, so the gate never skips and never refuses.
@@ -407,12 +409,21 @@ def test_a_row_the_model_refuses_is_reported_as_refused(tmp_path: Path) -> None:
     Reported over a locus whose motif the model cannot hold, so nothing is written at all — the one
     run where a false "everything is already there" would be most misleading.
     """
-    catalogue = StrchiveCatalogue(loci=(
-        StrchiveLocus(
-            locus_id="X_Y", gene="Y", reference_motifs=("CAG",), gene_motifs=(),
-            bands=(), mondo=("not a mondo id",), ref_copies=None, locus_structure=(), disease=None,
-        ),
-    ))
+    catalogue = StrchiveCatalogue(
+        loci=(
+            StrchiveLocus(
+                locus_id="X_Y",
+                gene="Y",
+                reference_motifs=("CAG",),
+                gene_motifs=(),
+                bands=(),
+                mondo=("not a mondo id",),
+                ref_copies=None,
+                locus_structure=(),
+                disease=None,
+            ),
+        )
+    )
     spec = _spec(tmp_path)
     result = draft_repeat_loci(spec, catalogue=catalogue)
     assert result.drafted == 0
@@ -423,20 +434,27 @@ def test_a_row_the_model_refuses_is_reported_as_refused(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("published", ["0007739", "MONDO_0007739", "MONDO:0007739"])
-def test_a_mondo_id_is_prefixed_once_however_the_source_spells_it(
-    tmp_path: Path, published: str
-) -> None:
+def test_a_mondo_id_is_prefixed_once_however_the_source_spells_it(tmp_path: Path, published: str) -> None:
     """STRchive publishes bare digits today, and a CURIE prefix is an encoding rather than a value.
 
     Blind concatenation makes `MONDO_MONDO:0007739`, which `trait_efo_id` rejects — so a change in
     the source's spelling would turn every drafted row into a refusal.
     """
-    catalogue = StrchiveCatalogue(loci=(
-        StrchiveLocus(
-            locus_id="HD_HTT", gene="HTT", reference_motifs=("CAG",), gene_motifs=(),
-            bands=(), mondo=(published,), ref_copies=None, locus_structure=(), disease=None,
-        ),
-    ))
+    catalogue = StrchiveCatalogue(
+        loci=(
+            StrchiveLocus(
+                locus_id="HD_HTT",
+                gene="HTT",
+                reference_motifs=("CAG",),
+                gene_motifs=(),
+                bands=(),
+                mondo=(published,),
+                ref_copies=None,
+                locus_structure=(),
+                disease=None,
+            ),
+        )
+    )
     spec = _spec(tmp_path)
     result = draft_repeat_loci(spec, catalogue=catalogue)
     assert result.drafted == 1, [o.differences for o in result.report.outcomes]
@@ -455,7 +473,8 @@ def test_the_facts_with_no_authored_column_are_counted_rather_than_dropped(
     the same denominator and said out loud. The expected values are derived from the fixture.
     """
     fractional = sum(
-        1 for locus in catalogue.loci
+        1
+        for locus in catalogue.loci
         if locus.ref_copies is not None and not float(locus.ref_copies).is_integer()
     )
     structured = sum(1 for locus in catalogue.loci if locus.locus_structure)

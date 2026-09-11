@@ -105,9 +105,7 @@ def test_reference_example_round_trips_to_a_fixed_point(spec: Path, tmp_path: Pa
     # is a real regression and still fails here.
     before, after = _resolution_signature(first), _resolution_signature(second)
     if before is not None and first.manifest.genome_build == "GRCh38":
-        assert before == after, (
-            "reverse lost injected resolution facts on a module the fill was applied to"
-        )
+        assert before == after, "reverse lost injected resolution facts on a module the fill was applied to"
 
 
 @pytest.mark.parametrize("spec", _specs(), ids=lambda p: p.name)

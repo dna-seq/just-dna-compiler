@@ -31,7 +31,14 @@ from just_dna_enricher.resolver import check_rsid_coordinates
 from just_dna_format.resolution import ResolutionRow
 
 _HEADER = [
-    "table", "subject", "member", "field", "operation", "value", "reason", "decided_by",
+    "table",
+    "subject",
+    "member",
+    "field",
+    "operation",
+    "value",
+    "reason",
+    "decided_by",
     "decided_at",
 ]
 _KEY = "rs1801133"
@@ -51,16 +58,31 @@ def _spec(tmp_path: Path, overlay: list[list[str]] | None = None) -> Path:
 
 def _row(**kwargs) -> ResolutionRow:
     base = {
-        "variant_key": _KEY, "rsid": _KEY, "chrom": "1", "start": 11856378, "ref": "G", "alts": "A",
-        "genome_build": "GRCh38", "locus_index": 0, "source": "ensembl", "status": "resolved",
+        "variant_key": _KEY,
+        "rsid": _KEY,
+        "chrom": "1",
+        "start": 11856378,
+        "ref": "G",
+        "alts": "A",
+        "genome_build": "GRCh38",
+        "locus_index": 0,
+        "source": "ensembl",
+        "status": "resolved",
     }
     return ResolutionRow(**{**base, **kwargs})
 
 
 def _correction(field: str, value: str) -> list[str]:
     return [
-        "resolution.csv", _KEY, "0", field, "update", value,
-        "re-checked against dbSNP by hand", "curator", "2026-08-31",
+        "resolution.csv",
+        _KEY,
+        "0",
+        field,
+        "update",
+        value,
+        "re-checked against dbSNP by hand",
+        "curator",
+        "2026-08-31",
     ]
 
 
@@ -176,9 +198,7 @@ def test_an_input_read_sees_the_correction(tmp_path: Path) -> None:
     """What the whole item buys: the pass reads what the module asserts, like the compiler does."""
     spec = _spec(tmp_path, [_correction("start", "11856377")])
 
-    applied = overlaid_input_rows(
-        spec, "resolution.csv", [_row()], error=RuntimeError
-    )
+    applied = overlaid_input_rows(spec, "resolution.csv", [_row()], error=RuntimeError)
 
     assert applied[0].start == 11856377
 
@@ -198,11 +218,13 @@ def test_a_broken_overlay_raises_as_the_callers_own_error(tmp_path: Path) -> Non
     `error=` is the caller's exception class for the same reason `sidecar_path` takes one: a pass must
     fail as itself, not as the module it borrows a helper from.
     """
+
     class PassError(RuntimeError):
         pass
 
-    spec = _spec(tmp_path, [["resolution.csv", _KEY, "0", "start", "update", "not-a-number",
-                             "r", "c", "2026-08-31"]])
+    spec = _spec(
+        tmp_path, [["resolution.csv", _KEY, "0", "start", "update", "not-a-number", "r", "c", "2026-08-31"]]
+    )
 
     with pytest.raises(PassError):
         overlaid_input_rows(spec, "resolution.csv", [_row()], error=PassError)

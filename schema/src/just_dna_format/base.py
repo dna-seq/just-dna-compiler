@@ -117,10 +117,7 @@ def authored_field_names(model: type[BaseModel]) -> list[str]:
     return [
         name
         for name, field in model.model_fields.items()
-        if not (
-            isinstance(field.json_schema_extra, dict)
-            and field.json_schema_extra.get("compiler_managed")
-        )
+        if not (isinstance(field.json_schema_extra, dict) and field.json_schema_extra.get("compiler_managed"))
     ]
 
 
@@ -309,9 +306,7 @@ def field_vocabularies(model: type[BaseModel]) -> dict[str, dict]:
     found: dict[str, dict] = {}
     for name, field in model.model_fields.items():
         marker = (
-            field.json_schema_extra.get("vocabulary")
-            if isinstance(field.json_schema_extra, dict)
-            else None
+            field.json_schema_extra.get("vocabulary") if isinstance(field.json_schema_extra, dict) else None
         )
         if isinstance(marker, dict):
             found[name] = marker
@@ -505,9 +500,7 @@ def stamp_identity(row: "AuthoredModel", *, keys_on_alts: bool, freeze_authored:
     )
 
 
-def _mint_vrs_key(
-    chrom: str | None, start: int | None, ref: str | None, alt: str, build: str
-) -> str | None:
+def _mint_vrs_key(chrom: str | None, start: int | None, ref: str | None, alt: str, build: str) -> str | None:
     """Case 2 of `derive_variant_key`, isolated so the fallback path stays readable.
 
     Returns `None` for anything unmintable — including a build with no refget table, which
@@ -762,9 +755,9 @@ class AuthoredModel(BaseModel):
     # rejects against, and `test_reference.test_declared_closed_options_are_exactly_what_is_accepted`
     # catches precisely that — it discovers enforcement by *behaviour*, so it cannot be satisfied by
     # the declaration it is checking.
-    @field_validator("direction", "clin_sig", "stat_significance", "evidence_level",
-                     "source_element",
-                     check_fields=False)
+    @field_validator(
+        "direction", "clin_sig", "stat_significance", "evidence_level", "source_element", check_fields=False
+    )
     @classmethod
     def _validate_shared_vocabulary(cls, v: str | None, info: ValidationInfo) -> str | None:
         name = info.field_name or ""
@@ -795,10 +788,7 @@ class AuthoredModel(BaseModel):
         for element_field, pointer_field in VCF_POINTER_COMPANIONS.items():
             if element_field not in type(self).model_fields:
                 continue
-            if (
-                getattr(self, element_field, None) is not None
-                and getattr(self, pointer_field, None) is None
-            ):
+            if getattr(self, element_field, None) is not None and getattr(self, pointer_field, None) is None:
                 raise ValueError(
                     f"{element_field} says which element of a multi-valued VCF field to read, and "
                     f"{pointer_field} is empty — there is no field for it to select from. Set "
@@ -871,24 +861,20 @@ class AuthoredModel(BaseModel):
             for allele in parts:
                 if not genotype_allele_ok(allele):
                     raise ValueError(
-                        f"genotype alleles must be {_GENOTYPE_ALLELE_GRAMMAR}, got: "
-                        f"{allele!r} in {v!r}"
+                        f"genotype alleles must be {_GENOTYPE_ALLELE_GRAMMAR}, got: {allele!r} in {v!r}"
                     )
             return v
         parts = v.split("/")
         if len(parts) == 1:
             # Hemizygous single allele (non-PAR X/Y in males; homoplasmic MT). ROADMAP 0.3 item 5b.
             if not genotype_allele_ok(parts[0]):
-                raise ValueError(
-                    f"genotype allele must be {_GENOTYPE_ALLELE_GRAMMAR}, got: {v!r}"
-                )
+                raise ValueError(f"genotype allele must be {_GENOTYPE_ALLELE_GRAMMAR}, got: {v!r}")
             return v
         if len(parts) == 2:
             for allele in parts:
                 if not genotype_allele_ok(allele):
                     raise ValueError(
-                        f"genotype alleles must be {_GENOTYPE_ALLELE_GRAMMAR}, got: "
-                        f"{allele!r} in {v!r}"
+                        f"genotype alleles must be {_GENOTYPE_ALLELE_GRAMMAR}, got: {allele!r} in {v!r}"
                     )
             if parts != sorted(parts):
                 raise ValueError(

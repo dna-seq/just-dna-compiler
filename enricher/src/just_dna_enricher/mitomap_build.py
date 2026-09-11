@@ -71,10 +71,29 @@ REFERENCES_PARQUET = "mitomap-references.parquet"
 #: the other table, because folding two differently-named source columns into one would state that
 #: they are the same fact.
 VARIANT_COLUMNS: tuple[str, ...] = (
-    "table", "record_id", "locus", "gene", "disease", "allele", "start", "ref", "alt",
-    "aa", "rna", "conservation", "controls", "homoplasmy", "heteroplasmy",
-    "status", "status_confirmation", "status_bracket", "status_qualifier",
-    "clin_sig", "withheld_bracket", "allele_defect", "cfrm_date",
+    "table",
+    "record_id",
+    "locus",
+    "gene",
+    "disease",
+    "allele",
+    "start",
+    "ref",
+    "alt",
+    "aa",
+    "rna",
+    "conservation",
+    "controls",
+    "homoplasmy",
+    "heteroplasmy",
+    "status",
+    "status_confirmation",
+    "status_bracket",
+    "status_qualifier",
+    "clin_sig",
+    "withheld_bracket",
+    "allele_defect",
+    "cfrm_date",
 )
 
 
@@ -137,10 +156,16 @@ def download_mitomap_dump(dest: Path, url: str = DEFAULT_MITOMAP_URL) -> Downloa
     as it found it.
     """
     streamed = stream_to_file(
-        dest, url, error_cls=MitomapUnavailable, what="the MITOMAP dump",
+        dest,
+        url,
+        error_cls=MitomapUnavailable,
+        what="the MITOMAP dump",
     )
     return DownloadedDump(
-        path=streamed.path, sha256=streamed.sha256, url=url, last_modified=streamed.last_modified,
+        path=streamed.path,
+        sha256=streamed.sha256,
+        url=url,
+        last_modified=streamed.last_modified,
     )
 
 
@@ -286,15 +311,17 @@ def build_snapshot(
             result.references_not_a_pmid += 1
         else:
             result.references_with_pmid += 1
-        reference_cells.append({
-            "reference_id": ref_id or None,
-            "authors": (row.get("authors") or "").strip() or None,
-            "title": (row.get("title") or "").strip() or None,
-            "publication": (row.get("publication") or "").strip() or None,
-            "year": (row.get("date") or "").strip() or None,
-            "nlmid": raw or None,
-            "pmid": pmid,
-        })
+        reference_cells.append(
+            {
+                "reference_id": ref_id or None,
+                "authors": (row.get("authors") or "").strip() or None,
+                "title": (row.get("title") or "").strip() or None,
+                "publication": (row.get("publication") or "").strip() or None,
+                "year": (row.get("date") or "").strip() or None,
+                "nlmid": raw or None,
+                "pmid": pmid,
+            }
+        )
     result.reference_rows = len(reference_cells)
     references_frame = pl.DataFrame(reference_cells, schema=_reference_schema()).sort(
         ["reference_id"], nulls_last=True
@@ -316,12 +343,19 @@ def build_snapshot(
                 # the dump's own link total, which the drafter reports rather than implying that
                 # every MITOMAP citation reached the module.
                 continue
-            citations.append({
-                "table": table, "record_id": record_id, "reference_id": reference_id, "pmid": pmid,
-            })
-    citations_frame = pl.DataFrame(citations, schema=_citation_schema()).unique(
-        subset=["table", "record_id", "pmid"], keep="first"
-    ).sort(["table", "record_id", "pmid"])
+            citations.append(
+                {
+                    "table": table,
+                    "record_id": record_id,
+                    "reference_id": reference_id,
+                    "pmid": pmid,
+                }
+            )
+    citations_frame = (
+        pl.DataFrame(citations, schema=_citation_schema())
+        .unique(subset=["table", "record_id", "pmid"], keep="first")
+        .sort(["table", "record_id", "pmid"])
+    )
     citations_path = data_dir / CITATIONS_PARQUET
     citations_frame.write_parquet(citations_path)
     result.parquet_files.append(citations_path)
@@ -338,21 +372,25 @@ def build_snapshot(
     _write_release_json(out_dir, result, source_url=source_url)
     logger.info(
         "Built MITOMAP snapshot: %s → %s",
-        ", ".join(f"{name} {count}" for name, count in result.rows.items()), data_dir,
+        ", ".join(f"{name} {count}" for name, count in result.rows.items()),
+        data_dir,
     )
     return result
 
 
 def _variant_schema() -> dict:
-    return {
-        name: (pl.Int64 if name == "start" else pl.Utf8) for name in VARIANT_COLUMNS
-    }
+    return {name: (pl.Int64 if name == "start" else pl.Utf8) for name in VARIANT_COLUMNS}
 
 
 def _reference_schema() -> dict:
     return {
-        "reference_id": pl.Utf8, "authors": pl.Utf8, "title": pl.Utf8, "publication": pl.Utf8,
-        "year": pl.Utf8, "nlmid": pl.Utf8, "pmid": pl.Utf8,
+        "reference_id": pl.Utf8,
+        "authors": pl.Utf8,
+        "title": pl.Utf8,
+        "publication": pl.Utf8,
+        "year": pl.Utf8,
+        "nlmid": pl.Utf8,
+        "pmid": pl.Utf8,
     }
 
 

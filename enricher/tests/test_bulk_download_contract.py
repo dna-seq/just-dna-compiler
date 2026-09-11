@@ -130,7 +130,7 @@ def test_the_only_raw_stream_in_the_package_is_the_shared_one() -> None:
 @pytest.fixture(autouse=True)
 def _no_waiting(monkeypatch: pytest.MonkeyPatch) -> None:
     """Retries without the backoff, so these run in milliseconds rather than seconds."""
-    monkeypatch.setattr(net, "wait_exponential_jitter", lambda **kw: (lambda _state: 0))
+    monkeypatch.setattr(net, "wait_exponential_jitter", lambda **kw: lambda _state: 0)
 
 
 def _fake_stream(script: list):
@@ -168,7 +168,8 @@ def _fake_stream(script: list):
 
 
 def test_a_truncated_body_is_retried_and_the_second_attempt_wins(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The incident, reproduced: a connection cut mid-body, then a clean retry.
 
@@ -180,7 +181,10 @@ def test_a_truncated_body_is_retried_and_the_second_attempt_wins(
     monkeypatch.setattr(net.httpx, "stream", stream)
 
     result = stream_to_file(
-        tmp_path / "f.bin", "https://example.invalid/f.bin", error_cls=_Boom, what="a file",
+        tmp_path / "f.bin",
+        "https://example.invalid/f.bin",
+        error_cls=_Boom,
+        what="a file",
     )
     assert stream.attempts["n"] == 2
     assert result.path.read_bytes() == b"payload"
@@ -199,7 +203,8 @@ def test_the_failure_that_motivated_this_is_the_one_the_predicate_retries() -> N
 
 
 def test_a_status_error_is_not_retried(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A 404 from a mistyped release tag is the same 404 four times over.
 
@@ -207,7 +212,8 @@ def test_a_status_error_is_not_retried(
     is why the predicate is transport-only rather than `HTTPError`-wide.
     """
     status = httpx.HTTPStatusError(
-        "404", request=httpx.Request("GET", "https://example.invalid/f"),
+        "404",
+        request=httpx.Request("GET", "https://example.invalid/f"),
         response=httpx.Response(404),
     )
     stream = _fake_stream([status])
@@ -219,7 +225,8 @@ def test_a_status_error_is_not_retried(
 
 
 def test_a_persistent_transport_failure_is_translated_not_leaked(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """After the attempts are spent the caller gets ITS type — never httpx's.
 
@@ -227,11 +234,16 @@ def test_a_persistent_transport_failure_is_translated_not_leaked(
     leaked `httpx` type means a lane that cannot report `built=False`.
     """
     monkeypatch.setattr(
-        net.httpx, "stream", _fake_stream([httpx.ConnectError("no route")]),
+        net.httpx,
+        "stream",
+        _fake_stream([httpx.ConnectError("no route")]),
     )
     with pytest.raises(_Boom) as caught:
         stream_to_file(
-            tmp_path / "f.bin", "https://example.invalid/f", error_cls=_Boom, what="a thing",
+            tmp_path / "f.bin",
+            "https://example.invalid/f",
+            error_cls=_Boom,
+            what="a thing",
             remedy="Pass a local copy instead.",
         )
     assert isinstance(caught.value.__cause__, httpx.HTTPError), "the cause is kept for a debugger"
@@ -240,7 +252,8 @@ def test_a_persistent_transport_failure_is_translated_not_leaked(
 
 
 def test_a_failed_fetch_leaves_the_directory_as_it_found_it(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Neither a `.part` nor a truncated file under the real name (`@a-failed-fetch-is-not-a-no-op`).
 
@@ -259,7 +272,8 @@ def test_a_failed_fetch_leaves_the_directory_as_it_found_it(
 
 
 def test_the_digest_is_returned_rather_than_only_logged(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Four of the eleven computed a sha256 and threw it away (`@dont-discard-computed`).
 
@@ -268,7 +282,10 @@ def test_the_digest_is_returned_rather_than_only_logged(
     """
     monkeypatch.setattr(net.httpx, "stream", _fake_stream([b"abc"]))
     result = stream_to_file(
-        tmp_path / "f.bin", "https://example.invalid/f", error_cls=_Boom, what="a file",
+        tmp_path / "f.bin",
+        "https://example.invalid/f",
+        error_cls=_Boom,
+        what="a file",
     )
     assert isinstance(result, StreamedFile)
     assert result.sha256 == hashlib.sha256(b"abc").hexdigest()
@@ -278,7 +295,8 @@ def test_the_digest_is_returned_rather_than_only_logged(
 
 
 def test_the_retry_floor_is_the_tiers_own_knob(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`$JUST_DNA_HTTP_RETRY_ATTEMPTS` raises this the way it raises every client's (RM42).
 
@@ -299,7 +317,8 @@ def test_the_retry_floor_is_the_tiers_own_knob(
 
 
 def test_a_flaky_download_is_a_failed_lane_rather_than_a_traceback(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The defect end to end: a transport failure must reach `rebuild_lane` as an outcome.
 
@@ -313,14 +332,16 @@ def test_a_flaky_download_is_a_failed_lane_rather_than_a_traceback(
 
     monkeypatch.setattr(net.httpx, "stream", _fake_stream([httpx.RemoteProtocolError("cut")]))
     outcome = rebuild_lane(
-        LANES_BY_NAME["clinvar"], RebuildRequest(out_dir=tmp_path / "clinvar"),
+        LANES_BY_NAME["clinvar"],
+        RebuildRequest(out_dir=tmp_path / "clinvar"),
     )
     assert outcome.built is False, "a flaky download must be a failed lane, not an exception"
     assert "ClinVar VCF" in outcome.detail
 
 
 def test_without_the_translation_it_really_did_escape_the_lane(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The old behaviour demonstrated on the old arrangement, not asserted about the new one.
 
@@ -341,7 +362,8 @@ def test_without_the_translation_it_really_did_escape_the_lane(
 
 
 def test_a_write_failure_leaves_no_partial_behind_either(
-    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The docstring promised the `.part` is removed on failure; it was removed on *transport*
     failure. A disk that fills mid-body raises `OSError` from `handle.write`, which is not an

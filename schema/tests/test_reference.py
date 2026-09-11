@@ -14,8 +14,12 @@ def test_authoring_reference_is_json_serializable_with_expected_shape() -> None:
     ref = authoring_reference()
     json.dumps(ref)  # a single source of truth must serialise for MCP/agents/docs
     assert set(ref) >= {
-        "schema_version", "genome_build_default", "models", "vocabularies",
-        "reserved_names", "recommended_palette",
+        "schema_version",
+        "genome_build_default",
+        "models",
+        "vocabularies",
+        "reserved_names",
+        "recommended_palette",
     }
     assert ref["genome_build_default"] == "GRCh38"
 
@@ -44,8 +48,7 @@ def test_authoring_reference_is_generated_not_hardcoded() -> None:
     }
     # retired names are no longer reserved (they became VariantRow columns — `callable_from` in 0.5)
     assert not (
-        {"requires_callable", "acmg_sf", "actionability", "callable_from"}
-        & set(ref["reserved_names"])
+        {"requires_callable", "acmg_sf", "actionability", "callable_from"} & set(ref["reserved_names"])
     )
     # RM14 authorship: the Contribution model + role vocab + open kind seed all surface (generated)
     assert {"who", "role", "kind", "at"} == {f["name"] for f in ref["models"]["Contribution"]}
@@ -93,9 +96,7 @@ def test_authoring_reference_surfaces_version_and_registry_stamped_boundary() ->
 
 
 def test_authoring_reference_field_records_carry_type_required_description() -> None:
-    genotype = next(
-        f for f in authoring_reference()["models"]["VariantRow"] if f["name"] == "genotype"
-    )
+    genotype = next(f for f in authoring_reference()["models"]["VariantRow"] if f["name"] == "genotype")
     assert genotype["required"] is True
     assert genotype["type"] == "str"
     assert genotype["description"]  # non-empty
@@ -137,10 +138,7 @@ def _rejects_as_vocabulary(model, field: str) -> bool:
         model.model_validate({field: _JUNK})
     except Exception as exc:  # pydantic ValidationError
         errors = getattr(exc, "errors", list)()
-        return any(
-            e.get("loc") == (field,) and "must be one of" in str(e.get("msg", ""))
-            for e in errors
-        )
+        return any(e.get("loc") == (field,) and "must be one of" in str(e.get("msg", "")) for e in errors)
     return False
 
 
@@ -252,9 +250,7 @@ def test_a_vocabulary_with_no_member_prose_carries_no_notes_key() -> None:
     from just_dna_format.spec import VariantRow
 
     assert "notes" not in field_vocabularies(VariantRow)["direction"]
-    described = next(
-        f for f in authoring_reference()["models"]["VariantRow"] if f["name"] == "direction"
-    )
+    described = next(f for f in authoring_reference()["models"]["VariantRow"] if f["name"] == "direction")
     assert "notes" not in described
 
 
@@ -271,10 +267,11 @@ def test_the_one_hand_authored_sidecar_is_described() -> None:
     ref = authoring_reference()
     described = {field["name"]: field for field in ref["models"]["SourceRow"]}
 
-    assert described.keys() == set(SourceRow.model_fields)   # no column left to guess at
-    assert [described[axis]["type"] for axis in ("share_alike", "commercial_use", "redistribution")] \
-        == ["bool | None"] * 3
-    assert described["layer"]["closed"] is True              # and the gate's own column is pickable
+    assert described.keys() == set(SourceRow.model_fields)  # no column left to guess at
+    assert [described[axis]["type"] for axis in ("share_alike", "commercial_use", "redistribution")] == [
+        "bool | None"
+    ] * 3
+    assert described["layer"]["closed"] is True  # and the gate's own column is pickable
     assert described["source"]["category"] == "required"
 
 
@@ -321,6 +318,7 @@ def test_required_any_of_agrees_with_each_models_own_validator() -> None:
             pass
         else:
             raise AssertionError(f"{name} accepted a row satisfying none of REQUIRED_ANY_OF")
-    assert checked == sum(len(m.REQUIRED_ANY_OF) for m in _ALL_MODELS.values()
-                          if getattr(m, "REQUIRED_ANY_OF", ()))
+    assert checked == sum(
+        len(m.REQUIRED_ANY_OF) for m in _ALL_MODELS.values() if getattr(m, "REQUIRED_ANY_OF", ())
+    )
     assert checked > 0

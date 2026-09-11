@@ -65,6 +65,7 @@ def repro_out(name: str) -> Path:
     """
     return Path(REPRO_DIRNAME) / name
 
+
 #: ClinVar's literature links. A **sibling of** `data/`, never inside it: the readers build their view
 #: from `data/*.parquet`, so a two-column citations file dropped in there unions with the 17-column
 #: variant parquet and every query breaks. (Learned the direct way — and again, from the other end, when
@@ -255,6 +256,7 @@ MANE_CACHE_VAR: str = "JUST_DNA_MANE_CACHE"
 MITOMAP_CACHE_VAR: str = "JUST_DNA_MITOMAP_CACHE"
 MITOMAP_MISS_CACHE_VAR: str = "JUST_DNA_MITOMAP_MISS_CACHE"
 ALPHAGENOME_AVI_CACHE_VAR: str = "JUST_DNA_ALPHAGENOME_AVI_CACHE"
+
 
 def read_release(reference: Path) -> dict | None:
     """A snapshot's `release.json` as a dict, or `None` when it is absent or unreadable.
@@ -466,9 +468,11 @@ def resolve_constraint_reference(
     ``.duckdb``), and a bare ``.parquet`` may be pointed at directly since the snapshot is one file.
     """
     return _resolve_parquet_cache(
-        constraint_cache, CONSTRAINT_CACHE_VAR,
+        constraint_cache,
+        CONSTRAINT_CACHE_VAR,
         default_constraint_cache_dir(load_dotenv_file=load_dotenv_file),
-        load_dotenv_file=load_dotenv_file, accept_bare_file=True,
+        load_dotenv_file=load_dotenv_file,
+        accept_bare_file=True,
     )
 
 
@@ -484,7 +488,8 @@ def resolve_clinvar_reference(
     the enricher's `download.ensure_clinvar_snapshot` or the deployment's job.
     """
     return _resolve_parquet_cache(
-        clinvar_cache, CLINVAR_CACHE_VAR,
+        clinvar_cache,
+        CLINVAR_CACHE_VAR,
         default_clinvar_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -501,18 +506,18 @@ def resolve_clinpgx_reference(
     `download.ensure_clinpgx_snapshot`.
     """
     return _resolve_parquet_cache(
-        clinpgx_cache, CLINPGX_CACHE_VAR,
+        clinpgx_cache,
+        CLINPGX_CACHE_VAR,
         default_clinpgx_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
 
 
-def resolve_cpic_reference(
-    cpic_cache: Path | None = None, *, load_dotenv_file: bool = True
-) -> Path | None:
+def resolve_cpic_reference(cpic_cache: Path | None = None, *, load_dotenv_file: bool = True) -> Path | None:
     """Locate a built CPIC snapshot without downloading (`$JUST_DNA_CPIC_CACHE`)."""
     return _resolve_parquet_cache(
-        cpic_cache, CPIC_CACHE_VAR,
+        cpic_cache,
+        CPIC_CACHE_VAR,
         default_cpic_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -528,7 +533,8 @@ def resolve_pharmvar_reference(
     PharmVar leg degrades exactly as it does when no key is configured.
     """
     return _resolve_parquet_cache(
-        pharmvar_cache, PHARMVAR_CACHE_VAR,
+        pharmvar_cache,
+        PHARMVAR_CACHE_VAR,
         default_pharmvar_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -539,16 +545,15 @@ def default_civic_cache_dir(*, load_dotenv_file: bool = True) -> Path:
     return _cache_dir(CIVIC_SUBDIR, load_dotenv_file=load_dotenv_file)
 
 
-def resolve_civic_reference(
-    civic_cache: Path | None = None, *, load_dotenv_file: bool = True
-) -> Path | None:
+def resolve_civic_reference(civic_cache: Path | None = None, *, load_dotenv_file: bool = True) -> Path | None:
     """Locate an operator-built CIViC snapshot (`$JUST_DNA_CIVIC_CACHE`).
 
     `None` when there is none, and the drafter reads that as nobody-asked rather than as an empty
     source (`@unreachable-not-absent`). Build one with `civic build --release <date>`.
     """
     return _resolve_parquet_cache(
-        civic_cache, CIVIC_CACHE_VAR,
+        civic_cache,
+        CIVIC_CACHE_VAR,
         default_civic_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -565,7 +570,8 @@ def resolve_pubmind_reference(
     asked-and-failed and asked-and-absent (`@unreachable-not-absent`).
     """
     return _resolve_parquet_cache(
-        pubmind_cache, PUBMIND_CACHE_VAR,
+        pubmind_cache,
+        PUBMIND_CACHE_VAR,
         default_pubmind_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -576,9 +582,7 @@ def default_mane_cache_dir(*, load_dotenv_file: bool = True) -> Path:
     return _cache_dir(MANE_SUBDIR, load_dotenv_file=load_dotenv_file)
 
 
-def resolve_mane_reference(
-    mane_cache: Path | None = None, *, load_dotenv_file: bool = True
-) -> Path | None:
+def resolve_mane_reference(mane_cache: Path | None = None, *, load_dotenv_file: bool = True) -> Path | None:
     """Locate an **operator-built** MANE snapshot (`$JUST_DNA_MANE_CACHE`).
 
     There is deliberately no `download.ensure_mane_snapshot` to pair with this: nothing publishes a
@@ -592,7 +596,8 @@ def resolve_mane_reference(
     currency check and the negative roster.
     """
     return _resolve_parquet_cache(
-        mane_cache, MANE_CACHE_VAR,
+        mane_cache,
+        MANE_CACHE_VAR,
         default_mane_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -637,9 +642,7 @@ def default_acmg_cache_dir(*, load_dotenv_file: bool = True) -> Path:
     return _cache_dir(ACMG_SUBDIR, load_dotenv_file=load_dotenv_file)
 
 
-def resolve_acmg_reference(
-    acmg_cache: Path | None = None, *, load_dotenv_file: bool = True
-) -> Path | None:
+def resolve_acmg_reference(acmg_cache: Path | None = None, *, load_dotenv_file: bool = True) -> Path | None:
     """Locate a built ACMG SF snapshot (`$JUST_DNA_ACMG_CACHE`), without downloading.
 
     `None` means nobody provisioned one, and `check-acmg` reads that as leave to fall back to
@@ -649,9 +652,11 @@ def resolve_acmg_reference(
     hand, so the accurate list was the one path a deployment never took.
     """
     return _resolve_named_cache(
-        acmg_cache, ACMG_CACHE_VAR,
+        acmg_cache,
+        ACMG_CACHE_VAR,
         default_acmg_cache_dir(load_dotenv_file=load_dotenv_file),
-        ACMG_SNAPSHOT_FILENAME, load_dotenv_file=load_dotenv_file,
+        ACMG_SNAPSHOT_FILENAME,
+        load_dotenv_file=load_dotenv_file,
     )
 
 
@@ -671,9 +676,11 @@ def resolve_strchive_reference(
     cannot name the release it compared against.
     """
     return _resolve_named_cache(
-        strchive_cache, STRCHIVE_CACHE_VAR,
+        strchive_cache,
+        STRCHIVE_CACHE_VAR,
         default_strchive_cache_dir(load_dotenv_file=load_dotenv_file),
-        STRCHIVE_CATALOGUE_FILENAME, load_dotenv_file=load_dotenv_file,
+        STRCHIVE_CATALOGUE_FILENAME,
+        load_dotenv_file=load_dotenv_file,
     )
 
 
@@ -692,7 +699,8 @@ def resolve_mitomap_reference(
     with one parent missing would be a claim about a comparison that never happened.
     """
     return _resolve_parquet_cache(
-        mitomap_cache, MITOMAP_CACHE_VAR,
+        mitomap_cache,
+        MITOMAP_CACHE_VAR,
         default_mitomap_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -714,7 +722,8 @@ def resolve_alphagenome_avi_reference(
     (`@unreachable-not-absent`).
     """
     return _resolve_parquet_cache(
-        alphagenome_avi_cache, ALPHAGENOME_AVI_CACHE_VAR,
+        alphagenome_avi_cache,
+        ALPHAGENOME_AVI_CACHE_VAR,
         default_alphagenome_avi_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -737,7 +746,8 @@ def resolve_mitomap_miss_reference(
     which (`@currency-asks-the-source-not-the-cache`).
     """
     return _resolve_parquet_cache(
-        mitomap_miss_cache, MITOMAP_MISS_CACHE_VAR,
+        mitomap_miss_cache,
+        MITOMAP_MISS_CACHE_VAR,
         default_mitomap_miss_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )
@@ -758,7 +768,8 @@ def resolve_drug_labels_reference(
     Provisioning is `download.ensure_drug_labels_snapshot`.
     """
     return _resolve_parquet_cache(
-        drug_labels_cache, DRUG_LABELS_CACHE_VAR,
+        drug_labels_cache,
+        DRUG_LABELS_CACHE_VAR,
         default_drug_labels_cache_dir(load_dotenv_file=load_dotenv_file),
         load_dotenv_file=load_dotenv_file,
     )

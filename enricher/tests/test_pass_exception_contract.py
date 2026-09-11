@@ -179,9 +179,15 @@ PASSES: list[Case] = [
         # the stub — the vacuously-green shape `prepare` exists to prevent one case up.
         "expression.enrich_expression",
         lambda spec: enrich_expression(
-            spec, "PALB2", chrom="16", start=23600000, end=23602000,
-            client=_StubAtlas(), declared_use="non_commercial",
-            mane_cache=spec / "no-mane-lane", write=False,
+            spec,
+            "PALB2",
+            chrom="16",
+            start=23600000,
+            end=23602000,
+            client=_StubAtlas(),
+            declared_use="non_commercial",
+            mane_cache=spec / "no-mane-lane",
+            write=False,
         ),
         ExpressionError,
         ExpressionUnavailable,
@@ -194,8 +200,9 @@ PASSES: list[Case] = [
     ),
     Case(
         "identifiers.check_identifiers",
-        lambda spec: check_identifiers(spec_dir=spec, check_traits=True, check_genes=True,
-                                       client=_StubOntology()),
+        lambda spec: check_identifiers(
+            spec_dir=spec, check_traits=True, check_genes=True, client=_StubOntology()
+        ),
         IdentifierCheckError,
         IdentifierUnavailable,
         translates=False,
@@ -336,8 +343,12 @@ CONFLATED = [
 
 @pytest.mark.parametrize("label,parent,unavailable,sidecar", CONFLATED, ids=[c[0] for c in CONFLATED])
 def test_an_unfetchable_source_is_a_different_type_from_an_unparsable_local_table(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, label: str, parent: type,
-    unavailable: type, sidecar: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    label: str,
+    parent: type,
+    unavailable: type,
+    sidecar: str,
 ) -> None:
     """Both histories driven for real, because the distinction is the whole point of the item.
 

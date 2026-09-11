@@ -33,8 +33,13 @@ _CHROM, _START, _REF, _ALT = "22", 42127941, "C", "T"
 def _variant(genotype: str) -> VariantRow:
     """A real CYP2D6 locus, so the only thing under test is the genotype cell."""
     return VariantRow(
-        chrom=_CHROM, start=_START, ref=_REF, alts=_ALT,
-        genotype=genotype, state="risk", gene="CYP2D6",
+        chrom=_CHROM,
+        start=_START,
+        ref=_REF,
+        alts=_ALT,
+        genotype=genotype,
+        state="risk",
+        gene="CYP2D6",
         conclusion="a duplicated CYP2D6 carrying the *4 splice variant on more than one copy",
     )
 
@@ -42,9 +47,9 @@ def _variant(genotype: str) -> VariantRow:
 @pytest.mark.parametrize(
     "genotype",
     [
-        f"{_REF}/{_ALT}/{_ALT}",   # unphased triploid, sorted the way the two-allele arm asks
-        f"{_ALT}|{_ALT}|{_REF}",   # fully phased triploid
-        f"{_ALT}|{_ALT}/{_REF}",   # VCF 4.4 §7.2 partial phasing — the first two phased with each other
+        f"{_REF}/{_ALT}/{_ALT}",  # unphased triploid, sorted the way the two-allele arm asks
+        f"{_ALT}|{_ALT}|{_REF}",  # fully phased triploid
+        f"{_ALT}|{_ALT}/{_REF}",  # VCF 4.4 §7.2 partial phasing — the first two phased with each other
     ],
 )
 def test_a_polyploid_genotype_is_refused_as_a_decision_not_as_a_typo(genotype: str) -> None:

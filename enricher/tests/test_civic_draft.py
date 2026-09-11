@@ -91,7 +91,7 @@ def test_it_writes_direction_and_never_clin_sig(spec, snapshot):
 
 
 def test_a_refutation_is_withheld_rather_than_written_as_the_opposite(spec, snapshot):
-    """"Does not support predisposition" is not "protective" — `None` is never `False`.
+    """ "Does not support predisposition" is not "protective" — `None` is never `False`.
 
     The fixture carries two constructed refutation rows, because both of CIViC's real ones are
     unidentifiable in the bulk release and would be dropped before this decision is reached.
@@ -162,7 +162,7 @@ def test_every_admitted_row_is_accounted_for(spec, snapshot):
 
 
 def test_the_gene_filter_is_counted_apart_from_the_withholding(spec, snapshot):
-    """"CIViC has nothing for this gene" and "we would not write what it has" are different answers."""
+    """ "CIViC has nothing for this gene" and "we would not write what it has" are different answers."""
     everything = draft_panel_from_civic(spec, snapshot=snapshot, dry_run=True)
     assert everything.withheld["gene_not_requested"] == 0
     filtered = draft_panel_from_civic(spec, ["VHL"], snapshot=snapshot, dry_run=True)
@@ -183,18 +183,14 @@ def test_a_class_that_withheld_nothing_says_nothing(spec, snapshot):
 def test_the_pass_writes_its_source_row(spec, snapshot):
     """A source that is only *used* is one the compile gate cannot account for."""
     draft_panel_from_civic(spec, snapshot=snapshot)
-    sources = next(
-        (spec / name for name in ("sources.csv", "licensing.csv") if (spec / name).exists()), None
-    )
+    sources = next((spec / name for name in ("sources.csv", "licensing.csv") if (spec / name).exists()), None)
     assert sources is not None, "@write-the-sourcerow — the gate reads this file and nothing else"
     assert any(r["source"] == "civic" for r in _rows(sources))
 
 
 def test_a_run_that_found_no_snapshot_writes_nothing_and_says_nobody_asked(spec, tmp_path, monkeypatch):
     """Nobody-asked is a third state beside asked-and-absent (`@unreachable-not-absent`)."""
-    monkeypatch.setattr(
-        "just_dna_enricher.civic_draft.resolve_civic_reference", lambda *a, **k: None
-    )
+    monkeypatch.setattr("just_dna_enricher.civic_draft.resolve_civic_reference", lambda *a, **k: None)
     result = draft_panel_from_civic(spec, snapshot=None)
     assert result.skipped is True
     assert result.added == 0
@@ -215,9 +211,9 @@ def test_the_disease_id_lands_in_the_column_and_not_in_prose(spec, snapshot):
         rows = _rows(spec / csv_name)
         assert rows, f"{csv_name} must be drafted or this proves nothing"
         assert any(r["trait_efo_id"].startswith("DOID:") for r in rows)
-        assert all(
-            not r["trait_efo_id"] or validate_trait_ids(r["trait_efo_id"]) for r in rows
-        ), "whatever is written must survive the column's own validator"
+        assert all(not r["trait_efo_id"] or validate_trait_ids(r["trait_efo_id"]) for r in rows), (
+            "whatever is written must survive the column's own validator"
+        )
         assert not any("DOID:" in r["conclusion"] for r in rows), "not duplicated into prose"
 
 
@@ -307,10 +303,13 @@ def test_a_resolved_caid_prefers_the_rsid_over_the_coordinate(spec, snapshot):
     lifted coordinate lacks, and the reason RM48 refused one.
     """
     caid = _caid_rows(snapshot)["allele_registry_id"][0]
-    registry = _StubRegistry({
-        caid: AlleleIdentity(caid=caid, outcome="resolved", rsid="rs9999999",
-                             coordinate=("3", 1234, "A", "G")),
-    })
+    registry = _StubRegistry(
+        {
+            caid: AlleleIdentity(
+                caid=caid, outcome="resolved", rsid="rs9999999", coordinate=("3", 1234, "A", "G")
+            ),
+        }
+    )
     result = draft_panel_from_civic(spec, snapshot=snapshot, registry=registry)
     assert result.caid_resolved_by_rsid >= 1
     assert result.caid_resolved_by_coordinate == 0, "the rsID wins where both are offered"
@@ -320,9 +319,11 @@ def test_a_resolved_caid_prefers_the_rsid_over_the_coordinate(spec, snapshot):
 
 def test_a_caid_that_resolves_to_a_coordinate_only_is_placed_by_it(spec, snapshot):
     caid = _caid_rows(snapshot)["allele_registry_id"][0]
-    registry = _StubRegistry({
-        caid: AlleleIdentity(caid=caid, outcome="resolved", coordinate=("3", 10188320, "A", "G")),
-    })
+    registry = _StubRegistry(
+        {
+            caid: AlleleIdentity(caid=caid, outcome="resolved", coordinate=("3", 10188320, "A", "G")),
+        }
+    )
     result = draft_panel_from_civic(spec, snapshot=snapshot, registry=registry)
     assert result.caid_resolved_by_coordinate >= 1
     placed = [r for r in _rows(spec / "variants.csv") if r["start"] == "10188320"]
@@ -352,9 +353,11 @@ def test_the_registry_gets_its_own_source_row_only_where_it_was_consulted(spec, 
 
 def test_the_caid_pass_leaves_the_accounting_closed(spec, snapshot):
     caid = _caid_rows(snapshot)["allele_registry_id"][0]
-    registry = _StubRegistry({
-        caid: AlleleIdentity(caid=caid, outcome="resolved", rsid="rs9999999"),
-    })
+    registry = _StubRegistry(
+        {
+            caid: AlleleIdentity(caid=caid, outcome="resolved", rsid="rs9999999"),
+        }
+    )
     result = draft_panel_from_civic(spec, snapshot=snapshot, registry=registry)
     assert result.accounts_for_every_candidate()
 
@@ -362,9 +365,11 @@ def test_the_caid_pass_leaves_the_accounting_closed(spec, snapshot):
 def test_a_one_sided_indel_is_anchored_into_a_vcf_row(spec, snapshot, monkeypatch):
     """The Picard-style recovery: one reference base turns a stated indel into a drafted row."""
     caid = _caid_rows(snapshot)["allele_registry_id"][0]
-    registry = _StubRegistry({
-        caid: AlleleIdentity(caid=caid, outcome="needs_anchor", unanchored=("3", 10142013, "", "G")),
-    })
+    registry = _StubRegistry(
+        {
+            caid: AlleleIdentity(caid=caid, outcome="needs_anchor", unanchored=("3", 10142013, "", "G")),
+        }
+    )
     monkeypatch.setattr(
         "just_dna_enricher.civic_draft.SequenceProxy",
         lambda **kw: type("_S", (), {"subsequence": lambda self, a, s, e: "G"})(),
@@ -379,9 +384,11 @@ def test_a_one_sided_indel_is_anchored_into_a_vcf_row(spec, snapshot, monkeypatc
 def test_an_unreadable_anchor_withholds_the_row_and_names_the_reason(spec, snapshot, monkeypatch):
     """The allele is known and the anchor is not — a fourth outcome, not an absence."""
     caid = _caid_rows(snapshot)["allele_registry_id"][0]
-    registry = _StubRegistry({
-        caid: AlleleIdentity(caid=caid, outcome="needs_anchor", unanchored=("3", 10142013, "A", "")),
-    })
+    registry = _StubRegistry(
+        {
+            caid: AlleleIdentity(caid=caid, outcome="needs_anchor", unanchored=("3", 10142013, "A", "")),
+        }
+    )
     monkeypatch.setattr(
         "just_dna_enricher.civic_draft.SequenceProxy",
         lambda **kw: type("_S", (), {"subsequence": lambda self, a, s, e: None})(),
@@ -459,8 +466,9 @@ def test_a_caid_only_csq_row_reaches_the_registry_rather_than_being_refused(tmp_
     from just_dna_enricher.civic_vcf import parse_csq_format
     from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
 
-    lines = [line for line in
-             (SLICE / "civic_accepted_and_submitted.vcf").read_text().splitlines() if line.strip()]
+    lines = [
+        line for line in (SLICE / "civic_accepted_and_submitted.vcf").read_text().splitlines() if line.strip()
+    ]
     fields = parse_csq_format(next(line for line in lines if "ID=CSQ" in line))
     template = next(line for line in lines if not line.startswith("#"))
     columns = template.split("\t")
@@ -471,19 +479,21 @@ def test_a_caid_only_csq_row_reaches_the_registry_rather_than_being_refused(tmp_
     example = dict(zip(fields, columns[7].split("CSQ=")[1].split("|"), strict=False))
     entry = dict.fromkeys(fields, "")
     entry.update(example)
-    entry.update({
-        "CIViC Variant ID": "999901",          # a variant id the TSV pair does not describe
-        "CIViC Entity ID": "999902",           # ... and an evidence id it does not either
-        # The CSQ synthesis runs on SUBMITTED items only — an accepted one is expected in the TSV
-        # pair, and a row naming a variant that is not there is dropped as `unresolvable_identity`
-        # rather than built from the block. So the tier this test is about is reachable only through
-        # the wider basis, which is the same reason the shipped fixture has no such row.
-        "CIViC Entity Status": "submitted",
-        "Allele Registry ID": "CA9999999",     # the row's only identity
-        "CIViC Variant Aliases": "",           # no rsID alias, so the rsID route finds nothing
-        "CIViC HGVS": "",                      # and no g. HGVS, so the coordinate route finds none
-        "CIViC Variant Name": "P71fs (c.211insT)",
-    })
+    entry.update(
+        {
+            "CIViC Variant ID": "999901",  # a variant id the TSV pair does not describe
+            "CIViC Entity ID": "999902",  # ... and an evidence id it does not either
+            # The CSQ synthesis runs on SUBMITTED items only — an accepted one is expected in the TSV
+            # pair, and a row naming a variant that is not there is dropped as `unresolvable_identity`
+            # rather than built from the block. So the tier this test is about is reachable only through
+            # the wider basis, which is the same reason the shipped fixture has no such row.
+            "CIViC Entity Status": "submitted",
+            "Allele Registry ID": "CA9999999",  # the row's only identity
+            "CIViC Variant Aliases": "",  # no rsID alias, so the rsID route finds nothing
+            "CIViC HGVS": "",  # and no g. HGVS, so the coordinate route finds none
+            "CIViC Variant Name": "P71fs (c.211insT)",
+        }
+    )
     columns[2] = "999901"
     columns[7] = "GN=VHL;CSQ=" + "|".join(entry[name] for name in fields)
 
@@ -501,9 +511,7 @@ def test_a_caid_only_csq_row_reaches_the_registry_rather_than_being_refused(tmp_
 
     frame = pl.read_parquet(out / SNAPSHOT_DATA_DIRNAME / CIVIC_PARQUET)
     caid_only = [
-        row
-        for row in frame.iter_rows(named=True)
-        if (row["allele_registry_id"] or "").strip() == "CA9999999"
+        row for row in frame.iter_rows(named=True) if (row["allele_registry_id"] or "").strip() == "CA9999999"
     ]
     assert caid_only, "the synthetic CSQ row did not survive the build"
     # The same row, counted. `unresolvable_with_caid` sizes the class a later identity pass can
@@ -512,9 +520,7 @@ def test_a_caid_only_csq_row_reaches_the_registry_rather_than_being_refused(tmp_
     recoverable = [
         row
         for row in frame.iter_rows(named=True)
-        if (row["allele_registry_id"] or "").strip()
-        and row["rsid"] is None
-        and row["chrom"] is None
+        if (row["allele_registry_id"] or "").strip() and row["rsid"] is None and row["chrom"] is None
     ]
     caids = {(row["allele_registry_id"] or "").strip() for row in recoverable}
     assert json.loads((out / "release.json").read_text())["unresolvable_with_caid"] == len(caids), (

@@ -35,20 +35,45 @@ _needs_snapshot = pytest.mark.skipif(
     reason="no local ClinPGx snapshot (build it with `just-dna-enricher clinpgx build`)",
 )
 
+
 def _rows(path: Path) -> list[dict]:
     """A drafted CSV as dicts — the raw cells, so a test can see what was written."""
     return list(csv.DictReader(io.StringIO(path.read_text(encoding="utf-8"))))
 
 
 _RECORDS = [
-    {"annotation_id": "1", "rsid": "rs6265", "genotype": "CC", "evidence_level": "3",
-     "phenotype_category": "Efficacy", "drugs": "citalopram;paroxetine"},
-    {"annotation_id": "2", "rsid": "rs1", "genotype": "*1", "evidence_level": "1A",
-     "phenotype_category": "Toxicity", "drugs": "codeine"},
-    {"annotation_id": "3", "rsid": "rs2", "genotype": "del/del", "evidence_level": "4",
-     "phenotype_category": "Efficacy", "drugs": "warfarin"},
-    {"annotation_id": "4", "rsid": "", "genotype": "AG", "evidence_level": "1A",
-     "phenotype_category": "Efficacy", "drugs": "warfarin"},
+    {
+        "annotation_id": "1",
+        "rsid": "rs6265",
+        "genotype": "CC",
+        "evidence_level": "3",
+        "phenotype_category": "Efficacy",
+        "drugs": "citalopram;paroxetine",
+    },
+    {
+        "annotation_id": "2",
+        "rsid": "rs1",
+        "genotype": "*1",
+        "evidence_level": "1A",
+        "phenotype_category": "Toxicity",
+        "drugs": "codeine",
+    },
+    {
+        "annotation_id": "3",
+        "rsid": "rs2",
+        "genotype": "del/del",
+        "evidence_level": "4",
+        "phenotype_category": "Efficacy",
+        "drugs": "warfarin",
+    },
+    {
+        "annotation_id": "4",
+        "rsid": "",
+        "genotype": "AG",
+        "evidence_level": "1A",
+        "phenotype_category": "Efficacy",
+        "drugs": "warfarin",
+    },
 ]
 
 
@@ -74,9 +99,12 @@ def test_an_already_separated_call_is_taken_as_written() -> None:
     assert _authored_genotype("TTAAAGTTA/TTAAAGTTA") == "TTAAAGTTA/TTAAAGTTA"
     assert _authored_genotype("CTT/AGG") == "AGG/CTT", "still sorted, like the two-base form"
     # and the row it produces is one the schema takes
-    assert PharmVariantRow(
-        rsid="rs113993960", gene="CFTR", genotype="CTT/CTT", drug="ivacaftor", conclusion="x"
-    ).genotype == "CTT/CTT"
+    assert (
+        PharmVariantRow(
+            rsid="rs113993960", gene="CFTR", genotype="CTT/CTT", drug="ivacaftor", conclusion="x"
+        ).genotype
+        == "CTT/CTT"
+    )
 
 
 def test_a_single_haploid_allele_is_a_genotype() -> None:
@@ -89,10 +117,16 @@ def test_a_single_haploid_allele_is_a_genotype() -> None:
     """
     assert _authored_genotype("A") == "A"
     assert _authored_genotype("CCCCCCC") == "CCCCCCC"
-    assert PharmVariantRow(
-        rsid="rs267606617", gene="MT-RNR1", genotype="A",
-        drug="aminoglycoside antibacterials", conclusion="x",
-    ).genotype == "A"
+    assert (
+        PharmVariantRow(
+            rsid="rs267606617",
+            gene="MT-RNR1",
+            genotype="A",
+            drug="aminoglycoside antibacterials",
+            conclusion="x",
+        ).genotype
+        == "A"
+    )
 
 
 def test_the_pass_is_never_narrower_than_the_schema_it_writes_into() -> None:
@@ -113,9 +147,7 @@ def test_the_pass_is_never_narrower_than_the_schema_it_writes_into() -> None:
             continue
         accepted_by_schema.append(spelling)
     declined_anyway = [s for s in accepted_by_schema if _authored_genotype(s) is None]
-    assert declined_anyway == [], (
-        f"the schema accepts these and the provider drops them: {declined_anyway}"
-    )
+    assert declined_anyway == [], f"the schema accepts these and the provider drops them: {declined_anyway}"
 
 
 def test_one_annotation_naming_several_drugs_becomes_one_row_each() -> None:
@@ -130,8 +162,8 @@ def test_what_this_pass_cannot_write_is_skipped_with_a_reason() -> None:
     rows, warnings = _rows_from_snapshot(_RECORDS, genes=(), drugs=(), min_evidence_level=None)
     assert {r.rsid for r in rows} == {"rs6265"}
     joined = " ".join(warnings)
-    assert "diplotypes.csv" in joined      # the star allele is routed, not dropped silently
-    assert "RM5" in joined                 # the symbolic allele has its own line
+    assert "diplotypes.csv" in joined  # the star allele is routed, not dropped silently
+    assert "RM5" in joined  # the symbolic allele has its own line
     assert "no rsID" in joined
 
 
@@ -167,12 +199,33 @@ def test_split_cell_keeps_first_occurrence_order() -> None:
 #: The multi-gene shape, taken from the snapshot rather than invented (R2-1). `rs17886199` really is
 #: published as `PRSS53;VKORC1`, and it really is one of the 3 rows `--gene VKORC1` used to drop.
 _MULTI_GENE = [
-    {"annotation_id": "10", "rsid": "rs17886199", "gene": "PRSS53;VKORC1", "genotype": "CC",
-     "evidence_level": "3", "phenotype_category": "Dosage", "drugs": "warfarin"},
-    {"annotation_id": "11", "rsid": "rs4149056", "gene": "SLCO1B1", "genotype": "CC",
-     "evidence_level": "1A", "phenotype_category": "Metabolism/PK", "drugs": "simvastatin"},
-    {"annotation_id": "12", "rsid": "", "gene": "CYP2D6", "genotype": "AG",
-     "evidence_level": "1A", "phenotype_category": "Efficacy", "drugs": "codeine"},
+    {
+        "annotation_id": "10",
+        "rsid": "rs17886199",
+        "gene": "PRSS53;VKORC1",
+        "genotype": "CC",
+        "evidence_level": "3",
+        "phenotype_category": "Dosage",
+        "drugs": "warfarin",
+    },
+    {
+        "annotation_id": "11",
+        "rsid": "rs4149056",
+        "gene": "SLCO1B1",
+        "genotype": "CC",
+        "evidence_level": "1A",
+        "phenotype_category": "Metabolism/PK",
+        "drugs": "simvastatin",
+    },
+    {
+        "annotation_id": "12",
+        "rsid": "",
+        "gene": "CYP2D6",
+        "genotype": "AG",
+        "evidence_level": "1A",
+        "phenotype_category": "Efficacy",
+        "drugs": "codeine",
+    },
 ]
 
 
@@ -182,9 +235,7 @@ def test_a_gene_filter_matches_a_member_and_not_the_whole_cell() -> None:
     The old filter tested the whole cell against the requested set, so a real VKORC1 annotation was
     dropped in silence — the CPIC `gene.chr` shape, a claim true of the cell and false of the column.
     """
-    rows, _ = _rows_from_snapshot(
-        _MULTI_GENE, genes=["VKORC1"], drugs=(), min_evidence_level=None
-    )
+    rows, _ = _rows_from_snapshot(_MULTI_GENE, genes=["VKORC1"], drugs=(), min_evidence_level=None)
     assert [r.rsid for r in rows] == ["rs17886199"]
     # …and the written cell is the member the request selected, not the source's joined string,
     # which is a non-symbol in a column documented as a symbol.
@@ -213,9 +264,7 @@ def test_two_requested_members_in_one_cell_select_nothing() -> None:
     Position cannot break the tie: the pharmacogene is first in `CYP3A5;ZSCAN25` and second in
     `PRSS53;VKORC1`, so "take the first" would be right half the time and silent about it.
     """
-    rows, _ = _rows_from_snapshot(
-        _MULTI_GENE, genes=["VKORC1", "PRSS53"], drugs=(), min_evidence_level=None
-    )
+    rows, _ = _rows_from_snapshot(_MULTI_GENE, genes=["VKORC1", "PRSS53"], drugs=(), min_evidence_level=None)
     assert [(r.rsid, r.gene) for r in rows] == [("rs17886199", None)]
 
 
@@ -227,9 +276,7 @@ def test_the_unidentified_count_is_scoped_to_the_requested_genes() -> None:
     for, judging whether the source's coverage of *your* gene is poor. Here `rs17886199` and the
     rsID-less CYP2D6 record are both present; asking for VKORC1 must report neither as unidentified.
     """
-    _, filtered = _rows_from_snapshot(
-        _MULTI_GENE, genes=["VKORC1"], drugs=(), min_evidence_level=None
-    )
+    _, filtered = _rows_from_snapshot(_MULTI_GENE, genes=["VKORC1"], drugs=(), min_evidence_level=None)
     assert not [w for w in filtered if "no rsID" in w]
 
     # Unfiltered, the same record is genuinely unidentifiable and is still reported — the fix is
@@ -261,12 +308,8 @@ def test_the_real_snapshot_yields_the_rows_the_whole_cell_filter_hid(tmp_path: P
     }
     assert hidden, "snapshot carries no multi-gene VKORC1 row; the probe this test encodes is stale"
 
-    draft_pharm_variants(
-        tmp_path, snapshot=_SNAPSHOT, genes=["VKORC1"], declared_use="non_commercial"
-    )
-    rows, errors, _ = _load_csv_rows(
-        tmp_path / "pharm_variants.csv", PharmVariantRow, "pharm_variants.csv"
-    )
+    draft_pharm_variants(tmp_path, snapshot=_SNAPSHOT, genes=["VKORC1"], declared_use="non_commercial")
+    rows, errors, _ = _load_csv_rows(tmp_path / "pharm_variants.csv", PharmVariantRow, "pharm_variants.csv")
     assert errors == []
     drafted = {r.rsid for r in rows}
     assert hidden <= drafted
@@ -277,9 +320,7 @@ def test_the_real_snapshot_yields_the_rows_the_whole_cell_filter_hid(tmp_path: P
 def test_a_commercial_declaration_refuses_before_reading_anything(tmp_path: Path) -> None:
     """ClinPGx forbids sale, and the terms are accepted by taking the data — so nothing is read."""
     with pytest.raises(Exception):
-        draft_pharm_variants(
-            tmp_path, snapshot=tmp_path / "nonexistent", declared_use="commercial"
-        )
+        draft_pharm_variants(tmp_path, snapshot=tmp_path / "nonexistent", declared_use="commercial")
 
 
 def test_unstated_use_skips_rather_than_refusing(tmp_path: Path) -> None:
@@ -321,9 +362,7 @@ def test_a_drafted_pgx_module_validates(tmp_path: Path) -> None:
         "schema_version: '1.0'\n"
         "module:\n  name: clinpgx_demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
     )
-    draft_pharm_variants(
-        tmp_path, snapshot=_SNAPSHOT, drugs=["simvastatin"], declared_use="non_commercial"
-    )
+    draft_pharm_variants(tmp_path, snapshot=_SNAPSHOT, drugs=["simvastatin"], declared_use="non_commercial")
     result = validate_spec(tmp_path)
     assert result.valid, result.errors
 
@@ -340,7 +379,10 @@ def test_the_real_snapshot_yields_the_mt_and_indel_annotations_that_were_dropped
     pure-nucleotide sibling no longer goes with them.
     """
     result = draft_pharm_variants(
-        tmp_path, snapshot=_SNAPSHOT, genes=["MT-RNR1", "CFTR"], declared_use="non_commercial",
+        tmp_path,
+        snapshot=_SNAPSHOT,
+        genes=["MT-RNR1", "CFTR"],
+        declared_use="non_commercial",
     )
     assert not result.skipped, result.warnings
     rows = _rows(tmp_path / "pharm_variants.csv")
@@ -381,7 +423,10 @@ def test_the_licence_terms_are_pinned_to_the_text_that_governed_them(tmp_path: P
     expected = "sha256:" + hashlib.sha256(licence.read_bytes()).hexdigest()
 
     result = draft_pharm_variants(
-        tmp_path, snapshot=_SNAPSHOT, genes=["CYP2C19"], declared_use="non_commercial",
+        tmp_path,
+        snapshot=_SNAPSHOT,
+        genes=["CYP2C19"],
+        declared_use="non_commercial",
     )
     assert not result.skipped, result.warnings
     sources = _rows(tmp_path / preferred_spelling(SOURCES_CSV))

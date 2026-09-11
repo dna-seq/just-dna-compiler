@@ -38,7 +38,12 @@ _EXAMPLES = _ROOT / "reference_examples"
 def _row(gene: str, *, acmg_sf: bool) -> VariantRow:
     """The minimum a `variants.csv` row has to state, with the two cells this check reads."""
     return VariantRow(
-        rsid="rs1", genotype="A/A", state="risk", conclusion="x", gene=gene, acmg_sf=acmg_sf,
+        rsid="rs1",
+        genotype="A/A",
+        state="risk",
+        conclusion="x",
+        gene=gene,
+        acmg_sf=acmg_sf,
     )
 
 
@@ -59,7 +64,8 @@ def acmg_snapshot(tmp_path: Path) -> Path:
     openpyxl = pytest.importorskip("openpyxl")
     del openpyxl
     return build_acmg_snapshot(
-        _ASSETS / "acmg_sf_v3.3.xlsx", tmp_path / "acmg_sf",
+        _ASSETS / "acmg_sf_v3.3.xlsx",
+        tmp_path / "acmg_sf",
         source_url="file://acmg_sf_v3.3.xlsx",
     ) and (tmp_path / "acmg_sf")
 
@@ -67,7 +73,9 @@ def acmg_snapshot(tmp_path: Path) -> Path:
 @pytest.fixture
 def strchive_snapshot(tmp_path: Path) -> Path:
     result = build_strchive_snapshot(
-        tmp_path / "strchive", catalogue=_ASSETS / "strchive_loci_slice.json", release="v0.0.1",
+        tmp_path / "strchive",
+        catalogue=_ASSETS / "strchive_loci_slice.json",
+        release="v0.0.1",
     )
     return result.catalogue_file.parent
 
@@ -80,13 +88,18 @@ def drug_labels_snapshot(tmp_path: Path) -> Path:
         for path in sorted((_ASSETS / "clinpgx_drug_labels_slice").iterdir()):
             handle.write(path, path.name)
     return build_drug_label_snapshot(
-        archive, tmp_path / "drug_labels", source_url="file://clinpgx_drug_labels_slice",
+        archive,
+        tmp_path / "drug_labels",
+        source_url="file://clinpgx_drug_labels_slice",
     ).out_dir
 
 
 def test_the_cache_base_places_all_three_where_the_resolvers_look(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-    acmg_snapshot: Path, strchive_snapshot: Path, drug_labels_snapshot: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    acmg_snapshot: Path,
+    strchive_snapshot: Path,
+    drug_labels_snapshot: Path,
 ) -> None:
     """One `$JUST_DNA_PIPELINES_CACHE_DIR` serves all three, like every cache that came before them.
 
@@ -109,7 +122,8 @@ def test_the_cache_base_places_all_three_where_the_resolvers_look(
 
 
 def test_a_bare_catalogue_file_still_resolves_and_a_wrong_name_does_not(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Pointing straight at `STRchive-loci.json` worked before the resolver existed and still does.
 
@@ -132,7 +146,8 @@ def test_a_bare_catalogue_file_still_resolves_and_a_wrong_name_does_not(
 
 
 def test_acmg_offline_reads_a_provisioned_snapshot_instead_of_reporting_unchecked(
-    monkeypatch: pytest.MonkeyPatch, acmg_snapshot: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    acmg_snapshot: Path,
 ) -> None:
     """`--offline` with no `--sf-list` used to check nothing at all, snapshot present or not.
 
@@ -149,7 +164,8 @@ def test_acmg_offline_reads_a_provisioned_snapshot_instead_of_reporting_unchecke
 
 
 def test_acmg_without_the_cache_really_did_report_unchecked(
-    monkeypatch: pytest.MonkeyPatch, acmg_snapshot: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    acmg_snapshot: Path,
 ) -> None:
     """The old behaviour, demonstrated rather than asserted about — the snapshot is simply unfound."""
     monkeypatch.setenv("JUST_DNA_ACMG_CACHE", str(acmg_snapshot / "nowhere"))
@@ -159,7 +175,9 @@ def test_acmg_without_the_cache_really_did_report_unchecked(
 
 
 def test_repeat_bands_compares_against_a_provisioned_catalogue_with_no_flag(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, strchive_snapshot: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    strchive_snapshot: Path,
 ) -> None:
     monkeypatch.setenv("JUST_DNA_STRCHIVE_CACHE", str(strchive_snapshot))
     result = check_repeat_bands(_module(tmp_path, "htt_repeat_expansion"), write=False)
@@ -168,7 +186,8 @@ def test_repeat_bands_compares_against_a_provisioned_catalogue_with_no_flag(
 
 
 def test_repeat_bands_still_says_nobody_provisioned_one_when_nobody_did(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Unreachable is not absent: with no catalogue anywhere the skip must stay, and say so."""
     monkeypatch.setenv("JUST_DNA_STRCHIVE_CACHE", str(tmp_path / "nowhere"))
@@ -179,11 +198,15 @@ def test_repeat_bands_still_says_nobody_provisioned_one_when_nobody_did(
 
 
 def test_drug_labels_reads_a_provisioned_snapshot_with_no_flag(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, drug_labels_snapshot: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    drug_labels_snapshot: Path,
 ) -> None:
     monkeypatch.setenv("JUST_DNA_DRUG_LABELS_CACHE", str(drug_labels_snapshot))
     result = check_drug_labels(
-        _module(tmp_path, "cyp2c19_star_alleles"), declared_use="non-commercial", write=False,
+        _module(tmp_path, "cyp2c19_star_alleles"),
+        declared_use="non-commercial",
+        write=False,
     )
     assert result.not_checked != "no_reference", result.warnings
     assert result.regulators, "a snapshot was read, so the agencies in it are known"

@@ -68,9 +68,7 @@ logger = logging.getLogger(__name__)
 #: than telling an author their module is wrong. Not fetched: it is a publisher CDN URL for one
 #: version, and the next version will have a different one.
 SF_V3_3_DOI = "10.1016/j.gim.2025.101454"
-SF_V3_3_SUPPLEMENT_URL = (
-    "https://ars.els-cdn.com/content/image/1-s2.0-S1098360025001017-mmc1.xlsx"
-)
+SF_V3_3_SUPPLEMENT_URL = "https://ars.els-cdn.com/content/image/1-s2.0-S1098360025001017-mmc1.xlsx"
 
 #: Each expected column, as a **prefix** of the sheet's header text, resolved to whatever index it is
 #: found at. Prefixes rather than equality because ACMG misspells one of them (`Disease/Phentyope`)
@@ -185,7 +183,9 @@ def parse_acmg_workbook(path: Path) -> AcmgSfList:
                 medgen_ids=(),
                 phenotype_category=cells["phenotype_category"],
                 inheritance=cells["inheritance"],
-                since_version=None if (cells["since_version"] or "").lower() == "none" else cells["since_version"],
+                since_version=None
+                if (cells["since_version"] or "").lower() == "none"
+                else cells["since_version"],
                 variants_to_report=cells["variants_to_report"],
             )
         )
@@ -292,6 +292,9 @@ def build_acmg_snapshot(
     atomic_write_text((out_dir / RELEASE_FILENAME), json.dumps(release, indent=2) + "\n")
     logger.info(
         "wrote ACMG SF v%s snapshot to %s (%d genes, %d rows)",
-        sf_list.version, out_dir, release["gene_count"], release["row_count"],
+        sf_list.version,
+        out_dir,
+        release["gene_count"],
+        release["row_count"],
     )
     return sf_list

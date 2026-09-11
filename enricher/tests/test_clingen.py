@@ -45,9 +45,7 @@ def _spec(tmp_path: Path, genes: list[str]) -> Path:
     spec.mkdir(parents=True, exist_ok=True)
     (spec / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
     rows = "\n".join(f"rs{i + 1},A/G,risk,c,{gene}" for i, gene in enumerate(genes))
-    (spec / "variants.csv").write_text(
-        f"rsid,genotype,state,conclusion,gene\n{rows}\n", encoding="utf-8"
-    )
+    (spec / "variants.csv").write_text(f"rsid,genotype,state,conclusion,gene\n{rows}\n", encoding="utf-8")
     (spec / "studies.csv").write_text(
         "rsid,pmid\n" + "\n".join(f"rs{i + 1},12345678" for i in range(len(genes))) + "\n",
         encoding="utf-8",

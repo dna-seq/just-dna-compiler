@@ -28,10 +28,7 @@ import pytest
 from just_dna_compiler.compiler import compile_module, content_signature, reverse_module
 from just_dna_format.base import derive_variant_key
 
-_YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: demo\n  title: D\n  description: d\n  report_title: D\n"
-)
+_YAML = "schema_version: '1.0'\nmodule:\n  name: demo\n  title: D\n  description: d\n  report_title: D\n"
 _RES_HEADER = (
     "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status,"
     "rsid_alternates,fetched_at\n"
@@ -46,8 +43,7 @@ _KEY_COORD_ONLY = derive_variant_key(None, "7", 700, "C")
 
 def _row(key, rsid, chrom, start, ref, alts, idx=0, status="resolved", alternates="") -> str:
     cell = f'"{alternates}"' if alternates else ""
-    return (f"{key},{rsid},{chrom},{start},{ref},{alts},GRCh38,{idx},manual,{status},"
-            f"{cell},\n")
+    return f"{key},{rsid},{chrom},{start},{ref},{alts},GRCh38,{idx},manual,{status},{cell},\n"
 
 
 _PHARM_HEADER = "rsid,chrom,start,ref,gene,genotype,drug,conclusion\n"
@@ -90,134 +86,198 @@ class Case:
 
 CASES: list[Case] = [
     # ── the four authored shapes, cleanly resolved: all stable, all compile in strict ──────────
-    Case("rsid-only, 1:1 fill",
-         "rs777,,,,,C/G,risk,c\n",
-         _row("rs777", "rs777", 7, 700, "C", "G"),
-         stable=True, strict_refuses=False),
-    Case("rsid-only, one-to-many expansion (both loci can host the genotype)",
-         "rs999,,,,,C/G,risk,c\n",
-         _row("rs999", "rs999", 5, 500, "C", "G", 0)
-         + _row("rs999", "rs999", 6, 600, "C", "G", 1),
-         stable=True, strict_refuses=False),
-    Case("coord+alt authored, rsid resolved",
-         ",7,700,C,G,C/G,risk,c\n",
-         _row(_KEY_COORD_ALT, "rs777", 7, 700, "C", "G"),
-         stable=True, strict_refuses=False),
-    Case("coord-only authored (no alt), rsid and alt resolved",
-         ",7,700,C,,C/G,risk,c\n",
-         _row(_KEY_COORD_ONLY, "rs777", 7, 700, "C", "G"),
-         stable=True, strict_refuses=False),
-    Case("pair authored (rsid + coord + alt), table agrees",
-         "rs777,7,700,C,G,C/G,risk,c\n",
-         _row("rs777", "rs777", 7, 700, "C", "G"),
-         stable=True, strict_refuses=False),
-
+    Case(
+        "rsid-only, 1:1 fill",
+        "rs777,,,,,C/G,risk,c\n",
+        _row("rs777", "rs777", 7, 700, "C", "G"),
+        stable=True,
+        strict_refuses=False,
+    ),
+    Case(
+        "rsid-only, one-to-many expansion (both loci can host the genotype)",
+        "rs999,,,,,C/G,risk,c\n",
+        _row("rs999", "rs999", 5, 500, "C", "G", 0) + _row("rs999", "rs999", 6, 600, "C", "G", 1),
+        stable=True,
+        strict_refuses=False,
+    ),
+    Case(
+        "coord+alt authored, rsid resolved",
+        ",7,700,C,G,C/G,risk,c\n",
+        _row(_KEY_COORD_ALT, "rs777", 7, 700, "C", "G"),
+        stable=True,
+        strict_refuses=False,
+    ),
+    Case(
+        "coord-only authored (no alt), rsid and alt resolved",
+        ",7,700,C,,C/G,risk,c\n",
+        _row(_KEY_COORD_ONLY, "rs777", 7, 700, "C", "G"),
+        stable=True,
+        strict_refuses=False,
+    ),
+    Case(
+        "pair authored (rsid + coord + alt), table agrees",
+        "rs777,7,700,C,G,C/G,risk,c\n",
+        _row("rs777", "rs777", 7, 700, "C", "G"),
+        stable=True,
+        strict_refuses=False,
+    ),
     # ── the indel row (RM31): the table spells one event differently from the genotype ─────────
     # ClinVar drafts `X:634689 CAG>C`, so the author writes `C/CAG`; Ensembl publishes the same 2 bp AG
     # deletion as `X:634690 AGAG>AG`. Both loci reconcile, so the expansion is complete and the whole
     # cycle is a fixed point — where before this pair produced no usable locus at all.
-    Case("rsid-only indel, table carries the other published spelling",
-         "rs1569493663,,,,,C/CAG,risk,c\n",
-         _row("rs1569493663", "rs1569493663", "X", 634690, "AGAG", "AG", 0)
-         + _row("rs1569493663", "rs1569493663", "Y", 634690, "AGAG", "AG", 1),
-         stable=True, strict_refuses=False),
+    Case(
+        "rsid-only indel, table carries the other published spelling",
+        "rs1569493663,,,,,C/CAG,risk,c\n",
+        _row("rs1569493663", "rs1569493663", "X", 634690, "AGAG", "AG", 0)
+        + _row("rs1569493663", "rs1569493663", "Y", 634690, "AGAG", "AG", 1),
+        stable=True,
+        strict_refuses=False,
+    ),
     # The same deletion written one base further right (the reference reads `C A G A G` from 634689, so
     # `634691 GAG>G` is that AG deletion again) reduces to the event `GA` where the genotype's reduces to
     # `AG`: same size, different content, which is what a repeat-region disagreement looks like and what
     # string algebra cannot settle. So the locus is KEPT — nothing is dropped, nothing is unreproducible,
     # `strict` has no complaint — and the compile says out loud that it did not decide.
-    Case("rsid-only indel, spelling the tier cannot reconcile (kept, reported)",
-         "rs1569493663,,,,,C/CAG,risk,c\n",
-         _row("rs1569493663", "rs1569493663", "X", 634691, "GAG", "G", 0)
-         + _row("rs1569493663", "rs1569493663", "Y", 634691, "GAG", "G", 1),
-         stable=True, strict_refuses=False),
+    Case(
+        "rsid-only indel, spelling the tier cannot reconcile (kept, reported)",
+        "rs1569493663,,,,,C/CAG,risk,c\n",
+        _row("rs1569493663", "rs1569493663", "X", 634691, "GAG", "G", 0)
+        + _row("rs1569493663", "rs1569493663", "Y", 634691, "GAG", "G", 1),
+        stable=True,
+        strict_refuses=False,
+    ),
     # And the decidable negative still drops the locus, so this stays unstable + strict-refusing: the
     # event sizes differ (1 bp inserted vs 2 bp deleted), which re-anchoring cannot change.
-    Case("expansion drops a locus whose indel is a different size",
-         "rs281864532,,,,,G/GT,risk,c\n",
-         _row("rs281864532", "rs281864532", 11, 5226675, "G", "GT", 0)
-         + _row("rs281864532", "rs281864532", 11, 5226676, "GTT", "G", 1),
-         stable=False, strict_refuses=True),
-
+    Case(
+        "expansion drops a locus whose indel is a different size",
+        "rs281864532,,,,,G/GT,risk,c\n",
+        _row("rs281864532", "rs281864532", 11, 5226675, "G", "GT", 0)
+        + _row("rs281864532", "rs281864532", 11, 5226676, "GTT", "G", 1),
+        stable=False,
+        strict_refuses=True,
+    ),
     # ── stable, but resting on something strict will not build on ─────────────────────────────
-    Case("ambiguous: several rsIDs for one allele, deterministic pick recorded",
-         ",7,700,C,G,C/G,risk,c\n",
-         _row(_KEY_COORD_ALT, "rs777", 7, 700, "C", "G", status="ambiguous",
-              alternates="rs777,rs888"),
-         stable=True, strict_refuses=True),
-
+    Case(
+        "ambiguous: several rsIDs for one allele, deterministic pick recorded",
+        ",7,700,C,G,C/G,risk,c\n",
+        _row(_KEY_COORD_ALT, "rs777", 7, 700, "C", "G", status="ambiguous", alternates="rs777,rs888"),
+        stable=True,
+        strict_refuses=True,
+    ),
     # ── unstable: the table cannot be reproduced from the artifact, so strict must refuse ──────
-    Case("expansion drops a locus that cannot host the genotype",
-         "rs999,,,,,C/G,risk,c\n",
-         _row("rs999", "rs999", 5, 500, "C", "G", 0)
-         + _row("rs999", "rs999", 6, 600, "A", "T", 1),
-         stable=False, strict_refuses=True),
-    Case("not_found: the table records the rsid as genuinely absent",
-         "rs777,,,,,C/G,risk,c\n",
-         _row("rs777", "", "", "", "", "", status="not_found"),
-         stable=False, strict_refuses=True),
-    Case("authored ref contradicts the table",
-         "rs777,7,700,A,G,C/G,risk,c\n",
-         _row("rs777", "rs777", 7, 700, "C", "G"),
-         stable=False, strict_refuses=True),
-    Case("authored coordinate contradicts the table",
-         "rs777,7,700,C,G,C/G,risk,c\n",
-         _row("rs777", "rs777", 9, 900, "C", "G"),
-         stable=False, strict_refuses=True),
-
+    Case(
+        "expansion drops a locus that cannot host the genotype",
+        "rs999,,,,,C/G,risk,c\n",
+        _row("rs999", "rs999", 5, 500, "C", "G", 0) + _row("rs999", "rs999", 6, 600, "A", "T", 1),
+        stable=False,
+        strict_refuses=True,
+    ),
+    Case(
+        "not_found: the table records the rsid as genuinely absent",
+        "rs777,,,,,C/G,risk,c\n",
+        _row("rs777", "", "", "", "", "", status="not_found"),
+        stable=False,
+        strict_refuses=True,
+    ),
+    Case(
+        "authored ref contradicts the table",
+        "rs777,7,700,A,G,C/G,risk,c\n",
+        _row("rs777", "rs777", 7, 700, "C", "G"),
+        stable=False,
+        strict_refuses=True,
+    ),
+    Case(
+        "authored coordinate contradicts the table",
+        "rs777,7,700,C,G,C/G,risk,c\n",
+        _row("rs777", "rs777", 9, 900, "C", "G"),
+        stable=False,
+        strict_refuses=True,
+    ),
     # ── nothing to resolve from ────────────────────────────────────────────────────────────────
-    Case("no resolution row at all: the rsid stays unresolved",
-         "rs777,,,,,C/G,risk,c\n",
-         "",
-         stable=True, strict_refuses=True),
+    Case(
+        "no resolution row at all: the rsid stays unresolved",
+        "rs777,,,,,C/G,risk,c\n",
+        "",
+        stable=True,
+        strict_refuses=True,
+    ),
     # Unstable for the same reason `not_found` is: an unresolved row has no coordinate, so reverse
     # writes no resolution row for it and the table's two candidates are gone.
-    Case("every candidate locus contradicts the genotype: left unresolved",
-         "rs999,,,,,A/T,risk,c\n",
-         _row("rs999", "rs999", 5, 500, "C", "G", 0)
-         + _row("rs999", "rs999", 6, 600, "C", "G", 1),
-         stable=False, strict_refuses=True),
-
+    Case(
+        "every candidate locus contradicts the genotype: left unresolved",
+        "rs999,,,,,A/T,risk,c\n",
+        _row("rs999", "rs999", 5, 500, "C", "G", 0) + _row("rs999", "rs999", 6, 600, "C", "G", 1),
+        stable=False,
+        strict_refuses=True,
+    ),
     # ── the table says more than the module uses: the injected row has nowhere to come back from ──
     # Pinned on the SNP core, where it originates and where it has always been true, rather than only
     # on the positional cases below where 0.6 first made it visible. `strict` accepts this module and
     # `artifact.digest` is reproducible; what cannot be reproduced is a row about a variant this
     # module does not contain, because reverse rebuilds the table from the artifact and the artifact
     # never held it.
-    Case("the table carries a row about a variant the module does not have",
-         "rs777,,,,,C/G,risk,c\n",
-         _row("rs777", "rs777", 7, 700, "C", "G") + _row("rs111", "rs111", 8, 800, "A", "T"),
-         stable=True, strict_refuses=False, table_says_more=True),
-
+    Case(
+        "the table carries a row about a variant the module does not have",
+        "rs777,,,,,C/G,risk,c\n",
+        _row("rs777", "rs777", 7, 700, "C", "G") + _row("rs111", "rs111", 8, 800, "A", "T"),
+        stable=True,
+        strict_refuses=False,
+        table_says_more=True,
+    ),
     # ── the positional 0.4 kinds (RM43). Same grid, no `variants.csv`: the module the item is about
     #    carries no `weights.parquet` at all, so reverse has to rebuild `resolution.csv` from the
     #    positional parquet or the recompile silently loses every coordinate. ────────────────────
-    Case("table-only, rsid-authored pharm row, 1:1 fill",
-         "", _row("rs777", "rs777", 7, 700, "C", "G"),
-         stable=True, strict_refuses=False,
-         pharm="rs777,,,,SLCO1B1,C/G,simvastatin,c\n"),
-    Case("table-only, rsid-authored pharm row, nothing in the table",
-         "", _row("rs111", "rs111", 7, 700, "C", "G"),
-         stable=True, strict_refuses=False, table_says_more=True,
-         pharm="rs777,,,,SLCO1B1,C/G,simvastatin,c\n"),
-    Case("table-only, coordinate-authored pharm row, rsid resolved",
-         "", _row(_KEY_COORD_ONLY, "rs777", 7, 700, "C", "G"),
-         stable=True, strict_refuses=False,
-         pharm=",7,700,C,SLCO1B1,C/G,simvastatin,c\n"),
-    Case("table-only, one-to-many rsid: left unplaced, never picked or expanded",
-         "",
-         _row("rs999", "rs999", 5, 500, "C", "G", 0)
-         + _row("rs999", "rs999", 6, 600, "C", "G", 1),
-         stable=True, strict_refuses=False, table_says_more=True,
-         pharm="rs999,,,,SLCO1B1,C/G,simvastatin,c\n"),
-    Case("table-only, half coordinate the table contradicts: left exactly as authored",
-         "", _row("rs777", "rs777", 7, 700, "C", "G"),
-         stable=True, strict_refuses=False, table_says_more=True,
-         pharm="rs777,,999,,SLCO1B1,C/G,simvastatin,c\n"),
-    Case("pharm row beside the SNP core on one key: weights own the fact",
-         "rs777,,,,,C/G,risk,c\n", _row("rs777", "rs777", 7, 700, "C", "G"),
-         stable=True, strict_refuses=False,
-         pharm="rs777,,,,SLCO1B1,C/G,simvastatin,c\n"),
+    Case(
+        "table-only, rsid-authored pharm row, 1:1 fill",
+        "",
+        _row("rs777", "rs777", 7, 700, "C", "G"),
+        stable=True,
+        strict_refuses=False,
+        pharm="rs777,,,,SLCO1B1,C/G,simvastatin,c\n",
+    ),
+    Case(
+        "table-only, rsid-authored pharm row, nothing in the table",
+        "",
+        _row("rs111", "rs111", 7, 700, "C", "G"),
+        stable=True,
+        strict_refuses=False,
+        table_says_more=True,
+        pharm="rs777,,,,SLCO1B1,C/G,simvastatin,c\n",
+    ),
+    Case(
+        "table-only, coordinate-authored pharm row, rsid resolved",
+        "",
+        _row(_KEY_COORD_ONLY, "rs777", 7, 700, "C", "G"),
+        stable=True,
+        strict_refuses=False,
+        pharm=",7,700,C,SLCO1B1,C/G,simvastatin,c\n",
+    ),
+    Case(
+        "table-only, one-to-many rsid: left unplaced, never picked or expanded",
+        "",
+        _row("rs999", "rs999", 5, 500, "C", "G", 0) + _row("rs999", "rs999", 6, 600, "C", "G", 1),
+        stable=True,
+        strict_refuses=False,
+        table_says_more=True,
+        pharm="rs999,,,,SLCO1B1,C/G,simvastatin,c\n",
+    ),
+    Case(
+        "table-only, half coordinate the table contradicts: left exactly as authored",
+        "",
+        _row("rs777", "rs777", 7, 700, "C", "G"),
+        stable=True,
+        strict_refuses=False,
+        table_says_more=True,
+        pharm="rs777,,999,,SLCO1B1,C/G,simvastatin,c\n",
+    ),
+    Case(
+        "pharm row beside the SNP core on one key: weights own the fact",
+        "rs777,,,,,C/G,risk,c\n",
+        _row("rs777", "rs777", 7, 700, "C", "G"),
+        stable=True,
+        strict_refuses=False,
+        pharm="rs777,,,,SLCO1B1,C/G,simvastatin,c\n",
+    ),
 ]
 
 
@@ -273,8 +333,7 @@ def test_resolution_round_trip_contract(case: Case) -> None:
 
     strict = compile_module(spec, root / "o_strict", strict=True)
     assert strict.success is not case.strict_refuses, (
-        f"{case.label}: strict should {'refuse' if case.strict_refuses else 'accept'}; "
-        f"errors={strict.errors}"
+        f"{case.label}: strict should {'refuse' if case.strict_refuses else 'accept'}; errors={strict.errors}"
     )
 
 

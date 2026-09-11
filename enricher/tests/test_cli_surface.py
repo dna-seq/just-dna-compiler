@@ -95,9 +95,7 @@ def test_no_module_defines_the_same_function_twice() -> None:
                 if node.name in seen:
                     duplicates.append(f"{module.name}:{node.lineno}: {node.name}")
                 seen.add(node.name)
-    assert duplicates == [], "a later definition silently shadows an earlier one:\n" + "\n".join(
-        duplicates
-    )
+    assert duplicates == [], "a later definition silently shadows an earlier one:\n" + "\n".join(duplicates)
 
 
 def test_the_clinvar_digest_annotations_admit_the_none_it_can_return() -> None:
@@ -110,9 +108,7 @@ def test_the_clinvar_digest_annotations_admit_the_none_it_can_return() -> None:
 
     assert inspect.signature(_sha256_file).return_annotation == optional_str
     assert BuildResult.__annotations__["source_sha256"] == optional_str
-    assert (
-        inspect.signature(_write_release_json).parameters["source_sha256"].annotation == optional_str
-    )
+    assert inspect.signature(_write_release_json).parameters["source_sha256"].annotation == optional_str
 
 
 def test_every_pass_that_owns_a_client_closes_it_on_the_error_path() -> None:
@@ -139,10 +135,7 @@ def test_every_pass_that_owns_a_client_closes_it_on_the_error_path() -> None:
             )
             if not owns:
                 continue
-            closes = [
-                sub for sub in ast.walk(node)
-                if isinstance(sub, ast.Attribute) and sub.attr == "close"
-            ]
+            closes = [sub for sub in ast.walk(node) if isinstance(sub, ast.Attribute) and sub.attr == "close"]
             if not closes:
                 continue
             finalizers = [
@@ -223,8 +216,7 @@ def test_a_leaked_client_is_closed_when_the_gwas_pass_raises(tmp_path: Path) -> 
     spec = tmp_path / "spec"
     spec.mkdir()
     (spec / "module_spec.yaml").write_text(
-        "schema_version: '1.0'\nmodule:\n  name: g\n  title: G\n  description: d\n"
-        "  report_title: G\n",
+        "schema_version: '1.0'\nmodule:\n  name: g\n  title: G\n  description: d\n  report_title: G\n",
         encoding="utf-8",
     )
     (spec / "variants.csv").write_text(
@@ -314,7 +306,9 @@ def test_the_publish_default_does_not_depend_on_the_working_directory(tmp_path, 
     assert from_root == from_sub, "the publish default changed meaning with the working directory"
 
 
-def test_the_publish_default_prefers_the_resolved_cache_over_the_build_directory(monkeypatch, tmp_path) -> None:
+def test_the_publish_default_prefers_the_resolved_cache_over_the_build_directory(
+    monkeypatch, tmp_path
+) -> None:
     """The lane has a resolver; a publish should ask it rather than guess a path.
 
     `$JUST_DNA_ALPHAGENOME_AVI_CACHE` is what an operator sets to say where their snapshot lives, and

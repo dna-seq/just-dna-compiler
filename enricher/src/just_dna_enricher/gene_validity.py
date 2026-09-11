@@ -302,9 +302,7 @@ def parse_clingen_validity(
                 moi=map_inheritance(record.get("MOI"), unmapped=unmapped),
                 classification=map_classification(record.get("CLASSIFICATION"), unmapped=unmapped),
                 classification_raw=record.get("CLASSIFICATION") or None,
-                classification_date=read_curation_date(
-                    record.get("CLASSIFICATION DATE"), unmapped=unmapped
-                ),
+                classification_date=read_curation_date(record.get("CLASSIFICATION DATE"), unmapped=unmapped),
                 # The curating panel, not "ClinGen": a module reading this column wants to know which
                 # expert panel ruled, and every row here would otherwise say the same word.
                 submitter=record.get("GCEP") or None,
@@ -328,9 +326,7 @@ def _clingen_assertion_id(report_url: str | None) -> str | None:
     return tail or None
 
 
-def parse_gencc(
-    text: str, *, unmapped: set[str] | None = None
-) -> tuple[list[ValidityAssertion], str]:
+def parse_gencc(text: str, *, unmapped: set[str] | None = None) -> tuple[list[ValidityAssertion], str]:
     """Parse GenCC's submission export → `(assertions, release label)`.
 
     GenCC publishes no release identifier at all, so the label is derived from the latest
@@ -365,13 +361,9 @@ def parse_gencc(
                 disease_id=(record.get("disease_curie") or "").strip() or None,
                 disease_label=(record.get("disease_title") or "").strip() or None,
                 moi=map_inheritance(record.get("moi_title"), unmapped=unmapped),
-                classification=map_classification(
-                    record.get("classification_title"), unmapped=unmapped
-                ),
+                classification=map_classification(record.get("classification_title"), unmapped=unmapped),
                 classification_raw=(record.get("classification_title") or "").strip() or None,
-                classification_date=read_curation_date(
-                    record.get("submitted_as_date"), unmapped=unmapped
-                ),
+                classification_date=read_curation_date(record.get("submitted_as_date"), unmapped=unmapped),
                 submitter=(record.get("submitter_title") or "").strip() or None,
                 assertion_id=(record.get("uuid") or "").strip() or None,
                 report_url=(record.get("submitted_as_public_report_url") or "").strip() or None,
@@ -392,9 +384,7 @@ def fetch_validity_export(url: str, *, timeout: float = 180.0) -> str:
         response = httpx.get(url, timeout=timeout, follow_redirects=True)
         response.raise_for_status()
     except httpx.HTTPError as exc:
-        raise GeneValidityUnavailable(
-            f"could not fetch the gene-validity export from {url}: {exc}"
-        ) from exc
+        raise GeneValidityUnavailable(f"could not fetch the gene-validity export from {url}: {exc}") from exc
     return response.text
 
 
@@ -453,8 +443,12 @@ def enrich_gene_validity(
         existing_rows = parsed
 
     unmapped: set[str] = set()
-    text = export_text if export_text is not None else fetch_validity_export(
-        url or (DEFAULT_CLINGEN_VALIDITY_URL if source == CLINGEN_SOURCE else DEFAULT_GENCC_URL)
+    text = (
+        export_text
+        if export_text is not None
+        else fetch_validity_export(
+            url or (DEFAULT_CLINGEN_VALIDITY_URL if source == CLINGEN_SOURCE else DEFAULT_GENCC_URL)
+        )
     )
     if source == CLINGEN_SOURCE:
         assertions, released = parse_clingen_validity(text, unmapped=unmapped)
@@ -511,7 +505,8 @@ def enrich_gene_validity(
             "%d submitter value(s) could not be interpreted by this release and were left unset — "
             "the assertion is kept, only the cell is empty (a classification's verbatim wording also "
             "survives in classification_raw): %s",
-            len(unmapped), sorted(unmapped),
+            len(unmapped),
+            sorted(unmapped),
         )
     # **Currency is derived, never written** (RM108). ClinGen's `assertion_id` embeds the curation
     # timestamp, so a re-curated assertion arrives under a different id, misses `_merge_key` and is
@@ -531,14 +526,16 @@ def enrich_gene_validity(
             "%d gene-disease claim(s) carry a later curation, so an earlier row is superseded and "
             "kept: %s. Nothing is deleted — the newest classification_date reads as current, and the "
             "compiled manifest publishes that one. A curating body re-curating is not an error.",
-            len(superseded), superseded[:5] + (["..."] if len(superseded) > 5 else []),
+            len(superseded),
+            superseded[:5] + (["..."] if len(superseded) > 5 else []),
         )
     if undecidable:
         logger.warning(
             "%d gene-disease claim(s) carry several curations that nothing orders: %s. Two rows share "
             "a classification_date, or one states none, so no row is called current and none "
             "superseded — every classification stays published. Withheld deliberately.",
-            len(undecidable), undecidable[:5] + (["..."] if len(undecidable) > 5 else []),
+            len(undecidable),
+            undecidable[:5] + (["..."] if len(undecidable) > 5 else []),
         )
     result = GeneValidityResult(
         rows=out,

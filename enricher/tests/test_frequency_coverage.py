@@ -81,8 +81,7 @@ def _spec(tmp_path: Path, *, keep_y: bool = True) -> Path:
     spec = tmp_path / "spec"
     spec.mkdir()
     (spec / "variants.csv").write_text(
-        "rsid,genotype,state,conclusion,gene\n"
-        "rs137852556,C/T,risk,ClinVar: pathogenic,SHOX\n"
+        "rsid,genotype,state,conclusion,gene\nrs137852556,C/T,risk,ClinVar: pathogenic,SHOX\n"
     )
     rows = [
         f"{_X_KEY},rs137852556,X,640851,C,T,GRCh38,0,ensembl-rest,resolved",
@@ -91,7 +90,8 @@ def _spec(tmp_path: Path, *, keep_y: bool = True) -> Path:
         rows.append(f"{_Y_KEY},rs137852556,Y,640851,C,T,GRCh38,1,ensembl-rest,resolved")
     (spec / "resolution.csv").write_text(
         "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status\n"
-        + "\n".join(rows) + "\n"
+        + "\n".join(rows)
+        + "\n"
     )
     return spec
 
@@ -150,9 +150,7 @@ def test_a_genuine_absence_is_still_recorded_as_a_fact(tmp_path: Path) -> None:
     locus gnomAD has no allele for is a real finding about a real callset."""
     spec = tmp_path / "spec"
     spec.mkdir()
-    (spec / "variants.csv").write_text(
-        "rsid,genotype,state,conclusion,gene\nrs137852556,C/T,risk,c,SHOX\n"
-    )
+    (spec / "variants.csv").write_text("rsid,genotype,state,conclusion,gene\nrs137852556,C/T,risk,c,SHOX\n")
     # An X-PAR locus gnomAD covers but (per the handler) has no record of.
     key = derive_vrs_allele_id("X", 641037, "C", "A")
     (spec / "resolution.csv").write_text(

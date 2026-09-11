@@ -83,7 +83,7 @@ def _schemas() -> dict[str, dict]:
             "variant_index": pl.Int64,
             "rsid": pl.Utf8,
             "chrom": pl.Utf8,
-            "start": pl.Int64,          # 1-based, GRCh38 — the VCF convention, never converted
+            "start": pl.Int64,  # 1-based, GRCh38 — the VCF convention, never converted
             "ref": pl.Utf8,
             "alt": pl.Utf8,
         },
@@ -154,9 +154,7 @@ def build_snapshot(
     schemas = _schemas()
     by_file = {ALLELES_PARQUET: allele_records, VARIANTS_PARQUET: variant_records}
     for name, records in by_file.items():
-        pl.DataFrame(records, schema=schemas[name]).write_parquet(
-            data_dir / name, compression="zstd"
-        )
+        pl.DataFrame(records, schema=schemas[name]).write_parquet(data_dir / name, compression="zstd")
 
     digest = _content_digest(by_file)
     dataset = f"pharmvar_snapshot_{digest.removeprefix('sha256:')[:12]}"
@@ -180,12 +178,14 @@ def build_snapshot(
         "built_at": now_utc_iso(),
         "builder_version": _builder_version(),
     }
-    atomic_write_text(
-        (out_dir / RELEASE_FILENAME), json.dumps(release, indent=2, sort_keys=True) + "\n"
-    )
+    atomic_write_text((out_dir / RELEASE_FILENAME), json.dumps(release, indent=2, sort_keys=True) + "\n")
     logger.info(
         "PharmVar snapshot: %d gene(s), %d allele(s), %d defining variant(s) on %s → %s",
-        len(by_gene), len(allele_records), len(variant_records), PHARMVAR_GENOME_BUILD, data_dir,
+        len(by_gene),
+        len(allele_records),
+        len(variant_records),
+        PHARMVAR_GENOME_BUILD,
+        data_dir,
     )
     return PharmVarBuildResult(
         out_dir=out_dir,
@@ -203,9 +203,7 @@ def _content_digest(by_file: dict[str, list[dict]]) -> str:
     for name in sorted(by_file):
         hasher.update(name.encode("utf-8"))
         hasher.update(
-            json.dumps(by_file[name], sort_keys=True, default=str, ensure_ascii=False).encode(
-                "utf-8"
-            )
+            json.dumps(by_file[name], sort_keys=True, default=str, ensure_ascii=False).encode("utf-8")
         )
     return "sha256:" + hasher.hexdigest()
 

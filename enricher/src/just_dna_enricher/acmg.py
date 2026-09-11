@@ -407,16 +407,17 @@ def check_acmg_sf(variants: list[VariantRow], sf_list: AcmgSfList) -> AcmgReport
     for index, variant in enumerate(variants, start=1):
         gene = (variant.gene or "").strip()
         if not gene:
-            verdicts.append(
-                AcmgVerdict(index, None, variant.acmg_sf, "unchecked", "row names no gene")
-            )
+            verdicts.append(AcmgVerdict(index, None, variant.acmg_sf, "unchecked", "row names no gene"))
             continue
         on_list = gene in listed
         if variant.acmg_sf is None:
             if on_list:
                 verdicts.append(
                     AcmgVerdict(
-                        index, gene, None, "unstated",
+                        index,
+                        gene,
+                        None,
+                        "unstated",
                         f"{gene} is on ACMG SF v{sf_list.version} ({_conditions(sf_list, gene)}) "
                         f"and acmg_sf is blank — blank means 'not stated', which is legitimate; set "
                         f"it to true if the module means to carry the flag",
@@ -428,15 +429,22 @@ def check_acmg_sf(variants: list[VariantRow], sf_list: AcmgSfList) -> AcmgReport
         if variant.acmg_sf and not on_list:
             verdicts.append(
                 _disagreement(
-                    sf_list, index, gene, True, "not_listed",
-                    f"acmg_sf=true but {gene} is not on ACMG SF v{sf_list.version} "
-                    f"({len(listed)} genes)",
+                    sf_list,
+                    index,
+                    gene,
+                    True,
+                    "not_listed",
+                    f"acmg_sf=true but {gene} is not on ACMG SF v{sf_list.version} ({len(listed)} genes)",
                 )
             )
         elif not variant.acmg_sf and on_list:
             verdicts.append(
                 _disagreement(
-                    sf_list, index, gene, False, "denied",
+                    sf_list,
+                    index,
+                    gene,
+                    False,
+                    "denied",
                     f"acmg_sf=false but {gene} is on ACMG SF v{sf_list.version} "
                     f"({_conditions(sf_list, gene)}); the column is a gene-level list-membership "
                     f"fact, so leave it blank rather than false if this row is about a variant that "
@@ -463,7 +471,10 @@ def _disagreement(
     if newer is None:
         return AcmgVerdict(index, gene, authored, verdict, message)
     return AcmgVerdict(
-        index, gene, authored, "unverifiable",
+        index,
+        gene,
+        authored,
+        "unverifiable",
         f"{message} — but the list read is v{sf_list.version} and ACMG SF v{newer} is published, so "
         f"this disagreement may be the list rather than the module. Build a snapshot from ACMG's "
         f"supplementary workbook and pass it with --sf-list to get an answer",
@@ -529,7 +540,10 @@ def load_acmg_snapshot(snapshot_dir: Path) -> AcmgSfList:
         )
     logger.info(
         "ACMG SF v%s snapshot: %d genes over %d rows (source %s)",
-        version, len({f.gene for f in findings}), len(findings), release.get("source_sha256", "?"),
+        version,
+        len({f.gene for f in findings}),
+        len(findings),
+        release.get("source_sha256", "?"),
     )
     return AcmgSfList(
         version=str(version),
@@ -539,9 +553,7 @@ def load_acmg_snapshot(snapshot_dir: Path) -> AcmgSfList:
     )
 
 
-def _resolve_variants(
-    variants: list[VariantRow] | None, spec_dir: Path | None
-) -> list[VariantRow]:
+def _resolve_variants(variants: list[VariantRow] | None, spec_dir: Path | None) -> list[VariantRow]:
     """Exactly one of `variants` / `spec_dir`, resolved to rows (RM41).
 
     Refuses both and refuses neither, rather than picking: a caller that passed both has two answers in
@@ -551,7 +563,7 @@ def _resolve_variants(
     if (variants is None) == (spec_dir is None):
         raise AcmgSfError(
             "pass exactly one of variants= (rows you already hold) or spec_dir= (a module spec "
-            "directory, loaded with the module\'s declared genome_build)"
+            "directory, loaded with the module's declared genome_build)"
         )
     if variants is not None:
         return variants
@@ -629,7 +641,9 @@ def verify_acmg_sf(
     # too would print every mismatch twice under the default root handler.
     logger.info(
         "acmg_sf checked against v%s: %d row(s), %d mismatch(es)",
-        sf_list.version, report.checked, len(report.mismatches),
+        sf_list.version,
+        report.checked,
+        len(report.mismatches),
     )
     if mode == "strict" and report.mismatches:
         grouped = AcmgReport.by_gene(report.mismatches)
@@ -670,16 +684,19 @@ def verification_record(report: AcmgReport) -> VerificationRecord:
     """
     if report.version is None:
         return skipped(
-            "acmg_secondary_findings", "offline",
+            "acmg_secondary_findings",
+            "offline",
             detail=(
-                report.warnings[0] if report.warnings
+                report.warnings[0]
+                if report.warnings
                 else "no list was consulted, so no acmg_sf cell was compared against one"
             ),
             source="acmg",
         )
     if not report.checked:
         return skipped(
-            "acmg_secondary_findings", "nothing_to_check",
+            "acmg_secondary_findings",
+            "nothing_to_check",
             # The version rides in the sentence rather than in `release`: that field belongs to a
             # comparison and this record is the statement that none was made. `skipped()` takes no
             # `release` for the same reason.

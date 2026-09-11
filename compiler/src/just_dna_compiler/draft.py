@@ -171,9 +171,7 @@ def model_for(csv_name: str) -> type[BaseModel]:
     """The row model for an authored CSV name, or `DraftError` for one this format does not define."""
     model = DRAFTABLE.get(csv_name)
     if model is None:
-        raise DraftError(
-            f"{csv_name!r} is not an authored table of this format. Known: {sorted(DRAFTABLE)}"
-        )
+        raise DraftError(f"{csv_name!r} is not an authored table of this format. Known: {sorted(DRAFTABLE)}")
     return model
 
 
@@ -247,9 +245,7 @@ def required_fields(csv_name: str) -> list[str]:
     default but reject an empty cell, and the alternative identity groups a model validator enforces."""
     model = model_for(csv_name)
     authored = set(authored_field_names(model))
-    return [
-        name for name, f in model.model_fields.items() if f.is_required() and name in authored
-    ]
+    return [name for name, f in model.model_fields.items() if f.is_required() and name in authored]
 
 
 #: Re-bound from `just_dna_format.base`, where the three-way split now lives so that this module and
@@ -401,8 +397,7 @@ def append_rows(
         existing_rows, errors, _ = _load_csv_rows(path, model, csv_name)
         if errors:
             raise DraftError(
-                f"existing {csv_name} does not validate, so a draft cannot be keyed against it: "
-                f"{errors[0]}"
+                f"existing {csv_name} does not validate, so a draft cannot be keyed against it: {errors[0]}"
             )
         with open(path, encoding="utf-8", newline="") as handle:
             existing_header = next(csv.reader(handle), [])
@@ -483,9 +478,7 @@ def append_rows(
                 handle.write(csv.excel.lineterminator)
             csv.DictWriter(handle, fieldnames=fieldnames).writerows(rendered)
 
-    return DraftReport(
-        csv_name, path, outcomes, written=True, header_extended=extended, shifted=shifted
-    )
+    return DraftReport(csv_name, path, outcomes, written=True, header_extended=extended, shifted=shifted)
 
 
 def _ends_with_newline(path: Path) -> bool:
@@ -608,16 +601,15 @@ def append_partial_rows(
 
     outcomes: list[RowOutcome] = []
     accepted: list[PartialRow] = []
-    covered = [
-        tuple((row.get(column) or "").strip() for column in partials[0].match_on)
-        for row in previous
-    ] if partials else []
+    covered = (
+        [tuple((row.get(column) or "").strip() for column in partials[0].match_on) for row in previous]
+        if partials
+        else []
+    )
 
     for partial in partials:
         errors = partial.validation_errors()
-        signature = tuple(
-            str(partial.cells.get(column) or "").strip() for column in partial.match_on
-        )
+        signature = tuple(str(partial.cells.get(column) or "").strip() for column in partial.match_on)
         if errors:
             outcomes.append(RowOutcome(signature, "invalid", {"errors": (None, "; ".join(errors))}))
             continue

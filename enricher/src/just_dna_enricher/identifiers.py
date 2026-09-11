@@ -134,8 +134,8 @@ class RsidStatus:
     """What dbSNP currently says about one authored rsID."""
 
     rsid: str
-    state: str                       # live | merged | absent | withdrawn
-    current: str | None = None    # the surviving rsID, when merged
+    state: str  # live | merged | absent | withdrawn
+    current: str | None = None  # the surviving rsID, when merged
 
     @property
     def is_current(self) -> bool:
@@ -188,15 +188,14 @@ class TraitStatus:
     """What the ontology currently says about one authored trait id."""
 
     curie: str
-    state: str                       # current | obsolete | absent | unchecked
+    state: str  # current | obsolete | absent | unchecked
     label: str | None = None
     replaced_by: str | None = None
 
     def __str__(self) -> str:
         if self.state == "obsolete":
             replacement = (
-                f", replaced by {self.replaced_by}" if self.replaced_by
-                else " with no replacement recorded"
+                f", replaced by {self.replaced_by}" if self.replaced_by else " with no replacement recorded"
             )
             return f"{self.curie} ({self.label!r}) is obsolete{replacement}"
         if self.state == "absent":
@@ -214,7 +213,7 @@ class GeneStatus:
     """What HGNC currently says about one authored gene symbol."""
 
     symbol: str
-    state: str                       # approved | retired | unknown
+    state: str  # approved | retired | unknown
     current: str | None = None
     hgnc_id: str | None = None
     #: HGNC's cytogenetic band, e.g. `16q12.2`, `Xp22.33`, `mitochondria`. Kept verbatim; the
@@ -288,7 +287,7 @@ class PgsStatus:
     """
 
     pgs_id: str
-    state: str                      # known | unrecognised | malformed
+    state: str  # known | unrecognised | malformed
     #: What the Catalog holds, when it holds something. Carried because `@existence-not-identity`: a
     #: lookup answering "does this exist" has to say *what* it found, and a PGS accession is exactly
     #: the shape of identifier where a wrong-but-real id resolves to somebody else's score.
@@ -339,7 +338,7 @@ class PgsDrift:
     """
 
     pgs_id: str
-    field_name: str                 # training_ancestry | training_cohort
+    field_name: str  # training_ancestry | training_cohort
     authored: str
     published: str
 
@@ -435,9 +434,7 @@ class IdentifierReport:
         """
         return {
             name: why
-            for source in (
-                self.trait_tables_not_read, self.gene_tables_not_read, self.pgs_tables_not_read
-            )
+            for source in (self.trait_tables_not_read, self.gene_tables_not_read, self.pgs_tables_not_read)
             for name, why in source.items()
             if why != "not present"
         }
@@ -473,11 +470,7 @@ class IdentifierReport:
         out of the strict gate. It is reported in both modes; see `metadata_disagrees`.
         """
         return not (
-            self.stale_rsids
-            or self.stale_traits
-            or self.stale_genes
-            or self.gene_loci
-            or self.stale_pgs
+            self.stale_rsids or self.stale_traits or self.stale_genes or self.gene_loci or self.stale_pgs
         )
 
     @property
@@ -567,7 +560,8 @@ class OntologyClient:
     def _http(self) -> httpx.Client:
         if self._client is None:
             self._client = httpx.Client(
-                timeout=self.timeout, follow_redirects=True,
+                timeout=self.timeout,
+                follow_redirects=True,
                 headers={"Accept": "application/json"},
             )
         return self._client
@@ -642,7 +636,9 @@ class OntologyClient:
         term = terms[0]
         if term.get("is_obsolete"):
             return TraitStatus(
-                curie=curie, state="obsolete", label=term.get("label"),
+                curie=curie,
+                state="obsolete",
+                label=term.get("label"),
                 replaced_by=_curie_from_iri(term.get("term_replaced_by")),
             )
         return TraitStatus(curie=curie, state="current", label=term.get("label"))
@@ -657,14 +653,20 @@ class OntologyClient:
         approved = self._hgnc(f"symbol/{symbol}")
         if approved:
             return GeneStatus(
-                symbol=symbol, state="approved", current=approved[0].get("symbol"),
-                hgnc_id=approved[0].get("hgnc_id"), location=approved[0].get("location"),
+                symbol=symbol,
+                state="approved",
+                current=approved[0].get("symbol"),
+                hgnc_id=approved[0].get("hgnc_id"),
+                location=approved[0].get("location"),
             )
         previous = self._hgnc(f"prev_symbol/{symbol}")
         if previous:
             return GeneStatus(
-                symbol=symbol, state="retired", current=previous[0].get("symbol"),
-                hgnc_id=previous[0].get("hgnc_id"), location=previous[0].get("location"),
+                symbol=symbol,
+                state="retired",
+                current=previous[0].get("symbol"),
+                hgnc_id=previous[0].get("hgnc_id"),
+                location=previous[0].get("location"),
             )
         return GeneStatus(symbol=symbol, state="unknown")
 
@@ -690,9 +692,7 @@ def _json(response: httpx.Response) -> dict:
     except ValueError as exc:
         raise IdentifierUnavailable(f"{response.url} did not answer JSON: {exc}") from exc
     if not isinstance(payload, dict):
-        raise IdentifierUnavailable(
-            f"{response.url} answered {type(payload).__name__}, not an object"
-        )
+        raise IdentifierUnavailable(f"{response.url} answered {type(payload).__name__}, not an object")
     return payload
 
 
@@ -746,9 +746,7 @@ def _id_bearing_tables(column: str) -> dict[str, type[BaseModel]]:
     return {
         name: model
         for name, model in DRAFTABLE.items()
-        if isinstance(model, type)
-        and issubclass(model, AuthoredModel)
-        and column in model.model_fields
+        if isinstance(model, type) and issubclass(model, AuthoredModel) and column in model.model_fields
     }
 
 
@@ -867,9 +865,7 @@ def classify_pgs_accession(pgs_id: str, payload: dict) -> PgsStatus:
     )
 
 
-def _compare_ancestry(
-    pgs_id: str, authored: list[str], payload: dict
-) -> tuple[PgsDrift | None, str | None]:
+def _compare_ancestry(pgs_id: str, authored: list[str], payload: dict) -> tuple[PgsDrift | None, str | None]:
     """`training_ancestry` against the score's dev/eval `ancestry_distribution`. Three outcomes.
 
     `(None, None)` agrees, `(drift, None)` disagrees, `(None, reason)` withholds. The withhold arm is
@@ -908,8 +904,7 @@ def _compare_ancestry(
             field_name="training_ancestry",
             authored=",".join(authored),
             published=(
-                "its development and evaluation samples are "
-                + (", ".join(sorted(published)) or "unstated")
+                "its development and evaluation samples are " + (", ".join(sorted(published)) or "unstated")
             ),
         ),
         None,
@@ -995,9 +990,7 @@ def compare_pgs_metadata(rows: list[BaseModel], records: dict[str, dict]) -> Pgs
     return comparison
 
 
-def _pgs_source_rows(
-    statuses: list[PgsStatus], release: str | None, asked: bool
-) -> list[SourceRow]:
+def _pgs_source_rows(statuses: list[PgsStatus], release: str | None, asked: bool) -> list[SourceRow]:
     """The `sources.csv` rows this run owes: the floor, plus one per score whose licence was read.
 
     **`@write-the-sourcerow`, and the per-score half is a correctness requirement rather than
@@ -1039,7 +1032,8 @@ def _catalog_release(catalog: PgsCatalogClient) -> CatalogRelease | None:
     except PgsCatalogUnavailable as exc:
         logger.info(
             "The PGS Catalog's release record could not be read (%s); the accessions were still "
-            "checked, and no release is recorded for them.", exc,
+            "checked, and no release is recorded for them.",
+            exc,
         )
         return None
 
@@ -1067,7 +1061,9 @@ def _check_pgs(
     for name, why in sorted(roster.unreadable.items()):
         logger.warning(
             "%s carries pgs_id and could not be read (%s), so its accessions were not checked. "
-            "The counts below are out of the tables that were.", name, why,
+            "The counts below are out of the tables that were.",
+            name,
+            why,
         )
     if not roster.ids:
         return
@@ -1119,7 +1115,8 @@ def _check_pgs(
             logger.warning(
                 "The recorded PGS Catalog release %s is not the one that answered this run (%s); it "
                 "is withdrawn rather than re-labelled, because one column cannot name two releases.",
-                withdrawn, report.pgs_release or "none",
+                withdrawn,
+                report.pgs_release or "none",
             )
         # **Filtered back down to this source's own rows**, because `merge_sources_file` returns the
         # whole merged file and a module that also records ClinVar or gnomAD would otherwise put
@@ -1128,8 +1125,7 @@ def _check_pgs(
         # is the honest reading of the field and the one a caller can act on.
         merged = merge_sources_file(report.pgs_sources, spec_dir, error=IdentifierCheckError)
         report.pgs_sources = [
-            row for row in merged
-            if row.source == PGS_SOURCE or row.source.startswith(f"{PGS_SOURCE}:")
+            row for row in merged if row.source == PGS_SOURCE or row.source.startswith(f"{PGS_SOURCE}:")
         ]
 
 
@@ -1231,7 +1227,10 @@ def check_identifiers(
             # means the check silently skipped ids the module really does carry.
             logger.warning(
                 "%s carries %s and could not be read (%s), so its identifiers were not checked. "
-                "The counts below are out of the tables that were.", name, column, why,
+                "The counts below are out of the tables that were.",
+                name,
+                column,
+                why,
             )
     # **The ontology legs run first, and the early return became a guard rather than a return.** The
     # PGS leg reads a different roster from a different registry, so returning before it would leave a
@@ -1337,9 +1336,13 @@ def _gene_locus_conflicts(
         # `haplotypes.csv` or `diplotypes.csv` — and nothing to place them against. Returning
         # `compared=0` with `None` beside it would be the `ran(0, 0)` this pass's attestation
         # explicitly refuses to write.
-        return [], 0, (
-            "the module carries no variants.csv rows, so no gene symbol could be placed against a "
-            "variant's chromosome"
+        return (
+            [],
+            0,
+            (
+                "the module carries no variants.csv rows, so no gene symbol could be placed against a "
+                "variant's chromosome"
+            ),
         )
     if not genes:
         # Named apart from the line below, which is a claim about HGNC: with no authored gene, HGNC
@@ -1364,11 +1367,13 @@ def _gene_locus_conflicts(
         if gene_chrom == row_chrom:
             continue
         if {gene_chrom, row_chrom} == {"X", "Y"}:
-            continue        # a PAR locus is one place on two contigs — see `vrs.par_partner`
+            continue  # a PAR locus is one place on two contigs — see `vrs.par_partner`
         conflicts.append(
             GeneLocusConflict(
-                gene=row.gene, gene_chrom=gene_chrom,
-                variant_key=row.variant_key, variant_chrom=row_chrom,
+                gene=row.gene,
+                gene_chrom=gene_chrom,
+                variant_key=row.variant_key,
+                variant_chrom=row_chrom,
             )
         )
     return conflicts, compared, None
@@ -1434,7 +1439,8 @@ def unreachable_records(
     `--no-traits` a network problem), and the source names come from the one place that assigns them.
     """
     return [
-        record if record.skipped == "not_requested"
+        record
+        if record.skipped == "not_requested"
         else skipped(record.check, "unreachable", detail=detail, source=record.source)
         for record in verification_records(
             IdentifierReport(),
@@ -1450,7 +1456,8 @@ def _trait_record(report: IdentifierReport, check_traits: bool) -> VerificationR
         return skipped("trait_currency", "not_requested", detail="--no-traits", source="ols4")
     if not report.traits:
         return skipped(
-            "trait_currency", "nothing_to_check",
+            "trait_currency",
+            "nothing_to_check",
             detail="no row carries a trait_efo_id, so there was no term to ask OLS4 about",
             source="ols4",
         )
@@ -1463,7 +1470,8 @@ def _trait_record(report: IdentifierReport, check_traits: bool) -> VerificationR
     asked = [t for t in report.traits if t.state != "unchecked"]
     if not asked:
         return skipped(
-            "trait_currency", "unsupported",
+            "trait_currency",
+            "unsupported",
             detail=(
                 f"all {len(unresolvable)} authored trait term(s) use a CURIE prefix this check "
                 f"cannot resolve: " + examples([t.curie for t in unresolvable])
@@ -1496,7 +1504,8 @@ def _gene_symbol_record(report: IdentifierReport, check_genes: bool) -> Verifica
         return skipped("gene_symbol_currency", "not_requested", detail="--no-genes", source="hgnc")
     if not report.genes:
         return skipped(
-            "gene_symbol_currency", "nothing_to_check",
+            "gene_symbol_currency",
+            "nothing_to_check",
             detail="no row names a gene, so there was no symbol to ask HGNC about",
             source="hgnc",
         )
@@ -1527,7 +1536,8 @@ def _gene_locus_record(report: IdentifierReport, check_genes: bool) -> Verificat
     """
     if not check_genes:
         return skipped(
-            "gene_locus_agreement", "not_requested",
+            "gene_locus_agreement",
+            "not_requested",
             detail="--no-genes: the comparison joins HGNC's cytoband, which was not fetched",
             source="hgnc",
         )
@@ -1535,18 +1545,22 @@ def _gene_locus_record(report: IdentifierReport, check_genes: bool) -> Verificat
         # Checked before the prose reason, because "nothing to ask" and "asked and got nothing back"
         # are the two absences this vocabulary exists to keep apart.
         return skipped(
-            "gene_locus_agreement", "nothing_to_check",
+            "gene_locus_agreement",
+            "nothing_to_check",
             detail=report.gene_loci_not_checked or "no row names a gene",
             source="hgnc",
         )
     if report.gene_loci_not_checked:
         return skipped(
-            "gene_locus_agreement", "no_reference",
-            detail=report.gene_loci_not_checked, source="hgnc",
+            "gene_locus_agreement",
+            "no_reference",
+            detail=report.gene_loci_not_checked,
+            source="hgnc",
         )
     if not report.gene_loci_compared:
         return skipped(
-            "gene_locus_agreement", "nothing_to_check",
+            "gene_locus_agreement",
+            "nothing_to_check",
             detail=(
                 "no row has both a gene HGNC places on a chromosome and a chromosome of its own "
                 "(authored, or resolved in an injected resolution.csv)"
@@ -1578,9 +1592,7 @@ def _pgs_accession_record(report: IdentifierReport, check_pgs: bool) -> Verifica
     prefixes — those were never *examined* by this check at all, because no route existed to put them.
     """
     if not check_pgs:
-        return skipped(
-            "pgs_accession_currency", "not_requested", detail="--no-pgs", source=PGS_SOURCE
-        )
+        return skipped("pgs_accession_currency", "not_requested", detail="--no-pgs", source=PGS_SOURCE)
     if report.pgs_not_checked is not None:
         # The Catalog was asked and did not answer, or there was no route to ask it. Either way this
         # record says so and the ontology records beside it are untouched — four registries, four
@@ -1589,7 +1601,8 @@ def _pgs_accession_record(report: IdentifierReport, check_pgs: bool) -> Verifica
         return skipped("pgs_accession_currency", reason, detail=detail, source=PGS_SOURCE)
     if not report.pgs:
         return skipped(
-            "pgs_accession_currency", "nothing_to_check",
+            "pgs_accession_currency",
+            "nothing_to_check",
             detail=(
                 "no row carries a pgs_id, so there was no accession to ask the PGS Catalog about"
                 if not report.pgs_tables_not_read
@@ -1611,9 +1624,7 @@ def _pgs_accession_record(report: IdentifierReport, check_pgs: bool) -> Verifica
             for state in sorted(by_state)
         )
     else:
-        detail = (
-            f"the PGS Catalog holds a score for every one of {len(report.pgs)} authored accession(s)"
-        )
+        detail = f"the PGS Catalog holds a score for every one of {len(report.pgs)} authored accession(s)"
     return ran(
         "pgs_accession_currency",
         subjects=len(report.pgs),
@@ -1640,7 +1651,8 @@ def _pgs_metadata_record(report: IdentifierReport, check_pgs: bool) -> Verificat
     """
     if not check_pgs:
         return skipped(
-            "pgs_metadata_agreement", "not_requested",
+            "pgs_metadata_agreement",
+            "not_requested",
             detail="--no-pgs: the comparison reads the score records, which were not fetched",
             source=PGS_SOURCE,
         )
@@ -1649,14 +1661,16 @@ def _pgs_metadata_record(report: IdentifierReport, check_pgs: bool) -> Verificat
         return skipped("pgs_metadata_agreement", reason, detail=detail, source=PGS_SOURCE)
     if not report.pgs:
         return skipped(
-            "pgs_metadata_agreement", "nothing_to_check",
+            "pgs_metadata_agreement",
+            "nothing_to_check",
             detail="no row carries a pgs_id, so there was no score record to compare anything against",
             source=PGS_SOURCE,
         )
     comparison = report.pgs_metadata
     if not comparison.authored:
         return skipped(
-            "pgs_metadata_agreement", "nothing_to_check",
+            "pgs_metadata_agreement",
+            "nothing_to_check",
             detail=(
                 "no row beside a recognised accession states a training_ancestry or a "
                 "training_cohort, so the module makes no claim for the Catalog to disagree with. "
@@ -1668,7 +1682,8 @@ def _pgs_metadata_record(report: IdentifierReport, check_pgs: bool) -> Verificat
     withheld = pgs_withheld_sentences(comparison)
     if not comparison.compared:
         return skipped(
-            "pgs_metadata_agreement", "no_reference",
+            "pgs_metadata_agreement",
+            "no_reference",
             detail=(
                 f"all {len(comparison.authored)} authored cell(s) were withheld rather than "
                 "compared: " + "; ".join(withheld)
@@ -1678,13 +1693,10 @@ def _pgs_metadata_record(report: IdentifierReport, check_pgs: bool) -> Verificat
     if comparison.drift:
         detail = (
             f"{len(comparison.drift)} of {len(comparison.compared)} compared cell(s) disagree with "
-            "the Catalog's record: "
-            + examples([f"{d.pgs_id}/{d.field_name}" for d in comparison.drift])
+            "the Catalog's record: " + examples([f"{d.pgs_id}/{d.field_name}" for d in comparison.drift])
         )
     else:
-        detail = (
-            f"all {len(comparison.compared)} compared cell(s) agree with the Catalog's record"
-        )
+        detail = f"all {len(comparison.compared)} compared cell(s) agree with the Catalog's record"
     if withheld:
         # The shortfall travels with the finding rather than beside it — a coverage figure whose
         # denominator is stated somewhere else is the defect `_vrs_coverage` exists for.
@@ -1709,7 +1721,6 @@ def pgs_withheld_sentences(comparison: PgsComparison) -> list[str]:
     for (pgs_id, field_name, _authored), reason in comparison.withheld.items():
         by_reason.setdefault(reason, []).append(f"{pgs_id}/{field_name}")
     return [
-        f"{len(by_reason[reason])} cell(s) withheld because {reason}: "
-        + examples(sorted(by_reason[reason]))
+        f"{len(by_reason[reason])} cell(s) withheld because {reason}: " + examples(sorted(by_reason[reason]))
         for reason in sorted(by_reason)
     ]

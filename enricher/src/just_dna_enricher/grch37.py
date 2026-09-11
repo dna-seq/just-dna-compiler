@@ -187,9 +187,7 @@ class Grch37Client:
         unconverted — the instinctive `-1` is the off-by-one that cost 3,038 rows once already.
         """
         try:
-            response = self._get(
-                f"/sequence/region/human/{chrom}:{start}..{end}", "text/plain"
-            )
+            response = self._get(f"/sequence/region/human/{chrom}:{start}..{end}", "text/plain")
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code >= 500:
                 logger.warning("GRCh37 sequence for %s:%d-%d failed (%s)", chrom, start, end, exc)
@@ -197,9 +195,7 @@ class Grch37Client:
             logger.info("GRCh37 has no sequence at %s:%d-%d (%s)", chrom, start, end, exc)
             return ""
         except (httpx.TransportError, httpx.TimeoutException, httpx.HTTPError) as exc:
-            logger.warning(
-                "GRCh37 sequence for %s:%d-%d could not be reached: %s", chrom, start, end, exc
-            )
+            logger.warning("GRCh37 sequence for %s:%d-%d could not be reached: %s", chrom, start, end, exc)
             return None
         return response.text.strip().upper()
 
@@ -353,9 +349,7 @@ class BuildDiagnosis:
                 f"{GRCH37_BUILD} dbSNP records {', '.join(self.rsids)} at it — author the rs-number "
                 f"rather than the coordinate"
             )
-        return (
-            f"{head}: the authored ref {self.claimed!r} is the {GRCH37_BUILD} base at this position"
-        )
+        return f"{head}: the authored ref {self.claimed!r} is the {GRCH37_BUILD} base at this position"
 
 
 @dataclass
@@ -408,9 +402,7 @@ _DIAGNOSIS_NOTES: dict[str, str] = {
         "the authored ref is the GRCh37 base AND GRCh37 dbSNP records a variant starting there — the "
         "strongest of the three, and the one that names the rs-number to author instead"
     ),
-    "unchecked": (
-        "the GRCh37 service could not be asked, so these rows are unchecked rather than cleared"
-    ),
+    "unchecked": ("the GRCh37 service could not be asked, so these rows are unchecked rather than cleared"),
 }
 
 
@@ -445,14 +437,15 @@ def diagnose_wrong_build(
     try:
         for mismatch in examined:
             width = len(mismatch.claimed)
-            bases = client.reference_bases(
-                mismatch.chrom, mismatch.start, mismatch.start + width - 1
-            )
+            bases = client.reference_bases(mismatch.chrom, mismatch.start, mismatch.start + width - 1)
             if bases is None:
                 diagnoses.append(
                     BuildDiagnosis(
-                        variant_key=mismatch.variant_key, chrom=mismatch.chrom,
-                        start=mismatch.start, claimed=mismatch.claimed, reason="unchecked",
+                        variant_key=mismatch.variant_key,
+                        chrom=mismatch.chrom,
+                        start=mismatch.start,
+                        claimed=mismatch.claimed,
+                        reason="unchecked",
                     )
                 )
                 continue
@@ -462,9 +455,7 @@ def diagnose_wrong_build(
                 # Withhold: the mismatch stands on its own, and inventing a build hypothesis with no
                 # evidence would be a false accusation.
                 continue
-            recovery = recover_rsid(
-                mismatch.chrom, mismatch.start, ref=mismatch.claimed, client=client
-            )
+            recovery = recover_rsid(mismatch.chrom, mismatch.start, ref=mismatch.claimed, client=client)
             reason = (
                 "dbsnp_corroborated"
                 if recovery.rsids
@@ -472,17 +463,20 @@ def diagnose_wrong_build(
             )
             diagnoses.append(
                 BuildDiagnosis(
-                    variant_key=mismatch.variant_key, chrom=mismatch.chrom, start=mismatch.start,
-                    claimed=mismatch.claimed, reason=reason, grch37_bases=bases,
-                    rsids=list(recovery.rsids), shift_claimed=mismatch.shift,
+                    variant_key=mismatch.variant_key,
+                    chrom=mismatch.chrom,
+                    start=mismatch.start,
+                    claimed=mismatch.claimed,
+                    reason=reason,
+                    grch37_bases=bases,
+                    rsids=list(recovery.rsids),
+                    shift_claimed=mismatch.shift,
                 )
             )
     finally:
         if owned:
             client.close()
-    return BuildDiagnosisResult(
-        diagnoses=diagnoses, examined=len(examined), total=len(mismatches)
-    )
+    return BuildDiagnosisResult(diagnoses=diagnoses, examined=len(examined), total=len(mismatches))
 
 
 #: The reason classes whose evidence outranks a ±1 neighbour reading. A single agreeing base does
@@ -491,9 +485,7 @@ def diagnose_wrong_build(
 _SUPERSEDES_SHIFT: frozenset[str] = frozenset({"dbsnp_corroborated", "multi_base_match"})
 
 
-def summarize_build_diagnoses(
-    diagnoses: Sequence[BuildDiagnosis], *, examples: int = 3
-) -> list[str]:
+def summarize_build_diagnoses(diagnoses: Sequence[BuildDiagnosis], *, examples: int = 3) -> list[str]:
     """One line per reason class, with a count, a few named rows, and which reading wins.
 
     Grouped by *reason* and never by row: a panel authored from pre-GRCh38 literature produces one of
@@ -505,8 +497,7 @@ def summarize_build_diagnoses(
     lines: list[str] = []
     for reason, found in grouped.items():
         named = ", ".join(
-            f"{d.chrom}:{d.start}" + (f" → {d.rsids[0]}" if d.rsids else "")
-            for d in found[:examples]
+            f"{d.chrom}:{d.start}" + (f" → {d.rsids[0]}" if d.rsids else "") for d in found[:examples]
         )
         more = f", and {len(found) - examples} more" if len(found) > examples else ""
         shifted = [d for d in found if d.shift_claimed is not None]
@@ -517,7 +508,5 @@ def summarize_build_diagnoses(
             if shifted and reason in _SUPERSEDES_SHIFT
             else ""
         )
-        lines.append(
-            f"{len(found)} row(s) — {_DIAGNOSIS_NOTES[reason]} ({named}{more}).{supersedes}"
-        )
+        lines.append(f"{len(found)} row(s) — {_DIAGNOSIS_NOTES[reason]} ({named}{more}).{supersedes}")
     return lines

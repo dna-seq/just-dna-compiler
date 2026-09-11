@@ -30,6 +30,7 @@ def _rows(path: Path) -> list[dict]:
 
 # ── placement ───────────────────────────────────────────────────────────────────────────────────
 
+
 def test_place_rows_joins_the_matching_block() -> None:
     existing = [{"gene": "A", "n": "1"}, {"gene": "B", "n": "2"}, {"gene": "B", "n": "3"}]
     incoming = [{"gene": "A", "n": "4"}]
@@ -61,38 +62,55 @@ def test_incoming_rows_keep_their_relative_order_within_a_group() -> None:
 
 def test_a_grouped_append_moves_lines_but_never_cells(tmp_path: Path) -> None:
     """The promise that makes placement safe: an existing row's bytes are identical afterwards."""
-    append_rows(tmp_path, "allele_function.csv", [
-        AlleleFunctionRow(gene="CYP2C19", allele="*2", function_status="no_function"),
-        AlleleFunctionRow(gene="CYP2D6", allele="*4", function_status="no_function"),
-    ])
+    append_rows(
+        tmp_path,
+        "allele_function.csv",
+        [
+            AlleleFunctionRow(gene="CYP2C19", allele="*2", function_status="no_function"),
+            AlleleFunctionRow(gene="CYP2D6", allele="*4", function_status="no_function"),
+        ],
+    )
     before = {tuple(r.items()) for r in _rows(tmp_path / "allele_function.csv")}
 
-    report = append_rows(tmp_path, "allele_function.csv", [
-        AlleleFunctionRow(gene="CYP2C19", allele="*17", function_status="increased_function"),
-    ], group_by=("gene",))
+    report = append_rows(
+        tmp_path,
+        "allele_function.csv",
+        [
+            AlleleFunctionRow(gene="CYP2C19", allele="*17", function_status="increased_function"),
+        ],
+        group_by=("gene",),
+    )
 
     after = _rows(tmp_path / "allele_function.csv")
     assert [r["gene"] for r in after] == ["CYP2C19", "CYP2C19", "CYP2D6"]  # joined its block
-    assert report.shifted == [1]                                          # the CYP2D6 row moved
-    assert before <= {tuple(r.items()) for r in after}                    # cells untouched
-    assert len(after) == 3                                                # nothing lost or doubled
+    assert report.shifted == [1]  # the CYP2D6 row moved
+    assert before <= {tuple(r.items()) for r in after}  # cells untouched
+    assert len(after) == 3  # nothing lost or doubled
 
 
 def test_a_grouped_append_still_round_trips(tmp_path: Path) -> None:
     """Placement changes order, and order is digest-visible — but P7 is about reproducing the module
     you have, and a placed module still reproduces itself."""
-    append_rows(tmp_path, "allele_function.csv", [
-        AlleleFunctionRow(gene="A", allele="*1"), AlleleFunctionRow(gene="B", allele="*1"),
-    ])
-    append_rows(tmp_path, "allele_function.csv",
-                [AlleleFunctionRow(gene="A", allele="*2")], group_by=("gene",))
-    rows, errors, _ = _load_csv_rows(tmp_path / "allele_function.csv", AlleleFunctionRow,
-                                     "allele_function.csv")
+    append_rows(
+        tmp_path,
+        "allele_function.csv",
+        [
+            AlleleFunctionRow(gene="A", allele="*1"),
+            AlleleFunctionRow(gene="B", allele="*1"),
+        ],
+    )
+    append_rows(
+        tmp_path, "allele_function.csv", [AlleleFunctionRow(gene="A", allele="*2")], group_by=("gene",)
+    )
+    rows, errors, _ = _load_csv_rows(
+        tmp_path / "allele_function.csv", AlleleFunctionRow, "allele_function.csv"
+    )
     assert errors == []
     assert [(r.gene, r.allele) for r in rows] == [("A", "*1"), ("A", "*2"), ("B", "*1")]
 
 
 # ── partial rows ────────────────────────────────────────────────────────────────────────────────
+
 
 def _header(path: Path) -> list[str]:
     with open(path, encoding="utf-8", newline="") as handle:
@@ -155,9 +173,7 @@ def test_a_partial_append_grows_the_header_for_a_column_it_fills(tmp_path: Path)
         writer.writeheader()
         writer.writerow({"rsid": "rs1801131", "state": "risk", "conclusion": "c", "genotype": "AA"})
 
-    report = append_partial_rows(
-        tmp_path, "variants.csv", [_partial("rs1801133", gene="MTHFR")]
-    )
+    report = append_partial_rows(tmp_path, "variants.csv", [_partial("rs1801133", gene="MTHFR")])
 
     assert report.header_extended == ["gene"]
     assert _header(path)[: len(narrow)] == narrow and "gene" in _header(path)
@@ -186,9 +202,7 @@ def test_a_partial_row_is_not_re_added_once_the_human_fills_the_stub(tmp_path: P
 
 
 def test_a_duplicate_inside_one_batch_is_caught(tmp_path: Path) -> None:
-    report = append_partial_rows(
-        tmp_path, "variants.csv", [_partial("rs1801133"), _partial("rs1801133")]
-    )
+    report = append_partial_rows(tmp_path, "variants.csv", [_partial("rs1801133"), _partial("rs1801133")])
     assert len(report.added) == 1 and len(report.already_present) == 1
 
 
@@ -204,12 +218,10 @@ def test_bad_published_cells_are_reported_not_written(tmp_path: Path) -> None:
 def test_a_filled_partial_module_compiles(tmp_path: Path) -> None:
     """End to end: draft partial rows, fill the stubs, and the module is real."""
     (tmp_path / "module_spec.yaml").write_text(
-        "schema_version: '1.0'\nmodule:\n  name: panel\n  title: P\n  description: d\n"
-        "  report_title: P\n"
+        "schema_version: '1.0'\nmodule:\n  name: panel\n  title: P\n  description: d\n  report_title: P\n"
     )
     (tmp_path / "studies.csv").write_text("rsid,pmid\nrs1801133,12345678\n")
-    append_partial_rows(tmp_path, "variants.csv", [_partial("rs1801133", gene="MTHFR")],
-                        group_by=("gene",))
+    append_partial_rows(tmp_path, "variants.csv", [_partial("rs1801133", gene="MTHFR")], group_by=("gene",))
     assert not validate_spec(tmp_path).valid
 
     rows = _rows(tmp_path / "variants.csv")
@@ -289,9 +301,11 @@ def test_a_rejected_partial_may_not_widen_the_authors_header(tmp_path: Path) -> 
         writer.writeheader()
         writer.writerow({"rsid": "rs1801131", "state": "risk", "conclusion": "c", "genotype": "AA"})
 
-    invalid = _partial("not-an-rsid", gene="MTHFR")          # rejected, and the only row filling `gene`
-    present = _partial("rs1801131", clin_sig="pathogenic")     # already there, and the only row filling `clin_sig`
-    blank = _partial("rs1801133", gene="")                     # a raw blank is not a filled cell
+    invalid = _partial("not-an-rsid", gene="MTHFR")  # rejected, and the only row filling `gene`
+    present = _partial(
+        "rs1801131", clin_sig="pathogenic"
+    )  # already there, and the only row filling `clin_sig`
+    blank = _partial("rs1801133", gene="")  # a raw blank is not a filled cell
     report = append_partial_rows(tmp_path, "variants.csv", [invalid, present, blank])
 
     assert [o.status for o in report.outcomes] == ["invalid", "already_present", "added"]

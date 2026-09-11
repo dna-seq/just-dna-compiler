@@ -49,12 +49,9 @@ _PGX = _EXAMPLES / "pgx_slco1b1_simvastatin"
 _STARS = _EXAMPLES / "cyp2c19_star_alleles"
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+    "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
 )
-_RES_HEADER = (
-    "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status,fetched_at\n"
-)
+_RES_HEADER = "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status,fetched_at\n"
 _PHARM_HEADER = "rsid,chrom,start,ref,gene,genotype,drug,conclusion\n"
 
 
@@ -66,8 +63,16 @@ def _resolution_row(
     rsid: str, chrom: str, start: int, ref: str, alts: str, locus_index: int
 ) -> ResolutionRow:
     return ResolutionRow(
-        variant_key=rsid, rsid=rsid, chrom=chrom, start=start, ref=ref, alts=alts,
-        genome_build="GRCh38", locus_index=locus_index, source="manual", status="resolved",
+        variant_key=rsid,
+        rsid=rsid,
+        chrom=chrom,
+        start=start,
+        ref=ref,
+        alts=alts,
+        genome_build="GRCh38",
+        locus_index=locus_index,
+        source="manual",
+        status="resolved",
     )
 
 
@@ -80,9 +85,7 @@ def _pharm_module(
     variants: str | None = None,
 ) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "module_spec.yaml").write_text(
-        _YAML + f"genome_build: {genome_build}\n", encoding="utf-8"
-    )
+    (directory / "module_spec.yaml").write_text(_YAML + f"genome_build: {genome_build}\n", encoding="utf-8")
     (directory / "pharm_variants.csv").write_text(_PHARM_HEADER + pharm, encoding="utf-8")
     if variants is not None:
         (directory / "variants.csv").write_text(
@@ -117,7 +120,10 @@ def test_the_reported_case_every_coordinate_arrives(tmp_path: Path) -> None:
     for row in df.iter_rows(named=True):
         fact = injected[row["rsid"]]
         assert (row["chrom"], str(row["start"]), row["ref"], row["alts"]) == (
-            fact["chrom"], fact["start"], fact["ref"], fact["alts"]
+            fact["chrom"],
+            fact["start"],
+            fact["ref"],
+            fact["alts"],
         )
 
 
@@ -164,8 +170,15 @@ def test_a_row_that_genuinely_authors_alts_is_untouched() -> None:
     """Keyed on the field's own marker, so the guard cannot reach a table where the column is real.
     `heteroplasmy.csv` authors `alts` and it is part of that model's key."""
     row = HeteroplasmyRow(
-        gene="MT-TL1", chrom="MT", start=3243, ref="A", alts="G",
-        reference_sequence="NC_012920.1", measure_min=0.0, measure_max=0.1, conclusion="x",
+        gene="MT-TL1",
+        chrom="MT",
+        start=3243,
+        ref="A",
+        alts="G",
+        reference_sequence="NC_012920.1",
+        measure_min=0.0,
+        measure_max=0.1,
+        conclusion="x",
     )
     assert row.alts == "G" and "alts" in (row.authored_ident or [])
 
@@ -176,14 +189,20 @@ def test_a_stamped_key_is_overwritten_rather_than_refused() -> None:
     — `VariantRow` has tolerated exactly that since 0.5 on the no-foot-gun rule. A *filled* column is
     different, because ignoring it silently discards data the author wrote."""
     row = PharmVariantRow(
-        rsid="rs4149056", gene="SLCO1B1", genotype="C/C", drug="simvastatin", conclusion="c",
-        variant_key="not-this", authored_ident=["chrom"],
+        rsid="rs4149056",
+        gene="SLCO1B1",
+        genotype="C/C",
+        drug="simvastatin",
+        conclusion="c",
+        variant_key="not-this",
+        authored_ident=["chrom"],
     )
     assert (row.variant_key, row.authored_ident) == ("rs4149056", ["rsid"])
 
 
 @pytest.mark.parametrize(
-    "model", [PharmVariantRow, HaplotypeRow, HeteroplasmyRow],
+    "model",
+    [PharmVariantRow, HaplotypeRow, HeteroplasmyRow],
     ids=lambda m: m.__name__,
 )
 def test_every_positional_model_stamps_and_hides_its_identity(model: type) -> None:
@@ -339,13 +358,17 @@ def test_a_fully_placed_row_is_still_checked_against_the_table(tmp_path: Path) -
     `resolve_from_table._verify` exists to catch on the SNP core."""
     rows = [
         PharmVariantRow(
-            rsid="rs777", chrom="7", start=701, ref="C", gene="G", genotype="C/G", drug="d",
+            rsid="rs777",
+            chrom="7",
+            start=701,
+            ref="C",
+            gene="G",
+            genotype="C/G",
+            drug="d",
             conclusion="c",
         )
     ]
-    report = resolve_positional_rows(
-        rows, {"rs777": [_resolution_row("rs777", "7", 700, "C", "G", 0)]}
-    )
+    report = resolve_positional_rows(rows, {"rs777": [_resolution_row("rs777", "7", 700, "C", "G", 0)]})
     assert report.filled == 0
     assert len(report.contradicted) == 1
     assert "start=701" in report.contradicted[0]
@@ -358,8 +381,15 @@ def test_a_locus_listing_more_alts_than_the_row_names_is_not_a_contradiction(tmp
     data; whether the allele can sit there is `hosting_verdict`'s three-valued question, already asked."""
     rows = [
         HeteroplasmyRow(
-            gene="MT-TL1", chrom="MT", start=3243, ref="A", alts="G",
-            reference_sequence="NC_012920.1", measure_min=0.0, measure_max=0.1, conclusion="x",
+            gene="MT-TL1",
+            chrom="MT",
+            start=3243,
+            ref="A",
+            alts="G",
+            reference_sequence="NC_012920.1",
+            measure_min=0.0,
+            measure_max=0.1,
+            conclusion="x",
         )
     ]
     key = rows[0].variant_key
@@ -367,8 +397,16 @@ def test_a_locus_listing_more_alts_than_the_row_names_is_not_a_contradiction(tmp
     table = {
         key: [
             ResolutionRow(
-                variant_key=key, rsid="rs199474657", chrom="MT", start=3243, ref="A", alts="A,G",
-                genome_build="GRCh38", locus_index=0, source="manual", status="resolved",
+                variant_key=key,
+                rsid="rs199474657",
+                chrom="MT",
+                start=3243,
+                ref="A",
+                alts="A,G",
+                genome_build="GRCh38",
+                locus_index=0,
+                source="manual",
+                status="resolved",
             )
         ]
     }
@@ -412,11 +450,7 @@ def test_no_resolve_switches_the_positional_fill_off_too(tmp_path: Path) -> None
 
     unjoinable = [w for w in validate_spec(spec).warnings if "joins by rsID only" in w]
     assert not unjoinable, "with resolution on, the row is placed and nothing is reported"
-    off = [
-        w
-        for w in validate_spec(spec, resolve_with_ensembl=False).warnings
-        if "joins by rsID only" in w
-    ]
+    off = [w for w in validate_spec(spec, resolve_with_ensembl=False).warnings if "joins by rsID only" in w]
     assert len(off) == 1
     result = compile_module(spec, tmp_path / "out2", resolve_with_ensembl=False)
     assert off == [w for w in result.warnings if "joins by rsID only" in w]
@@ -482,8 +516,7 @@ def test_reverse_rebuilds_the_lookup_table_for_a_table_only_module(tmp_path: Pat
     rebuilt = tmp_path / "rev" / "resolution.csv"
     assert rebuilt.is_file()
     facts = {
-        (r["variant_key"], r["rsid"], r["chrom"], r["start"], r["ref"], r["alts"])
-        for r in _rows(rebuilt)
+        (r["variant_key"], r["rsid"], r["chrom"], r["start"], r["ref"], r["alts"]) for r in _rows(rebuilt)
     }
     injected = {
         (r["variant_key"], r["rsid"], r["chrom"], r["start"], r["ref"], r["alts"])
@@ -533,7 +566,7 @@ def test_weights_own_a_key_the_positional_tables_also_name(tmp_path: Path) -> No
         tmp_path / "spec",
         pharm="rs4149056,,,,SLCO1B1,C/C,simvastatin,c\n",
         variants="rs4149056,,,,,C/C,risk,c\n",
-        resolution="rs4149056,rs4149056,12,21178615,T,\"A,C\",GRCh38,0,manual,resolved,\n",
+        resolution='rs4149056,rs4149056,12,21178615,T,"A,C",GRCh38,0,manual,resolved,\n',
     )
     out = tmp_path / "out"
     assert compile_module(spec, out).success
@@ -548,9 +581,7 @@ def test_weights_own_a_key_the_positional_tables_also_name(tmp_path: Path) -> No
 def test_a_module_that_resolved_nothing_gets_no_lookup_table(tmp_path: Path) -> None:
     """Writing a header-only `resolution.csv` into a reversed spec that never had one would invent a
     derived sidecar out of an absence."""
-    spec = _pharm_module(
-        tmp_path / "spec", pharm="rs4149056,,,,SLCO1B1,C/C,simvastatin,c\n", resolution=None
-    )
+    spec = _pharm_module(tmp_path / "spec", pharm="rs4149056,,,,SLCO1B1,C/C,simvastatin,c\n", resolution=None)
     out = tmp_path / "out"
     assert compile_module(spec, out).success
     reverse_module(out, tmp_path / "rev")
@@ -568,9 +599,7 @@ def test_a_pre_0_6_parquet_reverses_exactly_as_it_used_to(tmp_path: Path) -> Non
     )
     out = tmp_path / "out"
     assert compile_module(spec, out).success
-    legacy = pl.read_parquet(out / "pharm_variants.parquet").drop(
-        "variant_key", "authored_ident", "alts"
-    )
+    legacy = pl.read_parquet(out / "pharm_variants.parquet").drop("variant_key", "authored_ident", "alts")
     legacy.write_parquet(out / "pharm_variants.parquet")
 
     reverse_module(out, tmp_path / "rev")
@@ -616,21 +645,42 @@ def test_the_fill_reports_the_three_outcomes_separately() -> None:
     [
         (
             HaplotypeRow,
-            {"haplotype_name": "*5", "chrom": "22", "start": 42126499, "ref": "C",
-             "allele": "<DEL:1500>", "gene": "CYP2D6"},
+            {
+                "haplotype_name": "*5",
+                "chrom": "22",
+                "start": 42126499,
+                "ref": "C",
+                "allele": "<DEL:1500>",
+                "gene": "CYP2D6",
+            },
             ["chrom", "start", "ref"],
         ),
         (
             PharmVariantRow,
-            {"chrom": "22", "start": 42126499, "ref": "C", "gene": "CYP2D6",
-             "genotype": "<DEL:1500>/C", "drug": "codeine", "conclusion": "c"},
+            {
+                "chrom": "22",
+                "start": 42126499,
+                "ref": "C",
+                "gene": "CYP2D6",
+                "genotype": "<DEL:1500>/C",
+                "drug": "codeine",
+                "conclusion": "c",
+            },
             ["chrom", "start", "ref"],
         ),
         (
             HeteroplasmyRow,
-            {"gene": "MT-TL1", "chrom": "MT", "start": 3243, "ref": "A", "alts": "<DEL:20>",
-             "reference_sequence": "NC_012920.1", "measure_min": 0.0, "measure_max": 0.1,
-             "conclusion": "x"},
+            {
+                "gene": "MT-TL1",
+                "chrom": "MT",
+                "start": 3243,
+                "ref": "A",
+                "alts": "<DEL:20>",
+                "reference_sequence": "NC_012920.1",
+                "measure_min": 0.0,
+                "measure_max": 0.1,
+                "conclusion": "x",
+            },
             ["chrom", "start", "ref", "alts"],
         ),
     ],
@@ -671,8 +721,7 @@ def test_a_dropped_row_is_never_filled_and_never_counted(tmp_path: Path) -> None
     spec = _pharm_module(
         tmp_path / "spec",
         pharm=(
-            "rs4149056,,,,SLCO1B1,C/C,simvastatin,keeps\n"
-            "rs2306283,,,,SLCO1B1,<DEL>/C,simvastatin,dropped\n"
+            "rs4149056,,,,SLCO1B1,C/C,simvastatin,keeps\nrs2306283,,,,SLCO1B1,<DEL>/C,simvastatin,dropped\n"
         ),
         resolution=(
             "rs4149056,rs4149056,12,21178615,T,C,GRCh38,0,manual,resolved,\n"
@@ -722,5 +771,7 @@ def test_the_positional_set_is_exactly_the_three_tables_lane_a_covers() -> None:
     `start` — and deliberately still three. Adding `repeat_alleles`/`copynumbers` is 0.7 work gated on
     a real caller VCF, not something this fill should acquire by accident."""
     assert {csv_name for csv_name, _model in _POSITIONAL_TABLE_KINDS} == {
-        "heteroplasmy.csv", "haplotypes.csv", "pharm_variants.csv"
+        "heteroplasmy.csv",
+        "haplotypes.csv",
+        "pharm_variants.csv",
     }

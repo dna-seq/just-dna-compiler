@@ -151,9 +151,7 @@ class ConcordanceVerdict:
     contested: bool
 
 
-def classify_concordance(
-    authored_clin_sig: str | None, calls: Sequence[AuthorityCall]
-) -> ConcordanceVerdict:
+def classify_concordance(authored_clin_sig: str | None, calls: Sequence[AuthorityCall]) -> ConcordanceVerdict:
     """The two verdicts for one subject, at any number of authorities.
 
     **`authority_concordance` — do the authorities agree with each other?**
@@ -224,9 +222,8 @@ def classify_concordance(
     # an authority, which needs both sides opinionated because an uncertain call opposes nothing; and
     # one authority against another, which cannot fire below two speakers. At one authority the
     # second is unreachable, so this reduces exactly to what the shipped two-way check reports.
-    authored_contested = (
-        authored_camp in OPINIONATED_CAMPS
-        and any(camp in OPINIONATED_CAMPS and camp != authored_camp for camp in spoken_camps)
+    authored_contested = authored_camp in OPINIONATED_CAMPS and any(
+        camp in OPINIONATED_CAMPS and camp != authored_camp for camp in spoken_camps
     )
     contested = authored_contested or concordance == "discordant"
 
@@ -355,7 +352,9 @@ def write_concordance_tables(
     logger.info(
         "Wrote the clinical-significance concordance record: %d contested subject(s), %d authority "
         "call(s). Answer one with an overrides.csv row against %s.",
-        len(parents), len(calls), CONCORDANCE_CSV,
+        len(parents),
+        len(calls),
+        CONCORDANCE_CSV,
     )
     return parent_path, calls_path
 
@@ -387,7 +386,9 @@ def read_recorded_calls(spec_dir: Path) -> list[ClinSigAuthorityCallRow] | None:
     if errors:
         logger.warning(
             "%s is present but unreadable (%s); no answered call can be compared against it this "
-            "run, which is reported as unknown rather than as unchanged.", path.name, errors[0],
+            "run, which is reported as unknown rather than as unchanged.",
+            path.name,
+            errors[0],
         )
         return None
     return rows
@@ -400,15 +401,17 @@ def read_recorded_calls(spec_dir: Path) -> list[ClinSigAuthorityCallRow] | None:
 #: `unchanged`** — that is the whole tri-state, and it is the reason this is a registry rather than
 #: two string literals in a branch: a third state must arrive with a note attached, not silently join
 #: the ones that say nothing (`@unreachable-not-absent`, `@registry-completeness`).
-VALID_CALL_SHIFT_WITHHELD: frozenset[str] = frozenset({
-    #: No usable prior row for this `(subject, authority)` — the previous record has none, or it has
-    #: one whose status was `unchecked`. Nobody-asked at record time, so there is no baseline to move
-    #: away from. The first run to write the record puts every answered subject here.
-    "no_prior_record",
-    #: The authority could not be consulted *this* run, so its call today is unknown. An unknown is
-    #: withheld and never negated: a leg nobody could ask has not agreed with what was recorded.
-    "unchecked_now",
-})
+VALID_CALL_SHIFT_WITHHELD: frozenset[str] = frozenset(
+    {
+        #: No usable prior row for this `(subject, authority)` — the previous record has none, or it has
+        #: one whose status was `unchecked`. Nobody-asked at record time, so there is no baseline to move
+        #: away from. The first run to write the record puts every answered subject here.
+        "no_prior_record",
+        #: The authority could not be consulted *this* run, so its call today is unknown. An unknown is
+        #: withheld and never negated: a leg nobody could ask has not agreed with what was recorded.
+        "unchecked_now",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -456,8 +459,7 @@ class CallShift:
     def __str__(self) -> str:
         variant_key, genotype = self.subject
         return (
-            f"{variant_key} {genotype} {self.authority}: "
-            f"{self._side(self.before)} → {self._side(self.after)}"
+            f"{variant_key} {genotype} {self.authority}: {self._side(self.before)} → {self._side(self.after)}"
         )
 
 
@@ -538,9 +540,7 @@ def shifted_authority_calls(
     # misses and every answered call is withheld as `no_prior_record` — which is the reading, and it
     # is worth saying per authority rather than collapsing into "the question could not be put". The
     # first run to write a record takes this path, and its note is the useful one: run once more.
-    before = {
-        (row.variant_key, row.genotype, row.authority): row for row in (baseline or ())
-    }
+    before = {(row.variant_key, row.genotype, row.authority): row for row in (baseline or ())}
     shifts: list[CallShift] = []
     normalization: list[CallShift] = []
     withheld: list[tuple[str, str, str, str]] = []

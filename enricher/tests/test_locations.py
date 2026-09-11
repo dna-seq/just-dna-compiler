@@ -94,7 +94,9 @@ def test_a_real_environment_variable_still_outranks_the_dotenv(dotenv_only_cache
         [sys.executable, "-c", _PROBE],
         cwd=work,
         env={**os.environ, "JUST_DNA_PIPELINES_CACHE_DIR": str(elsewhere)},
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     assert f"FIRST {elsewhere / 'clinvar'}" in done.stdout
 
@@ -192,15 +194,12 @@ def test_every_resolver_and_default_dir_takes_the_off_switch() -> None:
     families by snapshot name says something the count never did: that no resolver is missing its
     default directory and no default directory is orphaned.
     """
-    defaults = sorted(
-        n for n in dir(locations) if n.startswith("default_") and n.endswith("_cache_dir")
-    )
+    defaults = sorted(n for n in dir(locations) if n.startswith("default_") and n.endswith("_cache_dir"))
     named = _resolver_names() + defaults
     assert {n.removeprefix("resolve_").removesuffix("_reference") for n in _resolver_names()} == {
         n.removeprefix("default_").removesuffix("_cache_dir") for n in defaults
     }, f"a resolver and its default cache directory do not pair up: {named}"
     without = [
-        n for n in named
-        if "load_dotenv_file" not in inspect.signature(getattr(locations, n)).parameters
+        n for n in named if "load_dotenv_file" not in inspect.signature(getattr(locations, n)).parameters
     ]
     assert without == [], f"cannot be told to leave the environment alone: {without}"

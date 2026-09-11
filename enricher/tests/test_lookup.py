@@ -62,8 +62,7 @@ class _FakeCrossref:
 
 def test_offline_says_unchecked_rather_than_absent(tmp_path: Path) -> None:
     """A check that could not run is not a check that failed."""
-    hint = lookup_variant(rsid="rs1801133", offline=True, ensembl_cache=tmp_path,
-                          clinvar_cache=tmp_path)
+    hint = lookup_variant(rsid="rs1801133", offline=True, ensembl_cache=tmp_path, clinvar_cache=tmp_path)
     assert hint.rsid_status is None  # not "absent"
     assert any("offline" in f.message for f in hint.findings)
 
@@ -78,8 +77,7 @@ def test_a_lookup_writes_nothing(tmp_path: Path) -> None:
 
 
 def test_a_missing_snapshot_is_reported_not_raised(tmp_path: Path) -> None:
-    hint = lookup_variant(rsid="rs1801133", offline=True, ensembl_cache=tmp_path,
-                          clinvar_cache=tmp_path)
+    hint = lookup_variant(rsid="rs1801133", offline=True, ensembl_cache=tmp_path, clinvar_cache=tmp_path)
     assert hint.loci == []
     assert isinstance(hint.rsid_candidates, list)
 
@@ -87,9 +85,7 @@ def test_a_missing_snapshot_is_reported_not_raised(tmp_path: Path) -> None:
 class _FakeEnsembl:
     """An `EnsemblResolver` stand-in. `resolve_rsid` returns the same `(loci, source)` shape."""
 
-    def __init__(
-        self, loci: list[dict], source: str = "ensembl-rest", *, unreachable: bool = False
-    ) -> None:
+    def __init__(self, loci: list[dict], source: str = "ensembl-rest", *, unreachable: bool = False) -> None:
         self.loci = loci
         self.source = source
         self.unreachable = unreachable
@@ -98,7 +94,7 @@ class _FakeEnsembl:
     def resolve_rsid(self, rsid: str) -> tuple[list[dict] | None, str | None]:
         self.asked.append(rsid)
         if self.unreachable:
-            return None, None          # could not ask — distinct from the empty answer below (S20)
+            return None, None  # could not ask — distinct from the empty answer below (S20)
         return list(self.loci), self.source
 
     def close(self) -> None:  # pragma: no cover - nothing to release
@@ -115,7 +111,9 @@ def test_a_cache_miss_falls_through_to_live_ensembl(tmp_path: Path) -> None:
     coordinate."""
     ensembl = _FakeEnsembl([_H63D])
     hint = lookup_variant(
-        rsid="rs1799945", ensembl_cache=tmp_path, clinvar_cache=tmp_path,
+        rsid="rs1799945",
+        ensembl_cache=tmp_path,
+        clinvar_cache=tmp_path,
         clients=LookupClients(ensembl=ensembl, eutils=_FakeEutils({})),
     )
     assert ensembl.asked == ["rs1799945"]
@@ -126,7 +124,9 @@ def test_the_live_locus_is_labelled_live_and_not_as_a_snapshot(tmp_path: Path) -
     """The provenance field is what an author reads to judge reproducibility, and it was hard-coded
     to `snapshot` — so a network answer claimed to come from a pinned file."""
     hint = lookup_variant(
-        rsid="rs1799945", ensembl_cache=tmp_path, clinvar_cache=tmp_path,
+        rsid="rs1799945",
+        ensembl_cache=tmp_path,
+        clinvar_cache=tmp_path,
         clients=LookupClients(ensembl=_FakeEnsembl([_H63D]), eutils=_FakeEutils({})),
     )
     offered = {row["column"]: row for row in as_report_rows(hint)}
@@ -141,7 +141,10 @@ def test_a_snapshot_hit_does_not_reach_the_network(tmp_path: Path) -> None:
     nothing and the two surfaces cannot disagree about where an answer came from."""
     ensembl = _FakeEnsembl([_H63D])
     hint = lookup_variant(
-        rsid="rs1799945", offline=True, ensembl_cache=tmp_path, clinvar_cache=tmp_path,
+        rsid="rs1799945",
+        offline=True,
+        ensembl_cache=tmp_path,
+        clinvar_cache=tmp_path,
         clients=LookupClients(ensembl=ensembl),
     )
     assert ensembl.asked == [] and hint.loci == []
@@ -150,7 +153,9 @@ def test_a_snapshot_hit_does_not_reach_the_network(tmp_path: Path) -> None:
 def test_live_ensembl_not_knowing_it_either_is_said_plainly(tmp_path: Path) -> None:
     ensembl = _FakeEnsembl([])
     hint = lookup_variant(
-        rsid="rs2000000000", ensembl_cache=tmp_path, clinvar_cache=tmp_path,
+        rsid="rs2000000000",
+        ensembl_cache=tmp_path,
+        clinvar_cache=tmp_path,
         clients=LookupClients(ensembl=ensembl, eutils=_FakeEutils({})),
     )
     assert hint.loci == []
@@ -168,13 +173,15 @@ def test_an_unreachable_ensembl_reports_unchecked_rather_than_absent(tmp_path: P
     was a false negative about a published variant, at `info`, where nothing draws the eye."""
     ensembl = _FakeEnsembl([], unreachable=True)
     hint = lookup_variant(
-        rsid="rs6567160", ensembl_cache=tmp_path, clinvar_cache=tmp_path,
+        rsid="rs6567160",
+        ensembl_cache=tmp_path,
+        clinvar_cache=tmp_path,
         clients=LookupClients(ensembl=ensembl, eutils=_FakeEutils({})),
     )
     assert ensembl.asked == ["rs6567160"] and hint.loci == []
     unchecked = [f for f in hint.findings if "could not be reached" in f.message]
     assert len(unchecked) == 1
-    assert unchecked[0].level == "warning"             # the caller has to decide whether to re-run
+    assert unchecked[0].level == "warning"  # the caller has to decide whether to re-run
     # The claim that inverted the judgment is gone, and so is the inference-from-absence.
     assert not any("has no GRCh38 locus" in f.message for f in hint.findings)
     assert "ensembl-rest" not in hint.checked
@@ -194,13 +201,17 @@ def _snapshot(tmp_path: Path, name: str, rows: dict) -> Path:
 
 
 def _ensembl_snapshot(tmp_path: Path) -> Path:
-    return _snapshot(tmp_path, "ens", {"id": ["rs1801133"], "chrom": ["1"], "start": [11856377],
-                                       "ref": ["G"], "alt": ["A"]})
+    return _snapshot(
+        tmp_path,
+        "ens",
+        {"id": ["rs1801133"], "chrom": ["1"], "start": [11856377], "ref": ["G"], "alt": ["A"]},
+    )
 
 
 def _clinvar_snapshot(tmp_path: Path) -> Path:
-    return _snapshot(tmp_path, "cv", {"rsid": ["rs334"], "chrom": ["11"], "start": [5227002],
-                                      "ref": ["T"], "alt": ["A"]})
+    return _snapshot(
+        tmp_path, "cv", {"rsid": ["rs334"], "chrom": ["11"], "start": [5227002], "ref": ["T"], "alt": ["A"]}
+    )
 
 
 _LCT = {"chrom": "2", "start": 135851076, "ref": "G", "alts": "A"}
@@ -216,7 +227,8 @@ def test_a_snapshot_miss_does_not_call_the_position_unset_once_live_fills_it(tmp
     """
     hint = lookup_variant(
         rsid="rs4988235",
-        ensembl_cache=_ensembl_snapshot(tmp_path), clinvar_cache=_clinvar_snapshot(tmp_path),
+        ensembl_cache=_ensembl_snapshot(tmp_path),
+        clinvar_cache=_clinvar_snapshot(tmp_path),
         clients=LookupClients(ensembl=_FakeEnsembl([_LCT]), eutils=_FakeEutils({})),
     )
     assert hint.loci == [_LCT]
@@ -235,7 +247,8 @@ def test_the_clinvar_link_names_the_snapshot_it_searched_rather_than_clinvar(tmp
     """
     hint = lookup_variant(
         rsid="rs4988235",
-        ensembl_cache=_ensembl_snapshot(tmp_path), clinvar_cache=_clinvar_snapshot(tmp_path),
+        ensembl_cache=_ensembl_snapshot(tmp_path),
+        clinvar_cache=_clinvar_snapshot(tmp_path),
         clients=LookupClients(ensembl=_FakeEnsembl([_LCT]), eutils=_FakeEutils({})),
     )
     assert any("not in the injected ClinVar snapshot" in f.message for f in hint.findings)
@@ -270,8 +283,10 @@ def test_an_rsid_no_link_placed_still_ends_with_the_position_stated_unset(
     """
     hint = lookup_variant(
         rsid="rs4988235",
-        ensembl_cache=_ensembl_snapshot(tmp_path), clinvar_cache=_clinvar_snapshot(tmp_path),
-        clients=clients(), **kwargs,
+        ensembl_cache=_ensembl_snapshot(tmp_path),
+        clinvar_cache=_clinvar_snapshot(tmp_path),
+        clients=clients(),
+        **kwargs,
     )
     assert hint.loci == []
     unset = [f for f in hint.findings if f.message == "rs4988235: position remains unset"]
@@ -283,8 +298,12 @@ def test_a_position_only_lookup_is_never_told_its_position_is_unset(tmp_path: Pa
     `loci`, so an unguarded "position remains unset" would replace one false sentence with another —
     addressed this time to the caller who supplied the position."""
     hint = lookup_variant(
-        chrom="1", start=11856377, ref="G", offline=True,
-        ensembl_cache=_ensembl_snapshot(tmp_path), clinvar_cache=_clinvar_snapshot(tmp_path),
+        chrom="1",
+        start=11856377,
+        ref="G",
+        offline=True,
+        ensembl_cache=_ensembl_snapshot(tmp_path),
+        clinvar_cache=_clinvar_snapshot(tmp_path),
         clients=LookupClients(),
     )
     assert not any("remains unset" in f.message for f in hint.findings)
@@ -293,10 +312,17 @@ def test_a_position_only_lookup_is_never_told_its_position_is_unset(tmp_path: Pa
 def test_a_known_pmid_offers_its_doi_but_never_applies_it() -> None:
     """The DOI arrives free with the existence check — and is exactly what
     `literature._doi_conflicts` compares the authored one against, so it stays advisory."""
-    eutils = _FakeEutils({"12345678": {"uid": "12345678", "articleids": [
-        {"idtype": "doi", "value": "10.1234/abc"},
-        {"idtype": "pmcid", "value": "PMC123"},
-    ]}})
+    eutils = _FakeEutils(
+        {
+            "12345678": {
+                "uid": "12345678",
+                "articleids": [
+                    {"idtype": "doi", "value": "10.1234/abc"},
+                    {"idtype": "pmcid", "value": "PMC123"},
+                ],
+            }
+        }
+    )
     clients = LookupClients(eutils=eutils, europepmc=_FakeEuropePmc())
     hint = lookup_citation(pmid="12345678", clients=clients)
     assert hint.pmid_exists is True
@@ -317,19 +343,26 @@ def test_a_real_pmid_for_the_wrong_paper_is_catchable(monkeypatch: pytest.Monkey
     invented keys would pass this test and fail against PubMed.
     """
     meant, recalled = "29165669", "29165670"
-    eutils = _FakeEutils({
-        meant: {
-            "uid": meant, "articleids": [],
-            "title": "MTHFR C677T and homocysteine in coronary disease.",
-            "fulljournalname": "The New England Journal of Medicine",
-            "pubdate": "2017 Nov 20", "sortfirstauthor": "Smith J",
-        },
-        recalled: {
-            "uid": recalled, "articleids": [],
-            "title": "Chloroplast biogenesis in Arabidopsis.",
-            "fulljournalname": "Plant Cell", "pubdate": "2003", "sortfirstauthor": "Okuda T",
-        },
-    })
+    eutils = _FakeEutils(
+        {
+            meant: {
+                "uid": meant,
+                "articleids": [],
+                "title": "MTHFR C677T and homocysteine in coronary disease.",
+                "fulljournalname": "The New England Journal of Medicine",
+                "pubdate": "2017 Nov 20",
+                "sortfirstauthor": "Smith J",
+            },
+            recalled: {
+                "uid": recalled,
+                "articleids": [],
+                "title": "Chloroplast biogenesis in Arabidopsis.",
+                "fulljournalname": "Plant Cell",
+                "pubdate": "2003",
+                "sortfirstauthor": "Okuda T",
+            },
+        }
+    )
     clients = LookupClients(eutils=eutils, europepmc=_FakeEuropePmc())
 
     both = [lookup_citation(pmid=p, clients=clients) for p in (meant, recalled)]
@@ -338,9 +371,9 @@ def test_a_real_pmid_for_the_wrong_paper_is_catchable(monkeypatch: pytest.Monkey
 
     hint = both[1]
     assert hint.journal == "Plant Cell"
-    assert hint.year == "2003"                       # leading four digits of a free-form pubdate
+    assert hint.year == "2003"  # leading four digits of a free-form pubdate
     assert hint.first_author == "Okuda T"
-    assert both[0].year == "2017"                    # '2017 Nov 20' -> '2017', nothing invented
+    assert both[0].year == "2017"  # '2017 Nov 20' -> '2017', nothing invented
     named = [f for f in hint.findings if "existence is not identity" in f.message]
     assert len(named) == 1 and named[0].level == "info"
     assert "Chloroplast biogenesis" in named[0].message
@@ -399,12 +432,10 @@ def test_open_access_and_abstract_reach_is_reported() -> None:
 def test_every_offered_column_is_one_the_compiler_calls_redundancy_bearing() -> None:
     """The two tiers must agree on which cells are the author's; a column offered here that the
     compiler does not protect would be a hole in the partition."""
-    eutils = _FakeEutils({"12345678": {"uid": "12345678", "articleids": [
-        {"idtype": "doi", "value": "10.1234/abc"}
-    ]}})
-    hint = lookup_citation(
-        pmid="12345678", clients=LookupClients(eutils=eutils, europepmc=_FakeEuropePmc())
+    eutils = _FakeEutils(
+        {"12345678": {"uid": "12345678", "articleids": [{"idtype": "doi", "value": "10.1234/abc"}]}}
     )
+    hint = lookup_citation(pmid="12345678", clients=LookupClients(eutils=eutils, europepmc=_FakeEuropePmc()))
     for row in as_report_rows(hint):
         assert row["column"] in REDUNDANCY_BEARING, row["column"]
 
@@ -452,8 +483,7 @@ def test_every_advisory_column_has_its_refusal_stated_rather_than_defaulted() ->
     # text, because the text now carries a comment saying exactly that.
     body = ast.parse(inspect.getsource(lookup._advisory))
     assert not [
-        n for n in ast.walk(body)
-        if isinstance(n, ast.Call) and getattr(n.func, "attr", None) == "get"
+        n for n in ast.walk(body) if isinstance(n, ast.Call) and getattr(n.func, "attr", None) == "get"
     ]
 
 
@@ -485,8 +515,9 @@ def test_an_unreadable_snapshot_is_named_by_its_label_and_its_path_is_still_on_r
     broken = tmp_path / "broken"
     (broken / "data").mkdir(parents=True)
     (broken / "data" / "ensembl.parquet").write_bytes(b"not a parquet file")
-    hint = lookup_variant(rsid="rs1801133", offline=True, ensembl_cache=broken,
-                          clinvar_cache=_clinvar_snapshot(tmp_path))
+    hint = lookup_variant(
+        rsid="rs1801133", offline=True, ensembl_cache=broken, clinvar_cache=_clinvar_snapshot(tmp_path)
+    )
     unreadable = [f for f in hint.findings if f.message.startswith("ensembl snapshot unreadable:")]
     assert len(unreadable) == 1
     assert "ensembl" not in hint.checked, "a snapshot that could not be read was not checked"
@@ -520,9 +551,7 @@ def test_every_client_field_is_built_once_kept_and_closed_by_the_bundle() -> Non
     `finally`; the call site could not tell which, and only one of the eight was the leg whose
     unfilled field actually mattered. One path now: built under the lock, stored, closed by `close()`."""
     bundle = LookupClients()
-    assert set(CLIENT_FIELDS) == {
-        name for name in bundle.__dataclass_fields__ if not name.startswith("_")
-    }
+    assert set(CLIENT_FIELDS) == {name for name in bundle.__dataclass_fields__ if not name.startswith("_")}
     assert all(getattr(bundle, name) is None for name in CLIENT_FIELDS)
     built: dict[str, _Closable] = {}
     calls: dict[str, int] = dict.fromkeys(CLIENT_FIELDS, 0)
@@ -531,6 +560,7 @@ def test_every_client_field_is_built_once_kept_and_closed_by_the_bundle() -> Non
         def factory() -> _Closable:
             calls[name] += 1
             return built.setdefault(name, _Closable())
+
         return factory
 
     for name in CLIENT_FIELDS:

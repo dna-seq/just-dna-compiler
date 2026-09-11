@@ -34,8 +34,9 @@ from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import VALID_VERIFICATION_SKIPS
 
 
-def _row(source: str = "clinvar", dataset: str | None = "clinvar_2026-06-27",
-         layer: str = "annotation") -> SourceRow:
+def _row(
+    source: str = "clinvar", dataset: str | None = "clinvar_2026-06-27", layer: str = "annotation"
+) -> SourceRow:
     return SourceRow(source=source, layer=layer, dataset=dataset)
 
 
@@ -387,8 +388,7 @@ def test_ncbi_states_a_release_the_probe_can_read() -> None:
 # ── wired into `enrich()` ────────────────────────────────────────────────────────────────────────
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+    "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
 )
 
 
@@ -404,8 +404,7 @@ def _spec(tmp_path, dataset: str = "clinvar_2026-06-27"):
     (spec / "variants.csv").write_text("rsid,genotype\n", encoding="utf-8")
     (spec / "studies.csv").write_text("rsid,pmid\n", encoding="utf-8")
     (spec / "sources.csv").write_text(
-        "source,layer,license,declared_use,dataset\n"
-        f"clinvar,annotation,public-domain,unstated,{dataset}\n",
+        f"source,layer,license,declared_use,dataset\nclinvar,annotation,public-domain,unstated,{dataset}\n",
         encoding="utf-8",
     )
     return spec
@@ -440,8 +439,14 @@ def test_enrich_records_the_gap_and_the_module_is_left_alone(tmp_path, caplog) -
     before = {p.name: p.read_bytes() for p in sorted(spec.iterdir())}
     with caplog.at_level("WARNING"):
         result = enrich(
-            spec, offline=False, write=False, download=False, use_gnomad=False,
-            verify_ref=False, verify_clinsig=False, verify_rsids=False,
+            spec,
+            offline=False,
+            write=False,
+            download=False,
+            use_gnomad=False,
+            verify_ref=False,
+            verify_clinsig=False,
+            verify_rsids=False,
             release_probes={"clinvar": _probe("clinvar_2026-08-25")},
         )
     assert [c.recorded for c in result.dataset_currency.behind] == ["clinvar_2026-06-27"]
@@ -454,8 +459,13 @@ def test_the_attestation_carries_the_comparison_with_its_denominator(tmp_path) -
 
     spec = _spec(tmp_path)
     enrich(
-        spec, offline=False, download=False, use_gnomad=False,
-        verify_ref=False, verify_clinsig=False, verify_rsids=False,
+        spec,
+        offline=False,
+        download=False,
+        use_gnomad=False,
+        verify_ref=False,
+        verify_clinsig=False,
+        verify_rsids=False,
         release_probes={"clinvar": _probe("clinvar_2026-08-25")},
     )
     record = _records(spec)["dataset_currency"]
@@ -469,8 +479,13 @@ def test_a_module_still_on_the_current_release_is_recorded_as_compared_and_clean
 
     spec = _spec(tmp_path)
     enrich(
-        spec, offline=False, download=False, use_gnomad=False,
-        verify_ref=False, verify_clinsig=False, verify_rsids=False,
+        spec,
+        offline=False,
+        download=False,
+        use_gnomad=False,
+        verify_ref=False,
+        verify_clinsig=False,
+        verify_rsids=False,
         release_probes={"clinvar": _probe("clinvar_2026-06-27")},
     )
     record = _records(spec)["dataset_currency"]
@@ -498,9 +513,15 @@ def test_the_off_switch_attests_not_requested_and_asks_nobody(tmp_path) -> None:
     spec = _spec(tmp_path)
     registry = _NeverAsked()
     result = enrich(
-        spec, offline=False, download=False, use_gnomad=False,
-        verify_ref=False, verify_clinsig=False, verify_rsids=False,
-        verify_datasets=False, release_probes=registry.registry(),
+        spec,
+        offline=False,
+        download=False,
+        use_gnomad=False,
+        verify_ref=False,
+        verify_clinsig=False,
+        verify_rsids=False,
+        verify_datasets=False,
+        release_probes=registry.registry(),
     )
     assert result.dataset_currency is None
     assert _records(spec)["dataset_currency"].skipped == "not_requested"
@@ -513,8 +534,14 @@ def test_strict_refuses_over_a_superseded_release(tmp_path) -> None:
     spec = _spec(tmp_path)
     with pytest.raises(EnrichmentError) as caught:
         enrich(
-            spec, mode="strict", offline=False, download=False, use_gnomad=False,
-            verify_ref=False, verify_clinsig=False, verify_rsids=False,
+            spec,
+            mode="strict",
+            offline=False,
+            download=False,
+            use_gnomad=False,
+            verify_ref=False,
+            verify_clinsig=False,
+            verify_rsids=False,
             release_probes={"clinvar": _probe("clinvar_2026-08-25")},
         )
     assert "have been superseded" in str(caught.value)
@@ -537,8 +564,14 @@ def test_strict_never_escalates_a_source_nobody_could_reach(tmp_path) -> None:
     assert offline_run.dataset_currency.not_checked == "offline"
 
     unreachable = enrich(
-        spec, mode="strict", offline=False, download=False, use_gnomad=False,
-        verify_ref=False, verify_clinsig=False, verify_rsids=False,
+        spec,
+        mode="strict",
+        offline=False,
+        download=False,
+        use_gnomad=False,
+        verify_ref=False,
+        verify_clinsig=False,
+        verify_rsids=False,
         release_probes={"clinvar": _refuses},
     )
     assert unreachable.dataset_currency.not_checked == "unreachable"
@@ -550,8 +583,13 @@ def test_a_module_recording_no_dataset_attests_nothing_to_check(tmp_path) -> Non
 
     spec = _spec(tmp_path, dataset="")
     enrich(
-        spec, offline=False, download=False, use_gnomad=False,
-        verify_ref=False, verify_clinsig=False, verify_rsids=False,
+        spec,
+        offline=False,
+        download=False,
+        use_gnomad=False,
+        verify_ref=False,
+        verify_clinsig=False,
+        verify_rsids=False,
         release_probes={"clinvar": _probe("clinvar_2026-08-25")},
     )
     record = _records(spec)["dataset_currency"]
@@ -579,8 +617,10 @@ def test_the_cli_prints_the_gap_and_says_when_it_could_not_ask(tmp_path, monkeyp
     monkeypatch.setattr("just_dna_enricher.cli.enrich", moved)
     result = CliRunner().invoke(app, ["enrich", str(spec), "--no-verify-rsids"])
     assert result.exit_code == 0, result.output
-    assert "dataset moved on: clinvar (annotation): drafted from clinvar_2026-06-27, now " \
-           "clinvar_2026-08-25" in result.output
+    assert (
+        "dataset moved on: clinvar (annotation): drafted from clinvar_2026-06-27, now "
+        "clinvar_2026-08-25" in result.output
+    )
 
     offline = CliRunner().invoke(app, ["enrich", str(spec), "--offline"])
     assert offline.exit_code == 0, offline.output

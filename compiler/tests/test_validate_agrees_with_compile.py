@@ -103,99 +103,96 @@ def test_a_recorded_declaration_passes_both(tmp_path: Path) -> None:
 # `@parity-by-check` says audit by check, and the least a fixture list can do is not be shorter than
 # the registry. Four of the seven fact tables were missing when that was first counted.
 _INJECTED_ROW_CASES: tuple[tuple[str, str, str], ...] = (
+    (
+        "literature.csv",
+        "pmid,exists,source,status\n8696333,true,pubmed,checked\n",
+        "status",
+    ),
+    (
+        "frequencies.csv",
         (
-            "literature.csv",
-            "pmid,exists,source,status\n8696333,true,pubmed,checked\n",
-            "status",
+            "variant_key,rsid,chrom,start,ref,alt,genome_build,population,allele_count,"
+            "allele_number,dataset,source,status\n"
+            "rs1800562,rs1800562,6,26092913,G,A,GRCh38,global,3,1613660,gnomad_v4.1_joint,"
+            "gnomad,checked\n"
         ),
+        "status",
+    ),
+    (
+        "gene_validity.csv",
         (
-            "frequencies.csv",
-            (
-                "variant_key,rsid,chrom,start,ref,alt,genome_build,population,allele_count,"
-                "allele_number,dataset,source,status\n"
-                "rs1800562,rs1800562,6,26092913,G,A,GRCh38,global,3,1613660,gnomad_v4.1_joint,"
-                "gnomad,checked\n"
-            ),
-            "status",
+            "gene,disease_id,disease_label,moi,classification,dataset,source,status\n"
+            "HFE,MONDO:0011072,hereditary haemochromatosis,autosomal_recessive,definitive,"
+            "clingen_gene_validity_2026-06,clingen,checked\n"
         ),
+        "status",
+    ),
+    (
+        "clinical_assertions.csv",
         (
-            "gene_validity.csv",
-            (
-                "gene,disease_id,disease_label,moi,classification,dataset,source,status\n"
-                "HFE,MONDO:0011072,hereditary haemochromatosis,autosomal_recessive,definitive,"
-                "clingen_gene_validity_2026-06,clingen,checked\n"
-            ),
-            "status",
+            "variant_key,rsid,chrom,start,ref,alt,genome_build,clin_sig,dataset,source,status\n"
+            "rs1800562,rs1800562,6,26092913,G,A,GRCh38,pathogenic,clinvar_2026-06-27,"
+            "clinvar,checked\n"
         ),
+        "status",
+    ),
+    (
+        "gwas_effects.csv",
         (
-            "clinical_assertions.csv",
-            (
-                "variant_key,rsid,chrom,start,ref,alt,genome_build,clin_sig,dataset,source,status\n"
-                "rs1800562,rs1800562,6,26092913,G,A,GRCh38,pathogenic,clinvar_2026-06-27,"
-                "clinvar,checked\n"
-            ),
-            "status",
+            "association_id,variant_key,rsid,effect_allele,effect_size,dataset,source,status\n"
+            "GCST000001,rs1800562,rs1800562,A,0.12,gwas_catalog_2026-06,gwas_catalog,checked\n"
         ),
+        "status",
+    ),
+    (
+        "expression_effects.csv",
         (
-            "gwas_effects.csv",
-            (
-                "association_id,variant_key,rsid,effect_allele,effect_size,dataset,source,status\n"
-                "GCST000001,rs1800562,rs1800562,A,0.12,gwas_catalog_2026-06,gwas_catalog,checked\n"
-            ),
-            "status",
+            "variant_key,rsid,chrom,start,ref,alt,gene,gene_id,effect_size,effect_measure,"
+            "effect_direction,tracks_agreeing,tracks_total,distance_to_gene,dataset,source,status\n"
+            "rs1800562,rs1800562,6,26092913,G,A,HFE,ENSG00000010704.19,0.0142,RNA_SEQ,"
+            "decrease,226,371,0,alphagenome_atlas_2026-09-11,alphagenome_atlas,checked\n"
         ),
+        "status",
+    ),
+    (
+        "sources.csv",
+        # This case used to be spelled `non-commercial`, on the reasoning that the hyphen is wrong
+        # where the member is `non_commercial`. It no longer is: a `-`/`_` slip in a hand-written
+        # cell is now canonicalized to the declared member, which is the whole point — the fact
+        # that a test author reached for the hyphen as the obvious *plausible* mistake is the
+        # evidence that it was worth absorbing. What is left here is a value that names nothing.
+        _SOURCES.format(declared_use="commerical"),
+        "declared_use",
+    ),
+    (
+        "resolution.csv",
         (
-            "expression_effects.csv",
-            (
-                "variant_key,rsid,chrom,start,ref,alt,gene,gene_id,effect_size,effect_measure,"
-                "effect_direction,tracks_agreeing,tracks_total,distance_to_gene,dataset,source,status\n"
-                "rs1800562,rs1800562,6,26092913,G,A,HFE,ENSG00000010704.19,0.0142,RNA_SEQ,"
-                "decrease,226,371,0,alphagenome_atlas_2026-09-11,alphagenome_atlas,checked\n"
-            ),
-            "status",
+            "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status\n"
+            "rs1800562,rs1800562,6,26092913,G,A,GRCh38,0,cache,checked\n"
         ),
+        "status",
+    ),
+    (
+        "gene_metrics.csv",
         (
-            "sources.csv",
-            # This case used to be spelled `non-commercial`, on the reasoning that the hyphen is wrong
-            # where the member is `non_commercial`. It no longer is: a `-`/`_` slip in a hand-written
-            # cell is now canonicalized to the declared member, which is the whole point — the fact
-            # that a test author reached for the hyphen as the obvious *plausible* mistake is the
-            # evidence that it was worth absorbing. What is left here is a value that names nothing.
-            _SOURCES.format(declared_use="commerical"),
-            "declared_use",
+            "gene,dataset,source,status,haploinsufficiency\n"
+            "HFE,gnomad_v4.1_constraint,gnomad,resolved,very likely\n"
         ),
+        "haploinsufficiency",
+    ),
+    (
+        "clin_sig_concordance.csv",
         (
-            "resolution.csv",
-            (
-                "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status\n"
-                "rs1800562,rs1800562,6,26092913,G,A,GRCh38,0,cache,checked\n"
-            ),
-            "status",
+            "variant_key,genotype,authored_clin_sig,authority_concordance,authored_position\n"
+            "rs1800562,A/G,pathogenic,mostly,matches_none\n"
         ),
-        (
-            "gene_metrics.csv",
-            (
-                "gene,dataset,source,status,haploinsufficiency\n"
-                "HFE,gnomad_v4.1_constraint,gnomad,resolved,very likely\n"
-            ),
-            "haploinsufficiency",
-        ),
-        (
-            "clin_sig_concordance.csv",
-            (
-                "variant_key,genotype,authored_clin_sig,authority_concordance,authored_position\n"
-                "rs1800562,A/G,pathogenic,mostly,matches_none\n"
-            ),
-            "authority_concordance",
-        ),
-        (
-            "clin_sig_authority_calls.csv",
-            (
-                "variant_key,genotype,authority,status,clin_sig\n"
-                "rs1800562,A/G,clinvar,consulted,benign\n"
-            ),
-            "status",
-        ),
+        "authority_concordance",
+    ),
+    (
+        "clin_sig_authority_calls.csv",
+        ("variant_key,genotype,authority,status,clin_sig\nrs1800562,A/G,clinvar,consulted,benign\n"),
+        "status",
+    ),
 )
 
 
@@ -293,14 +290,12 @@ _RESOLUTION_HEADER = (
 
 def _resolution(vrs_id: str) -> str:
     """rs334's real locus, carrying whichever `vrs_id` the caller wants tested against it."""
-    return _RESOLUTION_HEADER + (
-        f"{_HBS},rs334,11,5227002,T,A,GRCh38,0,{vrs_id},2.0,gnomad,resolved\n"
-    )
+    return _RESOLUTION_HEADER + (f"{_HBS},rs334,11,5227002,T,A,GRCh38,0,{vrs_id},2.0,gnomad,resolved\n")
 
 
 def _studies(p_value: str, p_value_num: str) -> str:
     """One real citation (PMID 16199547, an HbS association) carrying the two p-value encodings."""
-    return "rsid,pmid,p_value,p_value_num\n" f"rs334,16199547,{p_value},{p_value_num}\n"
+    return f"rsid,pmid,p_value,p_value_num\nrs334,16199547,{p_value},{p_value_num}\n"
 
 
 def _agree(spec: Path, out: Path, *, strict: bool) -> tuple[bool, bool]:
@@ -320,9 +315,7 @@ def test_a_correct_vrs_id_is_clean_on_both_sides(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("strict", [False, True])
-def test_a_corrupt_vrs_id_refuses_at_validate_too_in_both_modes(
-    tmp_path: Path, strict: bool
-) -> None:
+def test_a_corrupt_vrs_id_refuses_at_validate_too_in_both_modes(tmp_path: Path, strict: bool) -> None:
     """A substitution's VA is deterministic with no reference, so a mismatch can only be corruption —
     an error in *both* modes. This is the case that made the gap reachable without `--strict` at all:
     `validate` blessed a module a plain `compile` then rejected.
@@ -333,9 +326,7 @@ def test_a_corrupt_vrs_id_refuses_at_validate_too_in_both_modes(
     """
     spec = _spec(tmp_path, resolution__csv=_resolution(_MTHFR_677))
     result = validate_spec(spec, strict=strict)
-    compiled = compile_module(
-        spec, tmp_path / f"out_{strict}", resolve_with_ensembl=False, strict=strict
-    )
+    compiled = compile_module(spec, tmp_path / f"out_{strict}", resolve_with_ensembl=False, strict=strict)
 
     assert not result.valid and not compiled.success
     assert any("does not match the id recomputed" in e for e in result.errors), result.errors
@@ -424,8 +415,7 @@ def test_an_unverifiable_indel_reads_the_same_in_both_modes_and_both_commands(
 # ── allele membership: the third check that was compile-only, found the same way ─────────────────
 
 _MEMBERSHIP_VARIANTS = (
-    "chrom,start,ref,alts,genotype,state,conclusion,gene\n"
-    "19,44908684,T,{alts},C/T,risk,fixture,APOE\n"
+    "chrom,start,ref,alts,genotype,state,conclusion,gene\n19,44908684,T,{alts},C/T,risk,fixture,APOE\n"
 )
 _MEMBERSHIP_STUDIES = "chrom,start,ref,pmid,conclusion\n19,44908684,T,16199547,fixture\n"
 
@@ -478,9 +468,7 @@ def test_the_membership_message_is_identical_on_both_sides(tmp_path: Path) -> No
     from_validate = [w for w in validate_spec(spec).warnings if "not among the" in w]
     from_compile = [
         w
-        for w in compile_module(
-            spec, tmp_path / "msg_out", resolve_with_ensembl=False
-        ).warnings
+        for w in compile_module(spec, tmp_path / "msg_out", resolve_with_ensembl=False).warnings
         if "not among the" in w
     ]
     assert from_validate == from_compile != []
@@ -515,9 +503,7 @@ def test_frequency_arithmetic_refuses_at_validate_too(tmp_path: Path, strict: bo
     """
     spec = _spec(tmp_path / f"f{int(strict)}", frequencies__csv=_frequencies(500, 100))
     result = validate_spec(spec, strict=strict)
-    compiled = compile_module(
-        spec, tmp_path / f"fo{int(strict)}", resolve_with_ensembl=False, strict=strict
-    )
+    compiled = compile_module(spec, tmp_path / f"fo{int(strict)}", resolve_with_ensembl=False, strict=strict)
 
     assert not result.valid and not compiled.success
     assert any("cannot be larger than its own denominator" in e for e in result.errors), result.errors
@@ -558,8 +544,7 @@ def test_a_duplicate_source_layer_row_is_refused_on_both_sides(tmp_path: Path) -
 
     # The contradicting pair: same key, opposite terms, and the gate reads one of them.
     contradicting = _SOURCES.format(declared_use="non_commercial") + (
-        "cpic,annotation,CC BY-SA 4.0,https://cpicpgx.org/license/,CPIC,true,true,true,"
-        ",cpic-2026\n"
+        "cpic,annotation,CC BY-SA 4.0,https://cpicpgx.org/license/,CPIC,true,true,true,,cpic-2026\n"
     )
     spec2 = _spec(tmp_path / "clash", sources__csv=contradicting)
     assert validate_spec(spec2).valid is False

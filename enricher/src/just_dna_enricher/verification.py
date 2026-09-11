@@ -158,7 +158,8 @@ def record_verification(
         except (OSError, ValueError) as exc:
             logger.warning(
                 "Could not read the existing %s (%s); this run's records replace it wholesale.",
-                path.name, exc,
+                path.name,
+                exc,
             )
         else:
             existing = previous.records
@@ -174,7 +175,8 @@ def record_verification(
             elif previous.closure is not None:
                 logger.warning(
                     "%s carried a closure over different authored bytes; it is dropped rather than "
-                    "re-bound. Re-close the module once you are finished editing it.", path.name,
+                    "re-bound. Re-close the module once you are finished editing it.",
+                    path.name,
                 )
 
     doc = attest(
@@ -188,7 +190,10 @@ def record_verification(
     write_verification(doc, path)
     logger.info(
         "Verification: attested %d check(s) into %s (nonce %d at %d bits).",
-        len(doc.records), path.name, doc.nonce, doc.difficulty,
+        len(doc.records),
+        path.name,
+        doc.nonce,
+        doc.difficulty,
     )
     return doc
 

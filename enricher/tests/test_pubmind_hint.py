@@ -37,9 +37,7 @@ def allele(snapshot):
 
 
 @pytest.mark.parametrize("spelling", ["bare", "chr_prefixed", "lowercase_bases"])
-def test_the_corpus_answers_the_same_whichever_spelling_the_caller_typed(
-    snapshot, allele, spelling
-):
+def test_the_corpus_answers_the_same_whichever_spelling_the_caller_typed(snapshot, allele, spelling):
     """`chr17` and `17` are one chromosome, and the leg must not decide otherwise.
 
     Parametrized over the three spellings a caller really types rather than asserted for one, because
@@ -55,9 +53,7 @@ def test_the_corpus_answers_the_same_whichever_spelling_the_caller_typed(
     hint = VariantHint()
     _lookup_pubmind(hint, snapshot, (chrom, start, ref, alt))
 
-    assert hint.pubmind, (
-        f"{spelling}: the corpus holds a record at this allele and the leg reported none"
-    )
+    assert hint.pubmind, f"{spelling}: the corpus holds a record at this allele and the leg reported none"
     assert not any("holds no record" in str(finding) for finding in hint.findings), (
         f"{spelling}: an established absence was reported over records the query returned"
     )

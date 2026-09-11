@@ -166,9 +166,7 @@ def _parse(caid: str, payload: dict) -> AlleleIdentity:
     )
 
 
-def anchor_indel(
-    unanchored: tuple[str, int, str, str], read_base
-) -> tuple[str, int, str, str] | None:
+def anchor_indel(unanchored: tuple[str, int, str, str], read_base) -> tuple[str, int, str, str] | None:
     """A one-sided indel plus one reference base → a VCF-style row, or `None` if the base is unknown.
 
     **This is the left-aligned representation VCF requires and Picard/GATK produce.** An insertion and

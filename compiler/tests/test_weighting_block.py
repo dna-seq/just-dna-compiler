@@ -50,9 +50,7 @@ _STUDIES = "rsid,pmid\nrs1800562,16199547\n"
 
 def _spec(directory: Path, *, weighting: bool) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "module_spec.yaml").write_text(
-        _BASE_YAML + (_WEIGHTING_YAML if weighting else "")
-    )
+    (directory / "module_spec.yaml").write_text(_BASE_YAML + (_WEIGHTING_YAML if weighting else ""))
     (directory / "variants.csv").write_text(_VARIANTS)
     (directory / "studies.csv").write_text(_STUDIES)
     return directory

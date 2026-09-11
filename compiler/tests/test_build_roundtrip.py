@@ -41,13 +41,10 @@ def _spec(d: Path, build: str) -> Path:
     )
     pos = _C282Y[build]
     (d / "variants.csv").write_text(
-        "chrom,start,ref,alts,genotype,state,conclusion,gene\n"
-        f"6,{pos},G,A,A/A,risk,C282Y homozygote,HFE\n",
+        f"chrom,start,ref,alts,genotype,state,conclusion,gene\n6,{pos},G,A,A/A,risk,C282Y homozygote,HFE\n",
         encoding="utf-8",
     )
-    (d / "studies.csv").write_text(
-        f"chrom,start,ref,pmid\n6,{pos},G,8696333\n", encoding="utf-8"
-    )
+    (d / "studies.csv").write_text(f"chrom,start,ref,pmid\n6,{pos},G,8696333\n", encoding="utf-8")
     return d
 
 
@@ -151,9 +148,15 @@ def test_a_computed_key_uses_the_injected_build(tmp_path: Path) -> None:
     from just_dna_format.binning import HeteroplasmyRow
 
     kwargs = {
-        "gene": "HFE", "reference_sequence": "NC_012920.1", "chrom": "6",
-        "start": _C282Y["GRCh37"], "ref": "G", "alts": "A", "conclusion": "x",
-        "measure_min": 0.1, "measure_max": 0.3,
+        "gene": "HFE",
+        "reference_sequence": "NC_012920.1",
+        "chrom": "6",
+        "start": _C282Y["GRCh37"],
+        "ref": "G",
+        "alts": "A",
+        "conclusion": "x",
+        "measure_min": 0.1,
+        "measure_max": 0.3,
     }
     assert HeteroplasmyRow(**kwargs).variant_key.startswith("ga4gh:VA.")
     told = HeteroplasmyRow(**kwargs).with_genome_build("GRCh37")
@@ -177,7 +180,10 @@ def test_the_injected_build_is_not_an_authored_column(tmp_path: Path) -> None:
     assert "genome_build" not in row.model_dump()
     with pytest.raises(ValidationError):
         HeteroplasmyRow(
-            gene="HFE", reference_sequence="NC_012920.1", conclusion="x", measure_min=0.1,
+            gene="HFE",
+            reference_sequence="NC_012920.1",
+            conclusion="x",
+            measure_min=0.1,
             genome_build="GRCh37",
         )
 
@@ -193,9 +199,7 @@ def test_loading_a_table_kind_tells_its_rows_the_build(tmp_path: Path) -> None:
         f"HFE,NC_012920.1,6,{_C282Y['GRCh37']},G,A,0.1,0.3,x,false\n",
         encoding="utf-8",
     )
-    rows, errors, _ = _load_csv_rows(
-        path, HeteroplasmyRow, "heteroplasmy.csv", genome_build="GRCh37"
-    )
+    rows, errors, _ = _load_csv_rows(path, HeteroplasmyRow, "heteroplasmy.csv", genome_build="GRCh37")
     assert not errors, errors
     assert rows[0].genome_build == "GRCh37"
     assert rows[0].variant_key == f"6:{_C282Y['GRCh37']}:G:A"
@@ -225,12 +229,10 @@ def test_content_signature_separates_two_builds(tmp_path: Path) -> None:
         )
         # Deliberately identical bytes in both directories — that is the whole test.
         (spec / "variants.csv").write_text(
-            "chrom,start,ref,alts,genotype,state,conclusion\n"
-            "6,26093141,G,A,A/A,risk,x\n", encoding="utf-8",
+            "chrom,start,ref,alts,genotype,state,conclusion\n6,26093141,G,A,A/A,risk,x\n",
+            encoding="utf-8",
         )
-        (spec / "studies.csv").write_text(
-            "chrom,start,ref,pmid\n6,26093141,G,8696333\n", encoding="utf-8"
-        )
+        (spec / "studies.csv").write_text("chrom,start,ref,pmid\n6,26093141,G,8696333\n", encoding="utf-8")
         signatures[build] = content_signature(spec)
 
     assert (spec.parent / "GRCh37" / "variants.csv").read_bytes() == (
@@ -246,9 +248,16 @@ def test_the_default_build_keeps_its_existing_signature() -> None:
     from just_dna_format.integrity import content_signature as raw_signature
     from just_dna_format.spec import VariantRow
 
-    rows = [VariantRow(
-        chrom="6", start=_C282Y["GRCh38"], ref="G", alts="A",
-        genotype="A/A", state="risk", conclusion="x",
-    )]
+    rows = [
+        VariantRow(
+            chrom="6",
+            start=_C282Y["GRCh38"],
+            ref="G",
+            alts="A",
+            genotype="A/A",
+            state="risk",
+            conclusion="x",
+        )
+    ]
     assert raw_signature({"variants.csv": rows}) == raw_signature({"variants.csv": rows}, "GRCh38")
     assert raw_signature({"variants.csv": rows}) != raw_signature({"variants.csv": rows}, "GRCh37")

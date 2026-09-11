@@ -31,15 +31,21 @@ from just_dna_format.manifest import read_manifest
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 
 _CONCORDANCE_HEADER = (
-    "variant_key,genotype,authored_clin_sig,authority_concordance,authored_position,opposed,"
-    "checked_at\n"
+    "variant_key,genotype,authored_clin_sig,authority_concordance,authored_position,opposed,checked_at\n"
 )
 _CALLS_HEADER = (
     "variant_key,genotype,authority,status,clin_sig,clin_sig_raw,confidence,confidence_unit,"
     "dataset,checked_at\n"
 )
 _OVERLAY_HEADER = [
-    "table", "subject", "member", "field", "operation", "value", "reason", "decided_by",
+    "table",
+    "subject",
+    "member",
+    "field",
+    "operation",
+    "value",
+    "reason",
+    "decided_by",
     "decided_at",
 ]
 
@@ -81,9 +87,7 @@ def _write_record(spec: Path, subjects: list[tuple[str, str]]) -> None:
     concordance = [_CONCORDANCE_HEADER]
     calls = [_CALLS_HEADER]
     for key, genotype in subjects:
-        concordance.append(
-            f"{key},{genotype},pathogenic,single,matches_none,true,2026-08-28T00:00:00Z\n"
-        )
+        concordance.append(f"{key},{genotype},pathogenic,single,matches_none,true,2026-08-28T00:00:00Z\n")
         calls.append(
             f"{key},{genotype},clinvar,recorded,benign,Benign,3,review_stars,"
             f"clinvar_2026-08-01,2026-08-28T00:00:00Z\n"
@@ -113,11 +117,22 @@ def test_answering_a_contested_subject_survives_the_round_trip(tmp_path: Path) -
     subjects = _subjects(spec)
     _write_record(spec, subjects)
     answered, genotype = subjects[0]
-    _write_overlay(spec, [[
-        "clin_sig_concordance.csv", answered, genotype, "", "suppress", "",
-        "the 2019 submission this rests on was superseded by our own review of the primary data",
-        "curator", "2026-08-28",
-    ]])
+    _write_overlay(
+        spec,
+        [
+            [
+                "clin_sig_concordance.csv",
+                answered,
+                genotype,
+                "",
+                "suppress",
+                "",
+                "the 2019 submission this rests on was superseded by our own review of the primary data",
+                "curator",
+                "2026-08-28",
+            ]
+        ],
+    )
 
     first = compile_module(spec, tmp_path / "out1", resolve_with_ensembl=False)
     assert first.success, first.errors
@@ -148,11 +163,22 @@ def test_the_answered_subject_leaves_the_table_and_the_evidence_stays(tmp_path: 
     subjects = _subjects(spec)
     _write_record(spec, subjects)
     answered, genotype = subjects[0]
-    _write_overlay(spec, [[
-        "clin_sig_concordance.csv", answered, genotype, "", "suppress", "",
-        "we hold the original functional data and the archive has not read it", "curator",
-        "2026-08-28",
-    ]])
+    _write_overlay(
+        spec,
+        [
+            [
+                "clin_sig_concordance.csv",
+                answered,
+                genotype,
+                "",
+                "suppress",
+                "",
+                "we hold the original functional data and the archive has not read it",
+                "curator",
+                "2026-08-28",
+            ]
+        ],
+    )
 
     result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
     assert result.success, result.errors
@@ -262,11 +288,22 @@ def test_answering_the_last_contested_subject_clears_the_warning(tmp_path: Path)
     before = compile_module(spec, tmp_path / "out1", resolve_with_ensembl=False)
     assert any("clin_sig_concordance.csv records" in w for w in before.warnings)
 
-    _write_overlay(spec, [[
-        "clin_sig_concordance.csv", subjects[0][0], subjects[0][1], "", "suppress", "",
-        "the archive's single submission predates the family study this module is built on",
-        "curator", "2026-08-28",
-    ]])
+    _write_overlay(
+        spec,
+        [
+            [
+                "clin_sig_concordance.csv",
+                subjects[0][0],
+                subjects[0][1],
+                "",
+                "suppress",
+                "",
+                "the archive's single submission predates the family study this module is built on",
+                "curator",
+                "2026-08-28",
+            ]
+        ],
+    )
     after = compile_module(spec, tmp_path / "out2", resolve_with_ensembl=False)
     assert after.success, after.errors
     assert not [w for w in after.warnings if "clin_sig_concordance.csv records" in w]

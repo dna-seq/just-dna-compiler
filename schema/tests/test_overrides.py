@@ -50,13 +50,11 @@ def test_every_covered_table_names_columns_its_own_model_actually_has() -> None:
     """
     for table, target in OVERRIDABLE_TABLES.items():
         assert target.subject_field in target.model.model_fields, (
-            f"{table}: subject column {target.subject_field!r} is not on "
-            f"{target.model.__name__}"
+            f"{table}: subject column {target.subject_field!r} is not on {target.model.__name__}"
         )
         if target.member_field is not None:
             assert target.member_field in target.model.model_fields, (
-                f"{table}: member column {target.member_field!r} is not on "
-                f"{target.model.__name__}"
+                f"{table}: member column {target.member_field!r} is not on {target.model.__name__}"
             )
 
 
@@ -118,7 +116,10 @@ def test_a_grouped_table_refuses_a_wildcard_member_for_everything_but_update(
 def test_a_wildcard_member_is_accepted_for_update_and_corrects_the_whole_group() -> None:
     """The other half of the asymmetry, and it has to be shown working rather than merely allowed."""
     override = _row(
-        table="resolution.csv", subject="rs1800562", field="source", operation="update",
+        table="resolution.csv",
+        subject="rs1800562",
+        field="source",
+        operation="update",
         value="manual",
     )
     rows = [
@@ -136,8 +137,12 @@ def test_a_table_whose_subject_identifies_one_row_refuses_a_member_at_all() -> N
     would be a value nothing could ever be compared against."""
     with pytest.raises(ValidationError) as exc:
         _row(
-            table="literature.csv", subject="8696333", member="2", field="doi",
-            operation="update", value="10.1/a",
+            table="literature.csv",
+            subject="8696333",
+            member="2",
+            field="doi",
+            operation="update",
+            value="10.1/a",
         )
     assert "member is not used by literature.csv" in str(exc.value)
 
@@ -153,8 +158,12 @@ def test_an_override_may_not_write_the_column_it_keys_on() -> None:
     for field in ("variant_key", "locus_index"):
         with pytest.raises(ValidationError) as exc:
             _row(
-                table="resolution.csv", subject="rs1800562", member="0", field=field,
-                operation="update", value="whatever",
+                table="resolution.csv",
+                subject="rs1800562",
+                member="0",
+                field=field,
+                operation="update",
+                value="whatever",
             )
         assert "keys ON" in str(exc.value)
 
@@ -163,8 +172,12 @@ def test_a_field_that_is_not_a_column_of_the_named_table_is_refused_with_the_col
     """`@specific-rejection`: a typo'd column would otherwise apply to nothing, forever, silently."""
     with pytest.raises(ValidationError) as exc:
         _row(
-            table="resolution.csv", subject="rs1800562", member="0", field="chromosome",
-            operation="update", value="6",
+            table="resolution.csv",
+            subject="rs1800562",
+            member="0",
+            field="chromosome",
+            operation="update",
+            value="6",
         )
     message = str(exc.value)
     assert "'chromosome' is not a column of resolution.csv" in message
@@ -175,7 +188,10 @@ def test_suppress_names_a_row_so_it_carries_neither_field_nor_value() -> None:
     for extra in ({"field": "chrom"}, {"value": "6"}):
         with pytest.raises(ValidationError):
             _row(
-                table="resolution.csv", subject="rs1800562", member="0", operation="suppress",
+                table="resolution.csv",
+                subject="rs1800562",
+                member="0",
+                operation="suppress",
                 **extra,
             )
 
@@ -184,8 +200,7 @@ def test_one_key_group_carries_one_operation() -> None:
     """An insert is written as several rows sharing `(table, subject, member)`, one per field, so the
     key names one decision. Mixing operations under it has no defined order."""
     rows = [
-        _row(table="literature.csv", subject="8696333", field="doi", operation="update",
-             value="10.1/a"),
+        _row(table="literature.csv", subject="8696333", field="doi", operation="update", value="10.1/a"),
         _row(table="literature.csv", subject="8696333", operation="suppress"),
     ]
     errors = overlay_coherence_errors(rows)
@@ -208,14 +223,14 @@ def test_an_inserted_row_lands_at_the_end_of_its_subjects_group_in_overlay_order
         ResolutionRow(variant_key="rs2", locus_index=0, chrom="6", start=2),
     ]
     overlay = [
-        _row(table="resolution.csv", subject="rs1", member="1", field="chrom", operation="insert",
-             value="6"),
-        _row(table="resolution.csv", subject="rs1", member="1", field="start", operation="insert",
-             value="11"),
-        _row(table="resolution.csv", subject="rs1", member="2", field="chrom", operation="insert",
-             value="6"),
-        _row(table="resolution.csv", subject="rs1", member="2", field="start", operation="insert",
-             value="12"),
+        _row(table="resolution.csv", subject="rs1", member="1", field="chrom", operation="insert", value="6"),
+        _row(
+            table="resolution.csv", subject="rs1", member="1", field="start", operation="insert", value="11"
+        ),
+        _row(table="resolution.csv", subject="rs1", member="2", field="chrom", operation="insert", value="6"),
+        _row(
+            table="resolution.csv", subject="rs1", member="2", field="start", operation="insert", value="12"
+        ),
     ]
     after, errors, warnings = apply_overrides("resolution.csv", rows, overlay)
     assert errors == [] and warnings == []
@@ -231,8 +246,7 @@ def test_a_subject_with_no_group_yet_is_appended_at_the_end_of_the_table() -> No
     """The other half of the placement rule, which the group case cannot show."""
     rows = [ResolutionRow(variant_key="rs1", locus_index=0, chrom="6", start=1)]
     overlay = [
-        _row(table="resolution.csv", subject="rs9", member="0", field="chrom", operation="insert",
-             value="6"),
+        _row(table="resolution.csv", subject="rs9", member="0", field="chrom", operation="insert", value="6"),
     ]
     after, errors, _ = apply_overrides("resolution.csv", rows, overlay)
     assert errors == []
@@ -248,10 +262,15 @@ def test_all_three_operations_are_fixed_points_when_applied_to_their_own_result(
         ResolutionRow(variant_key="rs2", locus_index=0, chrom="6", start=2, source="cache"),
     ]
     overlay = [
-        _row(table="resolution.csv", subject="rs1", member="0", field="source", operation="update",
-             value="manual"),
-        _row(table="resolution.csv", subject="rs3", member="0", field="chrom", operation="insert",
-             value="6"),
+        _row(
+            table="resolution.csv",
+            subject="rs1",
+            member="0",
+            field="source",
+            operation="update",
+            value="manual",
+        ),
+        _row(table="resolution.csv", subject="rs3", member="0", field="chrom", operation="insert", value="6"),
         _row(table="resolution.csv", subject="rs2", member="0", operation="suppress"),
     ]
     once, errors, warnings_once = apply_overrides("resolution.csv", rows, overlay)
@@ -282,10 +301,15 @@ def test_no_operation_reports_its_own_no_op() -> None:
     """
     rows = [ResolutionRow(variant_key="rs1", locus_index=0, chrom="6", start=1, source="manual")]
     overlay = [
-        _row(table="resolution.csv", subject="rs1", member="0", field="source", operation="update",
-             value="manual"),
-        _row(table="resolution.csv", subject="rs1", member="0", field="chrom", operation="insert",
-             value="6"),
+        _row(
+            table="resolution.csv",
+            subject="rs1",
+            member="0",
+            field="source",
+            operation="update",
+            value="manual",
+        ),
+        _row(table="resolution.csv", subject="rs1", member="0", field="chrom", operation="insert", value="6"),
         _row(table="resolution.csv", subject="rs4", member="0", operation="suppress"),
     ]
     # Split, because one key group carries one operation: the update and the insert share a key.
@@ -322,8 +346,16 @@ def test_a_key_cell_is_matched_as_the_model_stores_it_not_as_the_author_spelled_
     inserted, errors, warnings = apply_overrides(
         "frequencies.csv",
         rows,
-        [_row(table="frequencies.csv", subject="rs1", member="AFR", field="dataset",
-              operation="insert", value="gnomad_v4.1")],
+        [
+            _row(
+                table="frequencies.csv",
+                subject="rs1",
+                member="AFR",
+                field="dataset",
+                operation="insert",
+                value="gnomad_v4.1",
+            )
+        ],
     )
     assert (errors, warnings) == ([], [])
     assert len(inserted) == 1, "an insert of a row already present is a no-op whatever its spelling"
@@ -331,8 +363,16 @@ def test_a_key_cell_is_matched_as_the_model_stores_it_not_as_the_author_spelled_
     updated, errors, warnings = apply_overrides(
         "frequencies.csv",
         rows,
-        [_row(table="frequencies.csv", subject="rs1", member="AFR", field="dataset",
-              operation="update", value="gnomad_v4.2")],
+        [
+            _row(
+                table="frequencies.csv",
+                subject="rs1",
+                member="AFR",
+                field="dataset",
+                operation="update",
+                value="gnomad_v4.2",
+            )
+        ],
     )
     assert (errors, warnings) == ([], []), "the row is plainly there; nothing should warn"
     assert [r.dataset for r in updated] == ["gnomad_v4.2"]
@@ -352,8 +392,14 @@ def test_the_insert_no_op_holds_across_laps_for_a_normalized_member() -> None:
     match that fails on a canonical value grows the table by one row per lap, forever."""
     rows = [FrequencyRow(variant_key="rs1", population="afr", dataset="gnomad_v4.1")]
     overlay = [
-        _row(table="frequencies.csv", subject="rs1", member="AFR", field="dataset",
-             operation="insert", value="gnomad_v4.1")
+        _row(
+            table="frequencies.csv",
+            subject="rs1",
+            member="AFR",
+            field="dataset",
+            operation="insert",
+            value="gnomad_v4.1",
+        )
     ]
     lap = rows
     for _ in range(3):
@@ -369,8 +415,16 @@ def test_an_int_member_matches_whatever_way_the_author_spelled_the_number() -> N
     after, errors, warnings = apply_overrides(
         "resolution.csv",
         rows,
-        [_row(table="resolution.csv", subject="rs1", member="01", field="source",
-              operation="update", value="manual")],
+        [
+            _row(
+                table="resolution.csv",
+                subject="rs1",
+                member="01",
+                field="source",
+                operation="update",
+                value="manual",
+            )
+        ],
     )
     assert (errors, warnings) == ([], [])
     assert [r.source for r in after] == ["manual"]
@@ -387,8 +441,16 @@ def test_an_insert_under_a_normalized_subject_lands_in_its_own_group() -> None:
     after, errors, _ = apply_overrides(
         "frequencies.csv",
         rows,
-        [_row(table="frequencies.csv", subject="rs1", member="NFE", field="dataset",
-              operation="insert", value="d")],
+        [
+            _row(
+                table="frequencies.csv",
+                subject="rs1",
+                member="NFE",
+                field="dataset",
+                operation="insert",
+                value="d",
+            )
+        ],
     )
     assert errors == []
     assert [(r.variant_key, r.population) for r in after] == [
@@ -411,8 +473,14 @@ def test_an_update_that_reaches_no_row_warns_and_names_every_reading() -> None:
     """
     rows = [ResolutionRow(variant_key="rs1", locus_index=0, chrom="6", start=1)]
     overlay = [
-        _row(table="resolution.csv", subject="rs_typo", member="0", field="chrom",
-             operation="update", value="6"),
+        _row(
+            table="resolution.csv",
+            subject="rs_typo",
+            member="0",
+            field="chrom",
+            operation="update",
+            value="6",
+        ),
     ]
     after, errors, warnings = apply_overrides("resolution.csv", rows, overlay)
     assert errors == []
@@ -429,13 +497,19 @@ def test_an_update_producing_a_row_the_target_model_refuses_is_an_error() -> Non
     parquet."""
     rows = [
         ResolutionRow(
-            variant_key="rs1", locus_index=0, chrom="6", start=1, ref="G", alts="A",
+            variant_key="rs1",
+            locus_index=0,
+            chrom="6",
+            start=1,
+            ref="G",
+            alts="A",
             vrs_id="ga4gh:VA.__fXj0w0NCSkOLYF79GvSLtpDji99L42",
         )
     ]
     overlay = [
-        _row(table="resolution.csv", subject="rs1", member="0", field="alts", operation="update",
-             value="A,T"),
+        _row(
+            table="resolution.csv", subject="rs1", member="0", field="alts", operation="update", value="A,T"
+        ),
     ]
     after, errors, _ = apply_overrides("resolution.csv", rows, overlay)
     assert len(errors) == 1
@@ -452,12 +526,9 @@ def test_a_group_scoped_update_that_refuses_reports_once_per_reason_not_once_per
     """
     vrs = "ga4gh:VA.__fXj0w0NCSkOLYF79GvSLtpDji99L42"
     rows = [
-        ResolutionRow(variant_key="rs1", locus_index=0, chrom="6", start=1, ref="G", alts="A",
-                      vrs_id=vrs),
-        ResolutionRow(variant_key="rs1", locus_index=1, chrom="6", start=2, ref="G", alts="A",
-                      vrs_id=vrs),
-        ResolutionRow(variant_key="rs2", locus_index=0, chrom="6", start=3, ref="G", alts="A",
-                      vrs_id=vrs),
+        ResolutionRow(variant_key="rs1", locus_index=0, chrom="6", start=1, ref="G", alts="A", vrs_id=vrs),
+        ResolutionRow(variant_key="rs1", locus_index=1, chrom="6", start=2, ref="G", alts="A", vrs_id=vrs),
+        ResolutionRow(variant_key="rs2", locus_index=0, chrom="6", start=3, ref="G", alts="A", vrs_id=vrs),
     ]
     overlay = [
         _row(table="resolution.csv", subject="rs1", field="alts", operation="update", value="A,T"),
@@ -470,8 +541,14 @@ def test_a_group_scoped_update_that_refuses_reports_once_per_reason_not_once_per
 
 def test_an_insert_missing_a_required_column_is_an_error_rather_than_a_dropped_row() -> None:
     overlay = [
-        _row(table="frequencies.csv", subject="rs1", member="global", field="allele_count",
-             operation="insert", value="7"),
+        _row(
+            table="frequencies.csv",
+            subject="rs1",
+            member="global",
+            field="allele_count",
+            operation="insert",
+            value="7",
+        ),
     ]
     after, errors, _ = apply_overrides("frequencies.csv", [], overlay)
     assert after == []
@@ -481,8 +558,7 @@ def test_an_insert_missing_a_required_column_is_an_error_rather_than_a_dropped_r
 def test_overrides_for_another_table_are_left_alone() -> None:
     """A caller hands the whole file to each table; each picks its own rows out."""
     overlay = [
-        _row(table="literature.csv", subject="8696333", field="doi", operation="update",
-             value="10.1/a"),
+        _row(table="literature.csv", subject="8696333", field="doi", operation="update", value="10.1/a"),
     ]
     rows = [ResolutionRow(variant_key="rs1", locus_index=0, chrom="6", start=1)]
     after, errors, warnings = apply_overrides("resolution.csv", rows, overlay)
@@ -492,10 +568,17 @@ def test_overrides_for_another_table_are_left_alone() -> None:
 def test_a_decision_date_is_canonicalized_on_load() -> None:
     """It reaches `overrides.parquet` and so `artifact.digest`, where two spellings of one instant
     would be two identities for one overlay. A bare date is accepted and reads as midnight UTC."""
-    assert _row(
-        table="literature.csv", subject="8696333", field="doi", operation="update", value="10.1/a",
-        decided_at="2026-08-28",
-    ).decided_at == "2026-08-28T00:00:00Z"
+    assert (
+        _row(
+            table="literature.csv",
+            subject="8696333",
+            field="doi",
+            operation="update",
+            value="10.1/a",
+            decided_at="2026-08-28",
+        ).decided_at
+        == "2026-08-28T00:00:00Z"
+    )
 
 
 # ── the refusal texts, pinned ───────────────────────────────────────────────────────────────────
@@ -554,9 +637,7 @@ def test_a_decision_date_is_canonicalized_on_load() -> None:
         ),
     ],
 )
-def test_each_refusal_states_why_rather_than_only_that(
-    kwargs: dict[str, object], phrase: str
-) -> None:
+def test_each_refusal_states_why_rather_than_only_that(kwargs: dict[str, object], phrase: str) -> None:
     """Each refusal fires, and says the thing a caller greps for.
 
     A generic rejection is a dead end where a specific one is a fix (`@specific-rejection`), so the
@@ -619,8 +700,12 @@ def test_a_key_column_is_stored_the_way_it_is_compared() -> None:
     # And a member that is only whitespace is the empty member, not a distinct one — otherwise it
     # would read as naming a group member spelled "   ".
     blank = _row(
-        table="literature.csv", subject="12345678", member="   ",
-        field="doi", operation="update", value="10.1000/x",
+        table="literature.csv",
+        subject="12345678",
+        member="   ",
+        field="doi",
+        operation="update",
+        value="10.1000/x",
     )
     assert blank.member is None
 
@@ -632,8 +717,14 @@ _PROVENANCE = {"reason", "decided_by", "decided_at"}
 
 
 def _signature(**kwargs: object) -> str:
-    data: dict[str, object] = {"table": "frequencies.csv", "subject": "rs1", "member": "global",
-                               "field": "faf95", "operation": "update", "value": "0.0001"}
+    data: dict[str, object] = {
+        "table": "frequencies.csv",
+        "subject": "rs1",
+        "member": "global",
+        "field": "faf95",
+        "operation": "update",
+        "value": "0.0001",
+    }
     data.update(kwargs)
     return content_signature({"overrides.csv": [_row(**data)]})
 
@@ -662,17 +753,23 @@ def test_the_excluded_set_is_exactly_the_provenance_columns_and_they_stay_author
     and every writer serialize a row through it, and an emptied `reason` is a row the model refuses.
     """
     marked = {
-        (name, column)
-        for name, model in _ALL_MODELS.items()
-        for column in content_identity_exclusions(model)
+        (name, column) for name, model in _ALL_MODELS.items() for column in content_identity_exclusions(model)
     }
     assert marked == {("OverrideRow", column) for column in _PROVENANCE}
     assert _PROVENANCE <= set(authored_field_names(OverrideRow))
-    row = _row(table="frequencies.csv", subject="rs1", member="global", field="faf95",
-               operation="update", value="0.0001", decided_by="x")
+    row = _row(
+        table="frequencies.csv",
+        subject="rs1",
+        member="global",
+        field="faf95",
+        operation="update",
+        value="0.0001",
+        decided_by="x",
+    )
     dumped = row.model_dump(mode="json", exclude_none=True)
     assert {k: dumped[k] for k in ("reason", "decided_by")} == {
-        "reason": "checked against the source by hand", "decided_by": "x"
+        "reason": "checked against the source by hand",
+        "decided_by": "x",
     }
 
 

@@ -12,14 +12,12 @@ from pathlib import Path
 from just_dna_compiler.compiler import compile_module
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+    "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
 )
 _STUDIES = "rsid,pmid\nrs1801133,9545397\n"
 _RSID_ONLY = "rsid,genotype,state,conclusion,gene\nrs1801133,A/G,risk,MTHFR risk,MTHFR\n"
 _POSITIONED = (
-    "rsid,chrom,start,ref,genotype,state,conclusion,gene\n"
-    "rs1801133,1,11856378,A,A/G,risk,MTHFR risk,MTHFR\n"
+    "rsid,chrom,start,ref,genotype,state,conclusion,gene\nrs1801133,1,11856378,A,A/G,risk,MTHFR risk,MTHFR\n"
 )
 
 
@@ -46,6 +44,8 @@ def test_non_strict_emits_partial_artifact(tmp_path: Path) -> None:
 
 
 def test_strict_passes_when_all_positions_present(tmp_path: Path) -> None:
-    r = compile_module(_spec(tmp_path / "spec", _POSITIONED), tmp_path / "out", resolve_with_ensembl=False, strict=True)
+    r = compile_module(
+        _spec(tmp_path / "spec", _POSITIONED), tmp_path / "out", resolve_with_ensembl=False, strict=True
+    )
     assert r.success, r.errors
     assert (tmp_path / "out" / "weights.parquet").is_file()

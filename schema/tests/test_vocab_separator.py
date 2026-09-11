@@ -126,8 +126,19 @@ def _vocabulary_bound_validators() -> list[tuple[type[BaseModel], str, frozenset
     from just_dna_format.base import field_vocabularies
 
     modules = (
-        assertions, binning, frequency, gene_metrics, gene_validity, gwas, literature,
-        manifest, pgs, pgx, resolution, sources, spec,
+        assertions,
+        binning,
+        frequency,
+        gene_metrics,
+        gene_validity,
+        gwas,
+        literature,
+        manifest,
+        pgs,
+        pgx,
+        resolution,
+        sources,
+        spec,
     )
     seen: set[tuple[str, str]] = set()
     found: list[tuple[type[BaseModel], str, frozenset[str], object]] = []

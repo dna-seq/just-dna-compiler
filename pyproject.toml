@@ -16,8 +16,23 @@ dev = [
 # Every member pins `requires-python = ">=3.13"`. Saying so here is load-bearing: the rules that offer a
 # modern spelling (PEP 604 `X | None`) resolve against the floor, not against whichever interpreter runs.
 target-version = "py313"
-# Not enforced as a lint (E501 is deliberately unselected) — this is what `ruff format` would wrap to,
-# and it matches the prose-heavy docstrings and long diagnostic strings the codebase actually has.
+# Two exclusions, both about files nobody hand-writes as Python.
+#
+# `generated/` is `protoc` output: formatting it would put a reformat in the diff of every regeneration
+# and re-fail the format gate the next time the protos are rebuilt.
+#
+# Markdown is excluded because `ruff format` reformats fenced Python blocks inside it, and this repo's
+# docs are *records*. The first probe run rewrapped quoted snippets in eleven files, nine of them
+# archived `Sn` sections that CONSUMER_SUGGESTIONS_HISTORY keeps verbatim, and
+# `test_every_archived_section_is_marked_and_matches` failed on it — correctly. A snippet in an answered
+# item is evidence about the moment the reply was written, not a sample anyone should run today, so the
+# formatter has no standing over it for the same reason it has none over a commit message.
+extend-exclude = ["**/generated/**", "**/*.md"]
+# Not enforced as a lint (E501 is deliberately unselected) but enforced as formatting: `ruff format
+# --check .` runs in CI beside `ruff check .`, so this is the width the tree is actually at rather than
+# one it would be at if anyone ran the formatter. It matches the prose-heavy docstrings and long
+# diagnostic strings the codebase has. The tree was brought to it in one pass on 2026-09-11; the files
+# that moved were written before the width was declared.
 line-length = 110
 
 [tool.ruff.lint]

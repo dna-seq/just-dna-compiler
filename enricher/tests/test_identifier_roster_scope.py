@@ -24,10 +24,7 @@ from just_dna_enricher.identifiers import (
 from just_dna_enricher.net import PacingGate
 from typer.testing import CliRunner
 
-_YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: s86\n  title: S86\n  description: d\n  report_title: S86\n"
-)
+_YAML = "schema_version: '1.0'\nmodule:\n  name: s86\n  title: S86\n  description: d\n  report_title: S86\n"
 
 
 def _spec(tmp_path: Path, **tables: str) -> Path:
@@ -105,8 +102,7 @@ def test_multi_valued_cells_split_and_dedupe_across_tables(tmp_path: Path) -> No
     spec = _spec(
         tmp_path,
         variants__csv=(
-            "rsid,genotype,state,conclusion,trait_efo_id\n"
-            "rs1801133,C/T,risk,c,EFO:0004458;EFO:0004611\n"
+            "rsid,genotype,state,conclusion,trait_efo_id\nrs1801133,C/T,risk,c,EFO:0004458;EFO:0004611\n"
         ),
         studies__csv="rsid,pmid,trait_efo_id\nrs1801133,25741868,EFO:0004458\n",
     )
@@ -189,9 +185,7 @@ def test_the_command_never_reports_a_pass_over_a_question_it_did_not_put(tmp_pat
     from typer.testing import CliRunner
 
     spec = _spec(tmp_path, variants__csv=_VARIANTS, studies__csv="rsid,pmid\nrs1801133,25741868\n")
-    result = CliRunner().invoke(
-        app, ["check-identifiers", str(spec), "--no-traits", "--no-genes"]
-    )
+    result = CliRunner().invoke(app, ["check-identifiers", str(spec), "--no-traits", "--no-genes"])
     assert result.exit_code == 0
     assert "all identifiers current" not in result.output
     assert "no identifiers were checked" in result.output
@@ -203,10 +197,7 @@ def test_the_command_never_reports_a_pass_over_a_question_it_did_not_put(tmp_pat
 
 
 _PGX_YAML = _YAML
-_HAPLOTYPES = (
-    "haplotype_name,rsid,start,allele,gene\n"
-    "*2,rs4244285,94781859,A,CYP2C19\n"
-)
+_HAPLOTYPES = "haplotype_name,rsid,start,allele,gene\n*2,rs4244285,94781859,A,CYP2C19\n"
 
 
 def _hgnc(bands: dict[str, str]) -> OntologyClient:
@@ -217,9 +208,15 @@ def _hgnc(bands: dict[str, str]) -> OntologyClient:
         band = bands.get(symbol)
         if band is None or "prev_symbol" in str(request.url):
             return httpx.Response(200, json={"response": {"numFound": 0, "docs": []}})
-        return httpx.Response(200, json={"response": {"numFound": 1, "docs": [
-            {"symbol": symbol, "status": "Approved", "hgnc_id": "HGNC:1", "location": band}
-        ]}})
+        return httpx.Response(
+            200,
+            json={
+                "response": {
+                    "numFound": 1,
+                    "docs": [{"symbol": symbol, "status": "Approved", "hgnc_id": "HGNC:1", "location": band}],
+                }
+            },
+        )
 
     client = OntologyClient()
     client._client = httpx.Client(transport=httpx.MockTransport(handler))
@@ -238,9 +235,7 @@ def test_a_module_with_no_variants_csv_reaches_the_widened_roster(tmp_path: Path
     """
     spec = _spec(tmp_path, haplotypes__csv=_HAPLOTYPES)
     assert not (spec / "variants.csv").exists()
-    report = check_identifiers(
-        spec_dir=spec, check_traits=False, client=_hgnc({"CYP2C19": "10q23.33"})
-    )
+    report = check_identifiers(spec_dir=spec, check_traits=False, client=_hgnc({"CYP2C19": "10q23.33"}))
     assert [g.symbol for g in report.genes] == ["CYP2C19"]
     assert report.gene_tables_read == ["haplotypes.csv"]
 
@@ -252,9 +247,7 @@ def test_no_rows_to_place_a_symbol_against_is_a_reason_and_not_a_silent_zero(tmp
     place them against, which is a question never put rather than an agreement.
     """
     spec = _spec(tmp_path, haplotypes__csv=_HAPLOTYPES)
-    report = check_identifiers(
-        spec_dir=spec, check_traits=False, client=_hgnc({"CYP2C19": "10q23.33"})
-    )
+    report = check_identifiers(spec_dir=spec, check_traits=False, client=_hgnc({"CYP2C19": "10q23.33"}))
     assert report.gene_loci_compared == 0
     assert report.gene_loci == []
     assert report.gene_loci_not_checked is not None

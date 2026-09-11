@@ -78,8 +78,7 @@ def test_validate_malformed_row(tmp_path: Path) -> None:
 def test_validate_duplicate_genotype(tmp_path: Path) -> None:
     (tmp_path / "module_spec.yaml").write_text(yaml.dump(_MODULE_YAML))
     (tmp_path / "variants.csv").write_text(
-        "rsid,genotype,weight,state,conclusion\n"
-        "rs123,A/G,0.5,risk,C\nrs123,A/G,-0.3,protective,Other\n"
+        "rsid,genotype,weight,state,conclusion\nrs123,A/G,0.5,risk,C\nrs123,A/G,-0.3,protective,Other\n"
     )
     result = validate_spec(tmp_path)
     assert not result.valid
@@ -88,9 +87,7 @@ def test_validate_duplicate_genotype(tmp_path: Path) -> None:
 
 def test_validate_weight_direction_warning(tmp_path: Path) -> None:
     (tmp_path / "module_spec.yaml").write_text(yaml.dump(_MODULE_YAML))
-    (tmp_path / "variants.csv").write_text(
-        "rsid,genotype,weight,state,conclusion\nrs123,A/G,0.5,risk,C\n"
-    )
+    (tmp_path / "variants.csv").write_text("rsid,genotype,weight,state,conclusion\nrs123,A/G,0.5,risk,C\n")
     (tmp_path / "studies.csv").write_text(
         "rsid,pmid,population,p_value,conclusion,study_design\nrs123,123456,T,0.05,E,U\n"
     )
@@ -106,9 +103,21 @@ def test_weights_schema_and_dtypes(tmp_path: Path) -> None:
     compile_module(_write_spec(tmp_path / "spec"), tmp_path / "out", resolve_with_ensembl=False)
     df = pl.read_parquet(tmp_path / "out" / "weights.parquet")
     required = {
-        "rsid", "genotype", "weight", "state", "conclusion", "priority", "module",
-        "curator", "method", "clinvar", "pathogenic", "benign",
-        "likely_pathogenic", "likely_benign", "alts",
+        "rsid",
+        "genotype",
+        "weight",
+        "state",
+        "conclusion",
+        "priority",
+        "module",
+        "curator",
+        "method",
+        "clinvar",
+        "pathogenic",
+        "benign",
+        "likely_pathogenic",
+        "likely_benign",
+        "alts",
     }
     assert required.issubset(set(df.columns))
     assert df.schema["genotype"] == pl.List(pl.Utf8)
@@ -131,8 +140,8 @@ def test_annotations_deduplicated_by_variant_effect_pair(tmp_path: Path) -> None
             strict=True,
         )
     )
-    assert len(keys) == len(set(keys))                   # one row per distinct variant-effect pair
-    assert ann.height == 3                               # two rs4244285 effects + one rs1057910
+    assert len(keys) == len(set(keys))  # one row per distinct variant-effect pair
+    assert ann.height == 3  # two rs4244285 effects + one rs1057910
     assert set(ann["category"].to_list()) == {"cyp2c19", "cyp2c9"}
 
 
@@ -180,9 +189,9 @@ def test_reverse_recompile_roundtrip_preserves_data(tmp_path: Path) -> None:
     recomp = pl.read_parquet(tmp_path / "recompiled" / "weights.parquet")
 
     def keys(df: pl.DataFrame) -> set[str]:
-        return {f"{r[0]}:{'/'.join(r[1])}" for r in df.select('rsid', 'genotype').iter_rows()}
+        return {f"{r[0]}:{'/'.join(r[1])}" for r in df.select("rsid", "genotype").iter_rows()}
 
-    assert keys(orig) == keys(recomp)                                    # (rsid, genotype) set
+    assert keys(orig) == keys(recomp)  # (rsid, genotype) set
     assert set(orig["rsid"].to_list()) == set(recomp["rsid"].to_list())  # rsid set
     weights = {r[0]: r[1] for r in recomp.select("conclusion", "weight").iter_rows()}
-    assert weights["CYP2C19*2 het"] == -0.8                              # weights survive
+    assert weights["CYP2C19*2 het"] == -0.8  # weights survive

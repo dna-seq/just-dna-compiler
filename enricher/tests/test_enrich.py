@@ -31,8 +31,7 @@ from just_dna_format.vrs import derive_vrs_allele_id
 _LICENCE_CSV = preferred_spelling(SOURCES_CSV)
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+    "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
 )
 _STUDIES = "rsid,pmid\nrs1801133,9545397\n"
 
@@ -75,8 +74,10 @@ def _rows_by_key(spec_dir: Path) -> dict[str, list[ResolutionRow]]:
     rows: dict[str, list[ResolutionRow]] = {}
     with (spec_dir / "resolution.csv").open(encoding="utf-8", newline="") as handle:
         for record in csv.DictReader(handle):
-            r = ResolutionRow(**{k: (v or None) for k, v in record.items() if k != "genome_build"},
-                              genome_build=record["genome_build"])
+            r = ResolutionRow(
+                **{k: (v or None) for k, v in record.items() if k != "genome_build"},
+                genome_build=record["genome_build"],
+            )
             rows.setdefault(r.variant_key, []).append(r)
     return rows
 
@@ -205,7 +206,7 @@ def test_a_spelling_that_cannot_be_reconciled_is_kept_and_reported(tmp_path: Pat
     spec = _spec(tmp_path / "rot", f"rsid,genotype,state,conclusion\n{_SHOX_RSID},C/CAG,risk,c\n")
     with caplog.at_level("WARNING"):
         result = enrich(spec, offline=True, ensembl_cache=cache)
-    assert result.fully_resolved                       # kept, not dropped
+    assert result.fully_resolved  # kept, not dropped
     assert _rows_by_key(spec)[_SHOX_RSID][0].start == 634691
     message = "\n".join(record.getMessage() for record in caplog.records)
     assert "could not be decided" in message and "KEPT" in message
@@ -245,8 +246,18 @@ def _rest_variation_response() -> httpx.Response:
         json={
             "name": "rs1801133",
             "mappings": [
-                {"seq_region_name": "1", "start": 11856377, "allele_string": "G/A", "assembly_name": "GRCh38"},
-                {"seq_region_name": "1", "start": 99, "allele_string": "G/A", "assembly_name": "GRCh37"},  # filtered
+                {
+                    "seq_region_name": "1",
+                    "start": 11856377,
+                    "allele_string": "G/A",
+                    "assembly_name": "GRCh38",
+                },
+                {
+                    "seq_region_name": "1",
+                    "start": 99,
+                    "allele_string": "G/A",
+                    "assembly_name": "GRCh37",
+                },  # filtered
             ],
         },
     )
@@ -274,12 +285,21 @@ def test_tenacity_retries_transient_then_succeeds() -> None:
             if calls["graphql"] == 1:
                 raise httpx.ConnectError("transient", request=request)
             # second attempt: valid GraphQL variant node
-            return httpx.Response(200, json={"data": {"variant": {
-                "name": "rs1801133",
-                "alleles": [{"allele_type": {"value": "reference"}, "reference_sequence": "G"},
-                            {"allele_type": {"value": "alt"}, "reference_sequence": "A"}],
-                "slice": {"location": {"region_name": "1", "start": 11856377}},
-            }}})
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "variant": {
+                            "name": "rs1801133",
+                            "alleles": [
+                                {"allele_type": {"value": "reference"}, "reference_sequence": "G"},
+                                {"allele_type": {"value": "alt"}, "reference_sequence": "A"},
+                            ],
+                            "slice": {"location": {"region_name": "1", "start": 11856377}},
+                        }
+                    }
+                },
+            )
         return _rest_variation_response()
 
     resolver = EnsemblResolver()
@@ -299,6 +319,7 @@ def test_a_transport_failure_returns_none_where_an_empty_answer_returns_a_list()
     A published rsID on a run where egress breaks must not be reported with the same value as one
     Ensembl genuinely has no locus for — that value is what made a real variant read as fabricated.
     """
+
     def dead(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("egress down", request=request)
 
@@ -315,19 +336,18 @@ def test_a_transport_failure_returns_none_where_an_empty_answer_returns_a_list()
     answered._client = httpx.Client(transport=httpx.MockTransport(empty))
     empty_loci, empty_source = answered.resolve_rsid("rs2000000000")
 
-    assert loci is None and source is None           # could not ask
-    assert empty_loci == [] and empty_source == "ensembl-rest"   # asked, nothing there
-    assert loci is not empty_loci                    # and they are no longer the same value
+    assert loci is None and source is None  # could not ask
+    assert empty_loci == [] and empty_source == "ensembl-rest"  # asked, nothing there
+    assert loci is not empty_loci  # and they are no longer the same value
 
 
 def test_a_4xx_is_an_answer_and_a_5xx_is_a_failure() -> None:
     """Ensembl 400s on rsIDs it cannot resolve (`rs3216883`, merged per dbSNP), so a 4xx is a
     negative answer. Only the cases where nothing came back are unchecked."""
+
     def status(code: int) -> EnsemblResolver:
         resolver = EnsemblResolver()
-        resolver._client = httpx.Client(
-            transport=httpx.MockTransport(lambda _r: httpx.Response(code))
-        )
+        resolver._client = httpx.Client(transport=httpx.MockTransport(lambda _r: httpx.Response(code)))
         return resolver
 
     assert status(400).resolve_rsid("rs3216883") == ([], "ensembl-rest")
@@ -339,6 +359,7 @@ def test_an_unreachable_rsid_writes_no_not_found_row(cache: Path, tmp_path: Path
     """The artifact half. `not_found` says a source was asked and does not have this rsID; on a
     failed request nobody established that, so the row is not written at all — the same treatment
     the non-GRCh38 branch already gave the same shape of non-answer."""
+
     def dead(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("egress down", request=request)
 
@@ -349,12 +370,16 @@ def test_an_unreachable_rsid_writes_no_not_found_row(cache: Path, tmp_path: Path
     # provisions the real 87 MB ClinVar snapshot into the developer's cache — which is `enrich()`
     # working as designed, and is not what a resolver unit test is asking about.
     result = enrich(
-        spec, ensembl_cache=cache, clinvar_cache=tmp_path, resolver=resolver,
-        use_gnomad=False, download=False,
+        spec,
+        ensembl_cache=cache,
+        clinvar_cache=tmp_path,
+        resolver=resolver,
+        use_gnomad=False,
+        download=False,
     )
 
-    assert result.unreachable_rsids == ["rs6567160"]      # named, not merely absent from a set
-    assert result.unresolved == ["rs6567160"]             # still unresolved: strict still refuses
+    assert result.unreachable_rsids == ["rs6567160"]  # named, not merely absent from a set
+    assert result.unresolved == ["rs6567160"]  # still unresolved: strict still refuses
     assert [row for row in result.rows if row.status == "not_found"] == []
     assert not result.fully_resolved
 
@@ -391,8 +416,12 @@ def test_a_dbsnp_outage_does_not_sink_a_finished_enrichment(
     spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,C/T,risk,c\n")
 
     result = enrich(
-        spec, ensembl_cache=cache, clinvar_cache=tmp_path, verify_rsids=True,
-        use_gnomad=False, download=False,
+        spec,
+        ensembl_cache=cache,
+        clinvar_cache=tmp_path,
+        verify_rsids=True,
+        use_gnomad=False,
+        download=False,
     )
 
     assert result.rows, "the resolution the run had already done must survive the outage"
@@ -416,16 +445,19 @@ def test_offline_with_no_cache_at_all_writes_no_not_found_row(tmp_path: Path) ->
     """
     spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,C/T,risk,c\n")
     result = enrich(
-        spec, offline=True, ensembl_cache=tmp_path / "no-cache", clinvar_cache=tmp_path / "no-cv",
+        spec,
+        offline=True,
+        ensembl_cache=tmp_path / "no-cache",
+        clinvar_cache=tmp_path / "no-cv",
         download=False,
     )
 
     # The behavioural assertion first, deliberately: on the pre-fix tree this is the line that fails,
     # and it names the fabricated row rather than a result field that did not exist yet.
     assert [row for row in result.rows if row.status == "not_found"] == []
-    assert result.unresolved == ["rs1801133"]          # still unresolved: strict still refuses
-    assert result.unconsulted_rsids == ["rs1801133"]   # named separately: nobody looked
-    assert result.unreachable_rsids == []              # and NOT confused with "the request failed"
+    assert result.unresolved == ["rs1801133"]  # still unresolved: strict still refuses
+    assert result.unconsulted_rsids == ["rs1801133"]  # named separately: nobody looked
+    assert result.unreachable_rsids == []  # and NOT confused with "the request failed"
 
 
 def test_offline_WITH_a_cache_still_writes_not_found_for_an_rsid_it_lacks(
@@ -441,8 +473,8 @@ def test_offline_WITH_a_cache_still_writes_not_found_for_an_rsid_it_lacks(
     spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs77777777,A/G,risk,c\n")
     result = enrich(spec, offline=True, ensembl_cache=cache, clinvar_cache=tmp_path, download=False)
 
-    assert result.unconsulted_rsids == []                    # the cache was opened
-    assert [row.status for row in result.rows] == ["not_found"]   # and genuinely lacks the rsID
+    assert result.unconsulted_rsids == []  # the cache was opened
+    assert [row.status for row in result.rows] == ["not_found"]  # and genuinely lacks the rsID
 
 
 # ── strict mode ───────────────────────────────────────────────────────────────────────────────
@@ -487,13 +519,17 @@ def test_gnomad_link_never_overrides_an_earlier_link(cache: Path, tmp_path: Path
     # gnomAD would answer with a DIFFERENT alt for the same rsid, so a wrong ordering is visible.
     transport = _CountingTransport({"data": {"v0": {"variant_id": "1-11856377-G-C"}}})
     spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c\n")
-    result = enrich(spec, ensembl_cache=cache, clinvar_cache=tmp_path / "no_clinvar",
-                    gnomad_client=_gnomad_client(transport))
+    result = enrich(
+        spec,
+        ensembl_cache=cache,
+        clinvar_cache=tmp_path / "no_clinvar",
+        gnomad_client=_gnomad_client(transport),
+    )
 
     row = next(r for r in result.rows if r.rsid == "rs1801133")
     assert row.source == "cache"
-    assert row.alts == "A"          # the cache's allele, not gnomAD's "C"
-    assert transport.calls == 0     # nothing was left for gnomAD to resolve, so it was never called
+    assert row.alts == "A"  # the cache's allele, not gnomAD's "C"
+    assert transport.calls == 0  # nothing was left for gnomAD to resolve, so it was never called
 
 
 def test_gnomad_link_fills_only_what_nothing_else_could(cache: Path, tmp_path: Path) -> None:
@@ -502,8 +538,13 @@ def test_gnomad_link_fills_only_what_nothing_else_could(cache: Path, tmp_path: P
     # `resolver=` is a live-Ensembl stub that finds nothing, so the chain reaches gnomAD.
     stub = EnsemblResolver()
     stub._client = httpx.Client(transport=httpx.MockTransport(lambda _r: httpx.Response(404)))
-    result = enrich(spec, ensembl_cache=cache, clinvar_cache=tmp_path / "no_clinvar",
-                    resolver=stub, gnomad_client=_gnomad_client(transport))
+    result = enrich(
+        spec,
+        ensembl_cache=cache,
+        clinvar_cache=tmp_path / "no_clinvar",
+        resolver=stub,
+        gnomad_client=_gnomad_client(transport),
+    )
 
     row = next(r for r in result.rows if r.rsid == "rs88888888")
     assert row.source == "gnomad"
@@ -517,9 +558,13 @@ def test_offline_enrich_makes_no_gnomad_call(cache: Path, tmp_path: Path) -> Non
             raise AssertionError(f"offline enrich reached the network: {request.url}")
 
     spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs77777777,A/G,risk,c\n")
-    result = enrich(spec, offline=True, ensembl_cache=cache,
-                    clinvar_cache=tmp_path / "no_clinvar",
-                    gnomad_client=_gnomad_client(_Exploding()))
+    result = enrich(
+        spec,
+        offline=True,
+        ensembl_cache=cache,
+        clinvar_cache=tmp_path / "no_clinvar",
+        gnomad_client=_gnomad_client(_Exploding()),
+    )
     assert result.unresolved == ["rs77777777"]
 
 
@@ -532,9 +577,7 @@ def test_enrich_mints_vrs_ids_onto_resolved_rows(cache: Path, tmp_path: Path) ->
     assert row.vrs_spec == "2.0"
 
 
-def test_the_mint_result_survives_the_call_instead_of_being_logged_away(
-    cache: Path, tmp_path: Path
-) -> None:
+def test_the_mint_result_survives_the_call_instead_of_being_logged_away(cache: Path, tmp_path: Path) -> None:
     """RM40: `enrich()` computed the coverage counters and threw them away.
 
     They are the same two numbers `compile_module` later stamps into
@@ -556,7 +599,10 @@ def test_the_mint_result_survives_the_call_instead_of_being_logged_away(
 
     off = _spec(tmp_path / "spec2", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c\n")
     skipped = enrich(
-        off, offline=True, ensembl_cache=cache, clinvar_cache=tmp_path / "no_clinvar",
+        off,
+        offline=True,
+        ensembl_cache=cache,
+        clinvar_cache=tmp_path / "no_clinvar",
         mint_vrs=False,
     )
     assert skipped.vrs is None
@@ -583,12 +629,11 @@ def test_unqueryable_clinvar_cache_degrades_instead_of_crashing(
         "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c\nrs77777777,A/G,risk,c\n",
     )
     with caplog.at_level("WARNING"):
-        result = enrich(spec, offline=True, ensembl_cache=cache,
-                        clinvar_cache=tmp_path / "foreign_clinvar")
+        result = enrich(spec, offline=True, ensembl_cache=cache, clinvar_cache=tmp_path / "foreign_clinvar")
 
     resolved = next(r for r in result.rows if r.rsid == "rs1801133")
-    assert resolved.chrom == "1" and resolved.source == "cache"   # the Ensembl link still answered
-    assert result.unresolved == ["rs77777777"]                    # the ClinVar miss is just a miss
+    assert resolved.chrom == "1" and resolved.source == "cache"  # the Ensembl link still answered
+    assert result.unresolved == ["rs77777777"]  # the ClinVar miss is just a miss
     assert any("not queryable" in message for message in caplog.messages)
 
 
@@ -625,8 +670,9 @@ def test_multiallelic_snapshot_row_resolves(multiallelic_cache: Path, tmp_path: 
     exist at the locus (`G` is ref, `A` is an alt), so the only way this fails is the separator bug.
     """
     spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs4244285,A/G,risk,c\n")
-    result = enrich(spec, offline=True, ensembl_cache=multiallelic_cache,
-                    clinvar_cache=tmp_path / "no_clinvar")
+    result = enrich(
+        spec, offline=True, ensembl_cache=multiallelic_cache, clinvar_cache=tmp_path / "no_clinvar"
+    )
     assert result.unresolved == []
     row = result.rows[0]
     assert (row.chrom, row.start, row.ref) == ("10", 94781859, "G")
@@ -634,16 +680,15 @@ def test_multiallelic_snapshot_row_resolves(multiallelic_cache: Path, tmp_path: 
     assert row.alts == "A,C,T"
 
 
-def test_multiallelic_reverse_backfill_matches_one_allele(
-    multiallelic_cache: Path, tmp_path: Path
-) -> None:
+def test_multiallelic_reverse_backfill_matches_one_allele(multiallelic_cache: Path, tmp_path: Path) -> None:
     """The mirror bug: reverse compared the authored alt to the whole joined cell with `!=`."""
     spec = _spec(
         tmp_path / "spec",
         "chrom,start,ref,alts,genotype,state,conclusion\n10,94781859,G,A,A/G,risk,c\n",
     )
-    result = enrich(spec, offline=True, ensembl_cache=multiallelic_cache,
-                    clinvar_cache=tmp_path / "no_clinvar")
+    result = enrich(
+        spec, offline=True, ensembl_cache=multiallelic_cache, clinvar_cache=tmp_path / "no_clinvar"
+    )
     assert result.rows[0].rsid == "rs4244285"
 
 
@@ -658,17 +703,15 @@ def _pgx_spec(d: Path, *, pharm: str | None = None, haplotypes: str | None = Non
     return d
 
 
-def test_pharm_variants_resolve_without_a_variants_csv(
-    multiallelic_cache: Path, tmp_path: Path
-) -> None:
+def test_pharm_variants_resolve_without_a_variants_csv(multiallelic_cache: Path, tmp_path: Path) -> None:
     """A PharmGKB module composes from pharm_variants.csv alone — it must still get coordinates."""
     spec = _pgx_spec(
         tmp_path / "spec",
-        pharm=("rsid,gene,genotype,drug,conclusion\n"
-               "rs4244285,CYP2C19,A/G,clopidogrel,reduced activation\n"),
+        pharm=("rsid,gene,genotype,drug,conclusion\nrs4244285,CYP2C19,A/G,clopidogrel,reduced activation\n"),
     )
-    result = enrich(spec, offline=True, ensembl_cache=multiallelic_cache,
-                    clinvar_cache=tmp_path / "no_clinvar")
+    result = enrich(
+        spec, offline=True, ensembl_cache=multiallelic_cache, clinvar_cache=tmp_path / "no_clinvar"
+    )
     assert result.unresolved == []
     assert [(r.rsid, r.chrom, r.start) for r in result.rows] == [("rs4244285", "10", 94781859)]
 
@@ -677,18 +720,16 @@ def test_haplotype_defining_variants_resolve(multiallelic_cache: Path, tmp_path:
     """A star-allele module's defining variants are rsIDs too, and were equally invisible before."""
     spec = _pgx_spec(
         tmp_path / "spec",
-        haplotypes=("haplotype_name,rsid,allele,gene\n"
-                    "*2,rs4244285,A,CYP2C19\n*17,rs12248560,T,CYP2C19\n"),
+        haplotypes=("haplotype_name,rsid,allele,gene\n*2,rs4244285,A,CYP2C19\n*17,rs12248560,T,CYP2C19\n"),
     )
-    result = enrich(spec, offline=True, ensembl_cache=multiallelic_cache,
-                    clinvar_cache=tmp_path / "no_clinvar")
+    result = enrich(
+        spec, offline=True, ensembl_cache=multiallelic_cache, clinvar_cache=tmp_path / "no_clinvar"
+    )
     assert result.unresolved == []
     assert {r.rsid for r in result.rows} == {"rs4244285", "rs12248560"}
 
 
-def test_a_variant_named_by_two_tables_is_resolved_once(
-    multiallelic_cache: Path, tmp_path: Path
-) -> None:
+def test_a_variant_named_by_two_tables_is_resolved_once(multiallelic_cache: Path, tmp_path: Path) -> None:
     """Dedup by variant_key, and `variants.csv` wins — it is the table carrying `alts`, a fact
     column, so letting a PGx row win would move an already-compiled module's artifact.digest."""
     spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs4244285,A/G,risk,c\n")
@@ -696,8 +737,9 @@ def test_a_variant_named_by_two_tables_is_resolved_once(
         "rsid,gene,genotype,drug,conclusion\nrs4244285,CYP2C19,A/G,clopidogrel,c\n",
         encoding="utf-8",
     )
-    result = enrich(spec, offline=True, ensembl_cache=multiallelic_cache,
-                    clinvar_cache=tmp_path / "no_clinvar")
+    result = enrich(
+        spec, offline=True, ensembl_cache=multiallelic_cache, clinvar_cache=tmp_path / "no_clinvar"
+    )
     assert len([r for r in result.rows if r.rsid == "rs4244285"]) == 1
 
 
@@ -706,7 +748,7 @@ def test_haplotype_allele_filters_a_one_to_many_rsid(tmp_path: Path) -> None:
     predicate as a genotype — a locus that cannot carry the allele is left out."""
     data = tmp_path / "hcache" / "data"
     data.mkdir(parents=True)
-    pl.DataFrame(   # one rsid, two loci; only the first can host allele `T`
+    pl.DataFrame(  # one rsid, two loci; only the first can host allele `T`
         {
             "id": ["rs999", "rs999"],
             "chrom": ["5", "6"],
@@ -719,8 +761,9 @@ def test_haplotype_allele_filters_a_one_to_many_rsid(tmp_path: Path) -> None:
         tmp_path / "spec",
         haplotypes="haplotype_name,rsid,allele,gene\n*2,rs999,T,GENE\n",
     )
-    result = enrich(spec, offline=True, ensembl_cache=tmp_path / "hcache",
-                    clinvar_cache=tmp_path / "no_clinvar")
+    result = enrich(
+        spec, offline=True, ensembl_cache=tmp_path / "hcache", clinvar_cache=tmp_path / "no_clinvar"
+    )
     assert [(r.chrom, r.start) for r in result.rows] == [("5", 500)]
 
 
@@ -739,8 +782,9 @@ def test_heteroplasmy_rows_resolve_like_the_other_tables(multiallelic_cache: Pat
         "rs4244285,CYP2C19,NC_012920.1,allele_fraction,0.0,0.1,c\n",
         encoding="utf-8",
     )
-    result = enrich(spec, offline=True, ensembl_cache=multiallelic_cache,
-                    clinvar_cache=tmp_path / "no_clinvar")
+    result = enrich(
+        spec, offline=True, ensembl_cache=multiallelic_cache, clinvar_cache=tmp_path / "no_clinvar"
+    )
 
     assert result.unresolved == []
     assert [(r.rsid, r.chrom, r.start) for r in result.rows] == [("rs4244285", "10", 94781859)]
@@ -756,8 +800,9 @@ def test_a_heteroplasmy_row_keys_the_way_variants_csv_does(multiallelic_cache: P
         "rs4244285,CYP2C19,NC_012920.1,allele_fraction,0.0,0.1,c\n",
         encoding="utf-8",
     )
-    result = enrich(spec, offline=True, ensembl_cache=multiallelic_cache,
-                    clinvar_cache=tmp_path / "no_clinvar")
+    result = enrich(
+        spec, offline=True, ensembl_cache=multiallelic_cache, clinvar_cache=tmp_path / "no_clinvar"
+    )
 
     assert len([r for r in result.rows if r.rsid == "rs4244285"]) == 1
     # the SNP row's `alts` survived, which is the thing dedup order exists to protect

@@ -35,6 +35,10 @@ jobs:
       # a CI failure rather than a difference between two developers' environments.
       - run: uv sync --locked
       - run: uv run ruff check .
+      # The formatter is a gate, not a suggestion: 308 files were brought to `line-length` in one
+      # pass on 2026-09-11, and without this step they drift back one commit at a time. Markdown and
+      # the generated protos are excluded in pyproject, with the reasons written there.
+      - run: uv run ruff format --check .
 
   test:
     name: pytest (py${{ matrix.python-version }})

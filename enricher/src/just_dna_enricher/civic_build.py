@@ -324,12 +324,18 @@ def download_civic_file(dest: Path, url: str) -> CivicDownload:
     revision into a finding rather than a silent change of answer.
     """
     streamed = stream_to_file(
-        dest, url, error_cls=CivicUnavailable, what=f"the CIViC file {Path(url).name}",
+        dest,
+        url,
+        error_cls=CivicUnavailable,
+        what=f"the CIViC file {Path(url).name}",
         timeout=120.0,
     )
     return CivicDownload(
-        path=streamed.path, sha256=streamed.sha256, url=url,
-        etag=streamed.etag, last_modified=streamed.last_modified,
+        path=streamed.path,
+        sha256=streamed.sha256,
+        url=url,
+        etag=streamed.etag,
+        last_modified=streamed.last_modified,
     )
 
 
@@ -414,26 +420,65 @@ def _read_tsv(path: Path, required: tuple[str, ...]) -> list[dict[str, str]]:
 
 
 _EVIDENCE_COLUMNS: tuple[str, ...] = (
-    "molecular_profile_id", "evidence_id", "evidence_type", "evidence_direction",
-    "evidence_level", "significance", "citation_id", "source_type", "rating",
-    "evidence_status", "variant_origin", "disease", "doid",
+    "molecular_profile_id",
+    "evidence_id",
+    "evidence_type",
+    "evidence_direction",
+    "evidence_level",
+    "significance",
+    "citation_id",
+    "source_type",
+    "rating",
+    "evidence_status",
+    "variant_origin",
+    "disease",
+    "doid",
 )
 _PROFILE_COLUMNS: tuple[str, ...] = ("molecular_profile_id", "variant_ids")
 _VARIANT_COLUMNS: tuple[str, ...] = (
-    "variant_id", "single_variant_molecular_profile_id", "gene", "variant",
-    "variant_aliases", "hgvs_descriptions", "allele_registry_id", "chromosome",
-    "start", "reference_bases", "variant_bases", "reference_build",
+    "variant_id",
+    "single_variant_molecular_profile_id",
+    "gene",
+    "variant",
+    "variant_aliases",
+    "hgvs_descriptions",
+    "allele_registry_id",
+    "chromosome",
+    "start",
+    "reference_bases",
+    "variant_bases",
+    "reference_build",
 )
 
 #: Emitted column order. Fixed, because a rebuild must be byte-identical (Principle 7) and a parquet
 #: written from a dict whose key order drifted is a different file for the same data.
 CIVIC_COLUMNS: tuple[str, ...] = (
-    "chrom", "start", "ref", "alt", "rsid", "allele_registry_id",
-    "identity_derivation", "direction", "significance_raw", "evidence_direction_raw",
-    "variant_id", "variant_name", "gene", "evidence_id", "molecular_profile_id",
-    "evidence_molecular_profile_id", "evidence_molecular_profile_name",
-    "evidence_level", "rating", "variant_origin", "pmid", "disease", "doid",
-    "civic_grch37_chrom", "civic_grch37_start", "evidence_status",
+    "chrom",
+    "start",
+    "ref",
+    "alt",
+    "rsid",
+    "allele_registry_id",
+    "identity_derivation",
+    "direction",
+    "significance_raw",
+    "evidence_direction_raw",
+    "variant_id",
+    "variant_name",
+    "gene",
+    "evidence_id",
+    "molecular_profile_id",
+    "evidence_molecular_profile_id",
+    "evidence_molecular_profile_name",
+    "evidence_level",
+    "rating",
+    "variant_origin",
+    "pmid",
+    "disease",
+    "doid",
+    "civic_grch37_chrom",
+    "civic_grch37_start",
+    "evidence_status",
 )
 
 
@@ -500,9 +545,7 @@ def build_snapshot(
             if entry.status != "submitted" or entry.evidence_id in known:
                 continue
             variant = by_variant_id.get(str(entry.variant_id))
-            if variant is None and (
-                entry.allele_registry_id or entry.variant_aliases or entry.civic_hgvs
-            ):
+            if variant is None and (entry.allele_registry_id or entry.variant_aliases or entry.civic_hgvs):
                 # `VariantSummaries.tsv` is accepted-only too, so most submitted evidence names a
                 # variant it does not describe. The same CSQ entry carries the four identity cells the
                 # TSV would have supplied, so the row is built from those and stamped `vcf_csq`.
@@ -609,9 +652,7 @@ def build_snapshot(
             withheld_direction += 1
 
         if curated_row is not None:
-            chrom, start, ref, alt = (
-                curated_row.chrom, curated_row.start, curated_row.ref, curated_row.alt
-            )
+            chrom, start, ref, alt = (curated_row.chrom, curated_row.start, curated_row.ref, curated_row.alt)
             rsids = [curated_row.rsid] if curated_row.rsid else rsids
         else:
             chrom, start, ref, alt = coords if coords is not None else (None, None, None, None)
@@ -638,7 +679,8 @@ def build_snapshot(
                 # a TSV row because `MolecularProfileSummaries.tsv` publishes none; filling it from
                 # the variant's name would state a profile name the source never wrote.
                 "evidence_molecular_profile_id": int(row.get("evidence_molecular_profile_id") or profile_id),
-                "evidence_molecular_profile_name": (row.get("evidence_molecular_profile_name") or "").strip() or None,
+                "evidence_molecular_profile_name": (row.get("evidence_molecular_profile_name") or "").strip()
+                or None,
                 "evidence_level": row.get("evidence_level") or None,
                 "rating": int(row["rating"]) if (row.get("rating") or "").isdigit() else None,
                 "variant_origin": row.get("variant_origin") or None,
@@ -656,8 +698,7 @@ def build_snapshot(
         )
 
     composite_profile_rows = sum(
-        1 for record in records
-        if record["evidence_molecular_profile_id"] != record["molecular_profile_id"]
+        1 for record in records if record["evidence_molecular_profile_id"] != record["molecular_profile_id"]
     )
 
     assert_registry_closes(len(evidence), len(records), dropped)
@@ -668,8 +709,8 @@ def build_snapshot(
     data_dir = out_dir / SNAPSHOT_DATA_DIRNAME
     data_dir.mkdir(parents=True, exist_ok=True)
     parquet_file = data_dir / CIVIC_PARQUET
-    frame = pl.DataFrame(records, schema=_polars_schema()) if records else pl.DataFrame(
-        schema=_polars_schema()
+    frame = (
+        pl.DataFrame(records, schema=_polars_schema()) if records else pl.DataFrame(schema=_polars_schema())
     )
     frame.write_parquet(parquet_file)
 
@@ -677,9 +718,9 @@ def build_snapshot(
     for record in records:
         if record["direction"] is not None:
             camps.setdefault(int(record["variant_id"]), set()).add(str(record["direction"]))
-    status_counts = dict(collections.Counter(
-        str(r["evidence_status"]) for r in records if r["evidence_status"] is not None
-    ))
+    status_counts = dict(
+        collections.Counter(str(r["evidence_status"]) for r in records if r["evidence_status"] is not None)
+    )
     result = CivicBuildResult(
         out_dir=out_dir,
         parquet_file=parquet_file,
@@ -884,9 +925,7 @@ def _classify_curated(variants: list[dict[str, str]]) -> dict[str, int]:
     one whose variant or name has gone. Counting only applications would report those two as the same
     zero (`@unreachable-not-absent`).
     """
-    by_id = {
-        int(v["variant_id"]): v for v in variants if (v.get("variant_id") or "").strip().isdigit()
-    }
+    by_id = {int(v["variant_id"]): v for v in variants if (v.get("variant_id") or "").strip().isdigit()}
     states = dict.fromkeys(CIVIC_CURATION_STATES, 0)
     for row in CIVIC_NAME_IDENTITY_BY_VARIANT.values():
         variant = by_id.get(row.variant_id)
@@ -988,15 +1027,31 @@ def _sort_key(record: dict[str, object]) -> tuple:
 def _polars_schema() -> dict:
     """The emitted schema, spelled out so an all-null column cannot be inferred to the wrong type."""
     return {
-        "chrom": pl.Utf8, "start": pl.Int64, "ref": pl.Utf8, "alt": pl.Utf8,
-        "rsid": pl.Utf8, "allele_registry_id": pl.Utf8, "identity_derivation": pl.Utf8,
-        "direction": pl.Utf8, "significance_raw": pl.Utf8, "evidence_direction_raw": pl.Utf8,
-        "variant_id": pl.Int64, "variant_name": pl.Utf8, "gene": pl.Utf8,
-        "evidence_id": pl.Int64, "molecular_profile_id": pl.Int64,
-        "evidence_molecular_profile_id": pl.Int64, "evidence_molecular_profile_name": pl.Utf8,
-        "evidence_level": pl.Utf8, "rating": pl.Int64, "variant_origin": pl.Utf8,
-        "pmid": pl.Utf8, "disease": pl.Utf8, "doid": pl.Utf8,
-        "civic_grch37_chrom": pl.Utf8, "civic_grch37_start": pl.Int64,
+        "chrom": pl.Utf8,
+        "start": pl.Int64,
+        "ref": pl.Utf8,
+        "alt": pl.Utf8,
+        "rsid": pl.Utf8,
+        "allele_registry_id": pl.Utf8,
+        "identity_derivation": pl.Utf8,
+        "direction": pl.Utf8,
+        "significance_raw": pl.Utf8,
+        "evidence_direction_raw": pl.Utf8,
+        "variant_id": pl.Int64,
+        "variant_name": pl.Utf8,
+        "gene": pl.Utf8,
+        "evidence_id": pl.Int64,
+        "molecular_profile_id": pl.Int64,
+        "evidence_molecular_profile_id": pl.Int64,
+        "evidence_molecular_profile_name": pl.Utf8,
+        "evidence_level": pl.Utf8,
+        "rating": pl.Int64,
+        "variant_origin": pl.Utf8,
+        "pmid": pl.Utf8,
+        "disease": pl.Utf8,
+        "doid": pl.Utf8,
+        "civic_grch37_chrom": pl.Utf8,
+        "civic_grch37_start": pl.Int64,
         "evidence_status": pl.Utf8,
     }
 

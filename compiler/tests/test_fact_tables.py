@@ -91,13 +91,9 @@ def _spec(
     # Deterministic directory name: `hash()` is per-process randomized for str, which would make the
     # path differ run to run for no reason.
     variant = hashlib.sha256(f"{sources}|{license}".encode()).hexdigest()[:8]
-    spec = tmp_path / (
-        f"spec_{int(frequencies)}{int(gene_metrics)}{int(literature)}_{variant}"
-    )
+    spec = tmp_path / (f"spec_{int(frequencies)}{int(gene_metrics)}{int(literature)}_{variant}")
     spec.mkdir(parents=True)
-    (spec / "module_spec.yaml").write_text(
-        _YAML + (f"license: {license}\n" if license else "")
-    )
+    (spec / "module_spec.yaml").write_text(_YAML + (f"license: {license}\n" if license else ""))
     (spec / "variants.csv").write_text(_VARIANTS)
     (spec / "studies.csv").write_text(_STUDIES)
     if frequencies:
@@ -118,7 +114,8 @@ def test_sidecars_leave_the_snp_core_byte_identical(tmp_path: Path) -> None:
     bare = compile_module(_spec(tmp_path), tmp_path / "o_bare", resolve_with_ensembl=False)
     rich = compile_module(
         _spec(tmp_path, frequencies=True, gene_metrics=True, literature=True),
-        tmp_path / "o_rich", resolve_with_ensembl=False,
+        tmp_path / "o_rich",
+        resolve_with_ensembl=False,
     )
     assert bare.success and rich.success, (bare.errors, rich.errors)
     for name in ("weights.parquet", "annotations.parquet", "studies.parquet"):
@@ -136,7 +133,8 @@ def test_sidecar_csvs_are_not_hashed_as_raw_inputs(tmp_path: Path) -> None:
     nothing but column order and timestamps.
     """
     result = compile_module(
-        _spec(tmp_path, frequencies=True, gene_metrics=True, literature=True), tmp_path / "out",
+        _spec(tmp_path, frequencies=True, gene_metrics=True, literature=True),
+        tmp_path / "out",
         resolve_with_ensembl=False,
     )
     input_names = {entry.name for entry in result.manifest.inputs}
@@ -155,9 +153,7 @@ def test_allele_frequency_is_materialized_in_the_parquet_only(tmp_path: Path) ->
 
     assert "allele_frequency" in frame.columns
     assert "allele_frequency" not in (spec / "frequencies.csv").read_text().splitlines()[0]
-    row = frame.filter(
-        (pl.col("variant_key") == _SICKLE) & (pl.col("population") == "afr")
-    ).to_dicts()[0]
+    row = frame.filter((pl.col("variant_key") == _SICKLE) & (pl.col("population") == "afr")).to_dicts()[0]
     assert row["allele_frequency"] == pytest.approx(row["allele_count"] / row["allele_number"])
     assert row["faf95"] == pytest.approx(0.04815774)
 
@@ -168,7 +164,7 @@ def test_manifest_blocks_summarize_the_sidecars(tmp_path: Path) -> None:
     freq, genes = result.manifest.frequency, result.manifest.gene_metrics
     assert freq.row_count == 3 and freq.variant_count == 2
     assert freq.datasets == ["gnomad_v4.1_joint"]
-    assert freq.populations == ["global", "afr"]      # canonical order, not alphabetical
+    assert freq.populations == ["global", "afr"]  # canonical order, not alphabetical
     assert genes.genes == ["HBB", "MTHFR"]
     assert genes.datasets == ["gnomad_v4.1_constraint"]
 
@@ -225,9 +221,7 @@ def test_the_literature_block_never_reports_unchecked_quotes_as_missing(tmp_path
     `quotes_found` must be 1 of 2 authored with 1 open-access article — NOT 1 of 2 read as "half the
     quotes are wrong", which is what summing a null as zero would imply.
     """
-    result = compile_module(
-        _spec(tmp_path, literature=True), tmp_path / "out", resolve_with_ensembl=False
-    )
+    result = compile_module(_spec(tmp_path, literature=True), tmp_path / "out", resolve_with_ensembl=False)
     assert result.success, result.errors
     block = result.manifest.literature
     assert (block.row_count, block.resolved_count, block.missing_count) == (2, 2, 0)
@@ -288,7 +282,7 @@ def test_a_nonexistent_citation_recorded_by_the_enricher_surfaces_at_compile(tmp
         "23456789,,,true,,,,pubmed,resolved,\n"
     )
     result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
-    assert result.success                                  # a warning, not a refusal
+    assert result.success  # a warning, not a refusal
     assert any("PubMed has no record of" in w for w in result.warnings)
     assert result.manifest.literature.missing_count == 1
 
@@ -308,13 +302,11 @@ def test_an_uncited_citation_is_reported_and_left_out_of_the_artifact(tmp_path: 
     same subject by construction rather than documenting a discrepancy a reader must reconcile.
     """
     spec = _spec(tmp_path, literature=True)
-    (spec / "literature.csv").write_text(
-        _LITERATURE + "34567890,,,true,,,,pubmed,resolved,\n"
-    )
+    (spec / "literature.csv").write_text(_LITERATURE + "34567890,,,true,,,,pubmed,resolved,\n")
     before = (spec / "literature.csv").read_bytes()
     result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
 
-    assert result.success                                   # a warning, not a refusal
+    assert result.success  # a warning, not a refusal
     warning = next(w for w in result.warnings if "no study, bin or pharm row in this module cites" in w)
     assert "34567890" in warning
     # The warning reports an action taken, not a nag about a file the author should tidy.
@@ -360,8 +352,16 @@ def test_the_literature_fact_hash_ignores_open_access_and_coverage(tmp_path: Pat
 
     base = {"pmid": "29165669", "doi": "10.1093/nar/gkx1153", "pmcid": "PMC5753237", "exists": True}
     before = [LiteratureRow(**base, is_open_access=False, quotes_authored=1, quotes_found=None)]
-    after = [LiteratureRow(**base, is_open_access=True, quotes_authored=1, quotes_found=1,
-                           source="pubmed", fetched_at="2026-08-01T00:00:00Z")]
+    after = [
+        LiteratureRow(
+            **base,
+            is_open_access=True,
+            quotes_authored=1,
+            quotes_found=1,
+            source="pubmed",
+            fetched_at="2026-08-01T00:00:00Z",
+        )
+    ]
     assert literature_signature(before) == literature_signature(after)
 
     # ...but a different article genuinely is different content.
@@ -383,12 +383,10 @@ def test_orphan_sidecar_rows_warn_but_do_not_fail(tmp_path: Path) -> None:
     """An over-broad sidecar is harmless; failing the compile would punish the author for it."""
     spec = _spec(tmp_path, frequencies=True, gene_metrics=True)
     (spec / "frequencies.csv").write_text(
-        _FREQUENCIES
-        + "9:99:A:G,,9,99,A,G,GRCh38,global,1,10,,,,gnomad_v4.1_joint,,,gnomad,resolved,\n"
+        _FREQUENCIES + "9:99:A:G,,9,99,A,G,GRCh38,global,1,10,,,,gnomad_v4.1_joint,,,gnomad,resolved,\n"
     )
     (spec / "gene_metrics.csv").write_text(
-        _GENE_METRICS
-        + "NOTINMODULE,ENSG00000000003,ENST3,true,0.1,1.0,0.9,0.5,0.1,0.1,0.1,0.9,1,1.1,,"
+        _GENE_METRICS + "NOTINMODULE,ENSG00000000003,ENST3,true,0.1,1.0,0.9,0.5,0.1,0.1,0.1,0.9,1,1.1,,"
         "gnomad_v4.1_constraint,gnomad-constraint,resolved,\n"
     )
     result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
@@ -399,9 +397,7 @@ def test_orphan_sidecar_rows_warn_but_do_not_fail(tmp_path: Path) -> None:
 
 def test_invalid_sidecar_row_is_a_compile_error(tmp_path: Path) -> None:
     spec = _spec(tmp_path, frequencies=True)
-    (spec / "frequencies.csv").write_text(
-        _FREQUENCIES.replace("global,4272", "GLOBAL WITH SPACES,4272")
-    )
+    (spec / "frequencies.csv").write_text(_FREQUENCIES.replace("global,4272", "GLOBAL WITH SPACES,4272"))
     result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
     assert not result.success
     assert any("population" in e for e in result.errors)
@@ -497,6 +493,7 @@ def test_two_rows_disagreeing_on_the_reference_base_are_an_error(tmp_path: Path)
 
 def _res_row(**kw):
     from just_dna_format.resolution import ResolutionRow
+
     base = {"variant_key": "k", "chrom": "11", "start": 5227002, "ref": "T", "alts": "A"}
     return ResolutionRow(**{**base, **kw})
 
@@ -509,25 +506,30 @@ _WRONG_ALLELE = _MTHFR  # a well-formed VA, but for a different allele
     [
         # "pass" | "warn" | "error" — and it is ONE column, not one per mode, which is the property
         # this table now pins: severity here follows whose limit the finding is, never the mode.
-        ("no vrs_id — nothing to check",
-         {"vrs_id": None}, "pass"),
-        ("correct substitution — verified",
-         {"vrs_id": _SICKLE}, "pass"),
-        ("tampered substitution — deterministic, so corruption",
-         {"vrs_id": _WRONG_ALLELE}, "error"),
+        ("no vrs_id — nothing to check", {"vrs_id": None}, "pass"),
+        ("correct substitution — verified", {"vrs_id": _SICKLE}, "pass"),
+        ("tampered substitution — deterministic, so corruption", {"vrs_id": _WRONG_ALLELE}, "error"),
         # ---- the tier's own limits: warnings, in both modes -------------------------------------
         # Each of these is unverifiable because *this compiler* cannot reach a reference sequence, and
         # no edit an author could make to the module would change that. They used to be errors under
         # `--strict`, which made the enricher's own online indel minting produce artifacts its own
         # compiler refused (`pathogenic_clinvar`: 185 alleles; `shox_par1`: 2).
-        ("indel — needs a sequence proxy, so unverifiable",
-         {"ref": "C", "alts": "CA", "vrs_id": _SICKLE}, "warn"),
-        ("off-assembly contig — no refget accession",
-         {"chrom": "GL000009.2", "start": 100, "vrs_id": _SICKLE}, "warn"),
-        ("position past the end of the contig",
-         {"chrom": "MT", "start": 999999, "vrs_id": _SICKLE}, "warn"),
-        ("non-GRCh38 build — no refget table (must not raise)",
-         {"genome_build": "GRCh37", "vrs_id": _SICKLE}, "warn"),
+        (
+            "indel — needs a sequence proxy, so unverifiable",
+            {"ref": "C", "alts": "CA", "vrs_id": _SICKLE},
+            "warn",
+        ),
+        (
+            "off-assembly contig — no refget accession",
+            {"chrom": "GL000009.2", "start": 100, "vrs_id": _SICKLE},
+            "warn",
+        ),
+        ("position past the end of the contig", {"chrom": "MT", "start": 999999, "vrs_id": _SICKLE}, "warn"),
+        (
+            "non-GRCh38 build — no refget table (must not raise)",
+            {"genome_build": "GRCh37", "vrs_id": _SICKLE},
+            "warn",
+        ),
         # A symbolic allele with a *stored* id moved out of this block in R2-5 — see the error section
         # below. Its **absence** is still the tier's limit and still lives here, which is the whole
         # asymmetry: an unminted id on such a row is honest, and a recorded one is a false claim.
@@ -536,35 +538,55 @@ _WRONG_ALLELE = _MTHFR  # a well-formed VA, but for a different allele
         # digest, and the indel branch it used to fall into offers a remedy (re-run online) that can
         # never apply. Same severity as its neighbours, and the *stored*-id question the symbolic
         # branch records is identical here and equally not answered by this row.
-        ("unobservable-allele marker — the callability axis, not a gap in the identity scheme",
-         {"alts": "*", "vrs_id": _SICKLE}, "warn"),
+        (
+            "unobservable-allele marker — the callability axis, not a gap in the identity scheme",
+            {"alts": "*", "vrs_id": _SICKLE},
+            "warn",
+        ),
         # ---- the row contradicting itself: errors, in both modes ---------------------------------
         # Not a limit of this tier. The row asserts an identity while withholding the very thing that
         # identity is a digest of, so nothing anywhere could ever check it.
-        ("position-only — an id recorded against no ALT",
-         {"alts": None, "vrs_id": _SICKLE}, "error"),
-        ("no coordinate — an id recorded against no place",
-         {"chrom": None, "start": None, "vrs_id": _SICKLE}, "error"),
+        ("position-only — an id recorded against no ALT", {"alts": None, "vrs_id": _SICKLE}, "error"),
+        (
+            "no coordinate — an id recorded against no place",
+            {"chrom": None, "start": None, "vrs_id": _SICKLE},
+            "error",
+        ),
         # R2-5, settled 2026-08-15. Tier-blame is for a finding **no authored edit could clear** (P5),
         # and deleting the cell clears this one — which is the test it was failing while filed there.
         # Nothing mints a VA for a symbolic allele, so a recorded one names a *different* allele: a
         # false content-addressed claim, catchable offline, exactly this block's shape. Gated until now
         # on the minting question, now answered in the grammar — `validate_vrs_allele_id` makes the
         # column `ga4gh:VA.`-only, so a present id here cannot be anything but a VA for another allele.
-        ("symbolic allele with a stored id — an id for an allele that has no content to address",
-         {"ref": "N", "alts": "<DEL:4977>", "vrs_id": _SICKLE}, "error"),
+        (
+            "symbolic allele with a stored id — an id for an allele that has no content to address",
+            {"ref": "N", "alts": "<DEL:4977>", "vrs_id": _SICKLE},
+            "error",
+        ),
         # A multi-allelic site is now verified allele by allele. It used to be a blanket
         # "unverifiable" on the grounds that a VA names one allele — true, and the reason `vrs_id` is
         # a parallel array of `alts` rather than a scalar; with the pair aligned there is nothing left
         # to be unsure about, and 909 of 1,613 rows in a real module stop being unverifiable.
-        ("multi-allelic, every allele named — verified",
-         {"alts": "A,G", "vrs_id": f"{_SICKLE},{_SICKLE_G}"}, "pass"),
-        ("multi-allelic with a hole — the named allele verifies, the hole is a non-event",
-         {"alts": "A,CA", "vrs_id": f"{_SICKLE},"}, "pass"),
-        ("multi-allelic, an id recorded against the indel member — unverifiable, not a mismatch",
-         {"alts": "A,CA", "vrs_id": f"{_SICKLE},{_MTHFR}"}, "warn"),
-        ("multi-allelic, right length and wrong order — the desync the count check cannot see",
-         {"alts": "A,G", "vrs_id": f"{_SICKLE_G},{_SICKLE}"}, "error"),
+        (
+            "multi-allelic, every allele named — verified",
+            {"alts": "A,G", "vrs_id": f"{_SICKLE},{_SICKLE_G}"},
+            "pass",
+        ),
+        (
+            "multi-allelic with a hole — the named allele verifies, the hole is a non-event",
+            {"alts": "A,CA", "vrs_id": f"{_SICKLE},"},
+            "pass",
+        ),
+        (
+            "multi-allelic, an id recorded against the indel member — unverifiable, not a mismatch",
+            {"alts": "A,CA", "vrs_id": f"{_SICKLE},{_MTHFR}"},
+            "warn",
+        ),
+        (
+            "multi-allelic, right length and wrong order — the desync the count check cannot see",
+            {"alts": "A,G", "vrs_id": f"{_SICKLE_G},{_SICKLE}"},
+            "error",
+        ),
     ],
 )
 def test_vrs_verify_matrix(label: str, row_kwargs: dict, outcome: str) -> None:
@@ -595,11 +617,11 @@ def test_vrs_coverage_counts_alleles_and_groups_the_gaps_by_reason() -> None:
     from just_dna_compiler.compiler import _vrs_coverage, _vrs_coverage_warnings
 
     rows = [
-        _res_row(vrs_id=_SICKLE),                                   # named
-        _res_row(alts="A,G", vrs_id=f"{_SICKLE},"),                 # one named, one hole
-        _res_row(vrs_id=None),                                      # mintable, nobody minted it
-        _res_row(ref="C", alts="CA", vrs_id=None),                  # indel: enricher's job
-        _res_row(chrom=None, start=None, vrs_id=None),              # nothing to mint from
+        _res_row(vrs_id=_SICKLE),  # named
+        _res_row(alts="A,G", vrs_id=f"{_SICKLE},"),  # one named, one hole
+        _res_row(vrs_id=None),  # mintable, nobody minted it
+        _res_row(ref="C", alts="CA", vrs_id=None),  # indel: enricher's job
+        _res_row(chrom=None, start=None, vrs_id=None),  # nothing to mint from
     ]
     alleles, identified, gaps = _vrs_coverage(rows)
 
@@ -635,8 +657,8 @@ def test_a_symbolic_allele_is_its_own_gap_class_never_an_indel() -> None:
     from just_dna_compiler.compiler import _vrs_coverage
 
     rows = [
-        _res_row(ref="N", alts="<DEL:4977>", vrs_id=None),   # the MT common deletion, as authored
-        _res_row(ref="C", alts="CA", vrs_id=None),           # a real indel: the enricher's job
+        _res_row(ref="N", alts="<DEL:4977>", vrs_id=None),  # the MT common deletion, as authored
+        _res_row(ref="C", alts="CA", vrs_id=None),  # a real indel: the enricher's job
     ]
     alleles, identified, gaps = _vrs_coverage(rows)
 
@@ -673,9 +695,9 @@ def test_the_unobservable_marker_is_its_own_gap_class_never_an_indel() -> None:
     from just_dna_compiler.compiler import _vrs_coverage
 
     rows = [
-        _res_row(alts="*", vrs_id=None),                    # the callability marker
+        _res_row(alts="*", vrs_id=None),  # the callability marker
         _res_row(ref="N", alts="<DEL:4977>", vrs_id=None),  # a structural event
-        _res_row(ref="C", alts="CA", vrs_id=None),          # a real indel: the enricher's job
+        _res_row(ref="C", alts="CA", vrs_id=None),  # a real indel: the enricher's job
     ]
     alleles, identified, gaps = _vrs_coverage(rows)
 
@@ -746,7 +768,7 @@ def test_an_absent_id_on_a_symbolic_allele_stays_a_warning() -> None:
 
     row = _res_row(ref="N", alts="<DEL:4977>", vrs_id=None)
     errors, warnings = _verify_vrs_ids([row])
-    assert errors == [] and warnings == []          # nothing recorded, so nothing to verify
+    assert errors == [] and warnings == []  # nothing recorded, so nothing to verify
     assert any("symbolic" in w for w in _vrs_coverage_warnings([row]))
 
 
@@ -758,11 +780,13 @@ def test_the_symbolic_gap_reason_is_one_constant_string() -> None:
     """
     from just_dna_compiler.compiler import _vrs_coverage
 
-    _alleles, _identified, gaps = _vrs_coverage([
-        _res_row(ref="N", alts="<DEL:4977>", vrs_id=None),
-        _res_row(chrom="22", start=42126499, ref="A", alts="<DUP:16000>", vrs_id=None),
-        _res_row(chrom="22", start=42126499, ref="A", alts="<CNV:TR:30>", vrs_id=None),
-    ])
+    _alleles, _identified, gaps = _vrs_coverage(
+        [
+            _res_row(ref="N", alts="<DEL:4977>", vrs_id=None),
+            _res_row(chrom="22", start=42126499, ref="A", alts="<DUP:16000>", vrs_id=None),
+            _res_row(chrom="22", start=42126499, ref="A", alts="<CNV:TR:30>", vrs_id=None),
+        ]
+    )
     assert len(gaps) == 1 and sum(gaps.values()) == 3
 
 
@@ -784,9 +808,9 @@ def test_a_symbolic_allele_on_a_non_grch38_module_reports_the_permanent_reason()
     # A *stored* id on the same row is an error since R2-5 — the row's own contradiction rather than
     # the tier's limit — but the ordering property under test is unchanged and is what is asserted:
     # whichever channel it comes out of, the sentence must name the symbolic allele and not the build.
-    errors, warnings = _verify_vrs_ids([_res_row(
-        ref="N", alts="<DEL:4977>", genome_build="GRCh37", vrs_id=_SICKLE
-    )])
+    errors, warnings = _verify_vrs_ids(
+        [_res_row(ref="N", alts="<DEL:4977>", genome_build="GRCh37", vrs_id=_SICKLE)]
+    )
     assert not warnings
     assert "symbolic" in errors[0] and "GRCh37" not in errors[0]
     # "minted upstream by the enricher" is the indel branch's promise and is false here.
@@ -804,9 +828,7 @@ def test_the_manifest_records_vrs_coverage_as_two_counts(tmp_path: Path) -> None
     covered = compile_module(_with_resolution(tmp_path, _SICKLE), tmp_path / "c").manifest
     assert (covered.compilation.vrs_alleles, covered.compilation.vrs_alleles_identified) == (1, 1)
 
-    gap = compile_module(
-        _with_resolution(tmp_path, "", ref="C", alts="CA"), tmp_path / "g"
-    ).manifest
+    gap = compile_module(_with_resolution(tmp_path, "", ref="C", alts="CA"), tmp_path / "g").manifest
     assert (gap.compilation.vrs_alleles, gap.compilation.vrs_alleles_identified) == (1, 0)
 
     bare = compile_module(_spec(tmp_path), tmp_path / "b", resolve_with_ensembl=False).manifest
@@ -945,7 +967,7 @@ def test_gene_metrics_redundancy_catches_a_mismapped_column(tmp_path: Path) -> N
         "gnomad_v4.1_constraint,gnomad-constraint,resolved,\n"
     )
     result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
-    assert result.success   # advisory, not fatal
+    assert result.success  # advisory, not fatal
     assert any("same quantity" in w for w in result.warnings)
 
 
@@ -974,34 +996,67 @@ def _variant(**kw):
 @pytest.mark.parametrize(
     ("label", "variant_kwargs", "table", "expected"),
     [
-        ("authored alleles agree with the genotype",
-         {"chrom": "11", "start": 5227002, "ref": "T", "alts": "A"}, {}, "pass"),
-        ("authored alleles contradict the genotype",
-         {"chrom": "11", "start": 5227002, "ref": "C", "alts": "G"}, {}, "finding"),
+        (
+            "authored alleles agree with the genotype",
+            {"chrom": "11", "start": 5227002, "ref": "T", "alts": "A"},
+            {},
+            "pass",
+        ),
+        (
+            "authored alleles contradict the genotype",
+            {"chrom": "11", "start": 5227002, "ref": "C", "alts": "G"},
+            {},
+            "finding",
+        ),
         # The motivating real-world bug: a paper reports alleles on the gene's strand while dbSNP
         # reports the forward strand, so `A/G` gets authored at a `C>T` locus. Complementing the
         # genotype gives exactly {T,C} — which is why it looks plausible and compiles clean today.
-        ("strand-flipped genotype (A/G authored at a C>T locus)",
-         {"chrom": "11", "start": 5227002, "ref": "C", "alts": "T", "genotype": "A/G"}, {}, "finding"),
-        ("hemizygous single allele, present",
-         {"chrom": "MT", "start": 100, "ref": "A", "alts": "T", "genotype": "T"}, {}, "pass"),
-        ("hemizygous single allele, absent",
-         {"chrom": "MT", "start": 100, "ref": "A", "alts": "T", "genotype": "C"}, {}, "finding"),
-        ("phased genotype is split on the pipe like any other",
-         {"chrom": "11", "start": 5227002, "ref": "T", "alts": "A", "genotype": "A|T"}, {}, "pass"),
-        ("ref authored but no alts — {ref} alone would flag every het row",
-         {"chrom": "11", "start": 5227002, "ref": "T"}, {}, "pass"),
-        ("nothing known about the alleles at all",
-         {"rsid": "rs334"}, {}, "pass"),
-        ("effect_allele names an allele the locus does not have",
-         {"chrom": "11", "start": 5227002, "ref": "T", "alts": "A", "effect_allele": "G"}, {}, "finding"),
-        ("effect_allele names the reference, which is a real allele",
-         {"chrom": "11", "start": 5227002, "ref": "T", "alts": "A", "effect_allele": "T"}, {}, "pass"),
+        (
+            "strand-flipped genotype (A/G authored at a C>T locus)",
+            {"chrom": "11", "start": 5227002, "ref": "C", "alts": "T", "genotype": "A/G"},
+            {},
+            "finding",
+        ),
+        (
+            "hemizygous single allele, present",
+            {"chrom": "MT", "start": 100, "ref": "A", "alts": "T", "genotype": "T"},
+            {},
+            "pass",
+        ),
+        (
+            "hemizygous single allele, absent",
+            {"chrom": "MT", "start": 100, "ref": "A", "alts": "T", "genotype": "C"},
+            {},
+            "finding",
+        ),
+        (
+            "phased genotype is split on the pipe like any other",
+            {"chrom": "11", "start": 5227002, "ref": "T", "alts": "A", "genotype": "A|T"},
+            {},
+            "pass",
+        ),
+        (
+            "ref authored but no alts — {ref} alone would flag every het row",
+            {"chrom": "11", "start": 5227002, "ref": "T"},
+            {},
+            "pass",
+        ),
+        ("nothing known about the alleles at all", {"rsid": "rs334"}, {}, "pass"),
+        (
+            "effect_allele names an allele the locus does not have",
+            {"chrom": "11", "start": 5227002, "ref": "T", "alts": "A", "effect_allele": "G"},
+            {},
+            "finding",
+        ),
+        (
+            "effect_allele names the reference, which is a real allele",
+            {"chrom": "11", "start": 5227002, "ref": "T", "alts": "A", "effect_allele": "T"},
+            {},
+            "pass",
+        ),
     ],
 )
-def test_allele_membership_matrix(
-    label: str, variant_kwargs: dict, table: dict, expected: str
-) -> None:
+def test_allele_membership_matrix(label: str, variant_kwargs: dict, table: dict, expected: str) -> None:
     """Severity is the mode ladder in both provenance cases — warn in best_effort, error in strict.
 
     The escalation the draft plan wanted (authored contradiction ⇒ error in *both* modes) is unsafe,
@@ -1036,18 +1091,32 @@ def test_resolved_alleles_are_unioned_across_a_one_to_many_rsid() -> None:
     from just_dna_format.resolution import ResolutionRow
 
     loci = [
-        ResolutionRow(variant_key="rs281864532", rsid="rs281864532", chrom="11",
-                      start=5226925, ref="GTT", alts="G", locus_index=0),
-        ResolutionRow(variant_key="rs281864532", rsid="rs281864532", chrom="11",
-                      start=5226926, ref="GT", alts="G", locus_index=1),
+        ResolutionRow(
+            variant_key="rs281864532",
+            rsid="rs281864532",
+            chrom="11",
+            start=5226925,
+            ref="GTT",
+            alts="G",
+            locus_index=0,
+        ),
+        ResolutionRow(
+            variant_key="rs281864532",
+            rsid="rs281864532",
+            chrom="11",
+            start=5226926,
+            ref="GT",
+            alts="G",
+            locus_index=1,
+        ),
     ]
     variant = _variant(rsid="rs281864532", genotype="G/GT")
     table = {"rs281864532": loci}
 
     allowed, provenance = _allowed_alleles(variant, table)
     assert provenance == "resolved"
-    assert allowed == {"G", "GT", "GTT"}          # the union, not either locus alone
-    assert not {"G", "GT"} <= {"G", "GTT"}        # ...and the first locus alone would NOT cover it
+    assert allowed == {"G", "GT", "GTT"}  # the union, not either locus alone
+    assert not {"G", "GT"} <= {"G", "GTT"}  # ...and the first locus alone would NOT cover it
 
     assert _check_allele_membership([variant], table, strict=True) == ([], [])
 
@@ -1064,9 +1133,7 @@ def test_a_locus_that_cannot_host_the_genotype_is_not_expanded_onto(tmp_path: Pa
     spec = tmp_path / "expand"
     spec.mkdir()
     (spec / "module_spec.yaml").write_text(_YAML)
-    (spec / "variants.csv").write_text(
-        "rsid,genotype,state,conclusion,gene\nrs999,A/T,risk,two loci,HBB\n"
-    )
+    (spec / "variants.csv").write_text("rsid,genotype,state,conclusion,gene\nrs999,A/T,risk,two loci,HBB\n")
     (spec / "studies.csv").write_text("rsid,pmid\nrs999,12345678\n")
     (spec / "resolution.csv").write_text(
         "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status,fetched_at\n"
@@ -1078,7 +1145,7 @@ def test_a_locus_that_cannot_host_the_genotype_is_not_expanded_onto(tmp_path: Pa
     assert any("cannot host the authored genotype" in w for w in first.warnings)
 
     weights = pl.read_parquet(tmp_path / "out1" / "weights.parquet")
-    assert weights.height == 1                       # only the locus that can host A/T
+    assert weights.height == 1  # only the locus that can host A/T
     assert weights["chrom"].to_list() == ["5"]
 
     strict = compile_module(spec, tmp_path / "out_strict", strict=True)
@@ -1129,9 +1196,7 @@ def _ba1_spec(tmp_path: Path, name: str, clin_sig: str, freq_rows: str) -> Path:
         "chrom,start,ref,alts,genotype,state,conclusion,gene,clin_sig\n"
         f"11,5227002,T,A,A/T,risk,Sickle-cell,HBB,{clin_sig}\n"
     )
-    (spec / "studies.csv").write_text(
-        "chrom,start,ref,pmid\n11,5227002,T,12345678\n"
-    )
+    (spec / "studies.csv").write_text("chrom,start,ref,pmid\n11,5227002,T,12345678\n")
     (spec / "frequencies.csv").write_text(_freq_csv(freq_rows))
     return spec
 
@@ -1152,7 +1217,9 @@ def test_sickle_cell_sits_just_under_the_ba1_threshold(tmp_path: Path) -> None:
     faf = _recorded_faf95("sickle")
     assert 0.04 < faf < 0.05, f"fixture drift: rs334 faf95 is {faf}"
 
-    row = f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,afr,3949,41442,,,{faf},gnomad_v4.1_joint,,,gnomad,resolved,\n"
+    row = (
+        f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,afr,3949,41442,,,{faf},gnomad_v4.1_joint,,,gnomad,resolved,\n"
+    )
 
     quiet = compile_module(
         _ba1_spec(tmp_path, "quiet", "pathogenic", row), tmp_path / "q", resolve_with_ensembl=False
@@ -1161,10 +1228,12 @@ def test_sickle_cell_sits_just_under_the_ba1_threshold(tmp_path: Path) -> None:
     assert not any("BA1" in w for w in quiet.warnings)
 
     loud = compile_module(
-        _ba1_spec(tmp_path, "loud", "pathogenic", row), tmp_path / "l",
-        resolve_with_ensembl=False, ba1_threshold=0.04,
+        _ba1_spec(tmp_path, "loud", "pathogenic", row),
+        tmp_path / "l",
+        resolve_with_ensembl=False,
+        ba1_threshold=0.04,
     )
-    assert loud.success            # warning only, in both modes
+    assert loud.success  # warning only, in both modes
     assert any("BA1" in w for w in loud.warnings)
 
 
@@ -1181,10 +1250,12 @@ def test_ba1_fires_on_a_genuinely_common_allele_called_pathogenic(tmp_path: Path
         "1,11796321,G,A,A/G,risk,Reduced activity,MTHFR,pathogenic\n"
     )
     (spec / "studies.csv").write_text("chrom,start,ref,pmid\n1,11796321,G,23456789\n")
-    (spec / "frequencies.csv").write_text(_freq_csv(
-        f"{_MTHFR},rs1801133,1,11796321,G,A,GRCh38,amr,19200,62494,,,{faf},"
-        f"gnomad_v4.1_joint,,,gnomad,resolved,\n"
-    ))
+    (spec / "frequencies.csv").write_text(
+        _freq_csv(
+            f"{_MTHFR},rs1801133,1,11796321,G,A,GRCh38,amr,19200,62494,,,{faf},"
+            f"gnomad_v4.1_joint,,,gnomad,resolved,\n"
+        )
+    )
     result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)
     assert result.success
     assert any("BA1" in w and "stand-alone evidence" in w for w in result.warnings)
@@ -1193,7 +1264,9 @@ def test_ba1_fires_on_a_genuinely_common_allele_called_pathogenic(tmp_path: Path
 def test_ba1_says_nothing_about_a_variant_the_module_does_not_call_pathogenic(tmp_path: Path) -> None:
     """The rule is about pathogenic claims. A common allele called `benign` is simply consistent."""
     faf = _recorded_faf95("mthfr")
-    row = f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,afr,3949,41442,,,{faf},gnomad_v4.1_joint,,,gnomad,resolved,\n"
+    row = (
+        f"{_SICKLE},rs334,11,5227002,T,A,GRCh38,afr,3949,41442,,,{faf},gnomad_v4.1_joint,,,gnomad,resolved,\n"
+    )
     result = compile_module(
         _ba1_spec(tmp_path, "benign", "benign", row), tmp_path / "out", resolve_with_ensembl=False
     )
@@ -1203,9 +1276,7 @@ def test_ba1_says_nothing_about_a_variant_the_module_does_not_call_pathogenic(tm
 
 # ── sources.csv: licensing as data, and the gate ────────────────────────────────────────────────
 _SRC_HDR = "source,layer,license,attribution,share_alike,commercial_use,declared_use\n"
-_CLINPGX_DECLARED = (
-    _SRC_HDR + "clinpgx,annotation,CC-BY-SA-4.0,ClinPGx,true,false,non_commercial\n"
-)
+_CLINPGX_DECLARED = _SRC_HDR + "clinpgx,annotation,CC-BY-SA-4.0,ClinPGx,true,false,non_commercial\n"
 _CLINPGX_UNDECLARED = _SRC_HDR + "clinpgx,annotation,CC-BY-SA-4.0,ClinPGx,true,false,unstated\n"
 
 
@@ -1227,8 +1298,7 @@ def test_sources_signature_matches_a_runtime_recomputation(tmp_path: Path) -> No
     spec = _spec(tmp_path, sources=_CLINPGX_DECLARED)
     result = compile_module(spec, tmp_path / "o", resolve_with_ensembl=False)
     with (spec / "sources.csv").open(encoding="utf-8", newline="") as handle:
-        parsed = [SourceRow(**{k: (v or None) for k, v in rec.items()})
-                  for rec in csv.DictReader(handle)]
+        parsed = [SourceRow(**{k: (v or None) for k, v in rec.items()}) for rec in csv.DictReader(handle)]
     assert result.manifest.sources.signature == source_signature(parsed)
 
 
@@ -1241,7 +1311,7 @@ def test_adding_sources_leaves_the_snp_core_byte_identical(tmp_path: Path) -> No
     assert bare.success and withsrc.success
     for name in ("weights.parquet", "annotations.parquet", "studies.parquet"):
         assert (tmp_path / "o_bare" / name).read_bytes() == (tmp_path / "o_src" / name).read_bytes()
-    assert bare.manifest.sources is None            # absent table → absent block
+    assert bare.manifest.sources is None  # absent table → absent block
     assert bare.manifest.artifact.digest != withsrc.manifest.artifact.digest  # different content
 
 
@@ -1249,20 +1319,16 @@ def test_adding_sources_leaves_the_snp_core_byte_identical(tmp_path: Path) -> No
 @pytest.mark.parametrize(
     "commercial_use,declared_use,compiles",
     [
-        ("false", "non_commercial", True),   # forbids, declared → allowed
-        ("false", "unstated", False),        # forbids, no declaration → refuse
-        ("false", "commercial", False),      # forbids, contradicted → refuse
-        ("", "unstated", True),              # unknown terms → warn, never refuse
-        ("true", "unstated", True),          # permissive
+        ("false", "non_commercial", True),  # forbids, declared → allowed
+        ("false", "unstated", False),  # forbids, no declaration → refuse
+        ("false", "commercial", False),  # forbids, contradicted → refuse
+        ("", "unstated", True),  # unknown terms → warn, never refuse
+        ("true", "unstated", True),  # permissive
     ],
 )
-def test_license_gate_matrix(
-    tmp_path: Path, commercial_use: str, declared_use: str, compiles: bool
-) -> None:
+def test_license_gate_matrix(tmp_path: Path, commercial_use: str, declared_use: str, compiles: bool) -> None:
     csv_text = _SRC_HDR + f"clinpgx,annotation,CC-BY-SA-4.0,ClinPGx,true,{commercial_use},{declared_use}\n"
-    result = compile_module(
-        _spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False
-    )
+    result = compile_module(_spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False)
     assert result.success is compiles, (result.errors, result.warnings)
     if not compiles:
         assert any("licensing" in e for e in result.errors)
@@ -1272,17 +1338,14 @@ def test_gate_refuses_in_best_effort_too(tmp_path: Path) -> None:
     """Not a `strict` concern: strict means 'reproducible artifact', which this is unrelated to."""
     spec = _spec(tmp_path, sources=_CLINPGX_UNDECLARED)
     for strict in (False, True):
-        result = compile_module(spec, tmp_path / f"o_{strict}", resolve_with_ensembl=False,
-                                strict=strict)
+        result = compile_module(spec, tmp_path / f"o_{strict}", resolve_with_ensembl=False, strict=strict)
         assert not result.success
 
 
 def test_gate_writes_nothing_when_it_refuses(tmp_path: Path) -> None:
     """The gate sits before `output_dir.mkdir()` — a refusal must leave no artifact behind."""
     out = tmp_path / "o_refused"
-    result = compile_module(
-        _spec(tmp_path, sources=_CLINPGX_UNDECLARED), out, resolve_with_ensembl=False
-    )
+    result = compile_module(_spec(tmp_path, sources=_CLINPGX_UNDECLARED), out, resolve_with_ensembl=False)
     assert not result.success
     assert not out.exists()
 
@@ -1290,14 +1353,12 @@ def test_gate_writes_nothing_when_it_refuses(tmp_path: Path) -> None:
 def test_a_coordinate_only_source_does_not_taint(tmp_path: Path) -> None:
     """The false-viral case the per-layer split exists to prevent."""
     csv_text = _SRC_HDR + "cpic,resolution,CC-BY-SA-4.0,CPIC,true,false,unstated\n"
-    result = compile_module(
-        _spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False
-    )
+    result = compile_module(_spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False)
     assert result.success, result.errors
     block = result.manifest.sources
     assert block.share_alike_layers == ["resolution"]
     assert "annotation" not in block.noncommercial_layers
-    assert block.commercial_use is True   # a fact, not expression — the module stays sellable
+    assert block.commercial_use is True  # a fact, not expression — the module stays sellable
 
 
 def test_a_hand_declared_literature_service_is_not_an_orphan(tmp_path: Path) -> None:
@@ -1313,9 +1374,7 @@ def test_a_hand_declared_literature_service_is_not_an_orphan(tmp_path: Path) -> 
         + "europepmc,literature,,Europe PMC,,,unstated\n"
         + "pubmed,literature,,NCBI PubMed,,,unstated\n"
     )
-    declared = compile_module(
-        _spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False
-    )
+    declared = compile_module(_spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False)
     assert declared.success, declared.errors
     assert not [w for w in declared.warnings if "no table in this module uses" in w]
 
@@ -1328,9 +1387,7 @@ def test_a_frequency_declaration_with_no_frequencies_is_still_an_orphan(tmp_path
     `frequencies.csv` is machine-written and carries a `source` column. With no such table there is
     genuinely nothing the declaration describes, which is what the warning is for."""
     csv_text = _SRC_HDR + "gnomad,frequency,,gnomAD,,true,unstated\n"
-    result = compile_module(
-        _spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False
-    )
+    result = compile_module(_spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False)
     assert result.success, result.errors
     assert [w for w in result.warnings if "no table in this module uses" in w]
 
@@ -1342,9 +1399,7 @@ def test_a_permissive_source_cannot_launder_a_restricted_one(tmp_path: Path) -> 
         + "ensembl,resolution,,Ensembl,false,true,unstated\n"
         + "clinpgx,annotation,CC-BY-SA-4.0,ClinPGx,true,false,non_commercial\n"
     )
-    result = compile_module(
-        _spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False
-    )
+    result = compile_module(_spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False)
     assert result.success, result.errors
     assert result.manifest.sources.commercial_use is False
 
@@ -1356,9 +1411,7 @@ def test_unknown_terms_leave_the_verdict_undetermined(tmp_path: Path) -> None:
         + "ensembl,resolution,,Ensembl,false,true,unstated\n"
         + "pharmvar,annotation,CC-BY-SA-4.0,PharmVar,true,,unstated\n"
     )
-    result = compile_module(
-        _spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False
-    )
+    result = compile_module(_spec(tmp_path, sources=csv_text), tmp_path / "o", resolve_with_ensembl=False)
     assert result.success, result.errors
     assert result.manifest.sources.commercial_use is None
     assert result.manifest.sources.unknown_terms_sources == ["pharmvar"]
@@ -1369,11 +1422,10 @@ def test_declared_license_conflict_warns_in_both_modes(tmp_path: Path) -> None:
     non-escalation, after the ClinVar clin_sig cross-check."""
     spec = _spec(tmp_path, sources=_CLINPGX_DECLARED, license="MIT")
     for strict in (False, True):
-        result = compile_module(spec, tmp_path / f"o_lic_{strict}", resolve_with_ensembl=False,
-                                strict=strict)
+        result = compile_module(spec, tmp_path / f"o_lic_{strict}", resolve_with_ensembl=False, strict=strict)
         assert result.success, result.errors
         assert any("declares license" in w for w in result.manifest.compilation.warnings)
-    assert result.manifest.license == "MIT"   # author-declared, copied through
+    assert result.manifest.license == "MIT"  # author-declared, copied through
 
 
 def test_undeclared_and_orphan_sources_warn(tmp_path: Path) -> None:
@@ -1381,12 +1433,13 @@ def test_undeclared_and_orphan_sources_warn(tmp_path: Path) -> None:
     # reading the fact tables' own `source` columns.
     csv_text = _SRC_HDR + "notused,frequency,CC0,,false,true,unstated\n"
     result = compile_module(
-        _spec(tmp_path, frequencies=True, sources=csv_text), tmp_path / "o",
+        _spec(tmp_path, frequencies=True, sources=csv_text),
+        tmp_path / "o",
         resolve_with_ensembl=False,
     )
     assert result.success, result.errors
     warnings = result.manifest.compilation.warnings
-    assert any("no table in this module uses" in w for w in warnings)   # orphan: notused
+    assert any("no table in this module uses" in w for w in warnings)  # orphan: notused
     assert any("has no row for" in w and "gnomad" in w for w in warnings)  # undeclared: gnomad
 
 
@@ -1400,16 +1453,12 @@ def test_an_annotation_layer_source_is_never_called_an_orphan(tmp_path: Path) ->
         _spec(tmp_path, sources=_CLINPGX_DECLARED), tmp_path / "o", resolve_with_ensembl=False
     )
     assert result.success, result.errors
-    assert not any(
-        "no table in this module uses" in w for w in result.manifest.compilation.warnings
-    )
+    assert not any("no table in this module uses" in w for w in result.manifest.compilation.warnings)
     # …and it still governs the gate, which is the reason not to let it look ignorable.
     assert result.manifest.sources.commercial_use is False
 
 
-_RESOLUTION_HDR = (
-    "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,authority,status\n"
-)
+_RESOLUTION_HDR = "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,authority,status\n"
 
 
 def _with_links(spec: Path, rows: str) -> Path:
@@ -1441,9 +1490,7 @@ def test_a_resolution_link_is_not_a_source_name(tmp_path: Path) -> None:
     assert any("no table in this module uses" in w and "ensembl" in w for w in legacy_warnings)
 
     # New shape: the authority joins `sources.csv`, so neither warning fires.
-    current = _with_links(
-        _spec(tmp_path, sources=declared, license="MIT"), rows.format(authority="ensembl")
-    )
+    current = _with_links(_spec(tmp_path, sources=declared, license="MIT"), rows.format(authority="ensembl"))
     result = compile_module(current, tmp_path / "o_current")
     assert result.success, result.errors
     warnings = result.manifest.compilation.warnings
@@ -1458,9 +1505,7 @@ def test_a_resolution_authority_with_no_terms_row_still_warns(tmp_path: Path) ->
     spec = _with_links(_spec(tmp_path, sources=_CLINPGX_DECLARED), rows)
     result = compile_module(spec, tmp_path / "o")
     assert result.success, result.errors
-    assert any(
-        "has no row for" in w and "gnomad" in w for w in result.manifest.compilation.warnings
-    )
+    assert any("has no row for" in w and "gnomad" in w for w in result.manifest.compilation.warnings)
 
 
 def test_authored_and_reversed_links_declare_no_authority(tmp_path: Path) -> None:
@@ -1487,10 +1532,7 @@ def test_authority_is_outside_the_resolution_fact_set(tmp_path: Path) -> None:
     a = compile_module(without, tmp_path / "o_a")
     b = compile_module(with_it, tmp_path / "o_b")
     assert a.success and b.success, (a.errors, b.errors)
-    assert (
-        a.manifest.compilation.resolution_signature
-        == b.manifest.compilation.resolution_signature
-    )
+    assert a.manifest.compilation.resolution_signature == b.manifest.compilation.resolution_signature
 
 
 def test_reverse_does_not_re_emit_the_authority_column(tmp_path: Path) -> None:
@@ -1517,8 +1559,7 @@ def test_sources_roundtrip_is_lossless(tmp_path: Path) -> None:
     # Reverse regenerates a spec, so it writes the *preferred* spelling — asked of `layout` rather
     # than spelled out here, or this assertion pins whichever name happens to be current (RM51).
     assert (tmp_path / "reversed" / preferred_spelling("sources.csv")).is_file()
-    second = compile_module(tmp_path / "reversed", tmp_path / "recompiled",
-                            resolve_with_ensembl=False)
+    second = compile_module(tmp_path / "reversed", tmp_path / "recompiled", resolve_with_ensembl=False)
     assert second.success, second.errors
     assert first.manifest.artifact.digest == second.manifest.artifact.digest
     assert first.manifest.sources.signature == second.manifest.sources.signature
@@ -1561,10 +1602,7 @@ def test_discarding_uncited_literature_converges_on_the_round_trip(tmp_path: Pat
     # … and the literature identity is a fixed point across it.
     assert second.manifest.literature.signature == first.manifest.literature.signature
     assert second.manifest.literature.row_count == first.manifest.literature.row_count
-    assert (
-        pl.read_parquet(tmp_path / "two" / "literature.parquet")["pmid"].to_list()
-        == reversed_pmids
-    )
+    assert pl.read_parquet(tmp_path / "two" / "literature.parquet")["pmid"].to_list() == reversed_pmids
 
 
 def test_carried_vrs_ids_are_grouped_by_reason_not_reported_per_allele() -> None:
@@ -1582,8 +1620,7 @@ def test_carried_vrs_ids_are_grouped_by_reason_not_reported_per_allele() -> None
     from just_dna_compiler.compiler import _verify_vrs_ids
 
     rows = [
-        _res_row(variant_key=f"11:{5227000 + i}:C:CA", ref="C", alts="CA", vrs_id=_SICKLE)
-        for i in range(12)
+        _res_row(variant_key=f"11:{5227000 + i}:C:CA", ref="C", alts="CA", vrs_id=_SICKLE) for i in range(12)
     ]
     errors, warnings = _verify_vrs_ids(rows)
     assert errors == []
@@ -1605,10 +1642,12 @@ def test_grouping_keeps_distinct_reasons_distinct() -> None:
     """
     from just_dna_compiler.compiler import _verify_vrs_ids
 
-    indels = [_res_row(variant_key=f"11:{5227000 + i}:C:CA", ref="C", alts="CA", vrs_id=_SICKLE)
-              for i in range(4)]
-    other_build = [_res_row(variant_key=f"11:{5228000 + i}:T:A", genome_build="GRCh37",
-                            vrs_id=_SICKLE) for i in range(2)]
+    indels = [
+        _res_row(variant_key=f"11:{5227000 + i}:C:CA", ref="C", alts="CA", vrs_id=_SICKLE) for i in range(4)
+    ]
+    other_build = [
+        _res_row(variant_key=f"11:{5228000 + i}:T:A", genome_build="GRCh37", vrs_id=_SICKLE) for i in range(2)
+    ]
     _errors, warnings = _verify_vrs_ids(indels + other_build)
 
     assert len(warnings) == 2, warnings

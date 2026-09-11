@@ -180,9 +180,7 @@ def scaffold_module(
             f" does not compile without it."
         )
 
-    targets: list[tuple[Path, str]] = [
-        (spec_dir / MODULE_SPEC, module_spec_template(name=name))
-    ]
+    targets: list[tuple[Path, str]] = [(spec_dir / MODULE_SPEC, module_spec_template(name=name))]
     targets.extend((spec_dir / kind, stub_template(kind, rows=rows)) for kind in requested + companions)
 
     for path, content in targets:

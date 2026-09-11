@@ -29,10 +29,7 @@ from pathlib import Path
 
 # The package roots, not their `src/` subtrees: tests are code we ship the shape in too, and the
 # measurement this guard's zero is quoted from (S38's reply, the CHANGELOG) walked the wider set.
-_PACKAGES = [
-    Path(__file__).resolve().parents[2] / pkg
-    for pkg in ("schema", "compiler", "enricher")
-]
+_PACKAGES = [Path(__file__).resolve().parents[2] / pkg for pkg in ("schema", "compiler", "enricher")]
 
 # Builtins we care about as ancestors; anything else unknown simply resolves to no parents, which
 # makes the walk silent rather than wrong.

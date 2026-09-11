@@ -78,7 +78,12 @@ _ANSWERED = "answered"
 # the other genuinely could not run, the reader needs the absence — a remedy exists for it — so the
 # absence wins the single `reason` slot.
 _SKIP_PRECEDENCE: tuple[str, ...] = (
-    "not_permitted", "no_reference", "offline", "unreachable", "not_requested", "tautology",
+    "not_permitted",
+    "no_reference",
+    "offline",
+    "unreachable",
+    "not_requested",
+    "tautology",
 )
 
 
@@ -126,8 +131,7 @@ class FunctionConflict:
 
     def __str__(self) -> str:
         return (
-            f"{self.gene}{self.allele}: module says {self.authored!r}, {self.source} says "
-            f"{self.reported!r}"
+            f"{self.gene}{self.allele}: module says {self.authored!r}, {self.source} says {self.reported!r}"
         )
 
 
@@ -221,9 +225,7 @@ def _compare(
             continue
         compared.add((row.gene, row.allele))
         if theirs != row.function_status:
-            conflicts.append(
-                FunctionConflict(row.gene, row.allele, row.function_status, theirs, source)
-            )
+            conflicts.append(FunctionConflict(row.gene, row.allele, row.function_status, theirs, source))
     return conflicts, compared
 
 
@@ -312,9 +314,7 @@ def enrich_pgx(
         is available — which is a *skip with a reason*, not a failure.
         """
         if not enabled:
-            legs[terms.source] = (
-                "not_requested", f"{terms.source}: the caller switched this leg off."
-            )
+            legs[terms.source] = ("not_requested", f"{terms.source}: the caller switched this leg off.")
             return
         reason = check_declared_use(terms, declared_use)  # raises LicenseRefusal on `commercial`
         if reason is not None:
@@ -387,9 +387,7 @@ def enrich_pgx(
         compared.update(checked)
         legs[terms.source] = (_ANSWERED, route)
         releases[terms.source] = dataset
-        emitted.append(
-            terms.row("annotation", declared_use=declared_use, dataset=dataset)
-        )
+        emitted.append(terms.row("annotation", declared_use=declared_use, dataset=dataset))
 
     def _injected(client) -> tuple[object, bool, str] | None:
         """An injected client's route — and `None` when `offline` forbids using it.
@@ -572,9 +570,7 @@ def _function_check_record(
     # is what a later reader trusts — the run's stderr is not part of the module. So the mixed case,
     # the one the per-leg design exists for, was the one case whose scope the record lost. Joined with
     # a space for the skip branch's reason: each note is a finished sentence written by the leg.
-    withheld = " ".join(
-        note for _source, (outcome, note) in sorted(legs.items()) if outcome != _ANSWERED
-    )
+    withheld = " ".join(note for _source, (outcome, note) in sorted(legs.items()) if outcome != _ANSWERED)
     if withheld:
         detail += f". {withheld}"
     return ran(

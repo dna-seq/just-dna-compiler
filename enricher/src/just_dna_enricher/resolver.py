@@ -118,10 +118,7 @@ def resolve_variants(
 
     need_pos = [v for v in variants if v.rsid is not None and v.chrom is None]
     need_rsid = [v for v in variants if v.rsid is None and v.chrom is not None]
-    verify = [
-        v for v in variants
-        if v.rsid is not None and v.chrom is not None and v.start is not None
-    ]
+    verify = [v for v in variants if v.rsid is not None and v.chrom is not None and v.start is not None]
     if not need_pos and not need_rsid and not verify:
         return variants, []
 
@@ -174,27 +171,28 @@ def resolve_variants(
                 # injected-table path does. The shared predicate is imported rather than reimplemented
                 # because digest parity between the two paths is a documented guarantee, and a filter
                 # applied on one side only would silently break it.
-                usable = [
-                    lo for lo in loci
-                    if genotype_fits(v.genotype, lo.get("ref"), lo.get("alts"))
-                ]
+                usable = [lo for lo in loci if genotype_fits(v.genotype, lo.get("ref"), lo.get("alts"))]
                 for lo in loci:
                     if lo not in usable:
                         # Coded with the same members its injected-table twin in
                         # `just_dna_compiler.resolution` uses: the finding is the same and so is the
                         # remedy, and `compile_module` puts both paths' warnings in one channel.
-                        warnings.append(CodedWarning(
-                            "locus_cannot_host_genotype",
-                            f"{v.rsid} maps to {lo['chrom']}:{lo['start']} "
-                            f"{lo.get('ref')}>{lo.get('alts')}, which cannot host the authored "
-                            f"genotype {v.genotype} — that locus is dropped from the expansion.",
-                        ))
+                        warnings.append(
+                            CodedWarning(
+                                "locus_cannot_host_genotype",
+                                f"{v.rsid} maps to {lo['chrom']}:{lo['start']} "
+                                f"{lo.get('ref')}>{lo.get('alts')}, which cannot host the authored "
+                                f"genotype {v.genotype} — that locus is dropped from the expansion.",
+                            )
+                        )
                 if not usable:
-                    warnings.append(CodedWarning(
-                        "rsid_no_hosting_locus",
-                        f"{v.rsid}: none of its {len(loci)} loci can host the authored genotype "
-                        f"{v.genotype}; position remains unset",
-                    ))
+                    warnings.append(
+                        CodedWarning(
+                            "rsid_no_hosting_locus",
+                            f"{v.rsid}: none of its {len(loci)} loci can host the authored genotype "
+                            f"{v.genotype}; position remains unset",
+                        )
+                    )
                     patched.append(v)
                 elif len(usable) == 1:
                     patched.append(v.model_copy(update=usable[0]))
@@ -205,16 +203,22 @@ def resolve_variants(
                     # the accumulator here would duplicate it into a function that is going away, and
                     # the modules that reach it report `expanded_keys`/`expanded_rows` as `None`
                     # (not established) for the same reason.
-                    warnings.append(CodedWarning(
-                        "rsid_expanded_to_multiple_loci",
-                        f"{v.rsid} maps to {len(usable)} loci in Ensembl; expanded to {len(usable)} "
-                        f"rows (one per locus, each keyed by its coordinate — a consumer can count them).",
-                    ))
+                    warnings.append(
+                        CodedWarning(
+                            "rsid_expanded_to_multiple_loci",
+                            f"{v.rsid} maps to {len(usable)} loci in Ensembl; expanded to {len(usable)} "
+                            f"rows (one per locus, each keyed by its coordinate — a consumer can count them).",
+                        )
+                    )
                     for index, locus in enumerate(usable):
                         # Redundant today (the function returns early above for any non-GRCh38 build),
                         # passed anyway — see the twin in `just_dna_compiler.resolution`.
                         key = derive_variant_key(
-                            None, locus["chrom"], locus["start"], locus["ref"], locus["alts"],
+                            None,
+                            locus["chrom"],
+                            locus["start"],
+                            locus["ref"],
+                            locus["alts"],
                             build=genome_build,
                         )
                         # The expansion marker (RM87). Unlike the warning above, this half *is*
@@ -225,12 +229,16 @@ def resolve_variants(
                         # supported path's on the same module — which is how two round-trip tests
                         # caught it, since reverse writes a `resolution.csv` and the recompile then
                         # takes the other branch.
-                        patched.append(v.model_copy(update={
-                            **locus,
-                            "variant_key": key,
-                            "locus_index": index,
-                            "locus_count": len(usable),
-                        }))
+                        patched.append(
+                            v.model_copy(
+                                update={
+                                    **locus,
+                                    "variant_key": key,
+                                    "locus_index": index,
+                                    "locus_count": len(usable),
+                                }
+                            )
+                        )
         elif v.rsid is None and v.chrom is not None:
             key = derive_variant_key(None, v.chrom, v.start, v.ref)
             if key in pos_to_rsid:
@@ -261,9 +269,7 @@ def lookup_loci(
     warnings: list[str] = []
     con = _connect(reference)
     try:
-        rsid_to_loci = (
-            _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings) if rsids else {}
-        )
+        rsid_to_loci = _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings) if rsids else {}
         pos_candidates = (
             _lookup_rsid_candidates(con, "ensembl_variations", "id", positions) if positions else {}
         )
@@ -314,8 +320,9 @@ def probe_table(
         return
     numeric = [sql_type.upper() in _NUMERIC_SQL_TYPES for _, sql_type in columns]
     values = ", ".join(
-        "(" + ", ".join(_sql_literal(cell, is_numeric) for cell, is_numeric
-                        in zip(row, numeric, strict=True)) + ")"
+        "("
+        + ", ".join(_sql_literal(cell, is_numeric) for cell, is_numeric in zip(row, numeric, strict=True))
+        + ")"
         for row in rows
     )
     con.execute(f"INSERT INTO {name} VALUES {values}")
@@ -352,9 +359,7 @@ def _lookup_rsid_candidates(
     concrete = [(c, s) for c, s, r, a in uniq if c is not None and s is not None]
     if not concrete:
         return {pt: [] for pt in uniq}
-    probe_table(
-        con, "_wanted_positions", [("chrom", "VARCHAR"), ("start", "BIGINT")], sorted(set(concrete))
-    )
+    probe_table(con, "_wanted_positions", [("chrom", "VARCHAR"), ("start", "BIGINT")], sorted(set(concrete)))
     rows = con.execute(
         f"SELECT DISTINCT t.chrom, t.start, t.ref, t.alt, t.{id_col} FROM {table} t "
         f"JOIN _wanted_positions w ON t.chrom = w.chrom AND t.start = w.start "
@@ -438,9 +443,7 @@ def _lookup_positions_by_rsid(
             # live leg this function neither runs nor knows about, so at this point that answer is
             # genuinely unknown and the house rule is to withhold it rather than guess. The one
             # caller that reads these warnings states the consequence once, after both legs (S61).
-            warnings.append(
-                CodedWarning("rsid_unresolved", f"{rsid}: not in the injected Ensembl snapshot")
-            )
+            warnings.append(CodedWarning("rsid_unresolved", f"{rsid}: not in the injected Ensembl snapshot"))
     return dict(result)
 
 
@@ -577,9 +580,7 @@ def coordinate_disagreement(
     return disagreement_message(rsid, chrom, start, loci)
 
 
-def disagreement_message(
-    rsid: str, chrom: str | None, start: int | None, loci: Sequence[dict]
-) -> str:
+def disagreement_message(rsid: str, chrom: str | None, start: int | None, loci: Sequence[dict]) -> str:
     """The sentence a `False` verdict is reported as, in one place so the two callers cannot drift."""
     places = sorted({_place(lo.get("chrom"), lo.get("start")) for lo in loci})
     return (
@@ -655,7 +656,10 @@ def check_rsid_coordinates(
                 continue
             disagreements.append(disagreement_message(rsid, chrom, start, loci))
     return PairCheck(
-        disagreements=disagreements, subjects=subjects, unknown=unknown, undecided=undecided,
+        disagreements=disagreements,
+        subjects=subjects,
+        unknown=unknown,
+        undecided=undecided,
         answered=answered_count,
     )
 
@@ -688,11 +692,13 @@ def _check_rsid_coord_consistency(
         coordkey = derive_variant_key(None, r.chrom, r.start, r.ref)
         ids = coord_ids.get(coordkey)
         if ids and r.rsid not in ids:
-            warnings.append(CodedWarning(
-                "rsid_coordinate_disagrees",
-                f"{coordkey} authored as {r.rsid}, but Ensembl reports {sorted(ids)} there "
-                f"(reference disagreement — may be a dbSNP merge/build difference).",
-            ))
+            warnings.append(
+                CodedWarning(
+                    "rsid_coordinate_disagrees",
+                    f"{coordkey} authored as {r.rsid}, but Ensembl reports {sorted(ids)} there "
+                    f"(reference disagreement — may be a dbSNP merge/build difference).",
+                )
+            )
 
 
 def _lookup_rsid_sets_by_position(
@@ -762,9 +768,11 @@ def _lookup_rsids_by_position(
                 # A multi-allelic site: the ref-less key already resolved to a different id. The
                 # ORDER BY fixes which one wins, but the choice is genuinely ambiguous — surface it.
                 refless_warned.add(pos)
-                warnings.append(CodedWarning(
-                    "rsid_ambiguous",
-                    f"{chrom}:{start} (ref unspecified) matches multiple dbSNP ids; resolved to "
-                    f"{result[refless_key]} deterministically — specify ref to disambiguate.",
-                ))
+                warnings.append(
+                    CodedWarning(
+                        "rsid_ambiguous",
+                        f"{chrom}:{start} (ref unspecified) matches multiple dbSNP ids; resolved to "
+                        f"{result[refless_key]} deterministically — specify ref to disambiguate.",
+                    )
+                )
     return result

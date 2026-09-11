@@ -39,7 +39,14 @@ from just_dna_format.vocab import ACTIONABLE_WARNING_CODES, VALID_WARNING_CODES
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
 _HEADER = [
-    "table", "subject", "member", "field", "operation", "value", "reason", "decided_by",
+    "table",
+    "subject",
+    "member",
+    "field",
+    "operation",
+    "value",
+    "reason",
+    "decided_by",
     "decided_at",
 ]
 _UNREACHABLE = "no artifact of this module can carry"
@@ -120,8 +127,19 @@ def test_an_update_on_a_dropped_row_says_the_same_thing_on_both_laps(tmp_path: P
     pmid = _uncited_pmid(spec)
     _write_overlay(
         spec,
-        [["literature.csv", pmid, "", "license", "update", "CC-BY-4.0",
-          "the publisher page states CC BY, the source recorded none", "curator", "2026-08-31"]],
+        [
+            [
+                "literature.csv",
+                pmid,
+                "",
+                "license",
+                "update",
+                "CC-BY-4.0",
+                "the publisher page states CC BY, the source recorded none",
+                "curator",
+                "2026-08-31",
+            ]
+        ],
     )
 
     first = compile_module(spec, tmp_path / "a1")
@@ -152,8 +170,19 @@ def test_the_lap_dependent_warning_no_longer_fires_for_that_row(tmp_path: Path) 
     pmid = _uncited_pmid(spec)
     _write_overlay(
         spec,
-        [["literature.csv", pmid, "", "license", "update", "CC-BY-4.0",
-          "the publisher page states CC BY, the source recorded none", "curator", "2026-08-31"]],
+        [
+            [
+                "literature.csv",
+                pmid,
+                "",
+                "license",
+                "update",
+                "CC-BY-4.0",
+                "the publisher page states CC BY, the source recorded none",
+                "curator",
+                "2026-08-31",
+            ]
+        ],
     )
     compile_module(spec, tmp_path / "a1")
     reverse_module(tmp_path / "a1", tmp_path / "rev")
@@ -178,8 +207,19 @@ def test_a_cited_pmid_the_table_lacks_is_the_other_reading(tmp_path: Path) -> No
         pytest.skip("this example's literature sidecar already covers its first study")
     _write_overlay(
         spec,
-        [["literature.csv", cited, "", "license", "update", "CC-BY-4.0",
-          "the publisher page states CC BY, the source recorded none", "curator", "2026-08-31"]],
+        [
+            [
+                "literature.csv",
+                cited,
+                "",
+                "license",
+                "update",
+                "CC-BY-4.0",
+                "the publisher page states CC BY, the source recorded none",
+                "curator",
+                "2026-08-31",
+            ]
+        ],
     )
 
     result = compile_module(spec, tmp_path / "art")
@@ -254,8 +294,19 @@ def test_the_pre_flight_reports_what_the_compile_reports(tmp_path: Path) -> None
     pmid = _uncited_pmid(spec)
     _write_overlay(
         spec,
-        [["literature.csv", pmid, "", "license", "update", "CC-BY-4.0",
-          "the publisher page states CC BY, the source recorded none", "curator", "2026-08-31"]],
+        [
+            [
+                "literature.csv",
+                pmid,
+                "",
+                "license",
+                "update",
+                "CC-BY-4.0",
+                "the publisher page states CC BY, the source recorded none",
+                "curator",
+                "2026-08-31",
+            ]
+        ],
     )
 
     checked = validate_spec(spec)

@@ -86,9 +86,7 @@ def test_the_roster_covers_every_fact_model_on_the_authoring_reference() -> None
     assert registry == covered, f"roster drifted: {registry ^ covered}"
 
 
-@pytest.mark.parametrize(
-    "model", sorted(_MINIMAL, key=lambda m: m.__name__), ids=lambda m: m.__name__
-)
+@pytest.mark.parametrize("model", sorted(_MINIMAL, key=lambda m: m.__name__), ids=lambda m: m.__name__)
 def test_a_fact_rows_status_is_a_closed_vocabulary(model: type) -> None:
     """Every fact sidecar carrying a `status` refuses a value outside the vocabulary.
 

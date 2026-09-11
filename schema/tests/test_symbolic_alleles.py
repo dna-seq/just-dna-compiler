@@ -138,7 +138,10 @@ def test_validate_allele_has_two_users_and_both_widened() -> None:
     row = HaplotypeRow(haplotype_name="*5", rsid="rs1667266283", allele="<DEL:926>", gene="MSH2")
     assert row.allele == "<DEL:926>"
     variant = VariantRow(
-        rsid="rs1667266283", genotype="A/A", state="risk", conclusion="c",
+        rsid="rs1667266283",
+        genotype="A/A",
+        state="risk",
+        conclusion="c",
         effect_allele="<DEL:926>",
     )
     assert variant.effect_allele == "<DEL:926>"
@@ -152,9 +155,7 @@ def test_all_three_arms_of_the_genotype_grammar_admit_a_symbolic_allele(genotype
     """Phased, hemizygous and unphased are three code paths that each decided what an allele is; the
     widening had to reach all three, which is why the decision moved into one helper."""
     assert genotype_allele_ok(genotype.split("/")[0].split("|")[0])
-    assert VariantRow(
-        rsid="rs1", genotype=genotype, state="risk", conclusion="c"
-    ).genotype == genotype
+    assert VariantRow(rsid="rs1", genotype=genotype, state="risk", conclusion="c").genotype == genotype
 
 
 def test_the_unphased_sort_rule_still_applies_to_a_symbolic_member() -> None:
@@ -167,9 +168,12 @@ def test_the_unphased_sort_rule_still_applies_to_a_symbolic_member() -> None:
 def test_a_lengthless_symbolic_allele_LOADS_because_the_compiler_owns_that_refusal() -> None:
     """Forced, not chosen: a model-level rejection surfaces as a load error, which is fatal in both
     modes, and the decided behaviour is warn-and-drop under `best_effort`."""
-    assert VariantRow(
-        rsid="rs1", genotype="<DEL>/G", state="risk", conclusion="c", effect_allele="<DEL>"
-    ).genotype == "<DEL>/G"
+    assert (
+        VariantRow(
+            rsid="rs1", genotype="<DEL>/G", state="risk", conclusion="c", effect_allele="<DEL>"
+        ).genotype
+        == "<DEL>/G"
+    )
 
 
 def test_an_undeclared_name_is_refused_where_a_column_has_a_grammar() -> None:
@@ -186,8 +190,13 @@ def test_ref_and_alts_still_have_no_grammar_at_all() -> None:
     grammar there stays refused — it would reject `N`, which is real, and break P3 for any module
     that already carries an odd cell. So `<FOO>` reaches the compiler's diagnosis by this route."""
     row = VariantRow(
-        chrom="1", start=100, ref="N", alts="<FOO>,Y", genotype="A/A",
-        state="risk", conclusion="c",
+        chrom="1",
+        start=100,
+        ref="N",
+        alts="<FOO>,Y",
+        genotype="A/A",
+        state="risk",
+        conclusion="c",
     )
     assert (row.ref, row.alts) == ("N", "<FOO>,Y")
 

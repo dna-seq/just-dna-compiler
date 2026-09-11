@@ -277,14 +277,16 @@ class MeasureBinRow(AuthoredModel):
     # The rule is stated on `measure_max`'s description, not only in docs/SCHEMAS.md, because
     # `describe`/`requirements`/`reference` print these strings and that is what an author writes a
     # table from (D6-1).
-    measure_min: float | None = Field(json_schema_extra=since("0.4.0"), 
+    measure_min: float | None = Field(
+        json_schema_extra=since("0.4.0"),
         default=None,
         description=(
             "Inclusive lower bound; None = open below. On a continuous measure this is also the "
             "tie-break: a value two bins share belongs to the one with the greater measure_min."
         ),
     )
-    measure_max: float | None = Field(json_schema_extra=since("0.4.0"), 
+    measure_max: float | None = Field(
+        json_schema_extra=since("0.4.0"),
         default=None,
         description=(
             "Inclusive upper bound; None = open above. Inclusive on every measure_kind — on a "
@@ -311,22 +313,32 @@ class MeasureBinRow(AuthoredModel):
             "a bounded domain like allele_fraction it switches interior gap reporting off entirely."
         ),
     )
-    direction: str | None = Field(json_schema_extra=since("0.4.0"), 
-        default=None, description="Effect direction: protective|risk|neutral|unknown"
+    direction: str | None = Field(
+        json_schema_extra=since("0.4.0"),
+        default=None,
+        description="Effect direction: protective|risk|neutral|unknown",
     )
-    clin_sig: str | None = Field(json_schema_extra=since("0.4.0"), 
-        default=None, description="ClinVar/ACMG clinical significance (VEP CLIN_SIG vocabulary)"
+    clin_sig: str | None = Field(
+        json_schema_extra=since("0.4.0"),
+        default=None,
+        description="ClinVar/ACMG clinical significance (VEP CLIN_SIG vocabulary)",
     )
-    phenotype: str | None = Field(json_schema_extra=since("0.4.0"), default=None, description="Associated trait or phenotype")
-    trait_efo_id: str | None = Field(json_schema_extra=since("0.4.0"), 
-        default=None, description="EFO/MONDO/OBA/HP trait ontology id(s)"
+    phenotype: str | None = Field(
+        json_schema_extra=since("0.4.0"), default=None, description="Associated trait or phenotype"
     )
-    conclusion: str = Field(json_schema_extra=since("0.4.0"), description="Human-readable interpretation for this bin")
-    unresolved: bool = Field(json_schema_extra=since("0.4.0"), 
+    trait_efo_id: str | None = Field(
+        json_schema_extra=since("0.4.0"), default=None, description="EFO/MONDO/OBA/HP trait ontology id(s)"
+    )
+    conclusion: str = Field(
+        json_schema_extra=since("0.4.0"), description="Human-readable interpretation for this bin"
+    )
+    unresolved: bool = Field(
+        json_schema_extra=since("0.4.0"),
         default=False,
         description="True on the sentinel row a consumer selects when the measurement is absent.",
     )
-    source_field: str | None = Field(json_schema_extra=since("0.4.0"), 
+    source_field: str | None = Field(
+        json_schema_extra=since("0.4.0"),
         default=None,
         description=(
             "Optional VCF field the consumer extracts this measure from, best written with its "
@@ -337,7 +349,8 @@ class MeasureBinRow(AuthoredModel):
             "ADF, ADR, MQ, AF and CN."
         ),
     )
-    source_element: str | None = Field(json_schema_extra=since("0.6.0"), 
+    source_element: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "Which of `source_field`'s values this bin is measured against, when the field carries "
@@ -352,7 +365,8 @@ class MeasureBinRow(AuthoredModel):
         ),
     )
 
-    pmid: str | None = Field(json_schema_extra=since("0.6.0"), 
+    pmid: str | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "Optional PubMed id grounding THIS boundary — the literature the threshold is drawn "
@@ -438,7 +452,10 @@ class ActivityPhenotypeRow(MeasureBinRow):
         # set would offer values this very model rejects. It needs a distinct name because a
         # vocabulary name must map to one option set — `measure_kind` is already the open choice
         # on the base, and this is the narrowed one.
-        json_schema_extra={**vocabulary("measure_kind_activity_score", frozenset({"activity_score"})), **since("0.4.0")},
+        json_schema_extra={
+            **vocabulary("measure_kind_activity_score", frozenset({"activity_score"})),
+            **since("0.4.0"),
+        },
         description="Fixed: activity_score",
     )
 
@@ -466,14 +483,21 @@ class CopyNumberRow(MeasureBinRow):
     # dosage cannot split a group (both grouping sites read `_KEY_FIELDS` with `getattr`, which
     # resolves the property).
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = (
-        "gene", "modifier_gene", "effective_modifier_copy_number",
+        "gene",
+        "modifier_gene",
+        "effective_modifier_copy_number",
     )
 
-    gene: str = Field(json_schema_extra=since("0.4.0"), description="Gene symbol whose copy number is binned, e.g. SMN1")
-    modifier_gene: str | None = Field(json_schema_extra=since("0.4.0"), 
-        default=None, description="Optional modifier locus read in context, e.g. SMN2"
+    gene: str = Field(
+        json_schema_extra=since("0.4.0"), description="Gene symbol whose copy number is binned, e.g. SMN1"
     )
-    modifier_cn: int | None = Field(json_schema_extra=since("0.4.0"), 
+    modifier_gene: str | None = Field(
+        json_schema_extra=since("0.4.0"),
+        default=None,
+        description="Optional modifier locus read in context, e.g. SMN2",
+    )
+    modifier_cn: int | None = Field(
+        json_schema_extra=since("0.4.0"),
         default=None,
         description=(
             "DEPRECATED since 0.6, removed at 1.0 — use modifier_copy_number, which holds the "
@@ -482,7 +506,8 @@ class CopyNumberRow(MeasureBinRow):
             "modifier_gene)."
         ),
     )
-    modifier_copy_number: float | None = Field(json_schema_extra=since("0.6.0"), 
+    modifier_copy_number: float | None = Field(
+        json_schema_extra=since("0.6.0"),
         default=None,
         description=(
             "Copy number of the modifier locus (set with modifier_gene), as a number that may be "
@@ -497,7 +522,10 @@ class CopyNumberRow(MeasureBinRow):
         # set would offer values this very model rejects. It needs a distinct name because a
         # vocabulary name must map to one option set — `measure_kind` is already the open choice
         # on the base, and this is the narrowed one.
-        json_schema_extra={**vocabulary("measure_kind_copy_number", frozenset({"copy_number"})), **since("0.4.0")},
+        json_schema_extra={
+            **vocabulary("measure_kind_copy_number", frozenset({"copy_number"})),
+            **since("0.4.0"),
+        },
         description="Fixed: copy_number",
     )
 
@@ -556,7 +584,9 @@ class RepeatAlleleRow(MeasureBinRow):
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = ("gene", "repeat_unit")
 
     gene: str = Field(json_schema_extra=since("0.4.0"), description="Gene symbol, e.g. HTT")
-    repeat_unit: str = Field(json_schema_extra=since("0.4.0"), description="Repeat motif, part of the key, e.g. CAG")
+    repeat_unit: str = Field(
+        json_schema_extra=since("0.4.0"), description="Repeat motif, part of the key, e.g. CAG"
+    )
     measure_kind: str = Field(
         default="repeat_count",
         # A one-member vocabulary under its OWN name, not `VALID_MEASURE_KINDS`:
@@ -564,7 +594,10 @@ class RepeatAlleleRow(MeasureBinRow):
         # set would offer values this very model rejects. It needs a distinct name because a
         # vocabulary name must map to one option set — `measure_kind` is already the open choice
         # on the base, and this is the narrowed one.
-        json_schema_extra={**vocabulary("measure_kind_repeat_count", frozenset({"repeat_count"})), **since("0.4.0")},
+        json_schema_extra={
+            **vocabulary("measure_kind_repeat_count", frozenset({"repeat_count"})),
+            **since("0.4.0"),
+        },
         description="Fixed: repeat_count",
     )
 
@@ -604,7 +637,10 @@ class HeteroplasmyRow(MeasureBinRow):
 
     _EXPECTED_KIND: ClassVar[str] = "allele_fraction"
     _KEY_FIELDS: ClassVar[tuple[str, ...]] = (
-        "gene", "reference_sequence", "tissue", "variant_key",
+        "gene",
+        "reference_sequence",
+        "tissue",
+        "variant_key",
     )
 
     gene: str = Field(json_schema_extra=since("0.4.0"), description="MT locus/gene, e.g. MT-TL1")
@@ -612,27 +648,41 @@ class HeteroplasmyRow(MeasureBinRow):
     # (Principle 8 — a new field may not be unconditionally required), and a single-variant gene has
     # nothing to disambiguate. No `chromosome` vocabulary marker, matching the other tables that run
     # no chrom validator.
-    rsid: str | None = Field(json_schema_extra=since("0.5.0"), 
-        default=None, description="dbSNP id of the variant these bins are about, when it has one"
+    rsid: str | None = Field(
+        json_schema_extra=since("0.5.0"),
+        default=None,
+        description="dbSNP id of the variant these bins are about, when it has one",
     )
-    chrom: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="Contig (MT), for a position-only variant")
-    start: int | None = Field(json_schema_extra=since("0.5.0"), 
+    chrom: str | None = Field(
+        json_schema_extra=since("0.5.0"), default=None, description="Contig (MT), for a position-only variant"
+    )
+    start: int | None = Field(
+        json_schema_extra=since("0.5.0"),
         default=None,
         ge=0,  # 1-based VCF POS; POS 0 is legal for a telomeric breakend (RM96, VCF_4_4_AUDIT s9)
         description="Position of the variant, e.g. 3243 for m.3243A>G",
     )
-    ref: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="Reference allele, e.g. A")
-    alts: str | None = Field(json_schema_extra=since("0.5.0"), default=None, description="Alternate allele(s), e.g. G")
+    ref: str | None = Field(
+        json_schema_extra=since("0.5.0"), default=None, description="Reference allele, e.g. A"
+    )
+    alts: str | None = Field(
+        json_schema_extra=since("0.5.0"), default=None, description="Alternate allele(s), e.g. G"
+    )
     #: The locus these bins are about. See `AuthoredModel.ALLELE_COLUMNS`.
     ALLELE_COLUMNS: ClassVar[tuple[str, ...]] = ("ref", "alts")
-    reference_sequence: str = Field(json_schema_extra=since("0.4.0"), 
-        description="MT reference accession, part of the key, e.g. NC_012920.1 (rCRS)"
+    reference_sequence: str = Field(
+        json_schema_extra=since("0.4.0"),
+        description="MT reference accession, part of the key, e.g. NC_012920.1 (rCRS)",
     )
-    tissue: str | None = Field(json_schema_extra=since("0.4.0"), 
-        default=None, description="Tissue the bins assume, e.g. blood, muscle (bins are tissue-conditional)"
+    tissue: str | None = Field(
+        json_schema_extra=since("0.4.0"),
+        default=None,
+        description="Tissue the bins assume, e.g. blood, muscle (bins are tissue-conditional)",
     )
-    assay_context: str | None = Field(json_schema_extra=since("0.4.0"), 
-        default=None, description="Optional assay context, e.g. WGS, chip, amplicon"
+    assay_context: str | None = Field(
+        json_schema_extra=since("0.4.0"),
+        default=None,
+        description="Optional assay context, e.g. WGS, chip, amplicon",
     )
     measure_kind: str = Field(
         default="allele_fraction",
@@ -641,7 +691,10 @@ class HeteroplasmyRow(MeasureBinRow):
         # set would offer values this very model rejects. It needs a distinct name because a
         # vocabulary name must map to one option set — `measure_kind` is already the open choice
         # on the base, and this is the narrowed one.
-        json_schema_extra={**vocabulary("measure_kind_allele_fraction", frozenset({"allele_fraction"})), **since("0.4.0")},
+        json_schema_extra={
+            **vocabulary("measure_kind_allele_fraction", frozenset({"allele_fraction"})),
+            **since("0.4.0"),
+        },
         description="Fixed: allele_fraction",
     )
 
@@ -652,14 +705,16 @@ class HeteroplasmyRow(MeasureBinRow):
         "loader injects the module's build, because this key passes `alts` and can therefore mint a "
         "`ga4gh:VA.…`, which names its reference sequence by refget accession and must know the "
         "assembly or it will claim the wrong one (RM36). Part of `_KEY_FIELDS`, so all the identity "
-        "shapes collapse to one notion of which variant a row is about. Compiler-managed."
-    , first_seen="0.6.0")
+        "shapes collapse to one notion of which variant a row is about. Compiler-managed.",
+        first_seen="0.6.0",
+    )
     authored_ident: list[str] | None = stamped_identity_field(
         "Which identity columns the author actually supplied, from {rsid, chrom, start, ref, alts}. "
         "Stamped at load like `variant_key`, so the compiler can fill a resolved coordinate into the "
         "parquet while `reverse_module` re-emits the authored shape — which is what keeps "
-        "`content_signature` stable across a round-trip (RM43). Compiler-managed."
-    , first_seen="0.6.0")
+        "`content_signature` stable across a round-trip (RM43). Compiler-managed.",
+        first_seen="0.6.0",
+    )
     #: The one positional table whose key includes `alts` — it always did, and narrowing it now would
     #: re-key every published mtDNA module. See `AuthoredModel._KEY_INCLUDES_ALTS`.
     _KEY_INCLUDES_ALTS: ClassVar[bool] = True
@@ -679,9 +734,7 @@ class HeteroplasmyRow(MeasureBinRow):
     def _validate_fraction_bounds(self) -> "HeteroplasmyRow":
         for bound in (self.measure_min, self.measure_max):
             if bound is not None and not (0.0 <= bound <= 1.0):
-                raise ValueError(
-                    f"allele_fraction bounds must be within [0, 1], got {bound}"
-                )
+                raise ValueError(f"allele_fraction bounds must be within [0, 1], got {bound}")
         return self
 
 
@@ -720,8 +773,7 @@ def format_group_key(group_key: tuple) -> str:
     for the same reason: a whole number should read as one.
     """
     members = tuple(
-        int(v) if isinstance(v, float) and math.isfinite(v) and v.is_integer() else v
-        for v in group_key
+        int(v) if isinstance(v, float) and math.isfinite(v) and v.is_integer() else v for v in group_key
     )
     return repr(members)
 
@@ -777,11 +829,7 @@ class TilingResolution(NamedTuple):
     @property
     def inferred(self) -> bool:
         """A fractional value **moved** the group off its kind's default — announce it."""
-        return (
-            self.declared is None
-            and self.fractional is not None
-            and self.value != self.default
-        )
+        return self.declared is None and self.fractional is not None and self.value != self.default
 
     @property
     def contradicted(self) -> bool:
@@ -887,39 +935,41 @@ def measurement_shape_warnings(rows: Sequence[MeasureBinRow]) -> list[str]:
     kinds = {r.measure_kind for grp in groups.values() for r in grp} & set(_VCF_MEASURE_FIELDS)
     for kind in sorted(kinds):
         value_field, ci_field, spec_note = _VCF_MEASURE_FIELDS[kind]
-        of_kind = {
-            key: grp for key, grp in groups.items() if any(r.measure_kind == kind for r in grp)
-        }
+        of_kind = {key: grp for key, grp in groups.items() if any(r.measure_kind == kind for r in grp)}
         if any(resolve_tiling(grp).value == "quantised" for grp in of_kind.values()):
-            warnings.append(CodedWarning(
-                "measure_field_fractional",
-                f"{kind} bins here are tiled as whole numbers, but the field a consumer reads the "
-                f"measurement from ({value_field}) {FRACTIONAL_MEASURE_PHRASE}: {spec_note}. A "
-                f"fractional measurement falling between two adjacent bins matches neither — "
-                f"`[0,0] [1,1] [2,2] [3,∞)` is a legal quantised tiling and answers nothing at all "
-                f"for a 2.4 — and the coverage-gap check does not report the hole, because under "
-                f"quantised tiling it only flags one wider than a step. If this measure really is "
-                f"continuous, say so: `measure_tiling: continuous` on these rows makes adjacent bins "
-                f"able to share an endpoint (the higher one owns it) and makes any positive hole "
-                f"reportable, and the bounds are already floats so nothing else has to change. A "
-                f"group carrying a fractional bound is read as continuous without being asked. Left "
-                f"as a grid, expect an answer only from a caller that rounds, and none from a "
-                f"segment mean."
-            ))
+            warnings.append(
+                CodedWarning(
+                    "measure_field_fractional",
+                    f"{kind} bins here are tiled as whole numbers, but the field a consumer reads the "
+                    f"measurement from ({value_field}) {FRACTIONAL_MEASURE_PHRASE}: {spec_note}. A "
+                    f"fractional measurement falling between two adjacent bins matches neither — "
+                    f"`[0,0] [1,1] [2,2] [3,∞)` is a legal quantised tiling and answers nothing at all "
+                    f"for a 2.4 — and the coverage-gap check does not report the hole, because under "
+                    f"quantised tiling it only flags one wider than a step. If this measure really is "
+                    f"continuous, say so: `measure_tiling: continuous` on these rows makes adjacent bins "
+                    f"able to share an endpoint (the higher one owns it) and makes any positive hole "
+                    f"reportable, and the bounds are already floats so nothing else has to change. A "
+                    f"group carrying a fractional bound is read as continuous without being asked. Left "
+                    f"as a grid, expect an answer only from a caller that rounds, and none from a "
+                    f"segment mean.",
+                )
+            )
         widest = max(len(grp) for grp in of_kind.values())
         if widest >= 2:
-            warnings.append(CodedWarning(
-                "measurement_spans_bins",
-                f"{kind} bins: {SPANNING_MEASUREMENT_PHRASE}, and nothing in this format says what to "
-                f"do with one (RM56). A {value_field} call travels with {ci_field}, whose missing upper "
-                f"bound means *unbounded*, so the measurement is an interval — and the widest group "
-                f"here states {widest} bins for it to cross. The consumer contract has three "
-                f"states (a bin matched, no bin matched, the measurement absent) and none of them is "
-                f"this one. Not implemented, and stated rather than left silent: until the policy "
-                f"vocabulary lands, a conforming consumer **withholds** — it does not pick among the "
-                f"bins the interval touches, and it does not fall back to the `unresolved` row, which "
-                f"means no measurement was available and is a different claim."
-            ))
+            warnings.append(
+                CodedWarning(
+                    "measurement_spans_bins",
+                    f"{kind} bins: {SPANNING_MEASUREMENT_PHRASE}, and nothing in this format says what to "
+                    f"do with one (RM56). A {value_field} call travels with {ci_field}, whose missing upper "
+                    f"bound means *unbounded*, so the measurement is an interval — and the widest group "
+                    f"here states {widest} bins for it to cross. The consumer contract has three "
+                    f"states (a bin matched, no bin matched, the measurement absent) and none of them is "
+                    f"this one. Not implemented, and stated rather than left silent: until the policy "
+                    f"vocabulary lands, a conforming consumer **withholds** — it does not pick among the "
+                    f"bins the interval touches, and it does not fall back to the `unresolved` row, which "
+                    f"means no measurement was available and is a different claim.",
+                )
+            )
     return warnings
 
 
@@ -942,13 +992,15 @@ def deprecation_warnings(rows: Sequence[MeasureBinRow]) -> list[str]:
     column held, and an author can move the value the day they read this.
     """
     if any(isinstance(r, CopyNumberRow) and r.modifier_cn is not None for r in rows):
-        return [CodedWarning(
-            "deprecated_bin_modifier",
-            f"{DEPRECATED_MODIFIER_PHRASE} and is removed at 1.0: write the dosage in "
-            f"`modifier_copy_number` instead, which is a float and can hold the non-integer copy "
-            f"numbers VCF 4.4 §7.2 allows. It still reads and behaves exactly as before until then, "
-            f"a whole number stays a whole number, and setting both columns is an error."
-        )]
+        return [
+            CodedWarning(
+                "deprecated_bin_modifier",
+                f"{DEPRECATED_MODIFIER_PHRASE} and is removed at 1.0: write the dosage in "
+                f"`modifier_copy_number` instead, which is a float and can hold the non-integer copy "
+                f"numbers VCF 4.4 §7.2 allows. It still reads and behaves exactly as before until then, "
+                f"a whole number stays a whole number, and setting both columns is an error.",
+            )
+        ]
     return []
 
 
@@ -1015,22 +1067,26 @@ def validate_bins(rows: Sequence[MeasureBinRow]) -> list[str]:
         dense = tiling.value == "continuous"
         if tiling.inferred:
             column, value = tiling.fractional
-            warnings.append(CodedWarning(
-                "bin_tiling_inferred",
-                f"tiling inferred for key {shown_key}: {column} is {value}, which no quantised "
-                f"reading can hold, so this group was read as continuous — adjacent bins may share "
-                f"an endpoint (the higher one owns it) and any positive hole is reported. Declare "
-                f"`measure_tiling` on these rows to state it rather than have it read off the data."
-            ))
+            warnings.append(
+                CodedWarning(
+                    "bin_tiling_inferred",
+                    f"tiling inferred for key {shown_key}: {column} is {value}, which no quantised "
+                    f"reading can hold, so this group was read as continuous — adjacent bins may share "
+                    f"an endpoint (the higher one owns it) and any positive hole is reported. Declare "
+                    f"`measure_tiling` on these rows to state it rather than have it read off the data.",
+                )
+            )
         elif tiling.contradicted:
             column, value = tiling.fractional
-            warnings.append(CodedWarning(
-                "bin_tiling_contradicted",
-                f"measure_tiling for key {shown_key} is declared 'quantised' and the data "
-                f"contradicts it: {column} is {value}, which is not a grid point. The declaration "
-                f"stands — nothing here overrides it either way — so these bins are still read "
-                f"under the quantised rules and that value sits between two of them."
-            ))
+            warnings.append(
+                CodedWarning(
+                    "bin_tiling_contradicted",
+                    f"measure_tiling for key {shown_key} is declared 'quantised' and the data "
+                    f"contradicts it: {column} is {value}, which is not a grid point. The declaration "
+                    f"stands — nothing here overrides it either way — so these bins are still read "
+                    f"under the quantised rules and that value sits between two of them.",
+                )
+            )
         for i in range(1, len(spans)):
             prev_lo, prev_hi = spans[i - 1]
             lo, hi = spans[i]
@@ -1073,8 +1129,10 @@ def validate_bins(rows: Sequence[MeasureBinRow]) -> list[str]:
             else:
                 is_gap = False
             if is_gap:
-                warnings.append(CodedWarning(
-                    "bin_coverage_gap",
-                    f"coverage gap for key {shown_key}: no bin covers ({prev_hi}, {lo})",
-                ))
+                warnings.append(
+                    CodedWarning(
+                        "bin_coverage_gap",
+                        f"coverage gap for key {shown_key}: no bin covers ({prev_hi}, {lo})",
+                    )
+                )
     return warnings

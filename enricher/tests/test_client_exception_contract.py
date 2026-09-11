@@ -69,7 +69,8 @@ def _refuse(request: httpx.Request) -> httpx.Response:
 def _serve_html(request: httpx.Request) -> httpx.Response:
     """A 200 whose body is a maintenance page — the service answered, and what it said cannot be read."""
     return httpx.Response(
-        200, text="<html><body>Scheduled maintenance</body></html>",
+        200,
+        text="<html><body>Scheduled maintenance</body></html>",
         headers={"content-type": "text/html"},
     )
 
@@ -129,13 +130,12 @@ def _pgs(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], obj
     )
     return lambda: client.score("PGS000001")
 
+
 def _litvar(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
     """RM167. Its *absence* is a return value and every failure is an exception, which is why it is
     here rather than in the exempt set below: a 400 whose body opens `Variant not found` is the index
     answering, and there is a real error type for everything else."""
-    client = LitvarClient(
-        client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate()
-    )
+    client = LitvarClient(client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate())
     return lambda: client.autocomplete("rs1800562")
 
 
@@ -143,9 +143,7 @@ def _civic_api(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[
     """RM160's CIViC GraphQL client. It POSTs rather than GETs, which is why it is on its own line:
     a `raise_for_status()` outside the `try` leaks identically either way, and no other client in
     this file exercises the POST leg against a mock transport."""
-    client = CivicApiClient(
-        client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate()
-    )
+    client = CivicApiClient(client=httpx.Client(transport=httpx.MockTransport(handler)), gate=_instant_gate())
     return lambda: client.evidence_items(1955)
 
 
@@ -175,7 +173,6 @@ CLIENTS = [
     # client really is "the Catalog could not be asked": its own negative is a 200 with an empty
     # body, which never reaches an exception at all.
     ("pgs", _pgs, PgsCatalogUnavailable),
-
     # `LitvarUnavailable` rather than its parent, the same stronger assertion as the two above:
     # every transport and status leg of this client means the index could not be asked. `LitvarError`
     # is the parent and covers the *shape* failures — a 200 whose body is neither the JSON nor the
@@ -183,7 +180,6 @@ CLIENTS = [
     # `test_litvar.py` does. The two must not be confused: the JSON-decode leg was leaking untyped
     # until a review found it, and these three cases could not see it.
     ("litvar", _litvar, LitvarUnavailable),
-
     # `CivicApiUnavailable` rather than its parent, the same stronger assertion as the four above:
     # every transport and status leg of this client means CIViC could not be asked. `CivicApiError`
     # is the parent and covers the shape failures this file does not drive — a 200 that is not JSON,
@@ -274,9 +270,7 @@ def test_a_server_error_surfaces_as_the_tiers_own_error(label, builder, error) -
 
 
 @pytest.mark.parametrize("label,builder,error", CLIENTS, ids=[c[0] for c in CLIENTS])
-def test_an_exhausted_transport_failure_surfaces_as_the_tiers_own_error(
-    label, builder, error
-) -> None:
+def test_an_exhausted_transport_failure_surfaces_as_the_tiers_own_error(label, builder, error) -> None:
     """The other leg, and the one that is easy to miss.
 
     A transport error is deliberately re-raised bare inside the retried half so the decorator can
@@ -383,4 +377,3 @@ def test_a_withholding_client_withholds_on_every_failed_leg(label, builder, with
     resolver used to raise instead of falling through to REST, and `enrich` wraps the call in a
     `try/finally` with no `except`, so the whole run aborted mid-loop."""
     assert builder(handler)() == withheld
-

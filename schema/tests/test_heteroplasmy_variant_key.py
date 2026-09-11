@@ -149,11 +149,12 @@ def test_an_integer_kind_tiles_cleanly_which_is_why_this_was_missed() -> None:
     from just_dna_format.binning import RepeatAlleleRow
 
     rows = [
-        RepeatAlleleRow(gene="HTT", repeat_unit="CAG", conclusion="normal",
-                        measure_min=6, measure_max=35),
-        RepeatAlleleRow(gene="HTT", repeat_unit="CAG", conclusion="intermediate",
-                        measure_min=36, measure_max=39),
-        RepeatAlleleRow(gene="HTT", repeat_unit="CAG", conclusion="pathogenic",
-                        measure_min=40, measure_max=None),
+        RepeatAlleleRow(gene="HTT", repeat_unit="CAG", conclusion="normal", measure_min=6, measure_max=35),
+        RepeatAlleleRow(
+            gene="HTT", repeat_unit="CAG", conclusion="intermediate", measure_min=36, measure_max=39
+        ),
+        RepeatAlleleRow(
+            gene="HTT", repeat_unit="CAG", conclusion="pathogenic", measure_min=40, measure_max=None
+        ),
     ]
     assert validate_bins(rows) == []

@@ -28,25 +28,49 @@ from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME
 
 # One real annotation, three genotypes — ClinPGx 655385012 (VKORC1/warfarin, level 1A).
 _ROWS = [
-    {"annotation_id": "655385012", "subject": "rs9923231", "rsid": "rs9923231", "gene": "VKORC1",
-     "genotype": "CC", "evidence_level": "1A", "phenotype_category": "Dosage",
-     "drugs": "warfarin", "phenotypes": None,
-     "annotation_text": "Patients with the rs9923231 CC genotype may require an increased dose of "
-                        "warfarin as compared to patients with the CT or TT genotype.",
-     "url": "https://www.clinpgx.org/clinicalAnnotation/655385012"},
-    {"annotation_id": "655385012", "subject": "rs9923231", "rsid": "rs9923231", "gene": "VKORC1",
-     "genotype": "TT", "evidence_level": "1A", "phenotype_category": "Dosage",
-     "drugs": "warfarin", "phenotypes": None,
-     "annotation_text": "Patients with the rs9923231 TT genotype may require a decreased dose of "
-                        "warfarin as compared to patients with the CC or CT genotype.",
-     "url": "https://www.clinpgx.org/clinicalAnnotation/655385012"},
+    {
+        "annotation_id": "655385012",
+        "subject": "rs9923231",
+        "rsid": "rs9923231",
+        "gene": "VKORC1",
+        "genotype": "CC",
+        "evidence_level": "1A",
+        "phenotype_category": "Dosage",
+        "drugs": "warfarin",
+        "phenotypes": None,
+        "annotation_text": "Patients with the rs9923231 CC genotype may require an increased dose of "
+        "warfarin as compared to patients with the CT or TT genotype.",
+        "url": "https://www.clinpgx.org/clinicalAnnotation/655385012",
+    },
+    {
+        "annotation_id": "655385012",
+        "subject": "rs9923231",
+        "rsid": "rs9923231",
+        "gene": "VKORC1",
+        "genotype": "TT",
+        "evidence_level": "1A",
+        "phenotype_category": "Dosage",
+        "drugs": "warfarin",
+        "phenotypes": None,
+        "annotation_text": "Patients with the rs9923231 TT genotype may require a decreased dose of "
+        "warfarin as compared to patients with the CC or CT genotype.",
+        "url": "https://www.clinpgx.org/clinicalAnnotation/655385012",
+    },
     # A different gene, so `--gene` has something to exclude.
-    {"annotation_id": "655385400", "subject": "rs2108622", "rsid": "rs2108622", "gene": "CYP4F2",
-     "genotype": "TT", "evidence_level": "1A", "phenotype_category": "Dosage",
-     "drugs": "warfarin", "phenotypes": None,
-     "annotation_text": "Patients with the rs2108622 TT genotype may have increased warfarin "
-                        "dosage requirements as compared to patients with the CC genotype.",
-     "url": "https://www.clinpgx.org/clinicalAnnotation/655385400"},
+    {
+        "annotation_id": "655385400",
+        "subject": "rs2108622",
+        "rsid": "rs2108622",
+        "gene": "CYP4F2",
+        "genotype": "TT",
+        "evidence_level": "1A",
+        "phenotype_category": "Dosage",
+        "drugs": "warfarin",
+        "phenotypes": None,
+        "annotation_text": "Patients with the rs2108622 TT genotype may have increased warfarin "
+        "dosage requirements as compared to patients with the CC genotype.",
+        "url": "https://www.clinpgx.org/clinicalAnnotation/655385400",
+    },
 ]
 
 
@@ -87,13 +111,17 @@ def test_the_conclusion_is_the_published_sentence(snapshot: Path, tmp_path: Path
 def test_the_gene_column_reaches_the_row(snapshot: Path) -> None:
     """`PharmVariantRow.gene` is optional and was left empty on every drafted row while the source
     stated it — a column a human then has to fill from the same file the drafter just read."""
-    rows, _ = _rows_from_snapshot(load_snapshot(snapshot)[0], genes=(), drugs=["warfarin"], min_evidence_level=None)
+    rows, _ = _rows_from_snapshot(
+        load_snapshot(snapshot)[0], genes=(), drugs=["warfarin"], min_evidence_level=None
+    )
     assert {r.gene for r in rows} == {"VKORC1", "CYP4F2"}
 
 
 def test_the_gene_filter_is_applied_and_reported(snapshot: Path) -> None:
     """`--gene` used to be silently unapplied, with a warning giving a false reason for it."""
-    rows, warnings = _rows_from_snapshot(load_snapshot(snapshot)[0], genes=["VKORC1"], drugs=["warfarin"], min_evidence_level=None)
+    rows, warnings = _rows_from_snapshot(
+        load_snapshot(snapshot)[0], genes=["VKORC1"], drugs=["warfarin"], min_evidence_level=None
+    )
 
     assert {r.gene for r in rows} == {"VKORC1"}
     assert not any("carries no gene column" in w for w in warnings)
@@ -102,5 +130,7 @@ def test_the_gene_filter_is_applied_and_reported(snapshot: Path) -> None:
 
 def test_an_unmatched_gene_yields_nothing_rather_than_everything(snapshot: Path) -> None:
     """The failure mode a silently-ignored filter has: asking for one gene and getting the lot."""
-    rows, _ = _rows_from_snapshot(load_snapshot(snapshot)[0], genes=["CYP2C9"], drugs=["warfarin"], min_evidence_level=None)
+    rows, _ = _rows_from_snapshot(
+        load_snapshot(snapshot)[0], genes=["CYP2C9"], drugs=["warfarin"], min_evidence_level=None
+    )
     assert rows == []

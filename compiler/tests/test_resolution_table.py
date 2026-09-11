@@ -17,8 +17,7 @@ from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+    "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
 )
 _STUDIES = "rsid,pmid\nrs1801133,9545397\n"
 
@@ -68,8 +67,14 @@ def test_resolve_from_table_fills_expands_and_verifies() -> None:
     v_need_rsid = _v(chrom="19", start=44908683, ref="T")  # position-only → rsid fill
     v_multi = _v(rsid="rs999")  # rsid-only → expand to two coord-keyed rows
     table = {
-        "rs1801133": [ResolutionRow(variant_key="rs1801133", rsid="rs1801133", chrom="1", start=11856377, ref="G", alts="A")],
-        "19:44908683:T": [ResolutionRow(variant_key="19:44908683:T", rsid="rs429358", chrom="19", start=44908683, ref="T")],
+        "rs1801133": [
+            ResolutionRow(
+                variant_key="rs1801133", rsid="rs1801133", chrom="1", start=11856377, ref="G", alts="A"
+            )
+        ],
+        "19:44908683:T": [
+            ResolutionRow(variant_key="19:44908683:T", rsid="rs429358", chrom="19", start=44908683, ref="T")
+        ],
         "rs999": [
             ResolutionRow(variant_key="rs999", rsid="rs999", chrom="6", start=600, ref="C", locus_index=1),
             ResolutionRow(variant_key="rs999", rsid="rs999", chrom="5", start=500, ref="A", locus_index=0),
@@ -80,7 +85,11 @@ def test_resolve_from_table_fills_expands_and_verifies() -> None:
 
     by_key = {p.variant_key: p for p in patched}
     # 1:1 fill keeps the frozen rsid key, fills the coordinate
-    assert (by_key["rs1801133"].chrom, by_key["rs1801133"].start, by_key["rs1801133"].ref) == ("1", 11856377, "G")
+    assert (by_key["rs1801133"].chrom, by_key["rs1801133"].start, by_key["rs1801133"].ref) == (
+        "1",
+        11856377,
+        "G",
+    )
     # position-only fills the rsid, keeps the frozen coordinate key (no flip)
     assert by_key["19:44908683:T"].rsid == "rs429358"
     # one-to-many expands to two distinct coord-keyed rows, ordered by locus_index (5:500 before 6:600)
@@ -143,9 +152,9 @@ def test_deprecated_ensembl_cache_path_warns(tmp_path: Path) -> None:
 def test_digest_parity_and_offline_roundtrip(tmp_path: Path) -> None:
     variants = (
         "rsid,chrom,start,ref,genotype,state,conclusion,gene\n"
-        "rs1801133,,,,A/G,risk,c1,MTHFR\n"          # rsid-only → 1:1 fill
-        ",19,44908683,T,C/T,risk,c2,APOE\n"          # position-only → rsid fill (rsid dropped on reverse)
-        "rs999,,,,A/T,risk,c3,X\n"                    # rsid-only → one-to-many expansion (rsid dropped)
+        "rs1801133,,,,A/G,risk,c1,MTHFR\n"  # rsid-only → 1:1 fill
+        ",19,44908683,T,C/T,risk,c2,APOE\n"  # position-only → rsid fill (rsid dropped on reverse)
+        "rs999,,,,A/T,risk,c3,X\n"  # rsid-only → one-to-many expansion (rsid dropped)
     )
     spec = _spec(tmp_path / "spec", variants)
 
@@ -191,14 +200,22 @@ def test_resolution_signature_ignores_provenance_and_order(tmp_path: Path) -> No
 
     # Same fact, different provenance (source/timestamp) → identical resolution_signature.
     a = compile_module(
-        _spec(tmp_path / "a", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c1\n",
-              header + facts.format(src="cache", ts="2026-01-01T00:00:00Z")),
-        tmp_path / "outa", ensembl_cache=None,
+        _spec(
+            tmp_path / "a",
+            "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c1\n",
+            header + facts.format(src="cache", ts="2026-01-01T00:00:00Z"),
+        ),
+        tmp_path / "outa",
+        ensembl_cache=None,
     )
     b = compile_module(
-        _spec(tmp_path / "b", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c1\n",
-              header + facts.format(src="ensembl-graphql", ts="2026-09-09T09:09:09Z")),
-        tmp_path / "outb", ensembl_cache=None,
+        _spec(
+            tmp_path / "b",
+            "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c1\n",
+            header + facts.format(src="ensembl-graphql", ts="2026-09-09T09:09:09Z"),
+        ),
+        tmp_path / "outb",
+        ensembl_cache=None,
     )
     assert a.success and b.success
     assert a.manifest.compilation.resolution_signature == b.manifest.compilation.resolution_signature
@@ -208,18 +225,19 @@ def test_resolution_signature_ignores_provenance_and_order(tmp_path: Path) -> No
 
     # A fact edit (coordinate) DOES change the signature.
     c = compile_module(
-        _spec(tmp_path / "c", "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c1\n",
-              header + "rs1801133,rs1801133,1,11856378,G,A,GRCh38,0,cache,resolved,\n"),
-        tmp_path / "outc", ensembl_cache=None,
+        _spec(
+            tmp_path / "c",
+            "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,c1\n",
+            header + "rs1801133,rs1801133,1,11856378,G,A,GRCh38,0,cache,resolved,\n",
+        ),
+        tmp_path / "outc",
+        ensembl_cache=None,
     )
     assert c.manifest.compilation.resolution_signature != a.manifest.compilation.resolution_signature
 
 
 def test_resolution_csv_absent_from_inputs_and_content_signature_unchanged(tmp_path: Path) -> None:
-    positioned = (
-        "rsid,chrom,start,ref,genotype,state,conclusion\n"
-        "rs1801133,1,11856377,G,A/G,risk,c1\n"
-    )
+    positioned = "rsid,chrom,start,ref,genotype,state,conclusion\nrs1801133,1,11856377,G,A/G,risk,c1\n"
     resolution = (
         "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status,fetched_at\n"
         "rs1801133,rs1801133,1,11856377,G,A,GRCh38,0,manual,resolved,\n"
@@ -227,7 +245,9 @@ def test_resolution_csv_absent_from_inputs_and_content_signature_unchanged(tmp_p
     # Without resolution.csv
     without = compile_module(_spec(tmp_path / "wo", positioned), tmp_path / "owo", resolve_with_ensembl=False)
     # With a resolution.csv added (same authored data)
-    with_ = compile_module(_spec(tmp_path / "wi", positioned, resolution), tmp_path / "owi", ensembl_cache=None)
+    with_ = compile_module(
+        _spec(tmp_path / "wi", positioned, resolution), tmp_path / "owi", ensembl_cache=None
+    )
     assert without.success and with_.success
 
     # content_signature is the authored-only identity — blind to resolution.csv.
@@ -265,13 +285,17 @@ def test_strict_and_best_effort_flags_via_table(tmp_path: Path) -> None:
     assert be.manifest.compilation.fully_resolved is False
 
     # strict with the same partial table: fails before any parquet is written.
-    st = compile_module(_spec(tmp_path / "st", variants, partial), tmp_path / "ost", ensembl_cache=None, strict=True)
+    st = compile_module(
+        _spec(tmp_path / "st", variants, partial), tmp_path / "ost", ensembl_cache=None, strict=True
+    )
     assert not st.success
     assert any("unresolved genomic positions" in e for e in st.errors)
     assert not (tmp_path / "ost" / "weights.parquet").exists()
 
     # strict with a complete table: succeeds and is fully resolved.
-    ok = compile_module(_spec(tmp_path / "ok", variants, complete), tmp_path / "ook", ensembl_cache=None, strict=True)
+    ok = compile_module(
+        _spec(tmp_path / "ok", variants, complete), tmp_path / "ook", ensembl_cache=None, strict=True
+    )
     assert ok.success, ok.errors
     assert ok.manifest.compilation.resolution_mode == "strict"
     assert ok.manifest.compilation.fully_resolved is True

@@ -93,9 +93,7 @@ RETIRED_ARCHIVE = ArchiveVintage(
     id_column="Clinical Annotation ID",
 )
 
-DEFAULT_CLINPGX_URL = (
-    f"https://api.clinpgx.org/v1/download/file/data/{CURRENT_ARCHIVE.archive}"
-)
+DEFAULT_CLINPGX_URL = f"https://api.clinpgx.org/v1/download/file/data/{CURRENT_ARCHIVE.archive}"
 #: The archive member the terms arrive in. A source-format detail, so it stays here — unlike the name
 #: the *snapshot* stores it under, which is `locations.SNAPSHOT_LICENSE_FILENAME` because four other
 #: parties have to agree on it. They are the same string today and are not the same fact.
@@ -122,10 +120,10 @@ def _schema() -> dict:
     """Fixed column order + dtypes, so a rebuild is byte-identical (Principle 7)."""
     return {
         "annotation_id": pl.Utf8,
-        "subject": pl.Utf8,          # the `Variant/Haplotypes` cell, verbatim
-        "rsid": pl.Utf8,             # populated only when the subject is an rsID
+        "subject": pl.Utf8,  # the `Variant/Haplotypes` cell, verbatim
+        "rsid": pl.Utf8,  # populated only when the subject is an rsID
         "gene": pl.Utf8,
-        "genotype": pl.Utf8,         # verbatim as ClinPGx writes it (`CC`, `*1/*17`, `C/del`)
+        "genotype": pl.Utf8,  # verbatim as ClinPGx writes it (`CC`, `*1/*17`, `C/del`)
         "evidence_level": pl.Utf8,
         "phenotype_category": pl.Utf8,
         "drugs": pl.Utf8,
@@ -151,7 +149,10 @@ def download_clinpgx_zip(dest: Path, url: str = DEFAULT_CLINPGX_URL) -> tuple[Pa
     the same rule every bulk download in this package obeys.
     """
     streamed = stream_to_file(
-        dest, url, error_cls=ClinPgxUnavailable, what="the ClinPGx bulk archive",
+        dest,
+        url,
+        error_cls=ClinPgxUnavailable,
+        what="the ClinPGx bulk archive",
         remedy="Pass --zip <archive> to build from a copy you already hold.",
     )
     return streamed.path, streamed.sha256
@@ -230,7 +231,10 @@ def require_current_archive(archive: zipfile.ZipFile) -> ArchiveVintage:
 
 
 def build_snapshot(
-    zip_path: Path, out_dir: Path, *, source_url: str = DEFAULT_CLINPGX_URL,
+    zip_path: Path,
+    out_dir: Path,
+    *,
+    source_url: str = DEFAULT_CLINPGX_URL,
     source_sha256: str | None = None,
 ) -> ClinPgxBuildResult:
     """`summaryAnnotations.zip` → `clinpgx/data/annotations.parquet` + `release.json` + `LICENSE.txt`.
@@ -285,9 +289,7 @@ def build_snapshot(
             }
         )
 
-    frame = pl.DataFrame(records, schema=_schema()).sort(
-        ["annotation_id", "genotype"], nulls_last=True
-    )
+    frame = pl.DataFrame(records, schema=_schema()).sort(["annotation_id", "genotype"], nulls_last=True)
     parquet_path = data_dir / "annotations.parquet"
     frame.write_parquet(parquet_path, compression="zstd")
 
@@ -314,7 +316,11 @@ def build_snapshot(
     atomic_write_text((out_dir / RELEASE_FILENAME), json.dumps(release, indent=2) + "\n")
     logger.info(
         "ClinPGx snapshot: %d rows across %d annotations (%s), %d genes → %s",
-        len(records), len(by_id), created or "undated", len(genes), parquet_path,
+        len(records),
+        len(by_id),
+        created or "undated",
+        len(genes),
+        parquet_path,
     )
     return ClinPgxBuildResult(
         out_dir=out_dir,

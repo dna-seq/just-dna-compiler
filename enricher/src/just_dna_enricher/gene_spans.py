@@ -150,10 +150,7 @@ def gene_span(symbol: str, *, mane_cache: Path | None = None) -> SpanLookup:
         return SpanLookup(reason="contig_disagreement")
 
     chrom = placed.pop()
-    usable = [
-        row for row in rows
-        if chrom_from_accession(row[0].split(".")[0].removeprefix("NC_")) == chrom
-    ]
+    usable = [row for row in rows if chrom_from_accession(row[0].split(".")[0].removeprefix("NC_")) == chrom]
     return SpanLookup(
         span=GeneSpan(
             gene=symbol,

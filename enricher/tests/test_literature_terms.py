@@ -43,12 +43,13 @@ def _cheap_proof_of_work(monkeypatch):
     """8 bits instead of 20: the pass attests on its way out and these cases are not about the work."""
     monkeypatch.setattr(verification_module, "VERIFICATION_DIFFICULTY_BITS", 8)
 
+
 _ASSETS = Path(__file__).resolve().parents[2] / "assets"
 _ESUMMARY = json.loads((_ASSETS / "pubmed_esummary_payload.json").read_text())
 _EPMC_SEARCH = json.loads((_ASSETS / "europepmc_search_payload.json").read_text())
 _EPMC_LICENSED = json.loads((_ASSETS / "europepmc_licensed_payload.json").read_text())
 
-_REAL = "29165669"        # in the esummary + unlicensed epmc recordings
+_REAL = "29165669"  # in the esummary + unlicensed epmc recordings
 #: The two licensed records, read out of the recording rather than pasted in.
 _LICENSED = {r["pmid"]: r for r in _EPMC_LICENSED["resultList"]["result"]}
 _NC_PMID = "41585745"
@@ -109,9 +110,7 @@ def _idconv(records: list[dict]) -> PmcIdConverterClient:
     return client
 
 
-def _spec(
-    d: Path, *, studies: str | None = None, bins: str | None = None, pharm: str | None = None
-) -> Path:
+def _spec(d: Path, *, studies: str | None = None, bins: str | None = None, pharm: str | None = None) -> Path:
     d.mkdir(parents=True, exist_ok=True)
     (d / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
     if studies is not None:
@@ -155,9 +154,7 @@ def test_the_three_rights_are_orthogonal() -> None:
 def test_the_pass_records_the_article_licence_and_its_rights(tmp_path: Path) -> None:
     """Read out of the recording at runtime, so a refreshed payload cannot leave a stale assertion."""
     spec = _spec(tmp_path / "s", studies=f"rsid,pmid\nrs334,{_NC_PMID}\nrs334,{_CC_BY_PMID}\n")
-    result = enrich_literature(
-        spec, eutils=_eutils(), europepmc=_epmc(_EPMC_LICENSED), check_doi=False
-    )
+    result = enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(_EPMC_LICENSED), check_doi=False)
     rows = {r.pmid: r for r in result.rows}
     for pmid, record in _LICENSED.items():
         assert rows[pmid].license == record["license"]
@@ -176,21 +173,15 @@ def test_a_dropped_citation_stops_being_named_as_quoted_publisher_text(tmp_path:
     row is not this pass's call — and the row's pinned `quotes_authored` said the module still quotes
     it. Every later run therefore named it, clearable only by deleting the sidecar.
     """
-    spec = _spec(
-        tmp_path / "s", studies=f"rsid,pmid,provenance_quote\nrs334,{_NC_PMID},some passage\n"
-    )
-    quoted = enrich_literature(
-        spec, eutils=_eutils(), europepmc=_epmc(_EPMC_LICENSED), check_doi=False
-    )
+    spec = _spec(tmp_path / "s", studies=f"rsid,pmid,provenance_quote\nrs334,{_NC_PMID},some passage\n")
+    quoted = enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(_EPMC_LICENSED), check_doi=False)
     assert quoted.rows[0].commercial_use is False
     assert quoted.noncommercial_quoted == [_NC_PMID]
 
     (spec / "studies.csv").write_text(f"rsid,pmid\nrs334,{_NC_PMID}\n", encoding="utf-8")
-    dropped = enrich_literature(
-        spec, eutils=_eutils(), europepmc=_epmc(_EPMC_LICENSED), check_doi=False
-    )
-    assert dropped.rows[0].commercial_use is False      # the row and its licence are unchanged
-    assert dropped.noncommercial_quoted == []           # the quote that mattered is gone
+    dropped = enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(_EPMC_LICENSED), check_doi=False)
+    assert dropped.rows[0].commercial_use is False  # the row and its licence are unchanged
+    assert dropped.noncommercial_quoted == []  # the quote that mattered is gone
 
 
 def test_the_licence_is_not_derived_from_the_open_access_flag(tmp_path: Path) -> None:
@@ -200,9 +191,7 @@ def test_the_licence_is_not_derived_from_the_open_access_flag(tmp_path: Path) ->
     assert record["isOpenAccess"] == "N" and record["license"] == "cc by", "the recorded case"
 
     spec = _spec(tmp_path / "s", studies=f"rsid,pmid\nrs334,{_CC_BY_PMID}\n")
-    row = enrich_literature(
-        spec, eutils=_eutils(), europepmc=_epmc(_EPMC_LICENSED), check_doi=False
-    ).rows[0]
+    row = enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(_EPMC_LICENSED), check_doi=False).rows[0]
     assert row.is_open_access is False
     assert row.license == "cc by"
     assert row.commercial_use is True
@@ -210,9 +199,7 @@ def test_the_licence_is_not_derived_from_the_open_access_flag(tmp_path: Path) ->
 
 def test_a_record_stating_no_licence_leaves_every_axis_null(tmp_path: Path) -> None:
     spec = _spec(tmp_path / "s", studies=f"rsid,pmid\nrs334,{_REAL}\n")
-    row = enrich_literature(
-        spec, eutils=_eutils(), europepmc=_epmc(_EPMC_SEARCH), check_doi=False
-    ).rows[0]
+    row = enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(_EPMC_SEARCH), check_doi=False).rows[0]
     assert row.license is None
     assert (row.commercial_use, row.share_alike, row.redistribution) == (None, None, None)
 
@@ -225,9 +212,7 @@ def test_the_written_columns_are_derived_from_the_model(tmp_path: Path) -> None:
     header = (spec / "literature.csv").read_text(encoding="utf-8").splitlines()[0]
     assert header.split(",") == list(LiteratureRow.model_fields)
     # And the file it just wrote reloads through the model it was written from.
-    reloaded = enrich_literature(
-        spec, eutils=_eutils(), europepmc=_epmc(_EPMC_LICENSED), check_doi=False
-    )
+    reloaded = enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(_EPMC_LICENSED), check_doi=False)
     assert reloaded.rows[0].license == _LICENSED[_NC_PMID]["license"]
 
 
@@ -245,9 +230,7 @@ def test_a_module_whose_only_citations_are_bin_pointers_is_enriched(tmp_path: Pa
         ),
     )
     assert not (spec / "studies.csv").exists()
-    result = enrich_literature(
-        spec, eutils=_eutils(), europepmc=_epmc(_EPMC_SEARCH), check_doi=False
-    )
+    result = enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(_EPMC_SEARCH), check_doi=False)
     assert [r.pmid for r in result.rows] == [_REAL]
     assert result.rows[0].exists is True
 
@@ -291,9 +274,7 @@ def test_a_bin_only_citation_asks_no_quote_question(tmp_path: Path) -> None:
             f"HTT,CAG,repeat_count,40,,fully penetrant,false,{_REAL}\n"
         ),
     )
-    result = enrich_literature(
-        spec, eutils=_eutils(), europepmc=_epmc(_EPMC_SEARCH), check_doi=False
-    )
+    result = enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(_EPMC_SEARCH), check_doi=False)
     assert result.rows[0].quotes_authored == 0
     assert result.rows[0].quotes_found is None
     assert "nothing to check against fulltext" in result.coverage
@@ -340,8 +321,7 @@ def test_the_four_converter_outcomes_are_spelled_four_different_ways() -> None:
     """Resolved, in-PMC-with-no-pmid, not-in-PMC, and never-answered. Collapsing the last two would
     render a failed request as a definite negative, which is S20 one service over."""
     absent = _idconv(
-        [{"pmcid": _PMC, "requested-id": _PMC, "status": "error",
-          "errmsg": "Identifier not found in PMC"}]
+        [{"pmcid": _PMC, "requested-id": _PMC, "status": "error", "errmsg": "Identifier not found in PMC"}]
     )
     hint = lookup_citation(pmcid=_PMC, clients=LookupClients(pmc_idconv=absent))
     assert any(f.level == "warning" and "PMC has no record of" in f.message for f in hint.findings)
@@ -375,8 +355,12 @@ def test_the_converter_batches_and_answers_by_requested_id() -> None:
     client = _idconv(
         [
             {"pmcid": _PMC, "requested-id": _PMC, "pmid": int(_PMC_PMID)},
-            {"pmcid": "PMC9999999999", "requested-id": "PMC9999999999", "status": "error",
-             "errmsg": "Identifier not found in PMC"},
+            {
+                "pmcid": "PMC9999999999",
+                "requested-id": "PMC9999999999",
+                "status": "error",
+                "errmsg": "Identifier not found in PMC",
+            },
         ]
     )
     resolved = client.resolve([_PMC, "PMC9999999999", _PMC])
@@ -408,9 +392,7 @@ def test_a_module_whose_only_citations_are_pharm_pointers_is_enriched(tmp_path: 
         ),
     )
     assert not (spec / "studies.csv").exists()
-    result = enrich_literature(
-        spec, eutils=_eutils(), europepmc=_epmc(_EPMC_SEARCH), check_doi=False
-    )
+    result = enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(_EPMC_SEARCH), check_doi=False)
     assert [r.pmid for r in result.rows] == [_REAL]
     assert result.rows[0].exists is True
     # And it asks no quote question, for the reason the column exists at all: `provenance_quote`
@@ -457,9 +439,7 @@ def test_the_enricher_keeps_no_second_roster_of_the_citing_kinds() -> None:
     literals = {
         node.value
         for node in ast.walk(tree)
-        if isinstance(node, ast.Constant)
-        and isinstance(node.value, str)
-        and id(node) not in docstrings
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings
     }
     citing = {csv_name for csv_name, _model in _CITING_TABLE_KINDS}
     assert citing, "the registry must be non-empty for this guard to mean anything"

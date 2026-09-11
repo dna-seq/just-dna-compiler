@@ -71,6 +71,7 @@ def _brief(exc: Exception) -> str:
     """A duckdb binder error carries the whole failing query; a hint wants only the reason."""
     return str(exc).strip().splitlines()[0]
 
+
 #: Why each looked-up column is reported rather than written. Mirrors `hints.REDUNDANCY_BEARING`,
 #: which names the check that would be spent; this names the reason in the report's own vocabulary.
 _REFUSAL_BY_COLUMN: dict[str, str] = {
@@ -148,9 +149,7 @@ class LookupClients:
 
 
 #: The client fields of `LookupClients`, derived rather than listed (`@registry-completeness`).
-CLIENT_FIELDS: tuple[str, ...] = tuple(
-    f.name for f in fields(LookupClients) if not f.name.startswith("_")
-)
+CLIENT_FIELDS: tuple[str, ...] = tuple(f.name for f in fields(LookupClients) if not f.name.startswith("_"))
 
 
 @dataclass
@@ -364,9 +363,7 @@ def _lookup_from_cache(
             # The label, not the path: the path is in `snapshots` for whoever wants it, and the prose
             # stays free of the server's directory layout (S93). duckdb's own first line may still
             # name the file — that is upstream's sentence, kept as evidence.
-            hint.findings.append(
-                Finding(None, None, "info", f"{label} snapshot unreadable: {_brief(exc)}")
-            )
+            hint.findings.append(Finding(None, None, "info", f"{label} snapshot unreadable: {_brief(exc)}"))
             continue
         hint.checked.add(label)
         for locus in by_rsid.get(rsid or "", []):
@@ -413,7 +410,9 @@ def _lookup_live_loci(hint: VariantHint, rsid: str | None, clients: LookupClient
     if loci is None:
         hint.findings.append(
             Finding(
-                None, None, "warning",
+                None,
+                None,
+                "warning",
                 f"{rsid}: live Ensembl could not be reached, so its answer is unchecked rather than "
                 f"empty — re-run before reading this as an rsID Ensembl does not have",
             )
@@ -428,7 +427,9 @@ def _lookup_live_loci(hint: VariantHint, rsid: str | None, clients: LookupClient
     hint.loci.extend(loci)
     hint.findings.append(
         Finding(
-            None, None, "info",
+            None,
+            None,
+            "info",
             f"{rsid}: {len(loci)} locus/loci from live {source} — not from a pinned snapshot, so "
             f"re-running may differ as Ensembl advances",
         )
@@ -460,11 +461,7 @@ def _check_rsid_currency(hint: VariantHint, rsid: str | None, clients: LookupCli
 
 def _lookup_frequencies(hint: VariantHint, clients: LookupClients) -> None:
     """Population allele counts for the resolved locus. gnomAD serves no `af`; it is ac/an here."""
-    single = [
-        locus
-        for locus in hint.loci
-        if locus.get("alts") and "," not in str(locus["alts"])
-    ]
+    single = [locus for locus in hint.loci if locus.get("alts") and "," not in str(locus["alts"])]
     if not single:
         return
     locus = single[0]
@@ -477,9 +474,7 @@ def _lookup_frequencies(hint: VariantHint, clients: LookupClients) -> None:
         return
     record = found.get(variant_id)
     if record is None:
-        hint.findings.append(
-            Finding(None, None, "info", f"gnomAD has no record for {variant_id}")
-        )
+        hint.findings.append(Finding(None, None, "info", f"gnomAD has no record for {variant_id}"))
         return
     hint.vrs_id = record.get("vrs_id")
     for population in record.get("populations", []):
@@ -490,9 +485,7 @@ def _lookup_frequencies(hint: VariantHint, clients: LookupClients) -> None:
                 # gnomAD deliberately exposes no per-group frequency, so it is computed here rather
                 # than read. `None` when the denominator is absent or zero — never a silent 0.0.
                 "allele_frequency": (
-                    allele_count / allele_number
-                    if allele_count is not None and allele_number
-                    else None
+                    allele_count / allele_number if allele_count is not None and allele_number else None
                 ),
             }
         )
@@ -520,7 +513,9 @@ def _lookup_clin_sig(hint: VariantHint, clinvar_cache: Path | None) -> None:
         found = lookup_clin_sig(reference, alleles)
     except duckdb.Error as exc:
         hint.findings.append(
-            Finding(None, "clin_sig", "info", f"ClinVar snapshot unreadable, clin_sig unchecked: {_brief(exc)}")
+            Finding(
+                None, "clin_sig", "info", f"ClinVar snapshot unreadable, clin_sig unchecked: {_brief(exc)}"
+            )
         )
         return
     for records in found.values():
@@ -586,7 +581,9 @@ def _lookup_pubmind(
     if reference is None:
         hint.findings.append(
             Finding(
-                None, "clin_sig", "info",
+                None,
+                "clin_sig",
+                "info",
                 "PubMind was not consulted: no snapshot found ($JUST_DNA_PUBMIND_CACHE, or "
                 "--pubmind-cache). It is operator-built and there is none to download, so this is "
                 "nobody-asked rather than an absence in their corpus — build one with "
@@ -612,7 +609,9 @@ def _lookup_pubmind(
     except (duckdb.Error, PubMindDraftError) as exc:
         hint.findings.append(
             Finding(
-                None, "clin_sig", "info",
+                None,
+                "clin_sig",
+                "info",
                 f"PubMind snapshot unreadable, its verdict unchecked: {_brief(exc)}",
             )
         )
@@ -625,12 +624,15 @@ def _lookup_pubmind(
             int(record["start"]),
             str(record["ref"]).upper(),
             str(record["alt"]).upper(),
-        ) in wanted
+        )
+        in wanted
     )
     if not hint.pubmind:
         hint.findings.append(
             Finding(
-                None, "clin_sig", "info",
+                None,
+                "clin_sig",
+                "info",
                 "PubMind's corpus holds no record at this allele — no paper survived their triage "
                 "stage, which is not a benign call and not a disagreement with anybody",
             )
@@ -655,7 +657,9 @@ def _lookup_pubmind(
     if len(calls) > 1:
         hint.findings.append(
             Finding(
-                None, "clin_sig", "warning",
+                None,
+                "clin_sig",
+                "warning",
                 f"PubMind's own records disagree here: {', '.join(sorted(calls))} across "
                 f"{len(hint.pubmind)} record(s). Their record id keys on the text a model extracted "
                 f"rather than on the coordinate, so one position can carry several — every one is "
@@ -674,9 +678,7 @@ def _offer_coordinates(hint: VariantHint) -> None:
     if len(hint.loci) != 1:
         return  # more than one locus is a choice, not an answer; zero is nothing to offer
     locus = hint.loci[0]
-    source = next(
-        (name for name in sorted(hint.checked) if name.startswith("ensembl-")), "snapshot"
-    )
+    source = next((name for name in sorted(hint.checked) if name.startswith("ensembl-")), "snapshot")
     for column in ("chrom", "start", "ref", "alts"):
         value = locus.get(column)
         if value in (None, ""):
@@ -787,9 +789,7 @@ def lookup_citation(
     if pmcid:
         hint.pmcid = pmcid.strip().upper()
     if offline:
-        hint.findings.append(
-            Finding(None, None, "info", "offline: citation existence was not checked")
-        )
+        hint.findings.append(Finding(None, None, "info", "offline: citation existence was not checked"))
         return hint
     owned = clients is None
     clients = clients or LookupClients()
@@ -808,9 +808,7 @@ def lookup_citation(
             # by construction, so checking it would answer a question nobody asked.
             hint.doi_exists = clients.ensure("crossref", CrossrefClient).exists(doi)
             if hint.doi_exists is False:
-                hint.findings.append(
-                    Finding(None, "doi", "warning", f"Crossref has no record of {doi}")
-                )
+                hint.findings.append(Finding(None, "doi", "warning", f"Crossref has no record of {doi}"))
             elif hint.doi_exists is None:
                 hint.findings.append(Finding(None, "doi", "info", "Crossref could not be asked"))
     finally:
@@ -833,9 +831,7 @@ def _check_pmid(hint: CitationHint, pmid: str, clients: LookupClients) -> None:
         return
     hint.pmid_exists = not is_missing(record)
     if not hint.pmid_exists:
-        hint.findings.append(
-            Finding(None, "pmid", "warning", f"PubMed has no record for PMID {pmid}")
-        )
+        hint.findings.append(Finding(None, "pmid", "warning", f"PubMed has no record for PMID {pmid}"))
         return
     identifiers = _identifiers(record)
     hint.registry_doi = identifiers.get("doi")
@@ -864,15 +860,14 @@ def _check_pmid(hint: CitationHint, pmid: str, clients: LookupClients) -> None:
     hint.year = citation["year"]
     hint.first_author = citation["first_author"]
     if hint.title:
-        named = ", ".join(
-            part for part in (hint.first_author, hint.journal, hint.year) if part
-        )
+        named = ", ".join(part for part in (hint.first_author, hint.journal, hint.year) if part)
         hint.findings.append(
             Finding(
                 None,
                 "pmid",
                 "info",
-                f"PMID {pmid} names: {hint.title!r}" + (f" ({named})" if named else "")
+                f"PMID {pmid} names: {hint.title!r}"
+                + (f" ({named})" if named else "")
                 + " — existence is not identity, so confirm this is the paper you meant.",
             )
         )
@@ -909,9 +904,7 @@ def _check_pmcid(
     try:
         resolved = converter.resolve([pmcid])
     except Exception as exc:
-        hint.findings.append(
-            Finding(None, "pmid", "info", f"the PMC id converter could not be asked: {exc}")
-        )
+        hint.findings.append(Finding(None, "pmid", "info", f"the PMC id converter could not be asked: {exc}"))
         return None
     record = resolved.get(pmcid)
     if record is None:
@@ -925,8 +918,7 @@ def _check_pmcid(
                 None,
                 "pmid",
                 "warning",
-                f"PMC has no record of {pmcid}"
-                + (f" ({record.error})" if record.error else ""),
+                f"PMC has no record of {pmcid}" + (f" ({record.error})" if record.error else ""),
             )
         )
         return None

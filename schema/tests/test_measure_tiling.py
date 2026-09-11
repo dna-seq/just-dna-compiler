@@ -134,11 +134,16 @@ def test_a_fractional_modifier_dosage_is_not_evidence_about_the_tiled_axis() -> 
     surely it counts" is the obvious wrong repair, and it was in the first cut of this lane; the two
     behaviours below are why it came out.
     """
+
     def bins(dosage: float, spans):
         return [
             CopyNumberRow(
-                gene="SMN1", modifier_gene="SMN2", modifier_copy_number=dosage,
-                measure_min=lo, measure_max=hi, conclusion="x",
+                gene="SMN1",
+                modifier_gene="SMN2",
+                modifier_copy_number=dosage,
+                measure_min=lo,
+                measure_max=hi,
+                conclusion="x",
             )
             for lo, hi in spans
         ]
@@ -169,8 +174,12 @@ def test_a_whole_number_says_nothing_about_the_tiling() -> None:
     """
     rows = [
         HeteroplasmyRow(
-            gene="MT-TL1", reference_sequence="NC_012920.1", measure_min=lo, measure_max=hi,
-            conclusion="x", measure_tiling="quantised",
+            gene="MT-TL1",
+            reference_sequence="NC_012920.1",
+            measure_min=lo,
+            measure_max=hi,
+            conclusion="x",
+            measure_tiling="quantised",
         )
         for lo, hi in ((0, 0), (1, 1))
     ]
@@ -184,7 +193,11 @@ def test_two_rows_of_one_group_may_not_declare_different_tilings() -> None:
     """The rules run per group, so a group has one tiling or it has none it can run under."""
     rows = [
         RepeatAlleleRow(
-            gene="HTT", repeat_unit="CAG", measure_min=lo, measure_max=hi, conclusion="x",
+            gene="HTT",
+            repeat_unit="CAG",
+            measure_min=lo,
+            measure_max=hi,
+            conclusion="x",
             measure_tiling=tiling,
         )
         for (lo, hi), tiling in (((6, 26), "quantised"), ((27, 35), "continuous"))
@@ -201,7 +214,11 @@ def test_an_empty_cell_beside_a_declaration_is_absence_and_not_disagreement() ->
     """
     rows = [
         RepeatAlleleRow(
-            gene="HTT", repeat_unit="CAG", measure_min=lo, measure_max=hi, conclusion="x",
+            gene="HTT",
+            repeat_unit="CAG",
+            measure_min=lo,
+            measure_max=hi,
+            conclusion="x",
             measure_tiling=tiling,
         )
         for (lo, hi), tiling in (((6, 26), "continuous"), ((26, 35), None))
@@ -220,7 +237,11 @@ def test_two_groups_may_disagree_with_each_other() -> None:
     continuous segment mean for two different genes is not hypothetical."""
     rows = [
         CopyNumberRow(
-            gene=gene, measure_min=0, measure_max=1, conclusion="x", measure_tiling=tiling,
+            gene=gene,
+            measure_min=0,
+            measure_max=1,
+            conclusion="x",
+            measure_tiling=tiling,
         )
         for gene, tiling in (("SMN1", "quantised"), ("CYP2D6", "continuous"))
     ]
@@ -252,7 +273,10 @@ def test_a_declared_quantised_beside_a_fractional_value_warns_and_still_stands()
     """
     rows = [
         CopyNumberRow(
-            gene="SMN1", measure_min=0, measure_max=2.5, conclusion="low",
+            gene="SMN1",
+            measure_min=0,
+            measure_max=2.5,
+            conclusion="low",
             measure_tiling="quantised",
         )
     ]
@@ -266,7 +290,10 @@ def test_a_declared_quantised_beside_a_fractional_value_warns_and_still_stands()
     # The declaration standing is observable and not just recorded: a shared endpoint still refuses.
     touching = rows + [
         CopyNumberRow(
-            gene="SMN1", measure_min=2.5, conclusion="high", measure_tiling="quantised",
+            gene="SMN1",
+            measure_min=2.5,
+            conclusion="high",
+            measure_tiling="quantised",
         )
     ]
     with pytest.raises(ValueError, match="overlapping bins"):
@@ -306,10 +333,15 @@ def test_a_declared_continuous_repeat_table_reports_the_hole_a_grid_hides() -> N
     HTT's `[6,26] [27,35]` is gapless on a grid of whole numbers and strands every count in `(26,27)`
     once `RUC` is a Float. Declaring the tiling is what makes the check able to say so.
     """
+
     def bins(tiling):
         return [
             RepeatAlleleRow(
-                gene="HTT", repeat_unit="CAG", measure_min=lo, measure_max=hi, conclusion="x",
+                gene="HTT",
+                repeat_unit="CAG",
+                measure_min=lo,
+                measure_max=hi,
+                conclusion="x",
                 measure_tiling=tiling,
             )
             for lo, hi in ((6, 26), (27, 35))
@@ -342,30 +374,35 @@ def test_activity_score_keeps_its_third_behaviour() -> None:
 def test_the_rm55_warning_is_silent_on_a_continuous_table_and_fires_on_a_quantised_one() -> None:
     """Its central claim — green and silently unanswerable at every boundary — stops being true
     of a table whose effective tiling is continuous, so the sentence must stop being said there."""
+
     def bins(tiling):
         return [
             RepeatAlleleRow(
-                gene="HTT", repeat_unit="CAG", measure_min=lo, measure_max=hi, conclusion="x",
+                gene="HTT",
+                repeat_unit="CAG",
+                measure_min=lo,
+                measure_max=hi,
+                conclusion="x",
                 measure_tiling=tiling,
             )
             for lo, hi in ((6, 26), (27, 35))
         ]
 
     assert [w for w in measurement_shape_warnings(bins(None)) if FRACTIONAL_MEASURE_PHRASE in w]
-    assert not [
-        w for w in measurement_shape_warnings(bins("continuous")) if FRACTIONAL_MEASURE_PHRASE in w
-    ]
+    assert not [w for w in measurement_shape_warnings(bins("continuous")) if FRACTIONAL_MEASURE_PHRASE in w]
     # An inferred continuous reading silences it for the same reason a declared one does.
     inferred = [
         RepeatAlleleRow(
-            gene="HTT", repeat_unit="CAG", measure_min=lo, measure_max=hi, conclusion="x",
+            gene="HTT",
+            repeat_unit="CAG",
+            measure_min=lo,
+            measure_max=hi,
+            conclusion="x",
         )
         for lo, hi in ((6.0, 26.5), (26.5, 35.0))
     ]
     assert resolve_tiling(inferred).value == "continuous"
-    assert not [
-        w for w in measurement_shape_warnings(inferred) if FRACTIONAL_MEASURE_PHRASE in w
-    ]
+    assert not [w for w in measurement_shape_warnings(inferred) if FRACTIONAL_MEASURE_PHRASE in w]
 
 
 def test_a_declared_quantised_group_keeps_the_warning_even_beside_a_fraction() -> None:
@@ -376,7 +413,10 @@ def test_a_declared_quantised_group_keeps_the_warning_even_beside_a_fraction() -
     """
     rows = [
         CopyNumberRow(
-            gene="SMN1", measure_min=0, measure_max=2.5, conclusion="x",
+            gene="SMN1",
+            measure_min=0,
+            measure_max=2.5,
+            conclusion="x",
             measure_tiling="quantised",
         )
     ]
@@ -413,8 +453,13 @@ def test_the_effective_dosage_coalesces_including_at_zero(
 ) -> None:
     gene = "SMN2" if (cn is not None or copy_number is not None) else None
     row = CopyNumberRow(
-        gene="SMN1", modifier_gene=gene, modifier_cn=cn, modifier_copy_number=copy_number,
-        measure_min=0, measure_max=0, conclusion="x",
+        gene="SMN1",
+        modifier_gene=gene,
+        modifier_cn=cn,
+        modifier_copy_number=copy_number,
+        measure_min=0,
+        measure_max=0,
+        conclusion="x",
     )
     assert row.effective_modifier_copy_number == expected
 
@@ -425,8 +470,12 @@ def test_the_effective_dosage_is_a_fixed_point() -> None:
     Free for a coalesce and still owed, because "free" is an argument and this is a check.
     """
     row = CopyNumberRow(
-        gene="SMN1", modifier_gene="SMN2", modifier_cn=3,
-        measure_min=0, measure_max=0, conclusion="x",
+        gene="SMN1",
+        modifier_gene="SMN2",
+        modifier_cn=3,
+        measure_min=0,
+        measure_max=0,
+        conclusion="x",
     )
     materialized = row.model_copy(
         update={"modifier_cn": None, "modifier_copy_number": row.effective_modifier_copy_number}
@@ -439,8 +488,13 @@ def test_setting_both_dosage_columns_is_an_error() -> None:
     shape. Refusing is the same move the half-filled modifier pair already gets."""
     with pytest.raises(ValueError, match="two spellings of one dosage"):
         CopyNumberRow(
-            gene="SMN1", modifier_gene="SMN2", modifier_cn=2, modifier_copy_number=2.0,
-            measure_min=0, measure_max=0, conclusion="x",
+            gene="SMN1",
+            modifier_gene="SMN2",
+            modifier_cn=2,
+            modifier_copy_number=2.0,
+            measure_min=0,
+            measure_max=0,
+            conclusion="x",
         )
 
 
@@ -448,13 +502,15 @@ def test_setting_both_dosage_columns_is_an_error() -> None:
 def test_the_modifier_pair_rule_now_reads_the_effective_value(column: str) -> None:
     """Either spelling satisfies `modifier_gene`'s partner, and neither satisfies it alone."""
     CopyNumberRow(
-        gene="SMN1", modifier_gene="SMN2", measure_min=0, measure_max=0, conclusion="x",
+        gene="SMN1",
+        modifier_gene="SMN2",
+        measure_min=0,
+        measure_max=0,
+        conclusion="x",
         **{column: 2},
     )
     with pytest.raises(ValueError, match="set together or both left null"):
-        CopyNumberRow(
-            gene="SMN1", measure_min=0, measure_max=0, conclusion="x", **{column: 2}
-        )
+        CopyNumberRow(gene="SMN1", measure_min=0, measure_max=0, conclusion="x", **{column: 2})
 
 
 def test_the_group_key_holds_one_spelling_of_one_dosage() -> None:
@@ -468,12 +524,20 @@ def test_the_group_key_holds_one_spelling_of_one_dosage() -> None:
     assert "modifier_cn" not in CopyNumberRow._KEY_FIELDS
     rows = [
         CopyNumberRow(
-            gene="SMN1", modifier_gene="SMN2", modifier_cn=3,
-            measure_min=0, measure_max=1, conclusion="a",
+            gene="SMN1",
+            modifier_gene="SMN2",
+            modifier_cn=3,
+            measure_min=0,
+            measure_max=1,
+            conclusion="a",
         ),
         CopyNumberRow(
-            gene="SMN1", modifier_gene="SMN2", modifier_copy_number=3.0,
-            measure_min=0, measure_max=1, conclusion="b",
+            gene="SMN1",
+            modifier_gene="SMN2",
+            modifier_copy_number=3.0,
+            measure_min=0,
+            measure_max=1,
+            conclusion="b",
         ),
     ]
     with pytest.raises(ValueError, match="same lower bound|overlapping bins"):
@@ -488,8 +552,12 @@ def test_the_deprecation_is_one_line_per_table_however_many_rows_use_it() -> Non
     the same sentence as many times as the author wrote bins."""
     rows = [
         CopyNumberRow(
-            gene="SMN1", modifier_gene="SMN2", modifier_cn=n,
-            measure_min=0, measure_max=0, conclusion=f"SMA with SMN2={n}",
+            gene="SMN1",
+            modifier_gene="SMN2",
+            modifier_cn=n,
+            measure_min=0,
+            measure_max=0,
+            conclusion=f"SMA with SMN2={n}",
         )
         for n in (2, 3, 4)
     ]
@@ -508,14 +576,21 @@ def test_the_deprecation_is_one_line_per_table_however_many_rows_use_it() -> Non
 
 def test_nothing_is_deprecated_on_a_table_that_does_not_use_it() -> None:
     assert deprecation_warnings([_one_row_of(k) for k in sorted(VALID_MEASURE_KINDS)]) == []
-    assert deprecation_warnings(
-        [
-            CopyNumberRow(
-                gene="SMN1", modifier_gene="SMN2", modifier_copy_number=2.5,
-                measure_min=0, measure_max=0, conclusion="x",
-            )
-        ]
-    ) == []
+    assert (
+        deprecation_warnings(
+            [
+                CopyNumberRow(
+                    gene="SMN1",
+                    modifier_gene="SMN2",
+                    modifier_copy_number=2.5,
+                    measure_min=0,
+                    measure_max=0,
+                    conclusion="x",
+                )
+            ]
+        )
+        == []
+    )
 
 
 def test_the_coalesce_does_not_move_a_published_warning_string() -> None:
@@ -530,8 +605,12 @@ def test_the_coalesce_does_not_move_a_published_warning_string() -> None:
     """
     legacy = [
         CopyNumberRow(
-            gene="SMN1", modifier_gene="SMN2", modifier_cn=2,
-            measure_min=lo, measure_max=hi, conclusion="x",
+            gene="SMN1",
+            modifier_gene="SMN2",
+            modifier_cn=2,
+            measure_min=lo,
+            measure_max=hi,
+            conclusion="x",
         )
         for lo, hi in ((1, 1), (3, 3))
     ]
@@ -554,8 +633,12 @@ def test_the_deprecated_column_still_behaves_exactly_as_before() -> None:
     keys the group, and nothing about it refuses."""
     rows = [
         CopyNumberRow(
-            gene="SMN1", modifier_gene="SMN2", modifier_cn=n,
-            measure_min=0, measure_max=0, conclusion=f"SMA with SMN2={n}",
+            gene="SMN1",
+            modifier_gene="SMN2",
+            modifier_cn=n,
+            measure_min=0,
+            measure_max=0,
+            conclusion=f"SMA with SMN2={n}",
         )
         for n in (2, 3, 4)
     ]

@@ -74,7 +74,7 @@ def test_grch38_accession_is_scored_per_chromosome_not_by_version():
 
 
 def test_a_grch38_accession_we_cannot_parse_is_not_reported_as_absent():
-    """"The source said nothing" and "the source said something we cannot hold" are two findings.
+    """ "The source said nothing" and "the source said something we cannot hold" are two findings.
 
     A `del` on a GRCh38 accession needs a reference base the TSV does not carry, so it is withheld —
     but it must be counted separately from a record that has no GRCh38 accession at all.
@@ -128,13 +128,19 @@ def test_every_kept_row_carries_an_identity_and_names_which_one(built):
         if row["identity_derivation"] == CURATED_DERIVATION:
             curated = CIVIC_NAME_IDENTITY_BY_VARIANT[row["variant_id"]]
             assert (row["chrom"], row["start"], row["ref"], row["alt"]) == (
-                curated.chrom, curated.start, curated.ref, curated.alt
+                curated.chrom,
+                curated.start,
+                curated.ref,
+                curated.alt,
             )
         else:
             assert row["identity_derivation"] == (
-                "both" if has_rsid and has_coords
-                else "rsid" if has_rsid
-                else "grch38_hgvs" if has_coords
+                "both"
+                if has_rsid and has_coords
+                else "rsid"
+                if has_rsid
+                else "grch38_hgvs"
+                if has_coords
                 else "caid"
             )
         if row["identity_derivation"] == "caid":
@@ -148,9 +154,7 @@ def test_civic_grch37_coordinates_are_provenance_and_never_the_emitted_position(
     identity, this is the assertion that would catch it.
     """
     frame = _frame(built)
-    both = frame.filter(
-        pl.col("start").is_not_null() & pl.col("civic_grch37_start").is_not_null()
-    )
+    both = frame.filter(pl.col("start").is_not_null() & pl.col("civic_grch37_start").is_not_null())
     assert both.height > 0, "the fixture must exercise a row carrying both builds"
     assert (both["start"] != both["civic_grch37_start"]).all()
 
@@ -227,8 +231,12 @@ def test_a_combination_profile_is_distinguished_from_a_dangling_one(built, tmp_p
 
     rows = list(csv.DictReader(EVIDENCE.open(newline="", encoding="utf-8"), delimiter="\t"))
     dangling = dict(
-        rows[0], evidence_id="9999903", molecular_profile_id="99999999",
-        variant_origin="Rare Germline", significance="Predisposition", evidence_direction="Supports",
+        rows[0],
+        evidence_id="9999903",
+        molecular_profile_id="99999999",
+        variant_origin="Rare Germline",
+        significance="Predisposition",
+        evidence_direction="Supports",
     )
     evidence = tmp_path / "ClinicalEvidenceSummaries.tsv"
     with evidence.open("w", newline="", encoding="utf-8") as handle:
@@ -285,8 +293,7 @@ def test_a_variant_with_both_camps_is_counted_and_never_collapsed(tmp_path):
     """
     rows = list(csv.DictReader(EVIDENCE.open(newline="", encoding="utf-8"), delimiter="\t"))
     risk = next(
-        r for r in rows
-        if r["significance"] == "Predisposition" and r["evidence_direction"] == "Supports"
+        r for r in rows if r["significance"] == "Predisposition" and r["evidence_direction"] == "Supports"
     )
     protective = dict(
         risk, evidence_id="9999904", significance="Protectiveness", evidence_direction="Supports"
@@ -447,7 +454,10 @@ def test_a_curated_identity_places_a_row_the_source_alone_could_not(built):
     curated = CIVIC_NAME_IDENTITY_BY_VARIANT[3184]
     assert row["identity_derivation"][0] == CURATED_DERIVATION
     assert (row["chrom"][0], row["start"][0], row["ref"][0], row["alt"][0]) == (
-        curated.chrom, curated.start, curated.ref, curated.alt
+        curated.chrom,
+        curated.start,
+        curated.ref,
+        curated.alt,
     )
     assert row["rsid"][0] == curated.rsid
 
@@ -548,8 +558,7 @@ def widened(tmp_path):
     # A directory of its own, NOT `tmp_path / "snap"`: pytest hands both fixtures the same `tmp_path`,
     # so sharing the name makes the second build silently overwrite the first, and a test that asks
     # for both then compares a snapshot with itself.
-    return build_snapshot(EVIDENCE, VARIANTS, PROFILES, tmp_path / "widened", release="01-Aug-2026",
-                          vcf=VCF)
+    return build_snapshot(EVIDENCE, VARIANTS, PROFILES, tmp_path / "widened", release="01-Aug-2026", vcf=VCF)
 
 
 def test_without_the_vcf_the_build_is_exactly_what_it_was(built, widened):
@@ -686,9 +695,7 @@ def test_a_row_names_the_profile_its_evidence_item_actually_belongs_to(widened):
     assert frame["evidence_molecular_profile_id"].null_count() == 0, (
         "every row knows its own profile; a null here would read as 'not a composite'"
     )
-    composite = frame.filter(
-        pl.col("evidence_molecular_profile_id") != pl.col("molecular_profile_id")
-    )
+    composite = frame.filter(pl.col("evidence_molecular_profile_id") != pl.col("molecular_profile_id"))
     assert composite.height, "the fixture must carry a composite or this test proves nothing"
     for row in composite.iter_rows(named=True):
         assert " AND " in row["evidence_molecular_profile_name"], (
@@ -712,9 +719,10 @@ def test_the_composite_count_is_published_rather_than_left_to_each_reader(built,
     narrow = json.loads((built.out_dir / RELEASE_FILENAME).read_text())
     frame = _frame(widened)
 
-    assert wide["composite_profile_rows"] == frame.filter(
-        pl.col("evidence_molecular_profile_id") != pl.col("molecular_profile_id")
-    ).height
+    assert (
+        wide["composite_profile_rows"]
+        == frame.filter(pl.col("evidence_molecular_profile_id") != pl.col("molecular_profile_id")).height
+    )
     assert narrow["composite_profile_rows"] == 0, (
         "the TSV path drops a combination profile, so the narrow basis has none to label"
     )

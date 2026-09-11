@@ -123,7 +123,7 @@ def test_a_publish_onto_an_unmigrated_repo_deletes_the_retired_file_in_the_same_
     kwargs = api.upload_folder.call_args_list[0].kwargs
     assert kwargs["delete_patterns"] == [_OLD]
     assert _OLD in kwargs["commit_message"], "the operator reads the deletion in the commit message"
-    api.delete_files.assert_not_called()      # the deletion rides the upload; it is not a second write
+    api.delete_files.assert_not_called()  # the deletion rides the upload; it is not a second write
 
 
 def test_a_publish_onto_a_repo_that_has_moved_deletes_nothing(hf) -> None:
@@ -146,10 +146,11 @@ def test_a_publish_that_would_leave_the_citations_undescribed_is_refused() -> No
     """The 2026-09-02 publish, refused. The message names the file so the fix is the next command."""
     api = MagicMock()
     api.list_repo_files.return_value = [
-        "data/clinvar-chr1.parquet", "citations/citations.parquet", "release.json",
+        "data/clinvar-chr1.parquet",
+        "citations/citations.parquet",
+        "release.json",
     ]
-    plan = SnapshotPlan(repo_id=DEFAULT_CLINVAR_REPO_ID,
-                        files=["data/clinvar-chr1.parquet", "release.json"])
+    plan = SnapshotPlan(repo_id=DEFAULT_CLINVAR_REPO_ID, files=["data/clinvar-chr1.parquet", "release.json"])
     with pytest.raises(OrphanedSidecarError, match="citations/citations.parquet"):
         check_publish_orphans_no_sidecar(plan, api)
 
@@ -186,7 +187,7 @@ def test_the_guard_reads_the_tree_and_not_the_release_block() -> None:
     and passed the second bad publish exactly as the first one passed.
     """
     api = MagicMock()
-    api.list_repo_files.return_value = ["citations/citations.parquet"]   # no block anywhere
+    api.list_repo_files.return_value = ["citations/citations.parquet"]  # no block anywhere
     plan = SnapshotPlan(repo_id=DEFAULT_CLINVAR_REPO_ID, files=["release.json"])
     with pytest.raises(OrphanedSidecarError):
         check_publish_orphans_no_sidecar(plan, api)
@@ -198,10 +199,10 @@ def test_the_guard_reads_the_tree_and_not_the_release_block() -> None:
 def test_prune_names_the_glob_excluded_and_the_declared_and_leaves_the_rest() -> None:
     api = MagicMock()
     api.list_repo_tree.return_value = _tree(
-        (_NEW, 7_000_000),                       # this snapshot
-        (_OLD, 159_000_000),                     # declared retired
-        ("data/stray-export.parquet", 12),       # outside the glob
-        ("citations/citations.parquet", 13_000), # a sidecar: never a candidate
+        (_NEW, 7_000_000),  # this snapshot
+        (_OLD, 159_000_000),  # declared retired
+        ("data/stray-export.parquet", 12),  # outside the glob
+        ("citations/citations.parquet", 13_000),  # a sidecar: never a candidate
         ("release.json", 300),
         ("LICENSE.txt", 1_000),
         ("README.md", 2_000),

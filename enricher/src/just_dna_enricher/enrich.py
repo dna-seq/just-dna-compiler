@@ -175,9 +175,7 @@ def _subject_of_variant(v: VariantRow, genome_build: str = "GRCh38") -> Subject:
     anyway, because a fallback that mints a GRCh38 id on a GRCh37 module would be wrong in exactly the
     way this whole path was.
     """
-    key = v.variant_key or derive_variant_key(
-        v.rsid, v.chrom, v.start, v.ref, v.alts, build=genome_build
-    )
+    key = v.variant_key or derive_variant_key(v.rsid, v.chrom, v.start, v.ref, v.alts, build=genome_build)
     return Subject(key, v.rsid, v.chrom, v.start, v.ref, v.alts, v.genotype, "variants.csv")
 
 
@@ -211,8 +209,7 @@ def collect_subjects(
         if errors:
             raise EnrichmentError(f"pharm_variants.csv is invalid: {errors[0]}")
         subjects.extend(
-            Subject(r.variant_key, r.rsid, r.chrom, r.start, r.ref, None, r.genotype,
-                     "pharm_variants.csv")
+            Subject(r.variant_key, r.rsid, r.chrom, r.start, r.ref, None, r.genotype, "pharm_variants.csv")
             for r in rows
         )
 
@@ -222,8 +219,16 @@ def collect_subjects(
         if errors:
             raise EnrichmentError(f"haplotypes.csv is invalid: {errors[0]}")
         subjects.extend(
-            Subject(derive_variant_key(r.rsid, r.chrom, r.start, r.ref),
-                     r.rsid, r.chrom, r.start, r.ref, None, r.allele, "haplotypes.csv")
+            Subject(
+                derive_variant_key(r.rsid, r.chrom, r.start, r.ref),
+                r.rsid,
+                r.chrom,
+                r.start,
+                r.ref,
+                None,
+                r.allele,
+                "haplotypes.csv",
+            )
             for r in rows
         )
 
@@ -248,10 +253,15 @@ def collect_subjects(
             raise EnrichmentError(f"heteroplasmy.csv is invalid: {errors[0]}")
         subjects.extend(
             Subject(
-                r.variant_key or derive_variant_key(
-                    r.rsid, r.chrom, r.start, r.ref, r.alts, build=genome_build
-                ),
-                r.rsid, r.chrom, r.start, r.ref, r.alts, None, "heteroplasmy.csv",
+                r.variant_key
+                or derive_variant_key(r.rsid, r.chrom, r.start, r.ref, r.alts, build=genome_build),
+                r.rsid,
+                r.chrom,
+                r.start,
+                r.ref,
+                r.alts,
+                None,
+                "heteroplasmy.csv",
             )
             for r in rows
         )
@@ -317,9 +327,7 @@ def _check_authored_pairs(
         return PairCheck(not_checked=no_snapshot)
     check = check_rsid_coordinates(pairs, rsid_loci, answered)
     if check.subjects == 0:
-        return PairCheck(
-            unknown=check.unknown, undecided=check.undecided, not_checked="no_reference"
-        )
+        return PairCheck(unknown=check.unknown, undecided=check.undecided, not_checked="no_reference")
     return check
 
 
@@ -329,9 +337,7 @@ def _locus_alleles(locus: dict) -> tuple[str, frozenset[str]]:
     return str(locus.get("ref") or ""), frozenset(a.strip() for a in alts.split(",") if a.strip())
 
 
-def select_par_representative(
-    loci: list[dict], *, build: str = "GRCh38"
-) -> tuple[list[dict], list[dict]]:
+def select_par_representative(loci: list[dict], *, build: str = "GRCh38") -> tuple[list[dict], list[dict]]:
     """Split a one-to-many expansion into `(kept, y_par_twins)`, preferring the X spelling.
 
     A pseudoautosomal locus is **one place on two contigs** — PAR1 and PAR2 are the stretches X and Y
@@ -374,11 +380,7 @@ def select_par_representative(
     twins: list[dict] = []
     for locus in loci:
         chrom, start = normalize_chrom(locus.get("chrom")), locus.get("start")
-        partner = (
-            par_partner(chrom, int(start), build=build)
-            if chrom == "Y" and start is not None
-            else None
-        )
+        partner = par_partner(chrom, int(start), build=build) if chrom == "Y" and start is not None else None
         ref, alts = _locus_alleles(locus)
         if partner is not None and (partner[0], partner[1], ref, alts) in by_place:
             twins.append(locus)
@@ -418,8 +420,9 @@ class SubjectDrift:
 def _render_facts(rows: Sequence[ResolutionRow]) -> str:
     """A subject's resolved facts as one comparable string, in `locus_index` order."""
     return " + ".join(
-        "|".join("" if getattr(row, name) is None else str(getattr(row, name))
-                 for name in RESOLUTION_FACT_FIELDS)
+        "|".join(
+            "" if getattr(row, name) is None else str(getattr(row, name)) for name in RESOLUTION_FACT_FIELDS
+        )
         for row in sorted(rows, key=lambda r: r.locus_index)
     )
 
@@ -782,14 +785,29 @@ def enrich(
     with spec_lock(spec_dir, enabled=write, error=EnrichmentError):
         return _run_enrichment(
             spec_dir,
-            mode=mode, offline=offline, ensembl_cache=ensembl_cache, clinvar_cache=clinvar_cache,
-            pubmind_cache=pubmind_cache, civic_cache=civic_cache,
-            use_clinvar=use_clinvar, use_gnomad=use_gnomad, download=download,
-            genome_build=genome_build, write=write, mint_vrs=mint_vrs, verify_ref=verify_ref,
-            verify_clinsig=verify_clinsig, verify_rsids=verify_rsids,
-            verify_datasets=verify_datasets, keep_par_twin=keep_par_twin,
-            rederive=rederive, keep_staging=keep_staging, progress=progress,
-            resolver=resolver, gnomad_client=gnomad_client, grch37_client=grch37_client,
+            mode=mode,
+            offline=offline,
+            ensembl_cache=ensembl_cache,
+            clinvar_cache=clinvar_cache,
+            pubmind_cache=pubmind_cache,
+            civic_cache=civic_cache,
+            use_clinvar=use_clinvar,
+            use_gnomad=use_gnomad,
+            download=download,
+            genome_build=genome_build,
+            write=write,
+            mint_vrs=mint_vrs,
+            verify_ref=verify_ref,
+            verify_clinsig=verify_clinsig,
+            verify_rsids=verify_rsids,
+            verify_datasets=verify_datasets,
+            keep_par_twin=keep_par_twin,
+            rederive=rederive,
+            keep_staging=keep_staging,
+            progress=progress,
+            resolver=resolver,
+            gnomad_client=gnomad_client,
+            grch37_client=grch37_client,
             release_probes=release_probes,
         )
 
@@ -871,9 +889,7 @@ def _run_enrichment(
     covered: Mapping[tuple, list[ResolutionRow]] = {} if rederive else existing
     # The staged answers, in the target's own directory. `write=False` stages nothing: a caller that
     # touches no file has nothing to commit toward, and staging would leave droppings behind instead.
-    journal = ResolutionJournal(
-        resolution_path, genome_build=genome_build, enabled=write, rederive=rederive
-    )
+    journal = ResolutionJournal(resolution_path, genome_build=genome_build, enabled=write, rederive=rederive)
     staged = journal.resume()
 
     if genome_build != genome_build.strip() or genome_build != "GRCh38":
@@ -890,7 +906,8 @@ def _run_enrichment(
             "would record a coordinate from a different assembly as this module's own. Authored "
             "coordinates are still transcribed verbatim, and build-free checks (rsID currency) still "
             "run.",
-            genome_build, genome_build,
+            genome_build,
+            genome_build,
         )
 
     # Every table that can ask for a coordinate, not just variants.csv (a PGx module has none).
@@ -907,12 +924,10 @@ def _run_enrichment(
 
     # Partition the subjects that still need work (skip those an existing row already covers).
     need_pos = [
-        v for v in subjects
-        if v.rsid is not None and v.chrom is None and _subject_key(v) not in covered
+        v for v in subjects if v.rsid is not None and v.chrom is None and _subject_key(v) not in covered
     ]
     need_rsid = [
-        v for v in subjects
-        if v.rsid is None and v.chrom is not None and _subject_key(v) not in covered
+        v for v in subjects if v.rsid is None and v.chrom is not None and _subject_key(v) not in covered
     ]
     # Rows that authored BOTH halves of the identity. They need no resolution, which is exactly why
     # nothing used to look at them: they fall through to the verbatim branch below. But an authored
@@ -934,7 +949,7 @@ def _run_enrichment(
     snapshot_unusable = False
     # rsIDs the live link could not put a question to at all — a failed request, not an empty answer.
     unreachable_rsids: set[str] = set()
-    unconsulted_rsids: set[str] = set()   # nobody looked (RM98) — see the EnrichResult field
+    unconsulted_rsids: set[str] = set()  # nobody looked (RM98) — see the EnrichResult field
     # The source answered and every locus it gave was rejected by the allele-aware filter (S85). A
     # list rather than a set: it carries a finding per subject, not a bare id.
     allele_mismatches: list[AlleleMismatch] = []
@@ -945,7 +960,7 @@ def _run_enrichment(
     # cache) and the loops below still have to have something to iterate.
     pos_candidates: dict[tuple, list[str]] = {}
     rev_candidates: dict[tuple, list[str]] = {}  # (chrom,start,ref,alt) -> sorted candidate rsids
-    rev_source: dict[tuple, str] = {}            # which link produced the candidates
+    rev_source: dict[tuple, str] = {}  # which link produced the candidates
     positions = [(v.chrom, v.start, v.ref, _authored_alt(v)) for v in need_rsid]
 
     # ── Ensembl cache link (offline, first) ────────────────────────────────────────────────────
@@ -979,7 +994,8 @@ def _run_enrichment(
             logger.warning(
                 "Ensembl reference at %s is present but not queryable (%s); the rsID↔coordinate "
                 "check is recorded as unrun. Rebuild it with `just-dna-enricher cache pull`.",
-                reference, exc,
+                reference,
+                exc,
             )
         for rsid in rsid_to_loci:
             source_of_rsid[rsid] = "cache"
@@ -1038,7 +1054,8 @@ def _run_enrichment(
                     logger.warning(
                         "ClinVar reference at %s is present but not queryable (%s); continuing "
                         "without the ClinVar link. Rebuild it with `just-dna-enricher clinvar build`.",
-                        clinvar_ref, exc,
+                        clinvar_ref,
+                        exc,
                     )
             if cv_rsid_to_loci or cv_pos_candidates:
                 for rsid, loci in cv_rsid_to_loci.items():
@@ -1049,9 +1066,7 @@ def _run_enrichment(
                     if cands and not rev_candidates.get(pt):
                         rev_candidates[pt] = cands
                         rev_source[pt] = "clinvar"
-                tracker.settle(
-                    k for rsid in cv_rsid_to_loci for k in subjects_of_rsid.get(rsid, ())
-                )
+                tracker.settle(k for rsid in cv_rsid_to_loci for k in subjects_of_rsid.get(rsid, ()))
 
     # ── staged answers from an interrupted run, between the caches and the live links ──────────
     # Placed exactly here, and the position is the whole reason a resumed run reproduces an
@@ -1083,7 +1098,8 @@ def _run_enrichment(
             "%d staged answer(s) are not seeded because the link that produced them is switched off "
             "this run (%s): a resume must reproduce the run its flags describe, not the run that was "
             "killed. Their subjects go back to the chain.",
-            len(dropped_link), ", ".join(sorted(set(dropped_link))),
+            len(dropped_link),
+            ", ".join(sorted(set(dropped_link))),
         )
 
     # ── live Ensembl link (V2→V1), for cache misses, unless offline ────────────────────────────
@@ -1180,7 +1196,8 @@ def _run_enrichment(
             subject = "allele" if v.origin == "haplotypes.csv" else "genotype"
             for lo in all_loci:
                 verdict = (
-                    True if v.constraint is None
+                    True
+                    if v.constraint is None
                     else hosting_verdict(v.constraint, lo.get("ref"), lo.get("alts"))
                 )
                 if verdict is not False:
@@ -1201,8 +1218,13 @@ def _run_enrichment(
                     logger.warning(
                         "%s: whether %s:%s %s>%s can host the authored %s %s could not be decided from "
                         "the allele strings — %s. The locus is KEPT.",
-                        v.rsid, lo.get("chrom"), lo.get("start"), lo.get("ref"), lo.get("alts"),
-                        subject, v.constraint,
+                        v.rsid,
+                        lo.get("chrom"),
+                        lo.get("start"),
+                        lo.get("ref"),
+                        lo.get("alts"),
+                        subject,
+                        v.constraint,
                         undecided_reason(v.constraint, lo.get("ref"), lo.get("alts")),
                     )
                 elif verdict is False:
@@ -1218,8 +1240,13 @@ def _run_enrichment(
                     logger.warning(
                         "%s: %s:%s %s>%s cannot host the authored %s %s, and is left out of "
                         "resolution.csv. %s",
-                        v.rsid, lo.get("chrom"), lo.get("start"), lo.get("ref"), lo.get("alts"),
-                        subject, v.constraint,
+                        v.rsid,
+                        lo.get("chrom"),
+                        lo.get("start"),
+                        lo.get("ref"),
+                        lo.get("alts"),
+                        subject,
+                        v.constraint,
                         contradiction_reason(v.constraint, lo.get("ref"), lo.get("alts")),
                     )
             if all_loci and not loci:
@@ -1228,21 +1255,22 @@ def _run_enrichment(
                 # reject, and that row is a genuine `not_found` the branches below handle. Built here,
                 # beside the per-locus warnings above, so the finding and the log cannot disagree about
                 # which loci were compared.
-                allele_mismatches.append(AlleleMismatch(
-                    rsid=v.rsid,
-                    genotype=v.constraint or "",
-                    loci=tuple(
-                        f"{lo.get('chrom')}:{lo.get('start')} {lo.get('ref')}>{lo.get('alts')}"
-                        for lo in all_loci
-                    ),
-                    offered=tuple(
-                        f"{lo.get('ref')}>{lo.get('alts')}" for lo in all_loci
-                    ),
-                    strand_flip=v.constraint is not None and any(
-                        strand_flip_explains(v.constraint, lo.get("ref"), lo.get("alts"))
-                        for lo in all_loci
-                    ),
-                ))
+                allele_mismatches.append(
+                    AlleleMismatch(
+                        rsid=v.rsid,
+                        genotype=v.constraint or "",
+                        loci=tuple(
+                            f"{lo.get('chrom')}:{lo.get('start')} {lo.get('ref')}>{lo.get('alts')}"
+                            for lo in all_loci
+                        ),
+                        offered=tuple(f"{lo.get('ref')}>{lo.get('alts')}" for lo in all_loci),
+                        strand_flip=v.constraint is not None
+                        and any(
+                            strand_flip_explains(v.constraint, lo.get("ref"), lo.get("alts"))
+                            for lo in all_loci
+                        ),
+                    )
+                )
             if loci and not keep_par_twin:
                 # One place on two contigs: keep the X spelling every annotation source uses. Runs
                 # after the allele-aware filter above so it only ever sees loci this row can host.
@@ -1253,10 +1281,17 @@ def _run_enrichment(
             if loci:
                 src = source_of_rsid.get(v.rsid, "cache")
                 for i, locus in enumerate(loci):
-                    out.append(ResolutionRow(
-                        variant_key=key, rsid=v.rsid, genome_build=genome_build,
-                        locus_index=i, source=src, status="resolved", **locus,
-                    ))
+                    out.append(
+                        ResolutionRow(
+                            variant_key=key,
+                            rsid=v.rsid,
+                            genome_build=genome_build,
+                            locus_index=i,
+                            source=src,
+                            status="resolved",
+                            **locus,
+                        )
+                    )
             elif genome_build == "GRCh38" and v.rsid in unreachable_rsids:
                 # The live link was asked and never answered (S20), so this row has the same shape as
                 # the non-GRCh38 case below and gets the same treatment: no row at all. Writing
@@ -1284,8 +1319,15 @@ def _run_enrichment(
                 unconsulted_rsids.add(v.rsid)
                 unresolved.append(key)
             elif genome_build == "GRCh38":
-                out.append(ResolutionRow(variant_key=key, rsid=v.rsid, genome_build=genome_build,
-                                         source="ensembl" if not offline else "cache", status="not_found"))
+                out.append(
+                    ResolutionRow(
+                        variant_key=key,
+                        rsid=v.rsid,
+                        genome_build=genome_build,
+                        source="ensembl" if not offline else "cache",
+                        status="not_found",
+                    )
+                )
                 unresolved.append(key)
             else:
                 # No link ran at all (every one is gated on GRCh38), so there is no answer to record.
@@ -1307,16 +1349,35 @@ def _run_enrichment(
                 rsid, status, alternates, src = cands[0], "resolved", None, rev_source[pt]
             else:
                 rsid, status, alternates, src = cands[0], "ambiguous", ",".join(cands), rev_source[pt]
-            out.append(ResolutionRow(
-                variant_key=key, rsid=rsid, chrom=v.chrom, start=v.start, ref=v.ref, alts=v.alts,
-                genome_build=genome_build, source=src, status=status, rsid_alternates=alternates,
-            ))
+            out.append(
+                ResolutionRow(
+                    variant_key=key,
+                    rsid=rsid,
+                    chrom=v.chrom,
+                    start=v.start,
+                    ref=v.ref,
+                    alts=v.alts,
+                    genome_build=genome_build,
+                    source=src,
+                    status=status,
+                    rsid_alternates=alternates,
+                )
+            )
         else:
             # already complete, or has a position — a full record, nothing to resolve
-            out.append(ResolutionRow(
-                variant_key=key, rsid=v.rsid, chrom=v.chrom, start=v.start, ref=v.ref, alts=v.alts,
-                genome_build=genome_build, source="authored", status="resolved",
-            ))
+            out.append(
+                ResolutionRow(
+                    variant_key=key,
+                    rsid=v.rsid,
+                    chrom=v.chrom,
+                    start=v.start,
+                    ref=v.ref,
+                    alts=v.alts,
+                    genome_build=genome_build,
+                    source="authored",
+                    status="resolved",
+                )
+            )
 
     # The subject keys the carry-forward below puts back, so the report can leave them out of its own
     # denominator: they are in `out` by then, and a subject nothing asked must not be counted as one
@@ -1353,7 +1414,8 @@ def _run_enrichment(
                 "with a shorter one, which nothing downstream can tell from a module whose author "
                 "resolved less. They are unchanged rather than re-derived, so the report below says "
                 "nothing about them.",
-                len(carried), examples(sorted(carried)),
+                len(carried),
+                examples(sorted(carried)),
             )
 
     # One line for the whole run, grouped by reason and counted. These are not findings about the
@@ -1376,13 +1438,14 @@ def _run_enrichment(
     sequences = SequenceProxy(offline=offline)
     mint_result: MintResult | None = None
     if mint_vrs:
-        mint_result = mint_resolution_rows(
-            out, minter=VrsMinter(offline=offline, sequences=sequences)
-        )
+        mint_result = mint_resolution_rows(out, minter=VrsMinter(offline=offline, sequences=sequences))
         logger.info(
             "VRS: minted %d id(s) (%d stdlib, %d normalized), %d unmintable, %d already present",
-            mint_result.minted, mint_result.minted_stdlib, mint_result.minted_normalized,
-            mint_result.skipped_unmintable, mint_result.already_present,
+            mint_result.minted,
+            mint_result.minted_stdlib,
+            mint_result.minted_normalized,
+            mint_result.skipped_unmintable,
+            mint_result.already_present,
         )
         # The success count alone reads as a clean bill on a table that is half anonymous. Coverage is
         # a WARNING because an identity scheme with an unstated shortfall is the thing a consumer keys
@@ -1421,7 +1484,8 @@ def _run_enrichment(
             "Old-assembly diagnosis looked at %d of %d mismatched row(s): a systematic wrong build "
             "gives the same answer on every row, so the pass is bounded rather than paying two paced "
             "requests each. Fix what it names and re-run to see the rest.",
-            build.examined, build.total,
+            build.examined,
+            build.total,
         )
     for line in summarize_build_diagnoses(build.diagnoses):
         logger.warning("Old-assembly coordinate — %s", line)
@@ -1481,8 +1545,7 @@ def _run_enrichment(
                 clin_sig_compared = comparison.compared
                 clin_sig_comparison = comparison
     for conflict in clin_sig_conflicts:
-        logger.warning("ClinVar clin_sig %s — %s",
-                       "conflict" if conflict.opposed else "difference", conflict)
+        logger.warning("ClinVar clin_sig %s — %s", "conflict" if conflict.opposed else "difference", conflict)
 
     # RM170 — the CIViC refutation leg. Folded in here rather than given its own command for the
     # reason the `clin_sig` leg is: a hand-authored module that never ran `civic_draft` has to meet
@@ -1536,7 +1599,8 @@ def _run_enrichment(
     clin_sig_record: ConcordanceRecord | None = None
     if verify_clinsig:
         clin_sig_record = clin_sig_concordance(
-            variants, out,
+            variants,
+            out,
             reference=clinvar_ref,
             pubmind_reference=pubmind_ref,
             sources=recorded_sources,
@@ -1647,8 +1711,12 @@ def _run_enrichment(
     # readers that can drift apart, and then a `--strict` run refuses over a set its own
     # `verification.json` does not describe.
     pair_check = _check_authored_pairs(
-        verify_pairs, rsid_to_loci, genome_build=genome_build, reference=reference,
-        offline=offline, unusable=snapshot_unusable,
+        verify_pairs,
+        rsid_to_loci,
+        genome_build=genome_build,
+        reference=reference,
+        offline=offline,
+        unusable=snapshot_unusable,
         # The author's recorded answers, read-only (RM136). The compiler applies the overlay before
         # any check reads a row; this is the enricher doing the same for the one finding an overlay
         # row can actually answer, so a correction stops coming back on every run.
@@ -1661,7 +1729,8 @@ def _run_enrichment(
             "rsid↔coordinate disagreement — %d of %d authored pair(s) name a coordinate the injected "
             "Ensembl snapshot does not give for that rsID: %s Reported, never repaired: which half is "
             "wrong is not knowable here.",
-            len(pair_check.disagreements), pair_check.subjects,
+            len(pair_check.disagreements),
+            pair_check.subjects,
             " ".join(pair_check.disagreements),
         )
     if pair_check.answered:
@@ -1680,14 +1749,16 @@ def _run_enrichment(
             "rsid↔coordinate: %d authored pair(s) were not compared — the injected Ensembl snapshot "
             "carries no record for %s. Not in the snapshot is not 'not in Ensembl'; the pair is "
             "unchecked rather than disagreeing.",
-            len(pair_check.unknown), examples(sorted(set(pair_check.unknown))),
+            len(pair_check.unknown),
+            examples(sorted(set(pair_check.unknown))),
         )
     if pair_check.undecided:
         logger.info(
             "rsid↔coordinate: %d authored pair(s) could not be decided — %s name an indel, and one "
             "deletion has several valid spellings whose anchors sit a base or two apart (RM31), so a "
             "differing position is not a contradiction. Undecided, never reported as a disagreement.",
-            len(pair_check.undecided), examples(sorted(set(pair_check.undecided))),
+            len(pair_check.undecided),
+            examples(sorted(set(pair_check.undecided))),
         )
 
     # Which licensed source each link speaks for (RM33). **Derived, never fetched** — read off the
@@ -1718,7 +1789,9 @@ def _run_enrichment(
                 "recorded table — %s. The fresh answer is committed and the old one is not kept; a "
                 "value you decided rather than derived belongs in overrides.csv, where re-deriving "
                 "cannot reach it.",
-                len(rederived), compared, "; ".join(str(d) for d in rederived),
+                len(rederived),
+                compared,
+                "; ".join(str(d) for d in rederived),
             )
 
     # Fifth validation pass, and the only one whose subject is a claim the module makes about its own
@@ -1756,14 +1829,23 @@ def _run_enrichment(
 
     sources = sorted({r.source for r in out if r.source})
     result = EnrichmentResult(
-        rows=out, unresolved=sorted(set(unresolved)), sources=sources, mode=mode,
-        ref_mismatches=ref_mismatches, clin_sig_conflicts=clin_sig_conflicts,
-        clin_sig_not_checked=clin_sig_not_checked, clin_sig_comparison=clin_sig_comparison,
-        refutation_findings=refutation_findings, refutation_not_checked=refutation_not_checked,
+        rows=out,
+        unresolved=sorted(set(unresolved)),
+        sources=sources,
+        mode=mode,
+        ref_mismatches=ref_mismatches,
+        clin_sig_conflicts=clin_sig_conflicts,
+        clin_sig_not_checked=clin_sig_not_checked,
+        clin_sig_comparison=clin_sig_comparison,
+        refutation_findings=refutation_findings,
+        refutation_not_checked=refutation_not_checked,
         evidence_status=evidence_status,
-        build_diagnoses=build.diagnoses, build_not_diagnosed=build.not_checked,
-        stale_rsids=stale_rsids, par_twins_dropped=sorted(par_twins_dropped),
-        vrs=mint_result, unreachable_rsids=sorted(unreachable_rsids),
+        build_diagnoses=build.diagnoses,
+        build_not_diagnosed=build.not_checked,
+        stale_rsids=stale_rsids,
+        par_twins_dropped=sorted(par_twins_dropped),
+        vrs=mint_result,
+        unreachable_rsids=sorted(unreachable_rsids),
         unconsulted_rsids=sorted(unconsulted_rsids),
         allele_mismatches=allele_mismatches,
         rsid_coordinates=pair_check,
@@ -1781,7 +1863,8 @@ def _run_enrichment(
             "%d rsID(s) could not be asked of live Ensembl (the request failed, so the answer is "
             "unchecked rather than empty): %s. Re-run before treating these as rsIDs Ensembl does "
             "not have.",
-            len(unreachable_rsids), ", ".join(sorted(unreachable_rsids)),
+            len(unreachable_rsids),
+            ", ".join(sorted(unreachable_rsids)),
         )
 
     if allele_mismatches:
@@ -1802,8 +1885,10 @@ def _run_enrichment(
                 f" {len(flipped)} of them fit on the other strand ("
                 + ", ".join(sorted(m.rsid for m in flipped))
                 + "), which is what a supplementary table published against an older assembly "
-                  "usually carries: check the strand your alleles are written on."
-            ) if flipped else "",
+                "usually carries: check the strand your alleles are written on."
+            )
+            if flipped
+            else "",
         )
 
     if unconsulted_rsids:
@@ -1830,11 +1915,7 @@ def _run_enrichment(
         # both modes, and a `strict` run raises here and returns nothing — so a diagnosis left on the
         # result object would be visible only to the mode that does not need it, and invisible to the
         # one whose whole output is this sentence.
-        because = (
-            " " + "; ".join(summarize_build_diagnoses(build.diagnoses)) + "."
-            if build.diagnoses
-            else ""
-        )
+        because = " " + "; ".join(summarize_build_diagnoses(build.diagnoses)) + "." if build.diagnoses else ""
         raise EnrichmentError(
             f"strict enrichment: {len(ref_mismatches)} row(s) disagree with the {genome_build} "
             f"reference sequence. "
@@ -1997,9 +2078,7 @@ def _civic_release(reference: Path | None) -> str | None:
     return _snapshot_release(reference)
 
 
-def _refutation_detail(
-    findings: Sequence[RefutationFinding], basis: str | None
-) -> str | None:
+def _refutation_detail(findings: Sequence[RefutationFinding], basis: str | None) -> str | None:
     """What the refutation check found, and **on which basis** — the basis on every run.
 
     The basis is not decoration here the way a release label is elsewhere. On the `accepted` basis
@@ -2019,9 +2098,7 @@ def _refutation_detail(
     for code in (REFUTATION_BESIDE_CLAIM, REFUTATION_WITHOUT_CLAIM):
         group = [f for f in findings if f.code == code]
         if group:
-            named = examples([
-                subject.variant_key for finding in group for subject in finding.subjects
-            ])
+            named = examples([subject.variant_key for finding in group for subject in finding.subjects])
             parts.append(f"{len(group)} {code}: {named}")
     return "; ".join(parts) + f" ({stated})"
 
@@ -2123,28 +2200,36 @@ def _verification_records(
         # subjects either way. Same ordering rule RM48 applies to its own two readings — the one that
         # does not rest on a transient condition supersedes.
         if ref_check.not_checked == "unsupported":
-            reason, detail = "unsupported", (
-                "the reference-allele check cannot run on this module's assembly, so no row was ever "
-                "a candidate for a build diagnosis — this is not a connectivity problem and a re-run "
-                "online reports the same thing"
+            reason, detail = (
+                "unsupported",
+                (
+                    "the reference-allele check cannot run on this module's assembly, so no row was ever "
+                    "a candidate for a build diagnosis — this is not a connectivity problem and a re-run "
+                    "online reports the same thing"
+                ),
             )
         elif build.not_checked == "skipped_offline":
-            reason, detail = "offline", (
-                "the GRCh37 service is the only thing that can tell an old-assembly coordinate from "
-                "a wrong ref, and there is no local GRCh37 data"
+            reason, detail = (
+                "offline",
+                (
+                    "the GRCh37 service is the only thing that can tell an old-assembly coordinate from "
+                    "a wrong ref, and there is no local GRCh37 data"
+                ),
             )
         elif ref_check.not_checked is not None:
-            reason, detail = ref_check.not_checked, (
-                "the reference-allele check did not run, so there was no mismatched row to diagnose "
-                "— this says nothing about whether the coordinates are on the declared assembly"
+            reason, detail = (
+                ref_check.not_checked,
+                (
+                    "the reference-allele check did not run, so there was no mismatched row to diagnose "
+                    "— this says nothing about whether the coordinates are on the declared assembly"
+                ),
             )
         else:
-            reason, detail = "nothing_to_check", (
-                "no authored ref disagreed with the reference, so no row needed a build diagnosis"
+            reason, detail = (
+                "nothing_to_check",
+                ("no authored ref disagreed with the reference, so no row needed a build diagnosis"),
             )
-        records.append(
-            skipped("genome_build_agreement", reason, detail=detail, source="ensembl-grch37")
-        )
+        records.append(skipped("genome_build_agreement", reason, detail=detail, source="ensembl-grch37"))
     else:
         records.append(
             ran(
@@ -2278,14 +2363,18 @@ def _verification_records(
     unsettled = examples(sorted(set(pairs.undecided)))
     # What was not compared, and why, in one sentence per reason — never one per row.
     not_compared = [
-        note for note in (
+        note
+        for note in (
             f"the injected Ensembl snapshot carries no record for {len(pairs.unknown)} of them "
             f"({unplaced}), and absent from this snapshot is not absent from Ensembl"
-            if pairs.unknown else "",
+            if pairs.unknown
+            else "",
             f"{len(pairs.undecided)} name an indel ({unsettled}), whose spelling can move the "
             f"coordinate legitimately, so no verdict was reached"
-            if pairs.undecided else "",
-        ) if note
+            if pairs.undecided
+            else "",
+        )
+        if note
     ]
     if pairs.not_checked is not None:
         if pairs.not_checked == "unsupported":
@@ -2304,9 +2393,8 @@ def _verification_records(
             # snapshot — or an online run that can normalize an indel — would change.
             detail = "no authored pair could be compared: " + "; ".join(not_compared)
         else:
-            detail = (
-                "no Ensembl snapshot was opened this run, so no authored pair was compared"
-                + (" — a run with egress provisions one" if pairs.not_checked == "offline" else "")
+            detail = "no Ensembl snapshot was opened this run, so no authored pair was compared" + (
+                " — a run with egress provisions one" if pairs.not_checked == "offline" else ""
             )
         records.append(
             skipped("rsid_coordinate_agreement", pairs.not_checked, detail=detail, source="ensembl")
@@ -2321,9 +2409,7 @@ def _verification_records(
                 f"here; the run's log names every one.)"
             )
         if not_compared:
-            notes.append(
-                "Further authored pairs were not compared: " + "; ".join(not_compared) + "."
-            )
+            notes.append("Further authored pairs were not compared: " + "; ".join(not_compared) + ".")
         records.append(
             ran(
                 "rsid_coordinate_agreement",
@@ -2353,8 +2439,7 @@ def _verification_records(
                 currency.not_checked,
                 detail=(
                     "; ".join(summarize_currency(currency))
-                    or "the module records no release, so it makes no claim about where its rows "
-                       "came from"
+                    or "the module records no release, so it makes no claim about where its rows came from"
                 ),
             )
         )

@@ -87,15 +87,18 @@ def _echo_messages(result) -> None:
 def validate(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     strip_identity: bool = typer.Option(
-        False, "--strip-identity", help="Inject the identity authority keys (namespace/owner/canonical_id) to strip."
+        False,
+        "--strip-identity",
+        help="Inject the identity authority keys (namespace/owner/canonical_id) to strip.",
     ),
     authority_key: list[str] = typer.Option(
         [], "--authority-key", help="Extra authority-owned module key to strip (repeatable)."
     ),
     strict: bool = typer.Option(
-        False, "--strict/--best-effort",
+        False,
+        "--strict/--best-effort",
         help="Pre-flight for a strict compile: escalate the mode-laddered findings to errors, as "
-             "`compile --strict` does. Use it whenever the compile you intend to run is strict.",
+        "`compile --strict` does. Use it whenever the compile you intend to run is strict.",
     ),
 ) -> None:
     """Validate a spec directory without producing output. Exit 1 if invalid."""
@@ -117,22 +120,29 @@ def compile(
     spec_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
     output_dir: Path = typer.Argument(..., file_okay=False, help="Output dir for parquet + manifest.json"),
     strict: bool = typer.Option(
-        False, "--strict/--no-strict", help="All-or-nothing: fail rather than emit a partial artifact with unresolved positions."
+        False,
+        "--strict/--no-strict",
+        help="All-or-nothing: fail rather than emit a partial artifact with unresolved positions.",
     ),
     ensembl_cache: Path | None = typer.Option(
-        None, "--ensembl-cache",
+        None,
+        "--ensembl-cache",
         help="DEPRECATED (removed at 1.0): Ensembl reference (.duckdb/parquet dir); routes to "
-             "just-dna-enricher. Prefer producing resolution.csv with `just-dna-enricher enrich`.",
+        "just-dna-enricher. Prefer producing resolution.csv with `just-dna-enricher enrich`.",
     ),
     resolve: bool = typer.Option(
-        True, "--resolve/--no-resolve", help="Resolve missing rsid/position via the injected Ensembl reference."
+        True,
+        "--resolve/--no-resolve",
+        help="Resolve missing rsid/position via the injected Ensembl reference.",
     ),
     compression: str = typer.Option("zstd", "--compression", help="Parquet compression codec."),
     compiled_by: str | None = typer.Option(
         None, "--compiled-by", help="Provenance tag for the manifest (e.g. marketplace-server)."
     ),
     strip_identity: bool = typer.Option(
-        False, "--strip-identity", help="Inject the identity authority keys (namespace/owner/canonical_id) to strip."
+        False,
+        "--strip-identity",
+        help="Inject the identity authority keys (namespace/owner/canonical_id) to strip.",
     ),
     authority_key: list[str] = typer.Option(
         [], "--authority-key", help="Extra authority-owned module key to strip (repeatable)."
@@ -224,9 +234,7 @@ def verify(
         False, "--check-provenance", help="Also hash the provenance document, if declared and present."
     ),
     check_logo: bool = typer.Option(False, "--check-logo", help="Also hash the logo, if declared."),
-    check_readme: bool = typer.Option(
-        False, "--check-readme", help="Also hash the readme, if declared."
-    ),
+    check_readme: bool = typer.Option(False, "--check-readme", help="Also hash the readme, if declared."),
     check_derived: bool = typer.Option(
         False,
         "--check-derived",
@@ -263,8 +271,11 @@ def verify(
     # Say which of the three trust questions were actually answered — an unsigned artifact that
     # verifies is a weaker statement than a signed one, and reporting them alike would blur that.
     typer.echo(
-        f"signature: {'verified against the pinned key' if public_key else
-                      ('present, self-consistent only' if manifest.signature else 'absent')}"
+        f"signature: {
+            'verified against the pinned key'
+            if public_key
+            else ('present, self-consistent only' if manifest.signature else 'absent')
+        }"
     )
 
 
@@ -277,7 +288,10 @@ def close(
         None, "--by", help="Who is closing authoring. Legibility only — sign it to make it provable."
     ),
     private_key: Path | None = typer.Option(
-        None, "--private-key", exists=True, dir_okay=False,
+        None,
+        "--private-key",
+        exists=True,
+        dir_okay=False,
         help="Ed25519 private key PEM (from `keygen`). Signs the closure over the authored bytes.",
     ),
 ) -> None:
@@ -310,7 +324,8 @@ def close(
         typer.secho(
             f"  dropped {len(result.dropped_checks)} check record(s) attested over different bytes: "
             f"{', '.join(result.dropped_checks)} — re-run the checks against the closed module.",
-            fg=typer.colors.YELLOW, err=True,
+            fg=typer.colors.YELLOW,
+            err=True,
         )
     typer.secho(f"closed: {result.path}", fg=typer.colors.GREEN)
     typer.echo(f"authored bytes: {result.module_hash}")
@@ -343,7 +358,9 @@ def sign(
 @app.command()
 def keygen(
     out: Path | None = typer.Option(
-        None, "--out", dir_okay=False,
+        None,
+        "--out",
+        dir_okay=False,
         help="Write the private key PEM here (refuses to overwrite). Omit to print it to stdout.",
     ),
 ) -> None:
@@ -372,7 +389,8 @@ def keygen(
         typer.secho(
             f"{out} already exists — refusing to overwrite a signing key. Every signature made with "
             f"the old key would stop verifying, and a published artifact's bytes are never mutated.",
-            fg=typer.colors.RED, err=True,
+            fg=typer.colors.RED,
+            err=True,
         )
         raise typer.Exit(code=1)
     out.write_bytes(private_key_pem)
@@ -426,15 +444,19 @@ def reverse(
     report_title: str | None = typer.Option(None, "--report-title"),
     icon: str = typer.Option("database", "--icon"),
     color: str = typer.Option("#6435c9", "--color"),
-    version: str | None = typer.Option(None, "--version", help="Advisory module.version to re-emit into the spec."),
+    version: str | None = typer.Option(
+        None, "--version", help="Advisory module.version to re-emit into the spec."
+    ),
     resolution: bool = typer.Option(
-        True, "--resolution/--no-resolution",
+        True,
+        "--resolution/--no-resolution",
         help="Also emit resolution.csv (the resolved facts), so reverse→compile is fully offline.",
     ),
     genome_build: str | None = typer.Option(
-        None, "--genome-build",
+        None,
+        "--genome-build",
         help="Override the build. Read from the artifact's manifest.json by default; only needed for "
-             "a bare parquet directory that carries no manifest.",
+        "a bare parquet directory that carries no manifest.",
     ),
 ) -> None:
     """Reverse a compiled parquet artifact back into the authored spec DSL (yaml + csv)."""
@@ -622,7 +644,9 @@ def hint(
         # over one file used to use two conventions and state neither (S18).
         where = f"line {finding.line} " if finding.line is not None else ""
         column = f"[{finding.column}] " if finding.column else ""
-        typer.secho(f"  {finding.level}: {where}{column}{finding.message}", fg=colours[finding.level], err=True)
+        typer.secho(
+            f"  {finding.level}: {where}{column}{finding.message}", fg=colours[finding.level], err=True
+        )
     typer.secho(str(report), fg=typer.colors.GREEN, err=True)
 
 

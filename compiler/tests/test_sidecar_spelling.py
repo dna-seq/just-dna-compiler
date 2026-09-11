@@ -142,9 +142,7 @@ def test_the_licence_gate_still_refuses_under_the_new_spelling(tmp_path: Path) -
         row.update(
             {"source": "cpic", "layer": "annotation", "commercial_use": "false", "declared_use": "commercial"}
         )
-        (spec_dir / name).write_text(
-            "\n".join(rows + [",".join(row[field] for field in header)]) + "\n"
-        )
+        (spec_dir / name).write_text("\n".join(rows + [",".join(row[field] for field in header)]) + "\n")
         result = compile_module(spec_dir, tmp_path / f"gate_{name}", resolve_with_ensembl=True)
         refused[name] = not result.success
 
@@ -246,9 +244,7 @@ def test_the_round_trip_moves_no_identity_when_the_name_changes(tmp_path: Path) 
 
 
 @pytest.mark.parametrize("subdir", ["", DERIVED_SUBDIR])
-def test_reverse_writes_to_the_copy_the_output_directory_already_has(
-    tmp_path: Path, subdir: str
-) -> None:
+def test_reverse_writes_to_the_copy_the_output_directory_already_has(tmp_path: Path, subdir: str) -> None:
     """Write to the file you read, in `reverse` too — or it leaves the collision behind it.
 
     Reversing over a tree that already carries the deprecated name (or a `derived/` split) and always

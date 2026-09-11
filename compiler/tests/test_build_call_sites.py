@@ -102,9 +102,10 @@ def test_every_allele_bearing_call_passes_a_build() -> None:
 
     assert not offenders, (
         "these calls mint a variant identity from an allele without saying which assembly it is on, "
-        "so they take derive_variant_key's GRCh38 default:\n  " + "\n  ".join(offenders)
+        "so they take derive_variant_key's GRCh38 default:\n  "
+        + "\n  ".join(offenders)
         + "\nPass build=<the module's genome_build>. If the call genuinely cannot know one, add it to "
-          "_EXEMPT with the reason — that is a design decision (see RM36), not a formality."
+        "_EXEMPT with the reason — that is a design decision (see RM36), not a formality."
     )
 
 
@@ -113,7 +114,8 @@ def test_each_exemption_still_exists(filename: str, funcname: str) -> None:
     """An exemption for a call site that has since moved or been fixed is stale scaffolding, and would
     silently keep excusing whatever takes its place."""
     matches = [
-        (p, f) for p, tree, c in _minting_calls()
+        (p, f)
+        for p, tree, c in _minting_calls()
         if (f := _enclosing_name(tree, c)) == funcname and p.name == filename
     ]
     assert matches, f"_EXEMPT names {filename}:{funcname}(), which no longer makes such a call"

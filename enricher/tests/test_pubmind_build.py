@@ -48,9 +48,7 @@ def _source_rows() -> list[dict[str, str]]:
 def snapshot(tmp_path_factory: pytest.TempPathFactory):
     out = tmp_path_factory.mktemp("pubmind")
     result = build_snapshot(_SLICE, out)
-    return result, pl.read_parquet(result.parquet_file), json.loads(
-        (out / "release.json").read_text()
-    )
+    return result, pl.read_parquet(result.parquet_file), json.loads((out / "release.json").read_text())
 
 
 # ── the fixture really does carry the shapes the rules exist for ────────────────────────────────
@@ -140,7 +138,11 @@ def test_a_codon_block_differing_at_one_base_lands_on_that_base(snapshot) -> Non
             continue
         index = differing[0]
         assert (
-            row["#Chr"], int(row["Start"]) + index, ref[index], alt[index], row["PVID"],
+            row["#Chr"],
+            int(row["Start"]) + index,
+            ref[index],
+            alt[index],
+            row["PVID"],
         ) in emitted
         checked += 1
     assert checked > 0, "the fixture must contain decomposable rows or this asserts nothing"
@@ -166,9 +168,7 @@ def test_a_block_needing_two_substitutions_is_dropped_rather_than_guessed_at(sna
             expected += 1
     assert expected > 0, "the fixture must carry undecomposable blocks"
     assert result.dropped["multi_substitution"] == expected
-    survivors = [
-        (r, a) for r, a in zip(frame["ref"], frame["alt"], strict=True) if len(r) == len(a) > 1
-    ]
+    survivors = [(r, a) for r, a in zip(frame["ref"], frame["alt"], strict=True) if len(r) == len(a) > 1]
     assert survivors == []
 
 
@@ -196,13 +196,13 @@ def test_every_pvid_on_a_contested_coordinate_survives_as_its_own_row(snapshot) 
     _result, frame, _release = snapshot
     chrom, start, ref, alt = _HFE_C282Y
     expected = {
-        r["PVID"]
-        for r in _source_rows()
-        if (r["#Chr"], int(r["Start"]), r["Ref"], r["Alt"]) == _HFE_C282Y
+        r["PVID"] for r in _source_rows() if (r["#Chr"], int(r["Start"]), r["Ref"], r["Alt"]) == _HFE_C282Y
     }
     got = frame.filter(
-        (pl.col("chrom") == chrom) & (pl.col("start") == start)
-        & (pl.col("ref") == ref) & (pl.col("alt") == alt)
+        (pl.col("chrom") == chrom)
+        & (pl.col("start") == start)
+        & (pl.col("ref") == ref)
+        & (pl.col("alt") == alt)
     )
     assert set(got["pvid"].to_list()) == expected
     assert got.height == len(expected)
@@ -260,8 +260,16 @@ def test_the_columns_are_unprefixed_and_share_the_clinvar_snapshot_vocabulary(sn
     from just_dna_enricher.clinvar_build import _empty_schema
 
     assert frame.columns == [
-        "chrom", "start", "ref", "alt", "pvid",
-        "clin_sig", "clin_sig_raw", "pathogenicity_score", "confidence", "derivation",
+        "chrom",
+        "start",
+        "ref",
+        "alt",
+        "pvid",
+        "clin_sig",
+        "clin_sig_raw",
+        "pathogenicity_score",
+        "confidence",
+        "derivation",
     ]
     shared = {"chrom", "start", "ref", "alt", "clin_sig", "clin_sig_raw"}
     assert shared <= set(_empty_schema())
@@ -276,9 +284,7 @@ def test_clin_sig_is_normalized_by_the_shared_normalizer_and_the_raw_token_survi
     assert set(frame["clin_sig"].to_list()) <= VALID_CLIN_SIG
     for mapped, raw in zip(frame["clin_sig"], frame["clin_sig_raw"], strict=True):
         assert mapped == normalize_clin_sig(raw)
-    assert set(frame["clin_sig_raw"].to_list()) <= {
-        r["PubMindDB_pathogenicity_sum"] for r in _source_rows()
-    }
+    assert set(frame["clin_sig_raw"].to_list()) <= {r["PubMindDB_pathogenicity_sum"] for r in _source_rows()}
     # The two tokens the shared normalizer was fixed for really do occur here, and neither is `other`.
     assert {"uncertain_significance", "conflicting"} <= set(frame["clin_sig"].to_list())
 
@@ -356,7 +362,8 @@ def test_release_json_records_the_provenance_and_says_the_terms_are_unknown(snap
 def test_a_download_carries_its_etag_and_last_modified_into_the_release(tmp_path: Path) -> None:
     """The headers reach `release.json` when the caller has them, which is the point of keeping them."""
     result = build_snapshot(
-        _SLICE, tmp_path / "snap",
+        _SLICE,
+        tmp_path / "snap",
         source_sha256="deadbeef" * 8,
         source_etag='"63275d-659cb3f35fd80"',
         source_last_modified="Mon, 24 Aug 2026 13:48:54 GMT",
@@ -407,8 +414,7 @@ def test_a_row_with_no_pvid_is_dropped_rather_than_carried_with_a_null(tmp_path:
     """
     path = _tiny(
         tmp_path,
-        "1\t100\t100\tA\tG\t\tPathogenic\t0.9\t2\n"
-        "1\t100\t100\tA\tG\tPV1\tBenign\t0.1\t1\n",
+        "1\t100\t100\tA\tG\t\tPathogenic\t0.9\t2\n1\t100\t100\tA\tG\tPV1\tBenign\t0.1\t1\n",
     )
     result = build_snapshot(path, tmp_path / "out")
     assert result.dropped["no_pvid"] == 1
@@ -475,8 +481,8 @@ def test_a_non_finite_or_non_integral_number_is_withheld_rather_than_accepted(
     )
     frame = pl.read_parquet(result.parquet_file)
     assert result.record_count == 4, "a bad cell withholds a value, it does not drop the row"
-    assert result.unparsable_score == 2                     # NaN and inf
-    assert result.unparsable_confidence == 2                # NaN and 2.7
+    assert result.unparsable_score == 2  # NaN and inf
+    assert result.unparsable_confidence == 2  # NaN and 2.7
     assert frame["pathogenicity_score"].null_count() == 2
     assert frame["confidence"].to_list() == [2, 1, None, None]
 
@@ -513,15 +519,14 @@ def test_a_local_table_records_no_source_url_it_did_not_establish(tmp_path: Path
 
     build_snapshot(_SLICE, tmp_path / "fetched", source_url=DEFAULT_PUBMIND_URL)
     assert (
-        json.loads((tmp_path / "fetched" / "release.json").read_text())["source_url"]
-        == DEFAULT_PUBMIND_URL
+        json.loads((tmp_path / "fetched" / "release.json").read_text())["source_url"] == DEFAULT_PUBMIND_URL
     )
 
 
 def test_an_unreadable_numeric_cell_is_withheld_rather_than_guessed_and_is_counted(
     tmp_path: Path,
 ) -> None:
-    """"The source did not say" and "the source said something we cannot hold" are different.
+    """ "The source did not say" and "the source said something we cannot hold" are different.
 
     A blank score is an absence; `NA` is a value the numeric column cannot express. Both end as
     `null`, and only the second is counted — otherwise the two become one number.
@@ -541,7 +546,7 @@ def test_an_unreadable_numeric_cell_is_withheld_rather_than_guessed_and_is_count
     frame = pl.read_parquet(result.parquet_file)
     assert result.unparsable_score == 1
     assert result.unparsable_confidence == 1
-    assert frame["pathogenicity_score"].null_count() == 2   # one absent, one unreadable
+    assert frame["pathogenicity_score"].null_count() == 2  # one absent, one unreadable
     assert frame["confidence"].null_count() == 1
     release = json.loads((tmp_path / "out" / "release.json").read_text())
     assert release["unparsable_score"] == 1
@@ -555,13 +560,12 @@ def test_an_off_target_contig_is_dropped_and_counted(tmp_path: Path) -> None:
         "PubMindDB_paper_level_pathogenicity_score\tPubMindDB_confidence"
     )
     body = (
-        "GL000009.2\t100\t100\tA\tG\tPVID1\tPathogenic\t1.0\t2\n"
-        "chrM\t200\t200\tA\tG\tPVID2\tBenign\t0.0\t1\n"
+        "GL000009.2\t100\t100\tA\tG\tPVID1\tPathogenic\t1.0\t2\nchrM\t200\t200\tA\tG\tPVID2\tBenign\t0.0\t1\n"
     )
     path = tmp_path / "scaffold.txt"
     path.write_text(f"{header}\n{body}", encoding="utf-8")
     result = build_snapshot(path, tmp_path / "out")
     assert result.dropped["off_target_chrom"] == 1
     frame = pl.read_parquet(result.parquet_file)
-    assert frame["chrom"].to_list() == ["MT"]     # `chrM` is normalized, not discarded
+    assert frame["chrom"].to_list() == ["MT"]  # `chrM` is normalized, not discarded
     assert result.input_rows == result.record_count + sum(result.dropped.values())

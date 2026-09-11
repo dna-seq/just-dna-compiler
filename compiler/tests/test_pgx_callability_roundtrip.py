@@ -32,9 +32,7 @@ from just_dna_compiler.compiler import (
 )
 from just_dna_format.reference import _ALL_MODELS
 
-_EXAMPLE = (
-    Path(__file__).resolve().parents[2] / "reference_examples" / "cyp2c9_warfarin_grch37"
-)
+_EXAMPLE = Path(__file__).resolve().parents[2] / "reference_examples" / "cyp2c9_warfarin_grch37"
 #: (authored CSV, compiled parquet, the columns that identify one row across the round trip).
 #:
 #: Hand-kept, and tied to the model registry by the guard below so it cannot silently fall behind.
@@ -45,6 +43,7 @@ _TABLES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("haplotypes.csv", "haplotypes.parquet", ("haplotype_name", "rsid", "allele")),
     ("pharm_variants.csv", "pharm_variants.parquet", ("rsid", "genotype", "annotation_id")),
 )
+
 
 def test_the_roster_covers_every_pgx_table_that_carries_the_column() -> None:
     """The roster is derived from the models, not trusted (`@registry-completeness`).
@@ -115,8 +114,7 @@ def test_a_pgx_callability_claim_reaches_parquet_as_a_nullable_boolean(
 
     authored = _authored(csv_name, key_columns)
     materialized = {
-        tuple(str(row[c]) for c in key_columns): row["requires_callable"]
-        for row in df.iter_rows(named=True)
+        tuple(str(row[c]) for c in key_columns): row["requires_callable"] for row in df.iter_rows(named=True)
     }
     # Both sides are keyed by identity, so a dropped or duplicated row would collapse identically on
     # each and the mapping equality alone would not see it. The count is taken against the file's own
@@ -183,8 +181,7 @@ def test_the_two_locus_tables_may_disagree_about_one_locus_and_nothing_refuses_i
         encoding="utf-8",
     )
     (spec / "haplotypes.csv").write_text(
-        "haplotype_name,rsid,allele,gene,requires_callable\n"
-        "*2,rs1799853,T,CYP2C9,false\n",
+        "haplotype_name,rsid,allele,gene,requires_callable\n*2,rs1799853,T,CYP2C9,false\n",
         encoding="utf-8",
     )
     (spec / "pharm_variants.csv").write_text(

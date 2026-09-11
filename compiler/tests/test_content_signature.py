@@ -27,8 +27,9 @@ _PGX = (
 )
 
 
-def _spec(d: Path, *, name: str = "demo", variants: str = _VARIANTS, studies: str = _STUDIES,
-          pgx: str | None = None) -> Path:
+def _spec(
+    d: Path, *, name: str = "demo", variants: str = _VARIANTS, studies: str = _STUDIES, pgx: str | None = None
+) -> Path:
     d.mkdir(parents=True, exist_ok=True)
     (d / "module_spec.yaml").write_text(_YAML.format(name=name), encoding="utf-8")
     (d / "variants.csv").write_text(variants, encoding="utf-8")
@@ -214,8 +215,7 @@ def test_spec_tables_reproduces_the_digest_it_is_extracted_from(tmp_path: Path) 
     """
     from just_dna_format.integrity import content_signature as hash_tables
 
-    for spec in (_spec(tmp_path / "plain"), _per_row(tmp_path / "rows"),
-                 _in_defaults(tmp_path / "defaults")):
+    for spec in (_spec(tmp_path / "plain"), _per_row(tmp_path / "rows"), _in_defaults(tmp_path / "defaults")):
         tables, build = spec_tables(spec)
         assert hash_tables(tables, build) == content_signature(spec)
 
@@ -265,16 +265,14 @@ def test_the_roster_is_authored_tables_and_the_licence_table_is_outside_it(tmp_p
     assert "sources.csv" not in tables and "licensing.csv" not in tables
 
     (spec / "sources.csv").write_text(
-        "source,layer,license,notice\n"
-        "clinvar,annotation,public-domain,courtesy of NCBI\n",
+        "source,layer,license,notice\nclinvar,annotation,public-domain,courtesy of NCBI\n",
         encoding="utf-8",
     )
     assert content_signature(spec) == before
     assert "sources.csv" not in spec_tables(spec)[0]
 
     (spec / "sources.csv").write_text(
-        "source,layer,license,notice\n"
-        "clinvar,annotation,public-domain,EDITED\n",
+        "source,layer,license,notice\nclinvar,annotation,public-domain,EDITED\n",
         encoding="utf-8",
     )
     assert content_signature(spec) == before
@@ -285,9 +283,7 @@ def test_spec_tables_raises_on_an_invalid_csv_exactly_as_the_digest_does(tmp_pat
     import pytest
 
     spec = _spec(tmp_path / "spec")
-    (spec / "variants.csv").write_text(
-        _VARIANTS + "rs9999999,NOT_A_GENOTYPE,risk,x,GENE\n", encoding="utf-8"
-    )
+    (spec / "variants.csv").write_text(_VARIANTS + "rs9999999,NOT_A_GENOTYPE,risk,x,GENE\n", encoding="utf-8")
     with pytest.raises(ValueError, match="variants.csv is invalid"):
         spec_tables(spec)
     with pytest.raises(ValueError, match="variants.csv is invalid"):

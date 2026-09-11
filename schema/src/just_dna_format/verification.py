@@ -174,7 +174,8 @@ def close(
         closed_at=closed_at,
         closed_by=closed_by,
         signature=(
-            None if private_key_pem is None
+            None
+            if private_key_pem is None
             else sign_digest(module_hash, private_key_pem, signed_at=closed_at)
         ),
     )

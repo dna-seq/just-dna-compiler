@@ -33,9 +33,7 @@ _TERMS = _VENDOR / "alphagenome_output_terms.txt"
 STRADDLING_RAW = "0.00076"
 STRADDLED_THRESHOLD = 3.0
 
-pytestmark = pytest.mark.skipif(
-    not _SLICE.is_file(), reason="the committed AVI slice is missing"
-)
+pytestmark = pytest.mark.skipif(not _SLICE.is_file(), reason="the committed AVI slice is missing")
 
 
 def _tabix_available() -> bool:
@@ -58,9 +56,7 @@ def _printed_rows() -> pl.DataFrame:
     decimal*, and parsing both sides through the same float would make the comparison agree by
     construction rather than by the encoding being right.
     """
-    text = subprocess.run(
-        ["tabix", str(_SLICE), "chr22"], capture_output=True, check=True
-    ).stdout
+    text = subprocess.run(["tabix", str(_SLICE), "chr22"], capture_output=True, check=True).stdout
     return pl.read_csv(
         text,
         separator="\t",
@@ -114,9 +110,7 @@ def test_the_stored_integer_reproduces_the_printed_score_exactly(built: Path) ->
     exact = Decimal(ab.RAW_SCORE_SCALE)
     disagreements = [
         row
-        for row in joined.select("pos", "ref", "alt", "raw_printed", "raw_score_e5").iter_rows(
-            named=True
-        )
+        for row in joined.select("pos", "ref", "alt", "raw_printed", "raw_score_e5").iter_rows(named=True)
         if Decimal(row["raw_printed"]) * exact != Decimal(row["raw_score_e5"])
     ]
     assert not disagreements, disagreements[:5]
@@ -132,9 +126,11 @@ def test_a_score_with_more_precision_than_the_scale_is_refused_rather_than_round
     would then disagree with its own source in a way no downstream check could see. Six decimals
     here, one row, and the build stops.
     """
-    rows = subprocess.run(
-        ["tabix", str(_SLICE), "chr22:20000000-20000100"], capture_output=True, check=True
-    ).stdout.decode().splitlines()
+    rows = (
+        subprocess.run(["tabix", str(_SLICE), "chr22:20000000-20000100"], capture_output=True, check=True)
+        .stdout.decode()
+        .splitlines()
+    )
     assert rows, "the fixture window is empty"
     fields = rows[0].split("\t")
     fields[4] = "0.123456"  # one digit past the scale
@@ -220,26 +216,19 @@ def test_a_threshold_no_knot_straddles_classifies_identically_to_the_stored_phre
     printed = _printed_rows()
     knots = pl.read_parquet(built / ab.KNOT_FILENAME)
 
-    joined = (
-        printed.with_columns(
-            (pl.col("raw_printed").cast(pl.Float64) * ab.RAW_SCORE_SCALE)
-            .round()
-            .cast(pl.Int32)
-            .alias("raw_score_e5"),
-            pl.col("phred_printed").cast(pl.Float64).alias("phred"),
-        )
-        .join(knots, on="raw_score_e5", how="inner")
-    )
+    joined = printed.with_columns(
+        (pl.col("raw_printed").cast(pl.Float64) * ab.RAW_SCORE_SCALE)
+        .round()
+        .cast(pl.Int32)
+        .alias("raw_score_e5"),
+        pl.col("phred_printed").cast(pl.Float64).alias("phred"),
+    ).join(knots, on="raw_score_e5", how="inner")
     assert joined.height == printed.height
 
-    unambiguous = joined.filter(
-        (pl.col("phred_lo") >= threshold) | (pl.col("phred_hi") < threshold)
-    )
+    unambiguous = joined.filter((pl.col("phred_lo") >= threshold) | (pl.col("phred_hi") < threshold))
     assert unambiguous.height > 0, "nothing to check at this threshold"
 
-    disagreed = unambiguous.filter(
-        (pl.col("phred") >= threshold) != (pl.col("phred_lo") >= threshold)
-    )
+    disagreed = unambiguous.filter((pl.col("phred") >= threshold) != (pl.col("phred_lo") >= threshold))
     assert disagreed.height == 0, disagreed.head(5).to_dicts()
 
 
@@ -279,9 +268,12 @@ def test_the_straddled_threshold_is_exactly_where_the_knot_declares_it_unsafe(
     # And every OTHER knot at this threshold is decided, which is what makes the warning narrow
     # enough to be worth acting on rather than a blanket "thresholds may be wrong".
     decided = knots.filter(~pl.col("raw_score_e5").is_in(declared_unsafe))
-    assert decided.filter(
-        (pl.col("phred_lo") < STRADDLED_THRESHOLD) & (pl.col("phred_hi") > STRADDLED_THRESHOLD)
-    ).height == 0
+    assert (
+        decided.filter(
+            (pl.col("phred_lo") < STRADDLED_THRESHOLD) & (pl.col("phred_hi") > STRADDLED_THRESHOLD)
+        ).height
+        == 0
+    )
 
 
 @needs_tabix
@@ -337,7 +329,7 @@ def test_the_use_restrictions_travel_inside_the_snapshot(built: Path) -> None:
     # The four clauses that actually bind a holder of this snapshot, quoted from the pinned document.
     assert "non-commercial use only" in licence
     assert "train machine learning models" in licence
-    assert 'include this “Use restrictions”' in licence
+    assert "include this “Use restrictions”" in licence
     # …and it stops before the parts that are not use restrictions.
     assert "Disclaimers and limitations of liability" not in licence
     assert "Governing law" not in licence
@@ -360,7 +352,9 @@ def test_the_permissive_class_is_asserted_from_a_pinned_page_and_not_from_a_read
     assert extraction.is_file(), "the evidence for commercial_use=True is not in docs/vendor/"
     text = extraction.read_text()
     assert "Permissive Use Downloadable artifacts for commercial and non-commercial use" in text
-    avi_block = text.split("Permissive Use Downloadable artifacts", 1)[1].split("Downloadable artifacts for non-commercial", 1)[0]
+    avi_block = text.split("Permissive Use Downloadable artifacts", 1)[1].split(
+        "Downloadable artifacts for non-commercial", 1
+    )[0]
     assert "AVI SNV scores" in avi_block, "the page no longer puts AVI in the Permissive class"
     for non_commercial in ("merged splicing", "feature importance"):
         assert non_commercial not in avi_block, f"{non_commercial} must not be Permissive"
@@ -397,9 +391,7 @@ def test_the_terms_row_pins_the_licence_text_it_ships_beside_the_data() -> None:
     licence_text = ab.use_restrictions_text(_TERMS)
     # `annotation` because that is the layer a module carrying AVI scores would fill; the layer a
     # *check* records under is RM193's decision, and this test is about the permission axes.
-    row = ALPHAGENOME_AVI_TERMS.row(
-        "annotation", declared_use="commercial", license_text=licence_text
-    )
+    row = ALPHAGENOME_AVI_TERMS.row("annotation", declared_use="commercial", license_text=licence_text)
     assert row.commercial_use is True
     assert row.redistribution is True, "the open-source-release reading (RM195); see the axes test"
     assert row.source == "alphagenome_avi", "one name cannot carry two licence classes"
@@ -460,8 +452,7 @@ def test_the_knot_count_is_wide_enough_for_the_whole_corpus(built: Path) -> None
     """
     knots = pl.read_parquet(built / ab.KNOT_FILENAME)
     assert knots.schema["n"] == pl.UInt64, (
-        f"`n` is {knots.schema['n']}, which wraps at 4,294,967,295 — under the corpus's "
-        "8,812,917,339 rows"
+        f"`n` is {knots.schema['n']}, which wraps at 4,294,967,295 — under the corpus's 8,812,917,339 rows"
     )
 
 
@@ -476,8 +467,9 @@ def test_a_count_past_thirty_two_bits_survives_the_knot_aggregation() -> None:
     total = 8_812_917_339
     half = total // 2
     parts = [
-        pl.DataFrame({"raw_score_e5": [76], "n": [n], "phred_lo": [2.99961], "phred_hi": [3.00027]})
-        .with_columns(pl.col("n").cast(pl.UInt64))
+        pl.DataFrame(
+            {"raw_score_e5": [76], "n": [n], "phred_lo": [2.99961], "phred_hi": [3.00027]}
+        ).with_columns(pl.col("n").cast(pl.UInt64))
         for n in (half, total - half)
     ]
     merged = (
@@ -561,9 +553,7 @@ def test_every_position_carries_the_three_non_ref_bases(built: Path) -> None:
     per_pos = printed.group_by("pos").agg(
         pl.col("alt").sort().str.join("").alias("alts"), pl.col("ref").first()
     )
-    expected = pl.col("ref").replace_strict(
-        {b: "".join(ab.alts_for_ref(b)) for b in ab.BASES}, default=None
-    )
+    expected = pl.col("ref").replace_strict({b: "".join(ab.alts_for_ref(b)) for b in ab.BASES}, default=None)
     assert per_pos.filter(pl.col("alts") != expected).height == 0
     assert per_pos.height * 3 == printed.height
 
@@ -611,8 +601,7 @@ def test_wide_round_trips_to_long_without_the_source(built: Path) -> None:
     recovered = keyed(long, "raw_score_e5")
     source = keyed(
         printed.with_columns(
-            (pl.col("raw_printed").cast(pl.Float64) * ab.RAW_SCORE_SCALE)
-            .round().cast(pl.Int32).alias("e5")
+            (pl.col("raw_printed").cast(pl.Float64) * ab.RAW_SCORE_SCALE).round().cast(pl.Int32).alias("e5")
         ),
         "e5",
     )
@@ -627,9 +616,11 @@ def test_a_locus_missing_an_alt_is_refused_rather_than_padded(tmp_path: Path) ->
     exactly why a violation is worth refusing over: it means the source changed shape, and padding
     would produce a table that reads fine and answers wrongly.
     """
-    rows = subprocess.run(
-        ["tabix", str(_SLICE), "chr22:20000000-20000100"], capture_output=True, check=True
-    ).stdout.decode().splitlines()
+    rows = (
+        subprocess.run(["tabix", str(_SLICE), "chr22:20000000-20000100"], capture_output=True, check=True)
+        .stdout.decode()
+        .splitlines()
+    )
     first_pos = rows[0].split("\t")[1]
     kept = [r for r in rows if r.split("\t")[1] != first_pos or r.split("\t")[3] != "A"]
     assert len(kept) < len(rows), "the fixture's first locus has no A alt to drop"

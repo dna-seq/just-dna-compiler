@@ -147,9 +147,7 @@ def _split_diplotype(diplotype: str) -> tuple[str, str] | None:
 _REFERENCE_ALLELE = "*1"
 
 
-def _selected_alleles(
-    requested: Sequence[str], published: Sequence[str], gene: str
-) -> frozenset[str] | None:
+def _selected_alleles(requested: Sequence[str], published: Sequence[str], gene: str) -> frozenset[str] | None:
     """The allele set to draft, or `None` for "everything CPIC publishes" (no filter).
 
     **Why a filter exists at all.** `draft --gene CYP2D6` produces 16,290 diplotype rows, 73% of them
@@ -239,9 +237,8 @@ def _recommendation_rows(
                     clinical_context=rec.population or None,
                     # CPIC's own words. The implication says what the genotype does, the recommendation
                     # says what to do about it; both are transcribed, neither is summarized.
-                    conclusion=" ".join(
-                        part for part in (rec.implication, rec.recommendation) if part
-                    ) or f"{entry.gene} {entry.diplotype} and {rec.drug}: {entry.phenotype}",
+                    conclusion=" ".join(part for part in (rec.implication, rec.recommendation) if part)
+                    or f"{entry.gene} {entry.diplotype} and {rec.drug}: {entry.phenotype}",
                 )
             )
     if unmatched:
@@ -495,9 +492,7 @@ def draft_gene(
                 )
             warnings.append(f"{gene}: nothing drafted for {drug!r} — {detail}.")
             continue
-        drug_rows, drug_warnings = _recommendation_rows(
-            diplotypes, recommendations, population=population
-        )
+        drug_rows, drug_warnings = _recommendation_rows(diplotypes, recommendations, population=population)
         warnings.extend(drug_warnings)
         diplotype_rows.extend(drug_rows)
 

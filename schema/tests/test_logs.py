@@ -59,9 +59,9 @@ def test_logs_excluded_from_artifact_digest(tmp_path: Path) -> None:
     db.mkdir()
     (db / "weights.parquet").write_bytes(b"w")
     (db / "run.log").write_bytes(b"different log")
-    assert build_artifact(da, ["weights.parquet"]).digest == build_artifact(
-        db, ["weights.parquet"]
-    ).digest  # logs never entered the digest
+    assert (
+        build_artifact(da, ["weights.parquet"]).digest == build_artifact(db, ["weights.parquet"]).digest
+    )  # logs never entered the digest
 
 
 def test_check_logs_verifies_present_and_skips_absent(tmp_path: Path) -> None:

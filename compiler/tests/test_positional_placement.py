@@ -59,9 +59,7 @@ def test_the_counts_describe_the_artifact_that_was_written(spec_dir: Path, tmp_p
         if not parquet.is_file():
             continue
         frame = pl.read_parquet(parquet)
-        placed += frame.filter(
-            pl.col("chrom").is_not_null() & pl.col("start").is_not_null()
-        ).height
+        placed += frame.filter(pl.col("chrom").is_not_null() & pl.col("start").is_not_null()).height
     assert compilation["positional_rows_placed"] == placed
     assert compilation["positional_rows_placed"] <= compilation["positional_rows"]
 

@@ -32,10 +32,26 @@ from just_dna_format.vrs import UnsupportedBuildError, refget_accession, refget_
 
 _GRCH37 = [
     # `reference_examples/grch37_build`'s own two HFE rows, verbatim.
-    ResolutionRow(variant_key="6:26093141:G:A", chrom="6", start=26093141, ref="G", alts="A",
-                  genome_build="GRCh37", source="authored", status="resolved"),
-    ResolutionRow(variant_key="6:26091179:C:G", chrom="6", start=26091179, ref="C", alts="G",
-                  genome_build="GRCh37", source="authored", status="resolved"),
+    ResolutionRow(
+        variant_key="6:26093141:G:A",
+        chrom="6",
+        start=26093141,
+        ref="G",
+        alts="A",
+        genome_build="GRCh37",
+        source="authored",
+        status="resolved",
+    ),
+    ResolutionRow(
+        variant_key="6:26091179:C:G",
+        chrom="6",
+        start=26091179,
+        ref="C",
+        alts="G",
+        genome_build="GRCh37",
+        source="authored",
+        status="resolved",
+    ),
 ]
 
 
@@ -92,12 +108,18 @@ def test_a_grch37_module_is_unsupported_not_a_clean_pass() -> None:
 def test_offline_still_outranks_it_for_a_supported_build() -> None:
     """The reasons stay distinct and keep their old meanings for a GRCh38 module."""
     rows = [
-        ResolutionRow(variant_key="6:26092913:G:A", chrom="6", start=26092913, ref="G", alts="A",
-                      genome_build="GRCh38", source="authored", status="resolved")
+        ResolutionRow(
+            variant_key="6:26092913:G:A",
+            chrom="6",
+            start=26092913,
+            ref="G",
+            alts="A",
+            genome_build="GRCh38",
+            source="authored",
+            status="resolved",
+        )
     ]
-    assert verify_reference_alleles(rows, sequences=SequenceProxy(offline=True)).not_checked == (
-        "offline"
-    )
+    assert verify_reference_alleles(rows, sequences=SequenceProxy(offline=True)).not_checked == ("offline")
 
 
 def test_a_mixed_module_is_not_written_off() -> None:
@@ -110,8 +132,16 @@ def test_a_mixed_module_is_not_written_off() -> None:
     """
     mixed = [
         *_GRCH37,
-        ResolutionRow(variant_key="6:26092913:G:A", chrom="6", start=26092913, ref="G", alts="A",
-                      genome_build="GRCh38", source="authored", status="resolved"),
+        ResolutionRow(
+            variant_key="6:26092913:G:A",
+            chrom="6",
+            start=26092913,
+            ref="G",
+            alts="A",
+            genome_build="GRCh38",
+            source="authored",
+            status="resolved",
+        ),
     ]
     # Offline, so the reason is the sequence proxy's, not the build's — the point is that it is
     # *not* `unsupported`.

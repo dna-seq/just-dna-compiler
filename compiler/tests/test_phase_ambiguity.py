@@ -104,9 +104,7 @@ def test_identically_defined_haplotypes_are_not_called_a_phase_problem() -> None
         HaplotypeRow(haplotype_name=name, rsid="rs1065852", start=42130692, allele="A", gene="CYP2D6")
         for name in ("*10", "*100")
     ]
-    other = HaplotypeRow(
-        haplotype_name="*8", rsid="rs5030865", start=42129084, allele="A", gene="CYP2D6"
-    )
+    other = HaplotypeRow(haplotype_name="*8", rsid="rs5030865", start=42129084, allele="A", gene="CYP2D6")
     diplotypes = [
         DiplotypeRow(gene="CYP2D6", haplotype_a="*10", haplotype_b="*8", conclusion="IM"),
         DiplotypeRow(gene="CYP2D6", haplotype_a="*100", haplotype_b="*8", conclusion="Indeterminate"),
@@ -121,8 +119,7 @@ def test_findings_aggregate_per_gene_with_the_count_stated() -> None:
     """398 lines on the real CYP2D6 draft buried every other finding. One line per gene per class,
     examples plus a count, so nothing is silently capped."""
     haplotypes = [
-        HaplotypeRow(haplotype_name=f"*{i}", rsid="rs1065852", start=42130692, allele="A",
-                     gene="CYP2D6")
+        HaplotypeRow(haplotype_name=f"*{i}", rsid="rs1065852", start=42130692, allele="A", gene="CYP2D6")
         for i in range(1, 10)
     ]
     haplotypes.append(
@@ -163,8 +160,9 @@ def test_an_explicit_reference_allele_and_an_omitted_one_mean_the_same_thing() -
         *_hap("H63D", "G", "G"),
         *_hap("C282Y-H63D", "A", "G"),
         # `wt` written sparsely: it names nothing at all.
-        HaplotypeRow(haplotype_name="wt", rsid="rs1800562", chrom="6", start=26092913, ref="G",
-                     allele="G", gene="HFE"),
+        HaplotypeRow(
+            haplotype_name="wt", rsid="rs1800562", chrom="6", start=26092913, ref="G", allele="G", gene="HFE"
+        ),
     ]
     diplotypes = [
         _dip("C282Y", "H63D", "compound heterozygous"),

@@ -163,9 +163,7 @@ def test_rsid_candidate_lookup_matches_the_or_chained_answer(tmp_path: Path) -> 
     finally:
         con.close()
     assert {(c, s): r for c, s, r in chained} == {
-        (chrom, start): rsids[0]
-        for (chrom, start, _, _), rsids in candidates.items()
-        if rsids
+        (chrom, start): rsids[0] for (chrom, start, _, _), rsids in candidates.items() if rsids
     }
 
 

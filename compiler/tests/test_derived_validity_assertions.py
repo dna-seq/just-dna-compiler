@@ -107,7 +107,8 @@ def _spec(tmp_path: Path, *, validity: bool = False, assertions: bool = False) -
 def test_the_new_sidecars_leave_the_snp_core_byte_identical(tmp_path: Path) -> None:
     bare = compile_module(_spec(tmp_path), tmp_path / "o_bare", resolve_with_ensembl=False)
     rich = compile_module(
-        _spec(tmp_path, validity=True, assertions=True), tmp_path / "o_rich",
+        _spec(tmp_path, validity=True, assertions=True),
+        tmp_path / "o_rich",
         resolve_with_ensembl=False,
     )
     assert bare.success and rich.success, (bare.errors, rich.errors)
@@ -125,7 +126,8 @@ def test_the_new_sidecar_csvs_are_fact_hashed_not_byte_hashed(tmp_path: Path) ->
     """Like every sidecar and unlike an authored CSV — otherwise a reverse→recompile cycle would read
     as tampering over nothing but column order and timestamps."""
     result = compile_module(
-        _spec(tmp_path, validity=True, assertions=True), tmp_path / "out",
+        _spec(tmp_path, validity=True, assertions=True),
+        tmp_path / "out",
         resolve_with_ensembl=False,
     )
     input_names = {entry.name for entry in result.manifest.inputs}
@@ -199,11 +201,10 @@ def test_an_unrated_record_leaves_the_star_range_null_rather_than_zero(tmp_path:
 
 
 def test_a_not_found_record_is_counted_as_the_fact_it_is(tmp_path: Path) -> None:
-    """"Asked and absent" is a fact about the archive; it must be visible without reading the parquet."""
+    """ "Asked and absent" is a fact about the archive; it must be visible without reading the parquet."""
     spec = _spec(tmp_path, assertions=True)
     (spec / "clinical_assertions.csv").write_text(
-        _ASSERTIONS
-        + f"{_SICKLE}x,,11,5227003,T,C,GRCh38,,,,,,,clinvar_2026-06-27,clinvar,not_found,\n"
+        _ASSERTIONS + f"{_SICKLE}x,,11,5227003,T,C,GRCh38,,,,,,,clinvar_2026-06-27,clinvar,not_found,\n"
     )
     block = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False).manifest.clinical_assertions
     assert block.not_found_count == 1
@@ -226,10 +227,7 @@ def test_compile_reverse_compile_is_a_fixed_point(tmp_path: Path) -> None:
         assert (tmp_path / "o1" / name).read_bytes() == (tmp_path / "o2" / name).read_bytes()
     assert first.manifest.artifact.digest == second.manifest.artifact.digest
     assert first.manifest.gene_validity.signature == second.manifest.gene_validity.signature
-    assert (
-        first.manifest.clinical_assertions.signature
-        == second.manifest.clinical_assertions.signature
-    )
+    assert first.manifest.clinical_assertions.signature == second.manifest.clinical_assertions.signature
 
 
 def test_the_reversed_csvs_carry_every_column_the_model_declares(tmp_path: Path) -> None:
@@ -257,13 +255,11 @@ def test_orphan_rows_warn_but_do_not_fail(tmp_path: Path) -> None:
     """An over-broad sidecar is harmless; failing would punish the author for the enricher's reach."""
     spec = _spec(tmp_path, validity=True, assertions=True)
     (spec / "gene_validity.csv").write_text(
-        _GENE_VALIDITY
-        + "NOTINMODULE,,MONDO:0000001,something,autosomal_dominant,limited,Limited,,,,,"
+        _GENE_VALIDITY + "NOTINMODULE,,MONDO:0000001,something,autosomal_dominant,limited,Limited,,,,,"
         "clingen_gene_validity_2026-08-13,clingen,resolved,\n"
     )
     (spec / "clinical_assertions.csv").write_text(
-        _ASSERTIONS
-        + "9:99:A,,9,99,A,G,GRCh38,benign,Benign,practice_guideline,4,,777,clinvar_2026-06-27,"
+        _ASSERTIONS + "9:99:A,,9,99,A,G,GRCh38,benign,Benign,practice_guideline,4,,777,clinvar_2026-06-27,"
         "clinvar,resolved,\n"
     )
     result = compile_module(spec, tmp_path / "out", resolve_with_ensembl=False)

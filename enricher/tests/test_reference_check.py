@@ -130,9 +130,7 @@ def test_wrong_ref_base_is_reported_even_though_the_id_is_unaffected() -> None:
         (5227004, "C", -1),
     ],
 )
-def test_a_shifted_coordinate_is_diagnosed_as_a_coordinate_problem(
-    start: int, ref: str, shift: int
-) -> None:
+def test_a_shifted_coordinate_is_diagnosed_as_a_coordinate_problem(start: int, ref: str, shift: int) -> None:
     """A `pos - 1` conversion is reported as a shifted `start`, not as a bad `ref`.
 
     This is the failure that reaches the check in the wild, and the old message sent the author to
@@ -229,8 +227,7 @@ def test_repeated_reads_are_cached() -> None:
 # ── severity follows the mode, through enrich() ─────────────────────────────────────────────────
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
+    "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
 )
 
 
@@ -240,8 +237,7 @@ def _spec(tmp_path: Path) -> Path:
     (spec / "module_spec.yaml").write_text(_YAML)
     # An authored coordinate row claiming the WRONG reference base at a real locus.
     (spec / "variants.csv").write_text(
-        "chrom,start,ref,alts,genotype,state,conclusion\n"
-        "11,5227002,C,A,A/C,risk,wrong ref on purpose\n"
+        "chrom,start,ref,alts,genotype,state,conclusion\n11,5227002,C,A,A/C,risk,wrong ref on purpose\n"
     )
     (spec / "studies.csv").write_text("chrom,start,ref,pmid\n11,5227002,C,12345678\n")
     return spec
@@ -269,6 +265,7 @@ def _grch37_with_nothing_to_say(calls: list[str] | None = None) -> Grch37Client:
     answer for chr11:5227002 — the sickle locus is at the same coordinate on both builds, so these
     fixtures are a wrong `ref`, not a wrong build, and the diagnosis must stay silent about them.
     """
+
     def handler(request: httpx.Request) -> httpx.Response:
         if calls is not None:
             calls.append(str(request.url))
@@ -283,9 +280,7 @@ def _grch37_with_nothing_to_say(calls: list[str] | None = None) -> Grch37Client:
 
 def _patched(monkeypatch: pytest.MonkeyPatch) -> None:
     """Route the enrichment's sequence reads at the fake proxy (no network in the unit suite)."""
-    monkeypatch.setattr(
-        "just_dna_enricher.enrich.SequenceProxy", lambda **_kw: _FakeProxy()
-    )
+    monkeypatch.setattr("just_dna_enricher.enrich.SequenceProxy", lambda **_kw: _FakeProxy())
 
 
 def test_best_effort_reports_the_mismatch_and_still_writes(
@@ -293,12 +288,18 @@ def test_best_effort_reports_the_mismatch_and_still_writes(
 ) -> None:
     _patched(monkeypatch)
     spec = _spec(tmp_path)
-    result = enrich(spec, offline=False, download=False, use_gnomad=False,
-                    ensembl_cache=cache, clinvar_cache=tmp_path / "none",
-                    grch37_client=_grch37_with_nothing_to_say())
+    result = enrich(
+        spec,
+        offline=False,
+        download=False,
+        use_gnomad=False,
+        ensembl_cache=cache,
+        clinvar_cache=tmp_path / "none",
+        grch37_client=_grch37_with_nothing_to_say(),
+    )
     assert len(result.ref_mismatches) == 1
     assert isinstance(result.ref_mismatches[0], RefMismatch)
-    assert (spec / "resolution.csv").exists()   # best_effort still produces a table
+    assert (spec / "resolution.csv").exists()  # best_effort still produces a table
 
 
 def test_strict_refuses_a_module_that_contradicts_the_genome(
@@ -307,9 +308,15 @@ def test_strict_refuses_a_module_that_contradicts_the_genome(
     _patched(monkeypatch)
     spec = _spec(tmp_path)
     with pytest.raises(EnrichmentError, match="disagree with the GRCh38 reference"):
-        enrich(spec, mode="strict", download=False, use_gnomad=False,
-               ensembl_cache=cache, clinvar_cache=tmp_path / "none",
-               grch37_client=_grch37_with_nothing_to_say())
+        enrich(
+            spec,
+            mode="strict",
+            download=False,
+            use_gnomad=False,
+            ensembl_cache=cache,
+            clinvar_cache=tmp_path / "none",
+            grch37_client=_grch37_with_nothing_to_say(),
+        )
 
 
 def test_the_wrong_build_diagnosis_uses_the_injected_client_and_clears_this_module(
@@ -325,36 +332,49 @@ def test_the_wrong_build_diagnosis_uses_the_injected_client_and_clears_this_modu
     _patched(monkeypatch)
     calls: list[str] = []
     spec = _spec(tmp_path)
-    result = enrich(spec, download=False, use_gnomad=False, ensembl_cache=cache,
-                    clinvar_cache=tmp_path / "none",
-                    grch37_client=_grch37_with_nothing_to_say(calls))
+    result = enrich(
+        spec,
+        download=False,
+        use_gnomad=False,
+        ensembl_cache=cache,
+        clinvar_cache=tmp_path / "none",
+        grch37_client=_grch37_with_nothing_to_say(calls),
+    )
     assert len(result.ref_mismatches) == 1
     assert [c for c in calls if "/sequence/region/" in c], "the injected client must be consulted"
     assert result.build_diagnoses == []
     assert result.build_not_diagnosed is None, "the pass ran; its answer was simply negative"
 
 
-def test_an_offline_run_diagnoses_nothing_and_says_why(
-    tmp_path: Path, cache: Path
-) -> None:
+def test_an_offline_run_diagnoses_nothing_and_says_why(tmp_path: Path, cache: Path) -> None:
     """Offline skips the reference check, so there is nothing to diagnose — and it says so.
 
     An empty diagnosis list otherwise means both "asked, nothing points elsewhere" and "never asked".
     """
     spec = _spec(tmp_path)
-    result = enrich(spec, offline=True, download=False, use_gnomad=False,
-                    ensembl_cache=cache, clinvar_cache=tmp_path / "none")
+    result = enrich(
+        spec,
+        offline=True,
+        download=False,
+        use_gnomad=False,
+        ensembl_cache=cache,
+        clinvar_cache=tmp_path / "none",
+    )
     assert result.ref_mismatches == []
     assert result.build_not_diagnosed == "skipped_offline"
 
 
-def test_verify_ref_can_be_turned_off(
-    tmp_path: Path, cache: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_verify_ref_can_be_turned_off(tmp_path: Path, cache: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _patched(monkeypatch)
     spec = _spec(tmp_path)
-    result = enrich(spec, verify_ref=False, download=False, use_gnomad=False,
-                    ensembl_cache=cache, clinvar_cache=tmp_path / "none")
+    result = enrich(
+        spec,
+        verify_ref=False,
+        download=False,
+        use_gnomad=False,
+        ensembl_cache=cache,
+        clinvar_cache=tmp_path / "none",
+    )
     assert result.ref_mismatches == []
 
 

@@ -165,7 +165,9 @@ class RefutationComparison:
 
 def _snapshot_release_basis(reference: Path) -> str | None:
     """`status_basis` out of the snapshot's own `release.json`, or `None` when it cannot be read."""
-    release = reference / RELEASE_FILENAME if reference.is_dir() else reference.parent.parent / RELEASE_FILENAME
+    release = (
+        reference / RELEASE_FILENAME if reference.is_dir() else reference.parent.parent / RELEASE_FILENAME
+    )
     if not release.exists():
         return None
     try:
@@ -232,7 +234,8 @@ def compare_refutations(
     if not rows:
         logger.warning(
             "CIViC snapshot at %s is missing or unreadable; the refutation check is skipped this "
-            "run. Build one with `just-dna-enricher civic build --release <date>`.", reference,
+            "run. Build one with `just-dna-enricher civic build --release <date>`.",
+            reference,
         )
         return None
 

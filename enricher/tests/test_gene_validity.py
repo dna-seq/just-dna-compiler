@@ -80,9 +80,7 @@ def _spec(tmp_path: Path, genes: list[str]) -> Path:
     spec.mkdir(parents=True, exist_ok=True)
     (spec / "module_spec.yaml").write_text(_YAML, encoding="utf-8")
     rows = "\n".join(f"rs{i + 1},A/G,risk,c,{gene}" for i, gene in enumerate(genes))
-    (spec / "variants.csv").write_text(
-        f"rsid,genotype,state,conclusion,gene\n{rows}\n", encoding="utf-8"
-    )
+    (spec / "variants.csv").write_text(f"rsid,genotype,state,conclusion,gene\n{rows}\n", encoding="utf-8")
     (spec / "studies.csv").write_text(
         "rsid,pmid\n" + "\n".join(f"rs{i + 1},12345678" for i in range(len(genes))) + "\n",
         encoding="utf-8",
@@ -142,20 +140,18 @@ def test_the_clingen_preamble_and_separator_rows_are_not_data() -> None:
     assertions, released = parse_clingen_validity(_CLINGEN_CSV)
     assert released == "2026-08-13"
     assert {a.gene for a in assertions} == {"RYR1", "HBB", "ACO2"}
-    assert len(assertions) == 5                      # no `+++` row leaked in as a gene
+    assert len(assertions) == 5  # no `+++` row leaked in as a gene
 
 
 def test_one_gene_disease_pair_with_two_inheritance_modes_stays_two_assertions() -> None:
     """The probe finding: 59 such pairs in the real release, and the reason `moi` is in the key."""
     assertions, _ = parse_clingen_validity(_CLINGEN_CSV)
-    aco2 = sorted(
-        (a for a in assertions if a.gene == "ACO2"), key=lambda a: a.moi or ""
-    )
+    aco2 = sorted((a for a in assertions if a.gene == "ACO2"), key=lambda a: a.moi or "")
     assert [(a.moi, a.classification) for a in aco2] == [
         ("autosomal_dominant", "limited"),
         ("autosomal_recessive", "definitive"),
     ]
-    assert len({a.disease_id for a in aco2}) == 1     # same disease, genuinely two curations
+    assert len({a.disease_id for a in aco2}) == 1  # same disease, genuinely two curations
 
 
 def test_the_clingen_assertion_id_comes_out_of_the_source_and_is_not_synthesised() -> None:
@@ -172,9 +168,7 @@ def test_a_changed_clingen_layout_refuses_rather_than_guessing_at_columns() -> N
 
 def test_gencc_keeps_every_submitter_because_the_disagreement_is_the_data() -> None:
     assertions, released = parse_gencc(_GENCC_CSV)
-    ryr1 = sorted(
-        (a for a in assertions if a.gene == "RYR1"), key=lambda a: a.submitter or ""
-    )
+    ryr1 = sorted((a for a in assertions if a.gene == "RYR1"), key=lambda a: a.submitter or "")
     assert [(a.submitter, a.classification) for a in ryr1] == [
         ("Ambry Genetics", "definitive"),
         ("Labcorp Genetics", "moderate"),
@@ -313,11 +307,11 @@ def test_one_unreadable_curation_date_costs_that_cell_and_not_the_export(tmp_pat
     broken = _GENCC_CSV.replace("2018-03-30 13:31:56", "March 2018")
     result = enrich_gene_validity(spec, source="gencc", export_text=broken)
 
-    assert {r.gene for r in result.rows} == {"RYR1", "HBB"}          # nothing was lost
+    assert {r.gene for r in result.rows} == {"RYR1", "HBB"}  # nothing was lost
     ambry = next(r for r in result.rows if r.submitter == "Ambry Genetics")
-    assert ambry.classification_date is None                          # only the cell was withheld
-    assert ambry.classification == "definitive"                       # the assertion survived
-    assert any("March 2018" in note for note in result.unmapped)      # and it was reported, once
+    assert ambry.classification_date is None  # only the cell was withheld
+    assert ambry.classification == "definitive"  # the assertion survived
+    assert any("March 2018" in note for note in result.unmapped)  # and it was reported, once
     # A readable date on another row is unaffected.
     labcorp = next(r for r in result.rows if r.submitter == "Labcorp Genetics")
     assert labcorp.classification_date == "2021-05-02T09:00:00Z"

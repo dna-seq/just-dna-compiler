@@ -301,9 +301,7 @@ class CpicClient:
         reaching for `self._client` (RM97). It was doing the latter, which made the one method with
         no retry and no translation the one the snapshot builder uses to refuse a short read.
         """
-        response = self._client.get(
-            f"{self.endpoint}/{path.lstrip('/')}", params=params, headers=headers
-        )
+        response = self._client.get(f"{self.endpoint}/{path.lstrip('/')}", params=params, headers=headers)
         response.raise_for_status()
         return response
 
@@ -501,10 +499,7 @@ class CpicClient:
             "allele_location_value",
             {
                 "alleledefinitionid": f"in.({ids})",
-                "select": (
-                    "alleledefinitionid,variantallele,"
-                    "sequence_location(genesymbol,dbsnpid,position)"
-                ),
+                "select": ("alleledefinitionid,variantallele,sequence_location(genesymbol,dbsnpid,position)"),
             },
         )
         out: list[CpicDefiningVariant] = []
@@ -561,14 +556,10 @@ class CpicSnapshotClient:
         self.reference = Path(reference)
         data_dir = self.reference / SNAPSHOT_DATA_DIRNAME
         if not data_dir.is_dir() or not any(data_dir.glob("*.parquet")):
-            raise CpicError(
-                f"no CPIC snapshot at {data_dir} — build one with `just-dna-enricher cpic build`"
-            )
+            raise CpicError(f"no CPIC snapshot at {data_dir} — build one with `just-dna-enricher cpic build`")
         self._data_dir = data_dir
         release_path = self.reference / RELEASE_FILENAME
-        self.release: dict[str, Any] = (
-            json.loads(release_path.read_text()) if release_path.is_file() else {}
-        )
+        self.release: dict[str, Any] = json.loads(release_path.read_text()) if release_path.is_file() else {}
 
     @property
     def dataset(self) -> str | None:
@@ -582,9 +573,7 @@ class CpicSnapshotClient:
     def close(self) -> None:
         """No-op, so a caller can `close()` this and a live client identically."""
 
-    def _rows(
-        self, parquet: str, where: str, params: list[Any], select: str, order: str = ""
-    ) -> list[dict]:
+    def _rows(self, parquet: str, where: str, params: list[Any], select: str, order: str = "") -> list[dict]:
         path = self._data_dir / parquet
         if not path.is_file():
             # A snapshot built by an older builder can legitimately lack a table this one reads. An
@@ -612,8 +601,11 @@ class CpicSnapshotClient:
 
     def alleles_for_gene(self, gene: str) -> list[CpicAllele]:
         rows = self._rows(
-            "alleles.parquet", "gene = ?", [gene],
-            "gene, allele, activity_value, clinical_function_status", "allele",
+            "alleles.parquet",
+            "gene = ?",
+            [gene],
+            "gene, allele, activity_value, clinical_function_status",
+            "allele",
         )
         return [
             CpicAllele(
@@ -627,8 +619,11 @@ class CpicSnapshotClient:
 
     def diplotypes_for_gene(self, gene: str) -> list[CpicDiplotype]:
         rows = self._rows(
-            "diplotypes.parquet", "gene = ?", [gene],
-            "gene, diplotype, phenotype, activity_score", "diplotype",
+            "diplotypes.parquet",
+            "gene = ?",
+            [gene],
+            "gene, diplotype, phenotype, activity_score",
+            "diplotype",
         )
         return [
             CpicDiplotype(
@@ -651,8 +646,7 @@ class CpicSnapshotClient:
             "recommendations.parquet",
             "gene = ? AND drug = ? AND gene_count = 1",
             [gene, drug.strip().lower()],
-            "gene, phenotype, drug, population, classification, recommendation, implication, "
-            "activity_score",
+            "gene, phenotype, drug, population, classification, recommendation, implication, activity_score",
         )
         out = [
             CpicRecommendation(
@@ -693,7 +687,9 @@ class CpicSnapshotClient:
         freezing it into the parquet would pin one release's opinion into every snapshot built under it.
         """
         rows = self._rows(
-            "allele_definitions.parquet", "gene = ?", [gene],
+            "allele_definitions.parquet",
+            "gene = ?",
+            [gene],
             "gene, allele, rsid, chrom, start, variant_allele",
             "allele, start, variant_allele",
         )

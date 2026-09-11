@@ -158,11 +158,13 @@ def test_version_coercion_is_idempotent_across_a_roundtrip(tmp_path: Path) -> No
 def test_version_is_digest_neutral(tmp_path: Path) -> None:
     with_v = compile_module(
         _write_spec(tmp_path / "with_v", _module_yaml(version_line="  version: 3.1.4\n")),
-        tmp_path / "out_with", resolve_with_ensembl=False,
+        tmp_path / "out_with",
+        resolve_with_ensembl=False,
     )
     without_v = compile_module(
         _write_spec(tmp_path / "without_v", _module_yaml()),
-        tmp_path / "out_without", resolve_with_ensembl=False,
+        tmp_path / "out_without",
+        resolve_with_ensembl=False,
     )
     assert with_v.success and without_v.success
     assert with_v.manifest.artifact.digest == without_v.manifest.artifact.digest
@@ -173,7 +175,8 @@ def test_version_roundtrips_through_reverse_when_supplied(tmp_path: Path) -> Non
     # caller supplies it; the recompiled spec then accepts it and it reaches the manifest.
     compile_module(
         _write_spec(tmp_path / "spec", _module_yaml(version_line="  version: 1.2.3\n")),
-        tmp_path / "out", resolve_with_ensembl=False,
+        tmp_path / "out",
+        resolve_with_ensembl=False,
     )
     reversed_dir = reverse_module(tmp_path / "out", tmp_path / "reversed", version="1.2.3")
     assert "version: 1.2.3" in (reversed_dir / "module_spec.yaml").read_text(encoding="utf-8")
@@ -244,10 +247,7 @@ def test_a_subtitle_held_beside_the_module_leaves_the_closure_standing(
     assert ModuleInfo(**clean) == load_spec(spec / "module_spec.yaml").module
     assert (spec / "module_spec.yaml").read_bytes() == authored_bytes
     verify_manifest(module_dir, compiled.manifest, require_marketplace=False, check_inputs=True)
-    assert (
-        attestation_failure(doc, module_binding(authored_input_entries(spec)), difficulty=_EASY)
-        is None
-    )
+    assert attestation_failure(doc, module_binding(authored_input_entries(spec)), difficulty=_EASY) is None
 
     # ── Leg 2: the same amendment written into the spec, which is the measured defect.
     (spec / "module_spec.yaml").write_text(
@@ -285,9 +285,7 @@ def test_an_authored_short_description_is_refused_and_an_injected_one_is_strippe
     fix. Pinning the current shape here is what makes that visible and makes this test fail loudly the
     day a specific diagnosis is added, instead of silently continuing to pass.
     """
-    spec = _write_spec(
-        tmp_path / "spec", _module_yaml(extra_lines=f"  short_description: {_SUBTITLE}\n")
-    )
+    spec = _write_spec(tmp_path / "spec", _module_yaml(extra_lines=f"  short_description: {_SUBTITLE}\n"))
     refused = validate_spec(spec)
     assert not refused.valid
     assert any("short_description" in e for e in refused.errors)
@@ -321,9 +319,7 @@ def test_the_two_families_compose_in_one_injected_set(tmp_path: Path) -> None:
     joined = " ".join(result.info)
     assert all(key in joined for key in sorted(both))
 
-    typo = _write_spec(
-        tmp_path / "typo", _module_yaml(extra_lines="  short_descripton: too short\n")
-    )
+    typo = _write_spec(tmp_path / "typo", _module_yaml(extra_lines="  short_descripton: too short\n"))
     assert not validate_spec(typo, authority_keys=both).valid
 
 

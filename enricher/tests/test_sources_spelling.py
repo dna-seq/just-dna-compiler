@@ -80,9 +80,7 @@ def test_merging_never_clobbers_a_hand_written_row_under_either_spelling(tmp_pat
     A curator's `declared_use` is exactly the kind of override "newest wins" would discard, so the
     non-clobbering guarantee is asserted under the new spelling too rather than assumed to carry over.
     """
-    hand_written = SourceRow(
-        source=ENSEMBL_TERMS.source, layer="resolution", declared_use="non_commercial"
-    )
+    hand_written = SourceRow(source=ENSEMBL_TERMS.source, layer="resolution", declared_use="non_commercial")
     path = tmp_path / LICENSING_CSV
     merge_sources_file([hand_written], tmp_path, error=_PassError)
     assert path.is_file()

@@ -45,9 +45,25 @@ from just_dna_enricher.licensing import (
 logger = logging.getLogger(__name__)
 
 _FIELDNAMES = [
-    "variant_key", "rsid", "chrom", "start", "ref", "alt", "genome_build",
-    "population", "allele_count", "allele_number", "homozygote_count", "hemizygote_count",
-    "faf95", "dataset", "vrs_id", "caid", "source", "status", "fetched_at",
+    "variant_key",
+    "rsid",
+    "chrom",
+    "start",
+    "ref",
+    "alt",
+    "genome_build",
+    "population",
+    "allele_count",
+    "allele_number",
+    "homozygote_count",
+    "hemizygote_count",
+    "faf95",
+    "dataset",
+    "vrs_id",
+    "caid",
+    "source",
+    "status",
+    "fetched_at",
 ]
 
 
@@ -72,8 +88,8 @@ class FrequencyUnavailable(FrequencyEnrichmentError):
 @dataclass
 class FrequencyResult:
     rows: list[FrequencyRow]
-    covered: list[str] = field(default_factory=list)     # variant_keys that got at least one row
-    missing: list[str] = field(default_factory=list)     # resolved alleles gnomAD did not know
+    covered: list[str] = field(default_factory=list)  # variant_keys that got at least one row
+    missing: list[str] = field(default_factory=list)  # resolved alleles gnomAD did not know
     # Alleles gnomAD does not COVER — kept apart from `missing` because they are a different answer.
     # `missing` means asked and absent; these were never askable, so counting them as absences would
     # report an unknown as a negative (see `gnomad.covers_locus`).
@@ -138,9 +154,7 @@ def _alleles_from_resolution(
             if coord in seen:
                 continue
             seen.add(coord)
-            key = derive_variant_key(
-                None, row.chrom, row.start, row.ref, alt, build=row.genome_build
-            )
+            key = derive_variant_key(None, row.chrom, row.start, row.ref, alt, build=row.genome_build)
             out.append((key, row.chrom, row.start, row.ref, alt))
     return out, off_build
 
@@ -209,7 +223,10 @@ def enrich_frequencies(
             "Frequency enrichment skipped %d row(s) whose genome_build is not %s: gnomAD v4 is "
             "%s-only and its variant id carries no assembly, so querying a coordinate from another "
             "build would return a different variant's counts under this module's key. Examples: %s",
-            len(off_build), FREQUENCY_GENOME_BUILD, FREQUENCY_GENOME_BUILD, off_build[:3],
+            len(off_build),
+            FREQUENCY_GENOME_BUILD,
+            FREQUENCY_GENOME_BUILD,
+            off_build[:3],
         )
     wanted_populations = {p.strip().lower() for p in populations} if populations else None
 
@@ -223,7 +240,9 @@ def enrich_frequencies(
         if write and existing:
             _write_frequencies_csv(out, frequencies_path)
         return FrequencyResult(
-            rows=out, sources=sorted({r.source for r in out if r.source}), mode=mode,
+            rows=out,
+            sources=sorted({r.source for r in out if r.source}),
+            mode=mode,
             skipped_offline=True,
             missing=sorted({key for key, *_ in alleles} - {r.variant_key for r in out}),
         )
@@ -268,8 +287,15 @@ def enrich_frequencies(
             # the locus IS in the callset and the allele is absent from those samples.
             out.append(
                 FrequencyRow(
-                    variant_key=key, chrom=chrom, start=start, ref=ref, alt=alt,
-                    population="global", dataset=dataset, source="gnomad", status="not_found",
+                    variant_key=key,
+                    chrom=chrom,
+                    start=start,
+                    ref=ref,
+                    alt=alt,
+                    population="global",
+                    dataset=dataset,
+                    source="gnomad",
+                    status="not_found",
                     fetched_at=fetched_at,
                 )
             )
@@ -280,10 +306,19 @@ def enrich_frequencies(
                 continue
             out.append(
                 FrequencyRow(
-                    variant_key=key, rsid=payload.get("rsid"), chrom=chrom, start=start,
-                    ref=ref, alt=alt, dataset=dataset,
-                    vrs_id=payload.get("vrs_id"), caid=payload.get("caid"),
-                    source="gnomad", status="resolved", fetched_at=fetched_at, **entry,
+                    variant_key=key,
+                    rsid=payload.get("rsid"),
+                    chrom=chrom,
+                    start=start,
+                    ref=ref,
+                    alt=alt,
+                    dataset=dataset,
+                    vrs_id=payload.get("vrs_id"),
+                    caid=payload.get("caid"),
+                    source="gnomad",
+                    status="resolved",
+                    fetched_at=fetched_at,
+                    **entry,
                 )
             )
 
@@ -292,8 +327,15 @@ def enrich_frequencies(
     for key, chrom, start, ref, alt in uncovered:
         out.append(
             FrequencyRow(
-                variant_key=key, chrom=chrom, start=start, ref=ref, alt=alt,
-                population="global", dataset=dataset, source="gnomad", status="not_covered",
+                variant_key=key,
+                chrom=chrom,
+                start=start,
+                ref=ref,
+                alt=alt,
+                population="global",
+                dataset=dataset,
+                source="gnomad",
+                status="not_covered",
                 fetched_at=fetched_at,
             )
         )
@@ -371,12 +413,8 @@ def _write_frequencies_csv(rows: list[FrequencyRow], output_path: Path) -> None:
                     "population": row.population,
                     "allele_count": row.allele_count if row.allele_count is not None else "",
                     "allele_number": row.allele_number if row.allele_number is not None else "",
-                    "homozygote_count": (
-                        row.homozygote_count if row.homozygote_count is not None else ""
-                    ),
-                    "hemizygote_count": (
-                        row.hemizygote_count if row.hemizygote_count is not None else ""
-                    ),
+                    "homozygote_count": (row.homozygote_count if row.homozygote_count is not None else ""),
+                    "hemizygote_count": (row.hemizygote_count if row.hemizygote_count is not None else ""),
                     "faf95": format_faf95(row.faf95),
                     "dataset": row.dataset,
                     "vrs_id": row.vrs_id or "",

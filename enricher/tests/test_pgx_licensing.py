@@ -75,16 +75,9 @@ def _cheap_proof_of_work(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(verification_module, "VERIFICATION_DIFFICULTY_BITS", 8)
 
 
-_YAML = (
-    'schema_version: "1.0"\n'
-    "module:\n  name: cyp\n  title: T\n  report_title: T\n  description: d\n"
-)
+_YAML = 'schema_version: "1.0"\nmodule:\n  name: cyp\n  title: T\n  report_title: T\n  description: d\n'
 # One deliberate error: *2 has no function, not normal function.
-_ALLELE_FUNCTION = (
-    "gene,allele,function_status\n"
-    "CYP2C19,*1,normal_function\n"
-    "CYP2C19,*2,normal_function\n"
-)
+_ALLELE_FUNCTION = "gene,allele,function_status\nCYP2C19,*1,normal_function\nCYP2C19,*2,normal_function\n"
 
 # Trimmed from the real /genes/CYP2C19 response. `*2`'s variant appears three times, once per
 # reference sequence; only the NC_ row carries a genomic coordinate.
@@ -92,39 +85,59 @@ _PHARMVAR_GENE = {
     "geneSymbol": "CYP2C19",
     "alleles": [
         {
-            "geneSymbol": "CYP2C19", "alleleName": "CYP2C19*1", "alleleType": "Core",
-            "function": "normal function", "variants": [],
+            "geneSymbol": "CYP2C19",
+            "alleleName": "CYP2C19*1",
+            "alleleType": "Core",
+            "function": "normal function",
+            "variants": [],
         },
         {
-            "geneSymbol": "CYP2C19", "alleleName": "CYP2C19*2", "alleleType": "Core",
+            "geneSymbol": "CYP2C19",
+            "alleleName": "CYP2C19*2",
+            "alleleType": "Core",
             "function": "no function",
             # The real payload's shape, and the fixture used to be missing half of it. PharmVar emits
             # one row per reference sequence — transcript, then **GRCh37**, then GRCh38 — and lists
             # GRCh37 first, which is what made the first-wins merge store the wrong coordinate for 451
             # of 739 real defining variants. A one-assembly fixture could not see that; this one can.
             "variants": [
-                {"rsId": "rs4244285", "referenceSequence": "NM_000769.4",
-                 "referenceCollections": ["RefSeqTranscript"],
-                 "hgvs": "NM_000769.4:c.681G>A"},
-                {"rsId": "rs4244285", "referenceSequence": "NC_000010.10",
-                 "referenceCollections": ["GRCh37"],
-                 "hgvs": "NC_000010.10:g.96541616G>A"},
-                {"rsId": "rs4244285", "referenceSequence": "NC_000010.11",
-                 "referenceCollections": ["GRCh38"],
-                 "hgvs": "NC_000010.11:g.94781859G>A"},
+                {
+                    "rsId": "rs4244285",
+                    "referenceSequence": "NM_000769.4",
+                    "referenceCollections": ["RefSeqTranscript"],
+                    "hgvs": "NM_000769.4:c.681G>A",
+                },
+                {
+                    "rsId": "rs4244285",
+                    "referenceSequence": "NC_000010.10",
+                    "referenceCollections": ["GRCh37"],
+                    "hgvs": "NC_000010.10:g.96541616G>A",
+                },
+                {
+                    "rsId": "rs4244285",
+                    "referenceSequence": "NC_000010.11",
+                    "referenceCollections": ["GRCh38"],
+                    "hgvs": "NC_000010.11:g.94781859G>A",
+                },
             ],
         },
-        {   # a sub-allele — excluded by default, the core star is the identity
-            "geneSymbol": "CYP2C19", "alleleName": "CYP2C19*2.001", "alleleType": "Sub",
-            "function": "no function", "variants": [],
+        {  # a sub-allele — excluded by default, the core star is the identity
+            "geneSymbol": "CYP2C19",
+            "alleleName": "CYP2C19*2.001",
+            "alleleType": "Sub",
+            "function": "no function",
+            "variants": [],
         },
     ],
 }
 _CPIC_ALLELES = [
-    {"genesymbol": "CYP2C19", "name": "*1", "activityvalue": None,
-     "clinicalfunctionalstatus": "Normal function"},
-    {"genesymbol": "CYP2C19", "name": "*2", "activityvalue": None,
-     "clinicalfunctionalstatus": "No function"},
+    {
+        "genesymbol": "CYP2C19",
+        "name": "*1",
+        "activityvalue": None,
+        "clinicalfunctionalstatus": "Normal function",
+    },
+    {"genesymbol": "CYP2C19", "name": "*2", "activityvalue": None, "clinicalfunctionalstatus": "No function"},
 ]
 
 
@@ -144,9 +157,7 @@ def _pharmvar_client(recorder: list[httpx.Request] | None = None) -> PharmVarCli
             return httpx.Response(401, json={"errorMessage": "API Key is invalid or missing"})
         return httpx.Response(200, json=_PHARMVAR_GENE)
 
-    return PharmVarClient(
-        api_key="test-key", client=httpx.Client(transport=httpx.MockTransport(handler))
-    )
+    return PharmVarClient(api_key="test-key", client=httpx.Client(transport=httpx.MockTransport(handler)))
 
 
 def _cpic_client() -> CpicClient:
@@ -167,7 +178,7 @@ def test_no_pgx_source_permits_sale() -> None:
         assert terms.license == "CC-BY-SA-4.0"
         assert terms.share_alike is True
         assert terms.commercial_use is False, f"{terms.source} must not be marked sellable"
-    assert ENSEMBL_TERMS.commercial_use is True   # the contrast case
+    assert ENSEMBL_TERMS.commercial_use is True  # the contrast case
 
 
 @pytest.mark.parametrize(
@@ -218,8 +229,20 @@ def test_every_declared_column_survives_a_write_read_cycle(tmp_path: Path) -> No
     # …and the axis RM27 is designed to read is a real value, not the absence of one.
     assert [r.redistribution for r in reloaded] == [True, True]
 
-    stale = ["source", "layer", "license", "license_url", "license_sha256", "attribution",
-             "notice", "share_alike", "commercial_use", "declared_use", "dataset", "fetched_at"]
+    stale = [
+        "source",
+        "layer",
+        "license",
+        "license_url",
+        "license_sha256",
+        "attribution",
+        "notice",
+        "share_alike",
+        "commercial_use",
+        "declared_use",
+        "dataset",
+        "fetched_at",
+    ]
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=stale)
         writer.writeheader()
@@ -262,7 +285,7 @@ def test_pharmvar_takes_the_coordinate_from_grch38_not_the_first_nc_row() -> Non
     grch37 = parse_allele(payload, build="GRCh37").variants[0]
     grch38 = parse_allele(payload, build="GRCh38").variants[0]
     assert grch37.start == 96541616 and grch38.start == 94781859
-    assert grch37.rsid == grch38.rsid == "rs4244285"     # same variant, two frames
+    assert grch37.rsid == grch38.rsid == "rs4244285"  # same variant, two frames
     # 227 bp apart at this locus — silently wrong, never absent, which is the dangerous shape.
     assert grch37.start != grch38.start
 
@@ -282,7 +305,7 @@ def test_accession_mapping_refuses_to_guess() -> None:
     assert chrom_from_accession("000010") == "10"
     assert chrom_from_accession("000023") == "X"
     assert chrom_from_accession("000024") == "Y"
-    assert chrom_from_accession("012920") is None    # MT/unplaced — None rather than a guess
+    assert chrom_from_accession("012920") is None  # MT/unplaced — None rather than a guess
 
 
 def test_pharmvar_uses_the_documented_header_and_never_leaks_the_key() -> None:
@@ -290,32 +313,30 @@ def test_pharmvar_uses_the_documented_header_and_never_leaks_the_key() -> None:
     client = _pharmvar_client(recorder)
     client.alleles_for_gene("CYP2C19")
     assert recorder[0].headers[API_KEY_HEADER] == "test-key"
-    assert "X-API-KEY" not in recorder[0].headers     # the wrong name that 401s identically
-    assert "test-key" not in str(recorder[0].url)     # never in the query string
+    assert "X-API-KEY" not in recorder[0].headers  # the wrong name that 401s identically
+    assert "test-key" not in str(recorder[0].url)  # never in the query string
 
 
 def test_pharmvar_401_is_a_clear_error_not_a_retry_storm() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"errorMessage": "API Key is invalid or missing"})
 
-    client = PharmVarClient(
-        api_key="bad", client=httpx.Client(transport=httpx.MockTransport(handler))
-    )
+    client = PharmVarClient(api_key="bad", client=httpx.Client(transport=httpx.MockTransport(handler)))
     with pytest.raises(PharmVarError) as exc:
         client.alleles_for_gene("CYP2C19")
     assert "PHARMVAR_API_KEY" in str(exc.value)
-    assert "bad" not in str(exc.value)                # the key itself is never echoed
+    assert "bad" not in str(exc.value)  # the key itself is never echoed
 
 
 def test_sub_alleles_are_excluded_by_default() -> None:
     alleles = _pharmvar_client().alleles_for_gene("CYP2C19")
-    assert {a.allele for a in alleles} == {"CYP2C19*1", "CYP2C19*2"}   # *2.001 dropped
+    assert {a.allele for a in alleles} == {"CYP2C19*1", "CYP2C19*2"}  # *2.001 dropped
 
 
 def test_cpic_function_prose_maps_onto_the_closed_vocabulary() -> None:
     assert map_function_status("No function") == "no_function"
     assert map_function_status("Possible Decreased Function") == "uncertain_function"
-    assert map_function_status("something new") is None     # unmapped → None, never guessed
+    assert map_function_status("something new") is None  # unmapped → None, never guessed
 
 
 # ── the pass ────────────────────────────────────────────────────────────────────────────────────
@@ -323,10 +344,12 @@ def test_pass_refuses_a_commercial_declaration_and_fetches_nothing(tmp_path: Pat
     recorder: list[httpx.Request] = []
     with pytest.raises(LicenseRefusal):
         enrich_pgx(
-            _spec(tmp_path), declared_use="commercial",
-            pharmvar_client=_pharmvar_client(recorder), cpic_client=_cpic_client(),
+            _spec(tmp_path),
+            declared_use="commercial",
+            pharmvar_client=_pharmvar_client(recorder),
+            cpic_client=_cpic_client(),
         )
-    assert recorder == []          # refused at acquisition — nothing was taken
+    assert recorder == []  # refused at acquisition — nothing was taken
     assert not (tmp_path / "spec" / _LICENCE_CSV).exists()
 
 
@@ -334,8 +357,10 @@ def test_pass_skips_when_nothing_is_declared(tmp_path: Path) -> None:
     """Conservative default: the tool must not assert a purpose on the user's behalf."""
     recorder: list[httpx.Request] = []
     result = enrich_pgx(
-        _spec(tmp_path), declared_use="unstated",
-        pharmvar_client=_pharmvar_client(recorder), cpic_client=_cpic_client(),
+        _spec(tmp_path),
+        declared_use="unstated",
+        pharmvar_client=_pharmvar_client(recorder),
+        cpic_client=_cpic_client(),
     )
     assert recorder == []
     assert result.rows == [] and len(result.skipped) == 2
@@ -344,8 +369,10 @@ def test_pass_skips_when_nothing_is_declared(tmp_path: Path) -> None:
 def test_pass_cross_checks_and_records_terms(tmp_path: Path) -> None:
     spec = _spec(tmp_path)
     result = enrich_pgx(
-        spec, declared_use="non_commercial",
-        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+        spec,
+        declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(),
+        cpic_client=_cpic_client(),
     )
     # Both authorities independently contradict the authored *2 — and agree with each other.
     assert {(c.source, c.allele, c.reported) for c in result.conflicts} == {
@@ -373,9 +400,13 @@ def test_offline_with_no_snapshot_makes_zero_requests_and_says_why(tmp_path: Pat
     """
     recorder: list[httpx.Request] = []
     result = enrich_pgx(
-        _spec(tmp_path), offline=True, declared_use="non_commercial",
-        pharmvar_client=_pharmvar_client(recorder), cpic_client=_cpic_client(),
-        cpic_cache=tmp_path / "absent", pharmvar_cache=tmp_path / "absent",
+        _spec(tmp_path),
+        offline=True,
+        declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(recorder),
+        cpic_client=_cpic_client(),
+        cpic_cache=tmp_path / "absent",
+        pharmvar_cache=tmp_path / "absent",
     )
     assert recorder == [] and result.rows == [] and result.routes == {}
     assert len(result.skipped_offline) == 2
@@ -389,21 +420,28 @@ def test_existing_sources_rows_are_never_clobbered(tmp_path: Path) -> None:
         "pharmvar,annotation,HAND-EDITED,false,non_commercial\n"
     )
     result = enrich_pgx(
-        spec, declared_use="non_commercial",
-        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+        spec,
+        declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(),
+        cpic_client=_cpic_client(),
     )
     kept = next(r for r in result.rows if r.source == "pharmvar")
-    assert kept.license == "HAND-EDITED"        # human row wins, exactly as in enrich()
+    assert kept.license == "HAND-EDITED"  # human row wins, exactly as in enrich()
 
 
 def test_one_source_failing_does_not_sink_the_pass(tmp_path: Path) -> None:
     """PharmVar without a key must not cost the CPIC cross-check."""
-    keyless = PharmVarClient(api_key=None, client=httpx.Client(
-        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_PHARMVAR_GENE))
-    ))
+    keyless = PharmVarClient(
+        api_key=None,
+        client=httpx.Client(
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_PHARMVAR_GENE))
+        ),
+    )
     result = enrich_pgx(
-        _spec(tmp_path), declared_use="non_commercial",
-        pharmvar_client=keyless, cpic_client=_cpic_client(),
+        _spec(tmp_path),
+        declared_use="non_commercial",
+        pharmvar_client=keyless,
+        cpic_client=_cpic_client(),
     )
     assert [r.source for r in result.rows] == ["cpic"]
     assert any("PharmVar API key" in w or "PHARMVAR_API_KEY" in w for w in result.warnings)
@@ -434,14 +472,19 @@ def test_a_client_leaks_no_transport_exception_to_its_callers() -> None:
     retry ladder's real sleeps to reach the same line, and what is under test is the translation
     that happens *after* the retries, not the retries.
     """
-    cpic = CpicClient(client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=[]))))
+    cpic = CpicClient(
+        client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=[])))
+    )
     cpic._request = _http_error  # type: ignore[method-assign]
     with pytest.raises(CpicError):
         cpic.alleles_for_gene("CYP2C19")
 
-    pharmvar = PharmVarClient(api_key="k", client=httpx.Client(
-        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_PHARMVAR_GENE))
-    ))
+    pharmvar = PharmVarClient(
+        api_key="k",
+        client=httpx.Client(
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_PHARMVAR_GENE))
+        ),
+    )
     pharmvar._request = _http_error  # type: ignore[method-assign]
     with pytest.raises(PharmVarError):
         pharmvar.alleles_for_gene("CYP2C19")
@@ -470,8 +513,10 @@ def test_a_failing_cpic_no_longer_takes_pharmvars_answer_with_it(tmp_path: Path)
     cpic = _cpic_client()
     cpic._request = _http_error  # type: ignore[method-assign]
     result = enrich_pgx(
-        _spec(tmp_path), declared_use="non_commercial",
-        pharmvar_client=_pharmvar_client(), cpic_client=cpic,
+        _spec(tmp_path),
+        declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(),
+        cpic_client=cpic,
     )
     assert [r.source for r in result.rows] == ["pharmvar"]
     assert {c.source for c in result.conflicts} == {"pharmvar"}
@@ -494,8 +539,10 @@ def test_the_cross_check_records_what_it_compared(tmp_path: Path) -> None:
     """
     spec = _spec(tmp_path)
     result = enrich_pgx(
-        spec, declared_use="non_commercial",
-        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+        spec,
+        declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(),
+        cpic_client=_cpic_client(),
     )
     record = _record(spec)
     assert record.skipped is None
@@ -519,18 +566,16 @@ def test_two_authorities_disputing_one_allele_is_one_finding_not_two(tmp_path: P
     shape. Demonstrated on the failing construction rather than asserted about it.
     """
     spec = _spec(tmp_path)
-    (spec / "allele_function.csv").write_text(
-        "gene,allele,function_status\nCYP2C19,*2,normal_function\n"
-    )
+    (spec / "allele_function.csv").write_text("gene,allele,function_status\nCYP2C19,*2,normal_function\n")
     result = enrich_pgx(
-        spec, declared_use="non_commercial",
-        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+        spec,
+        declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(),
+        cpic_client=_cpic_client(),
     )
     assert len(result.conflicts) == 2 and result.compared == 1
     with pytest.raises(ValidationError):
-        VerificationRecord(
-            check="allele_function", subjects=result.compared, findings=len(result.conflicts)
-        )
+        VerificationRecord(check="allele_function", subjects=result.compared, findings=len(result.conflicts))
     record = _record(spec)
     assert (record.subjects, record.findings) == (1, 1)
 
@@ -544,19 +589,16 @@ def test_a_claim_no_authority_lists_is_not_counted_as_compared(tmp_path: Path) -
     be visible, so the sentence names it.
     """
     spec = _spec(tmp_path)
-    (spec / "allele_function.csv").write_text(
-        _ALLELE_FUNCTION + "CYP2C19,*17,increased_function\n"
-    )
+    (spec / "allele_function.csv").write_text(_ALLELE_FUNCTION + "CYP2C19,*17,increased_function\n")
     enrich_pgx(
-        spec, declared_use="non_commercial",
-        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+        spec,
+        declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(),
+        cpic_client=_cpic_client(),
     )
     record = _record(spec)
     assert record.subjects == 2
-    assert (
-        "1 authored claim(s) name an allele no consulted authority states a function for"
-        in record.detail
-    )
+    assert "1 authored claim(s) name an allele no consulted authority states a function for" in record.detail
 
 
 def test_a_module_stating_no_function_is_nothing_to_check_even_when_both_answered(
@@ -570,14 +612,14 @@ def test_a_module_stating_no_function_is_nothing_to_check_even_when_both_answere
     """
     spec = _spec(tmp_path)
     (spec / "allele_function.csv").unlink()
-    (spec / "haplotypes.csv").write_text(
-        "gene,haplotype_name,rsid,allele\nCYP2C19,*2,rs4244285,A\n"
-    )
+    (spec / "haplotypes.csv").write_text("gene,haplotype_name,rsid,allele\nCYP2C19,*2,rs4244285,A\n")
     result = enrich_pgx(
-        spec, declared_use="non_commercial",
-        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+        spec,
+        declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(),
+        cpic_client=_cpic_client(),
     )
-    assert set(result.routes) == {"pharmvar", "cpic"}      # both answered
+    assert set(result.routes) == {"pharmvar", "cpic"}  # both answered
     record = _record(spec)
     assert record.skipped == "nothing_to_check" and record.subjects == 0
 
@@ -586,9 +628,13 @@ def test_a_run_that_reached_no_authority_never_reads_as_clean(tmp_path: Path) ->
     """Offline with no snapshot: the check did not run, and the record says which absence it was."""
     spec = _spec(tmp_path)
     enrich_pgx(
-        spec, offline=True, declared_use="non_commercial",
-        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
-        cpic_cache=tmp_path / "absent", pharmvar_cache=tmp_path / "absent",
+        spec,
+        offline=True,
+        declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(),
+        cpic_client=_cpic_client(),
+        cpic_cache=tmp_path / "absent",
+        pharmvar_cache=tmp_path / "absent",
     )
     record = _record(spec)
     assert record.skipped == "offline" and record.subjects == 0
@@ -605,8 +651,10 @@ def test_a_licence_refusal_is_not_a_connectivity_problem(tmp_path: Path) -> None
     """
     spec = _spec(tmp_path)
     enrich_pgx(
-        spec, declared_use="unstated",
-        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+        spec,
+        declared_use="unstated",
+        pharmvar_client=_pharmvar_client(),
+        cpic_client=_cpic_client(),
     )
     record = _record(spec)
     assert record.skipped == "not_permitted" and record.subjects == 0
@@ -628,9 +676,12 @@ def test_a_leg_the_caller_switched_off_is_not_the_reason_the_other_was_absent(
     never made.
     """
     spec = _spec(tmp_path)
-    keyless = PharmVarClient(api_key=None, client=httpx.Client(
-        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_PHARMVAR_GENE))
-    ))
+    keyless = PharmVarClient(
+        api_key=None,
+        client=httpx.Client(
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json=_PHARMVAR_GENE))
+        ),
+    )
     enrich_pgx(spec, declared_use="non_commercial", use_cpic=False, pharmvar_client=keyless)
     record = _record(spec)
     assert record.skipped == "no_reference"
@@ -648,11 +699,14 @@ def test_a_source_that_was_asked_and_gave_no_answer_is_unreachable(tmp_path: Pat
     the other provisions.
     """
     spec = _spec(tmp_path)
-    rejected = PharmVarClient(api_key="stale-key", client=httpx.Client(
-        transport=httpx.MockTransport(
-            lambda r: httpx.Response(401, json={"errorMessage": "API Key is invalid or missing"})
-        )
-    ))
+    rejected = PharmVarClient(
+        api_key="stale-key",
+        client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda r: httpx.Response(401, json={"errorMessage": "API Key is invalid or missing"})
+            )
+        ),
+    )
     enrich_pgx(spec, declared_use="non_commercial", use_cpic=False, pharmvar_client=rejected)
     record = _record(spec)
     assert record.skipped == "unreachable" and record.source == "pharmvar"
@@ -669,8 +723,10 @@ def test_a_module_with_no_pgx_table_is_not_attested_at_all(tmp_path: Path) -> No
     spec = _spec(tmp_path)
     (spec / "allele_function.csv").unlink()
     result = enrich_pgx(
-        spec, declared_use="non_commercial",
-        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+        spec,
+        declared_use="non_commercial",
+        pharmvar_client=_pharmvar_client(),
+        cpic_client=_cpic_client(),
     )
     assert result.warnings and "names no genes" in result.warnings[0]
     assert not (spec / VERIFICATION_JSON).exists()
@@ -680,7 +736,10 @@ def test_a_dry_run_writes_no_attestation(tmp_path: Path) -> None:
     """`write=False` means no files, and an attestation is a file."""
     spec = _spec(tmp_path)
     enrich_pgx(
-        spec, declared_use="non_commercial", write=False,
-        pharmvar_client=_pharmvar_client(), cpic_client=_cpic_client(),
+        spec,
+        declared_use="non_commercial",
+        write=False,
+        pharmvar_client=_pharmvar_client(),
+        cpic_client=_cpic_client(),
     )
     assert not (spec / VERIFICATION_JSON).exists()

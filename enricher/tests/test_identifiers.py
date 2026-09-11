@@ -34,10 +34,10 @@ _DBSNP = json.loads((_ASSETS / "dbsnp_esummary_payload.json").read_text())
 _OLS4 = json.loads((_ASSETS / "ols4_terms_payload.json").read_text())
 _HGNC = json.loads((_ASSETS / "hgnc_fetch_payload.json").read_text())
 
-_LIVE = "rs334"           # sickle-cell; current
-_MERGED = "rs3216883"     # merged into rs3051860
+_LIVE = "rs334"  # sickle-cell; current
+_MERGED = "rs3216883"  # merged into rs3051860
 _WITHDRAWN = "rs11273140"  # retracted after a clustering error
-_NEVER = "rs2000000000"   # never assigned
+_NEVER = "rs2000000000"  # never assigned
 
 
 def _eutils() -> EutilsClient:
@@ -133,10 +133,14 @@ def test_withdrawn_is_a_real_state_that_the_live_api_cannot_produce() -> None:
     assert "both modes" in str(withdrawn)
 
     # The automated path still cannot reach it — that is the finding, not an oversight.
-    states = {classify_rsid(r, rec).state for r, rec in
-              zip(("rs334", "rs3216883", _WITHDRAWN, _NEVER),
-                  (_DBSNP["result"][k] for k in ("334", "3216883", "11273140", "2000000000")),
-                  strict=True)}
+    states = {
+        classify_rsid(r, rec).state
+        for r, rec in zip(
+            ("rs334", "rs3216883", _WITHDRAWN, _NEVER),
+            (_DBSNP["result"][k] for k in ("334", "3216883", "11273140", "2000000000")),
+            strict=True,
+        )
+    }
     assert "withdrawn" not in states
 
 
@@ -187,7 +191,7 @@ def test_check_rsids_batches_and_strips_the_rs_prefix() -> None:
 
 def test_a_live_rsid_is_not_reported_as_merged() -> None:
     """`snp_id` is an int and the uid a string; comparing them raw makes every rsID look merged."""
-    assert _DBSNP["result"]["334"]["snp_id"] == 334        # int, in the recorded payload
+    assert _DBSNP["result"]["334"]["snp_id"] == 334  # int, in the recorded payload
     assert classify_rsid(_LIVE, _DBSNP["result"]["334"]).state == "live"
 
 
@@ -203,8 +207,7 @@ def test_enrich_stamps_the_status_without_substituting_the_rsid(tmp_path: Path, 
         "schema_version: '1.0'\nmodule:\n  name: d\n  title: D\n  description: d\n  report_title: D\n"
     )
     (spec / "variants.csv").write_text(
-        f"rsid,chrom,start,ref,alts,genotype,state,conclusion\n"
-        f"{_MERGED},1,100,A,T,A/T,risk,c\n"
+        f"rsid,chrom,start,ref,alts,genotype,state,conclusion\n{_MERGED},1,100,A,T,A/T,risk,c\n"
     )
     (spec / "studies.csv").write_text(f"rsid,pmid\n{_MERGED},29165669\n")
 
@@ -212,8 +215,14 @@ def test_enrich_stamps_the_status_without_substituting_the_rsid(tmp_path: Path, 
         enrich_module, "check_rsids", lambda rsids, **kw: check_rsids(rsids, client=_eutils())
     )
     result = enrich_module.enrich(
-        spec, offline=False, download=False, use_clinvar=False, use_gnomad=False,
-        mint_vrs=False, verify_ref=False, verify_clinsig=False,
+        spec,
+        offline=False,
+        download=False,
+        use_clinvar=False,
+        use_gnomad=False,
+        mint_vrs=False,
+        verify_ref=False,
+        verify_clinsig=False,
     )
 
     row = result.rows[0]
@@ -235,7 +244,14 @@ def test_the_new_columns_stay_out_of_the_fact_set() -> None:
     assert "rsid_current" not in RESOLUTION_FACT_FIELDS
     assert "rsid_status" not in RESOLUTION_FACT_FIELDS
 
-    base = {"variant_key": "rs3216883", "rsid": "rs3216883", "chrom": "1", "start": 100, "ref": "A", "alts": "T"}
+    base = {
+        "variant_key": "rs3216883",
+        "rsid": "rs3216883",
+        "chrom": "1",
+        "start": 100,
+        "ref": "A",
+        "alts": "T",
+    }
     before = [ResolutionRow(**base)]
     after = [ResolutionRow(**base, rsid_status="merged", rsid_current="rs3051860")]
     assert resolution_signature(before) == resolution_signature(after)
@@ -331,7 +347,7 @@ def test_every_registered_ontology_composes_a_reachable_iri() -> None:
 def test_multi_valued_trait_cells_fan_out() -> None:
     variants = [
         _variant(rsid="rs1", trait_efo_id="EFO_0004340;MONDO_0005010"),
-        _variant(rsid="rs2", trait_efo_id="EFO_0004340"),          # duplicate collapses
+        _variant(rsid="rs2", trait_efo_id="EFO_0004340"),  # duplicate collapses
     ]
     assert module_trait_ids(variants) == ["EFO_0004340", "MONDO_0005010"]
 
@@ -446,8 +462,12 @@ def test_live_registries_still_behave_as_recorded() -> None:
 # the signature of a machine-written summary, where real names are quoted beside invented rs numbers
 # that resolve anyway because dbSNP is dense. Every existing check passes on each half alone.
 _GENE_BANDS = {
-    "CADM2": "3p12.1", "NEGR1": "1p31.1", "EXOC3L2": "19q13.32",
-    "FOXO3": "6q21", "FTO": "16q12.2", "XG": "Xp22.33",
+    "CADM2": "3p12.1",
+    "NEGR1": "1p31.1",
+    "EXOC3L2": "19q13.32",
+    "FOXO3": "6q21",
+    "FTO": "16q12.2",
+    "XG": "Xp22.33",
 }
 
 
@@ -457,10 +477,22 @@ def _hgnc_with_locations() -> OntologyClient:
         band = _GENE_BANDS.get(symbol)
         if band is None or "prev_symbol" in str(request.url):
             return httpx.Response(200, json={"response": {"numFound": 0, "docs": []}})
-        return httpx.Response(200, json={"response": {"numFound": 1, "docs": [
-            {"symbol": symbol, "status": "Approved", "hgnc_id": f"HGNC:{len(symbol)}",
-             "location": band}
-        ]}})
+        return httpx.Response(
+            200,
+            json={
+                "response": {
+                    "numFound": 1,
+                    "docs": [
+                        {
+                            "symbol": symbol,
+                            "status": "Approved",
+                            "hgnc_id": f"HGNC:{len(symbol)}",
+                            "location": band,
+                        }
+                    ],
+                }
+            },
+        )
 
     client = OntologyClient()
     client._client = httpx.Client(transport=httpx.MockTransport(handler))
@@ -470,19 +502,25 @@ def _hgnc_with_locations() -> OntologyClient:
 
 def _row(rsid: str, gene: str, chrom: str | None = None, start: int | None = None) -> VariantRow:
     return VariantRow(
-        rsid=rsid, gene=gene, chrom=chrom, start=start,
-        ref="C" if chrom else None, alts="T" if chrom else None,
-        genotype="C/T", state="risk", conclusion="c",
+        rsid=rsid,
+        gene=gene,
+        chrom=chrom,
+        start=start,
+        ref="C" if chrom else None,
+        alts="T" if chrom else None,
+        genotype="C/T",
+        state="risk",
+        conclusion="c",
     )
 
 
 def test_a_gene_on_another_chromosome_than_its_variant_is_reported() -> None:
     """The four real pairings from the report, each individually valid and jointly false."""
     variants = [
-        _row("rs13010010", "CADM2", "2", 100),    # CADM2 is on 3
-        _row("rs2252481", "NEGR1", "6", 100),     # NEGR1 is on 1
+        _row("rs13010010", "CADM2", "2", 100),  # CADM2 is on 3
+        _row("rs2252481", "NEGR1", "6", 100),  # NEGR1 is on 1
         _row("rs10180596", "EXOC3L2", "2", 100),  # EXOC3L2 is on 19
-        _row("rs36071874", "FOXO3", "1", 100),    # FOXO3 is on 6
+        _row("rs36071874", "FOXO3", "1", 100),  # FOXO3 is on 6
         _row("rs1421085", "FTO", "16", 53767042),  # the true pairing, and it must stay silent
     ]
     report = check_identifiers(variants=variants, check_traits=False, client=_hgnc_with_locations())
@@ -497,8 +535,9 @@ def test_the_check_is_chromosome_level_and_not_an_interval() -> None:
     """`rs1421085` sits in an FTO intron and acts on IRX3/IRX5 megabases away, so a row may name any
     of the three. An interval check would fire on correct rows; this one must not."""
     report = check_identifiers(
-        variants=[_row("rs1421085", "FTO", "16", 1)],   # nowhere near the gene body, same contig
-        check_traits=False, client=_hgnc_with_locations(),
+        variants=[_row("rs1421085", "FTO", "16", 1)],  # nowhere near the gene body, same contig
+        check_traits=False,
+        client=_hgnc_with_locations(),
     )
     assert report.gene_loci == [] and report.clean
 
@@ -508,14 +547,16 @@ def test_an_unknown_symbol_or_missing_chromosome_withholds_rather_than_accuses()
     because an empty conflict list otherwise means both 'compared' and 'never compared'."""
     unknown = check_identifiers(
         variants=[_row("rs1", "NOTAGENE", "1", 100)],
-        check_traits=False, client=_hgnc_with_locations(),
+        check_traits=False,
+        client=_hgnc_with_locations(),
     )
     assert unknown.gene_loci == []
     assert unknown.gene_loci_not_checked == "HGNC returned no usable chromosome for any authored gene"
 
     unresolved = check_identifiers(
-        variants=[_row("rs13010010", "CADM2")],     # rsID only: no chromosome anywhere yet
-        check_traits=False, client=_hgnc_with_locations(),
+        variants=[_row("rs13010010", "CADM2")],  # rsID only: no chromosome anywhere yet
+        check_traits=False,
+        client=_hgnc_with_locations(),
     )
     assert unresolved.gene_loci == []
     assert unresolved.gene_loci_not_checked is not None
@@ -529,9 +570,7 @@ def test_the_resolved_chromosome_is_read_from_an_injected_resolution_table(tmp_p
     (spec / "module_spec.yaml").write_text(
         "schema_version: '1.0'\nmodule:\n  name: d\n  title: D\n  description: d\n  report_title: D\n"
     )
-    (spec / "variants.csv").write_text(
-        "rsid,gene,genotype,state,conclusion\nrs2252481,NEGR1,C/T,risk,c\n"
-    )
+    (spec / "variants.csv").write_text("rsid,gene,genotype,state,conclusion\nrs2252481,NEGR1,C/T,risk,c\n")
     (spec / "resolution.csv").write_text(
         "variant_key,rsid,chrom,start,ref,alts,genome_build,locus_index,source,status,"
         "rsid_alternates,rsid_current,rsid_status,fetched_at\n"
@@ -548,7 +587,8 @@ def test_a_pseudoautosomal_gene_is_not_a_conflict() -> None:
     spelling rather than a contradiction (RM32)."""
     report = check_identifiers(
         variants=[_row("rs311103", "XG", "Y", 2691222)],
-        check_traits=False, client=_hgnc_with_locations(),
+        check_traits=False,
+        client=_hgnc_with_locations(),
     )
     assert report.gene_loci == []
 
@@ -595,9 +635,9 @@ def test_a_row_the_comparison_could_not_judge_is_outside_the_denominator() -> No
         _row("rs2252481", "NEGR1"),
     ]
     report = check_identifiers(variants=variants, check_traits=False, client=_hgnc_with_locations())
-    record = _by_check(
-        verification_records(report, check_traits=False, check_genes=True)
-    )["gene_locus_agreement"]
+    record = _by_check(verification_records(report, check_traits=False, check_genes=True))[
+        "gene_locus_agreement"
+    ]
 
     assert report.gene_loci_compared == 2
     assert (record.subjects, record.findings) == (2, len(report.gene_loci)) == (2, 1)
@@ -612,11 +652,12 @@ def test_a_comparison_that_never_ran_is_a_skip_and_never_a_clean_zero() -> None:
     """
     report = check_identifiers(
         variants=[_row("rs13010010", "CADM2")],  # rsID only: no chromosome anywhere yet
-        check_traits=False, client=_hgnc_with_locations(),
+        check_traits=False,
+        client=_hgnc_with_locations(),
     )
-    record = _by_check(
-        verification_records(report, check_traits=False, check_genes=True)
-    )["gene_locus_agreement"]
+    record = _by_check(verification_records(report, check_traits=False, check_genes=True))[
+        "gene_locus_agreement"
+    ]
 
     assert record.skipped == "no_reference"
     assert record.detail == report.gene_loci_not_checked
@@ -628,7 +669,8 @@ def test_a_check_switched_off_is_not_requested_and_not_an_absence() -> None:
     must not read as the same absence as a source that could not be reached."""
     report = check_identifiers(
         variants=[_row("rs1421085", "FTO", "16", 53767042)],
-        check_traits=False, client=_hgnc_with_locations(),
+        check_traits=False,
+        client=_hgnc_with_locations(),
     )
     records = _by_check(verification_records(report, check_traits=False, check_genes=True))
 
@@ -644,13 +686,11 @@ def test_a_curie_ols4_was_never_asked_about_stays_out_of_the_denominator() -> No
     OLS4" would be a claim OLS4 never made, hashed into `manifest.verification` as a fact.
     """
     variants = [
-        _variant(rsid="rs1", trait_efo_id="EFO_0004340"),   # current, and really asked
-        _variant(rsid="rs2", trait_efo_id="DOID:1612"),     # a prefix this check cannot resolve
+        _variant(rsid="rs1", trait_efo_id="EFO_0004340"),  # current, and really asked
+        _variant(rsid="rs2", trait_efo_id="DOID:1612"),  # a prefix this check cannot resolve
     ]
     report = check_identifiers(variants, check_genes=False, client=_ontology())
-    record = _by_check(
-        verification_records(report, check_traits=True, check_genes=False)
-    )["trait_currency"]
+    record = _by_check(verification_records(report, check_traits=True, check_genes=False))["trait_currency"]
 
     assert [t.state for t in report.traits] == ["current", "unchecked"]
     assert (record.subjects, record.findings) == (1, 0)
@@ -666,9 +706,7 @@ def test_a_module_whose_every_curie_is_unresolvable_records_a_skip() -> None:
     report = check_identifiers(
         [_variant(rsid="rs1", trait_efo_id="DOID:1612")], check_genes=False, client=_ontology()
     )
-    record = _by_check(
-        verification_records(report, check_traits=True, check_genes=False)
-    )["trait_currency"]
+    record = _by_check(verification_records(report, check_traits=True, check_genes=False))["trait_currency"]
     assert record.skipped == "unsupported" and "DOID:1612" in (record.detail or "")
 
 

@@ -131,9 +131,7 @@ class ClinVarReleaseClient:
     @retry(
         stop=attempt_floor(3),
         wait=wait_exponential_jitter(initial=1.0, max=15.0),
-        retry=retry_if_exception_type(
-            (httpx.TransportError, httpx.TimeoutException, httpx.HTTPStatusError)
-        ),
+        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException, httpx.HTTPStatusError)),
         reraise=True,
     )
     def _header_bytes(self) -> bytes:
@@ -184,7 +182,9 @@ def _gunzip_prefix(raw: bytes) -> str:
     except zlib.error as exc:
         logger.warning(
             "The ClinVar release probe read %d byte(s) that are not a gzip stream (%s); the current "
-            "release is unread rather than absent.", len(raw), exc,
+            "release is unread rather than absent.",
+            len(raw),
+            exc,
         )
         return ""
     return text.decode("utf-8", errors="replace")
@@ -342,8 +342,7 @@ def check_dataset_currency(
         return CurrencyCheck(
             (),
             tuple(
-                DatasetCurrency(row.source, row.layer, (row.dataset or "").strip(),
-                                unchecked="offline")
+                DatasetCurrency(row.source, row.layer, (row.dataset or "").strip(), unchecked="offline")
                 for row in subjects
             ),
             not_checked="offline",
@@ -366,16 +365,13 @@ def check_dataset_currency(
             answered[row.source] = _ask(registry, row.source)
         label, reason = answered[row.source]
         if reason is not None:
-            unchecked.append(
-                DatasetCurrency(row.source, row.layer, recorded, unchecked=reason)
-            )
+            unchecked.append(DatasetCurrency(row.source, row.layer, recorded, unchecked=reason))
         elif label is None or _label_kind(label) != _label_kind(recorded):
             # Read and unreadable are different absences. A source that stated no release, and a
             # source whose stated release is written in the other of the two label forms, both leave
             # nothing to compare — which is `no_reference`, and emphatically not "still current".
             unchecked.append(
-                DatasetCurrency(row.source, row.layer, recorded, current=label,
-                                unchecked="no_reference")
+                DatasetCurrency(row.source, row.layer, recorded, current=label, unchecked="no_reference")
             )
         else:
             compared.append(DatasetCurrency(row.source, row.layer, recorded, current=label))
@@ -409,7 +405,10 @@ def _ask(probes: Mapping[str, ReleaseProbe], source: str) -> tuple[str | None, s
         reason = "unreachable" if isinstance(exc, ReleaseUnavailable) else "no_reference"
         logger.info(
             "Could not settle which release %s publishes (%s); its recorded dataset is unchecked "
-            "(%s) rather than current.", source, exc, reason,
+            "(%s) rather than current.",
+            source,
+            exc,
+            reason,
         )
         return None, reason
 

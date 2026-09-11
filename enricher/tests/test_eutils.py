@@ -55,12 +55,12 @@ def test_the_gate_honours_the_interval_without_really_sleeping() -> None:
         now[0] += seconds
 
     gate = PacingGate(interval=1 / 3, clock=lambda: now[0], sleeper=sleeper)
-    gate.wait()                       # first call is free
+    gate.wait()  # first call is free
     assert slept == []
-    gate.wait()                       # immediately after → waits the whole interval
+    gate.wait()  # immediately after → waits the whole interval
     assert slept == [pytest.approx(1 / 3)]
     now[0] += 10.0
-    gate.wait()                       # long past the interval → no wait
+    gate.wait()  # long past the interval → no wait
     assert len(slept) == 1
 
 
@@ -97,7 +97,7 @@ def test_no_email_is_sent_when_none_is_configured(monkeypatch) -> None:
 def test_ids_are_batched_and_deduplicated_in_first_occurrence_order() -> None:
     recorder = _Recorder(_summary())
     client = _client(recorder, batch_size=2)
-    ids = ["3", "1", "3", "2", "1", "4", "5"]      # 5 distinct → 3 batches of at most 2
+    ids = ["3", "1", "3", "2", "1", "4", "5"]  # 5 distinct → 3 batches of at most 2
 
     client.esummary("pubmed", ids)
 
@@ -109,13 +109,15 @@ def test_ids_are_batched_and_deduplicated_in_first_occurrence_order() -> None:
 
 
 def test_a_missing_record_is_kept_rather_than_dropped() -> None:
-    """"NCBI has no summary for this uid" is the answer callers came for, not a failure to hide."""
-    recorder = _Recorder(_summary(
-        **{
-            "29165669": {"uid": "29165669", "title": "A real paper"},
-            "999999999": {"uid": "999999999", "error": "cannot get document summary"},
-        }
-    ))
+    """ "NCBI has no summary for this uid" is the answer callers came for, not a failure to hide."""
+    recorder = _Recorder(
+        _summary(
+            **{
+                "29165669": {"uid": "29165669", "title": "A real paper"},
+                "999999999": {"uid": "999999999", "error": "cannot get document summary"},
+            }
+        )
+    )
     records = _client(recorder).esummary("pubmed", ["29165669", "999999999"])
 
     assert set(records) == {"29165669", "999999999"}

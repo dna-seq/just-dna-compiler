@@ -46,7 +46,10 @@ def test_the_binning_set_is_derived_from_the_models() -> None:
     """A kind is a binning kind exactly when its model is a `MeasureBinRow` — never a kept list."""
     names = {csv_name for csv_name, _model in _BINNING_TABLE_KINDS}
     assert names == {
-        "activity_phenotype.csv", "copynumbers.csv", "repeat_alleles.csv", "heteroplasmy.csv",
+        "activity_phenotype.csv",
+        "copynumbers.csv",
+        "repeat_alleles.csv",
+        "heteroplasmy.csv",
     }
     for _csv_name, model in _BINNING_TABLE_KINDS:
         assert issubclass(model, MeasureBinRow)
@@ -132,9 +135,13 @@ def _heteroplasmy_rows(*, identity: bool) -> list[HeteroplasmyRow]:
     """The `mt_heteroplasmy` bins as model rows, with or without their 0.5.1 identity columns."""
     return [
         HeteroplasmyRow(
-            gene=r["gene"], reference_sequence=r["reference_sequence"], tissue=r["tissue"],
-            measure_kind=r["measure_kind"], measure_min=float(r["measure_min"]),
-            measure_max=float(r["measure_max"]), conclusion=r["conclusion"],
+            gene=r["gene"],
+            reference_sequence=r["reference_sequence"],
+            tissue=r["tissue"],
+            measure_kind=r["measure_kind"],
+            measure_min=float(r["measure_min"]),
+            measure_max=float(r["measure_max"]),
+            conclusion=r["conclusion"],
             **(
                 {"chrom": r["chrom"], "start": int(r["start"]), "ref": r["ref"], "alts": r["alts"]}
                 if identity
@@ -191,9 +198,7 @@ def test_the_same_heteroplasmy_rows_stripped_of_their_identity_get_the_extra_rou
     assert "alternatively, a studies.csv row naming the variant" in finding
     # The repeat table, whose rows could never name a variant, gets the first half and not the second.
     repeat_finding = _finding(
-        _check_binning_grounding(
-            {"repeat_alleles.csv": _repeat_rows(pmid=None)}, []
-        ),
+        _check_binning_grounding({"repeat_alleles.csv": _repeat_rows(pmid=None)}, []),
         "repeat_alleles.csv",
     )
     assert repeat_finding is not None
@@ -204,10 +209,13 @@ def _repeat_rows(*, pmid: str | None) -> list[RepeatAlleleRow]:
     """The HTT bins as model rows, optionally carrying the RM47 boundary citation."""
     return [
         RepeatAlleleRow(
-            gene=r["gene"], repeat_unit=r["repeat_unit"], measure_kind=r["measure_kind"],
+            gene=r["gene"],
+            repeat_unit=r["repeat_unit"],
+            measure_kind=r["measure_kind"],
             measure_min=float(r["measure_min"]) if r["measure_min"] else None,
             measure_max=float(r["measure_max"]) if r["measure_max"] else None,
-            conclusion=r["conclusion"], pmid=pmid,
+            conclusion=r["conclusion"],
+            pmid=pmid,
         )
         for r in _rows(_HTT / "repeat_alleles.csv")
         if r["unresolved"] != "true"
@@ -219,23 +227,27 @@ def test_a_bin_that_cites_its_boundary_is_grounded_and_stays_silent() -> None:
 
     Demonstrated on the *old* behaviour too — the identical rows without the column still warn — so
     this proves the column clears it rather than merely asserting that it does."""
-    assert _finding(
-        _check_binning_grounding({"repeat_alleles.csv": _repeat_rows(pmid=None)}, []),
-        "repeat_alleles.csv",
-    ) is not None
-    assert _finding(
-        _check_binning_grounding({"repeat_alleles.csv": _repeat_rows(pmid="8458085")}, []),
-        "repeat_alleles.csv",
-    ) is None
+    assert (
+        _finding(
+            _check_binning_grounding({"repeat_alleles.csv": _repeat_rows(pmid=None)}, []),
+            "repeat_alleles.csv",
+        )
+        is not None
+    )
+    assert (
+        _finding(
+            _check_binning_grounding({"repeat_alleles.csv": _repeat_rows(pmid="8458085")}, []),
+            "repeat_alleles.csv",
+        )
+        is None
+    )
 
 
 def test_grounding_is_counted_per_row_not_per_table() -> None:
     """One cited bin among uncited ones narrows the numerator; it does not silence the table."""
     rows = _repeat_rows(pmid=None)
     rows[0].pmid = "8458085"
-    finding = _finding(
-        _check_binning_grounding({"repeat_alleles.csv": rows}, []), "repeat_alleles.csv"
-    )
+    finding = _finding(_check_binning_grounding({"repeat_alleles.csv": rows}, []), "repeat_alleles.csv")
     assert finding is not None
     assert f"{len(rows) - 1} of {len(rows)} bin(s)" in finding
 

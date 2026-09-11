@@ -201,11 +201,7 @@ def test_an_out_of_vocabulary_value_is_reported_with_the_options() -> None:
 
 
 def test_a_duplicate_row_is_caught_with_the_compilers_own_key() -> None:
-    text = (
-        "rsid,genotype,state,conclusion\n"
-        "rs1801133,A/G,risk,first\n"
-        "rs1801133,A/G,risk,second\n"
-    )
+    text = "rsid,genotype,state,conclusion\nrs1801133,A/G,risk,first\nrs1801133,A/G,risk,second\n"
     report = inspect_rows("variants.csv", text)
     assert any("duplicate of row 0" in f.message for f in report.findings)
 
@@ -259,9 +255,7 @@ def _stub_cells(text: str) -> set[tuple[int, str]]:
 
 def _placeholder_findings(report: HintReport) -> list[Finding]:
     """Every finding either emitter produces about a placeholder, whichever wording it uses."""
-    return [
-        f for f in report.findings if "template stub" in f.message or TEMPLATE_PLACEHOLDER in f.message
-    ]
+    return [f for f in report.findings if "template stub" in f.message or TEMPLATE_PLACEHOLDER in f.message]
 
 
 @pytest.mark.parametrize("kind", sorted(DRAFTABLE))
@@ -379,9 +373,7 @@ def test_the_derived_roster_is_derived_from_the_compilers_own_fact_tables() -> N
 
 def test_every_fact_table_resolves_to_the_model_the_compiler_loads_it_with() -> None:
     """Not just *a* model — the same one, so the two surfaces cannot drift."""
-    assert all(
-        derived_model_for(csv_name) is model for csv_name, _parquet, model in _FACT_TABLES
-    )
+    assert all(derived_model_for(csv_name) is model for csv_name, _parquet, model in _FACT_TABLES)
 
 
 def test_both_spellings_of_the_licence_table_answer_the_same_model() -> None:
@@ -417,8 +409,7 @@ def test_no_key_column_is_presented_as_fillable_unless_it_is_a_real_authored_fie
     """
     offenders = {
         csv_name: [
-            c for c in key.columns
-            if c not in model_for(csv_name).model_fields and c not in key.stamped
+            c for c in key.columns if c not in model_for(csv_name).model_fields and c not in key.stamped
         ]
         for csv_name in DRAFTABLE
         if (key := key_fields(csv_name)) is not None
@@ -494,11 +485,7 @@ def test_a_kind_declaring_no_key_withholds_rather_than_inventing_one() -> None:
         pass
 
     assert getattr(_Unkeyed, "_KEY_FIELDS", None) is None
-    unkeyed = [
-        csv_name
-        for csv_name in (*DRAFTABLE, *DERIVED_TABLE_MODELS)
-        if key_fields(csv_name) is None
-    ]
+    unkeyed = [csv_name for csv_name in (*DRAFTABLE, *DERIVED_TABLE_MODELS) if key_fields(csv_name) is None]
     assert unkeyed == [], f"a kind lost its declared key: {unkeyed}"
 
 

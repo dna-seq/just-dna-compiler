@@ -96,10 +96,7 @@ _SEX_SUFFIX_RE = re.compile(r"(^|_)(XX|XY)$")
 _VARIANT_ID_RE = re.compile(r"^(?P<chrom>[^-]+)-(?P<pos>\d+)-(?P<ref>[A-Za-z]+)-(?P<alt>[A-Za-z]+)$")
 
 
-
-def covers_locus(
-    chrom: str | None, start: int | None, *, build: str = "GRCh38"
-) -> bool | None:
+def covers_locus(chrom: str | None, start: int | None, *, build: str = "GRCh38") -> bool | None:
     """Is this locus inside gnomAD's callset at all? **Three-valued**, and `None` means "cannot say".
 
     gnomAD excludes the **Y pseudoautosomal region**: like a standard GRCh38 analysis set it hard-masks
@@ -370,12 +367,17 @@ class GnomadClient:
         if absences:
             logger.info(
                 "gnomAD %s: %d/%d of the batch are not in %s (recorded as not found)",
-                what, len(absences), len(fields), self.settings.dataset,
+                what,
+                len(absences),
+                len(fields),
+                self.settings.dataset,
             )
         if by_alias:
             logger.info(
                 "gnomAD %s: %d/%d aliases returned an error (partial results kept)",
-                what, len(by_alias), len(fields),
+                what,
+                len(by_alias),
+                len(fields),
             )
         return payload.get("data") or {}, by_alias
 

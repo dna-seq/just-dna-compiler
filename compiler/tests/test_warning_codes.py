@@ -146,7 +146,6 @@ def _channel_receivers() -> set[str]:
     return found
 
 
-
 @functools.cache
 def _channel_slots() -> dict[str, int]:
     """For a function returning a tuple, which slot is the warnings channel.
@@ -199,7 +198,6 @@ def _channel_slots() -> dict[str, int]:
     return {name: next(iter(slots)) for name, slots in agreed.items() if len(slots) == 1}
 
 
-
 def _binding(function: ast.FunctionDef, node: ast.AST, *, before: int) -> ast.AST:
     """`node`, or the assignment to it that is in effect at line `before`.
 
@@ -220,9 +218,7 @@ def _binding(function: ast.FunctionDef, node: ast.AST, *, before: int) -> ast.AS
         for candidate in ast.walk(function)
         if isinstance(candidate, ast.Assign)
         and candidate.lineno <= before
-        and any(
-            isinstance(target, ast.Name) and target.id == node.id for target in candidate.targets
-        )
+        and any(isinstance(target, ast.Name) and target.id == node.id for target in candidate.targets)
     ]
     return max(candidates, key=lambda value: value.lineno, default=node)
 
@@ -263,11 +259,7 @@ def _warning_producers(tree: ast.Module) -> set[str]:
     seeds: set[str] = set()
 
     def callees(node: ast.AST) -> set[str]:
-        return {
-            n.func.id
-            for n in ast.walk(node)
-            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
-        }
+        return {n.func.id for n in ast.walk(node) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
 
     for node in ast.walk(tree):
         into_channel = False
@@ -282,15 +274,8 @@ def _warning_producers(tree: ast.Module) -> set[str]:
         ):
             into_channel, payload = True, node.args[0]
         elif isinstance(node, ast.Assign):
-            names = {
-                n.id
-                for target in node.targets
-                for n in ast.walk(target)
-                if isinstance(n, ast.Name)
-            }
-            if names & _CHANNEL_LOCALS or any(
-                "warn" in n or "finding" in n for n in names
-            ):
+            names = {n.id for target in node.targets for n in ast.walk(target) if isinstance(n, ast.Name)}
+            if names & _CHANNEL_LOCALS or any("warn" in n or "finding" in n for n in names):
                 into_channel, payload = True, node.value
         if into_channel and payload is not None:
             seeds |= callees(payload)
@@ -427,9 +412,7 @@ def test_every_warning_code_declared_is_a_code_some_check_actually_builds() -> N
     (`CodedWarning.__new__` refuses it), and is asserted anyway so the failure arrives at a source
     walk rather than at whichever compile first reaches that branch.
     """
-    emitted = {
-        code for sites in _coded_calls().values() for _line, code in sites if code is not None
-    }
+    emitted = {code for sites in _coded_calls().values() for _line, code in sites if code is not None}
     assert emitted == VALID_WARNING_CODES
 
 
@@ -448,7 +431,8 @@ def test_every_emission_site_names_a_code_rather_than_a_bare_message() -> None:
     uncoded = [
         f"{path.name}:{line} {text[:90]}"
         for path, line, text in _emission_sites()
-        if "CodedWarning" not in text and "restate" not in text
+        if "CodedWarning" not in text
+        and "restate" not in text
         # A site that appends a variable built elsewhere carries whatever that expression carries;
         # the code is named where the message is built, and the corpus test proves the pairing.
         and not text.isidentifier()
@@ -653,12 +637,22 @@ def test_an_uncoded_bin_finding_is_not_filed_as_a_bin_overlap_refusal() -> None:
 
     overlapping = [
         RepeatAlleleRow(
-            gene="HTT", repeat_unit="CAG", measure_kind="repeat_count",
-            measure_min=6, measure_max=30, phenotype="normal", conclusion="no expansion",
+            gene="HTT",
+            repeat_unit="CAG",
+            measure_kind="repeat_count",
+            measure_min=6,
+            measure_max=30,
+            phenotype="normal",
+            conclusion="no expansion",
         ),
         RepeatAlleleRow(
-            gene="HTT", repeat_unit="CAG", measure_kind="repeat_count",
-            measure_min=20, measure_max=40, phenotype="full", conclusion="penetrant",
+            gene="HTT",
+            repeat_unit="CAG",
+            measure_kind="repeat_count",
+            measure_min=20,
+            measure_max=40,
+            phenotype="full",
+            conclusion="penetrant",
         ),
     ]
     errors, warnings = _validate_table_kind("repeat_alleles.csv", RepeatAlleleRow, overlapping)
@@ -831,8 +825,7 @@ def test_a_suppression_record_survives_the_compile_reverse_compile_lap(tmp_path:
     spec.mkdir()
     (spec / "module_spec.yaml").write_text(_YAML)
     (spec / "variants.csv").write_text(
-        "rsid,chrom,start,ref,genotype,state,conclusion\n"
-        "rs1801133,1,11796321,G,A/A,risk,a conclusion\n"
+        "rsid,chrom,start,ref,genotype,state,conclusion\nrs1801133,1,11796321,G,A/A,risk,a conclusion\n"
     )
     (spec / "studies.csv").write_text("rsid,pmid\nrs1801133,12345678\n")
     (spec / "resolution.csv").write_text(
@@ -902,9 +895,7 @@ def test_a_manifest_with_no_carried_field_reports_every_addition_as_actionable()
     unfixable. The other direction only over-reports, which is what a sweep is for.
     """
     before = ModuleOutput(name="m", manifest={"compilation": {"warnings": []}}, parquet_schemas={})
-    after = ModuleOutput(
-        name="m", manifest={"compilation": {"warnings": ["something"]}}, parquet_schemas={}
-    )
+    after = ModuleOutput(name="m", manifest={"compilation": {"warnings": ["something"]}}, parquet_schemas={})
     delta = compare_module(before, after)
     assert delta.carried_added == ()
     assert delta.actionable_added == ("something",)

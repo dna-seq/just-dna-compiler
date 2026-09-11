@@ -87,7 +87,11 @@ BUCKETS: tuple[str, ...] = ("photocopy", "rated_miss", "unrated_miss", "unmintab
 #: parent that starts publishing a new identifying key is pinned on it without this module learning
 #: the parent's schema — and a key that *disappears* shows up as a moved pin rather than as silence.
 PIN_KEYS: tuple[str, ...] = (
-    "dataset", "clinvar_file_date", "source_sha256", "record_count", "rows",
+    "dataset",
+    "clinvar_file_date",
+    "source_sha256",
+    "record_count",
+    "rows",
 )
 
 
@@ -153,9 +157,7 @@ def parent_pin(directory: Path | None) -> dict:
     return {key: payload[key] for key in PIN_KEYS if key in payload}
 
 
-def stale_parents(
-    miss_dir: Path, *, parents: dict[str, Path] | None = None
-) -> dict[str, tuple[dict, dict]]:
+def stale_parents(miss_dir: Path, *, parents: dict[str, Path] | None = None) -> dict[str, tuple[dict, dict]]:
     """Parents whose snapshot on disk no longer matches the pin this child was built against.
 
     Returns `parent -> (pinned, current)` for each one that moved, empty when the child is current.
@@ -243,15 +245,11 @@ def _clinvar_calls(clinvar_dir: Path) -> dict[tuple[int, str, str], dict]:
     for row in frame.iter_rows(named=True):
         if row["start"] is None or not row["ref"] or not row["alt"]:
             continue
-        out.setdefault(
-            (int(row["start"]), str(row["ref"]).upper(), str(row["alt"]).upper()), row
-        )
+        out.setdefault((int(row["start"]), str(row["ref"]).upper(), str(row["alt"]).upper()), row)
     return out
 
 
-def build_miss_snapshot(
-    mitomap_dir: Path, clinvar_dir: Path, out_dir: Path
-) -> MissBuildResult:
+def build_miss_snapshot(mitomap_dir: Path, clinvar_dir: Path, out_dir: Path) -> MissBuildResult:
     """Join the MITOMAP snapshot against the ClinVar chrMT parquet and write the increment.
 
     Every MITOMAP row is written, bucketed — not only the misses. Keeping the photocopies makes the
@@ -311,23 +309,25 @@ def build_miss_snapshot(
                     withheld[str(row["withheld_bracket"])] += 1
         buckets[bucket] += 1
         by_table.setdefault(str(row["table"]), Counter())[bucket] += 1
-        rows.append({
-            **row,
-            "chrom": CONTIG,
-            "bucket": bucket,
-            "key_shape": (
-                None if defect is not None or not ref or not alt
-                else ("substitution" if len(str(ref)) == len(str(alt)) else "indel")
-            ),
-            "clinvar_variation_id": (match or {}).get("variation_id"),
-            "clinvar_clin_sig": (match or {}).get("clin_sig"),
-            "clinvar_review_status": (match or {}).get("review_status"),
-        })
+        rows.append(
+            {
+                **row,
+                "chrom": CONTIG,
+                "bucket": bucket,
+                "key_shape": (
+                    None
+                    if defect is not None or not ref or not alt
+                    else ("substitution" if len(str(ref)) == len(str(alt)) else "indel")
+                ),
+                "clinvar_variation_id": (match or {}).get("variation_id"),
+                "clinvar_clin_sig": (match or {}).get("clin_sig"),
+                "clinvar_review_status": (match or {}).get("review_status"),
+            }
+        )
 
     result.buckets = {name: buckets.get(name, 0) for name in BUCKETS}
     result.buckets_by_table = {
-        table: {name: counts.get(name, 0) for name in BUCKETS}
-        for table, counts in sorted(by_table.items())
+        table: {name: counts.get(name, 0) for name in BUCKETS} for table, counts in sorted(by_table.items())
     }
     result.rated_miss_by_class = dict(sorted(classes.items()))
     result.withheld_in_miss = dict(sorted(withheld.items()))
@@ -347,7 +347,8 @@ def build_miss_snapshot(
     _write_release_json(out_dir, result, source_rows=source.height)
     logger.info(
         "Built the MITOMAP-miss snapshot: %s → %s",
-        ", ".join(f"{name} {count}" for name, count in result.buckets.items()), result.parquet_file,
+        ", ".join(f"{name} {count}" for name, count in result.buckets.items()),
+        result.parquet_file,
     )
     return result
 
@@ -392,11 +393,16 @@ def _miss_schema() -> dict:
     reaches the miss snapshot without a second edit — and cannot be silently dropped by one.
     """
     schema = {name: (pl.Int64 if name == "start" else pl.Utf8) for name in VARIANT_COLUMNS}
-    schema.update({
-        "chrom": pl.Utf8, "bucket": pl.Utf8, "key_shape": pl.Utf8,
-        "clinvar_variation_id": pl.Utf8, "clinvar_clin_sig": pl.Utf8,
-        "clinvar_review_status": pl.Utf8,
-    })
+    schema.update(
+        {
+            "chrom": pl.Utf8,
+            "bucket": pl.Utf8,
+            "key_shape": pl.Utf8,
+            "clinvar_variation_id": pl.Utf8,
+            "clinvar_clin_sig": pl.Utf8,
+            "clinvar_review_status": pl.Utf8,
+        }
+    )
     return schema
 
 

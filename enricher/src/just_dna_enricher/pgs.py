@@ -144,12 +144,12 @@ PGS_ANCESTRY_CATEGORIES: dict[str, str | None] = {
     "EAS": "EAS",
     "EUR": "EUR",
     "SAS": "SAS",
-    "MAE": "multi",   # multi-ancestry, excluding European
-    "MAO": "multi",   # multi-ancestry, including European
-    "ASN": None,      # "additional Asian ancestries" — broader than EAS and than SAS, so neither
-    "GME": None,      # Greater Middle Eastern — no 1000G superpopulation covers it
-    "OTH": None,      # additional diverse ancestries
-    "NR": None,       # not reported: an absence, not a population
+    "MAE": "multi",  # multi-ancestry, excluding European
+    "MAO": "multi",  # multi-ancestry, including European
+    "ASN": None,  # "additional Asian ancestries" — broader than EAS and than SAS, so neither
+    "GME": None,  # Greater Middle Eastern — no 1000G superpopulation covers it
+    "OTH": None,  # additional diverse ancestries
+    "NR": None,  # not reported: an absence, not a population
 }
 
 #: Categories whose members this tier cannot **enumerate**, even where it has a name for them.
@@ -205,7 +205,8 @@ def score_ancestries(payload: dict) -> tuple[frozenset[str], frozenset[str]]:
                 # defect class, and INFO is invisible in practice — a guard nobody reads is not one.
                 logger.warning(
                     "The PGS Catalog served ancestry category %r, which PGS_ANCESTRY_CATEGORIES does "
-                    "not carry; it is treated as unresolved and withholds rather than accusing.", code,
+                    "not carry; it is treated as unresolved and withholds rather than accusing.",
+                    code,
                 )
                 unresolved.add(code)
                 continue
@@ -245,9 +246,27 @@ _MIN_COHORT_TOKEN = 3
 #: guessing rather than matching.
 _GENERIC_COHORT_WORDS: frozenset[str] = frozenset(
     {
-        "cohort", "cohorts", "study", "studies", "project", "group", "groups", "consortium",
-        "sample", "samples", "participants", "population", "populations", "the", "and", "for",
-        "from", "with", "data", "dataset", "based",
+        "cohort",
+        "cohorts",
+        "study",
+        "studies",
+        "project",
+        "group",
+        "groups",
+        "consortium",
+        "sample",
+        "samples",
+        "participants",
+        "population",
+        "populations",
+        "the",
+        "and",
+        "for",
+        "from",
+        "with",
+        "data",
+        "dataset",
+        "based",
     }
 )
 
@@ -343,7 +362,8 @@ class PgsCatalogClient:
     def _http(self) -> httpx.Client:
         if self._client is None:
             self._client = httpx.Client(
-                timeout=self.timeout, follow_redirects=True,
+                timeout=self.timeout,
+                follow_redirects=True,
                 headers={"Accept": "application/json"},
             )
         return self._client

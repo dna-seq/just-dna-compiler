@@ -141,17 +141,12 @@ class SweepMeasurement:
         record is a measured zero, and a zero with no denominator beside it is the shape a consumer
         cannot check.
         """
-        return {
-            axis: sum(1 for delta in self.per_module if delta.axes[axis])
-            for axis in sorted(self.axes)
-        }
+        return {axis: sum(1 for delta in self.per_module if delta.axes[axis]) for axis in sorted(self.axes)}
 
     @property
     def evidence(self) -> str:
         """The sentence a `ReleaseRecord.evidence` carries — what was compiled, and what was not."""
-        counts = ", ".join(
-            f"{axis} {moved}/{len(self.modules)}" for axis, moved in self.moved_counts.items()
-        )
+        counts = ", ".join(f"{axis} {moved}/{len(self.modules)}" for axis, moved in self.moved_counts.items())
         parts = [
             f"{len(self.modules)} reference module(s) compiled under {self.before} and {self.after} "
             f"from one spec root, so the compiler is the only variable",
@@ -164,8 +159,7 @@ class SweepMeasurement:
             )
         if self.only_before:
             parts.append(
-                f"compiled under {self.before} and not under {self.after}: "
-                f"{', '.join(self.only_before)}"
+                f"compiled under {self.before} and not under {self.after}: {', '.join(self.only_before)}"
             )
         return "; ".join(parts)
 
@@ -233,9 +227,7 @@ def read_outputs(root: Path) -> dict[str, ModuleOutput]:
     return found
 
 
-def build_outputs(
-    spec_root: Path, out_root: Path
-) -> tuple[dict[str, ModuleOutput], dict[str, str]]:
+def build_outputs(spec_root: Path, out_root: Path) -> tuple[dict[str, ModuleOutput], dict[str, str]]:
     """Compile every spec under `spec_root` into `out_root/<name>/` with THIS compiler, and what broke.
 
     Discovery rather than a list, the same rule `test_reference_examples_roundtrip` follows: a spec
@@ -285,9 +277,7 @@ def _flatten(value: Any, prefix: str = "") -> dict[str, Any]:
 
 
 def _is_excluded(path: str) -> bool:
-    return any(
-        path == excluded or path.startswith(f"{excluded}.") for excluded in EXCLUDED_MANIFEST_FIELDS
-    )
+    return any(path == excluded or path.startswith(f"{excluded}.") for excluded in EXCLUDED_MANIFEST_FIELDS)
 
 
 #: `None` is a legitimate manifest value — an unset optional block reads as `null` — so a missing key
@@ -306,8 +296,7 @@ def changed_manifest_fields(before: dict[str, Any], after: dict[str, Any]) -> tu
     moved = {
         path
         for path in paths
-        if not _is_excluded(path)
-        and flat_before.get(path, _ABSENT) != flat_after.get(path, _ABSENT)
+        if not _is_excluded(path) and flat_before.get(path, _ABSENT) != flat_after.get(path, _ABSENT)
     }
     return tuple(sorted(moved))
 
@@ -403,9 +392,7 @@ def compare_outputs(
     """
     shared = sorted(set(before) & set(after))
     deltas = tuple(compare_module(before[name], after[name]) for name in shared)
-    axes = {
-        axis: any(delta.axes[axis] for delta in deltas) for axis in sorted(VALID_RELEASE_OUTPUT_AXES)
-    }
+    axes = {axis: any(delta.axes[axis] for delta in deltas) for axis in sorted(VALID_RELEASE_OUTPUT_AXES)}
     fields: set[str] = set()
     for delta in deltas:
         fields.update(delta.manifest_fields)

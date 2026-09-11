@@ -45,6 +45,7 @@ pl = pytest.importorskip("polars")
 # one trap: 8993 T>C is a *different allele at the same position* as MITOMAP's 8993 T>G, so a
 # position-level join would report a photocopy where the exact one correctly reports a miss.
 
+
 @pytest.fixture
 def parents(mitomap_snapshot: Path, build_clinvar_mt):
     """`(mitomap_dir, clinvar_dir)` — both parents built through their own builders."""
@@ -54,9 +55,7 @@ def parents(mitomap_snapshot: Path, build_clinvar_mt):
 # ── the join ────────────────────────────────────────────────────────────────────────────────────
 
 
-def test_a_miss_key_is_absent_from_the_parent_and_a_photocopy_key_is_present(
-    parents, tmp_path: Path
-) -> None:
+def test_a_miss_key_is_absent_from_the_parent_and_a_photocopy_key_is_present(parents, tmp_path: Path) -> None:
     """The two assertions the whole lane rests on, checked against the parent rather than a list."""
     mitomap_dir, clinvar_dir = parents
     result = build_miss_snapshot(mitomap_dir, clinvar_dir, tmp_path / "miss")
@@ -76,9 +75,7 @@ def test_a_miss_key_is_absent_from_the_parent_and_a_photocopy_key_is_present(
             assert row["key_shape"] is None, "a row with no key has no key shape either"
 
 
-def test_a_different_allele_at_the_same_position_is_a_miss_not_a_photocopy(
-    parents, tmp_path: Path
-) -> None:
+def test_a_different_allele_at_the_same_position_is_a_miss_not_a_photocopy(parents, tmp_path: Path) -> None:
     """No position-level fallback: collapsing onto one would hide a real increment or invent one.
 
     The fixture's 8993 is the case — MITOMAP publishes `T>G` there and this ClinVar publishes `T>C`.
@@ -105,9 +102,7 @@ def test_every_source_row_lands_in_exactly_one_bucket(parents, tmp_path: Path) -
     }
 
 
-def test_a_rated_miss_carries_the_normalizers_image_of_a_documented_bracket(
-    parents, tmp_path: Path
-) -> None:
+def test_a_rated_miss_carries_the_normalizers_image_of_a_documented_bracket(parents, tmp_path: Path) -> None:
     """§8's assertion, over whatever the join produced rather than over a named row."""
     mitomap_dir, clinvar_dir = parents
     result = build_miss_snapshot(mitomap_dir, clinvar_dir, tmp_path / "miss")
@@ -134,9 +129,7 @@ def test_an_undocumented_bracket_and_a_bare_confirmation_token_are_both_unrated(
     assert frame.filter(
         pl.col("withheld_bracket").is_not_null() & pl.col("clin_sig").is_not_null()
     ).is_empty()
-    tokens = frame.filter(
-        pl.col("status_bracket").is_null() & pl.col("status_confirmation").is_not_null()
-    )
+    tokens = frame.filter(pl.col("status_bracket").is_null() & pl.col("status_confirmation").is_not_null())
     assert tokens.height, "the fixture carries bare confirmation tokens"
     assert tokens.filter(pl.col("clin_sig").is_not_null()).is_empty()
     withheld_and_missing = frame.filter(
@@ -212,9 +205,7 @@ def test_a_parent_that_moved_makes_the_child_stale_and_the_child_says_which(
     assert current["clinvar_file_date"] == "2026-09-01"
 
 
-def test_a_parent_that_is_gone_is_not_reported_as_a_parent_that_moved(
-    parents, tmp_path: Path
-) -> None:
+def test_a_parent_that_is_gone_is_not_reported_as_a_parent_that_moved(parents, tmp_path: Path) -> None:
     """Two different instructions — rebuild the child, or provision the parent — stay apart."""
     mitomap_dir, clinvar_dir = parents
     build_miss_snapshot(mitomap_dir, clinvar_dir, tmp_path / "miss")
@@ -262,9 +253,7 @@ def test_the_guard_names_only_the_parent_that_is_missing(
     mitomap_dir, _ = parents
     _unresolvable(monkeypatch, "clinvar")
     lane = LANES_BY_NAME["mitomap_miss"]
-    outcome = rebuild_lane(
-        lane, RebuildRequest(out_dir=tmp_path / "out", parents={"mitomap": mitomap_dir})
-    )
+    outcome = rebuild_lane(lane, RebuildRequest(out_dir=tmp_path / "out", parents={"mitomap": mitomap_dir}))
     assert outcome.built is None
     assert "clinvar build" in outcome.detail
     assert "mitomap build" not in outcome.detail
@@ -275,7 +264,8 @@ def test_the_adapter_runs_once_both_parents_are_supplied(parents, tmp_path: Path
     outcome = rebuild_lane(
         LANES_BY_NAME["mitomap_miss"],
         RebuildRequest(
-            out_dir=tmp_path / "out", parents={"mitomap": mitomap_dir, "clinvar": clinvar_dir},
+            out_dir=tmp_path / "out",
+            parents={"mitomap": mitomap_dir, "clinvar": clinvar_dir},
         ),
     )
     assert outcome.built is True, outcome.detail
@@ -323,7 +313,7 @@ def test_an_empty_parent_directory_is_a_missing_parent_not_a_failed_child(
     mitomap_dir, _ = parents
     _unresolvable(monkeypatch, "clinvar")
     out = tmp_path / "out"
-    (out / "clinvar").mkdir(parents=True)          # the residue of a download cut mid-body
+    (out / "clinvar").mkdir(parents=True)  # the residue of a download cut mid-body
     (out / "mitomap").symlink_to(mitomap_dir)
 
     from_run = caches.parents_from_rebuild_dir(LANES_BY_NAME["mitomap_miss"], out)
@@ -331,7 +321,9 @@ def test_an_empty_parent_directory_is_a_missing_parent_not_a_failed_child(
 
     outcome = rebuild_lane(
         LANES_BY_NAME["mitomap_miss"],
-        RebuildRequest(out_dir=out / "mitomap_miss", parents={"mitomap": mitomap_dir, "clinvar": out / "clinvar"}),
+        RebuildRequest(
+            out_dir=out / "mitomap_miss", parents={"mitomap": mitomap_dir, "clinvar": out / "clinvar"}
+        ),
     )
     assert outcome.built is None, outcome.detail
     assert "clinvar" in outcome.detail and "holds no snapshot" in outcome.detail
@@ -349,14 +341,18 @@ def test_an_empty_supplied_parent_is_not_swapped_for_the_machines_cache(
     to prevent: a child pinned to the machine's older ClinVar while sitting beside a failed new one.
     It does not fall through (an explicit path is judged on its own contents), and this pins that."""
     mitomap_dir, clinvar_dir = parents
-    monkeypatch.setenv(caches.CLINVAR_CACHE_VAR, str(clinvar_dir))   # a real ClinVar IS on this machine
-    assert LANES_BY_NAME["clinvar"].resolve() == clinvar_dir, "the fixture's cache is reachable by the variable"
+    monkeypatch.setenv(caches.CLINVAR_CACHE_VAR, str(clinvar_dir))  # a real ClinVar IS on this machine
+    assert LANES_BY_NAME["clinvar"].resolve() == clinvar_dir, (
+        "the fixture's cache is reachable by the variable"
+    )
     empty = tmp_path / "out" / "clinvar"
     empty.mkdir(parents=True)
 
     found, missing = caches.parent_snapshots(
         LANES_BY_NAME["mitomap_miss"],
-        RebuildRequest(out_dir=tmp_path / "out" / "mitomap_miss", parents={"mitomap": mitomap_dir, "clinvar": empty}),
+        RebuildRequest(
+            out_dir=tmp_path / "out" / "mitomap_miss", parents={"mitomap": mitomap_dir, "clinvar": empty}
+        ),
     )
     assert set(found) == {"mitomap"}
     assert len(missing) == 1 and missing[0].startswith("clinvar ") and "holds no snapshot" in missing[0]

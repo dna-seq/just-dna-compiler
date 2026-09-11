@@ -192,10 +192,7 @@ class PubMindDraftResult:
 #: The columns this pass reads. Narrower than the concordance reader's, and its own: the two
 #: passes ask different questions of one snapshot, which is a different thing from keeping two
 #: copies of the reader that answers them.
-_SELECT = (
-    "chrom, start, ref, alt, pvid, clin_sig, clin_sig_raw, pathogenicity_score, confidence, "
-    "derivation"
-)
+_SELECT = "chrom, start, ref, alt, pvid, clin_sig, clin_sig_raw, pathogenicity_score, confidence, derivation"
 
 
 def select_by_positions(reference: Path, positions: Sequence[tuple[str, int]]) -> list[dict]:
@@ -308,8 +305,10 @@ def _group_by_key(records: Sequence[dict]) -> list[_Key]:
         # Normalized here as well as in the reader's filter, so the key a row is grouped under is
         # spelled exactly as `gene_positions` spelled it — the two are looked up against each other.
         key = (
-            normalize_chrom(str(record["chrom"])), int(record["start"]),
-            str(record["ref"]), str(record["alt"]),
+            normalize_chrom(str(record["chrom"])),
+            int(record["start"]),
+            str(record["ref"]),
+            str(record["alt"]),
         )
         grouped.setdefault(key, []).append(record)
     return [
@@ -373,9 +372,7 @@ def _row_cells(key: _Key, genes: set[str]) -> dict:
             f"literature, not a curated assertion"
         ),
     }
-    genotype = sole_expressible_genotype(
-        {"chrom": key.chrom, "start": key.start, "alt": key.alt}
-    )
+    genotype = sole_expressible_genotype({"chrom": key.chrom, "start": key.start, "alt": key.alt})
     if genotype is not None:
         cells["genotype"] = genotype
     state = STATE_BY_CLIN_SIG.get(call)
@@ -480,9 +477,7 @@ def draft_gene_panel_from_pubmind(
     # snapshot is wanted at all — an author told "no ClinVar snapshot" by a PubMind command has been
     # handed a puzzle rather than a diagnosis.
     try:
-        clinvar_reference, provisioning = _resolve_snapshot(
-            snapshot, offline=offline, download=download
-        )
+        clinvar_reference, provisioning = _resolve_snapshot(snapshot, offline=offline, download=download)
     except ClinVarDraftError as exc:
         raise PubMindDraftError(
             f"{exc} A ClinVar snapshot is needed even for a PubMind draft: PubMind's table names no "
@@ -539,7 +534,10 @@ def draft_gene_panel_from_pubmind(
         stubbed = tuple(column for column in ("genotype", "state") if column not in cells)
         signature = _signature(cells)
         record_by_signature[signature] = {
-            "chrom": key.chrom, "start": key.start, "ref": key.ref, "alt": key.alt,
+            "chrom": key.chrom,
+            "start": key.start,
+            "ref": key.ref,
+            "alt": key.alt,
             "clin_sig": key.calls[0],
         }
         stubbed_by_signature[signature] = stubbed
@@ -586,9 +584,7 @@ def draft_gene_panel_from_pubmind(
         result.warnings.append("nothing matched; no rows drafted")
         return result
 
-    report = append_partial_rows(
-        spec_dir, "variants.csv", partials, group_by=("gene",), dry_run=dry_run
-    )
+    report = append_partial_rows(spec_dir, "variants.csv", partials, group_by=("gene",), dry_run=dry_run)
     result.reports.append(report)
     result.warnings.extend(_refusal_summary(report.invalid))
     # PubMind's own channel carries no citation, so a drafted panel is ungrounded by construction and

@@ -18,8 +18,7 @@ from just_dna_enricher.gwas import GwasError, _module_subjects
 from just_dna_enricher.identifiers import _id_bearing_tables
 
 _YAML = (
-    "schema_version: '1.0'\n"
-    "module:\n  name: rm158\n  title: RM158\n  description: d\n  report_title: RM158\n"
+    "schema_version: '1.0'\nmodule:\n  name: rm158\n  title: RM158\n  description: d\n  report_title: RM158\n"
 )
 _HAPLOTYPES = "haplotype_name,rsid,start,allele,gene\n*2,rs4244285,94781859,A,CYP2C19\n"
 _VARIANTS = "rsid,genotype,state,conclusion,gene\nrs1801133,C/T,risk,c,MTHFR\n"
@@ -63,7 +62,7 @@ def test_variants_csv_keeps_its_precedence(tmp_path: Path) -> None:
     both = "haplotype_name,rsid,start,allele,gene\n*2,rs1801133,11856378,A,MTHFR\n"
     spec = _spec(tmp_path, variants__csv=_VARIANTS, haplotypes__csv=both)
     keys = dict(_module_subjects(spec))
-    assert keys["rs1801133"] == "rs1801133"          # one subject, not two
+    assert keys["rs1801133"] == "rs1801133"  # one subject, not two
     assert len(_module_subjects(spec)) == 1
 
 

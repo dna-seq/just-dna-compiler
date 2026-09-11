@@ -97,8 +97,12 @@ def _spec(tmp_path: Path) -> Path:
 
 def _row(**kwargs) -> GeneValidityRow:
     base = {
-        "gene": "BRCA1", "disease_id": "MONDO:0003582", "moi": "autosomal_dominant",
-        "submitter": _PANEL, "dataset": "clingen_gene_validity_2026-08-13", "source": "clingen",
+        "gene": "BRCA1",
+        "disease_id": "MONDO:0003582",
+        "moi": "autosomal_dominant",
+        "submitter": _PANEL,
+        "dataset": "clingen_gene_validity_2026-08-13",
+        "source": "clingen",
         "status": "resolved",
     }
     return GeneValidityRow(**{**base, **kwargs})
@@ -250,9 +254,7 @@ def test_the_two_findings_are_reported_apart() -> None:
 
 
 @pytest.mark.parametrize("mode", ["best_effort", "strict"])
-def test_the_pass_reports_a_supersession_and_raises_in_neither_mode(
-    tmp_path: Path, mode: str
-) -> None:
+def test_the_pass_reports_a_supersession_and_raises_in_neither_mode(tmp_path: Path, mode: str) -> None:
     """A curating body re-curating is the source working, not the module being wrong.
 
     `strict` here is a *report*, not a refusal to have looked — the pass's own argument for `missing`,
@@ -321,9 +323,7 @@ def test_an_unorderable_claim_still_publishes_both_classifications(tmp_path: Pat
 
 
 @pytest.mark.parametrize("strict", [False, True])
-def test_the_finding_is_a_warning_in_both_modes_and_never_an_error(
-    tmp_path: Path, strict: bool
-) -> None:
+def test_the_finding_is_a_warning_in_both_modes_and_never_an_error(tmp_path: Path, strict: bool) -> None:
     """`strict` means *reproducible artifact*, which a module carrying two curations still is.
 
     Asserted as *this finding never becomes an error*, rather than as *the compile succeeds*: this

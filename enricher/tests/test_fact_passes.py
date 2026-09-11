@@ -104,6 +104,7 @@ def test_frequency_pass_writes_one_row_per_allele_and_group(tmp_path: Path) -> N
 
 def test_frequency_pass_is_deterministic(tmp_path: Path) -> None:
     """Two runs from scratch produce byte-identical files, apart from the advisory timestamp."""
+
     def run(name: str) -> list[list[str]]:
         spec = _spec(tmp_path / name)
         enrich_frequencies(spec, client=_mock_client(_frequency_handler))
@@ -126,7 +127,7 @@ def test_existing_frequency_rows_are_authoritative(tmp_path: Path) -> None:
     )
     result = enrich_frequencies(spec, client=_mock_client(_frequency_handler))
     kept = [r for r in result.rows if r.variant_key == key]
-    assert [r.source for r in kept] == ["manual"]      # not refetched, not overwritten
+    assert [r.source for r in kept] == ["manual"]  # not refetched, not overwritten
     assert kept[0].dataset == "hand_curated"
 
 
@@ -142,9 +143,7 @@ def test_frequency_offline_is_a_no_op_with_zero_egress(tmp_path: Path) -> None:
 
 def test_populations_filter_keeps_one_row_per_allele(tmp_path: Path) -> None:
     spec = _spec(tmp_path)
-    result = enrich_frequencies(
-        spec, populations=["global"], client=_mock_client(_frequency_handler)
-    )
+    result = enrich_frequencies(spec, populations=["global"], client=_mock_client(_frequency_handler))
     assert {r.population for r in result.rows} == {"global"}
     assert len(result.rows) == 2  # one per allele
 
@@ -187,7 +186,7 @@ def test_gene_metrics_from_the_snapshot_offline(tmp_path: Path, constraint_cache
         "rsid,genotype,state,conclusion,gene\n"
         "rs1,A/G,risk,x,BRCA1\n"
         "rs2,A/G,risk,x,MYH7\n"
-        "rs3,A/G,risk,x,BRCA1\n"   # duplicate gene → one row, not two
+        "rs3,A/G,risk,x,BRCA1\n"  # duplicate gene → one row, not two
     )
     result = enrich_gene_metrics(spec, offline=True, constraint_cache=constraint_cache)
     assert [r.gene for r in result.rows] == ["BRCA1", "MYH7"]
@@ -221,11 +220,13 @@ def test_snapshot_and_api_are_labelled_as_the_different_releases_they_are(
     # No snapshot and no provisioning → the live-API fallback. `download=False` is what keeps this
     # network-free now that an absent snapshot is fetched from HuggingFace rather than shrugged at.
     from_api = enrich_gene_metrics(
-        spec, constraint_cache=tmp_path / "absent", download=False,
+        spec,
+        constraint_cache=tmp_path / "absent",
+        download=False,
         client=_mock_client(handler),
     ).rows[0]
     assert from_api.dataset == API_CONSTRAINT_DATASET_LABEL
-    assert from_api.source == "gnomad"        # one licensed source, two releases
+    assert from_api.source == "gnomad"  # one licensed source, two releases
 
     (spec / "gene_metrics.csv").unlink()
     from_snapshot = enrich_gene_metrics(spec, offline=True, constraint_cache=constraint_cache).rows[0]
@@ -257,8 +258,8 @@ def test_gene_metrics_offline_without_a_snapshot_records_nothing(tmp_path: Path,
     # The behavioural assertion first, deliberately: it is the line that fails on the pre-fix tree,
     # and what it prints is the fabricated row stamped `gnomad_v4.1_constraint`.
     assert result.rows == [], "no row may assert a release nobody opened"
-    assert result.missing == ["BRCA1"]           # strict still refuses a run that established nothing
-    assert result.unconsulted == ["BRCA1"]       # named separately: nobody asked
+    assert result.missing == ["BRCA1"]  # strict still refuses a run that established nothing
+    assert result.unconsulted == ["BRCA1"]  # named separately: nobody asked
     assert any("not asked of any gnomAD route" in r.message for r in caplog.records)
 
 
@@ -274,9 +275,7 @@ def test_gene_metrics_offline_WITH_a_snapshot_still_records_not_found(
     """
     spec = tmp_path / "spec"
     spec.mkdir()
-    (spec / "variants.csv").write_text(
-        "rsid,genotype,state,conclusion,gene\nrs1,A/G,risk,x,NOTAGENE\n"
-    )
+    (spec / "variants.csv").write_text("rsid,genotype,state,conclusion,gene\nrs1,A/G,risk,x,NOTAGENE\n")
     result = enrich_gene_metrics(spec, offline=True, constraint_cache=constraint_cache)
 
     assert [r.status for r in result.rows] == ["not_found"]  # the snapshot was opened, and lacks it
@@ -304,7 +303,8 @@ def test_a_missing_snapshot_is_provisioned_before_falling_back_to_the_api(
 
     monkeypatch.setattr(gene_metrics, "ensure_constraint_snapshot", fake_ensure)
     monkeypatch.setattr(
-        gene_metrics, "resolve_constraint_reference",
+        gene_metrics,
+        "resolve_constraint_reference",
         lambda cache=None: constraint_cache if asked else None,
     )
 
@@ -315,7 +315,7 @@ def test_a_missing_snapshot_is_provisioned_before_falling_back_to_the_api(
     result = enrich_gene_metrics(spec, constraint_cache=None)
 
     assert asked == [None]
-    assert [r.dataset for r in result.rows] == [CONSTRAINT_DATASET_LABEL]   # v4.1, not the API's v2.1.1
+    assert [r.dataset for r in result.rows] == [CONSTRAINT_DATASET_LABEL]  # v4.1, not the API's v2.1.1
 
 
 def test_offline_never_provisions(tmp_path: Path, monkeypatch) -> None:
@@ -352,7 +352,8 @@ def test_a_failed_provisioning_degrades_to_the_api_and_says_which_release(
     monkeypatch.setattr(gene_metrics, "ensure_constraint_snapshot", boom)
     with caplog.at_level("WARNING"):
         result = enrich_gene_metrics(
-            spec, constraint_cache=tmp_path / "absent",
+            spec,
+            constraint_cache=tmp_path / "absent",
             client=_mock_client(lambda request: httpx.Response(200, json=gene_payload)),
         )
     assert [r.dataset for r in result.rows] == [API_CONSTRAINT_DATASET_LABEL]
@@ -369,8 +370,7 @@ def test_gene_metrics_round_trips_through_its_csv(tmp_path: Path, constraint_cac
     )
     written = enrich_gene_metrics(spec, offline=True, constraint_cache=constraint_cache).rows
     with (spec / "gene_metrics.csv").open(newline="") as handle:
-        reloaded = [GeneMetricsRow(**{k: (v or None) for k, v in r.items()})
-                    for r in csv.DictReader(handle)]
+        reloaded = [GeneMetricsRow(**{k: (v or None) for k, v in r.items()}) for r in csv.DictReader(handle)]
     for before, after in zip(written, reloaded, strict=True):
         assert before.model_dump() == after.model_dump()
 
@@ -428,14 +428,13 @@ def test_the_fetch_suppression_set_is_the_merge_key_and_not_a_proxy_for_it(
         "oe_mis,obs_lof,exp_lof,constraint_flags,haploinsufficiency,triplosensitivity,"
         "dataset,source,status,fetched_at\n"
     )
-    corrected = (
-        f"BRCA1,ENSG00000012048,,,,0.75,,,,,,,,,,,,{CONSTRAINT_DATASET_LABEL},manual,resolved,\n"
-    )
+    corrected = f"BRCA1,ENSG00000012048,,,,0.75,,,,,,,,,,,,{CONSTRAINT_DATASET_LABEL},manual,resolved,\n"
     (spec / "gene_metrics.csv").write_text(header + corrected)
 
     looked_up: list[list[str]] = []
     monkeypatch.setattr(
-        gene_metrics, "lookup_snapshot",
+        gene_metrics,
+        "lookup_snapshot",
         lambda reference, genes: looked_up.append(list(genes)) or {},
     )
     result = enrich_gene_metrics(spec, offline=True, constraint_cache=constraint_cache)
@@ -467,7 +466,7 @@ def test_minting_stamps_substitutions_with_no_network() -> None:
         ResolutionRow(variant_key="k1", chrom="11", start=5227002, ref="T", alts="A"),
         ResolutionRow(variant_key="k2", chrom="11", start=5226762, ref="C", alts="CA"),  # indel
         ResolutionRow(variant_key="k3", chrom="11", start=5227002, ref="T", alts="A,G"),  # multi
-        ResolutionRow(variant_key="k4", rsid="rs1"),                                      # no coord
+        ResolutionRow(variant_key="k4", rsid="rs1"),  # no coord
     ]
     result = mint_resolution_rows(rows, offline=True)
     assert rows[0].vrs_id == derive_vrs_allele_id("11", 5227002, "T", "A")
@@ -515,9 +514,9 @@ def test_the_mint_pass_reports_its_shortfall_not_only_its_successes() -> None:
     """
     rows = [
         ResolutionRow(variant_key="k1", chrom="11", start=5227002, ref="T", alts="A,G"),  # mints 2
-        ResolutionRow(variant_key="k2", chrom="11", start=5226762, ref="C", alts="CA"),   # indel
-        ResolutionRow(variant_key="k3", chrom="11", start=5226763, ref="G", alts="GT"),   # indel
-        ResolutionRow(variant_key="k4", rsid="rs1"),                                      # no coord
+        ResolutionRow(variant_key="k2", chrom="11", start=5226762, ref="C", alts="CA"),  # indel
+        ResolutionRow(variant_key="k3", chrom="11", start=5226763, ref="G", alts="GT"),  # indel
+        ResolutionRow(variant_key="k4", rsid="rs1"),  # no coord
     ]
     result = mint_resolution_rows(rows, offline=True)
 
@@ -548,7 +547,11 @@ def test_a_hole_in_a_pre_existing_cell_is_not_counted_as_covered() -> None:
     consumer trusts.
     """
     row = ResolutionRow(
-        variant_key="k", chrom="11", start=5227002, ref="T", alts="A,G",
+        variant_key="k",
+        chrom="11",
+        start=5227002,
+        ref="T",
+        alts="A,G",
         vrs_id=f"{derive_vrs_allele_id('11', 5227002, 'T', 'A')},",
     )
     result = mint_resolution_rows([row], offline=True)
@@ -567,18 +570,14 @@ def test_a_vrs_id_cell_must_stay_aligned_with_alts() -> None:
     one = derive_vrs_allele_id("11", 5227002, "T", "A")
     for alts, vrs_id in [("A,G", one), ("A", f"{one},{one}")]:
         with pytest.raises(ValidationError, match="positionally aligned with alts"):
-            ResolutionRow(
-                variant_key="k", chrom="11", start=5227002, ref="T", alts=alts, vrs_id=vrs_id
-            )
+            ResolutionRow(variant_key="k", chrom="11", start=5227002, ref="T", alts=alts, vrs_id=vrs_id)
 
 
 def test_minting_never_overwrites_an_existing_id() -> None:
     existing = derive_vrs_allele_id("1", 11796321, "G", "A")
-    row = ResolutionRow(
-        variant_key="k", chrom="11", start=5227002, ref="T", alts="A", vrs_id=existing
-    )
+    row = ResolutionRow(variant_key="k", chrom="11", start=5227002, ref="T", alts="A", vrs_id=existing)
     result = mint_resolution_rows([row], offline=True)
-    assert row.vrs_id == existing            # a hand-corrected id survives a re-run
+    assert row.vrs_id == existing  # a hand-corrected id survives a re-run
     assert result.already_present == 1
 
 
@@ -629,8 +628,13 @@ def test_a_symbolic_allele_is_left_unminted_instead_of_aborting_the_run() -> Non
     assert minter.mint("MT", 8470, "N", "<DEL:4977>") == (None, None)
 
     row = ResolutionRow(
-        variant_key="MT:8470:N:<DEL:4977>", chrom="MT", start=8470, ref="N", alts="<DEL:4977>",
-        source="authored", status="resolved",
+        variant_key="MT:8470:N:<DEL:4977>",
+        chrom="MT",
+        start=8470,
+        ref="N",
+        alts="<DEL:4977>",
+        source="authored",
+        status="resolved",
     )
     result = mint_resolution_rows([row], minter=minter)
 

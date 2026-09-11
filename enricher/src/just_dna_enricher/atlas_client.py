@@ -296,9 +296,7 @@ def scorer_filter(*scorers: str) -> str:
     return " OR ".join(f'scores.variant_scorer.name = "{s}"' for s in scorers)
 
 
-def interval_filter(
-    *, scorers: tuple[str, ...] = (), gene_names: tuple[str, ...] = ()
-) -> str:
+def interval_filter(*, scorers: tuple[str, ...] = (), gene_names: tuple[str, ...] = ()) -> str:
     """The AIP-160 filter an interval query needs, over scorers and/or attributed genes.
 
     Two clauses ANDed, each an OR over its own members — the shape the SDK builds, reproduced here
@@ -311,15 +309,9 @@ def interval_filter(
     """
     clauses = []
     if scorers:
-        clauses.append(
-            " OR ".join(f'scores.variant_scorer.name = "{s}"' for s in scorers)
-        )
+        clauses.append(" OR ".join(f'scores.variant_scorer.name = "{s}"' for s in scorers))
     if gene_names:
-        clauses.append(
-            " OR ".join(
-                f'scores.metadata.gene_scorers.metadata.name = "{g}"' for g in gene_names
-            )
-        )
+        clauses.append(" OR ".join(f'scores.metadata.gene_scorers.metadata.name = "{g}"' for g in gene_names))
     return " AND ".join(f"({c})" for c in clauses)
 
 
@@ -332,9 +324,7 @@ def _translate(error: grpc.RpcError, *, variant: str) -> AtlasError:
     code = error.code()
     details = error.details() or ""
     if code is grpc.StatusCode.UNIMPLEMENTED:
-        return AtlasNotScored(
-            f"{variant} is not in the precomputed Atlas (indels are not scored): {details}"
-        )
+        return AtlasNotScored(f"{variant} is not in the precomputed Atlas (indels are not scored): {details}")
     if code is grpc.StatusCode.INVALID_ARGUMENT:
         if "reference base" in details:
             return AtlasRefMismatch(f"{variant}: {details}")

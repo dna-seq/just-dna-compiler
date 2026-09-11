@@ -29,7 +29,10 @@ _RSID = "rs1801133"
 
 def _variant(genotype: str) -> VariantRow:
     return VariantRow(
-        rsid=_RSID, genotype=genotype, weight=1.0, state="risk",
+        rsid=_RSID,
+        genotype=genotype,
+        weight=1.0,
+        state="risk",
         conclusion="reduced MTHFR activity",
     )
 
@@ -94,9 +97,7 @@ def test_the_shared_grammar_carries_it_to_the_pgx_table_too() -> None:
     miniature."""
     with pytest.raises(ValueError, match="VCF GT"):
         PharmVariantRow(rsid=_RSID, genotype="0/1", drug="warfarin", conclusion="x")
-    assert PharmVariantRow(
-        rsid=_RSID, genotype="C/T", drug="warfarin", conclusion="x"
-    ).genotype == "C/T"
+    assert PharmVariantRow(rsid=_RSID, genotype="C/T", drug="warfarin", conclusion="x").genotype == "C/T"
 
 
 # ── R2-14: the correction that was itself an overclaim ──────────────────────────────────────────

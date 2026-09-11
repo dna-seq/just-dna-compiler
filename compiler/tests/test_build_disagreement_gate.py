@@ -156,9 +156,7 @@ def test_a_check_that_ran_and_found_nothing_is_not_a_refusal(tmp_path: Path) -> 
     spec = _spec(
         tmp_path / "spec",
         records=[
-            VerificationRecord(
-                check=BUILD_AGREEMENT_CHECK, subjects=1, findings=0, source="ensembl-grch37"
-            )
+            VerificationRecord(check=BUILD_AGREEMENT_CHECK, subjects=1, findings=0, source="ensembl-grch37")
         ],
     )
 
