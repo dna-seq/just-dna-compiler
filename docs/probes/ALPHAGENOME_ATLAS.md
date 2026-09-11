@@ -176,7 +176,7 @@ question.
    available for any commercial entity, even if conducting non-commercial work." That is not
    `commercial_use=False`. §2.6 enumerates all four.
 
-7. **A 22 MB client exists, and `uv add alphagenome` is 255 MB.** *(Both figures were carried rather than run; measured on 2026-09-11 they are 19 MB and 550 MB — see § 6.5.1. The conclusion holds and widens.)* The Atlas service serves the
+7. **A 22 MB client exists, and `uv add alphagenome` is 255 MB.** *(Re-measured on 2026-09-11: 19 MB and 550 MB across 47 packages — the second does not reproduce, see § 6.5.1. The conclusion holds and widens.)* The Atlas service serves the
    precomputed scores — all 22 scorers, SHAP included — over gRPC, and the generated protos plus
    `grpcio`/`protobuf` are a complete client (`numpy.frombuffer` decodes the score bytes; the
    request filter is a string). The SDK's own import path costs 242 MB because `atlas.py` imports
@@ -1606,6 +1606,9 @@ Four install shapes, each built as a real venv and measured:
 | SDK import path | the above + `anndata`, `pandas`, `tqdm` and their closure | 242 MB | `alphagenome.atlas.atlas` and `alphagenome.models.dna_client` import |
 | full declared | `uv add alphagenome` | 255 MB | everything, including plotting |
 
+**The last row does not reproduce.** Re-measured on 2026-09-11 it is 550 MB across 47 packages, and
+the package count quoted for it in this round, 81, was never a measurement at all — see § 6.5.1.
+
 **The 22 MB tier is not a trick — it is a complete client.** `DenseVariantScore.scores` and
 `.calibrated_scores` are `bytes` fields, not tensor protos, so `struct.unpack('<f', …)` decodes
 them with no third-party package at all; and the request's `filter` is a plain AIP-160 **string**
@@ -1807,30 +1810,38 @@ module carries.
   dozen calls in total, deliberately.
 
 
-### 6.5.1 Correction — the SDK's cost was never measured (2026-09-11)
+### 6.5.1 Correction — 47 packages and 550 MB, and the two figures fail differently (2026-09-11)
 
-§ 6.2's figures for `uv add alphagenome` — **255 MB**, and a package count given elsewhere in this
-round as 81 and in the proposal as 36 — were **carried rather than run**. Three numbers circulated for
-two quantities and no two documents agreed.
-
-Resolved and installed into a clean venv on 2026-09-11, Python 3.14:
+§ 6.2's `uv add alphagenome` row said **255 MB**, and the package count for that same install was
+given as **81** elsewhere in this round and as **36** in the proposal. Resolved and installed into a
+clean venv on 2026-09-11, Python 3.14, twice:
 
 | | measured |
 | --- | ---: |
-| packages | **47** |
-| site-packages | **550 MB** |
+| packages (`*.dist-info`, and `uv pip list` agrees) | **47** |
+| site-packages (`du`, `__pycache__` included and it changes nothing) | **550 MB** |
 | `[atlas]` (`grpcio` + `protobuf`) | **19 MB** |
 
-So the conclusion holds and gets stronger — **29× rather than 13×** — while every published figure
-was wrong, one of them by more than double. Resolution is platform- and interpreter-dependent, which
-is why the conditions are stated; the point is that the earlier numbers stated none because nobody
-ran them.
+`pyarrow` is 152 MB of that on its own, then scipy at 81 + 30, pandas 42, numcodecs 35, numpy 30 + 27,
+matplotlib 28, fontTools 23, zstandard 22.
 
-This is the fourth time in this round a quoted number outlived a measurement nobody took, and the
-only one where the *argument* survived intact. `@a-disagreement-with-a-document-may-be-in-the-instrument`
-covers the case where a fresh measurement is wrong; this is its complement — **a figure that was
-never a measurement at all, repeated until six documents agreed with each other and none with the
-bytes.**
+**The two wrong figures are not wrong the same way, and the difference matters.** No run produced 81
+or 36 — the counts disagree with each other, neither states conditions, and 81 against 47 is the
+wrong direction for a smaller byte total, which is what makes a metadata requirement-name walk the
+likely origin rather than an install. The **255 MB** is different: § 6.2 says its four rows were
+"each built as a real venv and measured", and that claim is not one this correction can overturn from
+here. What can be said is that it does not reproduce, that the resolution behind it is not recorded,
+and that a single 152 MB wheel in today's closure is larger than the gap.
+
+So the conclusion holds and gets stronger — **29× rather than 13×** — which is the only reason this
+was a correction rather than a retracted argument.
+
+The lesson is about the count, not the bytes. A size figure at least names an act that could have
+happened; a package count that appears in two documents as two different numbers, with no conditions
+attached to either, was **never an observation in the first place** — and it travelled anyway,
+because each copy of a number reads as though somebody ran it. The bytes are the complement of
+`@a-disagreement-with-a-document-may-be-in-the-instrument`: there a fresh measurement was the wrong
+one, here a fresh measurement disagrees with a recorded one and the earlier instrument is gone.
 
 ### 6.6 The other twenty-one scorers, assayed for annotation (2026-09-11)
 

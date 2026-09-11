@@ -417,10 +417,11 @@ rather than gate.
 
 `just-dna-enricher` gains a working client for the AlphaGenome Atlas — Google DeepMind's
 precomputed variant scores, served over gRPC — and it costs **two packages**, not the SDK's
-eighty-one.
+forty-seven.
 
 **The measurement that decided it.** `uv add alphagenome` resolves to **550 MB and 47 packages**
-(re-measured 2026-09-11; this entry first said 255 MB and 81, and neither figure had been run)
+(re-measured into a clean venv on 2026-09-11; this entry first said 255 MB and 81 — the count was
+never run at all, and the size does not reproduce)
 (anndata, pandas, scipy, zarr, h5py, numcodecs, pyarrow, matplotlib, seaborn, pyfaidx, absl-py,
 fsspec) against a tier whose entire runtime list is httpx/tenacity/huggingface-hub/typer/ga4gh.vrs.
 Six of the twenty dependencies that wheel declares are never imported on any scoring path, and
@@ -765,7 +766,8 @@ adding it is the decision §6.2 exists to inform.
   `bytes` that `frombuffer('<f4')` decodes and the request filter is an AIP-160 string. Measured as
   real venvs: **22 MB** protos-only, 85 MB with numpy, **242 MB** for the SDK's own import path
   (`atlas.py` imports `anndata` at module level, which drags scipy/zarr/h5py), 255 MB for
-  `uv add alphagenome`. Six declared dependencies — matplotlib, seaborn, pyfaidx, absl-py, fsspec,
+  `uv add alphagenome` — that last figure does not reproduce, and re-measuring it on 2026-09-11 gave
+  **550 MB across 47 packages** (probe § 6.5.1). Six declared dependencies — matplotlib, seaborn, pyfaidx, absl-py, fsspec,
   pyarrow — are never imported on any scoring path. Against a tier whose whole list is
   httpx/tenacity/huggingface-hub this is the "dependency tiers are sacred" question, not a size one;
   §6.2 states three shapes (core deps, optional extra, or no client at all) and picks none.
