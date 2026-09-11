@@ -20,10 +20,11 @@ problem this directory is already one step away from. The first round is in git 
 and again in 2026-09-11, so what is in history is the evidence, not a live claim.
 
 Two notes on reading the 2026-09-11 files specifically. Their defect sections cite reproducers under a
-session scratchpad that no longer exists; the ones that were real became permanent tests
-(`test_withdrawn_parity.py`, `test_retry_is_reachable.py`, `test_snapshot_root_files_pulled.py`), which
-is where to look instead. And a defect candidate in them is a **candidate**: the maintainer pass
-confirmed three (RM207, RM208, RM209) and left the rest recorded rather than filed. An entry here is
+session scratchpad that no longer exists; the ones that were real became permanent tests, which is
+where to look instead — every item the round confirmed owes one, and
+[BLIND_REDERIVATION.md](../BLIND_REDERIVATION.md)'s Rounds table lists what the round came to rather
+than repeating a tally here. And a defect candidate in them is a **candidate**: the maintainer pass
+reproduced each one before filing it, and left the rest recorded rather than filed. An entry here is
 not an open item — ROADMAP is.
 
 Worth recording which way the one disagreement went, because it ran opposite to the expectation. A
