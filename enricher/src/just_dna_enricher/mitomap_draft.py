@@ -45,14 +45,13 @@ from just_dna_format.spec import StudyRow, VariantRow
 from pydantic import ValidationError
 
 from just_dna_enricher.clin_sig import STATE_BY_CLIN_SIG
+from just_dna_enricher.drafting import DRAFT_PROVIDERS, record_draft_provenance
 from just_dna_enricher.licensing import (
     MITOMAP_TERMS,
     check_declared_use,
-    merge_sources_file,
-    withdraw_stale_dataset,
 )
 from just_dna_enricher.locations import resolve_mitomap_miss_reference
-from just_dna_enricher.mitomap import SOURCE_NAME, indefinite_length
+from just_dna_enricher.mitomap import indefinite_length
 from just_dna_enricher.mitomap_miss_build import (
     CITATIONS_PARQUET,
     CONTIG,
@@ -76,7 +75,8 @@ SOURCE_LABEL = "mitomap-miss"
 #: What decides whether a drafted row is the row already in the table. **One tuple for the whole
 #: batch** (`@match-on-is-per-batch`), and no `rsid` in it because MITOMAP publishes no rsID column —
 #: an identity slot the source never fills is not part of this provider's key.
-_MATCH_ON: tuple[str, ...] = ("chrom", "start", "ref", "alts")
+_PROVIDER = DRAFT_PROVIDERS["mitomap"]
+_MATCH_ON: tuple[str, ...] = _PROVIDER.match_on
 
 #: The cells a human must write before the module can compile. `genotype` for the reason in the module
 #: docstring; `conclusion` because MITOMAP publishes a disease name and not the sentence a reader is
@@ -279,7 +279,7 @@ def draft_panel_from_mitomap_miss(
                 )
             continue
         cells = _cells(row)
-        missing = [name for name in ("chrom", "start", "ref", "alts", "clin_sig") if name not in cells]
+        missing = _PROVIDER.precondition.missing(cells) if _PROVIDER.precondition else []
         if missing:
             # Not reachable from a well-formed miss snapshot — a rated miss has all five by
             # construction — and guarded anyway, because the alternative is a raw ValidationError
@@ -314,30 +314,23 @@ def draft_panel_from_mitomap_miss(
     covered = bool(result.reports) and any(
         outcome.status in {"added", "already_present"} for outcome in result.reports[0].outcomes
     )
-    if not dry_run and covered:
+    if not dry_run:
         # **The licensed source is `mitomap`, not the derived lane.** The increment is a computation
         # this repository performs; the *content* in the drafted rows is MITOMAP's, and it is MITOMAP's
         # attribution duty a published module has to carry (`@source-vs-authority`). The ClinVar half
         # of the pin rides in `dataset`, because the increment's identity really is both parents.
-        merge_sources_file(
-            [MITOMAP_TERMS.row("annotation", declared_use=declared_use, dataset=result.dataset)],
-            spec_dir,
-            error=MitomapDraftError,
-        )
-        if result.added:
-            superseded = withdraw_stale_dataset(
-                spec_dir,
-                SOURCE_NAME,
-                "annotation",
-                result.dataset,
+        result.warnings.extend(
+            record_draft_provenance(
+                provider=_PROVIDER,
+                sources=[MITOMAP_TERMS.source],
+                spec_dir=spec_dir,
+                dataset=result.dataset,
+                covered=covered,
+                drafted=bool(result.added),
+                declared_use=declared_use,
                 error=MitomapDraftError,
             )
-            if superseded is not None:
-                result.warnings.append(
-                    f"the licence row recorded {superseded} and this run drafted from "
-                    f"{result.dataset or 'an unlabelled increment'}, so the release label was "
-                    f"withdrawn rather than re-labelled: one column cannot name two releases."
-                )
+        )
     return result
 
 

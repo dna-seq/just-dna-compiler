@@ -11,13 +11,13 @@ import csv
 from pathlib import Path
 
 import pytest
-from just_dna_enricher.licensing import write_sources_csv
 from just_dna_enricher.drafting import (
     DRAFT_PROJECTIONS,
     draft_digest,
     drafted_unchanged,
     stamp_draft_digest,
 )
+from just_dna_enricher.licensing import write_sources_csv
 from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 

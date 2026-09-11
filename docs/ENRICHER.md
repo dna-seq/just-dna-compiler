@@ -1563,6 +1563,58 @@ resolver and a roster row since RM176.
 | `repository not found` for cpic/clinpgx | nobody has published that snapshot yet | build it locally and point `$JUST_DNA_*_CACHE` at it |
 
 
+## The drafting scaffold — what every provider shares, and what it is allowed to differ on (RM228)
+
+Seven `*_draft.py` providers turn a snapshot into authored rows, and they grew one at a time. By 0.7
+each had its own copy of the same four decisions, and the copies had drifted: two providers recorded a
+release label and never withdrew a stale one, one imported another's private `_MATCH_ON` across
+modules, and one consumed pydantic's rendered error message as an API. `drafting.py` is the mechanism
+those seven were approximating.
+
+**The split the scaffold enforces.** A provider's skip rule is two rules that were being written as
+one hand-kept list:
+
+| | derived or declared | why |
+| --- | --- | --- |
+| **the model's requirement** | **derived**, always | `VariantRow`'s rule is one fact; a provider restating it is a copy that drifts. `pgx_draft` once restated "no rsID *and* no position" where `HaplotypeRow` wants rsID **or** chrom+start, and `draft --gene CYP2C9` died on an unhandled pydantic error |
+| **the source's precondition** | **declared, with a reason** | a true fact about that snapshot — ClinPGx carries no coordinate, MITOMAP publishes no rsIDs. Legitimate, provider-specific, and useless to a reader without the reason |
+
+Mashed together nobody can tell them apart, which is the state `mitomap_draft`'s `clin_sig` clause was
+in: it reads like an identity requirement, it is not one, and the reason it is nonetheless correct (a
+`rated_miss` carries one by construction, and the guard buys a named refusal instead of a raw
+`ValidationError`) sat three lines below in a comment. `SourcePrecondition.reason` is a field, so the
+two halves cannot merge again.
+
+**The identity verdict comes from constructing the model, not from `authoring_requirements`.** That
+was measured rather than assumed. `authoring_requirements("variants.csv")` answers
+`any_of: [['rsid'], ['chrom','start']]`, a grammar that cannot express `VariantRow`'s third clause —
+*`ref`/`alts` require `chrom` and `start`*. A guard built on it accepts `{"rsid": "rs1", "alts": "G"}`,
+which the model refuses and a compile would refuse, so the partial coordinate rides through
+(`@identity-whole-or-none`). `authoring_requirements` still answers the human-readable *which cells
+are missing*; it is not the verdict. Because the probe pre-fills every non-identity field with values
+the model accepts, any `ValidationError` reaching it **is** an identity refusal — no message parsing.
+
+**What the registry holds, so no module keeps a private copy:** `match_on`, the table, the `kind`
+(`projection` — it later re-reads a column it drafted — or `judgement`), the precondition, and for a
+projection the checked columns. `provenance`'s `DRAFT_PROJECTIONS` is **derived** from it;
+`pubmind`'s projection identity genuinely differs from its `match_on` (the snapshot has no rsID
+column) and that is a field with a required reason, refused at construction if absent.
+
+**What providers still differ on, deliberately**, because unifying either would change behaviour:
+the *covered* predicate — each provider's own reading of "this run contributed something" — and the
+stale-label wording, since a published warning is an API and two providers ship two sentences for
+this finding (`@warning-text-is-api`).
+
+**Adding a provider.** Register it in `DRAFT_PROVIDERS`, derive the identity verdict through
+`drafting.skip_reason`, and write provenance through `record_draft_provenance`. Two guards make this
+inherited rather than remembered: `test_drafting_scaffold.py` asserts the registry equals the
+`*_draft.py` modules on disk, and walks each module's AST to refuse a hand-listed identity column or a
+direct `merge_sources_file` / `withdraw_stale_dataset` / `record_source_terms` call.
+
+**Still open here:** `clinvar_draft` and `pubmind_draft` write their licence row on any non-dry run
+rather than gating on `covered`, which is the shape RM222 found wrong in `civic_draft`. Both migrated
+with `covered=True` to reproduce them exactly; changing it is a behaviour change and owes its own test.
+
 ## CIViC — the direction axis, and a source whose coordinates are all on the wrong build (RM152)
 
 ```bash

@@ -115,6 +115,11 @@ the point of the list is to not need the suite to find out.
       a **reading**, and the difference is written down somewhere — `sources.csv` shows only booleans
       (`test_the_three_permission_axes_each_rest_on_a_different_kind_of_ground`)
 - [ ] `release.json` records the source digest and the label a currency check will compare
+- [ ] **if a drafting provider reads this lane**: it is in `drafting.DRAFT_PROVIDERS`, and its
+      licence row and stale-label withdrawal go through `record_draft_provenance` rather than being
+      written by hand — `clinpgx_draft` and `pgx_draft` each recorded a `dataset` and never withdrew a
+      stale one for two releases, so a module widened from a newer snapshot kept a licence row naming
+      the older release (`test_drafting_scaffold.py::test_no_drafter_writes_its_licence_row_directly`)
 - [ ] the lane appears in ENRICHER.md's cache table with its legend marks
 
 **Before calling it shipped**

@@ -48,9 +48,12 @@ from just_dna_compiler.draft import DraftReport, append_rows
 from just_dna_format.pgx import PharmVariantRow
 
 from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, _normalize_category, load_snapshot
-from just_dna_enricher.drafting import stamp_draft_digest
-from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use, merge_sources_file
+from just_dna_enricher.drafting import DRAFT_PROVIDERS, record_draft_provenance
+from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use
 from just_dna_enricher.locations import SNAPSHOT_LICENSE_FILENAME
+
+#: This provider's registry entry (RM228).
+_PROVIDER = DRAFT_PROVIDERS["clinpgx"]
 
 logger = logging.getLogger(__name__)
 
@@ -415,21 +418,27 @@ def draft_pharm_variants(
                 f"terms are not pinned to the text that governed them (license_sha256 stays empty). "
                 f"Rebuild the snapshot with `just-dna-enricher clinpgx build` to extract it."
             )
-        merge_sources_file(
-            [
-                CLINPGX_TERMS.row(
-                    "annotation",
-                    declared_use=declared_use,
-                    dataset=release.get("dataset"),
-                    license_text=license_text,
-                )
-            ],
-            spec_dir,
-            error=ClinPgxEnrichmentError,
-        )
         # The release label alone cannot see a cell edited after the draft, and this provider writes
         # `evidence_level` straight out of the snapshot that `clinpgx` then compares it against —
-        # RM4's tautology, one source over (RM73). Restamped explicitly because `merge_sources_file`
-        # is never-clobber; see `provenance.stamp_draft_digest`.
-        stamp_draft_digest(spec_dir, CLINPGX_TERMS.source, "annotation", error=ClinPgxEnrichmentError)
+        # RM4's tautology, one source over (RM73). The digest restamp is driven by this provider's
+        # `kind` now, not by remembering to call it.
+        #
+        # **`withdraw_stale_dataset` is new here (RM228).** This drafter recorded a `dataset` and
+        # never withdrew a stale one, so widening a module from a newer ClinPGx snapshot left the
+        # licence row naming the older release — a false claim, because `merge_sources_file` is
+        # never-clobber and the row cannot name two releases. Every snapshot-drafting provider but
+        # this one and `pgx_draft` already did it.
+        warnings.extend(
+            record_draft_provenance(
+                provider=_PROVIDER,
+                sources=[CLINPGX_TERMS.source],
+                spec_dir=spec_dir,
+                dataset=release.get("dataset"),
+                covered=True,
+                drafted=any(report.added for report in reports),
+                declared_use=declared_use,
+                error=ClinPgxEnrichmentError,
+                license_texts={CLINPGX_TERMS.source: license_text} if license_text else None,
+            )
+        )
     return ClinPgxDraftResult(reports=reports, warnings=warnings)

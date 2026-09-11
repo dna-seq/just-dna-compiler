@@ -3838,3 +3838,36 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   other session which pgid is yours when both are running. A defunct-but-listed process after that
   is a reaped zombie, not a survivor.
 
+- **`@drafting-scaffold`** — a drafter's identity rule is derived, its source precondition is declared
+  with a reason, and both live in `drafting.DRAFT_PROVIDERS`.
+
+  Seven `*_draft.py` providers grew one at a time and each ended up with its own copy of the same four
+  decisions. RM228 found the copies had drifted: `clinpgx_draft` and `pgx_draft` recorded a release
+  label and never withdrew a stale one, so a module widened from a newer snapshot kept a licence row
+  naming the older release; `pubmind_draft` imported `clinvar_draft._MATCH_ON` **across modules**,
+  coupling two providers' lap-2 matching by accident; `civic_draft` branched on
+  `"identifier" in message or "positional" in message` — pydantic's rendered text as an API.
+
+  **The measurement that shaped the repair.** `authoring_requirements("variants.csv")` answers
+  `any_of: [['rsid'], ['chrom','start']]` and that grammar **cannot express** `VariantRow`'s third
+  clause, *`ref`/`alts` require `chrom` and `start`*. The one provider that looked correctly derived
+  was derived from that subset, so it accepts `{"rsid": "rs1", "alts": "G"}` — a partial coordinate the
+  model refuses. Migrating the others onto it would have spread the bug. **Construct the model**: it is
+  the only complete oracle and the one a compile uses. `authoring_requirements` answers the
+  human-readable *which cells are missing* and is not the verdict.
+
+  **Why the precondition carries a reason as a field.** `mitomap_draft` gated *identity* on `clin_sig`,
+  which the model does not require, and it read like every clause beside it. It turned out correct — a
+  `rated_miss` carries one by construction and the guard buys a named refusal instead of a raw
+  `ValidationError` — but the reason lived three lines away in a comment, so the clause and a genuine
+  misread were indistinguishable. A `SourcePrecondition` with no reason now fails at construction.
+
+  **The cycle was the diagnosis, not an obstacle.** Deriving `DRAFT_PROJECTIONS` from the registry
+  created an import cycle the moment the scaffold needed `stamp_draft_digest`. That revealed
+  `draft_digest`, `stamp_draft_digest` and `drafted_unchanged` had been drafting code sitting in
+  `provenance.py` all along; the boundary was only holdable while the registry was a hand-kept copy.
+  `drafting` now owns the drafted-value axis and `provenance` keeps the `DraftProjection` dataclass and
+  imports nothing back.
+
+  **What stays per-provider, deliberately:** the *covered* predicate, and the stale-label wording —
+  two providers ship two sentences and a published warning is an API (`@warning-text-is-api`).

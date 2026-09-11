@@ -328,6 +328,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - Scaffolding refuses per file; drafting refuses per row. `@file-vs-row-refusal`
 - Requiredness has three shapes; use `field_category` / `authoring_requirements`. `@requiredness-three-shapes`
 - `sources.csv` is draftable, keyed `(source, layer)`. `@sources-csv-draftable`
+- A drafter's identity rule is **derived** (construct the model) and its source precondition is **declared with a reason**; both go through `drafting.DRAFT_PROVIDERS`. `@drafting-scaffold`
 - A registry-iterating guard is only as complete as its registry — add new models to `_ALL_MODELS`. `@registry-completeness`
 - Assert an **equality over a walked set**, never a floor or a count in prose. `@registry-completeness`
 - A vocabulary binding lives on the field and carries its members *and* its closedness. `@vocabulary-on-field`

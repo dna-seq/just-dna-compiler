@@ -268,10 +268,15 @@ DRAFT_PROVIDERS: dict[str, DraftProvider] = {
         match_on=("chrom", "start", "ref", "alts"),
         kind="judgement",
         precondition=SourcePrecondition(
-            fields=("chrom", "start", "ref", "alts"),
+            fields=("chrom", "start", "ref", "alts", "clin_sig"),
             reason=(
                 "MITOMAP publishes MT coordinates and no rsIDs, so every row it drafts is identified "
-                "by the full coordinate; `match_on` omits `rsid` for the same reason"
+                "by the full coordinate and `match_on` omits `rsid` for the same reason. `clin_sig` "
+                "is here because a `rated_miss` carries one by construction — it is a fact about this "
+                "source's row shape, not an identity requirement, and the guard exists so a malformed "
+                "snapshot earns a named refusal rather than a raw ValidationError about a column the "
+                "author never wrote (`@specific-rejection`). It is unreachable from a well-formed "
+                "snapshot, which is why it is declared rather than removed"
             ),
         ),
     ),
@@ -297,6 +302,7 @@ def record_draft_provenance(
     error: type[Exception],
     layer: str = "annotation",
     extra_datasets: Mapping[str, str] | None = None,
+    license_texts: Mapping[str, str] | None = None,
     stale_warning: Callable[[str, str | None], str] | None = None,
 ) -> list[str]:
     """Write this run's `SourceRow`s if it covered anything, and withdraw a stale release label.
@@ -344,6 +350,7 @@ def record_draft_provenance(
         error=error,
         declared_use=declared_use or "unstated",
         datasets=datasets or None,
+        license_texts=license_texts,
     )
     # A `projection` provider later re-reads a column it wrote, so its digest has to be restamped
     # explicitly — `record_source_terms` is never-clobber, and a second draft's digest would

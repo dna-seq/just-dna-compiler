@@ -68,6 +68,76 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM228 — drafting was seven grassroots implementations of one mechanism
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 · **Owner** enricher ·
+**Motivating case** the long-tail triage of the 2026-09-11 re-derivation (enricher 8.10 #3–#9), where
+the maintainer's read was that drafting "was created bottom-up and lacks structure — this is a clear
+sign", and the repair was scoped as a scaffold rather than as four patches
+
+Seven `*_draft.py` providers turn a snapshot into authored rows. They grew one at a time, and by 0.7
+each carried its own copy of the same four decisions. The copies had drifted:
+
+- **`clinpgx_draft` and `pgx_draft` recorded a `dataset` and never withdrew a stale one.** A module
+  widened from a newer CPIC or ClinPGx release kept a licence row naming the older one — `merge_sources_file`
+  is never-clobber, which protects a curator's terms and turns the release label into a false claim.
+  Every other snapshot-drafting provider already withdrew.
+- **`pubmind_draft` imported `clinvar_draft._MATCH_ON` across modules**, coupling two providers'
+  lap-2 matching through a private constant.
+- **`civic_draft` consumed pydantic's rendered error message as an API**, branching on
+  `"identifier" in message or "positional" in message or "chrom" in message`.
+- **`DRAFT_PROJECTIONS` was a hand-kept copy of the drafters' `match_on`** — its own comment pointed
+  at `clinvar_draft._MATCH_ON` by name.
+
+**The measurement that shaped the repair, and refuted the obvious fix.** Four providers restated the
+model's skip rule and two derived it, so "migrate everyone onto the derived one" is the instinct. It
+is wrong: `authoring_requirements("variants.csv")` answers `any_of: [['rsid'], ['chrom','start']]`, a
+grammar that **cannot express** `VariantRow`'s third clause — *`ref`/`alts` require `chrom` and
+`start`*. The derived implementation therefore accepts `{"rsid": "rs1", "alts": "G"}`, a partial
+coordinate the model refuses and a compile would refuse (`@identity-whole-or-none`). The one provider
+that looked correct was derived from a subset, and migrating the others onto it would have spread the
+defect. **Constructing the model is the oracle** — the only complete one, and the one compile uses.
+`authoring_requirements` answers the human-readable *which cells are missing* and is not the verdict.
+That also deletes the message parsing: with every non-identity field pre-filled from values the model
+accepts, any `ValidationError` reaching the probe **is** an identity refusal.
+
+**The split the scaffold enforces.** A skip rule is two rules: the **model's requirement**, derived
+and identical everywhere, and the **source's precondition**, a true fact about that snapshot declared
+with a reason. Mashed into one list they are indistinguishable — which is the state `mitomap_draft`'s
+`clin_sig` clause was in. It gates *identity* on a column the model does not require, and it turned
+out **correct**: a `rated_miss` carries one by construction, and the guard buys a named refusal rather
+than a raw `ValidationError` about a column the author never wrote (`@specific-rejection`). The reason
+sat three lines below in a comment, so a legitimate constraint and a genuine misread read the same.
+`SourcePrecondition.reason` is a field and a missing one fails at construction. **This item predicted
+mitomap would be its one behaviour change and it was not** — the prediction was wrong, and the
+structure is what made the difference legible.
+
+**The import cycle was the diagnosis, not an obstacle.** Deriving `DRAFT_PROJECTIONS` created a cycle
+the moment the scaffold needed `stamp_draft_digest`. That revealed `draft_digest`,
+`stamp_draft_digest` and `drafted_unchanged` had been drafting code sitting in `provenance.py` all
+along — a boundary only holdable while the registry was a copy. `drafting` now owns the registry, the
+derived projections and the whole drafted-value axis; `provenance` keeps the `DraftProjection`
+dataclass and imports nothing back.
+
+**`record_source_terms` gained `license_texts`**, the same shape RM222 gave `datasets` one axis over.
+`SourceTerms.row` had always accepted one and this function had no way to pass it, so the two PGx
+drafters that extract a licence file had to build rows by hand — and were therefore outside every
+other guarantee it gives, including the withdrawal they were missing.
+
+**Enforcement is both kinds, because they catch different evasions.** `test_drafting_scaffold.py`
+asserts the registry equals the `*_draft.py` modules on disk, and walks each module's AST to refuse a
+hand-listed identity column (off `base.IDENTITY_FIELDS`, so it inherits the schema's answer) or a
+direct `merge_sources_file`/`withdraw_stale_dataset`/`record_source_terms` call. All 18 fail on every
+one of the seven pre-migration.
+
+**Deliberately not unified**, because either would change behaviour under cover of a refactor: each
+provider's *covered* predicate, and the stale-label wording — two providers ship two sentences and a
+published warning is an API (`@warning-text-is-api`).
+
+**Recorded, not fixed:** `clinvar_draft` and `pubmind_draft` write their licence row on any non-dry
+run rather than gating on `covered` — the shape RM222 found wrong in `civic_draft`. Both migrated with
+`covered=True`, reproducing them exactly; changing it owes its own test. `@drafting-scaffold`
+
 ## RM229 — `CacheLane` declared no size, so an onboarding offer had to `du` a box to price one
 
 **Severity** low · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only: one

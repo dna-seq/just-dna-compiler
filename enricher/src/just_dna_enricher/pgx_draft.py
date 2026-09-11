@@ -41,10 +41,13 @@ from just_dna_enricher.cpic import (
     CpicRecommendation,
     CpicSnapshotClient,
 )
-from just_dna_enricher.drafting import stamp_draft_digest
+from just_dna_enricher.drafting import DRAFT_PROVIDERS, record_draft_provenance
 from just_dna_enricher.enrich import source_build_mismatch
-from just_dna_enricher.licensing import CPIC_TERMS, check_declared_use, merge_sources_file
+from just_dna_enricher.licensing import CPIC_TERMS, check_declared_use
 from just_dna_enricher.locations import resolve_cpic_reference
+
+#: This provider's registry entry (RM228).
+_PROVIDER = DRAFT_PROVIDERS["cpic"]
 
 #: The assembly CPIC's `sequence_location.position` is on — probed, not assumed: `rs1799853` is
 #: `10:94942290` there, which is its GRCh38 position (GRCh37 is `10:96702047`). Named for the reason
@@ -518,20 +521,23 @@ def draft_gene(
         # for two releases because this was the one provider recording no release at all. `None` on
         # the live client, deliberately: with no label there is nothing to establish a copy against,
         # so the check simply runs, which is the conservative direction.
-        merge_sources_file(
-            [
-                CPIC_TERMS.row(
-                    "annotation",
-                    declared_use=declared_use,
-                    dataset=cpic_dataset,
-                )
-            ],
-            spec_dir,
-            error=CpicError,
+        # **`withdraw_stale_dataset` is new here (RM228).** `dataset` was recorded and never
+        # withdrawn, so a module widened from a newer CPIC release kept a licence row naming the
+        # older one — `merge_sources_file` is never-clobber, which protects a curator's terms and
+        # turns the release label into a false claim. The digest restamp is driven by this provider's
+        # `kind` now rather than by remembering the call.
+        warnings.extend(
+            record_draft_provenance(
+                provider=_PROVIDER,
+                sources=[CPIC_TERMS.source],
+                spec_dir=spec_dir,
+                dataset=cpic_dataset,
+                covered=True,
+                drafted=any(report.added for report in reports),
+                declared_use=declared_use,
+                error=CpicError,
+            )
         )
-        # Restamped explicitly because `merge_sources_file` is never-clobber — see
-        # `provenance.stamp_draft_digest`.
-        stamp_draft_digest(spec_dir, CPIC_TERMS.source, "annotation", error=CpicError)
     return PgxDraftResult(reports=reports, warnings=warnings)
 
 

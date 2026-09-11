@@ -913,6 +913,7 @@ def record_source_terms(
     error: type[Exception],
     declared_use: str = "unstated",
     datasets: Mapping[str, str] | None = None,
+    license_texts: Mapping[str, str] | None = None,
 ) -> list[SourceRow]:
     """Record the terms of every licensed source a pass consulted, at `layer`.
 
@@ -940,6 +941,12 @@ def record_source_terms(
     `withdraw_stale_dataset` withdraws — a row without one puts the module outside the currency check
     altogether, which is where every CIViC-drafted module was.
 
+    `license_texts` is the same shape one axis over, added for the same reason (RM228): a pass that
+    read the terms out of the payload can pin `license_sha256` to the same moment as the data, and
+    `SourceTerms.row` has always accepted one — this function simply had no way to pass it, so the two
+    PGx drafters that *do* extract a licence file had to build their rows by hand and were therefore
+    outside every other guarantee this function gives.
+
     A name with no terms constant is skipped rather than guessed at: `TERMS_BY_SOURCE` is what this tier
     can state, and inventing a row for the rest would be worse than the compiler's honest warning that
     the terms are unrecorded. Existing rows are never clobbered (`merge_sources_file`), so a human's
@@ -949,8 +956,17 @@ def record_source_terms(
     if not terms:
         return []
     labels = datasets or {}
+    texts = license_texts or {}
     return merge_sources_file(
-        [t.row(layer, declared_use=declared_use, dataset=labels.get(t.source, "")) for t in terms],
+        [
+            t.row(
+                layer,
+                declared_use=declared_use,
+                dataset=labels.get(t.source, ""),
+                license_text=texts.get(t.source),
+            )
+            for t in terms
+        ],
         spec_dir,
         error=error,
     )

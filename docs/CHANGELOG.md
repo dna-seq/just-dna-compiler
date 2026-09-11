@@ -34,7 +34,37 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-11 (latest) — RM229: a cache lane declares its size, and a derived lane prices its parents
+## 2026-09-11 (latest) — RM228: drafting stops being seven grassroots implementations of one mechanism
+
+Seven `*_draft.py` providers turn a snapshot into authored rows, and they grew one at a time. By 0.7
+each carried its own copy of the same four decisions and the copies had drifted: `clinpgx_draft` and
+`pgx_draft` recorded a release label and **never withdrew a stale one**, so a module widened from a
+newer snapshot kept a licence row naming the older release; `pubmind_draft` imported
+`clinvar_draft._MATCH_ON` across modules; `civic_draft` branched on pydantic's rendered error text;
+and `DRAFT_PROJECTIONS` was a hand-kept copy of the drafters' own `match_on`, its comment pointing at
+`clinvar_draft._MATCH_ON` by name.
+
+**The obvious repair was refuted by measuring it.** Four providers restated the model's skip rule and
+two derived it, so migrating everyone onto the derived one is the instinct — and it is wrong.
+`authoring_requirements("variants.csv")` answers `any_of: [['rsid'], ['chrom','start']]`, which cannot
+express `VariantRow`'s third clause, *`ref`/`alts` require `chrom` and `start`*. The derived
+implementation therefore accepts `{"rsid": "rs1", "alts": "G"}` — a partial coordinate the model and a
+compile both refuse. Constructing the model is the only complete oracle, and it deletes the message
+parsing for free.
+
+A new `drafting.py` splits the **derived** model requirement from a **declared** source precondition
+that carries its reason as a field. That distinction is what makes `mitomap_draft`'s `clin_sig` clause
+legible: it gates identity on a column the model does not require, and it is *correct* — a
+`rated_miss` carries one by construction — but the reason lived three lines away in a comment, so a
+real constraint and a misread read identically. This item predicted mitomap would be its one
+behaviour change; it was not.
+
+The import cycle the refactor hit was the diagnosis rather than an obstacle: `draft_digest`,
+`stamp_draft_digest` and `drafted_unchanged` had been drafting code sitting in `provenance.py`, a
+boundary only holdable while the registry was a copy. Two guards — registry equality and an AST walk —
+fail on all seven providers pre-migration. Enricher suite: 2108 passed, 25 skipped.
+
+## 2026-09-11 — RM229: a cache lane declares its size, and a derived lane prices its parents
 
 `just-dna-enricher` only, inside the uncut 0.7.0. A first-run offer had to `du` a provisioned box to
 price a lane (S97), because `CacheLane` said everything about whether and how and nothing about how
@@ -57,7 +87,7 @@ helper answers the same for either spelling. Nothing is refused, nothing added o
 walks the map. AGENT_NOTES `@sidecar-name-and-place` carries the read-side lesson: a helper whose
 wrong answer is a plausible path fails quietly in both directions.
 
-## 2026-09-11 — eighteen items a second, blind derivation of the docs found in the code
+## 2026-09-11 — RM207–RM227, a second and blind derivation of the docs found in the code
 
 **The docs were re-derived from the code by three agents that had never read them**, one per tier, in
 worktrees with `docs/` and `CLAUDE.md` deleted — the method is now written down as
