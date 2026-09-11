@@ -589,9 +589,19 @@ def _provision_root_file_snapshot(
         raise error_cls(f"Downloaded {payload} is not readable JSON (interrupted download?)")
     tmp_path.replace(target)
 
+    # **Staged, like the payload two lines up and like every other fetch in this module** (RM219).
+    # It was not, and the module documents at length why that matters: `HfFileSystem.get` creates the
+    # local file *before* it discovers the remote path is missing, so an absent `release.json` left a
+    # **0-byte** one behind — which `_json_parses` reads as unreadable and `LaneStatus` then reports as
+    # `release_unreadable`. An absent label and a corrupt one are different states, and this turned the
+    # first into the second on every repo that publishes no description.
+    release_target = cache_dir / RELEASE_FILENAME
+    release_tmp = release_target.with_suffix(release_target.suffix + ".part")
     try:
-        fs.get(f"{hf_repo}/{RELEASE_FILENAME}", str(cache_dir / RELEASE_FILENAME))
+        fs.get(f"{hf_repo}/{RELEASE_FILENAME}", str(release_tmp))
+        release_tmp.replace(release_target)
     except Exception as exc:
+        release_tmp.unlink(missing_ok=True)
         logger.info(
             "No %s in the %s repo (%s); the snapshot carries no release label.",
             RELEASE_FILENAME,
