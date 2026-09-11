@@ -11,6 +11,14 @@ has patched the wrong document — that is the "second thing to update" failure 
 twice already (`AUTHORING*.md`, `/write-module`). If a claim below is wrong *today*, the right response
 is to check whether the maintained doc is also wrong and fix that one.
 
+## The method has its own document now
+
+**[BLIND_REDERIVATION.md](../BLIND_REDERIVATION.md) is the pattern; this file is one round's
+evidence.** The distinction cost something to learn: the 2026-09-11 round had to reconstruct the
+method out of this README and a commit message, because a reusable procedure had been written down
+only as the preamble to its first output. What follows here is kept as that round's own record — the
+method doc generalises it, records the second round, and is where a third one starts.
+
 ## Why write a document you already have
 
 Reading a reference against the code it describes has a failure mode: the reference tells you where to

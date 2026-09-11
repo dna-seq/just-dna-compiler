@@ -58,6 +58,7 @@ edited as routine work:
 | --- | --- | --- |
 | [CONSTITUTION.md](docs/CONSTITUTION.md) | the 9 principles + goals/non-goals. Wins over any plan. **Rules only** — no reasoning lives there | `grep -n '^[0-9]\+\. \*\*' docs/CONSTITUTION.md` |
 | [CONSTITUTION_AMENDMENTS_HISTORY.md](docs/CONSTITUTION_AMENDMENTS_HISTORY.md) | *why* each amendment was made — the reasoning the charter bans from itself | `grep -n '^## ' docs/CONSTITUTION_AMENDMENTS_HISTORY.md` |
+| [BLIND_REDERIVATION.md](docs/BLIND_REDERIVATION.md) | the **method** behind `docs/audit/` — derive a surface twice, top-down from the release and bottom-up from the code with the reference unread, and reconcile. The contradictions are the deliverable; run it before a cut | `grep -n '^## ' docs/BLIND_REDERIVATION.md` |
 | [AGENT_NOTES.md](docs/AGENT_NOTES.md) | the long-form gotcha book behind this file | `grep -n '^## ' docs/AGENT_NOTES.md`, then the symbol name |
 | [RM_TOC.md](docs/RM_TOC.md) | where any `RMn` lives, status included — the complete list. **Claim a new number with `.claude/rm-next.py`** (scan + locked reservation), never by reading the highest off the file — an index is not an allocator, and two sessions once filed the same RM159 | `grep -n 'RM47' docs/RM_TOC.md` |
 | [ROADMAP.md](docs/ROADMAP.md) | open items, the idea-book, the reserved-namespace and 1.0-cleanup trackers | `grep -n '^## RM' docs/ROADMAP.md` |
