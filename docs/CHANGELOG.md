@@ -34,7 +34,53 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-11 (latest) — the axis the AVI artifact threw away, as the tenth derived-fact sidecar
+## 2026-09-11 (latest) — three defects a second, blind derivation of the docs found in the code
+
+**The docs were re-derived from the code by three agents that had never read them**, one per tier, in
+worktrees with `docs/` and `CLAUDE.md` deleted — the method is now written down as
+[BLIND_REDERIVATION.md](BLIND_REDERIVATION.md) rather than living as its first output's preamble. The
+maintained references gained what they were missing (twenty-six modules, a check row, an AlphaGenome
+section, the eighteen-source licence roster, all with walking tests). These three are the other half:
+places where the **code** was wrong, each reproduced before it was repaired.
+
+**RM207 — the refusal that is fatal in both modes was asked of the wrong key, on the wrong side.**
+`resolve_from_table` walked the *post-expansion* rows and looked each one's `variant_key` up in a table
+keyed by the key the author wrote. Those strings are equal for a row the fill merely completes and
+different for a row the table expands — the expansion mints the locus's `ga4gh:VA.…` id — so a module
+carrying a **withdrawn** rsID on an expanded variant compiled clean, `success=True`. And the check
+existed only inside `resolve_from_table`, which only `compile_module` calls, so where it did fire
+`validate` was green in both modes and a plain `compile` refused: the `@validate-refuses-all` sequence.
+Both reproduced on `reference_examples/hfe_hemochromatosis` with one column changed. The predicates are
+shared now; the published `resolution: ` / `strict resolution: ` prefixes are unchanged, because that
+text is API.
+
+**RM208 — two clients put the translation inside the retry, so one never retried and one never
+translated.** `CrossrefClient.exists` caught `httpx.HTTPError`, the **superclass** of both types its own
+`@retry` matched, and turned a `ConnectError` into a withhold before tenacity could see it: **one**
+upstream request measured where `attempt_floor(3)` asked for three, and the knob a deployment is meant
+to raise moved nothing. `GwasCatalogClient` had the mirror image — the transport leg re-raised bare for
+the decorator and nothing translated it once the attempts ran out, so `associations_for` raised a raw
+`httpx.ConnectError` while its own docstring said "Both legs are translated". Both got the
+`_request`/`_get` split every other client in the tier already had.
+
+The guard walks the **package**, not the roster: both clients sat in the contract suite's `exempt` set,
+and a guard that iterates a roster inherits its exemptions — the RM101 blind spot one file over. GWAS's
+exemption is removed rather than re-argued.
+
+**RM209 — the publish half walked the root-file registry and the pull half did not.** `upload.py` walks
+`locations.SNAPSHOT_ROOT_FILENAMES`; `download._provision_snapshot` iterated a hand-kept
+`(release.json, LICENSE.txt)` pair. So RM198's `avi_knots.parquet` was published and never pulled — and
+since the AVI lane stores no `PHRED`, a pulled lane held scores nobody can rank and `alphagenome check`
+refuses it. Two docstrings over that code said the registry was walked; they described the design, and
+the copy beside it was what ran.
+
+**What the round says about itself.** All three are shapes this repository had already written a rule
+against — a hand-kept list beside a derivable one, a check on one side of the validate/compile pair, a
+translation on the wrong side of a retry. That is the same finding the 2026-08-18 round produced with
+RM93–RM100, and it is the argument for the method rather than for any of the fixes: reading a reference
+against its code confirms sentences, deriving it again asks which of two documents is wrong.
+
+## 2026-09-11 — the axis the AVI artifact threw away, as the tenth derived-fact sidecar
 
 **RM194 + RM200 shipped together, because they were always one build.** `expression_effects.csv` →
 `expression_effects.parquet`: one row per `(variant, gene)` saying which way a variant moves that

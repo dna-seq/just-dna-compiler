@@ -11,12 +11,14 @@ fetches** (CONSTITUTION Principle 2) and holds no transform logic; compilation l
 > network tier), **[CONSTITUTION.md](CONSTITUTION.md)** (the invariants every model upholds).
 > `__init__.py` carries no re-exports by design — import from the submodule where a symbol lives.
 
-## Read beside this: the 2026-08-18 code-first re-derivation
+## Read beside this: the 2026-09-11 code-first re-derivation
 
-**A second reading of this tier, written from the code alone on 2026-08-18, is in
-[audit/SCHEMAS_FROM_CODE.md](audit/SCHEMAS_FROM_CODE.md)** — field-by-field over every row model, and
-the instrument that found RM95 and RM96, both fixed in 0.6.1. Evidence, not contract: this document
-is the maintained one, and where the two disagree this one is what a consumer may rely on.
+**A second reading of this tier, written from the code alone on 2026-09-11, is in
+[audit/SCHEMAS_FROM_CODE.md](audit/SCHEMAS_FROM_CODE.md)** — field-by-field over every row model, the
+hash family with what bytes enter each, and the tri-state inventory. The 2026-08-18 round of the same
+exercise found RM95 and RM96, both fixed in 0.6.1. Evidence, not contract: this document is the
+maintained one, and where the two disagree this one is what a consumer may rely on. The method is
+[BLIND_REDERIVATION.md](BLIND_REDERIVATION.md).
 
 ## Module map (dependency tiers, leaf → aggregate)
 

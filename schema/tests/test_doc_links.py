@@ -27,7 +27,11 @@ sibling and the runner never will. Such a link is dead for a reader on GitHub to
 resolve inside one repository's blob tree — so the message says *escapes* rather than *no such file*:
 locally the file is right there, and that is exactly the problem.
 
-Three limits worth knowing before reading a failure. A link inside a fenced code block is not a link —
+Four limits worth knowing before reading a failure. A fence is only recognised at **column 0**:
+`_FENCE` is anchored, so an indented fence — valid markdown, and what a code block inside a list item
+looks like — is invisible here and its contents are scanned as prose. Found when a regex inside an
+indented fence in `docs/audit/` still reported as a dead link; the repair is to un-indent the fence,
+which is cheaper than teaching this to parse list nesting. A link inside a fenced code block is not a link —
 `CONSUMER_TRIAGE_LOOP.md` shows the reply idiom with an elided `#rm45--…` fragment inside a fence — so
 fences are blanked first, keeping their newlines so reported line numbers stay true. GitHub
 disambiguates repeated headings with a `-1`/`-2` suffix, which `_anchors` does not model; nothing links

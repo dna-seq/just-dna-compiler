@@ -289,6 +289,124 @@ and the lane needs a second source name, `alphagenome_atlas`, because `RNA_SEQ` 
 non-commercial Output while the AVI artifact is the Permissive candidate — one `(source, layer)` key
 cannot carry two licence classes.
 
+## RM207 — the one refusal that is fatal in both modes was asked of the wrong key, on the wrong side
+
+**Severity** high · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-compiler` only: one
+loop replaced by three shared helpers, and four lines in the pre-flight; no schema change, no published
+text change) · **Owner** compiler · **Motivating case** the 2026-09-11 blind re-derivation round —
+`docs/audit/COMPILER_FROM_CODE.md` § 13.1, written from the code with the maintained doc unread
+
+**Two defects with one root, and the second is the one that mattered.** `resolve_from_table` ended with
+a loop over `patched` — the rows *after* the fill and the expansion — looking each one's `variant_key`
+up in the injected table. But the table is keyed by the key the **author** wrote, and the loop at the
+top of the same function says so (`resolution.get(v.variant_key)`). For a row the fill merely completes,
+the two strings are equal and the check worked. For a row the table **expands**, they are not:
+`update["variant_key"] = derive_variant_key(...)` mints the locus's `ga4gh:VA.…` id, and looking *that*
+up in a table keyed by `rs111033563` misses every time.
+
+So the refusal the code's own comment calls "fatal in BOTH modes" was silently skipped on exactly the
+rows that expanded. Reproduced on `reference_examples/hfe_hemochromatosis` with one extra resolution
+row: a module carrying a withdrawn rsID on a two-locus variant compiled clean, `success=True`.
+
+**And the check only ever existed on the compile side.** `resolve_from_table` is called from
+`compile_module` and nowhere else, so where it *did* fire, `validate` reported the spec valid in both
+modes and a plain `compile` then refused it — the sequence `test_validate_agrees_with_compile.py`'s own
+docstring calls "the one thing this command must never do". The standing compile-only exemption does not
+cover it: what stays compile-only is a check reading **resolved rows**, and this one reads the injected
+table's own `rsid_status` column, needing no `output_dir`, no reference and no resolution having run.
+That is the same test `unresolved_subjects` was factored out under (S76), and the repair is the same
+shape — `withdrawn_refusals`, `ambiguous_refusals` and `ambiguous_warnings` are now shared predicates
+both sides call.
+
+**Sentences, not subjects — a deliberate difference from `unresolved_subjects` beside it.** That one
+returns names and lets each caller phrase them, which is safe because both phrasings are one clause.
+These interpolate *two* things, the subject and the retracted rsID, and the standing rule is share the
+predicate and copy the error; a two-interpolation sentence copied into a second caller is precisely how
+the two drift. So the sentence is shared and there is one of it.
+
+**The channel prefixes are copied, and that was the deciding constraint.** `compile_module` publishes
+these as `resolution: …` and `strict resolution: …`, and that text is what a consumer greps
+(`@warning-text-is-api`). Emitting the bare sentence from the pre-flight would have changed the
+published string on every module that carries one — so only the channel label is restated, and a test
+asserts `set(validate.errors) == set(compile.errors)` rather than "validate also said something".
+
+**Refused: re-deriving the check in the pre-flight.** A second implementation beside the first is the
+drift the shared predicate exists instead of, and it is what `unresolved_subjects`'s docstring already
+argues at length one function up.
+
+**The ambiguous arm rode along** because it is the same loop and the same key bug, one severity down:
+`strict`-only, so `validate --strict` is where it has to appear. `compile_module` runs its pre-flight in
+`best_effort` whatever its own mode, so the strict arm there is `validate --strict`'s and the compile
+reaches the identical text by its own path.
+
+## RM208 — two clients put the translation inside the retry, so one never retried and one never translated
+
+**Severity** high · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only: the
+`_request`/`_get` split on two clients; no schema change) · **Owner** enricher · **Motivating case** the
+2026-09-11 blind re-derivation round — `docs/audit/ENRICHER_FROM_CODE.md` D10 and D11
+
+**One root cause, two opposite symptoms**, which is why they are one item. Every other client in the
+tier keeps the retrying half in its own function and the translation **outside** it — `eutils._request`
+/ `_get`, `cpic._request`, `gnomad._request`. Two clients never got that split, and each broke a
+different half of `@client-exception-contract`'s "retry, then translate, both legs".
+
+**`CrossrefClient.exists` never retried.** Its decorator asked for `attempt_floor(3)` on
+`(httpx.TransportError, httpx.TimeoutException)`; its body caught `httpx.HTTPError`, the **superclass of
+both**, and returned `None`. So a `ConnectError` became a withhold before tenacity could see it.
+Measured against a transport that refuses every time: **one** upstream request, not three — and
+`attempt_floor`, the knob `@retry-attempt-floor` exists so a deployment can raise, moved nothing at all.
+
+**`GwasCatalogClient` never translated the leg the retry gives back.** `_get` re-raised transport errors
+bare so tenacity could match them, which is correct, and with `reraise=True` nothing caught the last one
+once the attempts were spent — so `associations_for` raised a raw `httpx.ConnectError` at a caller told
+to expect `GwasError`, while the body's own docstring said "Both legs are translated". Measured: the
+httpx type, after three attempts.
+
+**The guard is static and walks the package, because the defect is a shape.** Neither instance is
+visible in a passing test or in review — the decorator and the `except` are forty lines apart and each
+is individually correct. `test_retry_is_reachable.py` walks every `@retry`-decorated function in the
+package and refuses any whose body catches an **ancestor** of a type its own decorator retries. A
+handler whose entire body is a bare `raise` is exempt by construction, since it swallows nothing.
+
+**It walks the package rather than the roster on purpose.** `test_client_exception_contract.py` could
+not have caught either one: `literature.CrossrefClient` and `gwas.GwasCatalogClient` both sat in that
+file's named `exempt` set, and a guard that iterates a roster inherits the roster's exemptions — the
+RM101 blind spot, one file over. GWAS's exemption is now **removed** rather than re-argued, and the
+reason it was wrong is worth keeping: it argued from the type that *is* raised (`GwasError` is both the
+client's and the pass's, so no cross-module mismatch), which cannot see a leg raising a different one.
+
+**`gwas` joins `FOUR_OH_FOUR_IS_AN_ANSWER`**, and for its own reason rather than OLS4's: the Catalog
+holds only variants carrying a published association, so a 404 is *absent* and `associations_for` turns
+it into the empty answer `[]` — the third outcome that has to stay distinct from could-not-ask.
+
+## RM209 — the publish half walked the root-file registry and the pull half did not
+
+**Severity** high · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only: one
+hand-kept tuple replaced by the registry it copies; no schema change) · **Owner** enricher ·
+**Motivating case** the 2026-09-11 blind re-derivation round — `docs/audit/ENRICHER_FROM_CODE.md` D8
+
+**RM198 added `avi_knots.parquet` to `locations.SNAPSHOT_ROOT_FILENAMES` and only one side noticed.**
+`upload.py` walks that tuple; `download._provision_snapshot` iterated `(RELEASE_FILENAME,
+SNAPSHOT_LICENSE_FILENAME)` inline. So the publisher sent the file and the puller never asked for it.
+
+**The consequence is a lane that cannot be used.** The AVI lane stores no `PHRED` — it is an exact
+within-corpus rank, so the 466 KB knot table is what reconstructs it, and `alphagenome check` refuses a
+snapshot without that file. `cache pull alphagenome_avi` therefore produced a snapshot whose scores
+nobody can rank, which is the one thing RM198 existed to prevent.
+
+**Two docstrings said the opposite in as many words**, which is the part worth keeping: "That file
+travels because `SNAPSHOT_ROOT_FILENAMES` names it, not because this function does", and "`_provision_snapshot`
+fetches the root files from `SNAPSHOT_ROOT_FILENAMES` for every lane, so this needs no special case".
+Both were written when the registry was introduced and describe the design rather than the code — a
+registry with a hand-kept copy of itself beside it (`@registry-completeness`), where the copy is the
+thing that runs.
+
+**The test asserts the equality, not the file.** What the provisioner *asks the remote for* is compared
+as a set against the tuple, so a registry that grows by one is covered without anybody remembering. The
+named assertion for `avi_knots.parquet` sits beside it as the second test, because that filename is what
+a reader greps after `alphagenome check` refuses. Absence stays non-fatal and `.part` staging is
+asserted: a repo publishing none of the three root files still provisions, and leaves no truncated stub.
+
 ## RM206 — `LookupClients` had three lazy-build semantics and the call site could not tell which
 
 **Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only:

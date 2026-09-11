@@ -1,7 +1,7 @@
 # Audit snapshots — the tier references, re-derived from the code
 
 Three technical references for `just-dna-format`, `just-dna-compiler` and `just-dna-enricher`, written
-on **2026-08-18** from the source and the tests alone. They exist to be read *against*
+on **2026-09-11** from the source and the tests alone. They exist to be read *against*
 [SCHEMAS.md](../SCHEMAS.md), [COMPILER.md](../COMPILER.md) and [ENRICHER.md](../ENRICHER.md), not
 instead of them.
 
@@ -10,6 +10,21 @@ Nothing here is updated when the code moves, and a reader who patches a fact int
 has patched the wrong document — that is the "second thing to update" failure this repo has removed
 twice already (`AUTHORING*.md`, `/write-module`). If a claim below is wrong *today*, the right response
 is to check whether the maintained doc is also wrong and fix that one.
+
+## Which round these files are
+
+**The three files here are the 2026-09-11 round.** They replaced the 2026-08-18 ones in place rather
+than sitting beside them, because two dated snapshots of one surface is the second-thing-to-update
+problem this directory is already one step away from. The first round is in git at `0e5fc58^` —
+`git show 0e5fc58^:docs/audit/ENRICHER_FROM_CODE.md` — and its durable material was merged in 2026-08-18
+and again in 2026-09-11, so what is in history is the evidence, not a live claim.
+
+Two notes on reading the 2026-09-11 files specifically. Their defect sections cite reproducers under a
+session scratchpad that no longer exists; the ones that were real became permanent tests
+(`test_withdrawn_parity.py`, `test_retry_is_reachable.py`, `test_snapshot_root_files_pulled.py`), which
+is where to look instead. And a defect candidate in them is a **candidate**: the maintainer pass
+confirmed three (RM207, RM208, RM209), found one to be a false positive on reading, and left the rest
+recorded rather than filed. An entry here is not an open item — ROADMAP is.
 
 ## The method has its own document now
 
