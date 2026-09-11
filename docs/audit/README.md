@@ -23,8 +23,15 @@ Two notes on reading the 2026-09-11 files specifically. Their defect sections ci
 session scratchpad that no longer exists; the ones that were real became permanent tests
 (`test_withdrawn_parity.py`, `test_retry_is_reachable.py`, `test_snapshot_root_files_pulled.py`), which
 is where to look instead. And a defect candidate in them is a **candidate**: the maintainer pass
-confirmed three (RM207, RM208, RM209), found one to be a false positive on reading, and left the rest
-recorded rather than filed. An entry here is not an open item — ROADMAP is.
+confirmed three (RM207, RM208, RM209) and left the rest recorded rather than filed. An entry here is
+not an open item — ROADMAP is.
+
+Worth recording which way the one disagreement went, because it ran opposite to the expectation. A
+*static guard written during the repair* flagged `gwas._get`'s bare `except … : raise` as swallowing
+what its decorator retried; reading it refuted the guard, not the code — a handler whose whole body is
+`raise` swallows nothing, and the guard now exempts that shape. The **enricher snapshot's** own claim
+about the same function (D10: the exhausted transport leg reaches no translation) was correct, and is
+RM208's second half.
 
 ## The method has its own document now
 

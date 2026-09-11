@@ -797,9 +797,14 @@ any size and a declared layout retirement rides it as `delete_patterns`.
 **Check**
 
 4. **Re-baseline digest-comparison CI.** 14/15 measured modules move `artifact.digest`.
-5. **A spec that passed `validate --strict` at 0.6.6 can newly fail it** — RM141 and RM143, both
-   shipped. Both are cases where `compile --strict` was already going to refuse, so this moves the
-   failure earlier rather than adding one.
+5. **A spec that passed `validate` at 0.6.6 can newly fail it** — RM141, RM143 and **RM207**, all
+   shipped. Each is a case where `compile` was already going to refuse, so this moves the failure
+   earlier rather than adding one. RM207 is the widest of the three and the only one that is not
+   `strict`-only: a `resolution.csv` row recording `rsid_status=withdrawn` now refuses at `validate` in
+   **both** modes, because `compile` refuses it in both modes and did so without the pre-flight saying
+   anything. Two consequences for a consumer running `validate` in CI: a spec carrying such a row
+   fails earlier than it used to, and one whose *expanded* variant carried it used to compile clean —
+   that artifact was never legal and is now refused.
 6. New optional authored columns are available and nothing forces them: `statistical_test`,
    `confidence`/`confidence_unit` on `studies.csv`, `requires_callable` on the two PGx locus tables,
    `pharm_variants.pmid`, and the `authority_precedence:` block in `module_spec.yaml`.
