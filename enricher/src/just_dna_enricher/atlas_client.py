@@ -1,6 +1,6 @@
 """The AlphaGenome Atlas client — precomputed variant scores over gRPC, on two packages (RM192).
 
-**The `[atlas]` extra, not core.** `uv add alphagenome` costs 255 MB and 81 packages against a tier
+**The `[atlas]` extra, not core.** `uv add alphagenome` costs **550 MB and 47 packages** against a tier
 whose entire runtime list is httpx/tenacity/huggingface-hub, and six of the twenty dependencies that
 wheel declares are never imported on any scoring path. The `.proto` sources are Apache-2.0, so
 `grpcio` + `protobuf` reach every Atlas RPC — **22 MB**, with score payloads decoding through

@@ -30,6 +30,10 @@ def test_layer_and_declared_use_are_closed_vocabularies() -> None:
         "gene_validity", "clinical_assertion",
         # 0.6 (RM90) — the GWAS Catalog's published effect sizes, same fact class.
         "gwas_effect",
+        # 0.7 (RM194/RM200) — AlphaGenome's per-gene expression effects, written by
+        # `alphagenome expression`. Fact class, so it does not taint a module; the *licence* class is
+        # a separate axis and this source is non-commercial, which `sources.csv` carries on its own.
+        "expression_effect",
         "annotation",
     } == VALID_SOURCE_LAYERS
     assert {"unstated", "non_commercial", "commercial"} == VALID_DECLARED_USE

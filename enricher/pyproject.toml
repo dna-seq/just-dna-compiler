@@ -44,8 +44,10 @@ just-dna-enricher = "just_dna_enricher.cli:app"
 # the score fields are plain `bytes` that `struct.unpack` decodes, and the request filter is an
 # AIP-160 string. Measured on 2026-09-10 in a clean venv: `uv pip install grpcio protobuf` is
 # **19 MB of site-packages and +2 packages** on this tier (grpcio 1.83.1, protobuf 7.36.1;
-# typing-extensions comes with it but pydantic already requires it). Against **255 MB and 81
-# packages** for `uv add alphagenome`, whose wheel declares anndata, pandas, scipy, zarr, h5py,
+# typing-extensions comes with it but pydantic already requires it). Against **550 MB and 47
+# packages** for `uv add alphagenome` (resolved and installed 2026-09-11 on Python 3.14 — the
+# figures this file carried before, 255 MB and 81, were quoted from the design round and neither
+# was ever measured), whose wheel declares anndata, pandas, scipy, zarr, h5py,
 # numcodecs, pyarrow, matplotlib, seaborn, pyfaidx, absl-py and fsspec flat — six of them never
 # imported on any scoring path, and `atlas.py` importing `anndata` at module level so even the
 # SDK's own import path costs 242 MB (ALPHAGENOME_ATLAS.md § 6.2, which measured 22 MB at the

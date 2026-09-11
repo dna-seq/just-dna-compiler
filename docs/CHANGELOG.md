@@ -419,7 +419,8 @@ rather than gate.
 precomputed variant scores, served over gRPC — and it costs **two packages**, not the SDK's
 eighty-one.
 
-**The measurement that decided it.** `uv add alphagenome` resolves to **255 MB and 81 packages**
+**The measurement that decided it.** `uv add alphagenome` resolves to **550 MB and 47 packages**
+(re-measured 2026-09-11; this entry first said 255 MB and 81, and neither figure had been run)
 (anndata, pandas, scipy, zarr, h5py, numcodecs, pyarrow, matplotlib, seaborn, pyfaidx, absl-py,
 fsspec) against a tier whose entire runtime list is httpx/tenacity/huggingface-hub/typer/ga4gh.vrs.
 Six of the twenty dependencies that wheel declares are never imported on any scoring path, and
@@ -467,7 +468,7 @@ no authored column at all**, so the round fits the uncut 0.7.0.
   stored at all** — the 466 KB knot table reconstructs it with zero threshold misclassifications.
   Operator-built, never fetched: the source is 88.5 GB behind a sign-in.
 - **RM192 — the Atlas client on two packages, and the `alphagenome` extra deleted.** 22 MB in a new
-  `[atlas]` extra against 255 MB and 81 packages for the wheel, six of whose declared dependencies are
+  `[atlas]` extra against 550 MB and 47 packages for the wheel, six of whose declared dependencies are
   never imported on any scoring path. Already built and tested as `probes/alphagenome_poc/`.
 - **RM193 — the Atlas as a resolver, not a source.** Knot-straddle refinement (the API's `raw_score`
   carries ~7 significant digits against the file's 4), `REF` validation that **names the real base**,

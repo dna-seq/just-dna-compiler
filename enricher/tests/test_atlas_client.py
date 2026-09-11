@@ -67,7 +67,7 @@ def test_imports_stay_within_the_declared_floor():
 
     An AST walk rather than a runtime check on `sys.modules`, because by the time the module is
     imported a heavier package pulled in by some other test would already be resident and the
-    assertion would pass for the wrong reason. This is the test that makes "22 MB, not 255 MB" a
+    assertion would pass for the wrong reason. This is the test that makes "19 MB, not 550 MB" a
     property of the code instead of a claim in prose.
     """
     tree = ast.parse(CLIENT_SOURCE.read_text())

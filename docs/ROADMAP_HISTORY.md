@@ -614,7 +614,7 @@ same property**, because this lane has the first and cannot have the second.
 
 **`commercial_use` is `None`, not `True`** — see RM195. Unknown is a value.
 
-## RM192 — 255 MB of wheel for a service whose scores are plain bytes
+## RM192 — half a gigabyte of wheel for a service whose scores are plain bytes
 
 **Severity** medium · **Status** ✅ shipped 2026-09-10 in the uncut 0.7.0 (`just-dna-enricher` only:
 a new `[atlas]` extra, two new modules, one new CLI command, the `alphagenome` extra deleted; no
@@ -622,7 +622,7 @@ model, no parquet, no manifest field) · **Owner** enricher · **Motivating case
 [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm192--the-atlas-client-on-two-packages-and-the-alphagenome-extra-deleted), against
 [ALPHAGENOME_ATLAS.md § 6.2](probes/ALPHAGENOME_ATLAS.md)
 
-**What it reproduced.** `uv add alphagenome` resolves to 81 packages and 255 MB — anndata, pandas,
+**What it reproduced.** `uv add alphagenome` resolves to **47 packages and 550 MB** — anndata, pandas,
 scipy, zarr, h5py, numcodecs, pyarrow, matplotlib, seaborn, pyfaidx, absl-py, fsspec — against a
 tier whose entire runtime list is httpx/tenacity/huggingface-hub/typer/ga4gh.vrs. Six of the
 twenty declared dependencies are never imported on any scoring path, and `atlas.py` imports

@@ -585,6 +585,10 @@ VALID_SOURCE_LAYERS: frozenset[str] = frozenset(
         "gene_validity",
         "clinical_assertion",
         "gwas_effect",
+        # 0.7 (RM194/RM200) — AlphaGenome's per-gene expression effects, same fact class: a model's
+        # predicted direction is a value the service publishes identically to everyone. Written by
+        # `alphagenome expression`, which is the half that matters.
+        "expression_effect",
         "annotation",
     }
 )

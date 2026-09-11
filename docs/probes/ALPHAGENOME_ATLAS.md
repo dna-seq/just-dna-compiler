@@ -176,7 +176,7 @@ question.
    available for any commercial entity, even if conducting non-commercial work." That is not
    `commercial_use=False`. §2.6 enumerates all four.
 
-7. **A 22 MB client exists, and `uv add alphagenome` is 255 MB.** The Atlas service serves the
+7. **A 22 MB client exists, and `uv add alphagenome` is 255 MB.** *(Both figures were carried rather than run; measured on 2026-09-11 they are 19 MB and 550 MB — see § 6.5.1. The conclusion holds and widens.)* The Atlas service serves the
    precomputed scores — all 22 scorers, SHAP included — over gRPC, and the generated protos plus
    `grpcio`/`protobuf` are a complete client (`numpy.frombuffer` decodes the score bytes; the
    request filter is a string). The SDK's own import path costs 242 MB because `atlas.py` imports
@@ -1806,6 +1806,31 @@ module carries.
 - No quota or rate-limit figure is published, and none was measured — this probe made roughly a
   dozen calls in total, deliberately.
 
+
+### 6.5.1 Correction — the SDK's cost was never measured (2026-09-11)
+
+§ 6.2's figures for `uv add alphagenome` — **255 MB**, and a package count given elsewhere in this
+round as 81 and in the proposal as 36 — were **carried rather than run**. Three numbers circulated for
+two quantities and no two documents agreed.
+
+Resolved and installed into a clean venv on 2026-09-11, Python 3.14:
+
+| | measured |
+| --- | ---: |
+| packages | **47** |
+| site-packages | **550 MB** |
+| `[atlas]` (`grpcio` + `protobuf`) | **19 MB** |
+
+So the conclusion holds and gets stronger — **29× rather than 13×** — while every published figure
+was wrong, one of them by more than double. Resolution is platform- and interpreter-dependent, which
+is why the conditions are stated; the point is that the earlier numbers stated none because nobody
+ran them.
+
+This is the fourth time in this round a quoted number outlived a measurement nobody took, and the
+only one where the *argument* survived intact. `@a-disagreement-with-a-document-may-be-in-the-instrument`
+covers the case where a fresh measurement is wrong; this is its complement — **a figure that was
+never a measurement at all, repeated until six documents agreed with each other and none with the
+bytes.**
 
 ### 6.6 The other twenty-one scorers, assayed for annotation (2026-09-11)
 

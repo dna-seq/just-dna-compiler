@@ -301,7 +301,7 @@ pip install 'just-dna-enricher[dev]'   # + publisher surface (module/reference u
 serves precomputed variant scores over gRPC; its score fields are plain `bytes` and its request
 filter is an AIP-160 string, so `grpcio` + `protobuf` reach every RPC and `struct.unpack` from the
 standard library decodes the payload — **19 MB and +2 packages**, measured in a clean venv on
-2026-09-10, against **255 MB and 81 packages** for `uv add alphagenome`. The bindings are generated
+2026-09-10, against **550 MB and 47 packages** for `uv add alphagenome` (measured 2026-09-11). The bindings are generated
 from the Apache-2.0 `.proto` sources vendored in `docs/vendor/alphagenome_protos/` rather than
 committed, so run `just-dna-enricher atlas generate` once per checkout (it needs `grpcio-tools`,
 which is in `[dev]`, not in `[atlas]` — the runtime imports the bindings without it). An installed

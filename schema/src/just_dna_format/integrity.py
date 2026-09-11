@@ -28,6 +28,7 @@ from just_dna_format.concordance import (
 from just_dna_format.frequency import FREQUENCY_FACT_FIELDS
 from just_dna_format.gene_metrics import GENE_METRICS_FACT_FIELDS
 from just_dna_format.gene_validity import GENE_VALIDITY_FACT_FIELDS
+from just_dna_format.expression import EXPRESSION_FACT_FIELDS
 from just_dna_format.gwas import GWAS_FACT_FIELDS
 from just_dna_format.literature import LITERATURE_FACT_FIELDS
 from just_dna_format.manifest import (
@@ -376,6 +377,29 @@ def gwas_effect_signature(rows: Sequence[BaseModel]) -> str:
     the source said rather than of what the module knew.
     """
     return fact_signature(rows, GWAS_FACT_FIELDS)
+
+
+def expression_effect_signature(rows: Sequence[BaseModel]) -> str:
+    """Fact-hash of `expression_effects.csv` (`expression.EXPRESSION_FACT_FIELDS`), 0.7 / RM194+RM200.
+
+    `gene` and `gene_id` are **both inside**, which looks like one column twice and is not. The HGNC
+    symbol is renamed between releases while the Ensembl accession is not, so hashing only the symbol
+    would move this signature on a rename that changed no claim, and hashing only the accession would
+    leave the column every authored `gene` joins against outside the fact.
+
+    `tracks_total` is **inside** beside `tracks_agreeing`, on the rule that a cell key carries the
+    value when two rows may state two claims: 40 of 371 and 40 of 512 are different facts, and a
+    model shipped with a different track panel must not hash equal to the one that produced these.
+
+    `distance_to_gene` is **inside**, because it is a property of the `(variant, gene)` pair rather
+    than of the variant — the same variant scored against a different gene sits a different distance
+    away, and the whole reason RM194 records it is that distal scores run an order of magnitude
+    lower.
+
+    The three provenance columns are **outside**, as everywhere else, so a hand-curated table and a
+    pass-filled one carrying the same claims hash equal.
+    """
+    return fact_signature(rows, EXPRESSION_FACT_FIELDS)
 
 
 def clin_sig_concordance_signature(rows: Sequence[BaseModel]) -> str:

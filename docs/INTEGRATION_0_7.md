@@ -331,7 +331,7 @@ The registry `reference()` / `authoring_reference()` walks now renders **31 mode
 
 One new compiler command, several new enricher commands, four new `enrich` flags. Nothing was removed
 or retyped — **except one extra**: `just-dna-enricher[alphagenome]` is gone, replaced by
-`[atlas]` (RM192). It pulled the upstream SDK at 255 MB and 81 packages; the replacement is
+`[atlas]` (RM192). It pulled the upstream SDK at **550 MB and 47 packages** (measured 2026-09-11); the replacement is
 `grpcio` + `protobuf`, measured at 19 MB and +2. Nothing in the tier imported the old one, so the
 only breakage is a deployment that named it in an install line. **Two behaviour changes for anyone scripting a builder**: `clinpgx build` refuses the
 retired `clinicalAnnotations.zip` member names and exits 1 naming `summaryAnnotations.zip` (RM175 —
@@ -550,7 +550,7 @@ member, which is the second old-reader break in § 1.
 | `just-dna-enricher alphagenome check <spec>` | Cross-checks a module's variants against those scores. Reports, never repairs. Mostly offline: without `--threshold` there is no question the local snapshot cannot answer |
 | `just-dna-enricher atlas generate` | Builds the Atlas gRPC bindings from pinned upstream sources. Once per checkout; a released wheel carries them already |
 | `--alphagenome-avi-cache` / `$JUST_DNA_ALPHAGENOME_AVI_CACHE` | Points at a built or pulled snapshot |
-| `just-dna-enricher[atlas]` | **New extra**: `grpcio` + `protobuf`, measured at 19 MB and +2 packages. The `alphagenome` extra is **deleted** — it was 255 MB and 81 packages |
+| `just-dna-enricher[atlas]` | **New extra**: `grpcio` + `protobuf`, measured at 19 MB and +2 packages. The `alphagenome` extra is **deleted** — it was **550 MB and 47 packages** |
 | `variant_impact_agreement` | **New `VALID_VERIFICATION_CHECKS` member.** The one thing here a format-tier consumer sees |
 | `ALPHAGENOME_AVI_TERMS` in `licensing.py` | `commercial_use=True`, `share_alike=False`, `redistribution=True`. A module drafted from it lands `alphagenome_avi` in `sources.csv` |
 
