@@ -158,6 +158,38 @@ class AtlasNotScored(AtlasError):
 
 
 @dataclass(frozen=True)
+class GeneRef:
+    """One gene a scorer attributed a score to — **the source's own attribution, not ours**.
+
+    `gene_id` is kept **verbatim, version included**. Upstream's proto comment says the field is the
+    "ENSEMBL gene identifier without version number, e.g. ENSG00000100342" and the live service
+    returns `ENSG00000040608.14`, so the comment is wrong and the bytes are not
+    (`@verbatim-except-order`). A caller joining on bare accessions truncates deliberately; one who
+    believed the comment would have written a join that silently matches nothing.
+    """
+
+    gene_id: str
+    name: str | None
+
+
+def _gene_refs(block) -> tuple[GeneRef, ...]:
+    """The `gene_scorers` payload of a block's metadata, or empty for a scorer with no gene axis.
+
+    `DenseVariantScore.metadata` is **repeated** and each entry is a `oneof` — a gene-axis scorer
+    comes back carrying both a `gene_scorers` payload matching `shape[0]` and a `tracks` payload
+    matching `shape[1]`. Only the first is read here; the track vocabulary is the one RM200 measured
+    and refused to rank (`EFO` cancer cell lines, `UBERON` anatomical structures and `CL` cell types
+    under one ordering are not one axis).
+    """
+    out: list[GeneRef] = []
+    for entry in block.metadata:
+        if entry.WhichOneof("payload") != "gene_scorers":
+            continue
+        out.extend(GeneRef(gene_id=g.gene_id, name=g.name or None) for g in entry.gene_scorers.metadata)
+    return tuple(out)
+
+
+@dataclass(frozen=True)
 class VariantScore:
     """One scorer's answer for one variant.
 
@@ -170,6 +202,10 @@ class VariantScore:
     raw: tuple[float, ...] | None
     quantile: tuple[float, ...] | None
     shape: tuple[int, ...]
+    #: The genes this block is attributed to, in the order `shape[0]` indexes them. Empty for the
+    #: twenty-one scorers with no gene axis. `RNA_SEQ` is the only one that fills it, which is
+    #: precisely why RM200 adopted that one and refused the rest.
+    genes: tuple[GeneRef, ...] = ()
 
     @property
     def phred(self) -> float | None:
@@ -327,6 +363,7 @@ class AtlasClient:
                 raw=unpack_float32(block.scores),
                 quantile=unpack_float32(block.calibrated_scores),
                 shape=tuple(block.shape),
+                genes=_gene_refs(block),
             )
             for block in response.scores
         )
@@ -397,6 +434,7 @@ class AtlasClient:
                                 raw=unpack_float32(block.scores),
                                 quantile=unpack_float32(block.calibrated_scores),
                                 shape=tuple(block.shape),
+                                genes=_gene_refs(block),
                             )
                             for block in entry.scores
                         ),
