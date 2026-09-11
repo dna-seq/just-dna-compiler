@@ -12,6 +12,7 @@ just-dna-enricher upload out/coronary --repo just-dna-seq/annotators            
 """
 
 import json
+import os
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -138,6 +139,8 @@ from just_dna_enricher.locations import (
     RELEASE_FILENAME,
     SNAPSHOT_LICENSE_FILENAME,
     STRCHIVE_CATALOGUE_FILENAME,
+    load_env,
+    missing_credential_reason,
     read_release,
     repro_out,
 )
@@ -4992,13 +4995,15 @@ def _atlas_client_or_none():
     generated, or there is no key. Each names its own remedy, and the caller degrades to the
     interval the knot table publishes rather than failing the run.
     """
-    import os
-
+    # `load_env()` before reading, at the point the credential is read (`@credential-where-read`,
+    # RM212). Without it this reported "no key" on a machine whose `.env` holds one, and degraded to
+    # the knot interval for rows the Atlas could have refined.
+    load_env()
     key = os.environ.get("ALPHAGENOME_API_KEY") or ""
     if not key:
         typer.secho(
-            "  no ALPHAGENOME_API_KEY, so nothing was refined. The knot table's interval is still "
-            "the honest answer for those rows.",
+            f"  ALPHAGENOME_API_KEY unusable ({missing_credential_reason('ALPHAGENOME_API_KEY')}), so "
+            "nothing was refined. The knot table's interval is still the honest answer for those rows.",
             fg=typer.colors.YELLOW,
             err=True,
         )
