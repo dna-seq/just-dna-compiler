@@ -383,6 +383,14 @@ egress surface is in one place. **Published** is what the service documents; **o
 the client actually waits; when the source publishes nothing, the gate is a courtesy, not a claim
 that the ceiling is known.
 
+**`PacingGate.spent` is what the gate admitted (S95, RM203).** A host metering egress per upstream
+had no number to meter: nothing downstream reported the calls actually made, so a proxy charged by the
+shape of a request, an upper bound that bills a caller for a call that never happened. Every egressing
+client waits on its gate once per attempt, inside its retry loop, so one increment is one upstream
+attempt — a 429 retried three times counts three, a snapshot hit counts nothing. Monotonic, bumped
+under the slot lock, never reset; a rate is two readings apart. It is the one thing this counter says;
+what the call *cost* stays the client's to know.
+
 **One `PacingGate` is safe to share across threads, and that is now a stated contract rather than an
 accident of who happened to call it** (S15). It matters because the injection API asks for sharing:
 `LookupClients` tells callers to hold a client and reuse it — a fresh one per question would discard

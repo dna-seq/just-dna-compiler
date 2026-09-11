@@ -51,12 +51,22 @@ class PacingGate:
     **The lock covers the bookkeeping, not the sleep.** Each caller reserves the next free slot and then
     waits for it alone, so N callers get N slots spaced `interval` apart rather than serializing behind
     one lock held across a sleep — same guarantee, and no thread is blocked by another's wait. Behaviour
-    on a single thread is unchanged."""
+    on a single thread is unchanged.
+
+    **`spent` is what the gate admitted, and the one number a host cannot otherwise get** (S95). A
+    proxy metering egress per upstream had to charge by the *shape* of a request — an upper bound,
+    because nothing downstream reported the calls actually made. Every egressing client waits on its
+    gate once per attempt, inside its retry loop (`gnomad._post`, `eutils._request`), so one increment
+    is one upstream attempt: a 429 retried three times counts three, and a snapshot hit that never
+    reached the gate counts nothing. Monotonic, bumped under the same lock as the slot, and never
+    reset — a reader that wants a rate takes two readings."""
 
     interval: float
     clock: Callable[[], float] = time.monotonic
     sleeper: Callable[[float], None] = time.sleep
     last: float | None = None
+    #: Admissions so far — one per `wait()` that returned, which is one upstream attempt.
+    spent: int = 0
     # Not part of the value: two gates with the same interval are the same gate, and a lock has no
     # useful repr. `default_factory` so every instance gets its own.
     _lock: threading.Lock = dataclasses.field(
@@ -69,6 +79,7 @@ class PacingGate:
             # The slot this caller has claimed: now, or one full interval after the last claim.
             slot = now if self.last is None else max(now, self.last + self.interval)
             self.last = slot
+            self.spent += 1
         remaining = slot - self.clock()
         if remaining > 0:
             self.sleeper(remaining)

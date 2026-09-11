@@ -68,6 +68,29 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM203 — `PacingGate` could not report what it spent
+
+**Severity** low · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only: one
+integer field on `PacingGate`, one increment under the existing lock; no schema change) · **Owner**
+enricher · **Motivating case** S95 (just-dna-registry, in CONSUMER_SUGGESTIONS_HISTORY.md), building a
+caching proxy that meters egress per upstream
+
+**What it reproduced.** The gate is the one object every egressing client waits on, and it recorded
+nothing but `last`. A host wanting to charge a caller for the upstream calls its request actually made
+had to charge by the request's shape instead — an upper bound it had to label as one, and one that
+bills for a call a snapshot hit never made.
+
+**The counter, and what one increment means.** `spent` is bumped inside the slot lock, so it is exact
+under the thread sharing S15 made a contract. Its unit was checked rather than assumed: `gnomad._post`
+and `eutils._request` call `wait()` inside their `@retry`-decorated body, so one admission is one
+upstream **attempt**, and a 429 retried three times counts three. That is the honest number for
+metering — the attempts are what the upstream saw.
+
+**Refused: a `waited` total.** Not asked for, and the sleep happens outside the lock by design (the
+lock covers the bookkeeping, not the wait), so a seconds-slept total would need the lock re-taken
+after the sleep or a planned wait recorded before it. Neither is worth a second number nobody asked
+for; a host that wants it can difference two clock readings around the call.
+
 ## RM201 — a declared correction said what a release did, never which modules it did it to
 
 **Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-format` only: one

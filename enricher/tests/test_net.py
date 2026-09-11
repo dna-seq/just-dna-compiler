@@ -116,7 +116,34 @@ def test_a_zero_interval_gate_never_sleeps() -> None:
     assert clock.slept == []
 
 
-def test_batched_preserves_order_and_never_exceeds_the_size() -> None:
+def test_spent_counts_every_admission_including_the_ones_that_never_slept() -> None:
+    """S95: a host metering egress reads what the gate admitted, not what it slept.
+
+    The first caller never waits and still counts; a zero-interval gate never sleeps and still
+    counts; and a `wait()` on a gate shared across threads counts exactly once per call."""
+    clock = _FakeClock()
+    gate = PacingGate(interval=6.0, clock=clock, sleeper=clock.sleep)
+    assert gate.spent == 0
+    gate.wait()
+    assert (gate.spent, clock.slept) == (1, []), "admitted without sleeping still counts"
+    gate.wait()
+    assert (gate.spent, clock.slept) == (2, [6.0])
+
+    free = PacingGate(interval=0.0, clock=clock, sleeper=clock.sleep)
+    for _ in range(5):
+        free.wait()
+    assert free.spent == 5
+
+    clock = _FakeClock()
+    shared = PacingGate(interval=1.0, clock=clock, sleeper=clock.sleep)
+    threads = [threading.Thread(target=shared.wait) for _ in range(20)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert shared.spent == 20 == len(clock.slept) + 1
+
+
     items = list(range(7))
     batches = list(batched(items, 3))
     assert batches == [[0, 1, 2], [3, 4, 5], [6]]
