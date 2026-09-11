@@ -289,6 +289,92 @@ and the lane needs a second source name, `alphagenome_atlas`, because `RNA_SEQ` 
 non-commercial Output while the AVI artifact is the Permissive candidate — one `(source, layer)` key
 cannot carry two licence classes.
 
+## RM213 — `merge_key` raised for a missing key and collapsed silently for an empty one
+
+**Severity** low (latent) · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-format` only:
+one guard; no schema change) · **Owner** format · **Motivating case** the 2026-09-11 blind
+re-derivation — `docs/audit/SCHEMAS_FROM_CODE.md` D1, measured
+
+The function's own docstring states the failure it must produce: *a caller reaching here for an unkeyed
+kind has a bug, and a silent `()` would merge every row into one*. It raised `AttributeError` for a
+model **declaring no key** and returned `()` for one declaring an **empty** key. `MeasureBinRow`
+declares exactly that, as a base-class default meaning *subclasses set this*.
+
+Measured: two `MeasureBinRow`s differing in every column returned equal keys.
+
+**Latent rather than live**, and worth saying so. `measure_bins.csv` is authored while `merge_key`
+serves the machine-produced sidecars, and every `MeasureBinRow` subclass overrides the default — so
+nothing reaches it today. What made it worth fixing is that the next kind to inherit the default and
+forget would find the collapse in a merge pass rather than here, and a docstring that promises a
+failure is a claim like any other.
+
+**`hints.table_key` is deliberately unchanged.** It reads the same falsy value as *no declared key* and
+answers `None`, which is correct for its own question — does this table publish a key a consumer can
+join on? This one asks what two rows' identity **is**, and there is no empty answer to that.
+
+## RM214 — the allele grammar is case-insensitive and the ordering rule beside it was not
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-format` only: a
+sort key; **loosening only**, so no authored value moves) · **Owner** format · **Motivating case** the
+2026-09-11 blind re-derivation — `docs/audit/SCHEMAS_FROM_CODE.md` D2, measured
+
+`vocab.ALLELE_PATTERN` carries `re.IGNORECASE`, so a lowercase allele is a deliberately legal
+spelling. The unphased ordering rule next to it used a plain `sorted()` — ASCII, which puts every
+uppercase letter before every lowercase one. So of the four case spellings of one heterozygote:
+
+```
+A/G  accepted        A/g  accepted
+a/g  accepted        a/G  REFUSED
+```
+
+The same unordered pair, two answers, decided by which half the author happened to shift.
+
+**The key is `str.casefold` and the sort is stable**, so every value that sorted before still sorts and
+nothing already authored moves. It only stops refusing the mirror spelling, which makes this a
+loosening and therefore minor-legal (P3 bars tightening, not widening).
+
+**What it deliberately does not do, and why that is the interesting half.** It does not make the pair
+canonical: `A/g` and `a/G` are both accepted and hash **differently** under `content_signature`,
+because the cell is stored verbatim. `@verbatim-except-order` is exactly on point — the rule normalizes
+the ORDER and nothing else, and the exception it names is an encoding that lies about its own order,
+which is what ASCII was doing here. Normalizing allele *case* is a different act: it would move the
+signature of every module carrying a lowercase allele, which is a question about what an identity key
+means and therefore **1.0** work. Filed as such rather than smuggled into a minor.
+
+## RM212 — the AlphaGenome key in a `.env` was invisible to the two paths that read it
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only:
+`load_env()` at two call sites, and the refusal gains its diagnosis; no schema change) · **Owner**
+enricher · **Motivating case** the 2026-09-11 blind re-derivation — `docs/audit/ENRICHER_FROM_CODE.md`
+D12, measured with a real `.env`
+
+**`@credential-where-read` has two clauses and only the first was kept.** Reading `os.environ` at the
+point of use is one; *a guard in front of a loader must load too* is the other. `expression._connect`
+— the one function in this tier whose own docstring cites the rule — read the variable without calling
+`load_env()`, and nothing else on `alphagenome expression`'s path loads a `.env`. So a key that lives
+only there, which is where this workspace's does, was invisible, and the pass refused with
+*ALPHAGENOME_API_KEY is not set* while the file sat in the working directory.
+
+`cli._atlas_client_or_none` had the same gap with a quieter failure: it degrades to a printed sentence
+rather than raising, so `alphagenome check` reported *no ALPHAGENOME_API_KEY, so nothing was refined*
+and fell back to the knot table's interval for rows the Atlas could have refined. Two sites, one
+omission, which is why one test asserts both.
+
+**It is the same incident one lane over**, and `caches._rebuild_pharmvar` already carries the comment:
+the PharmVar lane reported "no key" and never built on the one machine most likely to have one,
+because `PharmVarClient.__init__` loaded the `.env` and the guard in front of it did not. That comment
+ends *a pre-check that answers differently from the code it is guarding is worse than no pre-check* —
+this is the same sentence with a different variable.
+
+**The refusal now names which absence it is.** `missing_credential_reason` was already the tier's
+answer to `export FOO=` being strictly stronger than never setting the variable (`load_env` uses
+`override=False`, so a present-but-empty value is kept); both AlphaGenome messages said only "not
+set", which sends an operator with an exported-empty shell to the wrong fix. Both states are asserted.
+
+**One rule violation fixed on the way**: `cli._atlas_client_or_none` carried an inline `import os`,
+which is not the guarded-optional-dependency exception the function's other inline import is. It is at
+module level now.
+
 ## RM210 — one finding, two counts, because the two sides were handed two views of the table
 
 **Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-compiler` only:

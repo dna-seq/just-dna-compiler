@@ -91,6 +91,29 @@ not**, and that is recorded rather than left implicit: four are keyed on positio
 asking them before resolution would report every rsID-only row as an orphan, and `_source_checks`
 needs a set that is complete only after the last sidecar is read.
 
+**RM212 — the AlphaGenome key in a `.env` was invisible to the two paths that read it.**
+`@credential-where-read` has two clauses and only the first was kept: `expression._connect` — the one
+function whose docstring cites the rule — read `os.environ` without `load_env()`, and nothing else on
+`alphagenome expression`'s path loads a `.env`. So the pass refused with *is not set* while the key sat
+in the working directory. `cli._atlas_client_or_none` had the same gap, failing quietly into the knot
+interval. Both refusals now carry `missing_credential_reason`, because `export VAR=` is strictly
+stronger than never setting it and "not set" sent an operator to the wrong fix. Same incident as the
+PharmVar lane's, whose comment already says a pre-check answering differently from the code it guards
+is worse than no pre-check.
+
+**RM213 — `merge_key` collapsed silently on an empty key.** Its docstring says a silent `()` would
+merge every row into one; it raised for a model declaring **no** key and returned `()` for one
+declaring an **empty** key, which is `MeasureBinRow`'s base-class default. Latent — the table is
+authored and every subclass overrides — and fixed because the next kind to inherit the default would
+find the collapse in a merge pass instead.
+
+**RM214 — the allele grammar is case-insensitive and the sort beside it was ASCII**, which orders every
+uppercase letter before every lowercase one. So `A/g` validated and `a/G` did not: one unordered pair,
+two answers. Sorted on `str.casefold`, stably, so every previously-valid value still validates —
+a loosening, minor-legal. **RM215 is the half it leaves open** and is filed for 1.0: the cell is stored
+verbatim, so those two spellings still hash to two `content_signature`s, and normalizing allele case
+moves an identity key.
+
 **What the round says about itself.** All three are shapes this repository had already written a rule
 against — a hand-kept list beside a derivable one, a check on one side of the validate/compile pair, a
 translation on the wrong side of a retry. That is the same finding the 2026-08-18 round produced with
