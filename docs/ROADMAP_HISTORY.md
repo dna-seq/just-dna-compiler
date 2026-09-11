@@ -68,6 +68,65 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM225 — four stale claims a reader acts on, and the closedness one had drifted three times
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 · **Owner** format ·
+**Motivating case** the long-tail triage of the 2026-09-11 re-derivation's schema candidates (D3, D4,
+D8, D9), walked item by item with the maintainer rather than batch-closed
+
+Four candidates that a first pass reads as nits. Each turned out to be a sentence a reader would act
+on, and one of them had been written wrong in three separate places.
+
+**D3 — `actionability` is closed, and three places said otherwise.** `VariantRow.actionability`
+shipped in 0.4.0 and `_validate_actionability` is `check_vocab(...)`, a closed-vocabulary rejection.
+Against that: `vocab.py`'s comment said "the field is not built yet, so this is not enforced";
+`base.vocabulary`'s **own docstring** — the helper that defines what `closed` means — listed the set
+among the `closed=False` recommended-but-open ones; and `reference.py` had already filed the axis
+under `open_recommended` in an earlier incident it still carries a note about. The constant's name
+carried it too: `_SEED` reads as "suggestions you may extend", which is what the validator refuses.
+Renamed to `VALID_ACTIONABILITY` with `ACTIONABILITY_SEED` kept as a working derived alias (P3), all
+three sentences corrected, and the SCHEMAS roster gains the row — where RM217's existing guard caught
+the rename within seconds, which is what that guard is for.
+
+**D4 — a dead constant that was not dead, it was unwired.** `CANONICAL_MT_REFERENCE_SEQUENCES` is
+referenced nowhere in any tier, and the obvious reading is to delete it. The comment one line above
+explains why nothing enforces it — "not a closed allow-list (future refs exist), the validator rejects
+only this enumerated landmine" — and that is correct: an allow-list would refuse a legitimate future
+rCRS revision. But the refusal beside it ends `use NC_012920.1` as a **literal**, restating the value
+the constant exists to hold. So the set had one real job and was not doing it. The message now
+interpolates it; the published text is byte-identical (`@warning-text-is-api`), and deleting the
+constant would have left the literal behind.
+
+**D8 — a comment naming the wrong counterexample, twice.** `pgx.py` says, at two sites, "unlike
+`VariantRow.chrom`/`StudyRow.chrom`, these two models run no chrom validator". Measured:
+`StudyRow.chrom` has **no validator and no vocabulary marker**. `VariantRow` is the only one of the
+five models declaring `chrom` that validates. The asymmetry itself is deliberate and correctly
+documented — the marker is withheld precisely because nothing rejects, which is the drift D3 is about
+— so the fix is the counterexample, not the design. Measured across the corpus: 709 `chrom` cells, 3
+non-canonical, all of them in the one table that normalizes. Latent, not live.
+
+**D9 — a docstring promising a tri-state the signature cannot express.**
+`is_multi_valued_number` returns a bare `bool` and its docstring closed with "withhold, never negate,
+and never accuse". Checked every caller before touching it, as asked: there is exactly one
+(`compiler._vcf_pointer_warnings`), it is `if is_multi_valued_number(number):` gating whether to
+*raise* a warning, so `False` on an unknown cardinality **is** the withhold — warning there would be
+the accusation the sentence forbids. The narrowing is correct at the point where it happens; the
+sentence was the defect. Docstring now says why the collapse is the contract, and what a future
+caller needing the distinction must do instead.
+
+**The guard is the deliverable.** Fixing four sentences fixes four instances;
+`test_closedness_is_measured_not_declared.py` is the class. It **measures** each marked field's
+closedness by handing its validator a certain non-member, and compares that against the flag the
+marker publishes — nothing in it reads a comment, a name or a document. A second test walks the
+constant names out of `base.vocabulary`'s docstring and measures each: run against the pre-fix text
+it reports `ACTIONABILITY_SEED (closed on VariantRow.actionability)`, which is instance #3, the one
+no tool could have caught because the marker was right and only the prose was wrong.
+
+**Recorded twice over:** the grep guard failed on its own author's first run, because the replacement
+comment explains the defect by quoting the stale claim verbatim — the same trap RM218 hit. It now
+requires an occurrence to be wrapped in `used to say "…"`, and the lesson is in its docstring: write
+the guard before the replacement prose. `@registry-completeness` · `@field-description-is-a-claim`
+
 ## RM224 — `sidecar_spellings` was keyed on the table key only, so the preferred filename missed the deprecated copy
 
 **Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-format` only: one

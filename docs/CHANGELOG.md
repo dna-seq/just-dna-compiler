@@ -53,8 +53,30 @@ worktrees with `docs/` and `CLAUDE.md` deleted — the method is now written dow
 [BLIND_REDERIVATION.md](BLIND_REDERIVATION.md) rather than living as its first output's preamble. The
 maintained references gained what they were missing (twenty-six modules, a check row, an AlphaGenome
 section, the eighteen-source licence roster, all with walking tests). What follows is the other half:
-**RM207–RM223**, all seventeen shipped — places where the code was wrong, or
+**RM207–RM227**, eighteen shipped and two filed for 1.0 — places where the code was wrong, or
 where a registry had a hand-kept copy of itself, each reproduced or measured before it was repaired.
+
+**RM225 — four stale claims a reader acts on, and one had drifted three times.** The schema tier's
+long-tail candidates, walked item by item instead of batch-closed. `actionability` is a **closed**
+vocabulary and three separate places said otherwise: `vocab.py`'s comment ("the field is not built
+yet"), `base.vocabulary`'s own docstring listing it among the open sets — inside the helper that
+defines what `closed` means — and an earlier `reference.py` incident. The constant's name carried it
+too, so `ACTIONABILITY_SEED` is now `VALID_ACTIONABILITY` with the old name a working alias.
+`CANONICAL_MT_REFERENCE_SEQUENCES` looked like dead code and is not: it is correctly unenforced (an
+allow-list would refuse future refs), but the refusal beside it spelled `NC_012920.1` as a literal,
+so the set had one job and was not doing it. A `pgx.py` comment named `StudyRow.chrom` as validated
+at two sites, and it has no validator. And `is_multi_valued_number`'s docstring promised a tri-state
+its signature cannot express — checked every caller first: there is one, it gates whether to *raise*
+a warning, so `False` on unknown **is** the withhold. The deliverable is the guard, which measures
+each vocabulary's closedness against its validator and walks the constant names out of
+`base.vocabulary`'s docstring; run against the pre-fix text it reports the third instance, the one no
+tool could catch because only the prose was wrong.
+
+**RM226 and RM227 filed for 1.0.** RM226 collects three warts the code declares in its own comments
+and no tracker held — the grandfathered `content_signature` asymmetry, the hardcoded
+`likely_pathogenic`/`likely_benign`, and `_freeze_identity`'s build-blind key — so the 1.0 cleanup has
+a list rather than a grep. RM227 is RM215's other half: `derive_variant_key`'s coordinate fallback
+still does not fold allele case, which splits joins rather than dedup and moves a stored cell.
 
 **RM215 — one heterozygote had four content identities.** `ALLELE_PATTERN` carries `re.IGNORECASE`, so
 a lowercase allele is legal, and the cell is stored verbatim — so `A/G`, `a/G`, `A/g` and `a/g` are one

@@ -606,6 +606,10 @@ class RepeatAlleleRow(MeasureBinRow):
 # (NC_012920) coordinates and bases, yielding a *confidently-wrong* haplogroup (consumer round-2 Q3).
 # Not a closed allow-list (future refs exist) — the validator rejects only this enumerated landmine.
 LEGACY_MT_REFERENCE_BASES: frozenset[str] = frozenset({"NC_001807"})
+#: The reference this tier recommends. Deliberately **not** an enforced allow-list — future refs
+#: exist and refusing one would be wrong — so its job is to be the single place the recommended
+#: value is written, which the refusal above interpolates rather than restating (RM225). It was a
+#: literal in that message for four releases while this set sat unread beside it.
 CANONICAL_MT_REFERENCE_SEQUENCES: frozenset[str] = frozenset({"NC_012920.1"})
 
 
@@ -726,7 +730,7 @@ class HeteroplasmyRow(MeasureBinRow):
             raise ValueError(
                 f"reference_sequence {v!r} is the legacy NC_001807 lineage, which disagrees with "
                 f"rCRS (NC_012920) coordinates/bases and yields a confidently-wrong haplogroup; "
-                f"use NC_012920.1"
+                f"use {' or '.join(sorted(CANONICAL_MT_REFERENCE_SEQUENCES))}"
             )
         return v
 

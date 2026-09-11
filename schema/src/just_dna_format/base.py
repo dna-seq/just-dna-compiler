@@ -246,8 +246,10 @@ def vocabulary(
     """Mark a field as drawn from `options`, for tools that offer an author the valid values.
 
     `closed=True` means a validator rejects anything outside the set; `closed=False` marks the
-    recommended-but-open sets (`RECOMMENDED_EFFECT_MEASURES`, `ACTIONABILITY_SEED`,
-    `RECOMMENDED_AUTHOR_KINDS`), where the members are suggestions and a novel value is legal. A
+    recommended-but-open sets (`RECOMMENDED_EFFECT_MEASURES`, `RECOMMENDED_AUTHOR_KINDS`), where the
+    members are suggestions and a novel value is legal. `VALID_ACTIONABILITY` used to be listed here
+    and is **closed** — the drift this very flag exists to prevent, written into the docstring that
+    defines it (RM225). A
     consumer must be able to tell "pick one of these" from "these are suggestions", so the two are one
     marker with a flag rather than two markers.
 

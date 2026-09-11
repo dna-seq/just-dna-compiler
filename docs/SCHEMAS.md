@@ -153,8 +153,8 @@ reason its `source` column is inside its fact set while everywhere else `source`
   `VALID_SIGNIFICANCE`, `VALID_CLIN_SIG`, `VALID_EVIDENCE_LEVELS`, `VALID_RESOLUTION_STATUS`,
   `VALID_FREQUENCY_STATUS`, `VALID_RSID_STATUS`, `VALID_AUTHOR_ROLES`, `VALID_DOSAGE_SENSITIVITY`,
   `VALID_PHENOTYPE_CATEGORIES`, `VALID_QUOTE_SOURCE`, `VALID_RECOMMENDATION_STRENGTH`,
-  `VALID_SOURCE_LAYERS`, `VALID_DECLARED_USE`; plus the open seeds `RECOMMENDED_AUTHOR_KINDS`,
-  `ACTIONABILITY_SEED`. (The rest live with the models that own them — `pgs.VALID_TRAINING_ANCESTRY`,
+  `VALID_SOURCE_LAYERS`, `VALID_DECLARED_USE`, `VALID_ACTIONABILITY` (which shipped under the name
+  `ACTIONABILITY_SEED`, still a working alias); plus the one open seed `RECOMMENDED_AUTHOR_KINDS`. (The rest live with the models that own them — `pgs.VALID_TRAINING_ANCESTRY`,
   `pgx.VALID_FUNCTION_STATUS` — which is why `authoring_reference()` reads the fields' own markers
   rather than this module.)
 - **`derive_variant_key(rsid, chrom, start, ref, alts=None)` (`base.py`).** The single source of a
@@ -251,6 +251,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `RECOMMENDED_ANCESTRY_GROUPS` | 11 (open) | gnomAD's population labels — **open**, and deliberately not merged with `PgsRow.training_ancestry`'s 1000G superpopulations |
   | `RECOMMENDED_AUTHOR_KINDS` | 7 (open) |  |
   | `RECOMMENDED_EFFECT_MEASURES` | 7 (open) | the units a `StudyRow` effect size is usually in — **open**, since a real study may report another |
+  | `VALID_ACTIONABILITY` | 7 (closed) | what a consumer's return-of-results policy may act on. Shipped as `ACTIONABILITY_SEED`, which survives as a working alias — the `_SEED` name and a comment beside it both read as open while the validator refuses a non-member (RM225) |
   | `VALID_AUTHORED_POSITION` | 5 (closed) | what an `overrides.csv` row claims about the author's own standing on the value |
   | `VALID_AUTHORITY_CALL_STATUS` | 3 (closed) | whether an authority was asked, answered, or not consulted |
   | `VALID_AUTHORITY_CONCORDANCE` | 5 (closed) | how a module's call stands against the authorities consulted |

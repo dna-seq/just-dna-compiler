@@ -971,13 +971,25 @@ VALID_AUTHOR_ROLES: frozenset[str] = frozenset({"created", "edited", "audited", 
 RECOMMENDED_AUTHOR_KINDS: frozenset[str] = frozenset(
     {"human", "human_expert", "human_certified", "ai", "agent", "team", "swarm"}
 )
-# The reserved `actionability` axis's recommended seed vocabulary (documentation — the field is not
-# built yet, so this is not enforced). Round-2 Q9 extended the round-1 seed with `descriptive` (a
-# large fraction of findings are self-knowledge / no-action — an explicit "none", not forced into
-# `actionable`) and `modifiable` (lifestyle-actionable, distinct from clinical `actionable`).
-ACTIONABILITY_SEED: frozenset[str] = frozenset(
+# The `actionability` axis's vocabulary. **CLOSED and enforced** — `VariantRow._validate_actionability`
+# is `check_vocab(v, VALID_ACTIONABILITY, "actionability")`, so a non-member is rejected.
+#
+# This comment used to say "the field is not built yet, so this is not enforced", which stopped being
+# true when `VariantRow.actionability` shipped in 0.4.0 and was the third place that drift had been
+# written down: `reference.py` once filed the axis under `open_recommended`, and `base.vocabulary`'s
+# own docstring listed this set as one of the open ones. Closedness is the property a consumer acts
+# on, so a comment claiming the opposite is worse than silence (RM225).
+#
+# Round-2 Q9 extended the round-1 seed with `descriptive` (a large fraction of findings are
+# self-knowledge / no-action — an explicit "none", not forced into `actionable`) and `modifiable`
+# (lifestyle-actionable, distinct from clinical `actionable`).
+VALID_ACTIONABILITY: frozenset[str] = frozenset(
     {"actionable", "preventable", "pharmacogenomic", "incurable", "reproductive", "descriptive", "modifiable"}
 )
+#: The name this set shipped under, kept as a working derived alias (P3: anything superseded stays
+#: readable inside the major). `_SEED` read as "suggestions you may extend", which is what the
+#: validator refuses; new code should use `VALID_ACTIONABILITY`.
+ACTIONABILITY_SEED: frozenset[str] = VALID_ACTIONABILITY
 
 
 #: The cell a generated template writes where a human must decide the value. A *value* sentinel,
@@ -1141,7 +1153,23 @@ def is_multi_valued_number(number: str | None) -> bool:
 
     `0` is a Flag (present or absent) and `1` is a scalar; everything else — `A`, `R`, `G`, `P`, `.`
     and the fixed counts `2`/`4` — returns more than one value, so a pointer at it names a list and
-    not a number. `None` (unknown) is **not** multi-valued: withhold, never negate, and never accuse."""
+    not a number.
+
+    **The return is a bare `bool` on purpose, and the tri-state is preserved by the caller's action
+    rather than by this signature.** The sentence here used to read "`None` (unknown) is **not**
+    multi-valued: withhold, never negate, and never accuse", which promised three outcomes from a
+    total function that has two — a reader taking it at face value would look for a `None` this can
+    never return (RM225). What actually holds: the sole caller
+    (`compiler._vcf_pointer_warnings`) uses this as `if is_multi_valued_number(number):` to decide
+    whether to *raise* a warning about an unselected element, so `False` there means **withhold the
+    warning** — and withholding is exactly the right move on an unknown cardinality. Answering
+    `False` for an unknown is the withhold, not a negation of it. The input is already three-valued
+    (`vcf_field_number` returns `None` for unknown) and the two states this collapses call for the
+    same action, so the narrowing happens at the point where it is safe.
+
+    If a future caller ever needs to tell *unknown* from *scalar*, it must read `vcf_field_number`'s
+    answer directly rather than widening this to `bool | None` — the collapse is the contract here,
+    not an accident."""
     return number is not None and number not in {"0", "1"}
 
 

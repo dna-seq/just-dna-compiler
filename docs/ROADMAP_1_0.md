@@ -33,6 +33,80 @@ they must still set.
 
 ---
 
+## RM226 — the three declared warts the code carries in comments and no tracker
+
+**Severity** low · **Status** open — 1.0 (both repairs move published identities; neither is legal in
+a minor) · **Owner** format + compiler · **Motivating case** filed out of the 2026-09-11
+re-derivation's self-declared candidates (schema D6/D7, compiler 13.7) rather than left as comments
+
+Three things the code already says about itself, given a number so a major has a list instead of a
+grep. None is a discovery and none is a bug report: each is a decision whose *reversal* is what needs
+a major, and the reason they are filed is that a comment is not a tracked item — the 1.0 cleanup
+cannot enumerate what lives only in docstrings.
+
+**A. `VariantRow.variant_key` / `authored_ident` are inside `content_signature`** while the identical
+stamped columns on `HeteroplasmyRow`, `HaplotypeRow` and `PharmVariantRow` are outside it (they carry
+`exclude=True`; these two carry `compiler_managed` with `exclude` unset). `base.stamped_identity_field`
+calls this "a grandfathered inconsistency, not a precedent", carried because **either** repair moves
+published signatures — un-excluding there or excluding here. Measured and confirmed during the round.
+The rule it bends is a real one: a compiler-stamped column is meant to be outside content identity,
+because a stamp is a pure function of the authored cells and so says nothing they do not.
+
+**B. `likely_pathogenic` / `likely_benign` are hardcoded `False`** in every `weights.parquet` row
+(`compiler.py`), with no authored field behind either, pinned as deliberate by `test_v03.py` — "a
+permanent wart of the 0.x line rather than repaired". Filling them would change what an existing
+reader is told with no way for it to notice; removing a published column is major-only. So the column
+is a published `False` that means "not stated", which is the one thing the house algebra says a
+`None` may never collapse into (`None` is never `False`). It is the sharpest example in the tree of
+an axis that predates the rule.
+
+**C. `VariantRow._freeze_identity` derives its key with no `build=`**, so it takes
+`derive_variant_key`'s GRCh38 default whatever the module declares. `base.py` says this is deliberate
+— `VariantRow` keeps its existing restamp, and the correction plus the "keyed by coordinate instead"
+warning a GRCh37 module must hear both live one tier up. It is listed because the same shape *was* a
+real bug four times (the removed `authored_key`, "the exact identity falsification the 2026-08-06
+sweep found in four other places"), and because a `VariantRow` used **outside** the compiler silently
+gets a GRCh38 key with nothing to correct it.
+
+**What 1.0 owes each.** A: pick a side and state which published signatures move, under RM52's upgrade
+procedure. B: either retire the two columns or give them an authored source; both are major. C: decide
+whether the format tier may mint a build-blind key at all, which is RM15's question — file C under
+RM15 if that lands first.
+
+## RM227 — `derive_variant_key`'s coordinate fallback does not fold allele case
+
+**Severity** medium · **Status** open — needs a decision on which release, not on whether · **Owner**
+format · **Motivating case** surfaced by RM215 rather than fixed by it (`@fix-vs-surface`)
+
+RM215 made `content_signature` fold the case of an allele cell whose grammar is case-insensitive, so
+one heterozygote stopped having four content identities. It deliberately did **not** touch
+`derive_variant_key`, and the asymmetry that leaves is measured:
+
+```
+VA path (GRCh38, single alt)   ref='a' alts='g'   → ga4gh:VA.4egzSm1kjc9hSnLPm3JZhmsA1kttQa5b
+                               ref='A' alts='G'   → ga4gh:VA.4egzSm1kjc9hSnLPm3JZhmsA1kttQa5b   (equal)
+coordinate fallback            ref='a' alts='g,t' → 1:100:a:g,t
+                               ref='A' alts='G,T' → 1:100:A:G,T                                  (differ)
+```
+
+VRS normalizes case, so the VA path is already case-insensitive; the `chrom:start:ref[:alts]` fallback
+is not. It fires for a **multi-alt row** or a **non-GRCh38 build** — both ordinary. What splits there
+is not identity-for-dedup but **joins**: two rows naming one locus get two keys, and `@vkey-precedence`
+means a module can hit the folding path and the non-folding path in the same table.
+
+**Why it is not RM215's diff.** `variant_key` is a *stored* cell — stamped into the row, written to
+parquet, and joined on by consumers. Folding it rewrites published data rather than a derived key, so
+the corrected-derivation argument that made RM215 minor-legal does not reach it, and the round-trip and
+`@verbatim-except-order` questions both open up.
+
+**Also unresolved: `ref`/`alts` are not grammar-checked at all** (both accept `zz` today, because a
+non-nucleotide there is a spelling defect a later pass diagnoses, `@non-nucleotide-spelling`). So a
+fold there cannot key on "it is an allele column" the way RM215's marker does — it would have to fold
+only values that *parse* as nucleotides, and decide what to do with the ones that do not.
+
+Pinned meanwhile by `test_allele_case_is_outside_content_identity.py`'s last test, which asserts the
+current splitting behaviour so this note cannot rot into a silent fix.
+
 ## RM15 — Build-agnostic identity & multi-build support
 
 **Severity** large · **Status** deferred to 1.0 — **and not for digest reasons** · **Owner** format

@@ -103,8 +103,9 @@ class HaplotypeRow(AuthoredModel):
     rsid: str | None = Field(
         json_schema_extra=since("0.4.0"), default=None, description="dbSNP id of the defining variant"
     )
-    # No `chromosome` vocabulary marker here on purpose: unlike `VariantRow.chrom`/`StudyRow.chrom`,
-    # these two models run no chrom validator, so the set is not enforced. A marker claims "a
+    # No `chromosome` vocabulary marker here on purpose: unlike `VariantRow.chrom` — which is the
+    # ONLY one of the five models declaring `chrom` that runs a validator — these models run none,
+    # so the set is not enforced. A marker claims "a
     # validator rejects anything outside this", and attaching one where nothing rejects would be the
     # same closedness drift `actionability` already had, pointing the other way. (That the PGx tables
     # do not validate `chrom` while the SNP core does is a real inconsistency, but closing it is a
@@ -458,8 +459,9 @@ class PharmVariantRow(AuthoredModel):
     rsid: str | None = Field(
         json_schema_extra=since("0.4.0"), default=None, description="dbSNP id of the variant, e.g. rs9923231"
     )
-    # No `chromosome` vocabulary marker here on purpose: unlike `VariantRow.chrom`/`StudyRow.chrom`,
-    # these two models run no chrom validator, so the set is not enforced. A marker claims "a
+    # No `chromosome` vocabulary marker here on purpose: unlike `VariantRow.chrom` — which is the
+    # ONLY one of the five models declaring `chrom` that runs a validator — these models run none,
+    # so the set is not enforced. A marker claims "a
     # validator rejects anything outside this", and attaching one where nothing rejects would be the
     # same closedness drift `actionability` already had, pointing the other way. (That the PGx tables
     # do not validate `chrom` while the SNP core does is a real inconsistency, but closing it is a

@@ -34,6 +34,28 @@ what its decorator retried; reading it refuted the guard, not the code — a han
 about the same function (D10: the exhausted transport leg reaches no translation) was correct, and is
 RM208's second half.
 
+## The long tail was triaged on 2026-09-11, and two candidates were refuted
+
+The defect sections were worked to the end rather than left. What shipped is in ROADMAP_HISTORY; two
+entries are recorded here because the right outcome was **not** a fix, and a later round that
+re-derives them should stop at this paragraph.
+
+- **Enricher D6 — `uv sync` performs a network fetch — refuted as a category error.** `uv sync`
+  resolves and downloads from PyPI for every package in this workspace, so by that reading
+  `just-dna-format` fetches too. The tier rule this was measured against ("only the enricher
+  fetches") is about a library's **runtime** behaviour, not about installing it; applying it to a
+  build-and-install operation makes it vacuous. The hook's own fetch is pinned, digest-verified and
+  documented, and the maintainer confirms it was the intended design from the start. Not a finding.
+- **Schema D8 — `chrom` validated on one model of five — deliberate, and the comment beside it was
+  the actual defect.** The asymmetry is intended and the vocabulary marker is correctly withheld
+  wherever nothing rejects. What was wrong is that the explaining comment named `StudyRow.chrom` as a
+  validated counterexample at two sites, and `StudyRow` has no chrom validator. Fixed under RM225;
+  the design is unchanged, and 709 corpus cells carry 3 non-canonical spellings, all in the one table
+  that normalizes.
+
+The self-declared warts (schema D6/D7, compiler 13.7) are now **RM226**, and RM215's surfaced half is
+**RM227**, so neither lives only in a comment any more.
+
 ## The method has its own document now
 
 **[BLIND_REDERIVATION.md](../BLIND_REDERIVATION.md) is the pattern; this file is one round's
