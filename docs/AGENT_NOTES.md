@@ -1677,6 +1677,19 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   - **The outputs did not move**: still `sources.parquet`, still `manifest.sources`, both major-only
     renames. The 0.x tail reads `licensing.csv` → `sources.parquet` → `manifest.sources`, knowingly.
     Neither the name nor the location enters any identity — measured on all eleven reference examples.
+  - **Either spelling is a key (S96, RM224).** `SIDECAR_SPELLINGS` is keyed on the table key —
+    `sources.csv`, the spelling the parquet and the manifest keep — and for fifteen weeks
+    `sidecar_spellings("licensing.csv")` answered the one-tuple of a table it had never heard of, so
+    `sidecar_write_path(spec_dir, "licensing.csv")` on a module carrying `sources.csv` created the
+    preferred copy beside the deprecated one: the collision the function's own docstring says it
+    prevents, reached by a caller holding a tar member named `derived/licensing.csv`. A consumer with
+    bytes has the *filename*, never the key, and a map keyed on one spelling answers the other as
+    unknown — a plausible path rather than an exception, which fails quietly in both directions (their
+    read-side diff looked for the preferred name, found nothing, and reported no rows leaving the
+    table). `sidecar_key` reads the map backwards, derived rather than written, and every helper
+    normalises through it, so the fix is one line and reaches every caller; the test walks the map.
+    The refusal-of-a-filename alternative was not taken: the helper is most useful exactly where a
+    caller has bytes and a name.
   RM51 estimated five enricher write sites; there were **nine**, which is why `record_source_terms` and
   `merge_sources_file` take the **spec directory** now. A count of call sites is exactly the thing that
   goes stale; routing them through one function is the durable form.

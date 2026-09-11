@@ -68,6 +68,44 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM224 — `sidecar_spellings` was keyed on the table key only, so the preferred filename missed the deprecated copy
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-format` only: one
+derived map, one public `sidecar_key`, one normalisation inside `sidecar_spellings`; no schema
+change, no spelling added or removed) · **Owner** format · **Motivating case** S96
+(just-module-creator, in CONSUMER_SUGGESTIONS_HISTORY.md), building `remote_derive` over the
+registry's derived-sidecar tarball
+
+**What it reproduced.** `SIDECAR_SPELLINGS` is keyed on the table key — `sources.csv`, the spelling
+`sources.parquet` and `manifest.sources` keep — and the preferred filename is not a key. So
+`sidecar_spellings("licensing.csv")` answered the one-tuple of a table it had never heard of,
+`resolve_sidecar` never saw the deprecated copy, and `sidecar_write_path(spec_dir, "licensing.csv")`
+on a module carrying `sources.csv` returned the preferred spelling: the collision the function's own
+docstring says it exists to prevent, reached by following it. A consumer holding bytes — a tar member
+named `derived/licensing.csv`, an upload part — has the filename and not the key, so the helper
+handed them exactly the spelling that did not work.
+
+**The fix, and the half not taken.** The consumer offered two: normalise inside `sidecar_spellings`,
+or document that `name` is the table key. The first, because the second leaves the next consumer to
+notice the same thing. `_KEY_FOR_SPELLING` is the map read the other way, derived rather than written
+so a second aliased table costs no edit; `sidecar_key(name)` publishes it; `sidecar_spellings` looks
+the key up through it. Every helper that reads spellings — `sidecar_candidates`, `resolve_sidecar`,
+`sidecar_write_path`, `preferred_spelling`, the compiler's name sets, `draft`'s spelling map — is
+fixed by that one line. Refusing a filename was not considered: the helper is most useful exactly
+where a caller has bytes and a name.
+
+**The sharper half is the read side, and it went into the gotcha book.** The consumer's first defect
+was not the write: their displacement diff looked for `licensing.csv`, found nothing on a spec
+carrying `sources.csv`, and reported no rows leaving the table while the replacement went ahead under
+the other name. A helper whose wrong answer is a plausible path rather than an exception fails
+quietly in both directions — the shape `@sidecar-name-and-place` now names.
+
+**Pinned by two tests.** One walks `SIDECAR_SPELLINGS` and asserts every spelling of every entry
+answers the same tuple, the same key and the same preferred name — an equality over the map, so a
+second alias is covered without an edit. The other is the consumer's measurement reversed, at the
+root and under `derived/`, plus the fresh-directory case still creating the preferred spelling
+whichever name was asked.
+
 ## RM200 — the Atlas's other twenty-one scorers: what a module can take from them
 
 **Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 · **Owner** enricher ·

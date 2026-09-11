@@ -21,10 +21,13 @@ from just_dna_compiler.draft import DRAFTABLE, blank_template
 from just_dna_format.layout import (
     DERIVED_SUBDIR,
     LICENSING_CSV,
+    SIDECAR_SPELLINGS,
     SOURCES_CSV,
     SidecarCollision,
     preferred_spelling,
     resolve_sidecar,
+    sidecar_key,
+    sidecar_spellings,
     sidecar_write_path,
 )
 from just_dna_format.sources import SourceRow
@@ -380,3 +383,47 @@ def _rows(path: Path) -> list[dict]:
 
     with path.open(newline="", encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
+
+
+# ── S96 / RM224: either spelling is a key ────────────────────────────────────────────────────────
+
+
+def test_every_spelling_of_every_entry_answers_the_same_tuple() -> None:
+    """Walked over `SIDECAR_SPELLINGS`, so a second aliased table is covered without an edit here.
+
+    The map is keyed on the table key — the deprecated spelling, because `sources.parquet` keeps it —
+    and `sidecar_spellings("licensing.csv")` used to answer the one-tuple of a table it had never heard
+    of. A consumer holding a tar member named `derived/licensing.csv` then got the preferred copy
+    created beside the deprecated one: the exact collision `sidecar_write_path` documents itself as
+    preventing (S96)."""
+    assert SIDECAR_SPELLINGS, "the walk below is over a non-empty map"
+    for key, spellings in SIDECAR_SPELLINGS.items():
+        assert key in spellings, key
+        for spelling in spellings:
+            assert sidecar_key(spelling) == key, spelling
+            assert sidecar_spellings(spelling) == spellings, spelling
+            assert preferred_spelling(spelling) == spellings[-1], spelling
+    # A name the map does not know is its own only spelling, and its own key.
+    assert sidecar_spellings("resolution.csv") == ("resolution.csv",)
+    assert sidecar_key("resolution.csv") == "resolution.csv"
+
+
+@pytest.mark.parametrize("subdir", ["", DERIVED_SUBDIR])
+def test_asking_by_the_preferred_filename_still_follows_the_deprecated_copy(
+    tmp_path: Path, subdir: str
+) -> None:
+    """The consumer's measurement, reversed: a module carrying `sources.csv`, asked about
+    `licensing.csv`, answers the copy it has — at the root and under `derived/` alike."""
+    home = tmp_path / subdir
+    home.mkdir(parents=True, exist_ok=True)
+    existing = home / SOURCES_CSV
+    existing.write_text("source,layer\nclinvar,resolution\n", encoding="utf-8")
+    for asked in (SOURCES_CSV, LICENSING_CSV):
+        assert resolve_sidecar(tmp_path, asked) == existing, asked
+        assert sidecar_write_path(tmp_path, asked) == existing, asked
+    # And the fresh-directory case still creates the preferred spelling, whichever name was asked.
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    assert {sidecar_write_path(fresh, asked).name for asked in (SOURCES_CSV, LICENSING_CSV)} == {
+        LICENSING_CSV
+    }

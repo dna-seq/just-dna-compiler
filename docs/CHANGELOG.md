@@ -34,7 +34,19 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-11 (latest) — eighteen items a second, blind derivation of the docs found in the code
+## 2026-09-11 (latest) — RM224: either spelling of a sidecar is a key
+
+`just-dna-format` only, inside the uncut 0.7.0. `layout.SIDECAR_SPELLINGS` is keyed on the table
+key — `sources.csv`, the spelling the parquet and the manifest keep — and the preferred filename was
+not a key, so `sidecar_spellings("licensing.csv")` answered a one-tuple and `sidecar_write_path`
+created the preferred copy beside a deprecated one: the collision it documents itself as preventing,
+reached by a consumer holding a tar member named `derived/licensing.csv` (S96). `sidecar_key(name)`
+reads the map backwards, derived from it, and `sidecar_spellings` normalises through it, so every
+helper answers the same for either spelling. Nothing is refused, nothing added or removed; a test
+walks the map. AGENT_NOTES `@sidecar-name-and-place` carries the read-side lesson: a helper whose
+wrong answer is a plausible path fails quietly in both directions.
+
+## 2026-09-11 — eighteen items a second, blind derivation of the docs found in the code
 
 **The docs were re-derived from the code by three agents that had never read them**, one per tier, in
 worktrees with `docs/` and `CLAUDE.md` deleted — the method is now written down as

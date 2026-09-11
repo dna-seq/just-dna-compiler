@@ -97,9 +97,34 @@ class SidecarCollision(ValueError):
     """
 
 
+#: Every spelling back to the key of its entry — the map read the other way, derived rather than
+#: written, so a second aliased table costs no edit here (S96).
+_KEY_FOR_SPELLING: dict[str, str] = {
+    spelling: key for key, spellings in SIDECAR_SPELLINGS.items() for spelling in spellings
+}
+
+
+def sidecar_key(name: str) -> str:
+    """The table key behind any of its spellings — `sources.csv` for `licensing.csv` — else `name`.
+
+    The key is the spelling `sources.parquet` and `manifest.sources` keep, and it is what the map is
+    keyed on. A caller holding bytes and a filename — a tar member, an upload part — has the *preferred*
+    spelling and not the key, and until S96 the helpers below read that as a table they had never heard
+    of, answering the one-tuple `('licensing.csv',)`: `sidecar_write_path` then created the preferred
+    copy beside the deprecated one, which is the collision the docstring below says it exists to
+    prevent. Either spelling is a key now.
+    """
+    return _KEY_FOR_SPELLING.get(name, name)
+
+
 def sidecar_spellings(name: str) -> tuple[str, ...]:
-    """Every accepted filename for `name`, deprecated first, preferred last."""
-    return SIDECAR_SPELLINGS.get(name, (name,))
+    """Every accepted filename for `name`, deprecated first, preferred last.
+
+    `name` may be the table key **or any of its spellings** — `sidecar_spellings("licensing.csv")`
+    answers the same pair as `sidecar_spellings("sources.csv")`. A name the map does not know has
+    exactly one spelling, its own.
+    """
+    return SIDECAR_SPELLINGS.get(sidecar_key(name), (name,))
 
 
 def preferred_spelling(name: str) -> str:

@@ -119,6 +119,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S93** lookup payload carried absolute snapshot paths — accepted, RM205
 - **S94** a resolver rung that consults a peer — idea-book, licence question first
 - **S95** `PacingGate` could not report what it spent — accepted, RM203
+- **S96** `sidecar_spellings` keyed on the table key only — accepted, RM224
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -8118,3 +8119,84 @@ cost nothing to anyone who does not read it.
 
 Low priority, and genuinely not a blocker — we mention it because the alternative for us is guessing,
 and a guess that is always an over-estimate is a caller being charged for a call that never happened.
+
+# Field notes from just-module-creator, 2026-09-11 — a filename that was not a key
+
+## S96 — `sidecar_write_path` follows the file you read only if you ask by the table key, and a tar member gives you a filename
+
+**Status — accepted and shipped 2026-09-11 in the uncut 0.7.0 as
+[RM224](ROADMAP_HISTORY.md#rm224--sidecar_spellings-was-keyed-on-the-table-key-only-so-the-preferred-filename-missed-the-deprecated-copy).**
+Your three lines reproduced exactly, and your first half is the one taken: `sidecar_spellings(name)`
+now normalises through a filename → key map derived from `SIDECAR_SPELLINGS` (published as
+`layout.sidecar_key`, the same shape as your `_TABLE_KEY_FOR`), so `sidecar_write_path`,
+`resolve_sidecar`, `sidecar_candidates` and `preferred_spelling` answer the same for either spelling
+and every caller is fixed at once. A filename is not refused, for the reason you gave. The docstring
+now says either spelling is a key, and a test walks the map so a second aliased table is covered
+without an edit. On the two surfaces disagreeing: this tree publishes no `DERIVED_FILES` — that
+roster is the registry's own, per MODULE_LIFECYCLE — but the disagreement was real between your
+roster and our key, and it no longer matters which word either side uses. Your read-side finding is
+the sharper half and went into the gotcha book: a helper whose wrong answer is a plausible path fails
+quietly in both directions. **What to do now:** delete the shim; your asymmetry test should now fail,
+which is the signal you built it to give. <!-- triaged: 0.7.0 · sha 2ecbfd161d6e -->
+
+Filed 2026-09-11 against format 0.7.0 (editable from this checkout), while building a
+`remote_derive` tool: the registry's `POST /modules/{ns}/{name}/derived` hands back a gzipped tar of
+the derived sidecars, and the member for this table is named `derived/licensing.csv`.
+
+**What we expected**, from the docstring, which we read carefully and still got wrong:
+
+> Where a pass should write a sidecar: the copy that exists, else the preferred spelling.
+> **Write to the file you read.** A pass that always created the preferred spelling at the root would,
+> on a module carrying the deprecated one or a `derived/` tree, leave two copies behind — the
+> collision above, produced by following the documented workflow rather than by misusing it.
+
+**What happens**, measured:
+
+```
+>>> layout.sidecar_write_path(spec_dir, "licensing.csv").name   # spec_dir holds sources.csv
+'licensing.csv'
+>>> layout.sidecar_write_path(spec_dir, "sources.csv").name     # same directory
+'sources.csv'
+>>> layout.SIDECAR_SPELLINGS
+{'sources.csv': ('sources.csv', 'licensing.csv')}
+```
+
+`sidecar_spellings("licensing.csv")` is the one-tuple `('licensing.csv',)`, because the map is keyed on
+the **table key** `sources.csv` — the name `sources.parquet` and `manifest.sources` keep — and the
+preferred *filename* is not a key. So `resolve_sidecar` never sees the deprecated copy, and the answer
+is the second spelling: exactly the collision the docstring says it exists to prevent, and
+`revalidate`/`upgrade` then refuse the module rather than merging, which is correct and is the failure
+we nearly shipped.
+
+**Why a caller falls into it rather than misusing the API.** The docstring's promise is about the
+directory, so nothing suggests the *argument* is a different namespace from the filenames on disk. And
+a consumer holding bytes — a tar member, an upload part, a `DERIVED_FILES` walk — has the filename and
+not the key: `'licensing.csv' in DERIVED_FILES` is `True` and `'sources.csv' in DERIVED_FILES` is
+`False`, so the roster hands you precisely the spelling that does not work. Two of your own public
+surfaces disagree about which of the two words names this table.
+
+**What we did meanwhile**, and we would rather delete it:
+
+```python
+_TABLE_KEY_FOR = {sp: key for key, sps in SIDECAR_SPELLINGS.items() for sp in sps}
+
+def _dest_for(directory: Path, csv_name: str) -> Path:
+    return sidecar_write_path(directory, _TABLE_KEY_FOR.get(csv_name, csv_name))
+```
+
+Derived from your map rather than written out, so a second aliased table costs us no edit. A test
+asserts the asymmetry as well as our translation, so the day you key the map both ways it tells us the
+shim is redundant instead of passing quietly.
+
+**Candidate fix, and the reason we are not sure which half you want.** Either
+`sidecar_spellings(name)` normalises through a filename→key map first — one line, and every caller of
+`sidecar_write_path`/`resolve_sidecar`/`sidecar_candidates` is fixed at once — or the docstring says
+outright that `name` is the table key and names `SIDECAR_SPELLINGS`'s keys as the accepted vocabulary.
+We prefer the first, because the second leaves `DERIVED_FILES` and `SIDECAR_SPELLINGS` naming the same
+table differently and the next consumer still has to notice. What we would not do is refuse a
+filename: the helper is most useful exactly where a caller has bytes and a name.
+
+**The bug the shape hides.** Our first defect was not the write but the *read* — the displacement
+diff looked for `licensing.csv`, found nothing on a spec carrying `sources.csv`, and reported no rows
+leaving the table while the replacement went ahead under the other name. A helper whose wrong answer
+is a plausible path rather than an exception fails quietly in both directions.

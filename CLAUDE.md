@@ -273,6 +273,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 ### Licensing, sources, the compile gate
 
 - Resolve a sidecar's name and place through `layout`; write to the file you read; both present is an error. `@sidecar-name-and-place`
+- Either spelling is a key: a map keyed on one spelling answers the other as a table it never heard of. `@sidecar-name-and-place`
 - Licensing lives as data in the licence table, never as a table in the compiler. `@licensing-as-data`
 - Every pass that consults a source **writes** its `SourceRow`. `@write-the-sourcerow`
 - And one that **contributes nothing writes none** — key on what this run covered, never on the table or on `not missing`. `@write-the-sourcerow`
