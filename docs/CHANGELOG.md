@@ -34,14 +34,15 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-11 (latest) — three defects a second, blind derivation of the docs found in the code
+## 2026-09-11 (latest) — sixteen items a second, blind derivation of the docs found in the code
 
 **The docs were re-derived from the code by three agents that had never read them**, one per tier, in
 worktrees with `docs/` and `CLAUDE.md` deleted — the method is now written down as
 [BLIND_REDERIVATION.md](BLIND_REDERIVATION.md) rather than living as its first output's preamble. The
 maintained references gained what they were missing (twenty-six modules, a check row, an AlphaGenome
-section, the eighteen-source licence roster, all with walking tests). These three are the other half:
-places where the **code** was wrong, each reproduced before it was repaired.
+section, the eighteen-source licence roster, all with walking tests). What follows is the other half:
+**RM207–RM222**, fifteen shipped and one (RM215) filed for 1.0 — places where the code was wrong, or
+where a registry had a hand-kept copy of itself, each reproduced or measured before it was repaired.
 
 **RM207 — the refusal that is fatal in both modes was asked of the wrong key, on the wrong side.**
 `resolve_from_table` walked the *post-expansion* rows and looked each one's `variant_key` up in a table
@@ -126,6 +127,32 @@ is now grouped by what raises them, because the groups are the contract, with th
 asserted to be a real subclass ladder (`except` order is load-bearing). And eight of `vocab`'s 29
 vocabularies were missing from `SCHEMAS.md`, two of them from every maintained file; the roster there
 carries count, openness and purpose but deliberately not members.
+
+**RM218–RM221 — the long tail, and what it says about where drift lives.** The round's second pass
+worked through the candidates the snapshots recorded but nobody had verified. Four more items came
+out of it, and three of the four are the *same defect class one layer out from where the rule is
+written down*:
+
+- **RM218** — `test_counted_prose.py` enforces "no number beside a registry" for `docs/` and stops
+  there; `compiler.py`'s own module docstring said "twelve" against 23 parquets and `_vrs_gap_reason`
+  said "six reasons" against 8 arms. Neither number was re-counted: both sentences state the rule, and
+  the guard asserts what each stood in for — for the reasons, that the arms are **pairwise distinct**,
+  which a count never checked. A 15-name `issubset` **floor** over a 39-column schema became an
+  equality, and `validate_spec`'s docstring stopped claiming `strict` "changes severity only".
+- **RM219** — `download.py` documents that every fetch stages through `.part`, and one of its own
+  fetches did not, so a repo publishing no `release.json` got a **0-byte** one. That converts *nobody
+  said* into *the description is corrupt*.
+- **RM220** — `--offline` had two readings and `expression` had the wrong one for a **licence-gated**
+  source, so an injected client fetched under a flag documented as making no egress. The axis the two
+  readings differ on is now written down; `gwas` keeps its behaviour, deliberately, because the GWAS
+  Catalog is ungated.
+- **RM221** — Rich ate `[atlas]` and `[dev]` out of three help texts, the extra's size disagreed
+  across five places, "vendored" survived RM196 in two, and `VALID_VERIFICATION_CHECKS` said `enrich`
+  writes "six" against eight.
+- **RM222** — the CIViC drafter wrote a licence row on a run that drafted **nothing** (the rule was a
+  comment above a gate that only checked `dry_run`), and the row carried no `dataset` because
+  `record_source_terms` had no parameter for one — so a CIViC-drafted module sat **outside** the
+  currency check `--verify-datasets` runs.
 
 **What the round says about itself.** All three are shapes this repository had already written a rule
 against — a hand-kept list beside a derivable one, a check on one side of the validate/compile pair, a

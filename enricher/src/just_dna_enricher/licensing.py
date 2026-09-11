@@ -27,7 +27,7 @@ import csv
 import hashlib
 import logging
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -912,6 +912,7 @@ def record_source_terms(
     *,
     error: type[Exception],
     declared_use: str = "unstated",
+    datasets: Mapping[str, str] | None = None,
 ) -> list[SourceRow]:
     """Record the terms of every licensed source a pass consulted, at `layer`.
 
@@ -921,12 +922,23 @@ def record_source_terms(
     machine-fact passes (resolution, frequency, gene metrics) all skipped it, which is why
     `VALID_SOURCE_LAYERS` has reserved members nothing ever wrote.
 
-    None of these layers can taint a module: `taints_commercial_use` requires the `annotation` layer,
-    because a coordinate or an AC/AN is a fact the source *reports* rather than expression it *owns*. So
-    what this records is **attribution** — which gnomAD, Ensembl and ClinVar all request and none of
-    them enforces — and that is precisely the case the table exists to carry, not only prohibitions.
-    `declared_use` defaults to `unstated` because no fact-layer source here forbids sale, so these
-    passes never have to ask the author for a declaration.
+    **The fact layers cannot taint a module** — `taints_commercial_use` requires the `annotation`
+    layer, because a coordinate or an AC/AN is a fact the source *reports* rather than expression it
+    *owns*. For those passes what this records is **attribution** — which gnomAD, Ensembl and ClinVar
+    all request and none of them enforces — and that is precisely the case the table exists to carry,
+    not only prohibitions. `declared_use` defaults to `unstated` for the same reason: no fact-layer
+    source here forbids sale, so those passes never have to ask the author for a declaration.
+
+    **But `annotation` callers exist and this said they did not** (RM222). `civic_draft` records at
+    `annotation` with an explicit `declared_use`, so the paragraph above — which read *"None of these
+    layers can taint"* about all of them — sent a reader to the wrong conclusion about whether a
+    drafting pass can taint. It can: that layer is exactly the one the gate reads.
+
+    `datasets` maps a source name to the release its rows came from, for a caller that knows one. A
+    drafting pass does; a fact pass usually does not, and an absent entry leaves `dataset` unset rather
+    than guessing. It matters because `SourceRow.dataset` is what `--verify-datasets` compares and what
+    `withdraw_stale_dataset` withdraws — a row without one puts the module outside the currency check
+    altogether, which is where every CIViC-drafted module was.
 
     A name with no terms constant is skipped rather than guessed at: `TERMS_BY_SOURCE` is what this tier
     can state, and inventing a row for the rest would be worse than the compiler's honest warning that
@@ -936,7 +948,12 @@ def record_source_terms(
     terms = [TERMS_BY_SOURCE[name] for name in sorted(set(source_names)) if name in TERMS_BY_SOURCE]
     if not terms:
         return []
-    return merge_sources_file([t.row(layer, declared_use=declared_use) for t in terms], spec_dir, error=error)
+    labels = datasets or {}
+    return merge_sources_file(
+        [t.row(layer, declared_use=declared_use, dataset=labels.get(t.source, "")) for t in terms],
+        spec_dir,
+        error=error,
+    )
 
 
 def check_declared_use(terms: SourceTerms, declared_use: str) -> str | None:

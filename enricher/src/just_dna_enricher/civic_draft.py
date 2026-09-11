@@ -601,14 +601,27 @@ def draft_panel_from_civic(
     result.warnings.extend(_withheld_warnings(result.withheld, contested_names))
     result.warnings.extend(_refuted_warning(result.refuted_beside_claim, result.refutation_basis))
 
-    # A pass that consults a source writes its `SourceRow`, and this one consulted CIViC even where it
-    # drafted nothing from it — the gate and `manifest.sources` read `sources.csv` and nothing else
-    # (`@write-the-sourcerow`). Not written on a run that never reached the snapshot: a pass that
-    # contributed nothing writes none.
-    if not dry_run:
-        # A pass that consults a source writes its row; one that contributed nothing writes none. The
-        # registry is listed only where it was actually asked, which is why the flag is set at the
+    # **A pass that consults a source writes its `SourceRow`; one that contributed nothing writes
+    # none** (`@write-the-sourcerow`). The comment here said exactly that and the gate was `not
+    # dry_run` and nothing else, so a `--gene` filter matching nothing still wrote a `civic` row —
+    # a licence row claiming a module uses CIViC when it does not (RM222). `strchive_draft` and
+    # `mitomap_draft` both gate on an outcome and `test_strchive_draft.py` refuses this shape on that
+    # path; this is the same predicate, keyed on what *this run covered*: a locus is in the module's
+    # table because of this provider, added now or recognised as `already_present` from an earlier run.
+    covered = any(
+        outcome.status in {"added", "already_present"}
+        for report in result.reports
+        for outcome in report.outcomes
+    )
+    if not dry_run and covered:
+        # The registry is listed only where it was actually asked, which is why the flag is set at the
         # lookup rather than derived from the snapshot's contents.
+        #
+        # **`dataset` travels with the row** (RM222). It was computed for every row's `conclusion` and
+        # then dropped on the floor, because `record_source_terms` had no way to carry one — so the
+        # licence row read `dataset=''`, and `--verify-datasets` had nothing to compare and
+        # `withdraw_stale_dataset` nothing to withdraw. A CIViC-drafted module sat outside the currency
+        # check every other drafted module is inside.
         consulted = [CIVIC_SOURCE] + ([CLINGEN_ALLELE_REGISTRY_TERMS.source] if consulted_registry else [])
         record_source_terms(
             consulted,
@@ -616,5 +629,6 @@ def draft_panel_from_civic(
             spec_dir,
             error=CivicDraftError,
             declared_use=declared_use,
+            datasets={CIVIC_SOURCE: result.dataset} if result.dataset else None,
         )
     return result

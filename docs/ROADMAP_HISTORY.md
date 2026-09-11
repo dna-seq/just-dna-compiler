@@ -319,6 +319,120 @@ been told to expect. A table mislabelling one would re-create exactly that.
 `base`'s dependency note exists to avoid. The guard says so rather than pretending to be complete
 over something it is not.
 
+## RM222 — the CIViC drafter's licence row: written when it drafted nothing, and carrying no release
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only: a
+gate, an optional parameter, and a docstring; no schema change) · **Owner** enricher · **Motivating
+case** the 2026-09-11 blind re-derivation — `docs/audit/ENRICHER_FROM_CODE.md` D13–D15
+
+Three findings at one call site, all of them `@write-the-sourcerow`.
+
+**"One that contributed nothing writes none" was a comment, not a gate.** The condition was
+`if not dry_run:` and nothing else, with that exact sentence directly above it — so a `--gene` filter
+matching nothing still wrote a `civic` row into `licensing.csv`. A licence row is a claim that the
+module uses the source; writing one for a module with no CIViC rows in it is a false claim, and the
+compile gate reads that file and nothing else. Both sibling drafters implement the rule
+(`strchive_draft`, `mitomap_draft`) and `test_strchive_draft.py` refuses this shape on that path, so
+the predicate was written down twice already and missing here.
+
+**`dataset` was computed and dropped on the floor.** `civic_dataset_label(...)` reaches every drafted
+row's `conclusion`, and `record_source_terms` had no parameter to carry one — so the licence row read
+`dataset=''`. Not cosmetic: `SourceRow.dataset` is what `--verify-datasets` compares and what
+`withdraw_stale_dataset` withdraws, so **a CIViC-drafted module sat outside the currency check every
+other drafted module is inside**. `record_source_terms` gains an optional `datasets` mapping; an
+absent entry still leaves the column unset rather than guessing, which is what the fact passes want.
+
+**And the function's own docstring had stopped covering its callers.** It read *"None of these layers
+can taint a module: `taints_commercial_use` requires the `annotation` layer"* — true of the three
+fact passes it was written for, and false since `civic_draft` began recording at `annotation` with an
+explicit `declared_use`. It sent a reader to the wrong conclusion about whether a drafting pass can
+taint. It can; that layer is exactly the one the gate reads.
+
+The test drafts from the checked-in CIViC slice, so both "drafted something" and "drafted nothing" are
+real runs of the real provider. It is unfiltered for the positive case deliberately — naming a gene
+couples the test to which genes happen to be in a fixture, and what the case needs is *a run that
+drafted*.
+
+## RM219 — one fetch in the module whose documented rule is that fetches stage
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only:
+one fetch staged; no schema change) · **Owner** enricher · **Motivating case** the 2026-09-11 blind
+re-derivation — `docs/audit/ENRICHER_FROM_CODE.md` D9
+
+`download.py` states the rule at length and applies it everywhere but one line: *"Staged through
+`.part` like every other download here, because a failed one is not a no-op. `HfFileSystem.get`
+creates the local file before it discovers the remote path is missing."* The parquet fetch, the
+sidecar fetch and the root-file loop all stage. `_provision_root_file_snapshot` staged its payload and
+then fetched `release.json` straight to the target two lines later.
+
+**The cost is a state change, not a stray file.** An absent label is *nobody said*; a
+present-and-unreadable one is *the description is corrupt*. A 0-byte `release.json` reads as the
+second: `_json_parses` rejects it and `LaneStatus` reports `release_unreadable`, sending an operator to
+re-pull a lane whose remote simply has no description to give
+(`@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal`).
+
+The test's fake reproduces the documented client behaviour rather than assuming it — `get` creates the
+file *and then* raises, which is the only reason the bug existed. A fake that raised without touching
+the filesystem would have passed against the unfixed code.
+
+## RM220 — the offline flag meant two different things, and the gated pass had the ungated one
+
+**Severity** high · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only: one
+gate; no schema change) · **Owner** enricher · **Motivating case** the 2026-09-11 blind re-derivation —
+`docs/audit/ENRICHER_FROM_CODE.md` D5
+
+Two readings of the flag coexisted and nothing said which applied where. `pgx` makes it **absolute**,
+and `test_pgx_licensing.py` asserts it by name: *"An injected live client is not a loophole: `offline`
+outranks the injection, because a live client under a flag documented as making no egress is exactly
+the failure RM38 closes."* `gwas` does **not**, and says so in its own docstring: *"An injected
+`client` still wins, because handing over a transport you already hold is not egress."*
+
+**`expression` had `gwas`'s shape against `pgx`'s situation.** Its gate was
+`if offline and client is None:`, and the AlphaGenome Atlas is licence-gated — its Additional Terms bar
+classes of holder outright — so an injected client fetched from a gated source under a flag documented
+as making none. `@flag-means-same`.
+
+**The axis the two readings differ on is the source's licence**, and that is now written down in
+ENRICHER.md rather than inferable only by reading three modules. `gwas` keeps its behaviour on
+purpose: the GWAS Catalog is ungated, its docstring argues the case, and changing a stated contract
+for a Python-API caller is a decision rather than a repair.
+
+**The licence gate was masking the egress hole**, which is why the test declares its use. With
+`declared_use` at its default the run is skipped by `check_declared_use` anyway, so a test that left it
+there would have passed against the unfixed code — the second gate standing in for the first. Declaring
+the use removes it and leaves only the gate under test.
+
+## RM221 — three help texts, a size, a "vendored", and a count: five claims that had stopped being true
+
+**Severity** low · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (help strings, comments and one
+doc paragraph; no behaviour change) · **Owner** enricher + format · **Motivating case** the 2026-09-11
+blind re-derivation — `docs/audit/ENRICHER_FROM_CODE.md` D1–D4
+
+**Rich ate the extra's name out of three rendered help texts.** Typer renders through Rich, which
+reads a bare `[word]` as a style tag, so `atlas --help` printed *"Needs the  extra"* and
+`atlas generate --help` printed *"which is in `` and deliberately not in ``"* — telling a new user
+nothing at all about which install to do, on the first screen they read. Escaped.
+
+**Two declarations of the extra's size disagreed**, 22 MB against 19 MB, and the file carrying the
+measurement is the one that was right: `enricher/pyproject.toml` records 19 MB in a clean venv on
+2026-09-10, and 22 MB is the grpcio release current at the design round. The stale figure had reached
+five places — including two paragraphs of `ENRICHER.md` written *earlier the same day* by the pass
+that added the AlphaGenome §, which is how a superseded number propagates.
+
+**"Vendored" survived RM196 in two places.** The `atlas` group help and `ENRICHER.md` both said the
+bindings are generated from sources vendored in `docs/vendor/alphagenome_protos/`, while
+`atlas generate --help` two lines away said *"The sources are not vendored"* — and the directory holds
+a README and nothing else. The second is what the code does.
+
+**And a count beside its registry, one tier over** (D4): `VALID_VERIFICATION_CHECKS`' first block read
+*"`enrich` writes these six"* while `enrich` writes **eight** — `published_refutation` and
+`evidence_status_currency` are filed under the next heading with `— enrich` beside them, so membership
+was right and the sentence had drifted. This is the failure `verification.py`'s docstring records
+correcting three times, one file from where that lesson is written down, and it survived because the
+existing guards assert membership of the *whole* vocabulary and no test read a block. The number is
+gone and `test_verification_record.py` now walks both sides — the names `enrich._verification_records`
+passes to `ran`/`skipped`, and the names commented `— enrich` in `vocab.py`.
+
 ## RM218 — the counted-prose rule reached `docs/` and stopped at the source
 
 **Severity** low · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-compiler` only:
