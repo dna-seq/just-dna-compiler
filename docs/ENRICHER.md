@@ -4152,6 +4152,16 @@ own `PacingGate` — gnomAD is one request per six seconds — and a fresh clien
 both the pacing state and the connection pool. And `--offline` yields `unchecked`, never `absent`:
 a check that could not run is not a check that passed, and `None` is not `False` anywhere in the file.
 
+**An unfilled field is filled the same way on every leg (S92, RM206).** `LookupClients.ensure(name,
+factory)` builds a client under the bundle's lock on first use, stores it and returns it, and
+`close()` walks `CLIENT_FIELDS` — derived from the dataclass, not listed — to close what was built.
+Until then two legs assigned back onto the bundle and six built a per-request client they closed in a
+`finally`, which is exactly the pacing state the paragraph above says to keep; a host filling seven
+fields and leaving `pmc_idconv` unset had unpaced egress on one leg and no way to tell from the call
+site. Ownership follows construction: hold a bundle for a session, and a `lookup_*` call given none
+closes the one it built. A hosted CPIC draft is deliberately not a field here — `pgx_draft.draft_gene`
+takes `client=`, so a host shares pacing by holding one `CpicClient` and passing it.
+
 **A cache miss falls through to live Ensembl (0.5), and until it did this surface was silently
 weaker than the pass it advises on.** `hint variant --rsid rs1799945` answered *"not found in Ensembl,
 position remains unset"* for HFE H63D — which live Ensembl serves at 6:26090951 — because the only

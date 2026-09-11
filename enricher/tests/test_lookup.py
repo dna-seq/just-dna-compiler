@@ -10,8 +10,10 @@ from pathlib import Path
 import polars as pl
 import pytest
 from just_dna_compiler.hints import REDUNDANCY_BEARING
+from just_dna_enricher import lookup as lookup_module
 from just_dna_enricher.eutils import NO_SUMMARY
 from just_dna_enricher.lookup import (
+    CLIENT_FIELDS,
     LookupClients,
     as_report_rows,
     lookup_citation,
@@ -490,3 +492,108 @@ def test_an_unreadable_snapshot_is_named_by_its_label_and_its_path_is_still_on_r
     assert "ensembl" not in hint.checked, "a snapshot that could not be read was not checked"
     assert hint.snapshots["ensembl"] == str(broken)
     assert "clinvar" in hint.checked and hint.snapshots["clinvar"] == str(tmp_path / "cv")
+
+
+# ── S92 / RM206: one lazy path on the bundle, and the bundle closes what it built ────────────────
+
+
+class _Closable:
+    """A client stand-in that records whether it was closed and answers every leg with nothing."""
+
+    def __init__(self) -> None:
+        self.closed = 0
+
+    def close(self) -> None:
+        self.closed += 1
+
+    def trait(self, curie: str):  # OntologyClient
+        return None
+
+    def esummary(self, db: str, ids: list[str]) -> dict:  # EutilsClient
+        return {}
+
+
+def test_every_client_field_is_built_once_kept_and_closed_by_the_bundle() -> None:
+    """Walked over `CLIENT_FIELDS`, an equality with the dataclass's own client fields (S92).
+
+    Two legs used to assign back onto the bundle and six built a per-request client they closed in a
+    `finally`; the call site could not tell which, and only one of the eight was the leg whose
+    unfilled field actually mattered. One path now: built under the lock, stored, closed by `close()`."""
+    bundle = LookupClients()
+    assert set(CLIENT_FIELDS) == {
+        name for name in bundle.__dataclass_fields__ if not name.startswith("_")
+    }
+    assert all(getattr(bundle, name) is None for name in CLIENT_FIELDS)
+    built: dict[str, _Closable] = {}
+    calls: dict[str, int] = dict.fromkeys(CLIENT_FIELDS, 0)
+
+    def factory_for(name: str):
+        def factory() -> _Closable:
+            calls[name] += 1
+            return built.setdefault(name, _Closable())
+        return factory
+
+    for name in CLIENT_FIELDS:
+        first = bundle.ensure(name, factory_for(name))
+        second = bundle.ensure(name, factory_for(name))
+        assert first is second is getattr(bundle, name), name
+    assert calls == dict.fromkeys(CLIENT_FIELDS, 1)
+    bundle.close()
+    assert {name: client.closed for name, client in built.items()} == dict.fromkeys(CLIENT_FIELDS, 1)
+
+
+def test_ensure_refuses_a_name_that_is_not_a_client_field() -> None:
+    """A plain dataclass accepts `setattr` on any name, so a typo would build a client per call forever."""
+    bundle = LookupClients()
+    with pytest.raises(AttributeError, match="no client field 'gnomd'"):
+        bundle.ensure("gnomd", _Closable)
+    assert not hasattr(bundle, "gnomd")
+
+
+def test_a_shared_bundle_builds_a_client_once_under_contention() -> None:
+    import threading
+
+    bundle = LookupClients()
+    built: list[_Closable] = []
+    lock = threading.Lock()
+
+    def factory() -> _Closable:
+        with lock:
+            built.append(_Closable())
+        return built[-1]
+
+    threads = [threading.Thread(target=bundle.ensure, args=("gnomad", factory)) for _ in range(32)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert len(built) == 1 and bundle.gnomad is built[0]
+
+
+def test_a_bundle_the_call_built_is_closed_by_the_call_and_an_injected_one_is_not(monkeypatch) -> None:
+    """Ownership follows construction: the legs no longer close what they build, so the call does."""
+    made: list[_Closable] = []
+    monkeypatch.setattr(lookup_module, "OntologyClient", lambda: made.append(_Closable()) or made[-1])
+    lookup_module.lookup_trait("EFO:0000001")
+    assert [client.closed for client in made] == [1], "a one-shot question closes what it opened"
+
+    bundle = LookupClients()
+    lookup_module.lookup_trait("EFO:0000001", clients=bundle)
+    assert bundle.ontology is made[-1] and made[-1].closed == 0, "an injected bundle stays open"
+    lookup_module.lookup_trait("EFO:0000002", clients=bundle)
+    assert len(made) == 2, "the second question reused the bundle's client"
+    bundle.close()
+    assert made[-1].closed == 1
+
+
+def test_a_leg_that_used_to_close_per_request_now_keeps_the_client_on_the_bundle(monkeypatch) -> None:
+    """`_check_pmid` was the per-request shape: `clients.eutils or EutilsClient()` closed in a `finally`.
+
+    A host filling seven fields and leaving `eutils` unset had unpaced egress on that leg alone, and
+    nothing at the call site said so. Now the first question fills the field and the second reuses it."""
+    made: list[_Closable] = []
+    monkeypatch.setattr(lookup_module, "EutilsClient", lambda: made.append(_Closable()) or made[-1])
+    bundle = LookupClients()
+    lookup_module.lookup_citation(pmid="12345678", clients=bundle)
+    lookup_module.lookup_citation(pmid="12345679", clients=bundle)
+    assert len(made) == 1 and bundle.eutils is made[0] and made[0].closed == 0

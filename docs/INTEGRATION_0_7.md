@@ -498,6 +498,11 @@ Both spellings of a version are accepted — a bare `0.7.0` and the stamped
   `path`, `release`, `release_unreadable` — and `cache status` renders it. `occupied` is new: the place
   the lane looks is non-empty and holds no snapshot, the target `prepare` refuses; it printed as
   `absent` before. Serve it rather than re-deriving the loop from `CACHE_LANES`.
+- **`LookupClients` has one lazy path (S92, RM206).** `bundle.ensure(name, factory)` builds a client
+  under a lock on first use and keeps it; every leg uses it, so an unfilled field is paced from the
+  first call like a filled one, and the per-request build-and-close six legs did is gone. `close()`
+  walks `CLIENT_FIELDS`. A `lookup_*` call given no bundle now closes the one it built. Nothing
+  changes for a host that fills every field; a host that fills some can stop.
 - **The hint payload names lanes, not paths (S93, RM205).** `VariantHint.checked` holds labels only
   (`ensembl`, `clinvar`, `ensembl-rest`), the unreadable-snapshot finding interpolates the label, and
   the new `VariantHint.snapshots` (label → path) is the one field carrying a filesystem path — drop it

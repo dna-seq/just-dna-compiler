@@ -26,7 +26,9 @@ Offline is a first-class answer, not a failure: a check that could not run repor
 """
 
 import logging
-from dataclasses import dataclass, field
+import threading
+from collections.abc import Callable
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
@@ -91,7 +93,23 @@ class LookupClients:
 
     Held by the caller rather than made per call, because each owns a `PacingGate` and an
     `httpx.Client`: a fresh one per question discards the rate-limit state that keeps gnomAD from
-    refusing us, and reopens a connection for a single request."""
+    refusing us, and reopens a connection for a single request.
+
+    **One lazy path, and it is the same for every field (S92).** A leg that finds its field unset
+    calls `ensure`, which builds the client under a lock, stores it on the bundle and returns it — so
+    an unfilled field is paced from the first call on, exactly as a filled one is, and the bundle
+    closes it in `close()`. Two of the eight legs used to do that and six built a per-request client
+    they closed in a `finally`, which discarded the pacing state this docstring says to keep; a host
+    filling six fields and leaving `pmc_idconv` unset had unpaced egress on one leg and nothing at
+    the call site to say which. The distinction is gone rather than documented.
+
+    **A bundle a `lookup_*` call builds for itself is that call's to close.** Hold one yourself for a
+    session; pass none for a one-shot question and the call closes what it opened.
+
+    A hosted CPIC draft is not in here on purpose: `pgx_draft.draft_gene` takes an injected
+    `client=`, so a host shares pacing by holding one `CpicClient` and passing it, and a field here
+    that nothing in this module reads would be a promise `lookup` cannot keep.
+    """
 
     gnomad: GnomadClient | None = None
     eutils: EutilsClient | None = None
@@ -101,15 +119,38 @@ class LookupClients:
     ontology: OntologyClient | None = None
     ensembl: EnsemblResolver | None = None
     grch37: Grch37Client | None = None
+    # Not part of the value, and every bundle gets its own: `ensure` mutates a caller-shared
+    # dataclass, and a server running its blocking work through a thread pool shares one bundle by
+    # following our own advice (the same reason `PacingGate` grew a lock, S15).
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+
+    def ensure[T](self, name: str, factory: Callable[[], T]) -> T:
+        """The client in field `name`, built by `factory` on first use and kept on the bundle.
+
+        `name` is checked against the dataclass's own fields before anything is set: a plain
+        dataclass accepts `setattr(self, "gnomd", …)` silently, and a typo here would build a client
+        per call forever while looking exactly like the lazy path."""
+        if name not in CLIENT_FIELDS:
+            raise AttributeError(f"LookupClients has no client field {name!r}; fields: {CLIENT_FIELDS}")
+        with self._lock:
+            client = getattr(self, name)
+            if client is None:
+                client = factory()
+                setattr(self, name, client)
+            return client
 
     def close(self) -> None:
-        for client in (
-            self.gnomad, self.eutils, self.europepmc, self.crossref, self.pmc_idconv,
-            self.ontology, self.ensembl, self.grch37,
-        ):
-            closer = getattr(client, "close", None)
+        """Close every client on the bundle — walked off the fields, never a hand-kept list."""
+        for name in CLIENT_FIELDS:
+            closer = getattr(getattr(self, name), "close", None)
             if closer is not None:
                 closer()
+
+
+#: The client fields of `LookupClients`, derived rather than listed (`@registry-completeness`).
+CLIENT_FIELDS: tuple[str, ...] = tuple(
+    f.name for f in fields(LookupClients) if not f.name.startswith("_")
+)
 
 
 @dataclass
@@ -230,39 +271,45 @@ def lookup_variant(
     `frequencies=True` is opt-in because it costs a paced gnomAD round trip (one per six seconds).
     """
     hint = VariantHint(rsid=rsid)
+    owned = clients is None
     clients = clients or LookupClients()
-
-    _lookup_from_cache(hint, rsid, chrom, start, ref, alts, ensembl_cache, clinvar_cache)
-    if not offline:
-        # The live coordinate link, in `enrich()`'s own order: caches first, live Ensembl for what
-        # they missed. Without it this surface was *silently weaker than the pass it advises on* —
-        # `hint variant --rsid rs1799945` answered "not found in Ensembl, position remains unset"
-        # for a variant live Ensembl serves at 6:26090951, because the only thing it had ever
-        # searched was a local snapshot that did not contain it. An advisory tool that answers "no"
-        # where the pass it advises on answers "6:26090951" is worse than one that answers nothing.
-        _lookup_live_loci(hint, rsid, clients)
-        _check_rsid_currency(hint, rsid, clients)
-        if frequencies:
-            _lookup_frequencies(hint, clients)
-    else:
-        hint.findings.append(
-            Finding(None, None, "info", "offline: rsID currency and frequencies were not checked")
-        )
-
-    _lookup_clin_sig(hint, clinvar_cache)
-    _lookup_pubmind(hint, pubmind_cache, (chrom, start, ref, alts))
-    if hint.ambiguous and ambiguity:
-        hint.findings.append(
-            Finding(
-                None,
-                None,
-                "warning",
-                f"ambiguous: {len(hint.loci)} locus/loci and {len(hint.rsid_candidates)} rsID "
-                f"candidate(s). Reported, never picked — a pick among equals is not a finding",
+    try:
+        _lookup_from_cache(hint, rsid, chrom, start, ref, alts, ensembl_cache, clinvar_cache)
+        if not offline:
+            # The live coordinate link, in `enrich()`'s own order: caches first, live Ensembl for what
+            # they missed. Without it this surface was *silently weaker than the pass it advises on* —
+            # `hint variant --rsid rs1799945` answered "not found in Ensembl, position remains unset"
+            # for a variant live Ensembl serves at 6:26090951, because the only thing it had ever
+            # searched was a local snapshot that did not contain it. An advisory tool that answers "no"
+            # where the pass it advises on answers "6:26090951" is worse than one that answers nothing.
+            _lookup_live_loci(hint, rsid, clients)
+            _check_rsid_currency(hint, rsid, clients)
+            if frequencies:
+                _lookup_frequencies(hint, clients)
+        else:
+            hint.findings.append(
+                Finding(None, None, "info", "offline: rsID currency and frequencies were not checked")
             )
-        )
-    _offer_coordinates(hint)
-    _state_position_outcome(hint, rsid)
+
+        _lookup_clin_sig(hint, clinvar_cache)
+        _lookup_pubmind(hint, pubmind_cache, (chrom, start, ref, alts))
+        if hint.ambiguous and ambiguity:
+            hint.findings.append(
+                Finding(
+                    None,
+                    None,
+                    "warning",
+                    f"ambiguous: {len(hint.loci)} locus/loci and {len(hint.rsid_candidates)} rsID "
+                    f"candidate(s). Reported, never picked — a pick among equals is not a finding",
+                )
+            )
+        _offer_coordinates(hint)
+        _state_position_outcome(hint, rsid)
+    finally:
+        # A bundle this call built is this call's to close (S92): the legs no longer close what
+        # they build, so the connections they opened would otherwise outlive the question.
+        if owned:
+            clients.close()
     return hint
 
 
@@ -362,9 +409,7 @@ def _lookup_live_loci(hint: VariantHint, rsid: str | None, clients: LookupClient
     """
     if not rsid or hint.loci:
         return
-    if clients.ensembl is None:
-        clients.ensembl = EnsemblResolver()
-    loci, source = clients.ensembl.resolve_rsid(rsid)
+    loci, source = clients.ensure("ensembl", EnsemblResolver).resolve_rsid(rsid)
     if loci is None:
         hint.findings.append(
             Finding(
@@ -394,7 +439,7 @@ def _check_rsid_currency(hint: VariantHint, rsid: str | None, clients: LookupCli
     """dbSNP is the oracle for merge status — Ensembl 400s on some merged ids and would misreport."""
     if not rsid:
         return
-    statuses = check_rsids([rsid], client=clients.eutils)
+    statuses = check_rsids([rsid], client=clients.ensure("eutils", EutilsClient))
     if not statuses:
         return
     hint.rsid_status = statuses[0]
@@ -424,16 +469,12 @@ def _lookup_frequencies(hint: VariantHint, clients: LookupClients) -> None:
         return
     locus = single[0]
     variant_id = f"{locus['chrom']}-{locus['start']}-{locus['ref']}-{locus['alts']}"
-    client = clients.gnomad or GnomadClient()
-    owned = clients.gnomad is None
+    client = clients.ensure("gnomad", GnomadClient)
     try:
         found = client.fetch_frequencies([variant_id])
     except Exception as exc:  # a lookup is advisory; a gnomAD outage must not raise at the author
         hint.findings.append(Finding(None, None, "info", f"frequencies unchecked: {exc}"))
         return
-    finally:
-        if owned:
-            client.close()
     record = found.get(variant_id)
     if record is None:
         hint.findings.append(
@@ -689,12 +730,14 @@ def lookup_old_assembly(
     Several candidates are **reported, never picked** — `--ref`/`--alts` narrow them, and a pick among
     equals is not a finding.
     """
+    owned = clients is None
     clients = clients or LookupClients()
-    if not offline and clients.grch37 is None:
-        clients.grch37 = Grch37Client()
-    recovery = recover_rsid(
-        chrom, start, ref=ref, alts=alts, client=clients.grch37, offline=offline
-    )
+    try:
+        client = None if offline else clients.ensure("grch37", Grch37Client)
+        recovery = recover_rsid(chrom, start, ref=ref, alts=alts, client=client, offline=offline)
+    finally:
+        if owned:
+            clients.close()
     hint = OldAssemblyHint(recovery=recovery)
     level = {
         "recovered": "info",
@@ -748,40 +791,42 @@ def lookup_citation(
             Finding(None, None, "info", "offline: citation existence was not checked")
         )
         return hint
+    owned = clients is None
     clients = clients or LookupClients()
-    resolved_pmid: str | None = None
-    if pmcid:
-        resolved_pmid = _check_pmcid(hint, hint.pmcid or pmcid, clients, authored_pmid=pmid)
-    # The resolved id is then put to PubMed, so the answer names the *paper* rather than only a
-    # number: a converter reply a curator cannot check against the article they meant is exactly the
-    # existence-is-not-identity failure (S12). The authored `pmid` still wins when there is one.
-    if pmid or resolved_pmid:
-        _check_pmid(hint, pmid or resolved_pmid or "", clients)
-    if doi:
-        # The **authored** DOI, never a derived one: a DOI the registry just handed over exists by
-        # construction, so checking it would answer a question nobody asked.
-        crossref = clients.crossref or CrossrefClient()
-        hint.doi_exists = crossref.exists(doi)
-        if hint.doi_exists is False:
-            hint.findings.append(Finding(None, "doi", "warning", f"Crossref has no record of {doi}"))
-        elif hint.doi_exists is None:
-            hint.findings.append(Finding(None, "doi", "info", "Crossref could not be asked"))
-        if clients.crossref is None:
-            crossref.close()
+    try:
+        resolved_pmid: str | None = None
+        if pmcid:
+            resolved_pmid = _check_pmcid(hint, hint.pmcid or pmcid, clients, authored_pmid=pmid)
+        # The resolved id is then put to PubMed, so the answer names the *paper* rather than only a
+        # number: a converter reply a curator cannot check against the article they meant is
+        # exactly the existence-is-not-identity failure (S12). The authored `pmid` still wins when
+        # there is one.
+        if pmid or resolved_pmid:
+            _check_pmid(hint, pmid or resolved_pmid or "", clients)
+        if doi:
+            # The **authored** DOI, never a derived one: a DOI the registry just handed over exists
+            # by construction, so checking it would answer a question nobody asked.
+            hint.doi_exists = clients.ensure("crossref", CrossrefClient).exists(doi)
+            if hint.doi_exists is False:
+                hint.findings.append(
+                    Finding(None, "doi", "warning", f"Crossref has no record of {doi}")
+                )
+            elif hint.doi_exists is None:
+                hint.findings.append(Finding(None, "doi", "info", "Crossref could not be asked"))
+    finally:
+        if owned:
+            clients.close()
     return hint
 
 
 def _check_pmid(hint: CitationHint, pmid: str, clients: LookupClients) -> None:
     """PubMed existence, plus the DOI and PMC id that arrive free in the same response."""
-    eutils = clients.eutils or EutilsClient()
+    eutils = clients.ensure("eutils", EutilsClient)
     try:
         records = eutils.esummary("pubmed", [pmid])
     except Exception as exc:
         hint.findings.append(Finding(None, "pmid", "info", f"PubMed could not be asked: {exc}"))
         return
-    finally:
-        if clients.eutils is None:
-            eutils.close()
     record = records.get(pmid)
     if record is None:
         hint.pmid_exists = None  # not asked-and-absent; simply not answered
@@ -860,7 +905,7 @@ def _check_pmcid(
     negative and is said as one. An id the request never reached leaves everything `None`, because
     "could not ask" and "PMC has no such record" are different claims.
     """
-    converter = clients.pmc_idconv or PmcIdConverterClient()
+    converter = clients.ensure("pmc_idconv", PmcIdConverterClient)
     try:
         resolved = converter.resolve([pmcid])
     except Exception as exc:
@@ -868,9 +913,6 @@ def _check_pmcid(
             Finding(None, "pmid", "info", f"the PMC id converter could not be asked: {exc}")
         )
         return None
-    finally:
-        if clients.pmc_idconv is None:
-            converter.close()
     record = resolved.get(pmcid)
     if record is None:
         hint.findings.append(
@@ -931,15 +973,12 @@ def _check_availability(hint: CitationHint, pmid: str, clients: LookupClients) -
     symmetric — an abstract miss is not a verdict, it is a shorter search. Europe PMC is **not** an
     existence oracle (unknown ids are silently absent), so a miss here leaves the tri-states `None`
     rather than `False`; existence was already settled by PubMed above."""
-    europepmc = clients.europepmc or EuropePmcClient()
+    europepmc = clients.ensure("europepmc", EuropePmcClient)
     try:
         found = europepmc.lookup([pmid])
     except Exception as exc:
         hint.findings.append(Finding(None, None, "info", f"Europe PMC could not be asked: {exc}"))
         return
-    finally:
-        if clients.europepmc is None:
-            europepmc.close()
     record = found.get(pmid)
     if record is None:
         return
@@ -959,24 +998,24 @@ def _check_availability(hint: CitationHint, pmid: str, clients: LookupClients) -
 
 def lookup_trait(curie: str, *, clients: LookupClients | None = None) -> TraitStatus:
     """Is this trait CURIE current, obsolete, or unknown? (OLS4; `unchecked` when it cannot be asked.)"""
+    owned = clients is None
     clients = clients or LookupClients()
-    client = clients.ontology or OntologyClient()
     try:
-        return client.trait(curie)
+        return clients.ensure("ontology", OntologyClient).trait(curie)
     finally:
-        if clients.ontology is None:
-            client.close()
+        if owned:
+            clients.close()
 
 
 def lookup_gene(symbol: str, *, clients: LookupClients | None = None) -> GeneStatus:
     """Is this gene symbol approved or retired? (HGNC exact endpoints, never the fuzzy search.)"""
+    owned = clients is None
     clients = clients or LookupClients()
-    client = clients.ontology or OntologyClient()
     try:
-        return client.gene(symbol)
+        return clients.ensure("ontology", OntologyClient).gene(symbol)
     finally:
-        if clients.ontology is None:
-            client.close()
+        if owned:
+            clients.close()
 
 
 def as_report_rows(hint: Any) -> list[dict[str, Any]]:

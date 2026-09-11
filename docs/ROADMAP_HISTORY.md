@@ -68,6 +68,41 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM206 — `LookupClients` had three lazy-build semantics and the call site could not tell which
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only:
+one method and one lock on `LookupClients`, `CLIENT_FIELDS` derived, nine legs rewritten onto it, five
+public calls closing the bundle they build; no schema change) · **Owner** enricher · **Motivating
+case** S92 (just-dna-registry, in CONSUMER_SUGGESTIONS_HISTORY.md), hosting the five `lookup_*`
+surfaces behind one process-wide bundle
+
+**What it reproduced.** The bundle's docstring says to hold one because a fresh client per question
+discards the pacing state — and six of the eight legs did exactly that whenever their field was
+unset: `clients.x or X()`, closed in a `finally`. Two legs (`ensembl`, `grch37`) assigned back onto
+the caller's bundle instead. The consumer filled six of eight fields and had an unpaced-egress bug on
+precisely the leg whose absence mattered, `pmc_idconv`, which read identically at the call site to
+`grch37`, whose absence did not. Their fix was to fill all eight and stop reasoning about it, which
+is the right consumer move and the wrong thing to require.
+
+**One path, and the lock that makes the assign-back a property a caller can see.** `ensure(name,
+factory)` reads the field under the bundle's own lock, builds on `None`, stores, returns. The name is
+checked against `CLIENT_FIELDS` first, because a plain dataclass accepts `setattr` on any spelling and
+a typo would build a client per call forever while looking exactly like the lazy path. `close()` walks
+the same tuple, derived from `fields()` rather than the hand-kept eight it was
+(`@registry-completeness`). The consumer's other candidate — one constructor that fills every field —
+was not taken: it makes eight connections for a one-shot `hint trait`, and the property wanted is
+*uniform*, not *eager*.
+
+**Ownership follows construction.** With the legs no longer closing what they build, a bundle a
+`lookup_*` call makes for itself (`clients=None`) would leak every connection it opened; each of the
+five now closes its own in a `finally`, and an injected bundle is never closed by a call. Pinned by a
+monkeypatched client that counts its closes across both shapes.
+
+**The CPIC half is the consumer's, and said so.** `pgx_draft.draft_gene` takes `client=`, so a host
+shares pacing by holding one `CpicClient` and passing it; a `cpic` field on a bundle nothing in
+`lookup` reads would be a promise the module cannot keep, and their snapshot-only answer is a fine
+one.
+
 ## RM205 — the lookup surface put absolute snapshot paths in its payload
 
 **Severity** low · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only: one
