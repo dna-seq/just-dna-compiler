@@ -114,6 +114,7 @@ from just_dna_enricher.locations import (
     PHARMVAR_SUBDIR,
     PUBMIND_CACHE_VAR,
     PUBMIND_SUBDIR,
+    RELEASE_FILENAME,
     STRCHIVE_CACHE_VAR,
     STRCHIVE_SUBDIR,
     default_acmg_cache_dir,
@@ -1171,6 +1172,68 @@ def rebuild_lane(lane: CacheLane, request: RebuildRequest) -> RebuildOutcome:
         )
     logger.info("Rebuilding the %s snapshot into %s ...", lane.name, request.out_dir)
     return lane.rebuild(request)
+
+
+#: The three states a lane can be in on this machine. `occupied` is the one `absent` used to hide.
+LANE_STATES: frozenset[str] = frozenset({"present", "absent", "occupied"})
+
+
+@dataclass(frozen=True)
+class LaneStatus:
+    """One lane as it stands on this machine — the projection `cache status` renders (S91, RM204).
+
+    `state` is three-valued. `present`: `resolve()` found a snapshot at `path`. `absent`: nothing at
+    the place the lane looks. `occupied`: the place the lane looks **exists and is non-empty and holds
+    no snapshot** — a build that failed after its downloads, a payload deleted beside its
+    `release.json`, a stray `.part`, a foreign parquet. It used to render as `absent`, which tells an
+    operator to run a pull that `prepare` is going to refuse: provisioning never deletes, so it stops
+    in front of a non-empty target rather than building over it. The two states want different hands
+    — `absent` wants `cache pull` or the lane's build command, `occupied` wants the directory moved
+    aside or `cache prune`.
+
+    `looked_in` is the directory the verdict is about: the lane's `env_var` if set, else its default
+    directory. `prepare`'s own refusal is about the **default** directory specifically, so an override
+    pointing at a junk directory reads `occupied` here while `prepare` would build into an empty
+    default that the override then hides — say which directory, and the operator can see it.
+
+    `release` is what the snapshot names, `None` when it does not say; `release_unreadable` is the
+    present-and-unreadable case, a `release.json` that exists and does not parse, which is a
+    provenance failure and not a data failure — the snapshot is still usable and the line says so
+    rather than hiding it. Both are `None`/`False` unless `present`.
+    """
+
+    lane: CacheLane
+    state: str
+    looked_in: Path
+    path: Path | None = None
+    release: str | None = None
+    release_unreadable: bool = False
+
+
+def lane_status(lanes: list[CacheLane] | None = None) -> list[LaneStatus]:
+    """Where every lane stands, read-only — nothing is downloaded and nothing is written.
+
+    The registry's status half, beside its provisioning half (`prepare_caches`). It existed only as
+    the loop inside `cache status` until a consumer serving the same answer over HTTP wrote the loop a
+    second time (S91), which is two projections of one registry — the shape RM176 exists to end. In
+    registry order, one entry per lane, so a renderer that iterates it renders the whole registry.
+    """
+    out: list[LaneStatus] = []
+    for lane in CACHE_LANES if lanes is None else lanes:
+        path = lane.resolve()
+        # `resolve()` has loaded `.env` by now, so the override is read the way the resolver read it.
+        override = os.getenv(lane.env_var)
+        looked_in = Path(override).expanduser() if override else lane.default_dir()
+        if path is not None:
+            release = lane.release_label(path)
+            unreadable = (
+                release is None and (path / RELEASE_FILENAME).exists() and read_release(path) is None
+            )
+            out.append(LaneStatus(lane, "present", looked_in, path, release, unreadable))
+            continue
+        occupied = looked_in.is_file() or (looked_in.is_dir() and any(looked_in.iterdir()))
+        out.append(LaneStatus(lane, "occupied" if occupied else "absent", looked_in))
+    return out
 
 
 @dataclass(frozen=True)

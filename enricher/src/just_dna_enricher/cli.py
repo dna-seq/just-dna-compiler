@@ -48,6 +48,7 @@ from just_dna_enricher.caches import (
     RebuildOutcome,
     RebuildRequest,
     lane_name,
+    lane_status,
     parents_from_rebuild_dir,
     prepare_caches,
     rebuild_lane,
@@ -1670,9 +1671,11 @@ def cache_status_() -> None:
     Reads only: nothing is downloaded, so this is safe on a machine with no network and it is the first
     thing to run when a pass reports that a source was skipped.
     """
-    for lane in CACHE_LANES:
-        path = lane.resolve()
-        if path is None:
+    # Rendered from `lane_status`, the registry's own projection, so a consumer serving the same
+    # answer over HTTP reads the same function rather than re-deriving this loop (S91, RM204).
+    for status in lane_status():
+        lane = status.lane
+        if status.state == "absent":
             # The lane's own command, taken from the registry rather than composed from its name:
             # two lanes are not `<name> build` (`clinpgx build-labels`, `gnomad constraint build`)
             # and a convention that holds for ten of twelve prints two commands nobody can run.
@@ -1682,12 +1685,20 @@ def cache_status_() -> None:
                 fg=typer.colors.YELLOW,
             )
             continue
-        label = lane.release_label(path) or ""
-        if not label and (path / RELEASE_FILENAME).exists() and read_release(path) is None:
-            # Present and unreadable is not the same as absent, and a provenance failure is not a
-            # data failure — the snapshot is still usable, so this says so instead of hiding it.
-            label = "(unreadable release.json)"
-        typer.secho(f"  {lane.name:13} present  {path}  {label}", fg=typer.colors.GREEN)
+        if status.state == "occupied":
+            # Neither present nor absent: something is at the place the lane looks and it is not a
+            # snapshot. A pull or build will be refused here (`prepare` never deletes), so the line
+            # says what to do instead of pointing at a command that will decline.
+            typer.secho(
+                f"  {lane.name:13} occupied {status.looked_in} holds no {lane.name} snapshot; "
+                f"move it aside (or `cache prune --only {lane.name}` if it is a retired file)",
+                fg=typer.colors.RED,
+            )
+            continue
+        # Present and unreadable is not the same as absent, and a provenance failure is not a data
+        # failure — the snapshot is still usable, so this says so instead of hiding it.
+        label = status.release or ("(unreadable release.json)" if status.release_unreadable else "")
+        typer.secho(f"  {lane.name:13} present  {status.path}  {label}", fg=typer.colors.GREEN)
 
 
 @cache_app.command("pull")

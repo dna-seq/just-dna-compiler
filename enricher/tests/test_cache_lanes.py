@@ -23,9 +23,11 @@ from just_dna_enricher import caches, locations, pharmvar
 from just_dna_enricher.acmg import load_acmg_snapshot
 from just_dna_enricher.caches import (
     CACHE_LANES,
+    LANE_STATES,
     LANES_BY_NAME,
     RebuildOutcome,
     RebuildRequest,
+    lane_status,
     rebuild_lane,
 )
 from just_dna_enricher.cli import app
@@ -857,3 +859,68 @@ def test_one_lane_crashing_does_not_sink_the_others_report(
     outcomes = caches.prepare_caches(lanes)
     assert [(o.lane, o.ready) for o in outcomes] == [("acmg", False), ("mane", True)]
     assert "Directory not empty" in outcomes[0].detail
+
+
+# ── S91 / RM204: the status projection, and the third state ─────────────────────────────────────
+
+
+def test_lane_status_is_the_projection_cache_status_renders(no_ambient_caches: Path) -> None:
+    """One entry per lane in registry order, and the CLI prints exactly those lines (S91).
+
+    A consumer serving the same answer over HTTP had re-written the loop inside `cache status`, which
+    is two projections of one registry — the shape RM176 exists to end. Walked, never counted."""
+    statuses = lane_status()
+    assert [status.lane for status in statuses] == CACHE_LANES
+    assert {status.state for status in statuses} == {"absent"}
+    assert {status.state for status in statuses} <= LANE_STATES
+    assert all(status.path is None and status.release is None for status in statuses)
+    result = CliRunner().invoke(app, ["cache", "status"])
+    assert result.exit_code == 0, result.output
+    printed = [ln.split()[0] for ln in result.output.splitlines() if ln.strip()]
+    assert printed == [lane.name for lane in CACHE_LANES]
+
+
+def test_an_occupied_place_is_neither_present_nor_absent(
+    tmp_path: Path, monkeypatch, no_ambient_caches: Path
+) -> None:
+    """The state `absent` used to hide: the place the lane looks is non-empty and holds no snapshot.
+
+    That is exactly the target `prepare_lane` refuses to build over, so a status line reading `absent`
+    sent an operator to run a pull that was going to decline. Asserted per lane, over the override
+    each lane reads, because the fact is about *where the lane looks* rather than one directory."""
+    for lane in CACHE_LANES:
+        junk = tmp_path / lane.name
+        junk.mkdir()
+        (junk / "leftover.part").write_bytes(b"\x00")
+        monkeypatch.setenv(lane.env_var, str(junk))
+    statuses = lane_status()
+    assert {status.state for status in statuses} == {"occupied"}
+    assert [status.looked_in for status in statuses] == [tmp_path / lane.name for lane in CACHE_LANES]
+    assert all(status.path is None for status in statuses)
+    result = CliRunner().invoke(app, ["cache", "status"])
+    assert result.exit_code == 0, result.output
+    lines = [ln for ln in result.output.splitlines() if ln.strip()]
+    assert len(lines) == len(CACHE_LANES)
+    assert all("occupied" in ln and "holds no" in ln and "absent" not in ln for ln in lines)
+
+
+def test_a_present_lane_reports_its_release_or_that_the_release_is_unreadable(
+    tmp_path: Path, monkeypatch, no_ambient_caches: Path
+) -> None:
+    """Present-and-unreadable is a provenance failure, not a data failure, and the field says which."""
+    # Two lanes that read `dataset`; ClinVar reads a different key and is pinned by its own test.
+    named, broken = [lane for lane in CACHE_LANES if lane.release_label is caches._dataset_label][:2]
+    for lane, release_text in ((named, json.dumps({"dataset": "probe_2026-09-11"})), (broken, "{not json")):
+        directory = tmp_path / lane.name
+        (directory / "data").mkdir(parents=True)
+        (directory / "data" / "probe.parquet").write_bytes(b"PAR1")
+        (directory / locations.RELEASE_FILENAME).write_text(release_text, encoding="utf-8")
+        monkeypatch.setenv(lane.env_var, str(directory))
+    by_name = {status.lane.name: status for status in lane_status()}
+    assert by_name[named.name].state == "present" and by_name[named.name].path == tmp_path / named.name
+    assert (by_name[named.name].release, by_name[named.name].release_unreadable) == ("probe_2026-09-11", False)
+    assert by_name[broken.name].state == "present"
+    assert (by_name[broken.name].release, by_name[broken.name].release_unreadable) == (None, True)
+    result = CliRunner().invoke(app, ["cache", "status"])
+    line = next(ln for ln in result.output.splitlines() if ln.strip().startswith(broken.name))
+    assert "present" in line and "(unreadable release.json)" in line

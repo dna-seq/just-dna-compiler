@@ -1010,6 +1010,16 @@ live in `locations` as `<LANE>_CACHE_VAR` beside `CACHE_BASE_VAR`, the one varia
 consumer generating a `.env.template`, clearing its test environment, or auditing which caches were
 provisioned by variable derives the whole set as `{lane.env_var for lane in CACHE_LANES} |
 {CACHE_BASE_VAR}` rather than keeping the fourteen names by hand.
+**The status half is `caches.lane_status()` (S91, RM204)**, one `LaneStatus` per lane in registry
+order, and `cache status` renders it — a consumer serving the same answer over HTTP reads the function
+rather than re-writing the loop, which is two projections of one registry. Its `state` is
+three-valued: `present`, `absent`, and **`occupied`** — the place the lane looks exists, is non-empty
+and holds no snapshot (a build that failed after its downloads, a payload deleted beside its
+`release.json`, a stray `.part`, a foreign parquet). That third state used to print as `absent`,
+which sends an operator to run a pull that `prepare` is going to refuse, since provisioning never
+deletes. `looked_in` says which directory the verdict is about (the lane's `env_var` if set, else the
+default), `release` is what the snapshot names, and `release_unreadable` is the present-and-unreadable
+`release.json` — a provenance failure, not a data failure.
 Every live source this tier reaches has (or can have) a local copy, and the whole reason is in the rate
 table above: *a shared IP shares one budget.* An author on their own machine can go live for everything;
 a **host** cannot, and for the three licence-gated sources it should not (see *On a host, or in a
@@ -1452,6 +1462,7 @@ resolver and a roster row since RM176.
 |---|---|---|
 | `Referenced column "clin_sig" not found` | a foreign parquet in `data/` (stale layout, or an old builder) | `cache status`, then move the file aside and rebuild |
 | "present but not queryable" | as above, or a truncated download | remove the file; `cache pull` refetches it |
+| `cache status` says **occupied** | the directory the lane looks in is non-empty and holds no snapshot — a failed build, a stray `.part`, a foreign file | move it aside (or `cache prune --only <lane>` for a retired file); `prepare` refuses to build over it, by design |
 | `ensure_*` appears to hang | anonymous 429 backoff | set `HF_TOKEN` |
 | a pass says a source was "skipped: --offline and no built snapshot" | exactly what it says | `cache pull`, or `<source> build` |
 | `repository not found` for cpic/clinpgx | nobody has published that snapshot yet | build it locally and point `$JUST_DNA_*_CACHE` at it |

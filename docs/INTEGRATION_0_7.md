@@ -493,6 +493,11 @@ Both spellings of a version are accepted — a bare `0.7.0` and the stamped
   loop over stored manifests survives one that stamped nothing. A present but unreadable stamp
   (`"0.7"`, `"v0.7.0"`, a trailing note) still raises `ValueError`, now quoting the whole stamp. Two
   fields widened to `str | None`: `RecompileAnswer.compiled_under` and `span[0]`.
+- **The cache status projection is a function (S91, RM204).** `caches.lane_status()` returns one
+  `LaneStatus` per lane in registry order — `state` in `present` / `absent` / `occupied`, `looked_in`,
+  `path`, `release`, `release_unreadable` — and `cache status` renders it. `occupied` is new: the place
+  the lane looks is non-empty and holds no snapshot, the target `prepare` refuses; it printed as
+  `absent` before. Serve it rather than re-deriving the loop from `CACHE_LANES`.
 - **A declaration says which modules it can reach (S90, RM201).** `DeclaredChange.requires` names the
   dotted manifest paths a module must carry for the change to apply — `("gene_metrics",)` on RM110's
   corrections, `("gene_validity",)` on RM108's — and `change.reaches(manifest)` evaluates it for you,

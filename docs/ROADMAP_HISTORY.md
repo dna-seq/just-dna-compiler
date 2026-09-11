@@ -68,6 +68,39 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM204 — `cache status` was CLI-only, so every consumer re-derived the projection it renders
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only:
+one dataclass and one function in `caches`, `cache status` rendering from it, one new rendered state;
+no schema change) · **Owner** enricher · **Motivating case** S91 (just-dna-registry, in
+CONSUMER_SUGGESTIONS_HISTORY.md), serving `GET /caches` from a box holding some of the snapshots
+
+**What it reproduced.** RM176 made the registry a walked list and left its status half as the loop
+inside `cli.cache_status_()`: `resolve()`, `release_label()`, print. A consumer serving the same answer
+over HTTP wrote the loop again, and had already been bitten at exactly this spot — their two
+projections drifted by seven lanes. Two projections of one registry is the shape RM176 exists to end,
+and this one was ours.
+
+**The third state, and why the name is `occupied` rather than the consumer's `partial`.** A directory
+that exists, is non-empty and holds no snapshot is the target `prepare_lane` refuses to build over
+(provisioning never deletes), and `cache status` rendered it as `absent` — an instruction to run a
+pull that was going to decline. The consumer renders it `partial`. Not taken, because the state is
+defined by a fact (*holds no snapshot*) and not by a cause: a build that failed after its downloads
+is partial, a foreign parquet is not, a stray `.part` beside a deleted payload is neither, and
+`prepare` refuses all three alike. `occupied` names what the operator has to do — move it aside —
+without guessing what put it there. `LANE_STATES` is a closed set of three, so a renderer can walk it.
+
+**`looked_in` is on the record because status and prepare do not read the same directory.**
+`resolve()` reads the lane's `env_var` first; `prepare`'s refusal is about `default_dir()`. An override
+pointing at a junk directory reads `occupied` here while `prepare` would build into an empty default
+that the override then hides, so the status names which directory its verdict is about rather than
+leaving the operator to guess between two.
+
+**The two rendered lines that existed are byte-identical** (`@warning-text-is-api`: `test_pubmind_cli`
+greps one of them, and an operator's script may grep either), and the present-and-unreadable
+`release.json` case moved from an inline `if` in the CLI to a field, `release_unreadable`, so a
+consumer gets it without re-deriving that check too.
+
 ## RM203 — `PacingGate` could not report what it spent
 
 **Severity** low · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only: one
