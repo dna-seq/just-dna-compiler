@@ -1451,6 +1451,34 @@ New ideas enter here as freeform suggestions, then graduate through the design c
   40% miss on a warning an author reads on every compile is how a channel stops being read, which is
   S68's problem arriving from the other direction.
 
+## Freeform suggestions — the 0.7 idea-book
+
+- **A resolver-ladder rung that consults a configured peer** (S94, just-dna-registry, 2026-09-11 —
+  *a suggestion, not a request*, in their words, and filed here rather than as an `RMn` for that
+  reason). The ladder every snapshot reads is *explicit argument → `$JUST_DNA_<LANE>_CACHE` → shared
+  base → live → `None`*; the idea is a rung between the local snapshot and the live source that asks a
+  configured registry, so a thin client with no caches has every enricher command work unchanged
+  instead of each consumer coding against an HTTP surface separately — the shape `just-dna-lite`'s
+  `Source` discovery already has for modules. The consumer has built the serving half (S91–S93 are
+  the field notes from it) and named the asymmetry rather than asking for the client half.
+
+  **The one question worth keeping, and it is the gate, not a detail.** A peer serving *answers*
+  drawn from a licence-gated snapshot is a different act from a client downloading that snapshot
+  under its own `declared_use`: `check_declared_use` gates a fetch, and a read of an operator-built
+  snapshot is not a fetch (`@acquisition-gate-is-not-a-read-gate`) — but a rung that fetches answers
+  from somebody else's snapshot is neither of those two, and the licence table has no row shape for
+  it. ClinPGx and PharmVar are CC BY-SA + no-sale with a personal key; whether an answer served over
+  HTTP is a redistribution is exactly the axis RM27 filed and never designed
+  (`@redistribution-ungated`). So the design order is: settle what a served answer is under each
+  gated source's terms, *then* the rung. Not before, because a rung that works for Ensembl and ClinVar
+  and silently also works for PharmVar is the failure mode.
+
+  Two smaller things a design would have to say: a peer's answer is a fourth provenance beside
+  `snapshot` / `ensembl-rest` / `ensembl-live` and has to be labelled as one in `checked` (S93 made
+  the labels the payload's contract); and `--offline` has to mean *no peer either*, since the
+  operator's word for "reach nothing" cannot quietly exclude the one hop that reaches something.
+  Nobody has asked for this; when somebody does, start from the licence question.
+
 ## Consumer note (just-dna-lite, 2026-08-21) — a dogfooding pass over ten modules, and the eleven findings that are yours rather than the plugin's
 
 **Nothing here is a request to change an artifact, and none of it is urgent.** We ran a

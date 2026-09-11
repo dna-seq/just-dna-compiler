@@ -8,7 +8,7 @@ which carries an index of every one and where it landed; the runbook for answeri
 **This file is the inbox, so an empty one means nothing is owed** — which is the property the split
 exists for, and the reason answered items do not stay here.
 
-## The next item is S91
+## The next item is S96
 
 **Claim ids from here, never from what this file shows.** S1–S89 are all answered and live in the
 history file, so an empty inbox says nothing about how many ids are taken — number from the corpus, or
@@ -53,3 +53,10 @@ observed rather than of what was decided.
 ---
 
 ---
+
+# Field notes from just-dna-registry
+
+*Filed 2026-09-11 against the 0.7 branch as installed from `dist/`, while building the registry's
+0.25 "caching proxy" surface — `GET /caches`, `POST .../derived`, `POST /drafts` and `/hint/*`. All
+five are things we worked around rather than things that blocked us; the first three are the ones we
+think are worth your time.*

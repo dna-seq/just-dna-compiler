@@ -114,6 +114,11 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S88** `needs_recompile` crashed on an unstamped version — accepted, RM183
 - **S89** `CacheLane` lacked its override variable — accepted, RM184
 - **S90** a declared correction could not say which modules it reaches — accepted, RM201
+- **S91** `cache status` was CLI-only; `lane_status()` + `occupied` — accepted, RM204
+- **S92** `LookupClients` had three lazy-build semantics — accepted, RM206
+- **S93** lookup payload carried absolute snapshot paths — accepted, RM205
+- **S94** a resolver rung that consults a peer — idea-book, licence question first
+- **S95** `PacingGate` could not report what it spent — accepted, RM203
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -7916,3 +7921,200 @@ recompute from stored inputs, and `gene_metrics.parquet` is a compiled parquet n
 recompute, which is the whole reason we are leaning on the record for it.
 
 — just-dna-registry, 2026-09-11
+
+# Field notes from just-dna-registry
+
+*Filed 2026-09-11 against the 0.7 branch as installed from `dist/`, while building the registry's
+0.25 "caching proxy" surface — `GET /caches`, `POST .../derived`, `POST /drafts` and `/hint/*`. All
+five are things we worked around rather than things that blocked us; the first three are the ones we
+think are worth your time.*
+
+## S91 — `cache status` is CLI-only, so every consumer re-derives the projection it renders
+
+**Status — accepted and shipped 2026-09-11 in the uncut 0.7.0 as
+[RM204](ROADMAP_HISTORY.md#rm204--cache-status-was-cli-only-so-every-consumer-re-derived-the-projection-it-renders).**
+Reproduced: the status half lived only as the loop in `cache_status_()`, and that is two projections
+of one registry — ours. `caches.lane_status(lanes=None) -> list[LaneStatus]` is the dataclass you
+sketched, one entry per lane in registry order, and `cache status` now renders it. Fields: `lane`,
+`state`, `looked_in`, `path`, `release`, `release_unreadable`. Your third state is in, and it is the
+one `absent` was hiding: the place the lane looks exists, is non-empty and holds no snapshot, which is
+exactly the target `prepare_lane` refuses. It is named **`occupied`** rather than `partial`, because the
+state is defined by the fact (*holds no snapshot*) and not by a cause — a build that died after its
+downloads is partial, a foreign parquet is not, a stray `.part` beside a deleted payload is neither,
+and `prepare` refuses all three alike; `occupied` says what the operator has to do without guessing
+what put it there. `LANE_STATES` is the closed set of three. One thing you did not ask for and will
+want: `looked_in`, because status reads the lane's override and `prepare`'s refusal reads the default
+directory, so an override pointing at junk reads `occupied` while `prepare` would build into an empty
+default the override then hides — the record names which directory the verdict is about. **What to do
+now:** serve `lane_status()` and map `occupied` to your `partial` if you keep that word; the two
+rendered lines that existed are byte-identical, and `release_unreadable` replaces the inline check the
+CLI used to do. <!-- triaged: 0.7.0 · sha 7c1917c13364 -->
+
+**What we ran.** We needed a read-only answer to *"which lanes does this box hold, which release does
+each hold, and for an absent one why"* to serve over HTTP. `caches.py` gives us the registry and the
+provisioning half — `CACHE_LANES`, `prepare_lane`, `prepare_caches`, `PrepareOutcome` — but the
+*status* half exists only as `cli.py`'s `cache_status_()`, which loops `lane.resolve()` and
+`lane.release_label(path)` and prints.
+
+So we wrote that loop again. That is now two projections of one registry, which is the shape RM176
+exists to end — and we have already been bitten by it at this exact spot: our own two projections had
+drifted by seven lanes, which is what our `6ddd430` fixed.
+
+**What we would ask for.** The dataclass `cache status` would render, and the function that builds it:
+
+```python
+    @dataclass(frozen=True)
+    class LaneStatus:
+        lane: CacheLane
+        path: Path | None
+        release: str | None
+        release_unreadable: bool
+
+    def lane_status(lanes: list[CacheLane] | None = None) -> list[LaneStatus]: ...
+```
+
+**One thing we found that you may want in it.** A lane whose directory *exists and is non-empty* while
+`resolve()` returns `None` is a real third state, and it is the one `prepare_lane` refuses to act on
+rather than overwriting — `f"{target} exists and holds no {lane.name} snapshot; prepare never
+deletes"`. `cache status` renders it as plain `absent`, which tells an operator to run a pull that is
+going to decline. We surface it as `partial`.
+
+## S92 — `LookupClients` has three different lazy-build semantics and the call site cannot tell which
+
+**Status — accepted and shipped 2026-09-11 in the uncut 0.7.0 as
+[RM206](ROADMAP_HISTORY.md#rm206--lookupclients-had-three-lazy-build-semantics-and-the-call-site-could-not-tell-which).**
+Your table reproduced, and it was worse than three semantics: six legs built a per-request client
+and closed it in a `finally`, which discards the pacing state the bundle's own docstring says to keep,
+and two assigned back with no lock. Now there is one path: `LookupClients.ensure(name, factory)`
+builds under the bundle's lock on first use, stores, returns, and every leg uses it, so an unfilled
+field is paced from the first call exactly as a filled one is. `close()` walks `CLIENT_FIELDS`, derived
+from the dataclass rather than the hand-kept eight, and `ensure` refuses a name that is not a field, so
+a typo cannot build a client per call while looking like the lazy path. The lock is the answer to your
+"not a property a caller can see": it is one now. Your other candidate — a constructor that fills every
+field — was not taken; it opens eight connections for a one-shot `hint trait`, and the property you
+wanted is uniform, not eager. Ownership follows construction: a `lookup_*` call given no bundle closes
+the one it built; an injected bundle is never closed by a call. **The CPIC half is yours, and your
+answer is fine:** `pgx_draft.draft_gene` takes `client=`, so a host shares pacing by holding one
+`CpicClient` and passing it, and a `cpic` field on a bundle nothing in `lookup` reads would be a promise
+the module cannot keep. **What to do now:** keep filling all eight if you like — nothing changes for a
+full bundle — or stop, since a half-filled one is now safe. <!-- triaged: 0.7.0 · sha f767eba22e98 -->
+
+**What we ran.** We host `lookup_variant`, `lookup_citation`, `lookup_gene`, `lookup_trait` and
+`lookup_old_assembly` behind one process-wide bundle, because the pacing lives on the client object.
+Filling six of the eight fields turned out to be an unpaced-egress bug in exactly one leg, and we
+could not have told which from reading the call sites:
+
+| field | how `lookup.py` treats an unfilled one | effect on a shared bundle |
+| --- | --- | --- |
+| `ensembl` (`_lookup_live_loci:351`) | builds and **assigns back onto the caller's bundle** | paced after the first call, filled or not |
+| `grch37` (`lookup_old_assembly:678`) | same | same |
+| `gnomad` (`_lookup_frequencies:415`) | `clients.x or X()`, **closed in a `finally`** | per-request client, per-request pacing |
+| `pmc_idconv` (`_check_pmcid:848`) | same | same |
+
+So `pmc_idconv` was the one field whose absence actually mattered, and it looked identical to
+`grch37`, whose absence does not. We now fill all eight and do not reason about it.
+
+**Two smaller things in the same place.** The assign-back mutates a caller-shared dataclass with no
+lock, which is fine today because we build the bundle under one and never mutate after, but it is not
+a property a caller can see. And `LookupClients` has no CPIC field at all, while
+`pgx_draft.draft_gene` takes a bare `client=` — so a *hosted* CPIC draft cannot share pacing with
+anything. We ship CPIC drafting snapshot-only because of that, which is a fine answer for us and may
+not be for everyone.
+
+**Candidate fix.** One constructor that fills every field, or one uniform lazy path. Either removes
+the distinction rather than asking a reader to know it.
+
+## S93 — the lookup surface puts absolute snapshot paths in its payload
+
+**Status — accepted and shipped 2026-09-11 in the uncut 0.7.0 as
+[RM205](ROADMAP_HISTORY.md#rm205--the-lookup-surface-put-absolute-snapshot-paths-in-its-payload).**
+Taken as you proposed. `checked` carries labels only — the lane's name (`ensembl`, `clinvar`) for the
+cache case, beside `ensembl-rest` / `ensembl-live` for the live one — the unreadable-snapshot finding
+reads `ensembl snapshot unreadable: …`, and the path moved to a new structured field,
+`VariantHint.snapshots: dict[str, str]`, label → path, filled for every snapshot the lookup opened or
+tried to open, the clin_sig and PubMind legs included. One field carries a path; drop it and audit
+nothing else. Two honest edges: the text after the colon in that finding is duckdb's own first line
+and may name the file — that is upstream's sentence, kept as evidence, and it is now the one
+predictable place left to look; and a reader that matched the old `str(path)` members of `checked`
+sees lane names instead, which is the value you asked for and the one `ensembl-rest` had already set
+the pattern for. **What to do now:** replace the per-field scrub with `del payload["snapshots"]`, or
+render it as lane names, since the keys already are. <!-- triaged: 0.7.0 · sha b8254bc429a3 -->
+
+**What we ran.** Exposing `lookup_variant` over HTTP, on a deployment whose filesystem layout is not
+the caller's business.
+
+```python
+    hint.checked.add(str(reference))          # lookup.py:312 — an absolute Path
+    Finding(None, None, "info",
+            f"{label} snapshot at {reference} unreadable: ...")   # :308 — the same path, in prose
+```
+
+`as_report_rows` is clean, but `checked` and that finding both carry the server's directory layout, so
+a hosted surface has to scrub them. We map every known snapshot path back to its lane name, including
+inside finding prose, which works and is an audit we have to repeat every time a field is added.
+
+**Candidate fix.** Record the *source label* beside the path rather than the path alone —
+`checked` is already a mixed set (`_lookup_live_loci` puts `ensembl-live` in it, which is exactly the
+shape we want), so a lane name for the cache case would make the payload safe by construction. The
+finding could then interpolate the label and keep the path in a structured field a host can drop.
+
+This is minor and entirely ours to work around. We are filing it because it decides whether a hosted
+hint API is a five-line scrub or a per-field audit, and the second one silently stops being complete.
+
+## S94 — a resolver-ladder rung that points at a peer (a suggestion, not a request)
+
+**Status — recorded in [ROADMAP § the 0.7 idea-book](ROADMAP.md#freeform-suggestions--the-07-idea-book),
+not filed as an `RMn`, not built.** You said it is not a request and had not designed it, and the
+house home for that is the idea-book, where an entry can be contradicted before anyone numbers it.
+What the entry keeps is the one question you named, because it is the gate rather than a detail: a
+peer serving *answers* from a licence-gated snapshot is neither a fetch (`check_declared_use` gates
+that) nor a read of an operator-built snapshot (which is not gated), and the licence table has no row
+shape for it — whether a served answer is a redistribution is the axis RM27 filed and never designed.
+So the order is: settle what a served answer is under each gated source's terms, then the rung, never
+the other way round, because a rung that works for Ensembl and ClinVar and silently also works for
+PharmVar is the failure mode. Two things a design would owe are noted there too — a peer's answer is
+a fourth provenance label in `checked`, and `--offline` has to mean no peer either. **What to do now:**
+nothing; you built the serving half and the asymmetry is on record. If a thin client with no caches
+ever asks for it, the licence question is where the design starts.
+<!-- triaged: 0.7.0 · sha 98fe0ae9c25b -->
+
+Everything above is us hosting your functions. The deeper version would be your *clients* reaching a
+host without knowing it: a rung between the local snapshot and the live source that consults a
+configured registry.
+
+```
+    explicit argument  →  $JUST_DNA_<LANE>_CACHE  →  shared base  →  [a configured peer]  →  live  →  None
+```
+
+A thin client with no caches would then have every existing enricher command work unchanged, instead
+of each consumer coding against an HTTP surface separately. It is the shape `just-dna-lite`'s `Source`
+discovery already has for modules.
+
+We are not asking for it and we have not designed it — the licensing questions alone (a peer serving
+gated snapshot *answers* is not the same act as a client downloading the snapshot) are yours rather
+than ours. Filed because we just built the consumer-side half and the asymmetry is worth naming.
+
+## S95 — `PacingGate` cannot report what it spent
+
+**Status — accepted and shipped 2026-09-11 in the uncut 0.7.0 as
+[RM203](ROADMAP_HISTORY.md#rm203--pacinggate-could-not-report-what-it-spent).** `PacingGate.spent` is a
+monotonic integer bumped under the slot lock, one per `wait()` that returned, never reset. Its unit was
+checked rather than assumed: the clients call `wait()` inside their `@retry`-decorated request bodies
+(`gnomad._post`, `eutils._request`), so one increment is one upstream **attempt** — a 429 retried
+three times counts three, and a snapshot hit that never reached the gate counts nothing. That is the
+honest number for metering, since the attempts are what the upstream saw. A seconds-slept total was
+not added: the sleep is outside the lock by design, and you did not ask. **What to do now:** read
+`client.gate.spent` (or `_gate` on the clients that keep it private — `pgs`, `litvar`, `civic_api`,
+`pharmvar`, `clingen_allele`) before and after a request and bill the difference; every egressing client
+in the package waits on one. <!-- triaged: 0.7.0 · sha bbe7b7c30364 -->
+
+**What we ran.** Metering egress per upstream, so a proxy can decay one caller's pace without
+penalising the snapshot hits that cost nothing. Nothing downstream reports actual upstream calls, so
+we charge by the *shape* of the request — an upper bound, which we label as one.
+
+`PacingGate` is the one object that knows: every egressing client waits on it. A monotonic counter on
+it (`gate.spent`) would let a host meter what it really spent rather than what it assumed, and would
+cost nothing to anyone who does not read it.
+
+Low priority, and genuinely not a blocker — we mention it because the alternative for us is guessing,
+and a guess that is always an over-estimate is a caller being charged for a call that never happened.

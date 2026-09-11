@@ -34,7 +34,41 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-11 (latest) — RM201: a declared correction now says which modules it can reach
+## 2026-09-11 (latest) — the registry's field notes: five things a caching proxy had to work around
+
+`just-dna-enricher` only, inside the uncut 0.7.0. just-dna-registry filed S91–S95 while building its
+0.25 caching-proxy surface over this package — `GET /caches`, a hosted `lookup_*`, egress metering —
+and none of the five blocked them. Four shipped the same day; the fifth is an idea, filed as one.
+
+- **RM204 — the status half of the cache registry is a function** (S91). `caches.lane_status()`
+  returns one `LaneStatus` per lane and `cache status` renders it, so a consumer serving the same
+  answer stops re-deriving the loop. A third state, **`occupied`** — the place the lane looks is
+  non-empty and holds no snapshot, the target `prepare` refuses — used to print as `absent`, which
+  sends an operator to run a pull that will decline. `looked_in` names which directory the verdict is
+  about, because status reads the override and `prepare`'s refusal reads the default.
+- **RM206 — `LookupClients` has one lazy path** (S92). `ensure(name, factory)` builds a client under
+  the bundle's lock on first use and keeps it; six legs had been building a per-request client and
+  closing it, discarding exactly the pacing state the bundle exists to keep, and two assigned back
+  without a lock. `close()` walks the derived `CLIENT_FIELDS`; a `lookup_*` call given no bundle closes
+  the one it built. The CPIC half stays consumer-side: `draft_gene(client=)` already shares pacing.
+- **RM205 — the hint payload names lanes, not paths** (S93). `VariantHint.checked` holds labels only,
+  the unreadable-snapshot finding interpolates the label, and the new `VariantHint.snapshots` (label →
+  path, every snapshot opened or tried) is the one field carrying a filesystem path — drop it and
+  audit nothing else.
+- **RM203 — `PacingGate.spent`** (S95). Admissions so far, one per `wait()` that returned, which is
+  one upstream *attempt* because the clients wait inside their retry loop. A host meters egress from it
+  instead of charging by request shape.
+- **S94, a resolver rung that consults a configured peer**, is in ROADMAP's 0.7 idea-book, not an
+  `RMn`: the consumer called it a suggestion and had not designed it, and the one thing the entry keeps
+  is the gate — a peer serving answers from a licence-gated snapshot is neither a fetch nor a read of
+  an operator-built snapshot, and the licence table has no row shape for it (RM27's undesigned axis).
+
+All four shipped items are additive on the enricher: new fields, a new function, a derived tuple,
+one new rendered line beside two byte-identical ones. One value changed on a read field — `checked`
+members that were paths are lane names now — which is what the reporter asked for and what the live
+leg's `ensembl-rest` had already set the pattern for.
+
+## 2026-09-11 — RM201: a declared correction now says which modules it can reach
 
 `just-dna-format` only, inside the uncut 0.7.0. A registry adopting `needs_recompile` for its
 re-publish sweep reported (S90) that a correction declared for `gene_metrics.parquet` re-published every
