@@ -52,6 +52,7 @@ from just_dna_format.layout import (
     SidecarCollision,
     atomic_writer,
     resolve_sidecar,
+    sidecar_key,
     sidecar_spellings,
 )
 from just_dna_format.overrides import OverrideRow
@@ -195,19 +196,17 @@ def _draft_path(spec_dir: Path, csv_name: str) -> Path:
     and behave exactly as before.
     """
     spec_dir = Path(spec_dir)
-    for canonical, spellings in SIDECAR_SPELLINGS.items():
-        if csv_name not in spellings:
-            continue
-        try:
-            existing = resolve_sidecar(spec_dir, canonical)
-        except SidecarCollision as exc:
-            # Appending to a module that already carries two copies would make a third claim about
-            # the same table. Refuse as this surface's own error, the way every reader refuses.
-            raise DraftError(str(exc)) from exc
-        if existing is not None:
-            return existing
-        break
-    return spec_dir / csv_name
+    if sidecar_key(csv_name) not in SIDECAR_SPELLINGS:
+        return spec_dir / csv_name  # one spelling, one place: created under the name asked for
+    try:
+        # `resolve_sidecar` takes either spelling since RM224, so the filename-to-key walk this
+        # loop used to do by hand is `layout`'s — one map, read in one place.
+        existing = resolve_sidecar(spec_dir, csv_name)
+    except SidecarCollision as exc:
+        # Appending to a module that already carries two copies would make a third claim about
+        # the same table. Refuse as this surface's own error, the way every reader refuses.
+        raise DraftError(str(exc)) from exc
+    return existing if existing is not None else spec_dir / csv_name
 
 
 def natural_key(row: BaseModel) -> tuple | None:

@@ -1678,8 +1678,8 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
     renames. The 0.x tail reads `licensing.csv` → `sources.parquet` → `manifest.sources`, knowingly.
     Neither the name nor the location enters any identity — measured on all eleven reference examples.
   - **Either spelling is a key (S96, RM224).** `SIDECAR_SPELLINGS` is keyed on the table key —
-    `sources.csv`, the spelling the parquet and the manifest keep — and for fifteen weeks
-    `sidecar_spellings("licensing.csv")` answered the one-tuple of a table it had never heard of, so
+    `sources.csv`, the spelling the parquet and the manifest keep — and from the alias's landing on
+    2026-08-12 until this fix `sidecar_spellings("licensing.csv")` answered the one-tuple of a table it had never heard of, so
     `sidecar_write_path(spec_dir, "licensing.csv")` on a module carrying `sources.csv` created the
     preferred copy beside the deprecated one: the collision the function's own docstring says it
     prevents, reached by a caller holding a tar member named `derived/licensing.csv`. A consumer with

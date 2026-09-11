@@ -528,6 +528,11 @@ Both spellings of a version are accepted — a bare `0.7.0` and the stamped
   the new `VariantHint.snapshots` (label → path) is the one field carrying a filesystem path — drop it
   to serve the hint from a host whose layout is not the caller's business. A reader matching the old
   `str(path)` members of `checked` sees lane names instead.
+- **Either spelling of a sidecar is a key (S96, RM224).** `layout.sidecar_spellings`, and every
+  helper over it (`resolve_sidecar`, `sidecar_write_path`, `sidecar_candidates`, `preferred_spelling`),
+  accept the table key or any of its spellings — `"licensing.csv"` now finds a module's `sources.csv`
+  instead of creating a second copy beside it. New public `layout.sidecar_key(name)` is the
+  filename → key map, derived from `SIDECAR_SPELLINGS`; a consumer that built its own can delete it.
 - **A declaration says which modules it can reach (S90, RM201).** `DeclaredChange.requires` names the
   dotted manifest paths a module must carry for the change to apply — `("gene_metrics",)` on RM110's
   corrections, `("gene_validity",)` on RM108's — and `change.reaches(manifest)` evaluates it for you,

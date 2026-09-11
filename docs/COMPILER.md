@@ -629,6 +629,10 @@ at 1.0) or `licensing.csv`. Four rules:
   compile did not have (`manifest.compilation.warnings` is published, so the two must agree).
   Reversing *over* a directory that already carries a copy overwrites that copy instead of leaving a
   second one beside it.
+- **Either spelling is a key (RM224).** `SIDECAR_SPELLINGS` is keyed on the table key — `sources.csv`,
+  the name the parquet and the manifest keep — but every `layout` helper accepts any spelling of the
+  table, so a caller holding the filename `licensing.csv` follows a module's `sources.csv` rather than
+  creating the second copy. `layout.sidecar_key` is the filename → key map, derived from the table.
 - **Two copies of one table is an error naming both paths** — never a merge, never newest-wins. These
   tables are fact-hashed *and* human-overridable, so two copies are two legitimate claims and
   preferring one silently discards a curator's override. The enricher's rule is the other half:
