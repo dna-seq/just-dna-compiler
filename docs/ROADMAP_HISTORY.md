@@ -289,6 +289,82 @@ and the lane needs a second source name, `alphagenome_atlas`, because `RNA_SEQ` 
 non-commercial Output while the AVI artifact is the Permissive candidate — one `(source, layer)` key
 cannot carry two licence classes.
 
+## RM210 — one finding, two counts, because the two sides were handed two views of the table
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-compiler` only:
+one argument changed; no schema change) · **Owner** compiler · **Motivating case** the 2026-09-11 blind
+re-derivation — `docs/audit/COMPILER_FROM_CODE.md` § 13.2
+
+`_cross_check_literature` runs on both sides of the validate/compile pair and **every message it builds
+embeds a count**. `compile_module` de-duplicates the second run on the message string, which is exactly
+as safe as the two runs seeing the same input. They did not: the pre-flight got `loaded_kinds` (the
+tables as loaded), the compile its own `kind_rows` (the tables after `_apply_symbolic_drops`).
+
+**One table is both droppable and citing, which is the whole mechanism.** `pharm_variants.csv` is in
+`_SYMBOLIC_DROPPABLE_TABLES` and in the citing kinds, so a pharm row that carries an unusable symbolic
+allele *and* cites a PMID is citing to one side and gone to the other. Reproduced on
+`reference_examples/pgx_slco1b1_simvastatin` plus two cells:
+
+```
+literature.csv describes 1 citation(s) … ['99999999']
+literature.csv describes 2 citation(s) … ['29165669', '99999999']
+warnings_summary: {'literature_row_uncited': 2}
+```
+
+Two contradictory published claims and a count of two for one finding. The existing guard asserts
+`len(warnings) == len(set(warnings))`, which two *distinct* strings pass.
+
+**The repair is to make the inputs agree, not to stop re-running.** `@no-rerun-with-counts` forbids
+re-running a check whose message embeds a count; running a check on both sides is the normal case here
+and the rule says so. The pre-flight had already computed `survivors` — the same post-drop view —
+three lines earlier for the positional fill, so this is one argument, not a new code path.
+
+**Which of the two sentences is right matters**, and it is the post-drop one: the dropped row is not in
+the artifact, so the citation it carried really is orphaned there. Publishing the pre-drop count would
+describe a module that was never compiled.
+
+**Scope stated rather than narrowed.** The same input reaches `citation_not_in_pubmed` and the
+quote-counter finding, which share the function; all three are fixed by the one argument.
+
+## RM211 — `@parity-by-check`, on the sibling RM93 left behind
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-compiler` only:
+four checks gain a pre-flight call site; no schema change, no message change) · **Owner** compiler ·
+**Motivating case** the 2026-09-11 blind re-derivation — `docs/audit/COMPILER_FROM_CODE.md` § 13.3
+
+**The compile-side per-model closures are where parity keeps failing**, and the reason is structural:
+a table is loaded in both commands, so a pass auditing table by table sees it covered and stops.
+`@parity-by-check` exists because of that. RM93 moved `_check_frequency_arithmetic` out of one such
+closure and **left its sibling behind** — `_check_gene_metrics_arithmetic` is the same
+validate-by-redundancy over a sidecar's own numbers, needs no `output_dir`, no reference and no
+resolved row, and stayed compile-only for two releases. A module whose `oe_lof` disagrees with
+`obs_lof / exp_lof` passed a green `validate` and warned at compile.
+
+Four moved, each with what makes it legal under the standing exemption — what stays compile-only is a
+check reading **resolved rows**, not the word "resolution":
+
+| check | why it is pre-flight-legal |
+| --- | --- |
+| `_check_gene_metrics_arithmetic` | reads one sidecar's own columns and nothing else |
+| `_cross_check_gene_metrics` | keyed on **gene**, which is authored and which nothing fills |
+| `_cross_check_gene_validity` | same key, one table over |
+| `_check_declared_license_agrees` | `sources.csv` against `module_spec.yaml`'s own `license:` — two authored files, no join |
+
+**And five deliberately did not move**, recorded because an exemption nobody writes down is re-derived
+as a bug next round. `_cross_check_frequencies`, `_cross_check_clinical_assertions`,
+`_cross_check_gwas_effects` and `_check_ba1_lint` are keyed on **position or `variant_key`**, and an
+rsID-only authored row has no coordinate until resolution runs — asking them early would report every
+such row as an orphan, which is a worse answer than a late one. `_source_checks` is the other kind: its
+`used_sources` is complete only once every sidecar has been read, and `sources.csv` is last in
+`_FACT_TABLES` precisely so the compile can ask it against a full set. Asking it in the loop would
+answer over a partial set and warn about orphans that are not.
+
+**No new dedup was added**, which is worth saying because the neighbouring closures carry one. The
+fact-table **extend site** already filters every check's warnings on the message
+(`@first-fact-check-on-both-sides`: dedupe where the results are collected), so the two newly-doubled
+findings are covered by the mechanism that was already there — and neither message embeds a count,
+which is what makes the two runs byte-identical.
+
 ## RM207 — the one refusal that is fatal in both modes was asked of the wrong key, on the wrong side
 
 **Severity** high · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-compiler` only: one

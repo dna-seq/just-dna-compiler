@@ -74,6 +74,23 @@ since the AVI lane stores no `PHRED`, a pulled lane held scores nobody can rank 
 refuses it. Two docstrings over that code said the registry was walked; they described the design, and
 the copy beside it was what ran.
 
+**RM210 — one finding, two counts.** `_cross_check_literature` runs on both sides and every message
+it builds embeds a count; the pre-flight was handed the tables as loaded and the compile the tables
+after the symbolic drop. `pharm_variants.csv` is both droppable and a citation site, so a row that is
+both made the two sentences differ by a number — and a dedup that compares strings kept both. One
+manifest carried "1 citation(s) … ['99999999']" beside "2 citation(s) … ['29165669', '99999999']" with
+`warnings_summary: {literature_row_uncited: 2}` for one finding. The repair is to make the inputs
+agree rather than to stop re-running: the post-drop view was already computed three lines earlier.
+
+**RM211 — `@parity-by-check`, on the sibling RM93 left behind.** `_check_gene_metrics_arithmetic` is
+the exact structural analogue of the check RM93 moved into the pre-flight, and stayed compile-only for
+two releases, so a module whose `oe_lof` disagreed with `obs_lof / exp_lof` passed a green `validate`
+and warned at compile. Four checks moved — the arithmetic one, the two **gene**-keyed orphan checks
+(`gene` is authored and nothing fills it), and the declared-licence check. **Five deliberately did
+not**, and that is recorded rather than left implicit: four are keyed on position or `variant_key`, so
+asking them before resolution would report every rsID-only row as an orphan, and `_source_checks`
+needs a set that is complete only after the last sidecar is read.
+
 **What the round says about itself.** All three are shapes this repository had already written a rule
 against — a hand-kept list beside a derivable one, a check on one side of the validate/compile pair, a
 translation on the wrong side of a retry. That is the same finding the 2026-08-18 round produced with
