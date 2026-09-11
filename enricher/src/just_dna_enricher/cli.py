@@ -42,6 +42,7 @@ from just_dna_enricher.assertions import (
     ClinicalAssertionError,
     enrich_clinical_assertions,
 )
+from just_dna_enricher.atlas_protos import client_absence
 from just_dna_enricher.caches import (
     CACHE_LANES,
     LANES_BY_NAME,
@@ -5034,10 +5035,13 @@ def _atlas_client_or_none():
     # measured its way out of. `AtlasError` comes with it for the same reason.
     try:
         from just_dna_enricher.atlas_client import AtlasError, connect
-    except ImportError as exc:
+    except ImportError:
+        # The docstring above promises three absences each naming its own remedy, and this arm used
+        # to fold two of them into one sentence telling the reader to do both — so the promise was
+        # a claim the code did not keep. `client_absence()` decides which one it is; it lives in
+        # `atlas_protos` because the module that fails to import cannot be asked why it failed.
         typer.secho(
-            f"  no Atlas client, so nothing was refined ({exc}). Install the extra with "
-            "`pip install 'just-dna-enricher[atlas]'` and run `just-dna-enricher atlas generate`.",
+            f"  no Atlas client, so nothing was refined: {client_absence()}",
             fg=typer.colors.YELLOW,
             err=True,
         )

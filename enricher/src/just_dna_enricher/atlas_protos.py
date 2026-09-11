@@ -27,6 +27,7 @@ which is the claim RM192 rests on.
 """
 
 import hashlib
+import importlib.util
 import shutil
 import subprocess
 import sys
@@ -231,3 +232,51 @@ def generate(
 
 if __name__ == "__main__":
     print(f"bindings written to {generate()}")
+
+
+#: The generated module every Atlas caller ultimately needs. Named once here so the two absences
+#: below are decided from the same fact the import itself turns on.
+_GENERATED_ENTRY: str = "atlas_service_pb2.py"
+
+
+def client_absence() -> str | None:
+    """Why `atlas_client` cannot be imported, in the words of the ONE fix that applies — or `None`.
+
+    **Two absences with two different remedies, and folding them sends half the askers to the wrong
+    one** (`@specific-rejection`: a generic rejection is a dead end where a specific one is a fix).
+    Reported by a consumer through S98's neighbourhood: a wheel user missing the `[atlas]` extra was
+    told to *also* run `just-dna-enricher atlas generate`, followed that instruction, and hit
+    "grpcio-tools is not installed" — a third error about a fourth thing, none of it their problem.
+    Their fix was one `pip install`.
+
+    * **The extra is not installed.** `grpcio`/`protobuf` are absent, so `import grpc` is what fails.
+      One `pip install` fixes it, and `atlas generate` would not — there is nothing to generate
+      *into* a runtime that cannot load the result.
+    * **The bindings have not been generated.** `grpc` imports and the generated package does not
+      exist. Only a checkout can fix this, because generating needs `grpcio-tools` (the `[dev]`
+      group) and the upstream `.proto` pins — an installed wheel carries neither and ships the
+      bindings prebuilt instead, which is RM196.
+
+    Lives here rather than in `atlas_client` for the obvious reason: `atlas_client` is the module
+    that fails to import, so it cannot be asked why. This one is stdlib-only on purpose and stays
+    importable when everything it describes is missing.
+
+    Checked with `find_spec` and a file test rather than by importing: asking the question must not
+    have the side effect of answering it differently, and importing `grpc` to discover whether
+    `grpc` is importable costs 19 MB of process to learn something a spec lookup already knows.
+    """
+    if importlib.util.find_spec("grpc") is None:
+        return (
+            "the `[atlas]` extra is not installed, so there is no Atlas client. Install it with "
+            "`pip install 'just-dna-enricher[atlas]'` — grpcio + protobuf, about 19 MB. Do NOT run "
+            "`atlas generate`; that builds bindings for a runtime that could not load them anyway."
+        )
+    if not (OUT_DIR / STAGE_PREFIX / _GENERATED_ENTRY).is_file():
+        return (
+            "the Atlas gRPC bindings have not been generated. Run `just-dna-enricher atlas generate` "
+            "from a **checkout** of just-dna-format — it needs grpcio-tools, which is in the [dev] "
+            "group. An installed wheel carries neither the .proto pins nor grpcio-tools and ships "
+            "the bindings prebuilt instead (RM196), so a wheel reporting this is a packaging bug "
+            "rather than something to generate your way out of."
+        )
+    return None

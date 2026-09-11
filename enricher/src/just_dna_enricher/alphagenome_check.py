@@ -47,6 +47,7 @@ from just_dna_enricher.alphagenome_avi_build import (
     RAW_SCORE_SCALE,
     to_long,
 )
+from just_dna_enricher.atlas_protos import client_absence
 from just_dna_enricher.licensing import ALPHAGENOME_AVI_TERMS
 from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
@@ -516,12 +517,18 @@ def check_variant_impact(
         )
 
     if client is None:
+        # **Which absence, in its own words** (`@specific-rejection`). This read
+        # "(and the [atlas] extra is not installed)" off `ATLAS_CLIENT_AVAILABLE`, which is the
+        # same two-cause fold the expression pass had: on a checkout with the extra installed and
+        # the bindings not generated, that boolean is `False` too, so the reader was told to install
+        # something they already had. `client_absence()` is the one voice for both.
+        absence = client_absence()
         note = (
             f"{len(result.straddling)} variant(s) sit inside a knot spanning PHRED {threshold} and "
             "could not be refined: no Atlas client was supplied"
-            + ("" if ATLAS_CLIENT_AVAILABLE else " (and the [atlas] extra is not installed)")
-            + ". Install the extra and pass an ALPHAGENOME_API_KEY, or accept the interval the knot "
-            "table publishes — which is the honest answer for those rows either way."
+            + (f" — {absence}" if absence else "")
+            + ". Pass an ALPHAGENOME_API_KEY, or accept the interval the knot table publishes — "
+            "which is the honest answer for those rows either way."
         )
         for label in result.straddling:
             result.unanswered.append((label, "no_client"))

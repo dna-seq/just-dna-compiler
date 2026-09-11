@@ -44,6 +44,7 @@ from just_dna_format.expression import ExpressionEffectRow
 from just_dna_format.layout import atomic_writer
 from just_dna_format.normalize import now_utc_iso
 
+from just_dna_enricher.atlas_protos import client_absence
 from just_dna_enricher.enrich import source_build_mismatch
 from just_dna_enricher.gene_spans import (
     ATTRIBUTION_HORIZON_BP,
@@ -429,10 +430,11 @@ def enrich_expression(
     result.dataset = release
 
     if client is None and not ATLAS_CLIENT_AVAILABLE:
-        raise ExpressionError(
-            "the Atlas client is unavailable: install `just-dna-enricher[atlas]` and run "
-            "`just-dna-enricher atlas generate` to build the protobuf bindings"
-        )
+        # The ONE fix that applies, never both (`@specific-rejection`). This used to name the extra
+        # and the generator in one sentence, which sent a wheel user missing `[atlas]` off to
+        # `atlas generate` and into "grpcio-tools is not installed" — a third error about a fourth
+        # thing, when their fix was one `pip install`.
+        raise ExpressionError(f"no Atlas client, so nothing was queried: {client_absence()}")
     try:
         scores = (client or _connect()).score_interval(
             interval[0], interval[1], interval[2], scorers=(SCORER,), gene_names=(gene,)
