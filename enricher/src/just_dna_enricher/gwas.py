@@ -177,28 +177,45 @@ class GwasCatalogClient:
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
         reraise=True,
     )
-    def _get(self, url: str) -> dict:
-        """One paced GET. Retries transport/timeout, translates everything else.
+    def _request(self, url: str) -> dict:
+        """The retrying half, kept separate so the translation sits **outside** the retry (RM208).
 
-        Both legs are translated (`@client-exception-contract`): a transport error that survives the
-        retries and an HTTP status error are equally the caller's problem and equally not `httpx`'s
-        vocabulary to express.
+        The docstring below used to sit on this body and claim "both legs are translated". They were
+        not: the transport leg re-raised bare so tenacity could match it, and with `reraise=True`
+        nothing caught it once the attempts ran out — so `associations_for` raised a raw
+        `httpx.ConnectError` at a caller told to expect `GwasError`. Measured, not argued: three
+        attempts against a refusing transport, then the httpx type.
+
+        Same split as `eutils._request`, `cpic._request` and `gnomad._request`. The status and body
+        legs stay **here** rather than below, because `HTTPStatusError` is not in the retry predicate
+        — translating it in this body is a first-and-final attempt by construction, which is what
+        `@client-exception-contract` means by translating each leg where it can be translated.
         """
         self.gate.wait()
         try:
             response = self._http().get(url, headers={"Accept": "application/json"})
             response.raise_for_status()
             return response.json()
-        except (httpx.TransportError, httpx.TimeoutException):
-            raise
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 raise GwasNotFound(f"GWAS Catalog has no record at {url}") from exc
             raise GwasError(f"GWAS Catalog returned {exc.response.status_code} for {url}") from exc
-        except httpx.HTTPError as exc:
-            raise GwasError(f"GWAS Catalog request failed for {url}: {exc}") from exc
         except ValueError as exc:
             raise GwasError(f"GWAS Catalog returned unparseable JSON for {url}: {exc}") from exc
+
+    def _get(self, url: str) -> dict:
+        """Every way this client can fail, spelled as `GwasError` / `GwasNotFound`.
+
+        The leg this adds is the one the retry gives back: `reraise=True` hands the last transport
+        failure to this `except` after the attempts are spent, and it becomes the tier's own type
+        here instead of escaping as `httpx`'s.
+        """
+        try:
+            return self._request(url)
+        except (httpx.TransportError, httpx.TimeoutException) as exc:
+            raise GwasError(f"GWAS Catalog request failed for {url}: {exc}") from exc
+        except httpx.HTTPError as exc:
+            raise GwasError(f"GWAS Catalog request failed for {url}: {exc}") from exc
 
     def associations_for(self, rsid: str) -> list[dict]:
         """Every association the Catalog holds for one rsID.

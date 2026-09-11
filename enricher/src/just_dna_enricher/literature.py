@@ -454,17 +454,34 @@ class CrossrefClient:
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
         reraise=True,
     )
+    def _request(self, doi: str) -> httpx.Response:
+        """The retrying half, kept separate so the translation sits **outside** the retry (RM208).
+
+        Same split as `eutils._request`, `cpic._request` and `gnomad._request`, and it was the one
+        client in this package that never got it. The decorator asked for three attempts and got
+        **one**: the body caught `httpx.HTTPError`, which is the *superclass* of both retried types,
+        so a `ConnectError` was turned into `None` before tenacity could see it and
+        `attempt_floor(3)` — the knob a deployment is meant to raise — did nothing at all. Measured,
+        not argued: one upstream request against a transport that raises every time.
+
+        The gate is waited **inside** here, so each attempt is paced and `PacingGate.spent` counts
+        one per upstream attempt, which is the definition RM203 published.
+        """
+        assert self.gate is not None
+        self.gate.wait()
+        return self._http().get(f"{self.base_url.rstrip('/')}/works/{doi}")
+
     def exists(self, doi: str) -> bool | None:
         """`True`/`False`, or `None` when Crossref could not be asked.
 
         `None` rather than `False` on a transport failure or an unexpected status: "we could not
         check" and "this DOI does not exist" are different claims, and only the second is a finding
-        against the module.
+        against the module. The translation stays here and the retrying stays in `_request` above —
+        `reraise=True` means the last failure arrives back at this `except` after the attempts are
+        spent, so the three-valued contract is unchanged and only the number of tries moved.
         """
-        assert self.gate is not None
-        self.gate.wait()
         try:
-            response = self._http().get(f"{self.base_url.rstrip('/')}/works/{doi}")
+            response = self._request(doi)
         except httpx.HTTPError as exc:
             logger.warning("Crossref lookup failed for %s (%s); not checked", doi, exc)
             return None

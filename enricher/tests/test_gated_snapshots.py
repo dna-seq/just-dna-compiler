@@ -528,7 +528,9 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
         "eutils.EutilsClient._request",
         "gnomad.GnomadClient._request",
         "grch37.Grch37Client._get",
-        "gwas.GwasCatalogClient._get",
+        # `_request`, not `_get`, since RM208 — the last client whose transport leg had no
+        # translation outside the retry, so `reraise=True` handed a caller raw `httpx`.
+        "gwas.GwasCatalogClient._request",
         # RM167. Same split as the registry leg above: the retried inner fetches, the outer
         # separates LitVar's answered absence (a 400 whose body opens `Variant not found`) from
         # every failure, which it translates.
@@ -536,7 +538,11 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
         # `_request`, not `_get`, since RM101: the retried inner and the translating outer are
         # now split here the way `cpic`, `eutils` and `gnomad` already split them.
         "identifiers.OntologyClient._request",
-        "literature.CrossrefClient.exists",
+        # `_request`, not `exists`, since RM208. It was the one entry in this roster with no
+        # split and no comment saying why — the decorator sat on the public method whose own
+        # body caught `httpx.HTTPError`, an ancestor of both retried types, so the retry was
+        # unreachable and this roster recorded a budget nothing spent.
+        "literature.CrossrefClient._request",
         "literature.EuropePmcClient._get",
         "literature.PmcIdConverterClient._get",
         # RM163's fourth registry. Same split as `identifiers.OntologyClient` above — the

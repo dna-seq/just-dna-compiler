@@ -34,6 +34,7 @@ from just_dna_enricher.ensembl import EnsemblResolver, EnsemblSettings
 from just_dna_enricher.eutils import EutilsClient, EutilsError, EutilsSettings
 from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadSettings
 from just_dna_enricher.grch37 import Grch37Client
+from just_dna_enricher.gwas import GwasCatalogClient, GwasError
 from just_dna_enricher.identifiers import IdentifierUnavailable, OntologyClient
 from just_dna_enricher.litvar import LitvarClient, LitvarUnavailable
 from just_dna_enricher.net import PacingGate
@@ -156,6 +157,22 @@ def _pharmvar(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[]
     return lambda: client._get("alleles", {"geneSymbol": "CYP2C9"})
 
 
+def _gwas(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    """The GWAS Catalog, joined to the roster by RM208 rather than exempted from it.
+
+    It was exempt on the reasoning that `GwasError` is both the client's type and the pass's, so no
+    caller could fall through a cross-module mismatch. True, and it answered the wrong question: the
+    exhausted **transport** leg raised no `GwasError` at all. `_get` re-raised bare so tenacity could
+    match the type and `reraise=True` then handed the raw `httpx.ConnectError` to a caller told to
+    expect the tier's own — measured at three attempts, with the body's own docstring claiming "both
+    legs are translated". An exemption argued from the type that *is* raised cannot see a leg that
+    raises another one, which is why this row exists instead.
+    """
+    client = GwasCatalogClient(gate=_instant_gate())
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    return lambda: client.associations_for("rs1801133")
+
+
 #: `(label, builder, the error type this client's callers are told to catch)`.
 CLIENTS = [
     ("gnomad", _gnomad, GnomadError),
@@ -187,6 +204,10 @@ CLIENTS = [
     # does. Keeping them apart is the point: the service refusing a query and the service being
     # unreachable are cleared by different things.
     ("civic_api", _civic_api, CivicApiUnavailable),
+    # `GwasError` is the whole vocabulary here — this client has no `*Unavailable` subclass, so the
+    # parent is the exact assertion rather than a weakened one. `GwasNotFound` is the 404 arm and is
+    # an *answer*, not a failure, so it is deliberately not what these cases drive.
+    ("gwas", _gwas, GwasError),
 ]
 
 
@@ -237,9 +258,6 @@ def test_every_network_client_in_the_tier_is_covered() -> None:
         "literature.CrossrefClient",
         "literature.EuropePmcClient",
         "literature.PmcIdConverterClient",
-        # Same reason, plus: `GwasError` is both the client's and the pass's type, so there is no
-        # cross-module mismatch here for a caller to fall through.
-        "gwas.GwasCatalogClient",
         # Raises nothing at all: every httpx path returns `None` or `[]`, which is the withhold. A
         # contract test asserting an error type would be asserting the wrong contract — the one in
         # `WITHHOLDING_CLIENTS` below asserts the right one.
@@ -291,7 +309,12 @@ def test_an_exhausted_transport_failure_surfaces_as_the_tiers_own_error(label, b
 #: the collapse this tier refuses everywhere else. Keeping the case in the table rather than dropping
 #: the client from it means the *semantics* are asserted either way, and a client that silently
 #: changed its mind about 404 fails one of these two tests.
-FOUR_OH_FOUR_IS_AN_ANSWER = {"identifiers"}
+#: `gwas` joins it for a different reason worth stating, since the two are not the same fact: OLS4
+#: answers 404 for a term it does not define, while the GWAS Catalog holds only variants carrying a
+#: published association, so it 404s on a rare clinical variant that simply has none. Both are the
+#: source saying *absent*, and `associations_for` turns it into the empty ANSWER `[]` — which is the
+#: third outcome that must stay distinct from `GwasError`'s could-not-ask.
+FOUR_OH_FOUR_IS_AN_ANSWER = {"identifiers", "gwas"}
 
 
 @pytest.mark.parametrize("label,builder,error", CLIENTS, ids=[c[0] for c in CLIENTS])
