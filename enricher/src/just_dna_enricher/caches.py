@@ -1039,8 +1039,9 @@ CACHE_LANES: list[CacheLane] = [
         # *sharing*: prohibition 1 bars passing Output to a commercial organization "aside from
         # indirectly via a scientific publication, open source release or to support journalism",
         # and whether an HF-published snapshot is an "open source release" is a reading of Google's
-        # terms rather than an engineering question. `redistribution` is `None` for exactly that,
-        # and a lane may not publish under a permission nobody has established.
+        # terms rather than an engineering question. The maintainer took that reading on 2026-09-10,
+        # so `redistribution` is `True` and this lane publishes — with the reading recorded as a
+        # reading in RM195's history entry, because `sources.csv` shows only a boolean.
     ),
 ]
 

@@ -202,9 +202,10 @@ def test_the_licence_gated_lanes_are_the_ones_carrying_terms() -> None:
     counting the lanes.
 
     `alphagenome_avi` joined on 2026-09-10 and is the first entry here whose `commercial_use` is
-    **`None` rather than `False`** (RM195): the other four carry terms this workspace has read as
-    forbidding sale, while AlphaGenome's terms define a Permissive class and then delegate
-    membership to a page nothing in `docs/vendor/` pins. Carrying terms and being *refused* are
+    **`True`** (RM195): the other four carry terms this workspace has read as forbidding sale, while
+    AlphaGenome's classify AVI as Permissive Use — commercial and non-commercial — on a page now
+    pinned in `docs/vendor/`. It shipped as `None` for a day, which is the state this docstring used
+    to describe. Carrying terms and being *refused* are
     different things, and `_gate` already keeps them apart — a refusal is a `False` outcome, an
     unestablished permission is a `None` one.
     """

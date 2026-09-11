@@ -25,9 +25,12 @@ Three house rules shape the code rather than the wire format:
   (`@answered-is-not-absent`), which is why every refusal carries the server's own words.
 
 What a first cut does not carry, filed rather than improvised: no `tenacity` layer over the vendored
-`grpc_service_config.json` (`@retry-attempt-floor`), no shared pacing gate
-(`@shared-pacing-gate`), and no interval RPC — `ListDenseVariantScores` needs an
-`x-goog-fieldmask` header and 32 bp chunking, which RM194 owes and RM192 does not.
+`grpc_service_config.json` (`@retry-attempt-floor`) and no shared pacing gate
+(`@shared-pacing-gate`).
+
+`ListDenseVariantScores` **is** here — `score_interval` — and the reason it took a second attempt is
+recorded in `_interval`: the blocker was `Interval.strand` having no zero member, not the
+`x-goog-fieldmask` header or 32 bp chunking that this docstring blamed for a day.
 """
 
 import math

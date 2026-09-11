@@ -276,8 +276,9 @@ def test_every_pass_taking_an_injected_client_is_covered() -> None:
         # nothing about the caller's data. So a run with the Atlas down still returns a complete
         # report naming exactly which variants were never asked about, which is the withhold rather
         # than a leak. It declares no `*Unavailable` type for the same reason: nothing would raise
-        # it. `AtlasClient` is covered in `test_client_exception_contract.py`, where the translation
-        # really does happen.
+        # it. `AtlasClient`'s own translation is covered in `test_atlas_client.py`, which walks every
+        # status code — *not* in `test_client_exception_contract.py`, which this comment named for a
+        # day and which has never held an Atlas case: that file walks the httpx clients.
         "alphagenome_check.check_variant_impact",
     }
     uncovered = discovered - covered

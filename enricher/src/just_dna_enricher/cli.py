@@ -4427,11 +4427,11 @@ def alphagenome_avi_build_(
             "that date is worth recovering before the snapshot is relied on.",
             fg=typer.colors.YELLOW, err=True,
         )
-    typer.secho(
-        "  commercial_use is recorded as UNKNOWN, not permitted (RM195): the Additional Terms "
-        "define a Permissive Use class and delegate membership to a web page nothing in "
-        "docs/vendor pins.",
-        fg=typer.colors.YELLOW, err=True,
+    typer.echo(
+        "  AVI is Permissive Use — commercial and non-commercial (RM195, and the download page that "
+        "says so is pinned in docs/vendor/). Sharing is the narrower question: redistribution rests "
+        "on reading an open publication as prohibition 1's 'open source release', which is recorded "
+        "as a reading rather than quoted from a clause."
     )
 
 

@@ -767,8 +767,8 @@ MITOMAP_TERMS = SourceTerms(
 # classification above is about USE. Prohibition 1 separately bars sharing with a commercial
 # organization "aside from indirectly via a scientific publication, open source release or to support
 # journalism", and whether a HuggingFace-published snapshot is an "open source release" is a reading
-# of Google's terms that nothing in `docs/vendor/` settles. The lane is `publish_repo=None` for that
-# reason and not for this one.
+# of Google's terms that nothing in `docs/vendor/` settles — so the `True` below is a **reading**,
+# taken by the maintainer on 2026-09-10, and the only value on this row that is not documented.
 #
 # The source name is `alphagenome_avi`, not `alphagenome`. `@write-the-sourcerow` keys a row on
 # `(source, layer)` and **one name cannot carry two licence classes**: the page above is the proof
