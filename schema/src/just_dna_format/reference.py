@@ -26,6 +26,7 @@ from just_dna_format.binning import (
     RepeatAlleleRow,
 )
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
+from just_dna_format.expression import ExpressionEffectRow
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
@@ -149,6 +150,13 @@ _FACT_MODELS: dict[str, type[BaseModel]] = {
     # that discovers an undeclared one walks this registry.
     "ClinSigConcordanceRow": ClinSigConcordanceRow,
     "ClinSigAuthorityCallRow": ClinSigAuthorityCallRow,
+    # The expression-effect row (0.7, RM194/RM200). Here on the `GwasEffectRow` argument: nobody
+    # hand-writes one, but it binds two vocabularies a consumer reads as machine keys
+    # (`effect_direction`, shared with `GwasEffectRow`, and `resolution_status`), and this registry is
+    # what the undeclared-vocabulary guard walks. It introduces no *new* vocabulary, which is the
+    # point worth recording — sharing `VALID_EFFECT_DIRECTIONS` rather than minting a parallel
+    # increase/decrease set is what keeps the two tables' signs comparable.
+    "ExpressionEffectRow": ExpressionEffectRow,
     "VerificationRecord": VerificationRecord,
 }
 

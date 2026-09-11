@@ -20,6 +20,7 @@ import pytest
 from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import field_vocabularies
 from just_dna_format.concordance import ClinSigAuthorityCallRow, ClinSigConcordanceRow
+from just_dna_format.expression import ExpressionEffectRow
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
 from just_dna_format.gene_validity import GeneValidityRow
@@ -52,6 +53,11 @@ _MINIMAL: dict[type, dict] = {
         "genotype": "A/G",
         "authority": "clinvar",
         "status": "no_record",
+    },
+    ExpressionEffectRow: {
+        "variant_key": "rs1800562",
+        "gene": "HFE",
+        "dataset": "alphagenome_atlas_2026-09-11",
     },
 }
 

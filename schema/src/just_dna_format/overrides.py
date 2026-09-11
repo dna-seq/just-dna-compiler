@@ -55,6 +55,7 @@ from pydantic import BaseModel, Field, ValidationError, ValidationInfo, field_va
 from just_dna_format.assertions import ClinicalAssertionRow
 from just_dna_format.base import OUTSIDE_CONTENT_IDENTITY, AuthoredModel, since, vocabulary
 from just_dna_format.concordance import ClinSigConcordanceRow
+from just_dna_format.expression import ExpressionEffectRow
 from just_dna_format.findings import CodedWarning
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
@@ -83,7 +84,7 @@ class OverlayTarget:
 
 #: The derived tables an overlay may correct, and how each one is keyed.
 #:
-#: **Eight, and the number is a decision rather than a count** — the seven merge-not-clobber derived
+#: **Nine, and the number is a decision rather than a count** — the seven merge-not-clobber derived
 #: sidecars settled on 2026-08-28, plus the concordance record RM130 added the same day. The proposal
 #: that carries RM124 says "the six covered derived tables" and never enumerates them; the roadmap
 #: entry it inherits the number from does not either. That miscount is pinned here rather than left to
@@ -120,11 +121,22 @@ class OverlayTarget:
 #: * `clin_sig_concordance.csv` — `genotype`. The record is per `(variant_key, genotype)` because the
 #:   comparison is of an authored call for a genotype, so one variant carries a row per genotype the
 #:   module annotates and the subject alone does not reach one of them.
+#: * `expression_effects.csv` — `gene`. The record is per `(variant_key, gene)` because one variant is
+#:   attributed to every gene within the model's window and genuinely moves them in different
+#:   directions, so the subject alone reaches a group rather than a row. The ninth, and the one that
+#:   reaches rows naming variants the module does not author — an overlay here corrects a claim about
+#:   a locus, not about an annotation.
 #:
 #: **`clin_sig_authority_calls.csv` is deliberately outside, and it is the pair's second decision.**
 #: The author answers the question; they do not get to rewrite what an archive published. An overlay
 #: over the detail table would let a module ship ClinVar's name above a classification ClinVar never
 #: made, and the parent's overlay records the disagreement without needing that.
+#: Both field descriptions below enumerate which column an overlay's `subject` and `member` land in,
+#: and both are **derived from the registry rather than restated beside it** (`@registry-completeness`,
+#: and the same rule `SOURCES_FIELDNAMES` follows one package over). They were hand-written prose and
+#: had already lost `clin_sig_concordance.csv` — added to the registry in the same release that wrote
+#: the sentence — which is the failure mode exactly: a description is a claim, it is not walked by any
+#: test, and nothing tells a reader it is a table short.
 OVERRIDABLE_TABLES: dict[str, OverlayTarget] = {
     "resolution.csv": OverlayTarget(ResolutionRow, "variant_key", "locus_index"),
     "frequencies.csv": OverlayTarget(FrequencyRow, "variant_key", "population"),
@@ -134,7 +146,18 @@ OVERRIDABLE_TABLES: dict[str, OverlayTarget] = {
     "literature.csv": OverlayTarget(LiteratureRow, "pmid", None),
     "gwas_effects.csv": OverlayTarget(GwasEffectRow, "association_id", None),
     "clin_sig_concordance.csv": OverlayTarget(ClinSigConcordanceRow, "variant_key", "genotype"),
+    "expression_effects.csv": OverlayTarget(ExpressionEffectRow, "variant_key", "gene"),
 }
+
+def _by_column(field: str) -> str:
+    """`\u0060col\u0060 for a/b/c, \u0060col\u0060 for d` — the registry's own grouping, spelled for a field description."""
+    groups: dict[str, list[str]] = {}
+    for csv_name, target in OVERRIDABLE_TABLES.items():
+        column = getattr(target, field)
+        if column is not None:
+            groups.setdefault(column, []).append(csv_name.removesuffix(".csv"))
+    return ", ".join(f"`{column}` for {'/'.join(tables)}" for column, tables in groups.items())
+
 
 #: The tables an overlay may name — a closed vocabulary (Principle 6), read off the registry so the
 #: two cannot disagree.
@@ -212,17 +235,15 @@ class OverrideRow(AuthoredModel):
     subject: str = Field(json_schema_extra=since("0.7.0"), 
         description=(
             "The value identifying the group of derived rows this corrects, in the named table's own "
-            "subject column: `variant_key` for resolution/frequencies/clinical_assertions, `gene` for "
-            "gene_metrics/gene_validity, `pmid` for literature, `association_id` for gwas_effects."
+            f"subject column: {_by_column('subject_field')}."
         )
     )
     member: str | None = Field(json_schema_extra=since("0.7.0"), 
         default=None,
         description=(
-            "The within-group discriminator, in the named table's own member column — `locus_index`, "
-            "`population`, `dataset`, `assertion_id` or `variation_id`. Empty for a table whose "
-            "subject already identifies one row, and empty on a grouped table means group-scoped, "
-            "which only `update` accepts."
+            "The within-group discriminator, in the named table's own member column — "
+            f"{_by_column('member_field')}. Empty for a table whose subject already identifies one "
+            "row, and empty on a grouped table means group-scoped, which only `update` accepts."
         ),
     )
     field: str | None = Field(json_schema_extra=since("0.7.0"), 

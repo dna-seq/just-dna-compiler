@@ -25,10 +25,10 @@ from just_dna_format.concordance import (
     CLIN_SIG_AUTHORITY_CALL_FACT_FIELDS,
     CLIN_SIG_CONCORDANCE_FACT_FIELDS,
 )
+from just_dna_format.expression import EXPRESSION_FACT_FIELDS
 from just_dna_format.frequency import FREQUENCY_FACT_FIELDS
 from just_dna_format.gene_metrics import GENE_METRICS_FACT_FIELDS
 from just_dna_format.gene_validity import GENE_VALIDITY_FACT_FIELDS
-from just_dna_format.expression import EXPRESSION_FACT_FIELDS
 from just_dna_format.gwas import GWAS_FACT_FIELDS
 from just_dna_format.literature import LITERATURE_FACT_FIELDS
 from just_dna_format.manifest import (

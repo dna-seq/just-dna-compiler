@@ -627,6 +627,90 @@ class ClinicalAssertions(BaseModel):
     )
 
 
+class ExpressionEffects(BaseModel):
+    """Summary of a module's injected expression-effect sidecar (0.7, RM194/RM200).
+
+    The facets answer one question without reading the parquet: **can these effects be thresholded
+    at all?** For this table that is a real question with a frequently unwelcome answer, the same
+    way `GwasEffects.units` is.
+
+    `without_distance` is the one that matters most. AlphaGenome attributes a variant to genes across
+    a 1 Mb window, and scores at the far edge run about an order of magnitude lower than scores at
+    the gene — so a consumer filtering on magnitude alone keeps only the proximal rows and believes
+    it has filtered on effect. `distance_to_gene` is what makes a distance-aware threshold possible,
+    it is filled from the MANE lane, and a deployment without that lane provisioned produces a table
+    where it is null throughout. Published as a count so that case is visible here rather than
+    discovered after a join.
+
+    `without_direction` is the other. A row whose tracks split evenly carries a magnitude and no
+    direction, which is real evidence about a locus and **cannot be used as a directional claim**.
+    Counted beside its complement rather than filtered out, because a consumer that silently dropped
+    those rows and one that silently kept them would both be wrong in ways nothing could see.
+
+    `genes` is published in full rather than as a count. The rows are locus-wide by design — most
+    name variants the module does not author — so the gene list is what says *what this table is
+    about*, and it is bounded by what was queried rather than by what was scored.
+    """
+
+    signature: str | None = Field(
+        default=None,
+        description=(
+            "Fact-hash of expression_effects.csv (integrity.expression_effect_signature); out of "
+            "artifact.digest"
+        ),
+    )
+    sources: list[str] = Field(
+        default_factory=list, description="Sorted union of ExpressionEffectRow.source values"
+    )
+    datasets: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of the queries these rows are from, e.g. ['alphagenome_atlas_2026-09-11']",
+    )
+    row_count: int = Field(default=0, description="Number of (variant, gene) pairs recorded")
+    variant_count: int = Field(
+        default=0,
+        description=(
+            "Distinct variants covered. Lower than `row_count` wherever a variant is attributed to "
+            "more than one gene, which is the case this table exists to keep."
+        ),
+    )
+    genes: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of the genes these effects are attributed to, as the source named them",
+    )
+    measures: list[str] = Field(
+        default_factory=list,
+        description="Sorted union of `effect_measure` values present — which scorers produced these rows",
+    )
+    with_direction: int = Field(
+        default=0, description="Pairs whose tracks agreed enough to name an increase or a decrease"
+    )
+    without_direction: int = Field(
+        default=0,
+        description=(
+            "Pairs carrying a magnitude and no direction. Real evidence, unusable as a directional "
+            "claim; counted rather than dropped so neither reading of the silence can be made by "
+            "accident."
+        ),
+    )
+    without_distance: int = Field(
+        default=0,
+        description=(
+            "Pairs with no `distance_to_gene`. Equal to `row_count` means no gene span was available "
+            "at all, so no distance-aware threshold is possible over this table — the failure RM194 "
+            "exists to prevent, made visible before a consumer trips on it."
+        ),
+    )
+    max_distance_to_gene: int | None = Field(
+        default=None,
+        description=(
+            "The farthest recorded variant, in base pairs. Bounded by the model's half-window at "
+            "512,000; a value near it means this table reaches genuinely distal regulatory sequence "
+            "rather than just the gene body."
+        ),
+    )
+
+
 class GwasEffects(BaseModel):
     """Summary of a module's injected GWAS-effect sidecar (0.6, RM90).
 
@@ -1611,6 +1695,15 @@ class ModuleManifest(BaseModel):
             "the set of `effect_unit` values and the count of associations naming no effect allele, "
             "because both decide whether these effects can be used at all — and neither is visible "
             "from a row count."
+        ),
+    )
+    expression_effects: ExpressionEffects | None = Field(
+        default=None,
+        description=(
+            "Summary of the injected expression-effect sidecar (0.7), when the module carries one. "
+            "Publishes the count of pairs with no `distance_to_gene` and the count naming no "
+            "direction, because both decide whether these effects can be thresholded at all — and "
+            "neither is visible from a row count."
         ),
     )
     literature: Literature | None = Field(
