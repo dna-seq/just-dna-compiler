@@ -3753,7 +3753,7 @@ def clinvar_citations_(
     download: bool = typer.Option(False, "--download", help="Fetch var_citations.txt first."),
     url: str = typer.Option(DEFAULT_CITATIONS_URL, "--url", help="Source for --download."),
 ) -> None:
-    """Add ClinVar's literature links to a snapshot: `data/citations.parquet` ([dev], needs polars).
+    """Add ClinVar's literature links to a snapshot: `data/citations.parquet` (\\[dev], needs polars).
 
     Separate from `clinvar build` because ClinVar publishes citations separately from the VCF — which
     is precisely why a drafted gene panel could not compile without this: `studies.csv` is mandatory
@@ -4774,8 +4774,12 @@ def clinpgx_publish_labels_(
 atlas_app = typer.Typer(
     add_completion=False,
     help=(
-        "The AlphaGenome Atlas — precomputed variant scores over gRPC. Needs the [atlas] extra "
-        "(grpcio + protobuf, 22 MB); the bindings are generated from the vendored Apache-2.0 "
+        "The AlphaGenome Atlas — precomputed variant scores over gRPC. Needs the \\[atlas] extra "
+        # `\[atlas]` escaped for Rich, which reads a bare `[word]` as a style tag and renders it as
+        # nothing — this line printed "Needs the  extra" (RM221). "Vendored" was pre-RM196 text the
+        # change did not sweep: the repository carries a pin, not the sources. 19 MB is the measured
+        # figure in `pyproject.toml`; 22 MB was the grpcio release current at the design round.
+        "(grpcio + protobuf, 19 MB); the bindings are generated from pinned Apache-2.0 "
         ".proto sources rather than committed, so `atlas generate` runs once per checkout."
     ),
     no_args_is_help=True,
@@ -4795,7 +4799,7 @@ def atlas_generate_(
 
     The sources are not vendored: the repository carries a commit id and a sha256 per file, and a
     file that does not match its pin is refused rather than used (RM196). Needs `grpcio-tools`,
-    which is in `[dev]` and deliberately not in `[atlas]` — the runtime imports the bindings without
+    which is in `\\[dev]` and deliberately not in `\\[atlas]` — the runtime imports the bindings without
     it. A released wheel carries both the sources and the bindings already, so this is a checkout
     command.
     """

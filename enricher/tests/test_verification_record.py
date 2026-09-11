@@ -12,6 +12,9 @@ put to two commands that exist, which is the only version of it that can catch a
 wrong place or clobbering the other's block.
 """
 
+import ast
+import inspect
+import re
 import shutil
 from pathlib import Path
 
@@ -28,6 +31,7 @@ from just_dna_enricher.net import PacingGate
 from just_dna_enricher.resolver import PairCheck
 from just_dna_enricher.verification import producer_label, ran, record_verification, skipped
 from just_dna_format import verification as verification_module
+from just_dna_format import vocab
 from just_dna_format.layout import DERIVED_SUBDIR, VERIFICATION_JSON
 from just_dna_format.verification import (
     attestation_failure,
@@ -925,3 +929,43 @@ def test_every_check_member_has_an_emitter_or_says_it_is_reserved() -> None:
     assert emitted == VALID_VERIFICATION_CHECKS - reserved, sorted(
         emitted.symmetric_difference(VALID_VERIFICATION_CHECKS - reserved)
     )
+
+
+def test_the_wired_block_in_vocab_names_exactly_what_enrich_writes() -> None:
+    """`VALID_VERIFICATION_CHECKS`' first block claims to be `enrich`'s set. Make it true (RM221).
+
+    Its heading read *"`enrich` writes these six"* while `enrich` wrote **eight**: the block was
+    arithmetically true of itself and false about `enrich`, because `published_refutation` and
+    `evidence_status_currency` sit under the heading below with `— enrich` beside them. Membership
+    was right and the sentence had drifted — the failure `verification.py`'s own docstring records
+    correcting three times, one file away from where that lesson is written down.
+
+    The existing guards assert membership of the *whole* vocabulary, which is why this stayed
+    invisible: no test read a block. This one walks both sides — the names `enrich._verification_records`
+    actually passes to `ran`/`skipped`, and the names commented `— \\`enrich\\`` in `vocab.py` — and
+    asserts they are the same set. A number is not re-counted anywhere (`@registry-completeness`).
+    """
+    enrich_source = Path(inspect.getfile(enrich)).read_text(encoding="utf-8")
+    written: set[str] = set()
+    for node in ast.walk(ast.parse(enrich_source)):
+        if isinstance(node, ast.FunctionDef) and node.name == "_verification_records":
+            for call in ast.walk(node):
+                if (
+                    isinstance(call, ast.Call)
+                    and getattr(call.func, "id", None) in {"ran", "skipped"}
+                    and call.args
+                    and isinstance(call.args[0], ast.Constant)
+                ):
+                    written.add(call.args[0].value)
+    assert written, "the walk found no check names; `_verification_records` moved"
+
+    vocab_source = Path(inspect.getfile(vocab)).read_text(encoding="utf-8")
+    block = vocab_source.split("VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(")[1]
+    block = block.split("\n)")[0]
+    attributed = {
+        name
+        for name, trailing in re.findall(r'"(\w+)",\s+#([^\n]*(?:\n\s+#[^\n]*)*)', block)
+        if "`enrich`" in trailing
+    }
+
+    assert attributed == written, f"the wired block and `enrich` disagree: {sorted(attributed ^ written)}"

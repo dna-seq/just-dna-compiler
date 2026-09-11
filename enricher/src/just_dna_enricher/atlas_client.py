@@ -3,7 +3,8 @@
 **The `[atlas]` extra, not core.** `uv add alphagenome` costs **550 MB and 47 packages** against a tier
 whose entire runtime list is httpx/tenacity/huggingface-hub, and six of the twenty dependencies that
 wheel declares are never imported on any scoring path. The `.proto` sources are Apache-2.0, so
-`grpcio` + `protobuf` reach every Atlas RPC — **22 MB**, with score payloads decoding through
+`grpcio` + `protobuf` reach every Atlas RPC — **19 MB** (`pyproject.toml` carries the measurement;
+22 MB was the grpcio release current at the design round), with score payloads decoding through
 `struct.unpack` from the standard library. Measured in
 [ALPHAGENOME_ATLAS.md § 6.2](../../../docs/probes/ALPHAGENOME_ATLAS.md), and pinned by
 `test_imports_stay_within_the_declared_floor` rather than left as a claim in prose.

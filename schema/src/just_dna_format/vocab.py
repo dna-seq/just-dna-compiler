@@ -772,7 +772,16 @@ VALID_AUTHORITY_CALL_STATUS: frozenset[str] = frozenset({"recorded", "no_record"
 # asking "was this check run" needs, and it is the first thing to rot when a pass moves.
 VALID_VERIFICATION_CHECKS: frozenset[str] = frozenset(
     {
-        # ── wired: `enrich` writes these six at the end of its run ──
+        # ── wired: `enrich` writes these at the end of its run ──
+        #
+        # **No count here** (RM221). This read "these six" while `enrich` wrote eight — the block was
+        # arithmetically true of itself and false about `enrich`, because `published_refutation` and
+        # `evidence_status_currency` are filed under the heading below with `— \`enrich\`` beside
+        # them. Membership is right; what drifted is the sentence. That is the same failure
+        # `verification.py`'s docstring records having corrected three times, and
+        # `test_verification_record.py` guards the *membership* equality rather than any block's
+        # arithmetic — so a number here is a claim nothing walks. The enricher asserts this block
+        # against `enrich._verification_records` instead.
         "reference_allele",  # authored `ref` vs the actual reference sequence — `enrich`
         "rsid_currency",  # authored rsID vs dbSNP (live / merged / absent) — `enrich`
         "clinical_significance",  # authored `clin_sig` vs ClinVar's own, allele-exactly — `enrich`
