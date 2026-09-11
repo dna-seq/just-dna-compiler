@@ -68,6 +68,35 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM205 — the lookup surface put absolute snapshot paths in its payload
+
+**Severity** low · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only: one
+field on `VariantHint`, two label substitutions, three recording sites; no schema change) · **Owner**
+enricher · **Motivating case** S93 (just-dna-registry, in CONSUMER_SUGGESTIONS_HISTORY.md), exposing
+`lookup_variant` over HTTP from a box whose layout is not the caller's business
+
+**What it reproduced.** `_lookup_from_cache` wrote `str(reference)` into `hint.checked` and
+interpolated the same path into the *unreadable* finding, while the live leg wrote `ensembl-rest` into
+the same set. A host therefore scrubbed: every known snapshot path mapped back to its lane name, inside
+finding prose too — and, as the consumer said, that audit has to be repeated every time a field is
+added and silently stops being complete.
+
+**The shape, taken as proposed.** The set was already half right — `ensembl-rest` is exactly the kind
+of member it wants — so the cache case now writes the link's label (`ensembl`, `clinvar`), the finding
+reads `{label} snapshot unreadable: …`, and the path moves to a structured field, `snapshots`, keyed
+by the same labels and filled for every snapshot the lookup opened or tried to open, the clin_sig and
+PubMind legs included. That makes the payload safe by construction: one field carries a path, a host
+drops it, nothing else is audited.
+
+**A behaviour change on a read field, and why it is not a break.** A reader that matched the old
+`str(path)` members of `checked` now sees lane names. `checked` is documented as *what was consulted*
+and the consumer who reads it asked for this; a path in it was the defect, and the value that
+replaced it is the one `ensembl-rest` already set the pattern for. The path is not lost — it moved.
+
+**What stays.** `_brief(exc)` is duckdb's first line and may name the file; that is upstream's
+sentence, kept as evidence rather than rewritten, and a host that scrubs has one predictable place
+left to look rather than an audit.
+
 ## RM204 — `cache status` was CLI-only, so every consumer re-derived the projection it renders
 
 **Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only:

@@ -132,7 +132,16 @@ class VariantHint:
     vrs_id: str | None = None
     findings: list[Finding] = field(default_factory=list)
     alterations: list[Alteration] = field(default_factory=list)
+    #: What was consulted, by **label**: a cache lane's name (`ensembl`, `clinvar`) or a live source
+    #: (`ensembl-rest`, `ensembl-live`). Never a filesystem path (S93): a host serving this over HTTP
+    #: must not have to scrub its own directory layout out of a set, and a lane name is the thing a
+    #: reader can act on. Which files those labels resolved to is `snapshots`.
     checked: set[str] = field(default_factory=set)
+    #: Label → the snapshot path it resolved to, for every snapshot this lookup opened or tried to
+    #: (`ensembl`, `clinvar`, `pubmind`). The one place a path lives in the payload, so a host that
+    #: does not want to publish its layout drops this field and audits nothing else — the findings
+    #: interpolate the label, and `checked` carries the label.
+    snapshots: dict[str, str] = field(default_factory=dict)
 
     @property
     def ambiguous(self) -> bool:
@@ -301,14 +310,18 @@ def _lookup_from_cache(
         # A snapshot that is present but not the shape this link expects is a normal condition for an
         # advisory lookup (a half-built or older cache), so it becomes a finding rather than an
         # exception at the author. Nothing here is load-bearing enough to fail a question.
+        hint.snapshots[label] = str(reference)
         try:
             by_rsid, by_position, warnings = lookup(reference, [rsid] if rsid else [], positions)
         except duckdb.Error as exc:
+            # The label, not the path: the path is in `snapshots` for whoever wants it, and the prose
+            # stays free of the server's directory layout (S93). duckdb's own first line may still
+            # name the file — that is upstream's sentence, kept as evidence.
             hint.findings.append(
-                Finding(None, None, "info", f"{label} snapshot at {reference} unreadable: {_brief(exc)}")
+                Finding(None, None, "info", f"{label} snapshot unreadable: {_brief(exc)}")
             )
             continue
-        hint.checked.add(str(reference))
+        hint.checked.add(label)
         for locus in by_rsid.get(rsid or "", []):
             if locus not in hint.loci:
                 hint.loci.append(locus)
@@ -452,6 +465,7 @@ def _lookup_clin_sig(hint: VariantHint, clinvar_cache: Path | None) -> None:
     reference = resolve_clinvar_reference(clinvar_cache)
     if reference is None:
         return
+    hint.snapshots["clinvar"] = str(reference)
     alleles = [
         (str(locus["chrom"]), int(locus["start"]), str(locus["ref"]), alt)
         for locus in hint.loci
@@ -539,6 +553,7 @@ def _lookup_pubmind(
             )
         )
         return
+    hint.snapshots["pubmind"] = str(reference)
     # Normalized on BOTH sides, and on every axis the comparison reads. `select_by_positions`
     # normalizes the chromosome at the query and again at its own filter, so the records come back
     # for `chr1` as readily as for `1` — and then this filter compared them against the caller's own

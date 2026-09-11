@@ -498,6 +498,11 @@ Both spellings of a version are accepted — a bare `0.7.0` and the stamped
   `path`, `release`, `release_unreadable` — and `cache status` renders it. `occupied` is new: the place
   the lane looks is non-empty and holds no snapshot, the target `prepare` refuses; it printed as
   `absent` before. Serve it rather than re-deriving the loop from `CACHE_LANES`.
+- **The hint payload names lanes, not paths (S93, RM205).** `VariantHint.checked` holds labels only
+  (`ensembl`, `clinvar`, `ensembl-rest`), the unreadable-snapshot finding interpolates the label, and
+  the new `VariantHint.snapshots` (label → path) is the one field carrying a filesystem path — drop it
+  to serve the hint from a host whose layout is not the caller's business. A reader matching the old
+  `str(path)` members of `checked` sees lane names instead.
 - **A declaration says which modules it can reach (S90, RM201).** `DeclaredChange.requires` names the
   dotted manifest paths a module must carry for the change to apply — `("gene_metrics",)` on RM110's
   corrections, `("gene_validity",)` on RM108's — and `change.reaches(manifest)` evaluates it for you,

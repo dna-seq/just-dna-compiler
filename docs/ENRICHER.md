@@ -989,6 +989,16 @@ Two boundaries. **A 4xx is an answer**, not a failure: Ensembl 400s on rsIDs it 
 Ensembl was reached and said nothing — the old code's only trace of that case was a *missing* element in
 a set, which is unreadable in practice.
 
+**`checked` carries labels only, and `snapshots` is where a path lives (S93, RM205).** The set used to
+be mixed — `ensembl-rest` for the live leg beside an absolute path for a snapshot, and the
+unreadable-snapshot finding interpolated the same path — so a host serving `lookup_variant` over HTTP
+mapped every known path back to a lane name, inside prose too, an audit that has to be repeated on every
+field added. Now `checked` holds the lane's name (`ensembl`, `clinvar`) or the live source, the finding
+reads `ensembl snapshot unreadable: …`, and `VariantHint.snapshots` maps each label to the path it
+resolved to for every snapshot the lookup opened or tried to (`ensembl`, `clinvar`, `pubmind`) — the
+one field a host drops to keep its layout private. duckdb's own first line may still name a file; that
+is upstream's sentence and stays as evidence.
+
 > **Honest caveat (bare rsID).** The beta variation GraphQL wants a composite `region:pos:rsid` id, so a
 > *bare* rsID typically won't resolve through V2 and **falls through to V1 REST, which does the real
 > work** — mirroring ensembl-mcp itself. Today V1 is the workhorse; V2 is wired, retried, and first in

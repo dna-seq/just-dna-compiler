@@ -453,3 +453,40 @@ def test_every_advisory_column_has_its_refusal_stated_rather_than_defaulted() ->
         n for n in ast.walk(body)
         if isinstance(n, ast.Call) and getattr(n.func, "attr", None) == "get"
     ]
+
+
+# ── S93 / RM205: labels in the payload, paths in one structured field ───────────────────────────
+
+
+def test_checked_carries_lane_names_and_the_paths_live_in_snapshots(tmp_path: Path) -> None:
+    """A hosted hint API must not have to scrub its directory layout out of the payload (S93).
+
+    `checked` was a mixed set — `ensembl-rest` for the live leg and an absolute path for a snapshot
+    — so a host serving it mapped every known path back to a lane name, inside finding prose too, an
+    audit that has to be repeated every time a field is added. Now `checked` is labels only and
+    `snapshots` is the one field that carries a path, keyed by the same labels."""
+    ensembl, clinvar = _ensembl_snapshot(tmp_path), _clinvar_snapshot(tmp_path)
+    hint = lookup_variant(rsid="rs1801133", offline=True, ensembl_cache=ensembl, clinvar_cache=clinvar)
+    assert hint.loci, "the Ensembl snapshot carries rs1801133"
+    # The coordinate links stop at the first snapshot that answers, so only `ensembl` was checked;
+    # the ClinVar snapshot was still opened, by the clin_sig leg, so it is in `snapshots`.
+    assert hint.checked == {"ensembl"}
+    assert not any("/" in name or str(tmp_path) in name for name in hint.checked)
+    assert hint.snapshots == {"ensembl": str(ensembl), "clinvar": str(clinvar)}
+    assert not any(str(tmp_path) in f.message for f in hint.findings)
+
+
+def test_an_unreadable_snapshot_is_named_by_its_label_and_its_path_is_still_on_record(
+    tmp_path: Path,
+) -> None:
+    """The finding says which lane could not be read; where that lane's file is stays in `snapshots`."""
+    broken = tmp_path / "broken"
+    (broken / "data").mkdir(parents=True)
+    (broken / "data" / "ensembl.parquet").write_bytes(b"not a parquet file")
+    hint = lookup_variant(rsid="rs1801133", offline=True, ensembl_cache=broken,
+                          clinvar_cache=_clinvar_snapshot(tmp_path))
+    unreadable = [f for f in hint.findings if f.message.startswith("ensembl snapshot unreadable:")]
+    assert len(unreadable) == 1
+    assert "ensembl" not in hint.checked, "a snapshot that could not be read was not checked"
+    assert hint.snapshots["ensembl"] == str(broken)
+    assert "clinvar" in hint.checked and hint.snapshots["clinvar"] == str(tmp_path / "cv")
