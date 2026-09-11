@@ -315,8 +315,12 @@ serves precomputed variant scores over gRPC; its score fields are plain `bytes` 
 filter is an AIP-160 string, so `grpcio` + `protobuf` reach every RPC and `struct.unpack` from the
 standard library decodes the payload — **19 MB and +2 packages**, measured in a clean venv on
 2026-09-10, against **550 MB and 47 packages** for `uv add alphagenome` (measured 2026-09-11). The bindings are generated
-from the Apache-2.0 `.proto` sources vendored in `docs/vendor/alphagenome_protos/` rather than
-committed, so run `just-dna-enricher atlas generate` once per checkout (it needs `grpcio-tools`,
+from the Apache-2.0 `.proto` sources, which since **RM196** are **not vendored**: the repository
+carries a commit id and a sha256 per file, `atlas generate` fetches and verifies them, and a file
+that does not match its pin is refused rather than used. `docs/vendor/alphagenome_protos/` is where
+the copy used to be and now holds only a README saying so (RM221 — this sentence still said
+"vendored in" five weeks after the sources left). Run `just-dna-enricher atlas generate` once per
+checkout (it needs `grpcio-tools`,
 which is in `[dev]`, not in `[atlas]` — the runtime imports the bindings without it). An installed
 wheel carries neither the sources nor the generated tree, so the client's import is guarded and says
 so; **RM196** is where that trade gets decided.
@@ -360,7 +364,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `gwas` | RM90: the GWAS Catalog REST API → `gwas_effects.csv` (published effect sizes **with their units**). Fills no `weight` | `httpx`, format |
 | `expression` | RM194/RM200: the Atlas `ListDenseVariantScores` RNA_SEQ interval → `expression_effects.csv` (per-gene direction, **with the distance beside it**). Non-commercial, so an undeclared run writes nothing | `atlas_client`, `gene_spans`, format |
 | `gene_spans` | RM194: gene symbol → GRCh38 span, out of the operator-built MANE snapshot. A module with a plain name rather than a private helper, so the second caller can find it | `polars`, `mane` lane |
-| `atlas_client` | RM192: the AlphaGenome Atlas gRPC client — `ListDenseVariantScores` and the interval RPCs, on `[atlas]` (grpcio + protobuf, 22 MB) rather than the 550 MB upstream wheel | `grpcio`, `protobuf` (extra) |
+| `atlas_client` | RM192: the AlphaGenome Atlas gRPC client — `ListDenseVariantScores` and the interval RPCs, on `[atlas]` (grpcio + protobuf, 19 MB measured) rather than the 550 MB upstream wheel | `grpcio`, `protobuf` (extra) |
 | `atlas_protos` | RM192/RM196: fetch the Apache-2.0 `.proto` sources at a pinned commit and generate the bindings. The repository carries the **pin** — a commit id and a sha256 per file — and neither the sources nor the generated code | `grpc_tools` (extra) |
 | `alphagenome_check` | RM193: the Atlas as a resolver, for the three questions the local AVI artifact provably cannot answer. Attests `variant_impact_agreement`; reports, never repairs | `atlas_client`, format |
 | `alphagenome_avi_build` | RM191/RM197/RM198 builder: the 88.5 GB AVI artifact the operator already holds → the `alphagenome_avi` lane. **`--input` is required and has no default** — acquisition is the operator's act | `polars` (lazy) |
@@ -577,6 +581,33 @@ silences findings the author never looked at. `overlay_answered_subjects` *raise
 goes stale there is the `reason` — mandatory on every overlay row whatever the row does — so a
 per-field rule would have to name a column the reason does not live in. A finding raised too widely
 costs a reader one line; one silenced too widely costs them the finding.
+
+## What `--offline` promises, and the one axis the two readings differ on (RM220)
+
+**`--offline` means no egress.** Every pass that takes it turns into a no-op with a warning rather
+than a failure where it has no snapshot to fall back on, and the warning says which of the two it is
+(`@unreachable-not-absent` — nobody-asked is not asked-and-absent).
+
+**An injected client is where the tier held two readings, and the axis is the source's licence.**
+
+| reading | passes | why |
+|---|---|---|
+| `offline` **outranks** an injected client | `pgx`, `enrich`, `frequencies`, `expression` | the source is **licence-gated**. A live client under a flag documented as making no egress is exactly the loophole RM38 closed — `test_pgx_licensing.py` asserts it by name, and the AlphaGenome Atlas joined that column in RM220 because its Additional Terms bar classes of holder outright |
+| an injected client **wins** | `gwas` | the GWAS Catalog is **ungated**, and handing over a transport you already hold is not egress. Stated in `enrich_gwas`'s own docstring, deliberately |
+
+**Neither is wrong and the difference was nowhere written down**, which is the defect RM220 actually
+repaired: `expression` had `gwas`'s shape against `pgx`'s situation, so an injected client fetched
+from a gated source under `--offline`. `@flag-means-same` is the rule, and this table is what makes
+the flag mean the same thing *given the licence*, rather than differing by which module you happened
+to call.
+
+**`gwas` keeps its behaviour on purpose.** Changing a contract its docstring states, for the one
+ungated source, is a decision rather than a repair — recorded here so the next reader meets a written
+rule instead of an apparent inconsistency.
+
+**Injecting *text* is a different thing entirely** and is not part of this: `clingen`,
+`gene_validity` and `acmg` accept an already-downloaded export, which cannot egress by construction.
+That is the documented "inject what you already hold" escape.
 
 ## `enrich()` — the resolver chain
 
@@ -5600,7 +5631,9 @@ offline answer to give and pretending otherwise would report nobody-asked as not
 `uv add alphagenome` costs **550 MB and 47 packages** against a tier whose entire runtime list is
 httpx/tenacity/huggingface-hub, and six of the twenty dependencies that wheel declares are never
 imported on any scoring path. The `.proto` sources are Apache-2.0, so `grpcio` + `protobuf` reach every
-Atlas RPC — **22 MB** — with score payloads decoding through `struct.unpack` from the standard library.
+Atlas RPC — **19 MB**, the figure `enricher/pyproject.toml` measured in a clean venv — with score
+payloads decoding through `struct.unpack` from the standard library. (22 MB appears in older text and
+is the grpcio release current at the design round; RM221 swept it.)
 That is the `[atlas]` extra; the `alphagenome` extra is **deleted**.
 
 The repository carries neither the upstream sources nor the generated bindings. It carries the **pin** —

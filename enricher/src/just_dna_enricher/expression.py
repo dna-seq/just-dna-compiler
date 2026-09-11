@@ -370,10 +370,19 @@ def enrich_expression(
     result = ExpressionResult(gene=gene)
     output_path = sidecar_path(spec_dir, SIDECAR_NAME, error=ExpressionError)
 
-    if offline and client is None:
+    # **`offline` outranks an injected client** (RM220), which is `pgx`'s reading and not `gwas`'s.
+    # The two shapes coexist in this tier and the difference is the source's licence, not a
+    # preference: the GWAS Catalog is ungated, so handing over a transport you already hold really is
+    # not egress. The Atlas is **not** — its Additional Terms bar classes of holder outright — so a
+    # live client under a flag documented as making no egress is exactly the loophole RM38 closed for
+    # the PGx sources, and `test_pgx_licensing.py` already asserts the strict reading by name. This
+    # gated `offline and client is None`, so an injected client fetched from a gated source under
+    # `--offline`. `@flag-means-same`.
+    if offline:
         note = (
             "expression pass skipped: --offline. This pass reads the Atlas API and has no snapshot "
-            "to fall back on, so it is a no-op offline rather than a failure."
+            "to fall back on, so it is a no-op offline rather than a failure. An injected client "
+            "does not override it: the Atlas is licence-gated, so --offline means no egress."
         )
         result.warnings.append(note)
         result.skipped = True
