@@ -1812,6 +1812,19 @@ positions"`; `test_roundtrip_regressions.py` holds `"pointer, not an expression"
 | `close <spec>` | `compiler.close_module` | `--by`, `--private-key`. Writes the RM73 closure into `verification.json`, bound to the authored bytes. Refuses an invalid spec; a warning does not refuse |
 | `compile <spec> <out>` | `compiler.compile_module` | `--strict/--no-strict`, `--resolve/--no-resolve`, `--compression`, `--compiled-by`, and the **deprecated** `--ensembl-cache` (routes to the enricher; removed at 1.0). Prints `digest`, `content_signature`, `resolution_mode`/`fully_resolved`/`resolution_signature` |
 | `signature <spec>` | `compiler.content_signature` | no compile, no reference |
+
+**Two `compile_module` parameters the CLI does not expose**, stated rather than left to be
+rediscovered (RM218). `ensembl_reference` and `ba1_threshold` are Python-API-only, and the first has a
+visible consequence: `manifest.compilation.ensembl_reference` **cannot be stamped by the shipped
+command at all**, so a module compiled through the CLI carries no record of which reference the
+compile was told about. `ba1_threshold` tunes the ACMG BA1 common-allele cutoff, which the parameter's
+own docstring frames as something a module curating a common recessive carrier allele would want to
+move — also unreachable without importing the API.
+
+Neither is a defect and neither is a decision anyone took: `test_cli_parity.py` guards the surfaces
+the schema tier cannot expose and does not assert compile-flag parity, so the two drifted in without
+being weighed. Whether the CLI should grow them is an open question and not this round's to settle —
+what is settled is that the gap is written down instead of being a surprise.
 | `reverse <parquet_dir> <out>` | `compiler.reverse_module` | `--resolution/--no-resolution` (default on) + display overrides |
 | `verify <module_dir>` | **`format.integrity.verify_manifest`** | `--public-key`, `--check-inputs/-logs/-provenance/-logo/-readme/-derived` |
 | `keygen` | **`format.signing.generate_private_key_pem`** + `public_key_b64_from_pem` | `--out` (refuses to overwrite) |

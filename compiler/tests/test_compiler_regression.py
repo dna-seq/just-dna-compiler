@@ -6,6 +6,7 @@ error handling, output structure, and a reverse→recompile round-trip.
 The Ensembl-resolution half lives in `test_resolver_integration.py` (skipped without a cache).
 """
 
+import ast
 from pathlib import Path
 
 import polars as pl
@@ -99,27 +100,54 @@ def test_validate_weight_direction_warning(tmp_path: Path) -> None:
 # ── Output structure ─────────────────────────────────────────────────────────
 
 
+def _build_weights_dicts() -> list[list[str]]:
+    """The two hand-kept halves of `_build_weights`, as key lists, straight out of the AST.
+
+    The function's own comment admits the shape: *"Hand-listed twice because `_build_weights`, unlike
+    `_build_table`, derives neither half from the model."* One is the record it emits per row, the
+    other the polars schema it declares — and nothing compared them to each other or to the file that
+    comes out. This pulls both so the assertions below can (RM218).
+    """
+    source = (Path(__file__).resolve().parents[1] / "src" / "just_dna_compiler" / "compiler.py").read_text(
+        encoding="utf-8"
+    )
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.FunctionDef) and node.name == "_build_weights":
+            return [
+                [k.value for k in d.keys if isinstance(k, ast.Constant)]
+                for d in ast.walk(node)
+                if isinstance(d, ast.Dict) and len(d.keys) > 20
+            ]
+    raise AssertionError("_build_weights is gone; this guard needs re-aiming")
+
+
+def test_the_two_hand_kept_halves_of_build_weights_agree() -> None:
+    """`@registry-completeness` on the pair the function states twice.
+
+    Neither half is derived from the model, so the only thing that can keep them equal is an
+    assertion that they are. A column added to one and forgotten in the other is the live failure
+    this shape produces, and it would not have shown up in a floor.
+    """
+    halves = _build_weights_dicts()
+
+    assert len(halves) == 2, f"expected exactly two hand-kept dicts, found {len(halves)}"
+    first, second = halves
+    assert set(first) == set(second), f"the halves disagree: {sorted(set(first) ^ set(second))}"
+    for half in halves:
+        assert len(half) == len(set(half)), sorted({c for c in half if half.count(c) > 1})
+
+
 def test_weights_schema_and_dtypes(tmp_path: Path) -> None:
     compile_module(_write_spec(tmp_path / "spec"), tmp_path / "out", resolve_with_ensembl=False)
     df = pl.read_parquet(tmp_path / "out" / "weights.parquet")
-    required = {
-        "rsid",
-        "genotype",
-        "weight",
-        "state",
-        "conclusion",
-        "priority",
-        "module",
-        "curator",
-        "method",
-        "clinvar",
-        "pathogenic",
-        "benign",
-        "likely_pathogenic",
-        "likely_benign",
-        "alts",
-    }
-    assert required.issubset(set(df.columns))
+    # **Equality over a walked set, not a floor** (`@registry-completeness`, RM218). This asserted
+    # `required.issubset(...)` over fifteen hand-written names against a thirty-nine-column schema,
+    # so twenty-four columns were unguarded and a column silently dropped from the emitted record
+    # would have passed. The declared schema is the walked set; the file has to match it exactly.
+    declared = _build_weights_dicts()[0]
+    assert set(df.columns) == set(declared), (
+        f"weights.parquet drifted: {sorted(set(df.columns) ^ set(declared))}"
+    )
     assert df.schema["genotype"] == pl.List(pl.Utf8)
     assert df.schema["weight"] == pl.Float64
     assert df.schema["clinvar"] == pl.Boolean

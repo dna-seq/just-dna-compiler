@@ -319,6 +319,55 @@ been told to expect. A table mislabelling one would re-create exactly that.
 `base`'s dependency note exists to avoid. The guard says so rather than pretending to be complete
 over something it is not.
 
+## RM218 — the counted-prose rule reached `docs/` and stopped at the source
+
+**Severity** low · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-compiler` only:
+comments, one docstring pair, and a floor promoted to an equality; no behaviour change) · **Owner**
+compiler · **Motivating case** the 2026-09-11 blind re-derivation — `docs/audit/COMPILER_FROM_CODE.md`
+§§ 13.4–13.6, 13.8
+
+`test_counted_prose.py` exists because the same number went stale twice, and its `_DOCS` constant
+scopes it to the documentation tree. The same class was live in `compiler.py` itself:
+
+| claim | measured |
+| --- | --- |
+| "up to twelve in all" (the module docstring's parquet count) | **23** |
+| "There are six reasons … and a reader needs the six" (`_vrs_gap_reason`) | **8** return arms |
+| "covered three of the sixteen names" beside `ARTIFACT_PARQUETS` | true as *history*, read as current |
+
+`_vrs_gap_reason` is the instructive one: RM5 added the symbolic class and RM59 the unobservable
+class, each correctly, and neither moved the number two paragraphs up.
+
+**No number was re-counted.** Both sentences state the rule now, and the guard asserts the property
+each was standing in for — for the parquets, that the docstring names the constant; for the reasons,
+`@answered-is-not-absent`'s actual requirement that the arms be **pairwise distinct**, which a count
+never checked. Eight arms returning six distinct strings would have satisfied the old sentence exactly.
+
+**The guard's first catch was the repair's own prose**, which is worth keeping: the replacement
+docstring quoted the stale phrase verbatim while explaining it, and a stale figure in quotation marks
+two lines below the rule reads to a skimming reader exactly like the rule.
+
+**A floor became an equality** (§13.5). `_build_weights` states its 39 columns twice by hand — its own
+comment says so — and the guard was `required.issubset(...)` over a **15-name literal**, leaving 24
+columns unwatched. `@registry-completeness` says equality over a walked set, never a floor; the
+declared schema is now that set, the emitted parquet must match it exactly, and a second test compares
+the function's two hand-kept halves to each other. No live drift was found, so this is an unguarded
+invariant rather than a broken one.
+
+**And a docstring that over-claimed, in both copies of itself** (§13.6). `validate_spec`'s said
+`strict` *"changes severity only; it never adds or removes a finding"*. Two findings are aggregates
+with no `best_effort` counterpart sentence — the unresolved-position refusal and
+`build_disagreement_error` — whose `best_effort` rung is a *different* sentence firing in both modes,
+so `strict` genuinely adds them. The code is right and the sentence was wrong: the contract the two
+commands share is that `validate(strict=x)` and `compile(strict=x)` reach the same verdict, not that
+the two modes of `validate` differ by a severity column.
+
+**Surfaced, not fixed** (§13.8): `ensembl_reference` and `ba1_threshold` are `compile_module`
+parameters the CLI cannot reach, so `manifest.compilation.ensembl_reference` cannot be stamped by the
+shipped command at all. Neither is a defect and neither is a decision anyone took —
+`test_cli_parity.py` does not assert compile-flag parity — so COMPILER.md records the gap and leaves
+whether to close it open.
+
 ## RM216 — fifty-one error types named nowhere, in the § titled *what a caller catches*
 
 **Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (docs + one guard; no code

@@ -2,7 +2,9 @@
 Module spec compiler: validates a spec directory and compiles it to a composed multi-parquet
 artifact plus a `manifest.json`. A module composes from optional table kinds (RM2): the three-parquet
 SNP core (weights, annotations, studies) when it carries variants, plus one parquet per 0.4 table
-kind it includes (diplotypes, pharm_variants, pgs, the binning kinds, …) — up to twelve in all.
+kind it includes (diplotypes, pharm_variants, pgs, the binning kinds, …). `ARTIFACT_PARQUETS` is the
+roster and `len(ARTIFACT_PARQUETS)` the count — stated that way rather than spelled, because this
+sentence carried a spelled-out figure for two releases while the tuple grew past it (RM218).
 
 Public API:
     validate_spec(spec_dir) -> ValidationResult
@@ -366,8 +368,10 @@ _INPUT_FILES: tuple[str, ...] = (
 # before hashing, so a member's position here is invisible to the digest and its NAME is what places
 # it. Said twice in this file because the false version stood in five documents for a release and was
 # corrected there while these comments were not. `just_dna_enricher.upload` derives its allow-patterns from this
-# tuple instead of hand-keeping a parallel one; the hand-kept copy covered three of the sixteen names
-# and silently dropped the rest at publish, which is `@fieldnames-from-model` one tier out.
+# tuple instead of hand-keeping a parallel one; **at the time that bug was found** the hand-kept copy
+# covered three of the sixteen names the tuple then held and silently dropped the rest at publish,
+# which is `@fieldnames-from-model` one tier out. The sixteen is history and not the current size —
+# spelled out because a bare number beside a registry reads as the registry's (RM218).
 ARTIFACT_PARQUETS: tuple[str, ...] = (
     "weights.parquet",
     "annotations.parquet",
@@ -3043,8 +3047,11 @@ def _vrs_gap_reason(row: ResolutionRow, alt: str | None) -> str:
 
     That function names the alleles (`AG>A is not a single-base substitution…`) because it is
     diagnosing one row, and it is right to. Grouping on it produced 40-odd lines that all said the same
-    thing about a different indel — a per-row wall wearing an aggregate's clothes. There are six
-    reasons an allele has no id here, and a reader needs the six.
+    thing about a different indel — a per-row wall wearing an aggregate's clothes. One reason per arm,
+    and a reader needs all of them — **not a number here** (RM218): this said "six" while the function
+    had eight arms, because RM5's symbolic class and RM59's unobservable class were each added without
+    moving it. `test_source_counted_prose.py` asserts the arms stay pairwise distinct instead, which is
+    the property `@answered-is-not-absent` actually asks for.
     """
     if row.chrom is None or row.start is None:
         return "no coordinate to mint from (an unresolved row)"
@@ -3781,9 +3788,17 @@ def validate_spec(
     `strict` mirrors `compile_module`'s flag and exists for one reason: several checks are a **mode
     ladder** (warning in `best_effort`, error in `strict`), so without a mode here the pre-flight
     could not answer the question the author actually asked — the documented order is `validate` then
-    `compile --strict`, and a modeless `validate` is a pre-flight for the *other* compile. It changes
-    severity only; it never adds or removes a finding, which is what keeps the two commands one
-    contract rather than two.
+    `compile --strict`, and a modeless `validate` is a pre-flight for the *other* compile.
+
+    **It mirrors `compile_module`'s severities exactly, which is not the same as changing severity
+    only** — this said the latter, in both of the two docstrings carrying it, and it was false
+    (RM218). Two findings are *aggregates* with no `best_effort` counterpart sentence: the
+    unresolved-position refusal (`strict compile: N variant(s) …`) and `build_disagreement_error`.
+    Their `best_effort` rung is a different sentence — the per-subject `rsid_unresolved` warning,
+    which fires in **both** modes — so under `strict` the aggregate is genuinely *added* rather than
+    promoted. The contract the two commands share is that **`validate(strict=x)` and
+    `compile(strict=x)` reach the same verdict**, not that the two modes of `validate` differ by a
+    severity column.
 
     `resolve_with_ensembl` mirrors it for the same reason and is passed through by `compile_module`.
     The pre-flight applies the injected table to the positional 0.4 tables (RM43), and that decides
@@ -3830,9 +3845,17 @@ def _validate_spec(
     `strict` mirrors `compile_module`'s flag and exists for one reason: several checks are a **mode
     ladder** (warning in `best_effort`, error in `strict`), so without a mode here the pre-flight
     could not answer the question the author actually asked — the documented order is `validate` then
-    `compile --strict`, and a modeless `validate` is a pre-flight for the *other* compile. It changes
-    severity only; it never adds or removes a finding, which is what keeps the two commands one
-    contract rather than two.
+    `compile --strict`, and a modeless `validate` is a pre-flight for the *other* compile.
+
+    **It mirrors `compile_module`'s severities exactly, which is not the same as changing severity
+    only** — this said the latter, in both of the two docstrings carrying it, and it was false
+    (RM218). Two findings are *aggregates* with no `best_effort` counterpart sentence: the
+    unresolved-position refusal (`strict compile: N variant(s) …`) and `build_disagreement_error`.
+    Their `best_effort` rung is a different sentence — the per-subject `rsid_unresolved` warning,
+    which fires in **both** modes — so under `strict` the aggregate is genuinely *added* rather than
+    promoted. The contract the two commands share is that **`validate(strict=x)` and
+    `compile(strict=x)` reach the same verdict**, not that the two modes of `validate` differ by a
+    severity column.
 
     `resolve_with_ensembl` mirrors it for the same reason and is passed through by `compile_module`.
     The pre-flight applies the injected table to the positional 0.4 tables (RM43), and that decides
