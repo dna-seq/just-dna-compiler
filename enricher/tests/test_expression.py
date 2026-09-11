@@ -342,7 +342,7 @@ def test_distance_is_measured_from_the_mane_span_even_when_the_interval_was_expl
     """
     pl = pytest.importorskip("polars", reason="writing the fixture snapshot needs the [dev] extra")
     mane = tmp_path / "mane"
-    mane.mkdir(parents=True)
+    (mane / "data").mkdir(parents=True)
     pl.DataFrame(
         [
             {
@@ -360,7 +360,7 @@ def test_distance_is_measured_from_the_mane_span_even_when_the_interval_was_expl
             "chr_end": pl.Int64,
             "mane_status": pl.Utf8,
         },
-    ).write_parquet(mane / "summary.parquet")
+    ).write_parquet(mane / "data" / "summary.parquet")
 
     spec = _spec(tmp_path)
     inside = _score(26090000)  # within the gene

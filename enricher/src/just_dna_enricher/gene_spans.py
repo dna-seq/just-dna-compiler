@@ -34,7 +34,7 @@ from pathlib import Path
 
 import duckdb
 
-from just_dna_enricher.locations import resolve_mane_reference
+from just_dna_enricher.locations import SNAPSHOT_DATA_DIRNAME, resolve_mane_reference
 from just_dna_enricher.pharmvar import chrom_from_accession
 
 #: How far AlphaGenome attributes a variant to a gene, in base pairs either side of the gene's span.
@@ -45,9 +45,20 @@ from just_dna_enricher.pharmvar import chrom_from_accession
 #: server will attribute to nobody.
 ATTRIBUTION_HORIZON_BP: int = 512_000
 
-#: The file inside a MANE snapshot that carries the spans. Named here rather than spelled at the call
-#: site so a snapshot layout change is one edit.
+#: The file inside a MANE snapshot that carries the spans, and **the `data/` it lives under comes
+#: from `locations`** rather than being spelled here (`@snapshot-layout-locations`: the snapshot
+#: layout lives in `locations`, and a sidecar is a sibling of `data/`).
+#:
+#: This was `summary.parquet` at the snapshot root for one commit, which is wrong and was caught by
+#: running the real command against a real lane rather than by any test — every fixture in
+#: `test_gene_spans.py` wrote the file wherever the test put it, so the fixtures agreed with the bug.
+#: That is the same shape as the `chr22` failure one file over: a stub confirms the convention its
+#: author chose.
 _SUMMARY_PARQUET: str = "summary.parquet"
+
+
+def _summary_path(snapshot: Path) -> Path:
+    return snapshot / SNAPSHOT_DATA_DIRNAME / _SUMMARY_PARQUET
 
 
 class GeneSpanError(RuntimeError):
@@ -97,7 +108,7 @@ def _connect(snapshot: Path) -> duckdb.DuckDBPyConnection:
     # DuckDB cannot bind a parameter inside CREATE VIEW ... read_parquet(), the same constraint
     # `clinvar._connect` documents. The path comes from our own cache resolution rather than from a
     # caller, and is single-quote-escaped defensively all the same.
-    path = str(snapshot / _SUMMARY_PARQUET).replace("'", "''")
+    path = str(_summary_path(snapshot)).replace("'", "''")
     con = duckdb.connect(":memory:")
     con.execute(f"CREATE VIEW mane AS SELECT * FROM read_parquet('{path}')")
     return con
@@ -120,7 +131,24 @@ def gene_span(symbol: str, *, mane_cache: Path | None = None) -> SpanLookup:
     if snapshot is None:
         return SpanLookup(reason="no_snapshot")
 
-    con = _connect(snapshot)
+    # **A directory is not a snapshot** (`@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-
+    # empty-result`): judge a provisioning target by its payload, never by `is_dir()`. The lane
+    # resolver answers on the directory, and a machine can easily have `<base>/mane/` sitting there
+    # with nothing in it — a half-pulled lane, or a base directory created by some other command.
+    # Reading that as "provisioned" is what let a raw duckdb `IOException` reach an operator instead
+    # of the sentence naming `mane build`.
+    table = _summary_path(snapshot)
+    if not table.is_file():
+        return SpanLookup(reason="no_snapshot")
+
+    try:
+        con = _connect(snapshot)
+    except duckdb.Error as exc:
+        raise GeneSpanError(
+            f"the MANE snapshot at {snapshot} could not be opened: {exc}. The directory and "
+            f"{table} both exist, so this is a malformed or partial snapshot rather than an absent "
+            f"one — rebuild it with `just-dna-enricher mane build`."
+        ) from exc
     try:
         rows = con.execute(
             "SELECT grch38_chr, chr_start, chr_end, mane_status FROM mane "

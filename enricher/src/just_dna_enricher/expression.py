@@ -79,6 +79,12 @@ except ImportError:  # pragma: no cover - exercised where the [atlas] extra is a
 
 logger = logging.getLogger(__name__)
 
+# **Notes go in `result.warnings` OR through the logger, never both.** The CLI prints
+# `result.warnings`, so a note that was also logged appeared twice and read as two findings. The
+# result is the contract a library caller holds; the log line was the redundant half. What stays on
+# the logger is the cost estimate alone, which is not a warning about the module — it is a heads-up
+# about the wall clock, owed before the query rather than in the report after it.
+
 SIDECAR_NAME: str = "expression_effects.csv"
 SOURCE_NAME: str = ALPHAGENOME_ATLAS_TERMS.source
 SOURCE_LAYER: str = "expression_effect"
@@ -258,7 +264,6 @@ def _resolve_interval(
         if not explicit:
             result.warnings.append(note)
             result.skipped = True
-            logger.warning(note)
             return None
         result.warnings.append(f"{note} — distance_to_gene will be null for every row")
 
@@ -360,7 +365,6 @@ def enrich_expression(
             "expression pass skipped: --offline. This pass reads the Atlas API and has no snapshot "
             "to fall back on, so it is a no-op offline rather than a failure."
         )
-        logger.warning(note)
         result.warnings.append(note)
         result.skipped = True
         return result
@@ -370,7 +374,6 @@ def enrich_expression(
     # purpose on the operator's behalf.
     refusal = check_declared_use(ALPHAGENOME_ATLAS_TERMS, declared_use)
     if refusal is not None:
-        logger.warning("expression pass skipped: %s", refusal)
         result.warnings.append(refusal)
         result.skipped = True
         return result
@@ -394,7 +397,6 @@ def enrich_expression(
     mismatch = source_build_mismatch(spec_dir, SOURCE_NAME, source_build=SOURCE_BUILD)
     if mismatch:
         result.warnings.append(mismatch)
-        logger.warning(mismatch)
 
     release = dataset or f"alphagenome_atlas_{now_utc_iso()[:10]}"
     fetched_at = now_utc_iso()
@@ -429,7 +431,6 @@ def enrich_expression(
             f"this surface cannot tell those apart, and neither is written as a row."
         )
         result.warnings.append(note)
-        logger.warning(note)
         return result
 
     seen = {merge_key(row) for row in existing}

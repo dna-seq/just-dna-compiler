@@ -88,6 +88,14 @@ from just_dna_enricher.drug_labels import (
     check_drug_labels,
 )
 from just_dna_enricher.enrich import EnrichmentError, enrich
+from just_dna_enricher.expression import (
+    DEFAULT_MAX_ROWS,
+    ExpressionError,
+    enrich_expression,
+)
+from just_dna_enricher.expression import (
+    SIDECAR_NAME as EXPRESSION_SIDECAR,
+)
 from just_dna_enricher.frequencies import FrequencyEnrichmentError, enrich_frequencies
 from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, enrich_gene_metrics
 from just_dna_enricher.gene_validity import (
@@ -5058,6 +5066,113 @@ def _resolve_avi_snapshot() -> Path | None:
     # hands it to a subprocess with a different working directory.
     found = next((c for c in candidates if (c / SNAPSHOT_DATA_DIRNAME).is_dir()), None)
     return found.resolve() if found is not None else None
+
+
+@alphagenome_app.command("expression")
+def alphagenome_expression_(
+    spec: Path = typer.Argument(..., exists=True, file_okay=False, help="Module spec directory"),
+    gene: str = typer.Option(
+        ...,
+        "--gene",
+        help=(
+            "HGNC symbol. REQUIRED even with an explicit interval: the server-side gene filter is "
+            "not an optimisation, and an unfiltered interval query is refused before it is sent."
+        ),
+    ),
+    chrom: str | None = typer.Option(
+        None, "--chrom", help="Contig of an explicit interval. Wins over the gene's MANE span."
+    ),
+    start: int | None = typer.Option(None, "--start", min=0, help="1-based start of that interval."),
+    end: int | None = typer.Option(None, "--end", min=0, help="1-based end of that interval."),
+    min_score: float | None = typer.Option(
+        None,
+        "--min-score",
+        help=(
+            "Keep only pairs whose magnitude reaches this. Distal scores run ~10x lower than scores "
+            "at the gene, so a flat bar keeps the proximal rows and looks like it filtered on effect."
+        ),
+    ),
+    max_rows: int = typer.Option(
+        DEFAULT_MAX_ROWS,
+        "--max-rows",
+        min=1,
+        help="Refuse rather than write more rows than this. Raising it is a deliberate act.",
+    ),
+    offline: bool = typer.Option(
+        False, "--offline", help="No-op with a warning: this pass reads the Atlas, not a snapshot."
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be written without writing it."),
+    use: str = typer.Option(
+        "unstated",
+        "--use",
+        help=(
+            "Declared use recorded on the licence row: unstated|non-commercial|commercial. "
+            "AlphaGenome Output is NON-COMMERCIAL ONLY, so an undeclared run writes nothing and "
+            "says so — pass --use non-commercial."
+        ),
+    ),
+) -> None:
+    """Fill expression_effects.csv with AlphaGenome's per-gene expression effects for one gene.
+
+    Example — and the `--use` is not decoration, an undeclared run is a no-op:
+
+        just-dna-enricher alphagenome expression ./my_module --gene TBX1 --use non-commercial
+
+    One row per (variant, gene): which way the variant moves that gene's predicted expression, how
+    many of the 371 tissue tracks agree, and how far it sits from the gene. The interval is the
+    gene's MANE span widened by the model's measured +/-512 kb attribution horizon, unless
+    --chrom/--start/--end supply one; either way the gene names the server-side filter, and the MANE
+    lane is still consulted for the distance, which an explicit interval cannot supply.
+
+    A whole gene is ~3.3 M SNVs at the measured 1,091 SNVs/s — about 50 minutes — and the cost is
+    printed before the query runs rather than discovered during it.
+    """
+    try:
+        result = enrich_expression(
+            spec,
+            gene,
+            chrom=chrom,
+            start=start,
+            end=end,
+            min_score=min_score,
+            max_rows=max_rows,
+            declared_use=_use(use),
+            offline=offline,
+            write=not dry_run,
+        )
+    except (ExpressionError, EnrichmentError) as exc:
+        typer.secho(f"EXPRESSION FAILED: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    for note in result.warnings:
+        typer.secho(f"  {note}", fg=typer.colors.YELLOW, err=True)
+    if result.skipped:
+        return
+    if result.interval:
+        typer.echo(f"interval: {result.interval[0]}:{result.interval[1]}-{result.interval[2]}")
+    # The path the pass actually wrote, not `spec / <name>` — a module keeping its sidecars under
+    # `derived/` (RM49) is written there, and printing a guess sends the author to the wrong file.
+    typer.secho(
+        f"expression effects: {sidecar_path(spec, EXPRESSION_SIDECAR, error=ExpressionError)}",
+        fg=typer.colors.GREEN,
+    )
+    typer.echo(
+        f"dataset: {result.dataset}  scored: {result.candidates}  written: {result.written}  "
+        f"rows: {len(result.rows)}"
+    )
+    if result.withheld:
+        # Grouped by reason, never a bare total: a withhold that cannot say which kind it was is the
+        # absence the roster exists to prevent.
+        typer.secho(
+            "  withheld: " + ", ".join(f"{n} {reason}" for reason, n in sorted(result.withheld.items())),
+            fg=typer.colors.YELLOW,
+        )
+    if result.span is None and result.written:
+        typer.secho(
+            "  distance_to_gene is null on every row: no MANE span was available, so this table "
+            "cannot be thresholded by distance.",
+            fg=typer.colors.YELLOW,
+        )
 
 
 @alphagenome_app.command("publish")

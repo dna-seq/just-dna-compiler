@@ -25,7 +25,10 @@ pl = pytest.importorskip("polars", reason="writing the fixture snapshot needs th
 def _snapshot(tmp_path: Path, rows: list[dict]) -> Path:
     """A MANE snapshot directory holding just the table this module reads."""
     out = tmp_path / "mane"
-    out.mkdir(parents=True, exist_ok=True)
+    # Under `data/`, which is where the builder writes and where `locations` says to look. The
+    # fixture put it at the snapshot root until a real lane proved otherwise — a fixture that
+    # invents a layout agrees with any code that invents the same one.
+    (out / "data").mkdir(parents=True, exist_ok=True)
     pl.DataFrame(
         rows,
         schema={
@@ -35,7 +38,7 @@ def _snapshot(tmp_path: Path, rows: list[dict]) -> Path:
             "chr_end": pl.Int64,
             "mane_status": pl.Utf8,
         },
-    ).write_parquet(out / "summary.parquet")
+    ).write_parquet(out / "data" / "summary.parquet")
     return out
 
 
