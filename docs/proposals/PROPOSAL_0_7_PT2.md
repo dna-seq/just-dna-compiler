@@ -243,7 +243,7 @@ exception recorded under **Status**.
 
 ## RM164 — `heteroplasmy.csv` is a shipped table kind with no source behind it
 
-**Severity** medium · **Owner** enricher · **Entry** [ROADMAP.md § RM164](../ROADMAP.md#rm164--heteroplasmycsv-is-a-shipped-table-kind-with-no-source-behind-it)
+**Severity** medium · **Owner** enricher · **Entry** [ROADMAP_0_8.md § RM164](../ROADMAP_0_8.md#rm164--heteroplasmycsv-is-a-shipped-table-kind-with-no-source-behind-it) (the entry moved there on 2026-09-11; this is a link repair, not a reopening)
 
 ### The problem
 
