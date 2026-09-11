@@ -536,7 +536,7 @@ rejected if one changed. Do this by hand only if the tool cannot (it prints what
   same thing everywhere.)
 - **Say what was skipped.** If an item is left untriaged, leave it `new` rather than writing a
   placeholder reply. An empty verdict is honest; a hedged one is not.
-- **Run the whole suite after each fix, and `ruff check` before you finish.** Six code fixes in one pass
+- **Run the whole suite after each fix, and `ruff check` plus `ruff format <files>` before you finish** — since 2026-09-11 CI gates on `ruff format --check .` as well, so an unformatted commit fails the job. Markdown is outside the gate, deliberately: the formatter rewrites fenced Python inside `.md`, and a consumer's code fence in an archived `Sn` must stay exactly as written or the fingerprint moves. Six code fixes in one pass
   touched all three packages; the suite went 1382 → 1410 and stayed green throughout, which is the only
   reason a batch that size is safe to leave in the tree.
 - **A new item can arrive mid-pass.** S18 was filed while this pass was running and the watcher picked it
