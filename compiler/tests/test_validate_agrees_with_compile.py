@@ -145,6 +145,16 @@ _INJECTED_ROW_CASES: tuple[tuple[str, str, str], ...] = (
             "status",
         ),
         (
+            "expression_effects.csv",
+            (
+                "variant_key,rsid,chrom,start,ref,alt,gene,gene_id,effect_size,effect_measure,"
+                "effect_direction,tracks_agreeing,tracks_total,distance_to_gene,dataset,source,status\n"
+                "rs1800562,rs1800562,6,26092913,G,A,HFE,ENSG00000010704.19,0.0142,RNA_SEQ,"
+                "decrease,226,371,0,alphagenome_atlas_2026-09-11,alphagenome_atlas,checked\n"
+            ),
+            "status",
+        ),
+        (
             "sources.csv",
             # This case used to be spelled `non-commercial`, on the reasoning that the hyphen is wrong
             # where the member is `non_commercial`. It no longer is: a `-`/`_` slip in a hand-written

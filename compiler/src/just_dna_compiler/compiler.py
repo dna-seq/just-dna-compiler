@@ -61,6 +61,7 @@ from just_dna_format.concordance import (
     ClinSigAuthorityCallRow,
     ClinSigConcordanceRow,
 )
+from just_dna_format.expression import ExpressionEffectRow
 from just_dna_format.findings import CodedWarning, classify, restate
 from just_dna_format.frequency import FrequencyRow
 from just_dna_format.gene_metrics import GeneMetricsRow
@@ -87,6 +88,9 @@ from just_dna_format.integrity import (
 )
 from just_dna_format.integrity import (
     content_signature as _content_signature,
+)
+from just_dna_format.integrity import (
+    expression_effect_signature as _expression_effect_signature,
 )
 from just_dna_format.integrity import (
     frequency_signature as _frequency_signature,
@@ -129,6 +133,7 @@ from just_dna_format.manifest import (
     ClinSigConcordance,
     Compilation,
     Display,
+    ExpressionEffects,
     FileEntry,
     Frequency,
     GeneMetrics,
@@ -389,6 +394,9 @@ ARTIFACT_PARQUETS: tuple[str, ...] = (
     # other must not.
     "clin_sig_concordance.parquet",
     "clin_sig_authority_calls.parquet",
+    # RM194/RM200 (0.7), on the same terms as the eight above and in the same place for the same
+    # reason — beside its siblings, so `manifest.artifact.files` reads in family order.
+    "expression_effects.parquet",
     "sources.parquet",
     # RM124 (0.7), last — and **not for the digest reason the entries above give**, which does not
     # reach it. `integrity.artifact_digest` sorts the listing by name before hashing, so a member's
@@ -432,6 +440,7 @@ _FACT_TABLES: tuple[tuple[str, str, type[BaseModel]], ...] = (
     ("gwas_effects.csv", "gwas_effects.parquet", GwasEffectRow),
     ("clin_sig_concordance.csv", "clin_sig_concordance.parquet", ClinSigConcordanceRow),
     ("clin_sig_authority_calls.csv", "clin_sig_authority_calls.parquet", ClinSigAuthorityCallRow),
+    ("expression_effects.csv", "expression_effects.parquet", ExpressionEffectRow),
     ("sources.csv", "sources.parquet", SourceRow),
 )
 # Optional structured-provenance document authored beside the spec (ROADMAP item 1). Hashed and
@@ -5309,6 +5318,32 @@ def compile_module(
     def _gwas_effect_checks(rows: list) -> tuple[list[str], list[str]]:
         return [], list(_cross_check_gwas_effects(rows, variants))
 
+    def _expression_effect_checks(rows: list) -> tuple[list[str], list[str]]:
+        """No checks, and the absence is a decision rather than a gap (RM194/RM200).
+
+        **`_cross_check_gwas_effects`'s orphan warning deliberately does not transfer**, though the
+        two tables look alike enough that copying it would be the obvious move. A `GwasEffectRow` is
+        module-scoped by construction: the pass queries the Catalog *with the module's own rsIDs*, so
+        a row naming an identity the module does not carry really is the residue of a narrowed
+        variant list, which is what that warning is about.
+
+        `expression_effects.csv` is **locus-wide by construction instead**. The pass queries a
+        genomic interval and AlphaGenome answers for every scored variant in it, most of which the
+        module does not author — and finding those is the entire point of the item, because slicing
+        by gene position silently drops the promoters and enhancers that act on a gene without
+        sitting in it. Running the identical check here would fire on nearly every row of every
+        module, which is a warning that means "this table is working".
+
+        A gene-scoped variant of it — warn when `gene` names no gene the module annotates — was
+        considered and left unbuilt. A warning code is a permanent key (`@warning-code-names-the-
+        finding`), nobody has asked for this one, and minting one speculatively costs more than the
+        check would return. It is additive if a caller ever wants it.
+
+        Returning `([], [])` rather than reporting a zero is `@tautology-zero`: this is a table with
+        no check, not a check that always passes.
+        """
+        return [], []
+
     def _concordance_checks(rows: list) -> tuple[list[str], list[str]]:
         # De-duplicated on the message, the `_literature_checks` idiom: `compile_module` runs
         # `validate_spec`, which emits the identical sentences over the identical post-overlay rows,
@@ -5374,6 +5409,10 @@ def compile_module(
         ),
         GwasEffectRow: (
             _gwas_effect_checks, lambda rows: _build_table(rows, GwasEffectRow, module_name),
+        ),
+        ExpressionEffectRow: (
+            _expression_effect_checks,
+            lambda rows: _build_table(rows, ExpressionEffectRow, module_name),
         ),
         ClinSigConcordanceRow: (
             _concordance_checks,
@@ -5470,6 +5509,7 @@ def compile_module(
     gene_validity_rows: list[GeneValidityRow] = fact_rows.get(GeneValidityRow, [])
     clinical_assertion_rows: list[ClinicalAssertionRow] = fact_rows.get(ClinicalAssertionRow, [])
     gwas_effect_rows: list[GwasEffectRow] = fact_rows.get(GwasEffectRow, [])
+    expression_effect_rows: list[ExpressionEffectRow] = fact_rows.get(ExpressionEffectRow, [])
     concordance_rows: list[ClinSigConcordanceRow] = fact_rows.get(ClinSigConcordanceRow, [])
     authority_call_rows: list[ClinSigAuthorityCallRow] = fact_rows.get(ClinSigAuthorityCallRow, [])
     source_rows: list[SourceRow] = fact_rows.get(SourceRow, [])
@@ -5531,6 +5571,7 @@ def compile_module(
         gene_validity=_gene_validity_block(gene_validity_rows),
         clinical_assertions=_clinical_assertions_block(clinical_assertion_rows),
         gwas_effects=_gwas_effects_block(gwas_effect_rows),
+        expression_effects=_expression_effects_block(expression_effect_rows),
         clin_sig_concordance=_clin_sig_concordance_block(concordance_rows, authority_call_rows),
         literature=_literature_block(literature_rows),
         sources=_sources_block(source_rows),
@@ -5783,6 +5824,40 @@ def _gwas_effects_block(rows: list[GwasEffectRow]) -> GwasEffects | None:
         units=sorted({r.effect_unit for r in rows if r.effect_unit}),
         traits=sorted({r.trait_efo_id for r in rows if r.trait_efo_id}),
         not_found_count=sum(1 for r in rows if r.status == "not_found"),
+    )
+
+
+def _expression_effects_block(rows: list[ExpressionEffectRow]) -> ExpressionEffects | None:
+    """The manifest's `expression_effects` summary, or `None` when the module carries no such sidecar.
+
+    `without_distance` and the direction pair are the facets that earn their place. A consumer asking
+    "can I threshold these" needs two answers a row count cannot give: is a distance-aware threshold
+    possible at all (`without_distance == row_count` says no, because no gene span was available), and
+    how many pairs name no direction (`without_direction`, where the scorer's tracks split and the
+    magnitude stands without a sign).
+
+    `max_distance_to_gene` is `None` rather than `0` when nothing carries a distance, on the rule the
+    whole family is built on: a table where the distance could not be computed is not a table where
+    every variant sits inside its gene, and a zero would read as the latter.
+
+    `genes` is published in full rather than counted, because for this table the gene list is what
+    says what the rows are *about* — they are locus-wide, so the variant set does not.
+    """
+    if not rows:
+        return None
+    distances = [r.distance_to_gene for r in rows if r.distance_to_gene is not None]
+    return ExpressionEffects(
+        signature=_expression_effect_signature(rows),
+        sources=sorted({r.source for r in rows if r.source}),
+        datasets=sorted({r.dataset for r in rows if r.dataset}),
+        row_count=len(rows),
+        variant_count=len({r.variant_key for r in rows}),
+        genes=sorted({r.gene for r in rows if r.gene}),
+        measures=sorted({r.effect_measure for r in rows if r.effect_measure}),
+        with_direction=sum(1 for r in rows if r.effect_direction),
+        without_direction=sum(1 for r in rows if not r.effect_direction),
+        without_distance=sum(1 for r in rows if r.distance_to_gene is None),
+        max_distance_to_gene=max(distances) if distances else None,
     )
 
 
@@ -6352,6 +6427,7 @@ def _build_manifest(
     gene_validity: GeneValidity | None = None,
     clinical_assertions: ClinicalAssertions | None = None,
     gwas_effects: GwasEffects | None = None,
+    expression_effects: ExpressionEffects | None = None,
     clin_sig_concordance: ClinSigConcordance | None = None,
     literature: Literature | None = None,
     sources: Sources | None = None,
@@ -6430,6 +6506,7 @@ def _build_manifest(
         gene_validity=gene_validity,
         clinical_assertions=clinical_assertions,
         gwas_effects=gwas_effects,
+        expression_effects=expression_effects,
         clin_sig_concordance=clin_sig_concordance,
         literature=literature,
         sources=sources,

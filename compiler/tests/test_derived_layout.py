@@ -67,6 +67,7 @@ _MOVABLE = (
     "gwas_effects.csv",
     "clin_sig_concordance.csv",
     "clin_sig_authority_calls.csv",
+    "expression_effects.csv",
     "sources.csv",
     LICENSING_CSV,
 )
