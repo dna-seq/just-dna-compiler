@@ -114,6 +114,19 @@ a loosening, minor-legal. **RM215 is the half it leaves open** and is filed for 
 verbatim, so those two spellings still hash to two `content_signature`s, and normalizing allele case
 moves an identity key.
 
+**RM216 + RM217 — the superset sweep the round owed.** Take each `*_FROM_CODE.md`, pull every
+backticked identifier, keep the ones the package defines at top level, grep them against the
+maintained doc: **341 real surfaces absent** across the three tiers. Most are legitimately delegated —
+per-field and per-column names belong in the dated snapshot, not in a hand-kept table that loses one
+(`@fieldnames-from-model`). Two classes are not.
+
+`ENRICHER.md`'s exception-contract § carried a ten-row table against a tier defining **83 error
+classes**, 51 of them named nowhere — in a section titled *what a caller catches*. The complete roster
+is now grouped by what raises them, because the groups are the contract, with the narrowing column
+asserted to be a real subclass ladder (`except` order is load-bearing). And eight of `vocab`'s 29
+vocabularies were missing from `SCHEMAS.md`, two of them from every maintained file; the roster there
+carries count, openness and purpose but deliberately not members.
+
 **What the round says about itself.** All three are shapes this repository had already written a rule
 against — a hand-kept list beside a derivable one, a check on one side of the validate/compile pair, a
 translation on the wrong side of a retry. That is the same finding the 2026-08-18 round produced with

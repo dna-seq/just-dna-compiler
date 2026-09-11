@@ -237,6 +237,51 @@ reason its `source` column is inside its fact set while everywhere else `source`
   what keeps `PgsRow.training_ancestry` (1000G superpopulations) from merging with gnomAD's
   population list — two ancestry vocabularies `vocab.py` explicitly forbids folding together.
 
+  **The roster of `vocab`'s own sets (RM217).** The bullet above describes the *mechanism*; this is the
+  registry, because eight of these were named nowhere in this document and two —
+  `RECOMMENDED_ANCESTRY_GROUPS` and `VALID_EFFECT_DIRECTIONS` — were named in no maintained document at
+  all. The rest appeared only in release-scoped files (INTEGRATION, ROADMAP_HISTORY), which are a record
+  of one release rather than the tier's reference. **Member lists are deliberately not repeated here** —
+  they are `authoring_reference()` and the constants themselves (`@fieldnames-from-model`); what a
+  hand-kept table can carry without rotting is the count, the openness and what the set is *for*.
+  Walked by `test_schemas_vocabulary_roster.py`, so a new vocabulary joins by existing.
+
+  | constant | members | what it constrains |
+  |---|---|---|
+  | `RECOMMENDED_ANCESTRY_GROUPS` | 11 (open) | gnomAD's population labels — **open**, and deliberately not merged with `PgsRow.training_ancestry`'s 1000G superpopulations |
+  | `RECOMMENDED_AUTHOR_KINDS` | 7 (open) |  |
+  | `RECOMMENDED_EFFECT_MEASURES` | 7 (open) | the units a `StudyRow` effect size is usually in — **open**, since a real study may report another |
+  | `VALID_AUTHORED_POSITION` | 5 (closed) | what an `overrides.csv` row claims about the author's own standing on the value |
+  | `VALID_AUTHORITY_CALL_STATUS` | 3 (closed) | whether an authority was asked, answered, or not consulted |
+  | `VALID_AUTHORITY_CONCORDANCE` | 5 (closed) | how a module's call stands against the authorities consulted |
+  | `VALID_AUTHOR_ROLES` | 4 (closed) |  |
+  | `VALID_CLIN_SIG` | 13 (closed) |  |
+  | `VALID_DECLARED_USE` | 3 (closed) |  |
+  | `VALID_DIRECTIONS` | 5 (closed) |  |
+  | `VALID_DOSAGE_SENSITIVITY` | 6 (closed) |  |
+  | `VALID_EFFECT_DIRECTIONS` | 2 (closed) | which way a GWAS or expression effect moves; `increase`/`decrease` only, with absence as the third state |
+  | `VALID_ELEMENT_RULES` | 8 (closed) | the composition rules a `Display` element may declare |
+  | `VALID_EVIDENCE_LEVELS` | 6 (closed) |  |
+  | `VALID_FREQUENCY_STATUS` | 3 (closed) |  |
+  | `VALID_GENE_VALIDITY` | 9 (closed) |  |
+  | `VALID_INHERITANCE_MODE` | 9 (closed) |  |
+  | `VALID_PHENOTYPE_CATEGORIES` | 6 (closed) |  |
+  | `VALID_QUOTE_SOURCE` | 2 (closed) |  |
+  | `VALID_RECOMMENDATION_STRENGTH` | 4 (closed) |  |
+  | `VALID_RELEASE_CHANGE_KINDS` | 2 (closed) |  |
+  | `VALID_RELEASE_OUTPUT_AXES` | 5 (closed) |  |
+  | `VALID_RESOLUTION_STATUS` | 3 (closed) |  |
+  | `VALID_RSID_STATUS` | 4 (closed) |  |
+  | `VALID_SIGNIFICANCE` | 4 (closed) |  |
+  | `VALID_SOURCE_LAYERS` | 9 (closed) |  |
+  | `VALID_VERIFICATION_CHECKS` | 26 (closed) |  |
+  | `VALID_VERIFICATION_SKIPS` | 8 (closed) |  |
+  | `VALID_WARNING_CODES` | 73 (closed) | every code a compile may stamp on a finding; the catalogue with texts is in [COMPILER.md](COMPILER.md) |
+
+  Vocabularies owned by a leaf rather than by `vocab` (`spec`, `binning`, `pgx`, `pgs`, `manifest`,
+  `sources`) are reached through the field markers above and not listed here, for the reason the bullet
+  gives: a central registry would need `vocab` to import `pgx`.
+
   **The guard that keeps this honest discovers enforcement by behaviour, and it was still defeated by a
   hand-kept list (S21, 0.5.4).** `test_every_enforced_vocabulary_field_declares_its_options` feeds each
   field an invented value and requires a marker wherever the model refuses one — no list of which fields

@@ -289,6 +289,36 @@ and the lane needs a second source name, `alphagenome_atlas`, because `RNA_SEQ` 
 non-commercial Output while the AVI artifact is the Permissive candidate — one `(source, layer)` key
 cannot carry two licence classes.
 
+## RM217 — two vocabularies were documented in no maintained file at all
+
+**Severity** low · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (docs + one guard; no code
+change) · **Owner** format · **Motivating case** the same superset sweep that produced RM216
+
+Eight of `vocab`'s 29 `VALID_*`/`RECOMMENDED_*` frozensets were named nowhere in `SCHEMAS.md`, the
+maintained reference for the tier that owns them. **`RECOMMENDED_ANCESTRY_GROUPS` and
+`VALID_EFFECT_DIRECTIONS` appeared in no maintained document at all.** The other six were reachable
+only from INTEGRATION and ROADMAP_HISTORY — files that record what one release did, not files that
+describe the tier — so a reader who arrived at the reference could not find them from there.
+
+**The document already described the mechanism and not the registry**, which is the recurring shape:
+the vocabulary-binding bullet explains how a field carries its members and why there is no central
+registry, and explains it well. What it did not do is say which sets exist.
+
+**The table carries three things and deliberately not the members.** Members are
+`authoring_reference()` and the constants themselves, and a hand-kept copy of a member list is how
+`SOURCES_FIELDNAMES` lost a column (`@fieldnames-from-model`). A count, an openness flag and a
+sentence about what the set is *for* are what a table can hold without rotting — and the count is
+asserted, so adding a member without touching the doc fails rather than drifting.
+
+**Openness is asserted too, because that flag is load-bearing.** `actionability` shipped as an open
+seed while `VariantRow` rejected non-members, so a tool offering a novel value got a rejection it had
+been told to expect. A table mislabelling one would re-create exactly that.
+
+**Scoped to `vocab`'s own sets**, not the leaves' — `spec`, `binning`, `pgx`, `pgs`, `manifest` and
+`sources` own theirs, and a central registry would need `vocab` to import `pgx`, which is the cycle
+`base`'s dependency note exists to avoid. The guard says so rather than pretending to be complete
+over something it is not.
+
 ## RM216 — fifty-one error types named nowhere, in the § titled *what a caller catches*
 
 **Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (docs + one guard; no code
