@@ -4032,6 +4032,34 @@ def _validate_spec(
                 # `validate` exists to prevent. The compile dedupes on message text, so a module
                 # running both sees it once (`@no-rerun-with-counts`).
                 all_warnings.extend(_check_gene_validity_currency(injected_rows))
+            if model is GeneMetricsRow:
+                # `@parity-by-check` again, and this is RM93's literal sibling (RM211).
+                # `_check_frequency_arithmetic` was moved into this pre-flight for exactly this
+                # reason and `_check_gene_metrics_arithmetic` — the same validate-by-redundancy over
+                # a sidecar's own numbers, needing no `output_dir`, no reference and no resolved row
+                # — was left behind in a per-model closure on the compile side. So a module whose
+                # `oe_lof` disagrees with `obs_lof / exp_lof` passed a green `validate` and warned at
+                # compile, which is the shape this pre-flight exists to prevent.
+                #
+                # The orphan check rides along because its key is a **gene**: `gene` is authored and
+                # nothing fills it, so the answer here is the answer the compile reaches. Its three
+                # position-keyed cousins stay compile-only, and that is the standing exemption
+                # working rather than an oversight — see `_frequency_checks` below.
+                all_warnings.extend(_check_gene_metrics_arithmetic(injected_rows))
+                all_warnings.extend(_cross_check_gene_metrics(injected_rows, variants))
+            if model is GeneValidityRow:
+                # Same rule, same key. The currency finding above already runs here; the orphan one
+                # is the other half of the same table's coherence and was reachable only at compile.
+                all_warnings.extend(_cross_check_gene_validity(injected_rows, variants))
+            if model is SourceRow:
+                # Reads `sources.csv` against `module_spec.yaml`'s own `license:` — two authored
+                # files, no sidecar join and no resolution. `_source_checks` is deliberately NOT
+                # moved beside it: its `used_sources` is the set of sources the fact tables actually
+                # cite, which is only complete once every sidecar in this loop has been read, so
+                # asking it here would answer over a partial set and warn about orphans that are not.
+                all_warnings.extend(
+                    _check_declared_license_agrees(injected_rows, config.license if config else None)
+                )
         if model is ResolutionRow and not injected_errors:
             for injected_row in injected_rows:
                 membership_table.setdefault(injected_row.variant_key, []).append(injected_row)
@@ -4388,7 +4416,17 @@ def _validate_spec(
     all_warnings.extend(_check_vcf_pointers(variants, loaded_kinds))
 
     # The injected citation sidecar against BOTH citation sites, now that studies are loaded.
-    all_warnings.extend(_cross_check_literature(literature_rows, studies, loaded_kinds))
+    #
+    # **`survivors`, not `loaded_kinds`** (RM210). Every message this check builds embeds a COUNT, and
+    # `compile_module` runs it a second time over its own post-drop tables, de-duplicating on the
+    # message. Handing this side the pre-drop tables made the two sentences differ by a number, so both
+    # survived the dedup and one manifest carried "1 citation(s) … ['99999999']" beside "2 citation(s)
+    # … ['29165669', '99999999']" with `warnings_summary: {literature_row_uncited: 2}` for one finding.
+    # `@no-rerun-with-counts` is the rule; the repair is to make the two inputs the same rather than to
+    # stop re-running, because a citing table that is also symbolic-droppable (`pharm_variants.csv` is
+    # both) is the only thing that separated them. `survivors` is the same post-drop view the
+    # positional fill above already uses, computed once for exactly this reason.
+    all_warnings.extend(_cross_check_literature(literature_rows, studies, survivors))
 
     # The study-side half of allele membership (RM91), here for the same parity reason as the check
     # below: it is a mode ladder, so leaving it compile-only would let `validate --strict` report valid
@@ -5294,9 +5332,13 @@ def compile_module(
         return errors, warns
 
     def _gene_metrics_checks(rows: list) -> tuple[list[str], list[str]]:
-        warns = list(_check_gene_metrics_arithmetic(rows))
-        warns.extend(_cross_check_gene_metrics(rows, variants))
-        return [], warns
+        # Both have run in the pre-flight since RM211, so both arrive twice. The **extend site**
+        # below de-duplicates every fact-table check on the message — `@first-fact-check-on-both-
+        # sides`, dedupe where the results are collected rather than in each closure — which is why
+        # this one carries no filter of its own and `_gene_validity_checks` below carries none
+        # either. Re-running is the normal case; what would break it is a message embedding a count,
+        # and neither of these does.
+        return [], [*_check_gene_metrics_arithmetic(rows), *_cross_check_gene_metrics(rows, variants)]
 
     def _literature_checks(rows: list) -> tuple[list[str], list[str]]:
         # De-duplicated on the message: `compile_module` runs `validate_spec`, which runs this same
