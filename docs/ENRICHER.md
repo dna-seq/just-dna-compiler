@@ -341,6 +341,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `gene_validity` | RM24: curated gene–disease assertions → `gene_validity.csv` (ClinGen expert panels, GenCC's aggregate; both CC0) | `httpx`, format |
 | `assertions` | RM25: `resolution.csv` + the ClinVar snapshot → `clinical_assertions.csv` (the call **and** the review tier) | `duckdb` via `clinvar`, format |
 | `gwas` | RM90: the GWAS Catalog REST API → `gwas_effects.csv` (published effect sizes **with their units**). Fills no `weight` | `httpx`, format |
+| `expression` | RM194/RM200: the Atlas `ListDenseVariantScores` RNA_SEQ interval → `expression_effects.csv` (per-gene direction, **with the distance beside it**). Non-commercial, so an undeclared run writes nothing | `atlas_client`, `gene_spans`, format |
 | `pgx_draft` | the first drafting provider: CPIC → `haplotypes`/`allele_function`/`diplotypes` rows | `cpic`, compiler `draft` |
 | `clinpgx_draft` | RM26: ClinPGx snapshot → `pharm_variants.csv` rows (offline, inject-only) | `clinpgx`, compiler `draft` |
 | `clinvar_draft` | RM26: ClinVar snapshot → `variants.csv` **partial** rows; genotype left to a human | `clinvar`, compiler `draft` |
@@ -424,6 +425,7 @@ really sleeping.
 | **ClinPGx** | `clinpgx` / `clinpgx_draft` | n/a at runtime | **offline snapshot only** for the check/draft path — no live poll budget | none (live API retired → snapshot) |
 | **seqrepo REST** (`services.genomicmedlab.org`) | `sequences` / VRS indel mint | unpublished | **no `PacingGate`**; in-process memo of window reads | none |
 | **GWAS Catalog REST** (`www.ebi.ac.uk/gwas/rest/api`) | `gwas` | **none established** — EBI publishes no numeric budget for this API, unlike gnomAD's real and load-bearing 10/60s | `DEFAULT_REQUEST_INTERVAL=1.0` — a **courtesy, not a transcribed limit**. Cost is `1 + 2N` per variant (the study/trait facts sit behind `_links`); measured at **382 requests for one real module**, and `--no-study-facts` drops it to one per variant | none |
+| **AlphaGenome Atlas** (`gdmscience.googleapis.com`) | `alphagenome expression`, `alphagenome check` | **none published** — the Additional Terms bar classes of holder outright rather than metering requests, which is an eligibility bar and not a budget | measured **~1,091 SNVs/s** end to end; a gene plus its ±512 kb flanks is ~3.3 M SNVs ≈ 50 min, which the pass prints **before** the query rather than after | `ALPHAGENOME_API_KEY` |
 | **ClinGen** dosage TSV | `clingen` | n/a (one file) | single download, then local parse | none |
 | **ClinGen** gene-validity CSV | `gene_validity` | n/a (one file, ~1 MB) | single download, then local parse | none |
 | **GenCC** submissions CSV | `gene_validity` | n/a (one file, ~28 MB) | single download, then local parse; the client's timeout is 180 s because one response *is* the whole export | none |

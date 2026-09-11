@@ -68,6 +68,227 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM200 — the Atlas's other twenty-one scorers: what a module can take from them
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 · **Owner** enricher ·
+**Motivating case** the AVI artifact is one number per variant with the sign discarded; the API
+carries direction, tissue and mechanism, and nobody had asked which of it is usable
+
+**Everything here is non-commercial.** Only `AVI_SCORE` is a Permissive Use artifact (RM195). Every
+other scorer is ordinary Output, so it enters under `declared_use=non_commercial` and needs the
+second source name `alphagenome_atlas` — one `(source, layer)` key cannot carry two licence classes.
+
+**Built 2026-09-11, and what shipped is narrower than this entry proposed.** The item asked what a
+module can take from the Atlas's other twenty-one scorers; the answer is `RNA_SEQ` and nothing else,
+for the reasons measured below. It ships as `expression_effects.csv`, the tenth derived-fact sidecar
+— **not** as an authored column and **not** as a finding. That third route is the one this entry's
+own open question did not consider: RM193's rule is that non-commercial Output never becomes a
+*stored authored value*, and a derived sidecar honours it literally while still carrying the per-gene
+direction a finding would have had to flatten into prose. Half cost under Principle 9 rather than
+full, and the compile gate stays exactly as data-driven as it was.
+
+The two questions this entry left open are answered rather than deferred: **what one cell records** is
+one row per `(variant, gene)` with the tissue axis collapsed and the gene axis kept, because the gene
+axis is the whole reason the scorer is worth having; and **finding or column** is neither, per above.
+`*_ACTIVE` and the positional scorers are not adopted — the measurements below stand as the record of
+why, and nothing about them changed.
+
+### The correction this starts from
+
+[ALPHAGENOME_ATLAS.md § 4.7](probes/ALPHAGENOME_ATLAS.md) concludes *"there is no expression
+direction anywhere in the model"*. That is true of the **AVI aggregate**, whose eighteen features are
+all `MAX_ABS_*`, and **false of the API**. Measured on the live service: `is_signed` is `True` for
+`RNA_SEQ`, `CAGE`, `ATAC`, `DNASE`, `CHIP_TF`, `CHIP_HISTONE`, `PROCAP` and
+`AVI_SCORE_MODEL_FEATURES`. AVI throws the sign away; those never had it thrown away.
+
+### 1. `RNA_SEQ` — adopt for drafting
+
+**The only scorer with a gene axis.** Shape is `(genes, tracks)` and the gene count *varies with the
+window* — 61 genes at one variant, 48 at another, against `(1, N)` for all twenty other scorers. So
+AlphaGenome attributes it to genes itself, which is what `@gene-map-is-another-sources-attribution`
+requires: a gene claim must come from a source's own per-record attribution, never from a span the
+caller drew.
+
+Signed, 371 RNA-seq tracks, and at `chr22:20002007` it returns 22,631 values across 61 genes. That is
+**expression, per gene, per tissue, with direction** — the axis the shipped artifact cannot express.
+
+Per-request only: no bulk copy exists, and at ~1,091 SNVs/s a gene plus its ±512 kb flanks is ~50
+minutes (RM194). So it is a drafting surface for named genes, never a genome-wide pass.
+
+### 2. Positional enrichment of authored rows — the shape is right, the obvious pick was wrong
+
+A module is **not** gene-scoped: the mandatory gene filter is RM194's *drafting* constraint, because
+an unfiltered interval query dies with `RESOURCE_EXHAUSTED`. For a variant an author has already
+written, the position is known and a positional score needs no attribution at all.
+
+**`CHIP_TF` is refused on the measurement, and it was the most promising candidate.** All 1,617
+tracks carry a real `transcription_factor_code` (`CTCF`, `EZH2`, …), so "this variant disrupts CTCF
+binding" *looks* sayable. Aggregating |effect| by transcription factor over 751 distinct TFs:
+
+| variant | `PHRED` | top-3 TFs' share | leading factors |
+| --- | ---: | ---: | --- |
+| chr22:30339156 C>A | **84.1** | **2%** | ZNF513(1), HMBOX1(1), PCBP1(1) |
+| chr22:20002017 C>A | 19.6 | 3% | AGO2(1), IKZF3(1), HMBOX1(1) |
+| chr22:20002007 G>A | 10.6 | 3% | NRL(1), ZNF280B(1), ZNF768(1) |
+| chr1:10001 T>A | 1.1 | 1% | ZNF48(1), PRDM6(1), SMAD7(1) |
+
+Two things kill it. The concentration **does not track effect size** — the `PHRED` 84 variant is no
+more concentrated than the `PHRED` 1 one — and every leading factor is a **singleton track**, so the
+"top TF" is whichever TF happens to be measured once. Naming a TF from that would publish a sampling
+artefact as a mechanism. Same test sinks a named-cell-type claim from `ATAC`: top-5 of 167 tracks
+carry 22% / 15% / 5% of the mass, *least* concentrated at the most extreme variant.
+
+**`*_ACTIVE` is not what its name suggests, and that is the useful finding.** It is an **activity
+level, not a variant effect**: raw assay units (ATAC 5.7–31, ChIP_TF 332–475), and swapping the ALT
+barely moves it. So it does not describe the variant — it describes **the locus**. "This position
+sits in open chromatin in these cell types" is exactly the positional annotation an authored row
+could carry, and it is a different claim from anything the format holds today.
+
+It needs a normaliser, and the metadata has one: **every track carries `nonzero_mean`** (167/167 for
+ATAC), so a level becomes fold-over-typical for that track. Without it a raw 31 and a raw 0.7 are
+incomparable, and a threshold means nothing — which is why the first pass found all 167 tracks "above
+0.5" at every variant.
+
+### What has to be decided before building
+
+1. **What one cell records.** A per-track vector is not an authored cell. A magnitude, a count of
+   tracks above a normalised threshold, or a top-k of *ontology-typed* terms are three different
+   claims, and the track vocabulary is mixed — `EFO 65 · UBERON 44 · CLO 40 · CL 15 · NTR 3` — so
+   `EFO:0001203 MCF-7` (a cancer cell line) and `UBERON:0001159 sigmoid colon` (an anatomical
+   structure) are not comparable and `NTR:` is ENCODE's "no term registered".
+2. **Whether this is a check or a column.** RM193's position is that non-commercial Output enters as a
+   *finding* and never as a stored value, which keeps the compile gate data-driven. A stored
+   accessibility column would be the first thing to test that.
+3. **`CAGE` was measured on 2026-09-11 and it splits: the ranking fails, the sign holds.**
+
+   | variant | `PHRED` | tracks negative | top-5 share of 546 |
+   | --- | ---: | ---: | ---: |
+   | chr22:30339156 C>A | **84.1** | **100%** | 2% |
+   | chr22:20002017 C>A | 19.6 | **0%** | 3% |
+   | chr22:20002007 G>A | 10.6 | 2% | 4% |
+   | chr22:20002123 G>T | 3.0 | 92% | 5% |
+   | chr1:10001 T>A | 1.1 | 18% | 7% |
+
+   The top-5 share is 2–7% and runs **backwards** to effect size, exactly as `CHIP_TF` did, so
+   naming a tissue is the same sampling artefact — the leaders (Jurkat, retina, amygdala) are the top
+   of a flat distribution.
+
+   **The consensus fraction is a different quantity and it is not flat.** 100% and 0% are unanimous
+   predicted loss and unanimous predicted gain of transcription initiation, which is a directional
+   claim about the *variant* needing no tissue named at all. It is **not monotone in `PHRED`** — 19.6
+   is unanimous-positive while 3.0 is 92% negative — which is what makes it an independent axis
+   rather than a restatement of the score.
+
+   **So the recordable shape is a consensus fraction, not a top-k**, and that is the hypothesis the
+   next scorer should be tested against rather than concentration.
+
+### Assayed 2026-09-11 — the full measurement is [probes/ALPHAGENOME_ATLAS.md § 6.6](probes/ALPHAGENOME_ATLAS.md)
+
+Three assays, and two of them refuted a hypothesis this entry had raised.
+
+**Consensus fraction is a property of the scorer, not the variant**, so it is not a confidence
+measure and the shape proposed above is dead. `CAGE` and `PROCAP` are near-unanimous at *every*
+variant — 97% at `PHRED` 0.007 — while `RNA_SEQ` never exceeds 61%. What survives is only that under
+high consensus the **direction** is a claim; a record may say which way, never how sure.
+
+**`RNA_SEQ`'s lack of consensus is structural, not noise.** A variant can raise one gene and lower
+another, so its tracks *should* disagree — which is the sharpest argument that the gene axis is the
+thing to use and a fraction is the wrong summary for it.
+
+**`*_ACTIVE` does move with the ALT, and the maintainer's objection holds for every motif class.**
+Re-tested against motifs found in the artifact's own `REF` column: `ATAC_ACTIVE` moves ~**16×
+control** in a Z-DNA former, ~**15×** in a G-quadruplex and ~10× in a poly-T run, reaching 20% at
+individual loci. So it is mostly positional with a real per-variant component wherever DNA geometry
+is at stake. **The G4 row read *background* until the probe was fixed** — it had been sampling motif
+*centres*, which are mostly loop bases, where disrupting a quadruplex requires breaking a tetrad. The
+signed `ATAC` channel spreads 27–151% at the same positions, so the model is not insensitive at all;
+the *level* is damped, as a level should be.
+
+**Positional scorers remain unusable as named claims**, now on two independent tests rather than
+one: ranking fails (top-5 carries 2–7%, running backwards to effect size) and consensus does not
+discriminate. The track vocabularies also mix cancer cell lines, anatomical structures and cell types
+under one ranking, with three ENCODE *no term registered* placeholders.
+
+**So the item narrows to `RNA_SEQ`**, and the remaining questions are unchanged: what one authored
+cell records, and whether non-commercial Output may be a stored column at all or stays a finding as
+RM193 has it.
+
+**Still unmeasured, and it is a use-case question rather than an assay one:** whether an averaged
+locus accessibility buys a module anything. Every number says what the scorers do; none says a
+consumer wants it. That belongs in USE_CASES.md.
+
+## RM194 — gene-scoped SNV subslices, and the ±512 kb horizon
+
+**Severity** low · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 · **Owner** enricher ·
+**Motivating case** slicing the artifact by gene *position* silently drops promoters, enhancers and
+other distal variants that act on a gene without sitting in it
+
+**Built 2026-09-11.** Shipped as `just-dna-enricher alphagenome expression`, writing
+`expression_effects.csv` — a recording pass rather than the drafting provider this entry describes,
+because RM200 landed with it and the rows belong in a derived sidecar rather than in `variants.csv`.
+
+**Both span forms ship, and the interval wins.** The three candidates this entry weighed were the
+wrong shortlist: a fourth option — the operator supplying `--chrom/--start/--end` outright — needs no
+lane, no staleness story and no answer to "what if the span source disagrees with the module", and it
+is the default route. `--gene` alone resolves the span from the **MANE lane** (the only in-tier source
+with gene coordinates; the Ensembl snapshot is eliminated by its own schema, which has no gene column
+at all), widened by the ±512 kb horizon measured here. The gene filter is mandatory in **both** forms,
+because it is a server-side requirement rather than an optimisation.
+
+**Distance is recorded, as this entry required, and it is tri-state.** The MANE lane is consulted even
+when the interval was supplied by hand — those are two questions, and an explicit interval only
+answers the first. With no lane the column is null and the pass says so, never an interval edge.
+
+Two defects surfaced only by running the real command, both of which every offline test had agreed
+with: the Atlas wants `chr22` on the wire where a module stores `22`, and `summary.parquet` lives
+under a snapshot's `data/` rather than at its root. A fixture confirms the convention its author
+chose, which is the standing argument for a live leg however small.
+
+**The blocker this item carried is gone.** [PROPOSAL_0_7_PT4](proposals/PROPOSAL_0_7_PT4.md#rm194--gene-scoped-subslices-and-the-512-kb-horizon)
+listed the interval RPC as the thing a first cut owes, "including the `x-goog-fieldmask` header and
+32 bp chunking that hand-built requests got wrong". Measured on 2026-09-10 and **none of that was
+the cause**:
+
+| claim | measured |
+| --- | --- |
+| the `x-goog-fieldmask` header is required | **no** — the same interval answers identically without it; asserted as equality of the two answers, not as "both succeeded" |
+| 32 bp chunking is required | **no** — a 128 bp interval answers in one call; the SDK's 32 bp sub-intervals are its *parallelism* strategy |
+| — | **`Interval.strand` must be a real member.** `Strand` has **no zero**: `STRAND_UNSPECIFIED = 0` is the proto3 default, so an omitted `strand` goes on the wire as a value the server rejects — as a bare `INVALID_ARGUMENT` naming no field. That was the entire failure |
+| — | **a filter is effectively required**: unfiltered, 32 bp answers with a **43 MB** message against a 4 MB receive limit |
+
+`AtlasClient.score_interval` shipped with RM192's commit for that reason — it is the client's missing
+half, it is now tested (offline and live), and leaving it out would have left the measurement
+unrecorded in code. **This item is now the drafting provider and nothing else.**
+
+**An upstream bug found on the way, and it is in the pagination:** the server returns a
+`next_page_token` on an exactly-full final page, and following it is `INVALID_ARGUMENT`. A 1,000 bp
+interval (3,000 variants, short last page) correctly omits the token; 1,024 bp (3,072 = six pages of
+512) does not. AIP-158 says an omitted token means no further pages, so a faithful client crashes on
+the one interval width that divides evenly. The SDK has the same loop and never trips it, because
+32 bp cannot fill a page. `score_interval` follows the token but also stops once the requested
+interval is covered, with an offline regression test.
+
+**Why the provider was not built.** Two reasons, neither of them the RPC:
+
+1. **It cannot be validated in one night.** Measured cost is ~1,091 SNVs/s, so a gene plus its
+   ±512 kb flanks is ~3.3 M SNVs and **~50 minutes per gene**. A drafting provider whose only
+   end-to-end test takes an hour per case is not something to land unattended.
+2. **Where the gene's coordinates come from is a design decision, not a detail.** The provider needs
+   a span before it can query one, and the tier has three candidates (the MANE lane, the Ensembl
+   snapshot, the module's own authored `gene`) with different currency and different failure modes.
+   `@gene-map-is-another-sources-attribution` says a source with no gene column is drafted through
+   another source's *per-record attribution*, never a span — and here AlphaGenome **is** the
+   attributing source, so the span is only a query hint and the attribution it returns is the claim.
+   Which of the three supplies the hint changes what a stale one does.
+
+**What still stands from the design**, unchanged and measured: gene attribution reaches **±512 kb**
+and stops dead beyond it (scores returned at +500 kb, nothing at +700 kb — the half-window of the
+model's 1 MB input); distal scores run **~10× lower** than at the gene, so a flat `--min-score`
+would silently keep only proximal variants and the **distance must be recorded beside the score**;
+and the lane needs a second source name, `alphagenome_atlas`, because `RNA_SEQ` output is ordinary
+non-commercial Output while the AVI artifact is the Permissive candidate — one `(source, layer)` key
+cannot carry two licence classes.
+
 ## RM206 — `LookupClients` had three lazy-build semantics and the call site could not tell which
 
 **Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only:

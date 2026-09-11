@@ -1775,6 +1775,7 @@ grammar was rejected. The meaning of both is the named table's own:
 | `clinical_assertions.csv` | `variant_key` | `variation_id` |
 | `literature.csv` | `pmid` | — |
 | `gwas_effects.csv` | `association_id` | — |
+| `expression_effects.csv` | `variant_key` | `gene` |
 | `clin_sig_concordance.csv` | `variant_key` | `genotype` |
 
 **Two** derived sidecars sit outside the set, not one. `sources.csv` / `licensing.csv` has its own
@@ -2771,3 +2772,71 @@ module's own resolution and would make two modules holding the same records hash
 Catalog is *queried* by rsID and echoes it back inside `riskAlleleName`, so it is part of what the
 source said. `trait` is outside, on `gene_validity`'s rule: a label that churns between releases for an
 unchanged `trait_efo_id` describes the association rather than being it.
+
+## The expression-effect table (0.7, RM194 + RM200)
+
+`expression_effects.csv` → `expression_effects.parquet` is the tenth derived-fact sidecar: one row
+per **`(variant, gene)` pair**, keyed on `(variant_key, gene)`, filled by the enricher's
+`alphagenome expression` pass and never fetched by the compiler.
+`just_dna_format.expression.ExpressionEffectRow`.
+
+**It exists because the artifact next door threw the sign away.** RM191 adopted AlphaGenome's AVI
+scores, whose eighteen features are all `MAX_ABS_*` — so the artifact can say a variant matters and
+cannot say which way it moves anything. The Atlas API has the direction that artifact discards, and
+RM200 measured all twenty-two scorers to find which of it is recordable. Exactly one survived:
+`RNA_SEQ` is the only scorer with a gene axis, the only one whose disagreement across tracks is
+meaningful rather than flat, and the only one that **attributes its own claim to a gene** — which is
+what `@gene-map-is-another-sources-attribution` requires. The rest either restate `AVI_SCORE` or rank
+noise: `CAGE`'s top-5 of 546 tracks carry 2–7% of the effect, and the concentration runs *backwards*
+to effect size.
+
+**Why a sidecar and not an authored column.** Atlas Output is non-commercial, and RM193's position is
+that non-commercial Output enters as a finding and never as a stored value. A derived sidecar keeps
+that rule literally — nothing here is authored, nothing enters `content_signature`, and the compile
+gate still reads `sources.csv` and nothing else — while carrying an axis a finding cannot: per-gene
+direction survives, where a finding would collapse it to prose. Half cost under Principle 9 rather
+than full.
+
+**One row is one `(variant, gene)` pair, and the gene axis is the point.** A variant genuinely raises
+one gene and lowers another, which is also why `RNA_SEQ` never reaches consensus across its tracks
+(52–61% throughout, measured over six variants spanning four decades of effect size). A summary that
+collapsed genes would destroy the thing that makes this scorer worth having. And not one row per
+*track*: 371 tissue tracks per gene is lossless and unreadable.
+
+**`distance_to_gene` is the load-bearing column, and null is one of its values.** AlphaGenome
+attributes a variant to genes across the model's whole 1 Mb input window — reaching ±512 kb and
+stopping dead beyond — and distal scores run about **10× lower** than scores at the gene. So a flat
+`--min-score` silently keeps only the proximal rows while looking like it filtered on effect, which is
+the failure this item exists to prevent. The distance comes from the MANE lane; a deployment without
+that lane records the absence rather than an interval edge, and `manifest.expression_effects.
+without_distance` is what makes a whole table of them visible without reading the parquet.
+
+**`tracks_agreeing` is a count and never a confidence.** RM200 tested consensus-as-confidence and
+killed it: `CAGE` and `PROCAP` are near-unanimous at *every* variant, 97% agreement at a `PHRED` of
+0.007. Agreement does not separate a consequential variant from an inconsequential one. The count is
+recorded because a reader may want it; nothing in this tier gates on it, and no threshold withholds a
+direction.
+
+**`effect_size` and `effect_direction` answer different questions and may disagree.** The first is the
+single strongest tissue effect *keeping its sign* — the number AVI discards. The second is the
+majority sign across all tracks, a claim about consensus. One tissue moving hard against a mild
+general trend produces a `decrease` size under an `increase` direction, and that is real rather than
+an inconsistency to smooth away.
+
+**`effect_unit` is null on every AlphaGenome row, stated rather than invented.** The service publishes
+no unit for a scorer's output, so these scores are comparable within the scorer and across nothing
+else. `@weight-has-no-unit` says a magnitude needs its unit beside it; where no unit exists the honest
+record is the absence plus the name of what produced the number, which is `effect_measure`.
+
+**`gene` and `gene_id` are two columns and both are inside the signature.** The HGNC symbol is what
+every authored `gene` column joins against; the Ensembl accession is stable across the renames a
+symbol undergoes. `gene_id` is stored **verbatim including the version** — upstream's own proto
+comment says the field is "without version number" and the live service returns
+`ENSG00000040608.14`, so the bytes are kept and the comment is recorded as wrong.
+
+**The rows are locus-wide by design, and no orphan check fires.** `_cross_check_gwas_effects` warns
+when a row names an identity no variant in the module carries; that check deliberately does not
+transfer. A `GwasEffectRow` is module-scoped by construction — the pass queries the Catalog with the
+module's own rsIDs — whereas this pass queries an interval and the service answers for every scored
+variant in it. Most of those name variants the module does not author, and finding the distal ones is
+the entire point.

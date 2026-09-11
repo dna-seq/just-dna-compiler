@@ -1390,7 +1390,7 @@ weights  annotations  studies                                    ← the SNP cor
 activity_phenotype  copynumbers  repeat_alleles  heteroplasmy
 haplotypes  allele_function  diplotypes  pgs  pharm_variants      ← the nine table kinds
 frequencies  gene_metrics  literature  gene_validity
-clinical_assertions  gwas_effects
+clinical_assertions  gwas_effects  expression_effects
 clin_sig_concordance  clin_sig_authority_calls                     ← the derived-fact sidecars (the last two: RM130, 0.7)
 sources                                                           ← the licence table
 overrides                                                         ← the authored overlay (0.7)
@@ -1416,7 +1416,7 @@ including which columns the compiler stamps rather than reads, is in
 - **`ARTIFACT_PARQUETS`** (feed `artifact.digest`; `_OUTPUT_FILES` until 0.6): `weights`/`annotations`/
   `studies.parquet` + the 9 table-kind parquets + `frequencies.parquet` / `gene_metrics.parquet` /
   `literature.parquet` / `gene_validity.parquet` / `clinical_assertions.parquet` /
-  `gwas_effects.parquet` / `clin_sig_concordance.parquet` / `clin_sig_authority_calls.parquet` /
+  `gwas_effects.parquet` / `expression_effects.parquet` / `clin_sig_concordance.parquet` / `clin_sig_authority_calls.parquet` /
   `sources.parquet` / `overrides.parquet` when present — the diagram above is the tuple, and this
   sentence is not a second inventory of it. The sidecars enter
   the digest because a module carrying frequency data genuinely *is* different content — but adding one
@@ -1432,7 +1432,7 @@ including which columns the compiler stamps rather than reads, is in
   `ARTIFACT_PARQUETS`) — it is a multi-producer artifact hashed only by the normalized `resolution_signature`
   (a raw-bytes hash would be unstable across enricher/human/reverse producers). `frequencies.csv`,
   `gene_metrics.csv`, `literature.csv`, the 0.6 pair `gene_validity.csv` / `clinical_assertions.csv`,
-  `gwas_effects.csv` and the 0.7 pair `clin_sig_concordance.csv` / `clin_sig_authority_calls.csv`
+  `gwas_effects.csv`, `expression_effects.csv` and the 0.7 pair `clin_sig_concordance.csv` / `clin_sig_authority_calls.csv`
   are out for exactly the same reason, each hashed by its own `*_signature` (the derived roster is
   `_DERIVED_FILES`; read it rather than this sentence). `provenance.json` is
   likewise out of the digest.
@@ -2096,6 +2096,7 @@ modules silently vanishing from a catalogue.
 | **dosage sensitivity (0.5)** | ✅ `haploinsufficiency`/`triplosensitivity` against `VALID_DOSAGE_SENSITIVITY` | ✅ `gene_metrics.parquet` (in digest, fact-hashed) | — | complete (ClinGen route in the enricher) |
 | **`redistribution` (0.5, settled 0.6)** | ✅ tri-state; `None` ≠ `False` | ✅ `sources.parquet`; per-layer facet + module-wide verdict → **manifest** | ✅ most-restrictive-wins | complete — **recorded here, enforced downstream** (RM27; the ask is in SCHEMAS.md) |
 | **GWAS effect sizes (0.6, RM90)** | ✅ `effect_direction` closed; `effect_measure` open; `effect_unit` free text and **inside the fact hash** | ✅ `gwas_effects.parquet` (in digest, fact-hashed) | ✅ orphan rows warn, never fail | complete (Catalog route in the enricher; fills no `weight` — see MODULE_LIFECYCLE § Stage 3) |
+| **Expression effects (0.7, RM194+RM200)** | ✅ `effect_direction` closed (shared with `GwasEffectRow` — same axis); `effect_measure` open; `effect_unit` null on every AlphaGenome row and **stated rather than invented**; `gene` and `gene_id` both inside the fact hash | ✅ `expression_effects.parquet` (in digest, fact-hashed) | ✅ **no orphan check, deliberately** — the rows are locus-wide by construction, so `gwas_effects`' check would fire on nearly every row | complete (`alphagenome expression`; non-commercial, gated at compile via `sources.csv`) |
 | **weighting declaration (0.6, RM92)** | ✅ three free-text strings, `extra="forbid"` | ✅ `manifest.weighting`; moves neither identity half | — | complete; dropped by `reverse_module`, like `license`/`panel`/`authorship` |
 | **verification attestation (0.6, RM45)** | ✅ binding recomputed from the authored inputs, proof-of-work re-checked; stale ⇒ warn + drop, never fatal | ✅ `manifest.verification` (out of `artifact.digest`); nothing reaches a parquet | — (the enricher puts the checks) | complete (`verification.json`; nothing in the block is trusted) |
 | **authoring closure (0.6, RM73)** | ✅ published when the attestation holds and carries one; absent ⇒ warn in both modes; a *signed* closure that does not verify ⇒ drop the whole block | ✅ `manifest.verification.closure`; moves no digest and no signature (measured on all sixteen reference examples) | ✅ `close` writes it; `validate` never does | mechanism complete (`compiler.close_module`); the **refusal** is 1.0 and blocked — see ROADMAP_1_0 § RM73 |

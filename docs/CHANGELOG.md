@@ -34,7 +34,49 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-11 (latest) — the registry's field notes: five things a caching proxy had to work around
+## 2026-09-11 (latest) — the axis the AVI artifact threw away, as the tenth derived-fact sidecar
+
+**RM194 + RM200 shipped together, because they were always one build.** `expression_effects.csv` →
+`expression_effects.parquet`: one row per `(variant, gene)` saying which way a variant moves that
+gene's predicted expression, how many of AlphaGenome's 371 tissue tracks agree, and how far the
+variant sits from the gene. Filled by a new `just-dna-enricher alphagenome expression`.
+
+**The design question RM200 could not settle dissolved rather than being decided.** It asked whether
+non-commercial Atlas Output may become a *stored* value at all, given RM193's position that it enters
+as a finding and never as one. The answer is a third route: a **derived sidecar**, which honours that
+rule literally — nothing here is authored, nothing enters `content_signature`, and the compile gate
+still reads `sources.csv` and nothing else — while carrying the per-gene direction a finding would
+have had to flatten into prose. Half cost under Principle 9 rather than full.
+
+**One scorer of twenty-two, and the other twenty-one are a measured refusal.** `RNA_SEQ` is the only
+one with a gene axis, the only one whose disagreement across tracks is meaningful rather than flat,
+and the only one that attributes its own claim to a gene. `CAGE`'s top-5 of 546 tracks carry 2–7% of
+the effect and the concentration runs *backwards* to effect size; `CHIP_TF`'s leading factor is
+whichever TF happens to be measured once.
+
+**`distance_to_gene` is the column that makes the table usable, and null is one of its values.**
+Distal scores run ~10× lower than scores at the gene, so a flat `--min-score` keeps only the proximal
+rows while looking like it filtered on effect — the failure RM194 exists to prevent. The distance
+comes from the MANE lane, and a deployment without it records the absence rather than an interval
+edge; the manifest publishes `without_distance` so a whole table of them is visible before a join.
+
+**What the schema gained:** `ExpressionEffectRow`, `expression_effect_signature`, a
+`manifest.expression_effects` block, an `overrides.csv` target keyed `(variant_key, gene)`, and the
+`expression_effect` source layer. `alphagenome_atlas` is a second source name because one
+`(source, layer)` key cannot carry two licence classes — the AVI artifact is Permissive Use while
+this scorer's output is non-commercial, and that one is **documented** rather than read off a page.
+
+**Three bugs only real execution could find**, each one a case where every offline fixture agreed with
+the code that built it: the Atlas wants `chr22` on the wire where a module stores `22`; a snapshot's
+`summary.parquet` lives under `data/` rather than at its root; and a lane *directory* existing is not
+the same as a lane being built. The first is now fixed by the client owning the spelling, as it
+already owns the 0-based/1-based conversion.
+
+Verified end to end against the live service and a real MANE lane: 303 rows compiled into a module,
+`compile → reverse → compile` byte-identical with `artifact.digest`, `content_signature` and
+`expression_effect_signature` all stable.
+
+## 2026-09-11 — the registry's field notes: five things a caching proxy had to work around
 
 `just-dna-enricher` only, inside the uncut 0.7.0. just-dna-registry filed S91–S95 while building its
 0.25 caching-proxy surface over this package — `GET /caches`, a hosted `lookup_*`, egress metering —

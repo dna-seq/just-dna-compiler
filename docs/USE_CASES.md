@@ -477,6 +477,45 @@ genomes — not a thing that ships; parked in [ROADMAP.md](ROADMAP.md)).
 
 ---
 
+## 7. Regulatory effect — which gene a non-coding variant moves, and which way (0.7)
+
+Two use cases, one shipped and one deliberately left open, and the pair is the point: they came from
+the same measurement round and only one of them has anyone asking for it.
+
+**7.1 "This promoter variant lowers TBX1 in most tissues." — ENABLED (RM194 + RM200).**
+
+A gene panel wants the variants that *matter* for its genes, and slicing an artifact by gene position
+answers a narrower question than it appears to: it catches coding and near-splice variants and
+silently drops the promoters, enhancers and chromatin-altering variants that act on a gene without
+sitting in it. AlphaGenome attributes a variant to genes across a 1 Mb window and names the gene
+itself, which is what `@gene-map-is-another-sources-attribution` requires — so the attribution is the
+source's rather than a span the caller drew.
+
+Served by `expression_effects.csv`: one row per `(variant, gene)` with a signed magnitude, the
+majority direction across 371 tissue tracks, the count that agreed, and the distance to the gene.
+**The distance is what makes it usable** — distal scores run ~10× lower, so a magnitude threshold
+without it keeps the proximal rows while looking like it filtered on effect.
+
+Non-commercial: the rows enter under `declared_use=non_commercial` through `alphagenome_atlas`, and a
+module carrying them is gated at compile like any other restricted source.
+
+**7.2 "This position sits in open chromatin in these cell types." — GAP, and nobody has asked.**
+
+Measurable and not adopted, which is a different verdict from *blocked*. RM200 measured the Atlas's
+`*_ACTIVE` scorers and found they describe the **locus** rather than the variant — raw assay units
+barely moved by the ALT, except where DNA geometry is at stake, where `ATAC_ACTIVE` moves ~16× control
+inside a Z-DNA former and ~15× in a G-quadruplex. So a locus-accessibility annotation is a coherent
+thing to record and genuinely new to this format.
+
+What stops it is not the schema. Every number says what the scorers *do*; none says a consumer wants
+it, and the track vocabulary mixes cancer cell lines (`EFO`), anatomical structures (`UBERON`) and
+cell types (`CL`) under one ranking, with three ENCODE *no term registered* placeholders. Naming a
+cell type from that ranking would publish a sampling artefact as a mechanism — the same test that
+sank `CHIP_TF` and `CAGE`.
+
+**Reopen this with a consumer, never with an argument.** The measurement is done and recorded in
+`probes/ALPHAGENOME_ATLAS.md` § 6.6; what is missing is somebody who needs the answer.
+
 ## Roadmap items surfaced
 
 The gaps above, consolidated. Format-side items migrate into [`ROADMAP.md`](ROADMAP.md); the
