@@ -105,6 +105,27 @@ LIST_FIELD_MASK: tuple[str, ...] = (
 OBSERVED_PAGE_SIZE = 512
 
 
+def wire_contig(chrom: str) -> str:
+    """`22` → `chr22`, and `chr22` unchanged — the spelling the Atlas wire expects.
+
+    **This module already owns one coordinate convention and this is the second.** `_interval`'s
+    docstring says the 0-based/1-based conversion happens here so callers pass VCF positions
+    throughout; contig spelling is exactly the same class of fact, and leaving it to callers is what
+    let a pass send `22` and get back a bare `NOT_FOUND: Chromosome 22 not found` — a live failure
+    that no offline test could have produced, because a stub answers whatever it is asked.
+
+    **One normalizer, not two** (`@one-normalizer-two-spellings`). `alphagenome_check` had a private
+    `_chr` doing this for the snapshot join, which is the shape where a private name keeps the second
+    caller from finding the first: the same conversion was needed at the RPC boundary and nothing
+    pointed there. `VariantRow` normalizes through `vrs.normalize_chrom` and stores `22`; AlphaGenome
+    is UCSC-style `chr22` on the wire and in its tabix index alike. One direction only, at the
+    boundary — the prefixed spelling is the source's, so the conversion belongs to the code crossing
+    into it rather than to either model.
+    """
+    value = str(chrom).strip()
+    return value if value.lower().startswith("chr") else f"chr{value}"
+
+
 def _interval(chrom: str, start: int, end: int):
     """A proto `Interval`, with `strand` set to a real member — and that is the whole trick.
 
@@ -342,6 +363,7 @@ class AtlasClient:
 
         `position` is the 1-based VCF position, passed through unchanged (`@start-1based`).
         """
+        chrom = wire_contig(chrom)
         label = f"{chrom}:{position} {ref}>{alt}"
         request = atlas_service_pb2.GetDenseVariantScoresRequest(
             variant=dna_model_pb2.Variant(
@@ -405,6 +427,7 @@ class AtlasClient:
                 "answers with every scorer for every variant — measured at 43 MB for 32 bp, against "
                 "a 4 MB default receive limit. Pass `scorers` and/or `gene_names`."
             )
+        chrom = wire_contig(chrom)
         label = f"{chrom}:{start}-{end}"
         metadata = self._metadata
         if field_mask:

@@ -211,7 +211,16 @@ def artifact_contig(chrom: str) -> str:
 
     One direction only, and at the boundary: the snapshot's spelling is the source's, so the
     conversion belongs to the reader that crosses into it rather than to either model.
+
+    Delegated to `atlas_client.wire_contig` rather than duplicated: the RPC boundary needs the same
+    conversion, and two copies of one normalizer is the defect `@one-normalizer-two-spellings` names.
+    Kept as a named function here because the snapshot join is a different boundary from the wire,
+    and a reader of this module should find the rule where the join is.
     """
+    if ATLAS_CLIENT_AVAILABLE:
+        from just_dna_enricher.atlas_client import wire_contig
+
+        return wire_contig(chrom)
     value = str(chrom).strip()
     return value if value.lower().startswith("chr") else f"chr{value}"
 

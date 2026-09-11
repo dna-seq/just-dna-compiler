@@ -587,6 +587,53 @@ def test_an_interval_wider_than_one_page_is_followed_to_the_end():
     assert len({(s.position, s.alt) for s in scores}) == len(scores), "a page was repeated"
 
 
+@pytest.mark.parametrize(
+    ("given", "expected"),
+    [("22", "chr22"), ("chr22", "chr22"), ("CHR22", "CHR22"), ("X", "chrX"), (" 22 ", "chr22")],
+)
+def test_a_bare_contig_reaches_the_wire_in_the_spelling_the_service_wants(given, expected) -> None:
+    """The regression for a bug **only the live leg could produce**, now pinned offline.
+
+    A stub answers whatever it is asked, so every offline test here passed while `expression` sent
+    `22` and the real service replied `NOT_FOUND: Chromosome 22 not found`. The fix is that the
+    client owns the spelling — it already owns the 0-based/1-based conversion for exactly this
+    reason — and the guard has to assert what goes **onto the request**, not what comes back, because
+    what comes back is the fixture's own opinion.
+
+    `CHR22` is left alone deliberately: the check is a prefix test, not a case normalizer, and
+    inventing a canonical case would be this workspace rewriting a source's own token.
+    """
+
+    class _Recording:
+        def __init__(self):
+            self.seen = None
+
+        def ListDenseVariantScores(self, request, metadata=None):  # the proto's own method name
+            self.seen = request.interval.chromosome
+            return atlas_service_pb2.ListDenseVariantScoresResponse()
+
+    stub = _Recording()
+    ac.AtlasClient(stub, api_key="x").score_interval(given, 1, 33, scorers=("AVI_SCORE",))
+    assert stub.seen == expected
+
+
+def test_both_rpcs_normalise_the_contig_and_not_just_the_one_that_broke() -> None:
+    """`score_variant` was never the reported failure, and fixing only the reported one is how a
+    normalizer ends up applied on one side (`@one-normalizer-two-spellings`)."""
+
+    class _Recording:
+        def __init__(self):
+            self.seen = None
+
+        def GetDenseVariantScores(self, request, metadata=None):  # the proto's own method name
+            self.seen = request.variant.chromosome
+            return atlas_service_pb2.DenseVariantScores()
+
+    stub = _Recording()
+    ac.AtlasClient(stub, api_key="x").score_variant("7", 10001, "T", "A", scorers=("AVI_SCORE",))
+    assert stub.seen == "chr7"
+
+
 def test_a_token_on_an_exactly_full_final_page_does_not_send_a_seventh_request():
     """The upstream AIP-158 bug, pinned offline so it cannot come back as a live-only surprise.
 
