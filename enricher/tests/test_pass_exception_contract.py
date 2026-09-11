@@ -33,6 +33,11 @@ import just_dna_enricher.gene_metrics as gene_metrics_module
 import pytest
 from just_dna_enricher.clingen import ClinGenError, ClinGenUnavailable
 from just_dna_enricher.eutils import EutilsError
+from just_dna_enricher.expression import (
+    ExpressionError,
+    ExpressionUnavailable,
+    enrich_expression,
+)
 from just_dna_enricher.frequencies import (
     FrequencyEnrichmentError,
     FrequencyUnavailable,
@@ -71,6 +76,19 @@ def _module(tmp_path: Path, name: str = "hboc_palb2") -> Path:
     for sidecar in ("frequencies.csv", "literature.csv", "gene_metrics.csv"):
         (spec / sidecar).unlink(missing_ok=True)
     return spec
+
+
+class _StubAtlas:
+    """Raises what `AtlasClient` raises — its own `AtlasUnavailable`, never grpc's `RpcError`.
+
+    Imported lazily inside the method for the same reason `expression` guards its own import: the
+    `[atlas]` extra may be absent, and this file is walked by `pkgutil.iter_modules`.
+    """
+
+    def score_interval(self, *_a, **_k) -> tuple:
+        from just_dna_enricher.atlas_client import AtlasUnavailable
+
+        raise AtlasUnavailable("the Atlas is unreachable: failed to connect to all addresses")
 
 
 class _StubGnomad:
@@ -149,6 +167,24 @@ PASSES: list[Case] = [
         lambda spec: enrich_literature(spec, write=False, eutils=_StubEutils()),
         LiteratureEnrichmentError,
         LiteratureUnavailable,
+    ),
+    Case(
+        # RM194/RM200. **Not exempt the way `gwas` is**, and the difference is where the error type
+        # lives: `GwasError` is raised by the client and the pass alike, both declared in one module,
+        # so nothing foreign crosses that boundary. `AtlasError` lives in `atlas_client`, so this
+        # pass really does translate and owes the chain.
+        #
+        # `--use non-commercial` is not decoration here: the licence gate runs *before* the RPC
+        # (`@acquisition-gate-is-not-a-read-gate`), so an undeclared call would skip and never reach
+        # the stub — the vacuously-green shape `prepare` exists to prevent one case up.
+        "expression.enrich_expression",
+        lambda spec: enrich_expression(
+            spec, "PALB2", chrom="16", start=23600000, end=23602000,
+            client=_StubAtlas(), declared_use="non_commercial",
+            mane_cache=spec / "no-mane-lane", write=False,
+        ),
+        ExpressionError,
+        ExpressionUnavailable,
     ),
     Case(
         "identifiers.check_rsids",
