@@ -294,41 +294,6 @@ about the grid, so reading it as continuous invents coverage gaps rather than re
 
 ---
 
-## RM215 — allele case is inside `content_signature`, so one pair has two identities
-
-**Severity** medium · **Status** open — 1.0 (it moves an identity key) · **Owner** format (schema) ·
-**Motivating case** the 2026-09-11 blind re-derivation — `docs/audit/SCHEMAS_FROM_CODE.md` D2, the half
-[RM214](ROADMAP_HISTORY.md#rm214--the-allele-grammar-is-case-insensitive-and-the-ordering-rule-beside-it-was-not)
-deliberately left open
-
-`vocab.ALLELE_PATTERN` carries `re.IGNORECASE`, so `A/g`, `a/G` and `a/g` are all legal spellings of
-one heterozygote — and the cell is stored **verbatim**, so each hashes to a different
-`content_signature`. Two authors curating the same variant from the same source produce two module
-identities, and nothing in the tier says they disagree.
-
-RM214 fixed the half that was a plain inconsistency: the ordering rule was ASCII while the grammar was
-case-insensitive, so `A/g` validated and `a/G` did not. That was a loosening and minor-legal. This is
-the other half and it is not.
-
-**Why it is major.** Normalizing the case at the model would change the stored cell, and the stored
-cell is inside `content_signature` — so every module carrying a lowercase allele gets a new content
-identity without its content changing. That is "changing what an identity key *means*", which P3 puts
-in a major, and it is the same reasoning RM81 two entries up applies to a retype.
-
-**What 1.0 has to decide, rather than assume.** Three shapes, and the cheap-looking one is not
-obviously right:
-
-1. **Upper-case at the model.** Canonical, and it silently rewrites an authored cell — which the tier
-   otherwise refuses to do (`@verbatim-except-order`, and the enricher's reports-never-repairs rule).
-2. **Refuse a lowercase allele.** Also canonical, a **tightening**, and it invalidates any module that
-   used one. Needs the upgrade procedure RM52 owes.
-3. **Hash case-insensitively and keep the cell.** Leaves the authored value alone and makes the two
-   spellings one identity, at the cost of a signature that no longer reads as "the bytes".
-
-**Nobody has reported this**, which is stated rather than implied: it is a defect found by derivation,
-not by a consumer, and no module in the corpus carries a lowercase allele today. That bounds its
-urgency and not its correctness — and it is exactly the class of thing a major exists to sweep up.
-
 ## RM81 — one artifact spells a genotype two ways
 
 **Severity** medium · **Status** open — 1.0 (a retype of a published parquet column) · **Owner** format

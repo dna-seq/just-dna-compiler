@@ -24,6 +24,7 @@ from pydantic import (
 )
 
 from just_dna_format.base import (
+    CASE_INSENSITIVE_ALLELE,
     COMPILER_MANAGED,
     AuthoredModel,
     derive_variant_key,
@@ -559,7 +560,7 @@ class VariantRow(AuthoredModel):
     )
 
     genotype: str = Field(
-        json_schema_extra=since("0.2.0"),
+        json_schema_extra={**CASE_INSENSITIVE_ALLELE, **since("0.2.0")},
         description=(
             "Slash-separated sorted alleles, e.g. A/G, or a single allele where the contig is "
             "hemizygous or haploid (non-PAR X/Y in males, homoplasmic MT). An allele is bases, or a "
@@ -699,7 +700,7 @@ class VariantRow(AuthoredModel):
         description="Unit of `effect_size`, e.g. OR|HR|beta|RR (recommended; not a closed set).",
     )
     effect_allele: str | None = Field(
-        json_schema_extra=since("0.3.0"),
+        json_schema_extra={**CASE_INSENSITIVE_ALLELE, **since("0.3.0")},
         default=None,
         description=(
             "The allele that `direction`/`weight`/`effect_size` refer to — bases, or a "

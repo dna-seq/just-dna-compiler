@@ -327,6 +327,69 @@ back while explaining that it was wrong. Three of those five are sentences this 
 overlay grammar invites a correction against a table their rebuild drops. Both of this tier's
 registries agree with each other; the third is in their tree and is filed there. `@registry-completeness`
 
+## RM215 — allele case is inside `content_signature`, so one pair had two identities
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 · **Owner** format ·
+**Motivating case** found by derivation during the 2026-09-11 blind re-derivation round, beside RM214
+
+`ALLELE_PATTERN` is `^[ACGT]+$` with `re.IGNORECASE`, so a lowercase allele is legal, and an allele
+cell is stored verbatim. Measured on one `VariantRow` with the genotype spelled four ways:
+
+```
+'A/G'  sha256:ec8c6bcc…      'a/G'  sha256:1653d7ee…
+'A/g'  sha256:0b0a1369…      'a/g'  sha256:78cb573e…
+```
+
+Four content identities for one heterozygote, which for a *content-dedup* key is wrong in exactly the
+way RM36's build conflation was. `content_signature` now upper-cases a cell whose grammar is
+case-insensitive; the four collapse to one, and the survivor is `ec8c6bcc…`, the value every
+existing module already had.
+
+**This entry was filed for 1.0 and the filing was wrong.** It sized the change as major "the same
+reasoning RM81 applies to a retype", and that citation does not transfer: RM81 is a **parquet retype**
+(`List(Utf8)` vs `Utf8`), which P3 names explicitly as major-only. Folding at hash time adds, removes
+and retypes nothing — the authored cell is untouched, `model_dump()` is unchanged, the parquet column
+is unchanged, and the round trip is unaffected. What moves is a *computed* value, which is P3's own
+**corrected derivation** case: it "may ship in any release", never silently. **RM36 is the precedent
+in this very function** — `genome_build` was made to feed the hash in 0.5, a minor, on the identical
+argument: only the modules that were being misidentified move.
+
+The three repairs the filing listed were also not the only options, and the one it did not consider is
+the cheap one. Upper-casing *at the model* would rewrite an authored cell; refusing lowercase would be
+a tightening needing RM52's upgrade procedure; hashing case-insensitively was described as making the
+signature "stop reading as the bytes" — but the signature has never read as the bytes. It already
+normalizes `1.00`→`1.0`, column order, and an unset optional column, and allele case under a
+case-insensitive grammar is the same category. The bullet that says so was already in the docstring.
+
+**Scope is measured, not assumed.** The fold is driven by a `CASE_INSENSITIVE_ALLELE` marker and
+reaches the four columns whose validator *is* that grammar — `VariantRow.genotype`,
+`VariantRow.effect_allele`, `HaplotypeRow.allele`, `PharmVariantRow.genotype` — found by probing all
+57 models behaviourally rather than by grepping for the word "allele". Two near-misses are the reason
+the probe is behavioural: `AlleleFunctionRow.allele` is a haplotype *name* (`*36+*10`) whose validator
+merely shares a method name, and `ModuleSpecConfig.authority_precedence` is a `list[str]` that a
+string probe trips by its own duplicate check. **`ref`/`alts` are deliberately out**: neither is
+grammar-checked (both accept `zz`), because a non-nucleotide there is a spelling defect a later pass
+diagnoses (`@non-nucleotide-spelling`) — a field with no grammar has no case-insensitivity to inherit,
+and folding it would collapse values that genuinely differ.
+
+**No published signature moves, measured rather than asserted:** 536 marked cells across
+`reference_examples`, none carrying a lowercase letter, so the fold is the identity function on every
+module published to date. That measurement is a test, because the minor-legality argument rests on it.
+
+**Nothing is declared in `RELEASE_RECORDS`, on purpose.** The first draft added a
+`DeclaredChange(axis="content_signature", kind="correction")` and the record's own invariant refused
+it — a declared axis must be one the measurement reports as moved, and this one is `False` because
+nothing moved. P3's corrected-derivation clause is written for the case where earlier artifacts hold a
+value we no longer stand behind; zero artifacts are affected here, so there is no movement to declare,
+and forcing the axis to `True` would put a false measurement in the record to satisfy a rule about
+honesty. This entry and the CHANGELOG are the declaration.
+
+**Surfaced, not fixed (`@fix-vs-surface`):** `derive_variant_key`'s coordinate fallback does not fold
+case either — `1:100:a:g,t` vs `1:100:A:G,T` — firing for a multi-alt row or a non-GRCh38 build, since
+the VA path normalizes case already. That splits *joins and dedup* rather than identity and it moves a
+**stored** cell, so it is a different item. A parametrized test pins the current behaviour so the note
+cannot rot into a silent fix. `@verbatim-except-order` · `@registry-completeness`
+
 ## RM217 — two vocabularies were documented in no maintained file at all
 
 **Severity** low · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (docs + one guard; no code

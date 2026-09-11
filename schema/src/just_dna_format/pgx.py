@@ -23,7 +23,13 @@ from typing import ClassVar
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from just_dna_format.base import AuthoredModel, since, stamped_identity_field, vocabulary
+from just_dna_format.base import (
+    CASE_INSENSITIVE_ALLELE,
+    AuthoredModel,
+    since,
+    stamped_identity_field,
+    vocabulary,
+)
 from just_dna_format.spec import validate_pmid_cell
 from just_dna_format.vocab import (
     VALID_PHENOTYPE_CATEGORIES,
@@ -125,7 +131,7 @@ class HaplotypeRow(AuthoredModel):
         first_seen="0.6.0",
     )
     allele: str = Field(
-        json_schema_extra=since("0.4.0"),
+        json_schema_extra={**CASE_INSENSITIVE_ALLELE, **since("0.4.0")},
         description=(
             "The defining (variant) allele on this haplotype — bases, or a symbolic/structural "
             "allele carrying its length (e.g. <DEL:1500> for a whole-gene deletion)"
@@ -506,7 +512,7 @@ class PharmVariantRow(AuthoredModel):
         ),
     )
     genotype: str | None = Field(
-        json_schema_extra=since("0.5.0"),
+        json_schema_extra={**CASE_INSENSITIVE_ALLELE, **since("0.5.0")},
         default=None,
         description=(
             "Genotype the response applies to, canonical sorted form, e.g. C/T, or a single allele "

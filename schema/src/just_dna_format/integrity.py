@@ -20,7 +20,11 @@ from cryptography.hazmat.primitives.asymmetric import ed25519
 from pydantic import BaseModel
 
 from just_dna_format.assertions import CLINICAL_ASSERTION_FACT_FIELDS
-from just_dna_format.base import DEFAULT_GENOME_BUILD, content_identity_exclusions
+from just_dna_format.base import (
+    DEFAULT_GENOME_BUILD,
+    case_insensitive_allele_fields,
+    content_identity_exclusions,
+)
 from just_dna_format.concordance import (
     CLIN_SIG_AUTHORITY_CALL_FACT_FIELDS,
     CLIN_SIG_CONCORDANCE_FACT_FIELDS,
@@ -217,7 +221,17 @@ def content_signature(
       not metadata about the module: it is part of what the rows *mean*.
     - **Normalized** — each row is `model_dump(mode="json", exclude_none=True)`, so CSV reformatting
       (whitespace, quoting, column reorder, cell canonicalization like `1.00`→`1.0`) and additive
-      schema growth (a new optional column left unset) do not change it.
+      schema growth (a new optional column left unset) do not change it. **Allele case is part of
+      that canonicalization since RM215**: a column whose grammar is case-insensitive is upper-cased
+      here, because `ALLELE_PATTERN` carries `re.IGNORECASE` and the cell is stored verbatim, so
+      `A/G`, `a/G`, `A/g` and `a/g` are one heterozygote that used to hash four ways. The fold is
+      driven by the `CASE_INSENSITIVE_ALLELE` marker and reaches exactly the four columns whose
+      validator is that grammar — **not** `ref`/`alts`, which are not grammar-checked at all (a
+      non-nucleotide there is a spelling defect a later pass diagnoses), so there is no
+      case-insensitivity for them to inherit and folding them would collapse values that differ.
+      Like the `genome_build` bullet, this is targeted: every module whose alleles are upper-case —
+      which is every module published to date — keeps its signature byte for byte, and only the
+      modules that were being *misidentified* move.
     - **Value cells, not the provenance beside them** — a column marked `OUTSIDE_CONTENT_IDENTITY`
       (`base.content_identity_exclusions`) is dropped from the dump here and nowhere else: the
       overlay's `reason`/`decided_by`/`decided_at` (S87) say why a correction was made, and two
@@ -234,22 +248,24 @@ def content_signature(
     survives import/recompile and metadata-strip. It is the reference algorithm a marketplace's
     `find_versions_by_content` should adopt (see docs/proposals/PROPOSAL_0_4_1.md).
     """
+
+    def _normalized(row: BaseModel) -> str:
+        dump = row.model_dump(
+            mode="json",
+            exclude_none=True,
+            exclude=content_identity_exclusions(type(row)) or None,
+        )
+        # RM215: a cell whose grammar is case-insensitive is folded before hashing, so the three
+        # legal spellings of one heterozygote produce one content identity. Walked off the marker
+        # rather than named here (`base.case_insensitive_allele_fields`).
+        for field in case_insensitive_allele_fields(type(row)):
+            value = dump.get(field)
+            if isinstance(value, str):
+                dump[field] = value.upper()
+        return json.dumps(dump, sort_keys=True, separators=(",", ":"))
+
     listing: list[dict[str, object]] = [
-        {
-            "file": filename,
-            "rows": sorted(
-                json.dumps(
-                    row.model_dump(
-                        mode="json",
-                        exclude_none=True,
-                        exclude=content_identity_exclusions(type(row)) or None,
-                    ),
-                    sort_keys=True,
-                    separators=(",", ":"),
-                )
-                for row in rows
-            ),
-        }
+        {"file": filename, "rows": sorted(_normalized(row) for row in rows)}
         for filename, rows in tables.items()
     ]
     listing.sort(key=lambda part: str(part["file"]))

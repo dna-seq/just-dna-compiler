@@ -34,15 +34,30 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-11 (latest) — seventeen items a second, blind derivation of the docs found in the code
+## 2026-09-11 (latest) — eighteen items a second, blind derivation of the docs found in the code
 
 **The docs were re-derived from the code by three agents that had never read them**, one per tier, in
 worktrees with `docs/` and `CLAUDE.md` deleted — the method is now written down as
 [BLIND_REDERIVATION.md](BLIND_REDERIVATION.md) rather than living as its first output's preamble. The
 maintained references gained what they were missing (twenty-six modules, a check row, an AlphaGenome
 section, the eighteen-source licence roster, all with walking tests). What follows is the other half:
-**RM207–RM223**, sixteen shipped and one (RM215) filed for 1.0 — places where the code was wrong, or
+**RM207–RM223**, all seventeen shipped — places where the code was wrong, or
 where a registry had a hand-kept copy of itself, each reproduced or measured before it was repaired.
+
+**RM215 — one heterozygote had four content identities.** `ALLELE_PATTERN` carries `re.IGNORECASE`, so
+a lowercase allele is legal, and the cell is stored verbatim — so `A/G`, `a/G`, `A/g` and `a/g` are one
+genotype that hashed four different ways, which for a content-dedup key is the wrong answer.
+`content_signature` now upper-cases a cell whose grammar is case-insensitive, and the four collapse to
+the value every existing module already had. **This was filed for 1.0 and the filing was wrong**: it
+sized the change by citing RM81, a parquet *retype*, where folding at hash time retypes nothing, leaves
+the authored cell untouched and leaves the round trip alone. That is P3's *corrected derivation*, which
+may ship in any release but never silently — and RM36 is the precedent in this very function, having
+made `genome_build` feed the hash back in 0.5. The fold is driven by a marker over the four columns
+whose validator is that grammar, found by probing all 57 models rather than grepping for "allele";
+`ref`/`alts` are excluded because they are not grammar-checked at all. Measured across the corpus: 536
+such cells, none lowercase, so no published signature moves. The `variant_key` coordinate fallback
+still splits on case (`1:100:a:g,t`) and is surfaced rather than fixed, since that one moves a stored
+cell.
 
 **RM223 — the upgrade guide was the one maintained doc nothing walked.** A consumer measured four of
 `INTEGRATION_0_7.md`'s numbers against the installed packages and found all four wrong: 22 parquets

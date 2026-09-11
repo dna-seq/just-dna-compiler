@@ -94,6 +94,39 @@ COMPILER_MANAGED: dict[str, bool] = {"compiler_managed": True}
 OUTSIDE_CONTENT_IDENTITY: dict[str, bool] = {"outside_content_identity": True}
 
 
+# ── An allele cell whose grammar is case-insensitive, folded for content identity only ─────────
+# Marker for a column validated by `ALLELE_PATTERN` (or by the genotype grammar built on it), which
+# carries `re.IGNORECASE` — so `A/g`, `a/G` and `a/g` are the same heterozygote spelled three ways
+# and all three validate. The cell is stored **verbatim** (`@verbatim-except-order`), so the three
+# spellings used to produce three `content_signature`s for one claim about the genome: RM215.
+#
+# `integrity.content_signature` case-folds a marked cell before hashing, and nothing else reads this
+# marker. That keeps the fix inside the *derived* key and out of the authored bytes — the CSV on disk
+# still says what its author typed, `model_dump()` is unchanged, and a reverse-and-recompile round
+# trip is untouched.
+#
+# **Why not `ref`/`alts`, which also hold alleles.** Neither is grammar-checked: both accept `zz`
+# today, deliberately, because a non-nucleotide there is a *spelling* defect a later pass diagnoses
+# rather than a parse error (`@non-nucleotide-spelling`). A field whose grammar is unconstrained has
+# no case-insensitivity to inherit, so folding it would collapse two values that genuinely differ.
+# The marker therefore tracks the *validator*, not the word "allele" — measured field by field, and a
+# test re-measures the equality rather than trusting this comment.
+CASE_INSENSITIVE_ALLELE: dict[str, bool] = {"case_insensitive_allele": True}
+
+
+def case_insensitive_allele_fields(model: type[BaseModel]) -> frozenset[str]:
+    """The columns of `model` that `content_signature` case-folds — those marked `CASE_INSENSITIVE_ALLELE`.
+
+    Walked off the fields for the same reason `content_identity_exclusions` is: a hand-kept set one
+    file over is the thing that drifts (`@fieldnames-from-model`)."""
+    return frozenset(
+        name
+        for name, field in model.model_fields.items()
+        if isinstance(field.json_schema_extra, dict)
+        and field.json_schema_extra.get("case_insensitive_allele")
+    )
+
+
 def content_identity_exclusions(model: type[BaseModel]) -> frozenset[str]:
     """The columns of `model` that `content_signature` omits — those marked `OUTSIDE_CONTENT_IDENTITY`.
 
@@ -900,11 +933,13 @@ class AuthoredModel(BaseModel):
             # is `str.casefold` and the sort is stable, so a value that sorted before still sorts and
             # nothing already authored moves; this only stops refusing the mirror spelling.
             #
-            # It does **not** make the pair canonical, and that is left open rather than hidden: `A/g`
-            # and `a/G` are both accepted and hash differently under `content_signature`, because the
-            # cell is stored verbatim (`@verbatim-except-order` — only the ORDER is normalized here).
-            # Normalizing the case would move the signature of every module carrying a lowercase
-            # allele, which is a 1.0 question about what an identity key means, not a minor one.
+            # It does **not** make the pair canonical here, and it deliberately still does not: `A/g`
+            # and `a/G` are both accepted and both stored verbatim (`@verbatim-except-order` — only
+            # the ORDER is normalized at this layer). What changed is one layer over — since RM215
+            # `content_signature` folds the case of a cell whose grammar is case-insensitive, so the
+            # two spellings no longer carry two content identities. That was filed as a 1.0 question
+            # about what an identity key means and it was not one: the fold touches a *computed* key
+            # and no authored byte, which is P3's corrected-derivation case.
             if parts != sorted(parts, key=str.casefold):
                 raise ValueError(
                     f"unphased genotype alleles must be alphabetically sorted: "
