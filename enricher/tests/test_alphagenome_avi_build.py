@@ -257,7 +257,11 @@ def test_the_straddled_threshold_is_exactly_where_the_knot_declares_it_unsafe(
         .cast(pl.Int32)
         .alias("raw_score_e5"),
         pl.col("phred_printed").cast(pl.Float64).alias("phred"),
-    ).filter(pl.col("raw_score_e5").is_in(declared_unsafe))
+        # `.implode()` because `declared_unsafe` is a Series of the same dtype as the column, which is
+        # the case polars deprecated as ambiguous — `is_in` could mean "in this set of values" or
+        # "element-wise against this collection". Imploding to a single list cell says the first, which
+        # is what this assertion has always meant. Same idiom as `test_alphagenome_check.py`'s.
+    ).filter(pl.col("raw_score_e5").is_in(declared_unsafe.implode()))
 
     sides = ambiguous.select((pl.col("phred") >= STRADDLED_THRESHOLD).alias("above"))["above"]
     assert sides.any() and not sides.all(), (
@@ -267,7 +271,7 @@ def test_the_straddled_threshold_is_exactly_where_the_knot_declares_it_unsafe(
 
     # And every OTHER knot at this threshold is decided, which is what makes the warning narrow
     # enough to be worth acting on rather than a blanket "thresholds may be wrong".
-    decided = knots.filter(~pl.col("raw_score_e5").is_in(declared_unsafe))
+    decided = knots.filter(~pl.col("raw_score_e5").is_in(declared_unsafe.implode()))
     assert (
         decided.filter(
             (pl.col("phred_lo") < STRADDLED_THRESHOLD) & (pl.col("phred_hi") > STRADDLED_THRESHOLD)
