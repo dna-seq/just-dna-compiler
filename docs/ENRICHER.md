@@ -293,12 +293,14 @@ lazy import* on its deprecated `ensembl_cache` path — it declares no dependenc
 > **[SCHEMAS.md](SCHEMAS.md)** (`ResolutionRow` and the three hashes), **[CONSTITUTION.md](CONSTITUTION.md)**
 > (the 0.5 amendment). Import from the submodule where a symbol lives; `__init__.py` has no re-exports.
 
-## Read beside this: the 2026-08-18 code-first re-derivation
+## Read beside this: the 2026-09-11 code-first re-derivation
 
-**A second reading of this tier, written from the code alone on 2026-08-18, is in
-[audit/ENRICHER_FROM_CODE.md](audit/ENRICHER_FROM_CODE.md)** — all 37 commands, the resolver chain with
-what `--offline` changes per pass, and the six caches. It found RM97–RM100, all fixed in 0.6.1.
-Evidence, not contract: this document is the maintained one.
+**A second reading of this tier, written from the code alone on 2026-09-11, is in
+[audit/ENRICHER_FROM_CODE.md](audit/ENRICHER_FROM_CODE.md)** — every command counted from `--help`, the
+resolver chain with what `--offline` changes per pass, every cache lane and every client's exception
+contract. The 2026-08-18 round found RM97–RM100 (0.6.1); this one found **RM208 and RM209**. Evidence,
+not contract: this document is the maintained one. The method is
+[BLIND_REDERIVATION.md](BLIND_REDERIVATION.md).
 
 ## Install
 
@@ -4455,6 +4457,25 @@ client's type through and the documented handler was silent for exactly the fail
 | `enrich_pgx` | `PgxEnrichmentError` | — degrades per leg instead of raising |
 | `enrich()` | — | — degrades and withholds; see below |
 
+**Three layers, really, and the third is where two clients were wrong (RM208).** Inside a client the
+**retrying half is its own function and the translation sits outside it** — `eutils._request`/`_get`,
+`cpic._request`, `gnomad._request`, and since RM208 `literature.CrossrefClient` and
+`gwas.GwasCatalogClient` too. Get that order backwards and one of two things happens, and the tier
+had one of each:
+
+- **Translate inside the retry and the retry never runs.** `CrossrefClient.exists` caught
+  `httpx.HTTPError` — the *superclass* of the two types its own `@retry` matched — so a `ConnectError`
+  became the `None` withhold before tenacity saw it. Measured: one upstream request where
+  `attempt_floor(3)` asked for three, and the knob a deployment raises moved nothing.
+- **Re-raise for the decorator and translate nowhere and the last attempt leaks.** `GwasCatalogClient`
+  re-raised the transport leg bare, correctly, and `reraise=True` then handed the raw
+  `httpx.ConnectError` to a caller told to expect `GwasError`.
+
+`test_retry_is_reachable.py` walks every `@retry`-decorated function **in the package** and refuses any
+whose body catches an ancestor of a type its decorator retries. It walks the package rather than the
+client roster on purpose: both offenders sat in `test_client_exception_contract.py`'s `exempt` set, and
+a guard that iterates a roster inherits the roster's exemptions.
+
 **`alphagenome check` raises `VariantImpactError` / `VariantImpactUnavailable`** (RM193), the pass
 half of the pair above — a consumer calls the pass, so this is the type to write in an `except`.
 Note that a *transport* failure inside it is neither: the pass records the variant as
@@ -5421,7 +5442,9 @@ than a format choice:
   printed score, which makes threshold safety decidable in advance: a threshold is unsafe iff it lands
   inside a knot's span. Genome-wide exactly one does, at 3. A snapshot without that file holds scores
   nobody can rank, and `alphagenome check` refuses it. It is a **sibling of `data/`**, which is why
-  `locations.SNAPSHOT_ROOT_FILENAMES` exists.
+  `locations.SNAPSHOT_ROOT_FILENAMES` exists. Both halves walk that tuple — the publisher
+  did from the start and **the puller did not until RM209**, which is why a pulled lane held scores
+  nobody could rank while two docstrings said the registry was walked.
 - **The artifact is wide by position** (RM197): one row per locus — `chrom, pos, ref, alt0, alt1, alt2`
   — and **no `alt` column**. Which base each column means is `{A,C,G,T} − ref` ascending, a function of
   `ref` alone, so nothing has to travel beside the data. `alphagenome_avi_build.to_long()` recovers

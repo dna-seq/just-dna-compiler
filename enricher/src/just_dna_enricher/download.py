@@ -20,7 +20,7 @@ from pathlib import Path
 from just_dna_enricher.clinvar import ClinVarReferenceError
 from just_dna_enricher.locations import (
     RELEASE_FILENAME,
-    SNAPSHOT_LICENSE_FILENAME,
+    SNAPSHOT_ROOT_FILENAMES,
     SNAPSHOT_SIDECAR_DIRNAMES,
     STRCHIVE_CATALOGUE_FILENAME,
     default_alphagenome_avi_cache_dir,
@@ -331,7 +331,15 @@ def _provision_snapshot(
     # `None`, with a warning) while an empty one pins the terms to the hash of the empty string. The
     # same staging also stops a re-pull whose repo has since dropped the file from truncating a good
     # local copy.
-    for optional in (RELEASE_FILENAME, SNAPSHOT_LICENSE_FILENAME):
+    #
+    # **Walked from `locations.SNAPSHOT_ROOT_FILENAMES`, never listed here** — the publish half does
+    # the same (`upload.py`), and this half did not. It iterated the pair above by hand, so
+    # `avi_knots.parquet` was published and never pulled: the AVI lane stores no `PHRED`, that file is
+    # what reconstructs it, and `alphagenome check` refuses a snapshot without it. A pulled lane was
+    # therefore unusable while two docstrings here said the file "travels because
+    # `SNAPSHOT_ROOT_FILENAMES` names it, not because this function does" (RM209). A registry beside a
+    # hand-kept copy of itself is the defect shape, not the count (`@registry-completeness`).
+    for optional in SNAPSHOT_ROOT_FILENAMES:
         target = cache_dir / optional
         tmp_path = target.with_suffix(target.suffix + ".part")
         try:
