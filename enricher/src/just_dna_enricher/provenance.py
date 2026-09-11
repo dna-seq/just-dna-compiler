@@ -49,6 +49,7 @@ from pathlib import Path
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.sources import SourceRow
 
+from just_dna_enricher.drafting import DRAFT_PROVIDERS
 from just_dna_enricher.licensing import sources_path, write_sources_csv
 
 logger = logging.getLogger(__name__)
@@ -85,45 +86,17 @@ class DraftProjection:
 #: legitimately carries several annotations separated only by `phenotype_category` — the bare triple
 #: is a bug this package has already made once. An empty cell participates as the empty string rather
 #: than being dropped, so a row naming no `annotation_id` still keys distinctly from its siblings.
+#: Derived from `drafting.DRAFT_PROVIDERS` rather than restated beside it (RM228).
+#:
+#: This map used to be hand-kept, and its own comment pointed at `clinvar_draft._MATCH_ON` by name —
+#: two copies of one fact, one of them private to a module. The registry now holds the facts and this
+#: is a projection of the subset that cross-checks a column it drafted. `identity` reads the
+#: provider's `identity` property, which is `match_on` unless the provider states a reason to differ
+#: (`pubmind` does, and that reason is now a field rather than a paragraph here).
 DRAFT_PROJECTIONS: dict[str, DraftProjection] = {
-    "clinvar": DraftProjection(
-        table="variants.csv",
-        # `clinvar_draft._MATCH_ON` — the cells that identify the variant regardless of how the
-        # human later finishes the row.
-        identity=("rsid", "chrom", "start", "ref", "alts"),
-        checked=("clin_sig",),
-    ),
-    "cpic": DraftProjection(
-        table="allele_function.csv",
-        identity=("gene", "allele"),
-        checked=("function_status",),
-    ),
-    "clinpgx": DraftProjection(
-        table="pharm_variants.csv",
-        identity=(
-            "rsid",
-            "chrom",
-            "start",
-            "ref",
-            "drug",
-            "genotype",
-            "phenotype_category",
-            "annotation_id",
-        ),
-        checked=("evidence_level",),
-    ),
-    # **The one identity here that is not the drafter's `match_on`, and the difference is the point.**
-    # `pubmind_draft` matches a row on all five identity columns, so a coordinate PubMind and ClinVar
-    # both speak about is one row rather than two — but `rsid` is never a cell this provider *writes*:
-    # the snapshot has no rsID column, and most of the source's rows carry no rs-number at all. So the
-    # projection is the coordinate it actually establishes. Including `rsid` would make the digest
-    # move the moment an author added an rs-number to a row nobody had touched otherwise, which is a
-    # change to the row's spelling and not to the call the cross-check reads.
-    "pubmind": DraftProjection(
-        table="variants.csv",
-        identity=("chrom", "start", "ref", "alts"),
-        checked=("clin_sig",),
-    ),
+    name: DraftProjection(table=p.table, identity=p.identity, checked=p.checked)
+    for name, p in DRAFT_PROVIDERS.items()
+    if p.kind == "projection"
 }
 
 

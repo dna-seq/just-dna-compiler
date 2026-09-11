@@ -370,6 +370,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `alphagenome_avi_build` | RM191/RM197/RM198 builder: the 88.5 GB AVI artifact the operator already holds → the `alphagenome_avi` lane. **`--input` is required and has no default** — acquisition is the operator's act | `polars` (lazy) |
 | `pgx_draft` | the first drafting provider: CPIC → `haplotypes`/`allele_function`/`diplotypes` rows | `cpic`, compiler `draft` |
 | `clinpgx_draft` | RM26: ClinPGx snapshot → `pharm_variants.csv` rows (offline, inject-only) | `clinpgx`, compiler `draft` |
+| `drafting` | RM228: the shared drafting scaffold every `*_draft.py` goes through — the `DRAFT_PROVIDERS` registry, the **derived** identity verdict (constructing the row model, because `authoring_requirements`' `any_of` grammar cannot express *`ref`/`alts` require a position*), a provider's own `SourcePrecondition` **with its reason as a field**, and the licence-row/stale-dataset pair that two providers had implemented as one half each | compiler `draft`, `licensing` |
 | `clinvar_draft` | RM26: ClinVar snapshot → `variants.csv` **partial** rows; genotype left to a human | `clinvar`, compiler `draft` |
 | `pubmind` | RM134 § B: the runtime reader over the snapshot `pubmind_build` writes — duckdb, core install, fetches nothing | `duckdb` |
 | `pubmind_draft` | RM134 § C: PubMind snapshot → `variants.csv` rows, as `draft-panel --source pubmind` rather than a second command | `pubmind`, compiler `draft` |
