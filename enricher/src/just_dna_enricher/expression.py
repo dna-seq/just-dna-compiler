@@ -86,6 +86,19 @@ SOURCE_LAYER: str = "expression_effect"
 #: The one scorer RM200 adopted, and the value `effect_measure` records.
 SCORER: str = "RNA_SEQ"
 
+#: The assembly AlphaGenome serves, and it serves no other.
+#:
+#: **A fact about the source, which is why it is stated rather than defaulted.** It reaches two places
+#: that were two statements of one thing: the build-mismatch warning every coordinate writer owes, and
+#: the `build=` every identity mint owes (`@build-in-manifest-only` — the build lives in the manifest
+#: and no parquet column, so it is passed to each mint call).
+#:
+#: **It is the SOURCE's build, never the module's, and on a GRCh37 module those differ.** The
+#: coordinate in the row came from AlphaGenome, so the identity minted from it names GRCh38 — minting
+#: it as GRCh37 would claim a conversion nobody performed. The disagreement is *reported* by
+#: `source_build_mismatch` and never repaired, which is the same call every drafting provider makes.
+SOURCE_BUILD: str = "GRCh38"
+
 #: Measured throughput, ALPHAGENOME_ATLAS probe 2026-09-10: ~1,091 SNVs/s end to end. Named rather
 #: than inlined because it is the basis of the cost estimate the pass prints before it runs, and a
 #: magic number in a warning is a number nobody can re-derive.
@@ -378,7 +391,7 @@ def enrich_expression(
     # Every coordinate writer owes this (`@restamp-for-build` one layer up): AlphaGenome publishes
     # GRCh38 only, and a GRCh37 module would silently receive GRCh38 positions. Reported, never
     # repaired and never refused.
-    mismatch = source_build_mismatch(spec_dir, SOURCE_NAME, source_build="GRCh38")
+    mismatch = source_build_mismatch(spec_dir, SOURCE_NAME, source_build=SOURCE_BUILD)
     if mismatch:
         result.warnings.append(mismatch)
         logger.warning(mismatch)
@@ -437,7 +450,9 @@ def enrich_expression(
         # matching nothing while looking like an uncovered region, so the strip happens here.
         contig = str(score.chrom).removeprefix("chr")
         row = ExpressionEffectRow(
-            variant_key=derive_variant_key(None, contig, score.position, score.ref, score.alt),
+            variant_key=derive_variant_key(
+                None, contig, score.position, score.ref, score.alt, build=SOURCE_BUILD
+            ),
             chrom=contig,
             start=score.position,
             ref=score.ref,

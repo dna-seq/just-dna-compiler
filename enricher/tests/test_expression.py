@@ -355,6 +355,29 @@ def test_distance_is_measured_from_the_mane_span_even_when_the_interval_was_expl
     assert not any("mane build" in w for w in result.warnings)
 
 
+def test_the_identity_names_the_sources_assembly_and_not_the_modules(tmp_path: Path) -> None:
+    """A GRCh37 module still gets GRCh38-minted keys, and is *told* rather than silently corrected.
+
+    The AST guard in `test_build_call_sites.py` checks that a `build=` is passed; it cannot check
+    which one, and the two candidates here are both defensible-sounding. The coordinate in the row
+    came from AlphaGenome, which serves GRCh38 only, so the identity minted from it names GRCh38 —
+    minting it as the module's declared build would claim a liftover nobody performed.
+
+    The disagreement is reported and never repaired, which is the call every drafting provider makes
+    (`@restamp-for-build`: the row's build travels to the mint, and the mismatch is a warning).
+    """
+    spec = _spec(tmp_path)
+    (spec / "module_spec.yaml").write_text(_YAML.replace("GRCh38", "GRCh37"))
+    result = _run(spec, _Stub((_score(26090000),)))
+
+    from just_dna_format.base import derive_variant_key
+
+    expected = derive_variant_key(None, "6", 26090000, "G", "A", build="GRCh38")
+    assert result.rows[0].variant_key == expected
+    assert expected != derive_variant_key(None, "6", 26090000, "G", "A", build="GRCh37")
+    assert any("GRCh37" in w for w in result.warnings), "the build disagreement must be reported"
+
+
 def test_min_score_withholds_under_its_own_reason(tmp_path: Path) -> None:
     result = _run(_spec(tmp_path), _Stub((_score(26090000),)), min_score=10.0)
     assert result.written == 0
