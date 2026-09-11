@@ -49,6 +49,7 @@ from just_dna_format.pgx import AlleleFunctionRow, HaplotypeRow
 from just_dna_format.sources import SourceRow
 
 from just_dna_enricher.cpic import CpicClient, CpicError, CpicSnapshotClient
+from just_dna_enricher.drafting import DRAFT_PROJECTIONS, drafted_unchanged
 from just_dna_enricher.licensing import (
     CPIC_TERMS,
     PHARMVAR_TERMS,
@@ -59,7 +60,6 @@ from just_dna_enricher.licensing import (
 )
 from just_dna_enricher.locations import resolve_cpic_reference, resolve_pharmvar_reference
 from just_dna_enricher.pharmvar import PharmVarClient, PharmVarError, PharmVarSnapshotClient
-from just_dna_enricher.provenance import DRAFT_PROJECTIONS, drafted_unchanged
 from just_dna_enricher.verification import ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)

@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 from just_dna_enricher import strchive
-from just_dna_enricher.provenance import DRAFT_PROJECTIONS
+from just_dna_enricher.drafting import DRAFT_PROJECTIONS
 from just_dna_enricher.strchive import (
     Band,
     BandFinding,

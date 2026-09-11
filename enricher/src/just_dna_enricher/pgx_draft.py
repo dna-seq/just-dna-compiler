@@ -41,10 +41,10 @@ from just_dna_enricher.cpic import (
     CpicRecommendation,
     CpicSnapshotClient,
 )
+from just_dna_enricher.drafting import stamp_draft_digest
 from just_dna_enricher.enrich import source_build_mismatch
 from just_dna_enricher.licensing import CPIC_TERMS, check_declared_use, merge_sources_file
 from just_dna_enricher.locations import resolve_cpic_reference
-from just_dna_enricher.provenance import stamp_draft_digest
 
 #: The assembly CPIC's `sequence_location.position` is on — probed, not assumed: `rs1799853` is
 #: `10:94942290` there, which is its GRCh38 position (GRCh37 is `10:96702047`). Named for the reason

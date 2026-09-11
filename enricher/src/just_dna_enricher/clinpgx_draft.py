@@ -48,9 +48,9 @@ from just_dna_compiler.draft import DraftReport, append_rows
 from just_dna_format.pgx import PharmVariantRow
 
 from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, _normalize_category, load_snapshot
+from just_dna_enricher.drafting import stamp_draft_digest
 from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use, merge_sources_file
 from just_dna_enricher.locations import SNAPSHOT_LICENSE_FILENAME
-from just_dna_enricher.provenance import stamp_draft_digest
 
 logger = logging.getLogger(__name__)
 

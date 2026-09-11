@@ -18,9 +18,9 @@ import polars as pl
 import pytest
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_enricher.cli import PANEL_SOURCES, app
+from just_dna_enricher.drafting import DRAFT_PROJECTIONS, draft_digest, drafted_unchanged
 from just_dna_enricher.licensing import PUBMIND_TERMS, sources_path
 from just_dna_enricher.lookup import lookup_variant
-from just_dna_enricher.provenance import DRAFT_PROJECTIONS, draft_digest, drafted_unchanged
 from just_dna_enricher.pubmind_build import _schema as pubmind_schema
 from just_dna_enricher.pubmind_draft import (
     DEFAULT_MIN_CONFIDENCE,

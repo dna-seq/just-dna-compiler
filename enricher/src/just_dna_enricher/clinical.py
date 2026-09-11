@@ -47,8 +47,8 @@ from just_dna_enricher.concordance import (
     read_recorded_calls,
     shifted_authority_calls,
 )
+from just_dna_enricher.drafting import DRAFT_PROJECTIONS, drafted_unchanged
 from just_dna_enricher.licensing import overlay_answered_subjects
-from just_dna_enricher.provenance import DRAFT_PROJECTIONS, drafted_unchanged
 from just_dna_enricher.pubmind import (
     PUBMIND_CONFIDENCE_UNIT,
     lookup_pubmind_calls,

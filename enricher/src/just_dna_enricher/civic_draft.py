@@ -47,14 +47,15 @@ from just_dna_format.vrs import UnsupportedBuildError, refget_accession
 from just_dna_enricher.civic_build import CIVIC_PARQUET
 from just_dna_enricher.civic_refutation import CIVIC_REFUTES
 from just_dna_enricher.clingen_allele import ClingenAlleleClient, anchor_indel
-from just_dna_enricher.licensing import (
-    CIVIC_TERMS,
-    CLINGEN_ALLELE_REGISTRY_TERMS,
-    record_source_terms,
-)
+from just_dna_enricher.drafting import DRAFT_PROVIDERS, record_draft_provenance
+from just_dna_enricher.drafting import identity_refused_by_model as scaffold_identity_refused
+from just_dna_enricher.licensing import CIVIC_TERMS, CLINGEN_ALLELE_REGISTRY_TERMS
 from just_dna_enricher.locations import RELEASE_FILENAME, resolve_civic_reference
 from just_dna_enricher.sequences import SequenceProxy
 from just_dna_enricher.verification import examples
+
+#: This provider's registry entry — `match_on`, table and kind, held once (RM228).
+_PROVIDER = DRAFT_PROVIDERS["civic"]
 
 logger = logging.getLogger(__name__)
 
@@ -204,23 +205,15 @@ def civic_dataset_label(reference: Path | None) -> str | None:
 def identity_refused_by_model(cells: dict) -> str | None:
     """`None` when `VariantRow` accepts these identity cells, else the model's own complaint.
 
-    **Derived, never restated.** The rule is "rsid, or chrom AND start" with `ref`/`alts` requiring a
-    position — three clauses whose conjunctions a provider gets wrong by paraphrase. Asking the model
-    means this cannot drift when the model changes, and means a half-written coordinate is refused by
-    the same words a compile would refuse it with (`@identity-whole-or-none`).
-
-    The non-identity columns are filled with values known to validate, so the only thing under test is
-    the identity clause; anything else raising here is a bug in this function, not a bad row.
+    Thin wrapper over `drafting.identity_refused_by_model`, kept because this name is what the
+    withheld-reason vocabulary and this module's tests both use. The implementation moved to the
+    scaffold in RM228, and with it went **the message parsing**: this function used to branch on
+    `"identifier" in message or "positional" in message or "chrom" in message`, consuming pydantic's
+    rendered text as an API — a string that moves on a dependency bump with nothing to notice. The
+    probe now pre-fills every non-identity field with values the model is known to accept, so any
+    `ValidationError` reaching it **is** an identity refusal and no inspection is needed.
     """
-    probe = {"genotype": "A/A", "state": "risk", "conclusion": "identity probe", **cells}
-    try:
-        VariantRow(**probe)
-    except Exception as exc:  # pydantic's ValidationError, not depended on by name at this tier
-        message = str(exc)
-        if "identifier" in message or "positional" in message or "chrom" in message:
-            return message.split("\n")[1].strip() if "\n" in message else message
-        raise
-    return None
+    return scaffold_identity_refused(VariantRow, cells, _PROVIDER.table)
 
 
 #: Matched on the identity columns rather than the natural key, because `genotype` is the placeholder:
@@ -231,7 +224,7 @@ def identity_refused_by_model(cells: dict) -> str | None:
 #: `append_partial_rows` builds its covered-set from the FIRST partial's `match_on` and compares every
 #: signature against it, so a batch mixing arities can never match and re-adds those rows every run.
 #: The same five columns `clinvar_draft` uses, with empty cells comparing as empty.
-_MATCH_ON: tuple[str, ...] = ("rsid", "chrom", "start", "ref", "alts")
+_MATCH_ON: tuple[str, ...] = _PROVIDER.match_on
 
 
 def trait_curie(doid: str | None) -> str | None:
@@ -623,12 +616,18 @@ def draft_panel_from_civic(
         # `withdraw_stale_dataset` nothing to withdraw. A CIViC-drafted module sat outside the currency
         # check every other drafted module is inside.
         consulted = [CIVIC_SOURCE] + ([CLINGEN_ALLELE_REGISTRY_TERMS.source] if consulted_registry else [])
-        record_source_terms(
-            consulted,
-            "annotation",
-            spec_dir,
-            error=CivicDraftError,
-            declared_use=declared_use,
-            datasets={CIVIC_SOURCE: result.dataset} if result.dataset else None,
+        result.warnings.extend(
+            record_draft_provenance(
+                provider=_PROVIDER,
+                sources=consulted,
+                spec_dir=spec_dir,
+                dataset=result.dataset,
+                covered=True,
+                drafted=any(
+                    outcome.status == "added" for report in result.reports for outcome in report.outcomes
+                ),
+                declared_use=declared_use,
+                error=CivicDraftError,
+            )
         )
     return result

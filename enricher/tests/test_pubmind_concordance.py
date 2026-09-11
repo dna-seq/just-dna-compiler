@@ -39,9 +39,10 @@ from just_dna_enricher.concordance import (
     AuthorityCall,
     classify_concordance,
 )
+from just_dna_enricher.drafting import DRAFT_PROJECTIONS, draft_digest
 from just_dna_enricher.enrich import EnrichmentError, enrich
 from just_dna_enricher.licensing import merge_sources_file, read_sources_file
-from just_dna_enricher.provenance import DRAFT_PROJECTIONS, DraftProjection, draft_digest
+from just_dna_enricher.provenance import DraftProjection
 from just_dna_enricher.pubmind import PUBMIND_CONFIDENCE_UNIT, pubmind_dataset_label
 from just_dna_enricher.pubmind_build import build_snapshot as build_pubmind_snapshot
 from just_dna_format.base import authored_field_names

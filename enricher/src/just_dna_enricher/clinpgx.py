@@ -34,6 +34,7 @@ from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import MULTI_SEP, validate_phenotype_categories
 
 from just_dna_enricher.download import ensure_clinpgx_snapshot
+from just_dna_enricher.drafting import drafted_unchanged
 from just_dna_enricher.licensing import (
     CLINPGX_TERMS,
     check_declared_use,
@@ -45,7 +46,6 @@ from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
     resolve_clinpgx_reference,
 )
-from just_dna_enricher.provenance import drafted_unchanged
 from just_dna_enricher.verification import ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)

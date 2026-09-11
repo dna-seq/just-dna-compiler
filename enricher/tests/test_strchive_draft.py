@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 from just_dna_compiler.compiler import load_csv_rows
 from just_dna_compiler.draft import DRAFTABLE, authoring_requirements
+from just_dna_enricher.drafting import missing_required
 from just_dna_enricher.licensing import STRCHIVE_TERMS, TERMS_BY_SOURCE, check_declared_use
 from just_dna_enricher.strchive import (
     REPEAT_ALLELES_CSV,
@@ -26,10 +27,11 @@ from just_dna_enricher.strchive import (
     load_strchive_catalogue,
 )
 from just_dna_enricher.strchive_draft import (
+    _PROVIDER,
+    _STUBBED,
     DRAFTED_COLUMNS,
     WITHHELD_COLUMNS,
     WITHHELD_REASONS,
-    _missing_required,
     draft_repeat_loci,
 )
 from just_dna_format.base import authored_field_names
@@ -299,9 +301,9 @@ def test_the_skip_guard_is_the_models_own_requiredness_rather_than_a_copy() -> N
     """
     requirements = authoring_requirements(REPEAT_ALLELES_CSV)
     expected = [name for name in requirements["always"] if name != "conclusion"]
-    assert _missing_required({}) == expected
+    assert missing_required(_PROVIDER.table, {}, _STUBBED) == expected
     assert "conclusion" in requirements["always"], "the stubbed column really is required"
-    assert _missing_required(dict.fromkeys(expected, "x")) == []
+    assert missing_required(_PROVIDER.table, dict.fromkeys(expected, "x"), _STUBBED) == []
 
 
 # ── the licence row ─────────────────────────────────────────────────────────────────────────────

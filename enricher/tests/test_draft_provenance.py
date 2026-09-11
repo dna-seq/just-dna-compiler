@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from just_dna_enricher.licensing import write_sources_csv
-from just_dna_enricher.provenance import (
+from just_dna_enricher.drafting import (
     DRAFT_PROJECTIONS,
     draft_digest,
     drafted_unchanged,

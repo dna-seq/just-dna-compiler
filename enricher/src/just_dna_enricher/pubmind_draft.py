@@ -74,7 +74,6 @@ from just_dna_format.vrs import normalize_chrom
 from just_dna_enricher.clin_sig import STATE_BY_CLIN_SIG
 from just_dna_enricher.clinvar import select_by_gene
 from just_dna_enricher.clinvar_draft import (
-    _MATCH_ON,
     DEFAULT_CLIN_SIG,
     ClinVarDraftError,
     _genotype_worklist,
@@ -85,17 +84,21 @@ from just_dna_enricher.clinvar_draft import (
     _state_stub_warnings,
     sole_expressible_genotype,
 )
+from just_dna_enricher.drafting import DRAFT_PROVIDERS, record_draft_provenance
 from just_dna_enricher.enrich import source_build_mismatch
 from just_dna_enricher.licensing import (
     PUBMIND_TERMS,
-    merge_sources_file,
-    withdraw_stale_dataset,
 )
 from just_dna_enricher.locations import RELEASE_FILENAME, resolve_pubmind_reference
-from just_dna_enricher.provenance import stamp_draft_digest
 from just_dna_enricher.pubmind import PubMindReferenceError, _connect, pubmind_dataset_label
 from just_dna_enricher.pubmind_build import PUBMIND_GENOME_BUILD
 from just_dna_enricher.verification import examples
+
+#: This provider's registry entry (RM228). `match_on` was a private constant here that
+#: `clinvar_draft` imported across modules; it is a registry field now.
+_PROVIDER = DRAFT_PROVIDERS["pubmind"]
+_MATCH_ON: tuple[str, ...] = _PROVIDER.match_on
+
 
 logger = logging.getLogger(__name__)
 
@@ -645,24 +648,25 @@ def draft_gene_panel_from_pubmind(
             f"which writes the release file this reads."
         )
     if not dry_run:
-        merge_sources_file(
-            [PUBMIND_TERMS.row("annotation", declared_use=declared_use, dataset=dataset)],
-            spec_dir,
-            error=PubMindDraftError,
-        )
-        # Unconditional, and never-clobber is why: `merge_sources_file` keeps a curator's terms, which
-        # would silently drop a second draft's digest — and the digest is what lets a cross-check
-        # establish that a value is still this provider's copy rather than assume it (`@draft-digest`).
-        stamp_draft_digest(spec_dir, PUBMIND_SOURCE, "annotation", error=PubMindDraftError)
-        if report.added:
-            superseded = withdraw_stale_dataset(
-                spec_dir, PUBMIND_SOURCE, "annotation", dataset, error=PubMindDraftError
-            )
-            if superseded is not None:
-                result.warnings.append(
+        # `covered=True` reproduces this provider exactly; like `clinvar_draft` it writes the row on
+        # any non-dry run rather than on having covered something. Recorded, not changed, under a
+        # behaviour-preserving migration (RM228).
+        result.warnings.extend(
+            record_draft_provenance(
+                provider=_PROVIDER,
+                sources=[PUBMIND_SOURCE],
+                spec_dir=spec_dir,
+                dataset=dataset,
+                covered=True,
+                drafted=bool(report.added),
+                declared_use=declared_use,
+                error=PubMindDraftError,
+                stale_warning=lambda superseded, ds: (
                     f"this module already recorded rows drafted from {superseded}, and these came "
-                    f"from {dataset or 'a snapshot that does not state its release'} — so the licence "
+                    f"from {ds or 'a snapshot that does not state its release'} — so the licence "
                     f"row's dataset has been cleared rather than re-labelled: it cannot name two "
                     f"releases, and naming one would be a claim about rows that did not come from it."
-                )
+                ),
+            )
+        )
     return result

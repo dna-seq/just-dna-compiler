@@ -38,17 +38,16 @@ from just_dna_compiler.draft import (
     DraftReport,
     PartialRow,
     append_partial_rows,
-    authoring_requirements,
 )
 from just_dna_format.base import authored_field_names
 from just_dna_format.binning import RepeatAlleleRow
 
-from just_dna_enricher.licensing import (
-    STRCHIVE_TERMS,
-    check_declared_use,
-    merge_sources_file,
-    withdraw_stale_dataset,
+from just_dna_enricher.drafting import (
+    DRAFT_PROVIDERS,
+    missing_required,
+    record_draft_provenance,
 )
+from just_dna_enricher.licensing import STRCHIVE_TERMS, check_declared_use
 from just_dna_enricher.strchive import (
     REPEAT_ALLELES_CSV,
     StrchiveCatalogue,
@@ -69,7 +68,8 @@ class StrchiveDraftError(RuntimeError):
 #: `trait_efo_id` is deliberately **out** of it even though the bin-group key includes it: the trait
 #: is a cell this provider fills from `mondo` and an author may legitimately clear or change, and a
 #: re-draft after they did would then append the locus a second time.
-_MATCH_ON: tuple[str, ...] = ("gene", "repeat_unit")
+_PROVIDER = DRAFT_PROVIDERS["strchive"]
+_MATCH_ON: tuple[str, ...] = _PROVIDER.match_on
 
 #: The one column a human must decide. `conclusion` is the sentence a reader is shown when a
 #: measurement lands in this bin, and the catalogue does not have one — it has a disease description
@@ -160,26 +160,6 @@ def _trait_curie(locus: StrchiveLocus) -> str | None:
     return f"{_MONDO_PREFIX}{stripped}" if stripped else None
 
 
-def _missing_required(cells: dict[str, object]) -> list[str]:
-    """Required cells this row does not carry, **derived from the model's own rule**.
-
-    Not a list beside the model: `pgx_draft` restated "no rsID and no position" while `HaplotypeRow`
-    wanted rsID **or** chrom+start, and `draft --gene CYP2C9` died on an unhandled pydantic error.
-    `authoring_requirements` answers requiredness in all three of its shapes, and the stubbed columns
-    are subtracted because a placeholder is what this provider supplies for them.
-    """
-    requirements = authoring_requirements(REPEAT_ALLELES_CSV)
-
-    def stated(name: str) -> bool:
-        return str(cells.get(name) or "").strip() != ""
-
-    missing = [n for n in requirements["always"] if n not in _STUBBED and not stated(n)]
-    groups = [g for g in requirements["any_of"] if not any(n in _STUBBED for n in g)]
-    if groups and not any(all(stated(n) for n in group) for group in groups):
-        missing.append(" or ".join("+".join(group) for group in groups))
-    return missing
-
-
 def _partial(locus: StrchiveLocus, motif: str) -> tuple[PartialRow | None, list[str]]:
     """One locus at one motif spelling → the row this provider is willing to append.
 
@@ -196,7 +176,7 @@ def _partial(locus: StrchiveLocus, motif: str) -> tuple[PartialRow | None, list[
         "trait_efo_id": _trait_curie(locus),
     }
     cells = {name: value for name, value in cells.items() if value is not None}
-    missing = _missing_required(cells)
+    missing = missing_required(_PROVIDER.table, cells, _STUBBED)
     if missing:
         return None, missing
     return PartialRow(model=RepeatAlleleRow, cells=cells, stubbed=_STUBBED, match_on=_MATCH_ON), []
@@ -294,31 +274,22 @@ def draft_repeat_loci(
     covered = result.report is not None and any(
         outcome.status in {"added", "already_present"} for outcome in result.report.outcomes
     )
-    if not dry_run and covered:
-        merge_sources_file(
-            [STRCHIVE_TERMS.row("annotation", declared_use=declared_use, dataset=result.dataset)],
-            spec_dir,
-            error=StrchiveDraftError,
-        )
-        # Widening a module from a NEWER snapshot leaves the row naming the older release, because the
-        # merge above is never-clobber — right for a curator's hand-written terms, and a false claim
-        # for `dataset`. The stale label is **withdrawn, never re-labelled**: a module carrying rows
-        # from two releases has no honest single label, and unknown is withheld. Gated on rows
-        # actually being added, since a re-draft that added none changed nothing to be honest about.
-        if result.drafted:
-            superseded = withdraw_stale_dataset(
-                spec_dir,
-                STRCHIVE_TERMS.source,
-                "annotation",
-                result.dataset,
+    if not dry_run:
+        # The covered-predicate stays here because it is this provider's own reading of "contributed
+        # something"; what the scaffold owns is what follows from it, which is where the halves used
+        # to come apart (RM228).
+        result.warnings.extend(
+            record_draft_provenance(
+                provider=_PROVIDER,
+                sources=[STRCHIVE_TERMS.source],
+                spec_dir=spec_dir,
+                dataset=result.dataset,
+                covered=covered,
+                drafted=bool(result.drafted),
+                declared_use=declared_use,
                 error=StrchiveDraftError,
             )
-            if superseded is not None:
-                result.warnings.append(
-                    f"the licence row recorded {superseded} and this run drafted from "
-                    f"{result.dataset or 'an unlabelled snapshot'}, so the release label was "
-                    f"withdrawn rather than re-labelled: one column cannot name two releases."
-                )
+        )
     return result
 
 

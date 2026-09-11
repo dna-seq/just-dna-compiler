@@ -50,15 +50,13 @@ from pydantic import ValidationError
 from just_dna_enricher.clin_sig import STATE_BY_CLIN_SIG
 from just_dna_enricher.clinvar import citations_for, clinvar_dataset_label, select_by_gene
 from just_dna_enricher.download import ensure_clinvar_snapshot
+from just_dna_enricher.drafting import DRAFT_PROVIDERS, record_draft_provenance
 from just_dna_enricher.enrich import source_build_mismatch
 from just_dna_enricher.licensing import (
     CLINVAR_TERMS,
     check_declared_use,
-    merge_sources_file,
-    withdraw_stale_dataset,
 )
 from just_dna_enricher.locations import resolve_clinvar_reference
-from just_dna_enricher.provenance import stamp_draft_digest
 from just_dna_enricher.verification import examples
 
 logger = logging.getLogger(__name__)
@@ -168,7 +166,8 @@ def _identity_cells(record: dict, *, force_coordinate: bool = False) -> dict | N
 #: The identity columns a partial row matches on — see the `PartialRow` call site for why the natural
 #: key cannot be used. Shared so the signature a row is keyed by and the one used to look its source
 #: record back up cannot drift apart.
-_MATCH_ON: tuple[str, ...] = ("rsid", "chrom", "start", "ref", "alts")
+_PROVIDER = DRAFT_PROVIDERS["clinvar"]
+_MATCH_ON: tuple[str, ...] = _PROVIDER.match_on
 
 
 def sole_expressible_genotype(record: dict) -> str | None:
@@ -835,31 +834,31 @@ def draft_gene_panel(
     if not dry_run:
         # A source that rows were copied out of must be recorded, permissive terms or not: the compile
         # gate and `manifest.sources` read the licence table and nothing else.
-        merge_sources_file(
-            [CLINVAR_TERMS.row("annotation", declared_use=declared_use, dataset=dataset)],
-            spec_dir,
-            error=ClinVarDraftError,
-        )
-        # Widening a panel from a NEWER snapshot leaves the row naming the older release, because the
-        # merge above is never-clobber (a curator's terms must survive a re-run). For `dataset` that
-        # protection produces a false claim, so the stale label is withdrawn — never re-labelled: the
-        # module now carries rows from two releases and one column cannot name both. Gated on rows
-        # actually being added, since a re-draft that added none changed nothing to be honest about.
-        # What the release label cannot see: which of these rows a human has edited since (RM73).
-        # `merge_sources_file` is never-clobber, so the digest has to be restamped explicitly or a
-        # second draft's would be silently dropped — see `stamp_draft_digest`. Unconditional: a run
-        # that appended nothing leaves the projection unchanged, so this is then a no-op.
-        stamp_draft_digest(spec_dir, CLINVAR_TERMS.source, "annotation", error=ClinVarDraftError)
-        if report.added:
-            superseded = withdraw_stale_dataset(
-                spec_dir, CLINVAR_TERMS.source, "annotation", dataset, error=ClinVarDraftError
-            )
-            if superseded is not None:
-                warnings.append(
+        #
+        # **`covered=True` reproduces this provider's behaviour exactly and is a question, not an
+        # endorsement.** Every other drafter gates the row on this run having covered something; this
+        # one writes it whenever the run was not a dry run, which is the shape RM222 found wrong in
+        # `civic_draft` — a `--gene` filter matching nothing would write a licence row claiming a
+        # module uses ClinVar when no ClinVar row reached it. RM228 is a behaviour-preserving
+        # migration, so the gate is left as it was and the question is recorded rather than answered
+        # under cover of a refactor.
+        warnings.extend(
+            record_draft_provenance(
+                provider=_PROVIDER,
+                sources=[CLINVAR_TERMS.source],
+                spec_dir=spec_dir,
+                dataset=dataset,
+                covered=True,
+                drafted=bool(report.added),
+                declared_use=declared_use,
+                error=ClinVarDraftError,
+                stale_warning=lambda superseded, ds: (
                     f"this module already recorded rows drafted from {superseded}, and these came from "
-                    f"{dataset or 'a snapshot that does not state its release'} — so the licence row's "
+                    f"{ds or 'a snapshot that does not state its release'} — so the licence row's "
                     f"dataset has been cleared rather than re-labelled: it cannot name two releases, "
                     f"and naming one would be a claim about rows that did not come from it. The "
                     f"consequence is that the clin_sig cross-check now runs over the whole table again."
-                )
+                ),
+            )
+        )
     return ClinVarDraftResult(reports=reports, warnings=warnings)
