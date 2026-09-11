@@ -29,6 +29,7 @@ position-orphan check for the same reason.
 
 import csv
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -46,6 +47,7 @@ from just_dna_enricher.licensing import (
     CLINVAR_TERMS,
     overlaid_input_rows,
     record_source_terms,
+    require_sources_file,
     sidecar_path,
 )
 from just_dna_enricher.locations import read_release, resolve_clinvar_reference
@@ -180,6 +182,9 @@ def enrich_clinical_assertions(
     spec_dir = Path(spec_dir)
     resolution_path = sidecar_path(spec_dir, "resolution.csv", error=ClinicalAssertionError)
     assertions_path = sidecar_path(spec_dir, "clinical_assertions.csv", error=ClinicalAssertionError)
+    if write:
+        # Fail on a placeholder or half-edited licence table now, before the fetch (S98, RM231).
+        require_sources_file(spec_dir, error=ClinicalAssertionError)
 
     if not resolution_path.exists():
         raise ClinicalAssertionError(
@@ -383,14 +388,18 @@ def enrich_clinical_assertions(
             f"usually correct data rather than a read failure — use mode='best_effort'."
         )
     if write:
-        _write_assertions_csv(out, assertions_path)
         # Same rule as every other pass that consults a source: record its terms, or the module cannot
         # account for it. ClinVar is public-domain and asks to be cited, which is what this row carries.
-        record_source_terms(
-            {row.source for row in out if row.source},
-            "clinical_assertion",
-            spec_dir,
-            error=ClinicalAssertionError,
+        # Inside the table's commit, so neither file exists without the other (S98, RM231).
+        _write_assertions_csv(
+            out,
+            assertions_path,
+            before_commit=lambda: record_source_terms(
+                {row.source for row in out if row.source},
+                "clinical_assertion",
+                spec_dir,
+                error=ClinicalAssertionError,
+            ),
         )
     return result
 
@@ -420,7 +429,9 @@ def _sort_key(row: ClinicalAssertionRow) -> tuple:
     )
 
 
-def _write_assertions_csv(rows: list[ClinicalAssertionRow], output_path: Path) -> None:
+def _write_assertions_csv(
+    rows: list[ClinicalAssertionRow], output_path: Path, *, before_commit: Callable[[], None] | None = None
+) -> None:
     """Write the table with a fixed column order and canonical cells (byte-stable across runs).
 
     **This file is a pure build product since 0.7 (RM124).** Hand-editing it is not expected and
@@ -430,7 +441,7 @@ def _write_assertions_csv(rows: list[ClinicalAssertionRow], output_path: Path) -
     are not in here to lose. The re-run itself is unchanged, and still gap-fills rather than re-asking
     every subject; what changed is that leaving a recorded row alone now risks nothing.
     """
-    with atomic_writer(output_path, newline="") as handle:
+    with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for row in rows:

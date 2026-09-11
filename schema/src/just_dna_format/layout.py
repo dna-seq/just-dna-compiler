@@ -21,7 +21,7 @@ move, because only they have a machine that knows where to put them.
 
 import os
 import tempfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import TextIO
@@ -238,8 +238,15 @@ def atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> Path
 
 
 @contextmanager
-def atomic_writer(path: Path, *, encoding: str = "utf-8", newline: str | None = None) -> Iterator[TextIO]:
-    """A text handle whose writes land at `path` only if the block completes.
+def atomic_writer(
+    path: Path,
+    *,
+    encoding: str = "utf-8",
+    newline: str | None = None,
+    before_commit: Callable[[], None] | None = None,
+) -> Iterator[TextIO]:
+    """A text handle whose writes land at `path` only if the block completes — with one stated residual
+    when `before_commit` is given, below.
 
     The `csv.DictWriter` half of the same guarantee — the writers pass `newline=""` exactly as they do
     to `open`, so routing one through this changes the emitted bytes not at all.
@@ -247,6 +254,17 @@ def atomic_writer(path: Path, *, encoding: str = "utf-8", newline: str | None = 
     On any exception the partial temp file is removed and `path` is left untouched, which is the
     property that makes this safe to wrap around a writer that can raise mid-table: today a row whose
     cell fails to serialize leaves the previous table truncated at that row.
+
+    `before_commit` runs after the temp file is closed and fsynced and **before** the rename (S98,
+    RM231). It is for the write that has to land with this one or not at all — the licence row a
+    pass records for the table it is writing. Eight passes used to write the table and then merge the
+    row, so a placeholder `licensing.csv` split the two: a data table on disk, `FAILED` on the screen,
+    and no licence record anywhere. Inside the commit, a failure on either side leaves nothing: the
+    callback raising removes the temp, and a table that fails to serialize never reaches the callback.
+    **The one residual**: the callback's own commit has returned by the time this rename runs, so a
+    rename that fails leaves the callback's side effect without the table — conservative for a
+    licence row, and the `OSError` raised then says so rather than leaving it to be found. Two files
+    are two renames; no ordering makes them one.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -267,7 +285,20 @@ def atomic_writer(path: Path, *, encoding: str = "utf-8", newline: str | None = 
             yield tmp
             tmp.flush()
             os.fsync(tmp.fileno())
-        os.replace(tmp_path, path)
+        if before_commit is not None:
+            before_commit()
+        try:
+            os.replace(tmp_path, path)
+        except OSError as exc:
+            if before_commit is None:
+                raise
+            # Two files are two renames, and no ordering makes them one. The callback's own commit
+            # has returned, so what is on disk is its side effect without this table — conservative
+            # (a licence row for data that never arrived), and SAID rather than left to be found.
+            raise OSError(
+                f"{path} was not committed ({exc}); a before_commit side effect for it has already "
+                f"landed — re-run, or remove what the callback wrote"
+            ) from exc
     finally:
         # Reached with the temp already gone on the success path; `missing_ok` is what makes the one
         # `finally` serve both, rather than an `except` that has to re-raise.

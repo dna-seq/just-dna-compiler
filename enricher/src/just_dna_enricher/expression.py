@@ -34,6 +34,7 @@ import csv
 import logging
 import math
 import os
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -55,6 +56,7 @@ from just_dna_enricher.licensing import (
     ALPHAGENOME_ATLAS_TERMS,
     check_declared_use,
     merge_sources_file,
+    require_sources_file,
     sidecar_path,
 )
 from just_dna_enricher.locations import load_env, missing_credential_reason
@@ -324,13 +326,15 @@ def _cell(value: object) -> str:
     return str(value)
 
 
-def _write_csv(rows: list[ExpressionEffectRow], output_path: Path) -> None:
+def _write_csv(
+    rows: list[ExpressionEffectRow], output_path: Path, *, before_commit: Callable[[], None] | None = None
+) -> None:
     """Fixed column order, canonical cells, byte-stable across runs, written atomically.
 
     A pure build product: a correction to a derived row belongs in `overrides.csv`, which is what
     makes deleting this file and re-running cost nothing (`@sidecar-authoritative`).
     """
-    with atomic_writer(output_path, newline="") as handle:
+    with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for row in rows:
@@ -369,6 +373,9 @@ def enrich_expression(
     spec_dir = Path(spec_dir)
     result = ExpressionResult(gene=gene)
     output_path = sidecar_path(spec_dir, SIDECAR_NAME, error=ExpressionError)
+    if write:
+        # Fail on a placeholder or half-edited licence table now, before the fetch (S98, RM231).
+        require_sources_file(spec_dir, error=ExpressionError)
 
     # **`offline` outranks an injected client** (RM220), which is `pgx`'s reading and not `gwas`'s.
     # The two shapes coexist in this tier and the difference is the source's licence, not a
@@ -509,11 +516,17 @@ def enrich_expression(
 
     out.sort(key=_sort_key)
     if write and result.written:
-        _write_csv(out, output_path)
-        merge_sources_file(
-            [ALPHAGENOME_ATLAS_TERMS.row(SOURCE_LAYER, declared_use=declared_use, dataset=release)],
-            spec_dir,
-            error=ExpressionError,
+        # The licence row lands inside the table's commit (S98, RM231): 12,003 non-commercial rows
+        # once sat on disk under `FAILED` with no licence record, because the row was merged after
+        # the write and a scaffold's placeholder row made the merge refuse.
+        _write_csv(
+            out,
+            output_path,
+            before_commit=lambda: merge_sources_file(
+                [ALPHAGENOME_ATLAS_TERMS.row(SOURCE_LAYER, declared_use=declared_use, dataset=release)],
+                spec_dir,
+                error=ExpressionError,
+            ),
         )
     result.rows = out
     return result

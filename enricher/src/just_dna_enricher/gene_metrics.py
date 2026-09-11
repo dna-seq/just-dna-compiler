@@ -23,6 +23,7 @@ is about*; querying anything else would be inventing scope the author did not as
 
 import csv
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -42,7 +43,7 @@ from just_dna_enricher.gnomad import (
     normalize_constraint_flags,
 )
 from just_dna_enricher.identifiers import authored_identifiers
-from just_dna_enricher.licensing import record_source_terms, sidecar_path
+from just_dna_enricher.licensing import record_source_terms, require_sources_file, sidecar_path
 from just_dna_enricher.locations import resolve_constraint_reference
 
 logger = logging.getLogger(__name__)
@@ -239,6 +240,9 @@ def enrich_gene_metrics(
     # and write a flat one, leaving the module with both -- the collision RM49 made an error rather
     # than a preference. `@sidecar-name-and-place`: write to the file you read.
     output_path = sidecar_path(spec_dir, "gene_metrics.csv", error=GeneMetricsEnrichmentError)
+    if write:
+        # Fail on a placeholder or half-edited licence table now, before the fetch (S98, RM231).
+        require_sources_file(spec_dir, error=GeneMetricsEnrichmentError)
 
     # Keyed by (gene, dataset), not by gene: one gene legitimately carries a row per authority — a
     # gnomAD constraint row and a ClinGen dosage row make different statements about it. Keying on the
@@ -425,19 +429,25 @@ def enrich_gene_metrics(
             )
         )
     if write:
-        _write_gene_metrics_csv(out, output_path)
         # As above: the pass consulted gnomAD, so the module records gnomAD's terms. `clingen.py` writes
-        # its own row for the dosage columns it adds to this same table.
-        record_source_terms(
-            {row.source for row in out if row.source},
-            "gene_metrics",
-            spec_dir,
-            error=GeneMetricsEnrichmentError,
+        # its own row for the dosage columns it adds to this same table. Inside the table's commit, so
+        # neither file exists without the other (S98, RM231).
+        _write_gene_metrics_csv(
+            out,
+            output_path,
+            before_commit=lambda: record_source_terms(
+                {row.source for row in out if row.source},
+                "gene_metrics",
+                spec_dir,
+                error=GeneMetricsEnrichmentError,
+            ),
         )
     return result
 
 
-def _write_gene_metrics_csv(rows: list[GeneMetricsRow], output_path: Path) -> None:
+def _write_gene_metrics_csv(
+    rows: list[GeneMetricsRow], output_path: Path, *, before_commit: Callable[[], None] | None = None
+) -> None:
     """Write the table with a fixed column order and canonical cells (byte-stable across runs).
 
     Every metric here is a float by nature, so unlike the frequency table there is no integer form to
@@ -452,7 +462,7 @@ def _write_gene_metrics_csv(rows: list[GeneMetricsRow], output_path: Path) -> No
     rather than re-asking every subject; what changed is that leaving a recorded row alone now risks
     nothing.
     """
-    with atomic_writer(output_path, newline="") as handle:
+    with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for row in rows:

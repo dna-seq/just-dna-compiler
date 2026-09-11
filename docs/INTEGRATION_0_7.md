@@ -491,6 +491,12 @@ Now:
 - What is staged is the **raw answer**, never the assembled row, so a resumed run reproduces the table
   an uninterrupted one produces. That is the P7 obligation and it has a test.
 - **A refused `strict` run commits nothing**, now as a written promise asserted on the bytes on disk.
+- **A licence row is part of its table's commit (S98, RM231).** Every fact pass — `enrich`,
+  `assertions`, `gene-metrics`, `frequencies`, `gene-validity`, `gwas`, `clingen`, `alphagenome
+  expression` — merges its `SourceRow` inside the data table's atomic write, and reads `licensing.csv`
+  before its fetch. A scaffold's placeholder row now fails in a second and leaves nothing; it used to
+  fail after the query with the data table already on disk and no licence record, which the compile
+  gate then passed. `layout.atomic_writer(before_commit=…)` is the seam if you write a table of your own.
 - **`flock` on the spec directory**, non-blocking, no lockfile — a second concurrent run fails fast
   rather than racing a merge.
 - A **progress callback** is available; its unit is **subjects**, because `total` has to be known up
@@ -627,7 +633,7 @@ AVI row and then joins a table produced by `alphagenome expression` has mis-lice
 | `just-dna-enricher[atlas]` | **New extra**: `grpcio` + `protobuf`, measured at 19 MB and +2 packages. The `alphagenome` extra is **deleted** — it was **550 MB and 47 packages** |
 | `variant_impact_agreement` | **New `VALID_VERIFICATION_CHECKS` member.** The one thing here a format-tier consumer sees |
 | `ALPHAGENOME_AVI_TERMS` in `licensing.py` | `commercial_use=True`, `share_alike=False`, `redistribution=True`. A module drafted from it lands `alphagenome_avi` in `sources.csv` |
-| `just-dna-enricher alphagenome expression <spec> --gene <SYMBOL>` | Fills `expression_effects.csv` from the Atlas (RM194 + RM200). `--gene` is mandatory in **both** span forms — the server-side filter is a requirement, not an optimisation. **`--use non-commercial` is required or the run writes nothing** |
+| `just-dna-enricher alphagenome expression <spec> --gene <SYMBOL>` | Fills `expression_effects.csv` from the Atlas (RM194 + RM200). `--gene` is mandatory in **both** span forms — the server-side filter is a requirement, not an optimisation. **`--use non-commercial` is required or the run writes nothing**. Since RM231 it reads `licensing.csv` before the query and lands its licence row inside the table's commit, so a scaffold's placeholder row refuses in a second and leaves no table behind |
 | `ALPHAGENOME_ATLAS_TERMS` in `licensing.py` | `commercial_use=False`. A module fed by `alphagenome expression` lands **`alphagenome_atlas`** in `sources.csv`, at the `expression_effect` layer |
 
 **Three things that will surprise a consumer**, and none is a schema question:

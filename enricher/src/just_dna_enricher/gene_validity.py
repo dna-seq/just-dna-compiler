@@ -39,6 +39,7 @@ perfectly well; what is missing is a link this tier may take the data over.
 import csv
 import io
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -54,7 +55,13 @@ from just_dna_format.layout import atomic_writer
 from just_dna_format.normalize import normalize_utc_timestamp, now_utc_iso
 
 from just_dna_enricher.gene_metrics import GeneMetricsEnrichmentError, module_genes
-from just_dna_enricher.licensing import CLINGEN_TERMS, GENCC_TERMS, record_source_terms, sidecar_path
+from just_dna_enricher.licensing import (
+    CLINGEN_TERMS,
+    GENCC_TERMS,
+    record_source_terms,
+    require_sources_file,
+    sidecar_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -426,6 +433,9 @@ def enrich_gene_validity(
             f"docstring for the two reasons, both established by probe."
         )
     output_path = sidecar_path(spec_dir, "gene_validity.csv", error=GeneValidityError)
+    if write:
+        # Fail on a placeholder or half-edited licence table now, before the fetch (S98, RM231).
+        require_sources_file(spec_dir, error=GeneValidityError)
 
     if offline and export_text is None:
         logger.warning(
@@ -554,16 +564,19 @@ def enrich_gene_validity(
             f"usually correct rather than an error — use mode='best_effort'."
         )
     if write:
-        _write_gene_validity_csv(out, output_path)
         # The pass consulted a source, so the module records its terms. Both are CC0 and neither can
         # taint anything at this layer — which is exactly why the row is worth writing: what it carries
         # is the attribution both submitters ask for, and a source recorded nowhere is a source the
-        # module cannot account for.
-        record_source_terms(
-            {row.source for row in out if row.source},
-            "gene_validity",
-            spec_dir,
-            error=GeneValidityError,
+        # module cannot account for. Inside the table's commit (S98, RM231).
+        _write_gene_validity_csv(
+            out,
+            output_path,
+            before_commit=lambda: record_source_terms(
+                {row.source for row in out if row.source},
+                "gene_validity",
+                spec_dir,
+                error=GeneValidityError,
+            ),
         )
     return result
 
@@ -625,7 +638,9 @@ def _sort_key(row: GeneValidityRow) -> tuple:
     )
 
 
-def _write_gene_validity_csv(rows: list[GeneValidityRow], output_path: Path) -> None:
+def _write_gene_validity_csv(
+    rows: list[GeneValidityRow], output_path: Path, *, before_commit: Callable[[], None] | None = None
+) -> None:
     """Write the table with a fixed column order and canonical cells (byte-stable across runs).
 
     **This file is a pure build product since 0.7 (RM124).** Hand-editing it is not expected and
@@ -639,7 +654,7 @@ def _write_gene_validity_csv(rows: list[GeneValidityRow], output_path: Path) -> 
     when the source published one. A row keyed only on the gene's grain can be corrected
     group-scoped, by `gene`, and not more finely than that.
     """
-    with atomic_writer(output_path, newline="") as handle:
+    with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for row in rows:

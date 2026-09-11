@@ -2893,6 +2893,32 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
     thing everywhere, because committing is the only write — and `write=False` therefore stages nothing
     and takes no lock, since a caller that writes nothing has no window to exclude.
 
+- `@licence-row-inside-the-commit` — **A data table never exists on disk without its licence row; the
+  row is part of the table's commit, not a step after it (S98, RM231).** `alphagenome expression` wrote
+  12,003 rows of `commercial_use=False` Atlas output, then refused to record its licence row because
+  the scaffold's `licensing.csv` carried a `<<REPLACE>>` placeholder, and printed `EXPRESSION FAILED`.
+  The compile gate keys on the licence table and nothing else, so those rows did not merely lack
+  provenance — they **compiled clean**, as though unrestricted; a module that should be refused had
+  become one that is not. Eight passes had the same two-step tail, each written independently, and the
+  author of the eighth had read `@enrich-is-a-transaction` while writing it and still split the two,
+  because the licence row *did not feel like part of the table*. It is. **The seam is
+  `atomic_writer(before_commit=…)`**: the callback runs after the temp file is fsynced and before the
+  rename, so the merge refusing removes the temp and a table that fails to serialize never reaches
+  the merge. **Two repairs refused.** "Write the licence row first — it is small and idempotent":
+  it writes a row for a pass that then contributes nothing, the S77/RM142 false statement in a
+  published artifact, and `@write-the-sourcerow`'s converse forbids it. "Validate `licensing.csv` up
+  front": taken too (`require_sources_file`, so a placeholder fails in a second instead of after a
+  47-minute query), but it narrows the window rather than closing it — a concurrent writer or ENOSPC
+  between the two writes reopens it. **The one residual is stated, not hidden**: two files are two
+  renames, so a table rename failing after the licence row's has returned leaves the row without the
+  data — conservative, and the `OSError` says what landed, which is the consumer's own closing ask.
+  The guard walks every function recording a licence row and asserts an **equality**: eight commit
+  through the seam and pre-read the table, five are named exempt with a reason — and two of those five
+  (`drafting.record_draft_provenance`, `civic_citations.draft_civic_citations`) are the same gap one
+  layer over, recorded there as RM228's to close, because the compiler's draft writers are the seam
+  that would reach them. **A guard that names a known gap as an exemption with its reason is honest; a
+  guard that cannot see it is not.**
+
 - `@flock-not-a-lockfile` — **A lock left behind by exactly the kill it exists for is worse than no
   lock (RM128).** Two concurrent `enrich` runs over one spec directory were last-writer-wins over a
   merge with neither knowing; a zombie run once replaced a restored 330-row table with 162 rows, after

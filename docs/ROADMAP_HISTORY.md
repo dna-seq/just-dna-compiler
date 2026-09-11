@@ -68,6 +68,54 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM231 — `alphagenome expression` wrote the data, then failed to record its licence, and called that FAILED
+
+**Severity** high · **Status** ✅ shipped 2026-09-12 in the uncut 0.7.0 (`just-dna-format`: one
+keyword on `layout.atomic_writer`; `just-dna-enricher`: one strict reader factored out of the merge,
+eight pass tails moved inside their table's commit, one AST guard; no schema change) · **Owner**
+enricher · **Motivating case** S98 (just-module-creator, in CONSUMER_SUGGESTIONS_HISTORY.md), a
+freshly scaffolded APOE module and the guide's own first AlphaGenome command
+
+**What it reproduced, and why the severity is high.** `_write_csv` then `merge_sources_file`, two
+steps; a scaffold's `licensing.csv` carrying `<<REPLACE>>` made the second refuse. On disk: 12,003
+rows of `commercial_use=False` Atlas output and no licence record anywhere. On screen: `EXPRESSION
+FAILED`. The compile gate keys on the licence table and nothing else, so the orphaned rows did not
+merely lack provenance — they compiled clean, as though unrestricted. A module that should be
+refused became one that is not; that is a licensing hole, not an untidy write. And scaffold →
+expression is the default happy path, so it landed there every time.
+
+**It was eight passes, not one.** Grepping every writer (`@sidecar-name-and-place`'s own rule) found
+`enrich`, `assertions`, `gene_metrics`, `frequencies`, `gene_validity`, `gwas`, `clingen` and
+`expression` with the same tail, each written independently; the eighth's author had read
+`@enrich-is-a-transaction` while writing it and still split the two, because the licence row did not
+read as part of the table. It is, and the fix is one primitive rather than eight edits of opinion.
+
+**The seam, and the two candidates it beat.** `layout.atomic_writer(before_commit=…)` runs the
+callback after the temp file is closed and fsynced and before the rename. The merge refusing removes
+the temp; a table that fails to serialize never reaches the merge; neither file exists without the
+other. The consumer's first candidate, *write the licence row first* — small, idempotent, harmless
+in one direction — was refused because it is not harmless in the other: a row for a pass that then
+contributed nothing is the S77/RM142 false statement in a published artifact, and
+`@write-the-sourcerow`'s converse forbids it. Their second, *validate up front*, is taken as well
+(`require_sources_file`, the strict read factored out of the merge and run before the fetch, so a
+placeholder fails in a second instead of after a 47-minute query) and is not sufficient, as they
+said: a concurrent writer or a full disk between the two writes reopens the window the seam closes.
+The `if write and result.written` gate is unchanged — a dry run and an empty match write neither file.
+
+**The residual is stated rather than hidden.** Two files are two renames, and no callback ordering
+makes them one: the table's rename failing after the licence row's has returned leaves the row for
+data that never arrived. Conservative, and the `OSError` raised then names what landed — the
+consumer's closing ask, that a partial commit say what it committed, answered in the one case that is
+left. Pinned with a monkeypatched `os.replace`.
+
+**The guard is an equality over a walked set, and it names a gap it cannot close.** Every function
+under `just_dna_enricher` that records a licence row either passes the merge as `before_commit` and
+pre-reads the table, or is listed exempt with its reason. Two of the five exemptions are the same
+defect one layer over: `drafting.record_draft_provenance` and `civic_citations.draft_civic_citations`
+record the row after the compiler's `draft.append_*` has landed the drafted rows, and the seam that
+would reach them is the compiler's draft writer — RM228's surface, handed to its owner rather than
+folded in here. A guard that names a known gap with its reason is honest; one that cannot see it is not.
+
 ## RM230 — a leak an exemption hid, a remedy no flag could reach, and a debt that was not owed
 
 **Severity** high · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 · **Owner** enricher ·

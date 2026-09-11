@@ -34,7 +34,29 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-11 (latest) — RM230: a leak an exemption hid, a remedy no flag could reach, and a debt that was not owed
+## 2026-09-12 (latest) — RM231: a licence row is part of its table's commit, in every pass
+
+`just-dna-format` and `just-dna-enricher`, inside the uncut 0.7.0. `alphagenome expression` wrote
+12,003 non-commercial rows, then refused to record its licence row on a scaffold's `<<REPLACE>>`
+placeholder, and printed `FAILED` (S98) — and the compile gate, keyed on the licence table alone,
+then passed the module as unrestricted. Eight passes had the same two-step tail.
+
+- **`layout.atomic_writer(before_commit=…)`** runs a callback after the temp file is fsynced and
+  before the rename. Every fact pass now merges its `SourceRow` there, so a refused merge removes the
+  temp and a table that fails to serialize never reaches the merge: neither file exists without the
+  other. A rename failing after the callback — two files are two renames — raises an `OSError`
+  naming what landed.
+- **`licensing.require_sources_file`**, the strict read factored out of `merge_sources_file`, runs
+  before each pass's fetch, so a placeholder row fails in a second rather than after a whole-gene
+  query. The gentle `read_sources_file` for readers is unchanged.
+- **A guard** walks every function that records a licence row: eight commit through the seam and
+  pre-read the table; five are named exempt with reasons, two of which are the same gap in the
+  drafting scaffold, RM228's to close.
+
+Refused: writing the licence row first, because a row for a pass that then contributed nothing is a
+false statement in a published artifact. The `if write and result.written` gate is unchanged.
+
+## 2026-09-11 — RM230: a leak an exemption hid, a remedy no flag could reach, and a debt that was not owed
 
 **`EuropePmcClient.lookup` leaked all three failure legs** — `httpx.HTTPStatusError`,
 `httpx.ConnectError` and `json.JSONDecodeError` — into `enrich_literature`, whose `try:` has only a

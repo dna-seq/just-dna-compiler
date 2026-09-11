@@ -90,6 +90,7 @@ from just_dna_enricher.licensing import (
     overlay_answers,
     read_sources_file,
     record_source_terms,
+    require_sources_file,
     resolution_authority,
     sidecar_path,
 )
@@ -872,6 +873,9 @@ def _run_enrichment(
     # root or `derived/`, whatever it is called. Reading one copy and writing another would leave the
     # module carrying two, which is the collision (RM49/RM51).
     resolution_path = sidecar_path(spec_dir, "resolution.csv", error=EnrichmentError)
+    if write:
+        # Fail on a placeholder or half-edited licence table now, before the fetch (S98, RM231).
+        require_sources_file(spec_dir, error=EnrichmentError)
     if resolution_path.exists():
         rows, errors, _ = load_csv_rows(resolution_path, ResolutionRow, resolution_path.name)
         if errors:
@@ -1982,7 +1986,20 @@ def _run_enrichment(
     # *a refused strict run changes nothing* a promise rather than an accident of statement order —
     # and it is asserted on the bytes on disk by test, not on a return value.
     if write:
-        _write_resolution_csv(out, resolution_path)
+        # The licence rows land inside the table's commit (S98, RM231): `enrich()` was the only pass
+        # that consulted sources and recorded none — the reason `VALID_SOURCE_LAYERS` reserves a
+        # `"resolution"` member nothing ever wrote. Keyed on the authority rather than the link, so
+        # the row joins `sources.csv` (RM33).
+        _write_resolution_csv(
+            out,
+            resolution_path,
+            before_commit=lambda: record_source_terms(
+                {row.authority for row in out if row.authority},
+                "resolution",
+                spec_dir,
+                error=EnrichmentError,
+            ),
+        )
         if clin_sig_record is not None:
             # Rewritten whole rather than merged: a subject the authorities stopped contesting has to
             # *leave* the record, since a conflict that stops being reported is how an author learns
@@ -2020,15 +2037,6 @@ def _run_enrichment(
                 ensembl_ref=reference,
                 currency=dataset_currency,
             ),
-            spec_dir,
-            error=EnrichmentError,
-        )
-        # `enrich()` was the only pass that consulted sources and recorded none — the reason
-        # `VALID_SOURCE_LAYERS` reserves a `"resolution"` member nothing ever wrote. Keyed on the
-        # authority rather than the link, so the row joins `sources.csv` (RM33).
-        record_source_terms(
-            {row.authority for row in out if row.authority},
-            "resolution",
             spec_dir,
             error=EnrichmentError,
         )
@@ -2494,7 +2502,9 @@ def _clinvar_release(reference: Path | None) -> str | None:
     return clinvar_dataset_label(reference)
 
 
-def _write_resolution_csv(rows: list[ResolutionRow], output_path: Path) -> None:
+def _write_resolution_csv(
+    rows: list[ResolutionRow], output_path: Path, *, before_commit: Callable[[], None] | None = None
+) -> None:
     """Write `resolution.csv` with a fixed column order and canonical cells.
 
     **This file is a pure build product since 0.7 (RM124).** Hand-editing it is not expected and
@@ -2504,7 +2514,7 @@ def _write_resolution_csv(rows: list[ResolutionRow], output_path: Path) -> None:
     are not in here to lose. The re-run itself is unchanged, and still gap-fills rather than re-asking
     every subject; what changed is that leaving a recorded row alone now risks nothing.
     """
-    with atomic_writer(output_path, newline="") as f:
+    with atomic_writer(output_path, newline="", before_commit=before_commit) as f:
         writer = csv.DictWriter(f, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for r in rows:

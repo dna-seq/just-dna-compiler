@@ -38,6 +38,7 @@ nobody later "corrects" it against a number that does not exist.
 
 import csv
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -59,6 +60,7 @@ from just_dna_enricher.enrich import (
 from just_dna_enricher.licensing import (
     GWAS_CATALOG_TERMS,
     merge_sources_file,
+    require_sources_file,
     sidecar_path,
 )
 from just_dna_enricher.net import PacingGate, attempt_floor
@@ -411,7 +413,9 @@ def _cell(value: object) -> str:
     return str(value)
 
 
-def _write_gwas_csv(rows: list[GwasEffectRow], output_path: Path) -> None:
+def _write_gwas_csv(
+    rows: list[GwasEffectRow], output_path: Path, *, before_commit: Callable[[], None] | None = None
+) -> None:
     """Write the table with a fixed column order and canonical cells (byte-stable across runs).
 
     **This file is a pure build product since 0.7 (RM124).** Hand-editing it is not expected and
@@ -421,7 +425,7 @@ def _write_gwas_csv(rows: list[GwasEffectRow], output_path: Path) -> None:
     are not in here to lose. The re-run itself is unchanged, and still gap-fills rather than re-asking
     every subject; what changed is that leaving a recorded row alone now risks nothing.
     """
-    with atomic_writer(output_path, newline="") as handle:
+    with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for row in rows:
@@ -498,6 +502,9 @@ def enrich_gwas(
     """
     spec_dir = Path(spec_dir)
     output_path = sidecar_path(spec_dir, "gwas_effects.csv", error=GwasError)
+    if write:
+        # Fail on a placeholder or half-edited licence table now, before the fetch (S98, RM231).
+        require_sources_file(spec_dir, error=GwasError)
 
     if offline and client is None:
         logger.warning(
@@ -609,11 +616,15 @@ def enrich_gwas(
         )
 
         if write:
-            _write_gwas_csv(out, output_path)
-            merge_sources_file(
-                [GWAS_CATALOG_TERMS.row("gwas_effect", declared_use=declared_use, dataset=release)],
-                spec_dir,
-                error=GwasError,
+            # The licence row lands inside the table's commit (S98, RM231).
+            _write_gwas_csv(
+                out,
+                output_path,
+                before_commit=lambda: merge_sources_file(
+                    [GWAS_CATALOG_TERMS.row("gwas_effect", declared_use=declared_use, dataset=release)],
+                    spec_dir,
+                    error=GwasError,
+                ),
             )
     finally:
         if owned:

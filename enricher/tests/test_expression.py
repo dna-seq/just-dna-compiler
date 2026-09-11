@@ -476,3 +476,56 @@ def test_the_service_really_does_return_one_gene_axis_and_name_it(tmp_path: Path
         "this column's whole justification for storing it verbatim would need re-reading"
     )
     assert row.tracks_total > 1, "RNA_SEQ reported a single track, which is not the gene axis"
+
+
+# ── S98 / RM231: the licence row lands inside the table's commit, and a bad table fails first ────
+
+
+class _NeverAsked:
+    """A client that must not be reached: the placeholder refusal has to fire before the query."""
+
+    def score_interval(self, *args, **kwargs):
+        raise AssertionError("the Atlas was queried after a pre-flight that should have refused")
+
+
+def test_a_placeholder_licence_row_refuses_before_the_query_and_writes_nothing(tmp_path: Path) -> None:
+    """S98's exact shape: scaffold → expression. The refusal is correct and stays; what changed is
+    that it fires before a 47-minute query and can no longer split the two writes."""
+    spec = _spec(tmp_path)
+    (spec / "licensing.csv").write_text(
+        "source,layer,declared_use\n<<REPLACE>>,<<REPLACE>>,unstated\n", encoding="utf-8"
+    )
+    with pytest.raises(ExpressionError, match="licensing.csv") as excinfo:
+        _run(spec, _NeverAsked())
+    assert "REPLACE" in str(excinfo.value)
+    assert not (spec / SIDECAR_NAME).exists()
+
+
+def test_a_licence_merge_that_fails_mid_commit_leaves_no_data_table(tmp_path: Path, monkeypatch) -> None:
+    """Rows written ⇒ licence row exists — the half of `@write-the-sourcerow` nothing had pinned.
+
+    The merge is inside the table's atomic commit, so a merge that refuses (whatever the reason: a
+    concurrent writer, a disk full between the two) leaves the previous table byte-for-byte and no
+    new one at all — never 12,003 non-commercial rows under `FAILED` with no licence record."""
+    import just_dna_enricher.expression as expression_module
+
+    spec = _spec(tmp_path)
+
+    def refuse(*args, **kwargs):
+        raise ExpressionError("existing licensing.csv is invalid: (simulated, mid-commit)")
+
+    monkeypatch.setattr(expression_module, "merge_sources_file", refuse)
+    with pytest.raises(ExpressionError, match="mid-commit"):
+        _run(spec, _Stub((_score(26090000),)))
+    assert not (spec / SIDECAR_NAME).exists()
+    assert not (spec / "licensing.csv").exists()
+    assert [p.name for p in spec.iterdir()] == ["module_spec.yaml"], "no temp file left behind either"
+
+
+def test_a_dry_run_and_an_empty_match_still_write_neither_file(tmp_path: Path) -> None:
+    """The gate `if write and result.written` is unchanged: no data ⇒ no licence row."""
+    spec = _spec(tmp_path)
+    _run(spec, _Stub((_score(26090000),)), write=False)
+    assert not (spec / SIDECAR_NAME).exists() and not (spec / "licensing.csv").exists()
+    _run(spec, _Stub(()))
+    assert not (spec / SIDECAR_NAME).exists() and not (spec / "licensing.csv").exists()

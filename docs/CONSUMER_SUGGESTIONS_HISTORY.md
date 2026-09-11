@@ -121,6 +121,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S95** `PacingGate` could not report what it spent — accepted, RM203
 - **S96** `sidecar_spellings` keyed on the table key only — accepted, RM224
 - **S97** `CacheLane` declared no size — accepted, RM229
+- **S98** data written before its licence row, in eight passes — accepted, RM231
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -8283,3 +8284,109 @@ needs `--source acmg=<file.xlsx>` for anyone installing from PyPI. We classify i
 `prepare_lane` and reading the refusal rather than by pattern-matching `<…>` in `build_command`,
 which is what we tried first and which is wrong for `pharmvar build --out <dir>` — where the
 placeholder is ours to fill.
+
+# Field notes from just-module-creator, 2026-09-12 — a licence row that arrived after the data
+
+---
+
+## S98 — `alphagenome expression` writes the data, then fails to record its licence, and calls that FAILED
+
+**Status — accepted and shipped 2026-09-12 in the uncut 0.7.0 as
+[RM231](ROADMAP_HISTORY.md#rm231--alphagenome-expression-wrote-the-data-then-failed-to-record-its-licence-and-called-that-failed).**
+Reproduced from the two lines you quoted, and it was eight passes, not one: `enrich`, `assertions`,
+`gene-metrics`, `frequencies`, `gene-validity`, `gwas`, `clingen` and `expression` all wrote the table
+and then merged the row. Your severity reading is the one recorded: the compile gate keys on the
+licence table alone, so the orphaned rows compiled *clean*. Both of your candidates were weighed and
+the principled one won, at the cost of a two-line change: `layout.atomic_writer` now takes
+`before_commit`, run after the temp file is fsynced and before the rename, and every pass merges its
+licence row there — a refused merge removes the temp, a table that fails to serialize never reaches
+the merge, and neither file exists without the other. *Licence row first* was refused: a row for a
+pass that then contributes nothing is a false statement in a published artifact (RM142's shape), and
+the harmless direction you named is only one of the two. Your pre-validation is in as well
+(`licensing.require_sources_file`, the strict read factored out of the merge and run before the
+fetch), for the reason you gave and with the limit you gave — it turns a 47-minute failure into a
+one-second one and closes nothing by itself. The placeholder refusal itself is correct and stays. Your
+closing paragraph is answered in the one case that is left: two files are two renames, so a table
+rename failing after the row's has returned leaves a licence row for data that never arrived, and the
+`OSError` then says exactly that. A guard walks every function recording a licence row and asserts
+the eight plus five named exemptions — two of which are your own scaffold's drafters recording the
+row after the compiler's append, the same gap one layer over, handed to RM228's owner. **What to do
+now:** re-run the same command on your scaffolded module; it refuses in a second naming
+`licensing.csv`, writes nothing, and once the row is filled the table and its licence land together.
+Treat the first run's 12,003 rows as you did, as untrusted, and delete them.
+<!-- triaged: 0.7.0 · sha f5c26cda2a9a -->
+
+Filed 2026-09-12 by just-module-creator (plugin 0.32.0), against format/compiler/enricher **0.7.0**
+installed from `dist/`, while building a real APOE-locus module to exercise the 0.7 surface before
+the release is cut.
+
+**What I ran.** A freshly scaffolded spec directory, then the documented first command from the
+AlphaGenome section of `INTEGRATION_0_7.md`:
+
+```
+just-dna-enricher alphagenome expression <spec> --gene TOMM40 \
+    --chrom 19 --start 44890500 --end 44894500 --use non-commercial
+```
+
+**What I expected.** Either a clean run, or — per § 2.7, *"An enrichment run is now a transaction"*
+and *"A refused `strict` run commits nothing, now as a written promise asserted on the bytes on
+disk"* — a refusal that writes nothing.
+
+**What happened.** Both halves of the worst case:
+
+```
+expression pass: querying 4,000 bp ~ 12,000 SNVs; ... about 0 minute(s).
+EXPRESSION FAILED: existing licensing.csv is invalid: licensing.csv line 2 []:
+  Value error, unreplaced template placeholder '<<REPLACE>>' in sources.csv row: layer, source.
+```
+
+`expression_effects.csv` **was written** — 12,003 data rows, mtime from the failing run — and
+`licensing.csv` was left untouched, carrying **no `alphagenome_atlas` row**. The command said FAILED,
+so an operator reasonably concludes nothing happened; what is actually on disk is 12,003 rows of
+**non-commercial-only** Atlas output with no licence record anywhere in the module.
+
+That is precisely the mis-licensing this release's own guide warns about: *"A consumer that reads
+'AlphaGenome is permissive' off the AVI row and then joins a table produced by `alphagenome
+expression` has mis-licensed the module."* Here there is no row at all to read, which is worse — the
+compile gate reads `licensing.csv`, and it now has nothing to object to.
+
+**Cause, and it is two lines.** `enricher/src/just_dna_enricher/expression.py`, tail of the pass:
+
+```python
+if write and result.written:
+    _write_csv(out, output_path)        # data committed here
+    merge_sources_file(...)             # raises ExpressionError here
+```
+
+The data table is written before the licence row, so any pre-existing invalid `licensing.csv` splits
+the two. The validity check that raises is at `expression.py:404` for the *output* file, and inside
+`merge_sources_file` / `licensing.py:1106` for the licence file — the latter runs only after the
+write has already happened.
+
+**Why it is reachable rather than theoretical.** The trigger does not need a corrupt file. A
+scaffolded module carries a placeholder `licensing.csv` row by construction (ours writes
+`<<REPLACE>>` in `source` and `layer`; the stub is our tool's, but nothing about the ordering is), so
+**scaffold → expression is the default happy path and it lands here every time**. Same shape for any
+half-edited licence file a real author leaves on disk.
+
+**What I did meanwhile.** Filled `licensing.csv` by hand before re-running, and treated the first
+run's output as untrusted. Nothing in the tool told me the module was in that state — I found it by
+listing mtimes because the row count looked too high for a run that had failed.
+
+**Candidate fix, and the argument against my own first choice.** The obvious repair is to validate
+`licensing.csv` up front, beside the `genome_build` and output-file checks that already run before the
+query. That is worth doing on its own — it fails in a second instead of after a 47-minute whole-gene
+query, which is the difference between a typo and a wasted afternoon.
+
+**But it is not sufficient, and I do not think it is the real fix.** Pre-validation narrows the
+window; it does not close it. `merge_sources_file` can still fail after `_write_csv` for reasons no
+pre-flight can rule out — a concurrent writer, ENOSPC between the two calls, a permission change. The
+invariant that actually matters is *this data table never exists on disk without its licence row*, and
+ordering alone cannot give you that. Either write the licence row **first** (it is small, it is
+idempotent, and a licence row for data that failed to arrive is harmless where the converse is not),
+or bring both under the same staged commit § 2.7 already built for `enrich()`. The second is the
+principled one; the first is a two-line change that makes the failure mode safe today.
+
+I would also argue the message is part of the defect: `EXPRESSION FAILED` with no mention that
+12,003 rows were committed is an honest-looking report of the wrong thing. Whatever the ordering
+becomes, a partial commit should say what it left behind.

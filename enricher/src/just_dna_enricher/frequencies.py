@@ -18,6 +18,7 @@ written it *is* the pin, and every later compile reads it offline and determinis
 
 import csv
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -39,6 +40,7 @@ from just_dna_enricher.gnomad import (
 from just_dna_enricher.licensing import (
     overlaid_input_rows,
     record_source_terms,
+    require_sources_file,
     sidecar_path,
 )
 
@@ -189,6 +191,9 @@ def enrich_frequencies(
     # a pass that read one layout and wrote the other would leave two copies behind.
     resolution_path = sidecar_path(spec_dir, "resolution.csv", error=FrequencyEnrichmentError)
     frequencies_path = sidecar_path(spec_dir, "frequencies.csv", error=FrequencyEnrichmentError)
+    if write:
+        # Fail on a placeholder or half-edited licence table now, before the fetch (S98, RM231).
+        require_sources_file(spec_dir, error=FrequencyEnrichmentError)
 
     if not resolution_path.exists():
         raise FrequencyEnrichmentError(
@@ -370,14 +375,18 @@ def enrich_frequencies(
             f"mode='best_effort'."
         )
     if write:
-        _write_frequencies_csv(out, frequencies_path)
         # Same rule as every other pass that consults a source: record its terms, or the module cannot
         # account for it. gnomAD is CC0 and asks for attribution, which is what this row carries.
-        record_source_terms(
-            {row.source for row in out if row.source},
-            "frequency",
-            spec_dir,
-            error=FrequencyEnrichmentError,
+        # Inside the table's commit, so neither file exists without the other (S98, RM231).
+        _write_frequencies_csv(
+            out,
+            frequencies_path,
+            before_commit=lambda: record_source_terms(
+                {row.source for row in out if row.source},
+                "frequency",
+                spec_dir,
+                error=FrequencyEnrichmentError,
+            ),
         )
     return result
 
@@ -387,7 +396,9 @@ def _sort_key(row: FrequencyRow) -> tuple:
     return (row.variant_key, row.alt or "", population_sort_key(row.population))
 
 
-def _write_frequencies_csv(rows: list[FrequencyRow], output_path: Path) -> None:
+def _write_frequencies_csv(
+    rows: list[FrequencyRow], output_path: Path, *, before_commit: Callable[[], None] | None = None
+) -> None:
     """Write the table with a fixed column order and canonical cells (byte-stable across runs).
 
     **This file is a pure build product since 0.7 (RM124).** Hand-editing it is not expected and
@@ -397,7 +408,7 @@ def _write_frequencies_csv(rows: list[FrequencyRow], output_path: Path) -> None:
     are not in here to lose. The re-run itself is unchanged, and still gap-fills rather than re-asking
     every subject; what changed is that leaving a recorded row alone now risks nothing.
     """
-    with atomic_writer(output_path, newline="") as handle:
+    with atomic_writer(output_path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for row in rows:

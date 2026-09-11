@@ -711,6 +711,19 @@ unnecessary.** The run is a transaction, which keeps the promise absolutely and 
   one. Under a transaction it does, because committing is the only write. `write=False` stages nothing
   and takes no lock: with nothing written there is no window to exclude.
 
+**The licence row is part of the table's commit, in every pass (S98, RM231).** Eight passes wrote
+their data table and then merged the `SourceRow`; a scaffold's placeholder `licensing.csv` made the
+merge refuse after `alphagenome expression` had already landed 12,003 non-commercial rows, and the
+compile gate — keyed on the licence table and nothing else — then passed them as unrestricted. Now
+each writer takes the merge as `before_commit`, which `layout.atomic_writer` runs after the temp file
+is fsynced and before the rename: a merge that refuses removes the temp, a table that fails to
+serialize never reaches the merge, and neither file exists without the other. Every pass also reads
+the table before its fetch (`licensing.require_sources_file`), so a placeholder fails in a second
+rather than after a whole-gene query. The one residual — the table's own rename failing after the
+row's has returned — leaves a licence row for data that never arrived, and the error says so. The
+drafting surfaces record their row after the compiler's draft append, the same gap one layer over,
+and the guard names them as RM228's to close.
+
 ### The advisory lock, and how it degrades
 
 The transaction does not close the concurrency window. Two runs can each stage and each commit, last

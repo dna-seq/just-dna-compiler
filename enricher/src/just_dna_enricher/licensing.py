@@ -1086,6 +1086,24 @@ def sources_path(spec_dir: Path, *, error: type[Exception]) -> Path:
     return sidecar_path(spec_dir, SOURCES_CSV, error=error)
 
 
+def require_sources_file(spec_dir: Path, *, error: type[Exception]) -> list[SourceRow]:
+    """The module's licence table as it stands, `[]` when it has none — refusing one that does not load.
+
+    The read half of `merge_sources_file`, published on its own so a pass can run it **before** the
+    fetch it is about to pay for (S98, RM231): a scaffold's placeholder row used to be found only at
+    the merge, after a 47-minute query and after the data table was already on disk. Same refusal,
+    same error type, moved to where it costs a second. The gentle counterpart for a *reader* is
+    `read_sources_file` below, which withholds instead of refusing.
+    """
+    path = sources_path(spec_dir, error=error)
+    if not path.exists():
+        return []
+    parsed, errors, _ = load_csv_rows(path, SourceRow, path.name)
+    if errors:
+        raise error(f"existing {path.name} is invalid: {errors[0]}")
+    return parsed
+
+
 def merge_sources_file(rows: list[SourceRow], spec_dir: Path, *, error: type[Exception]) -> list[SourceRow]:
     """Read the module's licence table if it is there, merge `rows` in, and write it back.
 
@@ -1098,14 +1116,9 @@ def merge_sources_file(rows: list[SourceRow], spec_dir: Path, *, error: type[Exc
     Takes the **spec directory**, not a path: resolving the filename here is what stops a caller
     naming a spelling the module does not use.
     """
-    path = sources_path(spec_dir, error=error)
-    existing: list[SourceRow] = []
-    if path.exists():
-        parsed, errors, _ = load_csv_rows(path, SourceRow, path.name)
-        if errors:
-            raise error(f"existing {path.name} is invalid: {errors[0]}")
-        existing = parsed
-    return merge_sources_csv(rows, path, existing)
+    return merge_sources_csv(
+        rows, sources_path(spec_dir, error=error), require_sources_file(spec_dir, error=error)
+    )
 
 
 def withdraw_stale_dataset(

@@ -409,6 +409,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A failed fetch is not a no-op: it creates the file and truncates one already there — stage through `.part`. `@a-failed-fetch-is-not-a-no-op`
 - An `enrich` run is a transaction: stage the *answer* beside the target, commit the table at the gate. `@enrich-is-a-transaction`
 - A refused `strict` run commits nothing — a written promise now, asserted on the bytes. `@enrich-is-a-transaction`
+- A licence row is part of its table's commit (`atomic_writer(before_commit=…)`), never a step after it; pre-read the table before the fetch. `@licence-row-inside-the-commit`
 - `flock` the directory, never a lockfile: the kill it guards against is what leaves one behind. `@flock-not-a-lockfile`
 - And never lock a path something rewrites atomically — `flock` binds an inode, so a rename-over defeats it. `@an-index-is-not-an-allocator`
 - An index is not an allocator: a number is claimed by a locked write, never by reading the highest. `@an-index-is-not-an-allocator`

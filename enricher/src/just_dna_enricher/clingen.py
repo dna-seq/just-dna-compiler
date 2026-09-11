@@ -43,7 +43,7 @@ from just_dna_format.sources import SourceRow
 from just_dna_format.vocab import DOSAGE_SENSITIVITY_BY_CODE
 
 from just_dna_enricher.gene_metrics import _write_gene_metrics_csv, module_genes
-from just_dna_enricher.licensing import CLINGEN_TERMS, merge_sources_file, sidecar_path
+from just_dna_enricher.licensing import CLINGEN_TERMS, merge_sources_file, require_sources_file, sidecar_path
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +204,9 @@ def enrich_dosage_sensitivity(
     # `enrich` run left a module with a `derived/` copy and a root copy that each dropped the
     # other authority's rows.
     output_path = sidecar_path(spec_dir, "gene_metrics.csv", error=ClinGenError)
+    if write:
+        # Fail on a placeholder or half-edited licence table now, before the fetch (S98, RM231).
+        require_sources_file(spec_dir, error=ClinGenError)
 
     if offline and curation_text is None:
         logger.warning(
@@ -286,13 +289,18 @@ def enrich_dosage_sensitivity(
     # rows a *previous* run merged in, whose terms are already recorded.
     source_row = CLINGEN_TERMS.row("annotation", declared_use=declared_use, dataset=dataset)
     if write:
-        _write_gene_metrics_csv(out, output_path)
         # A pass that CONTRIBUTES from a source records it, exactly as the PGx passes do. ClinGen's CC0
         # makes no difference either way: the compile gate reads `sources.csv` and nothing else, so a
         # source that fed a row and is unrecorded is one the module cannot account for — and CC0 asks
-        # for attribution, which is a thing this table exists to carry.
-        if covered:
-            merge_sources_file([source_row], spec_dir, error=ClinGenError)
+        # for attribution, which is a thing this table exists to carry. Inside the table's commit, so
+        # neither file exists without the other (S98, RM231).
+        _write_gene_metrics_csv(
+            out,
+            output_path,
+            before_commit=(
+                (lambda: merge_sources_file([source_row], spec_dir, error=ClinGenError)) if covered else None
+            ),
+        )
     return ClinGenResult(
         rows=out,
         covered=sorted(set(covered)),
