@@ -34,15 +34,24 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-11 (latest) — sixteen items a second, blind derivation of the docs found in the code
+## 2026-09-11 (latest) — seventeen items a second, blind derivation of the docs found in the code
 
 **The docs were re-derived from the code by three agents that had never read them**, one per tier, in
 worktrees with `docs/` and `CLAUDE.md` deleted — the method is now written down as
 [BLIND_REDERIVATION.md](BLIND_REDERIVATION.md) rather than living as its first output's preamble. The
 maintained references gained what they were missing (twenty-six modules, a check row, an AlphaGenome
 section, the eighteen-source licence roster, all with walking tests). What follows is the other half:
-**RM207–RM222**, fifteen shipped and one (RM215) filed for 1.0 — places where the code was wrong, or
+**RM207–RM223**, sixteen shipped and one (RM215) filed for 1.0 — places where the code was wrong, or
 where a registry had a hand-kept copy of itself, each reproduced or measured before it was repaired.
+
+**RM223 — the upgrade guide was the one maintained doc nothing walked.** A consumer measured four of
+`INTEGRATION_0_7.md`'s numbers against the installed packages and found all four wrong: 22 parquets
+where `ARTIFACT_PARQUETS` holds 23, 72 and then 71 warning codes where the vocabulary holds 73, and 31
+models where the authoring reference renders 32. Three had moved when the AlphaGenome round landed
+`expression_effects` after the numbers were taken. The document's own § 8 forbids exactly this and §§
+2.2 and 2.3 already said to derive from the constants, so the repair is the guard rather than the four
+words — the counted-prose test walked `SCHEMAS.md` and `COMPILER.md` and stopped. The document now
+states no registry size at all, and a new guard refuses the shape.
 
 **RM207 — the refusal that is fatal in both modes was asked of the wrong key, on the wrong side.**
 `resolve_from_table` walked the *post-expansion* rows and looked each one's `variant_key` up in a table

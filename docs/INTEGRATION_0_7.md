@@ -308,7 +308,8 @@ apart — *do the authorities agree with each other* and *where does the module 
 set naming the authority inside its members needed a new member per source and failed a stress test at
 five. Which authority spoke is **data**, in `clin_sig_authority_calls.csv`.
 
-Also new: `VALID_WARNING_CODES` (72 members) and `CARRIED_WARNING_CODES` (11),
+Also new: `VALID_WARNING_CODES` and `CARRIED_WARNING_CODES` — **take both lengths from the
+constants**, which is the same rule § 8 states about any counted claim here,
 `VALID_RELEASE_OUTPUT_AXES` and `VALID_RELEASE_CHANGE_KINDS`. `VALID_VERIFICATION_CHECKS` gains
 **eight** members — `dataset_currency` (RM85), `pgs_accession_currency` and `pgs_metadata_agreement`
 (RM163), `repeat_band_agreement` (RM165), `literature_coverage` (RM167), `regulator_label_agreement`
@@ -335,8 +336,11 @@ it reaches tables written before 0.7 as well as new ones. **If you have modules 
 snapshot, their `gene_metrics.signature` and `artifact.digest` move on the next recompile** — that is
 this fix arriving, not drift. `if row.constraint_flags:` is now the right test.
 
-The registry `reference()` / `authoring_reference()` walks now renders **31 models, up from 28**
-(`OverrideRow` and the two concordance rows). If you snapshot that output, it grew.
+The registry `reference()` / `authoring_reference()` walks render more models than 0.6.6 did —
+`OverrideRow`, the two concordance rows and `ExpressionEffectRow` among them. **Count them off
+`len(authoring_reference()["models"])`, never off this sentence**: it said 31 while the release
+shipped 32, because the AlphaGenome round landed after the number was taken. If you snapshot that
+output, it grew.
 
 ### 2.5 CLI
 
@@ -681,8 +685,9 @@ any size and a declared layout retirement rides it as `delete_patterns`.
    general form is worth building against rather than patching per member: **a vocabulary is additive
    for the writer and closed for the reader**, so validating a manifest against your own copy of one
    makes every future member a break.
-3. **Three new parquets may appear in a file list.** Derive from `ARTIFACT_PARQUETS`, not from a
-   hand-kept list.
+3. **New parquets may appear in a file list.** Derive from `ARTIFACT_PARQUETS`, not from a
+   hand-kept list — this line said "three" while the release shipped four, which is the failure the
+   advice is meant to prevent.
 4. Surface `clin_sig_concordance` on a module page if you render provenance. Render `opposed_count`
    and `unchecked_count`, not `row_count` alone: a row count on its own reads as confidence, and the
    two splits are what tell a reader whether the disagreement matters and whether the check ran.
@@ -813,7 +818,9 @@ any size and a declared layout retirement rides it as `delete_patterns`.
 
 **Change**
 
-1. The authoring reference grew to **31 models**, three new closed vocabularies, and 71 warning codes.
+1. The authoring reference grew by several models, three new closed vocabularies, and a warning-code
+   vocabulary — **read the counts off `authoring_reference()` and `VALID_WARNING_CODES`.** Two
+   numbers spelled here were already stale when a consumer measured them.
    `VALID_DIRECTIONS` also gained `contested` (RM150), which is the first *existing* vocabulary in this
    release to grow — an authoring agent picking `direction` from a stale list will not offer it.
    If you echo member lists to a model, regenerate them — `authoring_reference()` and the

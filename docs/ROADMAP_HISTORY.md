@@ -289,6 +289,44 @@ and the lane needs a second source name, `alphagenome_atlas`, because `RNA_SEQ` 
 non-commercial Output while the AVI artifact is the Permissive candidate — one `(source, layer)` key
 cannot carry two licence classes.
 
+## RM223 — the upgrade guide was the one maintained doc nothing walked, and four of its counts had rotted
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (docs + one guard; no code
+change) · **Owner** compiler (the guard lives beside `test_counted_prose.py`) · **Motivating case** a
+consumer repository measured four of the document's numbers against the installed packages and found
+all four wrong
+
+`INTEGRATION_0_7.md` is read once, at upgrade time, by somebody who then acts on it. It said
+`ARTIFACT_PARQUETS` goes 19 → 22 where the constant holds 23; `VALID_WARNING_CODES` had 72 members in
+§ 2.4 and 71 in § 3 where the vocabulary holds 73; and the authoring reference rendered "31 models, up
+from 28" where it renders 32. Three of the four moved for one reason — the AlphaGenome round landed
+`expression_effects` after the numbers were taken — and the fourth was a second copy of the first.
+
+**The document already stated the rule it was breaking.** Its § 8 says a counted claim in prose rots
+exactly like a hand-kept list, and §§ 2.2 and 2.3 already tell the reader to derive from
+`ARTIFACT_PARQUETS` and `OVERRIDABLE_TABLES`. The advice was correct and was sitting one paragraph
+above the numbers that contradicted it, which is the same shape as the three long-tail items in this
+round: **the rule is written down one layer away from where it was broken.**
+
+The reason it rotted is narrower than the rule, though, and it is the part worth keeping:
+`test_counted_prose.py` reads `SCHEMAS.md` and `COMPILER.md` and stops. Nothing walked this file. So
+the repair is not the four words — it is
+`compiler/tests/test_integration_doc_states_no_registry_count.py`, which refuses the *shape*: a
+current-size claim about a registry, in any of the three forms this document used. After the fix the
+document states no size at all, so the absence is the invariant and there is nothing left to
+value-check. Run against the pre-fix file at `1879a1f` the guard reports all four.
+
+**What the guard deliberately permits**, because its first draft did not and would have been worked
+around rather than obeyed: a frozen *before* value (`goes 19 → len(ARTIFACT_PARQUETS)`), an RM id or
+release line beside a constant, an enumerated delta, a measurement of a built artifact ("24 parquets"
+of atlas data is not a claim about `ARTIFACT_PARQUETS`), and the document quoting its own stale word
+back while explaining that it was wrong. Three of those five are sentences this item itself wrote.
+
+**Not fixed here, and not ours:** the consumer also measured `expression_effects.csv` as present in
+`OVERRIDABLE_TABLES` and `DERIVED_TABLE_MODELS` but absent from their `RECOGNIZED_SPEC_FILES`, so the
+overlay grammar invites a correction against a table their rebuild drops. Both of this tier's
+registries agree with each other; the third is in their tree and is filed there. `@registry-completeness`
+
 ## RM217 — two vocabularies were documented in no maintained file at all
 
 **Severity** low · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (docs + one guard; no code
