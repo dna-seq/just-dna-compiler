@@ -89,9 +89,11 @@ existence and identifiers exactly like a study-grounded one. `sources.csv` does 
 either: it records a *dataset's* terms and attribution, which answers where a table came from, never
 why a bound is where it is. `resolution.csv` is compiler *input*, produced by the enricher, not authored
 annotation (see [§ resolution table](#the-resolution-table-05-provisional)) — and the same is true of
-the **nine** derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
+the **ten** derived-fact sidecars `frequencies.csv` / `gene_metrics.csv` / `literature.csv` /
 `gene_validity.csv` / `clinical_assertions.csv` / `gwas_effects.csv` / `clin_sig_concordance.csv` /
-`clin_sig_authority_calls.csv` / `sources.csv`, which are therefore absent from the table below.
+`clin_sig_authority_calls.csv` / `expression_effects.csv` / `sources.csv`, which are therefore absent
+from the table below. **The number is `len(_FACT_TABLES)`** — stated here so a release that lands a
+sidecar moves it by one, rather than left to be recounted off a list that has gone stale twice.
 Since 0.7 an author corrects them through `overrides.csv`, which *is* authored and therefore *is* in
 the table — **except two**. `sources.csv` the overlay deliberately does not cover: it has its own
 merge path and is the one derived table a human is told to write. `clin_sig_authority_calls.csv` is
@@ -99,7 +101,7 @@ excluded for the opposite reason: it records what each archive published, and an
 question a conflict asks rather than rewriting the answer an archive gave. `resolution.csv` *is*
 covered — see [§ the authored overlay](#the-authored-overlay-07-rm124--overridescsv).
 
-**`sources.csv` is the one of those nine a human is expected to write, and 0.5.4 stopped pretending
+**`sources.csv` is the one of those ten a human is expected to write, and 0.5.4 stopped pretending
 otherwise (S21).** The others are produced by an enricher pass, so an author never starts one by
 hand; this one the schema tells them to write — a source read **by hand** leaves no `source` cell
 anywhere for the compiler's coverage check to find, so declaring it as a row here is the only route
@@ -2168,13 +2170,14 @@ does not carry a coordinate, and it is the wrong one — RM43 (0.6) is the right
 
 ## The hash family — the complete roster
 
-Sixteen functions, in three groups, and **the rule that fixes the number is stated here rather than
-the number being restated elsewhere**: it is one `*_signature` per derived sidecar, plus the two
-identity halves, plus the three on the verification side. So a release that lands a new sidecar moves
-this count by one and nothing else has to be edited to agree. RM130 landed two at once (0.7), which is
-why the fact-signature family is now **eleven** where older prose says nine — a reader counting to
-nine and stopping would miss `module_binding` and `pow_digest` entirely, which is the reason this
-section exists at all.
+Seventeen functions, in three groups, and **the rule that fixes the number is stated here rather than
+the number being restated elsewhere**: it is one `*_signature` per derived sidecar, plus the shared
+`fact_signature` they are built on, plus the two identity halves, plus the three on the verification
+side. So a release that lands a new sidecar moves this count by one and nothing else has to be edited
+to agree. RM130 landed two at once (0.7) and RM194/RM200 landed a tenth sidecar, which is why the
+fact-signature family is now **twelve** where older prose says nine — a reader counting to nine and
+stopping would miss `module_binding` and `pow_digest` entirely, which is the reason this section
+exists at all.
 
 **Content and byte identity** — `content_signature` (`integrity.py`) over the authored rows,
 independent of the reference that resolved them and of the module's name and display metadata; and
@@ -2185,8 +2188,8 @@ bytes, from this compiler*.
 **The fact-signature family** — one shared discipline, `fact_signature`, and the per-table functions
 built on it: `frequency_signature`, `gene_metrics_signature`, `literature_signature`,
 `gene_validity_signature`, `clinical_assertion_signature`, `gwas_effect_signature`,
-`clin_sig_concordance_signature`, `clin_sig_authority_call_signature`, `source_signature`,
-`resolution_signature`. Each hashes a **normalized fact tuple** rather than raw bytes, which is the
+`clin_sig_concordance_signature`, `clin_sig_authority_call_signature`, `expression_effect_signature`,
+`source_signature`, `resolution_signature`. Each hashes a **normalized fact tuple** rather than raw bytes, which is the
 whole point — these tables are multi-producer (enricher, human, `reverse`), so a raw-bytes hash would be
 unstable across producers writing the same facts. It is also why none of them appears in
 `manifest.inputs`, which *is* raw-bytes hashed.
