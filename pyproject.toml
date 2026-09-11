@@ -113,6 +113,31 @@ markers = [
     "integration: needs external data/network (an Ensembl reference cache or HuggingFace). Set JUST_DNA_ENSEMBL_CACHE to run resolver tests; skipped otherwise.",
 ]
 filterwarnings = [
+    # **A deprecation is an error here — but read the next paragraph before trusting it.**
+    #
+    # Two polars `is_in` deprecations sat in the suite's tail for a release, printed on every run and
+    # acted on by nobody, and the thing they warned about was a real ambiguity rather than a style
+    # note. A warning that scrolls past gets fixed the day it becomes a breakage, which is the worst
+    # day to fix it.
+    #
+    # **What this catches, measured rather than assumed: Python-level deprecations only.** A
+    # `warnings.warn(..., DeprecationWarning)` from stdlib, pydantic, or our own code becomes a test
+    # failure — verified with a throwaway test that did exactly that and failed.
+    #
+    # **What it does NOT catch, and the irony is the point: the polars warnings that motivated it.**
+    # polars emits `is_in`'s deprecation from its Rust layer, outside Python's warning-filter
+    # machinery: `python -W error::DeprecationWarning -c "...is_in(series)"` prints the warning and
+    # exits zero. The category really is `builtins.DeprecationWarning`, so it *looks* filterable and
+    # is not. Any library warning raised Rust-side or off the main thread can behave this way, so a
+    # clean run is not proof that no deprecation fired — read the summary line too.
+    #
+    # **The cost is real and accepted:** an upstream release deprecating something we use will fail
+    # CI on a change that did not cause it. That is the trade — a red build naming the call site,
+    # against a quiet one that keeps working until it suddenly does not.
+    #
+    # **The escape hatch is an `ignore:` line below with its reason**, which makes silencing one a
+    # visible decision rather than a default. Later filters win, so every entry after this narrows it.
+    "error::DeprecationWarning",
     # The ensembl_cache/DuckDB path is a deprecated-but-supported surface (removed at 1.0); tests that
     # exercise it deliberately don't need to shout. `test_deprecated_ensembl_cache_path_warns` asserts
     # the warning explicitly (pytest.warns overrides this ignore).
