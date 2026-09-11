@@ -14,38 +14,49 @@ check: it **reports and never repairs** (silently rewriting an authored value de
 something upstream is wrong, and turns a loud data problem into a quiet one), and its **severity follows
 the mode** (`best_effort` warns and carries on; `strict` refuses). What exists today:
 
-| Check | Compares | Where |
-|---|---|---|
-| **Reference allele** | authored `ref` vs the actual reference sequence | `sequences.verify_reference_alleles` |
-| **Wrong build** | a ref-mismatched row vs the same coordinate on GRCh37 (0.6) | `grch37.diagnose_wrong_build` (**warns in both modes**) |
-| **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` |
-| **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` over the injected table (warning), and `enrich()` against the injected Ensembl snapshot (`resolver.check_rsid_coordinates`, warning in both modes) — one question, two tiers, so one attestation name, and the enricher's half is the one that attests |
-| **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` |
-| **Clinical significance** | authored `clin_sig` vs **every annotation authority** consulted — ClinVar and, since 0.7, PubMind — allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the N-authority concordance record by `clinical.clin_sig_concordance` (0.7, RM130 + RM134 § B) |
-| **Answered-call currency** | an authority's call **now** vs what it said when the author's `overrides.csv` answer was written (0.7, RM151) | `clinical.answered_call_shift` → `concordance.shifted_authority_calls` (**warns in both modes**; the baseline is the previous run's `clin_sig_authority_calls.csv`, so it is read before the commit rewrites it and a move is observable exactly once) |
-| **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does) |
-| **Citation existence** | a cited `pmid` vs PubMed | `literature.enrich_literature` |
-| **Identifier agreement** | an authored `doi` vs the registry's for that PMID | `literature.enrich_literature` |
-| **PMC id agreement** | an authored `PMC…` in the `pmid` cell vs PubMed's for that record (0.6) | `literature._pmcid_conflicts` (attested under `citation_identifier`, the same question one registry over) |
-| **Article licence** | the cited article's own terms, recorded per article (0.6) | `literature.enrich_literature` → `licensing.article_terms` |
-| **Provenance quote** | `provenance_quote`/`provenance_regex` vs open-access fulltext | `literature.enrich_literature` (warning; partial coverage) |
-| **rsID currency** | an authored rsID vs dbSNP (live / merged / absent) | `identifiers.check_rsids` |
-| **Trait currency** | `trait_efo_id` vs OLS4 (obsolete + replacement) | `identifiers.OntologyClient.trait` (attested by `check-identifiers` since RM72) |
-| **Gene symbol currency** | `gene` vs HGNC approved / previous symbols | `identifiers.OntologyClient.gene` (attested by `check-identifiers` since RM72) |
-| **Gene ↔ locus agreement** | the row's `gene` vs the chromosome its variant sits on (0.5.4) | `identifiers.check_identifiers` → `GeneLocusConflict` (attested since RM72) |
-| **PGS accession currency** | an authored `pgs_id` vs the PGS Catalog's own record for it (0.7, RM163) — the Catalog answers 200 with `{}` for a never-assigned id and for a malformed one, so the check reads the body | `identifiers._check_pgs` (attested by `check-identifiers`; `--no-pgs` records `not_requested`) |
-| **PGS metadata agreement** | authored `training_ancestry` / `training_cohort` vs the score record's `ancestry_distribution` / `samples_training` (0.7, RM163) — its own member, because currency asks whether the id still names a score and this asks whether two cells beside it still match | `identifiers._check_pgs` (attested by `check-identifiers`) |
-| **ACMG secondary findings** | authored `acmg_sf` vs the published SF gene list (v3.3 via `--sf-list`; the scraped v3.2 page reports `unverifiable`) | `acmg.check_acmg_sf` (attested by `check-acmg` since RM72) |
-| **Repeat bands** | an authored `repeat_alleles.csv` band table vs STRchive's `benign_*`/`intermediate_*`/`pathogenic_*` (0.7, RM165) | `strchive.check_repeat_bands` (**warns in both modes**; the catalogue's `pathogenic_max` is reported and never written) |
-| **Regulator drug labels** | a `(gene[, allele], drug)` claim vs the `Testing Level` five drug regulators' labels carry, at two join tiers (0.7, RM166) | `drug_labels.check_drug_labels` (**warns in both modes**; a blank level is `unknown` and never `No Clinical PGx`) |
-| **Published refutation** | an authored `direction` vs the refutations CIViC publishes for the same variant (0.7, RM170) | `civic_refutation.compare_refutations` → `enrich()` (**warns in both modes**; the record names its `status_basis`, because on the `accepted` basis the class is empty by construction) |
-| **Literature coverage** | which papers a variant-literature index holds for a module's alleles, and **at which tier** (0.7, RM167) | `litvar.check_literature_coverage` (reports only; allele-resolved, position-only and absent are three outcomes) |
-| **Evidence-status currency** | a recorded `StudyRow.confidence` — a curation status a citing source published when the row was drafted — vs what that source says about the same item **now** (0.7, RM160) | `civic_citations.check_evidence_status_currency` → `enrich()` (**warns in both modes**; a status accepted or rejected since, or a citation added since. Not `dataset_currency`: that one asks which release, this one asks whether one judgement moved) |
-| **Allele function** | authored `function_status` vs PharmVar and CPIC | `pgx.enrich_pgx` (**warns in both modes**) |
-| **Declared use** | the caller's `--use` vs a source's terms | `licensing.check_declared_use` (**refuses in both modes**) |
-| **Drafted vs authored rows** | a source's current row vs the one already in the CSV | `just_dna_compiler.draft.append_rows` (reports `differs`; never rewrites) |
-| **Source coverage** | is the locus inside the source's callset at all? `not_covered` ≠ `not_found` | `gnomad.covers_locus` → `frequencies.enrich_frequencies` (**not** a `strict` failure) |
-| **Dataset currency** | a recorded `SourceRow.dataset` vs the release that source publishes **now** (0.7) | `currency.check_dataset_currency` → `enrich()` (reports; `strict` refuses over a superseded release, never over an unreachable source) |
+| Check | Compares | Where | Attests as |
+|---|---|---|---|
+| **Reference allele** | authored `ref` vs the actual reference sequence | `sequences.verify_reference_alleles` | `reference_allele` |
+| **Wrong build** | a ref-mismatched row vs the same coordinate on GRCh37 (0.6) | `grch37.diagnose_wrong_build` (**warns in both modes**) | `genome_build_agreement` |
+| **VRS cross-check** | a source's own `vrs_id` vs the locally-minted one | `vrs.mint_resolution_rows` | `vrs_allele_id` |
+| **rsid↔coordinate** | an authored pair vs what the reference says | `compiler/resolution.py::_verify` over the injected table (warning), and `enrich()` against the injected Ensembl snapshot (`resolver.check_rsid_coordinates`, warning in both modes) — one question, two tiers, so one attestation name, and the enricher's half is the one that attests | `rsid_coordinate_agreement` |
+| **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` | — *(recorded onto the row, not attested)* |
+| **Clinical significance** | authored `clin_sig` vs **every annotation authority** consulted — ClinVar and, since 0.7, PubMind — allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the N-authority concordance record by `clinical.clin_sig_concordance` (0.7, RM130 + RM134 § B) | `clinical_significance` |
+| **Answered-call currency** | an authority's call **now** vs what it said when the author's `overrides.csv` answer was written (0.7, RM151) | `clinical.answered_call_shift` → `concordance.shifted_authority_calls` (**warns in both modes**; the baseline is the previous run's `clin_sig_authority_calls.csv`, so it is read before the commit rewrites it and a move is observable exactly once) | — *(logged; the record it reads is the attestation)* |
+| **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does) | `pgx_evidence_level` |
+| **Citation existence** | a cited `pmid` vs PubMed | `literature.enrich_literature` | `citation_existence` |
+| **Identifier agreement** | an authored `doi` vs the registry's for that PMID | `literature.enrich_literature` | `citation_identifier` |
+| **PMC id agreement** | an authored `PMC…` in the `pmid` cell vs PubMed's for that record (0.6) | `literature._pmcid_conflicts` (attested under `citation_identifier`, the same question one registry over) | `citation_identifier` |
+| **Article licence** | the cited article's own terms, recorded per article (0.6) | `literature.enrich_literature` → `licensing.article_terms` | — *(a recording pass: it writes a source's answer and compares nothing)* |
+| **Provenance quote** | `provenance_quote`/`provenance_regex` vs open-access fulltext | `literature.enrich_literature` (warning; partial coverage) | `provenance_quote` |
+| **rsID currency** | an authored rsID vs dbSNP (live / merged / absent) | `identifiers.check_rsids` | `rsid_currency` |
+| **Trait currency** | `trait_efo_id` vs OLS4 (obsolete + replacement) | `identifiers.OntologyClient.trait` (attested by `check-identifiers` since RM72) | `trait_currency` |
+| **Gene symbol currency** | `gene` vs HGNC approved / previous symbols | `identifiers.OntologyClient.gene` (attested by `check-identifiers` since RM72) | `gene_symbol_currency` |
+| **Gene ↔ locus agreement** | the row's `gene` vs the chromosome its variant sits on (0.5.4) | `identifiers.check_identifiers` → `GeneLocusConflict` (attested since RM72) | `gene_locus_agreement` |
+| **PGS accession currency** | an authored `pgs_id` vs the PGS Catalog's own record for it (0.7, RM163) — the Catalog answers 200 with `{}` for a never-assigned id and for a malformed one, so the check reads the body | `identifiers._check_pgs` (attested by `check-identifiers`; `--no-pgs` records `not_requested`) | `pgs_accession_currency` |
+| **PGS metadata agreement** | authored `training_ancestry` / `training_cohort` vs the score record's `ancestry_distribution` / `samples_training` (0.7, RM163) — its own member, because currency asks whether the id still names a score and this asks whether two cells beside it still match | `identifiers._check_pgs` (attested by `check-identifiers`) | `pgs_metadata_agreement` |
+| **ACMG secondary findings** | authored `acmg_sf` vs the published SF gene list (v3.3 via `--sf-list`; the scraped v3.2 page reports `unverifiable`) | `acmg.check_acmg_sf` (attested by `check-acmg` since RM72) | `acmg_secondary_findings` |
+| **Repeat bands** | an authored `repeat_alleles.csv` band table vs STRchive's `benign_*`/`intermediate_*`/`pathogenic_*` (0.7, RM165) | `strchive.check_repeat_bands` (**warns in both modes**; the catalogue's `pathogenic_max` is reported and never written) | `repeat_band_agreement` |
+| **Regulator drug labels** | a `(gene[, allele], drug)` claim vs the `Testing Level` five drug regulators' labels carry, at two join tiers (0.7, RM166) | `drug_labels.check_drug_labels` (**warns in both modes**; a blank level is `unknown` and never `No Clinical PGx`) | `regulator_label_agreement` |
+| **Published refutation** | an authored `direction` vs the refutations CIViC publishes for the same variant (0.7, RM170) | `civic_refutation.compare_refutations` → `enrich()` (**warns in both modes**; the record names its `status_basis`, because on the `accepted` basis the class is empty by construction) | `published_refutation` |
+| **Literature coverage** | which papers a variant-literature index holds for a module's alleles, and **at which tier** (0.7, RM167) | `litvar.check_literature_coverage` (reports only; allele-resolved, position-only and absent are three outcomes) | `literature_coverage` |
+| **Evidence-status currency** | a recorded `StudyRow.confidence` — a curation status a citing source published when the row was drafted — vs what that source says about the same item **now** (0.7, RM160) | `civic_citations.check_evidence_status_currency` → `enrich()` (**warns in both modes**; a status accepted or rejected since, or a citation added since. Not `dataset_currency`: that one asks which release, this one asks whether one judgement moved) | `evidence_status_currency` |
+| **Allele function** | authored `function_status` vs PharmVar and CPIC | `pgx.enrich_pgx` (**warns in both modes**) | `allele_function` |
+| **Declared use** | the caller's `--use` vs a source's terms | `licensing.check_declared_use` (**refuses in both modes**) | — *(an acquisition gate, not a comparison)* |
+| **Drafted vs authored rows** | a source's current row vs the one already in the CSV | `just_dna_compiler.draft.append_rows` (reports `differs`; never rewrites) | — *(a drafting report; it runs outside `enrich()`)* |
+| **Source coverage** | is the locus inside the source's callset at all? `not_covered` ≠ `not_found` | `gnomad.covers_locus` → `frequencies.enrich_frequencies` (**not** a `strict` failure) | — *(a recording pass: coverage is a fact about the callset)* |
+| **Dataset currency** | a recorded `SourceRow.dataset` vs the release that source publishes **now** (0.7) | `currency.check_dataset_currency` → `enrich()` (reports; `strict` refuses over a superseded release, never over an unreachable source) | `dataset_currency` |
+| **Variant impact** | an authored variant against the score AlphaGenome published for it — the three questions the local AVI artifact provably cannot answer (0.7, RM193) | `alphagenome_check.check_variant_impact` (**warns in both modes**; non-commercial, so an undeclared run asks nothing. Its own member rather than a second writer of `reference_allele`, which the Atlas also answers — two registries answering an overlapping question get two names, or one source's outage writes a skip against the other's) | `variant_impact_agreement` |
+
+**The fourth column is the join, and it is asserted rather than promised.** `vocab.py`'s own comment
+says `VALID_VERIFICATION_CHECKS` was audited against *this table* — so a member with an emitter and no
+row here is a check a reader of `verification.json` cannot look up, which is what happened to
+`variant_impact_agreement` for a release. **Every member that has an emitter names a row above**
+(`test_enricher_doc_registries.py` walks it), and the two the vocabulary marks RESERVED —
+`gene_disease_validity` and `dosage_sensitivity` — deliberately have none: their passes *record* a
+source's verdict and compare nothing authored, and the member is held for a future pass that does. The
+containment runs one way only: rows whose fourth column is **—** are real work that attests nothing,
+either because it is an acquisition gate, a recording pass, or a report that runs outside `enrich()`.
 
 **Every check that runs records what it did — `verification.json` (RM45, 0.6).** Until 0.6 the table
 above described work whose result died with the process: a check's findings reached a log line and an
@@ -330,11 +341,15 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `resolver` | the DuckDB rsid↔coord resolver (moved from the compiler in 0.5) | `duckdb`, format |
 | `clinvar` | the DuckDB ClinVar resolver link (`lookup_loci`) + the annotation reader (`lookup_clin_sig`) | `duckdb`, format |
 | `clinical` | the `clin_sig` cross-check over the ClinVar snapshot (offline, reports only) | format |
+| `concordance` | **0.7** (RM130): the other half of that check — the two verdicts, the per-authority calls behind them, and the writer that puts `clin_sig_concordance.csv` + `clin_sig_authority_calls.csv` beside the spec | format `concordance`, compiler `load_csv_rows` |
 | `clin_sig` | **0.7**: the one raw-significance → `VALID_CLIN_SIG` normalizer, shared by every source that reports one. Dependency-free on purpose, so a runtime pass reads it without the `[dev]` extra | format `VALID_CLIN_SIG` |
 | `net` | shared HTTP politeness: `PacingGate`, `batched`, `dedupe`, `attempt_floor`, and **`stream_to_file`** — the one body every bulk download in this package uses, atomic, translated and retried (RM187) | `httpx`, `tenacity` |
 | `eutils` | NCBI E-utilities client (esummary), shared by the literature and rsID checks | `httpx`, `tenacity` |
 | `literature` | pass 4: a module's citations (`studies.csv` + binning `pmid`s) → `literature.csv` (PubMed + Europe PMC), fulltext quote match, per-article licence, PMCID→PMID | `httpx`, `tenacity` |
 | `identifiers` | rsID / trait-CURIE / gene-symbol / PGS-accession currency (dbSNP, OLS4, HGNC, PGS Catalog) | `httpx`, `tenacity` |
+| `currency` | RM85: has the source a module was drafted from published since? Reads `SourceRow.dataset` against what the source says now — which release, not whether one judgement moved | the per-source release records |
+| `provenance` | RM73: telling a value still copied from a source from one a human has edited — the axis every tautology skip reads | compiler `draft`, format |
+| `verification` | RM45: the load-merge-write that records **what each pass checked** into `verification.json`, so the manifest can say it | format `verification` |
 | `pgs` | **0.7** (RM163): the PGS Catalog REST client, its release record, and the per-score shape `identifiers` compares against | `httpx`, `tenacity` |
 | `licensing` | per-source terms + the declared-use gate; emits `SourceRow` | format `SourceRow` |
 | `clingen` | ClinGen dosage sensitivity → `gene_metrics.csv` rows (CC0, so a module stays sellable) | `httpx`, format |
@@ -342,9 +357,31 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `assertions` | RM25: `resolution.csv` + the ClinVar snapshot → `clinical_assertions.csv` (the call **and** the review tier) | `duckdb` via `clinvar`, format |
 | `gwas` | RM90: the GWAS Catalog REST API → `gwas_effects.csv` (published effect sizes **with their units**). Fills no `weight` | `httpx`, format |
 | `expression` | RM194/RM200: the Atlas `ListDenseVariantScores` RNA_SEQ interval → `expression_effects.csv` (per-gene direction, **with the distance beside it**). Non-commercial, so an undeclared run writes nothing | `atlas_client`, `gene_spans`, format |
+| `gene_spans` | RM194: gene symbol → GRCh38 span, out of the operator-built MANE snapshot. A module with a plain name rather than a private helper, so the second caller can find it | `polars`, `mane` lane |
+| `atlas_client` | RM192: the AlphaGenome Atlas gRPC client — `ListDenseVariantScores` and the interval RPCs, on `[atlas]` (grpcio + protobuf, 22 MB) rather than the 550 MB upstream wheel | `grpcio`, `protobuf` (extra) |
+| `atlas_protos` | RM192/RM196: fetch the Apache-2.0 `.proto` sources at a pinned commit and generate the bindings. The repository carries the **pin** — a commit id and a sha256 per file — and neither the sources nor the generated code | `grpc_tools` (extra) |
+| `alphagenome_check` | RM193: the Atlas as a resolver, for the three questions the local AVI artifact provably cannot answer. Attests `variant_impact_agreement`; reports, never repairs | `atlas_client`, format |
+| `alphagenome_avi_build` | RM191/RM197/RM198 builder: the 88.5 GB AVI artifact the operator already holds → the `alphagenome_avi` lane. **`--input` is required and has no default** — acquisition is the operator's act | `polars` (lazy) |
 | `pgx_draft` | the first drafting provider: CPIC → `haplotypes`/`allele_function`/`diplotypes` rows | `cpic`, compiler `draft` |
 | `clinpgx_draft` | RM26: ClinPGx snapshot → `pharm_variants.csv` rows (offline, inject-only) | `clinpgx`, compiler `draft` |
 | `clinvar_draft` | RM26: ClinVar snapshot → `variants.csv` **partial** rows; genotype left to a human | `clinvar`, compiler `draft` |
+| `pubmind` | RM134 § B: the runtime reader over the snapshot `pubmind_build` writes — duckdb, core install, fetches nothing | `duckdb` |
+| `pubmind_draft` | RM134 § C: PubMind snapshot → `variants.csv` rows, as `draft-panel --source pubmind` rather than a second command | `pubmind`, compiler `draft` |
+| `clingen_allele` | RM153: the ClinGen Allele Registry — a CAID resolved to an identity this format can carry. The route that places a GRCh37-only row **without lifting anything over** | `httpx`, `tenacity` |
+| `grch37` | RM48: the old assembly, online half — rs-number recovery and the wrong-build diagnosis over a ref-mismatched row. Warns in both modes | `httpx`, `ensembl` |
+| `acmg` | RM72: the `acmg_sf` check against the published secondary-findings list; the scraped v3.2 page reports `unverifiable` | `httpx`, format |
+| `acmg_build` | **`[dev]`** builder: ACMG's published v3.3 workbook → the `acmg` lane, because NCBI's adaptation is a year behind | `polars` (lazy), `httpx` |
+| `civic_build` | **`[dev]`** builder (RM152): a dated CIViC bulk release → snapshot parquet + `release.json`. CC0, so unlike PubMind this one may be published | `polars` (lazy), `httpx` |
+| `civic_vcf` | RM169: the dated `accepted_and_submitted` VCF beside the TSV pair — the submitted half, pinnable and byte-reproducible, with no API read | `polars` (lazy) |
+| `civic_api` | RM160: CIViC's GraphQL API — the one surface carrying evidence attached to a variant no dated file can place, because a VCF record needs a POS | `httpx`, `tenacity` |
+| `civic_identities` | RM159: identities CIViC states in a variant's **name** and never in its identifier columns (`N150fs (c.448delA)`, `IVS2+1G>A`) | `clingen_allele`, `ensembl` |
+| `civic_citations` | RM160: the citations those variants carry, and the canary that says when the dated file has caught up | `civic_api`, format |
+| `civic_draft` | RM152: CIViC snapshot → `direction`-axis rows. **The axis is `direction`, not `clin_sig`** — the measurement refused the latter | `polars`, compiler `draft` |
+| `civic_refutation` | RM170: an authored `direction` over a variant CIViC has published a refutation of — the pair `contested_variants` cannot see. Warns in both modes | `polars`, format |
+| `mitomap` | RM171: MITOMAP's published `pg_dump` reader, and the **two-token grammar** its `status` column is written in | `duckdb` |
+| `mitomap_build` | RM171 builder: the 63 MB gzipped SQL dump → snapshot parquet + `release.json`. CC BY 3.0 with commercial use stated free, so a deployment may publish it | `polars` (lazy), `httpx` |
+| `mitomap_miss_build` | RM171: the **derived** lane — MITOMAP minus the ClinVar cache, recomputed from both parents rather than frozen as a diff | `polars` (lazy), `mitomap` + `clinvar` lanes |
+| `mitomap_draft` | RM171: the rated misses → `variants.csv` + `studies.csv`. Only the rated ones; the photocopies and `VUS*` are each refused for their own stated reason | `mitomap_miss`, compiler `draft` |
 | `clinvar_build` | `[dev]`: VCF → snapshot parquet; `var_citations.txt` → `citations/` (+ its own `release.json` block) | `polars`, `httpx` |
 | `lookup` | authoring lookups — rsID validity/loci, ref/alts + populations, which paper a PMID names. **Writes nothing** | every client above, compiler `hints` |
 | `pharmvar` | star-allele definitions + function (`Api-Key` header, 2 rps) | `httpx`, `tenacity` |
@@ -352,15 +389,14 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `pgx` | pass 5: cross-check star-allele tables, write the licence table | the three above |
 | `clinpgx_build` | `[dev]`: `summaryAnnotations.zip` → snapshot parquet + pinned `LICENSE.txt`; refuses the retired `clinicalAnnotations.zip` by name | `polars`, `httpx` |
 | `clinpgx` | pass 6: evidence-level cross-check over the snapshot (offline) | `duckdb` (core, not polars) |
-| `clinvar_build` | **`[dev]`** builder: ClinVar VCF → per-chromosome parquet snapshot + `release.json` | `polars` (lazy), `httpx` |
 | `gnomad` | live gnomAD GraphQL: batched + paced rsid resolution, frequency, gene constraint | `httpx`, `tenacity` |
 | `frequencies` | pass 2: `resolution.csv` → `frequencies.csv` (per-ancestry-group AC/AN) | compiler `load_csv_rows`, format |
 | `gene_metrics` | pass 3: the module's genes → `gene_metrics.csv` (snapshot first, live API second) | `duckdb`, format |
 | `constraint_build` | **`[dev]`** builder: gnomAD constraint TSV → gene-level parquet + `release.json` | `polars` (lazy), `httpx` |
 | `vrs` | GA4GH VRS allele-id minting onto `resolution.csv` (substitutions stdlib, indels normalized) | `ga4gh.vrs` |
 | `sequences` | reference-sequence access (cached) + the reference-allele check | `ga4gh.vrs` |
-| `locations` | cache-location resolution for all **seven** snapshots + `.env` (moved from the compiler) | `platformdirs`, `python-dotenv` |
-| `download` | HuggingFace **snapshot** download (Ensembl, ClinVar, constraint, ClinPGx, CPIC; footer-checked, atomic). **No PharmVar and no PubMind** — see *The caches* | `huggingface_hub` (lazy) |
+| `locations` | cache-location resolution — **one `resolve`/`default_dir`/`env_var` triple per lane in `CACHE_LANES`**, paired by a test rather than counted here — plus `.env` and the snapshot root filenames (moved from the compiler) | `platformdirs`, `python-dotenv` |
+| `download` | HuggingFace **snapshot** download, footer-checked and atomic — **one `ensure_*` per lane whose `publish_repo` is set**, which is the registry's own answer to which lanes may be pulled rather than a second list. A lane with no repo is operator-built; see *The caches* | `huggingface_hub` (lazy) |
 | `cpic_build` | **`[dev]`** builder (0.5.1): the whole CPIC PostgREST database → five parquets + `release.json` | `polars` (lazy), `cpic` |
 | `pharmvar_build` | **`[dev]`** builder (0.5.1): `/genes` → alleles + defining variants. Operator-built, never published | `polars` (lazy), `pharmvar` |
 | `pubmind_build` | **`[dev]`** builder (0.7, RM134): the ANNOVAR-distributed PubMind table → one parquet + `release.json`. Operator-built, and `pubmind publish` **refuses** | `polars` (lazy), `httpx`, `clin_sig` |
@@ -374,7 +410,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `drug_labels` | RM166: five regulators' drug labels — the `(gene[, allele], drug)` cross-check at two join tiers (offline, reports only, writes no `SourceRow`) | `duckdb`, format `pgx`, compiler `load_csv_rows` |
 | `drug_labels_build` | **`[dev]`** builder (0.7, RM166): ClinPGx's `drugLabels.zip` → one parquet + `LICENSE.txt` + its own `release.json`, dated from the archive's own `CREATED_*.txt` | `polars` (lazy), `httpx` |
 | `caches` | The cache registry (`CACHE_LANES`) and the rebuild adapters behind `cache rebuild` — one entry per lane carrying its three stages and, for each stage it lacks, the reason as a field. Walked by a test against the `*_build` modules on disk (RM176) | — |
-| `cli` | Typer app: `enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`, `upload`, `cache status`/`pull`/`rebuild`, and the eleven builders — `build+publish` for `clinvar`/`gnomad constraint`/`cpic`/`clinpgx`/`clinpgx build-labels`/`civic`/`strchive`, **`build` only** for `pharmvar` (there is no `pharmvar publish` and there will not be), `pubmind` (whose `publish` exists and refuses with its reason), `mane` and `acmg` (NCBI and ACMG/Elsevier grant nothing to refuse or to permit), `vrs mint` | `typer` |
+| `cli` | Typer app: the runtime commands (`enrich`, `frequencies`, `gene-metrics`, `gene-validity`, `assertions`, `enrich-and-compile`), the authoring ones (`hint`, `draft-*`, the `check-*` family), `upload`, `cache status`/`pull`/`rebuild`/`prune`, `vrs mint`, and **one builder group per `CACHE_LANES` lane carrying a `build_command`** — a `publish` exists exactly where the lane names a `publish_repo`, and `pubmind publish` is the one that exists in order to refuse with its reason. The per-command flag tables are `--help` and the dated listing in [audit/](audit/README.md); a hand-kept copy here would be the second thing to update | `typer` |
 
 ## Rate limits (public APIs)
 
