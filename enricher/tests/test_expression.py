@@ -10,6 +10,7 @@ block carrying a `gene_scorers` payload, which is what the row-major measurement
 established and what `_gene_block`'s shape assertion is defending.
 """
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -370,3 +371,64 @@ def test_more_rows_than_the_cap_refuses_and_says_how_to_get_past_it(tmp_path: Pa
 def test_the_cap_is_a_named_default_rather_than_a_literal() -> None:
     """A constant two deployments want different values of is a knob (`@retry-attempt-floor`)."""
     assert DEFAULT_MAX_ROWS > 0
+
+
+# ── the live leg ─────────────────────────────────────────────────────────────────────────────────
+#
+# Opt-in twice over (`@network-tests-optin`): `JUST_DNA_NETWORK_TESTS=1` **and** a key, because a
+# missing credential and a switched-off network test are different absences and neither should look
+# like the other.
+#
+# **One test, one 400 bp interval, and that is a deliberate ceiling.** A whole gene plus its ±512 kb
+# flanks is ~3.3 M SNVs at the measured 1,091 SNVs/s — about 50 minutes — which is precisely why
+# RM194 sat unbuilt. A gene-filtered 400 bp query answers in ~1.1 s, so the live leg proves the
+# premise everything offline rests on without the suite ever going near the expensive path. The
+# ±512 kb horizon itself is *not* re-measured here: RM194 already measured it (scores at +500 kb,
+# nothing at +700 kb) and the ROADMAP entry is the record, so paying for it again on every run would
+# buy a number we already have.
+
+NETWORK = os.environ.get("JUST_DNA_NETWORK_TESTS") == "1"
+API_KEY = os.environ.get("ALPHAGENOME_API_KEY") or ""
+live = pytest.mark.skipif(
+    not (NETWORK and API_KEY),
+    reason="set JUST_DNA_NETWORK_TESTS=1 and ALPHAGENOME_API_KEY to run the live leg",
+)
+
+
+@live
+def test_the_service_really_does_return_one_gene_axis_and_name_it(tmp_path: Path) -> None:
+    """The premise every offline test here stands on, checked against the real service.
+
+    Three claims, none of which this workspace can prove by asserting against its own stub:
+
+    1. a gene-filtered interval answers `(1, tracks)`, so `_gene_block`'s shape assertion is
+       defending a real invariant rather than a fixture convention;
+    2. the block carries a `gene_scorers` payload, so `gene_id` is the source's own attribution and
+       not something reconstructed — `@gene-map-is-another-sources-attribution`;
+    3. the accession comes back **versioned**, contradicting upstream's own proto comment, which is
+       the reason the column stores it verbatim.
+    """
+    pytest.importorskip("grpc", reason="the [atlas] extra is what makes the Atlas reachable")
+    from just_dna_enricher.atlas_client import connect
+
+    spec = _spec(tmp_path)
+    result = enrich_expression(
+        spec, "TBX1",
+        chrom="22", start=19756703, end=19757103,
+        client=connect(API_KEY),
+        declared_use="non_commercial",
+        mane_cache=spec / "no-mane-lane",
+    )
+
+    assert result.written > 0, "a 400 bp interval inside TBX1 returned no scored variant"
+    assert "no_gene_axis" not in result.withheld, (
+        "a gene-filtered query came back with a leading axis other than 1 — the filter did not apply"
+    )
+    row = result.rows[0]
+    assert row.gene == "TBX1"
+    assert row.gene_id and row.gene_id.startswith("ENSG"), "the service named no gene accession"
+    assert "." in row.gene_id, (
+        "the accession came back unversioned — upstream's proto comment would then be right, and "
+        "this column's whole justification for storing it verbatim would need re-reading"
+    )
+    assert row.tracks_total > 1, "RNA_SEQ reported a single track, which is not the gene axis"
