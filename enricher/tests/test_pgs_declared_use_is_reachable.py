@@ -26,11 +26,10 @@ between the flag and the row.
 import inspect
 
 import pytest
-from typer.testing import CliRunner
-
 from just_dna_enricher import identifiers
 from just_dna_enricher.cli import app
 from just_dna_enricher.licensing import pgs_score_terms
+from typer.testing import CliRunner
 
 #: Verbatim from PGS000013's `license` field, fetched 2026-09-11. A domain constant, not a count.
 _ACADEMIC = "Freely available to the academic community for research use. Parties interested in commercial use should contact the authors."

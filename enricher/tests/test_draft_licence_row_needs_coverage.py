@@ -27,9 +27,8 @@ import csv
 from pathlib import Path
 
 import pytest
-from just_dna_format.layout import SOURCES_CSV, preferred_spelling, resolve_sidecar
-
 from just_dna_enricher.clinvar_draft import draft_gene_panel
+from just_dna_format.layout import SOURCES_CSV, preferred_spelling, resolve_sidecar
 
 _SNAPSHOT = Path(__file__).resolve().parents[2] / "data" / "interim" / "clinvar"
 _needs_snapshot = pytest.mark.skipif(
