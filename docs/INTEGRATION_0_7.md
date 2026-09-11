@@ -528,6 +528,10 @@ Both spellings of a version are accepted — a bare `0.7.0` and the stamped
   the new `VariantHint.snapshots` (label → path) is the one field carrying a filesystem path — drop it
   to serve the hint from a host whose layout is not the caller's business. A reader matching the old
   `str(path)` members of `checked` sees lane names instead.
+- **A lane declares its size (S97, RM229).** `CacheLane.approx_mb` (order of magnitude, whole MB,
+  `None` = unmeasured), `LaneStatus.size_bytes` (measured, present lanes only, printed by
+  `cache status`), and `caches.provisioning_closure(lane)` — the lane plus its transitive parents in
+  registry order, which is what a blank box actually pays for a derived lane.
 - **Either spelling of a sidecar is a key (S96, RM224).** `layout.sidecar_spellings`, and every
   helper over it (`resolve_sidecar`, `sidecar_write_path`, `sidecar_candidates`, `preferred_spelling`),
   accept the table key or any of its spellings — `"licensing.csv"` now finds a module's `sources.csv`

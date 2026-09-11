@@ -1845,7 +1845,8 @@ def cache_status_() -> None:
         # Present and unreadable is not the same as absent, and a provenance failure is not a data
         # failure — the snapshot is still usable, so this says so instead of hiding it.
         label = status.release or ("(unreadable release.json)" if status.release_unreadable else "")
-        typer.secho(f"  {lane.name:13} present  {status.path}  {label}", fg=typer.colors.GREEN)
+        size = f"{(status.size_bytes or 0) / 1e6:.1f} MB"
+        typer.secho(f"  {lane.name:13} present  {status.path}  {label}  {size}", fg=typer.colors.GREEN)
 
 
 @cache_app.command("pull")

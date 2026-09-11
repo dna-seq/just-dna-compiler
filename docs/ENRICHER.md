@@ -1102,6 +1102,16 @@ which sends an operator to run a pull that `prepare` is going to refuse, since p
 deletes. `looked_in` says which directory the verdict is about (the lane's `env_var` if set, else the
 default), `release` is what the snapshot names, and `release_unreadable` is the present-and-unreadable
 `release.json` — a provenance failure, not a data failure.
+**A lane declares its size and a present one measures it (S97, RM229).** `CacheLane.approx_mb` is an
+order of magnitude in whole megabytes, measured on a provisioned box on 2026-09-11 and rounded up (`1`
+means *at most a megabyte*; Ensembl is ~15 000, the AVI lane ~30 000), so a first-run offer can decide
+*does this fit, is it worth asking* without `du`-ing a box that already has it; `None` means nobody has
+measured, which a caller reports as unknown rather than guessing. A test re-measures every lane
+present on the machine it runs on and refuses a declared number more than an order of magnitude off,
+which is what keeps the field from becoming the hand-kept table it replaces. `LaneStatus.size_bytes`
+is the measured size of a lane you already hold, and `cache status` prints it. **A derived lane's
+price is its parents'**: `provisioning_closure(lane)` is the lane plus its transitive parents in
+registry order — `mitomap_miss` is under a megabyte and its closure is a ClinVar download.
 Every live source this tier reaches has (or can have) a local copy, and the whole reason is in the rate
 table above: *a shared IP shares one budget.* An author on their own machine can go live for everything;
 a **host** cannot, and for the three licence-gated sources it should not (see *On a host, or in a
@@ -1150,8 +1160,11 @@ being on disk** — the MITOMAP snapshot and the ClinVar one — and its build i
 hit at the same position on a different allele is a different allele, and collapsing onto it would
 hide a real increment or invent one where the two sources anchor an indel differently.
 
-`CacheLane.parents` is a tuple of lane names, empty for every lane that acquires its own bytes. Three
-things read it and only one is the join:
+`CacheLane.parents` is a tuple of lane names, empty for every lane that acquires its own bytes. It is a
+correctness fact — which digests get recorded, what `rebuild` refuses on — and it is also a **cost**
+fact, which its first reader did not expect (S97): the increment is under a megabyte built, and on a
+blank box its honest price is its parents, a ClinVar download among them. `provisioning_closure`
+walks it transitively for exactly that sum. Three things read it and only one is the join:
 
 - **`rebuild_lane` guards on it.** A child whose parents are not on disk is `built=None` naming which
   one, with the command that would provision it. The two wrong answers are both silent: a `False`

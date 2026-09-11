@@ -68,6 +68,39 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM229 — `CacheLane` declared no size, so an onboarding offer had to `du` a box to price one
+
+**Severity** low · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-enricher` only: one
+field on `CacheLane` filled for every lane, one field on `LaneStatus`, two functions, one number on a
+rendered line; no schema change) · **Owner** enricher · **Motivating case** S97 (just-module-creator,
+in CONSUMER_SUGGESTIONS_HISTORY.md), building a first-run offer to provision the locally-built lanes
+
+**What it reproduced.** `CacheLane` carried everything about *whether* and *how* and nothing about
+*how much*, so the consumer `du`'d a provisioned box and kept the table as a dated constant — the
+hand-kept list RM176 retired for names, kept for a number that drifts faster, and one that cannot say
+whether it is stale. Their measurement agreed with this box's to the megabyte.
+
+**Taken: their option (1), with the canary that makes a declared number honest.** `approx_mb` is an
+order of magnitude in whole megabytes, rounded up, `1` meaning *at most a megabyte*; `None` stays
+legal and means *nobody measured*, which is the answer they wanted to be able to report. A declared
+size is a counted-prose shape — it rots — so the test re-measures every lane present on the machine
+it runs on and refuses a declared number more than an order of magnitude off. That is the difference
+between this field and their constant: theirs could not tell a caller it was stale, this one fails a
+developer's suite when it is. Option (2), the size in `release.json`, is half taken the cheaper way:
+`LaneStatus.size_bytes` measures a present lane from the bytes rather than from a record a builder
+would have to write, and `cache status` prints it. Option (3), a `Content-Length` probe, was not asked
+for and is not taken: a network call to price a prompt.
+
+**The other half is a cost fact wearing a correctness field.** `parents` reads as *which digests get
+recorded*, and the consumer found it is also *what a blank box pays*: `mitomap_miss` is under a
+megabyte and its parents are a ClinVar download. `provisioning_closure(lane)` walks it transitively
+in registry order, parents first — the sum they had hand-written — and the field's docstring and
+ENRICHER say so.
+
+**What they got right and did not need us for.** Classifying `acmg` by calling `prepare_lane` and
+reading the refusal, rather than pattern-matching a `<…>` placeholder in `build_command`, is the
+intended reading: the route depends on the install, not the lane, and only the adapter knows.
+
 ## RM225 — four stale claims a reader acts on, and the closedness one had drifted three times
 
 **Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 · **Owner** format ·

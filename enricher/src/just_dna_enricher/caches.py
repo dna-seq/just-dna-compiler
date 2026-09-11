@@ -317,6 +317,20 @@ class CacheLane:
     #: and `cache status`, where an operator asking why an increment is empty needs to be told what it
     #: is derived from.
     parents: tuple[str, ...] = ()
+    #: How big a provisioned snapshot is, as an **order of magnitude in whole megabytes** — never a
+    #: byte count (S97, RM229). A first-run offer has to decide *does this fit, and is it worth
+    #: asking*, and until this field existed the only way to price a lane was to `du` a box that
+    #: already had it, which is the hand-kept list RM176 retired for names, kept for a number that
+    #: drifts faster. Measured on a provisioned box on 2026-09-11 and rounded up; `1` means *at most
+    #: a megabyte*. `None` means nobody has measured, which a caller reports as *size unknown* rather
+    #: than guessing — a state the pinned test keeps distinct from a stale number by re-measuring
+    #: every lane present on the machine it runs on. The measured size of a lane you already hold is
+    #: `LaneStatus.size_bytes`; this is for the one you are deciding whether to fetch.
+    #:
+    #: **A derived lane's price is its parents'.** `mitomap_miss` is under a megabyte built and its
+    #: parents are `mitomap` and `clinvar`, so on a blank box the honest cost of the increment is a
+    #: ClinVar download. `provisioning_closure` walks `parents` transitively for exactly that sum.
+    approx_mb: int | None = None
 
 
 # ── the adapters ────────────────────────────────────────────────────────────────────────────────
@@ -827,6 +841,7 @@ def _rebuild_mitomap_miss(request: RebuildRequest) -> RebuildOutcome:
 CACHE_LANES: list[CacheLane] = [
     CacheLane(
         name="ensembl",
+        approx_mb=15000,
         build_command=None,
         subdir=ENSEMBL_SUBDIR,
         env_var=ENSEMBL_CACHE_VAR,
@@ -844,6 +859,7 @@ CACHE_LANES: list[CacheLane] = [
     ),
     CacheLane(
         name="clinvar",
+        approx_mb=300,
         build_command="clinvar build",
         release_label=clinvar_dataset_label,
         subdir=CLINVAR_SUBDIR,
@@ -858,6 +874,7 @@ CACHE_LANES: list[CacheLane] = [
     ),
     CacheLane(
         name="constraint",
+        approx_mb=1,
         build_command="gnomad constraint build",
         subdir=CONSTRAINT_SUBDIR,
         env_var=CONSTRAINT_CACHE_VAR,
@@ -871,6 +888,7 @@ CACHE_LANES: list[CacheLane] = [
     ),
     CacheLane(
         name="clinpgx",
+        approx_mb=1,
         build_command="clinpgx build",
         subdir=CLINPGX_SUBDIR,
         env_var=CLINPGX_CACHE_VAR,
@@ -884,6 +902,7 @@ CACHE_LANES: list[CacheLane] = [
     ),
     CacheLane(
         name="cpic",
+        approx_mb=1,
         build_command="cpic build",
         subdir=CPIC_SUBDIR,
         env_var=CPIC_CACHE_VAR,
@@ -897,6 +916,7 @@ CACHE_LANES: list[CacheLane] = [
     ),
     CacheLane(
         name="drug_labels",
+        approx_mb=1,
         build_command="clinpgx build-labels",
         subdir=DRUG_LABELS_SUBDIR,
         env_var=DRUG_LABELS_CACHE_VAR,
@@ -910,6 +930,7 @@ CACHE_LANES: list[CacheLane] = [
     ),
     CacheLane(
         name="pharmvar",
+        approx_mb=1,
         build_command="pharmvar build",
         subdir=PHARMVAR_SUBDIR,
         env_var=PHARMVAR_CACHE_VAR,
@@ -928,6 +949,7 @@ CACHE_LANES: list[CacheLane] = [
     ),
     CacheLane(
         name="pubmind",
+        approx_mb=11,
         build_command="pubmind build",
         subdir=PUBMIND_SUBDIR,
         env_var=PUBMIND_CACHE_VAR,
@@ -945,6 +967,7 @@ CACHE_LANES: list[CacheLane] = [
     ),
     CacheLane(
         name="civic",
+        approx_mb=1,
         build_command="civic build",
         subdir=CIVIC_SUBDIR,
         env_var=CIVIC_CACHE_VAR,
@@ -958,6 +981,7 @@ CACHE_LANES: list[CacheLane] = [
     ),
     CacheLane(
         name="strchive",
+        approx_mb=1,
         build_command="strchive build",
         subdir=STRCHIVE_SUBDIR,
         env_var=STRCHIVE_CACHE_VAR,
@@ -971,6 +995,7 @@ CACHE_LANES: list[CacheLane] = [
     ),
     CacheLane(
         name="mitomap",
+        approx_mb=1,
         build_command="mitomap build",
         subdir=MITOMAP_SUBDIR,
         env_var=MITOMAP_CACHE_VAR,
@@ -989,6 +1014,7 @@ CACHE_LANES: list[CacheLane] = [
     ),
     CacheLane(
         name="mitomap_miss",
+        approx_mb=1,
         build_command="mitomap miss",
         subdir=MITOMAP_MISS_SUBDIR,
         env_var=MITOMAP_MISS_CACHE_VAR,
@@ -1016,6 +1042,7 @@ CACHE_LANES: list[CacheLane] = [
     ),
     CacheLane(
         name="mane",
+        approx_mb=2,
         build_command="mane build",
         subdir=MANE_SUBDIR,
         env_var=MANE_CACHE_VAR,
@@ -1034,6 +1061,7 @@ CACHE_LANES: list[CacheLane] = [
     ),
     CacheLane(
         name="acmg",
+        approx_mb=1,
         build_command="acmg build",
         subdir=ACMG_SUBDIR,
         env_var=ACMG_CACHE_VAR,
@@ -1051,6 +1079,7 @@ CACHE_LANES: list[CacheLane] = [
     ),
     CacheLane(
         name="alphagenome_avi",
+        approx_mb=30000,
         build_command="alphagenome build",
         subdir=ALPHAGENOME_AVI_SUBDIR,
         env_var=ALPHAGENOME_AVI_CACHE_VAR,
@@ -1250,6 +1279,35 @@ class LaneStatus:
     path: Path | None = None
     release: str | None = None
     release_unreadable: bool = False
+    #: The provisioned snapshot's size on disk, measured when `present` (S97): every regular file
+    #: under `path`, or the file itself for a single-file lane. `None` unless present. The lane's
+    #: declared order of magnitude for an absent one is `lane.approx_mb`.
+    size_bytes: int | None = None
+
+
+def snapshot_bytes(path: Path) -> int:
+    """Bytes on disk under a provisioned snapshot — every regular file, or the one file itself."""
+    if path.is_file():
+        return path.stat().st_size
+    return sum(entry.stat().st_size for entry in path.rglob("*") if entry.is_file())
+
+
+def provisioning_closure(lane: CacheLane) -> list[CacheLane]:
+    """The lanes a blank box has to hold for `lane` to build: its transitive parents, then itself.
+
+    In registry order, each lane once, parents before children — the order `prepare` already walks.
+    A derived lane's `approx_mb` prices the increment it stores; the closure prices what provisioning
+    it actually costs (S97): `mitomap_miss` is under a megabyte and its closure is a ClinVar download.
+    """
+    wanted: set[str] = set()
+    frontier = [lane.name]
+    while frontier:
+        name = frontier.pop()
+        if name in wanted:
+            continue
+        wanted.add(name)
+        frontier.extend(LANES_BY_NAME[name].parents)
+    return [member for member in CACHE_LANES if member.name in wanted]
 
 
 def lane_status(lanes: list[CacheLane] | None = None) -> list[LaneStatus]:
@@ -1269,7 +1327,9 @@ def lane_status(lanes: list[CacheLane] | None = None) -> list[LaneStatus]:
         if path is not None:
             release = lane.release_label(path)
             unreadable = release is None and (path / RELEASE_FILENAME).exists() and read_release(path) is None
-            out.append(LaneStatus(lane, "present", looked_in, path, release, unreadable))
+            out.append(
+                LaneStatus(lane, "present", looked_in, path, release, unreadable, snapshot_bytes(path))
+            )
             continue
         occupied = looked_in.is_file() or (looked_in.is_dir() and any(looked_in.iterdir()))
         out.append(LaneStatus(lane, "occupied" if occupied else "absent", looked_in))

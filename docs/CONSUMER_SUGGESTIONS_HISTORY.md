@@ -120,6 +120,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S94** a resolver rung that consults a peer — idea-book, licence question first
 - **S95** `PacingGate` could not report what it spent — accepted, RM203
 - **S96** `sidecar_spellings` keyed on the table key only — accepted, RM224
+- **S97** `CacheLane` declared no size — accepted, RM229
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -8200,3 +8201,85 @@ filename: the helper is most useful exactly where a caller has bytes and a name.
 diff looked for `licensing.csv`, found nothing on a spec carrying `sources.csv`, and reported no rows
 leaving the table while the replacement went ahead under the other name. A helper whose wrong answer
 is a plausible path rather than an exception fails quietly in both directions.
+
+# Field notes from just-module-creator, 2026-09-11 — pricing a lane before it is fetched
+
+## S97 — `CacheLane` declares no size, so an onboarding offer has to `du` your box to price one
+
+**Status — accepted and shipped 2026-09-11 in the uncut 0.7.0 as
+[RM229](ROADMAP_HISTORY.md#rm229--cachelane-declared-no-size-so-an-onboarding-offer-had-to-du-a-box-to-price-one).**
+Your option (1), as asked: `CacheLane.approx_mb` is on every lane — an order of magnitude in whole
+megabytes, measured on a provisioned box today (it agrees with your `du` table to the megabyte),
+rounded up, `1` meaning *at most a megabyte*, Ensembl ~15 000, the AVI lane ~30 000. `None` stays
+legal and means *nobody measured*, the answer you wanted to be able to give, and a test asserts no
+shipped lane leaves it there. What makes it more than your constant moved into our tree: a second
+test re-measures every lane present on the machine the suite runs on and refuses a declared number
+more than an order of magnitude off, so a stale size fails a developer's suite rather than your
+prompt. Option (2) is half taken the cheaper way — `LaneStatus.size_bytes` measures a present lane
+from its bytes, and `cache status` prints it — so `lane_status()` now prices what you hold and
+`approx_mb` prices what you are deciding to fetch. Option (3) is not taken, for your reason. On
+`parents`: you are right that it is a cost fact wearing a correctness field, and it now says so;
+`caches.provisioning_closure(lane)` is the transitive walk you hand-wrote, parents first in registry
+order, so delete yours. On `acmg`: calling `prepare_lane` and reading the refusal is the intended
+reading, since the route depends on the install and only the adapter knows. **What to do now:** drop
+`_LANE_MB`; offer `sum(m.approx_mb for m in provisioning_closure(lane))` for a lane you do not hold,
+and `size_bytes` for one you do. <!-- triaged: 0.7.0 · sha e0c76536e161 -->
+
+*Filed 2026-09-11 by just-module-creator, while building a first-run offer that suggests provisioning
+the locally-built lanes before an authoring session starts.*
+
+**What we are building.** `prepare_caches` / `prepare_lane` (RM204-era) are exactly the right API and
+we call them rather than shelling `cache prepare` — thank you. The offer we put in front of an author
+is *"these five lanes cannot be pulled and are ~13 MB built; you have 3.9 TB free; build them?"*, and
+for a small disk it has to be able to **not** make an offer at all: suggesting Ensembl on a 20 GB
+volume is the nag that gets a first-run prompt turned off.
+
+**What is missing is the number.** `CacheLane` carries `name`, `subdir`, `serves`, `build_command`,
+`resolve`, `default_dir`, `env_var`, `rebuild`, `ensure`, `publish_repo`, `terms`, `unpublished`,
+`unbuilt`, `release_label`, `publish_command`, `parents` — everything about *whether* and *how*, and
+nothing about *how much*. So we measured a provisioned box instead:
+
+```
+$ du -sk --apparent-size /data/just-dna-cache/*/     # 2026-09-11, enricher 0.7.0 tree
+acmg_sf 13K   pharmvar 39K   civic 32K   drug_labels 48K   mitomap_miss 65K   cpic 257K
+strchive 494K clinpgx 588K   mitomap 593K  gnomad_constraint 855K  mane 2003K  pubmind 10280K
+clinvar 276528K   ensembl_variations 14382879K
+```
+
+That table is now a dated constant in our tree (`caches._LANE_MB`), which is the hand-kept list your
+own RM176 retired for lane *names* — three lanes behind reality before it was replaced by
+`CACHE_LANES`. A size drifts faster than a name does: ClinVar grows every release and `release_label`
+already tells us the snapshot moved, so our number is stale by construction the moment it is written,
+and we cannot tell a caller whether it is.
+
+**What would fix it, cheapest first.**
+
+1. **A declared order of magnitude on the lane** — `approx_mb: int | None`, or a coarse
+   `size_class: Literal["tiny", "small", "large"]`. `None`/absent is a fine answer and is the one we
+   would report as *size unknown* rather than guessing; what we cannot do today is tell *unknown*
+   apart from *nobody has looked*. An order of magnitude is enough for the decision we are making —
+   the question is "does this fit and is it worth an offer", never "how many bytes".
+2. **The measured size in `release.json`**, written by whatever provisioned the lane. It would make a
+   *provisioned* lane self-describing and let `lane_status` report it beside `release`, which is
+   better data than ours for every lane the caller already holds — but it says nothing about the lane
+   they are deciding whether to fetch, so it does not replace (1).
+3. **A `Content-Length` probe on the publish repo** for the pullable half. We are not asking for this:
+   it is a network call to answer a question about a prompt, and it says nothing about the five
+   unpublished lanes, which are the whole set our offer is about.
+
+We would take (1) alone and be done.
+
+**The other half we worked around, and it may be a doc fix rather than a code one.** `mitomap_miss`
+declares `parents` and is 65 KB built — but its parents are `mitomap` (593 KB) and `clinvar`
+(**270 MB**), so on a blank box the honest price of "a 65 KB derived lane" is a 270 MB download.
+We walk `parents` transitively and report build cost and pull cost as two numbers. Nothing in the
+docstrings warns that a derived lane's cost is dominated by a parent it pins; `parents` reads as a
+correctness fact (which digests get recorded) rather than a cost one.
+
+**And one thing that is right and we nearly got wrong.** `acmg`'s route depends on the *install*, not
+the lane: `_acmg_workbook_in_the_checkout` finds the Elsevier workbook under `assets/` in a source
+checkout and there is no workbook in the wheel, so the same lane is buildable unattended here and
+needs `--source acmg=<file.xlsx>` for anyone installing from PyPI. We classify it by calling
+`prepare_lane` and reading the refusal rather than by pattern-matching `<…>` in `build_command`,
+which is what we tried first and which is wrong for `pharmvar build --out <dir>` — where the
+placeholder is ours to fill.

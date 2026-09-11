@@ -28,7 +28,9 @@ from just_dna_enricher.caches import (
     RebuildOutcome,
     RebuildRequest,
     lane_status,
+    provisioning_closure,
     rebuild_lane,
+    snapshot_bytes,
 )
 from just_dna_enricher.cli import app
 from just_dna_enricher.clinvar import clinvar_dataset_label
@@ -993,3 +995,75 @@ def test_a_present_lane_reports_its_release_or_that_the_release_is_unreadable(
     result = CliRunner().invoke(app, ["cache", "status"])
     line = next(ln for ln in result.output.splitlines() if ln.strip().startswith(broken.name))
     assert "present" in line and "(unreadable release.json)" in line
+
+
+# ── S97 / RM229: a lane declares its size, a present one measures it, a derived one prices its parents
+
+
+def test_every_lane_declares_its_order_of_magnitude() -> None:
+    """An EQUALITY over the registry: no shipped lane leaves `approx_mb` unmeasured.
+
+    `None` stays legal on the field — it is the honest answer for a lane nobody has measured, and a
+    caller reports it as *size unknown* — but every lane this registry ships has been measured, and a
+    new lane added without a number should fail here rather than read as unknown."""
+    assert {lane.name for lane in CACHE_LANES if lane.approx_mb is None} == set()
+    assert all(isinstance(lane.approx_mb, int) and lane.approx_mb >= 1 for lane in CACHE_LANES)
+
+
+def test_a_declared_size_is_within_an_order_of_magnitude_of_every_snapshot_this_box_holds() -> None:
+    """The canary that keeps `approx_mb` from becoming the stale table it replaces (S97).
+
+    Deliberately reads the ambient caches: a declared number is only as good as the last time
+    somebody compared it with a real snapshot, and this makes every developer's suite run that
+    comparison for every lane they hold. Skipped, not passed, on a box holding none."""
+    present = [status for status in lane_status() if status.state == "present"]
+    if not present:
+        pytest.skip("no snapshot on this machine to measure against")
+    for status in present:
+        declared = status.lane.approx_mb
+        measured_mb = (status.size_bytes or 0) / 1e6
+        assert declared is not None, status.lane.name
+        assert measured_mb <= declared * 10, f"{status.lane.name}: {measured_mb:.1f} MB vs ~{declared}"
+        if declared > 1:  # `1` means "at most a megabyte" and has no lower bound
+            assert measured_mb >= declared / 10, f"{status.lane.name}: {measured_mb:.1f} MB vs ~{declared}"
+
+
+def test_provisioning_closure_is_parents_first_in_registry_order() -> None:
+    """A derived lane's price is its parents' (S97): the closure is what a blank box has to hold."""
+    order = [lane.name for lane in CACHE_LANES]
+    for lane in CACHE_LANES:
+        closure = provisioning_closure(lane)
+        names = [member.name for member in closure]
+        assert names[-1] == lane.name, lane.name
+        assert names == sorted(names, key=order.index), lane.name
+        assert len(set(names)) == len(names), lane.name
+        # Closed under `parents`: nothing in the closure needs a lane outside it.
+        assert {parent for member in closure for parent in member.parents} <= set(names), lane.name
+        if not lane.parents:
+            assert closure == [lane], lane.name
+    derived = [lane for lane in CACHE_LANES if lane.parents]
+    assert [lane.name for lane in derived] == ["mitomap_miss"]
+    assert [m.name for m in provisioning_closure(LANES_BY_NAME["mitomap_miss"])] == [
+        "clinvar",
+        "mitomap",
+        "mitomap_miss",
+    ]
+
+
+def test_a_present_lane_reports_its_size_and_an_absent_one_reports_none(
+    tmp_path: Path, monkeypatch, no_ambient_caches: Path
+) -> None:
+    lane = next(member for member in CACHE_LANES if member.release_label is caches._dataset_label)
+    directory = tmp_path / lane.name
+    (directory / "data").mkdir(parents=True)
+    (directory / "data" / "a.parquet").write_bytes(b"PAR1" * 100)
+    (directory / "data" / "b.parquet").write_bytes(b"PAR1" * 50)
+    (directory / locations.RELEASE_FILENAME).write_text(json.dumps({"dataset": "probe"}), encoding="utf-8")
+    monkeypatch.setenv(lane.env_var, str(directory))
+    by_name = {status.lane.name: status for status in lane_status()}
+    expected = sum(f.stat().st_size for f in directory.rglob("*") if f.is_file())
+    assert by_name[lane.name].size_bytes == expected == snapshot_bytes(directory)
+    assert {status.size_bytes for name, status in by_name.items() if name != lane.name} == {None}
+    result = CliRunner().invoke(app, ["cache", "status"])
+    line = next(ln for ln in result.output.splitlines() if ln.strip().startswith(lane.name))
+    assert line.rstrip().endswith("MB") and "present" in line

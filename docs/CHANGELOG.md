@@ -34,7 +34,18 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-11 (latest) — RM224: either spelling of a sidecar is a key
+## 2026-09-11 (latest) — RM229: a cache lane declares its size, and a derived lane prices its parents
+
+`just-dna-enricher` only, inside the uncut 0.7.0. A first-run offer had to `du` a provisioned box to
+price a lane (S97), because `CacheLane` said everything about whether and how and nothing about how
+much. `approx_mb` is now on every lane — an order of magnitude in whole megabytes, measured
+2026-09-11 and rounded up, `None` legal and meaning unmeasured — with a test that re-measures it
+against every snapshot the running machine holds, so a stale number fails a suite instead of a
+consumer. `LaneStatus.size_bytes` measures a present lane and `cache status` prints it.
+`provisioning_closure(lane)` walks `parents` transitively in registry order: `mitomap_miss` is under
+a megabyte and its closure is a ClinVar download, which is what a blank box actually pays.
+
+## 2026-09-11 — RM224: either spelling of a sidecar is a key
 
 `just-dna-format` only, inside the uncut 0.7.0. `layout.SIDECAR_SPELLINGS` is keyed on the table
 key — `sources.csv`, the spelling the parquet and the manifest keep — and the preferred filename was

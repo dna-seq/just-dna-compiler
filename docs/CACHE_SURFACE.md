@@ -46,7 +46,8 @@ having said it.
 | `publish_command` | — | needed **only** when the lane has a `publish_repo` and no `rebuild` (RM202) |
 | `unpublished` / `unbuilt` | — | stated iff the stage is absent |
 | `release_label` | — | override only if `release.json`'s `dataset` is not the label |
-| `parents` | — | for a derived lane; an absent parent is *could not run*, never an empty result |
+| `parents` | — | for a derived lane; an absent parent is *could not run*, never an empty result. Also a **cost** fact: `provisioning_closure` prices the lane by its parents |
+| `approx_mb` | ✅ | the provisioned size as an order of magnitude in whole MB, rounded up (`1` = at most a megabyte). Measured, never guessed; a test re-measures it against every snapshot the box holds (RM229) |
 
 ## The two routes to publishing, and the trap between them
 
