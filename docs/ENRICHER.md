@@ -4535,6 +4535,104 @@ will fail naming your addition until it is covered or explicitly exempted. That 
 guard walked a hand-written tuple of eight module names, `identifiers` was not one of them, and
 `OntologyClient` leaked raw `httpx` for a whole release as a result.
 
+
+### The complete roster — every error type this tier defines (RM216)
+
+**The table at the top of this § is the one a consumer usually needs; this one is the registry.**
+Fifty-one of the tier's error classes were named nowhere in this document, in a section titled *what a
+caller catches* — so a consumer meeting `ClinPgxUnavailable` or `GatedSnapshotError` had nothing to
+look it up in. Walked by `test_enricher_doc_registries.py` against the package, so a new error type
+joins this table by existing (`@registry-completeness`).
+
+**Read the third column as a ladder, not a set.** A subclass makes a caller's `except` **order**
+load-bearing (`@client-exception-contract`), so catching the base type first silently swallows every
+narrowing beside it. `AtlasRefMismatch` is the one entry two levels deep, under `AtlasRefused`.
+
+**The `*Unavailable` convention is the tri-state, spelled as a type**: it means *the source could not
+be asked*, which is `unknown` and never a finding against the module. A base type with no narrowing
+either has one failure mode or answers with a withholding value instead of raising — `Grch37Client`
+and `EnsemblResolver` are the latter, and are exempt from the contract suite for exactly that reason.
+
+**Runtime passes — the type a consumer calling a pass writes in its `except`**
+
+| module | base type | narrowed by |
+|---|---|---|
+| `acmg` | `AcmgSfError` | `AcmgListUnavailable` |
+| `alphagenome_check` | `VariantImpactError` | — |
+| `assertions` | `ClinicalAssertionError` | — |
+| `civic_citations` | `CivicCitationsError` | — |
+| `clingen` | `ClinGenError` | `ClinGenUnavailable` |
+| `clinpgx` | `ClinPgxEnrichmentError` | — |
+| `currency` | `ReleaseProbeError` | `ReleaseUnavailable` |
+| `drug_labels` | `DrugLabelError` | `DrugLabelUnavailable` |
+| `enrich` | `EnrichmentError` | — |
+| `expression` | `ExpressionError` | `ExpressionUnavailable` |
+| `frequencies` | `FrequencyEnrichmentError` | `FrequencyUnavailable` |
+| `gene_metrics` | `GeneMetricsEnrichmentError` | `GeneMetricsUnavailable` |
+| `gene_validity` | `GeneValidityError` | `GeneValidityUnavailable` |
+| `gwas` | `GwasError` | `GwasNotFound` |
+| `identifiers` | `IdentifierCheckError` | `IdentifierUnavailable` |
+| `literature` | `LiteratureEnrichmentError` | `LiteratureUnavailable` |
+| `litvar` | `LitvarError` | `LitvarUnavailable` |
+| `mitomap` | `MitomapError` | `MitomapUnavailable` |
+| `pgx` | `PgxEnrichmentError` | — |
+| `strchive` | `StrchiveError` | `StrchiveUnavailable` |
+
+**Clients — the transport layer, which a consumer calling a pass never meets**
+
+| module | base type | narrowed by |
+|---|---|---|
+| `atlas_client` | `AtlasError` | `AtlasNotScored`, `AtlasRefused`, `AtlasRefMismatch` (under the one before it), `AtlasUnavailable` |
+| `civic_api` | `CivicApiError` | `CivicApiUnavailable` |
+| `clingen_allele` | `ClingenAlleleError` | — |
+| `cpic` | `CpicError` | — |
+| `ensembl` | `EnsemblError` | — |
+| `eutils` | `EutilsError` | `EutilsRateLimitedError` |
+| `gene_spans` | `GeneSpanError` | — |
+| `gnomad` | `GnomadError` | `RateLimitedError` |
+| `pgs` | `PgsCatalogError` | `PgsCatalogUnavailable` |
+| `pharmvar` | `PharmVarError` | — |
+
+**Builders and the publisher (`[dev]`) — what `cache rebuild` and a `build` command raise**
+
+| module | base type | narrowed by |
+|---|---|---|
+| `alphagenome_avi_build` | `AlphaGenomeBuildError` | — |
+| `atlas_protos` | `ProtoFetchError` | — |
+| `civic_build` | `CivicBuildError` | `CivicUnavailable` |
+| `civic_vcf` | `CivicVcfError` | — |
+| `clinpgx_build` | `ClinPgxArchiveError` | `ClinPgxUnavailable` |
+| `clinvar_build` | `ClinVarBuildError` | `ClinVarUnavailable` |
+| `constraint_build` | `ConstraintBuildError` | `ConstraintUnavailable` |
+| `cpic_build` | `CpicBuildError` | — |
+| `mane_build` | `ManeBuildError` | `ManeUnavailable` |
+| `pubmind_build` | `PubMindBuildError` | `PubMindUnavailable` |
+| `upload` | `OrphanedSidecarError` | — |
+| `upload` | `PublishCollisionError` | — |
+
+**Snapshot readers — an absent or unreadable cache, deliberately a `FileNotFoundError`**
+
+| module | base type | narrowed by |
+|---|---|---|
+| `clinvar` | `ClinVarReferenceError` | — |
+| `download` | `ConstraintReferenceError` | — |
+| `download` | `GatedSnapshotError` | — |
+| `download` | `OpenSnapshotError` | — |
+| `download` | `SnapshotNotPublished` | — |
+| `pubmind` | `PubMindReferenceError` | — |
+| `resolver` | `EnsemblReferenceError` | — |
+
+**Drafting providers, and the licence gate**
+
+| module | base type | narrowed by |
+|---|---|---|
+| `civic_draft` | `CivicDraftError` | — |
+| `clinvar_draft` | `ClinVarDraftError` | — |
+| `licensing` | `LicenseRefusal` | — |
+| `mitomap_draft` | `MitomapDraftError` | — |
+| `pubmind_draft` | `PubMindDraftError` | — |
+| `strchive_draft` | `StrchiveDraftError` | — |
+
 ## CLI
 
 ```

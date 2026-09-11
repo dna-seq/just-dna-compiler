@@ -35,6 +35,7 @@ terms no `SourceRow` can ever carry. It is deliberately not the PGx picture abov
 to the PGx sources and dated to its probe.
 """
 
+import builtins
 import re
 from pathlib import Path
 
@@ -138,3 +139,73 @@ def test_the_licence_roster_names_every_source_with_recorded_terms() -> None:
     listed = _licence_roster()
     recorded = set(licensing.TERMS_BY_SOURCE)
     assert listed == recorded, f"licence roster drifted: {listed ^ recorded}"
+
+
+def _error_classes() -> dict[str, type]:
+    """Every exception class the package itself defines, by name."""
+    import importlib
+    import inspect
+    import pkgutil
+
+    out: dict[str, type] = {}
+    for info in pkgutil.iter_modules(list(just_dna_enricher.__path__)):
+        module = importlib.import_module(f"just_dna_enricher.{info.name}")
+        for name, obj in vars(module).items():
+            if inspect.isclass(obj) and issubclass(obj, Exception) and obj.__module__ == module.__name__:
+                out[name] = obj
+    return out
+
+
+def _rostered_errors() -> set[str]:
+    header = "### The complete roster — every error type this tier defines (RM216)"
+    doc = _doc()
+    assert header in doc, f"the error roster's heading moved; looked for {header!r}"
+    section = doc.split(header)[1].split("\n## ")[0]
+    named = set(
+        re.findall(
+            r"`([A-Z]\w*(?:Error|Unavailable|Refused|NotScored|NotFound|Refusal|Mismatch"
+            r"|Collision|NotPublished))`",
+            section,
+        )
+    )
+    # The prose names `FileNotFoundError` to say what the snapshot readers subclass. A builtin is not
+    # a type this tier defines, and dropping it here beats narrowing the pattern — the pattern is what
+    # makes a new tier error type join this roster by existing rather than by being remembered.
+    return {name for name in named if not hasattr(builtins, name)}
+
+
+def test_the_error_roster_names_every_error_type_the_tier_defines() -> None:
+    """A consumer meeting a type needs somewhere to look it up.
+
+    Fifty-one of eighty-odd were named nowhere in a document whose § is titled *what a caller
+    catches*. Equality rather than containment: the table says it is every type this tier defines,
+    so a name in it that the package does not define sends a reader looking for a class that is not
+    there — as wrong as a missing one, one direction over.
+    """
+    listed = _rostered_errors()
+    defined = set(_error_classes())
+    assert listed == defined, f"error roster drifted: {sorted(listed ^ defined)}"
+
+
+def test_every_rostered_narrowing_really_subclasses_what_it_is_listed_under() -> None:
+    """The third column is a ladder, and a wrong rung is worse than none.
+
+    `@client-exception-contract`: a subclass makes a caller's `except` ORDER load-bearing, so a
+    reader uses this column to decide which handler comes first. A row claiming a narrowing that is
+    not one would have them order handlers against a hierarchy that does not exist.
+    """
+    classes = _error_classes()
+    header = "### The complete roster — every error type this tier defines (RM216)"
+    section = _doc().split(header)[1].split("\n## ")[0]
+    for line in section.split("\n"):
+        if not line.startswith("| `"):
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) != 3 or cells[1] == "base type":
+            continue
+        base = cells[1].strip("`")
+        if base not in classes:
+            continue
+        for name in re.findall(r"`(\w+)`", cells[2]):
+            assert name in classes, name
+            assert issubclass(classes[name], classes[base]), f"{name} is not under {base}"

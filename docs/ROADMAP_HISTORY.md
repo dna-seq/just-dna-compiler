@@ -289,6 +289,38 @@ and the lane needs a second source name, `alphagenome_atlas`, because `RNA_SEQ` 
 non-commercial Output while the AVI artifact is the Permissive candidate — one `(source, layer)` key
 cannot carry two licence classes.
 
+## RM216 — fifty-one error types named nowhere, in the § titled *what a caller catches*
+
+**Severity** medium · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (docs + one guard; no code
+change) · **Owner** enricher · **Motivating case** the superset sweep of the 2026-09-11 blind
+re-derivation — every identifier the from-code snapshot names, grepped against the maintained document
+
+The sweep the round owed and had not run: take each `*_FROM_CODE.md`, pull every backticked identifier,
+keep the ones the package actually defines at top level, and grep them against the maintained doc.
+341 real surfaces came back absent across the three tiers. Most are legitimately delegated — per-field
+and per-column names are `@fieldnames-from-model`'s business and belong in the snapshot, not in a
+hand-kept table. **Error types are not**, because a consumer writes one in an `except`.
+
+`ENRICHER.md`'s exception-contract § carried the ten-row pass→type table a consumer usually needs, and
+the tier defines **83 classes**. Fifty-one of them appeared nowhere in the document, so a consumer
+meeting `ClinPgxUnavailable`, `GatedSnapshotError` or `AtlasRefMismatch` had nothing to look it up in.
+
+**Grouped by what raises them rather than alphabetically**, because the groups are the contract: a
+runtime pass's type is what a consumer catches, a client's is what the pass translates and the
+consumer never sees, a builder's belongs to `cache rebuild`, and the snapshot readers' are
+`FileNotFoundError` subclasses on purpose.
+
+**The third column is a ladder, not a set**, and a second test asserts it really is one. A subclass
+makes a caller's `except` **order** load-bearing (`@client-exception-contract`), so a reader uses that
+column to decide which handler comes first — a row claiming a narrowing that is not one would have
+them order handlers against a hierarchy that does not exist. `AtlasRefMismatch` is the single entry
+two levels deep.
+
+**Equality, not containment**, since the table says about itself that it is every type this tier
+defines: a name in it the package does not define sends a reader looking for a class that is not
+there, which is the same defect one direction over. Builtins are dropped rather than the pattern
+narrowed — the pattern is what makes a new error type join the roster by existing.
+
 ## RM213 — `merge_key` raised for a missing key and collapsed silently for an empty one
 
 **Severity** low (latent) · **Status** ✅ shipped 2026-09-11 in the uncut 0.7.0 (`just-dna-format` only:
