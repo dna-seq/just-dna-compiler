@@ -342,6 +342,15 @@ The registry `reference()` / `authoring_reference()` walks render more models th
 shipped 32, because the AlphaGenome round landed after the number was taken. If you snapshot that
 output, it grew.
 
+**One exception contract tightened (RM230).** `literature.EuropePmcClient.lookup` used to let its
+transport library's types escape — `httpx.HTTPStatusError`, `httpx.ConnectError`, and
+`json.JSONDecodeError` on a 200 that is not JSON. It now raises `LiteratureUnavailable` (a subclass of
+`LiteratureEnrichmentError`) on all three. **If you catch `httpx` types around this call, that
+`except` will stop firing**; catch the tier's own type instead, which is what every other client here
+already promised. `EuropePmcClient.fulltext` is unchanged and still returns `None` for
+could-not-be-retrieved — the two methods answer different questions, which is how the leak survived
+review.
+
 ### 2.5 CLI
 
 One new compiler command, several new enricher commands, four new `enrich` flags. Nothing was removed
@@ -355,6 +364,15 @@ defaults to `data/repro/<lane>/` — `cpic build`, `clinpgx build`, `clinpgx bui
 `pharmvar build` no longer require it, the nine that defaulted to a bare relative name no longer
 write into the working directory, and `civic reproduce` moved to `data/repro/civic_reproduce`
 ([RM177](ROADMAP_HISTORY.md#rm177--nine-builders-wrote-their-snapshot-beside-pyprojecttoml-because-the-rule-that-forbade-it-was-prose)). A caller passing `--out` is unaffected.
+
+**One flag added late in the line, and it is the one an error message tells you to use.**
+`check-identifiers` gains `--use` (`unstated | non-commercial | commercial`, default `unstated`),
+because a PGS score licensed *"freely available to the academic community for research use"* records
+`commercial_use=False` at the `annotation` layer — where the compile gate reads — and the refusal has
+always said to re-run with a declared use. Until RM230 that flag did not exist, and
+`merge_sources_csv` is never-clobber, so the only exit was editing `sources.csv` by hand. Measured
+against the live Catalog: **6 of the first 250 scores** are in that class. If you script
+`check-identifiers` over modules citing PGS scores, pass `--use` or expect the compile to refuse.
 
 | command | what it does |
 | --- | --- |
