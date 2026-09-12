@@ -5146,7 +5146,7 @@ place where the code and a stated rule disagree, and these are places where noth
 - **`enrich_gwas(mode=…)`.** Accepted, defaulted, never read; the CLI's `--strict` help promises a
   "severity ladder" and the pass docstring describes none. Whether the intent was a `strict` refusal on
   `missing` (as the sibling passes have) or no ladder at all is undetermined, and no test covers either.
-  The dead parameter itself is filed as part of [RM100](ROADMAP_HISTORY.md#rm100--five-enricher-surface-defects-with-no-common-cause);
+  The dead parameter itself is filed as part of [RM100](history/ROADMAP_HISTORY_0_6.md#rm100--five-enricher-surface-defects-with-no-common-cause);
   what it *should* do is this question.
 - **`identifiers.IdentifierCheckError`** is declared with a docstring and never raised anywhere, in
   `src` or in the tests.

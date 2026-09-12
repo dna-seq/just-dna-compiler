@@ -384,7 +384,7 @@ The source's own description says *heterozygous compound mutation*: the two are 
 haplotype is *cis*, so the brick would assert the opposite of what was observed. Dropping the row was
 refused because it deletes two of RM170's three subjects; the row stays, keyed on the variant's own
 profile, with the composite profile beside it. The representation is RM28's, parked
-([RM174](ROADMAP_HISTORY.md#rm174--a-claim-about-two-variants-in-trans-is-written-as-two-single-variant-rows-because-no-brick-holds-the-real-subject)).
+(history/ROADMAP_HISTORY_0_6.md#rm174--a-claim-about-two-variants-in-trans-is-written-as-two-single-variant-rows-because-no-brick-holds-the-real-subject)).
 
 **ClinPGx's old `clinicalAnnotations.zip` still downloads — why does `clinpgx build` refuse it instead of reading both?**
 Because a retired filename that still answers 200 is a frozen 2025 object, and a reader that parses

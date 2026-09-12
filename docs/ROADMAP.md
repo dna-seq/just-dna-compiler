@@ -64,7 +64,7 @@ which is not the state this file has usually been in. 0.5.0 went to PyPI on 2026
 `just-dna-enricher` 0.5.0 the first release of that package.
 
 **0.6.0 was cut and tagged `v0.6.0` on 2026-08-17**, and `0.6.1` followed on 2026-08-18 with RM93–RM100
-(see [ROADMAP_HISTORY § 0.6.1](ROADMAP_HISTORY.md#061--the-eight-the-documents-caught-the-two-the-fixes-found-and-rm88)).
+(see [ROADMAP_HISTORY § 0.6.1](history/ROADMAP_HISTORY_0_6.md#061--the-eight-the-documents-caught-the-two-the-fixes-found-and-rm88)).
 This paragraph read *"open on the `0.6` branch, unreleased"* for a release and a half
 after that stopped being true, which is the same failure the *Active items* heading had — a status line
 nobody re-reads is a status line that lies. What 0.6.0 landed:
@@ -79,7 +79,7 @@ reference example kept all four of its signatures across that batch.
 **Then the design round itself was built**, in eleven parallel lanes plus a charter amendment that went
 first and alone: RM4, RM5, RM24, RM25, RM27, RM43, RM45, RM46, RM47, RM48, RM50, RM59 and the VCF 4.4
 cluster RM53–RM65 — the whole of [PROPOSAL_0_6.md](proposals/PROPOSAL_0_6.md)'s build list, with the rationale in
-[ROADMAP_HISTORY § 0.6.0](ROADMAP_HISTORY.md#060--the-design-round-built). Across the corpus that batch
+[ROADMAP_HISTORY § 0.6.0](history/ROADMAP_HISTORY_0_6.md#060--the-design-round-built). Across the corpus that batch
 moved `content_signature` on exactly **two** modules (`mt_heteroplasmy` and `htt_repeat_expansion`, both
 re-authored deliberately because their VCF pointers named the wrong field), `artifact.digest` on seven,
 and it *gained* a `resolution_signature` on the four table-only modules that never had one. The suite
@@ -143,7 +143,7 @@ case**), then the detail. Severity is *how much it costs to do*, not how urgent.
 # 0.6 — what a minor permits
 
 **Kept as the record of a settled question.** Every ✅ below that named a 0.6 item has since been
-built — see [ROADMAP_HISTORY § 0.6.0](ROADMAP_HISTORY.md#060--the-design-round-built) — so this table
+built — see [ROADMAP_HISTORY § 0.6.0](history/ROADMAP_HISTORY_0_6.md#060--the-design-round-built) — so this table
 now answers *why each was legal in a minor*, which is the part worth not re-deriving. The rows that
 stay open (RM23, RM16, RM28, RM15) are the ones deferred to a later line.
 
@@ -281,10 +281,10 @@ evidence that anything is.
 
 **The six patches filed beside them shipped on 2026-08-20**
 (RM104–RM107, RM109, RM111) and moved to
-[ROADMAP_HISTORY § the 2026-08-19 doc-audit patch round](ROADMAP_HISTORY.md#the-2026-08-19-doc-audit-patch-round--six-of-the-eight-fixed).
+[ROADMAP_HISTORY § the 2026-08-19 doc-audit patch round](history/ROADMAP_HISTORY_0_6.md#the-2026-08-19-doc-audit-patch-round--six-of-the-eight-fixed).
 
 RM88 and RM93–RM100 all **shipped in 0.6.1** and moved to
-[ROADMAP_HISTORY § 0.6.1](ROADMAP_HISTORY.md#061--the-eight-the-documents-caught-the-two-the-fixes-found-and-rm88),
+[ROADMAP_HISTORY § 0.6.1](history/ROADMAP_HISTORY_0_6.md#061--the-eight-the-documents-caught-the-two-the-fixes-found-and-rm88),
 with their rationale and with the five places the eight filings turned out to understate what was
 there. **An empty list here is not an all-clear** — it means nothing is *filed*, and this file has read
 empty twice before while carrying real work one heading down. The live consumer inbox
@@ -304,12 +304,12 @@ release was an undecided policy wearing a technical objection.
 **RM89 closed the same week**: the consumer's answer arrived as
 [S35](CONSUMER_SUGGESTIONS_HISTORY.md) the day after it was filed, the open question it was waiting on
 was the only thing holding it, and building the answer found the defect underneath it — see
-[ROADMAP_HISTORY](ROADMAP_HISTORY.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all).
+[ROADMAP_HISTORY](history/ROADMAP_HISTORY_0_6.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all).
 RM74–RM79, the whole 0.6 dogfooding fix round, shipped on 2026-08-15 and moved
-to [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md#06-dogfooding--the-fix-rounds-own-findings-repaired) — but
+to [ROADMAP_HISTORY.md](history/ROADMAP_HISTORY_0_6.md#06-dogfooding--the-fix-rounds-own-findings-repaired) — but
 read that as *the sprouts are repaired*, and the ground with them: RM76's narrow repair is what shipped
 in that round, and the question it asks from underneath —
-[RM73](ROADMAP_HISTORY.md#rm73-phase-boundary--authoring-is-a-process-and-it-now-has-an-end), the root
+[RM73](history/ROADMAP_HISTORY_0_6.md#rm73-phase-boundary--authoring-is-a-process-and-it-now-has-an-end), the root
 several of these grew from — closed on 2026-08-16, both halves. What remains of it is the
 **promotion**: making a closure a precondition of compiling is major-only and is filed, with its own
 blocker, in [ROADMAP_1_0.md](ROADMAP_1_0.md). Everything that was open on the

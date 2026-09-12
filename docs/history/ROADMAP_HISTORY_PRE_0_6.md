@@ -1032,7 +1032,7 @@ joinable.
 of `fully_resolved` (variants in scope) is the cheap, self-evident half. A second count — table rows
 that cannot be joined — is what the prose actually carries today, and it overlaps the structured
 `checks_run`/`checks_skipped` record S8 asks for. Deciding them together avoids shipping two shapes for
-one question (P5). **Settled in [RM45](../ROADMAP_HISTORY.md#rm45--the-manifest-is-rich-about-resolution-and-silent-about-verification-so-unchecked-and-clean-are-one-state-to-a-downloader): three separate things, three homes.**
+one question (P5). **Settled in [RM45](ROADMAP_HISTORY_0_6.md#rm45--the-manifest-is-rich-about-resolution-and-silent-about-verification-so-unchecked-and-clean-are-one-state-to-a-downloader): three separate things, three homes.**
 The denominator is this item's, and it is not blocked by RM45; the unjoinable-row count belongs with
 RM43's warning; neither is a member of a verification-checks map, because resolution is not a
 verification pass and folding a row count into "which checks ran" overloads that map's axis (P5).

@@ -417,7 +417,7 @@ ledger row above, not a detail of it · **Owner** compiler · **Found by** probi
 *warn* on an absent closure, 2026-08-16 — the answer for 0.x turned out to be the reason the 1.0 half is
 blocked
 
-The mechanism [shipped in 0.6.0](ROADMAP_HISTORY.md#rm73-phase-boundary--authoring-is-a-process-and-it-now-has-an-end)
+The mechanism [shipped in 0.6.0](history/ROADMAP_HISTORY_0_6.md#rm73-phase-boundary--authoring-is-a-process-and-it-now-has-an-end)
 — `Closure`, `just-dna-compiler close`, and a warning when a compile publishes none — and it is
 warn-only and charter-clean. Promoting that warning to a refusal is what this row is, and it does not
 work as written:

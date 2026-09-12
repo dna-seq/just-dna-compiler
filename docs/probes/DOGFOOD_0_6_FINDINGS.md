@@ -20,7 +20,7 @@ decision, and the entry says why each candidate repair is wrong.
 
 > **Status, 2026-08-15.** **RM74–RM79 are all done** — the six findings they carry (R2-1, R2-11, R2-3;
 > R2-13, R2-4, R2-2) are marked `(done)` in the table below, with the outcomes in
-> [ROADMAP_HISTORY § 0.6 dogfooding](../ROADMAP_HISTORY.md#06-dogfooding--the-fix-rounds-own-findings-repaired).
+> [ROADMAP_HISTORY § 0.6 dogfooding](../history/ROADMAP_HISTORY_0_6.md#06-dogfooding--the-fix-rounds-own-findings-repaired).
 > Two things they turned up that were not in the findings: **R2-13's hole is on the PharmVar leg too**,
 > which the ledger did not say and which matters because fixing one leg makes *"one source failing must
 > not sink the pass"* true in one direction only; and **R2-1's write side had a decisive refutation

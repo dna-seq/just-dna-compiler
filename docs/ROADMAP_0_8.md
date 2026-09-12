@@ -276,7 +276,7 @@ the injected-cofactor half closed, the predicate half stays here · **Owner** fo
 most of it, and the 0.6 review removed the rest of the cofactor axis. What is left is genuinely small
 and genuinely unsolved.
 
-**The corpus this was parked waiting for has its first real entry (2026-09-02, [RM174](ROADMAP_HISTORY.md#rm174--a-claim-about-two-variants-in-trans-is-written-as-two-single-variant-rows-because-no-brick-holds-the-real-subject)).**
+**The corpus this was parked waiting for has its first real entry (2026-09-02, [RM174](history/ROADMAP_HISTORY_0_6.md#rm174--a-claim-about-two-variants-in-trans-is-written-as-two-single-variant-rows-because-no-brick-holds-the-real-subject)).**
 Not an argument — an adopted source whose grammar was counted. CIViC publishes molecular profiles as
 boolean expressions over variants: of 1,964 profiles, **209 are multi-variant** — `AND` 141, `OR` 72,
 `NOT` 1 — and they nest (`BRAF Amplification AND ( BRAF V600E OR BRAF V600K )`). Both halves of this
@@ -708,10 +708,10 @@ is filed rather than cross-referenced.
 Both were found by writing the code, not by planning it, and neither is a defect in what shipped —
 recorded here because this entry is where a reader meets the publisher.
 
-- **[RM88](ROADMAP_HISTORY.md#rm88--republishing-without-bumping-version-overwrites-a-versioned-path-with-different-bytes)** — the versioned path cannot notice that the version has *not* moved, so a republish
+- **[RM88](history/ROADMAP_HISTORY_0_6.md#rm88--republishing-without-bumping-version-overwrites-a-versioned-path-with-different-bytes)** — the versioned path cannot notice that the version has *not* moved, so a republish
   without a `version:` bump overwrites it with different bytes. Refusing needs a remote read *and* an
   undecided policy (warn / refuse / `--force`), which is why it is an item and not a fix.
-- **[RM89](ROADMAP_HISTORY.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all)** —
+- **[RM89](history/ROADMAP_HISTORY_0_6.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all)** —
   `_REQUIRED` still demanded all three SNP-core parquets, so a table-only module could not be published
   at all: seven of the sixteen reference examples, measured. Its open question — what the discovery path
   actually needs open — went to the same team as the two asks above rather than as a third message, and

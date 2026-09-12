@@ -25,7 +25,7 @@ as an explanation that is correct; read as a **criterion** it sizes every change
 free — and it cannot object, because `content_signature` excludes derived values by construction, so
 the test is incapable of failing there.
 
-[RM121](ROADMAP_HISTORY.md#rm121--manifeststats-described-one-table-and-was-published-as-if-it-described-the-module)
+[RM121](history/ROADMAP_HISTORY_0_6.md#rm121--manifeststats-described-one-table-and-was-published-as-if-it-described-the-module)
 was sized exactly that way: `manifest.stats.genes` had its derivation corrected in a patch, on the
 recorded ground that *"`manifest.json` is outside `artifact.digest` and `stats` outside
 `content_signature`, measured."* True, and incapable of being false.

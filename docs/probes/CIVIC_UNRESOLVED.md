@@ -11,7 +11,7 @@ numbers live in [CIVIC_SURVEY](CIVIC_SURVEY.md); the per-variant detail lives he
 
 
 **This is evidence, never contract.** The decisions live in
-[RM48](../ROADMAP_HISTORY.md#rm48--an-hg19-coordinate-has-no-supported-path-into-a-grch38-module-and-liftover-is-the-wrong-primitive)
+[RM48](../history/ROADMAP_HISTORY_0_6.md#rm48--an-hg19-coordinate-has-no-supported-path-into-a-grch38-module-and-liftover-is-the-wrong-primitive)
 and [RM153](../ROADMAP_HISTORY.md#rm153--the-identity-civic-does-not-publish-recovered-through-the-registry-rather-than-by-lifting-a-coordinate);
 where this document and those disagree, they win.
 
@@ -76,7 +76,7 @@ count below is over the **dated `01-Aug-2026` release**, which is **`accepted`-o
 rows). The API default is `NON_REJECTED` and is 2.35× larger; a number from one surface is not
 comparable with a number from the other. Where the API was consulted, it is said so on the line.
 
-**This is evidence, never contract.** The decisions live in [RM48](../ROADMAP_HISTORY.md#rm48--an-hg19-coordinate-has-no-supported-path-into-a-grch38-module-and-liftover-is-the-wrong-primitive)
+**This is evidence, never contract.** The decisions live in [RM48](../history/ROADMAP_HISTORY_0_6.md#rm48--an-hg19-coordinate-has-no-supported-path-into-a-grch38-module-and-liftover-is-the-wrong-primitive)
 and [RM153](../ROADMAP_HISTORY.md#rm153--the-identity-civic-does-not-publish-recovered-through-the-registry-rather-than-by-lifting-a-coordinate);
 where this document and those disagree, they win. Nothing here re-argues either — RM153 already
 re-closed liftover on a count of 131 variants and left the residue unexamined. This document opens

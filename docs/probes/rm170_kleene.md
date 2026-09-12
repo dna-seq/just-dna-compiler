@@ -1,6 +1,6 @@
 # RM170 — Kleene shape: None stays a neighbour, the warning is the product
 
-**Subject:** the authoring shape for [ROADMAP.md § RM170](../ROADMAP_HISTORY.md#rm170--a-source-that-both-asserts-and-refutes-a-claim-is-muddy-water-and-nothing-tells-an-author).
+**Subject:** the authoring shape for [ROADMAP.md § RM170](../history/ROADMAP_HISTORY_0_6.md#rm170--a-source-that-both-asserts-and-refutes-a-claim-is-muddy-water-and-nothing-tells-an-author).
 **Measurements:** [CONTRADICTION_CORPORA](CONTRADICTION_CORPORA.md). Every number this note leans on was measured there; this file does not re-derive them.
 **Date:** 2026-09-02.
 
@@ -119,7 +119,7 @@ One evidence item, two variants (VHL S183L **and** VHL D126N).
 
 **Solves:** the parquet's lie that this is two single-variant rebuttals. `_submitted_evidence_row` stamps `molecular_profile_id` from the variant's single-variant profile, so the item is written as two rows claiming MP 2037 and 2406.
 
-**How:** the finding keys on **evidence_id**, then fans out to authored rows. One finding, two subjects. Text says "combination genotype, profile 5278." Do not wait for [RM174](../ROADMAP_HISTORY.md#rm174--a-claim-about-two-variants-in-trans-is-written-as-two-single-variant-rows-because-no-brick-holds-the-real-subject) to ship the check — but do not count "3 variants, 3 independent refutes." Honest count: **one single-variant pair (2428) + one combo item touching two loci.**
+**How:** the finding keys on **evidence_id**, then fans out to authored rows. One finding, two subjects. Text says "combination genotype, profile 5278." Do not wait for [RM174](../history/ROADMAP_HISTORY_0_6.md#rm174--a-claim-about-two-variants-in-trans-is-written-as-two-single-variant-rows-because-no-brick-holds-the-real-subject) to ship the check — but do not count "3 variants, 3 independent refutes." Honest count: **one single-variant pair (2428) + one combo item touching two loci.**
 
 ### H. Accepted-only snapshot
 

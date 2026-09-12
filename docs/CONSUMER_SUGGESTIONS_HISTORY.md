@@ -334,7 +334,7 @@ sit together here. All four are answered.*
 
 ## S29 — `annotations.parquet` is keyed by nothing a consumer can join on
 
-**Status — fixed in 0.6.0 as [RM80](ROADMAP_HISTORY.md#rm80--annotationsparquet-had-no-column-for-the-thing-that-distinguishes-its-rows), 2026-08-16.** Your second
+**Status — fixed in 0.6.0 as [RM80](history/ROADMAP_HISTORY_0_6.md#rm80--annotationsparquet-had-no-column-for-the-thing-that-distinguishes-its-rows), 2026-08-16.** Your second
 candidate, and your closing sentence is the one that decided it: the table could not state its own key,
 so we made the key statable rather than picking a dedup rule for you.
 
@@ -1111,7 +1111,7 @@ line. The finding it carries is the by-product, and it is the half that mattered
 reported. Fixed in the tree on 2026-08-17, in `just-dna-compiler` + `just-dna-enricher` 0.6.0, which
 has since been cut and tagged `v0.6.0` — this line said "NOT cut, the newest tag is `v0.5.4`" when it
 was written and was corrected on 2026-08-17 once the tag landed. Tagged is not published, so check
-[CHANGELOG.md](CHANGELOG.md) and the index before building against it.** [RM89](ROADMAP_HISTORY.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all) is closed
+[CHANGELOG.md](CHANGELOG.md) and the index before building against it.** [RM89](history/ROADMAP_HISTORY_0_6.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all) is closed
 by this and moved to history; RM84 keeps only its consumer half, which is yours.
 
 **Your finding is right, and probing it found the consequence neither of us had stated: the published
@@ -1300,9 +1300,9 @@ three items that make the underlying want satisfiable shipped in the tree on 202
 packages read **0.6.0, which has since been cut and tagged `v0.6.0`** — this line said "NOT cut, the
 newest tag is `v0.5.4`" when it was written and was corrected on 2026-08-17 once the tag landed.
 Tagged is not published, so check [CHANGELOG.md](CHANGELOG.md) before building against any of this.
-[RM90](ROADMAP_HISTORY.md#rm90--gwas-effect-sizes-as-a-derived-fact-table-because-they-may-not-go-in-weight),
-[RM91](ROADMAP_HISTORY.md#rm91--a-study-states-an-effect-magnitude-relative-to-no-allele) and
-[RM92](ROADMAP_HISTORY.md#rm92--the-one-magnitude-in-the-format-with-no-unit-beside-it).
+[RM90](history/ROADMAP_HISTORY_0_6.md#rm90--gwas-effect-sizes-as-a-derived-fact-table-because-they-may-not-go-in-weight),
+[RM91](history/ROADMAP_HISTORY_0_6.md#rm91--a-study-states-an-effect-magnitude-relative-to-no-allele) and
+[RM92](history/ROADMAP_HISTORY_0_6.md#rm92--the-one-magnitude-in-the-format-with-no-unit-beside-it).
 
 **Reproduced, and it is worse than you said.** `weight` is authored **zero times** in this repository.
 Nine of the sixteen reference examples carry a `variants.csv`; four carry a `weight` column — 42 rows
@@ -1403,7 +1403,7 @@ escaping exception is at least the tier's own type rather than `httpx`'s.
 what shipped: a per-pass unavailability subclass, `FrequencyUnavailable(FrequencyEnrichmentError)` and
 five siblings, so `except FrequencyEnrichmentError` starts working and `except FrequencyUnavailable`
 becomes possible. Filed and detailed as
-[RM101](ROADMAP_HISTORY.md#rm101--a-pass-raises-its-clients-exception-type-which-its-own-documented-type-does-not-cover).
+[RM101](history/ROADMAP_HISTORY_0_6.md#rm101--a-pass-raises-its-clients-exception-type-which-its-own-documented-type-does-not-cover).
 **Shipped in `just-dna-enricher` 0.6.2**, tagged `v0.6.2`. A partial cut: `just-dna-format` and
 `just-dna-compiler` are unchanged and stay at `0.6.1`, so upgrade the enricher alone.
 
@@ -2539,7 +2539,7 @@ to generate each from. Two of the three had none. That is the report.*
 ## S47 — the machine-produced fact tables have no public (csv → row model) enumeration
 
 **Status — accepted and shipped in `just-dna-compiler` today, filed as
-[RM112](ROADMAP_HISTORY.md#rm112--the-machine-produced-tables-have-no-public-csv---row-model-resolver).**
+[RM112](history/ROADMAP_HISTORY_0_6.md#rm112--the-machine-produced-tables-have-no-public-csv---row-model-resolver).**
 `hints.DERIVED_TABLE_MODELS` (the roster) and `hints.derived_model_for(csv_name)` (the resolver) are
 public as of this commit. Drop the hand-kept seven-entry map and the cross-package roster both.
 
@@ -2620,7 +2620,7 @@ did not notice the eighth table.
 ## S48 — a table kind's natural-key *columns* are not obtainable, only its key *values*
 
 **Status — accepted and shipped in `just-dna-compiler` + `just-dna-format` today, filed as
-[RM113](ROADMAP_HISTORY.md#rm113--a-table-kinds-natural-key-columns-were-not-obtainable-only-its-key-values).**
+[RM113](history/ROADMAP_HISTORY_0_6.md#rm113--a-table-kinds-natural-key-columns-were-not-obtainable-only-its-key-values).**
 `hints.key_fields(csv_name)` is public, and `describe_table`'s dict now carries a `key` block. Delete
 your strings; keep the test that made you find this.
 
@@ -2710,7 +2710,7 @@ append a row.
 ## S49 — `COMPANION_KINDS` pulls `variants.csv` in behind `studies.csv`, which RM47 made wrong for a binning module
 
 **Status — accepted and shipped in `just-dna-compiler` today, filed as
-[RM114](ROADMAP_HISTORY.md#rm114--the-scaffold-pulled-variantscsv-in-behind-studiescsv-which-rm47-made-wrong).**
+[RM114](history/ROADMAP_HISTORY_0_6.md#rm114--the-scaffold-pulled-variantscsv-in-behind-studiescsv-which-rm47-made-wrong).**
 `scaffold.companions_for(kinds)` is public; call it instead of reading `COMPANION_KINDS` directly and
 your surface stops contradicting your own composition rule.
 
@@ -2868,7 +2868,7 @@ case `follow`'s 404 arm deliberately produces.
 
 ## S51 — a derived sidecar's *merge key* lives inside its pass, so no consumer can reproduce it
 
-**Status — accepted, shipped as [RM115](ROADMAP_HISTORY.md#rm115--a-derived-sidecars-merge-key-lived-inside-the-pass-that-writes-it) in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published).**
+**Status — accepted, shipped as [RM115](history/ROADMAP_HISTORY_0_6.md#rm115--a-derived-sidecars-merge-key-lived-inside-the-pass-that-writes-it) in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published).**
 `hints.key_fields(csv_name)` now answers for `resolution.csv` and all seven fact CSVs — it already
 routed derived names through `derived_model_for` after RM113, so the gap was that the seven models
 declared no key and it correctly withheld. Your candidate fix is what shipped, in the tier you named:
@@ -3233,7 +3233,7 @@ works if the check keeps reporting them.
 
 ## S53 — `content_signature` is whole-module-only, so anything finer has to restate `_resolve_spec_defaults` and re-derive the table roster
 
-**Status — accepted; your candidate fix shipped as [RM116](ROADMAP_HISTORY.md#rm116--content_signature-returned-only-its-hash-so-anything-finer-restated-the-fold) in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published), and the docs half with it.**
+**Status — accepted; your candidate fix shipped as [RM116](history/ROADMAP_HISTORY_0_6.md#rm116--content_signature-returned-only-its-hash-so-anything-finer-restated-the-fold) in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published), and the docs half with it.**
 `compiler.spec_tables(spec_dir) -> tuple[dict[str, list[BaseModel]], str]` is public, with the
 signature and docstring you proposed; `content_signature` is now `_content_signature(*spec_tables(...))`
 and no logic moved. The `ValueError`-on-invalid-CSV contract carries over unchanged, and a test pins it
@@ -3357,7 +3357,7 @@ we took on authority rather than on reasons. `S11` is ours, and it did not survi
 
 ## S54 — `quotes_found` is satisfied by the article's own title, and four published modules do exactly that
 
-**Status — accepted, shipped as [RM118](ROADMAP_HISTORY.md#rm118--quotes_found-could-not-fail-on-a-title-and-four-published-modules-are-titles) in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published). Your candidate fix, both halves of it.**
+**Status — accepted, shipped as [RM118](history/ROADMAP_HISTORY_0_6.md#rm118--quotes_found-could-not-fail-on-a-title-and-four-published-modules-are-titles) in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published). Your candidate fix, both halves of it.**
 Reproduced against our own tree before writing anything, and your numbers hold: 2045/33/33,
 695/19/19, 859/26/26, 69/3/3 — row count, distinct PMIDs and distinct quotes, one quote per PMID on
 all four. The quotes are titles.
@@ -3517,7 +3517,7 @@ PMID, equal to the title, on all four.
 
 ## S55 — we withdraw the reasoning behind `attestation_bearing`, and ask for the attributor it was missing
 
-**Status — accepted; `StudyRow.curator` shipped as [RM120](ROADMAP_HISTORY.md#rm120--the-table-where-the-attestation-lives-could-not-name-its-attributor) in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published). Your whole ask, verbatim as you wrote it.**
+**Status — accepted; `StudyRow.curator` shipped as [RM120](history/ROADMAP_HISTORY_0_6.md#rm120--the-table-where-the-attestation-lives-could-not-name-its-attributor) in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published). Your whole ask, verbatim as you wrote it.**
 
 **We think the retraction is right, and it is the most useful thing anyone has sent this inbox.** Our
 own answer to S11 turned on *"nothing establishes a human ever looked"*, and you are correct that the
@@ -3699,7 +3699,7 @@ that is about the sidecar and the manifest rather than about the quote itself.*
 
 ## S56 — `literature.csv` can claim `quotes_authored: 0` beside 859 authored quotes, and nothing compares them
 
-**Status — accepted, both halves shipped as [RM119](ROADMAP_HISTORY.md#rm119--a-citation-sidecar-could-contradict-its-own-studiescsv-and-the-manifest-turned-it-into-a-confident-zero) in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published).**
+**Status — accepted, both halves shipped as [RM119](history/ROADMAP_HISTORY_0_6.md#rm119--a-citation-sidecar-could-contradict-its-own-studiescsv-and-the-manifest-turned-it-into-a-confident-zero) in the tree (cut and tagged as 0.6.5 on 2026-08-20; not published).**
 Reproduced on our own copy of the data before writing: `aggression_anger/literature.csv` reads
 `quotes_authored=0` on all three rows while its `studies.csv` carries 69 quotes — 65 of them on pmid
 29500382, the row you quoted.
@@ -3841,7 +3841,7 @@ the live inbox was empty, so a consumer appending a report writes no group headi
 ## S57 — `manifest.stats` is computed from `variants.csv` alone, so a module without one is invisible to a gene search
 
 **Status — accepted; it is the first reading, and the fix shipped in the tree as
-[RM121](ROADMAP_HISTORY.md#rm121--manifeststats-described-one-table-and-was-published-as-if-it-described-the-module)
+[RM121](history/ROADMAP_HISTORY_0_6.md#rm121--manifeststats-described-one-table-and-was-published-as-if-it-described-the-module)
 (not yet cut; see the standing rule at the top of this file).** `stats` describes **the module**.
 `stats.genes` is now a union over every authored table kind carrying a `gene` column, so nothing needs
 re-filing in the registry's intake and your skills can stop telling authors this is a known gap.
@@ -3996,7 +3996,7 @@ to a reader right now.
 ## S59 — three attestations record a check that could not have failed
 
 **Status — the generalisation is accepted and shipped as
-[RM123](ROADMAP_HISTORY.md#rm123--two-attestations-recorded-a-check-whose-scope-they-could-not-state)
+[RM123](history/ROADMAP_HISTORY_0_6.md#rm123--two-attestations-recorded-a-check-whose-scope-they-could-not-state)
 in the tree (not yet cut). Two of your three reproduced; the third shipped four releases before the
 enricher you are running.** Taking them in your order.
 
@@ -4261,7 +4261,7 @@ not ask you to take it. What we are asking for is the place to put the answer.
 ## S61 — `lookup_variant` reports "position remains unset" in the same payload that carries the position
 
 **Status — accepted; shipped in `just-dna-enricher` on 2026-08-21 as
-[RM125](ROADMAP_HISTORY.md#rm125--a-cache-link-answered-a-question-only-the-caller-could-answer-and-said-the-opposite).** Reproduced exactly as
+[RM125](history/ROADMAP_HISTORY_0_6.md#rm125--a-cache-link-answered-a-question-only-the-caller-could-answer-and-said-the-opposite).** Reproduced exactly as
 written, without network: a populated Ensembl snapshot that simply lacks `rs4988235`, a live leg that
 answers `2:135851076`, and the payload comes back carrying the coordinate and *"position remains
 unset"* together.
