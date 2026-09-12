@@ -33,7 +33,6 @@ import yaml
 
 _ROOT = Path(__file__).resolve().parents[2]
 _CONFIG = _ROOT / "mkdocs.yml"
-_GEN_SCRIPT = _ROOT / "scripts" / "gen_api_pages.py"
 
 
 class _TagTolerantLoader(yaml.SafeLoader):
@@ -109,16 +108,31 @@ def _excluded(patterns: str, walked: set[str]) -> set[str]:
     return matched
 
 
-def _generated_prefixes() -> set[str]:
-    """The site paths `scripts/gen_api_pages.py` writes, read out of the script rather than restated.
+def _gen_scripts() -> list[Path]:
+    """Every script the `gen-files` plugin runs, read off the config rather than listed here.
 
-    A nav entry may legitimately name a page that is not in `docs/` — the home page is the README and
-    the API reference is built from the packages' docstrings, both written into the build by
-    `mkdocs-gen-files` so that nothing lands on disk. Naming them here as literals would be a second
-    copy of the script's behaviour, and the copy is what goes stale; so they are derived from the
-    script's own string literals, which is how `test_build_call_sites.py` reads the CLI.
+    It was a single hardcoded path until a second generator (the CLI reference) was added, at which
+    point the guard went on checking one script and answered about the other by not knowing it existed
+    — `@registry-completeness`, the defect shape this file's own docstring is about. The plugin's
+    `scripts:` list is the registry, so this walks it.
     """
-    tree = ast.parse(_GEN_SCRIPT.read_text(encoding="utf-8"))
+    for plugin in _config()["plugins"]:
+        if isinstance(plugin, dict) and "gen-files" in plugin:
+            return [_ROOT / s for s in plugin["gen-files"]["scripts"]]
+    raise AssertionError("mkdocs.yml declares no `gen-files` plugin, so no page is generated at all")
+
+
+def _generated_prefixes() -> set[str]:
+    """The site paths the gen-files scripts write, read out of them rather than restated.
+
+    A nav entry may legitimately name a page that is not in `docs/` — the home page, the API reference
+    built from the packages' docstrings, and the CLI reference walked off the Typer apps, all written
+    into the build by `mkdocs-gen-files` so that nothing lands on disk. Naming them here as literals
+    would be a second copy of each script's behaviour, and the copy is what goes stale; so they are
+    derived from the scripts' own string literals, which is how `test_build_call_sites.py` reads the
+    CLI.
+    """
+    tree = ast.parse("\n".join(p.read_text(encoding="utf-8") for p in _gen_scripts()))
     return {
         node.value
         for node in ast.walk(tree)
@@ -181,8 +195,8 @@ def test_every_nav_entry_exists_or_is_generated_by_the_build() -> None:
         if entry not in walked and not any(g == entry or g.startswith(entry) for g in generated)
     ]
     assert not missing, (
-        "these nav entries point at neither a file under docs/ nor anything "
-        f"scripts/gen_api_pages.py writes: {missing}"
+        "these nav entries point at neither a file under docs/ nor anything the gen-files scripts "
+        f"write: {missing}"
     )
 
 

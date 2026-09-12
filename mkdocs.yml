@@ -142,6 +142,7 @@ plugins:
       # Writes the home page and the API reference into the build only — nothing lands in `docs/`.
       scripts:
         - scripts/gen_api_pages.py
+        - scripts/gen_cli_pages.py
   - literate-nav:
       nav_file: SUMMARY.md
   - mkdocstrings:
@@ -192,20 +193,25 @@ validation:
 # its full `# H1` as the document title. Nothing about the files changes.
 nav:
   - Home: index.md
-  - Charter:
-      - Constitution: CONSTITUTION.md
-      - Amendment history: CONSTITUTION_AMENDMENTS_HISTORY.md
+  - Get started:
+      - Install and first run: GETTING_STARTED.md
+      - Use a compiled module: CONSUMING.md
+      - Compile a module: COMPILING.md
+      - Resolve, draft and enrich: ENRICHING.md
+      - FAQ: FAQ.md
+  - Cookbook:
+      - What you can build: USE_CASES.md
+      - Worked examples: REFERENCE_EXAMPLES.md
+  # SCHEMAS → COMPILER → ENRICHER is the dependency order, which is also the order a reader needs them
+  # in; `navigation.footer` turns that into a prev/next chain.
   - Reference:
       - Schema: SCHEMAS.md
       - Compiler: COMPILER.md
       - Enricher: ENRICHER.md
-  - Across the tiers:
       - Module lifecycle: MODULE_LIFECYCLE.md
       - Cache surface: CACHE_SURFACE.md
-  - Using it:
-      - Use cases: USE_CASES.md
-      - Reference examples: REFERENCE_EXAMPLES.md
-      - FAQ: FAQ.md
+      - CLI reference: cli/
+      - Python API: api/
   # **Both guides, and the archived one is here on purpose.** `INTEGRATION_0_6.md` moved to
   # `docs/history/` as superseded, which it is *for a reader on 0.6* — and that reader is not the one who
   # needs it. Somebody still on 0.5.4 upgrades through 0.6 first, and *Upgrading* is the one place they
@@ -218,12 +224,28 @@ nav:
   - Upgrading:
       - "0.6.6 → 0.7": INTEGRATION_0_7.md
       - "0.5.4 → 0.6 (archived)": history/INTEGRATION_0_6.md
-  - Changelog: CHANGELOG.md
-  - API reference: api/
+  # **The roadmap ledgers are in the sidebar, and they are the one group here written for a maintainer.**
+  # They were in `not_in_nav` on the argument that a reader wading through shipped-roadmap rationale is
+  # not reaching the schema reference — true of a sidebar where they sat beside it, false of a group a
+  # reader opens on purpose. A consumer asking *is this a bug or a decision* has nowhere else to look:
+  # the answer is an `RMn`, most of them shipped, and every reference page cites them by number. The
+  # labels say what each file is so nobody opens one expecting a guide.
+  - Releases:
+      - Changelog: CHANGELOG.md
+      - Shipped items, with their rationale: ROADMAP_HISTORY.md
+      - Open items: ROADMAP.md
+      - Deferred to 0.8: ROADMAP_0_8.md
+      - Deferred to 1.0: ROADMAP_1_0.md
+      - Index of every item: RM_TOC.md
+  - Project:
+      - Constitution: CONSTITUTION.md
+      - Amendment history: CONSTITUTION_AMENDMENTS_HISTORY.md
 
 # Built and searchable, absent from the sidebar — see rule 2 at the top. Everything here is a
-# development *record*: the roadmap ledgers, the consumer inbox and its archive, the agent gotcha book,
-# the probe rounds, the design threads, the code-first audit, and the vendored upstream files.
+# development *record*: the consumer inbox and its archive, the agent gotcha book, the probe rounds,
+# the design threads, the code-first audit, and the vendored upstream files. The roadmap ledgers used
+# to be in this half and are now a *Releases* group — a reader looking up the `RMn` a reference page
+# cites has nowhere else to go, and they are the record most often cited outward.
 not_in_nav: |
   AGENT_NOTES.md
   BLIND_REDERIVATION.md
@@ -232,11 +254,6 @@ not_in_nav: |
   CONSUMER_TRIAGE_LOOP.md
   DRAFTING_MATURITY.md
   PUBMIND_ASSESSMENT.md
-  RM_TOC.md
-  ROADMAP.md
-  ROADMAP_0_8.md
-  ROADMAP_1_0.md
-  ROADMAP_HISTORY.md
   audit/
   history/
   # Re-included, gitignore style: this one archived page is in the nav (see the *Upgrading* comment

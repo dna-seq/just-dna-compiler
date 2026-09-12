@@ -56,11 +56,14 @@ custom apex domain, which a project site inherits.
 
 Material for MkDocs as the theme, [ProperDocs](https://properdocs.org/) as the builder (MkDocs 1.x
 upstream is unmaintained and 2.0 drops the plugin system; `pyproject.toml`'s `docs` group carries the
-reasoning). The home page is this README and the API reference is generated from the packages'
-docstrings — both written into the build, never onto disk. `nav` is the reader's path; the development
-records — the roadmap ledgers, the consumer inbox, the probe rounds, the agent notes — are built and
-searchable but kept out of the sidebar, and `schema/tests/test_docs_site_nav.py` asserts those two
-halves account for every file in `docs/`.
+reasoning). The site leads with **user documentation** — a landing page, then one task guide each for
+consuming a compiled module, compiling one, and enriching a spec — with the three tier references
+behind them. Two sections are generated into the build and never onto disk: the **API reference** from
+the packages' docstrings, and the **CLI reference** walked off the live Typer command trees, because a
+hand-kept table over ninety commands rots the week after it is written. `nav` is the reader's path; the
+development records — the consumer inbox, the probe rounds, the agent notes — are built and searchable
+but kept out of the sidebar, and `schema/tests/test_docs_site_nav.py` asserts those two halves account
+for every file in `docs/`.
 
 ## Authoring a module
 
