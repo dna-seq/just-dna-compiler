@@ -344,9 +344,10 @@ The trackers further down are the other live part of this file: the reserved-nam
 
 ## RM235 — one property over four registries: an outage reports as a broken identifier, and an unreachable EFO reports as clean
 
-**Severity** high · **Status** open — **a minor, release undecided** · 🔶 filed 2026-09-12 from
-the RM234 investigation · **Owner** enricher · **Motivating case** found while answering S100, not
-reported by a consumer
+**Severity** low · **Status** open — **a patch, release undecided** · 🔶 filed 2026-09-12 from the
+RM234 investigation, **and largely refuted on 2026-09-13 — read the addendum at the bottom before the
+body** · **Owner** enricher · **Motivating case** found while answering S100, not reported by a
+consumer
 
 `IdentifierReport.clean` is `not (stale_rsids or stale_traits or stale_genes or gene_loci or
 stale_pgs)`, and `check-identifiers --strict` exits 1 on it being false. The three `stale_*` properties
@@ -389,7 +390,59 @@ an all-unknown run; whether `gene_loci` (a relationship, not a registry answer) 
 whether `verification_record` for these checks already skips correctly the way ACMG's does, which is
 what made RM234 cheap — that has not been checked.
 
-· *from* the RM234 investigation · *related* RM234, RM94, S86
+### Addendum, 2026-09-13 — the measurement above was taken on the wrong instrument
+
+**Everything above about unreachable registries is wrong, and the body is kept rather than edited
+because what it got wrong is the instructive part.** The table was produced by constructing
+`IdentifierReport` objects by hand and reading the properties off them. The states it gave those
+objects are not states the real pipeline writes for an outage, and one of them the type does not have
+at all:
+
+- `RsidStatus.state` is `live | merged | absent | withdrawn`. There is no `unchecked` member, and
+  `check_identifiers` **never populates `report.rsids`** — rsIDs are checked in `enrich()`, which says
+  so in its own docstring. `stale_rsids` is empty in every run of this command. The rsID leg's
+  three-way split already exists one module over and is the pattern this item was asking for:
+  `unreachable_rsids` (asked, failed), `unconsulted_rsids` (nobody looked), `unresolved` (no position).
+- `GeneStatus(state="unknown")` means HGNC **answered** and holds the symbol under neither
+  `fetch/symbol` nor `fetch/prev_symbol`. That is a broken symbol, not an outage.
+- `TraitStatus(state="unchecked")` means the CURIE's prefix is outside `_ONTOLOGY_IRI` — a local fact
+  decided before any request. `stale_traits` excludes it correctly, and `_trait_record` already splits
+  `unresolvable` from `asked`.
+
+**An actual outage raises.** Measured by running the real path against a port nothing listens on
+rather than by building a model:
+
+```
+OntologyClient(ols4_base="http://127.0.0.1:9/ols4", hgnc_base="http://127.0.0.1:9/hgnc")
+check_identifiers(spec_dir=…, check_pgs=False, write=False)
+→ IdentifierUnavailable: http://127.0.0.1:9/ols4/ontologies/efo/terms could not be reached
+```
+
+The CLI catches that, writes an `unreachable` `VerificationRecord` for all five checks with the detail
+string, prints `IDENTIFIER CHECK FAILED`, and exits 1. So a registry outage is already a hard refusal
+carrying a structured reason — which is the intended design and not a defect. `@a-disagreement-with-a-
+document-may-be-in-the-instrument` is the rule this item broke, and it was filed by the pass that had
+just applied that rule elsewhere.
+
+### What survives, and it is S100's shape rather than this one's
+
+`clean` is `not (…)` over five lists that are empty when **nothing was asked**, so a run that checked
+nothing answers `True` to a library caller. The CLI does not publish that — it prints *"no identifiers
+were checked"* instead of the green line (S86) — but the property underneath it is what an in-process
+consumer reads, and that is exactly how S100 arrived: just-module-creator wraps these as MCP tools and
+reads the dataclass, not the terminal. RM234 fixed the same vacuity on `AcmgReport.clean` by widening
+to `bool | None`.
+
+**The shape to use here is a result type, not a third truth value** (maintainer, 2026-09-13). A gate
+must be binary — a build that cannot be certified is a `no`, and `--strict` keeps exiting 1 — so the
+unknown does not belong in the verdict. It belongs beside it: `clean` returns a bool-like object,
+falsy when non-empty, carrying the set of reason codes that made it false, with the empty set meaning
+true. That keeps `if report.clean:` working unchanged, needs no tuple in a property's signature, and
+lets a caller ask *why* without a second call. Open question it inherits: whether RM234's `bool | None`
+is retrofitted to the same shape or left as the one exception, since the two `clean` properties would
+otherwise answer in two different kinds.
+
+· *from* the RM234 investigation · *related* RM234, RM94, S86, S100
 
 # Not format scope
 
