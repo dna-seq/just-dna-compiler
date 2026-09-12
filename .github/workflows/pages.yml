@@ -1,0 +1,75 @@
+name: pages
+
+# **Publishes the docs site to GitHub Pages on every push to `main`.**
+#
+# Separate from `ci.yml`'s `docs` job on purpose, and the split is by *audience* rather than by
+# duplication. `ci.yml` builds on a pull request and uploads the result as a plain artifact, so a
+# reviewer can read a rendered page before the change lands; that job needs no special permissions and
+# must be able to run on a fork. This one publishes what is already on `main`, which needs
+# `pages: write`, an OIDC token and a deployment environment — permissions no PR job should hold.
+#
+# **The source is the "GitHub Actions" Pages source, so there is no `gh-pages` branch.** The legacy
+# convention pushed built HTML to a second branch, which meant the repository carried a copy of its own
+# output; here the artifact goes straight from the build to the CDN. `mkdocs.yml`'s `site_url` is already
+# `https://dna-seq.github.io/just-dna-format/`, which is the project-page URL this produces.
+#
+# **No `paths:` filter, deliberately.** The obvious one would be `docs/**` plus `mkdocs.yml`, and it
+# would be wrong: the API reference is generated from the packages' docstrings, so a change under
+# `*/src/**` changes the site too, and the home page is `README.md`. A filter that misses one of those
+# publishes a site that quietly disagrees with the code, which is worse than a job that runs for a
+# minute on a commit that changed nothing visible.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and **`cancel-in-progress: false`**: cancelling a Pages deploy halfway is
+# how a site ends up serving a half-uploaded tree. A queued run simply waits for the one ahead of it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v9.0.0   # exact release — see ci.yml's lint job
+        with:
+          enable-cache: true
+
+      # `enablement: true` turns Pages on for the repository if it is off, which saves the one manual
+      # setting this workflow would otherwise wait for. It is idempotent once enabled.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - run: uv sync --locked --group docs
+
+      # `--strict` here too, so a site is never published with a broken anchor or an unplaced page. The
+      # same command a developer runs locally, and the same one `ci.yml` gates on.
+      - run: uv run --group docs properdocs build --strict -f mkdocs.yml
+
+      # `site_dir` is `data/site` (git-ignored build output, per the house rule that nothing a command
+      # generates lands in the repository root).
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: data/site
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

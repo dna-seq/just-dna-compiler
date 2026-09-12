@@ -62,7 +62,12 @@ moves and there is nothing for a consumer to do. Two things are worth knowing an
   cross-tier and using-it documents, the two integration guides and this changelog are in the sidebar;
   the development records (the roadmap ledgers, the consumer inbox and its archive, the agent notes,
   the probe rounds, the design threads, the code-first audit) are built, linkable and searchable but
-  absent from it. `schema/tests/test_docs_site_nav.py` asserts the two halves
+  absent from it.
+- **It is published to <https://dna-seq.github.io/just-dna-format/>** by `.github/workflows/pages.yml`
+  on every push to `main`, through the *GitHub Actions* Pages source — no `gh-pages` branch, so the
+  repository never carries a copy of its own output. That job holds `pages: write` and an OIDC token,
+  which is why it is separate from `ci.yml`'s `docs` job: the PR-side build uploads a plain artifact for
+  a reviewer and must stay runnable on a fork. `schema/tests/test_docs_site_nav.py` asserts the two halves
   partition `docs/` exactly, so a page added to `docs/` without a place in one of them fails the suite
   rather than quietly rendering without a sidebar entry.
 - **The builder is [ProperDocs](https://properdocs.org/) rather than `mkdocs`.** MkDocs 1.x upstream is

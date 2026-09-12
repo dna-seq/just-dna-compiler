@@ -48,6 +48,10 @@ uv run --group docs properdocs serve -f mkdocs.yml          # live reload on loc
 uv run --group docs properdocs build --strict -f mkdocs.yml # what CI runs; output in data/site/
 ```
 
+Published to <https://dna-seq.github.io/just-dna-format/> by `.github/workflows/pages.yml` on every
+push to `main` — through the *GitHub Actions* Pages source, so there is no `gh-pages` branch and the
+repository carries no copy of its own output.
+
 Material for MkDocs as the theme, [ProperDocs](https://properdocs.org/) as the builder (MkDocs 1.x
 upstream is unmaintained and 2.0 drops the plugin system; `pyproject.toml`'s `docs` group carries the
 reasoning). The home page is this README and the API reference is generated from the packages'
