@@ -203,13 +203,28 @@ def _check(cards: dict[str, list[tuple[str, str]]]) -> None:
                 f"{csv_name} is bound to {bound[sidecar_key(csv_name)]} but its page says it becomes no "
                 "parquet — a registry lookup missed the spelling key"
             )
-    fact_keys = {sidecar_key(csv) for csv, _, _ in compiler._FACT_TABLES}
-    claimed = {
-        sidecar_key(csv) for csv, card in cards.items() if dict(card)["Fact signature"].startswith("yes")
+    # **Compared as models rather than as names, and the honest reason is narrower than the one first
+    # written here.** The rule is a peer session's, reached from its own generator the same day: compute
+    # the ground truth by a path that does not repeat the step under suspicion, or the assertion restates
+    # the bug. The suspect step here is normalising a CSV name through `sidecar_key`, so comparing row
+    # models — identity-comparable, carrying no spelling at all — is the independent path.
+    #
+    # **But the blind spot that justified the change turned out not to exist, measured rather than
+    # assumed.** Stubbing `sidecar_key` to the identity function fails the *name*-based comparison too,
+    # because the page side of it is keyed on pages that already exclude `DEPRECATED_SPELLINGS` while the
+    # registry side does not — so the two disagree on `sources.csv` whatever the normaliser does. What the
+    # model comparison actually buys is a failure message that names a model instead of a spelling, and
+    # independence as a property rather than as a repair. Kept for that, and the reasoning corrected here
+    # rather than left standing as a fix for a defect this file never had.
+    models = _models_by_csv()
+    fact_models = {model for _, _, model in compiler._FACT_TABLES}
+    claimed_models = {
+        models[csv] for csv, card in cards.items() if dict(card)["Fact signature"].startswith("yes")
     }
-    assert claimed == fact_keys, (
+    assert claimed_models == fact_models, (
         "the pages claiming a fact signature disagree with `_FACT_TABLES`. Only on a page: "
-        f"{sorted(claimed - fact_keys)}; only in the registry: {sorted(fact_keys - claimed)}"
+        f"{sorted(m.__qualname__ for m in claimed_models - fact_models)}; only in the registry: "
+        f"{sorted(m.__qualname__ for m in fact_models - claimed_models)}"
     )
 
 
