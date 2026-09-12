@@ -184,14 +184,14 @@ Two consequences worth stating outright:
 
 # Active items
 
-**None** (the count is the `## RMn` sections below — it
+**One — RM235** (the count is the `## RMn` sections below — it
 read "four as of 2026-08-21" for two rounds after it stopped being four, then *not one of them is a
 decision* through the three that are, then *three* for the hour it took a fourth to be filed, then
 *two* until RM151 shipped, then *one* naming RM152, then *one* naming RM153, then none, then seven for
 the 2026-09-01 source-adoption round, then one, **none again on 2026-09-11** when RM164 moved to
-the 0.8 file, **one again on 2026-09-12** when RM232 was filed, and **none again the same day** when
-it shipped — which is why the paragraph under it says to count off the sections rather than off this
-sentence).
+the 0.8 file, **one again on 2026-09-12** when RM232 was filed, none again the same day when it
+shipped, and **one again that evening** when RM235 was filed — which is why the paragraph under it
+says to count off the sections rather than off this sentence).
 
 **RM232 was filed open and shipped in the same session, and the filing is the part worth keeping.**
 It was written into this file the moment it was confirmed rather than when its fix was approved,
@@ -337,6 +337,54 @@ you**, so check which `# ` heading you are under before writing the section, not
 
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
+
+## RM235 — one property over four registries: an outage reports as a broken identifier, and an unreachable EFO reports as clean
+
+**Severity** high · **Status** 🔶 **open**, filed 2026-09-12 from the RM234 investigation · **Owner**
+enricher · **Motivating case** found while answering S100, not reported by a consumer
+
+`IdentifierReport.clean` is `not (stale_rsids or stale_traits or stale_genes or gene_loci or
+stale_pgs)`, and `check-identifiers --strict` exits 1 on it being false. The three `stale_*` properties
+select their members differently, and two of the three do **not** exclude the state that means *this
+registry could not be asked*:
+
+| property | selects | an unreachable registry is… |
+|---|---|---|
+| `stale_rsids` | `state != "live"` | **counted stale** — a dbSNP outage is a broken rsID |
+| `stale_genes` | `state != "approved"` | **counted stale** — an HGNC outage is a retired symbol |
+| `stale_traits` | `state in {"obsolete", "absent"}` | **silently dropped** — an OLS4 outage reports clean |
+
+Measured against the real models, one row per registry, all three unreachable:
+
+```
+stale_rsids : ['unchecked']
+stale_genes : ['unknown']
+stale_traits: []
+clean       : False        # --strict exits 1
+```
+
+So the same absence is a **refusal** on two registries and a **pass** on the third, and neither is
+right. Both directions break the same rule from opposite sides: the withhold arm must not be reported
+as a definite answer (`@a-withhold-cannot-be-delegated-to-a-default-that-is-a-definite-answer`), and
+one registry's outage may not write a verdict about another's subjects
+(`@one-registrys-outage-may-not-speak-for-another`). The refusing direction is the more serious of the
+two, because it fails somebody's build on a third party's downtime, and the author has no way to clear
+it.
+
+**Why this is not RM234's one-line change.** ACMG has a single authority, so *nobody asked* is one
+predicate. This property combines four, so its unknown arm is **per registry** and combines under
+Kleene rather than withhold-on-any-unknown: a stale rsID found while HGNC was unreachable is still
+`False`, and all-clean-with-EFO-unreachable is `None`. That is a design with combination rules, and the
+CLI gates an exit code on the result — the widening is not done while a caller still gates on the
+narrow thing. `pgs_metadata.drift`'s existing separation from `clean` is the precedent for how the
+answer gets split rather than overloaded.
+
+**Open questions the fix has to settle.** Whether `--strict` refuses, passes or reports separately on
+an all-unknown run; whether `gene_loci` (a relationship, not a registry answer) joins the same arm; and
+whether `verification_record` for these checks already skips correctly the way ACMG's does, which is
+what made RM234 cheap — that has not been checked.
+
+· *from* the RM234 investigation · *related* RM234, RM94, S86
 
 # Not format scope
 

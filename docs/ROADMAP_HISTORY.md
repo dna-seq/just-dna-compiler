@@ -75,6 +75,55 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM234 — `AcmgReport.clean` answered `True` about a comparison that never happened
+
+**Severity** medium · **Status** ✅ **shipped 2026-09-12 in the uncut 0.7 line**, enricher only — no
+parquet, model or manifest field changes · **Owner** enricher · **Motivating case** S100
+(just-module-creator), wrapping `check-acmg` as an MCP tool against enricher 0.7.0 from PyPI
+
+`clean` was `not self.mismatches`, and `mismatches` selects the verdicts `not_listed` and `denied`. A
+run that obtained no SF list gives every row the verdict `unchecked`, so `mismatches` was empty and
+`clean` returned **`True`** — a run that compared nothing reporting as a run in which everything
+agreed. Reproduced with every cache lane blanked:
+
+```
+version=None  checked=0  clean=True     # no list consulted
+version=3.3   checked=13 clean=True     # 13 rows compared, all agree
+```
+
+The two `True`s mean entirely different things, and `if report.clean:` takes the first for a pass.
+That is the check-that-cannot-fail shape (`@tautology-zero`), one layer under S54's title-as-quote and
+one layer over S86's "current out of nothing".
+
+**The attestation was already right, which is what made this findable and what shaped the fix.**
+`verification_record` has always returned a `skipped` record on both arms — `"offline"` when no list
+was obtained, `"nothing_to_check"` when one was obtained that no row could be looked up in — so the
+persisted record never claimed a pass while the in-memory property did. The repair is therefore not a
+second condition beside it: `not_consulted` names the arm or `None`, `clean` withholds where it is
+set, and `verification_record` reads the same property. The two answer the same question by
+construction, and a test asserts that equality across all five arms rather than checking either alone
+(`@answered-is-not-absent` — a verdict function with several arms owes a reason function with the same
+arms).
+
+**`None`, never `False`.** Returning `False` would say the module disagrees with a list nobody read,
+which is the report-the-negation move the house algebra refuses; withholding is the third state. The
+reporter proposed both shapes and named this one as matching the rest of the toolchain.
+
+**Behaviour change for callers.** `None` is falsy, so `if report.clean:` was already correct and stays
+correct — it is the spelling the CLI's green line uses, and its `and report.version` guard is now
+redundant and gone. `if not report.clean:` newly fires on an unconsulted run, which is the point.
+`check-acmg --strict` gates on `mismatches` and never on `clean`, so no offline run newly refuses.
+
+**One existing test was pinning the defect.** `test_offline_without_a_snapshot_is_still_unchecked_not_
+absent` asserted `report.clean` on an all-`unchecked` run. Unchecked-not-absent is a real property and
+the verdict list is what carries it; the `clean` line was the bug, asserted. It now reads
+`report.clean is None`.
+
+**The same shape sits one module over and is worse** — see RM235, filed from this investigation rather
+than found by the reporter.
+
+· *from* S100 (just-module-creator) · *related* RM235, RM72, RM94
+
 ## RM233 — `main` was red on two jobs and green on every local run, and the difference was a colour code
 
 **Severity** medium · **Status** ✅ **shipped 2026-09-12**, test infrastructure only — no package

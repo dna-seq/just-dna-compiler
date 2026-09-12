@@ -12,7 +12,9 @@ import pytest
 from just_dna_enricher.acmg import (
     EXPECTED_HEADERS,
     AcmgListUnavailable,
+    AcmgReport,
     AcmgSfError,
+    AcmgVerdict,
     check_acmg_sf,
     fetch_acmg_page,
     parse_acmg_page,
@@ -322,3 +324,66 @@ def test_the_real_reference_examples_hold_up(sf_list):
     # HFE is on the list and the example leaves the column blank throughout: all notes, no defects.
     assert report.clean
     assert len(report.notes) == len(hfe) > 0
+
+
+def _report(version: str | None, verdicts: list[str]) -> AcmgReport:
+    """An `AcmgReport` built directly, so each arm is reachable without arranging a whole run."""
+    return AcmgReport(
+        version=version,
+        verdicts=[
+            AcmgVerdict(row=i, gene="HFE", authored=True, verdict=v, message="")
+            for i, v in enumerate(verdicts, start=1)
+        ],
+    )
+
+
+def test_clean_withholds_on_a_run_that_consulted_no_list() -> None:
+    """`clean` is `None`, never `True`, where no comparison happened (RM234, reported as S100).
+
+    Both arms, because both are a comparison that did not happen: no list obtained at all, and a list
+    obtained that no row could be looked up in. The old property was `not self.mismatches`, and
+    `mismatches` selects `not_listed`/`denied` — so an all-`unchecked` run had an empty `mismatches`
+    and answered `True`, which is the consumer's report.
+    """
+    assert _report(None, ["unchecked", "unchecked"]).clean is None
+    assert _report("3.3", []).clean is None
+    # And the two arms that DID compare something keep a real boolean, in both directions.
+    assert _report("3.3", ["unstated", "unstated"]).clean is True
+    assert _report("3.3", ["not_listed"]).clean is False
+
+
+def test_clean_and_the_attestation_answer_the_same_question() -> None:
+    """`clean is None` exactly where `verification_record` records a skip, over every arm.
+
+    The two read one predicate (`not_consulted`) rather than testing the same conditions apart, and
+    this is the equality that keeps them from drifting: an arm added to one without the other shows
+    up here rather than as a report claiming a pass that the attestation calls a skip — which is the
+    state this repaired.
+    """
+    cases = [
+        _report(None, ["unchecked"]),
+        _report("3.3", []),
+        _report("3.3", ["unstated"]),
+        _report("3.3", ["not_listed"]),
+        _report("3.3", ["denied", "unverifiable"]),
+    ]
+    assert {(r.clean is None, verification_record(r).skipped is not None) for r in cases} == {
+        (True, True),
+        (False, False),
+    }
+
+
+def test_the_reported_run_withholds_rather_than_reporting_a_pass(no_ambient_caches: Path) -> None:
+    """S100's repro, through the real entry point: `--offline` with no snapshot anywhere.
+
+    `no_ambient_caches` is what makes this mean "no snapshot" rather than "whatever this machine
+    happens to hold" — the lane env vars point at an empty directory, which is what a fresh install
+    is and what the reporter's hermetic harness arranged. Without it this test reads the developer's
+    real ACMG snapshot and asserts nothing (`@test-no-credential`).
+    """
+    report = verify_acmg_sf(
+        spec_dir=Path("reference_examples/hfe_hemochromatosis"), mode="best_effort", offline=True
+    )
+    assert report.version is None
+    assert report.checked == 0
+    assert report.clean is None, "a run that consulted no list must not report as one that agreed"

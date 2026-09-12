@@ -34,6 +34,42 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-12 — RM234: `AcmgReport.clean` is three-valued, because it was `True` on a run that compared nothing
+
+**`just-dna-enricher` only — no parquet, model or manifest field changes, and the release class is the
+maintainer's call.** Landed after the 0.7.0 cut, so it is **in the tree and in no version anyone can
+install**.
+
+`AcmgReport.clean` was `not self.mismatches`, and `mismatches` selects the verdicts `not_listed` and
+`denied`. A run that obtained no ACMG SF list gives every row the verdict `unchecked`, so `mismatches`
+was empty and `clean` answered `True` — a comparison that never happened reporting as one in which
+everything agreed. `version=None checked=0 clean=True` and `version=3.3 checked=13 clean=True` are the
+two readings a caller could not tell apart, and `if report.clean:` took the first for a pass.
+
+`clean` is now `bool | None` and withholds on both arms of a non-comparison: no list obtained, and a
+list obtained that no row could be looked up in. It is `None` rather than `False`, because answering
+`False` would say the module disagrees with a list nobody read.
+
+**The attestation was already correct and that shaped the fix.** `verification_record` has always
+returned a `skipped` record on both arms, so the persisted record never claimed a pass while the
+in-memory property did. Rather than testing the same two conditions in two places, a single
+`not_consulted` property names the arm and both read it; a test asserts `clean is None` holds exactly
+where the record is a skip, across all five arms.
+
+**For callers.** `None` is falsy, so `if report.clean:` was correct before and stays correct — the
+CLI's green line uses that spelling and its now-redundant `and report.version` guard is gone. `if not
+report.clean:` **newly fires** on an unconsulted run, which is the intended change. `check-acmg
+--strict` gates on `mismatches` and never on `clean`, so no offline run newly refuses.
+
+Reported as S100 by just-module-creator, who had already written the caller-side guard and filed it so
+the next consumer would not have to. One existing test was asserting the defect.
+
+**Filed alongside: [RM235](ROADMAP.md#rm235--one-property-over-four-registries-an-outage-reports-as-a-broken-identifier-and-an-unreachable-efo-reports-as-clean), open and more serious.** The same shape in
+`IdentifierReport.clean`, which combines four registries and gates `check-identifiers --strict`'s exit
+code: an **unreachable** dbSNP or HGNC is counted as a broken identifier (so a third party's outage
+fails your build), while an unreachable OLS4 is dropped and reports clean. Not fixed here — its unknown
+arm is per registry and combines under Kleene, which is a design rather than a one-line change.
+
 ## 2026-09-12 — the docs site gets a user-facing front (no version bump: nothing shipped in a package changed)
 
 **Documentation only — no package version moves and nothing a consumer holds changes.** The site went

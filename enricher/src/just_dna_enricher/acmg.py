@@ -265,7 +265,41 @@ class AcmgReport:
         return sum(1 for v in self.verdicts if v.verdict != "unchecked")
 
     @property
-    def clean(self) -> bool:
+    def not_consulted(self) -> str | None:
+        """Why no comparison happened, or `None` because one did — the two arms of a skip (RM234).
+
+        `verification_record` reads this rather than re-testing the same two conditions, so the
+        in-memory verdict and the attestation cannot disagree about whether this run compared
+        anything. They did disagree: the record has always returned a `skipped` here while `clean`
+        went on answering `True`.
+        """
+        if self.version is None:
+            return "offline"
+        if not self.checked:
+            return "nothing_to_check"
+        return None
+
+    @property
+    def clean(self) -> bool | None:
+        """Whether every stated `acmg_sf` agrees with the list — or `None` because none was consulted.
+
+        **Three-valued since RM234, and the third state is the reported bug.** `clean` was
+        `not self.mismatches`, and `mismatches` selects `not_listed`/`denied`. A run that reached no
+        list gives every row the verdict `unchecked`, so `mismatches` was empty and `clean` answered
+        `True` — a comparison that never happened reporting as one where everything agreed. The two
+        `True`s a caller saw (`version=3.3 checked=13` and `version=None checked=0`) meant entirely
+        different things, and `if report.clean:` took the second for a pass.
+
+        A check that cannot fail must not report a pass (`@tautology-zero`), and the house rule is to
+        **withhold** rather than report or negate, so the unknown arm is `None` and never `False`:
+        answering `False` would say the module disagrees with a list nobody read. `None` is falsy, so
+        a caller written `if report.clean:` is already correct; one written `if not report.clean:`
+        now fires on an unconsulted run, which is the point of the change.
+
+        The arms are `not_consulted`'s, so this property and the attestation agree by construction.
+        """
+        if self.not_consulted:
+            return None
         return not self.mismatches
 
     @staticmethod
@@ -682,7 +716,7 @@ def verification_record(report: AcmgReport) -> VerificationRecord:
     that can produce a report with no version at all, and it produces one precisely when no list was
     consulted.
     """
-    if report.version is None:
+    if report.not_consulted == "offline":
         return skipped(
             "acmg_secondary_findings",
             "offline",
@@ -693,7 +727,7 @@ def verification_record(report: AcmgReport) -> VerificationRecord:
             ),
             source="acmg",
         )
-    if not report.checked:
+    if report.not_consulted == "nothing_to_check":
         return skipped(
             "acmg_secondary_findings",
             "nothing_to_check",

@@ -1427,7 +1427,9 @@ def check_acmg_(
     except EnrichmentError as exc:
         typer.secho(f"CHECKED, BUT NOT ATTESTED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    if report.clean and report.version:
+    # No `and report.version` guard any more: `clean` is `None` rather than `True` where no list was
+    # consulted (RM234), so the property withholds here instead of the caller remembering to.
+    if report.clean:
         typer.secho("every stated acmg_sf agrees with the list", fg=typer.colors.GREEN)
 
 

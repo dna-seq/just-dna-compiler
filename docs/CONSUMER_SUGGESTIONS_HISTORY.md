@@ -138,6 +138,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S97** `CacheLane` declared no size — accepted, RM229
 - **S98** data written before its licence row, in eight passes — accepted, RM231
 - **S99** PubMind drafter thought unreachable under null terms — does not reproduce; FAQ
+- **S100** `AcmgReport.clean` was `True` on a run that consulted no list — accepted, RM234; spun off RM235
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -4264,3 +4265,96 @@ records today and that is reading rather than copying, which we take to be outsi
 behaviour rather than as a configuration problem the author can fix, so nobody debugs their own
 `use` argument over it. If the answer is (2) or (3) we will reword to match; if (1), nothing on our
 side changes.
+
+# Field notes from just-module-creator
+
+---
+
+---
+
+## S100 — `AcmgReport.clean` is `True` on a run that consulted no list
+
+**Reported by** just-module-creator, 2026-09-12, while wrapping `check-acmg` as an MCP tool
+(enricher 0.7.0 from PyPI).
+
+`clean` is `not self.mismatches`, and `mismatches` selects `verdict in {"not_listed", "denied"}`.
+When no SF list is obtained, every verdict is `unchecked`, so `mismatches` is empty and **`clean`
+returns `True`** — a run that compared nothing reports as a run where everything agreed. `version`
+is `None` and `checked` is `0` beside it, so the information to tell them apart is on the report;
+it is `clean` itself that answers a question it cannot have an answer to.
+
+Repro — no ACMG snapshot reachable (the env vars cleared, which is what a hermetic test harness
+does and what a fresh install *is*):
+
+```python
+from pathlib import Path
+from just_dna_enricher.acmg import verify_acmg_sf
+
+r = verify_acmg_sf(spec_dir=Path("reference_examples/hfe_hemochromatosis"),
+                   mode="best_effort", offline=True)
+print(r.version, r.checked, r.clean)   # None 0 True
+```
+
+With the snapshot present the same call gives `3.3 13 True`, and the two `True`s mean entirely
+different things.
+
+**Why this is worth a change rather than a caller-side guard.** We already guard it — our tool maps
+`clean` to `null` unless `version` is set — but the guard is ours and the next consumer has to
+rediscover it. The rule your own docs apply to a module's green checks is the one at issue: *could
+this check have failed?* Here it could not. A caller writing `if report.clean:` gets a pass from a
+run that never read a list, which is the same shape as the title-as-quote finding (`S54`) one layer
+up.
+
+**Suggested shape, and either would settle it:** make `clean` three-valued — `None` when
+`version is None` — or keep it a `bool` and have it return `False`/raise where nothing was checked.
+The first matches the `None`-is-not-`False` rule the rest of the toolchain holds; the second is a
+smaller change and loses the "asked and clean" / "never asked" distinction that `verification.json`
+exists to preserve. We have no preference beyond it not being silently `True`.
+
+**Not urgent for us** — our wrapper is correct and shipping in plugin 0.35.0. Filing it the day it
+was found because the fix is small and the next consumer's will not be.
+
+**Status — accepted and fixed as [RM234](ROADMAP_HISTORY.md#rm234--acmgreportclean-answered-true-about-a-comparison-that-never-happened), the first shape you named: `clean` is `bool | None` and
+withholds.** Reproduced exactly as filed — with every cache lane pointed at an empty directory,
+`verify_acmg_sf(..., offline=True)` gives `version=None checked=0 clean=True`. You are right that this
+is `@tautology-zero` one layer down, and right that the caller-side guard should not have been yours to
+write.
+
+**Not installable.** This landed after `v0.7.0` was tagged at `2001215`, so it is in the tree and in no
+version you can `pip install`; the enricher on PyPI still has the old property. Keep your wrapper's
+`null` mapping until a release carrying this is cut — it will then be redundant rather than wrong.
+
+**Two arms, not one.** `clean` withholds where no list was obtained *and* where a list was obtained
+that no row could be looked up in (every row naming no gene). Both are comparisons that did not happen.
+
+**What decided the shape was your own observation that the information is already on the report.** It
+is also already in the attestation: `verification_record` has always returned a `skipped` record on
+both those arms — `"offline"` and `"nothing_to_check"` — so the persisted record never claimed a pass
+while the in-memory property did. Rather than add a second condition beside it, both now read one
+`not_consulted` property, and a test asserts `clean is None` holds exactly where the record is a skip,
+across all five arms. That way the next arm added cannot make them disagree again.
+
+`None` rather than `False`/raise, for the reason you gave: answering `False` would state that the
+module disagrees with a list nobody read, which is the negation the house algebra refuses.
+
+**One behaviour change to know about**, since you are not the only caller: `None` is falsy, so
+`if report.clean:` was already correct and stays correct — that is the spelling the CLI's green line
+uses, and its `and report.version` guard is now redundant and gone. `if not report.clean:` **newly
+fires** on an unconsulted run. `check-acmg --strict` gates on `mismatches` and never on `clean`, so no
+offline run newly refuses.
+
+**One of your own tests was ours.** `test_offline_without_a_snapshot_is_still_unchecked_not_absent`
+asserted `report.clean` on an all-`unchecked` run — the defect, pinned. It now reads
+`report.clean is None`.
+
+**Your report found a second, worse one, which is filed open as [RM235](ROADMAP.md#rm235--one-property-over-four-registries-an-outage-reports-as-a-broken-identifier-and-an-unreachable-efo-reports-as-clean) and is not fixed.**
+`IdentifierReport.clean` is the same property over four registries, and `check-identifiers --strict`
+exits 1 on it. `stale_rsids` is `state != "live"` and `stale_genes` is `state != "approved"`, so an
+**unreachable** dbSNP or HGNC is counted as a broken identifier — a third party's outage fails your
+build, with nothing the author can do to clear it. `stale_traits` selects only `{obsolete, absent}`, so
+an unreachable OLS4 goes the way yours did and reports clean. The same absence, refused on two
+registries and passed on a third. It is not RM234's one-liner: with four authorities the unknown arm is
+per registry and combines under Kleene rather than withhold-on-any-unknown, and a caller gates an exit
+code on the answer. If you wrap `check-identifiers` too, guard it the way you guarded this one.
+
+<!-- triaged: 0.7.0 · sha 637b7d163d19 -->
