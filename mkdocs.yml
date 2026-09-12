@@ -26,9 +26,22 @@ site_name: just-dna-format
 site_description: >-
   The module format for just-dna annotation modules — the declarative schema contract, its reference
   compiler, and the network tier that feeds them.
-site_url: https://dna-seq.github.io/just-dna-format/
-repo_url: https://github.com/dna-seq/just-dna-format
-repo_name: dna-seq/just-dna-format
+# **The published URL, and both halves of it were wrong on the first guess.** It is not a `github.io`
+# address: `dna-seq/dna-seq.github.io` holds the organisation's Pages site with the custom domain
+# `just-dna.life` (apex A records at GitHub's four addresses, `www` CNAMEd to `dna-seq.github.io`), and a
+# *project* site under an organisation that has a custom apex inherits it — so this one serves at a path
+# beneath the domain rather than at `dna-seq.github.io/…`. And the path is the **repository's** name,
+# which is `just-dna-compiler`: this repository was renamed at some point, `just-dna-format` is an old
+# name GitHub still redirects, and every API answer comes back under the canonical one. The lead package
+# is nonetheless `just-dna-format`, so the URL and the product disagree; renaming the repository would
+# move this address again and is not a docs decision.
+#
+# Chosen over a `docs.`/`format.` subdomain deliberately: a path costs no DNS and every sibling repo
+# (`just-dna-lite`, `just-dna-pipelines`, `just-dna-marketplace`) gets one for free, whereas a custom
+# domain on a project repo both spends a subdomain and stops this site serving under the apex path.
+site_url: https://just-dna.life/just-dna-compiler/
+repo_url: https://github.com/dna-seq/just-dna-compiler
+repo_name: dna-seq/just-dna-compiler
 edit_uri: edit/main/docs/
 
 docs_dir: docs

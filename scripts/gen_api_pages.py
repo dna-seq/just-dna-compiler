@@ -23,7 +23,10 @@ from pathlib import Path
 import mkdocs_gen_files
 
 _ROOT = Path(__file__).resolve().parents[1]
-_BLOB = "https://github.com/dna-seq/just-dna-format/blob/main"
+#: The canonical repository name, which is **not** the name in the git remote: `just-dna-format` is an
+#: old name GitHub redirects to `just-dna-compiler`. A redirect works for a reader, but the generated
+#: home page's links are the site's outbound surface and are better spelled at the target.
+_BLOB = "https://github.com/dna-seq/just-dna-compiler/blob/main"
 
 #: `<import name>: <source root>`, in the dependency order the README presents them — format first,
 #: because a reader meets the contract before the tools that target it.

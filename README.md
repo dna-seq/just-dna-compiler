@@ -48,9 +48,11 @@ uv run --group docs properdocs serve -f mkdocs.yml          # live reload on loc
 uv run --group docs properdocs build --strict -f mkdocs.yml # what CI runs; output in data/site/
 ```
 
-Published to <https://dna-seq.github.io/just-dna-format/> by `.github/workflows/pages.yml` on every
-push to `main` — through the *GitHub Actions* Pages source, so there is no `gh-pages` branch and the
-repository carries no copy of its own output.
+Published to <https://just-dna.life/just-dna-compiler/> by `.github/workflows/pages.yml` on every push
+to `main` — through the *GitHub Actions* Pages source, so there is no `gh-pages` branch and the
+repository carries no copy of its own output. The path is the repository's canonical name
+(`just-dna-compiler`; `just-dna-format` is an older name GitHub redirects) beneath the organisation's
+custom apex domain, which a project site inherits.
 
 Material for MkDocs as the theme, [ProperDocs](https://properdocs.org/) as the builder (MkDocs 1.x
 upstream is unmaintained and 2.0 drops the plugin system; `pyproject.toml`'s `docs` group carries the
