@@ -30,7 +30,7 @@ import mkdocs_gen_files
 from just_dna_compiler.draft import DRAFTABLE
 from just_dna_compiler.hints import DERIVED_TABLE_MODELS
 from just_dna_format.base import field_category
-from just_dna_format.layout import DEPRECATED_SPELLINGS
+from just_dna_format.layout import DEPRECATED_SPELLINGS, sidecar_key, sidecar_spellings
 from just_dna_format.reference import authoring_reference
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -57,14 +57,31 @@ def _api_path(model: type) -> str:
 
 
 def _identity_rows(csv_name: str, model: type) -> list[tuple[str, str]]:
-    """The identity card — every row derived from a registry, and a row with no registry is omitted."""
+    """The identity card — every row derived from a registry, and a row with no registry is omitted.
+
+    **Every registry lookup goes through `layout.sidecar_key` and this is not defensive.** The licence
+    table has two legal spellings and the registries are keyed on the deprecated one (`sources.csv`)
+    while the page is written under the current one (`licensing.csv`), so the first version of this
+    function reported `licensing.csv` as having no parquet and no fact signature — both false, both
+    silently, on a page that rendered perfectly and passed `--strict`. That is `@sidecar-name-and-place`
+    verbatim: *a map keyed on one spelling answers the other as a table it never heard of*. Found by
+    reading the built page, which is the only thing that catches it.
+
+    **Then the repair introduced a second silent wrong answer, which is the more useful lesson.** The
+    natural-key row rebound `key` to a tuple of column names, shadowing the spelling key, so every
+    table's fact-signature and attestation rows read "no" — the nine that carry a fact signature
+    included. Both defects rendered a perfect page, passed `--strict`, resolved every link and
+    partitioned the nav; neither was findable except by reading a page against the registries. That is
+    why `_check` runs at build time: a generated page needs an assertion, not a green build.
+    """
     ref = authoring_reference()
     bindings = compiler.table_bindings()
+    key = sidecar_key(csv_name)
     rows: list[tuple[str, str]] = [
         ("Row model", f"[`{model.__qualname__}`]({_api_path(model)}) (`{model.__module__}`)"),
     ]
 
-    parquets = bindings.get(csv_name, ())
+    parquets = bindings.get(key, ())
     if parquets:
         lead = [p for p in parquets if p in compiler.LEAD_PARQUETS]
         becomes = ", ".join(f"`{p}`" for p in parquets)
@@ -77,8 +94,8 @@ def _identity_rows(csv_name: str, model: type) -> list[tuple[str, str]]:
     else:
         rows.append(("Becomes", "no parquet — see the prose above for where its content goes"))
 
-    authored = csv_name in DRAFTABLE
-    derived = csv_name in DERIVED_TABLE_MODELS
+    authored = any(sp in DRAFTABLE for sp in sidecar_spellings(csv_name))
+    derived = any(sp in DERIVED_TABLE_MODELS for sp in sidecar_spellings(csv_name))
     if authored and derived:
         kind = "**both** — authored, and also written by an enricher pass"
     elif authored:
@@ -88,23 +105,26 @@ def _identity_rows(csv_name: str, model: type) -> list[tuple[str, str]]:
     rows.append(("Authored or derived", kind))
     rows.append(("Draftable", "yes — `draft` can append rows" if authored else "no"))
 
-    key = getattr(model, "_KEY_FIELDS", None)
-    if key:
-        rows.append(("Natural key", ", ".join(f"`{k}`" for k in key)))
+    natural_key = getattr(model, "_KEY_FIELDS", None)
+    if natural_key:
+        rows.append(("Natural key", ", ".join(f"`{k}`" for k in natural_key)))
 
     fact = {csv for csv, _, _ in compiler._FACT_TABLES}
-    rows.append(("Fact signature", "yes — its sidecar carries one" if csv_name in fact else "no"))
+    rows.append(("Fact signature", "yes — its sidecar carries one" if key in fact else "no"))
     rows.append(
         (
             "In the attestation binding",
-            "yes — `manifest.inputs[]`" if csv_name in compiler._INPUT_FILES else "no",
+            "yes — `manifest.inputs[]`" if key in compiler._INPUT_FILES else "no",
         )
     )
 
-    spellings = sorted(s for s in DEPRECATED_SPELLINGS if _models_by_csv().get(csv_name) is not None)
-    same_model = [s for s in spellings if {**DERIVED_TABLE_MODELS, **DRAFTABLE}.get(s) is model]
-    if same_model:
-        rows.append(("Also accepted as", ", ".join(f"`{s}`" for s in same_model) + " (deprecated spelling)"))
+    # Asked of `layout`, which owns the spellings, rather than of a set membership that happened to
+    # produce the right answer for the one table that has two names.
+    deprecated = [sp for sp in sidecar_spellings(csv_name) if sp in DEPRECATED_SPELLINGS]
+    if deprecated:
+        rows.append(
+            ("Also accepted as", ", ".join(f"`{sp}`" for sp in deprecated) + " — deprecated, removed at 1.0")
+        )
 
     any_of = ref["required_any_of"].get(model.__qualname__)
     if any_of:
@@ -164,19 +184,50 @@ def _rewrite(body: str) -> str:
     return _LINK.sub(fix, body)
 
 
+def _check(cards: dict[str, list[tuple[str, str]]]) -> None:
+    """Assert the identity cards against the registries, at build time, page by page.
+
+    Both defects `_identity_rows` documents were invisible to `--strict`, because a wrong answer is still
+    valid HTML. So the two properties are asserted instead of eyeballed, and a failure fails the build.
+
+    The fact-signature side is compared as a **set of spelling keys**, never as a count, for the reason
+    the original answer was wrong: `sources.csv` and `licensing.csv` are one table with two names, so
+    `len(_FACT_TABLES)` and the number of pages saying "yes" legitimately differ by one. A count
+    assertion would have to encode that off-by-one; a set dissolves it.
+    """
+    bound = compiler.table_bindings()
+    for csv_name, card in cards.items():
+        if sidecar_key(csv_name) in bound:
+            becomes = dict(card)["Becomes"]
+            assert "no parquet" not in becomes, (
+                f"{csv_name} is bound to {bound[sidecar_key(csv_name)]} but its page says it becomes no "
+                "parquet — a registry lookup missed the spelling key"
+            )
+    fact_keys = {sidecar_key(csv) for csv, _, _ in compiler._FACT_TABLES}
+    claimed = {
+        sidecar_key(csv) for csv, card in cards.items() if dict(card)["Fact signature"].startswith("yes")
+    }
+    assert claimed == fact_keys, (
+        "the pages claiming a fact signature disagree with `_FACT_TABLES`. Only on a page: "
+        f"{sorted(claimed - fact_keys)}; only in the registry: {sorted(fact_keys - claimed)}"
+    )
+
+
 def _write_pages() -> None:
     models = _models_by_csv()
     prose = _prose_sections()
     summary: list[str] = []
+    cards: dict[str, list[tuple[str, str]]] = {}
     for csv_name, model in sorted(models.items()):
         slug = csv_name.removesuffix(".csv")
         doc = Path("tables", slug).with_suffix(".md")
+        cards[csv_name] = _identity_rows(csv_name, model)
         with mkdocs_gen_files.open(doc, "w") as fh:
             fh.write(f"# `{csv_name}`\n\n")
             if csv_name in prose:
                 fh.write(_rewrite(prose[csv_name]) + "\n\n")
             fh.write("## Identity\n\n")
-            for label, value in _identity_rows(csv_name, model):
+            for label, value in cards[csv_name]:
                 fh.write(
                     f"| {label} | {value} |\n"
                     if label != "Row model"
@@ -194,6 +245,7 @@ def _write_pages() -> None:
         summary.append(f"- [{csv_name}]({slug}.md)\n")
     with mkdocs_gen_files.open("tables/SUMMARY.md", "w") as fh:
         fh.writelines(summary)
+    _check(cards)
 
 
 _write_pages()
