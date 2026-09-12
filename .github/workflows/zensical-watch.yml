@@ -1,0 +1,63 @@
+name: zensical watch
+
+# **Fortnightly: can Zensical build this site yet?**
+#
+# The docs site is built by ProperDocs, a frozen MkDocs 1.x continuation, because the *living* project —
+# Zensical, from the Material for MkDocs team, reading the same `mkdocs.yml` — cannot yet run
+# `mkdocs-gen-files`, so the generated home page and the per-module API reference come out absent **with
+# no warning**. `mkdocstrings` already works. That is a measurement (2026-09-12, Zensical 0.0.61) with a
+# short shelf life: Zensical ships weekly and `mkdocstrings`' own author is its second contributor.
+#
+# A note in a document would not notice the day it changes, and a human is not going to re-run a probe
+# every fortnight. This does. `scripts/check-zensical.sh` holds the whole procedure and the pass
+# criterion; this workflow only schedules it and makes the answer visible.
+#
+# **It is deliberately not a gate.** A green run means "still blocked, carry on"; the interesting
+# outcome is exit 3, which is surfaced as a failed job so it shows up in the Actions list and in a
+# notification instead of scrolling past in a summary nobody reads.
+
+on:
+  schedule:
+    # 07:00 UTC on the 1st and 15th — a fortnight, without drifting the way a `*/14` day-of-month does.
+    - cron: "0 7 1,15 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: can Zensical build this site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v9.0.0   # exact release — see ci.yml's lint job
+        with:
+          enable-cache: true
+
+      # No `uv sync`: the script installs Zensical and the four plugins as an ephemeral `uv run --with`
+      # overlay on purpose, so a probe can never alter `uv.lock` or the `docs` group it is probing
+      # against.
+      - name: Probe
+        id: probe
+        run: |
+          set +e
+          scripts/check-zensical.sh | tee probe.out
+          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Report
+        run: |
+          {
+            echo "## Zensical probe"
+            echo
+            echo '```'
+            cat probe.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          case "${{ steps.probe.outputs.code }}" in
+            0) echo "Still blocked — nothing to do." ;;
+            3) echo "::error::Zensical can now build this site; read the probe output and consider the migration (pyproject.toml's docs group records what would reverse the ProperDocs choice)."
+               exit 1 ;;
+            *) echo "::warning::The probe itself failed (exit ${{ steps.probe.outputs.code }}) — that is the script or the environment, not a verdict."
+               exit 1 ;;
+          esac

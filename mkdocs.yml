@@ -43,6 +43,11 @@ theme:
     - navigation.tracking
     - navigation.top
     - navigation.indexes
+    # Prev/next at the foot of a page. The reference docs are read in the order `nav` puts them
+    # (SCHEMAS → COMPILER → ENRICHER is the dependency order), so a footer link is the cheapest way to
+    # make that sequence usable without returning to the sidebar.
+    - navigation.footer
+    - search.share
     - toc.follow
     - search.suggest
     - search.highlight
@@ -85,6 +90,11 @@ markdown_extensions:
       slugify: !!python/object/apply:pymdownx.slugs.slugify {kwds: {case: lower}}
   - pymdownx.details
   - pymdownx.superfences
+  # The corpus is dense with `bash` and `python` fences — the grep hints, the CLI transcripts, the
+  # model snippets. `linenums` stays off: a line number in a grep command is noise to copy around.
+  - pymdownx.highlight:
+      anchor_linenums: true
+      use_pygments: true
   - pymdownx.inlinehilite
   - pymdownx.tasklist:         # CACHE_SURFACE.md's `- [ ]` checklist is its whole point
       custom_checkbox: true
@@ -94,7 +104,21 @@ markdown_extensions:
 # cannot spell a slugifier.
 
 plugins:
-  - search
+  - search:
+      # **The default separator is `[\s\-]+`, which does not split an underscore — and this corpus is
+      # almost entirely snake_case symbol names.** Measured off the built index before changing it:
+      # `content_signature`, `refget_accession` and `derive_variant_key` were each a *single* token, so a
+      # reader searching "signature" or "accession" did not reach the sections about them. Measured
+      # after: 70,337 distinct tokens became 33,268, and "signature", "accession", "refget", "derive",
+      # "verdict" and "overlay" all resolve where they previously did not. (The indexed `text` also
+      # carries `<code>` tags; whether Material's client extractor strips those before tokenizing is not
+      # decidable from the index file, so it is not claimed here.) This is Material's code-aware
+      # separator: it splits
+      # on underscores, commas, colons, brackets, quotes, slashes and backticks, on a `.` that is not a
+      # decimal point, and on an escaped angle bracket. `content_signature` then answers to both halves
+      # and a dotted path like `just_dna_format.identity.derive_variant_key` answers to any part of it.
+      separator: '[\s\u200b\-_,:!=\[\]()"`/]+|\.(?!\d)|&[lg]t;'
+  - tags
   - gen-files:
       # Writes the home page and the API reference into the build only — nothing lands in `docs/`.
       scripts:
@@ -141,26 +165,32 @@ validation:
   anchors: info
 
 # The reader's path, in the order `CLAUDE.md` § "Read these first" puts it.
+# **Titles are explicit rather than taken from each page's `# H1`, and that is the whole reason.** Left
+# to itself the sidebar read "just-dna-format — the schema tier", "just-dna-compiler — the transform
+# tier", "just-dna-enricher — the network tier" — three entries agreeing on their first two words,
+# inside a group already called *Reference*, in a site already called *just-dna-format*. A sidebar is
+# scanned rather than read, so the entry carries the one word that distinguishes it and the page keeps
+# its full `# H1` as the document title. Nothing about the files changes.
 nav:
   - Home: index.md
   - Charter:
-      - CONSTITUTION.md
-      - CONSTITUTION_AMENDMENTS_HISTORY.md
+      - Constitution: CONSTITUTION.md
+      - Amendment history: CONSTITUTION_AMENDMENTS_HISTORY.md
   - Reference:
-      - SCHEMAS.md
-      - COMPILER.md
-      - ENRICHER.md
+      - Schema: SCHEMAS.md
+      - Compiler: COMPILER.md
+      - Enricher: ENRICHER.md
   - Across the tiers:
-      - MODULE_LIFECYCLE.md
-      - CACHE_SURFACE.md
+      - Module lifecycle: MODULE_LIFECYCLE.md
+      - Cache surface: CACHE_SURFACE.md
   - Using it:
-      - USE_CASES.md
-      - REFERENCE_EXAMPLES.md
-      - FAQ.md
+      - Use cases: USE_CASES.md
+      - Reference examples: REFERENCE_EXAMPLES.md
+      - FAQ: FAQ.md
   - Upgrading:
-      - INTEGRATION_0_7.md
-      - INTEGRATION_0_6.md
-  - CHANGELOG.md
+      - "0.6.6 → 0.7": INTEGRATION_0_7.md
+      - "0.5.4 → 0.6": INTEGRATION_0_6.md
+  - Changelog: CHANGELOG.md
   - API reference: api/
 
 # Built and searchable, absent from the sidebar — see rule 2 at the top. Everything here is a
