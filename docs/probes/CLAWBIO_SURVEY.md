@@ -2,14 +2,19 @@
 
 **Status** — survey complete, 2026-09-13. This is the **ClawBio half of
 [RM188](../ROADMAP_0_8.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)**;
-the genomi half is not done. Written the way RM188's method section asks: their pipelines run end to
-end on their own demo input, the reports read, and the logic read *back out* of the reports rather
-than off the README. Every claim below names the file it came from.
+the genomi half was filed the same day by a parallel session as
+[`GENOMI_SURVEY.md`](GENOMI_SURVEY.md) — read the two together, and § *Read beside this* below says
+where they meet. Written the way RM188's method section asks: their pipelines run end to end on their
+own demo input, the reports read, and the logic read *back out* of the reports rather than off the
+README. Every claim below names the file it came from.
 
 **Probed artifact.** `github.com/ClawBio/ClawBio` at `1fcecb7e9531210baabe6d5cdbdd08de1ff3ab8d`
 (committed 2026-09-12), installed from source into a clean 3.11 venv (`uv pip install -e .`), CLI
-`clawbio.py run <alias> --demo`. Six demos ran to completion: `nutrigx`, `pharmgx`, `clinpgx`,
-`acmg`, `cnv-acmg`, `gwas`, `compare`, `prs`. Two failed for reasons worth recording (below).
+`clawbio.py run <alias> --demo`. **Nine demos attempted, eight produced a report**: `nutrigx`,
+`pharmgx`, `clinpgx`, `acmg`, `cnv-acmg`, `gwas`, `compare`, `prs`; `methylation` failed on a missing
+dependency. Three more were attempted under their catalogue names before the alias table was read
+(below). Their nutrition panel was then **translated into a module and compiled** — § *The
+translation, run*.
 
 **What this is not.** Not a feature comparison, and RM188 says why: a competitor's inference is
 evidence about what a report *needs*, never a licence to copy the rule. Where their logic is an
@@ -35,11 +40,24 @@ pharmgx_reporter.py` (`PGX_SNPS`, `GENE_DEFS`, `GUIDELINES` — 32 variants, 13 
 `skills/ancestry-risk-profiler/data/ancestry_risk_associations.json` (39 ancestry-stratified
 associations), `skills/genome-compare/data/aims_panel.json` (65 AIMs). Every one is an unsigned,
 unversioned-against-its-source, uncited-per-row `variants.csv`/`haplotypes.csv`. They already know
-this hurts: `ancestry_risk_associations.json` carries a hand-written `removed_v1.1` / `removed_v1.3.0`
-changelog *inside the data file*, recording six associations withdrawn because the cited PMID
-resolved to the wrong paper (`PMID 27005778` is Kettunen 2016 metabolomics, cited for AFR T2D, CAD,
-HTN and breast cancer) — which is exactly what `literature.csv` + `check_literature` exist to catch
-before a row ships. **Nothing in this class is a gap for us. It is a module we could compile today.**
+this hurts: `ancestry_risk_associations.json` carries a hand-written `removed_v1.1` /
+`removed_v1.3.0` changelog *inside the data file*, recording **12 associations withdrawn** — 1 in
+v1.1, 11 in v1.3.0. Ten of the twelve went because the cited PMID resolves to a **different paper**,
+and two PMIDs account for nine of those: `27005778` (Kettunen 2016, a metabolomics GWAS) was cited
+for AFR T2D, hypertension, breast cancer, atrial fibrillation and Parkinson's, and `22158537`
+(Cho 2011, an EAS T2D study) for four SAS rows spanning CAD, hypertension and Alzheimer's. The other
+two went for having no paper at all (`rs1333049` CAD AFR, `rs699` HTN AFR).
+
+**And this is the sharp version, because existence checking would have passed every one of them.**
+Both wrong PMIDs are real articles; `LiteratureRow.exists` comes back `true` on all ten.
+`@existence-not-identity` names exactly this — *a lookup must say what it found* — and the mechanism
+that catches it is `StudyRow.provenance_quote` checked against `LiteratureRow.quotes_found` /
+`quote_source` (`@quote-attestation`). A curator quoting the sentence they are citing cannot silently
+attach it to a metabolomics paper. Their file discovered by hand, over two revisions, what that
+column exists to make mechanical.
+
+**Nothing in this class is a gap for us**, and § *The translation, run* compiles one of the four to
+show that rather than assert it.
 
 **The three gaps, largest first.**
 
@@ -76,16 +94,18 @@ design), and a fine-mapping posterior/credible-set membership has no column.
 | Sample data | ships one (the Corpasome, CC0) | never — the measurement arrives from the consumer |
 | Identity | file SHA-256 of the input | `variant_key` + `content_signature` + `artifact.digest` |
 | Reproducibility | `reproducibility/` bundle: replay command, env, checksums | round trip: `compile → reverse → compile` is lossless or `strict` refuses (P7) |
-| Licence handling | per-skill `license:` in frontmatter (MIT everywhere), plus `model_license`/`data_license` fields that are **empty on every one of the 97** | `sources.csv` per source × layer, and the compile gate reads that file and nothing else |
+| Licence handling | per-skill code `license:` (93 MIT, 1 GPL-3.0, 1 Apache-2.0, 1 PROPRIETARY, 1 blank), plus `model_license`/`data_license` filled on **1 of the 97** | `sources.csv` per source × layer, and the compile gate reads that file and nothing else |
 | Provenance of an annotation row | none — the row is a dict literal | `source`, `dataset`, `fetched_at`, `status`, plus `studies.csv` grounding |
 | Backward compatibility | none stated | additive-within-a-major, enforced (P3/P8) |
 
-That last-but-two row is worth dwelling on. `skills/catalog.json` has `model_license` and
-`data_license` keys on every skill and **both are the empty string for all 97**, while the skills
-themselves read CPIC, ClinPGx/PharmGKB and PharmVar — which are CC BY-SA with an explicit no-sale
-clause (`@pgx-research-only`). A consumer cannot answer "may I sell a product built on this" from
-anything ClawBio publishes. That is the axis our compile gate exists for, and it is the clearest
-thing we have that they structurally do not.
+That last-but-two row is worth dwelling on, and its numbers are counted off `skills/catalog.json`
+rather than sampled. Every skill carries a `license` describing **its own code** — 93 of 97 MIT — and
+the two keys that would describe the *data* it reads, `model_license` and `data_license`, are present
+on all 97 and non-empty on **one**. Meanwhile the skills read CPIC, ClinPGx/PharmGKB and PharmVar,
+which are CC BY-SA with an explicit no-sale clause (`@pgx-research-only`). So "this skill is MIT" is
+true and answers the wrong question: nothing ClawBio publishes tells a consumer whether the
+*annotation* it returns may be sold. That is the axis our compile gate exists for, and it is the
+clearest thing we have that they structurally do not.
 
 **Maturity, so nothing below is scored as shipped when it is not.** From `skills/catalog.json`:
 **68 of 97 are `status: planned`**, 29 are `mvp`; the maturity tiers are 40 `cli-registered`, 38
@@ -97,7 +117,7 @@ returning `{"status": "skeleton", "findings": []}`, and it is the only one of it
 
 ---
 
-## The annotation subset — 25 of 97, and the criterion
+## The annotation subset — 27 of 97, in the 19 rows below (some grouped)
 
 **A skill is in scope here when it produces a claim about a variant, gene, haplotype or locus** —
 the thing a module carries. That excludes the nf-core wrappers, proteomics, single-cell,
@@ -184,9 +204,8 @@ dicts behind it map one-to-one onto tables we already ship:
 The third row is where the shapes genuinely differ and it is worth being precise, because it is *not*
 a gap. CPIC keys a recommendation on `(gene phenotype, drug, population)`; `DiplotypeRow` requires
 `haplotype_a` and `haplotype_b`. So a phenotype-keyed recommendation has to be **denormalised across
-every diplotype yielding that phenotype**, and that is exactly what
-`pgx_draft._cpic_recommendation_rows` does — `by_key = {(r.phenotype, r.population): r ...}`, joined
-onto each pair. The drafter absorbs the fan-out; an author never writes it by hand. The consequence
+every diplotype yielding that phenotype**, and that is exactly what `pgx_draft._recommendation_rows`
+does — `by_key = {(r.phenotype, r.population): r ...}`, joined onto each pair. The drafter absorbs the fan-out; an author never writes it by hand. The consequence
 is real but narrow: a diplotype the module does not enumerate carries no recommendation, which is the
 same answer as "this module does not cover that diplotype" and is honest.
 
@@ -291,6 +310,54 @@ Sorting those:
 
 ---
 
+## The translation, run
+
+The claim above — *their inlined panels are a module in the wrong language* — is worth nothing
+asserted, so it was run. `skills/nutrigx/data/snp_panel.json` (28 rows) was translated
+field-for-field into a spec in a scratch directory and put through the real compiler. **It compiles,
+after two refusals, and both refusals are findings.**
+
+The translation: each panel row becomes **three `variants.csv` rows**, one per genotype, because the
+genetic model is rows here rather than a field — `{ref/ref, ref/risk, risk/risk}` with weights
+`0, 0.5w, w` under `additive` and `0, 0, w` under `dominant_protective`, sign-flipped because
+`VariantRow.weight` is *positive = protective*. `nutrient_domain` → `category`, `effect_direction` →
+`phenotype`, `risk_allele` → `effect_allele`, `pmid` → a `studies.csv` row.
+
+**Refusal 1 — `state` is required, and `direction` is not.** 84 rows × `variants.csv line N [state]:
+Field required`. A translation written against the *modern* column is refused for omitting the
+*superseded* one. This is already in the [1.0-cleanup tracker](../ROADMAP.md#variantrowstate) with
+the reason — P8 forbids demoting a required field inside a major, so the deprecation and the demotion
+have to land together at 1.0 — and the entry is right. What the run adds is that the friction is not
+hypothetical: it is the **first** error a first-time author sees, before anything about their data.
+Fixed by writing `state` = `direction`, which is exactly the duplication the tracker predicts.
+
+**Refusal 2 — `ref/alts require chrom and start to also be provided`.** Their file states a
+`ref_allele` for all 28 SNPs and **no coordinate for any of them**. Our schema refuses a bare `ref`,
+and it is right to: a reference allele with no locus is unanchored — nothing can check it against a
+reference genome, and `@va-omits-ref` plus the three-causes rule for a ref mismatch both depend on
+having a position to read a window at. So their 28 `ref_allele` cells are 28 unverifiable assertions.
+The honest translation **drops `ref`** and keeps `effect_allele`, letting resolution fill coordinates
+from the rsID; the compiler then warns, correctly, that nothing was injected.
+
+**Result.** `validate` passes; `compile` produces `weights.parquet` (84 rows), `annotations.parquet`,
+`studies.parquet` and a manifest — 28 variants, 24 genes, 12 categories,
+`content_signature: sha256:b398c0bf…`. `compile → reverse → compile` reproduces that signature
+**exactly**, so P7 holds over their data; the reverse normalises column order and drops `title`,
+`description` and `weighting`, all of which are documented as display/advisory and outside
+`content_signature`.
+
+**Two things the run made me write that their file cannot say.** A `sources.csv` — the translated
+module has none, so it would not pass the compile gate, which is the correct outcome for annotation
+whose terms nobody has established. And `module_spec.weighting` (RM92), which forced an answer to
+open question 4: their weights are hand-assigned importances *within* a nutrient domain, and their
+scorer divides by the weight of the SNPs it happened to find, so the number is comparable only inside
+one domain of one run. Writing that down is `@weight-has-no-unit` doing its job — **and the round
+trip then drops the block**, because `weighting` is advisory and not reconstructed by `reverse`. The
+only place a module can say what its weights mean does not survive a reverse. Documented, not a bug,
+and worth knowing before item 6 leans on it.
+
+---
+
 ## The comparison table
 
 Annotation axes only. "Ours" means *a module can state it and the artifact carries it*, not *some
@@ -390,9 +457,14 @@ gene-pair-keyed rather than phenotype-keyed, counted off the CPIC snapshot we al
 
 **2. `consequence` + `impact` on `VariantRow`, and the transcript question with them. — a week.**
 Two optional columns, minor-legal under P3/P8, with a closed-ish Sequence Ontology vocabulary for
-`consequence` and the four-member VEP set for `impact`. They are already reserved in prose; this
-commits them and moves them into `RESERVED_NAMES_0_4`'s built half so `reject_reserved` stops
-claiming them. **The blocker to settle first is the same one that parks RM23: grain.** A variant has
+`consequence` and the four-member VEP set for `impact`. **Get the mechanism right**: neither name is
+in `RESERVED_NAMES_0_4` today, so `reject_reserved` never claimed them and nothing has to be moved
+out of it — an author writing `consequence` now gets the generic `extra="forbid"` message. The
+ROADMAP lists them under *planned future annotation axes*, which "get a slot and a specific diagnosis
+only when a release actually commits". Committing therefore means one of two things, and choosing is
+part of the work: **build the column**, or — if the grain question below defers it — **add the
+reserved slot plus a `RESERVED_NAME_REASONS` entry**, so an author hears what the name is held for
+instead of the stray-column message. **The blocker to settle first is the same one that parks RM23: grain.** A variant has
 one consequence *per transcript*, and `VariantRow` is one row per `(variant_key, genotype)`. Three
 options, and the choice is the deliverable: (i) MANE Select only, one value, with `GeneMetricsRow.
 mane_select` naming the transcript — cheap, lossy, and honest if the column says so; (ii) the most
@@ -428,14 +500,15 @@ columns there (`posterior_probability`, `credible_set`) is the cheap shape, and 
 publishes credible sets for harmonised studies. Smallest item on this list; do it when someone
 touches `gwas.py` for another reason, not on its own.
 
-**6. Compile their four inlined panels as reference examples. — 2–3 days, and do this one first.**
-`reference_examples/nutrigenomics_panel/` from `snp_panel.json`, and a
-`pharmgx_panel_13_genes/` from `GENE_DEFS`. This is `@probe-becomes-example` and it earns more than
-it costs: it proves the superset claim by construction rather than by table, it puts their 28 SNPs
-through `check_literature` (their own retraction log says four PMIDs in the sibling file were wrong —
-find out whether the nutrition panel's 28 are clean), and a README naming what it broke is the
-deliverable whether it breaks something or not. It also gives item 2 a real corpus to test a
-consequence column against.
+**6. Compile their four inlined panels as reference examples. — 2 days, and half of it is done.**
+§ *The translation, run* already took `snp_panel.json` through `validate`, `compile` and the round
+trip in a scratch directory; what is left is to land it as `reference_examples/nutrigenomics_panel/`
+with a `sources.csv` and a README naming the two refusals, and to do the same for
+`pharmgx_panel_13_genes/` from `GENE_DEFS`. This is `@probe-becomes-example`, and the remaining
+earn is the enrichment pass nobody has run yet: put their 28 PMIDs through `check_literature` **with
+provenance quotes**, since § *The short answer* shows existence alone would have cleared all ten
+mis-citations in the sibling file. It also gives item 2 a real corpus to test a consequence column
+against.
 
 **Order and total.** 6 → 1 → 2 → 3, then 4 and 5 parked behind a consumer. About three weeks of
 work for the unparked half, and item 6 is what makes the rest arguable.
@@ -509,7 +582,11 @@ sign and round-trip.
 3. **Is a region row a second `(source, layer)` for ClinGen, or the same lane?** Item 3 assumes a
    second surface. `@write-the-sourcerow` says a second surface may not claim the first's row; it does
    not say which one region curation is.
-4. **Is their `weight` on the same scale as ours?** `snp_panel.json` weights run 0.4–0.95 with no
-   stated unit — which is `@weight-has-no-unit` exactly, and `module_spec.weighting` (RM92) is the
-   field that would say so. Item 6 has to write something in it, and there is no honest answer
-   available from their file. Worth recording what we end up writing.
+4. **~~Is their `weight` on the same scale as ours?~~ Answered by the run, and the answer is no.**
+   Their weights run 0.4–0.95 with no stated unit, and their scorer normalises by the weight of the
+   SNPs it found, so a domain score is comparable only inside one domain of one run. That is what the
+   `weighting` block in § *The translation, run* records. The question that replaces it is sharper:
+   **`weighting` does not survive `reverse`**, so the one field that makes a weight interpretable is
+   absent from a module reconstructed from its artifact. Documented (RM92 lists it with
+   `panel`/`authorship`/`license`) and defensible — it is advisory, not content — but a consumer
+   combining two reversed modules has no scale to read. Worth a line in the FAQ at least.
