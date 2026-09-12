@@ -372,10 +372,26 @@ _INPUT_FILES: tuple[str, ...] = (
 # covered three of the sixteen names the tuple then held and silently dropped the rest at publish,
 # which is `@fieldnames-from-model` one tier out. The sixteen is history and not the current size —
 # spelled out because a bare number beside a registry reads as the registry's (RM218).
+#: The SNP core's `csv -> parquet(s)` binding, the one part of the artifact map that was spelled
+#: per-call. `_TABLE_KINDS` and `_FACT_TABLES` each carry their own binding, and `OVERRIDES_PARQUET`
+#: names the overlay's, but the three core parquets were three literals at the write site and three more
+#: in `ARTIFACT_PARQUETS` — so nothing could answer *"which parquet does `variants.csv` become"* without
+#: a human reading `_write_*`. That question has two callers now: `ARTIFACT_PARQUETS` below, and the
+#: docs site's generated per-table reference, which must not hand-keep a fourth copy
+#: (`@fieldnames-from-model`, one layer out again).
+#:
+#: `variants.csv` maps to **two** parquets and that asymmetry is the reason this is a tuple per CSV
+#: rather than a flat pair: `weights` gets the authored surface minus `gene`/`phenotype`/`category`,
+#: `annotations` gets nine columns including those three, so a consumer reading one cannot see what the
+#: other holds. A single-parquet spelling would have to pick one and lie about the other.
+SNP_CORE_PARQUETS: dict[str, tuple[str, ...]] = {
+    "variants.csv": ("weights.parquet", "annotations.parquet"),
+    "studies.csv": ("studies.parquet",),
+}
+
+
 ARTIFACT_PARQUETS: tuple[str, ...] = (
-    "weights.parquet",
-    "annotations.parquet",
-    "studies.parquet",
+    *(pq for parquets in SNP_CORE_PARQUETS.values() for pq in parquets),
     *(parquet for _, parquet, _ in _TABLE_KINDS),
     # The 0.5 derived-fact tables. In `ARTIFACT_PARQUETS` (so a module that carries them has a different
     # content identity — correct: different content, different artifact) but deliberately NOT in
@@ -5261,12 +5277,16 @@ def compile_module(
     weights_df = _build_weights(variants, config) if variants else None
     annotations_df = _build_annotations(variants, module_name) if variants else None
     studies_df = _build_studies(studies, module_name) if studies else None
+    # Names taken from `SNP_CORE_PARQUETS` rather than spelled again: this is the site the binding was
+    # extracted from, so a literal here would be the copy the constant exists to remove.
+    _weights_name, _annotations_name = SNP_CORE_PARQUETS["variants.csv"]
+    (_studies_name,) = SNP_CORE_PARQUETS["studies.csv"]
     if weights_df is not None:
-        weights_df.write_parquet(output_dir / "weights.parquet", compression=compression)
+        weights_df.write_parquet(output_dir / _weights_name, compression=compression)
     if annotations_df is not None:
-        annotations_df.write_parquet(output_dir / "annotations.parquet", compression=compression)
+        annotations_df.write_parquet(output_dir / _annotations_name, compression=compression)
     if studies_df is not None:
-        studies_df.write_parquet(output_dir / "studies.parquet", compression=compression)
+        studies_df.write_parquet(output_dir / _studies_name, compression=compression)
 
     # The positional fill (RM43), on the rows that survive. It runs **after** the symbolic-allele
     # ladder (RM5) and before `_build_table`, and that order is the only correct one: the drop decides
