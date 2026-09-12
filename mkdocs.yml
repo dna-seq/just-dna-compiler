@@ -189,7 +189,6 @@ nav:
       - FAQ: FAQ.md
   - Upgrading:
       - "0.6.6 → 0.7": INTEGRATION_0_7.md
-      - "0.5.4 → 0.6": INTEGRATION_0_6.md
   - Changelog: CHANGELOG.md
   - API reference: api/
 

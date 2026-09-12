@@ -6312,7 +6312,7 @@ off `outranks` has nowhere to go until the overlay reaches authored tables.
 **Coordination.** `just-dna-registry` rebuilds a spec directory from `RECOGNIZED_SPEC_FILES`, a
 hand-kept mirror of our table constants, and a name missing there is a file dropped on re-publish —
 which is how `licensing.csv` was lost before their 0.16.2. `overrides.csv` needs one entry added there;
-it is recorded in [INTEGRATION_0_6.md](INTEGRATION_0_6.md) rather than left to be discovered.
+it is recorded in [INTEGRATION_0_6.md](history/INTEGRATION_0_6.md) rather than left to be discovered.
 
 ## RM128 — `enrich()` persisted nothing until its tail, so a run killed at minute 29 had written nothing
 

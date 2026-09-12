@@ -27,7 +27,7 @@ one thing 0.6.1 *adds* is that `authoring_reference()`, `describe`, `requirement
 models that were outside the registry. Additive, and worth knowing if you snapshot that output.
 
 **One defect was found in 0.6.1 and is fixed in `just-dna-enricher` 0.6.2** — RM101, from
-[S37](CONSUMER_SUGGESTIONS_HISTORY.md), and it is the only one of these that a consumer had *already
+[S37](../CONSUMER_SUGGESTIONS_HISTORY.md), and it is the only one of these that a consumer had *already
 written a workaround for*. **0.6.2 is a partial cut**: `just-dna-format` and `just-dna-compiler` did
 not move and stay at `0.6.1`, so upgrade the enricher alone. If you call an enricher pass from Python
 — checking a module, running a dry run, wrapping a pass in a service — read
@@ -370,7 +370,7 @@ manifest never sees one, and verification passes because nothing was corrupted. 
 leftover is an inert fossil.
 
 **What stops it being true is the reader.** Recorded in
-[MODULE_LIFECYCLE § 6.8](MODULE_LIFECYCLE.md#68-what-a-consumer-sees-when-v2-lands) and verified in the
+[MODULE_LIFECYCLE § 6.8](../MODULE_LIFECYCLE.md#68-what-a-consumer-sees-when-v2-lands) and verified in the
 reference consumer's tree rather than inferred: the discovery path adds *"no manifest fetch and no
 digest check"*, `verify_manifest` *"has no call sites there"*, and the scan is `fs.ls` at one level
 plus `fs.exists` on **named files**. On the registry path the fossil really is inert, because there is
@@ -638,12 +638,12 @@ moved is behaviour.
 
 | Item | Who hits it on 0.6.0 | What to do if you are pinned to 0.6.0 |
 | --- | --- | --- |
-| [RM93](history/ROADMAP_HISTORY_0_6.md#rm93--two-checks-refuse-in-compile-and-report-nothing-in-validate) | anyone using `validate` as a pre-flight for `compile` | **The one to know.** `validate` is not currently a complete pre-flight: a module with `frequencies.csv`, or a table-only module with `studies.csv`, can pass `validate --strict` and then be refused by `compile --strict`. If your pipeline gates on `validate` and treats a later `compile` failure as an infrastructure error, it will misclassify these two. Gate on `compile` into a temporary directory if you need certainty today. |
-| [RM94](history/ROADMAP_HISTORY_0_6.md#rm94--the-p-value-re-run-publishes-its-warning-twice-into-the-manifest) | anyone reading `manifest.compilation.warnings` | A `p_value`/`p_value_num` disagreement appears **twice**, byte-identical. If you count warnings or show them to a user, dedupe on the string — which is worth doing regardless, since the field has never promised uniqueness. |
-| [RM97](history/ROADMAP_HISTORY_0_6.md#rm97--two-clients-leak-the-transport-exception-the-other-two-document-repairing) | anyone calling the enricher against gnomAD or dbSNP | A 5xx from either escapes as a raw `httpx.HTTPStatusError` rather than as this tier's own error type, so `except GnomadError` / `except EutilsError` does not hold it and a dbSNP 5xx can abort a run. Catch `httpx.HTTPError` alongside the tier's exceptions until this lands. **This row was incomplete and 0.6.1 did not finish the job**: `OntologyClient` (OLS4/HGNC, behind `check_identifiers`) kept leaking raw `httpx` through 0.6.1 as well, and the passes leaked their *client's* type on top of that — see [§ 8](#8-what-061-got-wrong-and-062-fixed). On anything below 0.6.2, keep the `httpx.HTTPError` catch and add the client types. |
-| [RM98](history/ROADMAP_HISTORY_0_6.md#rm98--two-passes-record-an-absence-nobody-established-under---offline) | anyone running `enrich --offline` or `gene-metrics --offline` without a cache | The artifact records `status="not_found"` — a definite negative — where nothing was consulted. **Do not read a `not_found` from an offline run with no cache as evidence the source lacks the record.** With a cache present the behaviour is correct; it is the empty-cache case that fabricates. |
-| [RM95](history/ROADMAP_HISTORY_0_6.md#rm95--a-canonicalized-vocabulary-value-is-discarded-so-the-slip-is-stored-and-then-rejected), [RM96](history/ROADMAP_HISTORY_0_6.md#rm96--the-registry-an-audit-iterates-was-missing-five-of-the-models) | module authors | `measure_kind=copy-number` is accepted by `MeasureBinRow` and rejected by its subclasses; write the underscore spelling. Two unenforced/misattributed model guards, neither of which lets bad data into a surface you read. |
-| [RM99](history/ROADMAP_HISTORY_0_6.md#rm99--three-passes-bypass-the-sidecar-resolver-so-one-family-writes-to-two-places), [RM100](history/ROADMAP_HISTORY_0_6.md#rm100--five-enricher-surface-defects-with-no-common-cause) | registries serving a `derived/` layout; anyone invoking the enricher as a module | Three passes write their sidecar to the spec root regardless of layout, so an `enrich` run can leave one module with both. And use the `just-dna-enricher` entry point rather than `python -m just_dna_enricher.cli`, which is missing three commands. |
+| [RM93](../history/ROADMAP_HISTORY_0_6.md#rm93--two-checks-refuse-in-compile-and-report-nothing-in-validate) | anyone using `validate` as a pre-flight for `compile` | **The one to know.** `validate` is not currently a complete pre-flight: a module with `frequencies.csv`, or a table-only module with `studies.csv`, can pass `validate --strict` and then be refused by `compile --strict`. If your pipeline gates on `validate` and treats a later `compile` failure as an infrastructure error, it will misclassify these two. Gate on `compile` into a temporary directory if you need certainty today. |
+| [RM94](../history/ROADMAP_HISTORY_0_6.md#rm94--the-p-value-re-run-publishes-its-warning-twice-into-the-manifest) | anyone reading `manifest.compilation.warnings` | A `p_value`/`p_value_num` disagreement appears **twice**, byte-identical. If you count warnings or show them to a user, dedupe on the string — which is worth doing regardless, since the field has never promised uniqueness. |
+| [RM97](../history/ROADMAP_HISTORY_0_6.md#rm97--two-clients-leak-the-transport-exception-the-other-two-document-repairing) | anyone calling the enricher against gnomAD or dbSNP | A 5xx from either escapes as a raw `httpx.HTTPStatusError` rather than as this tier's own error type, so `except GnomadError` / `except EutilsError` does not hold it and a dbSNP 5xx can abort a run. Catch `httpx.HTTPError` alongside the tier's exceptions until this lands. **This row was incomplete and 0.6.1 did not finish the job**: `OntologyClient` (OLS4/HGNC, behind `check_identifiers`) kept leaking raw `httpx` through 0.6.1 as well, and the passes leaked their *client's* type on top of that — see [§ 8](#8-what-061-got-wrong-and-062-fixed). On anything below 0.6.2, keep the `httpx.HTTPError` catch and add the client types. |
+| [RM98](../history/ROADMAP_HISTORY_0_6.md#rm98--two-passes-record-an-absence-nobody-established-under---offline) | anyone running `enrich --offline` or `gene-metrics --offline` without a cache | The artifact records `status="not_found"` — a definite negative — where nothing was consulted. **Do not read a `not_found` from an offline run with no cache as evidence the source lacks the record.** With a cache present the behaviour is correct; it is the empty-cache case that fabricates. |
+| [RM95](../history/ROADMAP_HISTORY_0_6.md#rm95--a-canonicalized-vocabulary-value-is-discarded-so-the-slip-is-stored-and-then-rejected), [RM96](../history/ROADMAP_HISTORY_0_6.md#rm96--the-registry-an-audit-iterates-was-missing-five-of-the-models) | module authors | `measure_kind=copy-number` is accepted by `MeasureBinRow` and rejected by its subclasses; write the underscore spelling. Two unenforced/misattributed model guards, neither of which lets bad data into a surface you read. |
+| [RM99](../history/ROADMAP_HISTORY_0_6.md#rm99--three-passes-bypass-the-sidecar-resolver-so-one-family-writes-to-two-places), [RM100](../history/ROADMAP_HISTORY_0_6.md#rm100--five-enricher-surface-defects-with-no-common-cause) | registries serving a `derived/` layout; anyone invoking the enricher as a module | Three passes write their sidecar to the spec root regardless of layout, so an `enrich` run can leave one module with both. And use the `just-dna-enricher` entry point rather than `python -m just_dna_enricher.cli`, which is missing three commands. |
 
 **What this list is not.** None of these is a regression against 0.5.4 — RM93's two checks and RM98's
 offline paths behaved this way before 0.6 as well, and RM95's vocabulary slip has been there since the
@@ -655,7 +655,7 @@ same place as the surface delta rather than one document over.
 
 ## 8. What 0.6.1 got wrong, and 0.6.2 fixed
 
-One item — [RM101](history/ROADMAP_HISTORY_0_6.md#rm101--a-pass-raises-its-clients-exception-type-which-its-own-documented-type-does-not-cover),
+One item — [RM101](../history/ROADMAP_HISTORY_0_6.md#rm101--a-pass-raises-its-clients-exception-type-which-its-own-documented-type-does-not-cover),
 shipped in **`just-dna-enricher` 0.6.2**. `just-dna-format` and `just-dna-compiler` are untouched and
 stay at `0.6.1`. No schema surface moves, so § 2's delta stands; what changes is **which exception
 type comes out of an enricher pass**, and this is the one item in this document where the upgrade
@@ -711,7 +711,7 @@ data is wrong" are separable by type rather than by reading `exc.__cause__`:
 Every one is a subclass of the type beside it, and the client's exception stays on `__cause__`. Order
 the two arms narrow-first if you write them separately — see the fourth row above. The full table,
 including the passes that deliberately degrade rather than raise, is in
-[ENRICHER § Exception contract](ENRICHER.md).
+[ENRICHER § Exception contract](../ENRICHER.md).
 
 **`verify_acmg_sf` is the same distinction one level finer, and it predates this.**
 `AcmgListUnavailable` carries a `skip` holding a `VALID_VERIFICATION_SKIPS` member, decided where the
@@ -730,7 +730,7 @@ verdict from "unchecked" to "your table is broken".
 
 | Item | Who hits it on 0.6.1 | What to do if you are pinned to 0.6.1 |
 | --- | --- | --- |
-| [RM101](history/ROADMAP_HISTORY_0_6.md#rm101--a-pass-raises-its-clients-exception-type-which-its-own-documented-type-does-not-cover) | anyone calling an enricher pass from Python | Catch the client's type **alongside** the pass's, in **one tuple** — `except (FrequencyEnrichmentError, GnomadError)`, `except (LiteratureEnrichmentError, EutilsError)`, `except (IdentifierCheckError, EutilsError, httpx.HTTPError)`. The last one needs `httpx` because `OntologyClient` still leaks it on 0.6.1. If you keep them as separate arms instead, order them narrow-first now, or the upgrade kills the second one (fourth row above) |
+| [RM101](../history/ROADMAP_HISTORY_0_6.md#rm101--a-pass-raises-its-clients-exception-type-which-its-own-documented-type-does-not-cover) | anyone calling an enricher pass from Python | Catch the client's type **alongside** the pass's, in **one tuple** — `except (FrequencyEnrichmentError, GnomadError)`, `except (LiteratureEnrichmentError, EutilsError)`, `except (IdentifierCheckError, EutilsError, httpx.HTTPError)`. The last one needs `httpx` because `OntologyClient` still leaks it on 0.6.1. If you keep them as separate arms instead, order them narrow-first now, or the upgrade kills the second one (fourth row above) |
 | same | anyone shelling out to `just-dna-enricher frequencies` / `literature` | A 5xx produces a traceback and no `FREQUENCIES FAILED:` line. Treat a non-zero exit with no marker as a source failure rather than assuming your parse broke |
 | same | anyone distinguishing "ClinGen unreachable" from "our `gene_metrics.csv` is bad" | Read `exc.__cause__` — `None` means the local table. Do not match on the message |
 
@@ -741,7 +741,7 @@ finished when it was not.
 
 ## 9. The one 0.7 change a consumer must act on before the release lands
 
-**0.7 has since landed in the tree and has its own document — [INTEGRATION_0_7.md](INTEGRATION_0_7.md).**
+**0.7 has since landed in the tree and has its own document — [INTEGRATION_0_7.md](../INTEGRATION_0_7.md).**
 This section stays as written, because it is what a consumer reading it before the release was told;
 the full delta, and the registry ask below restated with the release actually here, are there.
 

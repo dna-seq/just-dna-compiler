@@ -2388,7 +2388,7 @@ of the reader. The half this tier owns is the layout, and it is written twice no
   those patterns with `fnmatch`, whose `*` crosses path separators, so a single `*.parquet` in the
   allowlist would delete every archived version's parquets. The allowlist is literal basenames today
   and the archive survives by that accident. The fix that closes it is the reader's, and it is asked
-  explicitly in [INTEGRATION_0_6 § 2.8](INTEGRATION_0_6.md#28-the-publisher-path-marketplace--registry).
+  explicitly in [INTEGRATION_0_6 § 2.8](history/INTEGRATION_0_6.md#28-the-publisher-path-marketplace--registry).
 - **Nothing already published moves.** The flat path keeps being written, so every module published
   under the old layout stays exactly where it is and keeps resolving. That is the argument for writing
   both rather than migrating.

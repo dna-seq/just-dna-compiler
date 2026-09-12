@@ -686,7 +686,7 @@ any size and a declared layout retirement rides it as `delete_patterns`.
    consequence is worse than for an ordinary table: an overlay row is an author's recorded judgement
    that a derived value is wrong, so losing it silently restores the value they rejected while the
    module keeps compiling green. This ask was carried in
-   [INTEGRATION_0_6 § 9](INTEGRATION_0_6.md) as a warning about a coming release; the release is here.
+   [INTEGRATION_0_6 § 9](history/INTEGRATION_0_6.md) as a warning about a coming release; the release is here.
 2. Add `clin_sig_concordance.csv` and `clin_sig_authority_calls.csv` to the same list — derived, so a
    drop is recoverable by re-running `enrich`, but a re-publish that loses them silently shrinks the
    module.

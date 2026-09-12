@@ -3069,7 +3069,7 @@ arriving rather than drift.
 
   **Cross-repo:** `just-dna-registry` needs `overrides.csv` added to `SPEC_DATA_FILES` /
   `RECOGNIZED_SPEC_FILES`, or the file is dropped on the next re-publish — the way `licensing.csv` was
-  lost before their 0.16.2. Recorded in [INTEGRATION_0_6.md](INTEGRATION_0_6.md).
+  lost before their 0.16.2. Recorded in [INTEGRATION_0_6.md](history/INTEGRATION_0_6.md).
 
 - **RM83 — closed, not shipped.** Dissolved by RM124 rather than argued down: with the corrections in
   the overlay there is nothing inside a sidecar to preserve, so the `--refresh` command it asked for

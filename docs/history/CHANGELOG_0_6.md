@@ -564,7 +564,7 @@ failure RM101 exists to end, reintroduced by the fix for it, in a consumer who h
 They caught it only because their guards assert the *field* rather than the status code.
 
 **Fixed where it was read and where it is maintained.**
-[INTEGRATION_0_6 § 8](../INTEGRATION_0_6.md#8-what-061-got-wrong-and-062-fixed) gains the fourth row in
+[INTEGRATION_0_6 § 8](INTEGRATION_0_6.md#8-what-061-got-wrong-and-062-fixed) gains the fourth row in
 the reporter's own words, plus a paragraph saying to read rows one and four together, since they differ
 only in punctuation. [ENRICHER § Exception contract](../ENRICHER.md) gains the same warning, because a
 migration note stops being read while the reference does not. The 0.6.1 workaround row now says **in

@@ -912,7 +912,7 @@ obvious repair:
 
 A fix whose safety rests on an accident, and which does not close the case, is the wrong half of the
 answer. **The right half is the reader**, so it shipped as an explicit ask in
-[INTEGRATION_0_6 § 2.8](../INTEGRATION_0_6.md#28-the-publisher-path-marketplace--registry) with the
+[INTEGRATION_0_6 § 2.8](INTEGRATION_0_6.md#28-the-publisher-path-marketplace--registry) with the
 mechanism, the failure and the reasoning — the RM27 shape: a finding about a downstream reader is an
 explicit ask, never an implication. One read of `manifest.artifact.files` closes it for good, on every
 module including the ones already published, which no publisher-side change can reach.

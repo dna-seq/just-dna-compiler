@@ -1340,7 +1340,7 @@ alongside the pass's, and that keeps working unchanged"* — is true only if the
 upgrade kills the second arm, because `FrequencyUnavailable` **is a** `FrequencyEnrichmentError` and
 Python takes the first matching clause. That is the shape just-dna-registry actually had, in three of
 four handlers, and it fails silently: the pass reports a clean check while the source is down. The
-guidance is corrected in [INTEGRATION_0_6 § 8](../INTEGRATION_0_6.md#8-what-061-got-wrong-and-062-fixed),
+guidance is corrected in [INTEGRATION_0_6 § 8](INTEGRATION_0_6.md#8-what-061-got-wrong-and-062-fixed),
 which gains a fourth row, and in [ENRICHER § Exception contract](../ENRICHER.md). Left as a correction
 rather than an edit: this reply is what they were told, and rewriting it would hide that the advice was
 incomplete.
@@ -1635,7 +1635,7 @@ was in our own fixture.
 
 ## S40 — two 0.6 changes a consumer meets that INTEGRATION_0_6.md does not name, one of them a check that *stopped* refusing
 
-**Status — accepted, all three; [INTEGRATION_0_6.md](../INTEGRATION_0_6.md) fixed in this pass, and item
+**Status — accepted, all three; [INTEGRATION_0_6.md](INTEGRATION_0_6.md) fixed in this pass, and item
 2 also gained the fixture it was missing.** All three reproduced exactly as written, on this tree:
 `StudyRow.REQUIRED_ANY_OF` is `()` and `StudyRow(pmid="12345", conclusion="Test")` is accepted with
 `variant_key is None`; `reference_examples/shox_par1/resolution.csv` is 10 rows, 10 distinct rsIDs,
