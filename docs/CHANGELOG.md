@@ -36,6 +36,13 @@ signature, so `just-dna-compiler` took the patch alongside while `just-dna-forma
 
 ## 2026-09-12 (latest) — RM231: a licence row is part of its table's commit, in every pass
 
+**Cut as 0.7.0 across all three packages and tagged `v0.7.0` at `83b1674` on 2026-09-12**, a retag: the
+first `v0.7.0` sat at `8b981f6` (2026-09-11) and RM231, the atlas-generate message fix and a
+release-record declaration the gate demanded all landed after it under the same uncut number. The
+readiness commit (INTEGRATION_0_7 § 5, re-measured at `83b1674`) sits one commit past the tag by
+design; `dist/` is built from the tag and its hashes are in that table. Everything from RM201 down to
+here shipped inside this cut.
+
 `just-dna-format` and `just-dna-enricher`, inside the uncut 0.7.0. `alphagenome expression` wrote
 12,003 non-commercial rows, then refused to record its licence row on a scaffold's `<<REPLACE>>`
 placeholder, and printed `FAILED` (S98) — and the compile gate, keyed on the licence table alone,

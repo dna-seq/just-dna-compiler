@@ -919,7 +919,10 @@ signature (the corpus row above is the measurement). Two notes on the cut itself
    Those six were moved out of the tree, not deleted. The compiler wheel's hash is unchanged from
    `8b981f6` because no compiler source moved between the two tags; format and enricher moved.
    Verified after building: the three packages install from the wheels into an isolated venv, report
-   `0.7.0`, `atomic_writer` takes `before_commit`, and the 0.7.0 record declares `expression_effects`.
+   `0.7.0`, `atomic_writer` takes `before_commit`, the 0.7.0 record declares `expression_effects`, and —
+   the RM196 check — the enricher wheel and sdist both carry `_atlas_protos/*.proto` and the generated
+   `generated/_alphagenome_atlas_protos/` package, so with `grpcio` + `protobuf` added
+   `just_dna_enricher.atlas_client` imports and `client_absence()` answers `None`.
    The sha256 of each artifact, so a later `dist/` can be told from this one:
 
    | artifact | sha256 |
