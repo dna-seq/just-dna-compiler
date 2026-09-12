@@ -75,6 +75,58 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM233 — `main` was red on two jobs and green on every local run, and the difference was a colour code
+
+**Severity** medium · **Status** ✅ **shipped 2026-09-12**, test infrastructure only — no package
+version moves, nothing in a shipped surface changes · **Owner** enricher tests + the suite root ·
+**Motivating case** CI run 34703638770 at `2001215`, the tip of `main`
+
+Two tests failed on both Python jobs while `uv run pytest` was green locally: 2 failed, 4571 passed.
+Neither failure was about what it named.
+
+`test_the_flag_the_refusal_names_exists_on_the_command` asserted `"--use" in result.output` over
+Typer's `--help`, and Typer renders through rich, which decides colour from the environment. A GitHub
+runner gets it; a non-tty local shell does not. With colour on, rich styles the two dashes as their own
+span, so the flag is emitted as `\x1b[1;36m-\x1b[0m\x1b[1;36m-use\x1b[0m` and the assertion is false
+for a flag that is right there in the text — reported as a command missing a flag it declares.
+Reproduced locally with `FORCE_COLOR=1`, which is the whole environment difference.
+
+`test_a_source_path_that_does_not_exist_is_refused_before_anything_downloads` asserted
+`"nothing will fetch it"`, and that one is **not** environment-dependent at all: Typer's error box is
+drawn at a width `click.testing.CliRunner` pins inside `invoke()`, so a sentence longer than the box is
+broken across lines with `│` and padding in the middle. It had been passing through a local
+`_unwrapped()` helper that collapsed the box — and *that* is how the two became one item.
+
+**The repair is split because the causes are, and one of the two exits was measured shut.** Colour is
+pinned once for the suite: a root `conftest.py` sets `TERM=dumb`, which is the value that fixes both
+halves of rich's styling where `NO_COLOR=1` fixes only one and `FORCE_COLOR` outranks it anyway.
+`COLUMNS` was in the first draft beside it and is deliberately **not** there now: `CliRunner` pins its
+own width, so no environment variable can widen the box, and a line that looks like it addresses the
+wrapping while doing nothing is worse than its absence. Wrapping is handled where it can be, at the
+match: `_unwrapped` moves into `enricher/tests/conftest.py` as `cli_text`, exposed as a fixture because
+`--import-mode=importlib` means a conftest is not importable by name.
+
+**The transferable half is the private name.** A normalizer for exactly this existed, in
+`test_cache_lanes.py`, called `_unwrapped`, and the second site that needed it could not find it —
+wrote `in result.output`, and was the test that went red
+(`@roster-is-as-wide-as-the-tables-it-reads`: *grep for the question, not the bug; a private name keeps
+the second caller from finding the first*).
+It also only ever collapsed box drawing, never escapes, which is why it survived colour and the raw
+assertion beside it did not. `cli_text` strips both and reads `stderr` as well as `stdout`, since Typer
+writes a `BadParameter` to stderr and a helper over `result.output` alone matches nothing for exactly
+the errors worth asserting on.
+
+**Scope, measured rather than assumed:** 491 tests across 18 files invoke a CLI, and exactly two were
+affected — the other 489 pass on the luck of matching a token rich does not split, inside a phrase short
+enough not to wrap. That is why the colour pin is central rather than per-test: the next one would
+otherwise be found the same way, by a red `main` on a green local run.
+
+`enricher/tests/test_cli_rendering.py` is the guard, and it asserts the property rather than the
+mechanism — no escape codes in rendered output, a flag name survives whole, and a wrapped diagnostic is
+matchable through `cli_text` **and not through `result.output`**, so the day the box stops wrapping the
+helper's reason is reported rather than left standing. Both halves were demonstrated failing first: the
+flag under `FORCE_COLOR=1`, the phrase in any environment.
+
 ## RM232 — a drafted row lands before its licence row, and the seam RM231 built does not reach the compiler's writer
 
 **Severity** high · **Status** ✅ **landed 2026-09-12, past the `v0.7.0` tag** — the cut went in at

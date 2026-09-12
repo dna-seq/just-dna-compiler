@@ -95,9 +95,11 @@ def test_the_flag_reaches_the_rows_through_the_real_call_path() -> None:
     )
 
 
-def test_the_flag_the_refusal_names_exists_on_the_command() -> None:
+def test_the_flag_the_refusal_names_exists_on_the_command(cli_text) -> None:
     """The whole point: `--use` is what the compile's message tells an operator to re-run with."""
     result = CliRunner().invoke(app, ["check-identifiers", "--help"])
 
     assert result.exit_code == 0, result.output
-    assert "--use" in result.output
+    # Through `cli_text` (RM233): rich styles the two dashes of `--use` as their own span, so a raw
+    # match is false for a flag that is present whenever the renderer decides to use colour.
+    assert "--use" in cli_text(result)

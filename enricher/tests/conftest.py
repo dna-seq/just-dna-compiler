@@ -29,6 +29,7 @@ than listed, so a fifteenth lane is covered the day it is declared.
 """
 
 import gzip
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,6 +38,9 @@ from just_dna_enricher import clinvar_build, locations
 from just_dna_enricher.caches import CACHE_LANES
 from just_dna_enricher.mitomap_build import build_snapshot as build_mitomap_snapshot
 from just_dna_enricher.mitomap_miss_build import build_miss_snapshot
+
+#: A CSI escape sequence — what rich emits to colour a span. See `cli_text`.
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
 @pytest.fixture(autouse=True)
@@ -137,6 +141,52 @@ BLOCKS = [
     ),
     ("COPY mitomap.edit_date (id, table_name, date) FROM stdin;", EDIT_DATE),
 ]
+
+
+def _cli_text(result) -> str:
+    """Rendered CLI output flattened to one line, for matching a phrase an operator would grep for.
+
+    **RM233.** Typer renders errors and `--help` through rich, which draws a box at a width
+    `CliRunner` pins itself — the environment cannot widen it. A diagnostic longer than the box is
+    therefore broken across lines with `│` and padding in the middle of a sentence, so
+    `"nothing will fetch it" in result.output` is false for a message that says exactly that. It was
+    one of the two failures that made `main` red at `2001215` while every local run was green.
+
+    Colour is handled once, in the root `conftest.py`, by pinning `TERM=dumb`; this is the other half,
+    and it cannot live there because no environment variable reaches `CliRunner`'s width. Escapes are
+    stripped here too so the helper is correct on its own rather than only in company.
+
+    Use it wherever a test matches **prose**. A test matching a token — a flag name, an exit code, a
+    single word — is unaffected by wrapping and does not need it.
+
+    **It reads `stderr` as well, and that is why it takes the result rather than a string.** Typer
+    writes a `BadParameter` to stderr, so a helper over `result.output` alone would quietly match
+    nothing for exactly the errors worth asserting on.
+
+    It began as `_unwrapped` inside `test_cache_lanes.py`, private, which is the other half of how
+    RM233 happened: the second site that needed it could not find it, wrote `in result.output`, and
+    was the test that went red. A normalizer with a private name is a normalizer with one caller
+    (`@roster-is-as-wide-as-the-tables-it-reads`). Stripping the escapes is new here — the original
+    collapsed box drawing and wrapping only, which is why it survived colour and the other did not.
+    """
+    raw = result.output + (result.stderr if result.stderr_bytes else "")
+    plain = _ANSI.sub("", raw)
+    # The box characters become spaces rather than vanishing: `│ ends a line │ starts` must not weld
+    # two words into one, and every run of whitespace then collapses to a single space.
+    for glyph in "│┃╭╮╰╯─━┌┐└┘":
+        plain = plain.replace(glyph, " ")
+    return " ".join(plain.split())
+
+
+@pytest.fixture
+def cli_text():
+    """`_cli_text` as a fixture, which is how a conftest helper reaches a test under importlib mode.
+
+    `addopts` carries `--import-mode=importlib`, so `from conftest import …` raises
+    `ModuleNotFoundError` — a conftest is loaded as a plugin, not placed on `sys.path`. A fixture is
+    the supported route and it keeps the helper's single definition.
+    """
+    return _cli_text
 
 
 def write_mitomap_dump(path: Path, blocks=BLOCKS) -> Path:

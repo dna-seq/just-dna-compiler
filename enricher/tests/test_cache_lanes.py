@@ -66,13 +66,6 @@ def _builder_modules() -> set[str]:
     return {p.name.removesuffix("_build.py") for p in _SRC.glob("*_build.py")}
 
 
-def _unwrapped(result) -> str:
-    """A Typer/Rich result's text with its box drawing and line wrapping collapsed to single spaces."""
-    raw = result.output + (result.stderr if result.stderr_bytes else "")
-    stripped = "".join(" " if ch in "\u2502\u2500\u256d\u256e\u256f\u2570\n" else ch for ch in raw)
-    return " ".join(stripped.split())
-
-
 def test_every_builder_module_has_a_lane_and_every_lane_but_one_has_a_builder() -> None:
     """The equality the old list could not state, in both directions.
 
@@ -484,7 +477,7 @@ def test_the_civic_adapter_takes_the_same_three_files_the_per_lane_command_does(
 
 
 def test_a_source_path_that_does_not_exist_is_refused_before_anything_downloads(
-    tmp_path: Path,
+    tmp_path: Path, cli_text
 ) -> None:
     """A typo in an operator-supplied path must not cost a full run first.
 
@@ -512,12 +505,12 @@ def test_a_source_path_that_does_not_exist_is_refused_before_anything_downloads(
     # a width nobody chose. The text is normalized before it is matched — pinning a message against
     # its own line-wrapping tests the terminal width, not the message (`@warning-text-is-api` is
     # about the words).
-    printed = _unwrapped(result)
+    printed = cli_text(result)
     assert "not a readable file" in printed
     assert "nothing will fetch it" in printed
 
 
-def test_a_source_path_may_be_written_with_a_tilde(tmp_path: Path) -> None:
+def test_a_source_path_may_be_written_with_a_tilde(tmp_path: Path, cli_text) -> None:
     """`--source acmg=~/x.xlsx` puts the tilde inside an assignment, where no shell expands it.
 
     So the CLI expands it, at the check and again where the path is used — a validation that
@@ -544,7 +537,7 @@ def test_a_source_path_may_be_written_with_a_tilde(tmp_path: Path) -> None:
         ],
         env={"HOME": str(staged.parent)},
     )
-    assert "not a readable file" not in _unwrapped(result), result.output
+    assert "not a readable file" not in cli_text(result), result.output
 
 
 # ── the ACMG workbook the checkout already carries ──────────────────────────────────────────────

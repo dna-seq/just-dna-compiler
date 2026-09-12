@@ -34,6 +34,18 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-12 — [RM233](ROADMAP_HISTORY.md#rm233--main-was-red-on-two-jobs-and-green-on-every-local-run-and-the-difference-was-a-colour-code): a red `main` that was a colour code
+
+**Test infrastructure only — no package version moves and nothing a consumer holds changes.** `main`
+was red at `2001215` on both Python jobs while every local run was green. Two tests match a string
+inside Typer's rich-rendered output; rich decides colour from the environment, so on a runner `--use`
+arrives as three ANSI spans and the assertion reports a command missing a flag it declares. The second
+failure, a diagnostic wrapped across the error box, was never environment-dependent — `CliRunner` pins
+its own width, so no environment variable can widen it. Fixed in the two places the two causes live:
+`TERM=dumb` in a root `conftest.py`, and the box-collapsing helper promoted out of one test module into
+a shared `cli_text` fixture. The transferable half is that the helper already existed under a private
+name, so the second caller that needed it wrote the raw match instead.
+
 ## 2026-09-12 — `docs/` renders as a site (no version bump: nothing shipped in a package changed)
 
 **`docs/` is now a documentation site, built in place.** `mkdocs.yml` at the repository root, a `docs`
