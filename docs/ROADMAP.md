@@ -258,7 +258,11 @@ to them, and a counter seeing nothing reads as an all-clear. So write the token 
 *narrowed*, *shape decided*, *the manifest half only* — after its closing `**`. The 2026-08-21
 decision round rewrote all four lines below and took the count from six to zero while four items sat
 here; that is the second failure of this counter, the first having been that it counted a version
-number that then shipped.
+number that then shipped. The third was an item filed with no such token at all — RM235, on
+2026-09-12 — so the field is now **asserted by a test** rather than only described:
+`schema/tests/test_triage_tools.py` walks every `## RMn` between this heading and
+`# Not format scope` and refuses the one the counters cannot see. Write the token, or the suite says
+which item is invisible and to whom.
 
 **The 2026-08-21 decision round is what emptied the other half.** Six items stood here, every one of
 them a decision rather than a missing line of code, and one pass answered all six: **RM102** closed
@@ -340,8 +344,9 @@ The trackers further down are the other live part of this file: the reserved-nam
 
 ## RM235 — one property over four registries: an outage reports as a broken identifier, and an unreachable EFO reports as clean
 
-**Severity** high · **Status** 🔶 **open**, filed 2026-09-12 from the RM234 investigation · **Owner**
-enricher · **Motivating case** found while answering S100, not reported by a consumer
+**Severity** high · **Status** open — **a minor, release undecided** · 🔶 filed 2026-09-12 from
+the RM234 investigation · **Owner** enricher · **Motivating case** found while answering S100, not
+reported by a consumer
 
 `IdentifierReport.clean` is `not (stale_rsids or stale_traits or stale_genes or gene_loci or
 stale_pgs)`, and `check-identifiers --strict` exits 1 on it being false. The three `stale_*` properties

@@ -21,6 +21,7 @@ asks for exactly that and because a guard nobody has watched fail is a guess.
 
 import importlib.util
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -192,3 +193,65 @@ def test_the_archiver_refuses_a_document_whose_fences_are_broken(tmp_path):
     assert result.returncode != 0
     assert "refusing to archive" in result.stderr
     assert live.read_text().count("## S62") == 1, "the live file must be untouched"
+
+
+# --- §4's counter reads a fixed field, and this is what makes it a field ------------------------
+#
+# `CONSUMER_TRIAGE_LOOP.md` § 4 decides when to ask whether the next minor should start by grepping
+# `docs/ROADMAP.md` for a release-class token. That counter has now gone blind three times, always in
+# the same direction — it reads zero while grounded items sit in the file, and a zero reads as an
+# all-clear. First it counted a literal version number that then shipped; then the 2026-08-21 decision
+# round rewrote four status lines and pushed the token out of the slot; then RM235 was filed on
+# 2026-09-12 with no token at all and the count read 0/0 against a high-severity open item.
+#
+# Twice the repair was to re-word the rule, which is the repair `@registry-completeness` names as the
+# wrong one: a rule stated in prose is only as good as the next person reading it, and the person
+# editing a status line is reading `ROADMAP.md`, not the runbook. So the equality is asserted here
+# instead — every open item is one the counter can see — and the counter can no longer report its own
+# blindness as silence.
+
+#: The token as the §4 greps spell it, split so this line is not itself counted by them.
+_CLASS_RE = re.compile(r"\*\*Status\*\* open " + "— " + r"\*\*a (minor|patch)\b[^*\n]*\*\*")
+_OPEN_REGION = ("# Active items", "# Not format scope")
+
+
+def _active_items() -> dict[str, str]:
+    """Every `## RMn` section in ROADMAP's open region, as {id: section text}."""
+    lines = (ROOT / "docs" / "ROADMAP.md").read_text().splitlines()
+    start = lines.index(_OPEN_REGION[0])
+    end = lines.index(_OPEN_REGION[1], start)
+    heads = [i for i in range(start, end) if re.match(r"^## RM\d+\b", lines[i])]
+    spans = list(zip(heads, heads[1:] + [end], strict=True))
+    return {lines[a].split()[1]: "\n".join(lines[a:b]) for a, b in spans}
+
+
+def test_roadmap_has_open_items_to_count():
+    """A guard over an empty set proves nothing — say so rather than passing vacuously."""
+    assert _active_items(), (
+        "no `## RMn` sections between the two region headings; if ROADMAP's structure moved, "
+        "_OPEN_REGION moved with it and §4's greps need re-checking too"
+    )
+
+
+def test_every_open_item_carries_the_release_class_token():
+    """`@registry-completeness`: equality over the walked set, never the counter's own number."""
+    items = _active_items()
+    walked = set(items)
+    seen = {item for item, text in items.items() if _CLASS_RE.search(text)}
+    assert walked == seen, (
+        "invisible to §4's counter: "
+        + ", ".join(sorted(walked - seen))
+        + " — an open item's status reads `**Status** open` then an em dash then, in bold and on the "
+        "same line, `a minor, release undecided` or `a patch, …`"
+    )
+
+
+def test_the_counter_the_runbook_publishes_agrees_with_the_walk():
+    """The greps §4 actually runs, run here — a rule and its instrument must not drift apart."""
+    roadmap = (ROOT / "docs" / "ROADMAP.md").read_text()
+    counted = sum(roadmap.count("**Status** open " + "— " + f"**a {klass}") for klass in ("minor", "patch"))
+    open_items = len(_active_items())
+    assert counted == open_items, (
+        f"§4 would count {counted} against {open_items} open items; either an item is invisible "
+        "to it or prose elsewhere in the file is being counted as one"
+    )

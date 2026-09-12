@@ -825,7 +825,8 @@ Each of these was a bug in the loop, not a hypothetical:
   tools disagreeing about a boundary is exactly how S62 got cut in half. `fence_findings()` is the
   backstop for what the tracker still cannot parse, and the archiver **refuses** rather than warning.
 
-- **The §4 counter has now failed twice, by two different routes, and both were silent.** The first
+- **The §4 counter has now failed three times, by three different routes, and all three were
+  silent.** The first
   time it counted a literal `**0.6**` and went on counting it after 0.6 shipped. The fix was to count
   the *idiom* instead — and on 2026-08-21 the idiom moved: a decision round rewrote all four open
   items' status lines to lead with what had just been decided (`**shape decided 2026-08-21**`,
@@ -848,6 +849,20 @@ Each of these was a bug in the loop, not a hypothetical:
   A smaller trap sits inside the fix: the paragraph that *documents* the phrase reproduced it, and
   the counter obligingly counted the documentation, reading five for four items. Describe the field
   without spelling it contiguously.
+
+  **The third route was the simplest one and it defeated the repair: an item filed without the token
+  at all.** RM235 went into `ROADMAP.md` on 2026-09-12 — high severity, a reproduced measurement under
+  it, `**Status** 🔶 **open**, filed …` — and the counters read **0/0** the next day against it. So the
+  rule from 2026-08-21 held for the *shape* of a status line and not for whether one was written at
+  all, and the second repair's own reasoning is what condemns it: a rule stated in prose is only as
+  good as the next person reading it, and the person filing an item is writing that line rather than
+  reading two documents about it. **Fixed the way `@registry-completeness` says to fix it** — as an
+  equality over a walked set, in `schema/tests/test_triage_tools.py`: every `## RMn` between
+  `# Active items` and `# Not format scope` must be one the counter can see, and a third test runs
+  §4's own greps and asserts they agree with the walk, so the rule and its instrument cannot drift
+  apart. Run red against RM235's real line before the token was written, which is the only way to know
+  a guard guards. A prose rule that has been restated twice is asking for a test; this is the third
+  restatement and the last one.
 
 - **A marker can be stamped with a git commit sha, and it fails twice over.** S36's read
   `<!-- triaged: 0.6.0 · sha cbeeb8f -->`, which is a real commit in this repo and not a fingerprint at
