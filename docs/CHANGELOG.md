@@ -34,7 +34,64 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-12 (latest) — RM231: a licence row is part of its table's commit, in every pass
+## 2026-09-12 (latest) — RM232: a drafted row commits with its licence row too
+
+**This one is AFTER the 0.7.0 cut** (`v0.7.0` at `83b1674`) and is therefore unreleased. It is the
+first entry of the next number, and **which number is the maintainer's to declare** — the two readings
+in this file do not agree, so the facts go here rather than a verdict. It writes no parquet, moves no
+signature, and touches no model and no manifest field, which is the test the 0.5.2 paragraph above
+applied when `just-dna-compiler` took a **patch** for a compiler change. Against that, `append_rows`
+and `append_partial_rows` are public compiler functions and they grew an optional parameter, which is
+a surface growing **additively** — a minor under P3 and under plain semver. The three packages still
+read `0.7.0`; nothing here bumped them.
+
+
+RM231 closed the two-step tail in the eight enrichment passes and had to name **five exemptions** to
+close its guard's roster. Two of them were one defect rather than two local ones, and this closes it:
+a drafter's rows do not go through a writer of its own, they go through the compiler's
+`draft.append_rows` / `append_partial_rows`, which had no `before_commit` to hand a callback to. So
+`civic_citations.draft_civic_citations` and the drafting scaffold's `record_draft_provenance` recorded
+the licence row only once the drafted rows were already renamed into place — and a refused merge (a
+scaffolded module's unreplaced `<<REPLACE>>` row is enough, which is S98's own trigger) left drafted
+rows in the author's tables with nothing recording what licensed them. `sources.csv` is the only file
+the compile gate reads.
+
+- **Both draft writers take `before_commit`** and thread it to all three of their `atomic_writer`
+  sites. Optional, defaulted to `None`, so a caller that passes nothing gets exactly what it got
+  before — see the release-class note above for why that is not by itself the number.
+- **`drafting.licence_commit`** is the merge half of `record_draft_provenance` as a closure factory —
+  one body, handed to every append a drafter makes. It fires **per table that actually writes**, which
+  is the grain the row needs: hoisting the merge ahead of the appends cannot work, because `covered`
+  is not knowable until the append is attempted (a run whose rows all `differ` covers nothing and must
+  write no row), and binding it to only the first or only the last append leaves a table committed
+  unlicensed whichever one turns out to be the no-op. The merge is never-clobber, so N firings record
+  one row.
+- **`record_draft_provenance` keeps its tail call** for the run that covered something and wrote
+  nothing — every row already present, so no append reached a writer — along with the stale-label
+  withdrawal and the projection restamp, both of which are answers about the run and not about one
+  table.
+- **The pre-flight is inherited, not remembered**: building the closure reads the licence table, so a
+  placeholder refuses before the first append rather than after it.
+- **The guard is an equality from both ends.** Nine committing passes now (`civic_citations` stops
+  being an exemption), the two closures named as *being* the callback, and a new walk over every
+  `append_*` call under `just_dna_enricher` — 11 of them, all 11 unbound before this change and all 11
+  bound after.
+- **The residual is unchanged and still stated**: two files are two renames, so a table rename failing
+  after its callback has returned leaves a licence row for data that never arrived. Conservative, and
+  the `OSError` names what landed.
+- **One behaviour change beyond the fix, and it is intended**: the pre-flight runs when the closure is
+  built, and a drafter builds it unconditionally, so `draft --dry-run` against a module whose
+  `licensing.csv` does not load now **refuses** where it used to report. A dry run that hides the
+  refusal the real run will make is the worse of the two, and RM231 made the same trade for the same
+  reason. Pinned by a test.
+
+Suite 4,639 passed, 29 skipped.
+
+**Filed before it was fixed, and that is the point.** The gap was confirmed and then recorded only as
+two exemption reasons in a passing test — honest, and invisible to a release check that reads *no open
+RMs, all green*. It went into ROADMAP as an open item in its own commit before any code moved.
+
+## 2026-09-12 — RM231: a licence row is part of its table's commit, in every pass
 
 **Cut as 0.7.0 across all three packages and tagged `v0.7.0` at `83b1674` on 2026-09-12**, a retag: the
 first `v0.7.0` sat at `8b981f6` (2026-09-11) and RM231, the atlas-generate message fix and a

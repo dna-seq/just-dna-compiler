@@ -44,6 +44,7 @@ from just_dna_format.binning import RepeatAlleleRow
 
 from just_dna_enricher.drafting import (
     DRAFT_PROVIDERS,
+    licence_commit,
     missing_required,
     record_draft_provenance,
 )
@@ -258,8 +259,18 @@ def draft_repeat_loci(
             continue
         partials.append(row)
 
+    # The licence row lands inside the table's commit (RM232).
+    commit_licence = licence_commit(
+        sources=[STRCHIVE_TERMS.source],
+        spec_dir=spec_dir,
+        dataset=result.dataset,
+        declared_use=declared_use,
+        error=StrchiveDraftError,
+    )
     if partials:
-        result.report = append_partial_rows(spec_dir, REPEAT_ALLELES_CSV, partials, dry_run=dry_run)
+        result.report = append_partial_rows(
+            spec_dir, REPEAT_ALLELES_CSV, partials, dry_run=dry_run, before_commit=commit_licence
+        )
 
     # Carried on the result, not logged: every caller here renders `warnings` itself, and
     # `civic_draft`/`clinvar_draft` do the same. Logging them as well printed each note twice.

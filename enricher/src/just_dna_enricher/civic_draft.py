@@ -47,7 +47,7 @@ from just_dna_format.vrs import UnsupportedBuildError, refget_accession
 from just_dna_enricher.civic_build import CIVIC_PARQUET
 from just_dna_enricher.civic_refutation import CIVIC_REFUTES
 from just_dna_enricher.clingen_allele import ClingenAlleleClient, anchor_indel
-from just_dna_enricher.drafting import DRAFT_PROVIDERS, record_draft_provenance
+from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_draft_provenance
 from just_dna_enricher.drafting import identity_refused_by_model as scaffold_identity_refused
 from just_dna_enricher.licensing import CIVIC_TERMS, CLINGEN_ALLELE_REGISTRY_TERMS
 from just_dna_enricher.locations import RELEASE_FILENAME, resolve_civic_reference
@@ -585,12 +585,27 @@ def draft_panel_from_civic(
         if study is not None:
             study_partials.append(study)
 
+    # The licence row lands inside each table's commit (RM232). The registry is listed only where it
+    # was actually asked, the same predicate the tail call uses.
+    commit_licence = licence_commit(
+        sources=[CIVIC_SOURCE] + ([CLINGEN_ALLELE_REGISTRY_TERMS.source] if consulted_registry else []),
+        spec_dir=spec_dir,
+        dataset=result.dataset,
+        declared_use=declared_use,
+        error=CivicDraftError,
+    )
     if variant_partials:
         result.reports.append(
-            append_partial_rows(spec_dir, "variants.csv", variant_partials, dry_run=dry_run)
+            append_partial_rows(
+                spec_dir, "variants.csv", variant_partials, dry_run=dry_run, before_commit=commit_licence
+            )
         )
     if study_partials:
-        result.reports.append(append_partial_rows(spec_dir, "studies.csv", study_partials, dry_run=dry_run))
+        result.reports.append(
+            append_partial_rows(
+                spec_dir, "studies.csv", study_partials, dry_run=dry_run, before_commit=commit_licence
+            )
+        )
     result.warnings.extend(_withheld_warnings(result.withheld, contested_names))
     result.warnings.extend(_refuted_warning(result.refuted_beside_claim, result.refutation_basis))
 

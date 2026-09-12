@@ -372,6 +372,7 @@ def append_rows(
     *,
     group_by: Sequence[str] = (),
     dry_run: bool = False,
+    before_commit: Callable[[], None] | None = None,
 ) -> DraftReport:
     """Append `rows` to `spec_dir/csv_name`, skipping any whose natural key is already there.
 
@@ -382,6 +383,19 @@ def append_rows(
     existing row sharing those columns (its gene, its haplotype) instead of at the end of the file.
     The tool picks the position; the caller never supplies an index. Existing cells are still never
     rewritten — only their line number can move, and `DraftReport.shifted` names every row it did.
+
+    `before_commit` is handed straight to `layout.atomic_writer`, so it runs after this table's bytes
+    are down and **before** the rename (RM232). It is what lets a drafter's licence row land inside
+    the commit of the table it licenses, the way an enrichment pass's already does (S98, RM231): the
+    enricher records the row only once a table has rows in it, so without this the drafted rows were
+    on disk first and a refused merge left them with nothing to say what licensed them.
+
+    **It fires only when this call actually writes**, which is the grain the caller wants: a run whose
+    every row is `already_present` or `differs` adds nothing to this table and reaches no writer, so
+    no licence row is claimed for a table this run did not change. A drafter appending several tables
+    passes the same callable to each — the merge is never-clobber, so N firings record one row, and
+    binding it to only the first or only the last would leave a table committed unlicensed whenever
+    that particular one was the no-op.
     """
     spec_dir = Path(spec_dir)
     path = _draft_path(spec_dir, csv_name)
@@ -460,7 +474,7 @@ def append_rows(
         # Atomic, on both branches: this is the author's own file, the one class of file this module
         # promises never to damage, and a kill between `open(.., "w")` and the last `writerows` left
         # it truncated to a valid short CSV that nothing downstream could tell from a shorter table.
-        with atomic_writer(path, newline="") as handle:
+        with atomic_writer(path, newline="", before_commit=before_commit) as handle:
             writer = csv.DictWriter(handle, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(merged)
@@ -471,7 +485,7 @@ def append_rows(
         # last one, corrupting a row this module promises never to touch. The existing bytes are
         # copied through verbatim rather than re-rendered, so the atomic rewrite changes none of them.
         existing_text = path.read_text(encoding="utf-8", newline="")
-        with atomic_writer(path, newline="") as handle:
+        with atomic_writer(path, newline="", before_commit=before_commit) as handle:
             handle.write(existing_text)
             if not _ends_with_newline(path):
                 handle.write(csv.excel.lineterminator)
@@ -553,12 +567,15 @@ def append_partial_rows(
     *,
     group_by: Sequence[str] = (),
     dry_run: bool = False,
+    before_commit: Callable[[], None] | None = None,
 ) -> DraftReport:
     """Append rows a source could only partly fill, leaving the rest as stubs a human must replace.
 
     Same promises as `append_rows`: never rewrites a cell, never removes a row, and a row already
     covered is reported rather than duplicated. The difference is only how sameness is decided — see
     `PartialRow.match_on` — because a row whose key column is a placeholder has no usable key yet.
+
+    `before_commit` behaves exactly as it does in `append_rows`, and for the same reason (RM232).
     """
     spec_dir = Path(spec_dir)
     path = _draft_path(spec_dir, csv_name)
@@ -637,7 +654,7 @@ def append_partial_rows(
     merged, shifted = place_rows(previous, to_write, group_by)
     path.parent.mkdir(parents=True, exist_ok=True)
     # Atomic: the author's own file, see `append_rows`.
-    with atomic_writer(path, newline="") as handle:
+    with atomic_writer(path, newline="", before_commit=before_commit) as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(merged)

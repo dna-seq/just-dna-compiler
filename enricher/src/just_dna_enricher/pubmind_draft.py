@@ -84,7 +84,7 @@ from just_dna_enricher.clinvar_draft import (
     _state_stub_warnings,
     sole_expressible_genotype,
 )
-from just_dna_enricher.drafting import DRAFT_PROVIDERS, record_draft_provenance
+from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_draft_provenance
 from just_dna_enricher.enrich import source_build_mismatch
 from just_dna_enricher.licensing import (
     PUBMIND_TERMS,
@@ -587,7 +587,25 @@ def draft_gene_panel_from_pubmind(
         result.warnings.append("nothing matched; no rows drafted")
         return result
 
-    report = append_partial_rows(spec_dir, "variants.csv", partials, group_by=("gene",), dry_run=dry_run)
+    # Read here rather than at the tail (RM232), for the reason `clinvar_draft` states: the licence
+    # row lands inside the table's commit, so the row's contents precede the write. The warning for a
+    # snapshot that cannot state its release stays below.
+    dataset = pubmind_dataset_label(reference)
+    commit_licence = licence_commit(
+        sources=[PUBMIND_SOURCE],
+        spec_dir=spec_dir,
+        dataset=dataset,
+        declared_use=declared_use,
+        error=PubMindDraftError,
+    )
+    report = append_partial_rows(
+        spec_dir,
+        "variants.csv",
+        partials,
+        group_by=("gene",),
+        dry_run=dry_run,
+        before_commit=commit_licence,
+    )
     result.reports.append(report)
     result.warnings.extend(_refusal_summary(report.invalid))
     # PubMind's own channel carries no citation, so a drafted panel is ungrounded by construction and
@@ -639,7 +657,6 @@ def draft_gene_panel_from_pubmind(
         )
     )
 
-    dataset = pubmind_dataset_label(reference)
     if dataset is None:
         result.warnings.append(
             f"this snapshot does not say which {PUBMIND_LABEL} bytes it carries (no readable "

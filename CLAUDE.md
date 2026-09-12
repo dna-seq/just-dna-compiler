@@ -410,6 +410,8 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - An `enrich` run is a transaction: stage the *answer* beside the target, commit the table at the gate. `@enrich-is-a-transaction`
 - A refused `strict` run commits nothing — a written promise now, asserted on the bytes. `@enrich-is-a-transaction`
 - A licence row is part of its table's commit (`atomic_writer(before_commit=…)`), never a step after it; pre-read the table before the fetch. `@licence-row-inside-the-commit`
+- A drafted row commits with its licence row too: `append_*` takes the same hook, fired **per file that writes** — never hoisted ahead, never bound to one append. `@licence-row-inside-the-commit`
+- A function's own calls are not a nested `def`'s: an AST guard that conflates them flags the shape it asks for. `@licence-row-inside-the-commit`
 - `flock` the directory, never a lockfile: the kill it guards against is what leaves one behind. `@flock-not-a-lockfile`
 - And never lock a path something rewrites atomically — `flock` binds an inode, so a rename-over defeats it. `@an-index-is-not-an-allocator`
 - An index is not an allocator: a number is claimed by a locked write, never by reading the highest. `@an-index-is-not-an-allocator`

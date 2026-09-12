@@ -48,7 +48,7 @@ from just_dna_compiler.draft import DraftReport, append_rows
 from just_dna_format.pgx import PharmVariantRow
 
 from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, _normalize_category, load_snapshot
-from just_dna_enricher.drafting import DRAFT_PROVIDERS, record_draft_provenance
+from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_draft_provenance
 from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use
 from just_dna_enricher.locations import SNAPSHOT_LICENSE_FILENAME
 
@@ -389,7 +389,24 @@ def draft_pharm_variants(
     if not rows:
         return ClinPgxDraftResult(warnings=warnings + ["nothing matched; no rows drafted"])
 
-    reports = [append_rows(spec_dir, "pharm_variants.csv", rows, dry_run=dry_run)]
+    # Hoisted above the append so the licence closure can carry it (RM232): the row has to land
+    # inside the table's commit, so everything the row states must be known before the write. The
+    # read is pure; the warning it can raise stays below, gated on `not dry_run` as it was.
+    license_path = Path(snapshot) / SNAPSHOT_LICENSE_FILENAME
+    license_text = license_path.read_text(encoding="utf-8") if license_path.is_file() else None
+    if not (license_text or "").strip():
+        license_text = None
+    commit_licence = licence_commit(
+        sources=[CLINPGX_TERMS.source],
+        spec_dir=spec_dir,
+        dataset=release.get("dataset"),
+        declared_use=declared_use,
+        error=ClinPgxEnrichmentError,
+        license_texts={CLINPGX_TERMS.source: license_text} if license_text else None,
+    )
+    reports = [
+        append_rows(spec_dir, "pharm_variants.csv", rows, dry_run=dry_run, before_commit=commit_licence)
+    ]
     if not dry_run:
         # A pass that consults a source must WRITE its SourceRow: the compile gate and
         # `manifest.sources` read sources.csv and nothing else, so a row that is only returned is a
@@ -409,10 +426,7 @@ def draft_pharm_variants(
         # left to `SourceTerms.row`'s normalization alone: an empty file is what a provisioning run
         # used to leave behind, and a drafter that silently recorded no hash for it would say nothing
         # about a snapshot whose terms cannot be pinned.
-        license_path = Path(snapshot) / SNAPSHOT_LICENSE_FILENAME
-        license_text = license_path.read_text(encoding="utf-8") if license_path.is_file() else None
-        if not (license_text or "").strip():
-            license_text = None
+        if license_text is None:
             warnings.append(
                 f"no readable {SNAPSHOT_LICENSE_FILENAME} in the snapshot, so the recorded ClinPGx "
                 f"terms are not pinned to the text that governed them (license_sha256 stays empty). "

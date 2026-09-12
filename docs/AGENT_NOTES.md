@@ -2919,6 +2919,33 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   that would reach them. **A guard that names a known gap as an exemption with its reason is honest; a
   guard that cannot see it is not.**
 
+  **RM232 closed those two, and the closing is where the design content is.** A drafter has no writer
+  of its own — its rows go through the compiler's `draft.append_rows` / `append_partial_rows`, which
+  now take the same `before_commit`. The callback fires **per file that actually writes**, and the two
+  cheaper placements are both wrong for reasons worth keeping: *hoisting the merge ahead of the
+  appends* fails because `covered` is `added`-or-`already_present` and the outcome vocabulary also has
+  `differs`, `appended_unkeyed` and `invalid`, so a run whose rows all `differ` covers nothing and owes
+  no row — and that cannot be known before the append is attempted; *binding it to the first or the
+  last append* fails because whichever one you pick may be the run's no-op, leaving another table
+  committed unlicensed. Per-file is safe only because the merge is never-clobber, which is a property
+  to assert rather than assume. The recorder keeps its tail call for the run that covered something and
+  wrote nothing, and keeps the stale-label withdrawal and the projection restamp with it: those are
+  answers about the **run**, and only the row is about the table.
+
+  **The AST guard needed a distinction the first version did not have**: a function's *own* calls
+  versus a nested `def`'s. Without it, a pass that moved its merge into a `before_commit` closure read
+  as making a bare recorder call — the guard flagged the very shape it was asking for. Descend into
+  lambdas (that is how eight of the nine spell it), stop at a nested `def`, and resolve a callback
+  passed by name, so a callback that is *defined and never passed* still reads as bare, which is
+  exactly the bug it would be. The other end is a second walk: **every** `append_*` call carries a
+  `before_commit`, 11 of them, demonstrated failing on all 11 before the change rather than asserted to
+  have caught it.
+
+  **Three pure reads had to move up** (`clinvar_draft` and `pubmind_draft`'s release label,
+  `clinpgx_draft`'s licence text): the row lands inside the first write, so everything the row states
+  must be known before it. The warnings those reads can raise stayed exactly where they were, gated as
+  they were — hoisting a read is behaviour-preserving, hoisting the warning beside it is not.
+
 - `@flock-not-a-lockfile` — **A lock left behind by exactly the kill it exists for is worse than no
   lock (RM128).** Two concurrent `enrich` runs over one spec directory were last-writer-wins over a
   merge with neither knowing; a zombie run once replaced a restored 330-row table with 162 rows, after

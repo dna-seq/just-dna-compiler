@@ -68,6 +68,88 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM232 — a drafted row lands before its licence row, and the seam RM231 built does not reach the compiler's writer
+
+**Severity** high · **Status** ✅ **landed 2026-09-12, past the `v0.7.0` tag** — the cut went in at
+`83b1674` while this was being built, so it is the first item of the next release rather than part of
+0.7.0. **The number is the maintainer's and CHANGELOG carries both readings**: no parquet, no
+signature, no model and no manifest field (the test 0.5.2 used to take a patch), against a public
+compiler function growing an optional parameter (additive, so a minor). Not decided here · **Owner**
+compiler + enricher · **Motivating case** the two exemptions RM231 had to name
+
+RM231 folded each enrichment pass's licence row into its data table's commit, so eight passes can no
+longer write a table and then fail to record what licensed it. Its guard is a roster equality, and to
+close that roster it had to name five exemptions. **Two of them are this item**, and they are S98's
+shape one layer over rather than a different problem:
+
+- `civic_citations.draft_civic_citations` gates `merge_sources_file` on `result.added`.
+- `drafting.record_draft_provenance` gates `record_source_terms` on `covered` — the scaffold's
+  recorder, reached by `civic_draft`, `mitomap_draft`, `pgx_draft`, `strchive_draft` and
+  `clinpgx_draft`.
+
+Both are true only **after** the compiler's `draft.append_rows` / `append_partial_rows` has already
+renamed the drafted rows into place. A refused merge — a scaffold's `<<REPLACE>>` placeholder in
+`licensing.csv` is enough, which is the S98 trigger and needs no corrupt file — therefore leaves
+drafted rows in the author's own tables with no licence record. `sources.csv` is the only file the
+compile gate reads, so a CPIC-drafted module in that state has no no-sale clause to refuse on.
+
+**Why RM231's seam does not already cover it.** `layout.atomic_writer`'s `before_commit` binds one
+callback to one rename. A drafter appends to **several** tables — `pgx_draft` writes `haplotypes.csv`,
+`allele_function.csv` and `diplotypes.csv` in three separate `append_rows` calls, each its own atomic
+commit — so there is no single rename to hang the licence merge on. The compiler's writer never took
+the parameter, and the enricher cannot reach past it.
+
+**The fix, and the two repairs that are wrong.** `append_rows` and `append_partial_rows` grow the same
+optional `before_commit` kwarg, threaded to all three `atomic_writer` sites, and every drafter passes a
+licence-commit closure factored out of `record_draft_provenance` so there is one body and not a second
+copy of RM228's decision. The callback then fires **per file that actually writes**, which is the
+correct grain: `append_rows` enters the writer only when it has rows to add, so the callback fires
+exactly when a licence row becomes owed for that table, and `merge_sources_file` being never-clobber
+makes N firings write one row.
+
+- *Hoisting the merge ahead of the first append is wrong.* `covered` is `added` or `already_present`,
+  and the outcome vocabulary also has `differs`, `appended_unkeyed` and `invalid` — so a run whose rows
+  all `differ` covers nothing and must write no row (`@write-the-sourcerow`'s converse, S77/RM142).
+  That cannot be known before the append is attempted.
+- *Binding it to the first or the last append only is wrong.* Last-only leaves tables 1..N-1 committed
+  unlicensed if the merge fails there; first-only misses a run whose first table is all-`differs` and
+  whose second adds.
+
+`record_draft_provenance` stays at the tail and keeps all three of its jobs: the `already_present`-only
+run covers something, fires no callback, and still owes the row; `withdraw_stale_dataset` needs
+`drafted` computed over every report; the projection restamp is `kind`-driven. RM228 exists because
+those were once split.
+
+**The residual is stated rather than closed**, the same one RM231 accepted: a rename that fails after
+its `before_commit` has returned leaves the licence row without that table. Conservative, and the
+`OSError` says what landed. Two files are two renames.
+
+**Filed at discovery, before the fix was approved** — recorded here because the previous state of this
+gap was two honest exemption reasons in `enricher/tests/test_licence_row_inside_the_commit.py` and
+nothing in this file, and the release check is *no open RMs, all green*. A defect a test documents is
+not a defect the release gate can see. · *from* the RM231 handover · *related* RM231, RM228, RM222,
+RM142
+
+**What shipped.** `append_rows` and `append_partial_rows` take `before_commit`, threaded to all three
+of their `atomic_writer` sites; `drafting.licence_commit` is the merge half of
+`record_draft_provenance` as a closure factory, so there is one body and the drafters hand the same
+callable to every append they make. `record_draft_provenance` calls that body itself at the tail, for
+the run that covered something and wrote nothing, and keeps the stale-label withdrawal and the
+projection restamp — both are answers about the run rather than about one table. The pre-flight sits
+inside the factory rather than in each drafter, so a new provider inherits it.
+
+**The guard is an equality from both ends.** RM231's roster grows from eight to nine (`civic_citations`
+stops being an exemption), the two closures are named as *being* the callback, and a new walk asserts
+that **every** `append_*` call under `just_dna_enricher` carries a `before_commit` — 11 of them, all 11
+unbound before this change and all 11 bound after. The AST helper had to learn the difference between a
+function's own calls and a nested `def`'s: without it, a pass that did exactly what was asked read as a
+bare recorder, and a callback defined and never passed would have read as safe.
+
+**Two behaviour-preserving hoists were needed and are noted where they landed.** `clinvar_draft` and
+`pubmind_draft` read their release label at the tail, and `clinpgx_draft` read its licence text there;
+the row's contents have to be known before the first write, so the pure reads moved up and the warnings
+each can raise stayed exactly where they were, gated as they were.
+
 ## RM231 — `alphagenome expression` wrote the data, then failed to record its licence, and called that FAILED
 
 **Severity** high · **Status** ✅ shipped 2026-09-12 in the uncut 0.7.0 (`just-dna-format`: one

@@ -72,7 +72,12 @@ from just_dna_enricher.civic_api import (
 from just_dna_enricher.civic_identities import CIVIC_NAME_IDENTITIES
 from just_dna_enricher.civic_refutation import civic_snapshot_rows
 from just_dna_enricher.clinical import comparison_plan
-from just_dna_enricher.licensing import CIVIC_TERMS, merge_sources_file, sidecar_path
+from just_dna_enricher.licensing import (
+    CIVIC_TERMS,
+    merge_sources_file,
+    require_sources_file,
+    sidecar_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -528,20 +533,19 @@ def draft_civic_citations(
                 )
             partials.append(_study_partial(citation))
 
-    if partials:
-        result.reports.append(append_partial_rows(spec_dir, "studies.csv", partials, dry_run=dry_run))
-    if result.unreachable:
-        result.warnings.append(
-            f"{len(result.unreachable)} of {len(subjects)} subject(s) could not be asked "
-            f"({sorted(set(result.unreachable.values()))}); their citations are unknown rather than "
-            f"absent."
-        )
     # A pass that consults a source writes its `SourceRow`; one that contributed nothing writes none
     # (`@write-the-sourcerow`), and the key is **what this run covered** — a run that appended no row
     # added no CIViC citation to this module, and any earlier run's row is already in the file. The
     # pin rides on this row rather than beside each drafted cell: `dataset` says on which basis, and
     # `fetched_at` says when.
-    if result.added and not dry_run:
+    #
+    # **Inside the table's commit, not after it (RM232).** The row used to be merged once the append
+    # had already renamed `studies.csv` into place, so a refused merge — a scaffold's `<<REPLACE>>`
+    # placeholder is enough — left drafted citations on disk with nothing recording what licensed
+    # them, and the compile gate reads the licence table and nothing else. The predicate is unchanged
+    # rather than reproduced: `append_partial_rows` reaches its writer exactly when it has rows to
+    # add, which is the same condition as the `result.added` this used to test.
+    def _commit_licence() -> None:
         result.sources = merge_sources_file(
             [
                 CIVIC_TERMS.row(
@@ -552,6 +556,20 @@ def draft_civic_citations(
             ],
             spec_dir,
             error=CivicCitationsError,
+        )
+
+    if partials:
+        require_sources_file(spec_dir, error=CivicCitationsError)
+        result.reports.append(
+            append_partial_rows(
+                spec_dir, "studies.csv", partials, dry_run=dry_run, before_commit=_commit_licence
+            )
+        )
+    if result.unreachable:
+        result.warnings.append(
+            f"{len(result.unreachable)} of {len(subjects)} subject(s) could not be asked "
+            f"({sorted(set(result.unreachable.values()))}); their citations are unknown rather than "
+            f"absent."
         )
     return result
 

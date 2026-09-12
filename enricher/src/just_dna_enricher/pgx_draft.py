@@ -41,7 +41,7 @@ from just_dna_enricher.cpic import (
     CpicRecommendation,
     CpicSnapshotClient,
 )
-from just_dna_enricher.drafting import DRAFT_PROVIDERS, record_draft_provenance
+from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_draft_provenance
 from just_dna_enricher.enrich import source_build_mismatch
 from just_dna_enricher.licensing import CPIC_TERMS, check_declared_use
 from just_dna_enricher.locations import resolve_cpic_reference
@@ -499,8 +499,18 @@ def draft_gene(
         warnings.extend(drug_warnings)
         diplotype_rows.extend(drug_rows)
 
+    # The licence row lands inside each table's own commit (RM232). Built before the first append,
+    # because the closure has to exist to be handed to it; `record_draft_provenance` below calls the
+    # same body for the run that covered something and appended nothing.
+    commit_licence = licence_commit(
+        sources=[CPIC_TERMS.source],
+        spec_dir=spec_dir,
+        dataset=cpic_dataset,
+        declared_use=declared_use,
+        error=CpicError,
+    )
     reports = [
-        append_rows(spec_dir, csv_name, rows, dry_run=dry_run)
+        append_rows(spec_dir, csv_name, rows, dry_run=dry_run, before_commit=commit_licence)
         for csv_name, rows in (
             ("haplotypes.csv", haplotypes),
             ("allele_function.csv", function_rows),

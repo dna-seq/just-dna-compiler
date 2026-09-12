@@ -638,3 +638,83 @@ def test_authoring_requirements_names_what_required_fields_cannot() -> None:
     assert set(reqs["always"]) == set(required_fields("repeat_alleles.csv"))
     assert reqs["defaulted"] == {"measure_kind": "repeat_count", "unresolved": "false"}
     assert authoring_requirements("variants.csv")["any_of"] == [["rsid"], ["chrom", "start"]]
+
+
+# ── the licence row rides in the table's own commit (RM232) ─────────────────────────────────────
+
+
+def test_a_refused_before_commit_leaves_the_drafted_table_exactly_as_it_was(tmp_path: Path) -> None:
+    """A drafter's rows must not reach disk when the licence row they need cannot be recorded.
+
+    S98 one layer over: an enrichment pass wrote its table and then failed the merge, and a drafter
+    did the same through this writer. The `before_commit` hook is what binds the two, so the byte
+    assertion is the contract — on a file that already exists AND on one being created, because the
+    two take different branches through `append_rows` (whole rewrite vs append onto existing bytes).
+    """
+
+    class Refused(RuntimeError):
+        pass
+
+    def refuse() -> None:
+        raise Refused("licensing.csv line 2: unreplaced template placeholder '<<REPLACE>>'")
+
+    spec = _spec(tmp_path)
+    target = spec / "allele_function.csv"
+
+    # (a) the file does not exist yet — nothing may be created.
+    with pytest.raises(Refused):
+        append_rows(
+            spec,
+            "allele_function.csv",
+            [_function("CYP2C19", "*2", function_status="no_function")],
+            before_commit=refuse,
+        )
+    assert not target.exists()
+    assert not [p for p in spec.iterdir() if p.name.startswith(".allele_function")], "no temp left"
+
+    # (b) the file exists — its bytes may not move by one.
+    append_rows(spec, "allele_function.csv", [_function("CYP2C19", "*2", function_status="no_function")])
+    before = target.read_bytes()
+    with pytest.raises(Refused):
+        append_rows(
+            spec,
+            "allele_function.csv",
+            [_function("CYP2D6", "*4", function_status="no_function")],
+            before_commit=refuse,
+        )
+    assert target.read_bytes() == before
+
+
+def test_the_callback_fires_once_per_table_that_actually_writes(tmp_path: Path) -> None:
+    """The grain the licence row needs: per table written, never per call and never per row.
+
+    A run whose every row is already present adds nothing to that table and must claim no licence row
+    for it — which is `@write-the-sourcerow`'s converse, and the reason the merge cannot simply be
+    hoisted ahead of the appends. A dry run writes nothing and so fires nothing either.
+    """
+    spec = _spec(tmp_path)
+    fired: list[str] = []
+    rows = [_function("CYP2C19", "*2", function_status="no_function")]
+
+    append_rows(spec, "allele_function.csv", rows, before_commit=lambda: fired.append("first"))
+    assert fired == ["first"], "the table was created, so the row is owed"
+
+    append_rows(spec, "allele_function.csv", rows, before_commit=lambda: fired.append("again"))
+    assert fired == ["first"], "every row already present — nothing written, so nothing owed"
+
+    append_rows(
+        spec,
+        "allele_function.csv",
+        [_function("CYP2D6", "*4", function_status="no_function")],
+        dry_run=True,
+        before_commit=lambda: fired.append("dry"),
+    )
+    assert fired == ["first"], "a dry run writes nothing"
+
+    append_rows(
+        spec,
+        "allele_function.csv",
+        [_function("CYP2D6", "*4", function_status="no_function")],
+        before_commit=lambda: fired.append("second table write"),
+    )
+    assert fired == ["first", "second table write"]

@@ -50,7 +50,7 @@ from pydantic import ValidationError
 from just_dna_enricher.clin_sig import STATE_BY_CLIN_SIG
 from just_dna_enricher.clinvar import citations_for, clinvar_dataset_label, select_by_gene
 from just_dna_enricher.download import ensure_clinvar_snapshot
-from just_dna_enricher.drafting import DRAFT_PROVIDERS, record_draft_provenance
+from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_draft_provenance
 from just_dna_enricher.enrich import source_build_mismatch
 from just_dna_enricher.licensing import (
     CLINVAR_TERMS,
@@ -722,7 +722,25 @@ def draft_gene_panel(
     if not partials:
         return ClinVarDraftResult(warnings=warnings + ["nothing matched; no rows drafted"])
 
-    report = append_partial_rows(spec_dir, "variants.csv", partials, group_by=("gene",), dry_run=dry_run)
+    # The release label is read here rather than at the tail (RM232): the licence row now lands
+    # inside each table's commit, so what the row states has to be known before the first write. The
+    # warning for a snapshot that cannot state its release stays where it was, below.
+    dataset = clinvar_dataset_label(reference)
+    commit_licence = licence_commit(
+        sources=[CLINVAR_TERMS.source],
+        spec_dir=spec_dir,
+        dataset=dataset,
+        declared_use=declared_use,
+        error=ClinVarDraftError,
+    )
+    report = append_partial_rows(
+        spec_dir,
+        "variants.csv",
+        partials,
+        group_by=("gene",),
+        dry_run=dry_run,
+        before_commit=commit_licence,
+    )
     reports = [report]
     warnings.extend(_superseded_rsid_rows(report.path, ambiguous))
 
@@ -739,7 +757,16 @@ def draft_gene_panel(
     else:
         studies, dropped, unusable = _study_rows(records, links, max_citations, ambiguous)
         if studies:
-            reports.append(append_rows(spec_dir, "studies.csv", studies, group_by=("rsid",), dry_run=dry_run))
+            reports.append(
+                append_rows(
+                    spec_dir,
+                    "studies.csv",
+                    studies,
+                    group_by=("rsid",),
+                    dry_run=dry_run,
+                    before_commit=commit_licence,
+                )
+            )
         if dropped:
             warnings.append(
                 f"{dropped} further ClinVar citation(s) not drafted (--max-citations {max_citations})."
@@ -822,7 +849,6 @@ def draft_gene_panel(
     # to maintain a `panel:` block by hand for the sole benefit of one check. A snapshot that cannot
     # state its release leaves the cell empty rather than carrying a guess — and says so, because the
     # consequence is invisible otherwise.
-    dataset = clinvar_dataset_label(reference)
     if dataset is None:
         warnings.append(
             "this snapshot does not say which ClinVar release it carries (no readable release.json), "

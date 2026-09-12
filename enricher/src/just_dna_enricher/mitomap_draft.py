@@ -45,7 +45,7 @@ from just_dna_format.spec import StudyRow, VariantRow
 from pydantic import ValidationError
 
 from just_dna_enricher.clin_sig import STATE_BY_CLIN_SIG
-from just_dna_enricher.drafting import DRAFT_PROVIDERS, record_draft_provenance
+from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_draft_provenance
 from just_dna_enricher.licensing import (
     MITOMAP_TERMS,
     check_declared_use,
@@ -298,11 +298,25 @@ def draft_panel_from_mitomap_miss(
                 f"(MITOMAP calls it {row.get('allele')!r})"
             )
 
+    # The licence row lands inside each table's commit (RM232).
+    commit_licence = licence_commit(
+        sources=[MITOMAP_TERMS.source],
+        spec_dir=spec_dir,
+        dataset=result.dataset,
+        declared_use=declared_use,
+        error=MitomapDraftError,
+    )
     if partials:
-        result.reports.append(append_partial_rows(spec_dir, VARIANTS_CSV, partials, dry_run=dry_run))
+        result.reports.append(
+            append_partial_rows(
+                spec_dir, VARIANTS_CSV, partials, dry_run=dry_run, before_commit=commit_licence
+            )
+        )
         studies, unusable = _study_rows(drafted, _snapshot_rows(reference, CITATIONS_PARQUET))
         if studies:
-            result.reports.append(append_rows(spec_dir, STUDIES_CSV, studies, dry_run=dry_run))
+            result.reports.append(
+                append_rows(spec_dir, STUDIES_CSV, studies, dry_run=dry_run, before_commit=commit_licence)
+            )
         if unusable:
             result.warnings.append(
                 f"{unusable} MITOMAP citation(s) were refused by studies.csv's own model and were "

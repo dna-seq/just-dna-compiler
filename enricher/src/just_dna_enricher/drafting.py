@@ -37,6 +37,7 @@ from just_dna_format.sources import SourceRow
 
 from just_dna_enricher.licensing import (
     record_source_terms,
+    require_sources_file,
     sources_path,
     withdraw_stale_dataset,
     write_sources_csv,
@@ -290,6 +291,66 @@ DRAFT_PROVIDERS: dict[str, DraftProvider] = {
 }
 
 
+def licence_commit(
+    *,
+    sources: Sequence[str],
+    spec_dir: Path,
+    dataset: str | None,
+    declared_use: str | None,
+    error: type[Exception],
+    layer: str = "annotation",
+    extra_datasets: Mapping[str, str] | None = None,
+    license_texts: Mapping[str, str] | None = None,
+) -> Callable[[], None]:
+    """The licence merge as a callable, for `draft.append_*`'s `before_commit` (RM232).
+
+    The *merge half* of `record_draft_provenance`, and nothing else — no stale-label withdrawal, no
+    projection restamp. Those two need `drafted` and the provider's `kind`, both of which are answers
+    about the run as a whole rather than about one table, so they stay where they were, at the tail.
+
+    **Why it is a factory and not a second call site.** A drafter appends its tables through the
+    compiler's writer, which renames each one into place on its own; the licence row was recorded
+    afterwards, so a refused merge — a scaffold's `<<REPLACE>>` placeholder is enough — left drafted
+    rows in the author's tables with no licence record and the compile gate, which reads
+    `sources.csv` and nothing else, nothing to refuse on. Handing this closure to every append binds
+    the row to the commit of each table it licenses. One body rather than a copy per drafter, because
+    a copy per drafter is what RM228 existed to remove.
+
+    Never-clobber, so calling it once per table records one row.
+
+    **The pre-flight is here rather than in each drafter** (S98, RM231): building the closure reads
+    the licence table through `require_sources_file`, so a `licensing.csv` that does not load — a
+    scaffold's unreplaced `<<REPLACE>>` row is the case S98 was filed on — refuses before the first
+    append instead of after it. One place, so a new drafter inherits it rather than remembering it.
+
+    **This makes a dry run refuse where it used to report, and that is intended.** A drafter builds
+    the closure unconditionally, so `--dry-run` against a module with an unreadable licence table now
+    raises instead of printing what it would have written. A dry run exists to say what the real run
+    will do, and a dry run that passes while the real one refuses says the opposite; RM231 made the
+    same trade at the same seam.
+    """
+    require_sources_file(spec_dir, error=error)
+    consulted = list(sources)
+    datasets = dict(extra_datasets or {})
+    if dataset and consulted:
+        datasets.setdefault(consulted[0], dataset)
+
+    def commit() -> None:
+        if not consulted:
+            return
+        record_source_terms(
+            consulted,
+            layer,
+            spec_dir,
+            error=error,
+            declared_use=declared_use or "unstated",
+            datasets=datasets or None,
+            license_texts=license_texts,
+        )
+
+    return commit
+
+
 def record_draft_provenance(
     *,
     provider: DraftProvider,
@@ -339,19 +400,19 @@ def record_draft_provenance(
     if not covered or not sources:
         return []
 
-    datasets = dict(extra_datasets or {})
-    if dataset:
-        datasets.setdefault(sources[0], dataset)
-
-    record_source_terms(
-        sources,
-        layer,
-        spec_dir,
+    # The same body the drafters hand to `before_commit`, called here for the run that covered
+    # something and wrote nothing — every row `already_present`, so no append reached a writer and no
+    # callback fired. That run still owes the row (RM232).
+    licence_commit(
+        sources=sources,
+        spec_dir=spec_dir,
+        dataset=dataset,
+        declared_use=declared_use,
         error=error,
-        declared_use=declared_use or "unstated",
-        datasets=datasets or None,
+        layer=layer,
+        extra_datasets=extra_datasets,
         license_texts=license_texts,
-    )
+    )()
     # A `projection` provider later re-reads a column it wrote, so its digest has to be restamped
     # explicitly — `record_source_terms` is never-clobber, and a second draft's digest would
     # otherwise be silently dropped. Unconditional, because a run that appended nothing leaves the
