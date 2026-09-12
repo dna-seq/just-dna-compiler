@@ -590,7 +590,8 @@ That is a research task, not a schema task, and it commits nothing.
 ## RM16 — Authored PRS weights (a scoring file, not a manifest)
 
 **Severity** medium-large (on demand) · **Status** deferred — **considered for 0.6 on 2026-08-13 and
-held** · **Owner** format (schema + compiler) · **Motivating case** authored-weight PRS modules
+held; parked on *shape* rather than on demand since 2026-09-13, and its unpark condition needs
+restating** · **Owner** format (schema + compiler) · **Motivating case** authored-weight PRS modules
 
 0.4 shipped `pgs.csv` as a *manifest of PGS Catalog IDs* with the ancestry-validity fields — not
 authored per-variant weights. `just-prs` resolves a `PGSxxxxxx` id to a harmonized scoring file and
@@ -618,12 +619,29 @@ and `traits`. That is this entry's motivating sentence — *"a score published o
 supplementary table"* — with a real file behind it instead of a hypothesis, and the column set they
 arrived at independently is close to the one deferred here.
 
-**It moves nothing, because it is the wrong half of the evidence.** The unpark condition above is *a
-real consumer*, and a competitor transcribing a table is a producer. It does answer the narrower
-question of whether anyone actually needs this — somebody did the typing — and it supplies a concrete
-corpus for the shape question if the design is ever taken up. What it still cannot say is how the
-weights combine, what reference distribution the score is against, or whether a percentile travels
-with it, which is exactly the one-way door this entry is holding shut.
+**The first reading of that was wrong, and the maintainer corrected it the same day.** It was written
+here as *the wrong half of the evidence* — the unpark condition is a real consumer, a competitor
+transcribing a table is a producer, so nothing moves. **That dichotomy does not hold, and the entry's
+own gate is what has to give.**
+
+**An author with a corpus in hand is demand, and for a format it is the demand that matters.** People
+reach for familiar shapes: somebody who already has a scoring table, or a set of genosets, adopts a
+format when the format can hold what they already have, and declines it when it cannot. That makes
+*"can I bring this in"* a consumer question in the sense that decides whether a format gets used at
+all — a narrower reading, where a consumer is a downstream tool that reads authored weights and
+scores them, gates this entry on the one party who cannot appear until after the table exists.
+**Written as it stands, the unpark condition cannot be met by anything except a tool built against a
+table this entry is refusing to build.** That is a gate on its own output, and it should be restated
+when this entry is next opened for a decision — not silently, and not here, since restating a parking
+condition is a change to the item rather than a note on it.
+
+**What survives the correction, and it is the half that was always load-bearing.** The demand
+question is answered — somebody did the typing, and SNPedia's magnitude-and-genoset corpus is the same
+argument at a hundred thousand rows. The **shape** question is not: how the weights combine, what
+reference distribution the score is stated against, and whether a percentile travels with it are still
+unanswered, and a transcribed table shows the columns without showing the semantics. The one-way door
+is the shape, never the demand, so what this instance does is **move the entry from parked-on-demand to
+parked-on-shape** — a smaller and much more answerable place to be parked.
 
 ---
 
@@ -691,6 +709,12 @@ What makes it the sharpest of the three is that CIViC's profiles and ClawBio's w
 fell out of one domain solving one problem, where **this grammar was written for consumer genetics in
 general** and has been in use for over a decade. It is also the first entry where the *condition* side
 and the *conclusion* side are both published, at scale, by one source.
+
+**One argument from it does reach beyond the count, and it is [RM16](#rm16--authored-prs-weights-a-scoring-file-not-a-manifest)'s
+rather than this entry's** (maintainer, 2026-09-13): genosets are a *familiar shape*, in use for over a
+decade, and an author's ability to bring one across is an adoption signal in its own right. It bears
+on this entry only as a reason the count below is worth running rather than as a reason to unpark —
+this item is parked on a corpus, and a corpus is measured, not argued.
 
 **It changes no decision yet, and the reason is the same one that has held twice.** The measurement
 this entry wants from it is cheap and has not been done: **how many genosets are there, what is the
