@@ -56,8 +56,8 @@ skill walks the scaffold → draft → curate → enrich → compile → publish
 This site documents the *format* those stages target.
 
 To learn by copying, [`reference_examples/`](https://github.com/dna-seq/just-dna-compiler/tree/main/reference_examples)
-holds sixteen worked modules — star alleles, repeat expansions, mitochondrial heteroplasmy, a PAR
-boundary, a GRCh37 build — each with a README naming the case it exercises.
+collects worked modules — star alleles, repeat expansions, mitochondrial heteroplasmy, a PAR boundary,
+a GRCh37 build — each with a README naming the case it exercises.
 
 ## See it work
 

@@ -3960,6 +3960,23 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   only what is live
   and `test_doc_links.py` walks every tracked file.
 
+  **A generated page is written off a live object, so a guard on that object has to be structural.**
+  The CLI reference (`scripts/gen_cli_pages.py`, 2026-09-12) walks the two Typer apps and emits a
+  markdown table per command. Its first version filtered parameters with `isinstance(param,
+  click.Argument)` / `click.Option` and produced around a hundred pages carrying a heading, the help
+  paragraph, and **no tables at all** — `--strict` was green, the links resolved, the nav partitioned,
+  and the pages were empty of the only thing anybody opens a CLI reference for. Typer 0.20 vendors its
+  own click: `typer.core.TyperOption`'s MRO runs `typer._click.core.Parameter → abc.ABC → object` and
+  never reaches the installed `click` package, so both checks are `False` for every parameter that has
+  ever existed. `param.param_type_name` (`"argument"` / `"option"`) is carried by both spellings and is
+  what the script reads now.
+
+  Two transferable halves. A **library that vendors a dependency defeats `isinstance` against the
+  outer copy silently** — there is no import error and no attribute error, only a predicate that is
+  always false — so prefer the duck-typed discriminator the object itself publishes. And a generator's
+  output is not verified by the build succeeding: this was found by reading a rendered page, which is
+  the only place an empty table is visible.
+
   **The builder is ProperDocs, and that was measured rather than chosen.** MkDocs 1.x upstream is
   unmaintained and the announced 2.0 removes the plugin system with no migration path; ProperDocs is a
   1.x continuation, drop-in over the same `mkdocs.yml`, and was **already installed transitively** —

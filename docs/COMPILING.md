@@ -63,7 +63,7 @@ just-dna-compiler compile ./my_module ./out
 | `--compiled-by` | the provenance tag `verify` checks by default (e.g. `marketplace-server`) |
 | `--strip-identity` / `--authority-key` | drop authority-owned identity keys on the way out |
 
-The compiler **never reaches the network** (Principle 2). Every coordinate it did not get from you
+The compiler **never reaches the network**. Every coordinate it did not get from you
 came out of the injected `resolution.csv`; with nothing injected it skips resolution and says so in a
 warning rather than going to look.
 
@@ -101,14 +101,37 @@ same sentence you did. Those texts are an API — they are catalogued in
 
 ## Sign it
 
+`keygen` prints the public key alongside the private one it writes, so you never have to derive it:
+
 ```bash
-just-dna-compiler keygen --out ./keys/private.pem   # unencrypted PKCS#8; refuses to overwrite
-just-dna-compiler sign ./out --private-key ./keys/private.pem
-just-dna-compiler verify ./out --public-key <base64-raw-public>
+just-dna-compiler keygen --out ./keys/private.pem
 ```
 
-The signature covers `artifact.digest`, which covers every file's hash. Signing is the last step,
-because anything that rewrites a parquet invalidates it.
+```text
+private key: ./keys/private.pem (mode 600)
+public key: 4yU9Anw/hawt0JrdKd2JoCwYmvxux4wISDH9+4d8kVg=
+```
+
+The key is unencrypted PKCS#8 and `keygen` refuses to overwrite. It bootstraps a key; it is not a
+key-management system, and a publishing key belongs in whatever secret store you already run.
+
+Sign the compiled artifact, then check it the way a consumer will:
+
+```bash
+just-dna-compiler sign ./out --private-key ./keys/private.pem
+just-dna-compiler verify ./out --public-key '4yU9Anw/hawt0JrdKd2JoCwYmvxux4wISDH9+4d8kVg=' --no-require-marketplace
+```
+
+```text
+verified: ./out
+digest: sha256:7a4fb109256dae18ba274da44468442dbca290b51ff4f63ae7c62183bc9239f0  files: 2
+signature: verified against the pinned key
+```
+
+The signature covers `artifact.digest`, which is already a hash over every file's hash — so one
+signature covers every byte, and re-signing after an edit is impossible to forget: the digest moves
+and the old signature stops verifying. Sign last, because anything that rewrites a parquet invalidates
+it.
 
 ## Close the authoring phase
 
@@ -140,9 +163,9 @@ just-dna-compiler reverse ./out ./spec-again
 just-dna-compiler compile ./spec-again ./out-again    # reproduces ./out
 ```
 
-`compile → reverse → compile` reproduces the module, or `--strict` refuses. That is charter Principle
-7 and it is pinned by tests, which is what makes an artifact a safe thing to edit: you can always get
-the authored form back.
+`compile → reverse → compile` reproduces the module, or `--strict` refuses. The round trip is lossless
+and idempotent, and tests pin it — which is what makes an artifact a safe thing to hold: the authored
+form is always recoverable from it.
 
 Row **order** is preserved through the round trip because parquet bytes depend on it. Column order and
 cell formatting are normalized rather than preserved — that asymmetry is intended.

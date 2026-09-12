@@ -112,9 +112,9 @@ uv run just-dna-compiler reverse /tmp/apoe /tmp/apoe-spec
 reversed: /tmp/apoe-spec
 ```
 
-The round trip is lossless and idempotent by charter (Principle 7) and pinned by tests. One thing does
-not survive it, on purpose: an authoring **closure** is an attestation about who finished the work, so
-`reverse` refuses to forge one and says so at the time.
+The round trip is lossless and idempotent, and tests pin it. One thing does not survive it, on purpose:
+an authoring **closure** is an attestation about who finished the work, so `reverse` refuses to forge
+one and says so at the time.
 
 ## Where to go next
 

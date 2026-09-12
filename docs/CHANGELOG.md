@@ -34,6 +34,41 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-12 — the docs site gets a user-facing front (no version bump: nothing shipped in a package changed)
+
+**Documentation only — no package version moves and nothing a consumer holds changes.** The site went
+up carrying the material that already existed, which is almost entirely development record and tier
+reference written for whoever maintains that tier; its home page was the README, whose first three
+sections are *Develop*, *The docs site* and *Design docs*. A reader who has a compiled module and wants
+to report on a genotype had nowhere to land.
+
+**Four new pages, written for a reader rather than an author**, sitting in front of SCHEMAS / COMPILER /
+ENRICHER and citing them: `index.md` (what this is, and which tier answers your question),
+`GETTING_STARTED.md` (install, compile a reference example, verify it), `CONSUMING.md` (what is in an
+artifact, the two digests, the join contract's two obligations, the licence axes) and `COMPILING.md` +
+`ENRICHING.md` (the operator paths). They **restate no rule** — where a guide and a tier reference
+disagree, the guide is the one that is wrong. Every command in them was run before it was written and
+the output is quoted as it came back.
+
+**The CLI reference is generated** (`scripts/gen_cli_pages.py`, a second `gen-files` script), walked off
+the live Typer command trees at build time: of the order of a hundred commands and several hundred
+flags across the two tools, which is exactly the shape `CLAUDE.md` already refuses to keep by hand. It
+reads parameters through `param_type_name` rather than `isinstance`, and that is load-bearing — Typer
+vendors its own copy of click, so `TyperOption` is **not** a `click.Option` and the first version wrote
+every page with its argument and option tables silently empty.
+
+**Two nav changes.** `navigation.sections` opens the top level, because Material folds every group until
+the reader is inside it and the sidebar therefore read as a site documenting one tier — *Reference* with
+nothing under it. And the roadmap ledgers (`ROADMAP`, `ROADMAP_HISTORY`, the two deferred files,
+`RM_TOC`) leave `not_in_nav` for a *Releases* group: they were excluded so a reader was not wading
+through shipped-roadmap rationale to reach the schema reference, which is true of a sidebar where they
+sit beside it and false of a group somebody opens deliberately — and every reference page cites `RMn` by
+number with nowhere to resolve one.
+
+`schema/tests/test_docs_site_nav.py` now derives the generated-page prefixes from the `gen-files`
+`scripts:` list rather than one hardcoded path, so a second generator is visible to the partition guard
+instead of unknown to it.
+
 ## 2026-09-12 — [RM233](ROADMAP_HISTORY.md#rm233--main-was-red-on-two-jobs-and-green-on-every-local-run-and-the-difference-was-a-colour-code): a red `main` that was a colour code
 
 **Test infrastructure only — no package version moves and nothing a consumer holds changes.** `main`

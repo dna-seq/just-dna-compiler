@@ -16,12 +16,14 @@
 # 2. **`nav` curates; it does not hide.** This repository is public, so every record in `docs/` is
 #    already readable on GitHub — an `exclude_docs` would therefore conceal nothing while breaking the
 #    hundreds of links that run *from* the reference docs *into* the records (`SCHEMAS.md` cites an
-#    `RMn`, `FAQ.md` points at `AGENT_NOTES.md`). So the records are **built and searchable but absent
+#    `RMn`, `FAQ.md` points at `AGENT_NOTES.md`). So most records are **built and searchable but absent
 #    from the nav** (`not_in_nav` below): a reader following a link from a reference page lands on a
-#    real page, and nobody browsing the sidebar wades through thousands of lines of shipped-roadmap
-#    rationale to reach the schema reference. (That number used to be spelled here and went stale the
-#    first time the file was split — `@counted-prose-needs-a-fixed-field`; no test reads this comment,
-#    so it states the shape instead of the count.)
+#    real page, and nobody browsing the sidebar meets the agent gotcha book on the way to the schema
+#    reference. The roadmap ledgers are the deliberate exception and sit in a *Releases* group — the
+#    reason is beside that group, and it is that a reader resolving an `RMn` a reference page cites has
+#    nowhere else to go. (A count of the excluded used to be spelled here and went stale the first time
+#    a file was split — `@counted-prose-needs-a-fixed-field`; no test reads this comment, so it states
+#    the shape instead of the count.)
 site_name: just-dna-format
 site_description: >-
   The module format for just-dna annotation modules — the declarative schema contract, its reference
@@ -184,7 +186,12 @@ validation:
   unrecognized_links: ignore
   anchors: info
 
-# The reader's path, in the order `CLAUDE.md` § "Read these first" puts it.
+# **The reader's path, ordered by what a reader is doing, not by what a maintainer reads first.** It
+# followed `CLAUDE.md` § "Read these first" until 2026-09-12 — which is an *agent's* reading order, and
+# it put the charter above the schema reference and left no landing place at all for somebody who
+# simply has a compiled module. The order is now the journey: get started, cookbook, reference,
+# upgrade, releases, project. `CLAUDE.md`'s order is unchanged and still correct for its own reader.
+#
 # **Titles are explicit rather than taken from each page's `# H1`, and that is the whole reason.** Left
 # to itself the sidebar read "just-dna-format — the schema tier", "just-dna-compiler — the transform
 # tier", "just-dna-enricher — the network tier" — three entries agreeing on their first two words,

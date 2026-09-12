@@ -1,7 +1,7 @@
 """Write the site's CLI reference at **build time**, derived from the Typer apps themselves.
 
-The two tools carry 16 and 36 top-level commands, and the enricher's are mostly sub-apps with three to
-six subcommands each — around ninety commands and several hundred flags. `CLAUDE.md` already records
+The two tools carry dozens of top-level commands each, and the enricher's are mostly sub-apps with
+their own subcommands — of the order of a hundred commands and several hundred flags. `CLAUDE.md` already records
 what happens to a hand-kept version of that: *"a command-surface table rots silently (no test reads
 it)"*, which is why the authoring surface delegates everything about schemas to `describe` /
 `requirements` / `reference` rather than restating it. The same argument applies one level up, so the

@@ -105,8 +105,10 @@ The module tells you where this bites:
 | `quality_from` + `min_quality` | the floor below which what *was* seen is not good enough to act on. A floor you cannot evaluate is unknown, never satisfied |
 | `unresolved` (binning tables) | the no-call sentinel. A missing measurement selects it, and never the lowest or reference bin |
 
-This is the house tri-state rule pointed at you: **true / false / unknown, and `None` is never
-`False`.** When the answer is unknown, withhold — do not report and do not negate.
+Every one of those columns has three states, not two: **true, false, and unknown — and a blank cell is
+unknown, never false.** When the answer is unknown, withhold it. Do not report it and do not report
+its opposite. The same rule runs through the rest of the schema, so a consumer that collapses blanks
+to `false` anywhere will be wrong in the same direction everywhere.
 
 ### A row is about a (locus, genotype) pair, and some pairs were never authored
 
