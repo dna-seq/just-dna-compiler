@@ -51,7 +51,11 @@ edited as routine work:
   are commercially usable; §2.6 names the four things the Terms need that `SourceRow` cannot say);
   `GENOMI_SURVEY` (the competitor read of genomi — a *runtime*, not a format; its thirteen-record
   curated catalogue is a `variants.csv` in Python, §7 is a **run** compile refusal rather than a sketch,
-  and §8 ranks the seven real annotation gaps, all priced as derived sidecars); and the dogfood and VCF audit rounds. **No `RMn` is filed there.**
+  and §8 ranks the seven real annotation gaps, all priced as derived sidecars); `CLAWBIO_SURVEY`
+  (the other half of RM188 — 97 agent skills, **68 `planned`**, whose four inlined variant tables
+  are a module in a shape nothing validates; its five gaps are `consequence`/`impact`, a
+  region-keyed dosage row, a per-tissue eQTL, a fine-mapping posterior, and **warfarin as RM28's
+  second corpus entry**); and the dogfood and VCF audit rounds. **No `RMn` is filed there.**
 - **`docs/audit/`** — the tier references re-derived from the code, **evidence, never contract**; the
   maintained reference is the one in `docs/` root.
 - **`docs/vendor/`** — upstream files kept for reference; **count them from `ls`, never from a

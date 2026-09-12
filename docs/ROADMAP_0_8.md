@@ -84,9 +84,20 @@ as it stands; or the 0.8 review deciding the family is complete and this becomes
 
 ## RM188 — the competitor survey — run Calwbio's and genomi's pipelines, read their reports, and re-fold the logic into module mechanics
 
-**Severity** medium · **Status** open — **scoped into 0.8 by the maintainer on 2026-09-03** · **Owner**
-format (the survey), then whichever tier the findings land in · **Motivating case** the maintainer's
-direction, not a consumer report
+**Severity** medium · **Status** open — **both surveys filed 2026-09-13; the findings they route are
+what remains** · **Owner** format (the survey), then whichever tier the findings land in ·
+**Motivating case** the maintainer's direction, not a consumer report
+
+**Progress.** Both named competitors are now probed, one document each, and neither turned out to be
+a competing *format*: [`probes/GENOMI_SURVEY.md`](probes/GENOMI_SURVEY.md) (genomi is a runtime; its
+thirteen-record curated catalogue is a `variants.csv` in Python, and §8 ranks seven annotation gaps,
+all priced as derived sidecars) and
+[`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) (ClawBio is 97 agent skills — 68 of them
+`planned` — whose genotype-interpreting half carries four hand-curated variant tables inlined as
+Python dicts and JSON). The two surveys overlap in almost nothing, which is itself the result: one
+reaches for pathway, target–disease and regulatory content we do not carry, the other for the
+per-variant clinical axes an ACMG engine reads. What each routes is in its own § plan; nothing is
+filed as an `RMn` by either, per the probes rule.
 
 **What it is.** A survey of the consumer-genomics competitors, with two named first — **Calwbio** and
 **genomi** — done the way PUBMIND_ASSESSMENT was done and not the way a feature comparison is: run
