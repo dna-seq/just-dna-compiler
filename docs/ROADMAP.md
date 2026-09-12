@@ -179,13 +179,19 @@ Two consequences worth stating outright:
 
 # Active items
 
-**None** (the count is the `## RMn` sections below — it
+**One — RM232** (the count is the `## RMn` sections below — it
 read "four as of 2026-08-21" for two rounds after it stopped being four, then *not one of them is a
 decision* through the three that are, then *three* for the hour it took a fourth to be filed, then
 *two* until RM151 shipped, then *one* naming RM152, then *one* naming RM153, then none, then seven for
-the 2026-09-01 source-adoption round, then one, and **none again on 2026-09-11** when RM164 moved to
-the 0.8 file — which is why the paragraph under it says to count off the sections rather than off this
-sentence).
+the 2026-09-01 source-adoption round, then one, **none again on 2026-09-11** when RM164 moved to
+the 0.8 file, and **one again on 2026-09-12** when RM232 was filed — which is why the paragraph under
+it says to count off the sections rather than off this sentence).
+
+**RM232 is open and unbuilt as of filing.** A drafted row reaches the author's tables before its
+licence row does, because RM231's `before_commit` seam stops at the compiler's `draft.append_*` and
+never entered it. It was filed the moment it was confirmed rather than when its fix was approved: it
+had been sitting as two named exemptions in a passing test, which is a state this file cannot see and
+a release reading *no open RMs, all green* therefore cannot either.
 
 **The last one was RM164, and it is filed against 0.8 now.** The 2026-09-01
 source-adoption round (RM163–RM168) was asked for as a batch — *what else should we adopt as
@@ -325,6 +331,64 @@ you**, so check which `# ` heading you are under before writing the section, not
 
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
+
+## RM232 — a drafted row lands before its licence row, and the seam RM231 built does not reach the compiler's writer
+
+**Severity** high · **Status** **open** — confirmed against the code, fix designed, not built · **Owner**
+compiler + enricher · **Motivating case** the two exemptions RM231 had to name
+
+RM231 folded each enrichment pass's licence row into its data table's commit, so eight passes can no
+longer write a table and then fail to record what licensed it. Its guard is a roster equality, and to
+close that roster it had to name five exemptions. **Two of them are this item**, and they are S98's
+shape one layer over rather than a different problem:
+
+- `civic_citations.draft_civic_citations` gates `merge_sources_file` on `result.added`.
+- `drafting.record_draft_provenance` gates `record_source_terms` on `covered` — the scaffold's
+  recorder, reached by `civic_draft`, `mitomap_draft`, `pgx_draft`, `strchive_draft` and
+  `clinpgx_draft`.
+
+Both are true only **after** the compiler's `draft.append_rows` / `append_partial_rows` has already
+renamed the drafted rows into place. A refused merge — a scaffold's `<<REPLACE>>` placeholder in
+`licensing.csv` is enough, which is the S98 trigger and needs no corrupt file — therefore leaves
+drafted rows in the author's own tables with no licence record. `sources.csv` is the only file the
+compile gate reads, so a CPIC-drafted module in that state has no no-sale clause to refuse on.
+
+**Why RM231's seam does not already cover it.** `layout.atomic_writer`'s `before_commit` binds one
+callback to one rename. A drafter appends to **several** tables — `pgx_draft` writes `haplotypes.csv`,
+`allele_function.csv` and `diplotypes.csv` in three separate `append_rows` calls, each its own atomic
+commit — so there is no single rename to hang the licence merge on. The compiler's writer never took
+the parameter, and the enricher cannot reach past it.
+
+**The fix, and the two repairs that are wrong.** `append_rows` and `append_partial_rows` grow the same
+optional `before_commit` kwarg, threaded to all three `atomic_writer` sites, and every drafter passes a
+licence-commit closure factored out of `record_draft_provenance` so there is one body and not a second
+copy of RM228's decision. The callback then fires **per file that actually writes**, which is the
+correct grain: `append_rows` enters the writer only when it has rows to add, so the callback fires
+exactly when a licence row becomes owed for that table, and `merge_sources_file` being never-clobber
+makes N firings write one row.
+
+- *Hoisting the merge ahead of the first append is wrong.* `covered` is `added` or `already_present`,
+  and the outcome vocabulary also has `differs`, `appended_unkeyed` and `invalid` — so a run whose rows
+  all `differ` covers nothing and must write no row (`@write-the-sourcerow`'s converse, S77/RM142).
+  That cannot be known before the append is attempted.
+- *Binding it to the first or the last append only is wrong.* Last-only leaves tables 1..N-1 committed
+  unlicensed if the merge fails there; first-only misses a run whose first table is all-`differs` and
+  whose second adds.
+
+`record_draft_provenance` stays at the tail and keeps all three of its jobs: the `already_present`-only
+run covers something, fires no callback, and still owes the row; `withdraw_stale_dataset` needs
+`drafted` computed over every report; the projection restamp is `kind`-driven. RM228 exists because
+those were once split.
+
+**The residual is stated rather than closed**, the same one RM231 accepted: a rename that fails after
+its `before_commit` has returned leaves the licence row without that table. Conservative, and the
+`OSError` says what landed. Two files are two renames.
+
+**Filed at discovery, before the fix was approved** — recorded here because the previous state of this
+gap was two honest exemption reasons in `enricher/tests/test_licence_row_inside_the_commit.py` and
+nothing in this file, and the release check is *no open RMs, all green*. A defect a test documents is
+not a defect the release gate can see. · *from* the RM231 handover · *related* RM231, RM228, RM222,
+RM142
 
 # Not format scope
 
