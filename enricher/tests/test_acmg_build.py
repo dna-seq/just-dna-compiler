@@ -353,12 +353,14 @@ def test_offline_without_a_snapshot_is_still_unchecked_not_absent(tmp_path, no_a
     report = verify_acmg_sf(variants, offline=True)
     assert [v.verdict for v in report.verdicts] == ["unchecked"]
     assert report.checked == 0
-    # **`clean` withholds here; it asserted a pass until RM234.** This line read `assert report.clean`,
-    # which is the defect S100 reported: `mismatches` is empty on an all-`unchecked` run, so the old
-    # property answered `True` and this test pinned it. Unchecked-not-absent is the point of the test
-    # and the verdict above is what carries it — the run consulted no list, so whether every stated
-    # `acmg_sf` agrees with one is unknown, not yes.
-    assert report.clean is None
+    # **`clean` fails here, naming `offline`; it asserted a pass until RM234.** This line read
+    # `assert report.clean`, which is the defect S100 reported: `mismatches` is empty on an
+    # all-`unchecked` run, so the old property answered `True` and this test pinned it. RM234 made it
+    # withhold and the verdict retrofit makes it a `no` with its reason attached — a gate must choose,
+    # and a run that obtained no list cannot certify. Unchecked-not-absent is the point of the test
+    # and the verdicts above carry it; the code is what says which non-answer this was.
+    assert not report.clean
+    assert set(report.clean) == {"offline"}
 
 
 # ── the real workbook, when the author has it ─────────────────────────────────────────────────────

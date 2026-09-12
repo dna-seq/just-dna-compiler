@@ -78,6 +78,7 @@ from just_dna_enricher.pgs import (
     score_ancestries,
     score_cohort_names,
 )
+from just_dna_enricher.verdict import Verdict
 from just_dna_enricher.verification import examples, ran, skipped
 
 logger = logging.getLogger(__name__)
@@ -436,7 +437,7 @@ class IdentifierReport:
             name: why
             for source in (self.trait_tables_not_read, self.gene_tables_not_read, self.pgs_tables_not_read)
             for name, why in source.items()
-            if why != "not present"
+            if why not in BENIGN_NOT_READ
         }
 
     @property
@@ -456,7 +457,7 @@ class IdentifierReport:
         return [p for p in self.pgs if p.state != "known"]
 
     @property
-    def clean(self) -> bool:
+    def clean(self) -> Verdict:
         """Whether every identifier this pass put to a registry is one the registry still serves.
 
         **`pgs_metadata.drift` is deliberately NOT in here**, and `stale_pgs` deliberately is. The CLI
@@ -468,9 +469,34 @@ class IdentifierReport:
         between its own sources with no way for the author to clear it — the reason
         `@clinsig-never-escalates` and `@a-source-recuring-is-not-a-strict-matter` keep the same shape
         out of the strict gate. It is reported in both modes; see `metadata_disagrees`.
+
+        **A `Verdict` rather than a `bool` since 2026-09-13** (RM235), for the reason `verdict.py`
+        states: `--strict` gates an exit code on this, so a run that could not certify has to be a
+        `no`, and the reason for the `no` rides beside the verdict instead of inside it.
+
+        **`tables_unreadable` is the new arm and the one behaviour change.** A table that carries
+        identifiers and will not parse leaves those ids unchecked, and the five lists above are empty
+        for exactly the same reason they are empty when everything agreed — so `clean` answered `True`
+        over ids nobody looked at. The command has printed the unreadable table since S86 and then
+        exited 0 under `--strict` with *all identifiers current* above it: the diagnosis was there and
+        the verdict disagreed with it. A library caller reading this property sees only the verdict,
+        which is how the sibling defect on `AcmgReport` arrived (S100 — these are wrapped as MCP tools,
+        so the dataclass is what is read and never the terminal).
+
+        **What is deliberately not an arm.** A check the caller switched off, and a module carrying no
+        id-bearing table at all, are honest non-answers rather than errors: they keep the verdict true
+        and are reported through the read/not-read rosters that already exist, so `--strict --no-traits`
+        does not start failing builds for doing as it was told. `unreachable` is not an arm either, and
+        could not be — a registry outage raises `IdentifierUnavailable` before this report exists, and
+        the CLI already exits 1 there with an `unreachable` attestation for all five checks. The item
+        that proposed widening this property for outages had measured hand-built models rather than the
+        real path (`@a-disagreement-with-a-document-may-be-in-the-instrument`).
         """
-        return not (
-            self.stale_rsids or self.stale_traits or self.stale_genes or self.gene_loci or self.stale_pgs
+        return Verdict.of(
+            stale_identifiers=bool(
+                self.stale_rsids or self.stale_traits or self.stale_genes or self.gene_loci or self.stale_pgs
+            ),
+            tables_unreadable=bool(self.unreadable_tables),
         )
 
     @property
@@ -778,7 +804,23 @@ class IdentifierRoster:
     @property
     def unreadable(self) -> dict[str, str]:
         """Only the tables that exist and failed to parse — the half worth warning about."""
-        return {name: why for name, why in self.not_read.items() if why != "not present"}
+        return {name: why for name, why in self.not_read.items() if why not in BENIGN_NOT_READ}
+
+
+#: Reasons a table was not read that are **not** a failure to read it. Everything else in `not_read`
+#: is a table that is present and could not be used — a parse error, or the same table under both
+#: sidecar spellings — and those are what `unreadable` means.
+#:
+#: **Constants rather than literals at each site, because both filters below match on the sentence.**
+#: `unreadable` filtered only `"not present"` and therefore counted the row-taking form's reason as a
+#: read failure, so a caller passing `variants=` instead of `spec_dir=` was told eight tables would not
+#: parse when none had been opened. The property's own docstring promised the opposite (*never merely
+#: absent ones*) — a docstring is a claim, and this one had stopped being true on a path the CLI never
+#: takes. Matching prose at all is still the weaker shape; the structural fix is to carry the roster's
+#: `read_errors` onto the report, which is a field and therefore not a patch.
+NOT_PRESENT = "not present"
+ROWS_PASSED_IN = "rows were passed in, so only variants.csv was available"
+BENIGN_NOT_READ: frozenset[str] = frozenset({NOT_PRESENT, ROWS_PASSED_IN})
 
 
 def authored_identifiers(spec_dir: Path, column: str) -> IdentifierRoster:
@@ -811,7 +853,7 @@ def authored_rows(spec_dir: Path, column: str) -> tuple[list[BaseModel], Identif
             roster.not_read[name] = str(exc)
             continue
         if not table.exists():
-            roster.not_read[name] = "not present"
+            roster.not_read[name] = NOT_PRESENT
             continue
         rows, errors, _ = load_csv_rows(table, model, table.name)
         if errors:
@@ -1211,7 +1253,7 @@ def check_identifiers(
             ids=module_trait_ids(variants),
             read=["variants.csv"],
             not_read={
-                name: "rows were passed in, so only variants.csv was available"
+                name: ROWS_PASSED_IN
                 for name in sorted(_id_bearing_tables("trait_efo_id"))
                 if name != "variants.csv"
             },
@@ -1220,9 +1262,7 @@ def check_identifiers(
             ids=dedupe(v.gene for v in variants if v.gene),
             read=["variants.csv"],
             not_read={
-                name: "rows were passed in, so only variants.csv was available"
-                for name in sorted(_id_bearing_tables("gene"))
-                if name != "variants.csv"
+                name: ROWS_PASSED_IN for name in sorted(_id_bearing_tables("gene")) if name != "variants.csv"
             },
         )
     traits = trait_roster.ids if check_traits else []

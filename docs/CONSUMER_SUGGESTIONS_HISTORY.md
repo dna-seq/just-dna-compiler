@@ -4348,7 +4348,7 @@ offline run newly refuses.
 asserted `report.clean` on an all-`unchecked` run — the defect, pinned. It now reads
 `report.clean is None`.
 
-**Your report found a second, worse one, which is filed open as [RM235](ROADMAP.md#rm235--one-property-over-four-registries-an-outage-reports-as-a-broken-identifier-and-an-unreachable-efo-reports-as-clean) and is not fixed.**
+**Your report found a second, worse one, which is filed open as [RM235](ROADMAP_HISTORY.md#rm235--one-property-over-four-registries-an-outage-reports-as-a-broken-identifier-and-an-unreachable-efo-reports-as-clean) and is not fixed.**
 `IdentifierReport.clean` is the same property over four registries, and `check-identifiers --strict`
 exits 1 on it. `stale_rsids` is `state != "live"` and `stale_genes` is `state != "approved"`, so an
 **unreachable** dbSNP or HGNC is counted as a broken identifier — a third party's outage fails your
@@ -4357,6 +4357,27 @@ an unreachable OLS4 goes the way yours did and reports clean. The same absence, 
 registries and passed on a third. It is not RM234's one-liner: with four authorities the unknown arm is
 per registry and combines under Kleene rather than withhold-on-any-unknown, and a caller gates an exit
 code on the answer. If you wrap `check-identifiers` too, guard it the way you guarded this one.
+
+**Correction, 2026-09-13 — the paragraph above is wrong about outages, and we would rather say so than
+leave it standing.** RM235 was filed from hand-built `IdentifierReport` objects, and the states we gave
+them are not states the pipeline writes: `RsidStatus.state` is `live|merged|absent|withdrawn` with no
+`unchecked` member, and `check_identifiers` never populates `report.rsids` at all. Run against a port
+nothing listens on, the ontology leg raises `IdentifierUnavailable` and the command exits 1 with an
+`unreachable` `VerificationRecord` for all five checks — so **a registry outage was already a hard
+refusal carrying its reason**, and there was never a build failing silently on OLS4 being down. Our own
+`@a-disagreement-with-a-document-may-be-in-the-instrument`, in the pass that had just applied it
+elsewhere.
+
+What was real is the same vacuity you reported, one command over: `clean` answered `True` when a table
+carrying identifiers would not parse, because the stale lists are empty for that reason exactly as they
+are when everything agreed. `--strict` printed the unreadable table and exited **0** beneath *all
+identifiers current*. Shipped 2026-09-13 as [RM235](ROADMAP_HISTORY.md#rm235--one-property-over-four-registries-an-outage-reports-as-a-broken-identifier-and-an-unreachable-efo-reports-as-clean):
+both `clean` properties are now a `Verdict` — falsy when it carries any reason code, `pass` when empty
+— so **`if report.clean:` stays correct and `.codes` tells you why** without a second call. Two things
+to know if you wrap either: `check-identifiers --strict` newly exits 1 on an unreadable id-bearing
+table, and `AcmgReport.clean` on *a list read against a module stating no `acmg_sf` cell* is now a pass
+rather than `None`, since that is a module with nothing to disagree about rather than a check that
+could not run.
 
 <!-- triaged: 0.7.0 · sha 637b7d163d19 -->
 

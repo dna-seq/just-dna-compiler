@@ -78,6 +78,7 @@ from just_dna_enricher.locations import (
     RELEASE_FILENAME,
     resolve_acmg_reference,
 )
+from just_dna_enricher.verdict import Verdict
 from just_dna_enricher.verification import examples, ran, skipped
 
 logger = logging.getLogger(__name__)
@@ -280,27 +281,35 @@ class AcmgReport:
         return None
 
     @property
-    def clean(self) -> bool | None:
-        """Whether every stated `acmg_sf` agrees with the list — or `None` because none was consulted.
+    def clean(self) -> Verdict:
+        """Whether every stated `acmg_sf` agrees with the list, and what is wrong when it does not.
 
-        **Three-valued since RM234, and the third state is the reported bug.** `clean` was
-        `not self.mismatches`, and `mismatches` selects `not_listed`/`denied`. A run that reached no
-        list gives every row the verdict `unchecked`, so `mismatches` was empty and `clean` answered
-        `True` — a comparison that never happened reporting as one where everything agreed. The two
-        `True`s a caller saw (`version=3.3 checked=13` and `version=None checked=0`) meant entirely
-        different things, and `if report.clean:` took the second for a pass.
+        **A `Verdict` since 2026-09-13, `bool | None` for one day before that, and a bare `bool` until
+        RM234.** The original bug is unchanged and worth keeping in view: `clean` was
+        `not self.mismatches`, and `mismatches` selects `not_listed`/`denied`, so a run that reached no
+        list gave every row the verdict `unchecked`, left `mismatches` empty, and answered `True` — a
+        comparison that never happened reporting as one where everything agreed (`@tautology-zero`).
 
-        A check that cannot fail must not report a pass (`@tautology-zero`), and the house rule is to
-        **withhold** rather than report or negate, so the unknown arm is `None` and never `False`:
-        answering `False` would say the module disagrees with a list nobody read. `None` is falsy, so
-        a caller written `if report.clean:` is already correct; one written `if not report.clean:`
-        now fires on an unconsulted run, which is the point of the change.
+        RM234 fixed that by withholding, which is the house rule for an answer nobody can give. The
+        retrofit is because **a gate is the one shape that cannot withhold**: `--strict` has to choose
+        an exit code, and `None` made the caller do the arithmetic anyway. The reasons now travel with
+        the verdict instead (`verdict.py` has the whole argument).
 
-        The arms are `not_consulted`'s, so this property and the attestation agree by construction.
+        **`nothing_to_check` is a pass now, and that is the one behaviour change.** RM234 gave `None`
+        to both arms of `not_consulted`. Only one of them is an error: `offline` means no list was
+        obtained, so nothing was compared and the run cannot certify; `nothing_to_check` means the list
+        was read and the module states no `acmg_sf` cell, which is a module with nothing to disagree
+        about rather than a failed check. `checked` sits beside it as the denominator, the same way the
+        identifier command prints what it read.
+
+        `if report.clean:` is correct across all three shapes of this property, which is why the change
+        is safe to make twice. The arms stay `not_consulted`'s, so this and the attestation cannot
+        disagree about whether anything was compared.
         """
-        if self.not_consulted:
-            return None
-        return not self.mismatches
+        return Verdict.of(
+            offline=self.not_consulted == "offline",
+            mismatched_assertions=bool(self.mismatches),
+        )
 
     @staticmethod
     def by_gene(verdicts: list["AcmgVerdict"]) -> list[tuple[str, list[int], str]]:

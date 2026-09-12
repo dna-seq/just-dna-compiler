@@ -4939,6 +4939,31 @@ prints *"all identifiers current"* over an empty roster, which was the same vacu
 A caller passing `variants=` still gets the narrow roster and is told so in `*_tables_not_read`, since
 rows in hand are all that form has.
 
+**Since 2026-09-13 an unreadable id-bearing table also fails the gate, and `clean` says so.** The
+report was honest and the verdict was not: the five stale lists are empty when a table carrying
+identifiers will not parse for exactly the reason they are empty when everything agreed, so
+`--strict` printed the unreadable table and then exited **0** beneath *all identifiers current*. A
+terminal reader saw both halves; a library caller reading the dataclass — which is how this arrived,
+as an MCP tool — saw only the verdict. `clean` is now a `Verdict`: falsy when it carries any code,
+`pass` when empty, and `if report.clean:` is unchanged across the change. `AcmgReport.clean` is the
+same type, so the two gates in this tier answer in one kind.
+
+**The set holds errors, not non-answers**, which is the line that decides membership. `offline` and
+`tables_unreadable` are errors and fail. A check the caller switched off, and a module with no row a
+check applies to, are not: `--strict --no-traits` still exits 0, and `check-acmg` over a module
+stating no `acmg_sf` cell now **passes** with its denominator printed rather than withholding, which
+is the one behaviour RM234 set differently. `unreachable` is not a member and could not be — a
+registry outage raises `IdentifierUnavailable` before a report exists, and that path already exits 1
+with an `unreachable` attestation for all five checks.
+
+**A prose filter was the defect underneath it.** `unreadable_tables` kept everything in
+`*_tables_not_read` except the literal `"not present"`, so the row-taking call form's reason — a
+statement about how the check was invoked, not about a file — counted as eight tables that would not
+parse. Nothing caught it because the CLI always passes `spec_dir`. Both benign reasons are now one
+constant each (`NOT_PRESENT`, `ROWS_PASSED_IN`), written by the producer and read by the filter. That
+is still prose matched at two sites; the structural repair is to carry the roster's `read_errors`
+onto the report, which is a field and therefore not a patch.
+
 **And since RM156 a module carrying no `variants.csv` can reach that roster at all.** The widening
 left two gates in front of itself, both keyed on the one table it had stopped depending on:
 `check_identifiers(spec_dir=)` loaded `variants.csv` unconditionally and raised

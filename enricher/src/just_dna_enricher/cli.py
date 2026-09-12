@@ -1322,8 +1322,16 @@ def check_identifiers_(
             )
         else:
             typer.secho("all identifiers current", fg=typer.colors.GREEN)
-    elif strict:
-        raise typer.Exit(code=1)
+    else:
+        # **The verdict's own reasons, in both modes.** Every finding behind them is already printed
+        # above, so this is the one line that says which of them the exit code turns on — and under
+        # `--best-effort` it is the only place the run states that it failed at all. `tables_unreadable`
+        # is why this branch is now reachable with nothing stale: a table carrying ids that will not
+        # parse was reported above and then exited 0 under `--strict` beneath *all identifiers current*
+        # (RM235).
+        typer.secho(f"identifier check: {report.clean}", fg=typer.colors.RED)
+        if strict:
+            raise typer.Exit(code=1)
 
 
 def _attest_on_the_way_out(records: list[VerificationRecord], spec_dir: Path) -> None:
@@ -1427,10 +1435,25 @@ def check_acmg_(
     except EnrichmentError as exc:
         typer.secho(f"CHECKED, BUT NOT ATTESTED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
-    # No `and report.version` guard any more: `clean` is `None` rather than `True` where no list was
-    # consulted (RM234), so the property withholds here instead of the caller remembering to.
+    # No `and report.version` guard any more: the property carries the reason a run cannot certify
+    # instead of the caller remembering to test for one (RM234, retrofitted to a `Verdict`).
     if report.clean:
-        typer.secho("every stated acmg_sf agrees with the list", fg=typer.colors.GREEN)
+        # **A pass over nothing is not a pass, and this is the arm where that can happen.** `offline`
+        # is an error and lands in the verdict; `nothing_to_check` — the list was read and the module
+        # states no `acmg_sf` cell — is not, so it arrives here truthy. Saying *every stated acmg_sf
+        # agrees* over zero stated cells is the S86 shape the sibling command already guards.
+        if not report.checked:
+            typer.secho(
+                f"no acmg_sf cell to check — list {report.version} read, 0 row(s) state one",
+                fg=typer.colors.YELLOW,
+            )
+        else:
+            typer.secho(
+                f"every stated acmg_sf agrees with the list ({report.checked} row(s) checked)",
+                fg=typer.colors.GREEN,
+            )
+    else:
+        typer.secho(f"acmg check: {report.clean}", fg=typer.colors.RED)
 
 
 @app.command("enrich-and-compile")

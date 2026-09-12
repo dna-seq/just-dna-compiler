@@ -82,6 +82,62 @@ no analogue on their side either — heteroplasmy, repeat alleles, copy number, 
 constraint, CIViC, AlphaGenome, the literature pack, licence-as-data, signing, the overlay and the
 round trip.
 
+## 2026-09-13 — RM235: a gate's verdict carries the reasons it is a `no`, and RM234 is retrofitted to it
+
+**`just-dna-enricher` only — a new `verdict` module, two properties retyped, two CLI branches; no
+parquet, model or manifest field changes.** In the tree and in no version anyone can install. Two
+behaviour changes, both named below.
+
+**RM235 as filed was refuted; what survives is S100's shape.** The item claimed that an unreachable
+dbSNP or HGNC is counted as a broken identifier while an unreachable OLS4 reports clean. It was
+measured on hand-built `IdentifierReport` objects carrying states the pipeline does not write for an
+outage — `RsidStatus.state` is `live|merged|absent|withdrawn` and has no `unchecked` member, and
+`check_identifiers` never populates `report.rsids` at all. Run against a port nothing listens on, the
+ontology leg raises `IdentifierUnavailable`, and the CLI exits 1 with an `unreachable`
+`VerificationRecord` for all five checks. A registry outage was already a hard refusal carrying a
+structured reason (`@a-disagreement-with-a-document-may-be-in-the-instrument`).
+
+What was real: `clean` is vacuously `True` when nothing was asked. `--strict` printed the unreadable
+table and then exited **0** beneath *all identifiers current*. A terminal reader saw both halves; a
+library caller reading the dataclass — which is how this arrived, as an MCP tool — saw only the
+verdict.
+
+**The shape is a result type, not a third truth value.** A gate has to choose an exit code, so a
+build that cannot be certified is a `no`; the unknown rides beside the verdict rather than inside it.
+`Verdict` is a frozen dataclass over a closed code vocabulary, falsy exactly when it carries codes,
+and `if report.clean:` is correct across every shape this property has had. That is the one
+documented exception to the house tri-state, and `verdict.py` carries the argument.
+
+**The set holds errors, not non-answers.** `offline`, `tables_unreadable`, `stale_identifiers` and
+`mismatched_assertions` are members. `not_requested` and `nothing_to_check` are not — a check the
+caller switched off, or a module with no row a check applies to, is an honest non-answer reported
+through the denominators that already exist, so `--strict --no-traits` does not start failing builds
+for doing as it was told. `unreachable` is not a member and could not be: no path could set it.
+
+**Behaviour change 1 — `check-identifiers --strict` newly exits 1** when a table carrying identifiers
+is present and will not parse. It exited 0 with the diagnosis printed above it.
+
+**Behaviour change 2 — `AcmgReport.clean` on `nothing_to_check` goes from `None` to a pass.** RM234
+gave `None` to both arms of `not_consulted`; only one is an error. `offline` means no list was
+obtained and fails; a list read against a module stating no `acmg_sf` cell is a module with nothing to
+disagree about, and `check-acmg` now says so with `checked` beside it instead of withholding. The
+attestation still records a skip on both arms, and the test asserting the two agree was narrowed to
+the predicate they actually share, because an equality across that split would force one of them to
+lie.
+
+**A prose filter was the defect underneath.** `unreadable_tables` kept everything in
+`*_tables_not_read` except the literal `"not present"`, so the row-taking call form's reason counted
+as eight tables that would not parse — a property whose docstring promised *never merely absent ones*
+and had stopped being true on a path the CLI never takes. Found by the existing identifier tests going
+red against the new gate arm. Both benign reasons are one constant each now, written by the producer
+and read by the filter; the structural repair (carry the roster's `read_errors` onto the report) is a
+field and stays out of a patch.
+
+`test_verdict.py` walks both call sites' `Verdict.of(...)` keywords with an AST pass and asserts set
+equality against the vocabulary, so a member wired nowhere fails rather than describing a format
+nobody has (`@registry-completeness`). Watched failing with a deliberately unwired member before it
+was kept.
+
 ## 2026-09-13 — S101: `pgs.csv`'s page claimed a compile gate, and read a calibration term as a licence one
 
 **`just-dna-format` and the docs — a `Field(description=…)` and two `TABLES.md` sections; no behaviour
@@ -148,7 +204,7 @@ report.clean:` **newly fires** on an unconsulted run, which is the intended chan
 Reported as S100 by just-module-creator, who had already written the caller-side guard and filed it so
 the next consumer would not have to. One existing test was asserting the defect.
 
-**Filed alongside: [RM235](ROADMAP.md#rm235--one-property-over-four-registries-an-outage-reports-as-a-broken-identifier-and-an-unreachable-efo-reports-as-clean), open and more serious.** The same shape in
+**Filed alongside: [RM235](ROADMAP_HISTORY.md#rm235--one-property-over-four-registries-an-outage-reports-as-a-broken-identifier-and-an-unreachable-efo-reports-as-clean), open and more serious.** The same shape in
 `IdentifierReport.clean`, which combines four registries and gates `check-identifiers --strict`'s exit
 code: an **unreachable** dbSNP or HGNC is counted as a broken identifier (so a third party's outage
 fails your build), while an unreachable OLS4 is dropped and reports clean. Not fixed here — its unknown

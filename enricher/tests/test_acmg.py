@@ -337,28 +337,39 @@ def _report(version: str | None, verdicts: list[str]) -> AcmgReport:
     )
 
 
-def test_clean_withholds_on_a_run_that_consulted_no_list() -> None:
-    """`clean` is `None`, never `True`, where no comparison happened (RM234, reported as S100).
+def test_clean_fails_on_a_run_that_obtained_no_list_and_says_why() -> None:
+    """A run that consulted no list cannot report as one that agreed (RM234, reported as S100).
 
-    Both arms, because both are a comparison that did not happen: no list obtained at all, and a list
-    obtained that no row could be looked up in. The old property was `not self.mismatches`, and
-    `mismatches` selects `not_listed`/`denied` — so an all-`unchecked` run had an empty `mismatches`
-    and answered `True`, which is the consumer's report.
+    The original defect: `clean` was `not self.mismatches`, and `mismatches` selects
+    `not_listed`/`denied`, so an all-`unchecked` run had an empty `mismatches` and answered `True`.
+    RM234 made that `None`; the verdict retrofit makes it a **falsy answer carrying its reason**,
+    because a gate has to pick an exit code and `None` left the caller doing that arithmetic.
+
+    **The two arms of `not_consulted` part company here, which is the behaviour change.** `offline`
+    is an error — no list, so nothing was compared — and fails. `nothing_to_check` is a list that was
+    read against a module stating no `acmg_sf` cell, which is a module with nothing to disagree
+    about; it passes, with `checked` as the denominator beside it.
     """
-    assert _report(None, ["unchecked", "unchecked"]).clean is None
-    assert _report("3.3", []).clean is None
-    # And the two arms that DID compare something keep a real boolean, in both directions.
-    assert _report("3.3", ["unstated", "unstated"]).clean is True
-    assert _report("3.3", ["not_listed"]).clean is False
+    offline = _report(None, ["unchecked", "unchecked"]).clean
+    assert not offline and set(offline) == {"offline"}
+
+    nothing_stated = _report("3.3", []).clean
+    assert nothing_stated and set(nothing_stated) == set()
+
+    assert _report("3.3", ["unstated", "unstated"]).clean
+    disagrees = _report("3.3", ["not_listed"]).clean
+    assert not disagrees and set(disagrees) == {"mismatched_assertions"}
 
 
-def test_clean_and_the_attestation_answer_the_same_question() -> None:
-    """`clean is None` exactly where `verification_record` records a skip, over every arm.
+def test_the_verdicts_offline_code_and_the_attestations_skip_agree() -> None:
+    """`offline` in the verdict exactly where `not_consulted` says so, over every arm.
 
-    The two read one predicate (`not_consulted`) rather than testing the same conditions apart, and
-    this is the equality that keeps them from drifting: an arm added to one without the other shows
-    up here rather than as a report claiming a pass that the attestation calls a skip — which is the
-    state this repaired.
+    Both still read the one predicate rather than testing the same conditions apart, which is what
+    keeps them from drifting. **The equality is narrower than it was, and deliberately**: it used to
+    be `clean is None` iff the attestation skips, and that can no longer hold, because the attestation
+    skips on *both* arms of `not_consulted` while only `offline` is an error the verdict carries. An
+    equality asserted across that split would force one of the two to lie — so the shared predicate is
+    asserted where it is actually shared, and the asymmetry is asserted as itself below.
     """
     cases = [
         _report(None, ["unchecked"]),
@@ -367,10 +378,16 @@ def test_clean_and_the_attestation_answer_the_same_question() -> None:
         _report("3.3", ["not_listed"]),
         _report("3.3", ["denied", "unverifiable"]),
     ]
-    assert {(r.clean is None, verification_record(r).skipped is not None) for r in cases} == {
+    assert {("offline" in r.clean, r.not_consulted == "offline") for r in cases} == {
         (True, True),
         (False, False),
     }
+    # The asymmetry itself: the attestation skips on an arm the verdict passes, and that is the whole
+    # of the behaviour change. Stated as an implication rather than an equality, because only one
+    # direction is entailed (`@a-record-written-in-two-passes-drifts-between-them`).
+    nothing_stated = _report("3.3", [])
+    assert verification_record(nothing_stated).skipped == "nothing_to_check"
+    assert nothing_stated.clean, "a list read against a module stating no cell is a pass, not a skip"
 
 
 def test_the_reported_run_withholds_rather_than_reporting_a_pass(no_ambient_caches: Path) -> None:
@@ -386,4 +403,5 @@ def test_the_reported_run_withholds_rather_than_reporting_a_pass(no_ambient_cach
     )
     assert report.version is None
     assert report.checked == 0
-    assert report.clean is None, "a run that consulted no list must not report as one that agreed"
+    assert not report.clean, "a run that consulted no list must not report as one that agreed"
+    assert set(report.clean) == {"offline"}, "and it must say which of the two it was"
