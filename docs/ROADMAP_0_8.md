@@ -758,6 +758,54 @@ thousand nested ones. The licence is **not** the obstacle a first reading here m
 What still has to be beaten is `reference_examples/apoe_epsilon`, which answers the two-variant case
 with no predicate at all.
 
+
+**Fourth corpus entry, 2026-09-13 — and it is the first where enumeration *succeeds* and the schema
+around it complains anyway.** Raised by the maintainer from their own genotype: **Kulminski's
+subdivision of APOE ε4 by linked TOMM40/APOC1 markers**, where a carrier is not simply *ε4* but
+`1-0-0`, `1-1-0`, `1-0-1`, `1-1-1` — a binary vector over the ε4 call plus the linked sites, each
+pattern carrying a different reported risk.
+
+**This one is expressible today, and that is the finding rather than a reason to close.** Three
+markers is eight patterns and at most thirty-six pairs, which is `haplotypes.csv` (one row per pattern
+× defining marker) plus `diplotypes.csv` (pair → phenotype) — the shape
+`reference_examples/apoe_epsilon` already ships for ε2/ε3/ε4 across rs429358 and rs7412, with one more
+marker. The enumerative combiner is not beaten here, so **this entry argues for no predicate at all**.
+
+**What it does show is the shape being outgrown at a different seam — the *subject*, not the
+combiner** (the maintainer's reading, and it is the right one). Expressing it fires two shipped
+warnings, and neither is a bug:
+
+- **`composite_gene_cell`.** The haplotype spans TOMM40, APOE and APOC1; `DiplotypeRow.gene` is
+  **required and single-valued** (`HaplotypeRow.gene` is optional, so only the diplotype half forces
+  the choice). Labelling the locus `TOMM40-APOE-APOC1` publishes a gene name no registry index will
+  match, beside its parts — which is exactly what the warning says. So the author picks between **one
+  findable symbol and an honest locus label**, and there is no third option. `apoe_epsilon` never met
+  this because ε alleles sit in one gene.
+- **`diplotype_phase_ambiguous`**, conditionally. `HaplotypeRow` *is* same-strand co-location, so this
+  translation is only honest if Kulminski's patterns are **phased haplotypes**. If they are unphased
+  multi-locus genotype vectors, writing them as haplotypes asserts *cis* the source never claimed —
+  RM174's trap exactly — and the pairs that collapse to one unphased genotype with different
+  conclusions are what this warning already catches, telling a consumer with unphased calls to
+  withhold.
+
+**So the honest verdict is: yes, with caveats, and the caveats are the entry.** The format holds the
+claim; what it cannot do is hold it *cleanly*. A use case that compiles only by choosing between
+findability and honesty, and only under a phase assumption, has grown past the gene-keyed subject the
+PGx tables were cut for — and that pressure lands on `DiplotypeRow`'s key rather than on any predicate
+language. **Read against the other three entries, this is the one that argues RM28 may be the wrong
+item for its own class of case**: CIViC's contribution was that enumeration *cannot* reach trans and
+open-world negation, ClawBio's was that nobody has a declarative form for a multi-gene dosing
+algorithm, SNPedia's was a general grammar at scale — and this one enumerates fine and still does not
+fit. A locus-keyed subject would settle it and a predicate would not.
+
+**Unmeasured, and flagged as such.** This is a *reported* case: the paper has not been read here, so
+the marker count, the exact patterns, and above all **whether Kulminski phases them** are unverified.
+That last one decides which of the two warnings above applies, and it is the first thing to establish
+if anyone builds it. Separately, `just-module-creator`'s `assets/longevity_2026` was checked and does
+**not** attempt this — it takes the opposite reading, collapsing the cluster to rs429358 as the shared
+causal signal on colocalization evidence, with TOMM40/APOC1 named only in prose and no
+`haplotypes.csv` at all.
+
 Still **parked**, on the same rule: the corpus grows, the decision does not move until the count is in.
 
 ### What dissolved, so it is not re-proposed
