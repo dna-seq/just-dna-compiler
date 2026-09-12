@@ -96,8 +96,17 @@ all priced as derived sidecars) and
 `planned` — whose genotype-interpreting half carries four hand-curated variant tables inlined as
 Python dicts and JSON). The two surveys overlap in almost nothing, which is itself the result: one
 reaches for pathway, target–disease and regulatory content we do not carry, the other for the
-per-variant clinical axes an ACMG engine reads. What each routes is in its own § plan; nothing is
-filed as an `RMn` by either, per the probes rule.
+per-variant clinical axes an ACMG engine reads.
+
+**The ClawBio half's findings are filed, 2026-09-13** — a probe records and the tracker allocates, so
+the numbers came from `.claude/rm-next.py` rather than the probe: **RM236** (`consequence`/`impact`,
+and RM23's grain question with them), **RM237** (region-keyed ClinGen dosage), **RM238** (per-tissue
+eQTL, open but parked on a consumer), **RM239** (fine-mapping posterior), **RM240** (land the
+translated nutrition panel in the corpus) and **RM241** (`weighting` does not survive `reverse`). The
+sixth finding was not filed as a new item because it is not one: warfarin's multi-gene call is
+[RM28](#rm28--meta-conclusions-the-predicate-half)'s surviving *pairing across subjects* clause, and
+it went in there as that entry's **second corpus entry**. The genomi half's seven ranked candidates
+are recorded in its own § 8 and are not filed here.
 
 **What it is.** A survey of the consumer-genomics competitors, with two named first — **Calwbio** and
 **genomi** — done the way PUBMIND_ASSESSMENT was done and not the way a feature comparison is: run
@@ -121,6 +130,210 @@ real one disagreeing.
 **Exit.** Each competitor's probe filed, and its findings either dissolved (already enabled), closed
 additively (an RM with a motivating report in hand), or parked with the reason — the
 USE_CASES → PROPOSAL loop, entered at the top.
+
+## RM236 — `consequence` and `impact` are planned axes with no slot, and an ACMG engine reads both as primary inputs
+
+**Severity** medium · **Status** open — **filed 2026-09-13 from [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s ClawBio half** ·
+**Owner** format (schema + compiler), then enricher · **Motivating case**
+[`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *the two columns their engine reads that we
+cannot store*
+
+[ROADMAP § Reserved namespace](ROADMAP.md#reserved-namespace) lists `consequence` (the VEP/Sequence
+Ontology term) and `impact` (`HIGH|MODERATE|LOW|MODIFIER`) as *planned future annotation axes*, with
+the rule that they "get a slot and a specific diagnosis only when a release actually commits to
+building them". Nobody had committed, because nobody had a case. **The case is now in hand**:
+ClawBio's `skills/clinical-variant-reporter/acmg_engine.py` is a running 653-line ACMG/AMP engine
+whose per-criterion evidence table prints `consequence=frameshift_variant` for PVS1, `impact=HIGH`
+for PM1, and `consequence=frameshift_variant, SpliceAI=N/A` for BP7 — three of its twelve implemented
+criteria read a column this format cannot store, and a fourth reads the transcript the term was
+called against.
+
+**Get the mechanism right before touching anything.** Neither name is in `RESERVED_NAMES_0_4`, so
+`reject_reserved` never claimed them and there is nothing to move out of a "built half": an author
+writing `consequence` today gets the generic `extra="forbid"` message. Committing means one of two
+things, and choosing is the first deliverable — **build the column**, or **add the reserved slot plus
+a `vocab.RESERVED_NAME_REASONS` entry** so an author hears what the name is held for instead of the
+stray-column message. The second is the honest outcome if the grain question below defers the build.
+
+**The blocker is grain, and it is [RM23](#rm23--computational-predictor-scores-as-a-table)'s blocker
+restated.** A variant has one consequence *per transcript*; `VariantRow` is one row per
+`(variant_key, genotype)`. Three options:
+
+1. **MANE Select only** — one value per variant, with `GeneMetricsRow.mane_select` naming the
+   transcript it was called against. Cheap, lossy, and defensible only if the column's description
+   says so in the field itself (`@field-description-is-a-claim`).
+2. **Most severe across transcripts** — a ranking policy. That is an interpretation, so it is out by
+   the same clause that keeps threshold-picking out of RM23.
+3. **A derived `consequences.csv` sidecar** keyed `(variant_key, transcript)` — half cost under
+   Principle 9, no authoring burden, and it is *the same shape RM23 needs*.
+
+**Recommend (3), and settle RM23's grain in the same pass.** They are one question asked twice, and
+answering it once is the whole saving; splitting them is how two sidecars end up with two different
+answers to "which transcript". Do not build (1) as a stepping stone — a column shipped under a major
+cannot be retyped into a table.
+
+**Related** RM23 (same grain blocker, and the pass that should settle both), RM188.
+
+## RM237 — ClinGen dosage is gene-keyed, so a recurrent-CNV region has nowhere to be written
+
+**Severity** medium · **Status** open — **filed 2026-09-13 from [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s ClawBio half** ·
+**Owner** enricher (the lane) + format (the model) · **Motivating case**
+[`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *dosage keyed on a region, not a gene*
+
+`GeneMetricsRow` carries `haploinsufficiency` and `triplosensitivity`, keyed on a **gene symbol**, and
+`enricher/clingen.py` fills them. ClinGen publishes four dosage lists — gene curation, **region
+curation**, recurrent CNVs and ISCA regions — and `enricher/acmg.py`'s own probe note from 2026-08-03
+records seeing all four on the FTP tree while reaching for one. The three unread ones are the half a
+CNV classifier actually needs: ClawBio's `skills/cnv-acmg-classifier/data/curated_dosage_map.csv`
+carries an `element_type` column precisely because two of its four demo rows are regions
+(`22q11.2`, `chr22:18,900,000–21,500,000`, hi=3 ts=3), and its ClinGen/ACMG 2019 Section 1 scores off
+them.
+
+**A region is genuinely the subject, which is why this is not a widening of the existing table.** A
+22q11.2 deletion is not a claim about any one gene in the interval; filing it under a gene symbol
+would be a false attribution of the kind `@gene-map-is-another-sources-attribution` forbids. So the
+shape is a **sibling sidecar** — `region_metrics.csv`, one row per `(chrom, start, end, name)` with
+`haploinsufficiency`, `triplosensitivity` and ClinGen's curation id — rather than an `element_type`
+discriminator on `gene_metrics.csv`. "One CSV = one concern" and `@sidecar-name-and-place` both push
+apart here: a region row carries coordinates and a gene row carries a symbol, and a table holding both
+would have half its key null on every row.
+
+**Two things to settle before writing the pass**, and the second is the one a review will catch:
+
+- **Terms.** ClinGen's dosage lists are believed unrestricted and that is *recalled, not probed*
+  (`@no-named-licence`). Read the file and its SPDX id first.
+- **Which `(source, layer)` row this claims.** `@write-the-sourcerow`'s second-surface clause says a
+  second surface of an already-declared source may not claim the lane's existing row. Whether region
+  curation is a second surface of `clingen` or the same lane is undecided, and it decides the
+  `SourceRow` key.
+
+**Related** RM188, `@write-the-sourcerow`, `@gene-map-is-another-sources-attribution`.
+
+## RM238 — a per-tissue eQTL has no row, and `expression_effects.csv` is the wrong table to widen
+
+**Severity** low · **Status** open — **filed 2026-09-13 from [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
+ClawBio half; PARKED on a consumer, deliberately** · **Owner** enricher · **Motivating case**
+[`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *nine databases, and the two axes that come
+back with no home*
+
+`clawbio.py run gwas --demo` on rs3798220 returns five cis-eQTLs **by named tissue** from GTEx and the
+EBI eQTL Catalogue — `LPA` in Liver at β −0.82, in Adipose at −0.45, `SLC22A3` in Liver at +0.31.
+Nothing here holds that. `expression_effects.csv` exists and is the wrong place: it is
+AlphaGenome-shaped, one row per `(variant, gene)` **aggregating 371 tissue tracks** into
+`tracks_agreeing`/`tracks_total`, and [`expression.py`](../schema/src/just_dna_format/expression.py)
+argues at length that one row per track "is lossless and unreadable". A GTEx row is not a track — it
+is a measured cis-eQTL in one named tissue with its own β and p, ~50 tissues rather than 371, and
+**the tissue is the fact** rather than something to consensus over. Different grain, different source,
+different terms. So: `eqtl_effects.csv`, one row per `(variant, gene, tissue, dataset)`, tissue as an
+ontology term where the source gives one.
+
+**This is filed open and parked, and the parking reason is a rule rather than a shortage of time.**
+[USE_CASES § 7.2](USE_CASES.md#7-regulatory-effect--which-gene-a-non-coding-variant-moves-and-which-way-07)
+closes with *"reopen this with a consumer, never with an argument"*, and a competitor rendering the
+table is an argument. **Reopen it with somebody who needs the answer.** When that happens, the first
+step is the acquisition measurement that correctly parked the frequency snapshot — what the GTEx and
+eQTL Catalogue bulk artifacts weigh, and what their terms say (`@probe-the-real-file`).
+
+**Related** RM188, RM194/RM200 (the AlphaGenome table this must not be folded into), USE_CASES § 7.2.
+
+## RM239 — a fine-mapping posterior has no column, and `gwas_effects.csv` already has its key
+
+**Severity** low · **Status** open — **filed 2026-09-13 from [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s ClawBio half** ·
+**Owner** enricher · **Motivating case** [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) §
+*nine databases, and the two axes that come back with no home*
+
+The same `gwas-lookup` report returns three fine-mapping credible sets for rs3798220 with a posterior
+probability and 95%/99% set membership per `(trait, study)` — PP 0.92 for Lipoprotein(a) in
+GCST005140, 0.45 for aortic valve stenosis in GCST90038614 with 95% `No` and 99% `Yes`.
+
+A posterior inclusion probability is the **same class of object as an allele frequency or a LOEUF**: a
+number a named dataset publishes, no measurement by us, no inference by us. Its key is
+`(variant, trait, study)`, which is `GwasEffectRow`'s key plus nothing — the row already carries
+`trait_efo_id`, `study_accession` and `p_value_num`. So the cheap shape is **two optional columns on
+the existing table**, `posterior_probability` and `credible_set`, minor-legal under P3/P8, and the
+GWAS Catalog now publishes credible sets for its harmonised studies.
+
+**Smallest item on the survey's list, and it should not be done on its own.** Do it the next time
+`enricher/gwas.py` is open for another reason. Two things a design owes: whether `credible_set` is a
+membership flag or the set's size/level (`95`/`99` are two answers to one question, and putting both
+in one column is the `@field-description-is-a-claim` failure), and a withhold for a study whose
+harmonised release carries no credible set, which is a nobody-asked third state and not a zero.
+
+**Related** RM188, RM90 (the table this lands on).
+
+## RM240 — the ClawBio nutrition panel compiles, and the corpus should carry it
+
+**Severity** low · **Status** open — **filed 2026-09-13 from [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
+ClawBio half; the translation is run, the landing is not** · **Owner** format (the corpus) ·
+**Motivating case** [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *The translation, run*
+
+The survey's headline claim — a competitor's inlined panel is a module written in the wrong language —
+was run rather than asserted. `skills/nutrigx/data/snp_panel.json` at `1fcecb7e` (28 SNPs) translated
+field-for-field into a spec, `validate` green, `compile` producing 84 weight rows over 28 variants, 24
+genes and 12 categories, and `compile → reverse → compile` reproducing `content_signature` exactly.
+**Land it as `reference_examples/nutrigenomics_panel/`**, which is `@probe-becomes-example` and is the
+only form in which the claim stays true as the code moves.
+
+**What it broke on the way, and the README has to say all of it:**
+
+- **`state` is required and `direction` is not.** 84 rows refused for omitting the *superseded*
+  column while carrying the modern one. Already in the [1.0-cleanup tracker](ROADMAP.md#variantrowstate)
+  with the right reason (P8 forbids demoting a required field inside a major, so the demotion and the
+  deprecation land together at 1.0). What the run adds is that this is the **first** error a
+  first-time author meets, before anything about their data.
+- **Their 28 `ref_allele` cells carry no coordinate**, and the schema refuses a bare `ref` — correctly,
+  since an unanchored reference allele cannot be checked against a reference genome. The honest
+  translation drops `ref` and keeps `effect_allele`.
+
+**What the landing still needs**, none of it optional because the corpus walkers assert it: a
+`resolution.csv` so `validate --strict` and `compile --strict` pass
+(`test_reference_example_compiles_under_strict`), a `sources.csv` whose terms are read rather than
+recalled — their `data_license` is blank and the repo is MIT, which is a licence for the *code*
+(`@a-hosts-terms-are-not-its-contents-terms`) — a `verification.json` closure
+(`test_every_reference_example_is_closed_and_its_closure_still_describes_it`), a README, and a section
+in [REFERENCE_EXAMPLES.md](REFERENCE_EXAMPLES.md). Two enricher passes are worth running first because
+they are what makes it the worked answer rather than a copy: `check-identifiers` (their panel names
+`BCMO1`, a retired HGNC symbol) and `literature` over the 28 PMIDs.
+
+**One observation for the README, not a repair.** Their panel weights `rs429358` and `rs7412` as two
+independent additive rows in two different nutrient domains. Those two variants are the APOE ε pair,
+which `reference_examples/apoe_epsilon/` models as a haplotype because the isoform is the joint state.
+That is a claim about their curation, and it belongs in the README as a sentence.
+
+**Related** RM188, RM92 (see RM241 — the `weighting` block this example is forced to write).
+
+## RM241 — `weighting` does not survive `reverse`, so a reversed module has no scale to read
+
+**Severity** low · **Status** open — **filed 2026-09-13 from [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
+ClawBio half** · **Owner** format · **Motivating case**
+[`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *The translation, run*, last paragraph
+
+`weight` is the one magnitude in this format with no unit beside it (`@weight-has-no-unit`), and RM92
+built `module_spec.weighting` — `scale`, `method`, `note` — to be the place a module says what its
+weights mean. It is **advisory, copied into the manifest, and not reconstructed by `reverse_module`**,
+in the same class as `panel` / `authorship` / `license`. All of that is documented and, taken one field
+at a time, defensible: it is not content, so it is correctly outside `content_signature`.
+
+**The survey hit the consequence.** Translating ClawBio's nutrition panel forced an honest `weighting`
+block to be written — their weights are hand-assigned importances *within* a nutrient domain, and
+their scorer normalises by the weight of the SNPs it happened to find, so a domain score is comparable
+only inside one domain of one run. That block is the single most useful sentence in the translated
+module. `reverse` then drops it. So a consumer holding two **reversed** modules has two `weight`
+columns and no way to learn that they are on different scales — which is the exact failure RM92 was
+built to prevent, surviving in the one path RM92 does not cover.
+
+**Three candidate dispositions, and this entry does not pick one.** (a) Nothing — write it in the
+[FAQ](FAQ.md) as a known lossy field and let a consumer read the *original* spec, which is what
+`reverse`'s own contract already says. (b) Carry `weighting` through `reverse` from the manifest,
+which is where it already lives — cheap, and it changes what `reverse` claims to be. (c) Decide the
+lossy set is right and that the real defect is that nothing *warns*, the way the dropped verification
+attestation warns. **(c) is the most likely right answer** and is the cheapest to test: `reverse`
+already emits one warning for a dropped attestation, so a second for a dropped `weighting` costs one
+line and tells the author the thing they need to know at the moment it stops being true.
+
+**Do not fix this by putting `weighting` inside `content_signature`.** It is prose about a column, not
+the column; hashing it would make a reworded note move the digest, which is the defect
+[FAQ](FAQ.md) already answers twice.
 
 ## RM164 — `heteroplasmy.csv` is a shipped table kind with no source behind it
 
@@ -305,6 +518,31 @@ The 72 disjunctions are the half that is **already expressible** — rows are a 
 where this entry drew the line and it holds. **This is evidence for the corpus, not a reason to
 unpark**: one source, one observed trans instance, one negation. RM174 carries the measurement; the
 decision stays here.
+
+**Second corpus entry, 2026-09-13 — and it is a routine clinical guideline rather than an oncology
+molecular profile.** From [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
+ClawBio half ([`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *pharmgx-reporter*). Their
+pharmacogenomic report renders exactly one AVOID across 59 drugs, and it is **warfarin**, keyed
+`"genes": ["CYP2C9", "VKORC1"]`. Our own `reference_examples/cyp2c9_warfarin_grch37/` carries the
+CYP2C9 diplotype phenotypes in `diplotypes.csv` and the VKORC1 per-genotype claims in
+`pharm_variants.csv`, **side by side, with nothing keying the pair** — which is this entry's surviving
+"pairing across *subjects*" clause with a shipped module standing on it.
+
+Three things make it sharper than the CIViC entry rather than a repeat of it:
+
+* **It is the *drafter's* recorded gap, not an inference.** `pgx_draft`'s own comment says it:
+  *"the guideline exists, it is a dosing algorithm over several genes rather than a per-phenotype
+  recommendation, so nothing lands here and the author was told CPIC has nothing."* What shipped for it
+  was a better **warning**, deliberately, not a table.
+* **The competitor has no declarative form either.** ClawBio's answer is `"special": "warfarin"` — a
+  hardcoded branch calling `get_warfarin_rec(profiles)`, for one drug out of 59. That is evidence the
+  shape is genuinely hard, not evidence that everyone else solved it.
+* **It is CPIC, so the population is countable.** The measurement this entry still wants, and the one
+  cheap enough to do before any design: **how many CPIC guidelines are keyed on a gene *pair* rather
+  than a single gene phenotype**, counted off the CPIC snapshot already provisioned. If the answer is
+  three, this parks again with a sharper reason; if it is thirty, the economy argument changes.
+
+Still **parked**, on the same rule: the corpus grows, the decision does not move until the count is in.
 
 ### What dissolved, so it is not re-proposed
 

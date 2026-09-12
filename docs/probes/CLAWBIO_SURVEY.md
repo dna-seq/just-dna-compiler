@@ -443,8 +443,17 @@ skills wanting it is an argument. It stays parked.
 
 ## The plan — what to build, in order, to be a superset on annotation
 
-Sized in the usual units. None of this is filed as an `RMn` by this document; a probe records, the
-tracker allocates (`.claude/rm-next.py`).
+Sized in the usual units. **Filed 2026-09-13** — a probe records and the tracker allocates, so the
+numbers below came from `.claude/rm-next.py`, not from this file: items 1–6 are
+[RM28's second corpus entry](../ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half),
+[RM236](../ROADMAP_0_8.md#rm236--consequence-and-impact-are-planned-axes-with-no-slot-and-an-acmg-engine-reads-both-as-primary-inputs),
+[RM237](../ROADMAP_0_8.md#rm237--clingen-dosage-is-gene-keyed-so-a-recurrent-cnv-region-has-nowhere-to-be-written),
+[RM238](../ROADMAP_0_8.md#rm238--a-per-tissue-eqtl-has-no-row-and-expression_effectscsv-is-the-wrong-table-to-widen),
+[RM239](../ROADMAP_0_8.md#rm239--a-fine-mapping-posterior-has-no-column-and-gwas_effectscsv-already-has-its-key)
+and [RM240](../ROADMAP_0_8.md#rm240--the-clawbio-nutrition-panel-compiles-and-the-corpus-should-carry-it)
+respectively, plus [RM241](../ROADMAP_0_8.md#rm241--weighting-does-not-survive-reverse-so-a-reversed-module-has-no-scale-to-read)
+for the `weighting` observation in § *The translation, run*. **Where an entry and this section
+disagree, the entry wins** — it is the tracked one, and this stays the evidence.
 
 **1. Take the warfarin case to RM28 as its second corpus entry. — half a day, no code.**
 RM28's surviving clause is "pairing across *subjects* — no table keys on more than one", parked
