@@ -17,9 +17,16 @@ anyone noticed.
 this repository deliberately carries no authoring document. If a sentence here starts telling somebody
 what command to run, it is in the wrong repository.
 
-Sections are required for every **lead** table (the ones whose parquet is in `LEAD_PARQUETS`) and
-allowed for any other; `compiler/tests/test_table_prose.py` asserts that asymmetry rather than an
-equality, so a section for a derived table is legal and a missing lead section is not.
+Sections are required for every **authored** table — everything in `draft.DRAFTABLE` — and allowed for
+any other. `compiler/tests/test_table_prose.py` asserts that asymmetry rather than an equality, so a
+section for a *derived* table is legal and a missing authored one is not.
+
+**The requirement started at the lead tables and that was the wrong line**, found when a peer session
+grepped its task-shaped guides and reported that `studies.csv` and `overrides.csv` appear in neither
+theirs nor these — and the overlay is a cell-authorship question, which is the one thing this file is
+for. `LEAD_PARQUETS` is about what a consumer reads first; *who writes which cell* is about what a
+person writes at all, and those are different sets. `overrides.csv` and `studies.csv` are the two that
+fell through.
 
 ## variants.csv
 
@@ -157,3 +164,72 @@ tissue-conditional: a blood-derived fraction systematically under-represents the
 tissue, and the penetrance threshold itself shifts, so the *same* fraction bins to different
 phenotypes across tissues. A heteroplasmy table with no tissue context is quietly unsafe — it will
 compile, and a consumer cannot tell which tissue its bins assume. State it.
+
+## studies.csv
+
+**One row is one (rsid, pmid) evidence link.** Not a description of a study — a link between a variant
+and a paper, so one study supporting five variants is five rows, and a variant with three citations is
+three.
+
+**Grounding evidence is mandatory, and that is the point of the table.** A binning table that states
+thresholds with no study rows behind them warns in *both* modes, strict and best-effort: a bin boundary
+is a claim about the world and an unsourced one is the kind this format refuses to publish quietly.
+
+**A row cites when its claim is finer-grained than this table's key.** `studies.csv` is keyed on
+`(rsid, pmid)`, so when a claim is per-bin or per-genotype rather than per-variant, the citation lives
+on the claiming row and this table describes the study instead. The two are not alternatives; asking
+which one a citation belongs in is asking how specific the claim is.
+
+**The symptom of confusing it with `literature.csv` is a dropped row.** `literature.csv` is
+machine-produced and keeps every article it found; the compiler **discards an uncited literature row**
+when nothing references it. `studies.csv` is the authored side and is never dropped. If a citation
+disappeared from a compile, it was in the wrong one of the two.
+
+## overrides.csv
+
+**One row is one authored correction to one cell of one derived table** — and it is the only place a
+person may contradict a machine. Every other row in the tables it names is enricher-written, so this is
+the authored-versus-derived boundary made into a file.
+
+**The correction is applied and never merged in.** The derived table on disk keeps the machine's value;
+the overlay sits beside it and wins at read time. So a correction is a third category that appears in
+neither table registry, and "fix the derived CSV directly" is the repair this file exists to refuse —
+the next enricher run would overwrite it.
+
+**Match the key as the model *stores* it, not as you spelled it.** A raw string compare against the
+authored spelling grew the overlay by one row per run, because the stored form had already been
+normalised. This is the single most common way to author this table wrong, and the symptom is a table
+that keeps growing while appearing to do nothing.
+
+**Six of its columns are the claim and three are provenance.** `table`, `subject`, `member`, `field`,
+`operation` and `value` say *what* the correction is and are inside `content_signature` — two modules
+differing in any of them assert different things. `reason`, `decided_by` and `decided_at` say why, who
+and when; nothing reads them, and they are exactly the cells an author improves on a second pass, so
+they sit outside content identity and editing one does not move the digest.
+
+**Counting a correction counts the overlay, never the effect.** A report that counted what a correction
+*removed* disagreed with itself between two runs of the same module, because the second run had nothing
+left to remove.
+
+## licensing.csv
+
+**One row is one data source, at one layer of the module, with the terms it was used under** — keyed
+`(source, layer)`. The same source consulted at two layers is two rows, and that is not duplication:
+the terms can genuinely differ.
+
+**It is the only table the compile licence gate reads, and the gate keys on this file and nothing
+else.** A module drafted entirely from one source once carried no `licensing.csv` at all and compiled
+as though unrestricted. That is why every pass that consults a source writes its row — and why a pass
+that contributed nothing writes none.
+
+**It is a machine-produced fact table that a human starts from a template**, which is the odd
+combination, and the reason it carries a placeholder guard: a scaffold's unreplaced `<<REPLACE>>` in a
+terms cell must be unable to compile, rather than publishing a module whose licence is a placeholder.
+
+**`declared_use` is a third axis with three states, not a mode.** Unstated is not the same as
+commercial or non-commercial, and a source with unknown commercial terms *warns* — it never gates. A
+host's terms are also not its contents' terms: the host's row is the floor and each record may override
+it, so one permissive hosting statement does not license what it hosts.
+
+**Either spelling is a key.** `licensing.csv` is current and `sources.csv` deprecated until 1.0; write
+to the file you read, and a module carrying both is an error rather than a merge.

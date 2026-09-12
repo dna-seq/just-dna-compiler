@@ -8,11 +8,16 @@ nobody notices that the page has no prose because the site still looks complete.
 mechanism that left `just-module-creator`'s dossiers a release behind, with two 0.7 table kinds carrying
 no entry at all.
 
-**The assertion is asymmetric, deliberately** — `lead ⊆ sections ⊆ all tables`, never an equality. The
-lead tables (whose parquet is in `LEAD_PARQUETS`) are the ones an author writes by hand, so a missing
-section there is a real gap. A section for any *other* table is legal and welcome: the derived tables get
-prose when somebody has something to say, which is the "on demand" half of the decision, and an equality
-would refuse it.
+**The assertion is asymmetric, deliberately** — `authored ⊆ sections ⊆ all tables`, never an equality. A
+section for a *derived* table is legal and welcome: those get prose when somebody has something to say,
+which is the "on demand" half of the decision, and an equality would refuse it.
+
+**The required set is `DRAFTABLE`, and it started as `LEAD_PARQUETS` — which was wrong.** A peer session
+grepped its task-shaped guides and reported that `studies.csv` and `overrides.csv` appear in neither
+theirs nor the prose, and the overlay is a *cell-authorship* question, which is precisely what
+`TABLES.md` is for. `LEAD_PARQUETS` describes what a consumer reads first; *who writes which cell*
+describes what a person writes at all. Different sets, and `overrides.csv`, `studies.csv` and
+`licensing.csv` are the three that fell between them.
 
 `@registry-completeness` in its asymmetric form: assert the containment over a walked set, never a count.
 """
@@ -36,26 +41,40 @@ def _sections() -> set[str]:
     return set(_SECTION.findall(_PROSE.read_text(encoding="utf-8")))
 
 
-def _lead_tables() -> set[str]:
-    """The CSVs whose parquet is a lead parquet — derived, because `variants.csv` is the tenth.
+def _authored_tables() -> set[str]:
+    """The tables a person writes — `DRAFTABLE`, normalised to the spelling a page is written under.
 
-    Not a list: `LEAD_PARQUETS` holds the nine table kinds' parquets plus `weights.parquet`, and
-    `weights` comes from `variants.csv` through `SNP_CORE_PARQUETS`. Spelling the ten out here would
-    hand-keep exactly the roster the binding exists to derive.
+    Walked rather than listed, and normalised rather than filtered: `DRAFTABLE` carries both spellings of
+    the licence table, and the page exists under the current one only, so a raw set would demand a
+    section for a name the generator never writes (`@sidecar-name-and-place`).
     """
-    return {
+    return {sidecar_key(csv) for csv in DRAFTABLE}
+
+
+def test_every_authored_table_has_prose() -> None:
+    missing = sorted(_authored_tables() - {sidecar_key(s) for s in _sections()})
+    assert not missing, (
+        "these authored tables have a generated reference page with no hand-written section above it, so "
+        "the page states the columns and never says what a row is or who decides which cell: add a "
+        f"`## <name>.csv` section to docs/TABLES.md for each of {missing}"
+    )
+
+
+def test_the_lead_tables_are_a_subset_of_the_authored_ones() -> None:
+    """The containment that makes the widened requirement strictly stronger than the old one.
+
+    Asserted rather than assumed, because the requirement was changed *from* `LEAD_PARQUETS` *to*
+    `DRAFTABLE` and "stronger" is the claim that justified the change. If a lead table ever stops being
+    authored, this fails and the prose requirement needs re-deciding rather than silently narrowing.
+    """
+    lead = {
         csv
         for csv, parquets in C.table_bindings().items()
         if any(parquet in C.LEAD_PARQUETS for parquet in parquets)
     }
-
-
-def test_every_lead_table_has_prose() -> None:
-    missing = sorted(_lead_tables() - _sections())
-    assert not missing, (
-        "these lead tables have a generated reference page with no hand-written section above it, so "
-        "the page states the columns and never says what a row is: add a `## <name>.csv` section to "
-        f"docs/TABLES.md for each of {missing}"
+    assert lead <= _authored_tables(), (
+        "these tables produce a lead parquet but are not authored, so widening the prose requirement to "
+        f"`DRAFTABLE` silently dropped them: {sorted(lead - _authored_tables())}"
     )
 
 
