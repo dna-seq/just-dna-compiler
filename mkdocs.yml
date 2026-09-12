@@ -1,0 +1,186 @@
+# The documentation site for the three packages. Built with
+# `uv run --group docs properdocs serve -f mkdocs.yml` (live reload) or
+# `... properdocs build --strict -f mkdocs.yml`; the theme is Material, the builder is ProperDocs rather
+# than `mkdocs`, and `pyproject.toml` carries the reasoning for both — including why this file keeps the
+# name `mkdocs.yml` under a builder that would rather call it `properdocs.yml`.
+#
+# **Two rules shape everything below.**
+#
+# 1. **No file moves.** `docs_dir` is the real `docs/`, and every page keeps the path it already has.
+#    `CLAUDE.md` carries a doc map with a grep hint per file, `schema/tests/test_doc_links.py` walks
+#    every tracked markdown file and resolves every relative link *and heading*, and `.claude/`'s
+#    `RMn` allocator and triage ledger read `docs/ROADMAP.md` and `docs/CONSUMER_SUGGESTIONS.md` by
+#    name. A docs site that reorganised `docs/` would break three tools and a test to gain nothing a
+#    `nav` cannot express.
+#
+# 2. **`nav` curates; it does not hide.** This repository is public, so every record in `docs/` is
+#    already readable on GitHub — an `exclude_docs` would therefore conceal nothing while breaking the
+#    hundreds of links that run *from* the reference docs *into* the records (`SCHEMAS.md` cites an
+#    `RMn`, `FAQ.md` points at `AGENT_NOTES.md`). So the records are **built and searchable but absent
+#    from the nav** (`not_in_nav` below): a reader following a link from a reference page lands on a
+#    real page, and nobody browsing the sidebar wades through thousands of lines of shipped-roadmap
+#    rationale to reach the schema reference. (That number used to be spelled here and went stale the
+#    first time the file was split — `@counted-prose-needs-a-fixed-field`; no test reads this comment,
+#    so it states the shape instead of the count.)
+site_name: just-dna-format
+site_description: >-
+  The module format for just-dna annotation modules — the declarative schema contract, its reference
+  compiler, and the network tier that feeds them.
+site_url: https://dna-seq.github.io/just-dna-format/
+repo_url: https://github.com/dna-seq/just-dna-format
+repo_name: dna-seq/just-dna-format
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+# Build output, and "nothing a command generates goes in the repository root" — `/data/` is git-ignored
+# wholesale, which is the same place every builder's `--out` lands.
+site_dir: data/site
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+markdown_extensions:
+  # Every one of these is here because the corpus already uses the syntax; none is decoration.
+  - tables                     # the doc map, the check tables, the round-trip matrix
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+      # **GitHub's slug rules, not Python-Markdown's.** Every `FILE.md#anchor` link in this corpus was
+      # written against GitHub's slugifier and is verified against it by
+      # `schema/tests/test_doc_links.py` — the guard that exists because nineteen of them once went
+      # stale. Python-Markdown's default slugifier drops the characters GitHub keeps (an underscore in
+      # `#rm70--requires_callable-is-…`) so the first build reported **540 broken anchors that are not
+      # broken**. The repair is the slugifier, never the 540 links: most of them live in archived
+      # `Sn` sections and dated proposals that are records, and editing one to satisfy a build tool is
+      # the exact move the triage loop forbids.
+      slugify: !!python/object/apply:pymdownx.slugs.slugify {kwds: {case: lower}}
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - pymdownx.tasklist:         # CACHE_SURFACE.md's `- [ ]` checklist is its whole point
+      custom_checkbox: true
+# The `!!python/object/apply:` tag above is why `schema/tests/test_docs_site_nav.py` reads this file
+# with a loader that ignores unknown tags rather than `yaml.safe_load`: the guard has to be able to
+# parse its own subject, and a Material config that carries no python tag at all is a config that
+# cannot spell a slugifier.
+
+plugins:
+  - search
+  - gen-files:
+      # Writes the home page and the API reference into the build only — nothing lands in `docs/`.
+      scripts:
+        - scripts/gen_api_pages.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [schema/src, compiler/src, enricher/src]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_signature_annotations: true
+            separate_signature: true
+            members_order: source
+            filters: ["!^_"]
+            merge_init_into_class: true
+
+# **Link integrity is `schema/tests/test_doc_links.py`'s job, and it is the stricter of the two.** It
+# walks every tracked markdown file — the package and reference-example READMEs included, which this
+# build never sees — resolves the file *and* the heading, and reports a target that escapes the
+# repository as its own finding. So the two classes MkDocs would report here and it would not are
+# turned off rather than tolerated as noise:
+#
+# - `not_found` — a link out of `docs_dir` at a file that really exists (`../CLAUDE.md`,
+#   `../../reference_examples/grch37_build`), plus the mkdocstrings pages, whose docstrings carry paths
+#   relative to *their source file* and cannot be relative to a rendered page as well.
+# - `unrecognized_links` — the same shape pointing at a directory.
+#
+# `anchors` is `info` rather than `warn` for one reason, and it is a case the test settles the other
+# way **on purpose**: S35's report, quoted byte-for-byte, links `ROADMAP.md#rm89` — where RM89 lived on
+# the day the consumer wrote it. RM89 has since shipped to `ROADMAP_HISTORY.md`. `test_doc_links.py`
+# exempts everything below a section's `<!-- triaged: … -->` marker precisely so that link survives:
+# retargeting it would move the consumer's fingerprint and make the triage ledger report our own edit
+# as a consumer revision. So the anchor check is kept visible in the build log and denied a veto over
+# `--strict`, which would otherwise be one permanent red build over a record nobody may touch.
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  not_found: ignore
+  unrecognized_links: ignore
+  anchors: info
+
+# The reader's path, in the order `CLAUDE.md` § "Read these first" puts it.
+nav:
+  - Home: index.md
+  - Charter:
+      - CONSTITUTION.md
+      - CONSTITUTION_AMENDMENTS_HISTORY.md
+  - Reference:
+      - SCHEMAS.md
+      - COMPILER.md
+      - ENRICHER.md
+  - Across the tiers:
+      - MODULE_LIFECYCLE.md
+      - CACHE_SURFACE.md
+  - Using it:
+      - USE_CASES.md
+      - REFERENCE_EXAMPLES.md
+      - FAQ.md
+  - Upgrading:
+      - INTEGRATION_0_7.md
+      - INTEGRATION_0_6.md
+  - CHANGELOG.md
+  - API reference: api/
+
+# Built and searchable, absent from the sidebar — see rule 2 at the top. Everything here is a
+# development *record*: the roadmap ledgers, the consumer inbox and its archive, the agent gotcha book,
+# the probe rounds, the design threads, the code-first audit, and the vendored upstream files.
+not_in_nav: |
+  AGENT_NOTES.md
+  BLIND_REDERIVATION.md
+  CONSUMER_SUGGESTIONS.md
+  CONSUMER_SUGGESTIONS_HISTORY.md
+  CONSUMER_TRIAGE_LOOP.md
+  DRAFTING_MATURITY.md
+  PUBMIND_ASSESSMENT.md
+  RM_TOC.md
+  ROADMAP.md
+  ROADMAP_0_8.md
+  ROADMAP_1_0.md
+  ROADMAP_HISTORY.md
+  audit/
+  history/
+  probes/
+  proposals/
+  vendor/

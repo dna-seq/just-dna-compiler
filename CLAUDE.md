@@ -29,8 +29,9 @@ gotcha book: it is loaded into every session and has a size ceiling.
 **`docs/` root holds only what is still live.** Five subfolders hold the rest, and nothing in them is
 edited as routine work:
 
-- **`docs/history/`** — the closed record: the pre-0.6 halves of the three history files, the round-2
-  consumer thread, and `ROADMAP_0_7.md`.
+- **`docs/history/`** — the closed record: the retired halves of the three history files, the round-2
+  consumer thread, and `ROADMAP_0_7.md`. **Count the halves from `ls`, never from a sentence here** —
+  each has been split more than once, at the release boundary of the day.
 - **`docs/proposals/`** — the `PROPOSAL_*` design threads, **nine concluded, none live**. A live one
   wins over the roadmap files until its items land; a closed one is closed against reopening its own
   decisions, never against recording a new one taken inside the same release. **Read a proposal beside
@@ -62,7 +63,7 @@ edited as routine work:
 | [AGENT_NOTES.md](docs/AGENT_NOTES.md) | the long-form gotcha book behind this file | `grep -n '^## ' docs/AGENT_NOTES.md`, then the symbol name |
 | [RM_TOC.md](docs/RM_TOC.md) | where any `RMn` lives, status included — the complete list. **Claim a new number with `.claude/rm-next.py`** (scan + locked reservation), never by reading the highest off the file — an index is not an allocator, and two sessions once filed the same RM159 | `grep -n 'RM47' docs/RM_TOC.md` |
 | [ROADMAP.md](docs/ROADMAP.md) | open items, the idea-book, the reserved-namespace and 1.0-cleanup trackers | `grep -n '^## RM' docs/ROADMAP.md` |
-| [ROADMAP_HISTORY.md](docs/ROADMAP_HISTORY.md) | shipped items with their rationale, 0.6 onward. Pre-0.6 is in [history/](docs/history/ROADMAP_HISTORY_PRE_0_6.md) — **use RM_TOC rather than guessing the half** | `grep -rn '^## RM' docs/ROADMAP_HISTORY.md docs/history/` |
+| [ROADMAP_HISTORY.md](docs/ROADMAP_HISTORY.md) | shipped items with their rationale, **0.7 onward**. The 0.6 line is in [history/](docs/history/ROADMAP_HISTORY_0_6.md) and pre-0.6 in [history/](docs/history/ROADMAP_HISTORY_PRE_0_6.md) — three halves now, so **use RM_TOC rather than guessing one**. The boundary is a **tag** read off `git show v0.6.6:`, never a date: three rounds dated 2026-08-21 shipped in 0.7.0 | `grep -rn '^## RM' docs/ROADMAP_HISTORY.md docs/history/` |
 | [ROADMAP_0_8.md](docs/ROADMAP_0_8.md) / [ROADMAP_1_0.md](docs/ROADMAP_1_0.md) | deferred items, with the reason for the deferral. **The minor file is named for the release that will decide its contents**, so a cut closes one and opens the next — 0_7 closed on 2026-08-31 into [history/](docs/history/ROADMAP_0_7.md) | `grep -n '^## RM' docs/ROADMAP_1_0.md` |
 | [CHANGELOG.md](docs/CHANGELOG.md) | what shipped, newest first (shared across the ecosystem repos); 2026-08-12 onward, earlier entries in [history/](docs/history/CHANGELOG_PRE_0_6.md) | `grep -rn '^## 2026-' docs/CHANGELOG.md docs/history/` |
 | [INTEGRATION_0_6.md](docs/INTEGRATION_0_6.md) | the 0.5.4→0.6 surface delta and the per-consumer check/change lists | `grep -n '^## \|^### ' docs/INTEGRATION_0_6.md` |
@@ -535,7 +536,11 @@ questions vs answers. A blocker is never a dead end: dissolved, closed additivel
 - **Versions read from `pyproject.toml`** (via `module.version`); never hardcode one in `__init__.py`.
 - **Avoid `__all__` / pure re-export `__init__.py`s** — they obscure where a symbol lives.
 - Use `uv sync` / `uv add`; **never** `uv pip install`. `uv run pytest` runs the suite.
-- New markdown (except this file / `README`) goes in `docs/`.
+- New markdown (except this file / `README`) goes in `docs/` — **and into `mkdocs.yml`'s `nav` or its
+  `not_in_nav`**, which partition the directory under a test. `@a-docs-site-nav-is-a-registry-over-a-directory-that-grows`
+- The docs site is `uv run --group docs properdocs build --strict -f mkdocs.yml` (Material theme,
+  ProperDocs builder, nothing generated into `docs/`). A heading rename breaks every `#anchor` at it.
+  `@a-docs-site-nav-is-a-registry-over-a-directory-that-grows`
 
 ### Dogfooding and the adversarial role — one line each, same tags
 

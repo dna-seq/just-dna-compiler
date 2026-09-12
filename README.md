@@ -37,6 +37,25 @@ uv run pytest        # runs the schema/, compiler/ and enricher/ suites
 
 Build all distributions: `uv build --all-packages`.
 
+### The docs site
+
+`docs/` renders as a site, in place — no file moves, so every path `CLAUDE.md` and the tests cite stays
+where it is:
+
+```bash
+uv sync --group docs                                        # the toolchain, omitted from a plain sync
+uv run --group docs properdocs serve -f mkdocs.yml          # live reload on localhost:8000
+uv run --group docs properdocs build --strict -f mkdocs.yml # what CI runs; output in data/site/
+```
+
+Material for MkDocs as the theme, [ProperDocs](https://properdocs.org/) as the builder (MkDocs 1.x
+upstream is unmaintained and 2.0 drops the plugin system; `pyproject.toml`'s `docs` group carries the
+reasoning). The home page is this README and the API reference is generated from the packages'
+docstrings — both written into the build, never onto disk. `nav` is the reader's path; the development
+records — the roadmap ledgers, the consumer inbox, the probe rounds, the agent notes — are built and
+searchable but kept out of the sidebar, and `schema/tests/test_docs_site_nav.py` asserts those two
+halves account for every file in `docs/`.
+
 ## Authoring a module
 
 Authoring is `just-module-creator`'s job — its `/create-module` skill is the door into the stage

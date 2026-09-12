@@ -80,3 +80,35 @@ jobs:
           name: coverage-py${{ matrix.python-version }}
           path: coverage.xml
           if-no-files-found: warn
+
+  docs:
+    name: docs site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v9.0.0   # exact release — see the lint job
+        with:
+          enable-cache: true
+      # The docs group is not in `default-groups`, so the other two jobs never install it and this one
+      # has to ask. `--locked` for the same reason it is everywhere else.
+      - run: uv sync --locked --group docs
+
+      # `--strict` turns a build warning into a failure, which is the whole point of running it here: a
+      # heading renamed in `docs/` breaks the `FILE.md#anchor` links pointing at it, and a page added to
+      # `docs/` without a `nav` or `not_in_nav` entry is invisible in a normal build. The second of those
+      # is also asserted by `schema/tests/test_docs_site_nav.py` in the test job, which is the guard that
+      # names the file; this one proves the site still renders.
+      #
+      # ProperDocs rather than `mkdocs`, over the same `mkdocs.yml` — `pyproject.toml` has the reasoning.
+      - run: uv run --group docs properdocs build --strict -f mkdocs.yml
+
+      # The built site, so a reviewer can read a rendered page from the PR without installing anything.
+      # Not a deployment: publishing to Pages is a deliberate, outbound act and does not belong in a
+      # job that runs on every pull request.
+      - name: Upload built site
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-site
+          path: data/site
+          if-no-files-found: error

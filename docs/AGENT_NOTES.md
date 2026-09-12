@@ -3924,3 +3924,45 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
 
   **What stays per-provider, deliberately:** the *covered* predicate, and the stale-label wording —
   two providers ship two sentences and a published warning is an API (`@warning-text-is-api`).
+
+- `@a-docs-site-nav-is-a-registry-over-a-directory-that-grows` — **A page added to `docs/` lands in
+  `mkdocs.yml`'s `nav` or in its `not_in_nav`; the two partition the directory, and a test asserts the
+  equality rather than a count.** Built when the docs site went in on 2026-09-12.
+
+  A navigation list is a hand-kept roster over a directory that gains a file most weeks, which is this
+  project's most-repeated defect shape (`@registry-completeness`, and `RM_TOC.md` exists for the same
+  reason one document over). What makes it worse than the usual case is that **nothing reports it**:
+  an un-navigated page is an `INFO` in a build, `--strict` does not care, and the page is still
+  reachable by URL and by site search. So the site looks complete while the sidebar is one document
+  short, and the way that gets discovered is a reader who happens to look for something.
+
+  `schema/tests/test_docs_site_nav.py` therefore asserts `nav ∪ not_in_nav == walk(docs/**/*.md)` as a
+  symmetric difference, so a failure names the file. It also refuses a file in *both* halves, because
+  that is a page someone moved into the reader's path and forgot to take out of the records.
+
+  **The two halves are not public/private, and reading them that way is the mistake to avoid.** This
+  repository is public: every record in `docs/` is already on GitHub, so `exclude_docs` would conceal
+  nothing while breaking the hundreds of links that run *from* the reference docs *into* the records
+  (`SCHEMAS.md` cites an `RMn`, `FAQ.md` points at this file). `not_in_nav` builds them, keeps them
+  searchable and linkable, and only withholds a sidebar entry — which is the actual scarce resource.
+
+  **Three things the first build taught, all of them about slugs rather than about links.** MkDocs
+  reported 540 broken `FILE.md#anchor` anchors that were not broken: Python-Markdown's slugifier drops
+  characters GitHub keeps, and every anchor in this corpus was written against GitHub's rules and is
+  verified against them by `test_doc_links.py`. The repair is the slugifier
+  (`pymdownx.slugs.slugify`), never the 540 links — most live in archived `Sn` sections and dated
+  proposals that are *records*, and editing one to satisfy a build tool is what the triage loop
+  forbids. The single anchor still reported afterwards is S35's quoted `ROADMAP.md#rm89`, correct on
+  the day the consumer wrote it and stale since RM89 shipped; `anchors` is set to `info` for exactly
+  that one permanent exemption, because the alternative is a red build over a record nobody may touch.
+  And nothing is generated into `docs/` — the home page (the README, links repointed) and 119 API
+  pages are written into the build by `mkdocs-gen-files`, since `docs/` root holds only what is live
+  and `test_doc_links.py` walks every tracked file.
+
+  **The builder is ProperDocs, and that was measured rather than chosen.** MkDocs 1.x upstream is
+  unmaintained and the announced 2.0 removes the plugin system with no migration path; ProperDocs is a
+  1.x continuation, drop-in over the same `mkdocs.yml`, and was **already installed transitively** —
+  `mkdocs-gen-files` and `mkdocs-literate-nav` both declare it — which is how the question surfaced at
+  all, through its own warning printing into our build. The config keeps the name `mkdocs.yml` (with
+  `-f mkdocs.yml` on every command) because Zensical, the Material team's successor, reads that name
+  natively and is the likely next move once it can render an API reference from docstrings.

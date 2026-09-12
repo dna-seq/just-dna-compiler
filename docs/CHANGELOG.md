@@ -34,15 +34,51 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-12 — `docs/` renders as a site (no version bump: nothing shipped in a package changed)
+
+**`docs/` is now a documentation site, built in place.** `mkdocs.yml` at the repository root, a `docs`
+dependency group (`uv run --group docs properdocs build --strict -f mkdocs.yml`), and a CI job that
+fails on a build warning and uploads the rendered site as a PR artifact. **Nothing moved**: every path
+`CLAUDE.md`, `schema/tests/test_doc_links.py` and the `.claude/` tools cite is unchanged, and no file
+was added to `docs/` — the home page (this repository's README, its links repointed) and the 119 API
+pages come from the packages' own docstrings and are written into the build by `mkdocs-gen-files`.
+
+**Nothing about a compiled module, a model, a manifest field or a CLI changed**, so no package version
+moves and there is nothing for a consumer to do. Two things are worth knowing anyway:
+
+- **The site's navigation is curated, not filtered.** The nine reference documents plus the charter and
+  the changelog are in the sidebar; the development records (the roadmap ledgers, the consumer inbox and
+  its archive, the agent notes, the probe rounds, the design threads, the code-first audit) are built,
+  linkable and searchable but absent from it. `schema/tests/test_docs_site_nav.py` asserts the two halves
+  partition `docs/` exactly, so a page added to `docs/` without a place in one of them fails the suite
+  rather than quietly rendering without a sidebar entry.
+- **The builder is [ProperDocs](https://properdocs.org/) rather than `mkdocs`.** MkDocs 1.x upstream is
+  unmaintained and the announced 2.0 removes the plugin system with no migration path; ProperDocs is a
+  1.x continuation over the same `mkdocs.yml`, and `mkdocs-gen-files` and `mkdocs-literate-nav` already
+  depend on it. The config keeps the `mkdocs.yml` name so that Zensical — the Material team's successor,
+  Material itself having entered maintenance mode — stays a change of build command away.
+
+Heading anchors are slugified GitHub's way (`pymdownx.slugs.slugify`), which is what
+`test_doc_links.py` has always verified them against; the first build without it reported 540 broken
+anchors that were not broken.
+
 ## 2026-09-12 (latest) — RM232: a drafted row commits with its licence row too
 
-**Cut as 0.7.0 across all three packages and tagged `v0.7.0` at `65b9913` on 2026-09-12** — the
-maintainer settled the line and retagged here, so this entry is **inside** the cut rather than the
-first of the next number, and the patch-versus-minor question its first draft left open does not
-arise. The tag's history, kept because the hashes in INTEGRATION_0_7 § 5 only mean something against
-it: first at `8b981f6` (2026-09-11), re-cut at `83b1674` when RM231 and a release-record declaration
-landed after it, re-cut again here when RM232 did. `dist/` is built from `65b9913`; the readiness
-commit sits past the tag by design, as before.
+**Cut as 0.7.0 across all three packages, with `v0.7.0` now at `2001215` on 2026-09-12** — the
+maintainer settled the line and retagged at `65b9913`, so this entry is **inside** the cut rather
+than the first of the next number, and the patch-versus-minor question its first draft left open does
+not arise. The tag's history, kept because the hashes in INTEGRATION_0_7 § 5 only mean something
+against it: first at `8b981f6` (2026-09-11), re-cut at `83b1674` when RM231 and a release-record
+declaration landed after it, re-cut at `65b9913` when RM232 did, and moved once more to `2001215`
+after S99 was answered, which is where it stands here and on `origin`. `dist/` is built from
+`65b9913` and stays there: the delta to the tag is five documents and no code, no sdist carries
+`docs/`, and a rebuild at `2001215` reproduces all six artifacts byte-identically. **So the readiness
+commit no longer sits past the tag** — that sentence held for the first three positions and this entry
+asserted it for a fourth it could not see, which is why INTEGRATION_0_7 § 5 now carries the position
+as a measurement rather than a plan.
+
+**Published to PyPI on 2026-09-12, 15:49–15:50 UTC, all three packages.** The six uploaded sha256
+equal the six in INTEGRATION_0_7 § 5, so what is out is what that table describes.
 
 
 RM231 closed the two-step tail in the eight enrichment passes and had to name **five exemptions** to
@@ -3713,14 +3749,14 @@ read, a check re-run without the filter its neighbour eleven lines away carries,
 restating an analogy true of a different field. The sixth is the empty-work path nobody runs. The suite
 was green at 2859 tests throughout, and is 2864 now.
 
-- **[RM104](ROADMAP_HISTORY.md#rm104--enrich_gene_metrics-raised-unboundlocalerror-on-the-ordinary-re-run)
+- **[RM104](history/ROADMAP_HISTORY_0_6.md#rm104--enrich_gene_metrics-raised-unboundlocalerror-on-the-ordinary-re-run)
   — the gene-metrics re-run raised out of the pass** (`just-dna-enricher`). `reference` was bound inside
   `if wanted:` and read unconditionally below it, so the **idempotent re-run** — the path
   merge-not-clobber documents as supported — and any module with no `variants.csv` raised
   `UnboundLocalError`. That is outside `GeneMetricsEnrichmentError`, so the single `except` RM101 built
   for exactly this caller caught nothing. The fix is one line; the test is the part that matters, since
   every existing merge test re-ran with `wanted` non-empty.
-- **[RM107](ROADMAP_HISTORY.md#rm107--a-duplicate-source-layer-row-compiled-green-under---strict)
+- **[RM107](history/ROADMAP_HISTORY_0_6.md#rm107--a-duplicate-source-layer-row-compiled-green-under---strict)
   — a duplicate `(source, layer)` row compiled green under `--strict`** (`just-dna-compiler`). No
   warning, a moved `source_signature`, and a pair free to carry opposite `commercial_use` in the one
   file the compile gate reads. **The consumer-visible change is the tightening**: both commands now
@@ -3730,26 +3766,26 @@ was green at 2859 tests throughout, and is 2864 now.
   under the key, so where the two rows disagree (the case worth catching) picking the right one is a
   human's call and not the writer's. One source at two layers is unaffected, which is why the key is a
   pair.
-- **[RM109](ROADMAP_HISTORY.md#rm109--the-gene-metrics-fetch-suppression-key-was-not-derived-from-the-merge-key)
+- **[RM109](history/ROADMAP_HISTORY_0_6.md#rm109--the-gene-metrics-fetch-suppression-key-was-not-derived-from-the-merge-key)
   — a hand-written gene-metrics row did not suppress the fetch** (`just-dna-enricher`). The merge key is
   `(gene, dataset)` and "already done" asked `source.startswith("gnomad")`, so a correction recording
   `source="manual"` was re-fetched and the file came back with two rows under one key contradicting each
   other. Now derived from the key, scoped to the two dataset labels this pass writes so a ClinGen dosage
   row for the same gene still does not suppress it.
-- **[RM106](ROADMAP_HISTORY.md#rm106--the-faf95-arithmetic-warning-was-published-twice)
+- **[RM106](history/ROADMAP_HISTORY_0_6.md#rm106--the-faf95-arithmetic-warning-was-published-twice)
   — the `faf95` warning was published twice** (`just-dna-compiler`). `_check_frequency_arithmetic` runs
   in `validate_spec` (RM93) and again on the compile side, and the compile side had no filter — so the
   line appeared twice in `manifest.compilation.warnings`, a published field, and a consumer counting
   warnings overstated what was wrong with the module. Measured at 15 warnings, 14 distinct. **A consumer
   pinning warning counts may see one fewer**; the text is unchanged.
-- **[RM105](ROADMAP_HISTORY.md#rm105--logojpeg-compiled-was-attested-and-was-never-uploaded)
+- **[RM105](history/ROADMAP_HISTORY_0_6.md#rm105--logojpeg-compiled-was-attested-and-was-never-uploaded)
   — `logo.jpeg` was attested and never uploaded** (`just-dna-enricher`). `LOGO_EXTENSIONS` admits
   `jpeg` and discovery sorts, so the spelling the compiler *prefers* was the one `_ALLOW_PATTERNS`
   dropped, and the published manifest attested bytes the repo did not carry. The logo half now derives
   from `LOGO_EXTENSIONS`, as the readme half already derives from `README_CANDIDATES`. **Anyone who
   published a module with a `logo.jpeg` should re-publish**; the discovery order is deliberately
   unchanged, so nothing else moves.
-- **[RM111](ROADMAP_HISTORY.md#rm111--three-shipped-strings-asserted-a-registry-override-of-license-that-nothing-performs)
+- **[RM111](history/ROADMAP_HISTORY_0_6.md#rm111--three-shipped-strings-asserted-a-registry-override-of-license-that-nothing-performs)
   — the `license` strings claimed an override nothing performs** (`just-dna-format` +
   `just-dna-compiler`). Two shipped `Field(description=…)`, a module docstring and a code comment said a
   publishing registry stamps the authored `license`; it does not, and what the compiler actually does is
@@ -3771,7 +3807,7 @@ edge, and one is a 0.7 design that turns out to answer a question a 0.7 item has
 reporter's sentence and is worth keeping: *a check that could not have failed should record why rather
 than record a zero.*
 
-- **[RM121](ROADMAP_HISTORY.md#rm121--manifeststats-described-one-table-and-was-published-as-if-it-described-the-module)
+- **[RM121](history/ROADMAP_HISTORY_0_6.md#rm121--manifeststats-described-one-table-and-was-published-as-if-it-described-the-module)
   — `manifest.stats` described one table and was published as if it described the module.** `stats.genes`
   came from `variants.csv` alone, so a module led by `diplotypes.csv`, `allele_function.csv` or any other
   gene-bearing kind published `gene_count: 0, genes: []` however many rows named a gene — and a registry's
@@ -3783,7 +3819,7 @@ than record a zero.*
   `_GENE_BEARING_TABLE_KINDS` derived from `_TABLE_KINDS`, and derived fact sidecars structurally
   excluded. Building it recreated the RM44 defect it inherits: the post-symbolic-drop re-derive sat
   inside the `variants.csv` branch and `pharm_variants.csv` also drops and also carries a gene.
-- **[RM123](ROADMAP_HISTORY.md#rm123--two-attestations-recorded-a-check-whose-scope-they-could-not-state)
+- **[RM123](history/ROADMAP_HISTORY_0_6.md#rm123--two-attestations-recorded-a-check-whose-scope-they-could-not-state)
   — two attestations recorded a check whose scope they could not state.** Two halves in two tiers.
   *PGx:* RM73's per-leg tautology skip has worked since 0.6.0, but `_function_check_record`'s **answered**
   branch built `detail` from the answered legs alone — so a CPIC-drafted module with PharmVar answering
@@ -4931,7 +4967,7 @@ Two more came out of reading **PROPOSAL_0_6** against our own code, and both wer
   record would have matched nothing. Zero occurrences in our two samples, so this is a fix ahead of
   the failure rather than after it.
 
-**S29 was answered in the same round as [RM80](ROADMAP_HISTORY.md#rm80--annotationsparquet-had-no-column-for-the-thing-that-distinguishes-its-rows)** — `annotations.parquet` gains `genotype`,
+**S29 was answered in the same round as [RM80](history/ROADMAP_HISTORY_0_6.md#rm80--annotationsparquet-had-no-column-for-the-thing-that-distinguishes-its-rows)** — `annotations.parquet` gains `genotype`,
 keyed `(variant_key, genotype, conclusion, negatives)`. Our report pass will join on
 `(variant_key, genotype)` as instructed rather than shipping the local dedup we had planned, which
 the reply rightly notes is lossless only for as long as it happens to be. **S30 is open.**
@@ -5016,7 +5052,7 @@ listed, because the defect was a model quietly outside a set.
 No corpus movement: a `mode="before"` validator that only raises changes no accepted value, verified
 against `artifact.digest` / `content_signature` values recorded independently in ROADMAP_0_7 and
 CLAUDE.md. The general question underneath — what marks *authoring* as unfinished, rather than one
-token as unreplaced — stays [RM73](ROADMAP_HISTORY.md#rm73-phase-boundary--authoring-is-a-process-and-it-now-has-an-end).
+token as unreplaced — stays [RM73](history/ROADMAP_HISTORY_0_6.md#rm73-phase-boundary--authoring-is-a-process-and-it-now-has-an-end).
 
 **RM77 — the genotype diagnosis told the author about the wrong thing.** `GT` is `0/1`; `genotype`
 wants the bases. Pasting the `GT` field is the obvious first guess and therefore the single most likely
@@ -5188,7 +5224,7 @@ avoid printing a false claim (D5-2).
 
 **The whole of [PROPOSAL_0_6.md](proposals/PROPOSAL_0_6.md)'s build list shipped**, in eleven parallel lanes
 over one day. The reasoning stays in the proposal; the outcomes and what probing changed are in
-[ROADMAP_HISTORY § 0.6.0](ROADMAP_HISTORY.md#060--the-design-round-built). This entry is the release
+[ROADMAP_HISTORY § 0.6.0](history/ROADMAP_HISTORY_0_6.md#060--the-design-round-built). This entry is the release
 view: what a consumer will notice.
 
 **A charter amendment landed first and alone, because four decisions turn on it.** The Constitution

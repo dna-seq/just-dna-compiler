@@ -7,6 +7,53 @@ dev = [
     "pytest-cov>=7.1.0",
     "ruff>=0.8.0",
 ]
+# Not in `default-groups`, so `uv sync` stays the lean install every contributor and the test matrix
+# runs; the site is built with `uv run --group docs properdocs build -f mkdocs.yml`. CI syncs it in its
+# own job.
+#
+# **Material for MkDocs rather than Jekyll**, and the reason is the workspace: a docs toolchain that is
+# a uv dependency group is installed by the same `uv sync --locked` that gates everything else, so a
+# docs build cannot pass locally and fail in CI over a Gemfile nobody locked. It also renders `docs/`
+# **in place** — every file stays at the path `CLAUDE.md`, `test_doc_links.py` and the `.claude/` tools
+# key on.
+#
+# **Material entered maintenance mode in early 2026**; new feature work is in Zensical, from the same
+# author, which reads `mkdocs.yml` natively. That is why the configuration is `mkdocs.yml` and not
+# `zensical.toml`: the migration is then a change of build command, not of the site. The one thing
+# holding the switch back is `mkdocstrings` — the API reference below is generated from the packages'
+# own docstrings, and Zensical's equivalent is announced rather than shipped.
+docs = [
+    # **The build is driven by ProperDocs, not by `mkdocs`, and the reason is in the lock file rather
+    # than in anyone's opinion.** MkDocs 1.x upstream is unmaintained; the announced 2.0 removes the
+    # plugin system and the theming system with no migration path, which takes out all four plugins
+    # below. ProperDocs is a 1.x continuation by a former MkDocs maintainer, a drop-in over the same
+    # `mkdocs.yml`. It is declared here because it is already **transitively required**:
+    # `mkdocs-gen-files` and `mkdocs-literate-nav` each list it beside `mkdocs`, so the plugin
+    # ecosystem has moved and depending on it by accident is the only alternative to depending on it
+    # on purpose. Measured rather than assumed — `properdocs build --strict` renders this site, theme,
+    # API reference and all, with no warning of its own.
+    "properdocs>=1.6.7",
+    # The config file therefore stays `mkdocs.yml`, and every command passes `-f mkdocs.yml`. ProperDocs
+    # prefers `properdocs.yml` and says so at `INFO` on the fallback; the explicit flag silences that
+    # without closing the other exit, since **Zensical** — the Material team's successor, Material
+    # itself having entered maintenance mode in early 2026 — reads `mkdocs.yml` natively and is the
+    # likely destination once it can generate an API reference from docstrings.
+    #
+    # `mkdocs` is still capped below 2.0: `mkdocs-material` and `mkdocstrings` import it regardless of
+    # what drives the build, so a 2.0 resolved into this group breaks them whoever is building.
+    # `uv.lock` pins today's versions, so the cap is for the *next* `uv lock` — the only place the
+    # break can enter.
+    "mkdocs<2",
+    "mkdocs-material>=9.5",
+    "mkdocstrings[python]>=0.27",
+    # The home page and every API page are written at **build time** into the site, never onto disk:
+    # `docs/` root "holds only what is still live" (CLAUDE.md), a rule an `index.md` nobody authored
+    # would quietly break, and `test_doc_links.py` walks every tracked markdown file.
+    "mkdocs-gen-files>=0.5",
+    # Lets that generated API section carry its own nav (`api/SUMMARY.md`) instead of `mkdocs.yml`
+    # listing one line per module — 100 modules across three packages, and a hand-kept list loses one.
+    "mkdocs-literate-nav>=0.6",
+]
 
 [tool.ruff]
 # Unconfigured, ruff enables ~826 rules and `ruff check .` reported over a thousand findings — most of
