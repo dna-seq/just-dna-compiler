@@ -881,23 +881,24 @@ genotype while the 0.4 families keep the string) and the `stats` counter retype.
 
 ## 5. Readiness
 
-**Gates, re-run on this branch on 2026-09-12 at `83b1674`, the commit `v0.7.0` was retagged to.** The
-first `v0.7.0` tag sat at `8b981f6` (2026-09-11) and three commits landed after it inside the same
-uncut number — RM231, a licensing hole (S98); the atlas-generate message fix; and a release-record
-declaration the gate itself demanded — so the tag was deleted and re-cut at `83b1674` rather than
-publishing a known hole and shipping the fix as 0.7.1. The 2026-09-10 measurement at `7153df4` is
-superseded: RM201–RM231 landed after it, and one of them (RM200) added a top-level manifest block the
-release record had not declared — which this table's sweep row is what found.
+**Gates, re-run on this branch on 2026-09-12 at `65b9913`, the commit `v0.7.0` was retagged to — the
+third position of that tag.** The first sat at `8b981f6` (2026-09-11); RM231 (a licensing hole, S98),
+the atlas-generate message fix and a release-record declaration the gate demanded landed after it, so
+it was re-cut at `83b1674`. RM232 — the drafted-row half of the same licensing gap — then landed
+past *that* tag, and the maintainer settled the line and retagged at `65b9913` rather than publish a
+known gap and ship its fix as the next number. Every row below was re-run at `65b9913`; the
+2026-09-10 measurement at `7153df4` is superseded, and it was this table's sweep row, re-run at the
+second cut, that found the undeclared `expression_effects` block.
 
 | gate | result |
 | --- | --- |
-| `uv run pytest` | **4634 passed, 29 skipped, 0 failed** at `83b1674` (4627 at `b3a3765`; 4398 at `7153df4`; 4311 at `a6f31f8`; 4273 at `0d73268`; 3760 at the 2026-09-01 sweep; 3653 at 2026-08-31; 2916 at 2026-08-24). In-tree run; the skips are the network-gated tests. **An earlier pass of this same commit reported one failure and it was the machine, not the code**: `test_a_regex_locator_matches_the_fulltext` returned `None` where it wanted `True`, and `regex_matches` returns `None` on **timeout**, enforced in a subprocess (`@regex-timeout-process`). It ran while a 12-way genome-wide build saturated all sixteen cores. Worth knowing before a loaded CI runner meets it, because the failure reads as a logic error rather than as a timeout |
-| `uv run ruff check` and `ruff format --check` | both clean at `83b1674` — the format gate is new since `019fe35` (2026-09-11) and CI runs it beside `ruff check`. A gate row is a measurement, not a property: it had gone red once before this table was re-measured on 2026-09-01 |
-| Reference corpus under the 0.7 compiler | **16 / 16 compile** at `83b1674`; `content_signature` unmoved on all 15 comparable modules against 0.6.6 (the sweep row). The 2026-09-09 claim that every digest was byte-identical to `0d73268` is not re-asserted here — that tree is gone and a claim nobody can re-measure is not a gate row |
-| 0.6.6 → 0.7.0 release sweep | 15 measured, **gate exit 0** at `83b1674` — and **exit 1 one commit earlier**, at `53819f0`: `expression_effects`, the top-level block RM200 added, appears as `null` on every module under 0.7.0 and on none under 0.6.6, and the record did not list it. Declared as an addition in `83b1674`; the gate is why the tag moved. Earlier: exit 0 at `a6f31f8`, and again at `0d73268` before the fixes: content_signature 0/15, manifest_fields 15/15, parquet_bytes 14/15, parquet_schema 14/15, warnings 3/15, `cyp2c9_warfarin_grch37` unmeasured (its `requires_callable` column does not exist under 0.6.6, so the BEFORE side refuses it). The record covers every field that moved. Re-run the gate whenever a `DeclaredChange` is added, not only at the cut |
-| 0.6.6 client parses 0.7 manifests | **15 / 16** at `83b1674`, same one field (`mt_common_deletion`, four validation errors, all `verification.checks[].producer`), re-measured by parsing this cut's AFTER manifests with `just-dna-format==0.6.6` in an isolated venv (and see below — a *consumer's* module that runs `alphagenome check` is a sixteenth case this row does not cover). Previously re-measured at `a6f31f8` by parsing the sweep's AFTER manifests with `just-dna-format==0.6.6`. **The previous row's stated basis was wrong**: it said nothing had touched the manifest surface since 2026-08-31, and RM160 then added a `verification.checks` member. The result held anyway, on the same one field: `mt_common_deletion`, `verification.checks[].producer`, now across its four check records rather than one. The basis of this row is a measurement, not a claim about the diff |
-| Open consumer inbox | **empty** at `83b1674` (`triage-state.py`: nothing pending, and no `🔷 reserved` row in RM_TOC). S90–S98 were answered 2026-09-11/12 as RM201, RM203–RM206, RM224, RM229, RM231 and one idea-book entry; S87–S89 on 2026-09-03 as RM180/RM183/RM184 |
-| Open roadmap items in format scope | **none**. RM164 is parked to 0.8 (enricher scope), RM7 is marked not format scope, everything else in ROADMAP is queued for 1.0. The AlphaGenome round closed in two parts — RM191–RM199 on 2026-09-10, then **RM194 + RM200 on 2026-09-11**, both enricher scope. RM201 and RM203–RM206 also shipped 2026-09-11; RM207–RM231 through 2026-09-12, all inside the same uncut number. RM226/RM227 are queued for 1.0 |
+| `uv run pytest` | **4640 passed, 29 skipped, 0 failed** at `65b9913` (4634 at `83b1674`; 4627 at `b3a3765`; 4398 at `7153df4`; 4311 at `a6f31f8`; 4273 at `0d73268`; 3760 at the 2026-09-01 sweep; 3653 at 2026-08-31; 2916 at 2026-08-24). In-tree run; the skips are the network-gated tests. **An earlier pass of this same commit reported one failure and it was the machine, not the code**: `test_a_regex_locator_matches_the_fulltext` returned `None` where it wanted `True`, and `regex_matches` returns `None` on **timeout**, enforced in a subprocess (`@regex-timeout-process`). It ran while a 12-way genome-wide build saturated all sixteen cores. Worth knowing before a loaded CI runner meets it, because the failure reads as a logic error rather than as a timeout |
+| `uv run ruff check` and `ruff format --check` | both clean at `65b9913` — the format gate is new since `019fe35` (2026-09-11) and CI runs it beside `ruff check`. A gate row is a measurement, not a property: it had gone red once before this table was re-measured on 2026-09-01 |
+| Reference corpus under the 0.7 compiler | **16 / 16 compile** at `65b9913`; `content_signature` unmoved on all 15 comparable modules against 0.6.6 (the sweep row). The 2026-09-09 claim that every digest was byte-identical to `0d73268` is not re-asserted here — that tree is gone and a claim nobody can re-measure is not a gate row |
+| 0.6.6 → 0.7.0 release sweep | 15 measured, **gate exit 0** at `65b9913` and at `83b1674` — and **exit 1** at `53819f0`: `expression_effects`, the top-level block RM200 added, appears as `null` on every module under 0.7.0 and on none under 0.6.6, and the record did not list it. Declared as an addition in `83b1674`; the gate is why the tag moved. Earlier: exit 0 at `a6f31f8`, and again at `0d73268` before the fixes: content_signature 0/15, manifest_fields 15/15, parquet_bytes 14/15, parquet_schema 14/15, warnings 3/15, `cyp2c9_warfarin_grch37` unmeasured (its `requires_callable` column does not exist under 0.6.6, so the BEFORE side refuses it). The record covers every field that moved. Re-run the gate whenever a `DeclaredChange` is added, not only at the cut |
+| 0.6.6 client parses 0.7 manifests | **15 / 16** at `65b9913`, same one field (`mt_common_deletion`, four validation errors, all `verification.checks[].producer`), re-measured by parsing this cut's AFTER manifests with `just-dna-format==0.6.6` in an isolated venv (and see below — a *consumer's* module that runs `alphagenome check` is a sixteenth case this row does not cover). Previously re-measured at `a6f31f8` by parsing the sweep's AFTER manifests with `just-dna-format==0.6.6`. **The previous row's stated basis was wrong**: it said nothing had touched the manifest surface since 2026-08-31, and RM160 then added a `verification.checks` member. The result held anyway, on the same one field: `mt_common_deletion`, `verification.checks[].producer`, now across its four check records rather than one. The basis of this row is a measurement, not a claim about the diff |
+| Open consumer inbox | **empty** at `65b9913` (`triage-state.py`: nothing pending, and no `🔷 reserved` row in RM_TOC). S90–S98 were answered 2026-09-11/12 as RM201, RM203–RM206, RM224, RM229, RM231 and one idea-book entry; S87–S89 on 2026-09-03 as RM180/RM183/RM184 |
+| Open roadmap items in format scope | **none**. RM164 is parked to 0.8 (enricher scope), RM7 is marked not format scope, everything else in ROADMAP is queued for 1.0. The AlphaGenome round closed in two parts — RM191–RM199 on 2026-09-10, then **RM194 + RM200 on 2026-09-11**, both enricher scope. RM201 and RM203–RM206 also shipped 2026-09-11; RM207–RM232 through 2026-09-12, all inside the same uncut number. RM226/RM227 are queued for 1.0 |
 | AlphaGenome lane, built genome-wide | **8,812,917,339 rows → 29.8 GB** over 24 parquets at `54b1f6a`, and every published number cross-checked against an independent measurement: 41,474 knots **knot-for-knot** against a table built by a different session from a different pass, 672,931 zeros, 49.30% negative, one straddling knot at threshold 3 |
 
 **The blocker this section carried is gone.** RM143 shipped and S78 was answered, and the 2026-08-31
@@ -912,14 +913,15 @@ from 145 commits ago under the current version number. What the 2026-09-09 audit
 is in CHANGELOG § 2026-09-09: seven fixes, none of which moved a reference example's digest or
 signature (the corpus row above is the measurement). Two notes on the cut itself:
 
-1. `v0.7.0` is at `83b1674` and `uv.lock` records `0.7.0` for all three members. **`dist/` was
-   rebuilt on 2026-09-12 from a detached worktree at `83b1674`** and holds the six 0.7.0 artifacts and
-   nothing else; the six it held before were built at `8b981f6` under the first tag and lack RM231 —
-   the same version number over different bytes again, and the reason this table carries hashes.
-   Those six were moved out of the tree, not deleted. The compiler wheel's hash is unchanged from
-   `8b981f6` because no compiler source moved between the two tags; format and enricher moved.
+1. `v0.7.0` is at `65b9913` and `uv.lock` records `0.7.0` for all three members. **`dist/` was
+   rebuilt on 2026-09-12 from a detached worktree at `65b9913`** and holds the six 0.7.0 artifacts and
+   nothing else; the six it held before were built at `83b1674` and lack RM232, and the six before
+   those at `8b981f6` lacked RM231 — the same version number over different bytes, twice in a day,
+   which is the reason this table carries hashes. Both stale sets were moved out of the tree, not
+   deleted. The format wheel's hash is unchanged from `83b1674` because no format source moved
+   between those two tags; compiler (`draft.py`) and enricher moved.
    Verified after building: the three packages install from the wheels into an isolated venv, report
-   `0.7.0`, `atomic_writer` takes `before_commit`, the 0.7.0 record declares `expression_effects`, and —
+   `0.7.0`, `atomic_writer` takes `before_commit`, the 0.7.0 record declares `expression_effects`, `draft.append_rows` takes `before_commit`, and —
    the RM196 check — the enricher wheel and sdist both carry `_atlas_protos/*.proto` and the generated
    `generated/_alphagenome_atlas_protos/` package, so with `grpcio` + `protobuf` added
    `just_dna_enricher.atlas_client` imports and `client_absence()` answers `None`.
@@ -929,10 +931,10 @@ signature (the corpus row above is the measurement). Two notes on the cut itself
    | --- | --- |
    | `just_dna_format-0.7.0-py3-none-any.whl` | `c7e417c321d4bae3e84e1deafc2d3363751b1c32f4fa1d6ecfd4bc6b16ba6df1` |
    | `just_dna_format-0.7.0.tar.gz` | `9a07bcfdc7d2d23405c88cf6a2a42a778275302036152d004cab8324e98043ed` |
-   | `just_dna_compiler-0.7.0-py3-none-any.whl` | `0d76c16bea236e62ee002eb4fed80c59f63a29c7fbb2486c23ffca636b451151` |
-   | `just_dna_compiler-0.7.0.tar.gz` | `efc8a080d4930006b83dd61de1468ecf090dc6aaa0c2fad619140590f70cebf9` |
-   | `just_dna_enricher-0.7.0-py3-none-any.whl` | `ec72badcc2331fa3cb4129c79b79674663e3edae4c3931f97bbc8ad440d72bc0` |
-   | `just_dna_enricher-0.7.0.tar.gz` | `b05c8d14dc8c1a9edd3fd408b7ed8fbf669c77f38db81bd5af1fe87de6dc639a` |
+   | `just_dna_compiler-0.7.0-py3-none-any.whl` | `8c299950d611643501283374bbdba01f80f9ce67b98eb057b6818016fd583069` |
+   | `just_dna_compiler-0.7.0.tar.gz` | `630e05fa7ea3dd14540eab2cda3291968364c050ebec4e9a3203190862809108` |
+   | `just_dna_enricher-0.7.0-py3-none-any.whl` | `ea841b134e324ad3ce0cab289dfd5ad009918d88617cf6a4c605ba90025e8383` |
+   | `just_dna_enricher-0.7.0.tar.gz` | `c105a6c64a41458cfc6a3c67adb8a9b4f7793a4152a364dc2037f930f7873b2b` |
 
    A build is taken from a detached worktree rather than the checkout because `uv build` reads the
    working tree, so an uncommitted file inside a package directory would ship in the wheel. The

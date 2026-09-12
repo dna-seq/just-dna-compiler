@@ -36,14 +36,13 @@ signature, so `just-dna-compiler` took the patch alongside while `just-dna-forma
 
 ## 2026-09-12 (latest) — RM232: a drafted row commits with its licence row too
 
-**This one is AFTER the 0.7.0 cut** (`v0.7.0` at `83b1674`) and is therefore unreleased. It is the
-first entry of the next number, and **which number is the maintainer's to declare** — the two readings
-in this file do not agree, so the facts go here rather than a verdict. It writes no parquet, moves no
-signature, and touches no model and no manifest field, which is the test the 0.5.2 paragraph above
-applied when `just-dna-compiler` took a **patch** for a compiler change. Against that, `append_rows`
-and `append_partial_rows` are public compiler functions and they grew an optional parameter, which is
-a surface growing **additively** — a minor under P3 and under plain semver. The three packages still
-read `0.7.0`; nothing here bumped them.
+**Cut as 0.7.0 across all three packages and tagged `v0.7.0` at `65b9913` on 2026-09-12** — the
+maintainer settled the line and retagged here, so this entry is **inside** the cut rather than the
+first of the next number, and the patch-versus-minor question its first draft left open does not
+arise. The tag's history, kept because the hashes in INTEGRATION_0_7 § 5 only mean something against
+it: first at `8b981f6` (2026-09-11), re-cut at `83b1674` when RM231 and a release-record declaration
+landed after it, re-cut again here when RM232 did. `dist/` is built from `65b9913`; the readiness
+commit sits past the tag by design, as before.
 
 
 RM231 closed the two-step tail in the eight enrichment passes and had to name **five exemptions** to
@@ -92,13 +91,6 @@ two exemption reasons in a passing test — honest, and invisible to a release c
 RMs, all green*. It went into ROADMAP as an open item in its own commit before any code moved.
 
 ## 2026-09-12 — RM231: a licence row is part of its table's commit, in every pass
-
-**Cut as 0.7.0 across all three packages and tagged `v0.7.0` at `83b1674` on 2026-09-12**, a retag: the
-first `v0.7.0` sat at `8b981f6` (2026-09-11) and RM231, the atlas-generate message fix and a
-release-record declaration the gate demanded all landed after it under the same uncut number. The
-readiness commit (INTEGRATION_0_7 § 5, re-measured at `83b1674`) sits one commit past the tag by
-design; `dist/` is built from the tag and its hashes are in that table. Everything from RM201 down to
-here shipped inside this cut.
 
 `just-dna-format` and `just-dna-enricher`, inside the uncut 0.7.0. `alphagenome expression` wrote
 12,003 non-commercial rows, then refused to record its licence row on a scaffold's `<<REPLACE>>`
