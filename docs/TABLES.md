@@ -233,3 +233,12 @@ it, so one permissive hosting statement does not license what it hosts.
 
 **Either spelling is a key.** `licensing.csv` is current and `sources.csv` deprecated until 1.0; write
 to the file you read, and a module carrying both is an error rather than a merge.
+
+**The artifact keeps the old name, and that is not an oversight — this page shows both.** The identity
+card above says this table becomes `sources.parquet`, and the manifest block is `ModuleManifest.sources`.
+Both stay spelled that way for all of 0.x, because both are inside `artifact.digest`: renaming them
+would move the identity of every module that has one, which is a major-version change, while renaming
+the *authored* file is free. So the two halves moved at different times on purpose. An author writes
+`licensing.csv`; a consumer reading a compiled module looks for `sources.parquet` and
+`manifest.sources`, and finds nothing under the new name. Asking whether to rename the parquet too is
+asking to break every published digest.
