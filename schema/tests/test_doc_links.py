@@ -132,36 +132,47 @@ def _verbatim_lines(body: str) -> set[int]:
 def test_a_consumers_quoted_prose_is_exempt_and_our_reply_is_not() -> None:
     """The exemption is load-bearing rather than decorative: it tolerates a link that really is dead.
 
-    Computed off the real history file at runtime — no line number is written down here. The case is
+    Computed off the real history files at runtime — no line number is written down here. The case is
     S35, whose report links `ROADMAP.md#rm89` from the days when RM89 was open; RM89 has since moved
     to `ROADMAP_HISTORY.md`, so the anchor genuinely does not resolve and the main guard would report
     it if the line were not a consumer's own words. The second half pins the other side, since an
-    exemption that swallowed the replies too would retire the guard over this file entirely.
+    exemption that swallowed the replies too would retire the guard over these files entirely.
+
+    **It walks every consumer document rather than naming one**, which is the repair the 2026-09-12
+    split forced: this test read `docs/CONSUMER_SUGGESTIONS_HISTORY.md` by path, S35 moved into the
+    0.6 half with the rest of its line, and the canary went red over an archive that had not been
+    touched. A guard pinned to a filename is a guard that fails the day the file is split — and these
+    are split at every release boundary, so the set is the unit (`@registry-completeness`). The
+    prefix is the same one `_CONSUMER_PREFIX` uses for the main guard, so the two cannot disagree
+    about which documents hold a consumer's words.
     """
-    path = _ROOT / "docs" / "CONSUMER_SUGGESTIONS_HISTORY.md"
-    body = _without_fences(path.read_text())
-    exempt = _verbatim_lines(body)
+    paths = [p for p in _files() if p.name.startswith(_CONSUMER_PREFIX)]
+    assert len(paths) >= 2, f"expected the live inbox and at least one archive, found {paths}"
 
     dead_in_prose: list[str] = []
     live_in_reply = 0
-    for match in _LINK.finditer(body):
-        target = match.group(1)
-        if target.startswith(("http://", "https://", "mailto:")):
-            continue
-        filename, _, fragment = target.partition("#")
-        resolved = (path.parent / filename).resolve() if filename else path
-        if not fragment or not resolved.exists() or resolved.suffix != ".md":
-            continue
-        line = body.count("\n", 0, match.start()) + 1
-        resolves = fragment in _anchors(resolved.read_text())
-        if line in exempt and not resolves:
-            dead_in_prose.append(target)
-        if line not in exempt and resolves:
-            live_in_reply += 1
+    for path in paths:
+        body = _without_fences(path.read_text())
+        exempt = _verbatim_lines(body)
+        for match in _LINK.finditer(body):
+            target = match.group(1)
+            if target.startswith(("http://", "https://", "mailto:")):
+                continue
+            filename, _, fragment = target.partition("#")
+            resolved = (path.parent / filename).resolve() if filename else path
+            if not fragment or not resolved.exists() or resolved.suffix != ".md":
+                continue
+            line = body.count("\n", 0, match.start()) + 1
+            resolves = fragment in _anchors(resolved.read_text())
+            if line in exempt and not resolves:
+                dead_in_prose.append(f"{path.name}: {target}")
+            if line not in exempt and resolves:
+                live_in_reply += 1
 
     assert dead_in_prose, (
-        "no dead anchor survives inside quoted consumer prose, so this test is no longer "
-        "demonstrating what the exemption is for — check whether someone edited a report"
+        "no dead anchor survives inside quoted consumer prose in any of "
+        f"{[p.name for p in paths]}, so this test is no longer demonstrating what the exemption is "
+        "for — check whether someone edited a report"
     )
     assert live_in_reply, "the exemption swallowed our own replies; it must not"
 
