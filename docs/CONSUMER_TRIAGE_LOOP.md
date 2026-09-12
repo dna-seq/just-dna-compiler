@@ -31,8 +31,11 @@ curl -sf "https://api.github.com/gists/$GIST" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["history"][0]["version"])'
 ```
 
-**In sync through gist revision `e81d9a18755ea215144518489c52e5c5669b0b25`**, ours, pushed 2026-09-01,
-so it is in sync by construction. It carries **two** things outward: the tracked-item allocator as the
+**In sync through gist revision `f53d7e181ca89fcd26d5aa9cda365e9d93699345`**, ours, pushed 2026-09-13,
+so it is in sync by construction. It carries one thing outward — the allocator's argument surface, below
+— and touches no other file: the three scripts were verified byte-identical against the previous
+revision after the write. Its predecessor `e81d9a18755ea215144518489c52e5c5669b0b25` (2026-09-01, ours)
+was the baseline before it, and carried **two** things outward: the tracked-item allocator as the
 generic `item-next.py` (§1 here, §2 there) and the duplicate-id entry that had been owed since
 2026-08-31. The three existing scripts went across byte-identical, verified against the previous
 revision — this push adds a file and extends two documents, and touches nothing else. It supersedes
@@ -135,8 +138,8 @@ second-repo subsection. It is pattern material rather than local tuning: `sectio
 verification are both in the published copy, so the same refusal happens in any tree running this loop,
 and the entry is a hand step plus a *why not fixed in the tools*. The allocator went with it.
 
-**One item has been owed outward since 2026-09-04 and is not pushed** — a push is the user's to
-authorize and it has not been asked for. `.claude/rm-next.py`'s reserve path was also its *default*
+**The one item owed since 2026-09-04 was pushed on 2026-09-13, authorized, and nothing is owed
+outward as of it.** `.claude/rm-next.py`'s reserve path was also its *default*
 path, so any flag it did not recognise fell through to `allocate()`: `--help` spent RM189 that way and
 a typo spent RM190 while the first was being repaired, each leaving a tombstone row because ids are
 never reused. Fixed here in `0d73268` with `KNOWN_FLAGS`, a real `--help`, exit 2 on anything else, and
@@ -145,7 +148,18 @@ assumed: `item-next.py` at the baseline revision ends in a bare fall-through to 
 flag validation anywhere above it, so `item-next.py --help` reserves an id in any tree running the
 generic loop. It is pattern material by the same test as the allocator itself — the defect is in the
 shape *a tool whose no-flag path mutates*, not in anything local
-(`@an-index-is-not-an-allocator`). Nothing else since `e81d9a18…` is owed: the line-length gate and the
+(`@an-index-is-not-an-allocator`).
+
+**Reproduced against the published copy before porting, which is the only way to tell a generic defect
+from a local one.** On a scratch index holding one `RM1`, the gist's own `item-next.py --help` printed
+no help, exited 0, and left a `🔷 reserved` row for RM2 behind. The port carries `KNOWN_FLAGS`, a real
+`--help` printing the module docstring, exit 2 naming the unknown flags, and `--note`'s value excluded
+from the flag scan so a note may open with a dash; the usage block gains a `--help` line and a
+paragraph saying why the refusal is load-bearing rather than tidy. Both arms were run on that same
+fixture after porting — help prints and the index is untouched, an unknown flag exits 2 and the index
+is untouched, and `--dry-run`, `--note` and a plain allocation still behave. **Verified by re-reading
+the version-pinned raw URL and comparing bytes**, never by the command's exit code, and the other three
+files were diffed against the previous revision to show the write touched nothing else. Nothing else since `e81d9a18…` is owed: the line-length gate and the
 runbook's `ruff format` bullet are this repository's CI, and the §4 counter's third failure below is an
 entry about a section the gist deliberately does not carry.
 
