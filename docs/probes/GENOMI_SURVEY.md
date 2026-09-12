@@ -3,7 +3,7 @@
 **Probed** 2026-09-13 against [`exon-research/genomi`](https://github.com/exon-research/genomi) at
 commit `1df4f5b` (2026-08-31), declaring version **0.1.0**, licensed **Apache-2.0**. 110,071 lines of
 Python under `src/`, 138 test modules. Read from the code — `src/genomi/evidence/sources.py`,
-`src/genomi/runtime/libraries/registry.py`, the fifteen `tool_catalog.json` files and the capability
+`src/genomi/runtime/libraries/registry.py`, the eighteen `tool_catalog.json` files and the capability
 packages behind them. `README.md` and `GENOMILAB_PRODUCT_DEFINITION.md` were skimmed for headings
 only: they describe a product, and the source catalogue describes what is wired.
 
@@ -37,12 +37,14 @@ So "who annotates more" is the wrong first question. The right ones are:
 2. **Can each of those be expressed declaratively, and at what layer cost?** — [§7](#7-translating-genomi-into-modules), [§8](#8-the-plan--ranked-candidates-for-becoming-a-superset)
 3. **Which of them must we deliberately *not* carry?** — [§9](#9-what-we-must-not-chase-and-the-principle-that-says-so)
 
-The headline finding is smaller than the repository size suggests. **Genomi's entire curated,
-in-repo annotation corpus is ten hardcoded Python dictionaries** in
-`capabilities/nutrigenomics/catalog.py`. Everything else it "annotates" is fetched live or read from
-an installed third-party file. Fourteen of its thirty declared evidence sources are actually wired;
-the other sixteen are marked `record_via_research`, which means *the agent looks it up by hand and
-writes a journal note*. Against that, the real gap list is short and mostly gene-keyed.
+The headline finding is smaller than the repository size suggests. **Genomi's curated, in-repo
+annotation corpus is thirteen records**: ten hardcoded Python dictionaries in
+`capabilities/nutrigenomics/catalog.py`, plus three CYP2C19 star-allele markers in
+`capabilities/pharmacogenomics/data/star_marker_definitions.json`. Everything else it "annotates" is
+fetched live or read from an installed third-party file. **Fifteen of its twenty-nine declared
+evidence sources are wired; the other fourteen are marked `record_via_research`**, which means *the
+agent looks it up by hand and writes a journal note*. Against that, the real gap list is short and
+mostly gene-keyed.
 
 ---
 
@@ -92,7 +94,7 @@ carry a signal for us, though, and they are picked up in [§8](#8-the-plan--rank
 ### Bucket C — agent runtime (**out of scope entirely**)
 
 `genomi.parse_source` and the whole Active Genome Index lifecycle, user profiles and scoped access,
-`journal.*` (five operations), `research.*` (five), `genomilab.*` (nineteen — a specialist-board
+`journal.*` (four operations), `research.*` (five), `genomilab.*` (nineteen — a specialist-board
 investigation workflow with patient authorization), `decode.render_dashboard`, the seven
 `sequence.*` utilities (translate / ORF / restriction sites / Kozak / primers — analysis of a
 *supplied* sequence, not annotation of a locus), and `genomi.set_response_profile`.
@@ -101,13 +103,15 @@ Listed so nobody re-asks. This repository has no app and no orchestration, delib
 
 ---
 
-## 3. What genomi actually annotates from — and the sixteen sources it does not
+## 3. What genomi actually annotates from — and the fourteen sources it does not
 
-`src/genomi/evidence/sources.py` declares thirty sources, each with an `adapter_status`. **That field
+`src/genomi/evidence/sources.py` declares **29** sources, each with an `adapter_status`. **That field
 is the discriminator**, and reading the roster without it credits genomi with roughly twice the
-integration it has.
+integration it has. The split is **15 wired / 14 `record_via_research`**, counted by the extraction in
+[§10](#10-how-to-re-derive-every-table-here) on 2026-09-13 — re-run it rather than trusting these
+three numbers, which is what `@counted-prose-needs-a-fixed-field` is for.
 
-### Wired (14)
+### Wired (15)
 
 | Source | `adapter_status` | Evidence types |
 |---|---|---|
@@ -127,9 +131,7 @@ integration it has.
 | GWAS Catalog | `implemented_api_fetch` | association, risk_context, trait_context |
 | BioGRID ORCS / DepMap | `implemented_native_retrieval_and_record_verification` | screen_hit, perturbation_context, assay_context |
 
-(Fifteen rows, fourteen sources — the two FDA tables share one page and one fetcher.)
-
-### `record_via_research` — declared, not wired (16)
+### `record_via_research` — declared, not wired (14)
 
 ClinGen gene validity, GeneReviews, MONDO, Orphanet, OMIM, GeneCards, MalaCards, NCI Cancer
 Genetics, COSMIC Cancer Gene Census, QuickGO/GOA, KEGG, DrugBank, Pharmaprojects, PubMed/primary
@@ -147,16 +149,29 @@ true for ClinGen: we import it into `gene_validity.csv`.
 `ancestry-1000g-30x-grch37/38`, `liftover-chains`, `reference-grch37/38`, `pharmcat`,
 `minimap2`/`bwa-mem2`, `prs-scoring-file`, plus live-API descriptors for the sources above.
 
-### The curated corpus (10 records)
+### The curated corpus (13 records, in two files)
 
-`capabilities/nutrigenomics/catalog.py` is the only *authored* annotation in the repository: ten
+`capabilities/nutrigenomics/catalog.py` holds ten
 single-marker records across six domains — folate metabolism (`rs1801133`), lactose tolerance
 (`rs4988235`), iron storage (`rs1800562`, `rs1799945`), vitamin D status (`rs2282679`, `rs10741657`,
 `rs12785878`), lipid diet response (`rs429358`, `rs7412`) and obesity predisposition (`rs1421085`).
 
 Its module docstring reads *"Add rows by curation commit only."* That is the same job our
 `variants.csv` does, done in Python, with no schema, no validator, no licence record, and no digest.
-[§7](#7-translating-genomi-into-modules) translates two of those rows and shows exactly what breaks.
+[§7](#7-translating-genomi-into-modules) translates one of those rows and shows exactly what breaks.
+
+The second file is `capabilities/pharmacogenomics/data/star_marker_definitions.json`: **one
+definition set, `cyp2c19-common-cpic-marker-subset-v1`, with three markers** — `*2` (rs4244285,
+`no_function`), `*3` (rs4986893, `no_function`), `*17` (rs12248560, `increased_function`) — plus
+`normal_function_allele: "*1"`. That is `haplotypes.csv` and `allele_function.csv`, in our strongest
+area, at three rows of one gene; its own `definition_scope` says *"use PharmCAT or specialized PGx
+callers for clinical-grade genotyping"*. The exemption for `*1` matches ours exactly.
+
+Two neighbouring files were checked and do **not** count as curated annotation.
+`gene_requirements.json` is PharmCAT plumbing — which genes the named-allele matcher covers, which
+need an outside call — the sample-side question our `requires_callable` column answers from the
+annotation side. `capabilities/clinvar/static_annotation/` is index-building code over the installed
+ClinVar VCF, not curated rows.
 
 ---
 
@@ -176,6 +191,7 @@ here can carry it; **refused** means we looked and declined, with the reason on 
 | FDA PGx label tables | `fda_web` scrape | `drug_labels` lane (RM166) | **parity** |
 | PGxDB | API fetch | *nothing* | **gap** (small) |
 | PGx star-allele calling | PharmCAT JAR | definitions in `haplotypes.csv`/`allele_function.csv`; the *calling* is Bucket B | **parity on annotation** |
+| Curated star-allele definitions | 3 CYP2C19 markers, hardcoded JSON | `haplotypes.csv` + `allele_function.csv`, fed by the `cpic` and `pharmvar` lanes | **we only, by two orders of magnitude** |
 | PRS | PGS Catalog metadata + scoring-file import + local calculation | `pgs.csv` — score id, trait, `training_ancestry`, `training_cohort`, `match_rate_floor`, `research_tier` | **parity on annotation**; the weights and the arithmetic are Bucket B |
 | Phenotype terms (HPO) | local normalization + gene↔HPO comparison | *nothing* | **refused** — ENRICHER.md § Gene–disease validity records both reasons: HPO's licence URL 404s and OBO records a bare label, so terms cannot be established; and `genes_to_phenotype.txt` is a different grain (gene × HP feature × frequency) |
 | Disease ontology normalization (MONDO / Orphanet / OMIM) | `record_via_research` | `trait_efo_id` on eight row models; `disease_id`/`disease_label` on `GeneValidityRow` | **parity-ish** — neither side has a normalizer; we at least have the column |
@@ -198,8 +214,10 @@ here can carry it; **refused** means we looked and declined, with the reason on 
 **Nine gap rows**, of which one (PGxDB) is small and one (ancestry panel) is charter-blocked. The
 real list is seven: Open Targets target–disease, Open Targets L2G, drug target/mechanism, pathway
 membership, baseline tissue/cell-type expression, regulatory-feature overlap, and perturbation
-screens. **Six of the seven are gene-keyed**, which is the single most useful thing this survey
-found — see [§8](#8-the-plan--ranked-candidates-for-becoming-a-superset).
+screens. **Five of the seven are gene-keyed** — the two that are not, L2G and cCRE overlap, are
+locus-keyed and therefore join on `variant_key` like every fact sidecar we already have. That
+split is the single most useful thing this survey found; see
+[§8](#8-the-plan--ranked-candidates-for-becoming-a-superset).
 
 ---
 
@@ -280,61 +298,100 @@ grades the gene–disease body of evidence. Genomi collapses both into one three
 ### 6.4 `haplotype_partner` — a prose string where we have a table (**we win, and it is worth saying**)
 
 The APOE records carry `"haplotype_partner": "rs7412 (required for e2/e3/e4 assignment)"` — free
-text, on both rows, machine-unreadable. The e2/e3/e4 isoform *is* a two-variant haplotype, which is
-precisely `haplotypes.csv` (variant ↔ star-allele junction) plus `diplotypes.csv` (canonicalized pair
-→ phenotype). Their own `established_caveats` names the consequence: *"unphased genotypes can be
-ambiguous"* — a thing our `requires_callable` column states as data.
+text, on both rows, machine-unreadable, where the ε2/ε3/ε4 isoform is a two-variant haplotype and
+therefore `haplotypes.csv` + `diplotypes.csv`. Worked against the shipped module in
+[§7](#the-reverse-direction-is-the-stronger-claim).
 
 ---
 
 ## 7. Translating genomi into modules
 
 The punchline of the whole survey: **genomi's curated catalogue is already a module, written in the
-wrong language.** Here is `mthfr_c677t_folate` as a module directory. Nothing below invents a
-column — every cell uses a field that exists today, except the two marked.
+wrong language.** This section was *run*, not sketched — the spec below lives in a scratch directory
+and every quoted line is `just-dna-compiler validate`'s real output.
 
 `variants.csv`
 
-| rsid | gene | genotype | direction | stat_significance | clin_sig | phenotype | trait_efo_id | conclusion | negatives | curator |
-|---|---|---|---|---|---|---|---|---|---|---|
-| rs1801133 | MTHFR | AA | risk | significant | risk_factor | elevated plasma homocysteine | EFO_0004458 | T/T homozygotes retain ~30% of C/C enzyme activity; associated with higher plasma homocysteine | | CDC/ClinVar curation |
-| rs1801133 | MTHFR | AG | risk | suggestive | risk_factor | elevated plasma homocysteine | EFO_0004458 | Heterozygotes show intermediate thermolability | | CDC/ClinVar curation |
+| rsid | gene | genotype | state | direction | stat_significance | clin_sig | phenotype | trait_efo_id | conclusion |
+|---|---|---|---|---|---|---|---|---|---|
+| rs1801133 | MTHFR | AA | significant | risk | significant | risk_factor | elevated plasma homocysteine | EFO_0004458 | T/T homozygotes retain ~30% of C/C enzyme activity; associated with higher plasma homocysteine |
+| rs1801133 | MTHFR | AG | significant | risk | suggestive | risk_factor | elevated plasma homocysteine | EFO_0004458 | Heterozygotes show intermediate thermolability |
 
-Their record's `established_effect.claim` splits across `conclusion` and `phenotype`;
-`downstream_traits_with_gwas` becomes `trait_efo_id` (one row per trait — theirs is a list, ours is a
-row, and ours is the one a consumer can join on); `effect_allele: "A"` becomes the `genotype` column,
-and **their record cannot distinguish AA from AG at all** — it has one `effect_allele` and one
-`claim`, so the dose–response their own text describes is not in their data.
+Their `established_effect.claim` splits across `conclusion` and `phenotype`;
+`downstream_traits_with_gwas` becomes `trait_efo_id`, one row per trait — theirs is a nested list,
+ours is a row, and ours is the one a consumer can join on. `effect_allele: "A"` becomes the
+`genotype` column, and **their record cannot distinguish AA from AG at all**: it carries one
+`effect_allele` and one `claim`, so the dose–response its own prose describes ("T/T homozygotes have
+~30% of C/C activity") is not in their data. `risk_factor` is a real `VALID_CLIN_SIG` member; nothing
+above invents a column.
 
-`studies.csv`
+### What actually refused
 
-| rsid | pmid | population | conclusion | stat_significance | trait_efo_id | provenance_quote | curator |
-|---|---|---|---|---|---|---|---|
-| rs1801133 | *(the CDC page has none — a DOI or a bare URL is not a `pmid`)* | | | | | | |
+Two of the record's three sources are web pages (CDC folic-acid guidance, MedlinePlus); the third is
+a ClinVar VCV id. Authored as a `studies.csv` row with a URL and no PMID:
 
-**This is where their record fails a compile.** Two of its three MTHFR sources are web pages (CDC
-guidance, MedlinePlus); the third is a ClinVar VCV id. `StudyRow` wants a PMID or DOI. So the honest
-translation puts the ClinVar assertion in `clinical_assertions.csv` (enricher-derived, `variation_id`
-3520), and the CDC guidance in `sources.csv` — where it belongs, because it is *a dataset's terms and
-attribution*, not evidence for a threshold.
+```
+error: studies.csv line 2 [pmid]: Field required
+INVALID: .../mthfr
+```
+
+Removing the file instead is worse, and the message is the interesting one:
+
+```
+error: studies.csv is missing. Grounding evidence is mandatory; add study rows with PMIDs.
+```
+
+Supply one real PMID (7647779, the original thermolabile-variant report) and the same spec validates,
+with only the standard no-closure and no-`resolution.csv` warnings:
+
+```
+valid: .../mthfr
+```
+
+**So genomi's MTHFR record cannot be compiled here as written.** That is our gate working — a
+threshold owes a paper — but it is also a two-sided finding, and the honest reading is in
+[§11 Q4](#11-open-questions): a CDC guidance page *is* legitimate grounding for a claim about folate,
+and `StudyRow` has no slot for it. The ClinVar assertion belongs in `clinical_assertions.csv`
+(`variation_id` 3520, enricher-derived) and the CDC page belongs in `sources.csv` — where it is a
+*dataset's* terms and attribution, which is a different question from why a bound is where it is.
 
 `sources.csv`
 
-| source | layer | license | license_url | attribution | commercial_use | declared_use |
-|---|---|---|---|---|---|---|
-| cdc_mthfr_guidance | annotation | *(US government work)* | https://www.cdc.gov/folic-acid/data-research/mthfr/index.html | CDC | true | unstated |
-| clinvar | clinical_assertion | *(public domain)* | … | NCBI ClinVar | true | unstated |
+| source | layer | license_url | attribution | commercial_use | declared_use |
+|---|---|---|---|---|---|
+| cdc_mthfr_guidance | annotation | https://www.cdc.gov/folic-acid/data-research/mthfr/index.html | CDC | true | unstated |
+| clinvar | clinical_assertion | … | NCBI ClinVar | true | unstated |
 
-**The two cells that do not exist yet** are §6.1's `out_of_scope_claims` (three of them, on the
-MTHFR row alone — and they are the most valuable content in genomi's catalogue) and, arguably,
-§6.2's population-modifier caveat.
+**The cells that do not exist** are §6.1's `out_of_scope_claims` — three of them on the MTHFR record
+alone, and they are the most valuable content in genomi's catalogue.
 
-And the reverse direction is the stronger claim: **`rs429358` + `rs7412` compile into a real APOE
-module here and cannot be represented in genomi's catalogue at all.** Two `variants.csv` rows, two
-`haplotypes.csv` rows binding each rsID to an isoform allele, and a `diplotypes.csv` table giving
-e2/e2 … e4/e4 → phenotype. Genomi encodes that relationship as an English sentence in a string field.
+### The reverse direction is the stronger claim
 
----
+`reference_examples/apoe_epsilon` **already ships the module genomi's catalogue cannot express**, and
+against the same two variants at the same two coordinates their records carry:
+
+```
+haplotype_name,rsid,chrom,start,ref,allele,gene
+e2,rs429358,19,44908684,T,T,APOE
+e2,rs7412,19,44908822,C,T,APOE
+e3,rs429358,19,44908684,T,T,APOE
+e3,rs7412,19,44908822,C,C,APOE
+e4,rs429358,19,44908684,T,C,APOE
+e4,rs7412,19,44908822,C,C,APOE
+```
+
+plus a `diplotypes.csv` giving all six pairs → phenotype, including the one that matters most:
+
+```
+APOE,e2,e4,APOE ε2/ε4,MONDO:0004975,unknown,"One ε2 and one ε4 — opposing alleles. Risk is not
+the sum of its parts and is poorly resolved; report with caution."
+```
+
+Genomi encodes the whole of that relationship as `"haplotype_partner": "rs7412 (required for
+e2/e3/e4 assignment)"` — a free-text string, duplicated on both rows, machine-unreadable — and its
+own `established_caveats` names the consequence it cannot act on: *"unphased genotypes can be
+ambiguous"*, which is our `requires_callable` column. It has no representation at all for ε2/ε4
+being `direction=unknown` rather than the average of protective and risk.
 
 ## 8. The plan — ranked candidates for becoming a superset
 
@@ -345,6 +402,11 @@ author decides. `gene_validity.csv` (RM24) is the template — a model in `just_
 clobbers, and an `overrides.csv` entry if an author must be able to correct it. Under the 0.6 charter
 amendment that is **half cost**; an authored CSV would be full cost and is not warranted for any of
 them. All fetching lives in the enricher (P2). Adding an optional table is minor-legal (P3/P8).
+
+**Every licence named below is recalled, not probed.** They are there to rank, never to rely on:
+`@no-named-licence` and the PharmVar rule both say an unestablished permission is not a permission,
+so each candidate owes a real terms probe — the file, its SPDX id, and whether the URL answers — as
+the first step of its own RM, before a byte is fetched.
 
 Ranked by *(value to a module author) ÷ (cost + licence risk)*:
 
@@ -469,6 +531,38 @@ python3 -c "import re;s=open('src/genomi/runtime/libraries/registry.py').read();
 grep -n 'record_id\|"domain"' src/genomi/capabilities/nutrigenomics/catalog.py
 ```
 
+### §7 — reproduce the compile refusal
+
+Written into a scratch directory, not into `reference_examples/`:
+
+```bash
+mkdir -p /tmp/mthfr && cd /tmp/mthfr
+cat > module_spec.yaml <<'Y'
+schema_version: '1.0'
+module:
+  title: MTHFR C677T — folate
+  report_title: MTHFR C677T — folate
+  description: Probe translation of genomi's mthfr_c677t_folate record.
+  name: genomi_mthfr_translation
+defaults:
+  curator: genomi-survey-probe
+  method: literature-review
+genome_build: GRCh38
+Y
+cat > variants.csv <<'C'
+rsid,gene,genotype,state,direction,stat_significance,clin_sig,phenotype,trait_efo_id,conclusion
+rs1801133,MTHFR,AA,significant,risk,significant,risk_factor,elevated plasma homocysteine,EFO_0004458,T/T homozygotes retain ~30% of C/C enzyme activity
+rs1801133,MTHFR,AG,significant,risk,suggestive,risk_factor,elevated plasma homocysteine,EFO_0004458,Heterozygotes show intermediate thermolability
+C
+printf 'rsid,doi,population,conclusion,trait_efo_id\nrs1801133,,mixed,CDC folic acid guidance page,EFO_0004458\n' > studies.csv
+
+uv run just-dna-compiler validate /tmp/mthfr      # error: studies.csv line 2 [pmid]: Field required
+rm studies.csv
+uv run just-dna-compiler validate /tmp/mthfr      # error: studies.csv is missing. Grounding evidence is mandatory
+printf 'rsid,pmid,population,conclusion,stat_significance,trait_efo_id\nrs1801133,7647779,mixed,Original thermolabile-variant report,significant,EFO_0004458\n' > studies.csv
+uv run just-dna-compiler validate /tmp/mthfr      # valid
+```
+
 And the negative half, run in *this* tree — the gap list in §4 is only as wide as this grep, per
 `@probe-names-the-table`:
 
@@ -485,8 +579,9 @@ are the English word *encode*. Both were checked by eye.
 
 ## 11. Open questions
 
-1. **Is a gene-keyed fact sidecar a shape we already have, or a new one?** `gene_metrics.csv` and `gene_validity.csv` are both gene-keyed, so the answer is probably yes — but six of the seven Tier 1/2 candidates are gene-keyed with a *second* key part (pathway, disease, drug, tissue, cell line), and no existing sidecar has a compound key of that shape. Worth deriving from `gene_validity.csv`'s `(gene, disease_id)` before assuming it generalizes.
+1. **Is a gene-keyed fact sidecar a shape we already have, or a new one?** `gene_metrics.csv` and `gene_validity.csv` are both gene-keyed, so the answer is probably yes — but five of the six Tier 1/2 candidates are gene-keyed with a *second* key part (pathway, disease, drug, tissue, cell line), and only `gene_validity.csv`'s `(gene, disease_id)` is an existing compound of that shape. Derive from it before assuming it generalizes.
 2. **Is there a condition-keyed table here at all?** `disease_id` appears as a *column*, never as a table's subject. If Open Targets lands, "everything known about MONDO:0007739" becomes a natural query with no home.
 3. **Does `overrides.csv` reach a new sidecar automatically, or is each one an `OVERRIDABLE_TABLES` entry?** It is an entry. Each candidate above therefore owes that decision explicitly — and the two existing exclusions (`sources.csv`, `clin_sig_authority_calls.csv`) are the precedent for saying no.
-4. **What does genomi's `out_of_scope_claims` cost an author?** It is the one item here that touches the authored layer, which the 0.6 amendment prices at full cost. The gate is *"will this burden the author?"* — and a column that is empty on 95% of rows but load-bearing on the 5% that attract folk claims may be exactly the right trade, or may be a `TABLES.md` instruction instead. Probe it against `reference_examples/` before deciding.
-5. **Should any of this be a module rather than a sidecar?** A "pathway annotation module" published in the marketplace is a different answer from a pathway sidecar in every module. This survey assumed sidecar throughout; the alternative was not tested.
+4. **Is a PMID the only thing that may ground a claim?** Measured in [§7](#what-actually-refused): `studies.csv` refuses a row with a DOI-less URL, and refuses to be absent, so a variant grounded only in CDC or MedlinePlus guidance cannot compile. The gate is right that a *threshold* owes a paper. Whether a national health authority's public guidance is a fourth grounding kind — beside `pmid`, `doi` and the derived `clinical_assertions.csv` — or whether `sources.csv` already answers it, is undecided, and this survey is not the place to decide it. Note that widening an either-or rule only makes previously-invalid rows valid, which is how RM47 reached the same shape.
+5. **What does genomi's `out_of_scope_claims` cost an author?** It is the one item here that touches the authored layer, which the 0.6 amendment prices at full cost. The gate is *"will this burden the author?"* — and a column that is empty on 95% of rows but load-bearing on the 5% that attract folk claims may be exactly the right trade, or may be a `TABLES.md` instruction instead. Probe it against `reference_examples/` before deciding.
+6. **Should any of this be a module rather than a sidecar?** A "pathway annotation module" published in the marketplace is a different answer from a pathway sidecar in every module. This survey assumed sidecar throughout; the alternative was not tested.

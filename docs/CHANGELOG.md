@@ -44,15 +44,20 @@ Apache-2.0), read from its source rather than its README.
 The short finding is that genomi is a *runtime* — an agent's local index of one person's genome, plus
 live fetchers — and not a competing artifact format, so its ~100 operations partition into reference
 annotation (comparable), sample compute (consumer-side here, by the data-agnostic goal) and agent
-runtime (out of scope). Only the first bucket is compared. Its declared source roster is thirty
-entries, but `adapter_status` splits it fourteen wired against sixteen `record_via_research` — an
-agent reading a page by hand — and its whole *authored* annotation corpus is ten hardcoded Python
+runtime (out of scope). Only the first bucket is compared. Its declared source roster is 29 entries,
+but `adapter_status` splits it **15 wired against 14 `record_via_research`** — an agent reading a
+page by hand — and its whole *authored* annotation corpus is thirteen records: ten hardcoded Python
 dictionaries in `capabilities/nutrigenomics/catalog.py`, which is a `variants.csv` written in the
-wrong language. §7 translates two of those records into a module and shows what breaks: their record
-has one `effect_allele` where we have a row per genotype, and it encodes the APOE e2/e3/e4 haplotype
-as an English sentence in a string field.
+wrong language, plus three CYP2C19 star-allele markers in a JSON file. §7 was **run, not sketched**:
+their MTHFR record is authored as a spec and `validate` refuses it — `studies.csv line 2 [pmid]:
+Field required`, and `studies.csv is missing. Grounding evidence is mandatory` when the file is
+dropped instead — then passes once a real PMID is supplied. Their record also carries one
+`effect_allele` where we carry a row per genotype, and encodes the APOE ε2/ε3/ε4 haplotype as an
+English sentence in a string field, against `reference_examples/apoe_epsilon`, which already ships
+the same two variants as six `haplotypes.csv` rows and six diplotypes.
 
-**Nine gap rows, seven real, six of the seven gene-keyed**: Open Targets target–disease and L2G,
+**Nine gap rows, seven real, five of the seven gene-keyed** (the other two are locus-keyed and join
+on `variant_key`): Open Targets target–disease and L2G,
 drug target/mechanism (ChEMBL), pathway membership (Reactome/MSigDB), baseline tissue and cell-type
 expression (HPA), regulatory-feature overlap (ENCODE cCRE), and perturbation screens (DepMap/ORCS);
 PGxDB is the small ninth and the 1000 Genomes ancestry panel is charter-blocked. Every candidate
