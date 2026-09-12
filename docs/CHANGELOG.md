@@ -51,7 +51,17 @@ dictionaries in `capabilities/nutrigenomics/catalog.py`, which is a `variants.cs
 wrong language, plus three CYP2C19 star-allele markers in a JSON file. §7 was **run, not sketched**:
 their MTHFR record is authored as a spec and `validate` refuses it — `studies.csv line 2 [pmid]:
 Field required`, and `studies.csv is missing. Grounding evidence is mandatory` when the file is
-dropped instead — then passes once a real PMID is supplied. Their record also carries one
+dropped instead — then passes once a real PMID (7647779) is supplied. **That refusal is the gate
+working, not a gap**: the folate claim has primary literature behind it and genomi cites the CDC's
+summary of it, which is a curation shortcut rather than something we owe a slot for.
+
+**The findings route to [RM188](ROADMAP_0_8.md), and all of them are 0.8.** A derived sidecar is a row
+model plus a `VALID_SOURCE_LAYERS` member plus a parquet plus an enricher pass, so it touches format
+and compiler and is minor-legal-and-minor-required under P3/P8; the same holds for
+`out_of_scope_claims` as a new optional authored column. The one item that could still be a
+`just-dna-enricher` patch on 0.7.x is Tier 3's PGxDB, and only if its probe finds something the
+CPIC/PharmGKB/FDA lanes miss *and* that reduces to a check over existing tables, RM166's
+`check-labels` being the shape. Their record also carries one
 `effect_allele` where we carry a row per genotype, and encodes the APOE ε2/ε3/ε4 haplotype as an
 English sentence in a string field, against `reference_examples/apoe_epsilon`, which already ships
 the same two variants as six `haplotypes.csv` rows and six diplotypes.

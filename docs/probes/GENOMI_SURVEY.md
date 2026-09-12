@@ -348,11 +348,18 @@ with only the standard no-closure and no-`resolution.csv` warnings:
 valid: .../mthfr
 ```
 
-**So genomi's MTHFR record cannot be compiled here as written.** That is our gate working — a
-threshold owes a paper — but it is also a two-sided finding, and the honest reading is in
-[§11 Q4](#11-open-questions): a CDC guidance page *is* legitimate grounding for a claim about folate,
-and `StudyRow` has no slot for it. The ClinVar assertion belongs in `clinical_assertions.csv`
-(`variation_id` 3520, enricher-derived) and the CDC page belongs in `sources.csv` — where it is a
+**So genomi's MTHFR record cannot be compiled here as written — and the refusal is correct.** This
+is not a gap in our schema; it is a curation shortcut in theirs, caught. The claim *has* primary
+literature behind it, and finding it took one search: PMID 7647779 is the original report of the
+thermolabile variant, which is what the CDC page is summarizing. A national health authority's
+guidance is a **pointer to grounding, not grounding** — the curator who cites the summary instead of
+the study has skipped the step the citation exists to record, and there is nothing here for us to
+implement. Whether the folate claim is well-evidenced is exactly the question `pmid` makes checkable,
+and the enricher's literature pass then checks that the identifier resolves and that a quote is
+really in the article.
+
+The rest of the record places cleanly: the ClinVar assertion belongs in `clinical_assertions.csv`
+(`variation_id` 3520, enricher-derived), and the CDC page belongs in `sources.csv` — where it is a
 *dataset's* terms and attribution, which is a different question from why a bound is where it is.
 
 `sources.csv`
@@ -403,6 +410,35 @@ clobbers, and an `overrides.csv` entry if an author must be able to correct it. 
 amendment that is **half cost**; an authored CSV would be full cost and is not warranted for any of
 them. All fetching lives in the enricher (P2). Adding an optional table is minor-legal (P3/P8).
 
+### Release class — all of it is 0.8, and the reason is structural
+
+**Everything below lands in 0.8, under [RM188](../ROADMAP_0_8.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics), the survey item this document is half of.** That is not a scheduling
+preference; it follows from what each candidate is. A derived sidecar is four things at once — a row
+model in `just_dna_format`, a new `VALID_SOURCE_LAYERS` member, a parquet the compiler emits, and an
+enricher pass with its cache lane — so it touches the format and compiler tiers, not just the network
+one. A **new optional table is additive and therefore minor-legal** under P3/P8, which makes it
+**0.8.0** and never a patch. The same holds for §6.1's `out_of_scope_claims`: a new optional column on
+an authored model is minor-legal, minor-required, and the most format-tier item on this page.
+
+**What could still be a 0.7.x patch, and it is one item.** The three packages version independently,
+and work confined to the network tier — no parquet, no model, no manifest field — ships as an
+enricher patch; `just-dna-enricher` 0.5.1 and 0.5.2 are the precedent, and RM166's `check-labels` is
+the shape: a pass that *reports findings* and writes no table. **Tier 3's PGxDB is the only candidate
+that can take that shape**, and only in one branch of its probe — if PGxDB says something the
+CPIC/PharmGKB/FDA lanes do not, and if what it says can be written as a check over tables that
+already exist, it is enricher-only and legal on 0.7.x. If it needs a row model, it is 0.8 like the
+rest. The probe decides, and the probe has not been run.
+
+Two things that are not releases at all and need no number: the licence probes each candidate owes
+(below), and anything filed into [USE_CASES.md](../USE_CASES.md). Those land whenever they are
+written.
+
+Do **not** reach for the patch lane by reducing a candidate to a check. A pass that reports "this
+gene appears in four Reactome pathways" and stores nothing is enricher-only and therefore cheap, and
+it is also useless — the content *is* the point for every Tier 1 and Tier 2 item here. The one place
+that reasoning is honest is PGxDB, where the content may turn out to be a duplicate and the check the
+only thing worth keeping.
+
 **Every licence named below is recalled, not probed.** They are there to rank, never to rely on:
 `@no-named-licence` and the PharmVar rule both say an unestablished permission is not a permission,
 so each candidate owes a real terms probe — the file, its SPDX id, and whether the URL answers — as
@@ -415,9 +451,13 @@ Ranked by *(value to a module author) ÷ (cost + licence risk)*:
 **1. `pathways.csv` — gene ↔ pathway/gene-set membership.**
 Sources: Reactome ContentService (CC0-ish, verify), MSigDB Hallmark GMT (**CC BY 4.0 with a
 registration wall — check `declared_use` carefully**), KEGG (**licence-hostile for redistribution;
-probably exclude**). Grain: one row per `(gene, pathway_id, source)` with `pathway_name` and
+probably exclude**). **Read [ENRICHER.md § Regulator drug labels](../ENRICHER.md#regulator-drug-labels-drug_labelspy--drug_labels_buildpy--clinpgx-check-labels--rm166) before starting**: ClinPGx publishes a `pathways-tsv` archive from
+a source we have already adopted and gated, which looks like a cheap first increment and is not one —
+those are drug-metabolism pathways, a narrower scope than Reactome's, and ClinPGx is CC BY-SA with a
+no-sale term, so a module carrying them stops being sellable where a Reactome-sourced one would not.
+Two different tables that would collide on one column name; decide the scope before the source. Grain: one row per `(gene, pathway_id, source)` with `pathway_name` and
 `pathway_source`. Gene-keyed, so RM47's rule applies — the row cites, the citation table describes.
-*Why first:* it is the cheapest real gap, it is the join every downstream consumer asks for, and
+**Release: 0.8.0.** *Why first:* it is the cheapest real gap, it is the join every downstream consumer asks for, and
 Reactome alone closes most of it. **Estimate: 2–3 days** including the cache lane, its three stages,
 and the licence rows.
 
@@ -426,7 +466,7 @@ Grain: `(gene, disease_id)` → `overall_score` plus the per-datatype scores, `d
 `disease_label`. Open Targets is CC0. This is the biggest single content win: it is the fact class a
 module author most often wants and cannot express, and it plugs straight into the existing
 `disease_id`/`disease_label` columns on `GeneValidityRow`.
-*The design question to settle first:* an aggregated score is a **derived judgement of a judgement**,
+**Release: 0.8.0.** *The design question to settle first:* an aggregated score is a **derived judgement of a judgement**,
 and `@a-recorded-judgement-is-a-fact` says a recorded one may be gated on. Whether `strict` may ever
 read this column needs deciding in the proposal, not in the code. **Estimate: 3–4 days.**
 
@@ -434,7 +474,7 @@ read this column needs deciding in the proposal, not in the code. **Estimate: 3�
 Sources: ENCODE cCRE (unrestricted), GENCODE (unrestricted). Grain: one row per
 `(variant_key, feature_id)` with `feature_class` (promoter-like / enhancer-like / CTCF-bound),
 `overlap_bp`, `distance_to_tss`, `nearest_gene`. **Variant-keyed, so it joins on `variant_key` like
-every other fact sidecar** — no new key shape. It also pairs naturally with
+every other fact sidecar** — no new key shape. **Release: 0.8.0.** It also pairs naturally with
 `expression_effects.csv`: AlphaGenome predicts *that* a variant changes expression, this says *what
 element it sits in*. **Estimate: 3 days**, mostly the BED/GTF interval work.
 
@@ -443,13 +483,13 @@ element it sits in*. **Estimate: 3 days**, mostly the BED/GTF interval work.
 **4. `drug_targets.csv` — gene ↔ drug mechanism of action.**
 ChEMBL (CC BY-SA 3.0 — share-alike, so `share_alike=true` and it constrains a carrying module the
 way ClinPGx already does) plus Open Targets' clinical drug-target records (CC0). Grain:
-`(gene, drug_id)` → `mechanism_of_action`, `action_type`, `max_phase`, `drug_name`. Distinct from
+`(gene, drug_id)` → `mechanism_of_action`, `action_type`, `max_phase`, `drug_name`. **Release: 0.8.0.** Distinct from
 `pharm_variants.csv`, which is *variant → drug response*; this is *gene → drug exists*.
 **Estimate: 3 days.**
 
 **5. `expression_baseline.csv` — gene × tissue / cell-type expression specificity.**
 Human Protein Atlas (CC BY-SA 3.0). Grain: `(gene, tissue_or_cell_type)` → `specificity_class`,
-`nTPM`. Name it away from `expression_effects.csv` deliberately — one is a baseline, the other is a
+`nTPM`. **Release: 0.8.0.** Name it away from `expression_effects.csv` deliberately — one is a baseline, the other is a
 variant's predicted delta, and letting the two share a prefix invites exactly the confusion §4's row
 warns about. **Estimate: 2–3 days.**
 
@@ -457,13 +497,14 @@ warns about. **Estimate: 2–3 days.**
 DepMap (CC BY 4.0) and BioGRID ORCS (**registration key required — the PharmVar precedent applies:
 gated source, cache unpublishable, `offline` outranks an injected client**). Grain:
 `(gene, cell_line, screen_id)` → `score`, `assay`, `perturbation`, `phenotype`.
-*Lowest confidence of the six.* Its value to an annotation module is the least obvious — it is
+**Release: 0.8.0.** *Lowest confidence of the six.* Its value to an annotation module is the least obvious — it is
 research evidence about a gene, not a fact about a person's variant — and it should be argued in
 USE_CASES before it is built. **Estimate: 4 days, and don't start it before a use case exists.**
 
 ### Tier 3 — cheap, low value
 
-**7. PGxDB as a `clinpgx`-lane sibling.** One more PGx surface beside CPIC/PharmGKB/FDA. Check first
+**7. PGxDB as a `clinpgx`-lane sibling.** One more PGx surface beside CPIC/PharmGKB/FDA. **Release: 0.7.x enricher patch if it reduces to a check, else 0.8.0** — the only split-lane item on
+this page, argued above. Check first
 whether it says anything the three already there do not; a source that photocopies another is the
 `rm171_diff_strategy` lesson. **Estimate: 1 day, after a probe that may kill it.**
 
@@ -484,7 +525,7 @@ hint, not a column.
 
 ### Shape work, independent of any source
 
-**9. `out_of_scope_claims`** — [§6.1](#61-out_of_scope_claims--negative-annotation-take-it). The
+**9. `out_of_scope_claims`** — [§6.1](#61-out_of_scope_claims--negative-annotation-take-it). **Release: 0.8.0** — a new optional column on an authored model, minor-legal and minor-required. The
 cheapest item on this page and the only one that adds *authored* expressiveness rather than fetched
 content. **Estimate: an afternoon for a free-text column; 2 days if it becomes a keyed table.** It
 should go through a proposal because the keyed-table version is the better design and the column
@@ -579,9 +620,18 @@ are the English word *encode*. Both were checked by eye.
 
 ## 11. Open questions
 
+**One question this survey opened and closed.** The §7 refusal briefly read as a two-sided finding —
+that a CDC guidance page is legitimate grounding `StudyRow` has no slot for, and that a fourth
+grounding kind might be owed beside `pmid`, `doi` and the derived `clinical_assertions.csv`. It is
+not. The MTHFR claim has primary literature behind it, one search away, and citing the authority's
+summary instead is a curation shortcut rather than an expressiveness gap. Recorded as closed rather
+than dropped, because the same reading will occur to the next reader of that refusal — and because
+the incident that would justify the widening does not exist, which is the standing reason to close
+rather than to park.
+
+
 1. **Is a gene-keyed fact sidecar a shape we already have, or a new one?** `gene_metrics.csv` and `gene_validity.csv` are both gene-keyed, so the answer is probably yes — but five of the six Tier 1/2 candidates are gene-keyed with a *second* key part (pathway, disease, drug, tissue, cell line), and only `gene_validity.csv`'s `(gene, disease_id)` is an existing compound of that shape. Derive from it before assuming it generalizes.
 2. **Is there a condition-keyed table here at all?** `disease_id` appears as a *column*, never as a table's subject. If Open Targets lands, "everything known about MONDO:0007739" becomes a natural query with no home.
 3. **Does `overrides.csv` reach a new sidecar automatically, or is each one an `OVERRIDABLE_TABLES` entry?** It is an entry. Each candidate above therefore owes that decision explicitly — and the two existing exclusions (`sources.csv`, `clin_sig_authority_calls.csv`) are the precedent for saying no.
-4. **Is a PMID the only thing that may ground a claim?** Measured in [§7](#what-actually-refused): `studies.csv` refuses a row with a DOI-less URL, and refuses to be absent, so a variant grounded only in CDC or MedlinePlus guidance cannot compile. The gate is right that a *threshold* owes a paper. Whether a national health authority's public guidance is a fourth grounding kind — beside `pmid`, `doi` and the derived `clinical_assertions.csv` — or whether `sources.csv` already answers it, is undecided, and this survey is not the place to decide it. Note that widening an either-or rule only makes previously-invalid rows valid, which is how RM47 reached the same shape.
-5. **What does genomi's `out_of_scope_claims` cost an author?** It is the one item here that touches the authored layer, which the 0.6 amendment prices at full cost. The gate is *"will this burden the author?"* — and a column that is empty on 95% of rows but load-bearing on the 5% that attract folk claims may be exactly the right trade, or may be a `TABLES.md` instruction instead. Probe it against `reference_examples/` before deciding.
-6. **Should any of this be a module rather than a sidecar?** A "pathway annotation module" published in the marketplace is a different answer from a pathway sidecar in every module. This survey assumed sidecar throughout; the alternative was not tested.
+4. **What does genomi's `out_of_scope_claims` cost an author?** It is the one item here that touches the authored layer, which the 0.6 amendment prices at full cost. The gate is *"will this burden the author?"* — and a column that is empty on 95% of rows but load-bearing on the 5% that attract folk claims may be exactly the right trade, or may be a `TABLES.md` instruction instead. Probe it against `reference_examples/` before deciding.
+5. **Should any of this be a module rather than a sidecar?** A "pathway annotation module" published in the marketplace is a different answer from a pathway sidecar in every module. This survey assumed sidecar throughout; the alternative was not tested.
