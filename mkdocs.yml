@@ -56,6 +56,12 @@ theme:
     - navigation.tracking
     - navigation.top
     - navigation.indexes
+    # **Top-level groups render as always-open sections, not collapsed folders.** Without it Material
+    # collapses every group until the reader is on a page inside it, so the sidebar showed *Reference*
+    # with nothing under it and the site read as though it documented one tier. The maintainer reported
+    # exactly that. Only the top level opens: the API reference's hundred-odd module pages stay folded
+    # behind their package, which is the reason `navigation.expand` is not the repair.
+    - navigation.sections
     # Prev/next at the foot of a page. The reference docs are read in the order `nav` puts them
     # (SCHEMAS → COMPILER → ENRICHER is the dependency order), so a footer link is the cheapest way to
     # make that sequence usable without returning to the sidebar.
