@@ -182,6 +182,73 @@ no effect allele at all. A "GWAS effects are better than curator weights" pipeli
 worse than the weights it replaces. Read them per trait, and read `manifest.gwas_effects.units` before
 pooling anything.
 
+### 2e. Republishing a licence-encumbered third-party corpus as modules (2026-09-13)
+
+**Verdict: ENABLED, and this is the case the licence machinery was built for** — with one condition
+that lands on the *marketplace* rather than on the format, and one that shapes how the modules are cut.
+
+**The case, named by the maintainer.** Take a large existing annotation corpus somebody else curated,
+rework it, and publish it as modules. The concrete instance is **SNPedia**: 106,603 SNP entries plus
+its genosets, reachable as a MediaWiki dump (the extraction is already done in
+[`zhaofengli/snappy`](https://github.com/zhaofengli/snappy) — see
+[ROADMAP_0_8 § RM188](ROADMAP_0_8.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)).
+This is a different shape from 2a and 2b: those draft rows *from* a source into an author's own
+module, where this republishes somebody's whole corpus under terms that travel with it.
+
+**The terms are established, and that is the first thing that had to be true.** Read 2026-09-13 off
+three primary pages, all naming the same licence in the same words:
+
+| Page | Says |
+|---|---|
+| `SNPedia:Copyrights` | *"The content in SNPedia is licensed under a Creative Commons Attribution-Noncommercial-Share Alike 3.0 United States License."* |
+| `SNPedia:General_disclaimer` | the same sentence, plus *"For more details, see our Terms of Use."* |
+| `Bulk` | the same sentence, and it **invites** bulk access — a `bots.` subdomain, code samples in four languages, a published GFF |
+
+**Contrast this with the HPO refusal** ([ENRICHER.md](ENRICHER.md)), because the two look alike and
+are not. HPO's licence URL 404s *and* OBO records a bare label with no SPDX id, so nothing
+machine-readable establishes the terms and an unestablished permission is not a permission. SNPedia
+names a **versioned, SPDX-identifiable licence** (`CC-BY-NC-SA-3.0-US`) on three pages. Its
+`SNPedia:Terms_of_Use` page is a 404 — the elaboration is missing — but the grant is not the
+elaboration, and `@no-named-licence` is about a source that names none. **This one names one.**
+
+Two acquisition notes. `www.snpedia.com` is behind Incapsula and answers a 212-byte challenge stub to
+`curl`; `bots.snpedia.com` serves the same pages plainly, which is the sanctioned route and is what the
+`Bulk` page tells you to use. Its *Forbidden* section bans two **scraping patterns** — every version of
+every page, and every possible rs# — and says nothing about reuse; the dump route avoids both.
+
+**What the three letters cost, in this format's own fields.**
+
+| Term | The cell | The consequence |
+|---|---|---|
+| **NC** | `commercial_use=False`, `declared_use=non_commercial` | The compile gate refuses a module declaring commercial use. This is `@gate-is-data-driven` doing its job, not an obstacle. |
+| **SA** | `share_alike=True` | **The module itself goes out under CC BY-NC-SA 3.0 US**, and share-alike is viral over whatever it is mixed with. So a SNPedia corpus is **its own module**, never rows blended into a general one — which the *one CSV = one concern* rule already wanted. |
+| **BY** | `attribution`, `license_url` | Credit as designated, the URI, **and an indication that it was modified** — "after rework" is a modification and the licence requires saying so. |
+
+`redistribution=True`: CC BY-NC-SA permits it. Recorded, not gated — `@redistribution-ungated`, RM27.
+
+**The one condition that is not the format's to answer.** NC in CC 3.0 bars use *"primarily intended
+for or directed toward commercial advantage or private monetary compensation"*. Whether
+**`just-dna-registry` distributing an NC module is itself commercial use** is a real question, and it
+decides whether this use case works end to end — a free catalog is a different answer from a paid one,
+and the answer may differ again for a commercially-operated free one. **That belongs to the
+marketplace, and it should be settled there before the first NC corpus is published, not after.**
+
+**Two things to check before building, neither of which blocks the design.** SNPedia has been owned by
+MyHeritage since 2019, and their announcement said it would remain free *"for academic and non-profit
+use"* — phrasing **narrower** than the CC grant, which permits any non-commercial use. A CC licence is
+irrevocable for the versions published under it, so the practical answer is to **pin the dump revision
+you took**, exactly as every other source here is pinned. Separately: a genoset's boolean structure is
+arguably a fact and its summary prose is plainly expression, so "rework" launders neither — and
+stripping the prose to dodge share-alike would throw away most of what makes the corpus worth having.
+Neither point is a legal opinion, and neither should be treated as one.
+
+**What this case actually proves.** Every earlier entry in this section takes a *permissive* source
+and produces a sellable module. This is the first that takes an encumbered one and produces an
+honestly-labelled unsellable module — and the format holds it without a new column, a new flag, or a
+mode. That is the whole argument for licensing-as-data over a `--non-commercial` switch
+(`@licensing-as-data`, `@gate-is-data-driven`), with a real corpus standing on it instead of a
+hypothetical.
+
 ## 3. Composite modules (the real pipeline shapes)
 
 ### 3a. SNP + PRS in one module

@@ -159,7 +159,7 @@ landscape — it is a list of places to go looking for annotation *shapes*.
 | # | Target | Pinned | Class | What its survey asks |
 |---|---|---|---|---|
 | 1 | [OakVar](https://github.com/rkimoakbioinformatics/oakvar) | `d4e8090df8`, 48★, licence NOASSERTION | a competing module format **with a store** | **A fresh peer read, not a migration post-mortem** — the maintainer's framing: *an OakVar module is in essence a plugin, arbitrary code, so it is a module plus half an annotator*. Its manifest (`<name>.yml`) declares `type` (annotator / postaggregator / reporter), `level`, `requires` (other modules), `input_columns`, and typed `output_columns` — a **column contract plus a dependency graph**, where ours is a row schema with neither. Ask what the column contract buys, what `requires` expresses that no module here can, and what is left of a module once the arbitrary code is removed. |
-| 2 | SNPedia, via [snappy](https://github.com/zhaofengli/snappy) | `2d5255f`, 52★, BSD-2-Clause; SNPedia content CC BY-NC-SA 3.0 US | the corpus round 1 never had | The largest curated variant-trait corpus in existence: **106,603 SNP entries** frozen into `data/snps.json` from a MediaWiki XML dump, plus `genotypes.json` (per-genotype magnitude / good-bad / summary) and `genosets.json`. Survey **the corpus, not the SPA** — snappy is the extraction route that proves a static dump works, where `OSGenome` (146★) only crawls live. **NC licence, so nothing here is adoptable as data**; the survey is about shape. |
+| 2 | SNPedia, via [snappy](https://github.com/zhaofengli/snappy) | `2d5255f`, 52★, BSD-2-Clause; SNPedia content CC BY-NC-SA 3.0 US | the corpus round 1 never had | The largest curated variant-trait corpus in existence: **106,603 SNP entries** frozen into `data/snps.json` from a MediaWiki XML dump, plus `genotypes.json` (per-genotype magnitude / good-bad / summary) and `genosets.json`. Survey **the corpus, not the SPA** — snappy is the extraction route that proves a static dump works, where `OSGenome` (146★) only crawls live. **Its terms are CC BY-NC-SA 3.0 US, established off three primary pages 2026-09-13, which makes it adoptable rather than not** — as an unsellable, share-alike, attributed module of its own. See [USE_CASES § 2e](USE_CASES.md#2e-republishing-a-licence-encumbered-third-party-corpus-as-modules-2026-09-13), now the maintainer's named use case for this format. |
 | 3 | [BioMCP](https://github.com/genomoncology/biomcp) | `bb3a1d4ad7`, 630★, MIT | the agent-era tier done at scale | Thirteen times genomi's stars and the same architectural class. Ask the one question genomi could not answer at its size: **when an agent tool surface is the product, what does it end up needing to say about a variant that a table does not?** If the answer is "nothing", that closes the whole class and round 3 can skip it. |
 | 4 | [Exomiser](https://github.com/exomiser/Exomiser) | `98f4e0b6f2`, 265★, AGPL-3.0 | phenotype-driven prioritization | The only established tool in the roster that **ships its annotation as a versioned data bundle** rather than fetching it — the closest existing thing to a compiled artifact. Ask what its bundle contains, how it is versioned, and how HPO term sets sit in it, given that [HPO ships no route here](ENRICHER.md) for licence reasons. |
 
@@ -610,6 +610,31 @@ first real case would dictate, so fixing it now spends a one-way door on a guess
 
 **What would unpark it:** a real consumer. See [PROPOSAL_0_5.md](proposals/PROPOSAL_0_5.md) D1.
 
+**This entry and [RM28](#rm28--meta-conclusions-the-predicate-half) are one axis at two operators
+(maintainer, 2026-09-13), and they should be decided together rather than merged.** Both ask the same
+question — *how does a conclusion get derived from more than one variant row, and where does the
+combining rule live?* — and the format already answers it once:
+
+| Combiner | Where the rule lives | Status |
+|---|---|---|
+| **Enumerative** — write out each combination | in the table: a `diplotypes.csv` row *is* the combination | **shipped**, `reference_examples/apoe_epsilon` |
+| **Boolean** — a predicate over genotypes | nowhere: the table would hold terms, something else the operator | **RM28**, parked on a corpus |
+| **Weighted sum** — terms plus coefficients | nowhere: the table would hold weights, the consumer the arithmetic | **this entry**, parked on shape |
+
+Three facts follow from the table and none of them from either entry alone. **The enumerative answer
+is why both are parked and neither is urgent** — it covers the small-arity cases, which is most of
+them, so any argument for a new combiner has to beat it rather than merely want one. **Both
+non-shipped rows split the same way against the data-agnostic goal**: the module carries terms, the
+consumer does the combining, so neither is a licence to put an evaluator in the compiler. And **one
+corpus supplies evidence for both** — SNPedia has genosets *and* per-genotype magnitudes, which is why
+one survey touched both entries on one day.
+
+**They stay separate items.** The outputs differ in kind — RM28's is a categorical conclusion, this
+one's is a number that means nothing without a reference distribution — and RM28 was already halved
+once on 2026-08-13 for being too broad, so merging would make the smaller hostage to the larger. What
+they share is a **precondition**, not a design: whoever opens either should read both, and the *where
+does the combining rule live* decision should be taken once rather than twice.
+
 **The hypothesised case now has an instance in the wild (2026-09-13), and it does not unpark this.**
 From [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
 round-2 skim: [`dianguan0105/Custom-Personal-Genome-Interpretation`](https://github.com/dianguan0105/Custom-Personal-Genome-Interpretation)
@@ -710,6 +735,13 @@ fell out of one domain solving one problem, where **this grammar was written for
 general** and has been in use for over a decade. It is also the first entry where the *condition* side
 and the *conclusion* side are both published, at scale, by one source.
 
+**This entry and [RM16](#rm16--authored-prs-weights-a-scoring-file-not-a-manifest) are one axis at two
+operators** — boolean here, weighted-sum there, with the enumerative combiner already shipped in
+`diplotypes.csv` and covering the small-arity cases both would serve. RM16 carries the table setting
+that out; read it before opening this one, and take the *where does the combining rule live* decision
+once rather than twice. They stay separate items, because a categorical conclusion and a number
+needing a reference distribution are different outputs.
+
 **One argument from it does reach beyond the count, and it is [RM16](#rm16--authored-prs-weights-a-scoring-file-not-a-manifest)'s
 rather than this entry's** (maintainer, 2026-09-13): genosets are a *familiar shape*, in use for over a
 decade, and an author's ability to bring one across is an adoption signal in its own right. It bears
@@ -720,9 +752,11 @@ this item is parked on a corpus, and a corpus is measured, not argued.
 this entry wants from it is cheap and has not been done: **how many genosets are there, what is the
 operator distribution, and how deep does the nesting go** — counted off `genosets.json`, which is a
 committed file needing no network. A corpus of forty flat conjunctions argues differently from four
-thousand nested ones. Note also that SNPedia is **CC BY-NC-SA**, so this is evidence about a shape and
-never data to adopt; and that `reference_examples/apoe_epsilon` already answers the two-variant case
-without a predicate, which is the boundary any count has to beat.
+thousand nested ones. The licence is **not** the obstacle a first reading here made it: CC BY-NC-SA
+3.0 US is established and adoptable as an unsellable share-alike module
+([USE_CASES § 2e](USE_CASES.md#2e-republishing-a-licence-encumbered-third-party-corpus-as-modules-2026-09-13)).
+What still has to be beaten is `reference_examples/apoe_epsilon`, which answers the two-variant case
+with no predicate at all.
 
 Still **parked**, on the same rule: the corpus grows, the decision does not move until the count is in.
 
