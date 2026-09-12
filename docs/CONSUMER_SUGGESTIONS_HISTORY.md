@@ -8392,7 +8392,7 @@ I would also argue the message is part of the defect: `EXPRESSION FAILED` with n
 12,003 rows were committed is an honest-looking report of the wrong thing. Whatever the ordering
 becomes, a partial commit should say what it left behind.
 
-# Field notes from just-module-creator
+# Field notes from just-module-creator, 2026-09-12 — a fetch gate asked about a read
 
 ---
 
