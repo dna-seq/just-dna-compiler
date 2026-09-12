@@ -494,6 +494,28 @@ _DERIVED_FILES: tuple[str, ...] = (
 )
 
 
+def table_bindings() -> dict[str, tuple[str, ...]]:
+    """`csv -> the parquet(s) it becomes`, assembled from the registries and never named by hand.
+
+    Public because two surfaces outside this module need it and both would otherwise keep a copy: the
+    docs site's generated per-table reference, and `test_artifact_parquet_bindings.py`, which asserts the
+    union of the values is exactly `ARTIFACT_PARQUETS`. That equality is what makes the map **total** — a
+    new table kind whose parquet is written by a literal at its own write site fails the test instead of
+    quietly missing a reference page.
+
+    Four registries, each owning its own slice: `SNP_CORE_PARQUETS` (the core, where `variants.csv`
+    fans out to two), `_TABLE_KINDS` (the optional authored kinds), `_FACT_TABLES` (the derived facts)
+    and `OVERRIDES_PARQUET` (the overlay, whose CSV is authored but is not a table kind).
+    """
+    bound: dict[str, tuple[str, ...]] = dict(SNP_CORE_PARQUETS)
+    for csv_name, parquet, _model in _TABLE_KINDS:
+        bound[csv_name] = (parquet,)
+    for csv_name, parquet, _model in _FACT_TABLES:
+        bound[csv_name] = (parquet,)
+    bound[OVERRIDES_CSV] = (OVERRIDES_PARQUET,)
+    return bound
+
+
 def authored_input_entries(spec_dir: Path) -> list[FileEntry]:
     """The authored files a module is made of, hashed for the verification binding.
 

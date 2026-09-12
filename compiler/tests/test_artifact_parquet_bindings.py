@@ -7,7 +7,8 @@ could give — and it has two callers that need one: `ARTIFACT_PARQUETS` itself,
 generated per-table reference, which must derive the row rather than hand-keep a fourth copy
 (`@fieldnames-from-model`).
 
-The assertion is the **equality**, not the count (`@registry-completeness`): the union of every
+`compiler.table_bindings()` is the assembler, public so the generator and this test read one
+copy rather than two. The assertion is the **equality**, not the count (`@registry-completeness`): the union of every
 registry's parquets is exactly `ARTIFACT_PARQUETS`, so a new table kind whose binding is spelled at its
 write site instead of in a registry fails here rather than silently missing a reference page. A count
 would hold while the sets disagreed by one in each direction.
@@ -18,19 +19,8 @@ from just_dna_compiler.draft import DRAFTABLE
 from just_dna_compiler.hints import DERIVED_TABLE_MODELS
 
 
-def _bindings() -> dict[str, tuple[str, ...]]:
-    """`csv -> parquet(s)`, assembled only from registries — nothing named by hand here."""
-    bound: dict[str, tuple[str, ...]] = dict(C.SNP_CORE_PARQUETS)
-    for csv_name, parquet, _model in C._TABLE_KINDS:
-        bound[csv_name] = (parquet,)
-    for csv_name, parquet, _model in C._FACT_TABLES:
-        bound[csv_name] = (parquet,)
-    bound[C.OVERRIDES_CSV] = (C.OVERRIDES_PARQUET,)
-    return bound
-
-
 def test_every_artifact_parquet_is_bound_to_the_csv_it_comes_from() -> None:
-    produced = {parquet for parquets in _bindings().values() for parquet in parquets}
+    produced = {parquet for parquets in C.table_bindings().values() for parquet in parquets}
     assert produced == set(C.ARTIFACT_PARQUETS), (
         "the csv→parquet registries and ARTIFACT_PARQUETS disagree. Missing a binding means a parquet "
         "is written by a literal at its own write site, which no reference page can find; the other "
@@ -59,7 +49,7 @@ def test_every_bound_csv_has_a_model_in_one_of_the_authored_or_derived_registrie
     parquet and appears in neither registry is a page the generator cannot write.
     """
     described = set(DRAFTABLE) | set(DERIVED_TABLE_MODELS)
-    undescribable = sorted(set(_bindings()) - described)
+    undescribable = sorted(set(C.table_bindings()) - described)
     assert not undescribable, (
         "these CSVs produce a parquet but no registry binds them to a model, so nothing can describe "
         f"their columns: {undescribable}"

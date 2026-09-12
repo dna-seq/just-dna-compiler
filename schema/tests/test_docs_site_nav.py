@@ -153,15 +153,40 @@ def test_nav_and_not_in_nav_partition_the_docs_directory() -> None:
 
     navigated = {e for e in _nav_entries(config["nav"]) if e in walked}
     excluded = _excluded(config["not_in_nav"], walked)
+    # **The third destination.** A file under `docs/` can also be neither a page nor a record but an
+    # *input* the build reads and republishes somewhere else: `TABLES.md` holds the hand-written half of
+    # the per-table reference, whose sections `gen_table_pages.py` splices into the generated pages.
+    # Publishing it as well would put every section on the site twice, under a heading no nav entry
+    # points at. So the partition is three-way, and the three are pairwise disjoint for three different
+    # reasons — spelled out below rather than collapsed, because each wrong pairing fails differently.
+    inputs = _excluded(config.get("exclude_docs", ""), walked)
 
-    assert not (navigated & excluded), (
-        "these files are both navigated and listed in `not_in_nav`; a page is in the reader's path or "
-        f"in the records, never both: {sorted(navigated & excluded)}"
-    )
-    unaccounted = walked - navigated - excluded
+    for left, right, why in (
+        (
+            navigated,
+            excluded,
+            "both navigated and listed in `not_in_nav`; a page is in the reader's path or in the "
+            "records, never both",
+        ),
+        (
+            navigated,
+            inputs,
+            "both navigated and in `exclude_docs`; an input is never published, so a nav entry "
+            "pointing at one is a dead link",
+        ),
+        (
+            excluded,
+            inputs,
+            "in both `not_in_nav` and `exclude_docs`; the first builds the page and the second does "
+            "not, so the pair contradicts itself",
+        ),
+    ):
+        assert not (left & right), f"these files are {why}: {sorted(left & right)}"
+
+    unaccounted = walked - navigated - excluded - inputs
     assert not unaccounted, (
-        "these files under docs/ appear in neither `nav` nor `not_in_nav`, so they are published "
-        "without a place in the sidebar — add each to whichever it belongs to: "
+        "these files under docs/ appear in none of `nav`, `not_in_nav` or `exclude_docs`, so they are "
+        "published without a place in the sidebar — add each to whichever it belongs to: "
         f"{sorted(unaccounted)}"
     )
     # Asked of the *patterns*, not of `excluded`: `excluded - walked` is empty by construction, since
@@ -172,14 +197,14 @@ def test_nav_and_not_in_nav_partition_the_docs_directory() -> None:
     # its own terms: it is measured with the `!` stripped, because a dead re-inclusion is as stale as a
     # dead exclusion — it says "this page is the exception" about a page that is no longer there.
     idle = []
-    for line in config["not_in_nav"].split("\n"):
+    for line in (config["not_in_nav"] + "\n" + config.get("exclude_docs", "")).split("\n"):
         pattern = line.strip()
         if not pattern or pattern.startswith("#"):
             continue
         if not _excluded(pattern.removeprefix("!"), walked):
             idle.append(pattern)
     assert not idle, (
-        "these `not_in_nav` patterns match no file under docs/, so they exclude (or re-include) nothing "
+        "these `not_in_nav` / `exclude_docs` patterns match no file under docs/, so they exclude (or re-include) nothing "
         f"— a renamed or archived page leaves one behind: {idle}"
     )
 

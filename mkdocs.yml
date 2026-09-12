@@ -144,6 +144,9 @@ plugins:
       # Writes the home page and the API reference into the build only — nothing lands in `docs/`.
       scripts:
         - scripts/gen_api_pages.py
+        # The per-table reference, generated for the same reason: `just-module-creator`'s hand-written
+        # dossiers were audited against 0.6.1 and two table kinds added in 0.7 had no entry at all.
+        - scripts/gen_table_pages.py
         - scripts/gen_cli_pages.py
   - literate-nav:
       nav_file: SUMMARY.md
@@ -179,6 +182,15 @@ plugins:
 # retargeting it would move the consumer's fingerprint and make the triage ledger report our own edit
 # as a consumer revision. So the anchor check is kept visible in the build log and denied a veto over
 # `--strict`, which would otherwise be one permanent red build over a record nobody may touch.
+# **A build input rather than a page.** `docs/TABLES.md` holds the hand-written half of the per-table
+# reference, one `## <csv name>` section each, which `scripts/gen_table_pages.py` splices above the
+# generated columns. Publishing it as well would put every section on the site twice, under a heading no
+# nav entry points at. This is the only `exclude_docs` in the configuration, and it is the third
+# destination a file under `docs/` can have — `schema/tests/test_docs_site_nav.py` asserts the three
+# partition the directory.
+exclude_docs: |
+  TABLES.md
+
 validation:
   omitted_files: warn
   absolute_links: warn
@@ -215,6 +227,10 @@ nav:
       - Schema: SCHEMAS.md
       - Compiler: COMPILER.md
       - Enricher: ENRICHER.md
+      # One page per table kind, generated from the row models. `SCHEMAS.md` stays the narrative
+      # reference — conventions, the hash family, the tri-state inventory — and these answer the
+      # per-table question an author actually arrives with: what are the columns of this one file.
+      - Tables: tables/
       - Module lifecycle: MODULE_LIFECYCLE.md
       - Cache surface: CACHE_SURFACE.md
       - CLI reference: cli/
