@@ -797,6 +797,43 @@ line and 0.5.0 never shipped, so it rode the same one-time re-baseline as the al
 published artifact moved.
 
 
+## Parking conditions (the gate audit)
+
+A deferred item states what would unpark it. **A gate is only honest when the thing that satisfies it
+can exist while the item is still parked** — and the failure mode this tracker exists for is the gate
+that cannot: one whose only possible satisfier is a tool built against the very table the item is
+refusing to build. Read narrowly, such an item is not deferred, it is closed, and nothing in the
+entry says so.
+
+**The rule, for whoever files the next parked item.** Write the gate, then ask *who or what satisfies
+this, and can they exist today?* If the answer names something downstream of the unbuilt thing, the
+gate is circular and the entry needs a different one — usually the **shape** question hiding behind
+the demand question, which is answerable now.
+
+**Swept 2026-09-13** across [ROADMAP.md](ROADMAP.md), [ROADMAP_0_8.md](ROADMAP_0_8.md) and
+[ROADMAP_1_0.md](ROADMAP_1_0.md), prompted by the maintainer after
+[RM16](ROADMAP_0_8.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest) was caught. Every
+item carrying a parked-on / would-unpark clause was checked. **One circular, one marginal, one
+possibly already satisfied, and the rest sound** — the sweep's value is mostly the eight it cleared.
+
+| Item | Gate as written | Verdict |
+|---|---|---|
+| **RM16** — authored PRS weights | "a real consumer" — one that combines authored weights into a score | **Circular.** No such consumer can exist before the table does. Re-parked on *shape* 2026-09-13; the gate itself still needs restating when the entry is next opened for a decision. |
+| **RM28** tail — the two remaining cofactor classes (ancestry, family structure) | "Neither is built until a real module needs it" | **Marginally circular**, the same family. A module cannot *need* a cofactor class it has no way to express, so read strictly nothing satisfies this. It survives on the looser reading — an author saying *"I want to write this and cannot"* — which is what the clause should say. Low stakes: both classes are on-demand-only and shapeless by design. |
+| **RM122** — the measure lookup as a public function | "what it waits on is a caller, not a decision" | **Sound but possibly already met, and nobody has checked.** The rule is normative prose in SCHEMAS.md today, so a consumer can implement it without the function — which means callers may already exist and be silently disagreeing, which is the exact failure the item predicts. **Ask `just-dna-lite` whether it implements the measure lookup** before treating this as waiting. |
+| **RM238** — per-tissue eQTL | "reopen this with a consumer, never with an argument" | **Sound.** Somebody can need a per-tissue eQTL answer without our table existing; they would be asking for the data. |
+| **RM164** — `heteroplasmy.csv` with no source | "Reopen it with a source, never with an argument" | **Sound, and the cleanest of the set** — a gate on a measured fact about the world, independent of anything here. |
+| **RM28** — the predicate half | parked on a corpus | **Sound.** A corpus is counted off other people's published data; it has three entries and none of them needed us to ship anything. |
+| **RM23** — predictor scores | "the acquisition measurement done, and a decision on per-transcript grain" | **Sound.** Both are actions available today; the item is unstarted, not blocked. |
+| **RM68** — a drafting provider off GRCh38 | "an author with a non-GRCh38 module saying which outcome they wanted" | **Sound.** Such modules exist — `reference_examples/grch37_build` is one. |
+| **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
+
+**What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on
+a *consumer report that would have to describe the unbuilt thing* — the `Sn` inbox is a channel
+consumers can use before we build anything, and every item that names it is asking for a report about
+a problem, never about a solution. That is the structural reason only RM16 failed: it is the one entry
+whose gate named the *user of the output* rather than the *holder of the problem*.
+
 ## Reserved namespace
 
 Because backward-compat makes column names and vocabularies **permanent within a major** (CONSTITUTION
