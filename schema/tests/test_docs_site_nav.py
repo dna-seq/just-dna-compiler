@@ -144,8 +144,19 @@ def test_nav_and_not_in_nav_partition_the_docs_directory() -> None:
         "without a place in the sidebar — add each to whichever it belongs to: "
         f"{sorted(unaccounted)}"
     )
-    phantom = excluded - walked
-    assert not phantom, f"`not_in_nav` names files that do not exist: {sorted(phantom)}"
+    # Asked of the *patterns*, not of `excluded`: `excluded - walked` is empty by construction, since
+    # `_excluded` only ever selects from `walked` — a check that cannot fail must not report a zero
+    # (`@tautology-zero`). A pattern matching nothing is the real defect, and it is the one that
+    # survives a file being renamed or archived: the exclusion stays, silently covering nothing.
+    idle = [
+        pattern
+        for pattern in (line.strip() for line in config["not_in_nav"].split("\n"))
+        if pattern and not _excluded(pattern, walked)
+    ]
+    assert not idle, (
+        "these `not_in_nav` patterns match no file under docs/, so they exclude nothing — a renamed or "
+        f"archived page leaves one behind: {idle}"
+    )
 
 
 def test_every_nav_entry_exists_or_is_generated_by_the_build() -> None:

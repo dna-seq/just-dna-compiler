@@ -46,10 +46,11 @@ pages come from the packages' own docstrings and are written into the build by `
 **Nothing about a compiled module, a model, a manifest field or a CLI changed**, so no package version
 moves and there is nothing for a consumer to do. Two things are worth knowing anyway:
 
-- **The site's navigation is curated, not filtered.** The nine reference documents plus the charter and
-  the changelog are in the sidebar; the development records (the roadmap ledgers, the consumer inbox and
-  its archive, the agent notes, the probe rounds, the design threads, the code-first audit) are built,
-  linkable and searchable but absent from it. `schema/tests/test_docs_site_nav.py` asserts the two halves
+- **The site's navigation is curated, not filtered.** The charter, the three tier references, the
+  cross-tier and using-it documents, the two integration guides and this changelog are in the sidebar;
+  the development records (the roadmap ledgers, the consumer inbox and its archive, the agent notes,
+  the probe rounds, the design threads, the code-first audit) are built, linkable and searchable but
+  absent from it. `schema/tests/test_docs_site_nav.py` asserts the two halves
   partition `docs/` exactly, so a page added to `docs/` without a place in one of them fails the suite
   rather than quietly rendering without a sidebar entry.
 - **The builder is [ProperDocs](https://properdocs.org/) rather than `mkdocs`.** MkDocs 1.x upstream is

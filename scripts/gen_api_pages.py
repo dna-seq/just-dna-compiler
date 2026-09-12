@@ -40,6 +40,14 @@ _SKIP_DIRS = frozenset({"__pycache__", "generated", "_atlas_protos"})
 
 _LINK = re.compile(r"(\[[^\]]*\]\(\s*)([^)\s]+)(\s*\))")
 
+#: What `set_edit_path` needs prepended to reach a file **outside** `docs/`. The path it takes is
+#: resolved against `docs_dir` and then appended to `edit_uri` (`edit/main/docs/`), so the README and
+#: every `*/src/**.py` — the two things this script renders, and neither of them under `docs/` — came
+#: out as `edit/main/docs/README.md` and `edit/main/docs/schema/src/…`, a 404 on the edit button of
+#: every generated page. Found by reading the emitted `href`, which is the only place it is visible:
+#: `mkdocs`/`properdocs` validate a page's *links* and never the edit URL they compose.
+_EDIT_ROOT = "../"
+
 
 def _rewrite_target(target: str) -> str:
     """Point a README link at the right thing once the README is the site's home page.
@@ -70,7 +78,7 @@ def _write_home() -> None:
     body = _LINK.sub(lambda m: m[1] + _rewrite_target(m[2]) + m[3], readme)
     with mkdocs_gen_files.open("index.md", "w") as fh:
         fh.write(body)
-    mkdocs_gen_files.set_edit_path("index.md", "README.md")
+    mkdocs_gen_files.set_edit_path("index.md", _EDIT_ROOT + "README.md")
 
 
 def _modules(package: str, src: str) -> list[tuple[str, Path]]:
@@ -102,7 +110,7 @@ def _write_api() -> None:
             doc_path = Path("api", *dotted.split(".")).with_suffix(".md")
             with mkdocs_gen_files.open(doc_path, "w") as fh:
                 fh.write(f"# `{dotted}`\n\n::: {dotted}\n")
-            mkdocs_gen_files.set_edit_path(doc_path, source)
+            mkdocs_gen_files.set_edit_path(doc_path, _EDIT_ROOT + source.as_posix())
             label = dotted.split(".")[-1] if dotted != package else "Overview"
             lines.append(f"    - [{label}]({doc_path.relative_to('api').as_posix()})\n")
     with mkdocs_gen_files.open("api/SUMMARY.md", "w") as fh:

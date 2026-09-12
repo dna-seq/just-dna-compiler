@@ -3956,7 +3956,8 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   the day the consumer wrote it and stale since RM89 shipped; `anchors` is set to `info` for exactly
   that one permanent exemption, because the alternative is a red build over a record nobody may touch.
   And nothing is generated into `docs/` — the home page (the README, links repointed) and 119 API
-  pages are written into the build by `mkdocs-gen-files`, since `docs/` root holds only what is live
+  pages (one per module) are written into the build by `mkdocs-gen-files`, since `docs/` root holds
+  only what is live
   and `test_doc_links.py` walks every tracked file.
 
   **The builder is ProperDocs, and that was measured rather than chosen.** MkDocs 1.x upstream is
