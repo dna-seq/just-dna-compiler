@@ -1,5 +1,20 @@
 # Consumer suggestions — the 0.6 line
 
+**A reply's release status is as-of the day it was written, and some are now out of date by design.**
+Replies below describe work as *"inside `0.7.0`, bumped and **not tagged**"* or *"in the uncut 0.7.0"*;
+0.7.0 was cut, tagged `v0.7.0` and published to PyPI on 2026-09-12, so a reader meeting one of those
+sentences today is reading a true statement about a past moment. They are **not corrected**, for the same
+reason the consumer's prose is not: a reply is the record of what we told somebody on a date, and a
+consumer returning to their own item should find the answer they were given. Correcting them would also
+be the treadmill [ROADMAP.md](../ROADMAP.md) names in its own status paragraph — *a status line nobody
+re-reads is a status line that lies* — and it would add one more set of sentences to re-read at every
+cut. No count is given here on purpose, for that reason; grep `not tagged` and `uncut` if you want
+today's.
+
+**So there is exactly one place to ask what is released: [ROADMAP.md](../ROADMAP.md)'s `**Status:**`
+paragraph**, with [CHANGELOG.md](../CHANGELOG.md) for what each number contained. Nothing in this file
+answers that question, and an `RMn` cited below may have shipped in a later release than its reply names.
+
 The middle half of [CONSUMER_SUGGESTIONS_HISTORY.md](../CONSUMER_SUGGESTIONS_HISTORY.md), split out on
 2026-09-12 when 0.7.0 was cut and published: **S25–S61**, everything the 0.6 line answered. S1–S24,
 S27 and S28 are one half further back in

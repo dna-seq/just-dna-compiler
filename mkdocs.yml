@@ -200,8 +200,18 @@ nav:
       - Use cases: USE_CASES.md
       - Reference examples: REFERENCE_EXAMPLES.md
       - FAQ: FAQ.md
+  # **Both guides, and the archived one is here on purpose.** `INTEGRATION_0_6.md` moved to
+  # `docs/history/` as superseded, which it is *for a reader on 0.6* — and that reader is not the one who
+  # needs it. Somebody still on 0.5.4 upgrades through 0.6 first, and *Upgrading* is the one place they
+  # will look; leaving the sidebar with a single 0.6.6→0.7 line reads as "there is no path from 0.5",
+  # which is false. Its label says archived so nobody mistakes it for the current delta. Listing a
+  # `history/` file in the nav is not editing the archive — the file stays where it was moved. It does
+  # need an exception in `not_in_nav` below: `history/` is a prefix pattern and goes on matching it, and
+  # the partition guard refuses a page that is both navigated and excluded. It caught exactly that on
+  # the first attempt, where this comment had claimed otherwise.
   - Upgrading:
       - "0.6.6 → 0.7": INTEGRATION_0_7.md
+      - "0.5.4 → 0.6 (archived)": history/INTEGRATION_0_6.md
   - Changelog: CHANGELOG.md
   - API reference: api/
 
@@ -223,6 +233,9 @@ not_in_nav: |
   ROADMAP_HISTORY.md
   audit/
   history/
+  # Re-included, gitignore style: this one archived page is in the nav (see the *Upgrading* comment
+  # above), and a `!` line is how `not_in_nav` spells an exception to the directory line before it.
+  !history/INTEGRATION_0_6.md
   probes/
   proposals/
   vendor/

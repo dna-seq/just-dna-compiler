@@ -85,21 +85,27 @@ def _walked_docs(docs_dir: Path) -> set[str]:
 def _excluded(patterns: str, walked: set[str]) -> set[str]:
     """The walked files `not_in_nav` matches, under the gitignore-ish subset this config uses.
 
-    Two spellings only, because that is all `mkdocs.yml` spells: a bare filename, and a directory with
-    a trailing slash meaning everything beneath it. Implemented rather than delegated because the real
-    matcher lives in `mkdocs`, which is not installed here — and a third spelling appearing in the
-    config would show up as a file in neither half, which is exactly what the partition assertion
-    reports.
+    Three spellings, because that is what `mkdocs.yml` spells: a bare filename, a directory with a
+    trailing slash meaning everything beneath it, and a **`!` line that re-includes** — gitignore
+    semantics, applied in order, which is how one archived page (`history/INTEGRATION_0_6.md`) sits in
+    the nav while the rest of `history/` stays out of it. Comment lines are skipped.
+
+    Implemented rather than delegated because the real matcher lives in `mkdocs`, which is not installed
+    here — and a fourth spelling appearing in the config would show up as a file in neither half, which
+    is exactly what the partition assertion reports.
     """
     matched: set[str] = set()
     for raw in patterns.split("\n"):
         pattern = raw.strip()
-        if not pattern:
+        if not pattern or pattern.startswith("#"):
             continue
+        negated = pattern.startswith("!")
+        pattern = pattern.removeprefix("!")
         if pattern.endswith("/"):
-            matched |= {f for f in walked if f.startswith(pattern)}
+            hit = {f for f in walked if f.startswith(pattern)}
         else:
-            matched |= {f for f in walked if fnmatch.fnmatch(f, pattern)}
+            hit = {f for f in walked if fnmatch.fnmatch(f, pattern)}
+        matched = (matched - hit) if negated else (matched | hit)
     return matched
 
 
@@ -148,14 +154,19 @@ def test_nav_and_not_in_nav_partition_the_docs_directory() -> None:
     # `_excluded` only ever selects from `walked` — a check that cannot fail must not report a zero
     # (`@tautology-zero`). A pattern matching nothing is the real defect, and it is the one that
     # survives a file being renamed or archived: the exclusion stays, silently covering nothing.
-    idle = [
-        pattern
-        for pattern in (line.strip() for line in config["not_in_nav"].split("\n"))
-        if pattern and not _excluded(pattern, walked)
-    ]
+    # Every pattern must still name something. Comments are skipped, and a `!` exception is checked on
+    # its own terms: it is measured with the `!` stripped, because a dead re-inclusion is as stale as a
+    # dead exclusion — it says "this page is the exception" about a page that is no longer there.
+    idle = []
+    for line in config["not_in_nav"].split("\n"):
+        pattern = line.strip()
+        if not pattern or pattern.startswith("#"):
+            continue
+        if not _excluded(pattern.removeprefix("!"), walked):
+            idle.append(pattern)
     assert not idle, (
-        "these `not_in_nav` patterns match no file under docs/, so they exclude nothing — a renamed or "
-        f"archived page leaves one behind: {idle}"
+        "these `not_in_nav` patterns match no file under docs/, so they exclude (or re-include) nothing "
+        f"— a renamed or archived page leaves one behind: {idle}"
     )
 
 
