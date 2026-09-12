@@ -3993,6 +3993,22 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   and restore from the copy; `git checkout` reverts the whole file rather than the one line, which has
   cost this project a session's work before.
 
+  **Independence has to be demonstrated, not eyeballed — "these look like different code" is not the
+  same claim.** The table generator's first version normalised a CSV name through `sidecar_key` on both
+  sides, which by the rule above shares the suspect step; it was changed to compare row models instead,
+  and then the justification was *tested* by stubbing `sidecar_key` to the identity function. The
+  name-based comparison failed anyway — its page side excludes `DEPRECATED_SPELLINGS` and its registry
+  side does not, so the two disagree about `sources.csv` whatever the normaliser does. The blind spot
+  being closed did not exist, and the comment now records the measurement rather than claiming a fix
+  for a defect the file never had. A false *this closes a blind spot* is worse than no comment, because
+  it is the answer to the next reader's first question.
+
+  **Reintroducing the real defect tests the guard and its independence in one move**, which is why it
+  is the preferred proof: had `_expected_parameters` shared the classification, the `isinstance`
+  version would have emptied *both* sets, left `missing` empty, and let the build pass — so the build
+  failing is itself the evidence that the expected side does not degrade with the suspect step.
+  Stubbing the shared function is the weaker fallback, for a guard whose defect cannot be reintroduced.
+
   **The builder is ProperDocs, and that was measured rather than chosen.** MkDocs 1.x upstream is
   unmaintained and the announced 2.0 removes the plugin system with no migration path; ProperDocs is a
   1.x continuation, drop-in over the same `mkdocs.yml`, and was **already installed transitively** —

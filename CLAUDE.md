@@ -547,7 +547,8 @@ questions vs answers. A blocker is never a dead end: dissolved, closed additivel
   `click` is always False under Typer's vendored copy; read `param_type_name`. `@a-docs-site-nav-is-a-registry-over-a-directory-that-grows`
 - A generator asserts its own output against its registry, **in the generator** — a test going red is a
   different gate from the build that publishes. Prove it by reintroducing the defect and watching the
-  *build* fail. `@a-docs-site-nav-is-a-registry-over-a-directory-that-grows`
+  *build* fail: that tests the guard AND that the expected side is really independent, in one move.
+  `@a-docs-site-nav-is-a-registry-over-a-directory-that-grows`
 
 ### Dogfooding and the adversarial role — one line each, same tags
 
