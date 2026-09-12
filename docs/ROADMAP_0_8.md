@@ -84,8 +84,9 @@ as it stands; or the 0.8 review deciding the family is complete and this becomes
 
 ## RM188 — the competitor survey — run Calwbio's and genomi's pipelines, read their reports, and re-fold the logic into module mechanics
 
-**Severity** medium · **Status** open — **both surveys filed 2026-09-13; the findings they route are
-what remains** · **Owner** format (the survey), then whichever tier the findings land in ·
+**Severity** medium · **Status** open — **round 1's two surveys filed 2026-09-13 and their findings
+routed; round 2's roster is below, searched for rather than named** · **Owner** format (the survey),
+then whichever tier the findings land in ·
 **Motivating case** the maintainer's direction, not a consumer report
 
 **Progress.** Both named competitors are now probed, one document each, and neither turned out to be
@@ -130,6 +131,91 @@ real one disagreeing.
 **Exit.** Each competitor's probe filed, and its findings either dissolved (already enabled), closed
 additively (an RM with a motivating report in hand), or parked with the reason — the
 USE_CASES → PROPOSAL loop, entered at the top.
+
+**Round 2 — the candidate roster, built 2026-09-13.** Round 1's two competitors were named by the
+maintainer; round 2's were **searched for**, and the search is the first half of the result. Method:
+GitHub repository search over eight query shapes (personal genome interpretation, 23andMe raw data,
+annotation modules, MCP + bioinformatics, nutrigenomics, pharmacogenomics, ACMG, PGS), sorted both by
+stars and by recency, plus `awesome-genetics` (last pushed 2024-03) for the pre-agent generation.
+Twenty-two repositories were then **skimmed** — not surveyed — against one question: *does it carry
+hand-curated per-variant or per-gene rows a human wrote and committed, or does it fetch public
+sources at query time?* That is the discriminator round 1 established: both genomi and ClawBio turned
+out to be the second kind, and the curated fraction of each was tiny.
+
+**Re-derive the search with:**
+
+```bash
+gh api -X GET search/repositories -f q='topic:personal-genomics' -f sort=updated -f per_page=15 \
+  --jq '.items[] | "\(.full_name)\t\(.stargazers_count)\t\(.pushed_at[:7])\t\(.description)"'
+```
+
+varying `q` over the shapes above. **Nothing found in the 2026 crop has more than ten stars**, which
+is itself a finding: the local-first personal-genomics field is a long tail of weekend projects, and
+the established tools are older and narrower. Do not read the roster below as a competitive
+landscape — it is a list of places to go looking for annotation *shapes*.
+
+### The four that get a full survey
+
+| # | Target | Pinned | Class | What its survey asks |
+|---|---|---|---|---|
+| 1 | [OakVar](https://github.com/rkimoakbioinformatics/oakvar) | `d4e8090df8`, 48★, licence NOASSERTION | a competing module format **with a store** | **A fresh peer read, not a migration post-mortem** — the maintainer's framing: *an OakVar module is in essence a plugin, arbitrary code, so it is a module plus half an annotator*. Its manifest (`<name>.yml`) declares `type` (annotator / postaggregator / reporter), `level`, `requires` (other modules), `input_columns`, and typed `output_columns` — a **column contract plus a dependency graph**, where ours is a row schema with neither. Ask what the column contract buys, what `requires` expresses that no module here can, and what is left of a module once the arbitrary code is removed. |
+| 2 | SNPedia, via [snappy](https://github.com/zhaofengli/snappy) | `2d5255f`, 52★, BSD-2-Clause; SNPedia content CC BY-NC-SA 3.0 US | the corpus round 1 never had | The largest curated variant-trait corpus in existence: **106,603 SNP entries** frozen into `data/snps.json` from a MediaWiki XML dump, plus `genotypes.json` (per-genotype magnitude / good-bad / summary) and `genosets.json`. Survey **the corpus, not the SPA** — snappy is the extraction route that proves a static dump works, where `OSGenome` (146★) only crawls live. **NC licence, so nothing here is adoptable as data**; the survey is about shape. |
+| 3 | [BioMCP](https://github.com/genomoncology/biomcp) | `bb3a1d4ad7`, 630★, MIT | the agent-era tier done at scale | Thirteen times genomi's stars and the same architectural class. Ask the one question genomi could not answer at its size: **when an agent tool surface is the product, what does it end up needing to say about a variant that a table does not?** If the answer is "nothing", that closes the whole class and round 3 can skip it. |
+| 4 | [Exomiser](https://github.com/exomiser/Exomiser) | `98f4e0b6f2`, 265★, AGPL-3.0 | phenotype-driven prioritization | The only established tool in the roster that **ships its annotation as a versioned data bundle** rather than fetching it — the closest existing thing to a compiled artifact. Ask what its bundle contains, how it is versioned, and how HPO term sets sit in it, given that [HPO ships no route here](ENRICHER.md) for licence reasons. |
+
+### The three small ones worth a read after those
+
+| Target | Pinned | Why |
+|---|---|---|
+| [dosedna](https://github.com/alejandro-publius/dosedna) | `530cfe7`, 2★, MIT | Hand-curated PGx over six genes, and the closest small analogue of our `haplotypes`/`diplotypes`/`pharm_variants` trio — plus a committed, provenance-stamped CPIC snapshot (`allele_definition` 39, `diplotype_phenotype` 666, `recommendations` 1,180). |
+| [dna-engine](https://github.com/ShadowfetchLinux/dna-engine) | `5791bb3`, 0★, Apache-2.0 | **403 curated markers with the richest per-marker schema found anywhere**: `tier`, `effect`, `transferability`, `chips`, per-genotype label/impact/summary/detail/**actions**, and citations as `(pmid, note)` pairs. Also a deliberate non-interpretive posture — it refuses to translate genotype into phenotype, and says why. |
+| [allelix](https://github.com/allelix/allelix) | `4b56bbe`, 30★, AGPL-3.0 | Carries no corpus, and is here anyway: **38 ADRs documenting source-precedence and suppression rules** (PharmGKB non-finding suppression, somatic-on-germline suppression, a GWAS odds-ratio magnitude modifier). Competing-source arbitration is `authority_precedence`'s problem, and this is the only project found that wrote its reasoning down. |
+
+### What the skim already found — five axes, each sighted independently more than once
+
+**This is the part that did not need a survey.** Convergence across unrelated projects is the
+`@probe-uniform-corpus` heuristic firing: when three people who have never met each add the same
+field, the field is answering a real question.
+
+1. **Which genotyping arrays can call this variant** — three sightings: dosedna's `array_callable` + free-text `coverage_note` per gene, dna-engine's `chips` per marker, and `MrOrtiz/dna-annotator`'s measured-vs-imputed tiering per source array (it refuses to let an imputed call outvote a measured one). **We have nothing.** `requires_callable` / `callable_from` / `min_quality` ask whether the *consumer's own VCF* saw the position; this asks which *platforms in the world* interrogate it, which is a fact about the variant and therefore annotation. Note the per-gene / per-variant scope split, which is the shape [that already cost 39 variants once](ROADMAP_HISTORY.md).
+2. **A per-variant claim's ancestry transferability** — three sightings: dna-engine's `transferability`, `Bluefinee/kaiseki`'s Japanese-cohort reconciliation, `drhudsonandrade/OmniGenis` recording discovery-cohort ancestry per GWAS association. We carry `PgsRow.training_ancestry` and `GwasEffectRow.ancestry`, both scoped to their own table; there is no way to say *this variants.csv row was established in one population*.
+3. **Effect modified by a non-genetic factor** — two sightings, and genomi is the third: `sinhaankur/open-genome-atlas` splits each marker's evidence by `kind` (diet / lifestyle / geo), **each axis independently cited**; `drdaviddelorenzo/nutrigenomics` scopes its `weight` to a `nutrient_domain`; genomi's own caveat *"folate fortification status of the population modifies effect size"* is the same fact in prose. `CopyNumberRow`'s `modifier_gene` / `modifier_cn` is the precedent shape for a *genetic* modifier and there is no environmental one. Note that the second sighting also lands on `@weight-has-no-unit`: their `weight` at least names the domain it is a weight *in*.
+4. **Two sources disagreeing, as a recorded verdict** — three sightings: kaiseki's `DISCORDANCE_RATIO`, which **refuses to publish a consensus frequency** when cohorts disagree; `Gunshipz/genomine`'s cross-tool confidence/disagreement layer; allelix's ADRs. `clin_sig_concordance.csv` does exactly this for clinical significance and **only** for clinical significance — kaiseki does it for allele frequency, where `frequencies.csv` has per-population rows and no verdict.
+5. **A hand-assigned salience separate from clinical severity** — two sightings: `alexlaverty/dna-health-report`'s `magnitude` 0–6 per genotype, and SNPedia's own `m` field carried through snappy. `VariantRow.priority` is the candidate analogue; whether "priority level override" means the same thing is a question for the survey, not an assumption.
+
+**And one that is not an axis but a corpus: [RM28](#rm28--meta-conclusions-the-predicate-half) has a third entry.** snappy's
+`genosets.json` carries SNPedia's boolean-combinator DSL — `and(rs4988235(C;C), rs182549(C;C))`, with
+genoset-of-genoset nesting for haplogroup trees. That is a third independent grammar for the same
+thing after CIViC's molecular profiles (RM174) and ClawBio's guideline logic, and unlike those two it
+is a **general-purpose** one written for consumer genetics rather than falling out of one domain.
+Counting its operators and its nesting depth is worth doing whether or not the rest of snappy is read.
+
+### Checked and skipped — recorded so round 3 does not re-search them
+
+**Same class as genomi (fetch public sources at query time, no curated content):** `lagodinm/dna-health-report`,
+`MrOrtiz/dna-annotator`, `Gunshipz/genomine`, `itsrudaynah/Modrik`, `techninja/asili`,
+`drhudsonandrade/OmniGenis` (58k LOC and its own scripts say *"Nothing here is authored"*),
+`mentatpsi/OSGenome` (146★, crawls SNPedia live and freezes nothing).
+**Pipeline or converter, no interpretation:** `GeiserX/Personal-Genome-Pipeline` (10★),
+`captainzonks/GeneGnome`.
+**Curated but too thin or too stale to teach anything:** `Michael-Sebero/Genetic-Trait-Detector`
+(245 rows, one 432-line file, last pushed 2025-03), `dev-kvt/GenomeUpload` (27 uncited rows inline in
+JS, with an LLM writing the actual report).
+**Not competitors, one line each:** the single-source MCP servers (`berntpopp/clinvar-link`,
+`cyanheads/gnomad-genetics-mcp-server`, and our own `dna-seq/ensembl-mcp`) wrap one API and carry no
+annotation; the general AI-science workbenches (ScienceClaw, aipoch/open-science, wisp-science, all
+600–4,000★) are not genome tools; `WGLab/InterVar` (213★) is ACMG classification, which ClawBio's
+half already covered, and its last commit is 2021.
+**Commercial, no source:** Promethease (now MyHeritage), Genomelink, SelfDecode, Codegen, Nebula.
+**RM188's method does not reach them** — a report can be bought and read, but no pipeline can be run
+and nothing can be pinned, so a survey of one would be a marketing comparison, which § *What it is
+not* forbids. Promethease is reachable **through SNPedia** instead, which is why row 2 is the corpus
+and not the product.
+
+**Security note, since the search surfaced it.** `Barrelsravennagrass984/Personal-Genome-Pipeline` is a
+near-verbatim clone of `GeiserX/Personal-Genome-Pipeline` whose README is replaced with download bait
+for a `.zip` committed inside the module tree. **Do not fetch or run it.** Recorded here because the
+next person to run this search will find it in the same result set.
 
 ## RM236 — `consequence` and `impact` are planned axes with no slot, and an ACMG engine reads both as primary inputs
 
@@ -541,6 +627,27 @@ Three things make it sharper than the CIViC entry rather than a repeat of it:
   cheap enough to do before any design: **how many CPIC guidelines are keyed on a gene *pair* rather
   than a single gene phenotype**, counted off the CPIC snapshot already provisioned. If the answer is
   three, this parks again with a sharper reason; if it is thirty, the economy argument changes.
+
+**Third corpus entry, 2026-09-13 — and this one is a general-purpose grammar rather than a domain's
+by-product.** From the same item's [round-2 roster](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics):
+SNPedia publishes **genosets**, boolean expressions over genotypes, and
+[`zhaofengli/snappy`](https://github.com/zhaofengli/snappy) (`2d5255f`) has them extracted from a
+MediaWiki dump into `data/genosets.json` beside 106,603 SNP entries. The grammar is
+`and(rs4988235(C;C), rs182549(C;C))`, it nests, and a genoset may reference another genoset — the
+haplogroup trees are built that way.
+
+What makes it the sharpest of the three is that CIViC's profiles and ClawBio's warfarin branch each
+fell out of one domain solving one problem, where **this grammar was written for consumer genetics in
+general** and has been in use for over a decade. It is also the first entry where the *condition* side
+and the *conclusion* side are both published, at scale, by one source.
+
+**It changes no decision yet, and the reason is the same one that has held twice.** The measurement
+this entry wants from it is cheap and has not been done: **how many genosets are there, what is the
+operator distribution, and how deep does the nesting go** — counted off `genosets.json`, which is a
+committed file needing no network. A corpus of forty flat conjunctions argues differently from four
+thousand nested ones. Note also that SNPedia is **CC BY-NC-SA**, so this is evidence about a shape and
+never data to adopt; and that `reference_examples/apoe_epsilon` already answers the two-variant case
+without a predicate, which is the boundary any count has to beat.
 
 Still **parked**, on the same rule: the corpus grows, the decision does not move until the count is in.
 
