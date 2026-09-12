@@ -3977,6 +3977,22 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   output is not verified by the build succeeding: this was found by reading a rendered page, which is
   the only place an empty table is visible.
 
+  **The guard belongs in the generator, not in a test, and the difference is what CI publishes.** Both
+  generators reached the same conclusion within a day, from opposite defects — the CLI one rendering
+  empty tables, the table one reporting "fact signature: no" for every table after a repair shadowed the
+  spelling key with a natural-key tuple. In both cases `--strict` was green, the links resolved and the
+  nav partitioned, so a docs build in CI would have deployed the wrong pages; a test catching it only
+  means the *test suite* would have gone red, which is a different gate and not the one that publishes.
+  So each generator asserts its own output against the registry it derived from, **as sets rather than
+  counts**, and in each case the ground truth is computed by a path that does not share the suspect
+  step: `_expected_parameters` walks `command.params` without the argument/option classification, so a
+  classification matching nothing leaves the expected set full and the rendered one empty.
+
+  **Prove one by reintroducing the defect and watching the build fail**, not by reverting the fix and
+  watching the tests fail — the second only shows the tests catch it. Copy the script aside with `cp`
+  and restore from the copy; `git checkout` reverts the whole file rather than the one line, which has
+  cost this project a session's work before.
+
   **The builder is ProperDocs, and that was measured rather than chosen.** MkDocs 1.x upstream is
   unmaintained and the announced 2.0 removes the plugin system with no migration path; ProperDocs is a
   1.x continuation, drop-in over the same `mkdocs.yml`, and was **already installed transitively** —

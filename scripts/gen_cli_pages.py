@@ -17,6 +17,15 @@ argument and option tables **silently empty** — a hundred pages that looked fi
 is `param.param_type_name`, which both spellings of click carry and which says `"argument"` or
 `"option"` directly, so the parameters are read structurally and typed as `Any`.
 
+**And the rule is now enforced here rather than only in a test, because the failure is invisible to
+every other gate.** `--strict` was green over those hundred empty pages, the links resolved and the nav
+partitioned — a docs build in CI would have published them. So `_render` asserts the parameter names it
+rendered against `_expected_parameters`, which walks `command.params` **without** the classification, so
+a classification matching nothing leaves the expected set full and the rendered one empty and the build
+stops. Verified by reintroducing the `isinstance` version and watching the build fail naming
+`just-dna-compiler close`'s three parameters, then restoring from a copy — `cp`, never `git checkout`,
+which reverts a file rather than a line.
+
 **Structured rather than captured.** The obvious alternative is to shell out to `--help` and fence the
 output, and it is worse in three ways: Typer renders through Rich, so the text arrives wrapped into a
 box at whatever width the build happens to run at, long help strings are truncated with an ellipsis
@@ -80,16 +89,34 @@ def _type_name(param: Any) -> str:
     return f"`{name}`" if name else ""
 
 
-def _parameter_rows(command: Any) -> tuple[list[str], list[str]]:
-    """`(argument rows, option rows)` for one command's markdown tables."""
+def _expected_parameters(command: Any) -> set[str]:
+    """Every parameter this command declares that a reader should see a row for.
+
+    Ground truth for the assertion in `_render`, and deliberately computed **without** the
+    argument/option classification the rows go through: `command.params` is the list click itself
+    keeps, so a classification that matches nothing leaves this set full and the rendered one empty.
+    The only exclusions are the inherited flags and a parameter whose every spelling is one of them.
+    """
+    expected = set()
+    for param in command.params:
+        opts = [o for o in (*param.opts, *getattr(param, "secondary_opts", ())) if o not in _UNINTERESTING]
+        if opts:
+            expected.add(param.name)
+    return expected
+
+
+def _parameter_rows(command: Any) -> tuple[list[str], list[str], set[str]]:
+    """`(argument rows, option rows, the parameter names rendered)` for one command's tables."""
     arguments: list[str] = []
     options: list[str] = []
+    rendered: set[str] = set()
     for param in command.params:
         if param.param_type_name == "argument":
             arguments.append(
                 f"| `{param.name}` | {_type_name(param)} | {_default(param)} | "
                 f"{_clean(getattr(param, 'help', None))} |"
             )
+            rendered.add(param.name)
             continue
         if param.param_type_name != "option":
             continue
@@ -98,7 +125,8 @@ def _parameter_rows(command: Any) -> tuple[list[str], list[str]]:
             continue
         spelled = " / ".join(f"`{o}`" for o in opts)
         options.append(f"| {spelled} | {_type_name(param)} | {_default(param)} | {_clean(param.help)} |")
-    return arguments, options
+        rendered.add(param.name)
+    return arguments, options, rendered
 
 
 def _render(command: Any, invocation: str, level: int) -> list[str]:
@@ -112,7 +140,14 @@ def _render(command: Any, invocation: str, level: int) -> list[str]:
         # Typer keeps the docstring's own line breaks, and a paragraph break has to survive: the
         # command help below is prose that was written to be read, not a one-liner.
         lines.append("\n".join(line.strip() for line in help_text.splitlines()).strip() + "\n\n")
-    arguments, options = _parameter_rows(command)
+    arguments, options, rendered = _parameter_rows(command)
+    missing = _expected_parameters(command) - rendered
+    if missing:
+        raise AssertionError(
+            f"`{invocation}` declares {sorted(missing)} and the generated page shows no row for them "
+            "— the classification above matched nothing, which renders a page that looks finished and "
+            "documents nothing. See this module's docstring on Typer's vendored click."
+        )
     if arguments:
         lines.append("| Argument | Type | Default | Says |\n|---|---|---|---|\n")
         lines.extend(f"{row}\n" for row in arguments)
