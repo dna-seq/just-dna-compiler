@@ -170,6 +170,7 @@ landscape — it is a list of places to go looking for annotation *shapes*.
 | [dosedna](https://github.com/alejandro-publius/dosedna) | `530cfe7`, 2★, MIT | Hand-curated PGx over six genes, and the closest small analogue of our `haplotypes`/`diplotypes`/`pharm_variants` trio — plus a committed, provenance-stamped CPIC snapshot (`allele_definition` 39, `diplotype_phenotype` 666, `recommendations` 1,180). |
 | [dna-engine](https://github.com/ShadowfetchLinux/dna-engine) | `5791bb3`, 0★, Apache-2.0 | **403 curated markers with the richest per-marker schema found anywhere**: `tier`, `effect`, `transferability`, `chips`, per-genotype label/impact/summary/detail/**actions**, and citations as `(pmid, note)` pairs. Also a deliberate non-interpretive posture — it refuses to translate genotype into phenotype, and says why. |
 | [allelix](https://github.com/allelix/allelix) | `4b56bbe`, 30★, AGPL-3.0 | Carries no corpus, and is here anyway: **38 ADRs documenting source-precedence and suppression rules** (PharmGKB non-finding suppression, somatic-on-germline suppression, a GWAS odds-ratio magnitude modifier). Competing-source arbitration is `authority_precedence`'s problem, and this is the only project found that wrote its reasoning down. |
+| [Custom-Personal-Genome-Interpretation](https://github.com/dianguan0105/Custom-Personal-Genome-Interpretation) | `15fe28a`, 0★, MIT | Two authored tables: 98 rsIDs carrying **GRCh37 and GRCh38 coordinates side by side on one row** plus population-split MAF, and **540 PRS weights transcribed out of a paper's supplementary table** — see [RM16](#rm16--authored-prs-weights-a-scoring-file-not-a-manifest). |
 
 ### What the skim already found — five axes, each sighted independently more than once
 
@@ -182,6 +183,15 @@ field, the field is answering a real question.
 3. **Effect modified by a non-genetic factor** — two sightings, and genomi is the third: `sinhaankur/open-genome-atlas` splits each marker's evidence by `kind` (diet / lifestyle / geo), **each axis independently cited**; `drdaviddelorenzo/nutrigenomics` scopes its `weight` to a `nutrient_domain`; genomi's own caveat *"folate fortification status of the population modifies effect size"* is the same fact in prose. `CopyNumberRow`'s `modifier_gene` / `modifier_cn` is the precedent shape for a *genetic* modifier and there is no environmental one. Note that the second sighting also lands on `@weight-has-no-unit`: their `weight` at least names the domain it is a weight *in*.
 4. **Two sources disagreeing, as a recorded verdict** — three sightings: kaiseki's `DISCORDANCE_RATIO`, which **refuses to publish a consensus frequency** when cohorts disagree; `Gunshipz/genomine`'s cross-tool confidence/disagreement layer; allelix's ADRs. `clin_sig_concordance.csv` does exactly this for clinical significance and **only** for clinical significance — kaiseki does it for allele frequency, where `frequencies.csv` has per-population rows and no verdict.
 5. **A hand-assigned salience separate from clinical severity** — two sightings: `alexlaverty/dna-health-report`'s `magnitude` 0–6 per genotype, and SNPedia's own `m` field carried through snappy. `VariantRow.priority` is the candidate analogue; whether "priority level override" means the same thing is a question for the survey, not an assumption.
+
+**A sixth shape was seen and is already decided against, recorded so it is not re-raised.**
+`dianguan0105/Custom-Personal-Genome-Interpretation` stores GRCh37 and GRCh38 coordinates *on the same
+row*, so no liftover is needed at read time. That is the opposite of the rule here — `genome_build`
+lives in the manifest and in no parquet column (`@build-in-manifest-only`), the build is injected at
+load and never authored on a row (`@build-injected`), and a module is single-build by design with
+`reference_examples/grch37_build` as the worked case. Their design buys convenience and pays for it
+with two coordinates that can disagree and nothing able to notice. **Not a gap.** Worth one paragraph
+in whichever survey reads them, and no more.
 
 **And one that is not an axis but a corpus: [RM28](#rm28--meta-conclusions-the-predicate-half) has a third entry.** snappy's
 `genosets.json` carries SNPedia's boolean-combinator DSL — `and(rs4988235(C;C), rs182549(C;C))`, with
@@ -201,6 +211,10 @@ Counting its operators and its nesting depth is worth doing whether or not the r
 **Curated but too thin or too stale to teach anything:** `Michael-Sebero/Genetic-Trait-Detector`
 (245 rows, one 432-line file, last pushed 2025-03), `dev-kvt/GenomeUpload` (27 uncited rows inline in
 JS, with an LLM writing the actual report).
+**Curated only as a panel — a list of rsIDs with no fields on them:** `brandonsaldan/codex` (37★, 225
+JSON files of bare rsID membership, all interpretation scraped live from SNPedia, dead since 2023).
+**Documentation, not a tool:** `matbanik/agentic-genomics` (a setup guide wiring up three MCP servers
+that live elsewhere).
 **Not competitors, one line each:** the single-source MCP servers (`berntpopp/clinvar-link`,
 `cyanheads/gnomad-genetics-mcp-server`, and our own `dna-seq/ensembl-mcp`) wrap one API and carry no
 annotation; the general AI-science workbenches (ScienceClaw, aipoch/open-science, wisp-science, all
@@ -211,6 +225,27 @@ half already covered, and its last commit is 2021.
 and nothing can be pinned, so a survey of one would be a marketing comparison, which § *What it is
 not* forbids. Promethease is reachable **through SNPedia** instead, which is why row 2 is the corpus
 and not the product.
+
+### The agent-skill class is closed, and it cost one read
+
+[`BioTender-max/awesome-bio-agent-skills`](https://github.com/BioTender-max/awesome-bio-agent-skills)
+(178★) is a directory of AI agent skills for biomedical work. Enumerating the entries that interpret a
+**human personal genome** — as opposed to answering "what does the literature say about gene X" — gives
+**21**, and they cluster under four collections: `clawbio/` (six: `pharmgx-reporter`,
+`nutrigx-advisor`, `gwas-prs`, `genome-compare`, `claw-ancestry-pca`, `clinical-variant-reporter`),
+`openclaw/`, `omicsclaw/` and `bioskills/`. The rest are ACMG classification, PRS, and PGx under
+different names.
+
+**Round 1 already surveyed the representative of this class.** ClawBio's six skills are *in* this
+directory, and [`CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) read them end to end. Nothing in the
+remaining fifteen is a different shape — they are the same fetch-and-render procedure over the same
+public sources, and the directory itself is the evidence for that rather than an argument. **So the
+agent-skill class is closed for round 2**, at the cost of one directory read rather than fifteen
+surveys, and round 3 should not reopen it without a reason that is not "there are more of them now".
+
+Two names in it are domains nothing here touches and neither survey raised: `chip-clonal-hematopoiesis-agent`
+(somatic clonal haematopoiesis) and `prs-net-deep-learning-agent`. Neither is an annotation table, and
+both are recorded only so the next reader knows they were seen.
 
 **Security note, since the search surfaced it.** `Barrelsravennagrass984/Personal-Genome-Pipeline` is a
 near-verbatim clone of `GeiserX/Personal-Genome-Pipeline` whose README is replaced with download bait
@@ -573,6 +608,22 @@ combine, what the reference distribution is, whether a percentile travels with i
 first real case would dictate, so fixing it now spends a one-way door on a guess.
 
 **What would unpark it:** a real consumer. See [PROPOSAL_0_5.md](proposals/PROPOSAL_0_5.md) D1.
+
+**The hypothesised case now has an instance in the wild (2026-09-13), and it does not unpark this.**
+From [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
+round-2 skim: [`dianguan0105/Custom-Personal-Genome-Interpretation`](https://github.com/dianguan0105/Custom-Personal-Genome-Interpretation)
+(`15fe28a`) ships `metaprs_weights.tsv` — **540 variants transcribed by hand out of a European Heart
+Journal 2022 supplementary Table S3**, with `rsid`, `effect_allele`, `other_allele`, `weight`, `maf`
+and `traits`. That is this entry's motivating sentence — *"a score published only in a paper's
+supplementary table"* — with a real file behind it instead of a hypothesis, and the column set they
+arrived at independently is close to the one deferred here.
+
+**It moves nothing, because it is the wrong half of the evidence.** The unpark condition above is *a
+real consumer*, and a competitor transcribing a table is a producer. It does answer the narrower
+question of whether anyone actually needs this — somebody did the typing — and it supplies a concrete
+corpus for the shape question if the design is ever taken up. What it still cannot say is how the
+weights combine, what reference distribution the score is against, or whether a percentile travels
+with it, which is exactly the one-way door this entry is holding shut.
 
 ---
 
