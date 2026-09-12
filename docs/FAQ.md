@@ -402,6 +402,17 @@ pinned release date, Ensembl is built elsewhere, and a derived lane without its 
 Each prints the reason from the registry field, and the exit code counts only real failures
 ([RM176](ROADMAP_HISTORY.md#rm176--eleven-builders-three-stages-each-and-the-roster-that-was-supposed-to-name-them-was-a-list)).
 
+**`check_declared_use(PUBMIND_TERMS, …)` skips under every declared use — is the PubMind drafter unreachable?**
+No. That function gates a **fetch**, and PubMind is never fetched: the operator builds the snapshot
+with `pubmind build`, and `draft_gene_panel_from_pubmind` reads it without consulting the gate,
+warning in the source's own words that every licence cell on the `pubmind` row is null
+(`@acquisition-gate-is-not-a-read-gate`; a test pins that the draft is not skipped). The terms are
+`None` on every axis because they are genuinely unsettleable, not unrecorded — the software licence,
+the paper's CC BY-NC-ND and the coordinate table's silence are three statements and none is about the
+bytes ([PUBMIND_ASSESSMENT](PUBMIND_ASSESSMENT.md)). What the unknown answer governs is publishing a
+module that carries those values, RM27's undesigned axis. A wrapper that runs the gate itself before
+calling the drafter is what makes it unreachable (S99).
+
 **The consumer-suggestions inbox is empty — were my notes lost?**
 No. An answered item moves byte-for-byte to
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md) with a row in its index. An empty

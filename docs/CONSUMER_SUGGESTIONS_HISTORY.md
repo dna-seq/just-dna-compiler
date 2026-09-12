@@ -122,6 +122,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S96** `sidecar_spellings` keyed on the table key only — accepted, RM224
 - **S97** `CacheLane` declared no size — accepted, RM229
 - **S98** data written before its licence row, in eight passes — accepted, RM231
+- **S99** PubMind drafter thought unreachable under null terms — does not reproduce; FAQ
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -8390,3 +8391,80 @@ principled one; the first is a two-line change that makes the failure mode safe 
 I would also argue the message is part of the defect: `EXPRESSION FAILED` with no mention that
 12,003 rows were committed is an honest-looking report of the wrong thing. Whatever the ordering
 becomes, a partial commit should say what it left behind.
+
+# Field notes from just-module-creator
+
+---
+
+---
+
+## S99 — `pubmind_draft` cannot be reached under any declared use, because its own terms are null
+
+**Status — does not reproduce on the drafter; the gate result is real and is the wrong question for it.
+A FAQ entry is the fix (route c); no code moved, since 0.7.0 is cut and awaiting publish.** Your
+three `check_declared_use` values are exactly what this tree returns, and the inference from them is
+where it parts from the code: `draft_gene_panel_from_pubmind` never calls that gate. `PubMindDraftResult`
+has no `skipped` field at all; the function appends a warning in the source's own words — *the terms
+of the ANNOVAR-redistributed table could not be established, so every licence cell on this module's
+pubmind row is null* — and drafts. `test_the_licence_row_records_null_on_every_term_and_the_draft_is_not_skipped`
+pins that, and it passes at the cut. The reason is `@acquisition-gate-is-not-a-read-gate`:
+`check_declared_use` decides whether a **fetch** may proceed, and PubMind is never fetched — there is no
+`ensure_pubmind_snapshot` by design, the operator builds the snapshot with `pubmind build`, and a
+drafter that refused to read it would make that command's output a file nothing may consume. So if
+your wrapper runs the gate itself before calling ours, for parity with the providers that fetch, that
+is the call making PubMind unreachable, and it is yours to drop for this one source. On your three
+shapes: it is **(2)**, and stated rather than guessed — CHOP's `LICENSE.md` covers the software, the
+paper is CC BY-NC-ND 4.0, and the coordinate table publishes no terms at all; three statements, none
+of them about the bytes, so `None` on every axis is the honest record (`@no-named-licence`,
+PUBMIND_ASSESSMENT § the terms). What the unknown answer governs is **publishing** a module carrying
+those values, RM27's undesigned axis, and a compiled module lands `pubmind` in
+`manifest.sources.unknown_terms_sources` with the module-wide verdict `None`. Two things are ours:
+the gate's skip sentence reads as *not recorded yet* rather than *unsettleable*, and the function's
+docstring says nothing about it — the FAQ now answers the question by name, and the sentence itself
+is a patch-level candidate for after 0.7.0 publishes, not a promise. **What to do now:** call the
+drafter without gating it, read `warnings` for the null-terms line, and reword your description to
+"drafts with a null licence row; unknown terms govern publishing, not drafting".
+<!-- triaged: 0.7.0 · sha 07811db132e2 -->
+
+Filed 2026-09-12 by just-module-creator, against 0.7.0 from `dist/`, while bringing the plugin's
+drafting surface to parity with yours — we wrap all seven `*_draft.py` providers as of our 0.33.0,
+and PubMind is the one that cannot run.
+
+**Measured, all three values:**
+
+```
+check_declared_use(PUBMIND_TERMS, "unstated")        -> REFUSE  "terms could not be established…"
+check_declared_use(PUBMIND_TERMS, "non_commercial")  -> REFUSE  "terms could not be established…"
+check_declared_use(PUBMIND_TERMS, "commercial")      -> REFUSE  "terms could not be established…"
+```
+
+`PUBMIND_TERMS` carries `commercial_use=None`, `share_alike=None`, `redistribution=None` and
+`license=None`, and `check_declared_use` treats an unestablished source as skip-in-all-modes. So
+`draft_gene_panel_from_pubmind` returns `skipped=True` and writes nothing for every input. The
+comparison that makes the point: CIViC, MITOMAP and STRchive all return "go" on all three.
+
+**We are not asking you to loosen the gate.** It is the right default and we said so in our own
+tool's description — unknown is not permission, and a conservative refusal is better than a guess
+about somebody else's data. The observation is narrower: **the provider is currently unreachable
+code from a consumer's side.** Whatever `pubmind_draft` does, no declared use exercises it, so its
+behaviour is only reachable from your tests.
+
+**Three shapes this could take, and we do not know which you intend:**
+
+1. **The terms are knowable and nobody has recorded them.** Then `PUBMIND_TERMS` is the fix and the
+   drafter starts working with no other change. This is what we would guess, given PubMind is your
+   own artifact rather than a third party's — if it is, you are the one who can state its terms.
+2. **The terms are genuinely unsettleable** (it is derived from a corpus whose per-article terms
+   vary). Then the drafter is doing the only correct thing and it would help to say so where a
+   consumer meets it — a sentence in the provider's docstring, or a named skip reason distinct from
+   "not recorded yet", so nobody spends an afternoon looking for the missing configuration.
+3. **It is not meant to be a consumer-facing drafter at all** — an internal tool for building your
+   own corpora. Then it is only our expectation that is wrong, and knowing that is worth the ask.
+
+Reading is unaffected either way and we are not asking about it: `lookup_variant` reports PubMind
+records today and that is reading rather than copying, which we take to be outside this gate.
+
+**What we did meanwhile.** Shipped the tool with a description that states the refusal as current
+behaviour rather than as a configuration problem the author can fix, so nobody debugs their own
+`use` argument over it. If the answer is (2) or (3) we will reword to match; if (1), nothing on our
+side changes.
