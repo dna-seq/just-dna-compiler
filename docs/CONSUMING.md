@@ -135,9 +135,13 @@ never a compiler flag and never a mode. Three axes, and they are independent:
 - **`redistribution`** — recorded, and deliberately *not* gated yet.
 - unknown terms — a source may publish no licence at all. That **warns**; it does not gate.
 
-A module built from ClinPGx, CPIC or PharmVar is research-only and no-sale, and the compile gate keys
-on `sources.csv` and nothing else. If you are building a commercial product, read the sources block
-rather than the headline licence.
+A module built from ClinPGx, CPIC or PharmVar is research-only and no-sale. If you are building a
+commercial product, read the per-source rows rather than the headline licence: a host's terms are not
+its contents' terms, so the licence at the top is a floor each record may override.
+
+In a **compiled** module those rows are `sources.parquet` and `manifest.sources` — the authored file is
+named `licensing.csv` (older spelling `sources.csv`), but the artifact keeps the old name for the whole
+0.x line, because both are inside `artifact.digest` and renaming them waits for the major.
 
 ## Where to go next
 

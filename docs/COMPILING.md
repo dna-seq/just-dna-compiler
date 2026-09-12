@@ -12,8 +12,20 @@ my_module/
 ├── variants.csv         one CSV per table kind — only the kinds you use
 ├── weights.csv
 ├── resolution.csv       injected by the enricher, not authored by hand
-└── sources.csv          who the data came from and what you may do with it
+└── licensing.csv        who the data came from and what you may do with it
 ```
+
+!!! warning "`licensing.csv` is the current spelling; `sources.csv` is the old one"
+
+    Both are accepted and read identically, but `sources.csv` is deprecated and is **removed at 1.0**,
+    so write `licensing.csv` in anything new. A module carrying *both* is refused. The old name
+    collided with the `source` *column* that means "which link answered" in four other tables, which is
+    what the rename fixes.
+
+    The compiled side keeps the old name for the whole 0.x line: `licensing.csv` becomes
+    `sources.parquet` and `manifest.sources`, because those are inside `artifact.digest` and published
+    keys, so renaming them is a removal and waits for the major. A module therefore reads
+    `licensing.csv` → `sources.parquet` → `manifest.sources`, and that inconsistency is deliberate.
 
 **One CSV = one concern.** A module includes only the table kinds it needs; there is no schema where
 a PGx module carries GWAS columns on every row. `just-dna-compiler template <kind>` prints a
@@ -28,6 +40,22 @@ just-dna-compiler scaffold ./my_module      # the whole directory, stubs include
 `describe <kind>` emits the full machine description — columns, options, requirements — and
 `reference` prints the authoring reference for every model at once. Those four commands are the
 schema's own voice; a hand-written column table beside them goes stale on the next release.
+
+For the same material as a page rather than as stdout, the site carries one **table reference** per
+kind — what the table is grained on, who writes which cell, what it becomes in the artifact, and the
+symptom when it goes wrong. Every one is generated from the live models, so a new table kind gets a
+page by construction; they are built rather than committed, so these are absolute links:
+
+| Table | Page |
+|---|---|
+| `variants.csv` | [tables/variants/](https://just-dna.life/just-dna-compiler/tables/variants/) |
+| `studies.csv` | [tables/studies/](https://just-dna.life/just-dna-compiler/tables/studies/) |
+| `licensing.csv` | [tables/licensing/](https://just-dna.life/just-dna-compiler/tables/licensing/) |
+| `overrides.csv` | [tables/overrides/](https://just-dna.life/just-dna-compiler/tables/overrides/) |
+| `resolution.csv` | [tables/resolution/](https://just-dna.life/just-dna-compiler/tables/resolution/) |
+
+Each carries a `#columns` anchor for the column list alone. The pages are named for the **current**
+spelling, so `sources.csv`'s page is `tables/licensing/`.
 
 ## Validate first
 

@@ -84,15 +84,16 @@ and matches on `match_on` rather than the natural key. Where a human must decide
 drafter writes a **placeholder** rather than a plausible value, and a generated stub is built so that
 it *cannot* compile. Both are deliberate: a tool that guessed would hide the decision.
 
-Every provider writes its own `sources.csv` row, keyed `(source, layer)`, inside the same atomic
-commit as the rows it drafted. The compile gate keys on that file and nothing else, so a module
-drafted from a licensed source arrives already carrying what the gate reads.
+Every provider writes its own `licensing.csv` row, keyed `(source, layer)`, inside the same atomic
+commit as the rows it drafted. The compile gate keys on that file and nothing else, so a module drafted
+from a licensed source arrives already carrying what the gate reads. (`sources.csv` is the older
+spelling of the same file — still read, deprecated, removed at 1.0; a module carrying both is refused.)
 
 !!! warning "Licensing follows the source, and some of it is research-only"
 
     ClinPGx, CPIC and PharmVar are CC BY-SA with no-sale terms. PharmVar needs your own key and its
     cache is unpublishable. A source may also publish no licence at all — unknown commercial terms
-    **warn**, they do not gate. Read `sources.csv` before shipping anything commercial.
+    **warn**, they do not gate. Read `licensing.csv` before shipping anything commercial.
 
 ## 3. Caches and snapshots
 
