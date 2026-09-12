@@ -766,11 +766,28 @@ RELEASE_RECORDS: dict[str, ReleaseRecord] = {
         manifest_fields=[
             "authority_precedence",
             "clin_sig_concordance",
+            "expression_effects",
             "gene_validity.superseded_count",
             "identity.version_coerced_from",
             "verification.checks",
         ],
         declared=[
+            DeclaredChange(
+                axis="manifest_fields",
+                target="expression_effects",
+                kind="addition",
+                detail=(
+                    "RM200's tenth derived-fact sidecar, `expression_effects.csv`, summarised as a "
+                    "top-level manifest block beside `gene_metrics` and `gene_validity`. The block "
+                    "is `None` on every module that carries no such table — which is every "
+                    "reference module — so what moved is the key appearing at all, not a value. "
+                    "Absent before, never wrong. Found by the release gate at the cut: the block "
+                    "landed after the round's last sweep and nothing else walks the manifest's "
+                    "top-level keys against the record."
+                ),
+                item="RM200",
+                requires=(),
+            ),
             DeclaredChange(
                 axis="manifest_fields",
                 target="clin_sig_concordance",

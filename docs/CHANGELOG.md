@@ -56,6 +56,13 @@ then passed the module as unrestricted. Eight passes had the same two-step tail.
 Refused: writing the licence row first, because a row for a pass that then contributed nothing is a
 false statement in a published artifact. The `if write and result.written` gate is unchanged.
 
+**The release gate, re-run at the cut, found one undeclared manifest field.** `expression_effects` —
+the top-level block RM200 added for the tenth derived sidecar — appears (as `null`) on every module
+compiled under 0.7.0 and on none under 0.6.6, and the 0.7.0 record did not list it: the block landed
+after the round's last sweep. Declared as an addition, and the gate reads `covers the measurement`
+again: content_signature 0/15, manifest_fields 15/15, parquet_bytes 14/15, parquet_schema 14/15,
+warnings 3/15, `cyp2c9_warfarin_grch37` unmeasured.
+
 ## 2026-09-11 — RM230: a leak an exemption hid, a remedy no flag could reach, and a debt that was not owed
 
 **`EuropePmcClient.lookup` leaked all three failure legs** — `httpx.HTTPStatusError`,
