@@ -34,6 +34,39 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-13 — Genomi survey: what a genomics *runtime* annotates, and the seven gaps it exposes
+
+**Documentation only** — a probe round, no code, no `RMn`. New:
+[probes/GENOMI_SURVEY.md](probes/GENOMI_SURVEY.md), a competitor survey of
+[`exon-research/genomi`](https://github.com/exon-research/genomi) at commit `1df4f5b` (version 0.1.0,
+Apache-2.0), read from its source rather than its README.
+
+The short finding is that genomi is a *runtime* — an agent's local index of one person's genome, plus
+live fetchers — and not a competing artifact format, so its ~100 operations partition into reference
+annotation (comparable), sample compute (consumer-side here, by the data-agnostic goal) and agent
+runtime (out of scope). Only the first bucket is compared. Its declared source roster is thirty
+entries, but `adapter_status` splits it fourteen wired against sixteen `record_via_research` — an
+agent reading a page by hand — and its whole *authored* annotation corpus is ten hardcoded Python
+dictionaries in `capabilities/nutrigenomics/catalog.py`, which is a `variants.csv` written in the
+wrong language. §7 translates two of those records into a module and shows what breaks: their record
+has one `effect_allele` where we have a row per genotype, and it encodes the APOE e2/e3/e4 haplotype
+as an English sentence in a string field.
+
+**Nine gap rows, seven real, six of the seven gene-keyed**: Open Targets target–disease and L2G,
+drug target/mechanism (ChEMBL), pathway membership (Reactome/MSigDB), baseline tissue and cell-type
+expression (HPA), regulatory-feature overlap (ENCODE cCRE), and perturbation screens (DepMap/ORCS);
+PGxDB is the small ninth and the 1000 Genomes ancestry panel is charter-blocked. Every candidate
+prices as a **derived sidecar via an enricher pass** on the `gene_validity.csv` template — half cost
+under the 0.6 amendment — never as an authored table kind, because no author decides those cells.
+The one authored-layer candidate is genomi's `out_of_scope_claims`, which is a third thing beside
+`conclusion` and `negatives`: the popular claim a row exists to contradict.
+
+HPO stays refused for the reasons already on record in [ENRICHER.md](ENRICHER.md) (its licence cannot
+be established, and `genes_to_phenotype.txt` is a different grain), and the survey records what has
+no analogue on their side either — heteroplasmy, repeat alleles, copy number, ACMG SF, MANE,
+constraint, CIViC, AlphaGenome, the literature pack, licence-as-data, signing, the overlay and the
+round trip.
+
 ## 2026-09-12 — RM234: `AcmgReport.clean` is three-valued, because it was `True` on a run that compared nothing
 
 **`just-dna-enricher` only — no parquet, model or manifest field changes, and the release class is the

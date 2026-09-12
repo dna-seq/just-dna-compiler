@@ -49,7 +49,9 @@ edited as routine work:
   `CLINPGX_ARCHIVES` (**a retired filename still answers 200**, so the builder refuses the old member
   names); `ALPHAGENOME_ATLAS` (the three bulk artifacts are **not one licence** — only the AVI scores
   are commercially usable; §2.6 names the four things the Terms need that `SourceRow` cannot say);
-  and the dogfood and VCF audit rounds. **No `RMn` is filed there.**
+  `GENOMI_SURVEY` (the competitor read of genomi — a *runtime*, not a format; its ten-record
+  curated catalogue is a `variants.csv` in Python, and §8 ranks the seven real annotation gaps, all
+  priced as derived sidecars); and the dogfood and VCF audit rounds. **No `RMn` is filed there.**
 - **`docs/audit/`** — the tier references re-derived from the code, **evidence, never contract**; the
   maintained reference is the one in `docs/` root.
 - **`docs/vendor/`** — upstream files kept for reference; **count them from `ls`, never from a
