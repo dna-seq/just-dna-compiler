@@ -19,9 +19,20 @@ dev = [
 #
 # **Material entered maintenance mode in early 2026**; new feature work is in Zensical, from the same
 # author, which reads `mkdocs.yml` natively. That is why the configuration is `mkdocs.yml` and not
-# `zensical.toml`: the migration is then a change of build command, not of the site. The one thing
-# holding the switch back is `mkdocstrings` — the API reference below is generated from the packages'
-# own docstrings, and Zensical's equivalent is announced rather than shipped.
+# `zensical.toml`: the migration is then a change of build command, not of the site.
+#
+# **What actually blocks that switch was measured on 2026-09-12, and it is not `mkdocstrings`.** A
+# Zensical 0.0.61 build of this exact config, in a scratch copy, rendered all 60 real `docs/` pages,
+# reported the same single anchor issue with a better diagnostic, and **`mkdocstrings` worked** — a
+# `::: just_dna_format.identity` page came out with its signatures. (It is also about three times
+# faster, which is **not** a reason for anything: a docs site is built by CI and occasionally by hand,
+# so seconds per build decide nothing. Recorded only so the next reader does not mistake it for a
+# finding.) What
+# did not run is **`mkdocs-gen-files`**: Zensical validates that the plugin is installed and then
+# ignores it, so the home page and all 119 API pages were absent with no warning. A silent no-op, which
+# is worse than a refusal. Re-run that probe rather than re-reasoning about it; the entry under
+# `@a-docs-site-nav-is-a-registry-over-a-directory-that-grows` in docs/AGENT_NOTES.md has the method and
+# the pass criterion.
 docs = [
     # **The build is driven by ProperDocs, not by `mkdocs`, and the reason is in the lock file rather
     # than in anyone's opinion.** MkDocs 1.x upstream is unmaintained; the announced 2.0 removes the
@@ -37,7 +48,19 @@ docs = [
     # prefers `properdocs.yml` and says so at `INFO` on the fallback; the explicit flag silences that
     # without closing the other exit, since **Zensical** — the Material team's successor, Material
     # itself having entered maintenance mode in early 2026 — reads `mkdocs.yml` natively and is the
-    # likely destination once it can generate an API reference from docstrings.
+    # likely destination once it runs `mkdocs-gen-files` (see above: everything else already works).
+    #
+    # **ProperDocs is chosen despite being nearly as static as what it forked, and that is the honest
+    # form of the argument.** Measured 2026-09-12: `mkdocs/mkdocs` has had no commit in three months
+    # and no release since 1.6.1 in August 2024. ProperDocs has had **one** commit in three months and
+    # no release since 1.6.7 in March 2026 — a burst of work in March, then nothing. Zensical had 70
+    # commits in the last month and released v0.0.61 the day before this was written, with
+    # `mkdocstrings`' own author as its second contributor. So the live project is the one that cannot
+    # build this site, and the one that can is frozen. Frozen is acceptable **here** and only here: a
+    # docs builder is a pinned tool in a lock file, not a service, it has no attack surface a CI job
+    # reaches, and ProperDocs is still strictly ahead of `mkdocs` 1.6.1 by six months of fixes while
+    # being the version two of these four plugins actually declare. Its licence is BSD-2-Clause;
+    # GitHub reads it as `NOASSERTION` only because the fork added a copyright line to the header.
     #
     # `mkdocs` is still capped below 2.0: `mkdocs-material` and `mkdocstrings` import it regardless of
     # what drives the build, so a 2.0 resolved into this group breaks them whoever is building.

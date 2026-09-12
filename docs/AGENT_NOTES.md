@@ -3966,4 +3966,32 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   `mkdocs-gen-files` and `mkdocs-literate-nav` both declare it — which is how the question surfaced at
   all, through its own warning printing into our build. The config keeps the name `mkdocs.yml` (with
   `-f mkdocs.yml` on every command) because Zensical, the Material team's successor, reads that name
-  natively and is the likely next move once it can render an API reference from docstrings.
+  natively and is the likely next move.
+
+  **What blocks the Zensical switch was measured, and it is `mkdocs-gen-files` rather than
+  `mkdocstrings`** (2026-09-12, Zensical 0.0.61). The method, because it is worth re-running rather than
+  re-reasoning about, and it takes ten minutes: copy `mkdocs.yml`, `docs/`, `README.md`, `scripts/` and
+  the three `*/src` trees into a scratch directory, point `site_dir` inside it, and
+  `uv run --with zensical --with 'mkdocstrings[python]' --with mkdocs-gen-files --with
+  mkdocs-literate-nav zensical build`. Zensical will not accept a symlinked `docs/` (`docs_dir must be
+  within project root`), hence the copy.
+
+  What it found: all 60 real `docs/` pages render, the single S35 anchor is reported with a better
+  diagnostic than ProperDocs gives, and **`mkdocstrings` works** — a probe page holding
+  `::: just_dna_format.identity` came out with ten rendered signatures. What does **not** work is
+  `mkdocs-gen-files`: Zensical checks the plugin is installed, then ignores it, so `index.md` and all
+  119 API pages were simply absent and **nothing said so**. The pass criterion for a future probe is
+  therefore one line — `find <site>/api -name index.html | wc -l` returns the module count and
+  `<site>/index.html` exists. A silent no-op is the failure mode to watch for in any plugin this site
+  depends on, not an error message.
+
+  **And the health argument does not point the same way as the capability argument, which is why both
+  are written down.** Measured the same day: `mkdocs/mkdocs` no commit in three months, no release since
+  1.6.1 in August 2024. ProperDocs **one** commit in three months, no release since 1.6.7 in March 2026
+  — a burst at launch, then nothing. Zensical 70 commits in the last month, v0.0.61 released the day
+  before, with `mkdocstrings`' own author as its second-largest contributor. So the living project is
+  the one that cannot build this site and the frozen one is the one that can. Frozen is tolerable for a
+  **builder pinned in a lock file** in a way it would not be for a library or a service, and ProperDocs
+  is still six months of fixes ahead of `mkdocs` 1.6.1 while being the version two of the four plugins
+  declare. Build speed is **not** part of this judgement: Zensical is roughly three times faster and
+  that decides nothing, since the thing is built by CI and occasionally by hand.

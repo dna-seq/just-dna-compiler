@@ -57,7 +57,11 @@ moves and there is nothing for a consumer to do. Two things are worth knowing an
   unmaintained and the announced 2.0 removes the plugin system with no migration path; ProperDocs is a
   1.x continuation over the same `mkdocs.yml`, and `mkdocs-gen-files` and `mkdocs-literate-nav` already
   depend on it. The config keeps the `mkdocs.yml` name so that Zensical — the Material team's successor,
-  Material itself having entered maintenance mode — stays a change of build command away.
+  Material itself having entered maintenance mode — stays a change of build command away. **Zensical was
+  tried, not assumed:** it renders all 60 real `docs/` pages and `mkdocstrings` works under it, but it
+  accepts `mkdocs-gen-files` and then ignores it, so the home page and every API page vanish with no
+  warning. That one plugin is the whole distance to the switch, and `docs/AGENT_NOTES.md` carries the
+  ten-minute probe and its pass criterion rather than an opinion to re-argue.
 
 Heading anchors are slugified GitHub's way (`pymdownx.slugs.slugify`), which is what
 `test_doc_links.py` has always verified them against; the first build without it reported 540 broken
