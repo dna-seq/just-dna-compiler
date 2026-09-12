@@ -4012,3 +4012,25 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   is still six months of fixes ahead of `mkdocs` 1.6.1 while being the version two of the four plugins
   declare. Build speed is **not** part of this judgement: Zensical is roughly three times faster and
   that decides nothing, since the thing is built by CI and occasionally by hand.
+
+
+  **A generated page needs an assertion, not a green build (2026-09-12, the per-table reference).** The
+  table pages derive everything from `reference.authoring_reference()` and the walked registries, and two
+  identity rows came out silently false while the page rendered perfectly, `--strict` passed, every link
+  resolved and the nav partitioned. First: `licensing.csv` claimed it becomes no parquet and carries no
+  fact signature, because the registries are keyed on the deprecated spelling `sources.csv` while the page
+  is written under the current one — `@sidecar-name-and-place` exactly, *a map keyed on one spelling
+  answers the other as a table it never heard of*, and `layout.sidecar_key` exists for it. Second, and
+  worse: the repair rebound `key` to the natural-key tuple two lines later, shadowing the spelling key, so
+  **every** table's fact-signature and attestation rows read "no". One character of scope, ten wrong
+  pages, silence. A peer session had just learned the same thing from the other end — `isinstance(param,
+  click.Option)` is `False` for every Typer parameter because Typer vendors its own click, and ~100 CLI
+  pages shipped with empty option tables.
+
+  So `gen_table_pages.py` asserts its own output at build time, and the assertions are **sets, never
+  counts**: the pages claiming a fact signature must equal `_FACT_TABLES` by spelling key, because
+  `sources.csv`/`licensing.csv` are one table with two names and a count would have to encode that
+  off-by-one rather than dissolve it. Demonstrated by reintroducing the shadowing and watching the build
+  fail naming all ten. The rule generalises past this file: **read one generated page against its
+  registry before trusting the generator**, because every check a docs build runs is about the HTML being
+  well-formed and none is about it being true.
