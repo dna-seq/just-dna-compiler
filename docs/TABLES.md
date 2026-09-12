@@ -108,9 +108,18 @@ spellings of confidence and must not be filled from one another.
 scoring file itself is deliberately not authored here: a polygenic score's variant weights are a
 data file, and carrying them as an authored table is tracked separately rather than assumed.
 
-A module citing an academic-research-only score **cannot compile without a declared use**, because the
-Catalog publishes `license` per score record and it varies. That is the one place this table reaches
-the compile gate.
+**This table reaches no gate, and `research_tier` is not a licence axis.** Its two members are a
+*calibration* judgement — `research_only` pins as data that a score yields a within-reference
+Z/percentile, never an ancestry-calibrated absolute risk, and `calibrated` says the opposite — so
+`research_only` is about what the number means, not about who may use it. Nothing in `pgs.csv`
+changes what compiles. The paragraph here said the reverse until 2026-09-13, and an author who had
+read it believed the accession carried its restriction to the gate by itself, so an empty licence
+ledger read as *nothing restrictive here* rather than as *nobody declared anything* (S101).
+
+What the table does owe is a licence row. The Catalog publishes `license` **per score record** and it
+varies, so a score whose record restricts use needs its own row in
+[`licensing.csv`](#licensingcsv) — and that row is what the gate reads, keyed on that file and
+nothing else.
 
 ## activity_phenotype.csv
 
@@ -230,6 +239,15 @@ terms cell must be unable to compile, rather than publishing a module whose lice
 commercial or non-commercial, and a source with unknown commercial terms *warns* — it never gates. A
 host's terms are also not its contents' terms: the host's row is the floor and each record may override
 it, so one permissive hosting statement does not license what it hosts.
+
+**`layer` names what a source fed, not which table it fed.** Every *authored* table is
+`annotation` — the layer where a curated claim is expressed and a derivative work genuinely exists —
+whatever domain the table covers, so a PGS Catalog row filed against `pgs.csv` reads as
+*annotation-layer content* in the gate's own error message, and a row about a score panel is not a
+mis-filing. The other members are the machine-produced fact sidecars, which carry what a source
+*reports*. There is deliberately no per-table member: `VALID_SOURCE_LAYERS` is a **wire** vocabulary,
+so a new one is a format change rather than a label, and the last request for one was refused on the
+reporter's own argument (S82, [RM147](ROADMAP_HISTORY.md#rm147--a-source-read-by-hand-that-yields-no-row-had-nowhere-to-go-and-the-home-already-existed)).
 
 **Either spelling is a key.** `licensing.csv` is current and `sources.csv` deprecated until 1.0; write
 to the file you read, and a module carrying both is an error rather than a merge.

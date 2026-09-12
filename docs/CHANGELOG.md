@@ -72,6 +72,42 @@ no analogue on their side either — heteroplasmy, repeat alleles, copy number, 
 constraint, CIViC, AlphaGenome, the literature pack, licence-as-data, signing, the overlay and the
 round trip.
 
+## 2026-09-13 — S101: `pgs.csv`'s page claimed a compile gate, and read a calibration term as a licence one
+
+**`just-dna-format` and the docs — a `Field(description=…)` and two `TABLES.md` sections; no behaviour
+changed, and nothing in the gate moved.** In the tree and in no version anyone can install.
+
+`TABLES.md`'s `## pgs.csv` said *"a module citing an academic-research-only score cannot compile
+without a declared use … that is the one place this table reaches the compile gate"*. It reaches no
+gate at all. Measured on a scaffolded module carrying `PGS000001` at `research_tier=research_only`,
+through `validate_spec(strict=True)`:
+
+```
+A. no licensing.csv at all                  valid=True
+B. commercial_use=false, declared_use empty valid=False   # the gate, and it is licensing.csv's
+C. declared_use=non-commercial              valid=True
+```
+
+**The conflation under it is the part worth recording.** `research_tier` is a *calibration* axis, not a
+licence one — `research_only` pins as data that a score is a within-reference Z/percentile rather than
+an ancestry-calibrated absolute risk, which is what `pgs.py` has said since the field shipped in 0.4.
+Two unrelated senses of "research only" met in one paragraph. Wiring it to the gate is refused rather
+than deferred: one field carrying a statistical frame *and* a licence term is the overloading Principle
+5 forbids.
+
+**The field's own description was silent in the same way** and is the third surface fixed. It read
+`research_only | calibrated (VALID_RESEARCH_TIERS)` — a member list naming no axis, which is what let
+the prose read it as terms (`@field-description-is-a-claim`). It now names the axis and says it reaches
+no gate.
+
+**Also stated, and settled rather than new:** `layer` names what a source *fed*, not which table it
+fed, so every authored table is `annotation` and a PGS Catalog row reads as annotation-layer content in
+the gate's error. There is deliberately no per-table member — `VALID_SOURCE_LAYERS` is a wire
+vocabulary, and the last request for one was refused on the reporter's own argument (S82, RM147).
+
+Reported by just-module-creator, who had the diagnosis right and asked for the behaviour reading if we
+disagreed; their own dossier was teaching the correct thing before ours was.
+
 ## 2026-09-12 — RM234: `AcmgReport.clean` is three-valued, because it was `True` on a run that compared nothing
 
 **`just-dna-enricher` only — no parquet, model or manifest field changes, and the release class is the

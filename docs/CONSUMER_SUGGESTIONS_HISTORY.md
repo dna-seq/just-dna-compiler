@@ -139,6 +139,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S98** data written before its licence row, in eight passes — accepted, RM231
 - **S99** PubMind drafter thought unreachable under null terms — does not reproduce; FAQ
 - **S100** `AcmgReport.clean` was `True` on a run that consulted no list — accepted, RM234; spun off RM235
+- **S101** `pgs.csv`'s paragraph claimed a compile gate — doc fixed; `research_tier` is calibration
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -4358,3 +4359,106 @@ per registry and combines under Kleene rather than withhold-on-any-unknown, and 
 code on the answer. If you wrap `check-identifiers` too, guard it the way you guarded this one.
 
 <!-- triaged: 0.7.0 · sha 637b7d163d19 -->
+
+# Field notes from just-module-creator, 2026-09-13 — a paragraph naming a gate its table does not reach
+
+*Filed 2026-09-13 while bringing `just-module-creator`'s per-table dossiers up to 0.7 against your
+new `docs/TABLES.md` and the generated table pages. The generated pages are a straight win for us —
+they are what the dossiers now cite instead of restating a column list, and we stripped 1237
+`file:line` citations in the same pass. One note, and it is about the prose half.*
+
+## S101 — `TABLES.md`'s `pgs.csv` paragraph names a gate that table does not reach
+
+**Status — accepted as a documentation defect, fixed in the tree on 2026-09-13; and your fork is
+answered `no`, `research_tier` must not reach the gate.** All three rows of your table reproduce
+verbatim, on a module scaffolded with `--kind pgs.csv` carrying `PGS000001` at
+`research_tier=research_only`, through `validate_spec(strict=True)`:
+
+```
+A. no licensing.csv at all                 valid=True
+B. commercial_use=false, declared_use empty valid=False
+      ERROR: licensing: ['pgs_catalog'] contribute annotation-layer content under terms that
+      forbid sale, and this module records no non-commercial declaration for them. …
+C. declared_use=non-commercial             valid=True
+```
+
+**The defect is worse than a wording slip, and it is the reason you found it.** `research_tier` is not
+a licence axis at all — it is a *calibration* axis, and the paragraph read one sense of "research
+only" as the other. From `pgs.py` on the day the field shipped: *"`research_tier` — pins as data that
+a PRS is a within-reference Z/percentile, never an ancestry-calibrated absolute risk; `|Z| >= 2.5` in
+a healthy proband is a population-stratification signal, not a disease prediction."* So `research_only`
+says what the number **means**, and `calibrated` is its opposite; neither says anything about who may
+use the score. Wiring it to the compile gate would overload one field with two axes, which Principle 5
+forbids, so the answer to your alternative is a definite no rather than a deferral.
+
+**Three surfaces changed, because the field's own description was silent in the same way** — it read
+`research_only | calibrated (VALID_RESEARCH_TIERS)`, a member list with no axis named, which is what
+let the prose conflate the two. An analogy in a `Field(description=…)` is a claim
+(`@field-description-is-a-claim`), and so is an omission:
+
+- [`docs/TABLES.md`](TABLES.md) `## pgs.csv` — your candidate fix, taken as written: what the table
+  owes is a licence row, and the link goes to `## licensing.csv` rather than restating the gate.
+- [`docs/TABLES.md`](TABLES.md) `## licensing.csv` — your second half, below.
+- `PgsRow.research_tier`'s description now names the axis and says it reaches no gate.
+
+**On the missing `pgs` layer: correct, deliberate, and now stated.** `layer` names what a source
+**fed**, not which table it fed. Every authored table is `annotation` — the layer where a curated
+claim is expressed and a derivative work genuinely exists — so a PGS Catalog row is annotation-layer
+content whatever the table's domain, and the error message you saw is right rather than confusing by
+accident. A per-table member is refused on a stronger argument than tidiness: `VALID_SOURCE_LAYERS` is
+a **wire** vocabulary, so adding one is a format change, not a label. That was settled when the last
+request for a new member came in — S82, [RM147](ROADMAP_HISTORY.md#rm147--a-source-read-by-hand-that-yields-no-row-had-nowhere-to-go-and-the-home-already-existed),
+refused on the reporter's own argument.
+
+**What to do now: nothing — your dossier is already right, and it was right before ours was.** Keep
+teaching that `research_tier` does not reach the gate, and cite `licensing.csv`'s section rather than
+`pgs.csv`'s for anything about compiling. The clause you wrote into your own `pgs` dossier about the
+`annotation` layer can stay; it now matches what we say. Patch class, schema and docs only, in the
+tree and in no version you can install — `0.7.0` is the cut you have.
+<!-- triaged: 0.7 · sha a7dc55802e06 -->
+
+**What it says.** *"A module citing an academic-research-only score **cannot compile without a
+declared use**, because the Catalog publishes `license` per score record and it varies. That is the
+one place this table reaches the compile gate."*
+
+**What we measured**, on format/compiler 0.7.0 as installed, one scaffolded module, `pgs.csv`
+carrying `PGS000001` with `research_tier=research_only`, `validate_spec(strict=True)`:
+
+| `licensing.csv` | verdict |
+|---|---|
+| absent | **valid** — `module_not_closed` warning only |
+| `commercial_use=false`, `declared_use` empty | **error**: *"`['pgs_catalog']` contribute annotation-layer content under terms that forbid sale, and this module records no non-commercial declaration for them."* |
+| `commercial_use=false`, `declared_use=non-commercial` | **valid** |
+
+So `research_tier` on a `PgsRow` does nothing to the compile, and a module citing a research-only
+score compiles clean when the licence ledger is simply empty. The gate is entirely
+`licensing.csv`'s — which your own `licensing.csv` section already states correctly and better
+(*"the only table the compile licence gate reads, and the gate keys on this file and nothing
+else"*). The two paragraphs disagree, and the `pgs.csv` one is the one an author authoring a score
+panel will read.
+
+**Why it matters more than a wording slip.** The failure mode is the one your `licensing.csv`
+section already names — *"a module drafted entirely from one source once carried no `licensing.csv`
+at all and compiled as though unrestricted"*. An author who has read the `pgs.csv` paragraph
+believes the accession itself carries the restriction to the gate, so an empty ledger reads as
+*nothing restrictive here* rather than as *nobody declared anything*.
+
+**A second thing nobody states, found in the same probe.** There is no `pgs` member of the `layer`
+vocabulary — it is `annotation, clinical_assertion, expression_effect, frequency, gene_metrics,
+gene_validity, gwas_effect, literature, resolution` — so a PGS Catalog licence row is filed under
+`annotation`, which is why the error above talks about *annotation-layer content* for a row an
+author wrote about a score. Worth one clause wherever the layer vocabulary is introduced; we have
+written it into our own `pgs` dossier meanwhile.
+
+**Candidate fix**, and we may have the wrong end of it: replace the `pgs.csv` sentence with what the
+table actually owes — the Catalog publishes `license` per score record and it varies, **so a score
+whose record restricts use needs a `licensing.csv` row, and that row is what the gate reads** — and
+link the `licensing.csv` section rather than restating the gate. If instead the intent is that
+`research_tier` *should* reach the gate, then the note is a behaviour report rather than a doc one
+and we would rather hear that, because we currently teach authors that it does not.
+
+---
+
+---
+
+---

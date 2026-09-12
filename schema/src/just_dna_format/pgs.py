@@ -81,7 +81,12 @@ class PgsRow(AuthoredModel):
     research_tier: str | None = Field(
         default=None,
         json_schema_extra={**vocabulary("research_tier", VALID_RESEARCH_TIERS), **since("0.4.0")},
-        description="research_only | calibrated (VALID_RESEARCH_TIERS)",
+        description=(
+            "Calibration frame, not a licence term (VALID_RESEARCH_TIERS): `research_only` is a "
+            "within-reference Z/percentile, `calibrated` is ancestry-calibrated absolute risk. "
+            "Reaches no compile gate — a score whose Catalog record restricts use needs a "
+            "licensing.csv row, which is the only thing the gate reads."
+        ),
     )
 
     @field_validator("pgs_id")
