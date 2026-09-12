@@ -79,6 +79,22 @@ def test_every_declared_code_is_one_a_call_site_can_actually_produce():
     assert produced == set(VALID_VERDICT_CODES)
 
 
+def test_the_deliberate_non_members_are_non_members_and_are_spelled_as_the_skip_vocabulary_spells_them():
+    """`_DELIBERATELY_ABSENT` states two claims, so it is read by something rather than only written.
+
+    A constant that documents a rule nothing enforces is the defect this same change repaired in
+    `unreadable_tables` — a docstring promising a filter the code did not apply. Both claims the
+    comment makes are checked here: that none of these is a verdict code, and that each is spelled the
+    way `VALID_VERIFICATION_SKIPS` spells it, since one fact under two spellings is the normalizer this
+    tier keeps having to write (`@one-normalizer-two-spellings`).
+    """
+    from just_dna_enricher.verdict import _DELIBERATELY_ABSENT
+    from just_dna_format.vocab import VALID_VERIFICATION_SKIPS
+
+    assert _DELIBERATELY_ABSENT & VALID_VERDICT_CODES == frozenset()
+    assert _DELIBERATELY_ABSENT <= VALID_VERIFICATION_SKIPS
+
+
 def test_a_run_that_could_not_read_an_id_bearing_table_is_a_no():
     """RM235's surviving half, on the report itself.
 

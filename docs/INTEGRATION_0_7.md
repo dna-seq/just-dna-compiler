@@ -121,7 +121,7 @@ fixed by the same upgrade, and a consumer that ignores `verification` meets neit
 is the shape worth carrying — **a vocabulary is additive for the writer and closed for the reader**,
 so every new member is a compatibility event for anybody validating against their own copy of it.
 
-### Four checks can newly refuse
+### Five checks can newly refuse
 
 None of them is a schema change, and each is a fix:
 
@@ -152,6 +152,26 @@ None of them is a schema change, and each is a fix:
   builds and warns. No reference example carries such a finding. `build_disagreement_error` is wired
   into **both** `validate_spec` and `compile_module`, so the refusal arrives at validate time
   (`@validate-refuses-all`). S78 is answered and archived.
+
+- **RM235 — `check-identifiers --strict` newly exits 1 when a table carrying identifiers is present
+  and will not parse (2026-09-13).** It printed the unreadable table and then exited **0** beneath
+  *all identifiers current*: the five stale lists are empty for that reason exactly as they are when
+  everything agreed, so the verdict contradicted the diagnosis directly above it. A terminal reader
+  saw both halves; **a caller reading `IdentifierReport.clean` in-process saw only the verdict**,
+  which is how this arrived (S100, from an MCP wrapper). If your pipeline shells out and reads the
+  exit code, a module of yours with an unparseable `studies.csv`/`haplotypes.csv`/`pgs.csv` will
+  newly refuse — and it was never being checked. A check you switched off, or a module with no
+  id-bearing table at all, still exits 0.
+
+**And one thing stops refusing, which is the other half of the same change.** `AcmgReport.clean` was
+`bool | None` for a day (RM234) and is now a `Verdict` — falsy when it carries any reason code, a pass
+when empty. `if report.clean:` is correct across all three shapes and needs no edit. What moves is the
+`nothing_to_check` arm: a list that **was** read, against a module stating no `acmg_sf` cell, is a pass
+rather than a withhold, because that is a module with nothing to disagree about. `verification.json`
+still records a `skipped="nothing_to_check"` there, so **a consumer deriving pass/fail from the
+attestation alone sees a skip where the verdict says pass** — the two answer different questions
+deliberately, and the attestation's is *was the question put*. If you gate on the record rather than on
+the report, treat `nothing_to_check` as a pass and `offline`/`unreachable` as the refusals.
 
 ---
 
