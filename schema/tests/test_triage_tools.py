@@ -221,21 +221,33 @@ def _active_items() -> dict[str, str]:
     start = lines.index(_OPEN_REGION[0])
     end = lines.index(_OPEN_REGION[1], start)
     heads = [i for i in range(start, end) if re.match(r"^## RM\d+\b", lines[i])]
+    if not heads:
+        return {}
     spans = list(zip(heads, heads[1:] + [end], strict=True))
     return {lines[a].split()[1]: "\n".join(lines[a:b]) for a, b in spans}
 
 
-def test_roadmap_has_open_items_to_count():
-    """A guard over an empty set proves nothing — say so rather than passing vacuously."""
-    assert _active_items(), (
-        "no `## RMn` sections between the two region headings; if ROADMAP's structure moved, "
-        "_OPEN_REGION moved with it and §4's greps need re-checking too"
-    )
+@pytest.fixture
+def open_items() -> dict[str, str]:
+    """The walked set, with the empty case named rather than asserted away.
 
-
-def test_every_open_item_carries_the_release_class_token():
-    """`@registry-completeness`: equality over the walked set, never the counter's own number."""
+    An empty open region is a *good* state and has happened — the 2026-08-21 decision round answered
+    all six items standing here in one pass — so a guard that goes red on it would fire on success and
+    could only be made green by deleting it. The two assertions below are vacuously true over an empty
+    set and correctly so (an empty set has no member the counter cannot see); what a skip preserves is
+    the one thing the vacuous pass cannot say, which is that the region headings still resolve. If
+    `ROADMAP.md`'s structure moves, `_OPEN_REGION` moves with it and `_active_items` raises here rather
+    than quietly walking nothing.
+    """
     items = _active_items()
+    if not items:
+        pytest.skip("no open `## RMn` items in ROADMAP.md to walk — nothing for §4 to count")
+    return items
+
+
+def test_every_open_item_carries_the_release_class_token(open_items):
+    """`@registry-completeness`: equality over the walked set, never the counter's own number."""
+    items = open_items
     walked = set(items)
     seen = {item for item, text in items.items() if _CLASS_RE.search(text)}
     assert walked == seen, (
@@ -246,12 +258,12 @@ def test_every_open_item_carries_the_release_class_token():
     )
 
 
-def test_the_counter_the_runbook_publishes_agrees_with_the_walk():
+def test_the_counter_the_runbook_publishes_agrees_with_the_walk(open_items):
     """The greps §4 actually runs, run here — a rule and its instrument must not drift apart."""
     roadmap = (ROOT / "docs" / "ROADMAP.md").read_text()
     counted = sum(roadmap.count("**Status** open " + "— " + f"**a {klass}") for klass in ("minor", "patch"))
-    open_items = len(_active_items())
-    assert counted == open_items, (
-        f"§4 would count {counted} against {open_items} open items; either an item is invisible "
+    expected = len(open_items)
+    assert counted == expected, (
+        f"§4 would count {counted} against {expected} open items; either an item is invisible "
         "to it or prose elsewhere in the file is being counted as one"
     )

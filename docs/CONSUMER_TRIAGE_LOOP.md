@@ -135,6 +135,20 @@ second-repo subsection. It is pattern material rather than local tuning: `sectio
 verification are both in the published copy, so the same refusal happens in any tree running this loop,
 and the entry is a hand step plus a *why not fixed in the tools*. The allocator went with it.
 
+**One item has been owed outward since 2026-09-04 and is not pushed** — a push is the user's to
+authorize and it has not been asked for. `.claude/rm-next.py`'s reserve path was also its *default*
+path, so any flag it did not recognise fell through to `allocate()`: `--help` spent RM189 that way and
+a typo spent RM190 while the first was being repaired, each leaving a tombstone row because ids are
+never reused. Fixed here in `0d73268` with `KNOWN_FLAGS`, a real `--help`, exit 2 on anything else, and
+`--note`'s value excluded from the flag scan. **The published copy still has it**, checked rather than
+assumed: `item-next.py` at the baseline revision ends in a bare fall-through to `allocate()` with no
+flag validation anywhere above it, so `item-next.py --help` reserves an id in any tree running the
+generic loop. It is pattern material by the same test as the allocator itself — the defect is in the
+shape *a tool whose no-flag path mutates*, not in anything local
+(`@an-index-is-not-an-allocator`). Nothing else since `e81d9a18…` is owed: the line-length gate and the
+runbook's `ruff format` bullet are this repository's CI, and the §4 counter's third failure below is an
+entry about a section the gist deliberately does not carry.
+
 **Three items went outward on 2026-08-21, in revision `32967e36…`, with the CDN note following in
 `fd7c3b5e…`, and nothing was owed as of it.**
 The gist had the furniture entry for prose moving **in** — a footer swallowed by the last section — and
