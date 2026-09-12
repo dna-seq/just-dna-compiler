@@ -881,14 +881,32 @@ genotype while the 0.4 families keep the string) and the `stats` counter retype.
 
 ## 5. Readiness
 
-**Gates, re-run on this branch on 2026-09-12 at `65b9913`, the commit `v0.7.0` was retagged to — the
-third position of that tag.** The first sat at `8b981f6` (2026-09-11); RM231 (a licensing hole, S98),
+**Gates, re-run on this branch on 2026-09-12 at `65b9913`, the third position of the `v0.7.0`
+tag — and the tag has since moved to a fourth, `2001215`, where it now stands both here and on
+`origin`.** The first sat at `8b981f6` (2026-09-11); RM231 (a licensing hole, S98),
 the atlas-generate message fix and a release-record declaration the gate demanded landed after it, so
 it was re-cut at `83b1674`. RM232 — the drafted-row half of the same licensing gap — then landed
 past *that* tag, and the maintainer settled the line and retagged at `65b9913` rather than publish a
 known gap and ship its fix as the next number. Every row below was re-run at `65b9913`; the
 2026-09-10 measurement at `7153df4` is superseded, and it was this table's sweep row, re-run at the
 second cut, that found the undeclared `expression_effects` block.
+
+**The fourth position arrived after this table was written, which is why the correction is an
+addendum rather than a rewrite.** `2001215` is S99's answer and the group heading that dates it. In
+the meantime this paragraph called `65b9913` *the commit `v0.7.0` was retagged to*, a claim only
+`git rev-parse v0.7.0` could contradict and nothing in the tree did. **The delta is five documents and no
+code** — `git diff --name-only 65b9913..2001215` names CHANGELOG, FAQ, INTEGRATION_0_7 and the two
+consumer files — so every row below that measures compiled bytes, manifests or the release sweep
+carries to the tag unmeasured-but-unmoved, and the one row that can move on a docs-only delta is the
+suite, because `test_doc_links.py` and `test_triage_tools.py` read documents these five are among. It
+was re-run, and the basis matters: **4610 passed, 59 skipped** from a detached worktree checked out at
+`2001215` exactly, and **4640 passed, 29 skipped** in this checkout with the correction below applied.
+The 30 that differ are the same 30 moving between passed and skipped — a fresh worktree has none of
+the ambient snapshots and credentials the network-gated tests opt in on (`@test-no-credential`), so
+the skip count is a property of the *machine's* state, not of the commit. Neither run has a failure,
+and a reader comparing 4610 against the 4640 of an earlier row is comparing two environments rather
+than two trees. That asymmetry is the whole reason a readiness table names
+its commit: a docs-only delta is a no-op for most gates and not for all of them.
 
 | gate | result |
 | --- | --- |
@@ -903,7 +921,8 @@ second cut, that found the undeclared `expression_effects` block.
 
 **The blocker this section carried is gone.** RM143 shipped and S78 was answered, and the 2026-08-31
 batch took the seven roadmap items that stood above with them. Everything here is committed, green and
-measured; what remains before a cut is release management rather than work.
+measured — and as of 2026-09-12 it is **cut, tagged and published**, so nothing remains before the cut
+rather than the reverse.
 
 **A readiness table is worth exactly as much as the last time somebody ran it**, which is why it
 carries the commit it was measured at and why every row above was re-run rather than read. The
@@ -913,8 +932,17 @@ from 145 commits ago under the current version number. What the 2026-09-09 audit
 is in CHANGELOG § 2026-09-09: seven fixes, none of which moved a reference example's digest or
 signature (the corpus row above is the measurement). Two notes on the cut itself:
 
-1. `v0.7.0` is at `65b9913` and `uv.lock` records `0.7.0` for all three members. **`dist/` was
-   rebuilt on 2026-09-12 from a detached worktree at `65b9913`** and holds the six 0.7.0 artifacts and
+1. `v0.7.0` is at `2001215`, `uv.lock` records `0.7.0` for all three members, and **all six
+   artifacts were published to PyPI on 2026-09-12 at 15:49–15:50 UTC** — the first release this table
+   has covered that is actually out. `dist/` was built on 2026-09-12 from a detached worktree at
+   `65b9913`, **two commits behind the tag, and deliberately not rebuilt at it.** That gap was
+   settled by measurement rather than by argument, because the honest question is whether the tip is
+   what went out: the six sha256 below equal PyPI's own digests for the six files; `65b9913..2001215`
+   is five documents and no code; no sdist or wheel carries a `docs/` entry at all; and a fresh
+   `uv build --all-packages` from a detached worktree **at `2001215`** reproduced **all six
+   byte-identical**. So the published bytes are the tag's bytes, established four ways rather than
+   inferred from the diff — and the last of the four is a property of this build at this commit, not
+   a claim that `uv build` is reproducible in general. `dist/` holds the six 0.7.0 artifacts and
    nothing else; the six it held before were built at `83b1674` and lack RM232, and the six before
    those at `8b981f6` lacked RM231 — the same version number over different bytes, twice in a day,
    which is the reason this table carries hashes. Both stale sets were moved out of the tree, not
