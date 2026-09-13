@@ -1111,6 +1111,89 @@ measurement that would show that has not been taken — this entry is where it g
 not in doubt is the direction: the recurring failure is real and repeatedly measured, and it is filed
 here so the next instance lands against a number rather than as a fourth anecdote.
 
+### Addendum, 2026-09-13 — a first corpus is drafted, and this is the measurement
+
+**Status is still open.** What exists is a draft, unreviewed, at `features/` in the repository root:
+12 `.feature` files, 213 scenarios, guarded by `schema/tests/test_feature_corpus.py`. Nothing
+about it is a contract yet, and the entry stays here rather than moving to ROADMAP_HISTORY until it has
+been read.
+
+**Two of the four blocking questions are answered by the ask itself**, and are recorded in
+`features/README.md` as assumptions rather than decisions:
+
+- **Source of truth: code → Gherkin.** The scenarios describe what the code does. No step definitions,
+  no `behave`, no `pytest-bdd`, no new dependency in any tier; the `pytest` suite stays the executable
+  statement of behaviour and this is the readable one.
+- **Where it lives: the repository root, not `docs/`.** That keeps the P3 publishing question *open*
+  rather than answering it by side effect, which a drafting round has no standing to do.
+
+**Scope is decided by registry rather than by taste**, which is the third question. Three walked sets
+are covered in full: `VALID_WARNING_CODES`, `VALID_VERIFICATION_CHECKS`, `VALID_VERIFICATION_SKIPS`.
+Round-trip fixed points are out, on this entry's own argument. **And the scope estimate in the body
+above is wrong by a factor of two**: it says *~140 warning codes*, and `VALID_WARNING_CODES` has **73**.
+A number in prose beside a registry, in the entry that exists because prose drifts — left in place
+above rather than silently corrected, because it is the fourth instance of the shape this round
+measured and the most on-the-nose.
+
+**The fourth question — what it costs the next contributor — has a partial answer and it is the
+cheaper half of the estimate.** A new warning code without a scenario fails the guard, so the cost is
+one scenario per code, not a second dialect to learn: there are no step definitions to write and no
+runner to learn. What is *not* yet measured is whether a reviewer finds the scenarios easier to check
+than the docstrings they stand beside, and that needs a reader rather than a round.
+
+#### The measurement this entry was waiting for
+
+The case for the corpus was to be made on *the cost of ambiguity exceeding the cost of the corpus*.
+Drafting it produced **four findings in the first pass**, two of them code-or-doc defects that were
+filed and fixed rather than noted:
+
+| # | finding | disposition |
+| --- | --- | --- |
+| 1 | **Two of our own documents disagree about whether `strict` builds.** COMPILER.md's validate-by-redundancy table gives the rsid↔coordinate check the severity *warning* with no qualifier; its own mishap matrix gives the same check *⚠️ warning / ❌ refuses*. The matrix is the half the code agrees with. | marked `# DRIFT:` in `features/compiler/mode_ladder.feature`, unrepaired — the round's findings are its output |
+| 2 | **The mode ladder is two mechanisms and reads as one.** Four codes flip channel on one sentence; three resolution codes pair a warning with a *different, longer* refusal through `ResolutionOutcome.strict_errors`. Calling those ladder members quotes a text that does not exist; calling them warn-only describes a compile that succeeds. | written down in the same feature; no defect, a distinction nothing stated |
+| 3 | **`alphagenome check` with no API key raised instead of recording a skip** — `skipped(CHECK, "unchecked")`, and `"unchecked"` is not a vocabulary member. | **[RM242](ROADMAP_HISTORY.md#rm242--alphagenome-check-without-an-api-key-raised-where-it-was-supposed-to-attest-nobody-asked)**, fixed |
+| 4 | **Four per-command attestation counts summing to 17 of 24**, in ENRICHER.md's paragraph that refuses to state a total. | **[RM243](ROADMAP_HISTORY.md#rm243--the-paragraph-that-refuses-to-state-a-total-stated-four-of-them-summing-to-17-of-24)**, fixed |
+
+**What produced each of them is worth separating from the fact that they were produced.** None came
+from reading prose more carefully. Finding 1 came from writing the severity down as a table and
+noticing two tables; finding 2 from having to name a mechanism in order to tag a scenario; findings 3
+and 4 from AST walks the corpus needed anyway — the emission-site check and the skip-reason enumeration.
+So the argument this addendum supports is narrower and stronger than *Gherkin is good*: **the act of
+deriving a scenario from an emission site is what found things, and the guard is what will keep
+finding them.** A corpus of prose scenarios with no grounding check would have found none of the four.
+
+#### The two assertions that make it worth more than the prose
+
+Both were proven by reintroducing the defect and watching them go red, which is this workspace's
+standing requirement:
+
+- a `@code:X` scenario's `# source:` must sit within three lines of X's own `CodedWarning` call, so a
+  scenario cannot describe one finding while pointing at another's emission site;
+- every phrase a step quotes as a warning's text must be a real substring of a real string literal in
+  the module named. A warning's text is an API (`@warning-text-is-api`), so a paraphrase is a different
+  claim — and quoting a documentation paragraph instead of the f-string is exactly the fourth copy of a
+  drifting sentence this item exists to stop.
+
+One mechanism had to be added rather than worked around: a message built by one module and coded by
+another (`layout.deprecation_notice` writes the sentence, `_locate_sidecar` names the code) needs a
+`# text:` line, so the code is checked against the emission site and the phrase against the module that
+holds the words. That is the boundary where a code goes missing
+(`@finding-loses-its-code-at-a-boundary`), and it is better as a checked fact than a convention.
+
+#### What a review should push on
+
+- **Is the root the right home, or should this publish?** Publishing makes every clause a P3
+  commitment. The draft assumes not, and the assumption is the thing to overturn first if at all.
+- **Are the scenarios readable by someone who did not write them?** That is the whole premise and it
+  cannot be self-assessed. If the answer is no, the corpus is a second dialect with none of the benefit
+  and this entry should close rather than grow.
+- **Should the DRIFT finding be repaired here or filed?** Finding 1 is one sentence in COMPILER.md.
+  Leaving it marked was deliberate — a round that silently fixes what it finds cannot be audited — but
+  it should not stay marked for long.
+- **The corpus has no scenarios for the compiler's `errors` that carry no warning code**, beyond the
+  handful written as `@refusal`. Whether a refusal without a code deserves the same coverage as a coded
+  warning is an open scoping question the registry cannot answer, because refusals have no registry.
+
 **Not to be confused with** `just-module-creator`'s authoring guidance, which is a different
 document for a different reader and stays prose. This is about *our* stated behaviour, not an author's.
 

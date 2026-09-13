@@ -165,3 +165,28 @@ Feature: Identity and the VRS verify pass
     # The same normalization `integrity.content_signature` already applies to `genome_build` and to
     # every unset optional column. What moves is a module stating something else — which is exactly the
     # module whose two spellings were being hashed apart.
+
+  # source: compiler/src/just_dna_compiler/compiler.py:1050
+  @refusal @both_modes
+  Scenario: one key names one place
+    Given two variants.csv rows sharing a variant_key at different positions
+    When the module is compiled in either mode
+    Then the compile refuses with a message containing "Inconsistent positions for"
+
+  # source: compiler/src/just_dna_compiler/compiler.py:1057
+  @refusal @both_modes
+  Scenario: the reference base at a position is a single fact
+    Given two variants.csv rows sharing a key and stating different ref alleles
+    When the module is compiled in either mode
+    Then the compile refuses saying "the reference base at a position is a single fact"
+    And it says "at most one of these is correct"
+    # The compiler can catch two rows contradicting EACH OTHER about a reference base; only the enricher
+    # can catch a row contradicting the genome. A VA does not encode `ref`, so a single-base wrong one is
+    # invisible to the digest (`@va-omits-ref`).
+
+  # source: compiler/src/just_dna_compiler/compiler.py:1068
+  @refusal @both_modes
+  Scenario: a module joins on (variant, genotype), so the pair is unique
+    Given two variants.csv rows with the same variant_key and genotype
+    When the module is compiled in either mode
+    Then the compile refuses with a message containing "Duplicate (variant, genotype)"
