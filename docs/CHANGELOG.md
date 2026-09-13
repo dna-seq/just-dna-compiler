@@ -82,6 +82,47 @@ no analogue on their side either — heteroplasmy, repeat alleles, copy number, 
 constraint, CIViC, AlphaGenome, the literature pack, licence-as-data, signing, the overlay and the
 round trip.
 
+## 2026-09-13 — the table reference says who fills each table, and the derived half gets a registry to say it with
+
+**Docs plus a new `just_dna_enricher.producers` registry — no wire change, no schema change, no
+behaviour change.** The site's per-table nav was one flat alphabetical run of CSVs, and no page said
+which surface writes the table it describes.
+
+**Two groups in the nav, read off the page rather than recomputed.** *Authored — a person writes them*
+and *Machined — an enricher pass writes them*. The section a table lands in is literally the string its
+own identity card prints, so the nav and the page cannot disagree about what a table is.
+
+**Two new rows on every card.** An authored table gets **Drafted by** — every `DRAFT_PROVIDERS` entry
+targeting it, with its kind, its `match_on` and a link to the module. A machined one gets **Written and
+checked by** — the command as an operator types it (linked to the generated CLI page's own anchor), the
+module, the sources, and the `VALID_VERIFICATION_CHECKS` members that pass attests while it writes.
+
+**The derived half needed a registry, because it could not be answered at all.** A drafter has always
+declared its `table`, so *who drafts me* was already walkable. For a derived table the writer's name
+lived in a **comment** on `VALID_VERIFICATION_CHECKS`, the source was a `SourceRow` literal inside ten
+passes, and the CLI help is prose — leaving the generator two options, hand-keep a mapping
+(`@registry-not-a-list`, and the exact rot its own docstring refuses) or say nothing. `producers.py`
+declares `DerivedProducer(table, command, module, sources, checks)` and every field is checked against
+the registry that owns it: tables against `_FACT_TABLES`, sources against `licensing`'s `SourceTerms`,
+checks against the vocabulary, commands against the live Typer tree — the same pinning
+`CacheLane.build_command` has, after `cache status` printed two commands that do not exist.
+
+**Two things the guards found while being written.** `pubmed` and `europepmc` have no `SourceTerms`,
+which is `@per-article-terms` working as designed — declared as `SOURCES_WITHOUT_TERMS` with a reason
+each, and asserted as an equality so a third one cannot join them by being typed, rather than the guard
+being loosened. And the first draft of the authored fallback read *every row is written by hand*, which
+sat on `licensing.csv` directly above *every pass that consults a source writes one* — two rows of one
+card contradicting each other. It now says what it knows: no drafting provider targets the table.
+
+**A `#anchor` in `TABLES.md` is a same-page link there and a dead one on every spliced page**, reported
+by the build at `INFO` and by no test. The S101 fix added the first one. `_rewrite` now retargets a
+`#<name>csv` to that table's page and **refuses** anything else, since a heading inside `TABLES.md`
+cannot survive the split.
+
+`_check` asserts both new rows against the registries at build time — a generated page needs an
+assertion, not a green build, which this file has two recorded incidents of. Watched failing by dropping
+a drafter from the rendered row.
+
 ## 2026-09-13 — RM235: a gate's verdict carries the reasons it is a `no`, and RM234 is retrofitted to it
 
 **`just-dna-enricher` only — a new `verdict` module, two properties retyped, two CLI branches; no

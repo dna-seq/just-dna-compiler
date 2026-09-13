@@ -29,6 +29,8 @@ import just_dna_compiler.compiler as compiler
 import mkdocs_gen_files
 from just_dna_compiler.draft import DRAFTABLE
 from just_dna_compiler.hints import DERIVED_TABLE_MODELS
+from just_dna_enricher.drafting import DRAFT_PROVIDERS
+from just_dna_enricher.producers import DERIVED_PRODUCERS, WRITTEN_BY_EVERY_PASS
 from just_dna_format.base import field_category
 from just_dna_format.layout import DEPRECATED_SPELLINGS, sidecar_key, sidecar_spellings
 from just_dna_format.reference import authoring_reference
@@ -54,6 +56,69 @@ def _models_by_csv() -> dict[str, type]:
 def _api_path(model: type) -> str:
     """The generated API page for a model, so the two halves of the site join up."""
     return "../api/" + model.__module__.replace(".", "/") + f"/#{model.__module__}.{model.__qualname__}"
+
+
+def _cli_link(command: str) -> str:
+    """The generated CLI page's anchor for one enricher command.
+
+    `gen_cli_pages.py` writes one page per *binary*, with a level-2 heading per command holding the
+    invocation in backticks, so the target is that page plus the heading's slug — not a page per
+    command, which is the shape a reader of the nav would assume. Spelled
+    once here because a wrong anchor renders as a perfectly valid link to the top of the right page,
+    which is the failure mode the whole identity card already has two recorded incidents of.
+    """
+    slug = "just-dna-enricher-" + command.replace(" ", "-")
+    return f"[`just-dna-enricher {command}`](../../cli/enricher/#{slug})"
+
+
+def _module_link(module: str) -> str:
+    """The generated API page for an enricher module, so the table reaches the code that writes it."""
+    return f"[`{module}`](../../api/just_dna_enricher/{module}/)"
+
+
+def _drafted_by(csv_name: str) -> str | None:
+    """The drafting providers whose `table` is this one, or `None` when nothing drafts it.
+
+    Walked off `DRAFT_PROVIDERS` rather than listed, which is the whole reason the authored half of
+    this could be answered before the derived half could: a provider declares the table it writes, so
+    a new one appears here by construction.
+    """
+    providers = sorted(
+        (p for p in DRAFT_PROVIDERS.values() if p.table in sidecar_spellings(csv_name)),
+        key=lambda p: p.name,
+    )
+    if not providers:
+        return None
+    return " · ".join(
+        f"**{p.name}** ({_module_link(p.module)}, {p.kind}, matched on "
+        + ", ".join(f"`{c}`" for c in p.match_on)
+        + ")"
+        for p in providers
+    )
+
+
+def _written_by(csv_name: str) -> str | None:
+    """The enricher pass(es) that fill this table, with the command, module, sources and checks."""
+    for spelling in sidecar_spellings(csv_name):
+        if spelling in WRITTEN_BY_EVERY_PASS:
+            return (
+                "**every pass that consults a source** — a pass contributing nothing writes no row, so "
+                "this table has no single producer"
+            )
+    group = tuple(p for spelling in sidecar_spellings(csv_name) for p in DERIVED_PRODUCERS.get(spelling, ()))
+    if not group:
+        return None
+    parts = []
+    for p in group:
+        piece = f"{_cli_link(p.command)} ({_module_link(p.module)}) from " + ", ".join(
+            f"`{src}`" for src in p.sources
+        )
+        if p.checks:
+            piece += ", checking " + ", ".join(f"`{c}`" for c in p.checks)
+        if p.shares_table_because:
+            piece += f" — {p.shares_table_because}"
+        parts.append(piece)
+    return "<br>".join(parts)
 
 
 def _identity_rows(csv_name: str, model: type) -> list[tuple[str, str]]:
@@ -104,6 +169,27 @@ def _identity_rows(csv_name: str, model: type) -> list[tuple[str, str]]:
         kind = "**derived** — an enricher pass writes it; an author corrects it via `overrides.csv`"
     rows.append(("Authored or derived", kind))
     rows.append(("Draftable", "yes — `draft` can append rows" if authored else "no"))
+
+    # The two halves of *who fills this*, each walked off the registry that owns it. A table with
+    # neither says so rather than the row being dropped: an omitted row reads as "not asked", and the
+    # honest answer for `overrides.csv` is that a person writes every row of it by hand.
+    drafted = _drafted_by(csv_name)
+    if authored:
+        # **The fallback is about the drafting registry, never about the author.** It first read *every
+        # row is written by hand*, which is a claim about how the table gets filled — and on the licence
+        # table it sat directly above *every pass that consults a source writes one*, contradicting it
+        # on the same card. No drafting provider targets that table because the passes append to it
+        # through `licence_commit` rather than through `draft`, which is a fact about the route and not
+        # about who decides the cells. So the row says what it actually knows.
+        rows.append(
+            (
+                "Drafted by",
+                drafted or "no drafting provider targets this table — `draft` writes no row of it",
+            )
+        )
+    written = _written_by(csv_name)
+    if written:
+        rows.append(("Written and checked by", written))
 
     natural_key = getattr(model, "_KEY_FIELDS", None)
     if natural_key:
@@ -173,11 +259,28 @@ def _rewrite(body: str) -> str:
     Missed once already in this session on a file moved into `docs/history/`, and it fails silently —
     `test_doc_links.py` checks `TABLES.md` where it actually lives, so the spliced copies would 404 while
     the suite stayed green.
+
+    **A bare `#anchor` is the same hazard one step further in.** `TABLES.md` is one document, so
+    `](#licensingcsv)` resolves there and reads as an ordinary cross-reference; spliced, each section
+    becomes its own page and the anchor points at a heading that is not on it. The build reports it at
+    `INFO` — not `--strict`, not a test — so it would sit there indefinitely. A `#<table>csv` target is
+    therefore rewritten to that table's page, and anything else is refused outright rather than
+    silently published: a section heading inside `TABLES.md` cannot survive the split, so a link at one
+    is a mistake with no correct rendering.
     """
 
     def fix(m: re.Match[str]) -> str:
         target = m[2]
-        if target.startswith(("http://", "https://", "#", "mailto:", "../")):
+        if target.startswith("#"):
+            slug = target[1:]
+            for csv_name in _prose_sections():
+                if slug == csv_name.replace(".", ""):
+                    return m[1] + "../" + csv_name.removesuffix(".csv") + "/" + m[3]
+            raise AssertionError(
+                f"TABLES.md links to `{target}`, which is a same-page anchor there and a dead link on "
+                "every spliced page. Link to another table as `#<name>csv`, or to a real document."
+            )
+        if target.startswith(("http://", "https://", "mailto:", "../")):
             return m[0]
         return m[1] + "../" + target + m[3]
 
@@ -221,6 +324,35 @@ def _check(cards: dict[str, list[tuple[str, str]]]) -> None:
     claimed_models = {
         models[csv] for csv, card in cards.items() if dict(card)["Fact signature"].startswith("yes")
     }
+    # **The two new rows, asserted against the registries that own them.** Same reason as everything
+    # above: a card that names the wrong producer renders perfectly and passes `--strict`, and this
+    # file has two recorded incidents of exactly that. The comparison is over *who the registry says*
+    # rather than over the rendered sentence, so a formatting change cannot make it pass or fail.
+    for csv_name, card in cards.items():
+        fields = dict(card)
+        expected_drafters = {
+            p.name for p in DRAFT_PROVIDERS.values() if p.table in sidecar_spellings(csv_name)
+        }
+        if "Drafted by" in fields:
+            named = {name for name in expected_drafters if f"**{name}**" in fields["Drafted by"]}
+            assert named == expected_drafters, (
+                f"{csv_name}'s drafters on the page disagree with DRAFT_PROVIDERS: "
+                f"missing {sorted(expected_drafters - named)}"
+            )
+        elif expected_drafters:
+            raise AssertionError(
+                f"{csv_name} has drafters ({sorted(expected_drafters)}) and no `Drafted by` row — the "
+                "authored/derived split decided it is not authored, which cannot both be true"
+            )
+
+        producers = tuple(
+            prod for spelling in sidecar_spellings(csv_name) for prod in DERIVED_PRODUCERS.get(spelling, ())
+        )
+        if producers:
+            written = fields.get("Written and checked by", "")
+            missing = [prod.command for prod in producers if prod.command not in written]
+            assert not missing, f"{csv_name}'s page omits the pass(es) that fill it: {missing}"
+
     assert claimed_models == fact_models, (
         "the pages claiming a fact signature disagree with `_FACT_TABLES`. Only on a page: "
         f"{sorted(m.__qualname__ for m in claimed_models - fact_models)}; only in the registry: "
@@ -257,10 +389,33 @@ def _write_pages() -> None:
         mkdocs_gen_files.set_edit_path(
             doc, "../docs/TABLES.md" if csv_name in prose else "../scripts/gen_table_pages.py"
         )
-        summary.append(f"- [{csv_name}]({slug}.md)\n")
-    with mkdocs_gen_files.open("tables/SUMMARY.md", "w") as fh:
-        fh.writelines(summary)
+        summary.append((csv_name, slug))
+    _write_summary(summary, cards)
     _check(cards)
+
+
+def _write_summary(entries: list[tuple[str, str]], cards: dict[str, list[tuple[str, str]]]) -> None:
+    """The nav, split by who writes the table rather than left as one alphabetical run.
+
+    **The grouping is read off the card, never computed a second time.** `_identity_rows` already
+    decides authored/derived/both from the two registries, and a nav that re-derived it could disagree
+    with the page it links to — one table, two answers, which is the failure this whole file is built
+    to avoid. So the section a table lands in is literally the string its own page prints.
+
+    A table that is both (the licence table: authored by a person, appended by every pass) is listed
+    under **authored**, because that is the half a reader arrives with a question about. Its page says
+    both, and the *Written and checked by* row is what carries the other half.
+    """
+    buckets: dict[str, list[str]] = {"authored": [], "machined": []}
+    for csv_name, slug in entries:
+        kind = dict(cards[csv_name])["Authored or derived"]
+        bucket = "machined" if kind.startswith("**derived**") else "authored"
+        buckets[bucket].append(f"    - [{csv_name}]({slug}.md)\n")
+    with mkdocs_gen_files.open("tables/SUMMARY.md", "w") as fh:
+        fh.write("- Authored — a person writes them\n")
+        fh.writelines(buckets["authored"])
+        fh.write("- Machined — an enricher pass writes them\n")
+        fh.writelines(buckets["machined"])
 
 
 _write_pages()

@@ -358,6 +358,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `provenance` | RM73: telling a value still copied from a source from one a human has edited — the axis every tautology skip reads | compiler `draft`, format |
 | `verification` | RM45: the load-merge-write that records **what each pass checked** into `verification.json`, so the manifest can say it | format `verification` |
 | `verdict` | **0.7** (RM235): a gate's yes/no with the reason codes that made it a `no` — the one place the house tri-state is deliberately not used, because `--strict` must choose an exit code | — |
+| `producers` | **0.7**: which pass fills each machine-produced table, from which source, checking what — the derived counterpart to `drafting.DRAFT_PROVIDERS`, and what lets the docs site's per-table reference name a writer instead of hand-keeping one | `licensing` |
 | `pgs` | **0.7** (RM163): the PGS Catalog REST client, its release record, and the per-score shape `identifiers` compares against | `httpx`, `tenacity` |
 | `licensing` | per-source terms + the declared-use gate; emits `SourceRow` | format `SourceRow` |
 | `clingen` | ClinGen dosage sensitivity → `gene_metrics.csv` rows (CC0, so a module stays sellable) | `httpx`, format |
