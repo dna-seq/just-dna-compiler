@@ -58,6 +58,7 @@ class _Scenario:
         self.outline = outline
         self.tags: set[str] = set()
         self.source: tuple[str, int] | None = None
+        self.text_from: str | None = None
         self.phrases: list[str] = []
         self.keywords: set[str] = set()
         self.has_examples = False
@@ -78,6 +79,12 @@ class _Scenario:
 
 _TAG = re.compile(r"@([A-Za-z_][A-Za-z0-9_]*(?::[A-Za-z0-9_.\-]+)?)")
 _SOURCE = re.compile(r"#\s*source:\s*(\S+?):(\d+)\s*$")
+#: Where a finding's TEXT lives, when that is not the module that codes it. A message built by one
+#: module and wrapped in a `CodedWarning` by another is a real shape here — `layout.deprecation_notice`
+#: writes the sentence and `_locate_sidecar` names the code — and it is the shape where a code goes
+#: missing at a boundary (`@finding-loses-its-code-at-a-boundary`). So the scenario names both: the
+#: emission site the code is checked against, and the module the quoted phrase is checked against.
+_TEXT = re.compile(r"#\s*text:\s*(\S+?)\s*$")
 _SCENARIO = re.compile(r"^\s*(Scenario|Scenario Outline)\s*:\s*(.+?)\s*$")
 #: A quoted phrase a step asserts is in the message. Only the `contains "…"` / `says "…"` /
 #: `states "…"` forms are treated as claims about the text; a `Given` naming a value is not one.
@@ -94,12 +101,17 @@ def _parse(feature: Path) -> list[_Scenario]:
     scenarios: list[_Scenario] = []
     pending_tags: set[str] = set()
     pending_source: tuple[str, int] | None = None
+    pending_text: str | None = None
     current: _Scenario | None = None
     for number, raw in enumerate(feature.read_text(encoding="utf-8").splitlines(), 1):
         line = raw.strip()
         source_match = _SOURCE.search(line)
         if line.startswith("#") and source_match:
             pending_source = (source_match.group(1), int(source_match.group(2)))
+            continue
+        text_match = _TEXT.search(line)
+        if line.startswith("#") and text_match:
+            pending_text = text_match.group(1)
             continue
         if line.startswith("@"):
             pending_tags |= set(_TAG.findall(line))
@@ -114,11 +126,12 @@ def _parse(feature: Path) -> list[_Scenario]:
             )
             current.tags = pending_tags
             current.source = pending_source
+            current.text_from = pending_text
             scenarios.append(current)
-            pending_tags, pending_source = set(), None
+            pending_tags, pending_source, pending_text = set(), None, None
             continue
         if line.startswith("Feature:"):
-            pending_tags, pending_source = set(), None
+            pending_tags, pending_source, pending_text = set(), None, None
             continue
         if current is None or line.startswith("#"):
             continue
@@ -268,6 +281,8 @@ def test_every_scenario_names_a_source_that_exists() -> None:
         total = len(path.read_text(encoding="utf-8").splitlines())
         if not 1 <= line <= total:
             problems.append(f"{scenario.where}: {relative} has {total} lines, source names {line}")
+        if scenario.text_from is not None and not (_ROOT / scenario.text_from).is_file():
+            problems.append(f"{scenario.where}: `# text:` path does not exist: {scenario.text_from}")
     assert not problems, "\n".join(problems)
 
 
@@ -309,7 +324,8 @@ def test_every_quoted_phrase_is_real_text_from_the_source() -> None:
     for scenario in _scenarios():
         if scenario.source is None or not scenario.phrases:
             continue
-        path = _ROOT / scenario.source[0]
+        named = scenario.text_from or scenario.source[0]
+        path = _ROOT / named
         if not path.is_file() or path.suffix != ".py":
             continue
         if path not in cache:
@@ -317,7 +333,7 @@ def test_every_quoted_phrase_is_real_text_from_the_source() -> None:
         literals = cache[path]
         for phrase in scenario.phrases:
             if not any(phrase in literal for literal in literals):
-                problems.append(f'{scenario.where}: no literal in {scenario.source[0]} contains "{phrase}"')
+                problems.append(f'{scenario.where}: no literal in {named} contains "{phrase}"')
     assert not problems, "\n".join(problems)
 
 

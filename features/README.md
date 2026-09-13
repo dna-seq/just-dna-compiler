@@ -65,6 +65,12 @@ Four conventions, each of which the guard enforces:
 - **`# source:` is mandatory and is checked.** The file must exist, the line must be inside it, and for
   a `@code:` scenario the emission site must actually name that code. This is what stops a `Then` being
   paraphrased out of a documentation paragraph rather than read off the string the code builds.
+- **`# text:` names where the sentence lives, when that is not where the code is named.** A message
+  built by one module and wrapped in a `CodedWarning` by another is a real shape here —
+  `layout.deprecation_notice` writes the sentence and `_locate_sidecar` gives it its code — and it is
+  exactly the boundary where a code goes missing (`@finding-loses-its-code-at-a-boundary`). So the
+  scenario names both, and the guard checks the code against the emission site and the phrase against
+  the module that actually holds the words.
 - **`@code:<member>`** names the warning code, and exactly one scenario claims each member. Beside it,
   **`@carried`** or **`@actionable`** — the two are `vocab.CARRIED_WARNING_CODES` and
   `vocab.ACTIONABLE_WARNING_CODES`, and tagging the wrong one fails the guard rather than misleading a
