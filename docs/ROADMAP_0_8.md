@@ -1214,6 +1214,49 @@ holds the words. That is the boundary where a code goes missing
   handful written as `@refusal`. Whether a refusal without a code deserves the same coverage as a coded
   warning is an open scoping question the registry cannot answer, because refusals have no registry.
 
+### Second addendum, 2026-09-13 — the second pass, and where coverage was not what the equalities said
+
+**Still open, still a draft.** The corpus is now 13 files and **228 scenarios** — 118 registry-tagged
+and aligned, 110 structural — with **182 quoted phrases** on outcome steps. The question this pass put
+was the one the first pass could not put to itself: *are all the features covered?* The three registry
+equalities said yes and they were answering a narrower question than they read.
+
+**Four findings, and what produced each.** None came from reading the scenarios again; three came from
+walking a set the first pass did not walk, and the fourth from reading the residue the first pass
+measured and left.
+
+| # | finding | disposition |
+| --- | --- | --- |
+| 5 | **A code is not a text.** Nine resolution codes are emitted by the compiler's `resolution.py` *and* by the enricher's `resolver.py`, and **seven of the nine pairs are a different sentence**. `rsid_unresolved` is *"not found in resolution table, position remains unset"* in one tier and *"not in the injected Ensembl snapshot"* in the other. The per-code equality accounted for all nine while the corpus held none of the enricher's words for any of them, and a warning's text is an API. | fixed — the equality now keys on `(code, tier)`, and `features/enricher/resolution_warnings.feature` is the nine in the enricher's own words |
+| 6 | **The house algebra was covered as a mechanism and not as a value.** `tri_state.feature` had Kleene, the withhold, `classify` and `restate`, and not one of the columns that carries a three-valued answer into an artifact: **five of the nine members** of `VALID_FREQUENCY_STATUS`, `VALID_RESOLUTION_STATUS` and `VALID_AUTHORITY_CALL_STATUS` appeared nowhere in the corpus, `not_covered` among them — the member the gnomAD Y-PAR probe was run to justify. | fixed — six scenarios; the walk that found them (three-member `VALID_*` sets) is recorded as the heuristic it is |
+| 7 | **`@ladder` was a judgement written four times over a walkable set.** The mode ladder's first mechanism is `(errors if strict else warnings_out)`, and the codes reachable from a function carrying that shape are exactly the four tagged. | fixed — a fourth registry equality, proven red by untagging `p_value_encodings_disagree` |
+| 8 | **Ten `# source:` lines pointed at a blank line, a bare `"""`, a bare `return [` or the middle of a comment — and two pointed at the wrong subject.** *a total function cannot decide a three-valued answer* named a comment about a length constant in `normalize.py` when the rule is `mitomap.vcep_clin_sig`; *an absent input is the unknown arm* named the concordance block in `vocab.py` when the rule is `needs_recompile`. Both scenarios stated their rule correctly and cited the right tag; only the pointer was wrong. | fixed — all ten re-anchored; **not rot**, since no source file here has changed since the corpus was written, so they were authored that way and nothing could say so |
+
+#### Two questions the first addendum left open, now answered with a measurement
+
+- **Refusals without a code have no registry, and the reason is that they have no shape.**
+  `compiler.py` alone reaches the error channel from **four** distinct mechanisms — an inline
+  `errors.append` of a literal, an `extend` of a helper's returned list, the
+  `(errors if strict else …)` selector, and `ResolutionOutcome.strict_errors` — across roughly forty
+  sites, against 22 scenarios tagged `@refusal`/`@strict_only`. So the answer to *should a refusal
+  without a code get the same coverage as a coded warning* is not *no*; it is that **there is nothing to
+  walk**, and inventing a registry so an equality can be written would be the `@registry-completeness`
+  defect committed on purpose. It stays a scoping question for a reviewer, now with a number beside it.
+- **The phrase check's file scope is correct, and that was measured rather than assumed.** Eight of the
+  182 quoted phrases match no message at the site their scenario names but do match another literal in
+  the same module. All eight were read: every one is a message built into a variable a few lines away
+  (`ambiguous_warnings`, `_verify`, `coordinate_disagreement`, `layout.deprecation_notice`). Tightening
+  the check from the module to the call site would need dataflow and would report eight correct
+  scenarios as defects. Recorded so the next pass does not re-derive it.
+
+#### What this pass did not touch
+
+The `# DRIFT:` in `mode_ladder.feature` still stands — finding 1 of the first pass, one sentence in
+COMPILER.md, and a repair decision rather than a drafting one. And `# anchor: <token>`, a symbol the
+guard could grep for instead of a line number, is the obvious repair for the 110 structural scenarios
+and is deliberately unbuilt: it is a convention change across the whole corpus and belongs to whoever
+reviews it.
+
 **Not to be confused with** `just-module-creator`'s authoring guidance, which is a different
 document for a different reader and stays prose. This is about *our* stated behaviour, not an author's.
 

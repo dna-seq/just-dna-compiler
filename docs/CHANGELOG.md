@@ -34,6 +34,49 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-13 — RM149 second pass: a code is not a text, and the algebra had no values in it
+
+**Corpus and guard only, no code change, no dependency.** A consumer needs to do nothing.
+
+The first pass closed three registries as equalities and the second pass asked whether that was the same
+thing as coverage. It was not, in four ways.
+
+**A code is not a text.** Nine resolution findings are emitted by the compiler's `resolution.py` *and*
+by the enricher's `resolver.py`, and **seven of the nine pairs are a different sentence** under the same
+code — `rsid_unresolved` reads *"not found in resolution table, position remains unset"* in one tier and
+*"not in the injected Ensembl snapshot"* in the other. The per-code equality accounted for all nine
+while the corpus held none of the enricher's words for any of them, and a warning's text is what a
+consumer greps. The equality now keys on `(code, tier)` — the tier read off the `# source:` path, not
+off the feature directory — and `features/enricher/resolution_warnings.feature` is the nine in the
+enricher's own words. Two of the nine agree with the compiler verbatim; the scenario says so, because
+that is a fact about the pair rather than a reason to write nothing.
+
+**The house algebra was covered as a mechanism and not as a recorded value.** `tri_state.feature` had
+Kleene OR, the withhold, `classify` and `restate`, and none of the columns that carry a three-valued
+answer into a published artifact: five of the nine members of `VALID_FREQUENCY_STATUS`,
+`VALID_RESOLUTION_STATUS` and `VALID_AUTHORITY_CALL_STATUS` appeared nowhere in the corpus — including
+`not_covered`, the member the gnomAD Y-PAR probe exists to justify. Six scenarios now cover them.
+
+**`@ladder` was a hand-kept set over a walkable one.** The mode ladder's first mechanism is
+`(errors if strict else warnings_out)`, so the codes reachable from a function carrying that shape are
+derivable, and they are exactly the four that were tagged. Asserted as the fourth equality, beside a
+guard that no `CodedWarning`/`ran`/`skipped` is called through an attribute — every AST walk in the file
+matches an `ast.Name` callee and would skip one in silence.
+
+**Ten `# source:` lines were imprecise and two were wrong.** Reading the 105 structural scenarios — the
+ones carrying only *the line is inside the file* — found anchors on a blank line, a bare `"""`, a bare
+`return [`, and two that named the wrong subject entirely: *a total function cannot decide a
+three-valued answer* pointed at a comment about a length constant when the rule is
+`mitomap.vcep_clin_sig`, and *an absent input is the unknown arm* pointed at the concordance block in
+`vocab.py` when the rule is `needs_recompile`. Not rot — no source file here has changed since the
+corpus was written — so they were authored that way and nothing could say so.
+
+The corpus is now **13 files and 228 scenarios**, 118 registry-tagged and 110 structural, with 182
+quoted phrases checked against real string literals. **RM149 stays open**: still a draft nobody has
+read, and the second addendum in [ROADMAP_0_8.md](ROADMAP_0_8.md#rm149--expected-behaviour-lives-in-prose-and-the-prose-is-where-two-readers-split)
+carries the two scoping questions it answered with a measurement — why refusals without a code have no
+registry to walk, and why the phrase check's file scope is right.
+
 ## 2026-09-13 — RM149 drafted: a scenario corpus at `features/`, and the guard that makes it a registry
 
 **New top-level directory, no code change, no dependency in any tier.** A consumer or downstream repo

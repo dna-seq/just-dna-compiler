@@ -96,8 +96,15 @@ Four conventions, each of which the guard enforces:
   before the quote at first and covered 46 of 162 phrases; keyed on the step keyword it covers all of
   them, which is how the three paraphrases in the first draft were found.)
 
+**`@ladder` beside a `@code:` is checked too**, and it is the fourth registry here: the mode ladder's
+first mechanism is `(errors if strict else warnings_out)`, so the codes reachable from a function
+carrying that shape are walkable and the tag is asserted equal to them. It is scoped to the coded half
+because `@ladder` names two mechanisms — the three resolution findings pair a warning with a *different,
+longer* refusal through `ResolutionOutcome.strict_errors`, which is a second text rather than a second
+channel and has no code of its own.
+
 Tags that carry no registry, for reading rather than for the guard: `@strict_only`, `@both_modes`,
-`@ladder`, `@refusal`, `@parity`, `@tri_state`.
+`@refusal`, `@parity`, `@tri_state`.
 
 ## Adding to it
 
