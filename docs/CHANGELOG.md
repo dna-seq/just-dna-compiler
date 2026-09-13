@@ -48,8 +48,9 @@ code — `rsid_unresolved` reads *"not found in resolution table, position remai
 while the corpus held none of the enricher's words for any of them, and a warning's text is what a
 consumer greps. The equality now keys on `(code, tier)` — the tier read off the `# source:` path, not
 off the feature directory — and `features/enricher/resolution_warnings.feature` is the nine in the
-enricher's own words. Two of the nine agree with the compiler verbatim; the scenario says so, because
-that is a fact about the pair rather than a reason to write nothing.
+enricher's own words. Exactly one of the nine — `rsid_no_hosting_locus` — agrees with the compiler
+verbatim, and one more is a prefix of it; the scenarios say so, because that is a fact about the pair
+rather than a reason to write nothing.
 
 **The house algebra was covered as a mechanism and not as a recorded value.** `tri_state.feature` had
 Kleene OR, the withhold, `classify` and `restate`, and none of the columns that carry a three-valued

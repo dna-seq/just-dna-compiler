@@ -31,8 +31,9 @@ this directory is the whole of the addition.
 
 In, because this is where ambiguity has actually cost something (S79, S80, S83):
 
-- **Every member of `vocab.VALID_WARNING_CODES`** — one `Scenario` each, at its emission site, saying
-  which mode it fires in, whether it warns or refuses, and whether an author can clear it.
+- **Every member of `vocab.VALID_WARNING_CODES`** — one `Scenario` per **emitting tier** (see the
+  `@code:` convention below; nine members are emitted by two tiers in different words), at its emission
+  site, saying which mode it fires in, whether it warns or refuses, and whether an author can clear it.
 - **The mode ladder and the validate/compile parity rule** — which checks escalate under `strict`,
   which refuse in both modes, and which refusals are `strict`-only.
 - **Every member of `vocab.VALID_VERIFICATION_CHECKS`** — with its three outcomes, and its skip
