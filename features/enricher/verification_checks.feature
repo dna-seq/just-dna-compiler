@@ -35,7 +35,7 @@ Feature: The verification checks and their three outcomes
       | ran and disagreed                     | ran, subjects=N, findings>0            |
       | could not be put at all               | skipped, with a vocabulary reason      |
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2176
+  # source: enricher/src/just_dna_enricher/enrich.py:2186
   @check:reference_allele
   Scenario: an authored ref against the actual reference sequence
     Given a variants.csv row stating ref "A" at a locus whose reference base is "G"
@@ -47,7 +47,7 @@ Feature: The verification checks and their three outcomes
     # mismatch" has three causes and one window read cannot separate them, so an ambiguous case is
     # withheld and the findings group by reason (`@ref-mismatch-causes`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2243
+  # source: enricher/src/just_dna_enricher/enrich.py:2253
   @check:genome_build_agreement
   Scenario: authored coordinates against the declared assembly
     Given a module declaring GRCh38 whose coordinates match GRCh37
@@ -58,7 +58,7 @@ Feature: The verification checks and their three outcomes
     # (`@a-recorded-judgement-is-a-fact`). The ±1 shift reading is wrong on an old-assembly coordinate,
     # and only two evidence tiers supersede it (`@old-assembly-vs-shift`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2276
+  # source: enricher/src/just_dna_enricher/enrich.py:2286
   @check:clinical_significance
   Scenario: an authored clin_sig against ClinVar's own, allele-exactly
     Given a variants.csv row calling a variant pathogenic
@@ -72,7 +72,7 @@ Feature: The verification checks and their three outcomes
     # disagrees with a one-star submission is doing their job. Failing the compile would make the format
     # arbitrate a clinical dispute (`@clinsig-never-escalates`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2422
+  # source: enricher/src/just_dna_enricher/enrich.py:2432
   @check:rsid_coordinate_agreement
   Scenario: an authored rsID and coordinate PAIR against the reference
     Given a variants.csv row carrying both an rsID and a coordinate
@@ -81,7 +81,7 @@ Feature: The verification checks and their three outcomes
     # The pair co-identifies one variant, so the redundancy is checkable. NCBI rather than Ensembl is the
     # oracle for merge status (`@ncbi-merge-oracle`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2359
+  # source: enricher/src/just_dna_enricher/enrich.py:2369
   @check:rsid_currency
   Scenario: an authored rsID against dbSNP's own status
     Given a variants.csv row whose rsID dbSNP reports as merged
@@ -92,7 +92,7 @@ Feature: The verification checks and their three outcomes
     # absence are not automatically equal (`@rsid-absent-two-readings`,
     # `@absence-is-weighted-by-the-base-rate`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2460
+  # source: enricher/src/just_dna_enricher/enrich.py:2470
   @check:dataset_currency
   Scenario: a recorded dataset against the release that source publishes now
     Given a sources.csv row whose `dataset` names an earlier release
@@ -102,7 +102,7 @@ Feature: The verification checks and their three outcomes
     # currency check asks the SOURCE, never the cache the rows were drafted from, and a digest label does
     # not compare against a dated one (`@currency-asks-the-source-not-the-cache`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2335
+  # source: enricher/src/just_dna_enricher/enrich.py:2345
   @check:evidence_status_currency
   Scenario: a recorded curation status against what the source says about that item now
     Given a studies.csv row whose confidence records a CIViC status from when it was drafted
@@ -114,7 +114,7 @@ Feature: The verification checks and their three outcomes
     # table came from, this one whether a per-ITEM judgement has moved, and the two currency findings stay
     # apart (`@a-source-recuring-is-not-a-strict-matter`). A source re-curating is not an authoring error.
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2309
+  # source: enricher/src/just_dna_enricher/enrich.py:2319
   @check:published_refutation
   Scenario: an authored direction against the refutations a source publishes
     Given a variants.csv row asserting direction "risk"
@@ -289,7 +289,7 @@ Feature: The verification checks and their three outcomes
     # it was measured at (`@the-tier-that-answered-is-part-of-the-answer`). An empty id slot is not a
     # suffix, and a prefix search's first hit is a different variant.
 
-  # source: enricher/src/just_dna_enricher/alphagenome_check.py:554
+  # source: enricher/src/just_dna_enricher/alphagenome_check.py:560
   @check:variant_impact_agreement
   Scenario: a module's variants against AlphaGenome's AVI scores
     Given a variants.csv row inside a knot spanning the PHRED threshold

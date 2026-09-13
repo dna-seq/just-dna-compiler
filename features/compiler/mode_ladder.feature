@@ -165,6 +165,7 @@ Feature: The mode ladder and validate/compile parity
     # coordinates, which only the compile holds (`@parity-by-check`, `@validate-refuses-all`).
 
   # source: compiler/src/just_dna_compiler/resolution.py:45
+  # text: compiler/src/just_dna_compiler/compiler.py
   Scenario: resolution has three severity channels, not two
     Given a module whose resolution table produces one finding of each severity
     When it is compiled in best_effort mode

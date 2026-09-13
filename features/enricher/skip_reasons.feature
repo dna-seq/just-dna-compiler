@@ -27,7 +27,7 @@ Feature: The skip vocabulary
     # between *the check was not run* and *it ran without the flag*, which reintroduces the
     # two-readings-of-one-absence defect the vocabulary was built to end.
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2350
+  # source: enricher/src/just_dna_enricher/enrich.py:2360
   @skip:offline
   Scenario: the check needs egress and the run had none
     Given `enrich --offline`
@@ -65,7 +65,8 @@ Feature: The skip vocabulary
     # A check that cannot fail must not report a zero (`@tautology-zero`). This is the shape where the
     # subject set is genuinely empty, as opposed to the tautology below where it is not.
 
-  # source: enricher/src/just_dna_enricher/clinical.py:225
+  # source: enricher/src/just_dna_enricher/enrich.py:1540
+  # text: enricher/src/just_dna_enricher/clinical.py
   @skip:tautology
   Scenario: the module was drafted from the very source the check reads
     Given a module whose clin_sig was copied out of the ClinVar snapshot this check reads
@@ -112,7 +113,7 @@ Feature: The skip vocabulary
     # it is a statement that the fetch is not permitted, and `best_effort` means "resolve what you can",
     # never "take what you may not" (`@acquisition-gate-is-not-a-read-gate`).
 
-  # source: enricher/src/just_dna_enricher/alphagenome_check.py:540
+  # source: enricher/src/just_dna_enricher/alphagenome_check.py:546
   Scenario: a skip reason outside the vocabulary raises rather than recording (RM242)
     Given `alphagenome check` against a local AVI snapshot with a straddling variant and no client
     When the pass attests

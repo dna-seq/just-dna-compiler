@@ -1162,17 +1162,34 @@ So the argument this addendum supports is narrower and stronger than *Gherkin is
 deriving a scenario from an emission site is what found things, and the guard is what will keep
 finding them.** A corpus of prose scenarios with no grounding check would have found none of the four.
 
-#### The two assertions that make it worth more than the prose
+#### The three assertions that make it worth more than the prose — and what each really covers
 
-Both were proven by reintroducing the defect and watching them go red, which is this workspace's
-standing requirement:
+Each was proven by reintroducing the defect and watching it go red, which is this workspace's standing
+requirement. Two of the three were **narrower than they read on the first pass**, and both narrowings
+were found by measuring rather than by re-reading, which is worth recording because a guard that
+half-covers its subject while the reference claims it covers all of it is worse than no guard:
 
-- a `@code:X` scenario's `# source:` must sit within three lines of X's own `CodedWarning` call, so a
-  scenario cannot describe one finding while pointing at another's emission site;
-- every phrase a step quotes as a warning's text must be a real substring of a real string literal in
-  the module named. A warning's text is an API (`@warning-text-is-api`), so a paraphrase is a different
-  claim — and quoting a documentation paragraph instead of the f-string is exactly the fourth copy of a
-  drifting sentence this item exists to stop.
+- **a `@code:X` scenario's `# source:` sits within three lines of X's own `CodedWarning` call.** Held
+  from the start.
+- **the same alignment for `@check:` and `@skip:`.** *Missing at first*, and it cost precisely what it
+  exists to prevent: RM242 and RM243 — the two fixes this round produced — inserted six and eight
+  comment lines above referenced sites, eleven `# source:` lines silently began pointing six to eight
+  lines early, and the suite stayed green, because those two tags had only *the line is inside the
+  file*. The guard now catches all fourteen when the insert is reproduced. Two of the eight skip reasons
+  (`tautology`, `not_permitted`) are never passed to `skipped()` as a literal at all — they travel as a
+  variable — so the alignment is against any literal naming the reason, which is the better pointer
+  anyway: where a reason is *decided* is what a reader wants.
+- **every phrase a step quotes as a warning's text is a real substring of a real string literal in the
+  module named.** *Keyed on a verb before the quote at first* (`contains`/`says`/`states`), which
+  extracted **46 of the 162** quoted phrases — a `Then` also says `saying the flag "…"`, `ends at "…"`,
+  `continues "…"`, `offers "…"`. Keyed on the step keyword instead, it now checks **160 of 160** on
+  outcome steps, and the widening found three real defects in the corpus. `Given`/`When` stay excluded:
+  those name an input value, which has no reason to appear in the module's own strings.
+
+**The residue, stated rather than implied.** Roughly 130 `# source:` lines belong to structural
+scenarios — a docstring, a branch, a constant — which have no call site to align against, so they carry
+only the *line is inside the file* check and will rot on an edit above them. That is a real contributor
+cost and it belongs in the fourth question's answer above rather than in a footnote.
 
 One mechanism had to be added rather than worked around: a message built by one module and coded by
 another (`layout.deprecation_notice` writes the sentence, `_locate_sidecar` names the code) needs a

@@ -75,11 +75,21 @@ Four conventions, each of which the guard enforces:
   **`@carried`** or **`@actionable`** — the two are `vocab.CARRIED_WARNING_CODES` and
   `vocab.ACTIONABLE_WARNING_CODES`, and tagging the wrong one fails the guard rather than misleading a
   reader. Carried means *no edit to the spec directory can clear this*.
-- **`@check:<member>`** and **`@skip:<member>`** do the same job for the verification vocabulary;
-  **`@reserved`** marks a check member that is deliberately emitted by nothing.
-- **A quoted `Then` phrase is a real substring of the message**, because a warning's text is an API
-  (`@warning-text-is-api`) and a consumer greps it. Where a message interpolates, the scenario quotes
-  the literal part around the hole, never a reconstruction of the whole sentence.
+- **`@check:<member>`** and **`@skip:<member>`** do the same job for the verification vocabulary, and
+  their `# source:` is aligned the same way — against the `ran`/`skipped` call, or for a reason that
+  travels as a variable, against the line that decides it. **`@reserved`** marks a check member
+  deliberately emitted by nothing, and exempts it from that alignment.
+
+  **A structural scenario carries no registry tag and gets no alignment**, only *the line exists*. That
+  is most of the corpus and it is the known weak spot: a `# source:` at a docstring or a branch rots
+  when anything above it is edited, and nothing will say so.
+- **Every quoted phrase on a `Then`/`And`/`But` step is a real substring of the message**, because a
+  warning's text is an API (`@warning-text-is-api`) and a consumer greps it. Where a message
+  interpolates, quote the literal part around the hole, never a reconstruction of the whole sentence —
+  and never an interpolated *value*, which no literal holds. `Given`/`When` are exempt: those name an
+  input, which has no reason to appear in the module's own strings. (The check was keyed on a verb
+  before the quote at first and covered 46 of 162 phrases; keyed on the step keyword it covers all of
+  them, which is how the three paraphrases in the first draft were found.)
 
 Tags that carry no registry, for reading rather than for the guard: `@strict_only`, `@both_modes`,
 `@ladder`, `@refusal`, `@parity`, `@tri_state`.

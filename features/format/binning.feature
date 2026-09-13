@@ -15,7 +15,7 @@ Feature: Measurement bins and the tiling axis
     Given a bin group read as continuous whose bins are [0.0, 0.3] and [0.5, 1.0]
     When the bins are validated
     Then a warning fires whose text contains "coverage gap for key"
-    And the text names the uncovered interval as "(0.3, 0.5)"
+    And it renders the uncovered interval as an open pair of the two bounds it lies between
     And nothing is repaired — the gap is reported and the rows stand
 
   # source: schema/src/just_dna_format/binning.py:1137

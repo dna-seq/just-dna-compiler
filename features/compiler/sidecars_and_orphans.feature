@@ -216,9 +216,9 @@ Feature: Derived sidecars, their arithmetic, and their orphans
 
   # source: compiler/src/just_dna_compiler/compiler.py:6925
   Scenario: PMIDs are matched through one normalizer both tiers share
-    Given a literature.csv pmid cell written "[PMID: 12345678]"
+    Given a literature.csv pmid cell written with a bracketed PMID wrapper
     When the module is compiled
-    Then it matches a studies.csv row citing "12345678"
+    Then it matches a studies.csv row citing the bare digits
     # `extract_pmids` is the same normalizer the enricher pass uses, so the two sides cannot drift apart
     # (`@one-normalizer-two-spellings`). PMID and PMCID are one letter apart, and `PMC 3110566` once
     # parsed as a real unrelated PMID (`@pmid-vs-pmcid`).

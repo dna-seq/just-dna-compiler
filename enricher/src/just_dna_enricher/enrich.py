@@ -2139,13 +2139,15 @@ def _verification_records(
 ) -> list[VerificationRecord]:
     """The checks this pass puts, as records `verification.json` can carry (RM45).
 
-    **No count, deliberately (RM243).** This sentence read "the six checks" and the function emits
-    eight: `published_refutation` (RM170) and `evidence_status_currency` (RM160) were each added
-    correctly and neither moved the figure one line up, and ENRICHER.md carried the same six. That is
-    the `@registry-completeness` shape — a number beside a registry nothing iterates — and it is the
-    third place in this workspace it has been found, after `SCHEMAS.md`'s sidecar count and
-    `compiler.py`'s own docstrings (RM218). The roster is the `records.append` calls below, and
-    `test_enricher_doc_registries.py` walks it against the reference.
+    **No count, deliberately (RM243).** This sentence used to open with one, and it was wrong: two
+    members were added to the function — `published_refutation` (RM170) and `evidence_status_currency`
+    (RM160) — each correctly, and neither moved a figure one line up. ENRICHER.md carried the same stale
+    number for the same reason. Neither figure is repeated here even as history, because RM218 found
+    that a stale number in quotation marks beside the rule reads, to a skimming reader, exactly like the
+    rule; naming the shape is the repair. That shape is `@registry-completeness` — a number beside a
+    registry nothing iterates — and this is the third place in the workspace it has been found, after
+    `SCHEMAS.md`'s sidecar count and `compiler.py`'s own docstrings. The roster is the `records.append`
+    calls below, and `test_enricher_doc_registries.py` walks it against the reference.
 
     Every count comes from the check that produced it — never re-derived here. That is the whole
     reason `verify_reference_alleles` and `verify_clin_sig` now return what they compared: a

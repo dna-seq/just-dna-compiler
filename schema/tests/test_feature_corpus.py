@@ -6,18 +6,26 @@ project's most-repeated defect shape, and the rule drawn from it is `@registry-c
 an equality over a walked set, never a floor or a count in prose*. A corpus that is 68 of 73 codes
 long looks complete, reads well, and is wrong about the five nobody wrote down.
 
-**Four equalities and two groundings, and the groundings are the ones that matter most.** A scenario
-corpus derived from documentation rather than from code is a second place for prose to drift, which
-would make RM149 worse rather than better. So every scenario names its emission site
-(`# source: <path>:<line>`), and this asserts:
+**Equalities over the registries, and groundings over what each scenario claims — and the groundings
+are the ones that matter most.** (No count of them here, deliberately: a figure beside a list of
+`test_` functions in the same file is the `@registry-completeness` shape one more time, and this file
+exists because of it.) A scenario corpus derived from documentation rather than from code is a second
+place for prose to drift, which would make RM149 worse rather than better. So every scenario names its
+emission site (`# source: <path>:<line>`), and this asserts:
 
 * the path exists and the line is inside it;
 * a `@code:X` scenario's source really is X's emission site, within three lines — a scenario pointing
   at the wrong `CodedWarning` call is the shape a copy-paste produces;
+* the same alignment for `@check:`/`@skip:`, which was **missing at first and cost exactly what it was
+  supposed to prevent**: two unrelated fixes in this session inserted comment lines above eleven
+  referenced sites, every `# source:` after them silently pointed six to eight lines early, and the
+  suite stayed green because those tags had only *the line is inside the file*;
 * every phrase a scenario quotes as the warning's text is a **real substring of a real string literal
   in that file**. A warning's text is an API (`@warning-text-is-api`), so a paraphrase is not a
   smaller version of the claim, it is a different claim — and quoting from a documentation paragraph
-  instead of from the f-string is exactly the failure the corpus exists to stop.
+  instead of from the f-string is exactly the failure the corpus exists to stop. This one was **also
+  narrower than it read at first**: keyed on a verb before the quote, it extracted 46 of 162 phrases,
+  so it is keyed on the step keyword instead and now checks all of them.
 
 **It imports no Gherkin parser and adds no dependency.** The corpus is read as text, which is all the
 structure these assertions need, and is the same choice `test_docs_site_nav.py` makes about
@@ -86,9 +94,17 @@ _SOURCE = re.compile(r"#\s*source:\s*(\S+?):(\d+)\s*$")
 #: emission site the code is checked against, and the module the quoted phrase is checked against.
 _TEXT = re.compile(r"#\s*text:\s*(\S+?)\s*$")
 _SCENARIO = re.compile(r"^\s*(Scenario|Scenario Outline)\s*:\s*(.+?)\s*$")
-#: A quoted phrase a step asserts is in the message. Only the `contains "…"` / `says "…"` /
-#: `states "…"` forms are treated as claims about the text; a `Given` naming a value is not one.
-_QUOTED = re.compile(r'(?:contains|says|stating|states|naming the phrase)\s+"([^"]{6,})"')
+#: A quoted phrase a step asserts is in the message: EVERY double-quoted run of six characters or more
+#: on an outcome step. Keyed on the step keyword rather than on a verb before the quote, and that is the
+#: correction rather than the first design — the verb list (`contains|says|states|…`) extracted 46 of the
+#: 162 quoted phrases in this corpus, because a `Then` says `saying the flag "…"`, `ends at "…"`,
+#: `continues "…"`, `offers "…"` and a dozen other shapes, and a guard that checks a quarter of the
+#: claims while the reference says it checks all of them is worse than no guard.
+#:
+#: `Given`/`When` are deliberately excluded: those name an input VALUE (a genotype, a filename, an
+#: rsID), which has no reason to appear in the module's own strings.
+_QUOTED = re.compile(r'"([^"]{6,})"')
+_OUTCOME_STEP = re.compile(r"^(?:Then|And|But)\b")
 
 
 def _parse(feature: Path) -> list[_Scenario]:
@@ -135,7 +151,8 @@ def _parse(feature: Path) -> list[_Scenario]:
             continue
         if current is None or line.startswith("#"):
             continue
-        current.phrases.extend(_QUOTED.findall(line))
+        if _OUTCOME_STEP.match(line):
+            current.phrases.extend(_QUOTED.findall(line))
         keyword = line.split(" ", 1)[0].rstrip(":")
         if keyword in {"Given", "When", "Then", "And", "But"}:
             current.keywords.add(keyword)
@@ -184,21 +201,51 @@ def _joined_literals(path: Path) -> list[str]:
     return out
 
 
-def _emission_sites() -> dict[Path, dict[int, str]]:
-    """`{module: {line: code}}` for every `CodedWarning("<code>", …)` call in the workspace."""
-    sites: dict[Path, dict[int, str]] = {}
+def _call_sites(
+    callee: set[str], *, argument: int = 0, resolve_check_constant: bool = False
+) -> dict[Path, dict[int, set[str]]]:
+    """`{module: {line: {the string at `argument`, …}}}` for every call to one of `callee`.
+
+    One walker for all three registries, and `argument` is which position holds the name — that
+    parameter exists because the first version of this guard did not have it and reported four correct
+    scenarios as misaligned: `skipped(check, reason)` puts the CHECK first and the SKIP REASON second, so
+    a `@skip:` scenario is aligned against argument 1. `CodedWarning("<code>", msg)` and `ran(check, …)`
+    both name theirs first. `alphagenome_check` names its member through a module-level `CHECK`
+    constant, which `resolve_check_constant` follows. A line may carry more than one name where a call is
+    nested, so the value is a set rather than a string.
+    """
+    sites: dict[Path, dict[int, set[str]]] = {}
     for module in sorted(_ROOT.glob("*/src/**/*.py")):
         if "generated" in module.parts:
             continue
         tree = ast.parse(module.read_text(encoding="utf-8"))
+        constant = (
+            next(
+                (
+                    node.value.value
+                    for node in ast.walk(tree)
+                    if isinstance(node, ast.Assign)
+                    and isinstance(node.value, ast.Constant)
+                    and any(getattr(target, "id", None) == "CHECK" for target in node.targets)
+                ),
+                None,
+            )
+            if resolve_check_constant
+            else None
+        )
         for node in ast.walk(tree):
             if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
                 continue
-            if node.func.id != "CodedWarning" or not node.args:
+            if node.func.id not in callee or len(node.args) <= argument:
                 continue
-            first = node.args[0]
-            if isinstance(first, ast.Constant) and isinstance(first.value, str):
-                sites.setdefault(module, {})[node.lineno] = first.value
+            chosen = node.args[argument]
+            named = (
+                chosen.value
+                if isinstance(chosen, ast.Constant) and isinstance(chosen.value, str)
+                else (constant if argument == 0 else None)
+            )
+            if isinstance(named, str):
+                sites.setdefault(module, {}).setdefault(node.lineno, set()).add(named)
     return sites
 
 
@@ -286,29 +333,82 @@ def test_every_scenario_names_a_source_that_exists() -> None:
     assert not problems, "\n".join(problems)
 
 
-def test_a_code_scenario_points_at_that_codes_emission_site() -> None:
-    """`@code:X` and a `# source:` that is not X's emission site is the copy-paste failure."""
-    sites = _emission_sites()
+def _reason_sites() -> dict[Path, dict[int, set[str]]]:
+    """`{module: {line: {skip reason, …}}}` for every string literal naming a member of the vocabulary.
+
+    Wider than a call-site walk, and it has to be: **two of the eight reasons are never passed as a
+    literal to `skipped()` at all.** `tautology` and `not_permitted` are decided somewhere else and
+    travel as a variable — `result.not_checked = "not_permitted"` in `clinpgx`, `clin_sig_skip =
+    "tautology"` in `enrich` — so a call-site walk reports the two scenarios that describe them as
+    misaligned while they point at the only line in the workspace that actually names the reason.
+
+    Which is the better pointer anyway: where a reason is *decided* is what a reader wants, and the
+    `skipped()` call three functions away is plumbing. So the site is any literal occurrence, and the
+    assertion this supports is the one that matters — the line still names the thing the scenario says it
+    does, so an edit above it is caught.
+    """
+    sites: dict[Path, dict[int, set[str]]] = {}
+    for module in sorted(_ROOT.glob("*/src/**/*.py")):
+        if "generated" in module.parts:
+            continue
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and node.value in VALID_VERIFICATION_SKIPS:
+                sites.setdefault(module, {}).setdefault(node.lineno, set()).add(node.value)
+    return sites
+
+
+def _misaligned(tag: str, sites: dict[Path, dict[int, set[str]]], reader) -> list[str]:
+    """Scenarios whose `# source:` is not within `_SOURCE_SLACK` lines of a site naming their member."""
     problems: list[str] = []
     for scenario in _scenarios():
-        codes = scenario.codes()
-        if not codes or scenario.source is None:
+        members = reader(scenario)
+        if not members or scenario.source is None:
             continue
         relative, line = scenario.source
-        path = _ROOT / relative
-        in_file = sites.get(path, {})
-        for code in codes:
-            near = {
-                emitted
-                for emitted_line, emitted in in_file.items()
-                if abs(emitted_line - line) <= _SOURCE_SLACK
-            }
-            if code not in near:
-                problems.append(
-                    f"{scenario.where}: @code:{code} but {relative}:{line} emits "
-                    f"{sorted(near) or 'no coded warning'}"
-                )
+        in_file = sites.get(_ROOT / relative, {})
+        near = {
+            name
+            for site_line, names in in_file.items()
+            if abs(site_line - line) <= _SOURCE_SLACK
+            for name in names
+        }
+        for member in sorted(members - near):
+            problems.append(
+                f"{scenario.where}: @{tag}:{member} but {relative}:{line} names {sorted(near) or 'no member'}"
+            )
+    return problems
+
+
+def test_a_code_scenario_points_at_that_codes_emission_site() -> None:
+    """`@code:X` and a `# source:` that is not X's emission site is the copy-paste failure."""
+    problems = _misaligned("code", _call_sites({"CodedWarning"}), lambda s: s.codes())
     assert not problems, "\n".join(problems)
+
+
+def test_a_check_or_skip_scenario_points_at_that_members_record_site() -> None:
+    """The same alignment for the verification vocabulary, and it exists because it was missing.
+
+    The `@code:` check above had it from the start and these two had only *the line is inside the file*
+    — so when RM242 inserted six comment lines into `alphagenome_check.py` and RM243 added eight to
+    `enrich.py`, eleven `# source:` lines in `features/enricher/` silently began pointing six to eight
+    lines early and the suite stayed green. A `# source:` with no alignment check is a line number that
+    rots on the next edit above it, which is the whole failure mode the corpus is supposed to resist.
+
+    Scoped to `@check:`/`@skip:` scenarios, which are the ones that name a record site. The rest of the
+    corpus's `# source:` lines are structural — a docstring, a branch, a constant — and have no call to
+    align against; that residue is stated in RM149's addendum as a known cost rather than left implied.
+    """
+    checks = _call_sites({"ran", "skipped"}, resolve_check_constant=True)
+    reasons = _reason_sites()
+    problems = _misaligned("check", checks, lambda s: s.checks() - _RESERVED_CHECK_TAGS(s))
+    problems += _misaligned("skip", reasons, lambda s: s.skips())
+    assert not problems, "\n".join(problems)
+
+
+def _RESERVED_CHECK_TAGS(scenario: _Scenario) -> set[str]:
+    """A `@reserved` member is emitted by nothing, so its scenario names the vocabulary, not a call."""
+    return scenario.checks() if "reserved" in scenario.tags else set()
 
 
 def test_every_quoted_phrase_is_real_text_from_the_source() -> None:

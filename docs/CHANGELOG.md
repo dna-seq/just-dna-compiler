@@ -56,9 +56,17 @@ than a tier. It asserts set equality over each registry and reports a symmetric 
 warning code without a scenario fails — `@registry-completeness`. Two of its assertions are what make
 the corpus worth more than the prose it stands beside, and both were proven by reintroducing the defect:
 
-- a `@code:X` scenario's `# source:` must sit within three lines of X's own `CodedWarning` call;
-- every phrase a step quotes as a warning's text must be a real substring of a real string literal in
-  the module named, because a warning's text is an API and a paraphrase is a different claim.
+- a `@code:X` scenario's `# source:` must sit within three lines of X's own `CodedWarning` call, and
+  a `@check:`/`@skip:` one within three of its `ran`/`skipped` site;
+- every phrase a step quotes on a `Then`/`And`/`But` step must be a real substring of a real string
+  literal in the module named, because a warning's text is an API and a paraphrase is a different claim.
+
+Two of those were narrower than they read on the first pass and were widened after measuring: the
+phrase check was keyed on a verb before the quote and covered 46 of 162 phrases, and the `@check:`/
+`@skip:` alignment did not exist, so eleven `# source:` lines silently went stale when this session's
+own two fixes inserted comment lines above them. Both widenings found real defects. Roughly 130
+structural `# source:` lines still have no alignment to check against, which the roadmap addendum
+states as a known cost rather than leaving implied.
 
 A message built by one module and coded by another needs a `# text:` line naming where the words live,
 so the code is checked against the emission site and the phrase against the module that holds the
