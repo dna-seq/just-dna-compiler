@@ -94,7 +94,7 @@ Feature: The mode ladder and validate/compile parity
     # it refuses instead of dropping — which is also why the pre-flight asks for the drop set under
     # `strict` and gets an empty one.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2833
+  # source: compiler/src/just_dna_compiler/compiler.py:2835
   @refusal @both_modes
   Scenario: a drop that would empty a table outright refuses in both modes
     Given a variants.csv every row of which carries an unusable symbolic allele
@@ -120,7 +120,7 @@ Feature: The mode ladder and validate/compile parity
     # was. The remedy is an rs-number, which resolves into a coordinate the compiler can cross-examine,
     # where a converted position is its own only witness.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1328
+  # source: compiler/src/just_dna_compiler/compiler.py:1321
   @refusal @both_modes
   Scenario: a contig only one build names
     Given a variants.csv row on contig "GL000209.1" recorded as GRCh38
@@ -131,7 +131,7 @@ Feature: The mode ladder and validate/compile parity
     # A shared scaffold, a patch, an alt locus or an unversioned accession settles nothing and is left
     # alone.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1341
+  # source: compiler/src/just_dna_compiler/compiler.py:1331
   Scenario: where the build is declared is not the same file for both shapes
     Given a wrong-build coordinate on an authored table
     When the refusal is written
@@ -206,7 +206,7 @@ Feature: The mode ladder and validate/compile parity
     # Dropping a locus makes the emitted table smaller than the injected one, so the round trip cannot
     # reproduce it. `strict` must refuse rather than silently prune.
 
-  # source: compiler/src/just_dna_compiler/resolution.py:527
+  # source: compiler/src/just_dna_compiler/resolution.py:528
   @ladder
   Scenario: an ambiguous rsID label is a deterministic pick, and strict will not build on one
     Given a resolution row marking an rsID ambiguous
@@ -232,7 +232,7 @@ Feature: The mode ladder and validate/compile parity
     # would publish a claim its own source has retracted. `validate` reads the injected table's own
     # column and no resolved row, so the compile-only exemption does not cover it (RM207).
 
-  # source: compiler/src/just_dna_compiler/resolution.py:284
+  # source: compiler/src/just_dna_compiler/resolution.py:278
   Scenario: both refusals are asked over the AUTHORED keys, not the expanded ones
     Given a one-to-many rsID that is also recorded as withdrawn
     When the module is compiled

@@ -12,7 +12,7 @@ Feature: The licence gate, the closure, and the PGx cross-checks
   One tainting row refuses the whole compile, in both modes. Everything else about licensing warns,
   because the alternative is the format arbitrating a legal question.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6072
+  # source: compiler/src/just_dna_compiler/compiler.py:6073
   @refusal @both_modes
   Scenario: a no-sale source with no matching declaration refuses
     Given a sources.csv row whose terms forbid sale and whose declared_use is "unstated"

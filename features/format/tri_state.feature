@@ -61,15 +61,19 @@ Feature: The three-valued house algebra
     # the wider span says nothing about WHERE — it may have moved entirely outside the interval the
     # caller asked about.
 
-  # source: schema/src/just_dna_format/normalize.py:97
+  # source: enricher/src/just_dna_enricher/mitomap.py:264
   Scenario: a total function cannot decide a three-valued answer
     Given a source value a normalizer would map to a definite member by default
     When the value is one the source did not state
     Then the withhold happens BEFORE the normalizer runs
-    # A vocabulary read through `.get(x, default)` makes the map the first edit and the guard an equality
-    # (`@lookup-with-a-default-hides-a-new-member`). Delegating a withhold to a default that is itself a
-    # definite answer turns "we do not know" into a claim
+    # `mitomap.vcep_clin_sig`: only a bracket in `MITOMAP_VCEP_CLASSES` ever reaches
+    # `normalize_clin_sig`, whose fall-through is `other` — a MEMBER of the vocabulary, so an
+    # undocumented `[VUS*]` passed to it would have been recorded as a confident classification rather
+    # than as an unknown. A vocabulary read through `.get(x, default)` makes the map the first edit and
+    # the guard an equality (`@lookup-with-a-default-hides-a-new-member`); this is that one step further
     # (`@a-withhold-cannot-be-delegated-to-a-default-that-is-a-definite-answer`).
+    # Re-anchored in the second pass: this pointed at a comment about a length constant in
+    # `normalize.py`, which the line-is-inside-the-file check cannot see is the wrong place.
 
   # source: schema/src/just_dna_format/overrides.py:845
   Scenario: a verdict function with several arms owes a reason function with the same arms
@@ -80,7 +84,7 @@ Feature: The three-valued house algebra
     # Naming one of them for all four is the shape that told a reader the locus was a different variant
     # when the truth was that the comparison did not reach a verdict (`@answered-is-not-absent`).
 
-  # source: schema/src/just_dna_format/vocab.py:678
+  # source: schema/src/just_dna_format/release_records.py:422
   Scenario: an absent input is the unknown arm and a malformed one is the refusal
     Given a check whose input is absent
     When the question is put
@@ -88,8 +92,12 @@ Feature: The three-valued house algebra
     Given the same check whose input is present and unreadable
     When the question is put
     Then it refuses, quoting all of what it could not read
-    # Two different absences, and the guard belongs at the answerer rather than in the shared parser
+    # `needs_recompile` answers unknown for a `None` or blank `compiled_under` before the stamp ever
+    # reaches `release_version`, which refuses a malformed one quoting the whole stamp rather than its
+    # last token. Two different absences, and the guard belongs at the answerer rather than in the
+    # parser `sweep.py` and `cli.py` share and want strict
     # (`@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal`).
+    # Re-anchored in the second pass: this pointed at the concordance comment block in `vocab.py`.
 
   # source: schema/src/just_dna_format/findings.py:97
   @tri_state
@@ -128,7 +136,7 @@ Feature: The three-valued house algebra
     # a trap for anything reading warnings back off a result model, so the rule is: classify BEFORE
     # constructing the model (`@finding-loses-its-code-at-a-boundary`).
 
-  # source: schema/src/just_dna_format/findings.py:80
+  # source: schema/src/just_dna_format/findings.py:81
   Scenario: reformatting a warning goes through `restate`, which refuses an uncoded one
     Given a caller that prefixes a table name onto a finding
     When it reformats through `restate`
