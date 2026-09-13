@@ -75,6 +75,48 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM242 — `alphagenome check` without an API key raised where it was supposed to attest *nobody asked*
+
+**Severity** medium · **Status** ✅ **shipped 2026-09-13 in the uncut 0.7 line**, enricher only — one
+literal and one walking guard; no model, parquet or manifest change · **Owner** enricher
+(`alphagenome_check.check_variant_impact`) · **Found by** the RM149 Gherkin drafting round, from an
+AST walk of every `skipped(...)` call site rather than from a failing run
+
+`check_variant_impact`'s no-client branch wrote `skipped(CHECK, "unchecked", …)`. `"unchecked"` is not
+a member of `VALID_VERIFICATION_SKIPS` — it is one of the *per-pass spellings* that vocabulary's own
+comment says the set replaced, and it survived in this one site. The model validates `skipped` against
+the vocabulary, so the branch raised `ValidationError` instead of writing a record.
+
+**The path is ordinary rather than exotic**, which is what makes this medium rather than low: it needs a
+provisioned AVI reference, at least one variant whose score straddles the threshold, no `--offline`, and
+no client. That is `just-dna-enricher alphagenome check` run against a local snapshot by anyone who has
+not set `ALPHAGENOME_API_KEY` — the default state. The neighbouring `--offline` branch, three lines up,
+writes a valid record, so the two absences the file is careful to tell apart behaved completely
+differently: one attested, the other crashed.
+
+**The repair is `offline`, and the reason is the vocabulary's own rule rather than convenience.**
+`offline` means *the check needs egress and the run had none*, which is exactly true of a run with no
+client; the distinction from `--offline` — a caller's choice versus a missing credential — is what
+`detail` is for, and `client_absence()` already writes that sentence in its own words
+(`@specific-rejection`). The rule is stated in the vocabulary's comment block: the human sentence
+travels **beside** the key, never instead of it. Giving the case a member of its own was considered and
+is the wrong shape: a consumer would have to learn a ninth spelling to be told something `detail`
+already says, and the set exists to collapse six such spellings onto one axis.
+
+**What was refused: pinning the one branch.** A test asserting this call site's reason would pass the
+day another pass writes `no_snapshot`, which is the same class of defect one file over. So the guard is
+an **AST walk over every `skipped(check, "<literal>")` in the workspace**, checked against the
+vocabulary — `@registry-completeness`, assert an equality over a walked set. It went red on the live
+defect before the fix and names file and line rather than a count. A reason computed by the caller
+(`AcmgUnavailable.skip`, the PGS leg's pair, `clinical.tautology_reason`) is out of a static walk's
+reach by construction, and the test says so rather than claiming a coverage it does not have.
+
+**Why no test caught it.** `test_alphagenome_credential_is_read_where_used.py` asserts *where* the
+credential is read and `test_atlas_absence.py` asserts *what the sentence says*; neither constructs the
+straddling-variant fixture that reaches the record. A branch whose only observable is an attestation
+nobody asserted is invisible to both — the shape `@off-switch-needs-a-probe` describes, one axis over:
+the disabling state was reasoned about and never run.
+
 ## RM235 — one property over four registries: an outage reports as a broken identifier, and an unreachable EFO reports as clean
 
 **Severity** low · **Status** ✅ **shipped 2026-09-13 in the uncut 0.7 line**, enricher only — a new

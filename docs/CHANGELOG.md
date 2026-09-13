@@ -34,6 +34,31 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-13 — RM242: `alphagenome check` with no API key raised instead of recording a skip
+
+**Enricher only**, one literal and one new walking guard. No model, parquet or manifest change, and no
+consumer surface moves. Nothing to do on any consumer side.
+
+`alphagenome_check.check_variant_impact`'s no-client branch wrote `skipped(CHECK, "unchecked", …)` and
+`"unchecked"` is not a member of `VALID_VERIFICATION_SKIPS` — it is one of the per-pass spellings that
+vocabulary replaced, surviving in a single call site. `VerificationRecord` validates the field, so that
+branch **raised `ValidationError`** rather than attesting that nobody asked. The path is the ordinary
+one: a local AVI snapshot, a variant whose score straddles the threshold, no `--offline`, and no
+`ALPHAGENOME_API_KEY`. The `--offline` branch three lines above it attested correctly, so the two
+absences the module is careful to distinguish behaved completely differently.
+
+Repaired to `offline` — *the check needs egress and the run had none*, which is what the member means —
+with `client_absence()`'s sentence continuing to say **which** absence it is in `detail`, per the
+vocabulary's own rule that the human sentence travels beside the key and never instead of it. A ninth
+member for the case was considered and refused: the set exists to collapse six such spellings onto one
+axis.
+
+New: `enricher/tests/test_skip_reasons_are_vocabulary_members.py`, an **AST walk over every literal
+`skipped(check, "…")` in the workspace** asserting each reason is a member. Red on the live defect
+before the fix. Pinning the one branch was refused — it would pass the day another pass writes
+`no_snapshot`. Found by the RM149 Gherkin drafting round rather than by a failing run, which is the
+round's first code finding.
+
 ## 2026-09-13 — Genomi survey: what a genomics *runtime* annotates, and the seven gaps it exposes
 
 **Documentation only** — a probe round, no code, no `RMn`. New:

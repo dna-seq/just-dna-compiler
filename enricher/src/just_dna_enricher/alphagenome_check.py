@@ -537,7 +537,13 @@ def check_variant_impact(
             result,
             spec_dir,
             write=write,
-            record=skipped(CHECK, "unchecked", detail=note, source=SOURCE_NAME),
+            # `offline` rather than a spelling of its own (RM242). Both this branch and the
+            # `--offline` one above are *the check needs egress and the run had none*, which is what
+            # the member means, and the two absences are told apart by `detail` — the sentence travels
+            # beside the key and never instead of it. It read `"unchecked"`, one of the per-pass
+            # spellings `VALID_VERIFICATION_SKIPS` replaced, so the model refused the record and this
+            # branch raised where it was supposed to attest that nobody asked.
+            record=skipped(CHECK, "offline", detail=note, source=SOURCE_NAME),
         )
 
     for label in result.straddling:
