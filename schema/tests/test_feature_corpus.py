@@ -545,3 +545,45 @@ def test_no_finding_constructor_is_called_through_an_attribute() -> None:
                     f"attribute, which every AST guard in this file skips — import the name instead"
                 )
     assert not problems, "\n".join(problems)
+
+
+#: The tier a path belongs to, which is its first segment: `schema/`, `compiler/`, `enricher/`. The
+#: corpus mirrors that split in `features/format|compiler|enricher/`, with `format` naming the package
+#: that lives in `schema/` — so this maps the source path, never the feature directory. A scenario for a
+#: compiler-emitted code may sit in whichever feature file its subject belongs to (`overlay_targets_
+#: missing_table` is filed with the rest of the overlay), and that is a filing choice, not a claim.
+def _tier(relative: str) -> str:
+    return relative.split("/", 1)[0]
+
+
+def test_a_code_emitted_by_two_tiers_has_a_scenario_in_each() -> None:
+    """One code, two tiers, two sentences — and the corpus grounded one of them.
+
+    **The first pass's equality is per code, and a code is not a text.** Nine resolution findings are
+    emitted by the compiler's `resolution.py` *and* by the enricher's `resolver.py`, and seven of the nine
+    pairs are different sentences: `rsid_unresolved` is *"not found in resolution table, position remains
+    unset"* in one tier and *"not in the injected Ensembl snapshot"* in the other. A warning's text is an
+    API (`@warning-text-is-api`), so a consumer grepping the second sentence found a corpus that accounts
+    for the code and holds none of its words.
+
+    Keyed on the tier rather than on the message, deliberately: four of the compiler-side messages are
+    built into a variable and are not readable at the call, so a text-keyed equality would be silent on
+    exactly the half where the two tiers diverge most.
+    """
+    emitting: dict[str, set[str]] = {}
+    for module, lines in _call_sites({"CodedWarning"}).items():
+        for names in lines.values():
+            for code in names:
+                emitting.setdefault(code, set()).add(_tier(str(module.relative_to(_ROOT))))
+    grounded: dict[str, set[str]] = {}
+    for scenario in _scenarios():
+        if scenario.source is None:
+            continue
+        for code in scenario.codes():
+            grounded.setdefault(code, set()).add(_tier(scenario.source[0]))
+    problems = [
+        f"{code}: emitted by {sorted(tiers)}, grounded in {sorted(grounded.get(code, set()))}"
+        for code, tiers in sorted(emitting.items())
+        if tiers - grounded.get(code, set())
+    ]
+    assert not problems, "a code emitted by a tier the corpus does not ground there:\n" + "\n".join(problems)

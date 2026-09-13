@@ -71,7 +71,12 @@ Four conventions, each of which the guard enforces:
   exactly the boundary where a code goes missing (`@finding-loses-its-code-at-a-boundary`). So the
   scenario names both, and the guard checks the code against the emission site and the phrase against
   the module that actually holds the words.
-- **`@code:<member>`** names the warning code, and exactly one scenario claims each member. Beside it,
+- **`@code:<member>`** names the warning code, and **every tier that emits it owes a scenario there**.
+  Not one scenario per member: nine resolution codes are emitted by the compiler's `resolution.py`
+  *and* by the enricher's `resolver.py`, and seven of the nine pairs are a different sentence under
+  the same code. A per-member equality accounts for all nine and grounds one wording of each, which
+  is why the guard keys on `(code, tier)` — the tier read off the `# source:` path, never off the
+  feature directory, since a scenario is filed with its subject rather than with its emitter. Beside it,
   **`@carried`** or **`@actionable`** — the two are `vocab.CARRIED_WARNING_CODES` and
   `vocab.ACTIONABLE_WARNING_CODES`, and tagging the wrong one fails the guard rather than misleading a
   reader. Carried means *no edit to the spec directory can clear this*.
