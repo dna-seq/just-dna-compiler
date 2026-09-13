@@ -34,6 +34,31 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-13 — RM243: four per-command counts in the paragraph that refuses to state a total
+
+**Documentation plus two walking guards.** No code behaviour changes, nothing to do on any consumer side.
+
+ENRICHER.md's *which of these attest* paragraph refuses to state a total — *a number in prose is a
+registry nothing iterates* — and then gave a count for each of four commands. They summed to **17 of the
+24 emitting members of `VALID_VERIFICATION_CHECKS`**: `enrich()` said six and emits eight (it gained
+`published_refutation` with RM170 and `evidence_status_currency` with RM160), `check-identifiers` said
+three and emits five (the two PGS members, RM163), and `clinpgx check-labels`, `litvar coverage` and
+`alphagenome check` were never in the sentence at all. `enrich._verification_records`' own docstring
+carried the same wrong six.
+
+Repaired the way RM218 repaired the identical class inside `compiler.py`: **state the rule, not the
+figure, and assert the property the figure stood in for.** The counts are gone from both places, the
+attribution lives in the check table where it was already richer per row, and ENRICHER.md names the
+*shape* of what went wrong rather than reproducing the four sentences — RM218's own guard caught its
+repair's prose for exactly that, because a stale figure in quotation marks reads like the rule.
+
+New in `test_enricher_doc_registries.py`: every emitting member's row has a `Where` cell whose
+backticked `module.symbol` pointers all resolve to real modules, and no `attests <number>` may appear in
+the reference. Both proven red by reintroducing the defect. The first guard is documented in the
+roadmap entry as an invariant that was **wrong on the first attempt** — `Where` names the site of the
+*comparison*, not the module that writes the record, so `reference_allele` is compared in `sequences`
+and attested by `enrich`, and the obvious assertion fails on five correct rows.
+
 ## 2026-09-13 — RM242: `alphagenome check` with no API key raised instead of recording a skip
 
 **Enricher only**, one literal and one new walking guard. No model, parquet or manifest change, and no

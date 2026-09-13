@@ -2137,7 +2137,15 @@ def _verification_records(
     ensembl_ref: Path | None,
     currency: CurrencyCheck | None,
 ) -> list[VerificationRecord]:
-    """The six checks this pass puts, as records `verification.json` can carry (RM45).
+    """The checks this pass puts, as records `verification.json` can carry (RM45).
+
+    **No count, deliberately (RM243).** This sentence read "the six checks" and the function emits
+    eight: `published_refutation` (RM170) and `evidence_status_currency` (RM160) were each added
+    correctly and neither moved the figure one line up, and ENRICHER.md carried the same six. That is
+    the `@registry-completeness` shape — a number beside a registry nothing iterates — and it is the
+    third place in this workspace it has been found, after `SCHEMAS.md`'s sidecar count and
+    `compiler.py`'s own docstrings (RM218). The roster is the `records.append` calls below, and
+    `test_enricher_doc_registries.py` walks it against the reference.
 
     Every count comes from the check that produced it — never re-derived here. That is the whole
     reason `verify_reference_alleles` and `verify_clin_sig` now return what they compared: a

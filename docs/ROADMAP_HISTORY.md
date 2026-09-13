@@ -75,6 +75,54 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM243 — the paragraph that refuses to state a total stated four of them, summing to 17 of 24
+
+**Severity** low · **Status** ✅ **shipped 2026-09-13 in the uncut 0.7 line**, documentation plus two
+walking guards; no code behaviour changes · **Owner** enricher reference + `enrich._verification_records`
+· **Found by** the RM149 Gherkin drafting round, from an AST count of what each module emits
+
+ENRICHER.md's *which of these attest* paragraph opens by refusing to state a total, on the stated
+grounds that *the two that used to be were wrong twice each and a number in prose is a registry nothing
+iterates* — and then attributed a count to each of four commands. Measured: those four summed to **17 of
+the 24 emitting members of `VALID_VERIFICATION_CHECKS`**.
+
+| claim | measured |
+| --- | --- |
+| `enrich()` attests six | **8** — `published_refutation` (RM170) and `evidence_status_currency` (RM160) |
+| `check-identifiers` three | **5** — `pgs_accession_currency` and `pgs_metadata_agreement` (RM163) |
+| `enrich_literature` three | 3 ✓ |
+| five commands one each | 5 ✓, but **three commands were absent from the sentence** — `clinpgx check-labels`, `litvar coverage`, `alphagenome check` |
+
+`enrich._verification_records`' own docstring carried the same wrong six, so the figure was wrong in two
+places for the same reason: each of the four additions was correct, and none of them moved a number a
+few lines up.
+
+**The repair is RM218's, applied a third time rather than re-derived.** That item found the identical
+class inside `compiler.py` ("up to twelve in all" against 23 parquets; "six reasons" against 8 return
+arms) and its conclusion was: *state the rule rather than a figure, and assert the property the figure
+was standing in for*. So the counts are gone from both places and the attribution lives in the check
+table, which already carried it per row and in more detail than the sentence ever did.
+
+**RM218's own lesson applied to this entry, too.** Its guard's first catch was the repair's prose: a
+stale figure in quotation marks two lines below the rule reads, to a skimming reader, exactly like the
+rule. So ENRICHER.md names the *shape* of what went wrong and does not reproduce the four sentences —
+and the new guard, which keys on `attests <number>`, would have caught the draft that did.
+
+**Two guards, and the interesting one is the guard I got wrong first.** The obvious invariant is *the
+`Where` cell names the module that emits the record*, and it fails on five rows that are all correct:
+that column names the site of the **comparison**, and `reference_allele` is compared in
+`sequences.verify_reference_alleles` and attested by `enrich`. Discovering that by running the
+assertion rather than reasoning about it is why it is written down here — the column means something
+narrower than its use suggests, and a future guard will reach for the same wrong version. What is
+asserted instead is that the pointer **resolves**: every backticked `module.symbol` in the cell names a
+real module of the package, which is the rot a rename actually causes. Which *command* to run stays
+prose in the same cell, because it is not derivable from a module name.
+
+The second guard refuses `attests <number>` anywhere in the reference, pinned on the shape rather than
+on the old wording — the defect is *a figure attributed to a command* and would be just as stale
+spelled `four`. Both were proven by reintroducing the defect: a mistyped module name and a re-added
+count each turn the suite red.
+
 ## RM242 — `alphagenome check` without an API key raised where it was supposed to attest *nobody asked*
 
 **Severity** medium · **Status** ✅ **shipped 2026-09-13 in the uncut 0.7 line**, enricher only — one

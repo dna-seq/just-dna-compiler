@@ -35,6 +35,7 @@ terms no `SourceRow` can ever carry. It is deliberately not the PGx picture abov
 to the PGx sources and dated to its probe.
 """
 
+import ast
 import builtins
 import re
 from pathlib import Path
@@ -76,6 +77,52 @@ def _attested_in_the_check_table() -> set[str]:
         cell = row.rstrip().rstrip("|").rsplit("|", 1)[1].strip()
         named |= set(re.findall(r"`(\w+)`", cell.split("*(")[0]))
     return named
+
+
+def _table_rows() -> list[str]:
+    """Every data row of the check table, so a row can be read as a whole rather than one cell."""
+    header = "| Check | Compares | Where | Attests as |"
+    doc = _doc()
+    assert header in doc, f"the check table's header moved or lost a column; looked for {header!r}"
+    section = doc.split(header)[1].split("\n\n")[0]
+    rows = [line for line in section.split("\n") if line.startswith("| **")]
+    assert rows, "the check table lost its rows, or its header moved"
+    return rows
+
+
+def _emitting_modules() -> dict[str, set[str]]:
+    """`{member: {module stem, …}}` for every `ran`/`skipped` call in the workspace's sources.
+
+    Read by AST rather than grepped, because a member appears in prose in half these files and a text
+    search cannot tell a call from a sentence about one (`@enumerate-shapes-not-type-sets`). A
+    module-level `CHECK` constant is resolved, since `alphagenome_check` names its member that way.
+    """
+    per: dict[str, set[str]] = {}
+    root = Path(just_dna_enricher.__file__).resolve().parents[3]
+    for module in sorted(root.glob("*/src/**/*.py")):
+        if "generated" in module.parts:
+            continue
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        constant = next(
+            (
+                node.value.value
+                for node in ast.walk(tree)
+                if isinstance(node, ast.Assign)
+                and isinstance(node.value, ast.Constant)
+                and any(getattr(target, "id", None) == "CHECK" for target in node.targets)
+            ),
+            None,
+        )
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+                continue
+            if node.func.id not in {"ran", "skipped"} or not node.args:
+                continue
+            first = node.args[0]
+            named = first.value if isinstance(first, ast.Constant) else constant
+            if named in vocab.VALID_VERIFICATION_CHECKS:
+                per.setdefault(named, set()).add(module.stem)
+    return per
 
 
 def _reserved_members() -> set[str]:
@@ -209,3 +256,55 @@ def test_every_rostered_narrowing_really_subclasses_what_it_is_listed_under() ->
         for name in re.findall(r"`(\w+)`", cells[2]):
             assert name in classes, name
             assert issubclass(classes[name], classes[base]), f"{name} is not under {base}"
+
+
+def test_every_emitting_member_has_a_row_whose_where_cell_resolves(this_file: None = None) -> None:
+    """The check table's `Where` column points at code that exists (RM243).
+
+    **This is the assertion the prose used to make and could not keep.** ENRICHER.md carried four
+    per-command counts summing to 17 of the 24 emitting members, in the paragraph that had just refused
+    to state a total on the grounds that a number in prose is a registry nothing iterates. Both counted
+    figures went stale the same way — `enrich()` gained two members, `check-identifiers` gained the two
+    PGS ones with RM163 — and three commands were never in the sentence at all.
+
+    **What is checked is what the column actually promises, which is weaker than "the module that
+    writes the record" and was worth discovering rather than assuming.** `Where` names the site of the
+    *comparison*: `reference_allele` is compared in `sequences.verify_reference_alleles` and attested by
+    `enrich`, so an assertion that the cell names the emitting module fails on five rows that are all
+    correct. The invariant that holds is that the pointer **resolves** — every backticked `module.symbol`
+    in the cell names a real module of this package — which is the rot a rename actually causes, and it
+    is what sends a reader to the code. Which *command* to run is prose in the same cell, because it is
+    not derivable from a module name.
+    """
+    modules = _package_modules() | {"just_dna_compiler", "compiler"}
+    emitting = set(_emitting_modules())
+    problems: list[str] = []
+    for row in _table_rows():
+        cells = row.rstrip().rstrip("|").split("|")
+        member_cell, where = cells[-1], cells[3]
+        if not set(re.findall(r"`(\w+)`", member_cell)) & emitting:
+            continue
+        pointed = set(re.findall(r"`(\w+)[.:]", where))
+        if not pointed:
+            problems.append(f"{member_cell.strip()}: `Where` names no module at all — {where.strip()[:80]}")
+            continue
+        strays = sorted(pointed - modules)
+        if strays:
+            problems.append(f"{member_cell.strip()}: `Where` names no such module: {strays}")
+    assert not problems, "\n".join(problems)
+
+
+def test_the_prose_states_no_per_command_total(this_file: None = None) -> None:
+    """RM243's other half: the sentence that went stale may not come back.
+
+    Pinned on the shape rather than on the old wording, because the defect is a *figure attributed to a
+    command* and it would be just as stale spelled `four` or `7`. `test_counted_prose.py` does this for
+    `SCHEMAS.md` and `COMPILER.md` and `test_source_counted_prose.py` for `compiler.py`; this tier's
+    reference is the third place the same class has been found, so it gets the same guard rather than a
+    fourth correction.
+    """
+    words = r"one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d+"
+    claims = re.findall(
+        rf"`?(?:enrich|enrich_literature|check-identifiers|pgx|clinpgx)\S*`?\s+attests\s+({words})", _doc()
+    )
+    assert not claims, f"a per-command attestation count is back in ENRICHER.md: {claims}"

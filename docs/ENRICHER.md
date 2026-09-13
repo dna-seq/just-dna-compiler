@@ -230,11 +230,26 @@ stale, one function does not. Four things to hold onto when wiring a new pass in
 `VALID_VERIFICATION_CHECKS` either has an emitter or says RESERVED beside itself, and
 `test_verification_record.py` walks the vocabulary and asserts exactly that — **no total is stated
 here**, because the two that used to be were wrong twice each and a number in prose is a registry
-nothing iterates. `enrich()` attests six (reference allele, wrong build, clinical
-significance, rsID currency, rsid↔coordinate, dataset currency), `enrich_literature` three (citation existence,
-identifier agreement, provenance quote), `check-identifiers` three (gene symbol currency, trait
-currency, gene↔locus agreement), and `enrich_clinpgx`, `pgx`, `vrs mint`, `check-acmg` and
-`check-repeat-bands` one each.
+nothing iterates.
+
+**Nor is a per-command one, and that is RM243's repair rather than a stylistic preference.** This
+paragraph used to name four commands with a count beside each. They summed to **17 of the 24 emitting
+members** — in the paragraph that had just refused to state a total, on the grounds that a number in
+prose is a registry nothing iterates. Two of the four were stale in the same way: `enrich()` gained
+`published_refutation` and `evidence_status_currency`, `check-identifiers` gained
+`pgs_accession_currency` and `pgs_metadata_agreement` with the PGS Catalog (RM163), and no addition
+moved a figure five lines up. Three commands — `clinpgx check-labels`, `litvar coverage`,
+`alphagenome check` — were never in the sentence at all. The figures are not restated here even as
+history, because a stale number in quotation marks beside the rule reads, to a skimming reader,
+exactly like the rule (RM218 learned that from its own repair).
+
+So the attribution lives in the check table above, where it was already richer than the sentence, and
+`test_enricher_doc_registries.py` walks it: every emitting member has a row, no row names a member the
+vocabulary does not hold, no reserved member is shown as attested, and each row's **Where** cell names
+a module that exists. Note what that column *is* — the site of the **comparison**, which is often not
+the module that writes the record: `reference_allele` is compared in `sequences` and attested by
+`enrich`. Where a command rather than a function is the useful pointer, the cell says so in prose. What
+this paragraph keeps is the part no walk can say: *why* a pass is or is not in the vocabulary.
 The last four members were wired in **RM72** (0.6): the two check commands put a real
 authored-versus-source question, reported it to stdout, and let the record die with the process, which
 is the sentence RM45 exists to end. What blocked them was their own printed promise to *write
