@@ -1186,10 +1186,13 @@ half-covers its subject while the reference claims it covers all of it is worse 
   outcome steps, and the widening found three real defects in the corpus. `Given`/`When` stay excluded:
   those name an input value, which has no reason to appear in the module's own strings.
 
-**The residue, stated rather than implied.** Roughly 130 `# source:` lines belong to structural
-scenarios — a docstring, a branch, a constant — which have no call site to align against, so they carry
-only the *line is inside the file* check and will rot on an edit above them. That is a real contributor
-cost and it belongs in the fourth question's answer above rather than in a footnote.
+**The residue, measured rather than estimated.** Of 213 scenarios, **108 carry a registry tag and are
+aligned; 105 are structural** — pointing at a docstring, a branch or a constant, with no call site to
+align against — so they carry only the *line is inside the file* check and will rot on an edit above
+them. Measured 2026-09-13 by walking the corpus, because the first draft of this paragraph said
+"roughly 130" on an estimate, in the document whose whole subject is unmeasured counts beside
+registries. That is a real contributor cost and it belongs in the fourth question's answer above rather
+than in a footnote.
 
 One mechanism had to be added rather than worked around: a message built by one module and coded by
 another (`layout.deprecation_notice` writes the sentence, `_locate_sidecar` names the code) needs a

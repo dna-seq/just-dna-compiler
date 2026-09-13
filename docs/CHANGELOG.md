@@ -64,9 +64,10 @@ the corpus worth more than the prose it stands beside, and both were proven by r
 Two of those were narrower than they read on the first pass and were widened after measuring: the
 phrase check was keyed on a verb before the quote and covered 46 of 162 phrases, and the `@check:`/
 `@skip:` alignment did not exist, so eleven `# source:` lines silently went stale when this session's
-own two fixes inserted comment lines above them. Both widenings found real defects. Roughly 130
-structural `# source:` lines still have no alignment to check against, which the roadmap addendum
-states as a known cost rather than leaving implied.
+own two fixes inserted comment lines above them. Both widenings found real defects. Of 213
+scenarios, **108 carry a registry tag and are aligned and 105 are structural** — measured 2026-09-13 —
+and the structural ones have no call site to check against, which the roadmap addendum states as a
+known cost rather than leaving implied.
 
 A message built by one module and coded by another needs a `# text:` line naming where the words live,
 so the code is checked against the emission site and the phrase against the module that holds the
