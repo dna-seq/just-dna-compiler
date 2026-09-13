@@ -139,3 +139,81 @@ Feature: The three-valued house algebra
     # A reformatting site is exactly where a code goes missing, because every other string operation on a
     # `CodedWarning` returns a plain `str` by construction. Bucketing it here would reproduce the
     # silently-partial summary the whole item exists to avoid.
+
+  # The three DATA tri-states. Everything above is the house algebra as a mechanism — Kleene, the
+  # withhold, `classify`, `restate`. These three are the algebra as a recorded VALUE, and the corpus had
+  # none of them: five of their nine members appeared nowhere in it, including `not_covered`, which is
+  # the member the gnomAD Y-PAR probe exists to justify. Found by walking `vocab` for three-member
+  # `VALID_*` sets, which is a heuristic and not a rule — `VALID_RSID_STATUS` has four members and is
+  # just as much a house-algebra axis.
+
+  # source: enricher/src/just_dna_enricher/frequencies.py:343
+  @tri_state
+  Scenario Outline: a frequency source has one more way to answer than a lookup does
+    Given an allele at <locus> queried against gnomAD
+    When the frequency table is built
+    Then the row's status is <status>
+    And the row is written either way, because an absent row says nothing at all
+    # `not_found` is a FACT about a locus gnomAD covers: absent from the callset means absent from
+    # those samples. `not_covered` is the absence of an answer — gnomAD hard-masks the Y PAR, so the
+    # Y spelling of a place has no frequency to give while the X spelling of the same place does.
+    # Writing the second as the first asserts a negative nobody established, which is `None` is never
+    # `False` in one column.
+    Examples:
+      | locus                                    | status        |
+      | one gnomAD covers, with counts           | "resolved"    |
+      | one gnomAD covers, with no counts        | "not_found"   |
+      | the Y PAR, which gnomAD masks outright   | "not_covered" |
+
+  # source: enricher/src/just_dna_enricher/frequencies.py:349
+  @tri_state
+  Scenario: the uncovered rows are aggregated into one sentence that refuses to call them absent
+    Given four alleles in the Y pseudoautosomal region
+    When the frequency table is built
+    Then one warning fires saying they were "recorded as not_covered"
+    And it says they were "not asked about and not counted as absent"
+    And it ends "This is an unknown, not a zero."
+    And it fires once for the run rather than once per allele
+
+  # source: enricher/src/just_dna_enricher/enrich.py:1355
+  @tri_state
+  Scenario Outline: the resolution table's third member is a query that cannot be narrowed
+    Given a coordinate-authored row with <candidates> candidate rsID(s) at its exact allele
+    When enrich back-fills the rsid
+    Then the row's status is <status>
+    And <label>
+    # `ambiguous` is rare by construction: a one-to-many rsID is EXPANDED into distinct rows rather
+    # than recorded as ambiguous, so this member is reached only by the reverse direction — several
+    # dbSNP ids clustered at one allele. The pick is deterministic and the candidate list travels
+    # beside it, which is what keeps a deterministic pick from reading as a fact.
+    Examples:
+      | candidates | status        | label                                                     |
+      | 0          | "resolved"    | the rsid stays null and the coordinate is the identity    |
+      | 1          | "resolved"    | the rsid is attached and no alternates are recorded       |
+      | 2 or more  | "ambiguous"   | the first is picked and rsid_alternates carries them all  |
+
+  # source: enricher/src/just_dna_enricher/clinical.py:602
+  @tri_state
+  Scenario Outline: what ONE authority did when it was consulted about one subject
+    Given an authority <situation> for a subject
+    When the concordance rows are built
+    Then that authority's call status is <status>
+    And clin_sig is empty unless the status is "recorded"
+    # The per-row half of the concordance record, and the half that makes the aggregate honest:
+    # `no_record` is an established absence and can make the concordance `none`, while `unchecked`
+    # is nobody-asked and must never be read as agreement. Folding the two would let an unprovisioned
+    # snapshot look like unanimity.
+    Examples:
+      | situation                                        | status        |
+      | that has a classification here                   | "recorded"    |
+      | consulted, with nothing at this subject          | "no_record"   |
+      | whose snapshot was never provisioned             | "unchecked"   |
+
+  # source: enricher/src/just_dna_enricher/clinical.py:749
+  @tri_state
+  Scenario: an authority nobody could ask says so in its own sentence
+    Given a concordance run where one authority's snapshot is absent
+    When the findings are written
+    Then a finding names that authority and says it "was not consulted"
+    And it carries the reason it could not be, rather than a bare absence
+    And the concordance reads "unchecked" rather than reporting what the others agreed
