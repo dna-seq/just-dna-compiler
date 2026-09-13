@@ -456,3 +456,92 @@ def test_a_scenario_outline_has_examples() -> None:
         if s.outline and not s.has_examples
     ]
     assert not problems, "\n".join(problems)
+
+
+def _channel_flip_codes() -> dict[str, set[str]]:
+    """`{module: {code, …}}` for every code emitted inside a function that flips channel on `strict`.
+
+    The **mode ladder's first mechanism, derived rather than listed.** A check whose severity is the mode
+    writes `(errors if strict else warnings_out).append(finding)` — one sentence, two channels — and the
+    set of codes reachable that way is exactly what `@ladder` claims on the coded half of the corpus. It
+    is walkable, so it is walked: the first draft tagged four codes by hand, which is
+    `@registry-completeness` waiting to happen one more time.
+
+    Scoped to the enclosing `FunctionDef` rather than to the statement, because `_check_allele_membership`
+    builds two codes into one `findings` list and flips the whole list at the end — the codes and the
+    `IfExp` are forty lines apart and in different branches.
+    """
+    found: dict[str, set[str]] = {}
+    for module in sorted(_ROOT.glob("*/src/**/*.py")):
+        if "generated" in module.parts:
+            continue
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        for function in ast.walk(tree):
+            if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            flips = any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in {"append", "extend"}
+                and isinstance(node.func.value, ast.IfExp)
+                and isinstance(node.func.value.test, ast.Name)
+                and node.func.value.test.id == "strict"
+                for node in ast.walk(function)
+            )
+            if not flips:
+                continue
+            for node in ast.walk(function):
+                if (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id == "CodedWarning"
+                    and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)
+                ):
+                    found.setdefault(str(module.relative_to(_ROOT)), set()).add(node.args[0].value)
+    return found
+
+
+def test_the_ladder_tag_is_the_walked_set_of_channel_flipping_codes() -> None:
+    """`@ladder` beside a `@code:` is an equality, not a judgement, so it is asserted as one.
+
+    **`@ladder` names two mechanisms and only one of them has codes.** A check whose severity is the mode
+    flips channel on one sentence; the three resolution findings pair a warning with a *different, longer*
+    refusal through `ResolutionOutcome.strict_errors`, and their scenarios carry `@ladder` with no
+    `@code:` because the refusal is a second text rather than a second channel for the first. That
+    distinction is RM149's second finding and it is why this is scoped to scenarios that name a code:
+    the walk can see a channel flip and cannot see a paired refusal.
+    """
+    walked = {code for codes in _channel_flip_codes().values() for code in codes}
+    tagged = {code for s in _scenarios() if "ladder" in s.tags for code in s.codes()}
+    assert tagged == walked, (
+        f"@ladder codes {sorted(tagged)} but the channel-flip walk finds {sorted(walked)}: "
+        f"untagged {sorted(walked - tagged)}, tagged without a flip {sorted(tagged - walked)}"
+    )
+
+
+def test_no_finding_constructor_is_called_through_an_attribute() -> None:
+    """Every walk above matches an `ast.Name` callee, so an attribute-spelled call is invisible to it.
+
+    `CodedWarning(...)` imported into the module's namespace is what the workspace does everywhere, and
+    the guards depend on it: a single `findings.CodedWarning(...)` or `verification.ran(...)` would be
+    skipped in silence by `_call_sites` and by `_channel_flip_codes`, and the registry equalities would
+    pass while missing that code. So the convention is asserted rather than assumed.
+    """
+    problems: list[str] = []
+    for module in sorted(_ROOT.glob("*/src/**/*.py")):
+        if "generated" in module.parts:
+            continue
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in {"CodedWarning", "ran", "skipped"}
+            ):
+                problems.append(
+                    f"{module.relative_to(_ROOT)}:{node.lineno}: {node.func.attr} called through an "
+                    f"attribute, which every AST guard in this file skips — import the name instead"
+                )
+    assert not problems, "\n".join(problems)
