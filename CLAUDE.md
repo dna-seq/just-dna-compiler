@@ -609,6 +609,12 @@ questions vs answers. A blocker is never a dead end: dissolved, closed additivel
 - **`scripts/` is the operator-facing drivers, `.claude/` is agent tooling** — the split is by
   audience, not by file type. A deployment runs `scripts/rebuild-caches.sh`; nothing but a Claude
   session runs `.claude/rm-next.py`. [scripts/README.md](scripts/README.md) states the rule.
+- **`features/` is the scenario corpus (RM149, drafted 2026-09-13 and unreviewed)** — Gherkin derived
+  **from** the code, with no step definitions and no runner in any tier. It is at the root rather than
+  in `docs/` on purpose, so it does not publish and P3 does not reach it. Three registries are covered
+  by set equality; a new warning code with no scenario fails `schema/tests/test_feature_corpus.py`.
+  [features/README.md](features/README.md) states the conventions, and every `# source:` and quoted
+  phrase is checked against the emission site.
 - Data that must **travel with the project** (a fixture a test or example needs) lives in `assets/`.
 - Any asset over **~5 MB** that must travel goes through **Git LFS**: `git lfs install`,
   `git lfs track "<path>"`, commit the **pointer** — never the raw blob.

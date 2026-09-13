@@ -34,6 +34,40 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-13 — RM149 drafted: a scenario corpus at `features/`, and the guard that makes it a registry
+
+**New top-level directory, no code change, no dependency in any tier.** A consumer or downstream repo
+needs to do nothing; the corpus is internal and does not publish.
+
+RM149 asked for our described scenarios as Gherkin and had stood parked on four questions. Two are
+answered by the ask itself and are recorded as assumptions rather than decisions: the direction is
+**code → Gherkin** (the files describe what the code does, there are **no step definitions**, and
+`behave`/`pytest-bdd` are not added anywhere), and the corpus lives at the **repository root** rather
+than under `docs/`, which keeps the P3 publishing question open instead of answering it by side effect.
+
+`features/` is 12 `.feature` files and 213 scenarios across the three tiers. Scope is decided by
+registry rather than by taste, which is the third question: three walked sets are covered in full —
+`VALID_WARNING_CODES` (73), `VALID_VERIFICATION_CHECKS` (26) and `VALID_VERIFICATION_SKIPS` (8). Round-trip
+fixed points are deliberately out, on RM149's own argument that prose adds nothing to an equality a
+test already computes.
+
+New: `schema/tests/test_feature_corpus.py`, beside the other guards that walk the repository rather
+than a tier. It asserts set equality over each registry and reports a symmetric difference, so a new
+warning code without a scenario fails — `@registry-completeness`. Two of its assertions are what make
+the corpus worth more than the prose it stands beside, and both were proven by reintroducing the defect:
+
+- a `@code:X` scenario's `# source:` must sit within three lines of X's own `CodedWarning` call;
+- every phrase a step quotes as a warning's text must be a real substring of a real string literal in
+  the module named, because a warning's text is an API and a paraphrase is a different claim.
+
+A message built by one module and coded by another needs a `# text:` line naming where the words live,
+so the code is checked against the emission site and the phrase against the module that holds the
+sentence — the boundary where a code goes missing.
+
+**RM149 stays open**: this is a draft nobody has read. Its dated addendum in
+[ROADMAP_0_8.md](ROADMAP_0_8.md) carries the measurement the item was waiting for — four findings in
+the first pass, two of them filed and fixed as RM242 and RM243 — and says what a review should push on.
+
 ## 2026-09-13 — RM243: four per-command counts in the paragraph that refuses to state a total
 
 **Documentation plus two walking guards.** No code behaviour changes, nothing to do on any consumer side.
