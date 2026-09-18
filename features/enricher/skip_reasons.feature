@@ -17,7 +17,8 @@ Feature: The skip vocabulary
   Nobody-asked is a third state beside asked-and-failed and asked-and-absent. Each member below names a
   different one, and two of them are different facts about the same absence.
 
-  # source: enricher/src/just_dna_enricher/identifiers.py:1510
+  # source: enricher/src/just_dna_enricher/identifiers.py
+  # anchor: _trait_record
   @skip:not_requested
   Scenario: the caller switched this check off
     Given `check-identifiers --no-traits`
@@ -27,7 +28,8 @@ Feature: The skip vocabulary
     # between *the check was not run* and *it ran without the flag*, which reintroduces the
     # two-readings-of-one-absence defect the vocabulary was built to end.
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2362
+  # source: enricher/src/just_dna_enricher/enrich.py
+  # anchor: _verification_records
   @skip:offline
   Scenario: the check needs egress and the run had none
     Given `enrich --offline`
@@ -37,7 +39,8 @@ Feature: The skip vocabulary
     # one is a caller's choice, the other a capability the run did not have, and only the second is
     # cleared by re-running with egress.
 
-  # source: enricher/src/just_dna_enricher/identifiers.py:1610
+  # source: enricher/src/just_dna_enricher/identifiers.py
+  # anchor: _gene_locus_record
   @skip:no_reference
   Scenario: nothing was provisioned to compare against
     Given a gene-locus check with no reference provisioned
@@ -47,7 +50,8 @@ Feature: The skip vocabulary
     # snapshot: judge a parent by its payload, never by `is_dir()`
     # (`@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`).
 
-  # source: enricher/src/just_dna_enricher/litvar.py:948
+  # source: enricher/src/just_dna_enricher/litvar.py
+  # anchor: verification_records
   @skip:unreachable
   Scenario: the source was asked and never answered
     Given a LitVar request that fails at the transport
@@ -56,7 +60,8 @@ Feature: The skip vocabulary
     # A failed request, not a no. One registry's outage may not write a skip against another's check
     # (`@one-registrys-outage-may-not-speak-for-another`).
 
-  # source: enricher/src/just_dna_enricher/identifiers.py:1603
+  # source: enricher/src/just_dna_enricher/identifiers.py
+  # anchor: _gene_locus_record
   @skip:nothing_to_check
   Scenario: the module carries no row this check applies to
     Given a module with no gene column anywhere
@@ -65,7 +70,8 @@ Feature: The skip vocabulary
     # A check that cannot fail must not report a zero (`@tautology-zero`). This is the shape where the
     # subject set is genuinely empty, as opposed to the tautology below where it is not.
 
-  # source: enricher/src/just_dna_enricher/enrich.py:1540
+  # source: enricher/src/just_dna_enricher/enrich.py
+  # anchor: _run_enrichment
   # text: enricher/src/just_dna_enricher/clinical.py
   @skip:tautology
   Scenario: the module was drafted from the very source the check reads
@@ -78,7 +84,8 @@ Feature: The skip vocabulary
     # either way — necessarily 0. Reporting "0 conflicts" there is mild misinformation, since it looks
     # like evidence and is not, and the cost is 90% of the resolve time on a panel.
 
-  # source: enricher/src/just_dna_enricher/clinical.py:240
+  # source: enricher/src/just_dna_enricher/clinical.py
+  # anchor: tautology_reason
   Scenario: the provenance marker is the licence row's dataset, not an authored block
     Given a module drafted by `clinvar_draft`
     When the tautology is decided
@@ -89,7 +96,8 @@ Feature: The skip vocabulary
     # machine-written into `dataset`, and a stale one is withdrawn rather than re-labelled
     # (`@rm4-dataset-marker`).
 
-  # source: enricher/src/just_dna_enricher/identifiers.py:1528
+  # source: enricher/src/just_dna_enricher/identifiers.py
+  # anchor: _trait_record
   @skip:unsupported
   Scenario: this tier cannot put the question for these rows
     Given a trait currency check on rows the tier cannot address
@@ -98,7 +106,8 @@ Feature: The skip vocabulary
     # An unbuilt assembly is the standing example: `refget_supports_build` answers the same predicate
     # `refget_accession` raises on (`@refget-raises`).
 
-  # source: enricher/src/just_dna_enricher/clinpgx.py:207
+  # source: enricher/src/just_dna_enricher/clinpgx.py
+  # anchor: enrich_clinpgx
   @skip:not_permitted
   Scenario: a source's terms bar the fetch under the declared use
     Given a ClinPGx source whose terms forbid the declared use
@@ -113,7 +122,8 @@ Feature: The skip vocabulary
     # it is a statement that the fetch is not permitted, and `best_effort` means "resolve what you can",
     # never "take what you may not" (`@acquisition-gate-is-not-a-read-gate`).
 
-  # source: enricher/src/just_dna_enricher/alphagenome_check.py:546
+  # source: enricher/src/just_dna_enricher/alphagenome_check.py
+  # anchor: check_variant_impact
   Scenario: a skip reason outside the vocabulary raises rather than recording (RM242)
     Given `alphagenome check` against a local AVI snapshot with a straddling variant and no client
     When the pass attests

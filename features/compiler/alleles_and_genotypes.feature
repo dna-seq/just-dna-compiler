@@ -10,7 +10,8 @@ Feature: Alleles, genotypes and contig ploidy
   A genotype names alleles the locus has, an effect allele is one of them, and the number of alleles a
   genotype may carry is a property of the contig and the locus — not of the chromosome name alone.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2384
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_allele_membership
   @code:genotype_allele_not_at_locus @actionable @ladder
   Scenario: a genotype naming an allele the locus does not have
     Given a variants.csv row whose locus is C>T and whose genotype is "A/G"
@@ -22,7 +23,8 @@ Feature: Alleles, genotypes and contig ploidy
     # one of the alleles "missing" from a locus. Listing it pointed the author at a correct
     # transcription — a false accusation in the one sentence that says which cell is wrong.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2396
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_allele_membership
   @code:effect_allele_not_at_locus @actionable @ladder
   Scenario: an effect allele the locus does not have inverts the conclusion rather than breaking it
     Given a variants.csv row whose effect_allele is not among its locus's alleles
@@ -32,7 +34,8 @@ Feature: Alleles, genotypes and contig ploidy
     # The more dangerous of the pair, and the reason both are checked: a wrong genotype corrupts the row
     # visibly, while a wrong effect allele silently reverses what the module claims.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2452
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_study_effect_alleles
   @code:study_effect_allele_not_at_locus @actionable @ladder
   Scenario: the same question asked of a study row
     Given a studies.csv row whose effect_allele is not among its locus's resolved alleles
@@ -40,7 +43,8 @@ Feature: Alleles, genotypes and contig ploidy
     Then a warning fires naming the PMID and saying "effect_size is stated relative to it"
     And it advises checking which side is wrong before editing
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2403
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_study_effect_alleles
   @tri_state
   Scenario: a study row with no resolved locus is skipped, not reported
     Given a studies.csv row whose key reaches no resolution.csv entry
@@ -50,7 +54,8 @@ Feature: Alleles, genotypes and contig ploidy
     # `StudyRow` has `ref` but no `alts`, so `{ref}` alone would flag every study of a non-reference
     # allele, which is most of them. Silent under `--no-resolve` for the same reason, which is correct.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2609
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_genotype_coverage
   @code:genotype_coverage_gap @actionable @both_modes
   Scenario: a site annotated for some of its genotypes and not the rest
     Given a variants.csv authoring two or more genotypes at a site
@@ -59,7 +64,8 @@ Feature: Alleles, genotypes and contig ploidy
     Then a warning fires whose text contains "have no row"
     And it says the module "states two or more genotypes at each of those sites"
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2475
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_genotype_coverage
   Scenario: a site authoring exactly one genotype is not a gap
     Given a variants.csv authoring one genotype at each of 326 sites
     When the module is compiled
@@ -69,7 +75,8 @@ Feature: Alleles, genotypes and contig ploidy
     # rule that fires on the risk genotype and says nothing otherwise is a rule, not a gap. Reporting
     # those would warn on almost every module in existence, which is where warnings stop being read.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2475
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_genotype_coverage
   Scenario: it says nothing about any callset
     Given a module with a missing homozygous-alternate genotype
     When the module is compiled
@@ -79,7 +86,8 @@ Feature: Alleles, genotypes and contig ploidy
     # VCF emits no such record, a gVCF and an array both do — and that call belongs to the annotator.
     # On array data those rows are the ones carrying the answer.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2783
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _symbolic_allele_messages
   @code:symbolic_allele_unusable @actionable
   Scenario: a symbolic allele with no length is a rule nothing can evaluate
     Given a variants.csv row whose alts is "<DEL>" with no length inside the token
@@ -90,7 +98,8 @@ Feature: Alleles, genotypes and contig ploidy
     # warn-and-drop. So the grammar says what the DSL can spell and this says what makes a usable
     # rulebook. Do not tighten it back into the models.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2781
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_symbolic_alleles
   Scenario: the same defect arrives by two routes and is diagnosed identically
     Given a lengthless "<FOO>" in a genotype column, which has a grammar
     Then it fails at load, in both modes
@@ -100,7 +109,8 @@ Feature: Alleles, genotypes and contig ploidy
     # `ref`/`alts` have no nucleotide grammar on purpose: adding one would reject `N` and stop existing
     # modules validating (P3).
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1922
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_missing_allele_marker
   @code:missing_allele_marker_in_alts @actionable @both_modes
   Scenario: VCF's missing marker in alts splits one site into two identities
     Given one variants.csv row writing alts "." and another leaving the cell empty at the same site
@@ -112,7 +122,8 @@ Feature: Alleles, genotypes and contig ploidy
     # The only VCF-conformance finding in this batch that reaches identity: `1:1:A:.` and `1:1:A` are one
     # site under two keys with different `content_signature`s and no dedup between them.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1839
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_missing_allele_marker
   Scenario: on an rsid-authored row the cell is wrong without the identity consequence
     Given an rsid-authored variants.csv row writing alts "."
     When the module is compiled
@@ -120,7 +131,8 @@ Feature: Alleles, genotypes and contig ploidy
     And it does not claim an identity split, because both keys are the rsid
     # Claiming otherwise would be a false statement about that row.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1214
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_contig_ploidy
   @code:contig_ploidy_mismatch @actionable @both_modes
   Scenario: a two-allele genotype on a contig that is not diploid there
     Given a variants.csv row with chrom "MT" and genotype "A/G"
@@ -128,7 +140,8 @@ Feature: Alleles, genotypes and contig ploidy
     Then a warning fires whose text contains "is not diploid here"
     And it suggests a single-allele genotype "for a homoplasmic/hemizygous call"
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1152
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_contig_ploidy
   Scenario: the check runs after resolution, because chrom is what resolution fills
     Given an rsid-authored row for the MELAS variant with genotype "A/G" and no authored chrom
     When the module is compiled
@@ -138,14 +151,16 @@ Feature: Alleles, genotypes and contig ploidy
     # fake-diploid error, and the shape every drafting provider emits — was silently unchecked
     # (`@ploidy-behind-resolution`).
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1152
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_contig_ploidy
   Scenario: chrom X is excluded outright
     Given a variants.csv row with chrom "X" and a two-allele genotype
     When the module is compiled
     Then no ploidy finding fires
     # X is diploid in XX samples, so warning on it would be pure noise.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1204
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_contig_ploidy
   @code:contig_ploidy_undecidable @carried @both_modes
   Scenario: chrom Y on a build with no pseudoautosomal table
     Given a variants.csv row with chrom "Y", a two-allele genotype, and a build with no PAR table here
@@ -158,7 +173,8 @@ Feature: Alleles, genotypes and contig ploidy
     # annotation wrong (`@y-not-haploid`). Real instance: rs6603251 maps to X:359845 and Y:359845, and a
     # one-to-many expansion produces the Y row on its own — the author never chose it.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1198
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_contig_ploidy
   @tri_state
   Scenario Outline: Y ploidy is a three-valued question answered per locus
     Given a two-allele genotype at chrom Y position <position> on a build with a PAR table
@@ -170,7 +186,8 @@ Feature: Alleles, genotypes and contig ploidy
       | outside PAR  | contig_ploidy_mismatch                      |
       | unknown, no PAR table for the build | contig_ploidy_undecidable |
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1085
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _cross_validate_variants
   @code:weight_sign_disagrees_with_effect @actionable @both_modes
   Scenario Outline: two encodings of one claim disagreeing about its sign
     Given a variants.csv row where <axis> is <value> and weight is <weight>

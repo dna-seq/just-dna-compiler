@@ -20,7 +20,8 @@ Feature: The verification checks and their three outcomes
   is written unconditionally — there is no `--attest` flag, because an optional record is ambiguous
   between *the check was not run* and *it ran without the flag*.
 
-  # source: enricher/src/just_dna_enricher/verification.py:201
+  # source: enricher/src/just_dna_enricher/verification.py
+  # anchor: ran
   @tri_state
   Scenario Outline: a record is one of three things, and the split is two constructors
     Given a check that <situation>
@@ -35,7 +36,8 @@ Feature: The verification checks and their three outcomes
       | ran and disagreed                     | ran, subjects=N, findings>0            |
       | could not be put at all               | skipped, with a vocabulary reason      |
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2186
+  # source: enricher/src/just_dna_enricher/enrich.py
+  # anchor: _verification_records
   @check:reference_allele
   Scenario: an authored ref against the actual reference sequence
     Given a variants.csv row stating ref "A" at a locus whose reference base is "G"
@@ -47,7 +49,8 @@ Feature: The verification checks and their three outcomes
     # mismatch" has three causes and one window read cannot separate them, so an ambiguous case is
     # withheld and the findings group by reason (`@ref-mismatch-causes`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2253
+  # source: enricher/src/just_dna_enricher/enrich.py
+  # anchor: _verification_records
   @check:genome_build_agreement
   Scenario: authored coordinates against the declared assembly
     Given a module declaring GRCh38 whose coordinates match GRCh37
@@ -58,7 +61,8 @@ Feature: The verification checks and their three outcomes
     # (`@a-recorded-judgement-is-a-fact`). The ±1 shift reading is wrong on an old-assembly coordinate,
     # and only two evidence tiers supersede it (`@old-assembly-vs-shift`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2286
+  # source: enricher/src/just_dna_enricher/enrich.py
+  # anchor: _verification_records
   @check:clinical_significance
   Scenario: an authored clin_sig against ClinVar's own, allele-exactly
     Given a variants.csv row calling a variant pathogenic
@@ -72,7 +76,8 @@ Feature: The verification checks and their three outcomes
     # disagrees with a one-star submission is doing their job. Failing the compile would make the format
     # arbitrate a clinical dispute (`@clinsig-never-escalates`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2432
+  # source: enricher/src/just_dna_enricher/enrich.py
+  # anchor: _verification_records
   @check:rsid_coordinate_agreement
   Scenario: an authored rsID and coordinate PAIR against the reference
     Given a variants.csv row carrying both an rsID and a coordinate
@@ -81,7 +86,8 @@ Feature: The verification checks and their three outcomes
     # The pair co-identifies one variant, so the redundancy is checkable. NCBI rather than Ensembl is the
     # oracle for merge status (`@ncbi-merge-oracle`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2369
+  # source: enricher/src/just_dna_enricher/enrich.py
+  # anchor: _verification_records
   @check:rsid_currency
   Scenario: an authored rsID against dbSNP's own status
     Given a variants.csv row whose rsID dbSNP reports as merged
@@ -92,7 +98,8 @@ Feature: The verification checks and their three outcomes
     # absence are not automatically equal (`@rsid-absent-two-readings`,
     # `@absence-is-weighted-by-the-base-rate`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2470
+  # source: enricher/src/just_dna_enricher/enrich.py
+  # anchor: _verification_records
   @check:dataset_currency
   Scenario: a recorded dataset against the release that source publishes now
     Given a sources.csv row whose `dataset` names an earlier release
@@ -102,7 +109,8 @@ Feature: The verification checks and their three outcomes
     # currency check asks the SOURCE, never the cache the rows were drafted from, and a digest label does
     # not compare against a dated one (`@currency-asks-the-source-not-the-cache`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2345
+  # source: enricher/src/just_dna_enricher/enrich.py
+  # anchor: _verification_records
   @check:evidence_status_currency
   Scenario: a recorded curation status against what the source says about that item now
     Given a studies.csv row whose confidence records a CIViC status from when it was drafted
@@ -114,7 +122,8 @@ Feature: The verification checks and their three outcomes
     # table came from, this one whether a per-ITEM judgement has moved, and the two currency findings stay
     # apart (`@a-source-recuring-is-not-a-strict-matter`). A source re-curating is not an authoring error.
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2319
+  # source: enricher/src/just_dna_enricher/enrich.py
+  # anchor: _verification_records
   @check:published_refutation
   Scenario: an authored direction against the refutations a source publishes
     Given a variants.csv row asserting direction "risk"
@@ -129,7 +138,8 @@ Feature: The verification checks and their three outcomes
     # Never escalates under strict: a source disagreeing with itself is not an authoring error. On the
     # `accepted` basis the class is empty by construction, which is why the basis is named.
 
-  # source: enricher/src/just_dna_enricher/literature.py:1337
+  # source: enricher/src/just_dna_enricher/literature.py
+  # anchor: _verification_records
   @check:citation_existence
   Scenario: an authored pmid or doi against PubMed and Crossref
     Given a studies.csv row citing a PMID
@@ -139,7 +149,8 @@ Feature: The verification checks and their three outcomes
     # (`@citation-existence`). Existence is not identity — a lookup must say WHAT it found
     # (`@existence-not-identity`).
 
-  # source: enricher/src/just_dna_enricher/literature.py:1413
+  # source: enricher/src/just_dna_enricher/literature.py
+  # anchor: _verification_records
   @check:citation_identifier
   Scenario: an authored doi against the registry's own for that PMID
     Given a studies.csv row carrying both a PMID and a DOI
@@ -152,7 +163,8 @@ Feature: The verification checks and their three outcomes
     # resolved, a pinned verdict about a DOI the module no longer cites, and one no run ever put the
     # question for, which is what a `--no-doi` run followed by a plain one leaves behind.
 
-  # source: enricher/src/just_dna_enricher/literature.py:1484
+  # source: enricher/src/just_dna_enricher/literature.py
+  # anchor: _verification_records
   @check:provenance_quote
   Scenario: an authored quote against the article's own text
     Given a studies.csv row carrying a provenance_quote
@@ -167,7 +179,8 @@ Feature: The verification checks and their three outcomes
     # failure is flatly false for an open-access article read on the previous run. A quote is an
     # attestation — a sharper refusal than redundancy-bearing (`@quote-attestation`).
 
-  # source: enricher/src/just_dna_enricher/literature.py:1472
+  # source: enricher/src/just_dna_enricher/literature.py
+  # anchor: _verification_records
   Scenario: a pinned count has to match, not merely be non-zero
     Given a literature.csv row pinned at two quotes and a studies.csv now carrying one
     When `enrich-literature` runs
@@ -175,7 +188,8 @@ Feature: The verification checks and their three outcomes
     # A row pinned at two quotes says nothing attributable about the one that is left, so it goes
     # unexamined rather than carrying a finding about a quote the module no longer makes.
 
-  # source: enricher/src/just_dna_enricher/pgx.py:576
+  # source: enricher/src/just_dna_enricher/pgx.py
+  # anchor: _function_check_record
   @check:allele_function
   Scenario: an authored function_status against PharmVar and CPIC
     Given an allele_function.csv row stating a function
@@ -188,7 +202,8 @@ Feature: The verification checks and their three outcomes
     # format arbitrate between the two authorities it depends on. One of the two deliberate breaks in the
     # severity rule; the other, the declared-use gate, goes the opposite way.
 
-  # source: enricher/src/just_dna_enricher/clinpgx.py:372
+  # source: enricher/src/just_dna_enricher/clinpgx.py
+  # anchor: _attest
   @check:pgx_evidence_level
   Scenario: an authored evidence_level against ClinPGx's own
     Given a pharm_variants.csv row stating an evidence level
@@ -199,7 +214,8 @@ Feature: The verification checks and their three outcomes
     # `(variant_key, drug, genotype, phenotype_category, annotation_id)`; the bare triple is a bug
     # (`@clinpgx-per-genotype`, `@clinpgx-full-key`).
 
-  # source: enricher/src/just_dna_enricher/drug_labels.py:850
+  # source: enricher/src/just_dna_enricher/drug_labels.py
+  # anchor: verification_record
   @check:regulator_label_agreement
   Scenario: authored gene, allele and drug claims against five regulators' label annotations
     Given a pharm_variants.csv row naming a gene, an allele and a drug
@@ -211,7 +227,8 @@ Feature: The verification checks and their three outcomes
     # A join with two granularities needs two kinds of subject, or the coarse answer repeats per fine
     # claim (`@the-tier-is-a-property-of-the-subject`).
 
-  # source: enricher/src/just_dna_enricher/strchive.py:720
+  # source: enricher/src/just_dna_enricher/strchive.py
+  # anchor: verification_record
   @check:repeat_band_agreement
   Scenario: an authored repeat band table against a published repeat-locus catalogue
     Given a repeat_alleles.csv stating bands for a locus
@@ -221,7 +238,8 @@ Feature: The verification checks and their three outcomes
     # The corpus has one module the catalogue agrees with and one it is a band coarser than, and the
     # format does not arbitrate between its own authorities.
 
-  # source: enricher/src/just_dna_enricher/acmg.py:769
+  # source: enricher/src/just_dna_enricher/acmg.py
+  # anchor: verification_record
   @check:acmg_secondary_findings
   Scenario: an authored acmg_sf flag against the published SF gene list
     Given a variants.csv row flagged acmg_sf on a gene the published list does not carry
@@ -232,21 +250,24 @@ Feature: The verification checks and their three outcomes
     # that is `hints.REDUNDANCY_BEARING`, and it is why these are open-ended checks rather than an apply
     # route (`@hint-redundancy-bearing`).
 
-  # source: enricher/src/just_dna_enricher/identifiers.py:1573
+  # source: enricher/src/just_dna_enricher/identifiers.py
+  # anchor: _gene_symbol_record
   @check:gene_symbol_currency
   Scenario: an authored gene symbol against HGNC's approved and previous names
     Given a variants.csv row naming a retired gene symbol
     When `check-identifiers` runs
     Then the record names it as previous rather than as unknown
 
-  # source: enricher/src/just_dna_enricher/identifiers.py:1547
+  # source: enricher/src/just_dna_enricher/identifiers.py
+  # anchor: _trait_record
   @check:trait_currency
   Scenario: an authored trait CURIE against OLS4
     Given a variants.csv row whose trait_efo_id OLS4 reports obsolete
     When `check-identifiers` runs
     Then the record names the obsolescence and its replacement
 
-  # source: enricher/src/just_dna_enricher/identifiers.py:1631
+  # source: enricher/src/just_dna_enricher/identifiers.py
+  # anchor: _gene_locus_record
   @check:gene_locus_agreement
   Scenario: a row's gene against the chromosome its variant sits on
     Given a variants.csv row naming a gene on chr17 and a coordinate on chr13
@@ -257,7 +278,8 @@ Feature: The verification checks and their three outcomes
     # (`@gene-locus-relationship`). Two true halves can make one false row (S24): a live gene symbol and
     # a live coordinate that do not belong together.
 
-  # source: enricher/src/just_dna_enricher/identifiers.py:1682
+  # source: enricher/src/just_dna_enricher/identifiers.py
+  # anchor: _pgs_accession_record
   @check:pgs_accession_currency
   Scenario: an authored pgs_id against the PGS Catalog's record for it
     Given a row citing a PGS accession the Catalog has no record of
@@ -268,7 +290,8 @@ Feature: The verification checks and their three outcomes
     # reading would call both of them fine. A retired filename still answering 200 is the same shape one
     # source over (`@probe-the-real-file`).
 
-  # source: enricher/src/just_dna_enricher/identifiers.py:1758
+  # source: enricher/src/just_dna_enricher/identifiers.py
+  # anchor: _pgs_metadata_record
   @check:pgs_metadata_agreement
   Scenario: authored training ancestry and cohort against the score record's own
     Given a row stating training_ancestry and training_cohort
@@ -278,7 +301,8 @@ Feature: The verification checks and their three outcomes
     # still names a score, and this asks whether two cells beside it still match. Two questions, two
     # subjects, so two records.
 
-  # source: enricher/src/just_dna_enricher/litvar.py:975
+  # source: enricher/src/just_dna_enricher/litvar.py
+  # anchor: verification_records
   @check:literature_coverage
   Scenario: which papers an index holds for a module's alleles, and at which tier
     Given a variants.csv row with an allele-resolved identity
@@ -289,7 +313,8 @@ Feature: The verification checks and their three outcomes
     # it was measured at (`@the-tier-that-answered-is-part-of-the-answer`). An empty id slot is not a
     # suffix, and a prefix search's first hit is a different variant.
 
-  # source: enricher/src/just_dna_enricher/alphagenome_check.py:560
+  # source: enricher/src/just_dna_enricher/alphagenome_check.py
+  # anchor: check_variant_impact
   @check:variant_impact_agreement
   Scenario: a module's variants against AlphaGenome's AVI scores
     Given a variants.csv row inside a knot spanning the PHRED threshold
@@ -300,7 +325,8 @@ Feature: The verification checks and their three outcomes
     # question too: letting one registry's outage write a skip against another's check is exactly what
     # `@one-registrys-outage-may-not-speak-for-another` forbids.
 
-  # source: enricher/src/just_dna_enricher/cli.py:3196
+  # source: enricher/src/just_dna_enricher/cli.py
+  # anchor: _mint_record
   @check:vrs_allele_id
   Scenario: the check whose every record is a skip, deliberately
     Given a resolution.csv with no source-reported allele ids
@@ -336,7 +362,8 @@ Feature: The verification checks and their three outcomes
     # No model carries an authored dosage claim to compare it against. The member is for the pass that
     # gains one.
 
-  # source: schema/src/just_dna_format/verification.py:315
+  # source: schema/src/just_dna_format/verification.py
+  # anchor: merge_records
   Scenario: a skipped record does not replace a ran one
     Given a verification.json recording subjects=13 findings=0 for a check
     When the same check is re-run offline and records a skip
@@ -345,7 +372,8 @@ Feature: The verification checks and their three outcomes
     # true verdict to `subjects=0 findings=0 skipped=offline`. Newest-wins still holds between two
     # records of the same disposition.
 
-  # source: schema/src/just_dna_format/verification.py:315
+  # source: schema/src/just_dna_format/verification.py
+  # anchor: merge_records
   Scenario: unless the authored bytes have moved since
     Given a verification.json recording a verdict over authored bytes
     And those authored files edited since
@@ -355,7 +383,8 @@ Feature: The verification checks and their three outcomes
     # the document may keep asserting. Without it, `literature`'s deliberate skip-on-changed-citations
     # became a stale finding again, undoing an earlier round.
 
-  # source: enricher/src/just_dna_enricher/verification.py:182
+  # source: enricher/src/just_dna_enricher/verification.py
+  # anchor: record_verification
   Scenario: the attestation is bound to the module's authored bytes
     Given an attested verification.json
     When variants.csv is edited afterwards and the module is compiled

@@ -12,7 +12,8 @@ Feature: The author's overlay and what a correction reaching nothing means
   An `update` names a row in a derived table and changes a cell. Whether it reached one has several
   readings, and the tier separates only the readings it can answer.
 
-  # source: schema/src/just_dna_format/overrides.py:962
+  # source: schema/src/just_dna_format/overrides.py
+  # anchor: _suppression_warnings
   @code:overlay_rows_suppressed @actionable @both_modes
   Scenario: a suppression leaves no trace in the artifact, so it leaves one in the warnings
     Given an overrides.csv with 40 suppress rows against "frequencies.csv" sharing one reason
@@ -23,7 +24,8 @@ Feature: The author's overlay and what a correction reaching nothing means
     # Aggregated by reason, which is why `reason` is a required column. An `update` leaves the changed
     # cell and an `insert` leaves the new row; only a suppression is invisible from the artifact alone.
 
-  # source: schema/src/just_dna_format/overrides.py:962
+  # source: schema/src/just_dna_format/overrides.py
+  # anchor: _suppression_warnings
   @parity
   Scenario: the suppression count is the same on both laps of a round trip
     Given a module whose overrides.csv suppresses 12 rows of a derived table
@@ -33,7 +35,8 @@ Feature: The author's overlay and what a correction reaching nothing means
     # nothing. A count over the effect would move `manifest.compilation.warnings`; a count over the
     # overlay file, which round-trips unchanged, does not.
 
-  # source: schema/src/just_dna_format/overrides.py:914
+  # source: schema/src/just_dna_format/overrides.py
+  # anchor: _unmatched_warnings
   @code:overlay_update_unmatched @actionable @both_modes
   Scenario: an update reaching no row, where the caller cannot ask whether the subject is reachable
     Given an update override naming a row a derived table does not carry
@@ -46,7 +49,8 @@ Feature: The author's overlay and what a correction reaching nothing means
     # The three readings are a mistyped subject, a source that stopped publishing the row, and a row
     # the compiler dropped before the parquet so reverse could not rebuild it.
 
-  # source: schema/src/just_dna_format/overrides.py:866
+  # source: schema/src/just_dna_format/overrides.py
+  # anchor: classify_update_targets
   @code:overlay_update_unmatched @actionable
   Scenario: the same finding, narrowed, where the subject IS reachable
     Given an update override naming a row a derived table does not carry
@@ -58,7 +62,8 @@ Feature: The author's overlay and what a correction reaching nothing means
     # is short rather than the correction wrong. A mistyped subject lands in the unreachable bucket,
     # because a mistyped pmid is also an uncited one.
 
-  # source: schema/src/just_dna_format/overrides.py:877
+  # source: schema/src/just_dna_format/overrides.py
+  # anchor: classify_update_targets
   @code:overlay_update_target_unreachable @actionable @both_modes
   Scenario: an update naming a row no artifact of this module can carry
     Given an update override whose subject is neither cited nor positioned
@@ -70,7 +75,8 @@ Feature: The author's overlay and what a correction reaching nothing means
     # (`@lap-stable-means-a-property-of-the-module`). "Did it match" is exactly the quantity a reverse
     # moves, which is why only the short-table finding is conditioned on it.
 
-  # source: schema/src/just_dna_format/overrides.py:813
+  # source: schema/src/just_dna_format/overrides.py
+  # anchor: classify_vindicated_answers
   @code:overlay_answer_vindicated @actionable @both_modes
   Scenario: an answered subject the authorities have since stopped contesting
     Given an overrides.csv answering a contested subject in "clin_sig_concordance.csv"
@@ -83,7 +89,8 @@ Feature: The author's overlay and what a correction reaching nothing means
     # only and is rewritten whole, so leaving it means the contest ended. It says nothing about who was
     # right about the biology — the authorities agreed, which is an observation about the record.
 
-  # source: schema/src/just_dna_format/overrides.py:824
+  # source: schema/src/just_dna_format/overrides.py
+  # anchor: classify_update_targets
   @tri_state
   Scenario Outline: the reachability predicate is three-valued by absence
     Given an update override that reached no row in <table>
@@ -97,7 +104,8 @@ Feature: The author's overlay and what a correction reaching nothing means
       | literature.csv             | cannot ask     | overlay_update_unmatched, all three readings |
       | clin_sig_concordance.csv   | no             | overlay_answer_vindicated                 |
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3820
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _overlay_targets_missing
   @code:overlay_targets_missing_table @actionable @both_modes
   Scenario: an overlay against a table the module does not carry
     Given an overrides.csv correcting "frequencies.csv"
@@ -108,7 +116,8 @@ Feature: The author's overlay and what a correction reaching nothing means
     # An `insert` creates a ROW, never a TABLE. The remedy named is to run the pass that writes the
     # table, or to drop the override rows.
 
-  # source: schema/src/just_dna_format/overrides.py:560
+  # source: schema/src/just_dna_format/overrides.py
+  # anchor: _key_groups
   @refusal
   Scenario: one key group written under two spellings, carrying two operations, refuses
     Given two overrides.csv rows whose member differs only by a trailing space
@@ -120,7 +129,8 @@ Feature: The author's overlay and what a correction reaching nothing means
     # the stripped value while the duplicate check keyed on the raw one, so two rows were distinct to
     # the check and one group to the apply, where the second silently won (`@overlay-not-inside`).
 
-  # source: schema/src/just_dna_format/overrides.py:588
+  # source: schema/src/just_dna_format/overrides.py
+  # anchor: _spelling_errors
   @refusal
   Scenario: one cell stated twice under two spellings of its key refuses rather than letting one win
     Given two update rows naming one field under two spellings of one stored key

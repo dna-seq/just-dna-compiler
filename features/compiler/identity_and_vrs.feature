@@ -13,7 +13,8 @@ Feature: Identity and the VRS verify pass
   itself with no reference, no network and no dependency. Every row lands in exactly one of three
   outcomes, and the difference between the last two is the one that matters.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1147
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _restamp_for_build
   @code:non_grch38_variant_keys @carried @both_modes
   Scenario: a non-GRCh38 module is keyed by coordinate instead
     Given a module declaring genome_build "GRCh37"
@@ -24,7 +25,8 @@ Feature: Identity and the VRS verify pass
     And the author can do nothing about it short of republishing on GRCh38
     # RM15. Carried because the remedy is not an edit to this module but a change to what identity is.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1113
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _restamp_for_build
   Scenario: the re-stamp is a no-op on GRCh38, which is every module today
     Given a module declaring genome_build "GRCh38"
     When the module is compiled
@@ -32,7 +34,8 @@ Feature: Identity and the VRS verify pass
     # A row is stamped before the module is known, so the build-dependent stamp is re-derived at both
     # load sites (`@restamp-for-build`). The build is INJECTED at load and never authored on a row.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2885
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _verify_vrs_ids
   @tri_state
   Scenario Outline: the VRS verify pass has three outcomes and one of them is not a mismatch
     Given a resolution.csv row carrying a stored vrs_id
@@ -47,7 +50,8 @@ Feature: Identity and the VRS verify pass
       | different from the stored id    | mismatch      | error in both modes         |
       | not computable at all           | unverifiable  | depends on whose limit it is |
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2970
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _verify_vrs_ids
   @refusal @both_modes
   Scenario: a recomputed id that differs is corrupt, in both modes
     Given a stored vrs_id that does not match the id recomputed from the row's own coordinate
@@ -57,7 +61,8 @@ Feature: Identity and the VRS verify pass
     # corrupt — the row was tampered with, or the producer and this implementation disagree. Either way
     # the id is not usable as an identity.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3021
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _carried_vrs_warnings
   @code:vrs_id_unverifiable @carried @both_modes
   Scenario: an id this tier cannot recompute, where the limit is the tier's
     Given a resolution.csv row whose stored vrs_id is for an indel
@@ -69,7 +74,8 @@ Feature: Identity and the VRS verify pass
     # An indel or MNV must be justified against the reference sequence, which this tier has no access to
     # and will never fetch (Principle 2).
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2961
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _verify_vrs_ids
   @refusal @both_modes
   Scenario: an id recorded against nothing to check it with is a contradiction, not a tier limit
     Given a resolution.csv row carrying a vrs_id and no coordinate
@@ -80,7 +86,8 @@ Feature: Identity and the VRS verify pass
     # limit it is, not the mode. The row asserts an identity while withholding the coordinate that
     # identity is a digest of, so nothing can ever check it.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3174
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _recompute_vrs_id
   Scenario Outline: the five reasons an allele is unverifiable, and who each one belongs to
     Given a resolution.csv row whose allele is <shape>
     When the id is recomputed
@@ -93,7 +100,8 @@ Feature: Identity and the VRS verify pass
       | an indel or MNV                           | it needs the reference sequence         | tier  |
       | a build with no refget table              | no accession to address the sequence by | tier  |
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3188
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _recompute_vrs_id
   Scenario: a symbolic allele is checked before the indel reason it would otherwise fall into
     Given a resolution.csv row whose allele is "<DEL:4977>"
     When the id is recomputed
@@ -103,7 +111,8 @@ Feature: Identity and the VRS verify pass
     # be blamed on the row is a real open question, deliberately left open rather than half-mended —
     # acting on it would refuse, in both modes, a module that compiles today.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3208
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _recompute_vrs_id
   Scenario: a multi-allelic site of substitutions verifies as completely as a bi-allelic one
     Given a resolution.csv row with three comma-joined alts and three vrs_ids
     When the ids are recomputed
@@ -111,7 +120,8 @@ Feature: Identity and the VRS verify pass
     # `vrs_id` is positionally aligned with `alts`, one id per ALT, empty members kept, never one row
     # per allele (`@vrsid-per-alt`). Nothing is picked, so the old multi-allelic exemption is gone.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3212
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _recompute_vrs_id
   Scenario: an unsupported build is caught and turned into a reason, not allowed to abort the compile
     Given a resolution.csv row on a build with no refget table
     When the id is recomputed
@@ -120,7 +130,8 @@ Feature: Identity and the VRS verify pass
     # GRCh37 should hear "not built" rather than get a GRCh38-flavoured answer (`@refget-raises`).
     # Letting it propagate would abort the whole compile over one unverifiable row.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3164
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _vrs_coverage_warnings
   @code:vrs_coverage_incomplete @carried @both_modes
   Scenario: the shortfall, and what a consumer keying on the VA actually sees
     Given a resolution.csv where 40 of 100 alleles carry no ga4gh:VA. id
@@ -132,14 +143,16 @@ Feature: Identity and the VRS verify pass
     # under two keys would double-count one coverage gap. A check over recorded values must also count
     # the records carrying none (`@vrs-coverage`).
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3130
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _vrs_coverage_warnings
   Scenario: full coverage reports nothing at all
     Given a resolution.csv where every allele carries a ga4gh:VA. id
     When the module is compiled
     Then no coverage warning fires
     # A check that cannot fail must not report a zero (`@tautology-zero`).
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3130
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _vrs_coverage_warnings
   Scenario: the two halves of the VRS story are ordered the same way round
     Given a module with both unverifiable ids and a coverage shortfall
     When the module is compiled
@@ -147,7 +160,8 @@ Feature: Identity and the VRS verify pass
     # Deterministic because warning text is an API and a set-ordered one would differ between runs
     # (`@warning-text-is-api`).
 
-  # source: compiler/src/just_dna_compiler/compiler.py:4705
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _resolve_spec_defaults
   Scenario: content_signature hashes the effective default, not the cell
     Given two modules stating one curator, one in `defaults:` and one on every row
     When both are compiled
@@ -157,7 +171,8 @@ Feature: Identity and the VRS verify pass
     # byte-identical — only the pre-resolution identity disagreed with itself
     # (`@effective-defaults-hash`).
 
-  # source: compiler/src/just_dna_compiler/compiler.py:4737
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: spec_tables
   Scenario: a value equal to the model's own default is written back as None
     Given a module stating the built-in curator value explicitly on every row
     When it is compiled
@@ -166,14 +181,16 @@ Feature: Identity and the VRS verify pass
     # every unset optional column. What moves is a module stating something else — which is exactly the
     # module whose two spellings were being hashed apart.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1050
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _cross_validate_variants
   @refusal @both_modes
   Scenario: one key names one place
     Given two variants.csv rows sharing a variant_key at different positions
     When the module is compiled in either mode
     Then the compile refuses with a message containing "Inconsistent positions for"
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1057
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _cross_validate_variants
   @refusal @both_modes
   Scenario: the reference base at a position is a single fact
     Given two variants.csv rows sharing a key and stating different ref alleles
@@ -184,7 +201,8 @@ Feature: Identity and the VRS verify pass
     # can catch a row contradicting the genome. A VA does not encode `ref`, so a single-base wrong one is
     # invisible to the digest (`@va-omits-ref`).
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1068
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _cross_validate_variants
   @refusal @both_modes
   Scenario: a module joins on (variant, genotype), so the pair is unique
     Given two variants.csv rows with the same variant_key and genotype

@@ -65,7 +65,8 @@ class _Scenario:
         self.line = line
         self.outline = outline
         self.tags: set[str] = set()
-        self.source: tuple[str, int] | None = None
+        self.source: tuple[str, int | None] | None = None
+        self.anchor: str | None = None
         self.text_from: str | None = None
         self.phrases: list[str] = []
         self.keywords: set[str] = set()
@@ -86,7 +87,17 @@ class _Scenario:
 
 
 _TAG = re.compile(r"@([A-Za-z_][A-Za-z0-9_]*(?::[A-Za-z0-9_.\-]+)?)")
-_SOURCE = re.compile(r"#\s*source:\s*(\S+?):(\d+)\s*$")
+#: `# source: <path>` or `# source: <path>:<line>`. The line is optional and **absent is the better
+#: shape**: an anchored scenario names a symbol instead (`# anchor:`), and a scenario with no line
+#: number has nothing that can rot when something above it is edited. A bare line survives for the
+#: sites no symbol names — a module-level constant, a module docstring — where there is nothing to
+#: anchor to and the line is the only pointer there is.
+_SOURCE = re.compile(r"#\s*source:\s*([^\s:]+?)(?::(\d+))?\s*$")
+#: The symbol a scenario is about: a `def` or `class` in the `# source:` file, resolved through `ast`
+#: rather than by grep — the name appears in its own docstring and in every caller, and a grep finds
+#: whichever comes first. Its line RANGE is what the alignment check uses, so the emission site has to
+#: be inside the thing the scenario says it is about rather than within three lines of a number.
+_ANCHOR = re.compile(r"#\s*anchor:\s*([A-Za-z_][A-Za-z0-9_]*)\s*$")
 #: A SECOND module a finding's text may come from, searched **beside** the emission site rather than
 #: instead of it. Two shapes need it. A message built by one module and wrapped in a `CodedWarning` by
 #: another — `layout.deprecation_notice` writes the sentence and `_locate_sidecar` names the code — which
@@ -118,14 +129,20 @@ def _parse(feature: Path) -> list[_Scenario]:
     """
     scenarios: list[_Scenario] = []
     pending_tags: set[str] = set()
-    pending_source: tuple[str, int] | None = None
+    pending_source: tuple[str, int | None] | None = None
+    pending_anchor: str | None = None
     pending_text: str | None = None
     current: _Scenario | None = None
     for number, raw in enumerate(feature.read_text(encoding="utf-8").splitlines(), 1):
         line = raw.strip()
         source_match = _SOURCE.search(line)
         if line.startswith("#") and source_match:
-            pending_source = (source_match.group(1), int(source_match.group(2)))
+            found = source_match.group(2)
+            pending_source = (source_match.group(1), int(found) if found else None)
+            continue
+        anchor_match = _ANCHOR.search(line)
+        if line.startswith("#") and anchor_match:
+            pending_anchor = anchor_match.group(1)
             continue
         text_match = _TEXT.search(line)
         if line.startswith("#") and text_match:
@@ -144,12 +161,13 @@ def _parse(feature: Path) -> list[_Scenario]:
             )
             current.tags = pending_tags
             current.source = pending_source
+            current.anchor = pending_anchor
             current.text_from = pending_text
             scenarios.append(current)
-            pending_tags, pending_source, pending_text = set(), None, None
+            pending_tags, pending_source, pending_anchor, pending_text = set(), None, None, None
             continue
         if line.startswith("Feature:"):
-            pending_tags, pending_source, pending_text = set(), None, None
+            pending_tags, pending_source, pending_anchor, pending_text = set(), None, None, None
             continue
         if current is None or line.startswith("#"):
             continue
@@ -161,6 +179,19 @@ def _parse(feature: Path) -> list[_Scenario]:
         elif keyword == "Examples":
             current.has_examples = True
     return scenarios
+
+
+def _symbol_span(path: Path, name: str) -> tuple[int, int] | None:
+    """The line range of a top-level-or-nested `def`/`class` called `name`, decorators included."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except SyntaxError:  # pragma: no cover - a module that does not parse fails louder elsewhere
+        return None
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == name:
+            start = min([node.lineno] + [d.lineno for d in node.decorator_list])
+            return start, (node.end_lineno or node.lineno)
+    return None
 
 
 def _feature_files() -> list[Path]:
@@ -327,9 +358,23 @@ def test_every_scenario_names_a_source_that_exists() -> None:
         if not path.is_file():
             problems.append(f"{scenario.where}: source path does not exist: {relative}")
             continue
-        total = len(path.read_text(encoding="utf-8").splitlines())
-        if not 1 <= line <= total:
-            problems.append(f"{scenario.where}: {relative} has {total} lines, source names {line}")
+        if scenario.anchor is not None:
+            if line is not None:
+                problems.append(
+                    f"{scenario.where}: carries both `# anchor: {scenario.anchor}` and a line number; "
+                    f"the anchor is the pointer, and a line beside it is the thing that rots"
+                )
+            if _symbol_span(path, scenario.anchor) is None:
+                problems.append(f"{scenario.where}: {relative} defines no `{scenario.anchor}`")
+        elif line is None:
+            problems.append(
+                f"{scenario.where}: `# source: {relative}` names no line and no `# anchor:`, so it "
+                f"points at a whole file"
+            )
+        else:
+            total = len(path.read_text(encoding="utf-8").splitlines())
+            if not 1 <= line <= total:
+                problems.append(f"{scenario.where}: {relative} has {total} lines, source names {line}")
         if scenario.text_from is not None and not (_ROOT / scenario.text_from).is_file():
             problems.append(f"{scenario.where}: `# text:` path does not exist: {scenario.text_from}")
     assert not problems, "\n".join(problems)
@@ -369,15 +414,19 @@ def _misaligned(tag: str, sites: dict[Path, dict[int, set[str]]], reader) -> lis
             continue
         relative, line = scenario.source
         in_file = sites.get(_ROOT / relative, {})
-        near = {
-            name
-            for site_line, names in in_file.items()
-            if abs(site_line - line) <= _SOURCE_SLACK
-            for name in names
-        }
+        if scenario.anchor is not None:
+            span = _symbol_span(_ROOT / relative, scenario.anchor)
+            if span is None:
+                continue  # reported by the source-exists check, which owns that diagnosis
+            low, high = span
+            where = f"{relative} {scenario.anchor}()"
+        else:
+            low, high = line - _SOURCE_SLACK, line + _SOURCE_SLACK
+            where = f"{relative}:{line}"
+        near = {name for site_line, names in in_file.items() if low <= site_line <= high for name in names}
         for member in sorted(members - near):
             problems.append(
-                f"{scenario.where}: @{tag}:{member} but {relative}:{line} names {sorted(near) or 'no member'}"
+                f"{scenario.where}: @{tag}:{member} but {where} names {sorted(near) or 'no member'}"
             )
     return problems
 

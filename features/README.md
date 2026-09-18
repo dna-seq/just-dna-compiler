@@ -70,9 +70,21 @@ Out:
 
 Four conventions, each of which the guard enforces:
 
-- **`# source:` is mandatory and is checked.** The file must exist, the line must be inside it, and for
-  a `@code:` scenario the emission site must actually name that code. This is what stops a `Then` being
+- **`# source:` names the file and `# anchor:` names the symbol, and both are checked (RM245).** The
+  path must exist, the symbol must be a `def` or `class` in it — resolved through `ast`, never grepped,
+  since the name appears in its own docstring and in every caller — and for a `@code:` scenario the
+  emission site must be **inside that symbol's line range**. This is what stops a `Then` being
   paraphrased out of a documentation paragraph rather than read off the string the code builds.
+
+  **An anchored scenario carries no line number at all**, which is the point rather than a convenience:
+  a line is a pointer that rots the next time something above it is edited, and 53 of these anchors had
+  silently drifted out of the function they name during one ordinary session of code edits. A symbol
+  moves with the thing it names. `# source: <path>:<line>` still exists for the three sites no symbol
+  names — two module-level vocabulary constants for `@reserved` members, and a module docstring — and
+  there the line is the only pointer there is.
+
+  Carrying both an anchor and a line is refused: the anchor is the pointer, and the line beside it is
+  the half that rots.
 - **`# text:` names a SECOND module the sentence may come from, searched beside the emission site
   rather than instead of it.** Two shapes need it. A message built by one module and wrapped in a
   `CodedWarning` by another — `layout.deprecation_notice` writes the sentence and `_locate_sidecar`
@@ -98,9 +110,11 @@ Four conventions, each of which the guard enforces:
   travels as a variable, against the line that decides it. **`@reserved`** marks a check member
   deliberately emitted by nothing, and exempts it from that alignment.
 
-  **A structural scenario carries no registry tag and gets no alignment**, only *the line exists*. That
-  is most of the corpus and it is the known weak spot: a `# source:` at a docstring or a branch rots
-  when anything above it is edited, and nothing will say so.
+  **A structural scenario carries no registry tag, so nothing checks what its anchor CONTAINS** — only
+  that the symbol exists. That is still most of the corpus, and it is still the weaker half: a scenario
+  anchored on the wrong function is a claim nothing can test. What it no longer is, since RM245, is a
+  pointer that decays on its own — the symbol either exists or the guard says so, where a line number
+  quietly meant something else.
 - **Every quoted phrase on a `Then`/`And`/`But` step is a real substring of the message**, because a
   warning's text is an API (`@warning-text-is-api`) and a consumer greps it. Where a message
   interpolates, quote the literal part around the hole, never a reconstruction of the whole sentence —
@@ -109,12 +123,16 @@ Four conventions, each of which the guard enforces:
   before the quote at first and covered 46 of 162 phrases; keyed on the step keyword it covers all of
   them, which is how the three paraphrases in the first draft were found.)
 
-**`@ladder` beside a `@code:` is checked too**, and it is the fourth registry here: the mode ladder's
-first mechanism is `(errors if strict else warnings_out)`, so the codes reachable from a function
-carrying that shape are walkable and the tag is asserted equal to them. It is scoped to the coded half
-because `@ladder` names two mechanisms — the three resolution findings pair a warning with a *different,
-longer* refusal through `ResolutionOutcome.strict_errors`, which is a second text rather than a second
-channel and has no code of its own.
+**`@ladder` beside a `@code:` is checked too**, and it is the fourth registry here. A check whose
+severity is the compile mode builds a `LadderFinding` — what `best_effort` emits and, where the two
+differ, the separate thing `strict` says instead — so the codes are walkable and the tag is asserted
+equal to them. Since RM246 that is **one** mechanism and the tag covers all of it; before it, the ladder
+was written in three shapes and this equality could only see the four codes in one of them.
+
+The attribution is **per construction, not per function**: a code is a member when its `CodedWarning`
+sits inside the `LadderFinding(…)` call. Crediting the enclosing function was right while the ladder was
+a whole-check property and became wrong as soon as one function held both kinds — `resolve_from_table`
+has two ladder members and nine plain warnings, and the function-scoped walk reported all eleven.
 
 Tags that carry no registry, for reading rather than for the guard: `@strict_only`, `@both_modes`,
 `@refusal`, `@parity`, `@tri_state`.

@@ -5,13 +5,17 @@ refuses under `strict`. Every such check answers two questions — *which channe
 *what does it say there* — and before this module the codebase answered them in three unrelated shapes,
 which is why the ladder read as one thing and behaved as three:
 
-* `(errors if strict else warnings_out).append(finding)` — one sentence, two channels. Four codes.
+* `(errors if strict else warnings_out).append(finding)` — one sentence, two channels.
 * `if strict:` with the same messages moved into `errors` and a **side effect suppressed** — the
   symbolic-allele drop, where `best_effort` drops the unusable rows and `strict` refuses instead of
   dropping. Same text, and a behaviour difference the channel does not carry.
-* `ResolutionOutcome.strict_errors` — a warning **paired with a different, longer refusal**. Three
-  findings. Calling these ladder members and quoting the warning's words describes a compile that
-  succeeds; quoting the refusal's words quotes a sentence `best_effort` never emits.
+* `ResolutionOutcome.strict_errors` — a warning **paired with a different, longer refusal**. Calling
+  these ladder members and quoting the warning's words describes a compile that succeeds; quoting the
+  refusal's words quotes a sentence `best_effort` never emits.
+
+All of them build a `LadderFinding` now, and the question *which checks escalate under `strict`* is
+answered by walking one constructor: **seven codes**, asserted as an equality against the corpus's
+`@ladder` tag in `schema/tests/test_feature_corpus.py` rather than counted in a sentence here.
 
 The third is the general case and the first two are its degenerate form, which is the whole content of
 this module: **a ladder finding carries what `best_effort` says and, optionally, a different thing

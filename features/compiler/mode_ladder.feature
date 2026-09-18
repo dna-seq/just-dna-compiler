@@ -33,7 +33,8 @@ Feature: The mode ladder and validate/compile parity
   and `compile(strict=x)` reach the same verdict — not that the two modes of `validate` differ by a
   fixed amount.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2399
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_allele_membership
   @ladder
   Scenario Outline: the four checks whose own sentence changes channel
     Given a module whose only finding is <finding>
@@ -48,7 +49,8 @@ Feature: The mode ladder and validate/compile parity
       | a study's effect_allele naming an allele its locus lacks     |
       | a p_value string disagreeing with the p_value_num beside it  |
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2322
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_allele_membership
   Scenario: provenance shapes the message and cannot shape the severity
     Given a genotype naming an allele the locus does not have
     When the allele list came from resolution.csv rather than from the row
@@ -60,7 +62,8 @@ Feature: The mode ladder and validate/compile parity
     # its own locus's alleles beside the ONE authored genotype, so exactly one can match. Escalating
     # unconditionally would break Principle 7's fixed point with a lint.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:5260
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: compile_module
   @strict_only @refusal
   Scenario: unresolved genomic positions refuse under strict and warn otherwise
     Given a module with 3 variants the resolution table does not place
@@ -70,7 +73,8 @@ Feature: The mode ladder and validate/compile parity
     Then the compile refuses with a message containing "strict compile:"
     And the message names the count of variants that have unresolved genomic positions
 
-  # source: compiler/src/just_dna_compiler/compiler.py:4439
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _validate_spec
   @parity @strict_only
   Scenario: the pre-flight predicts that refusal rather than discovering it at compile
     Given the same module with 3 unplaced variants
@@ -80,7 +84,8 @@ Feature: The mode ladder and validate/compile parity
     # `validate` followed by a failing `compile` is the sequence the rule exists to prevent, and this
     # file has closed that gap four times (`@validate-refuses-all`).
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6414
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: build_disagreement_error
   @strict_only @refusal
   Scenario: the one recorded judgement strict acts on
     Given a verification.json recording a genome_build_agreement finding
@@ -94,7 +99,8 @@ Feature: The mode ladder and validate/compile parity
     # (`@a-recorded-judgement-is-a-fact`). Every other verification finding is a disagreement with a
     # SOURCE, where the archive is the stale side often enough that escalating would be wrong.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2807
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_symbolic_alleles
   @strict_only
   Scenario: strict reports an unusable symbolic allele where best_effort drops the row
     Given a variants.csv row whose alts carries a lengthless "<DEL>"
@@ -106,7 +112,8 @@ Feature: The mode ladder and validate/compile parity
     # it refuses instead of dropping — which is also why the pre-flight asks for the drop set under
     # `strict` and gets an empty one.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2835
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _emptied_table_errors
   @refusal @both_modes
   Scenario: a drop that would empty a table outright refuses in both modes
     Given a variants.csv every row of which carries an unusable symbolic allele
@@ -118,7 +125,8 @@ Feature: The mode ladder and validate/compile parity
     # application, so the pre-flight predicts it — the first cut refused inside the drop, which only
     # `compile_module` performs, and produced exactly the green-validate-then-failing-compile sequence.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1316
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_build_coordinates
   @refusal @both_modes
   Scenario: a coordinate past the end of its contig is false, not unreproducible
     Given a variants.csv row at chr1 position 249,200,000 under genome_build GRCh38
@@ -132,7 +140,8 @@ Feature: The mode ladder and validate/compile parity
     # was. The remedy is an rs-number, which resolves into a coordinate the compiler can cross-examine,
     # where a converted position is its own only witness.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1321
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _check_build_coordinates
   @refusal @both_modes
   Scenario: a contig only one build names
     Given a variants.csv row on contig "GL000209.1" recorded as GRCh38
@@ -143,7 +152,8 @@ Feature: The mode ladder and validate/compile parity
     # A shared scaffold, a patch, an alt locus or an unversioned accession settles nothing and is left
     # alone.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1331
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _build_remedy
   Scenario: where the build is declared is not the same file for both shapes
     Given a wrong-build coordinate on an authored table
     When the refusal is written
@@ -153,7 +163,8 @@ Feature: The mode ladder and validate/compile parity
     Then the remedy names deleting the sidecar and re-running enrich instead
     And it says the build "is a per-row column here, not the module's declaration"
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3826
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: validate_spec
   @parity
   Scenario: validate takes a mode for exactly one reason
     Given any module
@@ -163,7 +174,8 @@ Feature: The mode ladder and validate/compile parity
     # compile. Under `strict` the unresolved-position aggregate is genuinely ADDED rather than
     # promoted, because the per-row warning fires in both modes.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:5396
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _frequency_checks
   @parity
   Scenario: the one check the pre-flight does not run, and why that is not a parity break
     Given a module whose frequencies.csv puts a pathogenic variant above the BA1 threshold
@@ -176,7 +188,8 @@ Feature: The mode ladder and validate/compile parity
     # It is the resolved-rows exemption — the check needs the frequency rows matched against resolved
     # coordinates, which only the compile holds (`@parity-by-check`, `@validate-refuses-all`).
 
-  # source: compiler/src/just_dna_compiler/resolution.py:45
+  # source: compiler/src/just_dna_compiler/resolution.py
+  # anchor: ResolutionOutcome
   # text: compiler/src/just_dna_compiler/compiler.py
   Scenario: resolution has three severity channels, not two
     Given a module whose resolution table produces one finding of each severity
@@ -189,7 +202,8 @@ Feature: The mode ladder and validate/compile parity
     # Only `withdrawn` lands in `errors`: every other finding leaves the annotation intact, while a
     # retracted variant may leave it describing nothing.
 
-  # source: compiler/src/just_dna_compiler/resolution.py:1067
+  # source: compiler/src/just_dna_compiler/resolution.py
+  # anchor: _verify
   # text: compiler/src/just_dna_compiler/resolution_findings.py
   @ladder
   Scenario: the strict half of a resolution finding is a different sentence, not the same one louder
@@ -209,7 +223,8 @@ Feature: The mode ladder and validate/compile parity
     # were two places to read it from. The matrix was the half the code agrees with, so the table now
     # reads "warning / error in `strict`" like the two rows under it that behave the same way.
 
-  # source: compiler/src/just_dna_compiler/resolution.py:157
+  # source: compiler/src/just_dna_compiler/resolution.py
+  # anchor: resolve_from_table
   @ladder
   Scenario: dropping a locus that cannot host the genotype refuses under strict
     Given a one-to-many rsID one of whose loci cannot host the authored genotype
@@ -220,7 +235,8 @@ Feature: The mode ladder and validate/compile parity
     # Dropping a locus makes the emitted table smaller than the injected one, so the round trip cannot
     # reproduce it. `strict` must refuse rather than silently prune.
 
-  # source: compiler/src/just_dna_compiler/resolution.py:528
+  # source: compiler/src/just_dna_compiler/resolution.py
+  # anchor: ambiguous_refusals
   # text: compiler/src/just_dna_compiler/resolution_findings.py
   @ladder
   Scenario: an ambiguous rsID label is a deterministic pick, and strict will not build on one
@@ -234,7 +250,8 @@ Feature: The mode ladder and validate/compile parity
     # provenance and outside the fact set. Nothing is lost; `strict` declines to rest an all-or-nothing
     # artifact on a coin toss.
 
-  # source: compiler/src/just_dna_compiler/resolution.py:279
+  # source: compiler/src/just_dna_compiler/resolution.py
+  # anchor: resolve_from_table
   @refusal @both_modes @parity
   Scenario: a withdrawn rsID refuses in both modes, and the pre-flight asks it too
     Given a resolution row recording an rsID as retracted by dbSNP
@@ -247,7 +264,8 @@ Feature: The mode ladder and validate/compile parity
     # would publish a claim its own source has retracted. `validate` reads the injected table's own
     # column and no resolved row, so the compile-only exemption does not cover it (RM207).
 
-  # source: compiler/src/just_dna_compiler/resolution.py:278
+  # source: compiler/src/just_dna_compiler/resolution.py
+  # anchor: resolve_from_table
   Scenario: both refusals are asked over the AUTHORED keys, not the expanded ones
     Given a one-to-many rsID that is also recorded as withdrawn
     When the module is compiled

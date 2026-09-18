@@ -34,6 +34,32 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-18 — RM245: the corpus points at symbols now, because 53 of its line numbers rotted in one session
+
+**Internal corpus only**, no code and no dependency. A consumer needs to do nothing.
+
+Every scenario in `features/` named its emission site as `# source: <path>:<line>`. RM244 and RM246 were
+ordinary code changes — an import block, a shared module, a dataclass field — and afterwards **53
+scenarios' lines pointed outside the function they had been written against**. None was wrong about the
+code; every one was wrong about where the code is, and the registry-tagged half had to be realigned four
+separate times during that work.
+
+`# source:` now names the file, `# anchor:` names the symbol, and **an anchored scenario carries no line
+number at all** — there is nothing left to decay, since a symbol moves with the thing it names. The
+symbol is resolved through `ast` rather than grep, because the name appears in its own docstring and in
+every caller. The alignment check improved with it: *the emission site is inside this symbol's range*,
+with no slack constant, rather than *within three lines of this number*.
+
+**225 of 228 scenarios are anchored.** The three line-only ones are the sites no symbol names — two
+module-level `vocab.py` entries for `@reserved` verification-check members, and a module docstring — and
+a scenario with neither a line nor an anchor is refused rather than pointing at a whole file.
+
+The recovery is worth a line of its own: deriving each anchor from its *current* line would have written
+the existing drift in permanently, so each was resolved against the revision its number belonged to — a
+realigned tagged scenario against today's tree, an untouched structural one against the pre-session
+commit — and then resolved forward. The conversion went green on the first run over both alignment
+checks, which is the evidence it was right.
+
 ## 2026-09-18 — RM246: the mode ladder is one mechanism, and the `@ladder` set grew from four codes to seven
 
 **No behaviour change and no message change.** Every check escalates in exactly the modes it did

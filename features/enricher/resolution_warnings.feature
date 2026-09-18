@@ -17,7 +17,8 @@ Feature: What the enricher's resolver says, in its own words
   both paths' warnings in one channel. What is not shared is the wording, and the wording is the part a
   consumer matches on.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:122
+  # source: enricher/src/just_dna_enricher/resolver.py
+  # anchor: resolve_variants
   # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:resolution_skipped_cross_build @carried @tri_state
   Scenario: a module on an assembly the resolver is not bound to
@@ -30,7 +31,8 @@ Feature: What the enricher's resolver says, in its own words
     # reference is GRCh38's. The compiler's twin says the same thing about the positional fill instead
     # — one code, two sentences, two scopes.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:137
+  # source: enricher/src/just_dna_enricher/resolver.py
+  # anchor: resolve_variants
   # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:resolution_not_injected @actionable
   Scenario: nothing was injected to resolve against
@@ -43,7 +45,8 @@ Feature: What the enricher's resolver says, in its own words
     # (`@unreachable-not-absent`). The compiler's sentence for this code names `resolution.csv` and
     # points at the enricher; this one names the cache and points at the operator.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:137
+  # source: enricher/src/just_dna_enricher/resolver.py
+  # anchor: resolve_variants
   # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:resolution_not_injected @actionable
   Scenario: a reference that is present and cannot be opened
@@ -55,7 +58,8 @@ Feature: What the enricher's resolver says, in its own words
     # (`@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal`); here both are
     # reported, and the sentence is what separates them.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:196
+  # source: enricher/src/just_dna_enricher/resolver.py
+  # anchor: resolve_variants
   # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:locus_cannot_host_genotype @actionable
   Scenario: one locus of an rsID that cannot carry the authored call
@@ -67,7 +71,8 @@ Feature: What the enricher's resolver says, in its own words
     # The compiler's sentence continues past that phrase to say the row is not emitted as an assertion;
     # this one stops. Same code, same remedy, one clause of difference.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:209
+  # source: enricher/src/just_dna_enricher/resolver.py
+  # anchor: resolve_variants
   # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_no_hosting_locus @actionable
   Scenario: no locus of an rsID can carry the authored call
@@ -79,7 +84,8 @@ Feature: What the enricher's resolver says, in its own words
     # Byte-identical to the compiler's, which is worth stating rather than assuming: the two sentences
     # were written separately and agree, and nothing today would notice if one of them drifted.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:225
+  # source: enricher/src/just_dna_enricher/resolver.py
+  # anchor: resolve_variants
   # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_expanded_to_multiple_loci @carried
   Scenario: an rsID that names more than one place
@@ -93,7 +99,8 @@ Feature: What the enricher's resolver says, in its own words
     # `ensembl_cache` route, removed at 1.0, and the modules reaching it report `expanded_keys` and
     # `expanded_rows` as `None` rather than as a count.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:273
+  # source: enricher/src/just_dna_enricher/resolver.py
+  # anchor: resolve_variants
   # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_without_resolution_label @actionable
   Scenario: a coordinate-authored row the reference has no rsID for
@@ -105,7 +112,8 @@ Feature: What the enricher's resolver says, in its own words
     # not an error; this one is per position and says neither. The finding is the same and a consumer
     # matching either string finds only one of the two tiers.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:480
+  # source: enricher/src/just_dna_enricher/resolver.py
+  # anchor: _lookup_positions_by_rsid
   # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_unresolved @actionable
   Scenario: an rsID the injected snapshot does not carry
@@ -118,7 +126,8 @@ Feature: What the enricher's resolver says, in its own words
     # resolution table, position remains unset". The withheld consequence is S61 — the one caller that
     # reads these states it once, after both legs, and this site genuinely does not know it yet.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:728
+  # source: enricher/src/just_dna_enricher/resolver.py
+  # anchor: _check_rsid_coord_consistency
   # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_coordinate_disagrees @actionable
   Scenario: an authored rsID whose coordinate the reference contradicts
@@ -131,7 +140,8 @@ Feature: What the enricher's resolver says, in its own words
     # `strict` refusal under `compile` because the authored value wins and the table's position is then
     # lost to the round trip. In the enricher there is no artifact to be unreproducible.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:814
+  # source: enricher/src/just_dna_enricher/resolver.py
+  # anchor: _lookup_rsids_by_position
   # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_ambiguous @actionable
   Scenario: one position, ref unspecified, matching several dbSNP ids

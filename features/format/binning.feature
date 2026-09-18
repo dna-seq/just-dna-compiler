@@ -9,7 +9,8 @@ Feature: Measurement bins and the tiling axis
   from the bounds: `quantised` reads the axis as a grid of whole steps, `continuous` reads it as dense.
   Absent means the kind's default, which is not a third answer.
 
-  # source: schema/src/just_dna_format/binning.py:1137
+  # source: schema/src/just_dna_format/binning.py
+  # anchor: validate_bins
   @code:bin_coverage_gap @actionable @both_modes
   Scenario: a positive hole between two bins on a continuous axis
     Given a bin group read as continuous whose bins are [0.0, 0.3] and [0.5, 1.0]
@@ -18,7 +19,8 @@ Feature: Measurement bins and the tiling axis
     And it renders the uncovered interval as an open pair of the two bounds it lies between
     And nothing is repaired — the gap is reported and the rows stand
 
-  # source: schema/src/just_dna_format/binning.py:1137
+  # source: schema/src/just_dna_format/binning.py
+  # anchor: validate_bins
   @tri_state
   Scenario Outline: whether a hole is a gap is a three-valued question, not a comparison
     Given a bin group whose effective tiling is <tiling>
@@ -38,7 +40,8 @@ Feature: Measurement bins and the tiling axis
       | quantised  | 3.0  | reported                                 |
       | neither    | 3.0  | withheld — the step is unknown           |
 
-  # source: schema/src/just_dna_format/binning.py:1075
+  # source: schema/src/just_dna_format/binning.py
+  # anchor: validate_bins
   @code:bin_tiling_inferred @actionable @both_modes
   Scenario: a fractional bound no quantised reading can hold
     Given a bin group that declares no measure_tiling
@@ -48,7 +51,8 @@ Feature: Measurement bins and the tiling axis
     And a warning fires whose text contains "tiling inferred for key"
     And the text asks the author to "Declare `measure_tiling` on these rows"
 
-  # source: schema/src/just_dna_format/binning.py:1086
+  # source: schema/src/just_dna_format/binning.py
+  # anchor: validate_bins
   @code:bin_tiling_contradicted @actionable @both_modes
   Scenario: a declared grid with a value that is not on it
     Given a bin group that declares measure_tiling "quantised"
@@ -60,7 +64,8 @@ Feature: Measurement bins and the tiling axis
     # The declaration wins over the data, deliberately. Reading the fraction as permission to switch
     # tiling would let one cell silently re-read a published table's whole axis.
 
-  # source: schema/src/just_dna_format/binning.py:1066
+  # source: schema/src/just_dna_format/binning.py
+  # anchor: validate_bins
   @refusal
   Scenario: two rows of one group declaring two tilings is a refusal, not a warning
     Given a bin group where one row declares "quantised" and another declares "continuous"
@@ -69,7 +74,8 @@ Feature: Measurement bins and the tiling axis
     And the message tells the author to leave the column empty on rows that do not state it
     # Empty means the kind's default. A second spelling is not a third answer.
 
-  # source: schema/src/just_dna_format/binning.py:1099
+  # source: schema/src/just_dna_format/binning.py
+  # anchor: validate_bins
   @refusal
   Scenario: overlapping bins refuse in both modes
     Given a bin group whose bins are [0, 5] and [3, 9]
@@ -77,7 +83,8 @@ Feature: Measurement bins and the tiling axis
     Then a ValueError is raised whose text contains "overlapping bins for key"
     And the message says both bins "select a phenotype for a measurement in the overlap"
 
-  # source: schema/src/just_dna_format/binning.py:1110
+  # source: schema/src/just_dna_format/binning.py
+  # anchor: validate_bins
   @refusal
   Scenario: two bins sharing a lower bound refuse, because the endpoint rule cannot separate them
     Given a continuous bin group whose bins are [0.1, 0.1] and [0.1, 0.3]
@@ -87,7 +94,8 @@ Feature: Measurement bins and the tiling axis
     # The shared-endpoint rule answers an equal *upper* bound against a lower one. Two equal lower
     # bounds are an ambiguous selection, so this refuses rather than warns.
 
-  # source: schema/src/just_dna_format/binning.py:945
+  # source: schema/src/just_dna_format/binning.py
+  # anchor: measurement_shape_warnings
   @code:measure_field_fractional @actionable @both_modes
   Scenario: a VCF field the spec types as fractional, tiled as whole numbers
     Given a bin table of kind "copy_number" with at least one group read as quantised
@@ -96,7 +104,8 @@ Feature: Measurement bins and the tiling axis
     And the text offers the authored answer "`measure_tiling: continuous` on these rows"
     And the finding is stated against the kind, never per row and never per group
 
-  # source: schema/src/just_dna_format/binning.py:945
+  # source: schema/src/just_dna_format/binning.py
+  # anchor: measurement_shape_warnings
   Scenario: the same table read as continuous answers its own boundaries and is silent
     Given a bin table of kind "copy_number" where every group declares measure_tiling "continuous"
     When the measurement shape is checked
@@ -104,7 +113,8 @@ Feature: Measurement bins and the tiling axis
     # Fires only where it is still true. A group that carries a fractional bound and is therefore read
     # as continuous is silent for the same reason, without being asked.
 
-  # source: schema/src/just_dna_format/binning.py:964
+  # source: schema/src/just_dna_format/binning.py
+  # anchor: measurement_shape_warnings
   @code:measurement_spans_bins @carried @both_modes
   Scenario: a measurement that travels with a confidence interval can cross a threshold
     Given a bin table of kind "copy_number" whose widest group states 4 resolved bins
@@ -115,13 +125,15 @@ Feature: Measurement bins and the tiling axis
     # This is why the code is carried rather than actionable. The count is of bins, not of *adjacent*
     # bins: an interval crosses two bins whether or not there is a hole between them.
 
-  # source: schema/src/just_dna_format/binning.py:964
+  # source: schema/src/just_dna_format/binning.py
+  # anchor: measurement_shape_warnings
   Scenario: a single-bin group has no threshold to cross
     Given a bin table of kind "copy_number" whose every group states one resolved bin
     When the measurement shape is checked
     Then no measurement_spans_bins warning fires
 
-  # source: schema/src/just_dna_format/binning.py:1000
+  # source: schema/src/just_dna_format/binning.py
+  # anchor: deprecation_warnings
   @code:deprecated_bin_modifier @actionable @both_modes
   Scenario: the deprecated integer dosage column
     Given a copy-number bin table where a row sets modifier_cn
@@ -133,7 +145,8 @@ Feature: Measurement bins and the tiling axis
     # Principle 3's two-step retirement, and the 0.6 cadence amendment's condition is met: the
     # replacement exists in this same release, so the author can act on the warning today.
 
-  # source: schema/src/just_dna_format/binning.py:560
+  # source: schema/src/just_dna_format/binning.py
+  # anchor: _validate_modifier
   @refusal
   Scenario: setting both dosage columns is an error, not a precedence rule
     Given a copy-number row that sets both modifier_cn and modifier_copy_number

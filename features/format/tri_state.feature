@@ -16,7 +16,8 @@ Feature: The three-valued house algebra
   A check with two outcomes is a check that will one day report a negative it never measured. The
   vocabulary for that is not a flag but a third value, and the combinator is Kleene.
 
-  # source: schema/src/just_dna_format/release_records.py:402
+  # source: schema/src/just_dna_format/release_records.py
+  # anchor: _kleene_or
   Scenario Outline: Kleene OR — True dominates, then None, then False
     Given two tri-state answers <left> and <right>
     When they are combined
@@ -44,7 +45,8 @@ Feature: The three-valued house algebra
     # disagreement already witnessed. But on its own it produces nothing, because a question nobody
     # could put is not a finding.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2171
+  # source: compiler/src/just_dna_compiler/compiler.py
+  # anchor: _allele_verdict
   Scenario: the union reading over loci is the same combinator
     Given a one-to-many rsID where one locus can host the genotype and another cannot
     When the hosting question is asked of the row
@@ -52,7 +54,8 @@ Feature: The three-valued house algebra
     # Allele membership compares the union of every locus a key resolves to, before expansion
     # (`@membership-union`). One locus that CAN host is enough, which is Kleene-OR over the loci.
 
-  # source: schema/src/just_dna_format/release_records.py:412
+  # source: schema/src/just_dna_format/release_records.py
+  # anchor: _blunt_to_unknown
   Scenario: a narrowing keeps False and drops True, and the asymmetry is sound rather than cautious
     Given an answer measured over a wider span than the question asked about
     When the answer is narrowed to the interval actually asked about
@@ -61,7 +64,8 @@ Feature: The three-valued house algebra
     # the wider span says nothing about WHERE — it may have moved entirely outside the interval the
     # caller asked about.
 
-  # source: enricher/src/just_dna_enricher/mitomap.py:264
+  # source: enricher/src/just_dna_enricher/mitomap.py
+  # anchor: vcep_clin_sig
   Scenario: a total function cannot decide a three-valued answer
     Given a source value a normalizer would map to a definite member by default
     When the value is one the source did not state
@@ -75,7 +79,8 @@ Feature: The three-valued house algebra
     # Re-anchored in the second pass: this pointed at a comment about a length constant in
     # `normalize.py`, which the line-is-inside-the-file check cannot see is the wrong place.
 
-  # source: schema/src/just_dna_format/overrides.py:845
+  # source: schema/src/just_dna_format/overrides.py
+  # anchor: classify_update_targets
   Scenario: a verdict function with several arms owes a reason function with the same arms
     Given a predicate that withholds for four distinct reasons
     When a finding is written
@@ -84,7 +89,8 @@ Feature: The three-valued house algebra
     # Naming one of them for all four is the shape that told a reader the locus was a different variant
     # when the truth was that the comparison did not reach a verdict (`@answered-is-not-absent`).
 
-  # source: schema/src/just_dna_format/release_records.py:422
+  # source: schema/src/just_dna_format/release_records.py
+  # anchor: needs_recompile
   Scenario: an absent input is the unknown arm and a malformed one is the refusal
     Given a check whose input is absent
     When the question is put
@@ -99,7 +105,8 @@ Feature: The three-valued house algebra
     # (`@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal`).
     # Re-anchored in the second pass: this pointed at the concordance comment block in `vocab.py`.
 
-  # source: schema/src/just_dna_format/findings.py:97
+  # source: schema/src/just_dna_format/findings.py
+  # anchor: classify
   @tri_state
   Scenario Outline: `classify` over a warning channel — three cases, no flag
     Given a warning channel whose members are <coded>
@@ -114,7 +121,8 @@ Feature: The three-valued house algebra
       | none of them       | withheld — `([], {})`, because nothing here can tell     |
       | some of them       | raises, loudly, at the first compile that reaches it     |
 
-  # source: schema/src/just_dna_format/findings.py:111
+  # source: schema/src/just_dna_format/findings.py
+  # anchor: classify
   Scenario: the mixed case raises because no legitimate caller can produce it
     Given a warning channel where some members carry a code and some do not
     When it is classified
@@ -123,7 +131,8 @@ Feature: The three-valued house algebra
     # data — it is a bug. The public result models have accepted plain prose since 0.6 and Principle 3
     # keeps them accepting it, which is why the ALL-uncoded case withholds instead.
 
-  # source: schema/src/just_dna_format/findings.py:56
+  # source: schema/src/just_dna_format/findings.py
+  # anchor: __getnewargs__
   Scenario: a code survives copy and pickle, and is lost at a pydantic boundary
     Given a classified warning list
     When it is deep-copied
@@ -136,7 +145,8 @@ Feature: The three-valued house algebra
     # a trap for anything reading warnings back off a result model, so the rule is: classify BEFORE
     # constructing the model (`@finding-loses-its-code-at-a-boundary`).
 
-  # source: schema/src/just_dna_format/findings.py:81
+  # source: schema/src/just_dna_format/findings.py
+  # anchor: restate
   Scenario: reformatting a warning goes through `restate`, which refuses an uncoded one
     Given a caller that prefixes a table name onto a finding
     When it reformats through `restate`
@@ -155,7 +165,8 @@ Feature: The three-valued house algebra
   # `VALID_*` sets, which is a heuristic and not a rule — `VALID_RSID_STATUS` has four members and is
   # just as much a house-algebra axis.
 
-  # source: enricher/src/just_dna_enricher/frequencies.py:343
+  # source: enricher/src/just_dna_enricher/frequencies.py
+  # anchor: enrich_frequencies
   @tri_state
   Scenario Outline: a frequency source has one more way to answer than a lookup does
     Given an allele at <locus> queried against gnomAD
@@ -173,7 +184,8 @@ Feature: The three-valued house algebra
       | one gnomAD covers, with no counts        | "not_found"   |
       | the Y PAR, which gnomAD masks outright   | "not_covered" |
 
-  # source: enricher/src/just_dna_enricher/frequencies.py:349
+  # source: enricher/src/just_dna_enricher/frequencies.py
+  # anchor: enrich_frequencies
   @tri_state
   Scenario: the uncovered rows are aggregated into one sentence that refuses to call them absent
     Given four alleles in the Y pseudoautosomal region
@@ -183,7 +195,8 @@ Feature: The three-valued house algebra
     And it ends "This is an unknown, not a zero."
     And it fires once for the run rather than once per allele
 
-  # source: enricher/src/just_dna_enricher/enrich.py:1355
+  # source: enricher/src/just_dna_enricher/enrich.py
+  # anchor: _run_enrichment
   @tri_state
   Scenario Outline: the resolution table's third member is a query that cannot be narrowed
     Given a coordinate-authored row with <candidates> candidate rsID(s) at its exact allele
@@ -200,7 +213,8 @@ Feature: The three-valued house algebra
       | 1          | "resolved"    | the rsid is attached and no alternates are recorded       |
       | 2 or more  | "ambiguous"   | the first is picked and rsid_alternates carries them all  |
 
-  # source: enricher/src/just_dna_enricher/clinical.py:602
+  # source: enricher/src/just_dna_enricher/clinical.py
+  # anchor: _concordance_subjects
   @tri_state
   Scenario Outline: what ONE authority did when it was consulted about one subject
     Given an authority <situation> for a subject
@@ -217,7 +231,8 @@ Feature: The three-valued house algebra
       | consulted, with nothing at this subject          | "no_record"   |
       | whose snapshot was never provisioned             | "unchecked"   |
 
-  # source: enricher/src/just_dna_enricher/clinical.py:749
+  # source: enricher/src/just_dna_enricher/clinical.py
+  # anchor: concordance_notes
   @tri_state
   Scenario: an authority nobody could ask says so in its own sentence
     Given a concordance run where one authority's snapshot is absent

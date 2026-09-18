@@ -75,6 +75,59 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM245 — a `# source:` line is a pointer that rots, and 53 of them rotted in one session
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-18 in the uncut 0.7 line** · **Owner** the corpus
+(`features/`, `schema/tests/test_feature_corpus.py`) · **Found by** RM149's second pass, which measured
+the residue and left the repair as a decision for a reviewer
+
+### What was observed
+
+Every scenario named its emission site as `# source: <path>:<line>`. For the 118 registry-tagged ones an
+alignment check kept the number honest within three lines; for the 110 structural ones the only check
+was *the line is inside the file*, which the second pass recorded as a known cost and the first pass had
+not measured at all.
+
+**Then it was measured against an actual session rather than argued.** RM244 and RM246 were ordinary
+code changes — an import block, a shared module, a dataclass field — and afterwards **53 scenarios'
+`# source:` lines pointed outside the function they were written against**. Not one of them was wrong
+about the code; every one of them was wrong about where the code is. The registry-tagged half was
+repaired four separate times during that work by a nearest-site realignment, which is a tool that
+exists because the pointer is fragile, not a reason the pointer is fine.
+
+### What shipped
+
+`# source:` now names the **file**, and `# anchor:` names the **symbol** — a `def` or `class` in it.
+**An anchored scenario carries no line number at all.** There is nothing left to decay: a symbol moves
+with the thing it names, and the guard resolves it through `ast` rather than `grep`, because the name
+appears in its own docstring and in every caller and a grep finds whichever comes first.
+
+The alignment check improved rather than merely survived. It used to be *the emission site is within
+three lines of this number*; it is now **the emission site is inside this symbol's line range** — no
+slack constant, and the claim is the one a reader actually wants to make. Carrying both an anchor and a
+line is refused: the anchor is the pointer and the line beside it is the half that rots.
+
+**225 of 228 scenarios are anchored.** The three that stay line-only are the sites no symbol names —
+two module-level entries in `vocab.py` for `@reserved` verification-check members, and a module
+docstring in `concordance.py`. `# source: <path>:<line>` survives for exactly them, and a scenario with
+neither a line nor an anchor is refused rather than silently pointing at a whole file.
+
+### How the anchors were recovered, which mattered more than the grammar
+
+Deriving each anchor from its *current* line would have written 53 wrong anchors into the corpus and
+made them permanent — the drift was already there. So each line was resolved against **the revision it
+belonged to**: a registry-tagged scenario's number had been realigned this session and is correct
+against today's tree, a structural one's had not been touched since the corpus was written and is
+correct only against the pre-session commit. Reading each against its own revision, then resolving the
+symbol forward, is the whole of the recovery — and the conversion went green on the first run, over
+both alignment checks, which is the evidence that it was right.
+
+### What is still weak, stated rather than implied
+
+A structural scenario's anchor is checked for *existence* and not for *content*: nothing tests that "the
+position-level join is not a preference" is really about the function it names. That is the same gap the
+second pass recorded, one layer up — what it is no longer is a pointer that decays on its own.
+
 ## RM246 — the mode ladder was written in three spellings, so the guard could only see a third of it
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-18 in the uncut 0.7 line** · **Owner** compiler
