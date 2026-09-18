@@ -12,7 +12,7 @@ Feature: The spec directory and the cells inside it
   A near-miss table name is the one case where "ignored" is the wrong answer, because the author's rows
   are silently dropped and the compile is green.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3744
+  # source: compiler/src/just_dna_compiler/compiler.py:3751
   @code:table_file_near_miss @actionable @both_modes
   Scenario: a mistyped table name, one small edit from a real one
     Given a spec directory containing "varaints.csv"
@@ -40,7 +40,7 @@ Feature: The spec directory and the cells inside it
     # table exactly where the guard cannot see it, re-opening the hole S16 closed as the price of a
     # convenience.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3733
+  # source: compiler/src/just_dna_compiler/compiler.py:3740
   @code:table_file_misplaced @actionable @both_modes
   Scenario: an authored table sitting where only sidecars live
     Given a spec directory containing "derived/variants.csv"
@@ -49,7 +49,7 @@ Feature: The spec directory and the cells inside it
     And it says "every row in it is being silently ignored" and to move it to the spec root
     And it states that only resolution.csv and the fact tables have a second legal home
 
-  # source: compiler/src/just_dna_compiler/compiler.py:565
+  # source: compiler/src/just_dna_compiler/compiler.py:570
   # text: schema/src/just_dna_format/layout.py
   @code:sidecar_spelling_deprecated @actionable @both_modes
   Scenario: reading a sidecar under its deprecated spelling
@@ -74,7 +74,7 @@ Feature: The spec directory and the cells inside it
     # edits a row the enricher wrote and that edit is the point — so two copies are two legitimate
     # claims and picking one discards somebody's work without saying so (`@sidecar-name-and-place`).
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6341
+  # source: compiler/src/just_dna_compiler/compiler.py:6356
   # text: schema/src/just_dna_format/layout.py
   @code:verification_two_copies @actionable @both_modes
   Scenario: the same collision on the attestation is a warning, because the outcome is already weaker
@@ -86,7 +86,7 @@ Feature: The spec directory and the cells inside it
     # already the weak one, and refusing would add nothing. The message is built by `layout` as a refusal
     # and coded at the point where it becomes a warning, which is the only place that knows it is one.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3935
+  # source: compiler/src/just_dna_compiler/compiler.py:3942
   @code:module_version_coerced @actionable @both_modes
   Scenario: a module version that is not SemVer
     Given a module_spec.yaml whose version reads "1.2"
@@ -97,7 +97,7 @@ Feature: The spec directory and the cells inside it
     # A `mode="after"` validator cannot rescue a value the field's type rejects first
     # (`@yaml-version-int`), which is why the coercion is where it is.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:4631
+  # source: compiler/src/just_dna_compiler/compiler.py:4644
   @code:composite_gene_cell @actionable @both_modes
   Scenario: a gene cell that looks like a list
     Given 33 variants.csv rows sharing the gene cell "IFNL3;IFNL4"
@@ -110,7 +110,7 @@ Feature: The spec directory and the cells inside it
     # out of an upstream export, so refusing it would refuse a faithful transcription. `stats.genes` is
     # what a registry's gene index reads, which is what makes a composite cell a third gene.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2008
+  # source: compiler/src/just_dna_compiler/compiler.py:2015
   @code:vcf_pointer_key_collision @actionable @both_modes
   Scenario: a pointer naming a key INFO and FORMAT both define
     Given a variants.csv row whose source_field is "AF"
@@ -125,7 +125,7 @@ Feature: The spec directory and the cells inside it
     # same ALT — one of those tells a carrier they are asymptomatic on the strength of how rare the
     # variant is in a reference panel.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2023
+  # source: compiler/src/just_dna_compiler/compiler.py:2030
   @code:vcf_pointer_unselected_element @actionable @both_modes
   Scenario: a pointer at a multi-valued field with no element rule
     Given a variants.csv row pointing at a field the spec defines as multi-valued
@@ -146,7 +146,7 @@ Feature: The spec directory and the cells inside it
     # `None` for anything outside them. Asserting a cardinality would be a source convention wearing a
     # fact (P2). Unknown withholds.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1815
+  # source: compiler/src/just_dna_compiler/compiler.py:1822
   @code:quality_floor_inverted @actionable @both_modes
   Scenario: a quality floor stated against QUAL on a row where absence is the informative call
     Given variants.csv rows with requires_callable true, quality_from "QUAL" and min_quality 30
@@ -160,7 +160,7 @@ Feature: The spec directory and the cells inside it
     # field whose meaning depends on a record this tier will never see, and would refuse the legitimate
     # case of the same row read against a variant record elsewhere in the same file.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:4215
+  # source: compiler/src/just_dna_compiler/compiler.py:4222
   @code:panel_block_deprecated @actionable @both_modes
   Scenario: a deprecated panel block whose one reader has been replaced
     Given a module_spec.yaml declaring a `panel:` block
@@ -181,7 +181,7 @@ Feature: The spec directory and the cells inside it
     # which advice is safe. A deprecation belongs in a minor only where its audience can ACT on it, and
     # here whether they can is a property of their own module.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1715
+  # source: compiler/src/just_dna_compiler/compiler.py:1722
   @code:bins_ungrounded @actionable @both_modes
   Scenario: a binning table stating thresholds with no evidence anywhere in the module
     Given a repeat_alleles.csv stating four thresholds

@@ -178,11 +178,12 @@ Feature: The mode ladder and validate/compile parity
     # retracted variant may leave it describing nothing.
 
   # source: compiler/src/just_dna_compiler/resolution.py:1067
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @ladder
   Scenario: the strict half of a resolution finding is a different sentence, not the same one louder
     Given an authored rsID and coordinate the resolution table contradicts
     When the module is compiled in best_effort mode
-    Then the warning ends at "(reference disagreement)."
+    Then the warning ends at "(reference disagreement"
     When the module is compiled in strict mode
     Then the refusal continues "The authored value is kept, so the table's position does not survive a"
     And it offers "Fix one of the two, or compile without strict."
@@ -207,6 +208,7 @@ Feature: The mode ladder and validate/compile parity
     # reproduce it. `strict` must refuse rather than silently prune.
 
   # source: compiler/src/just_dna_compiler/resolution.py:528
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @ladder
   Scenario: an ambiguous rsID label is a deterministic pick, and strict will not build on one
     Given a resolution row marking an rsID ambiguous

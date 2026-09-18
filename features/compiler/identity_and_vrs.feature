@@ -13,7 +13,7 @@ Feature: Identity and the VRS verify pass
   itself with no reference, no network and no dependency. Every row lands in exactly one of three
   outcomes, and the difference between the last two is the one that matters.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1141
+  # source: compiler/src/just_dna_compiler/compiler.py:1146
   @code:non_grch38_variant_keys @carried @both_modes
   Scenario: a non-GRCh38 module is keyed by coordinate instead
     Given a module declaring genome_build "GRCh37"
@@ -57,7 +57,7 @@ Feature: Identity and the VRS verify pass
     # corrupt — the row was tampered with, or the producer and this implementation disagree. Either way
     # the id is not usable as an identity.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3003
+  # source: compiler/src/just_dna_compiler/compiler.py:3010
   @code:vrs_id_unverifiable @carried @both_modes
   Scenario: an id this tier cannot recompute, where the limit is the tier's
     Given a resolution.csv row whose stored vrs_id is for an indel
@@ -120,7 +120,7 @@ Feature: Identity and the VRS verify pass
     # GRCh37 should hear "not built" rather than get a GRCh38-flavoured answer (`@refget-raises`).
     # Letting it propagate would abort the whole compile over one unverifiable row.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3146
+  # source: compiler/src/just_dna_compiler/compiler.py:3153
   @code:vrs_coverage_incomplete @carried @both_modes
   Scenario: the shortfall, and what a consumer keying on the VA actually sees
     Given a resolution.csv where 40 of 100 alleles carry no ga4gh:VA. id

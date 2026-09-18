@@ -32,8 +32,9 @@ this directory is the whole of the addition.
 In, because this is where ambiguity has actually cost something (S79, S80, S83):
 
 - **Every member of `vocab.VALID_WARNING_CODES`** — one `Scenario` per **emitting tier** (see the
-  `@code:` convention below; nine members are emitted by two tiers in different words), at its emission
-  site, saying which mode it fires in, whether it warns or refuses, and whether an author can clear it.
+  `@code:` convention below; nine members are emitted by two tiers, which since RM244 speak through one
+  builder and differ only in the clauses each can stand behind), at its emission site, saying which mode
+  it fires in, whether it warns or refuses, and whether an author can clear it.
 - **The mode ladder and the validate/compile parity rule** — which checks escalate under `strict`,
   which refuse in both modes, and which refusals are `strict`-only.
 - **Every member of `vocab.VALID_VERIFICATION_CHECKS`** — with its three outcomes, and its skip
@@ -66,18 +67,23 @@ Four conventions, each of which the guard enforces:
 - **`# source:` is mandatory and is checked.** The file must exist, the line must be inside it, and for
   a `@code:` scenario the emission site must actually name that code. This is what stops a `Then` being
   paraphrased out of a documentation paragraph rather than read off the string the code builds.
-- **`# text:` names where the sentence lives, when that is not where the code is named.** A message
-  built by one module and wrapped in a `CodedWarning` by another is a real shape here —
-  `layout.deprecation_notice` writes the sentence and `_locate_sidecar` gives it its code — and it is
-  exactly the boundary where a code goes missing (`@finding-loses-its-code-at-a-boundary`). So the
-  scenario names both, and the guard checks the code against the emission site and the phrase against
-  the module that actually holds the words.
+- **`# text:` names a SECOND module the sentence may come from, searched beside the emission site
+  rather than instead of it.** Two shapes need it. A message built by one module and wrapped in a
+  `CodedWarning` by another — `layout.deprecation_notice` writes the sentence and `_locate_sidecar`
+  gives it its code — which is exactly the boundary where a code goes missing
+  (`@finding-loses-its-code-at-a-boundary`). And, since RM244, a sentence **assembled from both**:
+  `resolution_findings` owns the skeleton and each tier passes its own clauses as string literals, so
+  one scenario legitimately quotes from two files. The union is the point — a check that replaced the
+  emission site with the text module would report the caller's own words as missing.
 - **`@code:<member>`** names the warning code, and **every tier that emits it owes a scenario there**.
-  Not one scenario per member: nine resolution codes are emitted by the compiler's `resolution.py`
-  *and* by the enricher's `resolver.py`, and seven of the nine pairs are a different sentence under
-  the same code. A per-member equality accounts for all nine and grounds one wording of each, which
-  is why the guard keys on `(code, tier)` — the tier read off the `# source:` path, never off the
-  feature directory, since a scenario is filed with its subject rather than with its emitter. Beside it,
+  Not one scenario per member: nine resolution codes are emitted by the compiler's `resolution.py` *and*
+  by the enricher's `resolver.py`. Seven of the nine pairs used to be a *different sentence* under the
+  same code, which is what a per-member equality could not see; since RM244 the words come from one
+  builder in `just_dna_compiler.resolution_findings` and the tiers differ only in the clauses each can
+  stand behind. The guard still keys on `(code, tier)` — the tier read off the `# source:` path, never
+  off the feature directory, since a scenario is filed with its subject rather than with its emitter —
+  because two tiers emitting one code is the thing a reader needs to find, whoever owns the words.
+  Beside it,
   **`@carried`** or **`@actionable`** — the two are `vocab.CARRIED_WARNING_CODES` and
   `vocab.ACTIONABLE_WARNING_CODES`, and tagging the wrong one fails the guard rather than misleading a
   reader. Carried means *no edit to the spec directory can clear this*.

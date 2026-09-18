@@ -27,7 +27,7 @@ Feature: The skip vocabulary
     # between *the check was not run* and *it ran without the flag*, which reintroduces the
     # two-readings-of-one-absence defect the vocabulary was built to end.
 
-  # source: enricher/src/just_dna_enricher/enrich.py:2360
+  # source: enricher/src/just_dna_enricher/enrich.py:2362
   @skip:offline
   Scenario: the check needs egress and the run had none
     Given `enrich --offline`
@@ -37,7 +37,7 @@ Feature: The skip vocabulary
     # one is a caller's choice, the other a capability the run did not have, and only the second is
     # cleared by re-running with egress.
 
-  # source: enricher/src/just_dna_enricher/identifiers.py:1608
+  # source: enricher/src/just_dna_enricher/identifiers.py:1610
   @skip:no_reference
   Scenario: nothing was provisioned to compare against
     Given a gene-locus check with no reference provisioned
@@ -47,7 +47,7 @@ Feature: The skip vocabulary
     # snapshot: judge a parent by its payload, never by `is_dir()`
     # (`@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`).
 
-  # source: enricher/src/just_dna_enricher/litvar.py:946
+  # source: enricher/src/just_dna_enricher/litvar.py:948
   @skip:unreachable
   Scenario: the source was asked and never answered
     Given a LitVar request that fails at the transport
@@ -56,7 +56,7 @@ Feature: The skip vocabulary
     # A failed request, not a no. One registry's outage may not write a skip against another's check
     # (`@one-registrys-outage-may-not-speak-for-another`).
 
-  # source: enricher/src/just_dna_enricher/identifiers.py:1601
+  # source: enricher/src/just_dna_enricher/identifiers.py:1603
   @skip:nothing_to_check
   Scenario: the module carries no row this check applies to
     Given a module with no gene column anywhere
@@ -89,7 +89,7 @@ Feature: The skip vocabulary
     # machine-written into `dataset`, and a stale one is withdrawn rather than re-labelled
     # (`@rm4-dataset-marker`).
 
-  # source: enricher/src/just_dna_enricher/identifiers.py:1526
+  # source: enricher/src/just_dna_enricher/identifiers.py:1528
   @skip:unsupported
   Scenario: this tier cannot put the question for these rows
     Given a trait currency check on rows the tier cannot address

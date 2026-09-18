@@ -217,6 +217,11 @@ from just_dna_format.vrs import (
 from pydantic import BaseModel, ValidationError
 
 from just_dna_compiler.models import ClosureResult, CompilationResult, ValidationResult
+from just_dna_compiler.resolution_findings import (
+    resolution_not_injected,
+    skipped_cross_build,
+    unresolved_rsid,
+)
 from just_dna_compiler.resolution import (
     ambiguous_refusals,
     hosting_verdict,
@@ -1412,10 +1417,12 @@ def _apply_positional_resolution(
         return [
             CodedWarning(
                 "resolution_skipped_cross_build",
-                f"Positional-table fill skipped: the compiler is GRCh38-bound and this module's "
-                f"genome_build is {genome_build!r}, so the injected resolution table is not joined onto "
-                f"{', '.join(name for name, rows in positional if rows)} (RM15). Those rows keep the "
-                f"coordinates their author typed.",
+                skipped_cross_build(
+                    what="Positional-table fill",
+                    genome_build=genome_build,
+                    not_joined_onto=", ".join(name for name, rows in positional if rows),
+                    kept="Those rows keep the coordinates their author typed.",
+                ),
             )
         ], False
     warnings: list[str] = []
@@ -4420,7 +4427,11 @@ def _validate_spec(
                 for w in (
                     CodedWarning(
                         "rsid_unresolved",
-                        f"{name}: not found in resolution table, position remains unset",
+                        unresolved_rsid(
+                            name,
+                            searched="the resolution table",
+                            consequence="position remains unset",
+                        ),
                     )
                     for name in unplaceable
                 )
@@ -4430,8 +4441,10 @@ def _validate_spec(
             all_warnings.append(
                 CodedWarning(
                     "resolution_not_injected",
-                    "No resolution.csv and no ensembl_cache injected; variants lacking a genomic position "
-                    "are left unresolved. Produce a resolution.csv with just-dna-enricher.",
+                    resolution_not_injected(
+                        missing="No resolution.csv and no ensembl_cache injected",
+                        remedy="Produce a resolution.csv with just-dna-enricher.",
+                    ),
                 )
             )
         if strict and unplaceable:
@@ -5178,8 +5191,10 @@ def compile_module(
             resolve_warnings = [
                 CodedWarning(
                     "resolution_not_injected",
-                    "No resolution.csv and no ensembl_cache injected; variants lacking a genomic position "
-                    "are left unresolved. Produce a resolution.csv with just-dna-enricher.",
+                    resolution_not_injected(
+                        missing="No resolution.csv and no ensembl_cache injected",
+                        remedy="Produce a resolution.csv with just-dna-enricher.",
+                    ),
                 )
             ]
         # De-duplicated on the message, the `_check_contig_ploidy` idiom: since S76 the pre-flight

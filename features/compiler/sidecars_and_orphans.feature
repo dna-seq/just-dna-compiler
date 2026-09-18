@@ -15,7 +15,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
   Two independently-authored numbers that must agree are checkable with no reference at all. The
   compiler cannot know whether an allele count is right; it can know when a set of counts is impossible.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6917
+  # source: compiler/src/just_dna_compiler/compiler.py:6932
   @code:derived_row_orphan @actionable @both_modes
   Scenario Outline: a sidecar describing something the module does not carry
     Given a <table> row about a subject no variant in this module carries
@@ -70,7 +70,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # A detail row and a subject row go stale together and for the same reason, and two functions saying
     # so differently is how the two spellings of one finding get reported as two findings.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6847
+  # source: compiler/src/just_dna_compiler/compiler.py:6862
   @code:faf95_exceeds_frequency @actionable @both_modes
   Scenario: a confidence bound above the point estimate it bounds
     Given a frequencies.csv row whose faf95 exceeds its own allele_frequency
@@ -91,14 +91,14 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # are not independent — they constrain each other — so a violation is detectable with no reference,
     # which is exactly the class of check a no-network tier can own.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6872
+  # source: compiler/src/just_dna_compiler/compiler.py:6887
   @code:oe_lof_outside_interval @actionable @both_modes
   Scenario: a point estimate outside its own confidence interval
     Given a gene_metrics.csv row whose oe_lof lies outside [oe_lof_lower, loeuf]
     When the module is compiled
     Then a warning says the point estimate and the bounds "may have come from different releases or columns"
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6882
+  # source: compiler/src/just_dna_compiler/compiler.py:6897
   @code:oe_lof_disagrees_with_counts @actionable @both_modes
   Scenario: the same quantity stored three ways, disagreeing
     Given a gene_metrics.csv row where obs_lof/exp_lof does not equal oe_lof
@@ -108,7 +108,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # is what makes the relation safe to check. Warnings rather than errors throughout: every value here
     # is a float that has been through a CSV, and a constraint score is advisory to begin with.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2874
+  # source: compiler/src/just_dna_compiler/compiler.py:2881
   @code:p_value_encodings_disagree @actionable @ladder
   Scenario: two encodings of one p-value disagreeing
     Given a studies.csv row whose p_value string reads 5e-9 and whose p_value_num is 5e-8
@@ -134,7 +134,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
       | "NS"               | skipped in silence              |
       | "5e-8 (adjusted)"  | skipped in silence              |
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3524
+  # source: compiler/src/just_dna_compiler/compiler.py:3531
   @code:study_variant_orphan @actionable @both_modes
   Scenario: a study citing a variant the module does not carry
     Given a studies.csv row naming a variant absent from variants.csv
@@ -157,7 +157,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # RM47: since 0.6 a citation row may ground the module or a bound rather than a locus, and a row
     # referencing nothing cannot reference something missing.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3556
+  # source: compiler/src/just_dna_compiler/compiler.py:3563
   @code:duplicate_study_citation @actionable @both_modes
   Scenario: one paper cited twice for one variant
     Given two studies.csv rows sharing a variant and a pmid with no statistical_test stated
@@ -183,7 +183,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
       | "logistic"       | absent           | reported   |
       | absent           | absent           | reported   |
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6966
+  # source: compiler/src/just_dna_compiler/compiler.py:6981
   @code:citation_not_in_pubmed @actionable @both_modes
   Scenario: a citation PubMed has no record of
     Given a literature.csv row whose `exists` is recorded as False
@@ -193,7 +193,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # Not an orphan but a defect in the module, and the compiler can surface it offline because the
     # enricher already recorded the verdict as a fact. `None` is unknown and withholds.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6975
+  # source: compiler/src/just_dna_compiler/compiler.py:6990
   @code:literature_row_uncited @actionable @both_modes
   Scenario: a literature row nothing in the module cites
     Given a literature.csv row for a PMID no study, bin or pharm row cites
@@ -223,7 +223,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # (`@one-normalizer-two-spellings`). PMID and PMCID are one letter apart, and `PMC 3110566` once
     # parsed as a real unrelated PMID (`@pmid-vs-pmcid`).
 
-  # source: compiler/src/just_dna_compiler/compiler.py:7136
+  # source: compiler/src/just_dna_compiler/compiler.py:7151
   @code:quote_counter_stale @actionable @both_modes
   Scenario: a merge-not-clobber sidecar whose counter predates the quotes
     Given a literature.csv row reading quotes_authored=0
@@ -236,7 +236,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # later run treated that row as authoritative. Four published modules are in that state — 3,668
     # authored quotes, every counter reading zero — and they compile green.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:7339
+  # source: compiler/src/just_dna_compiler/compiler.py:7354
   @code:gene_validity_superseded @carried @both_modes
   Scenario: a curating body re-curating is not an error in your module
     Given a gene_validity.csv carrying two curations of one gene-disease claim with different dates
@@ -250,7 +250,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # published ["definitive", "refuted"] as a pair with nothing saying which was current. Both rows are
     # true records of what a curating body published, and deleting one would falsify the file.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:7351
+  # source: compiler/src/just_dna_compiler/compiler.py:7366
   @code:gene_validity_currency_undecidable @carried @both_modes
   Scenario: two curations and nothing to order them by
     Given a gene_validity.csv where two curations of one claim share a classification_date

@@ -11,7 +11,8 @@ Feature: Resolution from the injected table
   Three operations: fill a 1:1 key, expand a one-to-many key, and verify a pair the author wrote both
   halves of. A locus that cannot host the authored genotype is never expanded onto.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:4431
+  # source: compiler/src/just_dna_compiler/compiler.py:4442
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:resolution_not_injected @actionable @both_modes
   Scenario: nothing injected, so nothing is fetched
     Given a spec directory with no resolution.csv and no injected ensembl_cache
@@ -22,7 +23,7 @@ Feature: Resolution from the injected table
     # This is Principle 2 as a behaviour rather than a promise. The enricher emits the same code from
     # its own resolver when it has no cache, so one code covers both tiers' version of "nobody asked".
 
-  # source: compiler/src/just_dna_compiler/compiler.py:5109
+  # source: compiler/src/just_dna_compiler/compiler.py:5122
   @code:resolution_disabled @actionable @both_modes
   Scenario: the flag named after Ensembl is the master switch
     Given a complete resolution.csv beside the spec
@@ -36,7 +37,7 @@ Feature: Resolution from the injected table
     # flag, which is the rule a warning quantifying over a table follows (`@warning-text-is-api`).
     # Renaming the parameter is a 1.0 conversation, because it is part of a published signature.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1413
+  # source: compiler/src/just_dna_compiler/compiler.py:1418
   @code:resolution_skipped_cross_build @carried @both_modes
   Scenario: a non-GRCh38 module is not joined against a GRCh38-bound table
     Given a module declaring genome_build "GRCh37" and a positional table
@@ -48,7 +49,8 @@ Feature: Resolution from the injected table
     # cannot re-derive a key for would place rows against loci it has no way to check. Carried because
     # no authored edit reaches it — the fix is RM15, not the module.
 
-  # source: compiler/src/just_dna_compiler/resolution.py:128
+  # source: compiler/src/just_dna_compiler/resolution.py:135
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_unresolved @actionable @both_modes
   Scenario: an rsID the table does not name
     Given a variants.csv row keyed by an rsID absent from resolution.csv
@@ -56,7 +58,8 @@ Feature: Resolution from the injected table
     Then a warning fires whose text contains "not found in resolution table, position remains unset"
     And the row compiles with no coordinate
 
-  # source: compiler/src/just_dna_compiler/resolution.py:256
+  # source: compiler/src/just_dna_compiler/resolution.py:271
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_without_resolution_label @actionable @both_modes
   Scenario: a coordinate-authored row with no rsID to label it
     Given a coordinate-authored variants.csv row the table has no rsID for
@@ -68,7 +71,7 @@ Feature: Resolution from the injected table
     # a `ga4gh:VA.…` id and the old sentence read "Position ga4gh:VA.…" — calling a content-addressed
     # identity a position, and giving the author nothing to look up.
 
-  # source: compiler/src/just_dna_compiler/resolution.py:269
+  # source: compiler/src/just_dna_compiler/resolution.py:288
   @code:rsid_expanded_to_multiple_loci @carried @both_modes
   Scenario: one rsID, several loci, one sentence
     Given an rsID the table maps to 3 loci, all of which can host the authored genotype
@@ -108,7 +111,7 @@ Feature: Resolution from the injected table
     # has to be recorded in injected data to survive `compile → reverse → compile`. A compiler-side
     # prune would fail Principle 7.
 
-  # source: compiler/src/just_dna_compiler/resolution.py:164
+  # source: compiler/src/just_dna_compiler/resolution.py:175
   @code:locus_cannot_host_genotype @actionable
   Scenario: a locus whose alleles contradict the authored genotype is dropped from the expansion
     Given a one-to-many rsID with genotype "A/G" and a locus spelled C>T
@@ -118,7 +121,7 @@ Feature: Resolution from the injected table
     # The enricher's resolver emits the same code with a shorter sentence, because only the compiler's
     # copy has a round-trip consequence to explain.
 
-  # source: compiler/src/just_dna_compiler/resolution.py:146
+  # source: compiler/src/just_dna_compiler/resolution.py:157
   @code:locus_hosting_undecidable @carried @both_modes
   Scenario: whether a locus can host the genotype could not be decided
     Given a one-to-many rsID and a locus whose hosting verdict is unknown
@@ -131,7 +134,7 @@ Feature: Resolution from the injected table
     # the old message asserted. Carried, because deciding it needs a reference sequence P2 keeps out of
     # the compiler.
 
-  # source: compiler/src/just_dna_compiler/resolution.py:177
+  # source: compiler/src/just_dna_compiler/resolution.py:193
   @code:rsid_no_hosting_locus @actionable @both_modes
   Scenario: every candidate locus contradicts the genotype
     Given an rsID all of whose loci reject the authored genotype
@@ -141,7 +144,8 @@ Feature: Resolution from the injected table
     # The rsID and the genotype cannot both be right, so the row is left for the unresolved gate to
     # treat as the unresolved variant it is.
 
-  # source: compiler/src/just_dna_compiler/resolution.py:281
+  # source: compiler/src/just_dna_compiler/resolution.py:300
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_ambiguous @actionable
   Scenario: the table marks an rsID ambiguous and the pick is carried as a pick
     Given a resolution row whose status is ambiguous with candidates listed in rsid_alternates
@@ -149,18 +153,19 @@ Feature: Resolution from the injected table
     Then a warning says the rsID "resolved as AMBIGUOUS" and names the candidates
     And it says the pick "is a pick, not a finding."
 
-  # source: compiler/src/just_dna_compiler/resolution.py:1066
+  # source: compiler/src/just_dna_compiler/resolution.py:1094
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_coordinate_disagrees @actionable
   Scenario: an authored pair the table contradicts
     Given a variants.csv row carrying both an rsID and a coordinate
     And a resolution table that maps that rsID elsewhere
     When the module is compiled in best_effort mode
-    Then a warning fires containing "(reference disagreement)."
+    Then a warning fires containing "(reference disagreement"
     And the authored coordinate is kept
     # Three causes, and one window read cannot separate them (`@ref-mismatch-causes`). The enricher's
     # twin of this code adds the dbSNP merge reading, which is the one the compiler cannot check.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1428
+  # source: compiler/src/just_dna_compiler/compiler.py:1435
   @code:positional_identity_contradicted @actionable @both_modes
   Scenario: a positional row whose own coordinate contradicts the table is left alone
     Given a haplotypes.csv row with a start the resolution table disagrees with
@@ -172,7 +177,7 @@ Feature: Resolution from the injected table
     # coordinate neither side stated. Fill only what the author left empty; a cell the author wrote is
     # never overwritten, which is `enrich`'s inject-only doctrine and what makes the fill idempotent.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1574
+  # source: compiler/src/just_dna_compiler/compiler.py:1581
   @code:positional_rows_unjoinable @actionable @both_modes
   Scenario: the residue the positional fill could not place
     Given a pharm_variants.csv where 4 of 12 rows are still unplaced after the fill

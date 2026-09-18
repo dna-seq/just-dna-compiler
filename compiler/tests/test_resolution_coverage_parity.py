@@ -21,6 +21,7 @@ from pathlib import Path
 
 from just_dna_compiler.compiler import compile_module, validate_spec
 from just_dna_compiler.resolution import unresolved_subjects
+from just_dna_compiler.resolution_findings import unresolved_rsid
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 
@@ -60,8 +61,15 @@ def _spec(directory: Path, *, resolution: str | None, variants: str = _VARIANTS)
     return directory
 
 
+#: Built rather than retyped (RM244): both tiers speak this sentence through one builder now, so a
+#: test that spells it out again pins its own copy and lets the shipped one move underneath it.
+def _unplaced_text(subject: str) -> str:
+    return unresolved_rsid(subject, searched="the resolution table", consequence="position remains unset")
+
+
 def _unplaced(result) -> list[str]:
-    return [w for w in result.warnings if "not found in resolution table" in w]
+    phrase = _unplaced_text("x").split(": ", 1)[1]
+    return [w for w in result.warnings if phrase in w]
 
 
 # ── the parity itself ───────────────────────────────────────────────────────────────────────────
@@ -116,7 +124,7 @@ def test_best_effort_warns_on_both_sides_with_the_identical_sentence(tmp_path: P
     assert validated.valid
     assert compiled.success, compiled.errors
     assert _unplaced(validated) == _unplaced(compiled)
-    assert _unplaced(compiled) == [f"{_UNCOVERED}: not found in resolution table, position remains unset"]
+    assert _unplaced(compiled) == [_unplaced_text(_UNCOVERED)]
 
 
 def test_the_finding_is_reported_once_though_two_passes_produce_it(tmp_path: Path) -> None:

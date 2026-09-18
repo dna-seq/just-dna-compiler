@@ -18,6 +18,17 @@ from pathlib import Path
 
 import duckdb
 from just_dna_compiler.resolution import genotype_fits
+from just_dna_compiler.resolution_findings import (
+    ambiguous_pick,
+    coordinate_disagrees,
+    expanded_to_multiple_loci,
+    locus_cannot_host,
+    no_hosting_locus,
+    resolution_not_injected,
+    skipped_cross_build,
+    unresolved_rsid,
+    without_resolution_label,
+)
 from just_dna_format.base import derive_variant_key
 from just_dna_format.findings import CodedWarning
 from just_dna_format.spec import VariantRow
@@ -110,8 +121,7 @@ def resolve_variants(
     if genome_build != "GRCh38":
         msg = CodedWarning(
             "resolution_skipped_cross_build",
-            f"Ensembl resolution skipped: compiler is GRCh38-bound, module genome_build is "
-            f"{genome_build!r} — positions are not re-resolved cross-build (RM15).",
+            skipped_cross_build(what="Ensembl resolution", genome_build=genome_build),
         )
         logger.warning(msg)
         return variants, [msg]
@@ -126,8 +136,10 @@ def resolve_variants(
     if reference is None:
         msg = CodedWarning(
             "resolution_not_injected",
-            "Ensembl resolution skipped: no reference cache found "
-            "(set JUST_DNA_PIPELINES_CACHE_DIR or JUST_DNA_ENSEMBL_CACHE, or pass ensembl_cache)",
+            resolution_not_injected(
+                missing="Ensembl resolution skipped: no reference cache found",
+                remedy=("Set JUST_DNA_PIPELINES_CACHE_DIR or JUST_DNA_ENSEMBL_CACHE, or pass ensembl_cache."),
+            ),
         )
         logger.warning(msg)
         return variants, [msg]
@@ -135,7 +147,10 @@ def resolve_variants(
     try:
         con = _connect(reference)
     except EnsemblReferenceError as exc:
-        msg = CodedWarning("resolution_not_injected", f"Ensembl resolution skipped: {exc}")
+        msg = CodedWarning(
+            "resolution_not_injected",
+            resolution_not_injected(missing=f"Ensembl resolution skipped: {exc}"),
+        )
         logger.warning(msg)
         return variants, [msg]
 
@@ -180,17 +195,20 @@ def resolve_variants(
                         warnings.append(
                             CodedWarning(
                                 "locus_cannot_host_genotype",
-                                f"{v.rsid} maps to {lo['chrom']}:{lo['start']} "
-                                f"{lo.get('ref')}>{lo.get('alts')}, which cannot host the authored "
-                                f"genotype {v.genotype} — that locus is dropped from the expansion.",
+                                locus_cannot_host(
+                                    v.rsid,
+                                    locus=f"{lo['chrom']}:{lo['start']}",
+                                    ref=lo.get("ref"),
+                                    alts=lo.get("alts"),
+                                    genotype=v.genotype,
+                                ),
                             )
                         )
                 if not usable:
                     warnings.append(
                         CodedWarning(
                             "rsid_no_hosting_locus",
-                            f"{v.rsid}: none of its {len(loci)} loci can host the authored genotype "
-                            f"{v.genotype}; position remains unset",
+                            no_hosting_locus(v.rsid, loci=len(loci), genotype=v.genotype),
                         )
                     )
                     patched.append(v)
@@ -206,8 +224,14 @@ def resolve_variants(
                     warnings.append(
                         CodedWarning(
                             "rsid_expanded_to_multiple_loci",
-                            f"{v.rsid} maps to {len(usable)} loci in Ensembl; expanded to {len(usable)} "
-                            f"rows (one per locus, each keyed by its coordinate — a consumer can count them).",
+                            expanded_to_multiple_loci(
+                                subject=v.rsid,
+                                loci=len(usable),
+                                rows=len(usable),
+                                where=" in Ensembl",
+                                keying="one per locus, each keyed by its coordinate",
+                                reader_note="A consumer can count them.",
+                            ),
                         )
                     )
                     for index, locus in enumerate(usable):
@@ -246,7 +270,16 @@ def resolve_variants(
                 patched.append(v.model_copy(update={"rsid": pos_to_rsid[key]}))
             else:
                 warnings.append(
-                    CodedWarning("rsid_without_resolution_label", f"Position {key}: no rsid found in Ensembl")
+                    CodedWarning(
+                        "rsid_without_resolution_label",
+                        # `reassurance=False` for the reason `rsid_unresolved` withholds its
+                        # consequence two functions up (S61): "not an error" is a claim about how the
+                        # run ends, and `lookup_variant`'s live leg has not run yet — it may still
+                        # label this position.
+                        without_resolution_label(
+                            subject=f"Position {key}", searched="Ensembl", reassurance=False
+                        ),
+                    )
                 )
                 patched.append(v)
         else:
@@ -443,7 +476,12 @@ def _lookup_positions_by_rsid(
             # live leg this function neither runs nor knows about, so at this point that answer is
             # genuinely unknown and the house rule is to withhold it rather than guess. The one
             # caller that reads these warnings states the consequence once, after both legs (S61).
-            warnings.append(CodedWarning("rsid_unresolved", f"{rsid}: not in the injected Ensembl snapshot"))
+            warnings.append(
+                CodedWarning(
+                    "rsid_unresolved",
+                    unresolved_rsid(rsid, searched="the injected Ensembl snapshot"),
+                )
+            )
     return dict(result)
 
 
@@ -695,8 +733,12 @@ def _check_rsid_coord_consistency(
             warnings.append(
                 CodedWarning(
                     "rsid_coordinate_disagrees",
-                    f"{coordkey} authored as {r.rsid}, but Ensembl reports {sorted(ids)} there "
-                    f"(reference disagreement — may be a dbSNP merge/build difference).",
+                    coordinate_disagrees(
+                        subject=coordkey,
+                        authored=r.rsid or "",
+                        reported=f"Ensembl reports {sorted(ids)} there",
+                        reading="may be a dbSNP merge/build difference",
+                    ),
                 )
             )
 
@@ -771,8 +813,15 @@ def _lookup_rsids_by_position(
                 warnings.append(
                     CodedWarning(
                         "rsid_ambiguous",
-                        f"{chrom}:{start} (ref unspecified) matches multiple dbSNP ids; resolved to "
-                        f"{result[refless_key]} deterministically — specify ref to disambiguate.",
+                        ambiguous_pick(
+                            subject=f"{chrom}:{start} (ref unspecified)",
+                            # Not "resolved as AMBIGUOUS": nothing has resolved anything here. This is
+                            # the moment of choosing, and the table state the compiler's wording names
+                            # does not exist yet.
+                            observed="matches multiple dbSNP ids",
+                            resolved_to=result[refless_key],
+                            remedy="Specify ref to disambiguate.",
+                        ),
                     )
                 )
     return result

@@ -17,7 +17,8 @@ Feature: What the enricher's resolver says, in its own words
   both paths' warnings in one channel. What is not shared is the wording, and the wording is the part a
   consumer matches on.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:111
+  # source: enricher/src/just_dna_enricher/resolver.py:122
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:resolution_skipped_cross_build @carried @tri_state
   Scenario: a module on an assembly the resolver is not bound to
     Given a module whose genome_build is "GRCh37"
@@ -29,7 +30,8 @@ Feature: What the enricher's resolver says, in its own words
     # reference is GRCh38's. The compiler's twin says the same thing about the positional fill instead
     # — one code, two sentences, two scopes.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:127
+  # source: enricher/src/just_dna_enricher/resolver.py:137
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:resolution_not_injected @actionable
   Scenario: nothing was injected to resolve against
     Given no Ensembl reference cache on any of the searched paths
@@ -41,7 +43,8 @@ Feature: What the enricher's resolver says, in its own words
     # (`@unreachable-not-absent`). The compiler's sentence for this code names `resolution.csv` and
     # points at the enricher; this one names the cache and points at the operator.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:138
+  # source: enricher/src/just_dna_enricher/resolver.py:137
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:resolution_not_injected @actionable
   Scenario: a reference that is present and cannot be opened
     Given an Ensembl reference path that raises when it is connected to
@@ -52,18 +55,20 @@ Feature: What the enricher's resolver says, in its own words
     # (`@an-absent-input-is-the-unknown-arm-and-a-malformed-one-is-the-refusal`); here both are
     # reported, and the sentence is what separates them.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:181
+  # source: enricher/src/just_dna_enricher/resolver.py:196
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:locus_cannot_host_genotype @actionable
   Scenario: one locus of an rsID that cannot carry the authored call
     Given an rsID mapping to three loci, one of which cannot host genotype "A/G"
     When enrich expands it
     Then a warning fires saying that locus is "which cannot host the authored genotype"
-    And it says "that locus is dropped from the expansion."
+    And it says "that locus is dropped from the expansion"
     And the other two loci are still expanded
     # The compiler's sentence continues past that phrase to say the row is not emitted as an assertion;
     # this one stops. Same code, same remedy, one clause of difference.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:190
+  # source: enricher/src/just_dna_enricher/resolver.py:209
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_no_hosting_locus @actionable
   Scenario: no locus of an rsID can carry the authored call
     Given an rsID whose every locus is refused by the hosting check for genotype "A/G"
@@ -74,12 +79,13 @@ Feature: What the enricher's resolver says, in its own words
     # Byte-identical to the compiler's, which is worth stating rather than assuming: the two sentences
     # were written separately and agree, and nothing today would notice if one of them drifted.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:207
+  # source: enricher/src/just_dna_enricher/resolver.py:225
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_expanded_to_multiple_loci @carried
   Scenario: an rsID that names more than one place
     Given an rsID mapping to two loci that can both host the authored genotype
     When enrich expands it
-    Then a warning fires saying it maps to those "loci in Ensembl; expanded to"
+    Then a warning fires saying it "maps to" two loci and was "expanded to" two rows
     And it says the rows are "one per locus, each keyed by its coordinate"
     And each emitted row is keyed by its own coordinate rather than by the rsID
     # Deliberately per authored row and deliberately NOT converged with the compiler's twin, which S33
@@ -87,48 +93,52 @@ Feature: What the enricher's resolver says, in its own words
     # `ensembl_cache` route, removed at 1.0, and the modules reaching it report `expanded_keys` and
     # `expanded_rows` as `None` rather than as a count.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:249
+  # source: enricher/src/just_dna_enricher/resolver.py:273
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_without_resolution_label @actionable
   Scenario: a coordinate-authored row the reference has no rsID for
     Given a variants.csv row authored as a coordinate with no rsid
     When enrich looks the position up and the reference names no id there
-    Then a warning fires saying "no rsid found in Ensembl"
+    Then a warning fires saying "no rsid found in" the reference it consulted
     And the row stays coordinate-keyed, which is a complete identity on its own
     # The compiler's sentence for this code is an aggregate over rows with the reassurance that it is
     # not an error; this one is per position and says neither. The finding is the same and a consumer
     # matching either string finds only one of the two tiers.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:446
+  # source: enricher/src/just_dna_enricher/resolver.py:480
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_unresolved @actionable
   Scenario: an rsID the injected snapshot does not carry
     Given a partial Ensembl snapshot that has no record of the queried rsID
     When enrich looks it up
-    Then a warning fires saying it is "not in the injected Ensembl snapshot"
+    Then a warning fires saying it is "not in" "the injected Ensembl snapshot"
     And it does not say the rsID is absent from Ensembl, because a partial snapshot cannot know that
     And it does not say whether the position stays unset, because a live leg may still answer
     # Three sentences the corpus's compiler-side scenario holds none of: that one says "not found in
     # resolution table, position remains unset". The withheld consequence is S61 — the one caller that
     # reads these states it once, after both legs, and this site genuinely does not know it yet.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:690
+  # source: enricher/src/just_dna_enricher/resolver.py:728
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_coordinate_disagrees @actionable
   Scenario: an authored rsID whose coordinate the reference contradicts
     Given a row authoring both an rsID and a coordinate the reference does not pair
     When enrich checks the pair bidirectionally
     Then a warning fires carrying `coordinate_disagreement`'s sentence
-    And the second arm reports the other direction, saying "but Ensembl reports"
+    And the second arm reports the other direction, saying "Ensembl reports"
     And it offers "may be a dbSNP merge/build difference" rather than calling either side wrong
     # Never fatal here, which is the whole difference from the compiler's twin: the same code is a
     # `strict` refusal under `compile` because the authored value wins and the table's position is then
     # lost to the round trip. In the enricher there is no artifact to be unreproducible.
 
-  # source: enricher/src/just_dna_enricher/resolver.py:772
+  # source: enricher/src/just_dna_enricher/resolver.py:814
+  # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:rsid_ambiguous @actionable
   Scenario: one position, ref unspecified, matching several dbSNP ids
     Given a lookup by chrom and start with no ref at a multi-allelic site
     When the reverse map is built
-    Then a warning fires saying it "(ref unspecified) matches multiple dbSNP ids"
-    And it says the pick was made "deterministically — specify ref to disambiguate."
+    Then a warning fires at that position saying the "rsid resolved as AMBIGUOUS"
+    And it says the pick "is a pick, not a finding." and offers "Specify ref to disambiguate."
     And it fires once per position rather than once per colliding id
     # The `ORDER BY` fixes which id wins, so the answer is stable; stable is not the same as right, and
     # the warning is what keeps a deterministic pick from reading as a fact

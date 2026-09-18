@@ -75,6 +75,94 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM244 — one code, two tiers, two sentences: the resolution findings now speak through one builder
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-18 in the uncut 0.7 line** · **Owner** compiler
+(`resolution_findings`) + enricher (`resolver`) · **Found by** the RM149 corpus's second pass, from a
+`(code, tier)` walk the per-code equality could not make
+
+### What was observed
+
+`just_dna_compiler.resolution` and `just_dna_enricher.resolver` are twins: the second reproduces the
+first's fill/expand/verify semantics against an injected Ensembl reference instead of an injected
+`resolution.csv`, and they **deliberately share their `VALID_WARNING_CODES` members** — the enricher's
+own comment says so, because the finding is the same and the remedy is the same and `compile_module`
+puts both paths' warnings in one channel. What they did not share was the words. Nine codes are emitted
+by both, and **seven pairs were a different sentence**:
+
+| code | compiler said | enricher said |
+| --- | --- | --- |
+| `rsid_unresolved` | *not found in resolution table, position remains unset* | *not in the injected Ensembl snapshot* |
+| `rsid_without_resolution_label` | an aggregate over rows, with *not an error — a coordinate is a complete identity* | *Position X: no rsid found in Ensembl* |
+| `resolution_not_injected` | *No resolution.csv and no ensembl_cache injected…* | *Ensembl resolution skipped: no reference cache found (set …)* |
+| `resolution_skipped_cross_build` | two sentences of its own, one per fill | a third |
+| `locus_cannot_host_genotype` | … *rather than emitted as a row asserting an allele it does not have* | the same sentence, stopping one clause early |
+| `rsid_expanded_to_multiple_loci` | one line per rsID with the real row total (S33), PAR-aware | one line per authored row |
+| `rsid_ambiguous` | *rsid resolved as AMBIGUOUS … it is a pick, not a finding* | *matches multiple dbSNP ids; resolved to X deterministically* |
+
+A warning's text is an API a consumer greps (`@warning-text-is-api`), so one code with two sentences is
+one code a consumer can only half-match — and the corpus's per-code equality reported full coverage
+while holding none of the enricher's words for any of the nine.
+
+### What shipped
+
+`just_dna_compiler.resolution_findings` — nine string builders, no imports, called by both tiers.
+
+**Placement is the compiler, not the format tier**, and not by preference: the enricher already imports
+`just_dna_compiler.resolution.genotype_fits`, so that package is already the shared resolution
+vocabulary across `enricher → compiler → format`; and when the enricher's deprecated `ensembl_cache`
+route is removed at 1.0 the compiler is the sole remaining caller. Nothing in `just_dna_format` moved
+and no tier gained a dependency.
+
+**A builder returns `str`, never a `CodedWarning`.** Each tier wraps the text at its own site, so the
+literal `CodedWarning("<code>", …)` stays where the code is emitted — which is what every AST guard in
+`schema/tests/test_feature_corpus.py` aligns against, and what keeps the `(code, tier)` equality
+readable rather than chased through an indirection.
+
+**`None` means this caller cannot establish the clause, and the clause is omitted** — the house
+tri-state applied to a sentence. Four withholds, each a recorded decision rather than a convenience:
+
+- **S61, twice.** The enricher's snapshot leg may not say *position remains unset*, because
+  `lookup_variant`'s live leg has not run and may still place the variant. The same argument covers
+  `rsid_without_resolution_label`: *not an error* is a claim about how the run ends, so the enricher
+  passes `reassurance=False`. Both were nearly lost in the migration — the first was designed in, the
+  second was introduced by taking a default and caught in review.
+- **S33.** The compiler accumulates one expansion sentence per rsID with the real row total and says
+  which *kind* of many it is; the enricher's per-row copy stays, because it is on the route that goes
+  away at 1.0 and porting the accumulator into a dying function duplicates rather than shares.
+- **The tables.** Only the positional fill can name which tables a cross-build skip left unjoined.
+
+**`ambiguous_pick` takes the event as a slot**, because the two tiers describe different moments: the
+compiler reports a label `resolution.csv` already carries, and the enricher is *at* the choice, where no
+table state exists yet. Folding them would have the enricher announce something that has not happened.
+
+### What moved, declared rather than silent
+
+Four sentences changed, none of them a phrase a consumer report quotes: the compiler's `rsid_unresolved`
+(*not found in resolution table* → *not in the resolution table*), its
+`rsid_without_resolution_label` and positional cross-build skip (reworded around the shared skeleton),
+and the enricher's `resolution_not_injected` remedy (a parenthetical became a sentence). The two
+consumer-visible phrases from the S61 thread — *not in the injected Ensembl snapshot* — and the
+byte-identical `rsid_no_hosting_locus` pair are unchanged.
+
+### What the guards caught, which is the argument for having built them
+
+Three real breaks in one afternoon, none of them by reading:
+
+1. **The dedupe.** `compile_module` runs the pre-flight in `best_effort` whatever its own mode and
+   de-duplicates on the *message*; migrating one of the two `rsid_unresolved` emitters and not the other
+   published the finding twice. `test_resolution_coverage_parity` went red on the count.
+2. **The line shift.** Adding an import block moved 77 `# source:` anchors under the corpus, and the
+   `@code:`/`@check:`/`@skip:` alignment named every one.
+3. **A guard I narrowed while widening it.** Making `# text:` search *beside* the emission site rather
+   than instead of it — which RM244 forces, since a sentence is now assembled from a skeleton in one
+   module and clauses in another — replaced a `.py` exemption with `if not literals: continue`, which
+   silently exempts a scenario whose `# source:` path is a typo. Third narrowing of that same check;
+   it now tracks *was any candidate a real module* separately, proven red against a fake path.
+
+Two tests that pinned a sentence now **derive** it from the builder instead: a test that retypes the
+words pins its own copy, not the one a consumer greps.
+
 ## RM243 — the paragraph that refuses to state a total stated four of them, summing to 17 of 24
 
 **Severity** low · **Status** ✅ **shipped 2026-09-13 in the uncut 0.7 line**, documentation plus two

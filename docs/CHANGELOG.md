@@ -34,6 +34,40 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-18 — RM244: the nine findings both resolution tiers emit now speak through one builder
+
+**No schema change, no dependency change, no new tier.** Four warning sentences moved; the two the S61
+consumer thread quotes did not.
+
+The compiler's `resolution.py` and the enricher's `resolver.py` are twins that deliberately share their
+warning codes — same finding, same remedy, one channel — and shared none of their **words**. Nine codes
+are emitted by both and seven pairs were a different sentence: `rsid_unresolved` read *"not found in
+resolution table, position remains unset"* in one tier and *"not in the injected Ensembl snapshot"* in
+the other, and a consumer grepping either one found half the emitters.
+
+`just_dna_compiler.resolution_findings` is now the nine builders both tiers call. They live in the
+compiler rather than the format tier because the enricher already imports
+`just_dna_compiler.resolution.genotype_fits` — that package is already the shared resolution vocabulary
+— and because the enricher's deprecated `ensembl_cache` route goes away at 1.0. They return `str` rather
+than a `CodedWarning`, so the literal `CodedWarning("<code>", …)` stays at each tier's own emission site.
+
+**A `None` argument omits its clause, and four of the omissions are recorded decisions rather than
+conveniences.** Twice S61 — the enricher's snapshot leg may not say *position remains unset*, nor *not an
+error*, because `lookup_variant`'s live leg has not run and may still place the variant. Once S33 — the
+compiler's per-rsID expansion accumulator is not ported into the route that is being removed. Once
+structural — only the positional fill can name which tables a cross-build skip left unjoined. And
+`ambiguous_pick` takes the event as a slot, because the compiler reports a label the table already
+carries while the enricher is *at* the choice, where that table state does not exist yet.
+
+**What moved**, declared rather than silent: the compiler's `rsid_unresolved`, its
+`rsid_without_resolution_label` and its positional cross-build skip, and the enricher's
+`resolution_not_injected` remedy. Two tests that pinned a sentence now derive it from the builder.
+
+The corpus guard is part of the story rather than a bystander: it caught a broken message-keyed dedupe,
+77 `# source:` anchors an import block had shifted, and a narrowing introduced by the widening RM244
+required. `# text:` now searches **beside** the emission site rather than instead of it, because a
+sentence assembled from a shared skeleton and a caller's literals legitimately lives in two files.
+
 ## 2026-09-13 — RM149 second pass: a code is not a text, and the algebra had no values in it
 
 **Corpus and guard only, no code change, no dependency.** A consumer needs to do nothing.

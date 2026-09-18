@@ -87,11 +87,13 @@ class _Scenario:
 
 _TAG = re.compile(r"@([A-Za-z_][A-Za-z0-9_]*(?::[A-Za-z0-9_.\-]+)?)")
 _SOURCE = re.compile(r"#\s*source:\s*(\S+?):(\d+)\s*$")
-#: Where a finding's TEXT lives, when that is not the module that codes it. A message built by one
-#: module and wrapped in a `CodedWarning` by another is a real shape here — `layout.deprecation_notice`
-#: writes the sentence and `_locate_sidecar` names the code — and it is the shape where a code goes
-#: missing at a boundary (`@finding-loses-its-code-at-a-boundary`). So the scenario names both: the
-#: emission site the code is checked against, and the module the quoted phrase is checked against.
+#: A SECOND module a finding's text may come from, searched **beside** the emission site rather than
+#: instead of it. Two shapes need it. A message built by one module and wrapped in a `CodedWarning` by
+#: another — `layout.deprecation_notice` writes the sentence and `_locate_sidecar` names the code — which
+#: is where a code goes missing at a boundary (`@finding-loses-its-code-at-a-boundary`). And, since
+#: RM244, a sentence **assembled from both**: `resolution_findings` owns the skeleton and each tier
+#: passes its own clauses as literals, so one scenario legitimately quotes from two files and a check
+#: that replaced the first with the second would report the caller's own words as missing.
 _TEXT = re.compile(r"#\s*text:\s*(\S+?)\s*$")
 _SCENARIO = re.compile(r"^\s*(Scenario|Scenario Outline)\s*:\s*(.+?)\s*$")
 #: A quoted phrase a step asserts is in the message: EVERY double-quoted run of six characters or more
@@ -424,16 +426,29 @@ def test_every_quoted_phrase_is_real_text_from_the_source() -> None:
     for scenario in _scenarios():
         if scenario.source is None or not scenario.phrases:
             continue
-        named = scenario.text_from or scenario.source[0]
-        path = _ROOT / named
-        if not path.is_file() or path.suffix != ".py":
+        named = [scenario.source[0]] + ([scenario.text_from] if scenario.text_from else [])
+        literals: list[str] = []
+        # Whether any named module was a real Python file, tracked separately from whether it yielded
+        # literals. Collapsing the two is how this guard was narrowed a THIRD time: `if not literals:
+        # continue` reads like the `.py` exemption it replaced, and silently exempts a scenario whose
+        # `# source:` path is a typo — the empty list is indistinguishable from a module with no strings.
+        asked = False
+        for candidate in named:
+            path = _ROOT / candidate
+            if path.suffix != ".py":
+                continue
+            if not path.is_file():
+                problems.append(f"{scenario.where}: quotes text from {candidate}, which is not a file")
+                continue
+            asked = True
+            if path not in cache:
+                cache[path] = _joined_literals(path)
+            literals.extend(cache[path])
+        if not asked:
             continue
-        if path not in cache:
-            cache[path] = _joined_literals(path)
-        literals = cache[path]
         for phrase in scenario.phrases:
             if not any(phrase in literal for literal in literals):
-                problems.append(f'{scenario.where}: no literal in {named} contains "{phrase}"')
+                problems.append(f'{scenario.where}: no literal in {" or ".join(named)} contains "{phrase}"')
     assert not problems, "\n".join(problems)
 
 

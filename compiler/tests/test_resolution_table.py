@@ -13,6 +13,7 @@ import polars as pl
 import pytest
 from just_dna_compiler.compiler import compile_module, reverse_module
 from just_dna_compiler.resolution import resolve_from_table
+from just_dna_compiler.resolution_findings import unresolved_rsid
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 
@@ -20,6 +21,12 @@ _YAML = (
     "schema_version: '1.0'\nmodule:\n  name: demo\n  title: Demo\n  description: d\n  report_title: Demo\n"
 )
 _STUDIES = "rsid,pmid\nrs1801133,9545397\n"
+
+
+#: The phrase these tests match on, taken from the builder both tiers now speak through (RM244)
+#: rather than retyped: a test that hardcodes a sentence pins the copy in the test, not the one a
+#: consumer greps, and the two then drift in exactly the direction this module exists to stop.
+_UNPLACED_PHRASE = unresolved_rsid("x", searched="the resolution table").split(": ", 1)[1]
 
 
 def _v(**kw) -> VariantRow:
@@ -101,7 +108,7 @@ def test_resolve_from_table_fills_expands_and_verifies() -> None:
 def test_resolve_from_table_warns_on_missing_and_skips_non_grch38() -> None:
     v = _v(rsid="rs1801133")
     warnings = resolve_from_table([v], {}).warnings  # empty table
-    assert any("not found in resolution table" in w for w in warnings)
+    assert any(_UNPLACED_PHRASE in w for w in warnings)
 
     skip = resolve_from_table([v], {}, genome_build="GRCh37").warnings
     assert any("GRCh38-bound" in w for w in skip)
@@ -127,7 +134,7 @@ def test_rows_with_no_rsid_are_one_counted_warning_naming_their_coordinates() ->
     assert rows[0].variant_key.startswith("ga4gh:VA.")
 
     warnings = resolve_from_table(rows, {}).warnings
-    no_rsid = [w for w in warnings if "no rsid in the resolution table" in w]
+    no_rsid = [w for w in warnings if "no rsid found in the resolution table" in w]
 
     assert len(no_rsid) == 1, warnings
     message = no_rsid[0]

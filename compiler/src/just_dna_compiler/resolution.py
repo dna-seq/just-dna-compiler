@@ -27,6 +27,16 @@ from just_dna_format.alleles import (
 )
 from just_dna_format.base import derive_variant_key
 from just_dna_format.findings import CodedWarning
+from just_dna_compiler.resolution_findings import (
+    ambiguous_pick,
+    coordinate_disagrees,
+    expanded_to_multiple_loci,
+    locus_cannot_host,
+    no_hosting_locus,
+    skipped_cross_build,
+    unresolved_rsid,
+    without_resolution_label,
+)
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import par_partner
@@ -92,10 +102,7 @@ def resolve_from_table(
     COMPILER.md § Resolution for the full matrix.
     """
     if genome_build != "GRCh38":
-        msg = (
-            f"Resolution-table fill skipped: compiler is GRCh38-bound, module genome_build is "
-            f"{genome_build!r} — positions are not re-resolved cross-build (RM15)."
-        )
+        msg = skipped_cross_build(what="Resolution-table fill", genome_build=genome_build)
         logger.warning(msg)
         return ResolutionOutcome(
             variants=variants,
@@ -127,7 +134,11 @@ def resolve_from_table(
                 warnings.append(
                     CodedWarning(
                         "rsid_unresolved",
-                        f"{v.rsid}: not found in resolution table, position remains unset",
+                        unresolved_rsid(
+                            v.rsid,
+                            searched="the resolution table",
+                            consequence="position remains unset",
+                        ),
                     )
                 )
                 patched.append(v)
@@ -163,10 +174,15 @@ def resolve_from_table(
                     warnings.append(
                         CodedWarning(
                             "locus_cannot_host_genotype",
-                            f"{v.rsid} maps to {locus.chrom}:{locus.start} {locus.ref}>{locus.alts}, "
-                            f"which cannot host the authored genotype {v.genotype} — that locus is "
-                            f"dropped from the expansion rather than emitted as a row asserting an "
-                            f"allele it does not have.{caveat}",
+                            locus_cannot_host(
+                                v.rsid,
+                                locus=f"{locus.chrom}:{locus.start}",
+                                ref=locus.ref,
+                                alts=locus.alts,
+                                genotype=v.genotype,
+                                instead=("rather than emitted as a row asserting an allele it does not have"),
+                                caveat=caveat,
+                            ),
                         )
                     )
                 if not usable:
@@ -176,8 +192,7 @@ def resolve_from_table(
                     warnings.append(
                         CodedWarning(
                             "rsid_no_hosting_locus",
-                            f"{v.rsid}: none of its {len(loci)} loci can host the authored genotype "
-                            f"{v.genotype}; position remains unset",
+                            no_hosting_locus(v.rsid, loci=len(loci), genotype=v.genotype),
                         )
                     )
                     patched.append(v)
@@ -255,10 +270,14 @@ def resolve_from_table(
         warnings.append(
             CodedWarning(
                 "rsid_without_resolution_label",
-                f"{len(no_rsid)} coordinate-authored row(s) have no rsid in the resolution table, so they "
-                f"stay coordinate-keyed: {_examples(no_rsid)}. Not an error — a coordinate is a complete "
-                f"identity and an rsID is a label on top of it; re-run the enricher if you want the labels "
-                f"back-filled.",
+                without_resolution_label(
+                    subject=(
+                        f"{len(no_rsid)} coordinate-authored row(s) stay coordinate-keyed "
+                        f"({_examples(no_rsid)})"
+                    ),
+                    searched="the resolution table",
+                )
+                + "; re-run the enricher if you want the labels back-filled.",
             )
         )
 
@@ -539,9 +558,11 @@ def ambiguous_warnings(
 ) -> list[str]:
     """The `best_effort` half of the same finding — the pick is carried, and said to be a pick."""
     return [
-        f"{v.variant_key}: rsid resolved as AMBIGUOUS"
-        + (f" among {lo.rsid_alternates}" if lo.rsid_alternates else "")
-        + " — the deterministic pick is carried, and it is a pick, not a finding."
+        ambiguous_pick(
+            subject=v.variant_key,
+            observed="rsid resolved as AMBIGUOUS",
+            candidates=lo.rsid_alternates or None,
+        )
         for v, lo in _ambiguous_loci(variants, resolution, genome_build)
     ]
 
@@ -939,12 +960,18 @@ def _expansion_warning(rsid: str, per_row: list[list[ResolutionRow]], genome_bui
             f"nothing there. Re-run the enricher without --keep-par-twin to record the X spelling "
             f"alone."
         )
-    return (
-        f"{rsid} maps to {len(loci)} loci in the resolution table; expanded to {rows} rows"
-        f"{from_clause}, one per (authored genotype, locus) pair and each keyed by its coordinate. "
-        f"Only the locus whose alleles can carry a given genotype can match it, so the rest are "
-        f"well-formed rows that assert nothing about a subject — count findings by rsid, and do not "
-        f"read a row as a standalone claim about its locus."
+    return expanded_to_multiple_loci(
+        subject=rsid,
+        loci=len(loci),
+        rows=rows,
+        where=" in the resolution table",
+        from_clause=from_clause,
+        keying="one per (authored genotype, locus) pair and each keyed by its coordinate",
+        reader_note=(
+            "Only the locus whose alleles can carry a given genotype can match it, so the rest are "
+            "well-formed rows that assert nothing about a subject — count findings by rsid, and do "
+            "not read a row as a standalone claim about its locus."
+        ),
     )
 
 
@@ -1059,9 +1086,10 @@ def _verify(v: VariantRow, loci: list[ResolutionRow], warnings: list[str], stric
     coordkey = derive_variant_key(None, v.chrom, v.start, v.ref)
     keys = {derive_variant_key(None, lo.chrom, lo.start, lo.ref) for lo in loci}
     if keys and coordkey not in keys:
-        message = (
-            f"{v.rsid} authored at {coordkey}, but the resolution table maps it to "
-            f"{sorted(keys)} (reference disagreement)."
+        message = coordinate_disagrees(
+            subject=v.rsid or coordkey,
+            authored=coordkey,
+            reported=f"the resolution table maps it to {sorted(keys)}",
         )
         warnings.append(CodedWarning("rsid_coordinate_disagrees", message))
         strict_errors.append(
