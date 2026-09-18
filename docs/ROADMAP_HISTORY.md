@@ -75,6 +75,72 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM246 — the mode ladder was written in three spellings, so the guard could only see a third of it
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-18 in the uncut 0.7 line** · **Owner** compiler
+(`ladder`, `resolution`, `compiler`) · **Found by** the RM149 corpus's first pass, as finding 2 — a
+distinction nothing in the tree stated — and sized by the second pass's `@ladder` equality
+
+### What was observed
+
+*`strict` means reproducible artifact*, and a check whose severity is the mode says so in code. It said
+so three different ways:
+
+| spelling | what it meant | sites |
+| --- | --- | --- |
+| `(errors if strict else warnings_out).append(f)` | one sentence, two channels | 4 codes |
+| `if strict: errors.extend(same messages); return` | one sentence, two channels — **and** the symbolic-allele drop suppressed | 1 check |
+| `ResolutionOutcome.strict_errors` | a warning paired with a **different, longer** refusal | 3 codes |
+
+The third is not a variant of the first: calling those three ladder members and quoting the warning
+describes a compile that succeeds, and quoting the refusal quotes a sentence `best_effort` never emits.
+RM149's first pass could write that distinction down and no more — nothing enforced it, and the second
+pass's `@ladder` equality could only walk the first spelling, so it asserted a tag over **four** codes
+while its own subject had seven.
+
+### What shipped
+
+`just_dna_compiler.ladder` — `LadderFinding(warning, refusal=None)` and `route(findings, strict=…)`.
+
+**The third spelling is the general case and the first two are it with `refusal=None`**, which is the
+whole content of the change: a ladder finding carries what `best_effort` says and, where they differ,
+the separate thing `strict` says instead. `None` is then a *claim* — the two modes say the same thing —
+rather than something a reader infers from which spelling a function happened to use.
+
+`ResolutionOutcome` carries `ladders` and **derives both `warnings` and `strict_errors`** from them,
+where `strict_errors` used to be a settable field beside a separately-appended warning. As two fields
+either could be populated without the other; as two projections of one list, a refusal cannot exist
+without the warning it escalates from. `plain_warnings` is the stored half — findings that never
+escalate — and every existing reader of `.warnings` keeps working and now gets both halves.
+
+**What is deliberately still two things**: what the compile *does* with an error. Resolution returns a
+failed result immediately under a `strict resolution:` prefix, because a module whose identities cannot
+be reproduced has nothing further worth checking; the allele-membership refusals accumulate, because
+they are per row and an author wants all of them. That is caller policy rather than severity, and
+`route` answers one question on purpose.
+
+The symbolic-allele check keeps its `strict` parameter for the half that really is mode-dependent
+*behaviour* — `best_effort` drops the unusable rows and `strict` refuses instead of dropping — while its
+findings go through `route` like every other ladder member. A channel does not carry a drop.
+
+### The guard, rewritten twice in one sitting
+
+`test_the_ladder_tag_is_the_walked_set_of_mode_dependent_codes` now walks `LadderFinding` construction,
+and the equality widened from four codes to **seven** — which is the unification proving itself rather
+than a rename: the three that were `@ladder` in prose only are now members of the same set.
+
+**The attribution had to become per construction, not per function**, and that correction is the part
+worth keeping. The first walk credited every code in the enclosing function, which was right while the
+ladder was a whole-check property and wrong the moment `resolve_from_table` held both kinds — it
+reported **nine** plain warnings as ladder members because they share a function with two real ones. A
+code is a member when its `CodedWarning` sits inside the `LadderFinding(…)` call; the one fallback, for
+a ladder handed an already-built finding, applies only to functions with no nested-code ladder, so it
+cannot re-widen a mixed one.
+
+Beside it, `test_no_check_escalates_through_a_spelling_the_ladder_walk_cannot_see` refuses the retired
+`(… if strict else …)` shape by name. A walk keyed on one constructor is blind to a check that picks a
+list instead, which is exactly how the ladder came to be three mechanisms reading as one.
+
 ## RM244 — one code, two tiers, two sentences: the resolution findings now speak through one builder
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-18 in the uncut 0.7 line** · **Owner** compiler

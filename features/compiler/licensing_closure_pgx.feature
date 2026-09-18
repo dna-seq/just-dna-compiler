@@ -41,7 +41,7 @@ Feature: The licence gate, the closure, and the PGx cross-checks
     # `sources.csv` round-trips, so the declaration travels with the module. `reverse_module` rebuilds
     # `module_spec.yaml` from parquet alone and could never re-emit a flag.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6158
+  # source: compiler/src/just_dna_compiler/compiler.py:6169
   @code:source_row_unused @actionable @both_modes
   Scenario: a declared source no fact table uses
     Given a sources.csv row at the frequency layer and a module with no frequencies.csv
@@ -74,7 +74,7 @@ Feature: The licence gate, the closure, and the PGx cross-checks
     # dangerous direction: right for a module citing only ids, and a false all-clear for one carrying a
     # `provenance_quote` lifted from a CC-BY-NC article.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6166
+  # source: compiler/src/just_dna_compiler/compiler.py:6177
   @code:source_terms_unrecorded @actionable @both_modes
   Scenario: a source a fact table cites with no row recording its terms
     Given a frequencies.csv citing a source sources.csv has no row for
@@ -85,7 +85,7 @@ Feature: The licence gate, the closure, and the PGx cross-checks
     # recording. Emitted only when `sources.csv` exists at all, so a module without one warns exactly as
     # it did before (Principle 3).
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6216
+  # source: compiler/src/just_dna_compiler/compiler.py:6227
   @code:declared_license_disagrees @actionable @both_modes
   Scenario: a module licence that contradicts an annotation-layer source's
     Given a module_spec.yaml declaring one licence and two annotation-layer rows declaring another
@@ -109,7 +109,7 @@ Feature: The licence gate, the closure, and the PGx cross-checks
     # The reporter argued it against their own case and is right: that module is exactly the one worth
     # warning about.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:7188
+  # source: compiler/src/just_dna_compiler/compiler.py:7199
   @code:quoted_article_license_restrictive @actionable @both_modes
   Scenario: a quote lifted from an article whose licence forbids commercial reuse
     Given a studies.csv row carrying a provenance_quote from an article recorded commercial_use=False
@@ -135,7 +135,7 @@ Feature: The licence gate, the closure, and the PGx cross-checks
       | None     | carries a quote         | withheld — unknown      |
       | True     | carries a quote         | not reported            |
 
-  # source: compiler/src/just_dna_compiler/compiler.py:7265
+  # source: compiler/src/just_dna_compiler/compiler.py:7276
   @code:clin_sig_contradicts_frequency @actionable @both_modes
   Scenario: a variant the module calls pathogenic that is common in a general population
     Given a variants.csv row whose clin_sig is pathogenic
@@ -149,7 +149,7 @@ Feature: The licence gate, the closure, and the PGx cross-checks
     # `faf95` is preferred over a raw AF when the sidecar carries one, because that is the statistic an
     # ACMG filter actually uses.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6051
+  # source: compiler/src/just_dna_compiler/compiler.py:6062
   @code:clin_sig_concordance_contested @actionable @both_modes
   Scenario: the module carries subjects two authorities disagree about
     Given a clin_sig_concordance.csv recording 3 contested subjects
@@ -173,7 +173,7 @@ Feature: The licence gate, the closure, and the PGx cross-checks
     # and no compile step between the two passes touches either the file or the overlay. Pinned by a test
     # rather than left to the argument.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3324
+  # source: compiler/src/just_dna_compiler/compiler.py:3335
   @code:star_allele_undefined @actionable @both_modes
   Scenario: a star allele used but never defined
     Given a diplotypes.csv naming *36, *37 and *42
@@ -193,7 +193,7 @@ Feature: The licence gate, the closure, and the PGx cross-checks
     # and punishing that would be the orphan-sidecar mistake: don't fault an author for a file they
     # deliberately did not write. `*1` is exempt in any case.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3476
+  # source: compiler/src/just_dna_compiler/compiler.py:3487
   @code:diplotype_phase_ambiguous @actionable @both_modes
   Scenario: two diplotype rows unphased data cannot tell apart, disagreeing
     Given HFE rows for C282Y/H63D in trans and C282Y-H63D/wt in cis
@@ -217,7 +217,7 @@ Feature: The licence gate, the closure, and the PGx cross-checks
     # module STATES, never the ones it omits — the module makes no claim about ε1, and the neighbouring
     # used-but-not-defined check covers that side.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:3465
+  # source: compiler/src/just_dna_compiler/compiler.py:3476
   @code:diplotype_definitions_identical @actionable @both_modes
   Scenario: two diplotype rows whose haplotypes this module defines identically
     Given two diplotypes.csv rows naming haplotypes with identical defining variants
@@ -227,7 +227,7 @@ Feature: The licence gate, the closure, and the PGx cross-checks
     And it says "at most one can be right"
     And it names both readings: incomplete defining variants, or one allele under several names
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6470
+  # source: compiler/src/just_dna_compiler/compiler.py:6481
   @code:module_not_closed @actionable @both_modes
   Scenario: a module that never declared authoring finished
     Given a spec directory with no closure
@@ -242,7 +242,7 @@ Feature: The licence gate, the closure, and the PGx cross-checks
     # the reasons. Carrying no count is what keeps it collapsible under the de-duplication that runs it
     # in both `validate_spec` and `compile_module` (`@closure-phase-boundary`).
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6385
+  # source: compiler/src/just_dna_compiler/compiler.py:6396
   @code:verification_stale @actionable @both_modes
   Scenario: an attestation that no longer describes these bytes
     Given a verification.json bound to an earlier state of the authored files
@@ -255,7 +255,7 @@ Feature: The licence gate, the closure, and the PGx cross-checks
     # had. The attestation binds newline-normalized bytes and their normalized size, while
     # `manifest.inputs[]` stays raw (`@binding-normalizes-newlines`).
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6367
+  # source: compiler/src/just_dna_compiler/compiler.py:6378
   @code:verification_unreadable @actionable @both_modes
   Scenario: an attestation that cannot be parsed
     Given a corrupt verification.json
@@ -264,7 +264,7 @@ Feature: The licence gate, the closure, and the PGx cross-checks
     And it says "this compile records no verification"
     And the remedy is to re-run the checks
 
-  # source: compiler/src/just_dna_compiler/compiler.py:5783
+  # source: compiler/src/just_dna_compiler/compiler.py:5794
   @code:closure_discarded_unreadable_record @actionable @both_modes
   Scenario: closing over an unreadable existing record discards what it recorded
     Given a spec directory whose verification.json cannot be read
@@ -272,7 +272,7 @@ Feature: The licence gate, the closure, and the PGx cross-checks
     Then a warning says "this closure replaces it, so any checks it recorded are gone"
     And it says to re-run the checks
 
-  # source: compiler/src/just_dna_compiler/compiler.py:6311
+  # source: compiler/src/just_dna_compiler/compiler.py:6322
   @code:verification_findings_recorded @carried @both_modes
   Scenario: a check found something, said where the author is standing
     Given a verification.json recording 20 findings across 3 checks

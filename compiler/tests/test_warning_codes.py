@@ -95,7 +95,19 @@ def _coded_calls() -> dict[Path, list[tuple[int, str | None]]]:
 #: also why the return SHAPE cannot be the derivation — `tuple[list[str], list[str]]` hands back
 #: errors and warnings together, and nothing in the annotation says which is which.
 _CHANNEL_LOCALS = frozenset(
-    {"warnings", "all_warnings", "warnings_out", "warns", "findings", "messages", "lines"}
+    {
+        "warnings",
+        "all_warnings",
+        "warnings_out",
+        "warns",
+        "findings",
+        "messages",
+        "lines",
+        # RM246: a ladder check collects `LadderFinding`s, each wrapping the coded warning
+        # `best_effort` emits. It is a channel receiver rather than an error one — the refusal it may
+        # also carry is a bare `str`, so nothing coded ever lands on the error side through it.
+        "ladders",
+    }
 )
 
 #: The other half of the same classification: locals that collect REFUSALS. Declared beside the

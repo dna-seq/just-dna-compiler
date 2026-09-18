@@ -7,14 +7,26 @@
 # reproduces perfectly does not escalate, however much an author might want it to. That single sentence
 # decides every severity in this corpus.
 #
-# **There are two escalation mechanisms and they are not the same thing**, which is the distinction a
-# reader most often loses. A *mode ladder* puts ONE sentence in the warning channel under `best_effort`
-# and in the error channel under `strict` — measured 2026-09-13, four codes. The resolution tier instead
-# has a THIRD channel, `ResolutionOutcome.strict_errors`, which carries a **different, longer sentence**
-# than the warning beside it: the warning says what happened, the refusal says what it costs the round
-# trip and is printed under a `strict resolution:` prefix. Three codes pair that way. Counting them as
-# ladder members would claim a text that does not exist; counting them as warn-only would claim a
-# compile that succeeds.
+# **The ladder was written in THREE spellings and reads as one thing, which is what RM246 repaired.**
+# It was: `(errors if strict else warnings_out)` for four codes, one sentence in two channels; an
+# `if strict:` that moved the same list into `errors` and also suppressed the symbolic-allele drop; and
+# `ResolutionOutcome.strict_errors`, where three codes pair a warning with a **different, longer
+# sentence** — the warning says what happened, the refusal says what it costs the round trip. Counting
+# the third kind as ladder members claimed a text that does not exist; counting them as warn-only
+# claimed a compile that succeeds.
+#
+# One mechanism now: a `LadderFinding` carries what `best_effort` emits and, where the two differ, the
+# separate thing `strict` says instead — so the third kind is the general case and the first two are it
+# with `refusal=None`. `route` is the one place the mode picks a channel and a sentence, and
+# `schema/tests/test_feature_corpus.py` walks the construction sites, so `@ladder` is an equality over
+# **seven** codes rather than a judgement written four times.
+#
+# What is deliberately still two things is what the compile DOES with a refusal: resolution returns a
+# failed result immediately under a `strict resolution:` prefix, because a module whose identities
+# cannot be reproduced has nothing further worth checking, while the allele-membership refusals
+# accumulate because they are per row and an author wants all of them at once. That is caller policy,
+# not severity, and folding it into `route` would make one decision out of two taken for different
+# reasons.
 
 Feature: The mode ladder and validate/compile parity
   `validate` is a pre-flight for a compile in the same mode. The contract is that `validate(strict=x)`

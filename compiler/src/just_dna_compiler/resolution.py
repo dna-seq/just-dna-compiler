@@ -27,6 +27,7 @@ from just_dna_format.alleles import (
 )
 from just_dna_format.base import derive_variant_key
 from just_dna_format.findings import CodedWarning
+from just_dna_compiler.ladder import LadderFinding
 from just_dna_compiler.resolution_findings import (
     ambiguous_pick,
     coordinate_disagrees,
@@ -51,11 +52,15 @@ class ResolutionOutcome:
     Three channels rather than the usual two, because resolution has three distinct severities and
     collapsing any pair of them loses a real distinction:
 
-    * `warnings` — reported in both modes, never fatal.
-    * `strict_errors` — the **round-trip contract**: conditions under which `compile → reverse →
-      compile` cannot reproduce the injected table, plus `ambiguous`, which is reproducible but rests
-      on a guessed label. `best_effort` carries them; `strict`, whose contract is a reproducible
-      artifact, refuses.
+    * `plain_warnings` — reported in both modes, never fatal. The `warnings` property adds each
+      ladder's own warning to them, which is what every caller reads.
+    * `ladders` — the **round-trip contract**, as `LadderFinding`s (RM246): conditions under which
+      `compile → reverse → compile` cannot reproduce the injected table, plus `ambiguous`, which is
+      reproducible but rests on a guessed label. `best_effort` carries each one's warning; `strict`,
+      whose contract is a reproducible artifact, refuses with its *refusal* — a different and longer
+      sentence than the warning, which is why the pairing has to be carried as a pair rather than as
+      two lists that happen to be built together. `strict_errors` derives from them and is no longer a
+      field: a field could be set without a matching warning, which is the drift the pairing prevents.
     * `errors` — fatal in **both** modes. Only `withdrawn` lands here: every other finding leaves the
       annotation intact, while a retracted variant may leave it describing nothing.
 
@@ -71,11 +76,32 @@ class ResolutionOutcome:
     """
 
     variants: list[VariantRow]
-    warnings: list[str] = field(default_factory=list)
-    strict_errors: list[str] = field(default_factory=list)
+    plain_warnings: list[str] = field(default_factory=list)
+    ladders: list[LadderFinding] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     expanded_keys: int | None = None
     expanded_rows: int | None = None
+
+    @property
+    def warnings(self) -> list[str]:
+        """Everything `best_effort` reports: the findings that never escalate, then each ladder's own.
+
+        Both halves, because a ladder member IS a warning under `best_effort` — and under `strict` too,
+        where the refusal is published beside it rather than instead of it. Derived rather than stored
+        for the same reason `strict_errors` is: the pair is the unit, and a stored list could carry one
+        half of it.
+        """
+        return self.plain_warnings + [finding.warning for finding in self.ladders]
+
+    @property
+    def strict_errors(self) -> list[str]:
+        """What `strict` refuses with — each ladder's refusal, or its warning where the two agree.
+
+        Derived rather than stored since RM246. As a field it could be populated without the matching
+        warning ever being emitted, which would give `strict` a sentence `best_effort` never says and
+        no way to notice; as a projection of the pairs, a refusal cannot exist without its warning.
+        """
+        return [finding.text(strict=True) for finding in self.ladders]
 
 
 def resolve_from_table(
@@ -106,11 +132,11 @@ def resolve_from_table(
         logger.warning(msg)
         return ResolutionOutcome(
             variants=variants,
-            warnings=[CodedWarning("resolution_skipped_cross_build", msg)],
+            plain_warnings=[CodedWarning("resolution_skipped_cross_build", msg)],
         )
 
     warnings: list[str] = []
-    strict_errors: list[str] = []
+    ladders: list[LadderFinding] = []
     errors: list[str] = []
     patched: list[VariantRow] = []
     # Coordinate-authored rows the table knows no rsID for. Collected rather than reported per row:
@@ -165,24 +191,29 @@ def resolve_from_table(
                     # Dropping a locus makes the emitted table smaller than the injected one, so the
                     # round-trip cannot reproduce it — strict must refuse rather than silently prune.
                     caveat = spelling_caveat(locus.ref, locus.alts)
-                    strict_errors.append(
+                    refusal = (
                         f"{v.rsid}: locus {locus.chrom}:{locus.start} {locus.ref}>{locus.alts} "
                         f"cannot host the authored genotype {v.genotype}. Dropping it makes the "
                         f"compile non-reproducible from the injected table; fix the genotype or the "
                         f"table, or compile without strict.{caveat}"
                     )
-                    warnings.append(
-                        CodedWarning(
-                            "locus_cannot_host_genotype",
-                            locus_cannot_host(
-                                v.rsid,
-                                locus=f"{locus.chrom}:{locus.start}",
-                                ref=locus.ref,
-                                alts=locus.alts,
-                                genotype=v.genotype,
-                                instead=("rather than emitted as a row asserting an allele it does not have"),
-                                caveat=caveat,
+                    ladders.append(
+                        LadderFinding(
+                            CodedWarning(
+                                "locus_cannot_host_genotype",
+                                locus_cannot_host(
+                                    v.rsid,
+                                    locus=f"{locus.chrom}:{locus.start}",
+                                    ref=locus.ref,
+                                    alts=locus.alts,
+                                    genotype=v.genotype,
+                                    instead=(
+                                        "rather than emitted as a row asserting an allele it does not have"
+                                    ),
+                                    caveat=caveat,
+                                ),
                             ),
+                            refusal=refusal,
                         )
                     )
                 if not usable:
@@ -263,7 +294,7 @@ def resolve_from_table(
         else:
             # both authored (verify) or nothing to do
             if v.rsid is not None and v.chrom is not None and loci:
-                _verify(v, loci, warnings, strict_errors)
+                _verify(v, loci, ladders)
             patched.append(v)
 
     if no_rsid:
@@ -295,16 +326,22 @@ def resolve_from_table(
     # arms are also asked by the pre-flight through the shared helpers, which is what keeps a green
     # `validate` from being followed by a refusal (`@validate-refuses-all`).
     errors.extend(withdrawn_refusals(variants, resolution, genome_build))
-    strict_errors.extend(ambiguous_refusals(variants, resolution, genome_build))
-    warnings.extend(
-        CodedWarning("rsid_ambiguous", text)
-        for text in ambiguous_warnings(variants, resolution, genome_build)
+    # Paired rather than accumulated into two lists: `strict`'s sentence for an ambiguous label is a
+    # different and longer one than `best_effort`'s, and the two were only ever kept in step by both
+    # loops iterating `_ambiguous_loci` in the same order.
+    ladders.extend(
+        LadderFinding(CodedWarning("rsid_ambiguous", warning), refusal=refusal)
+        for warning, refusal in zip(
+            ambiguous_warnings(variants, resolution, genome_build),
+            ambiguous_refusals(variants, resolution, genome_build),
+            strict=True,
+        )
     )
 
     return ResolutionOutcome(
         variants=patched,
-        warnings=warnings,
-        strict_errors=strict_errors,
+        plain_warnings=warnings,
+        ladders=ladders,
         errors=errors,
         expanded_keys=len(expansions),
         expanded_rows=expanded_rows,
@@ -1075,13 +1112,14 @@ def _sorted_loci(loci: list[ResolutionRow]) -> list[ResolutionRow]:
     return sorted(loci, key=lambda r: (r.locus_index, r.chrom or "", r.start or 0, r.ref or ""))
 
 
-def _verify(v: VariantRow, loci: list[ResolutionRow], warnings: list[str], strict_errors: list[str]) -> None:
+def _verify(v: VariantRow, loci: list[ResolutionRow], ladders: list[LadderFinding]) -> None:
     """Report when an authored rsid↔coordinate pair disagrees with the table.
 
-    Warning in `best_effort`, refusal in `strict`. The authored value wins either way — the row keeps
-    what its author wrote — which is precisely why the round-trip cannot reproduce the injected table:
-    the artifact carries the authored coordinate and the table's is lost. Contradiction is therefore an
-    instability, not merely a difference of opinion.
+    Warning in `best_effort`, refusal in `strict`, and the refusal says more than the warning does —
+    which is why it is one `LadderFinding` rather than an append to each of two lists. The authored
+    value wins either way: the row keeps what its author wrote, which is precisely why the round-trip
+    cannot reproduce the injected table, since the artifact carries the authored coordinate and the
+    table's is lost. Contradiction is therefore an instability, not merely a difference of opinion.
     """
     coordkey = derive_variant_key(None, v.chrom, v.start, v.ref)
     keys = {derive_variant_key(None, lo.chrom, lo.start, lo.ref) for lo in loci}
@@ -1091,9 +1129,13 @@ def _verify(v: VariantRow, loci: list[ResolutionRow], warnings: list[str], stric
             authored=coordkey,
             reported=f"the resolution table maps it to {sorted(keys)}",
         )
-        warnings.append(CodedWarning("rsid_coordinate_disagrees", message))
-        strict_errors.append(
-            message + " The authored value is kept, so the table's position does not survive a "
-            "reverse — the compile is not reproducible from it. Fix one of the two, or compile "
-            "without strict."
+        ladders.append(
+            LadderFinding(
+                CodedWarning("rsid_coordinate_disagrees", message),
+                refusal=(
+                    message + " The authored value is kept, so the table's position does not survive a "
+                    "reverse — the compile is not reproducible from it. Fix one of the two, or compile "
+                    "without strict."
+                ),
+            )
         )

@@ -473,20 +473,40 @@ def test_a_scenario_outline_has_examples() -> None:
     assert not problems, "\n".join(problems)
 
 
-def _channel_flip_codes() -> dict[str, set[str]]:
-    """`{module: {code, …}}` for every code emitted inside a function that flips channel on `strict`.
+def _codes_in(node: ast.AST) -> set[str]:
+    """Every literal `CodedWarning("<code>", …)` first argument anywhere under `node`."""
+    return {
+        child.args[0].value
+        for child in ast.walk(node)
+        if isinstance(child, ast.Call)
+        and isinstance(child.func, ast.Name)
+        and child.func.id == "CodedWarning"
+        and child.args
+        and isinstance(child.args[0], ast.Constant)
+        and isinstance(child.args[0].value, str)
+    }
 
-    The **mode ladder's first mechanism, derived rather than listed.** A check whose severity is the mode
-    writes `(errors if strict else warnings_out).append(finding)` — one sentence, two channels — and the
-    set of codes reachable that way is exactly what `@ladder` claims on the coded half of the corpus. It
-    is walkable, so it is walked: the first draft tagged four codes by hand, which is
-    `@registry-completeness` waiting to happen one more time.
 
-    Scoped to the enclosing `FunctionDef` rather than to the statement, because `_check_allele_membership`
-    builds two codes into one `findings` list and flips the whole list at the end — the codes and the
-    `IfExp` are forty lines apart and in different branches.
+def _ladder_codes() -> set[str]:
+    """Every code a `LadderFinding` carries — the mode ladder, derived rather than listed.
+
+    **The attribution is per construction, not per function, and that correction is the interesting
+    part.** A check whose severity is the compile mode says so by building a `LadderFinding`: what
+    `best_effort` emits, and optionally the different thing `strict` says instead. The first version of
+    this walk credited every code in the *enclosing function*, which was right while the ladder was a
+    property of a whole check and became wrong the moment `resolve_from_table` held both kinds — it
+    reported nine plain warnings as ladder members because they share a function with two real ones.
+
+    So a code is a member when its `CodedWarning` sits **inside** the `LadderFinding(…)` call. The one
+    fallback is a `LadderFinding` handed an already-built finding (`LadderFinding(f) for f in
+    findings`), where the construction names no code and the enclosing function is the only scope that
+    does; it applies only to functions with no nested-code ladder, so it cannot re-widen a mixed one.
+
+    **This walk replaced one keyed on `(errors if strict else …)` (RM246), and the replacement is the
+    point rather than a refactor.** That spelling was one of three the ladder was written in, so the
+    guard could only ever see a third of its own subject.
     """
-    found: dict[str, set[str]] = {}
+    found: set[str] = set()
     for module in sorted(_ROOT.glob("*/src/**/*.py")):
         if "generated" in module.parts:
             continue
@@ -494,46 +514,64 @@ def _channel_flip_codes() -> dict[str, set[str]]:
         for function in ast.walk(tree):
             if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
-            flips = any(
+            builds = [
+                node
+                for node in ast.walk(function)
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "LadderFinding"
+            ]
+            if not builds:
+                continue
+            nested = {code for build in builds for code in _codes_in(build)}
+            found |= nested or _codes_in(function)
+    return found
+
+
+def test_the_ladder_tag_is_the_walked_set_of_mode_dependent_codes() -> None:
+    """`@ladder` beside a `@code:` is an equality, not a judgement, so it is asserted as one.
+
+    Since RM246 the two mechanisms this tag used to span are one: a `LadderFinding` carries what
+    `best_effort` says and, where the two differ, the separate thing `strict` says instead. So the
+    equality now covers both — a code that flips channel on one sentence and a code whose refusal is a
+    different, longer sentence are the same kind of member, which is what the first RM149 pass could
+    only write down in prose.
+    """
+    walked = _ladder_codes()
+    tagged = {code for s in _scenarios() if "ladder" in s.tags for code in s.codes()}
+    assert tagged == walked, (
+        f"@ladder codes {sorted(tagged)} but the LadderFinding walk finds {sorted(walked)}: "
+        f"untagged {sorted(walked - tagged)}, tagged without a ladder {sorted(tagged - walked)}"
+    )
+
+
+def test_no_check_escalates_through_a_spelling_the_ladder_walk_cannot_see() -> None:
+    """`(errors if strict else …)` is the shape RM246 removed, and nothing may reintroduce it.
+
+    The walk above keys on one constructor. A check that escalates by picking a list instead is invisible
+    to it and its code would sit untagged while the equality passed — which is exactly how the ladder came
+    to be three mechanisms reading as one. So the retired spelling is refused by name rather than left to
+    a reviewer to notice.
+    """
+    problems: list[str] = []
+    for module in sorted(_ROOT.glob("*/src/**/*.py")):
+        if "generated" in module.parts:
+            continue
+        tree = ast.parse(module.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (
                 isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Attribute)
                 and node.func.attr in {"append", "extend"}
                 and isinstance(node.func.value, ast.IfExp)
                 and isinstance(node.func.value.test, ast.Name)
                 and node.func.value.test.id == "strict"
-                for node in ast.walk(function)
-            )
-            if not flips:
-                continue
-            for node in ast.walk(function):
-                if (
-                    isinstance(node, ast.Call)
-                    and isinstance(node.func, ast.Name)
-                    and node.func.id == "CodedWarning"
-                    and node.args
-                    and isinstance(node.args[0], ast.Constant)
-                    and isinstance(node.args[0].value, str)
-                ):
-                    found.setdefault(str(module.relative_to(_ROOT)), set()).add(node.args[0].value)
-    return found
-
-
-def test_the_ladder_tag_is_the_walked_set_of_channel_flipping_codes() -> None:
-    """`@ladder` beside a `@code:` is an equality, not a judgement, so it is asserted as one.
-
-    **`@ladder` names two mechanisms and only one of them has codes.** A check whose severity is the mode
-    flips channel on one sentence; the three resolution findings pair a warning with a *different, longer*
-    refusal through `ResolutionOutcome.strict_errors`, and their scenarios carry `@ladder` with no
-    `@code:` because the refusal is a second text rather than a second channel for the first. That
-    distinction is RM149's second finding and it is why this is scoped to scenarios that name a code:
-    the walk can see a channel flip and cannot see a paired refusal.
-    """
-    walked = {code for codes in _channel_flip_codes().values() for code in codes}
-    tagged = {code for s in _scenarios() if "ladder" in s.tags for code in s.codes()}
-    assert tagged == walked, (
-        f"@ladder codes {sorted(tagged)} but the channel-flip walk finds {sorted(walked)}: "
-        f"untagged {sorted(walked - tagged)}, tagged without a flip {sorted(tagged - walked)}"
-    )
+            ):
+                problems.append(
+                    f"{module.relative_to(_ROOT)}:{node.lineno}: a check picks its channel with "
+                    f"`(… if strict else …)`; build a `LadderFinding` and call `route` instead"
+                )
+    assert not problems, "\n".join(problems)
 
 
 def test_no_finding_constructor_is_called_through_an_attribute() -> None:

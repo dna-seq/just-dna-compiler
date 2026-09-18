@@ -34,6 +34,36 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-18 — RM246: the mode ladder is one mechanism, and the `@ladder` set grew from four codes to seven
+
+**No behaviour change and no message change.** Every check escalates in exactly the modes it did
+before; what moved is how a check *says* that it escalates.
+
+`strict` means *reproducible artifact*, and a check whose severity is the mode said so in three
+unrelated shapes: `(errors if strict else warnings_out)` for four codes; an `if strict:` that moved the
+same messages into `errors` and also suppressed the symbolic-allele drop; and
+`ResolutionOutcome.strict_errors`, where three codes pair a warning with a **different, longer** refusal.
+The third is not a variant of the first — quoting the warning describes a compile that succeeds, and
+quoting the refusal quotes a sentence `best_effort` never emits — which RM149's first pass could write
+down and nothing could enforce.
+
+`just_dna_compiler.ladder` is now the one mechanism: `LadderFinding(warning, refusal=None)` and
+`route(findings, strict=…)`. The pairing case is the general one and a plain escalation is it with
+`refusal=None`, which makes *the two modes say the same thing* a claim rather than an inference from
+which spelling a function used. `ResolutionOutcome` **derives** both `warnings` and `strict_errors` from
+one list of pairs, where two separate fields could each be populated without the other.
+
+What stays two things, deliberately: what the compile does with a refusal. Resolution aborts immediately
+under a `strict resolution:` prefix; the allele-membership refusals accumulate because an author wants
+all of them. That is caller policy, not severity.
+
+The corpus guard is the proof rather than the bookkeeping. `@ladder` was a judgement written four times;
+it is now an equality over **seven** codes, and the three that had been `@ladder` in prose only are
+members of the same walked set. The walk also had to be corrected from per-function to per-construction
+attribution — the first cut credited nine plain warnings as ladder members because they share
+`resolve_from_table` with two real ones — and a second guard refuses the retired `(… if strict else …)`
+spelling by name, since a walk keyed on one constructor cannot see a check that picks a list instead.
+
 ## 2026-09-18 — the one `# DRIFT:` the corpus was carrying is repaired
 
 COMPILER.md's **validate-by-redundancy** table gave the rsid↔coordinate check the severity *warning*

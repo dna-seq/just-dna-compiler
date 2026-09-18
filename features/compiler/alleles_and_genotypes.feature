@@ -32,7 +32,7 @@ Feature: Alleles, genotypes and contig ploidy
     # The more dangerous of the pair, and the reason both are checked: a wrong genotype corrupts the row
     # visibly, while a wrong effect allele silently reverses what the module claims.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2451
+  # source: compiler/src/just_dna_compiler/compiler.py:2452
   @code:study_effect_allele_not_at_locus @actionable @ladder
   Scenario: the same question asked of a study row
     Given a studies.csv row whose effect_allele is not among its locus's resolved alleles
@@ -50,7 +50,7 @@ Feature: Alleles, genotypes and contig ploidy
     # `StudyRow` has `ref` but no `alts`, so `{ref}` alone would flag every study of a non-reference
     # allele, which is most of them. Silent under `--no-resolve` for the same reason, which is correct.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2606
+  # source: compiler/src/just_dna_compiler/compiler.py:2609
   @code:genotype_coverage_gap @actionable @both_modes
   Scenario: a site annotated for some of its genotypes and not the rest
     Given a variants.csv authoring two or more genotypes at a site
@@ -79,7 +79,7 @@ Feature: Alleles, genotypes and contig ploidy
     # VCF emits no such record, a gVCF and an array both do — and that call belongs to the annotator.
     # On array data those rows are the ones carrying the answer.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:2780
+  # source: compiler/src/just_dna_compiler/compiler.py:2783
   @code:symbolic_allele_unusable @actionable
   Scenario: a symbolic allele with no length is a rule nothing can evaluate
     Given a variants.csv row whose alts is "<DEL>" with no length inside the token
@@ -100,7 +100,7 @@ Feature: Alleles, genotypes and contig ploidy
     # `ref`/`alts` have no nucleotide grammar on purpose: adding one would reject `N` and stop existing
     # modules validating (P3).
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1921
+  # source: compiler/src/just_dna_compiler/compiler.py:1922
   @code:missing_allele_marker_in_alts @actionable @both_modes
   Scenario: VCF's missing marker in alts splits one site into two identities
     Given one variants.csv row writing alts "." and another leaving the cell empty at the same site
@@ -120,7 +120,7 @@ Feature: Alleles, genotypes and contig ploidy
     And it does not claim an identity split, because both keys are the rsid
     # Claiming otherwise would be a false statement about that row.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1213
+  # source: compiler/src/just_dna_compiler/compiler.py:1214
   @code:contig_ploidy_mismatch @actionable @both_modes
   Scenario: a two-allele genotype on a contig that is not diploid there
     Given a variants.csv row with chrom "MT" and genotype "A/G"
@@ -145,7 +145,7 @@ Feature: Alleles, genotypes and contig ploidy
     Then no ploidy finding fires
     # X is diploid in XX samples, so warning on it would be pure noise.
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1203
+  # source: compiler/src/just_dna_compiler/compiler.py:1204
   @code:contig_ploidy_undecidable @carried @both_modes
   Scenario: chrom Y on a build with no pseudoautosomal table
     Given a variants.csv row with chrom "Y", a two-allele genotype, and a build with no PAR table here
@@ -170,7 +170,7 @@ Feature: Alleles, genotypes and contig ploidy
       | outside PAR  | contig_ploidy_mismatch                      |
       | unknown, no PAR table for the build | contig_ploidy_undecidable |
 
-  # source: compiler/src/just_dna_compiler/compiler.py:1084
+  # source: compiler/src/just_dna_compiler/compiler.py:1085
   @code:weight_sign_disagrees_with_effect @actionable @both_modes
   Scenario Outline: two encodings of one claim disagreeing about its sign
     Given a variants.csv row where <axis> is <value> and weight is <weight>

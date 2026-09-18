@@ -217,6 +217,7 @@ from just_dna_format.vrs import (
 from pydantic import BaseModel, ValidationError
 
 from just_dna_compiler.models import ClosureResult, CompilationResult, ValidationResult
+from just_dna_compiler.ladder import LadderFinding, route
 from just_dna_compiler.resolution_findings import (
     resolution_not_injected,
     skipped_cross_build,
@@ -2343,8 +2344,7 @@ def _check_allele_membership(
 
     A row with neither allele set known is skipped: nothing to compare is not the same as nothing wrong.
     """
-    errors: list[str] = []
-    warnings_out: list[str] = []
+    ladders: list[LadderFinding] = []
     for variant in variants:
         allowed, provenance = _allowed_alleles(variant, resolution_table)
         if allowed is None:
@@ -2403,8 +2403,8 @@ def _check_allele_membership(
             )
         if not findings:
             continue
-        (errors if strict else warnings_out).extend(findings)
-    return errors, warnings_out
+        ladders.extend(LadderFinding(finding) for finding in findings)
+    return route(ladders, strict=strict)
 
 
 def _check_study_effect_alleles(
@@ -2431,8 +2431,7 @@ def _check_study_effect_alleles(
     Since 0.6 a study row need not name a variant at all (`REQUIRED_ANY_OF` is empty, RM47), so a row
     with no identity derives no key and is skipped by the same path.
     """
-    errors: list[str] = []
-    warnings_out: list[str] = []
+    ladders: list[LadderFinding] = []
     for study in studies:
         if not study.effect_allele:
             continue
@@ -2448,15 +2447,19 @@ def _check_study_effect_alleles(
             resolved.add(row.ref.upper())
             resolved.update(a.strip().upper() for a in row.alts.split(",") if a.strip())
         shown = "/".join(sorted(resolved))
-        finding = CodedWarning(
-            "study_effect_allele_not_at_locus",
-            f"{key} (PMID {study.pmid}): effect_allele {study.effect_allele!r} is not among the "
-            f"resolved alleles at this locus ({shown}) — effect_size is stated relative to it, so a "
-            f"wrong effect allele inverts the study's finding rather than breaking it; the resolving "
-            f"source's allele list may also be incomplete, so check which before editing",
+        ladders.append(
+            LadderFinding(
+                CodedWarning(
+                    "study_effect_allele_not_at_locus",
+                    f"{key} (PMID {study.pmid}): effect_allele {study.effect_allele!r} is not among "
+                    f"the resolved alleles at this locus ({shown}) — effect_size is stated relative to "
+                    f"it, so a wrong effect allele inverts the study's finding rather than breaking "
+                    f"it; the resolving source's allele list may also be incomplete, so check which "
+                    f"before editing",
+                )
+            )
         )
-        (errors if strict else warnings_out).append(finding)
-    return errors, warnings_out
+    return route(ladders, strict=strict)
 
 
 def _site_reference_allele(
@@ -2811,14 +2814,21 @@ def _check_symbolic_alleles(
     fatal = [f for f in findings if f.table not in _SYMBOLIC_DROPPABLE_TABLES]
     droppable = [f for f in findings if f.table in _SYMBOLIC_DROPPABLE_TABLES]
     errors = _symbolic_allele_messages(fatal)
+    # The droppable half is a ladder member with the same sentence in both channels (RM246) — which is
+    # what `refusal=None` states, where the third spelling this used to carry (`if strict:` moving the
+    # same list into `errors`) only implied it. The mode ALSO decides whether the rows are dropped, and
+    # that half stays here: it is a behaviour the channel does not carry, and `route` deliberately
+    # answers one question.
+    ladders = [LadderFinding(message) for message in _symbolic_allele_messages(droppable)]
+    ladder_errors, ladder_warnings = route(ladders, strict=strict)
+    errors.extend(ladder_errors)
     if strict:
-        errors.extend(_symbolic_allele_messages(droppable))
         return errors, [], {}
     drops: dict[str, set[int]] = {}
     for finding in droppable:
         drops.setdefault(finding.table, set()).add(finding.index)
     errors.extend(_emptied_table_errors(rows_by_table, drops))
-    return errors, _symbolic_allele_messages(droppable), drops
+    return errors, ladder_warnings, drops
 
 
 def _emptied_table_errors(rows_by_table: dict[str, list[Any]], drops: dict[str, set[int]]) -> list[str]:
@@ -2869,24 +2879,25 @@ def _check_p_value_num(studies: list[StudyRow], *, strict: bool) -> tuple[list[s
     it, so `p_value="5.23e-8"` beside `5.2e-8` is a rounding rather than a contradiction, while a
     wrong digit or a wrong power of ten is neither. Severity is the mode ladder — warning in
     `best_effort`, error in `strict`."""
-    errors: list[str] = []
-    warnings_out: list[str] = []
+    ladders: list[LadderFinding] = []
     for row in studies:
         if row.p_value_num is None:
             continue
         parsed = parse_p_value(row.p_value)
         if parsed is None or math.isclose(parsed, row.p_value_num, rel_tol=0.01):
             continue
-        (errors if strict else warnings_out).append(
-            CodedWarning(
-                "p_value_encodings_disagree",
-                f"{row.variant_key} pmid {row.pmid}: p_value {row.p_value!r} reads as {parsed:g}, but "
-                f"p_value_num says {row.p_value_num:g} — two encodings of one number disagree, so one of "
-                f"them is a transcription slip (the string is the record; the number is what a consumer "
-                f"filters on).",
+        ladders.append(
+            LadderFinding(
+                CodedWarning(
+                    "p_value_encodings_disagree",
+                    f"{row.variant_key} pmid {row.pmid}: p_value {row.p_value!r} reads as {parsed:g}, "
+                    f"but p_value_num says {row.p_value_num:g} — two encodings of one number disagree, "
+                    f"so one of them is a transcription slip (the string is the record; the number is "
+                    f"what a consumer filters on).",
+                )
             )
         )
-    return errors, warnings_out
+    return route(ladders, strict=strict)
 
 
 def _verify_vrs_ids(resolution_rows: list[ResolutionRow]) -> tuple[list[str], list[str]]:
