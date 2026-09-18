@@ -34,6 +34,42 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-19 — `just-dna-enricher` 0.7.1: three checks that could not run were reporting that they passed
+
+**Enricher only.** `just-dna-format` and `just-dna-compiler` stay at `0.7.0` and are unaffected — the
+same shape as `v0.6.3` and `v0.6.4`, which were enricher-only patches with the two lower tiers left at
+`0.6.1`. Upgrade `just-dna-enricher` alone; its floors still name `>=0.7.0` for both, because that is
+what those packages are at.
+
+Three defects, all the same class: **a check that could not run answered as a check that passed.**
+
+- **`AcmgReport.clean` returned `True` for a run that consulted no ACMG SF list.** `clean` was `not
+  self.mismatches`, and `mismatches` selects only the verdicts `not_listed` and `denied`; a run that
+  obtained no list gives every row `unchecked`, so the set came back empty. `version=None checked=0
+  clean=True` and `version=3.3 checked=13 clean=True` were both `True` and meant opposite things, with
+  `if report.clean:` taking the first for a pass. **Reachable on a fresh install** — every cache lane
+  empty is exactly that. `clean` is `bool | None` now and withholds on both non-comparison arms.
+- **`alphagenome check` with no `ALPHAGENOME_API_KEY` raised `ValidationError`** where it was supposed
+  to attest *nobody asked* (RM242). The branch wrote `skipped(CHECK, "unchecked")`, and `"unchecked"`
+  is not a member of `VALID_VERIFICATION_SKIPS`. Repaired to `offline`, guarded by an AST walk over
+  every literal `skipped()` reason in the workspace rather than by pinning the one branch.
+- **A gate answered yes or no without carrying why it was a no** (RM235): a registry outage reported as
+  a broken identifier, and an unreachable EFO reported as clean. One property over four registries.
+
+**Also in this release, with no behaviour change**: RM244 (the nine resolution findings both tiers emit
+now speak through one builder — four sentences reworded, listed in that entry), RM246 (the mode ladder
+is one mechanism), and RM245 (the scenario corpus points at symbols rather than line numbers).
+
+**A guard was corrected to make this cut possible, and the correction is an improvement rather than a
+concession.** `test_an_intra_workspace_floor_names_the_version_being_cut` asserted that a floor equals
+*the depender's own version*, which is only the same thing as the truth while all three packages move
+together. It was written on 2026-08-31 in the commit that repaired a real floor lag, and it took the
+cadence of the three cuts before it for an invariant — outlawing, retroactively, the enricher-only
+shape this repository had already shipped as `v0.6.3` and `v0.6.4`. The rule is now **a floor names the
+current version of the tier it imports**, which catches the original incident exactly as well (`format`
+at `0.7.0`, `compiler` declaring `>=0.6.6`) and costs nothing when one tier is patched alone. Its
+sibling `test_every_member_carries_the_same_version` asserted the cadence directly and is gone.
+
 ## 2026-09-18 — RM245: the corpus points at symbols now, because 53 of its line numbers rotted in one session
 
 **Internal corpus only**, no code and no dependency. A consumer needs to do nothing.
