@@ -191,10 +191,11 @@ Feature: The mode ladder and validate/compile parity
     # the round trip cannot reproduce the injected table. A contradiction is an instability, not a
     # difference of opinion.
     #
-    # DRIFT: docs/COMPILER.md:155's validate-by-redundancy table gives this check the severity
-    # "warning" with no qualifier, while the mishap matrix at docs/COMPILER.md:1298 gives it
-    # "⚠️ warning / ❌ refuses". Both are ours and they disagree about whether `strict` builds. The
-    # matrix is the one the code agrees with.
+    # The validate-by-redundancy table gave this check the severity "warning" with no qualifier while
+    # the mishap matrix gave it "⚠️ warning / ❌ refuses" — two of our own tables disagreeing about
+    # whether `strict` builds, found by writing the severity down as a scenario and noticing there
+    # were two places to read it from. The matrix was the half the code agrees with, so the table now
+    # reads "warning / error in `strict`" like the two rows under it that behave the same way.
 
   # source: compiler/src/just_dna_compiler/resolution.py:157
   @ladder

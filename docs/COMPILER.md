@@ -152,7 +152,7 @@ detectable without any reference. This is where most real authoring bugs are cau
 
 | Check | Redundancy exploited | Severity |
 |---|---|---|
-| rsid ↔ coordinate | the pair co-identifies one variant | warning |
+| rsid ↔ coordinate | the pair co-identifies one variant | warning / error in `strict` |
 | inconsistent position for one key | one key, one place | error |
 | inconsistent `ref` for one key | the reference base is a single fact | error |
 | genotype alleles ⊆ `{ref} ∪ alts` | a genotype names alleles the locus has | warning / error in `strict` |

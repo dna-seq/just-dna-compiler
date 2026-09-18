@@ -34,6 +34,23 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-18 — the one `# DRIFT:` the corpus was carrying is repaired
+
+COMPILER.md's **validate-by-redundancy** table gave the rsid↔coordinate check the severity *warning*
+with no qualifier; its own **mishap matrix**, a thousand lines further down, gave the same check
+*⚠️ warning / ❌ refuses*. Two of our own tables disagreeing about whether a `strict` compile builds on a
+contradiction between an authored pair and the injected table — and the matrix is the half the code
+agrees with, because `resolution._verify` appends to `strict_errors`.
+
+The table row now reads *warning / error in `strict`*, which is how the two rows directly under it
+already spelled the same behaviour. The `# DRIFT:` marker in `features/compiler/mode_ladder.feature` is
+gone and the scenario keeps the history in prose: the finding came from writing the severity down as a
+scenario and noticing there were two places to read it from, which is the corpus's argument in one line.
+
+Marking it rather than fixing it was deliberate — a round that silently repairs what it finds cannot be
+audited — and `features/README.md` now says that the marker is for the interval between finding and
+deciding, and that none stands open.
+
 ## 2026-09-18 — RM244: the nine findings both resolution tiers emit now speak through one builder
 
 **No schema change, no dependency change, no new tier.** Four warning sentences moved; the two the S61

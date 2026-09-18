@@ -16,7 +16,13 @@ statement of behaviour; this is the readable one, and the guard in
 So when a scenario and the code disagree, **the code is right and the scenario is the defect** — with
 one exception, marked `# DRIFT:`, where the disagreement is between two things that are *both* ours
 (a docstring and a reference page, a reference page and the emission site). Those are the findings this
-round exists to produce; they are counted in RM149's dated addendum rather than smoothed over here.
+round exists to produce; they are counted in RM149's dated addenda rather than smoothed over here.
+
+**No `# DRIFT:` stands open today.** The first pass raised one — COMPILER.md's validate-by-redundancy
+table and its own mishap matrix disagreeing about whether `strict` builds on an rsid↔coordinate
+contradiction — and left it marked deliberately, because a round that silently repairs what it finds
+cannot be audited. It was repaired on 2026-09-18 once it had been read. The marker is for the interval
+between finding and deciding, and a scenario should not carry one for long.
 
 ## Why it is at the repository root and not in `docs/`
 
