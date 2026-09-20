@@ -469,7 +469,7 @@ def test_vrs_mint_records_that_it_compared_nothing_rather_than_that_it_passed(
     assert "reference_allele" in by_check
 
 
-def test_pgx_then_vrs_mint_land_in_one_document(tmp_path: Path) -> None:
+def test_pgx_then_vrs_mint_land_in_one_document(tmp_path: Path, no_ambient_caches) -> None:
     """`merge_records` was built and tested for a document no two commands produced (D4-1).
 
     `pgx` and `vrs mint` write different checks about one module, from separate processes in real
@@ -486,9 +486,12 @@ def test_pgx_then_vrs_mint_land_in_one_document(tmp_path: Path) -> None:
 
     by_check = {r.check: r for r in read_verification(spec / VERIFICATION_JSON).records}
     assert {"allele_function", "vrs_allele_id"} <= set(by_check)
-    # Offline with nothing declared: PharmVar and CPIC both forbid sale, so the pass consulted
-    # neither — and that is a permission, not a network problem.
+    # Offline with no flag: PharmVar forbids sale and the module declares nothing for it, so that leg
+    # is a permission skip. The CPIC leg is *permitted* — the example's licence table records the
+    # draft's `non_commercial` declaration, which counts since RM252 — and skips for want of a
+    # snapshot instead; `no_ambient_caches` is what keeps the machine's own snapshot from answering.
     assert by_check["allele_function"].skipped == "not_permitted"
+    assert "cpic: skipped — --offline and no built snapshot" in (by_check["allele_function"].detail or "")
 
 
 # ── the two check commands (RM72) ───────────────────────────────────────────────────────────────

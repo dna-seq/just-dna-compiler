@@ -200,7 +200,7 @@ because the terms are; a CPIC row grants nothing about PharmVar (`@declared-use-
 ## RM251 — a row authoring both an rsID and a coordinate was copied into `resolution.csv`, and the loci the pair check had already fetched were thrown away
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher) · **Owner**
-enricher · **Motivating case** [S104](CONSUMER_SUGGESTIONS_HISTORY.md#s104--a-row-carrying-both-an-rsid-and-a-position-is-stamped-sourceauthored-statusresolved-and-never-asked-of-ensembl-so-a-cpic-drafted-haplotype-table-gets-no-independent-coordinate-and-no-vrs-id)
+enricher · **Motivating case** [S104](CONSUMER_SUGGESTIONS_HISTORY.md#s104--a-row-carrying-both-an-rsid-and-a-position-is-stamped-sourceauthored-statusresolved-with-no-refalts-and-no-vrs-id-so-a-cpic-drafted-haplotype-table-compiles-at-0-vrs-coverage)
 — every CPIC-drafted module compiled with *"VRS allele identity covers 0/N"* and nothing the author
 could do about it
 
