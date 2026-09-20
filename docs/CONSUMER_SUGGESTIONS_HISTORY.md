@@ -140,6 +140,11 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S99** PubMind drafter thought unreachable under null terms — does not reproduce; FAQ
 - **S100** `AcmgReport.clean` was `True` on a run that consulted no list — accepted, RM234; spun off RM235
 - **S101** `pgs.csv`'s paragraph claimed a compile gate — doc fixed; `research_tier` is calibration
+- **S102** CPIC drafter said "no row" for a pair-keyed drug — accepted, RM249; count on RM28
+- **S103** `scaffold` then `draft` refused on its own stubs — accepted, RM250
+- **S104** authored rsid+coord row copied verbatim, no VRS id — accepted, RM251
+- **S105** `pgx` ignored the module's recorded declared use — accepted, RM252
+- **S106** a repeat-count star allele has no home — design item, RM253; messages shipped
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -4483,3 +4488,296 @@ and we would rather hear that, because we currently teach authors that it does n
 ---
 
 ---
+
+# Field notes from just-module-creator, 2026-09-20 — building a PGx panel, one module per gene
+
+*Filed 2026-09-20 while building one module per gene of ClawBio's `pharmgx-reporter` panel from CPIC
+(enricher 0.7.0 from PyPI). Five notes from one session, answered in one pass: RM249–RM252 shipped in
+the uncut 0.7 line and RM253 filed as a design item.*
+
+## S102 — the CPIC drafter drafts only `gene_count == 1` recommendations, and on the snapshot path it reports every two-gene pair as "the snapshot has no row for it"
+
+**Status — accepted; the message half shipped as [RM249](ROADMAP_HISTORY.md#rm249--the-cpic-drafter-said-the-snapshot-has-no-row-for-it-about-a-drug-with-35-rows-in-that-table-all-keyed-on-a-gene-pair) in the uncut 0.7 line (enricher, past 0.7.1); the design half is RM28's and your count is now recorded there.**
+Reproduced on the same snapshot: `draft_gene(TPMT, drugs=azathioprine)` said *no row for it* while
+`recommendations.parquet` held 35 rows for the pair, all `gene_count == 2`. Your reading of the cause is
+exact — the true arm was unreachable because `knows_drug` withholds on a snapshot. Both clients now
+answer `partner_genes(gene, drug)` (live from the `phenotypes` maps, snapshot from the `gene_count > 1`
+rows), it is asked first when a drug comes back empty, and the sentence reads *"CPIC keys every
+recommendation for it that names TPMT on more than one gene (TPMT together with NUDT15) … pairing
+across genes is the open RM28"*. Warfarin turned out to have **no** recommendation row at any arity,
+so the old "dosing algorithm (warfarin)" sentence was sitting on an arm it never reached; it has its
+own now. Counted over the whole table for RM28: **18 of 103 drugs are keyed only on a pair, 2,656 of
+3,411 rows, six pairs (CACNA1S+RYR1 ×7, CYP2C19+CYP2D6 ×5, NUDT15+TPMT ×3, and one drug each for
+ABCG2+SLCO1B1, CYP2B6+CYP2C19, CYP2C9+SLCO1B1), arity never above 2, no drug both ways** — between
+the "three" and "thirty" that entry named, and whether six pairs earn a pair-keyed subject stays the
+maintainer's call. Your ClawBio reading (single-gene keyed, partner never named: lossy, not a model)
+is recorded beside it. Answered is not installable: the next enricher cut carries it.
+<!-- triaged: 0.7.x · sha 2263fb18a322 -->
+
+**Reported by** just-module-creator, 2026-09-20, while building one module per gene of ClawBio's
+`pharmgx-reporter` panel from CPIC (enricher 0.7.0 from PyPI, snapshot `cpic_snapshot_b0ffd4c6f010`).
+
+Ran, on a spec directory holding only a filled `module_spec.yaml`:
+
+```python
+draft_gene(spec, "TPMT", drugs=("azathioprine", "mercaptopurine", "thioguanine"),
+           alleles=("*1", "*2", "*3A", "*3B", "*3C"), declared_use="non_commercial", dry_run=True)
+```
+
+Haplotypes, allele functions and 15 phenotype diplotypes draft. Every drug comes back:
+
+```
+TPMT: nothing drafted for 'azathioprine' — the CPIC snapshot's recommendation table has no row
+for it. That table only names drugs that already have a phenotype-keyed recommendation, so this
+does not establish whether CPIC knows the drug at all. Only the live API can answer that, and it
+is consulted only when no snapshot is present.
+```
+
+The snapshot's `recommendations.parquet` has **35 rows** for `(TPMT, azathioprine)`, all
+`gene_count == 2` (TPMT phenotype × NUDT15 phenotype). Same for CYP2D6 × CYP2C19 on
+amitriptyline, imipramine, doxepin, trimipramine, clomipramine (206 rows each), CYP2C19/sertraline
+(62), SLCO1B1/rosuvastatin (27). Counted over the whole table: 755 rows are `gene_count == 1`,
+**2656 are `gene_count == 2`**, so the drafter reads 22% of what the snapshot holds.
+
+Two things, and only the first is a request:
+
+1. **The warning is wrong on the snapshot path.** The third branch in `draft_gene` —
+   *"CPIC lists the drug but records no single-gene, phenotype-keyed recommendation for it — a
+   guideline shaped as a dosing algorithm over several genes (warfarin) has no row here"* — is the
+   true reason, and it is unreachable when a snapshot is present because `known` is `None` there.
+   The reader is sent to check a typo. Suggested: when the snapshot has rows for the drug but none
+   at `gene_count == 1`, say so, and name the partner gene the rows are keyed on (`NUDT15` here),
+   which the snapshot knows. That is a message change and a lookup, no schema.
+2. **The design question is RM28's**, not new: thiopurines, the TCAs, sertraline and rosuvastatin
+   are two-gene keyed exactly as warfarin is, so RM28's "pairing across subjects" corpus is not
+   two entries but at least ten drugs of the CPIC snapshot. ClawBio keys every one of them on a
+   single gene (`"gene": "TPMT"`) and never mentions NUDT15 in a recommendation — which is a
+   lossy answer, not a model to copy. Worth counting into RM28's measurement, which the survey's
+   plan item 1 already asks for.
+
+**Two sharper readings, added the same day after `cpic.py` was read.** (a) The remedy the message
+offers does not work: *"Only the live API can answer that"* sends the author to `cpic.py`'s live
+path, whose `len(phenotypes) != 1` filter (line 445) drops the same rows for the same reason as the
+snapshot's `gene_count = 1` (line 647), and `knows_drug` returns `None` unconditionally on the
+snapshot path (line 679), so the `known is None` arm always fires. A wrong instruction, not only a
+wrong reason. (b) This is `@answered-is-not-absent`: the drafter has rows, filters them, and reports
+absence — *"answered-and-rejected is a fourth state; the row stays and the reason moves, never the
+status"* — and its companion applies too: four message arms, three distinguishable causes reachable
+when a snapshot is present.
+
+**RM28 corpus measurement**, counted off `cpic_snapshot_b0ffd4c6f010` (`recommendations.parquet`,
+3411 rows; my snapshot, so re-count on yours): 103 drugs carry a recommendation; **85 are keyed on a
+single gene phenotype and 18 on a gene pair** —
+`NUDT15+TPMT` (azathioprine, mercaptopurine, thioguanine), `CYP2C19+CYP2D6` (amitriptyline,
+clomipramine, doxepin, imipramine, trimipramine), `CACNA1S+RYR1` (desflurane, enflurane, halothane,
+isoflurane, methoxyflurane, sevoflurane, succinylcholine), `ABCG2+SLCO1B1` (rosuvastatin),
+`CYP2B6+CYP2C19` (sertraline), `CYP2C9+SLCO1B1` (fluvastatin). Warfarin is not among the 103 at all
+(no phenotype-keyed row exists for it), so the two-gene case is 18 of 104 guideline drugs, not one.
+**Reproduced independently** by the format-tree session on `cpic_snapshot_3d2123598711` (built
+2026-08-07): 2656 of 3411 rows `gene_count=2`, 36 of 121 `(gene, drug)` pairs with no single-gene
+row, the same six pairs — so this is a property of CPIC's table, not of one build. **Lead with
+`CACNA1S+RYR1`**: seven drugs, and neither gene appears in any single-gene recommendation, so a
+module carries nothing at all for malignant-hyperthermia susceptibility, where every other pair
+at least keeps the single-gene rule and loses the refinement.
+Two denominators, stated apart: of ClawBio's 58 non-warfarin drug–gene pairs, 42 have a CPIC row on
+this snapshot and 10 of those 42 are pair-keyed, so the drafter's ceiling is 32/58.
+
+Meanwhile: the affected modules ship the phenotype diplotypes without drug rows, and each README
+says which drugs CPIC keys on a second gene. Nothing is transcribed from ClawBio's dicts.
+
+## S103 — `scaffold` followed by `draft` fails on the scaffold's own placeholders, so the reference README's recipe does not run as written
+
+**Status — accepted; shipped as [RM250](ROADMAP_HISTORY.md#rm250--scaffold-then-draft-failed-on-the-scaffolds-own-placeholders-and-the-remedy-it-offered-was-a-parameter-the-drafters-do-not-have) in the uncut 0.7 line (enricher and compiler); the README now says why its `scaffold` line takes no `--kind`.**
+Reproduced both halves as written: the bare scaffold refused on the three title placeholders, and a
+`--kind haplotypes.csv` scaffold refused a second time on its own stub row. Your first suggestion is
+the one taken, narrowed: `spec_genome_build` re-reads the yaml with every placeholder *outside*
+`genome_build` filled and validates again, so a scaffold's unfilled titles no longer refuse a draft —
+but a misspelt key (`genome_bild:`), a wrong type, or a placeholder in the build cell itself still do,
+because reading the default past those would reopen the typo hole `extra="forbid"` closed. The refusal
+now quotes the residual diagnosis (the placeholder guard runs first and was hiding it) and no longer
+offers `genome_build=`, which is `enrich()`'s parameter and no drafter's flag. The stub-row refusal is
+diagnosed from the bytes: *"still carries the scaffold's template row (line 2) … delete that row, or
+scaffold without `--kind haplotypes.csv` when a drafter will write the table"*, with the plain sentence
+kept for a row a human broke. Treating a stub-only file as absent was refused — the drafter appends and
+never rewrites an existing row. Your skill's rule (scaffold without `--kind` when a drafter will write
+the tables) is the right one and the README says it now. Answered is not installable: the next cuts of
+both packages carry it.
+<!-- triaged: 0.7.x · sha f5aeb26c6699 -->
+
+**Reported by** just-module-creator, 2026-09-20 (compiler 0.7.0, enricher 0.7.0 from PyPI).
+
+`reference_examples/cyp2c19_star_alleles/README.md` gives the build as `just-dna-compiler scaffold`
+then `just-dna-enricher draft`. Run verbatim on a fresh directory:
+
+```
+$ just-dna-compiler scaffold x --name probe_x
+$ just-dna-enricher draft x --gene TPMT --drug azathioprine --use non-commercial --dry-run
+DRAFT FAILED (TPMT): cannot read the module's genome_build: module_spec.yaml []: Value error,
+unreplaced template placeholder '<<REPLACE>>' in module_spec.yaml: module.description,
+module.report_title, module.title. ... fix module_spec.yaml, or pass genome_build= explicitly.
+```
+
+`_module_genome_build` reads one field through the full `load_spec`, so a placeholder in
+`module.title` — a field the draft never uses — refuses the draft, and the remedy offered
+(`genome_build=`) is not a `draft` CLI flag. And if the scaffold was made with `--kind` naming the
+three PGx tables, the stub rows block it a second time: *"existing haplotypes.csv does not validate,
+so a draft cannot be keyed against it: haplotypes.csv line 2 []: unreplaced template placeholder"*.
+So the drafter cannot be aimed at the tables the scaffold made for it.
+
+Suggested, either: read `genome_build` leniently (the yaml is loadable; only the placeholder check
+fails), or have the README say to fill the three title fields first and to scaffold without
+`--kind` when a drafter will write the tables. Meanwhile the module-creator skill says the latter.
+
+## S104 — a row carrying both an rsID and a position is stamped `source=authored, status=resolved` with no `ref`/`alts` and no VRS id, so a CPIC-drafted haplotype table compiles at 0% VRS coverage
+
+**Status — accepted; shipped as [RM251](ROADMAP_HISTORY.md#rm251--a-row-authoring-both-an-rsid-and-a-coordinate-was-copied-into-resolutioncsv-and-the-loci-the-pair-check-had-already-fetched-were-thrown-away) in the uncut 0.7 line (enricher, past 0.7.1) — half the report reproduced, and that half was the one that mattered.**
+Reproduced on a fresh CYP2C19 draft against the provisioned caches: three rows, all `source=authored`,
+no `ref`/`alts`, `vrs_id` empty. But (1) did not reproduce as written: the coordinate *is* compared
+with what Ensembl holds — by the enricher, in `rsid_coordinate_agreement`, and your run's
+`verification.json` will show `subjects 5, findings 0` for it. What was true is that the same lookup's
+answer was then discarded, so the table held a photocopy of the module: the **compiler's** cross-check
+compared the module against itself, and nothing existed to mint an id from. That is (2), and it is
+fixed: an authored pair whose rsID the snapshot knows now takes the forward branch, through the same
+allele-aware filter and PAR rule, and is recorded with the link's `source`, `ref` and `alts` — your
+five rows come back `source=cache` with a `ga4gh:VA` id each, the compile stops warning about VRS
+coverage, and the positional fill gives `haplotypes.parquet` the `ref` the drafter never had. The
+authored coordinate is untouched (it is the row's identity) and a disagreement is now the finding you
+asked for: recorded by the enricher, warned in `best_effort`, refused in `strict`. No `authority` or
+`shifted` column was needed — the module already holds the authored value and the compiler already
+compares the two. Why the reference example differed from your run: its `haplotypes.csv` predates the
+0.5.1 `gene.chr` join and has no `chrom` column, so its rows were rsID-only to the resolver. Your
+thirteen modules keep their `authored` rows under merge-not-clobber; delete `resolution.csv` (or run
+`--rederive`) and re-enrich once the cut lands. Answered is not installable: the next enricher cut
+carries it.
+<!-- triaged: 0.7.x · sha 04252242b292 -->
+
+**Reported by** just-module-creator, 2026-09-20 (enricher 0.7.0 from PyPI, Ensembl lane present).
+
+`draft_gene` writes `haplotypes.csv` with `rsid`, `chrom` and `start` from CPIC's
+`allele_definitions` (CYP2C19: 8 rows, 5 loci). `enrich` then reports `resolved: 5, sources:
+["authored"], vrs_minted: 0`, and `resolution.csv` is:
+
+```
+variant_key,rsid,chrom,start,ref,alts,...,source,...,status,...,rsid_status
+rs12248560,rs12248560,10,94761900,,,...,authored,...,resolved,...,live
+```
+
+**Correction, same day, before anyone answers:** the first title of this note said the row is *never
+asked of Ensembl*, and that is wrong — `verification.json` carries `rsid_coordinate_agreement` with
+`subjects: 5, findings: 0` for this module, and on CYP2D6 the same check found five CPIC positions
+that disagree with Ensembl (multi-base defining alleles, one to six bases off). So the cross-check
+runs. What stands is narrower: the *sidecar* carries the authored coordinate under `source=authored`
+with nothing Ensembl answered beside it — no `ref`, no `alts`, no `ga4gh:VA` — and the compiler then
+warns on every such module.
+
+`enrich.py`'s last branch of the per-row resolver — *"already complete, or has a position — a full
+record, nothing to resolve"* — copies the authored coordinate into the sidecar for any row that has
+`rsid` and `chrom`/`start` both. So for this shape: (1) the sidecar records no second value — the
+agreement check compares and reports, but nothing it learned lands in `resolution.csv`, so a consumer
+reading the sidecar sees the authored coordinate re-stated under a source label; (2) `ref`/`alts` stay
+empty and no `ga4gh:VA` id is minted, so `compile` warns *"VRS allele identity covers 0/5
+allele(s)"* on every CPIC-drafted module, with nothing the author can do about it short of
+deleting the coordinates the drafter wrote. `rsid_status=live` shows the currency link did run for
+the same row, so the rsID was reachable.
+
+Measured against `reference_examples/cyp2c19_star_alleles/resolution.csv`, whose haplotype rows
+have the same shape (rsid + start) and carry `source=cache` with `ref`, `alts` and a `vrs_id` — so
+an earlier enricher did resolve them.
+
+Suggested: when both are authored and a link ran, resolve by rsID and record the authored
+coordinate beside the answer (`authority` or a per-row `shifted`), the way `_authored_alt` already
+keeps the authored allele; a row where the two disagree is the finding the branch currently cannot
+produce. Meanwhile the thirteen modules ship with the warning and this note in their READMEs.
+
+## S105 — `pgx` reports "no use was declared" and skips both legs on a module whose `licensing.csv` already declares `non_commercial` for CPIC
+
+**Status — accepted; shipped as [RM252](ROADMAP_HISTORY.md#rm252--pgx-said-no-use-was-declared-about-a-module-whose-licence-table-declared-it-and-asked-the-author-to-say-it-twice) in the uncut 0.7 line (enricher, past 0.7.1).**
+Reproduced on a drafted module: both legs `not_permitted` with *"no use was declared"* while the CPIC
+row read `declared_use=non_commercial` — and, one thing your report could not see, the row survived the
+run (the merge is never-clobber), so the defect was the sentence and the skip, not the file. Your
+suggestion is what shipped, at every gate that has a module rather than at `pgx` alone: a new
+`effective_declared_use(spec_dir, terms, declared_use)` takes the flag when it states one, else the
+row recorded for **that source at that layer**, else `unstated`; the nine gates with a module go
+through it (an AST walk keeps that set exact) and the cache lanes, which have no module, still gate on
+the flag. So `pgx` with no flag now runs the CPIC leg, prints *"declared in the licence table by an
+earlier run: cpic=non_commercial"*, and the PharmVar leg — no row — still asks, exactly as you said it
+should. The flag outranks the file in both directions (`--use commercial` against a recorded
+`non_commercial` still refuses), and `unstated` on disk is not a declaration. The drafters say so too,
+so a second `draft --gene` on the same module without `--use` no longer skips. Answered is not
+installable: the next enricher cut carries it.
+<!-- triaged: 0.7.x · sha 6aefed8058e5 -->
+
+**Reported by** just-module-creator, 2026-09-20 (enricher 0.7.0 from PyPI).
+
+A module drafted with `draft_gene(..., declared_use="non_commercial")` carries the CPIC row the
+drafter wrote — `declared_use = non_commercial`, `commercial_use = false`. Running the check on it
+with no flag:
+
+```
+$ just-dna-enricher pgx <spec>
+pharmvar forbids sale and no use was declared, so it was skipped. Re-run with --use non-commercial ...
+cpic forbids sale and no use was declared, so it was skipped. Re-run with --use non-commercial ...
+sources: <spec>/licensing.csv
+sources recorded: 1  declared use: unstated
+```
+
+"No use was declared" is false for CPIC: the declaration is in the file the command just read. The
+check reads `--use` only, so an author who declared once at draft time is asked to assert the same
+position again at check time — and a second assertion carries the fabrication risk the draft
+warned about (re-running with a different `use` to get past a skip). With `--use non-commercial`
+both legs run and a `pharmvar` row is added, correctly.
+
+Suggested: when `--use` is absent, read the module's own `declared_use` per source from
+`licensing.csv` and treat a recorded declaration as the declaration — it is the same author, the
+same module and the same file the compile gate keys on. The PharmVar leg genuinely has no row yet
+and may still ask; the CPIC leg should not. At minimum the message should not say *no use was
+declared* when one is on disk.
+
+## S106 — a repeat-count star allele (UGT1A1 `*28` = TA(8)) has no home: `repeat_alleles.csv` bins a count and `haplotypes.csv` names an allele, and nothing joins the two
+
+**Status — accepted as a design item, filed as [RM253](ROADMAP.md#rm253--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-a-diplotype-can-name-and-the-cpic-drafter-translates-none-of-cpics-notation); the two message halves shipped in the uncut 0.7 line.**
+Reproduced on the snapshot: six UGT1A1 rows skipped, `*28` defined by nothing, the warning right and
+unfixable. Two corrections to the report, both from the probe. CPIC keys the TA repeat on **rs3064744**,
+not rs8175347; and `haplotype_name` does **not** accept CPIC's DPYD names as spelled — all three PGx
+models refuse `c.1003G>T (*11)` on its whitespace, so DPYD is a naming *policy* question for the
+drafter, not a gate it forgot. NUDT15 `*2` has no defining row in the snapshot at all, so that half is
+scoped to the live API, unprobed. One thing the report understates: the format already holds
+`<CNV:TR:n>`, so `TA(8)` has a legal spelling today — `<CNV:TR:16>`, since `n` is a length in bases —
+which is distinguishable from `*1`/`*36`/`*37` by length and lossy about the unit, and which a spelled
+call compares against as *undecided*. Whether that, a spelled sixteen-base allele (anchored, which needs
+the base the drafter lacks and the Ensembl row RM251 now records), or a repeat→haplotype join is the
+right home is the design decision RM253 carries, beside the `DEL<bases>`/`INS<bases>` → `<DEL:n>`/
+`<INS:n>` translation (a drafter gap, as you said; the bare `DEL` stays lengthless) and the DPYD naming
+policy. Shipped now: the RM5 notation warning names the three symbolic spellings and says the *drafter*
+does not translate into them, pointing at RM253; and DPYD's 3,570 diplotypes are no longer reported as
+CYP2D6's copy-number notation. Your README's reason is the right one until RM253 decides.
+<!-- triaged: 0.7.x · sha 3668a395d078 -->
+
+**Reported by** just-module-creator, 2026-09-20, building a UGT1A1 module from CPIC (compiler and
+enricher 0.7.0 from PyPI); the reading was checked by the format-tree survey session the same day.
+
+CPIC defines `UGT1A1*1` as `TA(7)` and `*28` as `TA(8)` at rs8175347 (`*36` = `TA(6)`, `*37` =
+`TA(9)`). `draft_gene` skips all six repeat-notation defining variants with the RM5 grammar warning,
+so `haplotypes.csv` defines `*28` by nothing, `allele_function.csv` and `diplotypes.csv` still name
+it, and `validate` warns *"Star allele(s) used but not defined in haplotypes.csv: ['*28']"*. That
+warning is right, and the reason it cannot be fixed by an author is the finding:
+
+- `HaplotypeRow.allele` takes bases or a symbolic allele with a length (`<DEL:n>`, `<INS:n>`, …). A
+  variable repeat is a **count**, not a fixed-length event, so no spelling there says "eight TAs".
+- `repeat_alleles.csv` (`RepeatAlleleRow`, keyed `(gene, repeat_unit)`, `measure_min`/`measure_max`)
+  holds exactly that count — as a **binning** table, count → phenotype. It cannot name a haplotype.
+- `AlleleFunctionRow` has no repeat-count column, so "`*28` means TA(8)" cannot be stated on the
+  function row either.
+
+So the most common UGT1A1 star allele — the one CPIC's atazanavir and the irinotecan labels key on —
+is expressible as a bin (`TA ≥ 8 → decreased function`) *or* as a name (`*28`), never as both, and
+the diplotype table needs the name. `RM_TOC.md` and the roadmaps carry nothing on a repeat → haplotype
+join (checked 2026-09-20). Two smaller siblings, filed here rather than separately because they may
+already be tracked under the RM5 drafter work: `draft_gene` skips CPIC's `DEL` (CYP2D6 `*6`,
+rs5030655) and `INS` (NUDT15 `*2`, rs147390019) definitions instead of writing the format's own
+`<DEL:1>` / `<INS:n>` tokens — the schema holds those, the drafter does not translate; and it skips
+DPYD outright because CPIC names its alleles as HGVS strings, which `HaplotypeRow.haplotype_name`
+accepts and `drug_labels._allele_keys` already joins on. Both are drafter gaps, not schema gaps, and
+are worth saying so beside the RM5 warning text, which currently reads as a format limit.
+
+Meanwhile: the module ships with `*28` undefined and the warning, and its README says why.
