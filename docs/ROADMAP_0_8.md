@@ -808,6 +808,55 @@ causal signal on colocalization evidence, with TOMM40/APOC1 named only in prose 
 
 Still **parked**, on the same rule: the corpus grows, the decision does not move until the count is in.
 
+**2026-09-20 — the count is in, and it does not support the parking reason.** Measured directly off
+the provisioned CPIC snapshot (`data/interim/cpic/`, `dataset: cpic_snapshot_3d2123598711`, built
+2026-08-07, `recommendations.parquet` 3,411 rows), prompted by a peer session drafting ClawBio's PGx
+corpus that hit it from the other side:
+
+* **2,656 of 3,411 recommendation rows (78%) are `gene_count = 2`.** Multi-gene is not the exception
+  in CPIC's recommendation table; single-gene is.
+* **36 of 121 `(gene, drug)` pairs have no single-gene row at all.** For those the drafter writes
+  nothing, because `CpicSnapshot.recommendations` filters `gene_count = 1` (deliberately — a row about
+  CYP2C19 *and* CYP2D6 is not a statement about CYP2C19 alone) and the live client applies the same
+  `len(phenotypes) != 1` filter.
+* They are **recognisable clinical pairs, not edge cases**: TPMT+NUDT15 over the three thiopurines
+  (azathioprine, mercaptopurine, thioguanine — 35 rows each); CYP2D6+CYP2C19 over five tricyclics
+  (amitriptyline, clomipramine, doxepin, imipramine, trimipramine — 206 rows each); SLCO1B1 with
+  CYP2C9 and ABCG2 over fluvastatin and rosuvastatin; CYP2B6+CYP2C19 over sertraline.
+* **RYR1+CACNA1S is the one that breaks the fallback argument.** Seven drugs — the six volatile
+  anaesthetics plus succinylcholine — and **neither gene appears in a single-gene recommendation
+  anywhere in the table**. Elsewhere a module can at least carry the single-gene rule and lose the
+  refinement; for malignant-hyperthermia susceptibility there is no single-gene rule to fall back on,
+  so a module carries *nothing* for those seven drugs.
+
+**Independently reproduced on a second snapshot, and the two units reconcile exactly.** The peer
+session measured `cpic_snapshot_b0ffd4c6f010` and counted **drugs** where the above counts
+**`(gene, drug)` pairs**: 103 drugs carry a recommendation, 85 single-gene, **18 pair-keyed across
+six pairs** — NUDT15+TPMT (3 drugs), CYP2C19+CYP2D6 (5), CACNA1S+RYR1 (7), ABCG2+SLCO1B1
+(rosuvastatin), CYP2B6+CYP2C19 (sertraline), CYP2C9+SLCO1B1 (fluvastatin). Those 18 drugs times two
+genes each is **36 `(gene, drug)` pairs**, which is the number measured here from a different
+snapshot built six weeks apart. Two denominators, stated apart deliberately
+(`@two-surfaces-two-denominators`): *18 of 103 drugs* and *36 of 121 pairs* are the same fact at two
+grains, and the drug grain is the more legible one to quote. **Warfarin is in neither**: CPIC's
+warfarin guideline is a dosing algorithm and carries no recommendation row at all, so the shape this
+entry was reopened on is not even the marginal case — it is off the end of the table.
+
+**What this changes and what it does not.** It does not by itself unpark the entry: the economy and
+open-world-negation objections in *What remains* are untouched, and a table keyed on two subjects is
+still a design nobody has drawn. What it removes is the *premise* the parking rested on — that
+pairing across subjects is a rare shape worth deferring until a corpus appears. Three sources now
+carry it (CIViC 209 profiles, CPIC 36 pairs / 78% of rows, ClawBio's one hardcoded branch), and in
+CPIC's case the pairs are the routine half of a guideline set this project already ingests and
+drafts from.
+
+**The smaller finding beside it is filed separately as S102** (peer report, 2026-09-20): the drafter
+does not just skip these, it **misreports** them — the snapshot path's `knows_drug` returns `None`
+unconditionally, so the `known is None` arm always fires and tells the author the snapshot *has no
+row*, when it has 35 or 206 of them and filtered every one. That is `@answered-is-not-absent`
+(answered-and-rejected is a fourth state; the row stays and the *reason* moves), and the arm's
+remedy — consult the live API — reaches the identical filter. The fourth arm, the one whose text
+names warfarin, is unreachable whenever a snapshot is present.
+
 ### What dissolved, so it is not re-proposed
 
 - **No operator is missing.** Rows are a disjunction and columns are a conjunction, so the existing

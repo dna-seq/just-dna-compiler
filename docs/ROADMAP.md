@@ -399,6 +399,13 @@ dependency-weight decision with a measurement behind it (RM192), which is `@fix-
 it, name why each candidate repair is or is not right, and let the owner decide. The tree is red
 meanwhile, and that is the state this entry exists to make visible.
 
+**And the docs site will not build either**, which is the third surface and the one that makes this a
+release blocker rather than an inconvenience: `scripts/gen_cli_pages.py:47` does
+`from just_dna_enricher import cli as enricher_cli` to generate the command reference, so
+`uv run --group docs properdocs build --strict` dies on the same import. Two of the cut's gates — the
+suite (17 collection errors) and the docs build — are down on one dependency fault, and neither says
+"grpcio" in a way a reader would connect to the other.
+
 **It is a release hazard, not only a dev-tree one — this is the half that raises the severity.** The
 generated tree is git-ignored but **not** build-ignored: `hatch_build.py` force-includes it, so the
 wheel ships whatever stamp the machine that built it produced. The published **0.7.0 works** (a peer
