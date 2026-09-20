@@ -75,6 +75,39 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM250 — `scaffold` then `draft` failed on the scaffold's own placeholders, and the remedy it offered was a parameter the drafters do not have
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher + compiler) ·
+**Owner** enricher (`spec_genome_build`) + compiler (`draft.append_rows`) · **Motivating case**
+[S103](CONSUMER_SUGGESTIONS_HISTORY.md#s103--scaffold-followed-by-draft-fails-on-the-scaffolds-own-placeholders-so-the-reference-readmes-recipe-does-not-run-as-written)
+— the reference README's recipe, run verbatim, refused
+
+### What was observed
+
+`spec_genome_build` read one field through the whole-file `load_spec`, so `<<REPLACE>>` in
+`module.title`, `module.description` and `module.report_title` — three cells a draft never reads —
+became *"cannot read the module's genome_build"*, and the sentence ended *"or pass genome_build=
+explicitly"*, which is `enrich()`'s parameter and no drafter's flag. With `--kind` naming the PGx tables,
+the stub rows refused a second time, as *"existing haplotypes.csv does not validate"* — the sentence for
+a broken file, about a row the tool had written itself.
+
+### What shipped
+
+**The build is read at the answerer.** On a `SpecError`, the yaml is re-read with every placeholder
+*outside* `genome_build` filled by a placeholder and validated again; if that passes, the declared build
+is the answer. Only the scaffold's own stub is looked past: a misspelt key (`genome_bild:`), a wrong
+type, or a placeholder in the build cell still refuse, because reading the default past those would
+reopen the hole `extra="forbid"` closed — and the refusal now quotes the *residual* diagnosis rather
+than the placeholder sentence that had been hiding it. The remedy clause is gone. **The stub row is
+diagnosed by the bytes**, not by the error text: a row carrying the placeholder in any cell is named
+with its line and the two ways out (delete it, or scaffold without `--kind` when a drafter will write
+the table); a row a human broke keeps the plain sentence, and both arms are pinned. The README says why
+its `scaffold` line takes no `--kind`.
+
+**Refused: treating a stub-only file as absent.** The stub has no natural key to merge on, and writing
+past it would leave a template row in a table the drafter then reports as valid; deleting it would be
+the drafter rewriting an existing row. Diagnose, never apply (`@specific-rejection`).
+
 ## RM249 — the CPIC drafter said "the snapshot has no row for it" about a drug with 35 rows in that table, all keyed on a gene pair
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher) · **Owner**

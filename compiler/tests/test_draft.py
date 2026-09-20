@@ -718,3 +718,41 @@ def test_the_callback_fires_once_per_table_that_actually_writes(tmp_path: Path) 
         before_commit=lambda: fired.append("second table write"),
     )
     assert fired == ["first", "second table write"]
+
+
+# ── S103: the scaffold's own stub row is named, not reported as a broken file ────────────────────
+
+
+def test_the_scaffolds_stub_row_is_named_with_the_line_to_delete(tmp_path: Path) -> None:
+    """`scaffold --kind haplotypes.csv` then `draft` refused on the row the first command wrote,
+    with the sentence for a corrupt file. The stub has no key to merge on — its key cells *are* the
+    placeholder — so the drafter cannot write over it; what it can do is say which line to delete."""
+    from just_dna_compiler.scaffold import scaffold_module
+    from just_dna_format.pgx import HaplotypeRow
+
+    spec = _spec(tmp_path)
+    scaffold_module(spec, kinds=["haplotypes.csv"], name="probe")
+    assert "<<REPLACE>>" in (spec / "haplotypes.csv").read_text(encoding="utf-8")
+    row = HaplotypeRow(haplotype_name="*2", rsid="rs4244285", allele="A", gene="CYP2C19")
+    with pytest.raises(DraftError) as caught:
+        append_rows(spec, "haplotypes.csv", [row], dry_run=True)
+    message = str(caught.value)
+    assert "scaffold's template row (line 2)" in message
+    assert "--kind haplotypes.csv" in message
+    assert "does not validate" not in message
+
+
+def test_a_genuinely_invalid_existing_table_keeps_the_plain_sentence(tmp_path: Path) -> None:
+    """The other arm, pinned so the stub diagnosis cannot widen into it: a row a human broke is not
+    a template, and the drafter still says the file does not validate."""
+    from just_dna_format.pgx import HaplotypeRow
+
+    spec = _spec(tmp_path)
+    (spec / "haplotypes.csv").write_text(
+        "haplotype_name,rsid,chrom,start,allele,gene\n*2,rs4244285,10,not-a-position,A,CYP2C19\n",
+        encoding="utf-8",
+    )
+    row = HaplotypeRow(haplotype_name="*3", rsid="rs12248560", allele="T", gene="CYP2C19")
+    with pytest.raises(DraftError, match="does not validate") as caught:
+        append_rows(spec, "haplotypes.csv", [row], dry_run=True)
+    assert "template row" not in str(caught.value)

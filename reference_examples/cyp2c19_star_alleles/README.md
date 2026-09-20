@@ -16,6 +16,11 @@ just-dna-enricher enrich reference_examples/cyp2c19_star_alleles --offline
 just-dna-compiler compile reference_examples/cyp2c19_star_alleles out/
 ```
 
+The `scaffold` line writes only `module_spec.yaml`, and that is deliberate: a `--kind` stub is a column
+guide for a table a human will type, and a drafter refuses to key against one (it says so, and names
+the line to delete). The three title fields the scaffold leaves as `<<REPLACE>>` can be filled before
+or after the draft — the drafter reads only `genome_build` from the yaml (S103).
+
 1,477 rows across three tables, no placeholders, valid immediately. `--use non-commercial` is required
 rather than polite: CPIC's terms forbid sale, so a draft is **skipped** when the use is unstated and
 **refused** when it is commercial — the terms are accepted by taking the data, so the check happens

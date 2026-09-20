@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+import yaml
 from just_dna_compiler.compiler import (
     SpecError,
     _restamp_for_build,
@@ -35,8 +36,10 @@ from just_dna_format.manifest import VerificationRecord
 from just_dna_format.normalize import now_utc_iso
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
 from just_dna_format.resolution import RESOLUTION_FACT_FIELDS, ResolutionRow
-from just_dna_format.spec import VariantRow
+from just_dna_format.spec import ModuleSpecConfig, VariantRow
+from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from just_dna_format.vrs import normalize_chrom, par_partner
+from pydantic import ValidationError
 
 from just_dna_enricher import clinvar
 from just_dna_enricher.civic_citations import (
@@ -481,21 +484,85 @@ def spec_genome_build(spec_dir: Path) -> str:
     directory, and picking a build for a module whose declaration cannot be read is exactly the
     invention this function exists to remove.
     """
-    if not (spec_dir / "module_spec.yaml").exists():
+    path = spec_dir / "module_spec.yaml"
+    if not path.exists():
         return "GRCh38"
     # Through the public loader since S74 — this call site is what made the case that one was needed,
     # since the workspace's own network tier was reaching into `_load_yaml`. It already raised on the
     # `None` half of the tuple, which is `load_spec`'s contract, so the translation is the only thing
     # left here: a pass owes its caller its own exception type.
     try:
-        config = load_spec(spec_dir / "module_spec.yaml")
+        return load_spec(path).genome_build
     except SpecError as exc:
+        # **Guard at the answerer (S103).** The question is the build, and a scaffold's unfilled
+        # `title:` says nothing about it — yet `load_spec` validates the whole file, so `scaffold`
+        # followed by `draft`, the reference README's own recipe, refused on `<<REPLACE>>` in three
+        # fields the draft never reads. Only that one defect is looked past, and only outside the
+        # build cell: a typo'd key, a wrong type, or a placeholder *in* `genome_build` still refuses,
+        # because reading the default past those would reopen the `genome_bild:` hole the model's
+        # `extra="forbid"` closed.
+        declared, residual = _declared_build_behind_placeholders(path)
+        if declared is not None:
+            return declared
+        # No `pass genome_build=` remedy in this sentence: that parameter belongs to `enrich()` alone,
+        # and the drafters that share this reader have no such flag to offer. `residual` is the
+        # diagnosis that remains once the stubs are looked past — the placeholder guard runs first
+        # and would otherwise hide a `genome_bild:` behind "fill in the title".
         raise EnrichmentError(
-            f"cannot read the module's genome_build: {exc}. Enrichment resolves against one assembly "
-            f"and records the answer under the module's declared build, so it will not choose one for "
-            f"you — fix module_spec.yaml, or pass genome_build= explicitly."
+            f"cannot read the module's genome_build: {residual or exc}. Enrichment resolves against "
+            f"one assembly and records the answer under the module's declared build, so it will not "
+            f"choose one for you — fix module_spec.yaml."
         ) from exc
-    return config.genome_build
+
+
+def _declared_build_behind_placeholders(path: Path) -> tuple[str | None, str | None]:
+    """The build a scaffolded, not-yet-filled `module_spec.yaml` declares, and the residual diagnosis.
+
+    `(build, None)` when the file validates once its template stubs are filled. `(None, reason)`
+    when a problem *other* than unfilled cells remains — a key the model refuses, a wrong type, a
+    placeholder in `genome_build` itself — with `reason` naming it, since the placeholder guard runs
+    first and its sentence would otherwise hide the real one. `(None, None)` when the file has no
+    stubs at all (nothing to look past), is unparsable, or is not a mapping: the caller's own
+    diagnosis already says so. The test is exact rather than a reading of the error text: every
+    placeholder outside the build cell is replaced by a filler and the model is asked again, so what
+    is tolerated is precisely "this file validates once the scaffold's stubs are filled".
+    """
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError:
+        return None, None
+    if not isinstance(raw, dict):
+        return None, None
+    filled, replaced = _fill_placeholders({k: v for k, v in raw.items() if k != "genome_build"})
+    if not replaced:
+        return None, None
+    if "genome_build" in raw:
+        filled["genome_build"] = raw["genome_build"]
+    try:
+        return ModuleSpecConfig.model_validate(filled).genome_build, None
+    except ValidationError as exc:
+        residual = "; ".join(
+            f"module_spec.yaml [{' → '.join(str(x) for x in err['loc'])}]: {err['msg']}"
+            for err in exc.errors()
+        )
+        return None, residual
+
+
+def _fill_placeholders(value: object) -> tuple[object, bool]:
+    """A copy of `value` with every `TEMPLATE_PLACEHOLDER` string leaf replaced, and whether any was."""
+    if isinstance(value, dict):
+        out: dict[str, object] = {}
+        hit = False
+        for key, item in value.items():
+            out[key], one = _fill_placeholders(item)
+            hit = hit or one
+        return out, hit
+    if isinstance(value, list):
+        items = [_fill_placeholders(item) for item in value]
+        return [item for item, _ in items], any(one for _, one in items)
+    if value == TEMPLATE_PLACEHOLDER:
+        return "filled", True
+    return value, False
 
 
 def source_build_mismatch(spec_dir: Path, source: str, source_build: str = "GRCh38") -> str | None:

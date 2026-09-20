@@ -176,6 +176,22 @@ def model_for(csv_name: str) -> type[BaseModel]:
     return model
 
 
+def _placeholder_lines(path: Path) -> list[int]:
+    """The 1-based line numbers of rows still carrying `TEMPLATE_PLACEHOLDER` in any cell.
+
+    Read raw rather than off the validation error, because the error's text is a sentence and the
+    stub is a fact about the bytes: a row whose every key cell is the placeholder is the scaffold's,
+    whatever the model complained about first."""
+    with open(path, encoding="utf-8", newline="") as handle:
+        reader = csv.reader(handle)
+        next(reader, None)
+        return [
+            n
+            for n, row in enumerate(reader, start=2)
+            if any(cell.strip() == TEMPLATE_PLACEHOLDER for cell in row)
+        ]
+
+
 def _draft_path(spec_dir: Path, csv_name: str) -> Path:
     """Where a draft should be written: the copy the module already carries, else the name asked for.
 
@@ -409,6 +425,20 @@ def append_rows(
     if path.exists() and path.stat().st_size > 0:
         existing_rows, errors, _ = _load_csv_rows(path, model, csv_name)
         if errors:
+            stub_lines = _placeholder_lines(path)
+            if stub_lines:
+                # The scaffold's own stub (S103): `scaffold --kind haplotypes.csv` then `draft` refused
+                # on the template row the first command wrote, with a sentence that read as a broken
+                # file. A stub row has no natural key — its key cells *are* the placeholder — so it is
+                # never merged over; it is deleted, or never made. Diagnosed, not applied: the drafter
+                # appends and does not rewrite an existing row, however machine-written.
+                lines = ", ".join(str(n) for n in stub_lines)
+                raise DraftError(
+                    f"existing {csv_name} still carries the scaffold's template row (line {lines}), so a "
+                    f"draft cannot be keyed against it. Delete that row — a drafter writes real rows and "
+                    f"the stub is only a column guide — or scaffold without `--kind {csv_name}` when a "
+                    f"drafter will write the table. ({errors[0]})"
+                )
             raise DraftError(
                 f"existing {csv_name} does not validate, so a draft cannot be keyed against it: {errors[0]}"
             )

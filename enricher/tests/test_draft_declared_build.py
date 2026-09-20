@@ -191,3 +191,71 @@ def test_an_unreadable_spec_exits_cleanly_rather_than_tracebacking(tmp_path: Pat
         assert result.exception is None or isinstance(result.exception, SystemExit), argv
         assert "DRAFT FAILED" in result.output, (argv, result.output)
         assert "genome_build" in result.output, (argv, result.output)
+
+
+# ── S103: the build is read at the answerer, so a scaffold's unfilled cells elsewhere do not refuse ──
+
+
+def _scaffolded(tmp_path: Path, yaml: str) -> Path:
+    spec = tmp_path / "scaffolded"
+    spec.mkdir(exist_ok=True)
+    (spec / "module_spec.yaml").write_text(yaml, encoding="utf-8")
+    return spec
+
+
+_UNFILLED = (
+    'schema_version: "1.0"\nmodule:\n  name: cyp2c9\n  title: <<REPLACE>>\n  report_title: <<REPLACE>>\n'
+    "  description: <<REPLACE>>\n"
+)
+
+
+def test_a_scaffolds_unfilled_titles_do_not_refuse_the_draft(tmp_path: Path) -> None:
+    """The reference README's recipe is `scaffold` then `draft`, and it refused as written (S103):
+    `spec_genome_build` validated the whole yaml, so `<<REPLACE>>` in three fields the draft never
+    reads was "cannot read the module's genome_build". The build is the question, and it is read."""
+    from just_dna_enricher.enrich import spec_genome_build
+
+    spec = _scaffolded(tmp_path, _UNFILLED + "genome_build: GRCh38\n")
+    assert spec_genome_build(spec) == "GRCh38"
+    result = draft_gene(spec, "CYP2C19", declared_use="non_commercial", client=_client())
+    assert not result.skipped
+    assert (spec / "haplotypes.csv").is_file()
+    assert not any("genome_build" in w for w in result.warnings)
+
+
+def test_the_declared_build_is_read_past_the_placeholders_not_defaulted(tmp_path: Path) -> None:
+    """Tolerating the stubs must not mean assuming GRCh38: a GRCh37 declaration behind them is what
+    the source-build warning is computed against."""
+    spec = _scaffolded(tmp_path, _UNFILLED + "genome_build: GRCh37\n")
+    warning = source_build_mismatch(spec, "CPIC", CPIC_GENOME_BUILD)
+    assert warning is not None and "GRCh37" in warning and "GRCh38" in warning
+
+
+def test_a_placeholder_in_the_build_cell_itself_still_refuses(tmp_path: Path) -> None:
+    from just_dna_enricher.enrich import EnrichmentError, spec_genome_build
+
+    spec = _scaffolded(tmp_path, _UNFILLED + "genome_build: <<REPLACE>>\n")
+    with pytest.raises(EnrichmentError, match="genome_build"):
+        spec_genome_build(spec)
+
+
+def test_a_misspelt_key_beside_the_placeholders_still_refuses(tmp_path: Path) -> None:
+    """The discriminating case. `genome_bild:` is exactly what `extra="forbid"` exists to catch, and
+    a lenient read that fell back to the default on *any* error would answer GRCh38 for a module
+    whose author typed GRCh37 one letter wrong. Only the placeholder is looked past."""
+    from just_dna_enricher.enrich import EnrichmentError, spec_genome_build
+
+    spec = _scaffolded(tmp_path, _UNFILLED + "genome_bild: GRCh37\n")
+    with pytest.raises(EnrichmentError, match="genome_bild"):
+        spec_genome_build(spec)
+
+
+def test_the_refusal_no_longer_offers_a_parameter_the_drafters_do_not_have(tmp_path: Path) -> None:
+    """`pass genome_build= explicitly` was true of `enrich()` and false of every `draft`; S103's
+    reporter was sent to a flag that does not exist."""
+    from just_dna_enricher.enrich import EnrichmentError, spec_genome_build
+
+    spec = _scaffolded(tmp_path, "name: broken\n")
+    with pytest.raises(EnrichmentError) as caught:
+        spec_genome_build(spec)
+    assert "genome_build=" not in str(caught.value)

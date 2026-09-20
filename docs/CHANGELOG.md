@@ -48,6 +48,13 @@ contents, so the class is a patch in both tiers.
   drug comes back empty, and the message names the partner and RM28. Warfarin, which has no
   recommendation row at any arity, keeps its own arm, reworded to say so. Measured on the snapshot and
   recorded on RM28: 18 of 103 drugs are pair-keyed, six pairs, arity never above 2.
+- **RM250 (S103) — `scaffold` then `draft`, the reference README's own recipe, refused on
+  `<<REPLACE>>` in three fields the draft never reads, and offered `genome_build=` as the remedy,
+  which is `enrich()`'s parameter and no drafter's flag.** `spec_genome_build` now looks past the
+  scaffold's stubs — only those, and only outside the build cell; a misspelt key or a placeholder in
+  `genome_build` still refuses, quoting the diagnosis the placeholder sentence had been hiding. The
+  compiler's `append_rows` names a scaffold stub row by its line and says to delete it or scaffold
+  without `--kind`, instead of calling the file broken.
 ## 2026-09-19 — `just-dna-enricher` 0.7.1: three checks that could not run were reporting that they passed
 
 **Enricher only.** `just-dna-format` and `just-dna-compiler` stay at `0.7.0` and are unaffected — the
