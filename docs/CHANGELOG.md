@@ -60,11 +60,13 @@ every fix is a message, a lookup, or a derived table's contents, so the class is
   identity covers 0/N"*.** The same run had looked the rsID up for the pair check and discarded the
   answer. Such a row now takes the forward branch when the reference knows its rsID: the link's loci
   are recorded, an id mints, and the compiler's `_verify` compares two independent values instead of
-  the module against itself. **A corrected derivation, declared here as Principle 3 asks:** a table
-  written before this keeps its `authored` rows under merge-not-clobber — delete `resolution.csv` or
-  run `--rederive` to record the reference's answer — and a module whose authored pair disagrees with
-  Ensembl now warns in `best_effort` and refuses in `strict`, which is the finding the old branch could
-  not produce.
+  the module against itself. **This changes what a re-run of `enrich` writes into a derived sidecar,
+  not what the compiler derives** — a recompile of an untouched module is byte-identical, so the
+  release record (RM126) has nothing to declare. The caveat is for authors: a table written before
+  this keeps its `authored` rows under merge-not-clobber — delete `resolution.csv` or run
+  `--rederive` to record the reference's answer — and a module whose authored pair disagrees with
+  Ensembl then warns in `best_effort` and refuses in `strict`, which is the finding the old branch
+  could not produce.
 
 - **RM252 (S105) — `pgx` said "cpic forbids sale and no use was declared" about a module whose licence
   table recorded `declared_use=non_commercial` for CPIC, and asked the author to assert it again.**
