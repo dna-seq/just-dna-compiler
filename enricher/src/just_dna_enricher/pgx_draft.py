@@ -337,12 +337,18 @@ def draft_gene(
         # branch below was reachable from the snapshot client alone. R2-13 is what makes this
         # catchable at all — before it, the escape was a raw `httpx.HTTPStatusError`.
         drug_known: dict[str, bool | None] = {}
+        partners: dict[str, list[str]] = {}
         unaskable: dict[str, str] = {}
         for drug, found in by_drug.items():
             if found:
                 continue
             try:
-                drug_known[drug] = cpic.knows_drug(drug)
+                # Partners first (S102): a drug keyed on a gene *pair* has rows in the very table
+                # `recommendations` read, so "no row for it" was false and "no single-gene
+                # recommendation" was true but unexplained. A non-empty answer settles `knows_drug`
+                # too — the source evidently lists the drug — so that request is not paid.
+                partners[drug] = cpic.partner_genes(gene, drug)
+                drug_known[drug] = True if partners[drug] else cpic.knows_drug(drug)
             except CpicError as exc:
                 drug_known[drug] = None
                 unaskable[drug] = str(exc)
@@ -461,7 +467,18 @@ def draft_gene(
             # author was told CPIC has nothing. Same distinction the rsID vocabulary makes between a
             # mistyped id and a real one the source records differently.
             known = drug_known.get(drug)
-            if known is False:
+            if partners.get(drug):
+                # The arm S102 found missing, and it was unreachable on the snapshot path: `known`
+                # is `None` there, so the "no row for it" sentence below was reached for a drug with
+                # 35 rows in that very table, all keyed on TPMT *and* NUDT15. Named here, before the
+                # other readings, because it is the one positive fact the source has for the drug.
+                detail = (
+                    f"CPIC keys every recommendation for it that names {gene} on more than one gene "
+                    f"({gene} together with {', '.join(partners[drug])}). A row about the pair is not "
+                    f"a statement about {gene} alone, and no authored table is keyed on two genes yet, "
+                    f"so nothing lands in diplotypes.csv; pairing across genes is the open RM28"
+                )
+            elif known is False:
                 detail = (
                     "CPIC does not list that drug at all — check the spelling (CPIC uses lowercase "
                     "generic names)"
@@ -488,10 +505,13 @@ def draft_gene(
                     "that, and it is consulted only when no snapshot is present"
                 )
             else:
+                # Reached with `partners` empty, so this is a drug CPIC lists and publishes no
+                # recommendation row for at all — warfarin, whose guideline is a dosing algorithm
+                # rather than a recommendation table (zero rows in the snapshot, measured for S102).
+                # A drug keyed on a gene pair is the arm above, not this one.
                 detail = (
-                    "CPIC lists the drug but records no single-gene, phenotype-keyed recommendation "
-                    "for it — a guideline shaped as a dosing algorithm over several genes (warfarin) "
-                    "has no row here"
+                    "CPIC lists the drug but publishes no phenotype-keyed recommendation row for it "
+                    "at all — a guideline shaped as a dosing algorithm (warfarin) has no row to draft"
                 )
             warnings.append(f"{gene}: nothing drafted for {drug!r} — {detail}.")
             continue

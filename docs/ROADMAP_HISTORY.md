@@ -75,6 +75,36 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM249 — the CPIC drafter said "the snapshot has no row for it" about a drug with 35 rows in that table, all keyed on a gene pair
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher) · **Owner**
+enricher (`pgx_draft`, both CPIC clients) · **Motivating case**
+[S102](CONSUMER_SUGGESTIONS_HISTORY.md#s102--the-cpic-drafter-drafts-only-gene_count--1-recommendations-and-on-the-snapshot-path-it-reports-every-two-gene-pair-as-the-snapshot-has-no-row-for-it)
+— one module per gene of ClawBio's panel, and every thiopurine came back "no row"
+
+### What was observed
+
+`recommendations()` keeps a row only when it names one gene, which is right: a row about TPMT *and*
+NUDT15 is not a statement about TPMT alone. But the empty result's explanation had three arms and the
+true one was unreachable on the snapshot path — `knows_drug` withholds there, so the reader was told the
+table had no row for a drug with 35 of them. Measured off the snapshot: **18 of 103 drugs are keyed only
+on a gene pair, 2,656 of 3,411 rows, six pairs, arity never above 2, no drug both ways** — the count
+RM28 had been asking for since the ClawBio survey, now recorded there as its fifth corpus entry.
+Warfarin has **no** row at any arity, so the old "dosing algorithm (warfarin)" sentence had been
+describing a case the arm it sat on did not reach.
+
+### What shipped
+
+`partner_genes(gene, drug)` on both clients — live, from the `phenotypes` maps; snapshot, from the
+`gene_count > 1` rows — asked first when a drug comes back empty, and settling `knows_drug` without a
+second request when it answers. The explanation has four arms now, pairwise distinct and pinned: keyed
+with a partner (names it, and RM28), a typo, could-not-ask, and listed-with-no-row-at-all (warfarin,
+reworded to say what it now means). On the snapshot the answer is exact while no drug is keyed on more
+than one pair, which is CPIC today; the builder keeps no recommendation id, and the docstring says so.
+
+**Not done.** No two-gene subject: that is RM28's, still parked, and the count is the maintainer's
+input to it rather than an argument here.
+
 ## RM245 — a `# source:` line is a pointer that rots, and 53 of them rotted in one session
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-18 in the uncut 0.7 line** · **Owner** the corpus

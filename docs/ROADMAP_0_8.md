@@ -798,6 +798,34 @@ open-world negation, ClawBio's was that nobody has a declarative form for a mult
 algorithm, SNPedia's was a general grammar at scale — and this one enumerates fine and still does not
 fit. A locus-keyed subject would settle it and a predicate would not.
 
+**The count this entry asked for, 2026-09-20 — and it is between the two numbers the question
+named.** Measured off the provisioned CPIC snapshot (`cpic_snapshot_b0ffd4c6f010`, built 2026-09-02)
+while answering S102, whose reporter had counted the same table from the other side: of **103 drugs**
+with a recommendation row, **18 are keyed only on a gene pair** and none is keyed both ways — every
+drug is single-gene or pair-keyed, never a mix — and `gene_count` never exceeds 2. By rows it is
+**2,656 of 3,411** pair-keyed, which is what made the drafter's *"the snapshot has no row for it"*
+false for a drug with 35 of them. The 18 drugs fall into **six pairs**:
+
+| pair | drugs |
+|---|---|
+| CACNA1S + RYR1 | desflurane, enflurane, halothane, isoflurane, methoxyflurane, sevoflurane, succinylcholine |
+| CYP2C19 + CYP2D6 | amitriptyline, clomipramine, doxepin, imipramine, trimipramine |
+| NUDT15 + TPMT | azathioprine, mercaptopurine, thioguanine |
+| ABCG2 + SLCO1B1 | rosuvastatin |
+| CYP2B6 + CYP2C19 | sertraline |
+| CYP2C9 + SLCO1B1 | fluvastatin |
+
+Warfarin is **not** among them: it has no recommendation row at any arity, because its guideline is a
+dosing algorithm rather than a recommendation table, so the ClawBio entry's case is the one CPIC drug
+this count cannot reach. Read against the question — *three parks again, thirty changes the economy
+argument* — eighteen drugs across six pairs is the middle: more than a warfarin-shaped exception,
+less than a pattern the enumerative combiner is failing at scale, and every one of them is arity 2.
+The drafter now names the partner gene instead of claiming absence (RM249), which is a message and
+not a table; whether six pairs earn a pair-keyed subject stays the maintainer's decision, and this
+entry stays parked on it. The reporter's reading — ClawBio keys each of these on a single gene and
+never mentions the partner, *a lossy answer, not a model to copy* — is the right one and is recorded
+beside the survey's plan item 1, which this measurement answers.
+
 **Unmeasured, and flagged as such.** This is a *reported* case: the paper has not been read here, so
 the marker count, the exact patterns, and above all **whether Kulminski phases them** are unverified.
 That last one decides which of the two warnings above applies, and it is the first thing to establish

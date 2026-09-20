@@ -34,6 +34,20 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-20 — S102–S104: a drafter that claimed absence, a recipe that refused on its own stubs, and a table that photocopied the module
+
+`just-dna-enricher` and `just-dna-compiler`, inside the uncut 0.7 line (the enricher past 0.7.1, the
+compiler past 0.7.0). Three consumer reports from one session building a PGx panel, all answered as
+shipped, none needing a schema change — every fix is a message, a lookup, or a derived table's
+contents, so the class is a patch in both tiers.
+
+- **RM249 (S102) — `draft --drug azathioprine` on TPMT said the snapshot had no row for it, and the
+  snapshot had 35, every one keyed on TPMT *and* NUDT15.** `recommendations()` rightly keeps
+  single-gene rows only; the explanation for the empty result had three arms and the true one was
+  unreachable from a snapshot. Both CPIC clients gain `partner_genes(gene, drug)`, asked first when a
+  drug comes back empty, and the message names the partner and RM28. Warfarin, which has no
+  recommendation row at any arity, keeps its own arm, reworded to say so. Measured on the snapshot and
+  recorded on RM28: 18 of 103 drugs are pair-keyed, six pairs, arity never above 2.
 ## 2026-09-19 — `just-dna-enricher` 0.7.1: three checks that could not run were reporting that they passed
 
 **Enricher only.** `just-dna-format` and `just-dna-compiler` stay at `0.7.0` and are unaffected — the

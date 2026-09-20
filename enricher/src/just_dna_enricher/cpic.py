@@ -475,6 +475,32 @@ class CpicClient:
         """
         return bool(self._get("drug", {"select": "name", "name": f"eq.{drug.strip().lower()}"}))
 
+    def partner_genes(self, gene: str, drug: str) -> list[str]:
+        """The genes CPIC keys this drug's recommendations on *together with* `gene` (S102).
+
+        `recommendations` keeps a row only when its `phenotypes` map names exactly one gene, so a
+        drug whose every guideline row is keyed on a gene pair — thiopurines on TPMT **and** NUDT15,
+        the tricyclics on CYP2D6 **and** CYP2C19 — comes back empty, and the drafter had only
+        `knows_drug` to explain it: *CPIC lists the drug but records no single-gene recommendation*.
+        True, and useless, because it reads as "nothing to draft" when the fact is that the
+        recommendation exists and is about a subject this table cannot hold. This is the second
+        half of that explanation: the partners, so the author knows which gene the row is keyed with.
+
+        Asked only to explain an empty answer, like `knows_drug`; sorted, so a re-draft says the
+        same thing. Empty means no multi-gene row names `gene` for this drug, which is also what an
+        unknown drug returns — `knows_drug` is the one that tells those apart.
+        """
+        found = self._get("drug", {"select": "drugid,name", "name": f"eq.{drug.strip().lower()}"})
+        if not found:
+            return []
+        rows = self._get("recommendation", {"select": "phenotypes", "drugid": f"eq.{found[0]['drugid']}"})
+        partners: set[str] = set()
+        for row in rows:
+            phenotypes = row.get("phenotypes") or {}
+            if gene in phenotypes and len(phenotypes) > 1:
+                partners.update(g for g in phenotypes if g != gene)
+        return sorted(partners)
+
     def defining_variants(self, gene: str) -> tuple[list[CpicDefiningVariant], list[str]]:
         """Star-allele defining variants for one gene, plus warnings for what could not be used.
 
@@ -678,6 +704,35 @@ class CpicSnapshotClient:
         is not worth a column today, since the only consumer is one warning's wording.
         """
         return None
+
+    def partner_genes(self, gene: str, drug: str) -> list[str]:
+        """The same question as the live client's, off the flattened table (S102).
+
+        The builder flattens one recommendation's `phenotypes` map to one row per gene and keeps
+        no recommendation id, so the rows of one guideline cannot be grouped back together here.
+        The answer is therefore *every* gene the drug's multi-gene rows are keyed on other than
+        `gene`, which is exact while no drug is keyed on more than one pair — and that is CPIC
+        today: measured on the 2026-09-02 snapshot, `gene_count` never exceeds 2 and no drug has
+        both a single-gene and a multi-gene shape. A three-gene guideline would still be named
+        correctly; two *different* pairs for one drug would be listed together, which is the one
+        reading this cannot make and the builder would need a column to give it.
+        """
+        named = self._rows(
+            "recommendations.parquet",
+            "gene = ? AND drug = ? AND gene_count > 1",
+            [gene, drug.strip().lower()],
+            "gene",
+        )
+        if not named:
+            return []
+        others = self._rows(
+            "recommendations.parquet",
+            "drug = ? AND gene_count > 1 AND gene <> ?",
+            [drug.strip().lower(), gene],
+            "DISTINCT gene",
+            "gene",
+        )
+        return [r["gene"] for r in others]
 
     def defining_variants(self, gene: str) -> tuple[list[CpicDefiningVariant], list[str]]:
         """Star-allele defining variants, with the same aggregated unusable-allele warnings.

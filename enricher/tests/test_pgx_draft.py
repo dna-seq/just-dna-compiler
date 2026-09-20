@@ -590,6 +590,68 @@ def test_the_conclusion_carries_cpics_own_two_halves() -> None:
 
 
 # ── an incidental failure must not destroy a complete draft (R2-4) ──────────────────────────────
+def test_a_pair_keyed_drug_is_explained_by_its_partner_gene_live(tmp_path: Path) -> None:
+    """S102: `--drug azathioprine` on TPMT drafted nothing and said CPIC had no single-gene row.
+
+    True, and the wrong thing to say: CPIC's every azathioprine recommendation is keyed on TPMT
+    *and* NUDT15, so the guideline exists and is about a subject `diplotypes.csv` cannot hold. The
+    empty-drug explanation has a fourth arm now, and it names the partner. Live here, on the
+    fixture's gene and a real pair it belongs to (the tricyclics are keyed on CYP2D6 *and*
+    CYP2C19); the snapshot half is in `test_gated_snapshots`.
+    """
+    recommendation = {
+        "drugid": "RxNorm:704",
+        "phenotypes": {"CYP2D6": "Poor Metabolizer", "CYP2C19": "Normal Metabolizer"},
+        "implications": {},
+        "drugrecommendation": "Reduce dose",
+        "classification": "Strong",
+        "population": "general",
+        "activityscore": {},
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/drug"):
+            return httpx.Response(200, json=[{"drugid": "RxNorm:704", "name": "amitriptyline"}])
+        if path.endswith("/recommendation"):
+            return httpx.Response(200, json=[recommendation])
+        return _dispatch(request)
+
+    client = CpicClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert client.recommendations("CYP2C19", "amitriptyline") == []
+    assert client.partner_genes("CYP2C19", "amitriptyline") == ["CYP2D6"]
+    assert client.partner_genes("TPMT", "amitriptyline") == []  # no pair row names this gene
+    result = draft_gene(
+        _spec(tmp_path), "CYP2C19", drugs=("amitriptyline",), declared_use="non_commercial", client=client
+    )
+    [line] = [w for w in result.warnings if "amitriptyline" in w]
+    assert "CYP2C19 together with CYP2D6" in line
+    assert "RM28" in line
+    assert "does not list" not in line and "no row for it" not in line
+    assert not result.skipped
+
+
+def test_a_drug_with_no_recommendation_rows_at_all_keeps_the_warfarin_arm(tmp_path: Path) -> None:
+    """The arm S102's partner arm was carved out of: listed by CPIC, and no recommendation row of
+    any arity. Warfarin measures as exactly that on the snapshot, so the sentence still names it."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/drug"):
+            return httpx.Response(200, json=[{"drugid": "RxNorm:11289", "name": "warfarin"}])
+        if path.endswith("/recommendation"):
+            return httpx.Response(200, json=[])
+        return _dispatch(request)
+
+    client = CpicClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
+    result = draft_gene(
+        _spec(tmp_path), "CYP2C19", drugs=("warfarin",), declared_use="non_commercial", client=client
+    )
+    [line] = [w for w in result.warnings if "warfarin" in w]
+    assert "publishes no phenotype-keyed recommendation row for it at all" in line
+    assert "together with" not in line
+
+
 def test_an_unanswerable_knows_drug_keeps_the_draft_and_says_it_could_not_ask(tmp_path: Path) -> None:
     """`knows_drug` sharpens a sentence; it must not be able to discard the rows (R2-4).
 

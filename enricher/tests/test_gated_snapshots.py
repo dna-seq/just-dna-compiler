@@ -104,16 +104,18 @@ def _cpic_snapshot(root: Path) -> Path:
     pl.DataFrame(
         # Two rows for one phenotype+drug: CPIC scopes clopidogrel to three clinical contexts. The
         # third row names two genes, so the reader must drop it exactly as the live client does.
+        # The last two rows are one *pair-keyed* guideline flattened (S102): fluvastatin is keyed
+        # on CYP2C9 **and** SLCO1B1 together, and CPIC publishes no CYP2C9-alone row for it.
         {
-            "gene": ["CYP2C19", "CYP2C19", "CYP2C19"],
-            "phenotype": ["Intermediate Metabolizer"] * 3,
-            "drug": ["clopidogrel"] * 3,
-            "population": ["CVI ACS PCI", "NVI", "general"],
-            "classification": ["Strong", "Moderate", "Strong"],
-            "recommendation": ["Use prasugrel", "Standard dosing", "n/a"],
-            "implication": ["Reduced activation", "Reduced activation", "n/a"],
-            "activity_score": [None, None, None],
-            "gene_count": [1, 1, 2],
+            "gene": ["CYP2C19", "CYP2C19", "CYP2C19", "CYP2C9", "SLCO1B1"],
+            "phenotype": ["Intermediate Metabolizer"] * 3 + ["Poor Metabolizer", "Decreased Function"],
+            "drug": ["clopidogrel"] * 3 + ["fluvastatin"] * 2,
+            "population": ["CVI ACS PCI", "NVI", "general", "general", "general"],
+            "classification": ["Strong", "Moderate", "Strong", "Strong", "Strong"],
+            "recommendation": ["Use prasugrel", "Standard dosing", "n/a", "Lower dose", "Lower dose"],
+            "implication": ["Reduced activation", "Reduced activation", "n/a", "n/a", "n/a"],
+            "activity_score": [None] * 5,
+            "gene_count": [1, 1, 2, 2, 2],
         },
         schema={
             "gene": pl.Utf8,
@@ -253,6 +255,46 @@ def test_a_multi_gene_recommendation_is_dropped_by_the_snapshot_too(tmp_path: Pa
         ("NVI", "moderate"),
     ]
     assert all(r.gene == "CYP2C19" for r in recommendations)
+
+
+def test_a_pair_keyed_drug_names_its_partner_gene_from_the_snapshot(tmp_path: Path) -> None:
+    """S102: the rows `recommendations` drops are the answer to "why is this empty".
+
+    `recommendations("CYP2C9", "fluvastatin")` is empty by the `gene_count = 1` rule, and the table
+    that made it empty holds two rows for the drug, keyed on CYP2C9 *and* SLCO1B1. `partner_genes`
+    reads them back; a gene the drug's multi-gene rows never name gets nothing, and so does a drug
+    with no rows at all — `knows_drug` is what separates that from a typo.
+    """
+    client = CpicSnapshotClient(_cpic_snapshot(tmp_path / "cpic"))
+    assert client.recommendations("CYP2C9", "fluvastatin") == []
+    assert client.partner_genes("CYP2C9", "Fluvastatin") == ["SLCO1B1"]  # case-insensitive, as live
+    assert client.partner_genes("SLCO1B1", "fluvastatin") == ["CYP2C9"]
+    assert client.partner_genes("CYP2C19", "fluvastatin") == []  # no pair row names this gene
+    assert client.partner_genes("CYP2C19", "clopidogrel") == []  # its pair row has no partner row
+    assert client.partner_genes("CYP2C9", "warfarin") == []  # no rows at all
+
+
+def _pgx_spec(tmp_path: Path) -> Path:
+    spec = tmp_path / "spec"
+    spec.mkdir(parents=True, exist_ok=True)
+    (spec / "module_spec.yaml").write_text(
+        'schema_version: "1.0"\nmodule:\n  name: probe\n  title: T\n  report_title: T\n'
+        "  description: d\ngenome_build: GRCh38\n",
+        encoding="utf-8",
+    )
+    return spec
+
+
+def test_a_pair_keyed_drug_is_explained_from_a_snapshot_too(tmp_path: Path) -> None:
+    """The snapshot path is where S102 was reported: `knows_drug` withholds there, so the reader was
+    told the table had no row for a drug with 35 rows in it."""
+    client = CpicSnapshotClient(_cpic_snapshot(tmp_path / "cpic"))
+    result = draft_gene(
+        _pgx_spec(tmp_path), "CYP2C9", drugs=("fluvastatin",), declared_use="non_commercial", client=client
+    )
+    [line] = [w for w in result.warnings if "fluvastatin" in w]
+    assert "CYP2C9 together with SLCO1B1" in line
+    assert "no row for it" not in line
 
 
 def test_defining_variants_from_a_snapshot_carry_the_chromosome(tmp_path: Path) -> None:
