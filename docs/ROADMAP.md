@@ -399,6 +399,15 @@ dependency-weight decision with a measurement behind it (RM192), which is `@fix-
 it, name why each candidate repair is or is not right, and let the owner decide. The tree is red
 meanwhile, and that is the state this entry exists to make visible.
 
+**It is a release hazard, not only a dev-tree one — this is the half that raises the severity.** The
+generated tree is git-ignored but **not** build-ignored: `hatch_build.py` force-includes it, so the
+wheel ships whatever stamp the machine that built it produced. The published **0.7.0 works** (a peer
+session runs it from PyPI and drafted from CPIC on it), because it was built before the
+`grpcio-tools` that stamps 1.84.0. **A release cut today would ship the broken stamp to every
+installer**, and nothing in the cut checks it — the sweep gate compiles modules, it does not import
+the enricher's console script. Whatever repair lands, the release procedure needs the smoke test in
+(3) or the next cut is a coin toss on the build machine's resolver.
+
 **Related** RM192 (the measured Atlas dependency cost), RM196 (why this tier alone is on hatchling).
 
 # Not format scope
