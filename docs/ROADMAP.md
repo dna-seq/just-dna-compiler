@@ -405,6 +405,110 @@ meanwhile, and that is the state this entry exists to make visible.
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
 
+## RM248 — a declarative report schema: research, not a design
+
+**Severity** — (unsized, deliberately) · **Status** **open — a research item, asked by the maintainer
+2026-09-20.** Nothing here is a proposal yet; the exit is a measurement and a charter ruling, not a
+draft schema · **Owner** unassigned — the placement question is half the research · **Pairs with**
+[RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half),
+[RM188](ROADMAP_0_8.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics),
+and RM7 below (which is **not** the same item — see *What this is not*)
+
+**The ask, verbatim in intent:** some kind of report schema — Jinja templates or something — where the
+*contents* are static and declarative and all the fancy CSS lives downstream.
+
+### Why it is filed as research rather than as a design
+
+Because the charter has something to say first, and it does not obviously say yes. The Non-goals are
+explicit: *"No UI and no gene–disease inference. The format catalogs curated annotations that consumers
+**join** against variant data; interpretation and presentation belong to those consumers."* A report
+schema that describes a rendered page is that non-goal by another name.
+
+The maintainer's own framing is also the resolution worth testing: **a report is a declaration of
+CONTENTS, not of appearance.** *What a report says, in what order, keyed to which annotation rows* is
+arguably still annotation; *how it looks* is unambiguously downstream. If that line holds, this is
+legal and the non-goal is untouched. If it does not — if a contents schema cannot be written without
+smuggling in ordering, emphasis or layout — then the honest answer is that this belongs to a consumer
+and the entry closes. **That ruling is the first deliverable.**
+
+**Principle 1 decides the other half before any syntax is chosen.** OakVar's reporter modules are
+Turing-complete, and that is exactly the shape P1 rejects: code in the compile path, no
+byte-reproducibility, a runtime every consumer must embed. Jinja is not obviously safer — it has
+loops, filters and arbitrary attribute access, so "a template language" is a spectrum and the sanctioned
+escapes are named: a **non-Turing-complete boolean predicate** and **declarative pattern grammars**. Any
+candidate has to be placed on that spectrum explicitly rather than adopted because it is familiar.
+
+### What this is not
+
+**Not [RM7](#rm7--evaluation-output--report-card-schema).** That entry is a *per-sample* evaluation
+output — a measurement, and therefore a consumer contract by the data-agnostic north star. This one is
+about the structure of a report over **annotation content**, with no sample in it. The two are adjacent
+enough to be confused and are listed together on purpose.
+
+**Not a fourth library**, on today's evidence. The maintainer's read is that it looks like overkill, and
+nothing here contradicts that yet: a declarative contents schema is a schema, which is
+`just-dna-format`'s job, and a renderer is a consumer's. A fourth tier would only be justified if the
+research finds a real body of shared rendering logic that is neither schema nor consumer — and finding
+that out is part of the item.
+
+### The competitor evidence, which is the reason this is worth research at all
+
+This pairs with [RM188](ROADMAP_0_8.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)
+because the surveys already ran and the reports are where every competitor's declarative layer visibly
+ends:
+
+- **ClawBio** — `pharmgx-reporter` is a 2,327-line Python file holding its variant tables inline
+  (`PGX_SNPS`, `GENE_DEFS`, `GUIDELINES`: 32 variants, 13 genes, 59 drugs), and
+  `clinical-variant-reporter` and `cnv-acmg-classifier` are `planned`. Their reports are good and their
+  data is a module in a shape nothing validates. See [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md).
+- **genomi** — a runtime rather than a format, with a curated thirteen-record catalogue. See
+  [`probes/GENOMI_SURVEY.md`](probes/GENOMI_SURVEY.md).
+- **OakVar** — reporter modules, Turing-complete. The counter-example, and the one this repo's P1
+  already has an answer to.
+- **SelfDecode and the consumer-genomics vendors** — the reports are the product. Not surveyed here,
+  and a survey of what their reports *contain* (as opposed to how they look) is cheap and is probably
+  the highest-value first measurement this item can take.
+- **`just-dna-lite`** already has a built-in reporting system. It is the reference consumer, so **what
+  it does today is the baseline any schema has to beat** — and if it needs nothing from us, that is an
+  answer rather than a gap.
+
+### Why it pairs with [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half)
+
+RM28's surviving half is the **predicate** — a claim keyed on more than one subject, which no brick
+holds. Its second corpus entry is exactly a *report* finding: ClawBio's pharmgx-reporter renders one
+AVOID across 59 drugs, warfarin, and reaches it through `"special": "warfarin"` — a hardcoded branch
+calling `get_warfarin_rec(profiles)`. **The report is where the missing predicate surfaces**: a section
+that has to say *"CYP2C9 and VKORC1 together"* is RM28's gap wearing a consumer's clothes, and a report
+schema that cannot express it would be shipping the same hardcoded branch one layer up. So the two
+items constrain each other: **RM28's answer bounds what a report section can be keyed on**, and the
+report is the place where an unexpressible pairing is most visible.
+
+### There is already a presentation surface, and it is small and deliberately bounded
+
+Worth knowing before anything is designed, because it sets the precedent this item either follows or
+breaks. `module_spec.yaml` carries `report_title`; `normalize.py` splits **identity** keys from
+**presentation** keys with a stated reason per key (`PRESENTATION_AUTHORITY_KEYS`, today just
+`short_description`); and `RECOMMENDED_*` vocabularies exist for colours and icons. So the format
+already admits *some* presentation, as named keys with per-key justifications and a storing authority.
+The question this item should answer is whether a report schema is the same thing at a larger scale, or
+a different kind of thing that happens to rhyme.
+
+### What would close this
+
+One of three, and the research is choosing which:
+
+1. **Dissolved** — `just-dna-lite`'s existing reporting needs nothing from the format, and the
+   contents/appearance line cannot be drawn cleanly. The entry closes with the reasoning recorded.
+2. **Closed additively** — a bounded, declarative contents schema (a table kind, or a spec block) that
+   passes P1 and the human-authorable ⇔ machine-precise gate, with a motivating report from a real
+   consumer. Then it is an ordinary minor-legal addition.
+3. **Parked with a sharper reason** — the shape is real but blocked on RM28's predicate, which is the
+   most likely outcome if the warfarin case turns out to be representative rather than singular.
+
+**The cheapest first measurement**, and the one to take before any syntax is discussed: read what
+`just-dna-lite` actually renders today, and list every field it needs that a module does not carry.
+That is a list, it is finite, and it decides between (1) and (2) without a design round.
+
 ## RM7 — Evaluation-output / report-card schema
 
 **Severity** — · **Status** **not format scope** — a consumer contract · **Owner** consumer
