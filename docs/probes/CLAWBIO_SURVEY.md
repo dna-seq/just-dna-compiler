@@ -356,6 +356,50 @@ trip then drops the block**, because `weighting` is advisory and not reconstruct
 only place a module can say what its weights mean does not survive a reverse. Documented, not a bug,
 and worth knowing before item 6 leans on it.
 
+**The PGx half was then run too, by another session, and it is the larger of the two exercises.**
+Between 2026-09-13 and 2026-09-20 `just-module-creator-f0` built **thirteen modules, one per
+`GENE_DEFS` gene**, drafted from CPIC rather than transcribed from ClawBio's dicts, each README
+naming ClawBio's allele set as its comparison scope. Its ledger and the report to its own user are
+authoritative; what belongs here is the three numbers, because a single percentage over this corpus
+is always wrong:
+
+* **Shape — 58/59 drugs.** Reproduced independently: every `GUIDELINES` entry but warfarin is keyed
+  on one gene phenotype, and that is a statement about the *schema*.
+* **Content — 42/58 pairs have a CPIC recommendation at all**, of which 10 are `gene_count = 2`, so
+  the drafter's ceiling on this corpus is 32/58. A statement about *CPIC*.
+* **Tooling — 38/58 landed** at ClawBio's own truncated allele scope, 32 as CPIC drug rows in
+  `diplotypes.csv` and 6 as ClinPGx rows in `pharm_variants.csv`. A statement about *the drafters*,
+  and the one a reader will misquote as "the format can express 66% of their pharmacogenetics".
+  It cannot be read that way: three of its absences turned out to be drafter gaps, below.
+
+**What the round established about the schema, after checking every claim against the models.** Three
+alleles were reported as undefinable and only one is:
+
+* `CYP2D6*6` (a 1 bp deletion) and `NUDT15*2` (an insertion) **are definable** —
+  `HaplotypeRow.allele` takes "a symbolic/structural allele carrying its length" and
+  `SYMBOLIC_ALLELE_TYPES` is `{CNV, DEL, DUP, INS, INV}` (RM5), so `<DEL:1>` and `<INS:n>` are the
+  spellings. The CPIC drafter does not emit them. Note `@symbolic-alleles`: a lengthless `<DEL>`
+  validates and is then **dropped at compile**, so the length is not optional.
+* DPYD is the same shape. CPIC names its alleles as HGVS strings, the drafter writes nothing, and the
+  format holds them fine — `drug_labels._allele_keys` composes `DPYD c.1905+1G>A (*2A)` and
+  `DPYD c.1129-5923C>G, c.1236G>A (HapB3)` deliberately, so a shipped pass already joins on them.
+* **`UGT1A1*28` is the real gap, and not for the reason first given.** A TA(n) repeat is a *count*,
+  not a fixed-length event. `repeat_alleles.csv` bins counts to phenotypes keyed `(gene, repeat_unit)`
+  and `AlleleFunctionRow` has no repeat-count column, so **nothing can state that `*28` means TA7** —
+  two tables that do not meet. Filed by that session as **S106**. It is the only schema finding the
+  PGx round produced, and ClawBio's own *Panel Limitations* names the same allele from the other side.
+
+Structural star alleles as a class are **not** a gap: `AlleleFunctionRow` carries `sv_type`,
+`copy_number` and `hybrid_orientation` for `*5` deletions, `*1xN` duplications and `*36+*10` hybrids,
+and `reference_examples/cyp2d6_structural/` is the worked case (via `copynumbers.csv` +
+`activity_phenotype.csv`, not `haplotypes.csv`).
+
+**And the thing the exercise demonstrated that no table here can.** ClawBio's phenotype maps are lossy
+copies of CPIC's — `GENE_DEFS["CYP2D6"]["phenotypes"]` has three phenotypes where CPIC has five plus
+activity scores — and modules drafted from CPIC **do not inherit the truncation**. That is the
+strongest form of the § *The short answer* claim: not that we can hold what they hold, but that
+holding it from the source is what stops the copy drifting.
+
 ---
 
 ## The comparison table
