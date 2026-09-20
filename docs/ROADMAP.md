@@ -184,14 +184,15 @@ Two consequences worth stating outright:
 
 # Active items
 
-**One — RM235** (the count is the `## RMn` sections below — it
+**One — RM247** (the count is the `## RMn` sections below — it
 read "four as of 2026-08-21" for two rounds after it stopped being four, then *not one of them is a
 decision* through the three that are, then *three* for the hour it took a fourth to be filed, then
 *two* until RM151 shipped, then *one* naming RM152, then *one* naming RM153, then none, then seven for
 the 2026-09-01 source-adoption round, then one, **none again on 2026-09-11** when RM164 moved to
 the 0.8 file, **one again on 2026-09-12** when RM232 was filed, none again the same day when it
-shipped, and **one again that evening** when RM235 was filed — which is why the paragraph under it
-says to count off the sections rather than off this sentence).
+shipped, and **one again that evening** when RM235 was filed, then **none on 2026-09-20** once
+RM235 and RM244-RM246 had all shipped, then **one again the same day** when RM247 was filed — which
+is why the paragraph under it says to count off the sections rather than off this sentence).
 
 **RM232 was filed open and shipped in the same session, and the filing is the part worth keeping.**
 It was written into this file the moment it was confirmed rather than when its fix was approved,
@@ -341,6 +342,64 @@ you**, so check which `# ` heading you are under before writing the section, not
 
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
+
+## RM247 — the enricher CLI is dead on a fresh install: a build-isolated `grpcio-tools` outruns the locked `grpcio`
+
+**Severity** high · **Status** open — **filed 2026-09-20, confirmed reproducible, unfixed** ·
+**Owner** enricher (packaging) · **Motivating case** a peer session could not run
+`just-dna-enricher draft --gene <X>` at all
+
+`uv run just-dna-enricher <anything> --help` raises before Typer is reached:
+
+```
+RuntimeError: The grpc package installed is at version 1.83.1, but the generated code in
+just_dna_enricher/generated/_alphagenome_atlas_protos/atlas_service_pb2_grpc.py depends on
+grpcio>=1.84.0.
+```
+
+**Two floors for one number, and only one of them is locked.** `[build-system] requires` is
+`["hatchling", "grpcio-tools>=1.68.0"]` — a floor with no ceiling, resolved in an **isolated build
+environment** that `uv.lock` does not constrain, so it picks up whatever `grpcio-tools` is current and
+stamps `GRPC_GENERATED_VERSION = '1.84.0'` into the generated bindings. The runtime dep is
+`grpcio>=1.68.0`, locked at **1.83.1**. The generated module raises at import time when the two
+disagree. They are the same number — the version that generates the code and the version that runs it
+— written twice, one pinned and one floating, which is the defect rather than either value.
+
+**Blast radius is the whole command surface, not the Atlas commands.** `cli.py` imports
+`alphagenome_check` → `atlas_client` → the generated bindings at module scope, so `enrich`, `draft`,
+`literature`, `pgx`, `frequencies` and every other subcommand die on an Atlas dependency they do not
+use. **17 test files error during collection** and 38 import `just_dna_enricher.cli`.
+
+**Reproduced from clean, so it is not one machine's stale artifact.** The generated tree is
+git-ignored and produced at install; deleting it and running
+`uv sync --reinstall-package just-dna-enricher` regenerates the *same* broken stamp. The repo's full
+suite was green at 4658 passed on 2026-09-13; the generated files on this tree are dated 2026-09-19.
+So the breakage arrived with a `grpcio-tools` release, not with a commit here — which is exactly what
+an unconstrained build requirement buys.
+
+**Do not fix it by bumping the runtime floor without re-reading RM192.** That entry *measured* the
+Atlas dependency cost at grpcio 1.83.1 / protobuf 7.36.1 — 19 MB of site-packages and +2 packages —
+and the floor is load-bearing for a tier whose weight is a charter concern. The candidate repairs, in
+the order they should be argued:
+
+1. **Make it one number.** Constrain the build requirement against the runtime lock rather than
+   letting them float apart — the rule is *the grpcio floor is whatever generated the bindings*, and
+   nothing currently states it anywhere a tool can read.
+2. **Import the Atlas bindings lazily**, so a `grpcio` problem breaks the Atlas commands and not
+   `draft`. The module-scope import is what turns a narrow dependency fault into a dead CLI, and this
+   is worth doing whichever way (1) goes. Note the house rule against inline imports has a stated
+   exception for a guarded optional dependency, which is what `atlas` is (`[project.optional-dependencies]`).
+3. **A smoke test that imports the CLI entrypoint the way the console script does.** 38 test files
+   import `just_dna_enricher.cli` and all 38 now error at *collection*, which reads as a broken suite
+   rather than a broken command — and a red collection is a different signal from a red assertion.
+   Whatever shape it takes, it has to fail as *one* named thing.
+
+**Not fixed in the filing session, deliberately**: the choice between (1) and a floor bump is a
+dependency-weight decision with a measurement behind it (RM192), which is `@fix-vs-surface` — surface
+it, name why each candidate repair is or is not right, and let the owner decide. The tree is red
+meanwhile, and that is the state this entry exists to make visible.
+
+**Related** RM192 (the measured Atlas dependency cost), RM196 (why this tier alone is on hatchling).
 
 # Not format scope
 
