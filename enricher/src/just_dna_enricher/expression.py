@@ -72,7 +72,12 @@ try:
     from just_dna_enricher.atlas_client import AtlasError, AtlasUnavailable, connect
 
     ATLAS_CLIENT_AVAILABLE = True
-except ImportError:  # pragma: no cover - exercised where the [atlas] extra is absent
+# `RuntimeError` beside `ImportError` for the reason `alphagenome_check`'s twin carries it (RM247):
+# grpc's generated bindings raise `RuntimeError`, not `ImportError`, when the installed `grpcio` is
+# older than the `grpcio-tools` that stamped them. This guard was the SECOND one the fault escaped
+# through, after `alphagenome_check`'s — which is why the repair is a walked guard rather than two
+# edits: `test_every_atlas_client_import_is_guarded_against_both` fails on a third.
+except (ImportError, RuntimeError):  # pragma: no cover - exercised where the [atlas] extra is absent
 
     class _NeverRaised(Exception):
         """Stands in for an Atlas error type when no client can exist to raise one."""

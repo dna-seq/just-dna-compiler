@@ -5060,7 +5060,10 @@ def _atlas_client_or_none():
     # measured its way out of. `AtlasError` comes with it for the same reason.
     try:
         from just_dna_enricher.atlas_client import AtlasError, connect
-    except ImportError:
+    # `RuntimeError` for the reason `alphagenome_check`'s twin carries it: a `grpcio` older than the
+    # `grpcio-tools` that generated the bindings raises it at import, and this arm is where that has
+    # to become "no Atlas client" rather than a traceback (RM247).
+    except (ImportError, RuntimeError):
         # The docstring above promises three absences each naming its own remedy, and this arm used
         # to fold two of them into one sentence telling the reader to do both — so the promise was
         # a claim the code did not keep. `client_absence()` decides which one it is; it lives in

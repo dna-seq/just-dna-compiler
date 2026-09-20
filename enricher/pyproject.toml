@@ -69,7 +69,13 @@ just-dna-enricher = "just_dna_enricher.cli:app"
 # An extra rather than core because one gRPC surface does not move the tier's floor. If a second
 # arrives, this moves to `dependencies` and nothing else changes.
 atlas = [
-    "grpcio>=1.68.0",
+    # RM247: this floor and the `grpcio-tools` pin under `[build-system]` are ONE number written
+    # twice, and they must agree. `protoc` stamps `GRPC_GENERATED_VERSION` into the generated
+    # bindings and they refuse to import on a runtime older than it — so a floating build tool and a
+    # floored runtime is a wheel that cannot run itself. 1.83.1 is the pair RM192 measured the Atlas
+    # cost at, and the version `uv.lock` already resolves, so this is the declaration catching up
+    # with reality rather than a new dependency cost. `test_atlas_grpc_is_one_number` asserts it.
+    "grpcio>=1.83.1",
     "protobuf>=5.29.0",
 ]
 # Publisher / developer surface. huggingface-hub and ga4gh.vrs are already core deps (snapshot
@@ -86,7 +92,7 @@ dev = [
     # bindings, and the runtime imports them without it (RM192). The suite needs it because
     # `test_bindings_regenerate_from_the_vendored_sources` regenerates into a scratch directory —
     # which is what keeps "the repository carries reproducible sources" a checked property.
-    "grpcio-tools>=1.68.0",
+    "grpcio-tools==1.83.1",
     # Builder-only, for `just-dna-enricher acmg build`: ACMG publishes the SF v3.3 list as a
     # supplementary **workbook**, and the page NCBI serves is a release behind it. The runtime check
     # reads the built CSV snapshot with the standard library, so this never enters a check's install.
@@ -99,7 +105,12 @@ dev = [
 # package, so `just-dna-format` and `just-dna-compiler` stay on `uv_build`; the blast radius is the
 # one tier that runs `protoc`.
 [build-system]
-requires = ["hatchling", "grpcio-tools>=1.68.0"]
+# **Pinned, not floored** (RM247). `[build-system] requires` resolves in an ISOLATED environment that
+# `uv.lock` does not constrain, so a floor here means the newest `grpcio-tools` on PyPI generates the
+# bindings — stamping a `GRPC_GENERATED_VERSION` newer than the runtime `grpcio` floor, and the wheel
+# then raises at import on every command. An exact pin is what makes the stamp reproducible, which is
+# the same reason the `.proto` sources are reached by a commit id and a digest rather than a range.
+requires = ["hatchling", "grpcio-tools==1.83.1"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]

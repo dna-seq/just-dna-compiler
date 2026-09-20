@@ -74,7 +74,13 @@ try:
     )
 
     ATLAS_CLIENT_AVAILABLE = True
-except ImportError:  # pragma: no cover - exercised where the [atlas] extra is absent
+# `RuntimeError` beside `ImportError` because grpc's generated bindings do not raise the exception an
+# absent dependency raises: when the installed `grpcio` is older than the `grpcio-tools` that stamped
+# them, `atlas_service_pb2_grpc` raises `RuntimeError` at import. Catching only `ImportError` let that
+# escape through this module into `cli.py`, killing `enrich`, `draft` and `literature` — commands that
+# touch no Atlas code — and taking 17 test modules down at collection with them (RM247). An optional
+# dependency that cannot be imported degrades the same way whichever exception it chose to say so.
+except (ImportError, RuntimeError):  # pragma: no cover - exercised where the [atlas] extra is absent
 
     class _NeverRaised(Exception):
         """Stands in for an Atlas error type when no client can exist to raise one."""
