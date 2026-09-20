@@ -34,12 +34,12 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-20 — S102–S104: a drafter that claimed absence, a recipe that refused on its own stubs, and a table that photocopied the module
+## 2026-09-20 — S102–S106: a drafter that claimed absence, a recipe that refused on its own stubs, a table that photocopied the module, and a gate that ignored the file it read
 
 `just-dna-enricher` and `just-dna-compiler`, inside the uncut 0.7 line (the enricher past 0.7.1, the
-compiler past 0.7.0). Three consumer reports from one session building a PGx panel, all answered as
-shipped, none needing a schema change — every fix is a message, a lookup, or a derived table's
-contents, so the class is a patch in both tiers.
+compiler past 0.7.0). Five consumer reports from one session building a PGx panel: four answered as
+shipped and one filed as a design item with its message half shipped. None needed a schema change —
+every fix is a message, a lookup, or a derived table's contents, so the class is a patch in both tiers.
 
 - **RM249 (S102) — `draft --drug azathioprine` on TPMT said the snapshot had no row for it, and the
   snapshot had 35, every one keyed on TPMT *and* NUDT15.** `recommendations()` rightly keeps
@@ -66,12 +66,26 @@ contents, so the class is a patch in both tiers.
   Ensembl now warns in `best_effort` and refuses in `strict`, which is the finding the old branch could
   not produce.
 
-## 2026-09-19 — `just-dna-enricher` 0.7.1: three checks that could not run were reporting that they passed
+- **RM252 (S105) — `pgx` said "cpic forbids sale and no use was declared" about a module whose licence
+  table recorded `declared_use=non_commercial` for CPIC, and asked the author to assert it again.**
+  `licensing.effective_declared_use` reads the module's own recorded declaration for that source at
+  that layer when the flag states none, at all nine gates that have a module. The flag outranks the
+  file in both directions, `unstated` on disk is not a declaration, and a leg with no row (PharmVar)
+  still asks. `PgxResult.recorded_use` and the summary line say where a declaration came from.
+- **RM253 (S106), filed — a repeat-count star allele has no home a diplotype can name.** UGT1A1 `*28`
+  is `TA(8)` at rs3064744; `<CNV:TR:n>` is a length, `repeat_alleles.csv` is a bin, and neither is a
+  name. Two message fixes shipped with the filing: the notation warning names the symbolic spellings
+  the format holds and says the *drafter* does not translate CPIC's `DELTCT`/`INSCGGG`/`TA(8)` into
+  them, and DPYD's HGVS-named diplotypes are no longer reported as copy-number notation.
 
-**Enricher only.** `just-dna-format` and `just-dna-compiler` stay at `0.7.0` and are unaffected — the
-same shape as `v0.6.3` and `v0.6.4`, which were enricher-only patches with the two lower tiers left at
-`0.6.1`. Upgrade `just-dna-enricher` alone; its floors still name `>=0.7.0` for both, because that is
-what those packages are at.
+## 2026-09-20 — `just-dna-enricher` + `just-dna-compiler` 0.7.1: four false-pass checks, and a CLI that could not import itself
+
+**`just-dna-enricher` and `just-dna-compiler` move; `just-dna-format` stays at `0.7.0`** — a partial
+cut, the shape `v0.6.3` and `v0.6.4` already used, where the lower tiers sat at `0.6.1` and the
+enricher's floors named them. The compiler moves **because the enricher needs it to**: `resolver`
+imports `just_dna_compiler.resolution_findings`, a module RM244 added after `v0.7.0` was published, so
+an enricher wheel floored at `>=0.7.0` raised `ModuleNotFoundError` in a clean venv. Nothing new
+crossed into `just-dna-format`, so it does not move.
 
 Three defects, all the same class: **a check that could not run answered as a check that passed.**
 
@@ -92,8 +106,18 @@ Three defects, all the same class: **a check that could not run answered as a ch
 now speak through one builder — four sentences reworded, listed in that entry), RM246 (the mode ladder
 is one mechanism), and RM245 (the scenario corpus points at symbols rather than line numbers).
 
-**A guard was corrected to make this cut possible, and the correction is an improvement rather than a
-concession.** `test_an_intra_workspace_floor_names_the_version_being_cut` asserted that a floor equals
+**RM247 — the version that generates the Atlas bindings and the version that runs them are one
+number.** `[build-system] requires` resolves in an environment `uv.lock` does not constrain, so
+`grpcio-tools>=1.68.0` meant *newest on PyPI*; `protoc` stamps its version into the generated bindings,
+and those raise at import on an older runtime `grpcio`. With the runtime floored at `>=1.68.0` the
+wheel could not import itself, and because two modules import `atlas_client` at module scope, `enrich`,
+`draft` and `literature` — which touch no Atlas code — died with it. The build tool is now pinned at
+`==1.83.1` with the runtime floored at `>=1.83.1` (the pair RM192 measured, and the version `uv.lock`
+already resolved, so not a floor bump in RM192's sense), both guards catch `RuntimeError` as well as
+`ImportError`, and a test imports the console entrypoint — which nothing did before, so this used to
+read as thirty-eight broken test modules rather than as a dead command.
+
+**Two guards were corrected, and both corrections are improvements rather than concessions.** `test_an_intra_workspace_floor_names_the_version_being_cut` asserted that a floor equals
 *the depender's own version*, which is only the same thing as the truth while all three packages move
 together. It was written on 2026-08-31 in the commit that repaired a real floor lag, and it took the
 cadence of the three cuts before it for an invariant — outlawing, retroactively, the enricher-only
@@ -101,6 +125,14 @@ shape this repository had already shipped as `v0.6.3` and `v0.6.4`. The rule is 
 current version of the tier it imports**, which catches the original incident exactly as well (`format`
 at `0.7.0`, `compiler` declaring `>=0.6.6`) and costs nothing when one tier is patched alone. Its
 sibling `test_every_member_carries_the_same_version` asserted the cadence directly and is gone.
+
+And that restated rule turned out to be **necessary but not sufficient**, which only a clean-venv
+install showed: it compares a declaration against the *local tree*, where every module exists by
+construction, so it cannot see an import of a module the published dependency does not carry.
+`test_a_cross_tier_import_exists_in_the_version_its_floor_names` reads the dependency's modules off the
+`v<floor>` **tag** and fails on exactly that — the same incident the floor rule was written for
+(`0.7.0`'s compiler importing `just_dna_format.overrides` under a `>=0.6.6` floor) arriving by a route
+the rule did not watch.
 
 ## 2026-09-18 — RM245: the corpus points at symbols now, because 53 of its line numbers rotted in one session
 

@@ -16,7 +16,7 @@ maintainers = [
 # fetch; format and compiler stay strictly inject-only.
 dependencies = [
     "just-dna-format>=0.7.0",
-    "just-dna-compiler>=0.7.0",
+    "just-dna-compiler>=0.7.1",
     "duckdb>=1.1.0",
     "platformdirs>=4.0.0",
     "python-dotenv>=1.0.1",

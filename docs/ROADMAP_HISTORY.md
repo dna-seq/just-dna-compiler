@@ -75,6 +75,128 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM247 — the enricher CLI is dead on a fresh install: a build-isolated `grpcio-tools` outruns the locked `grpcio`
+
+**Severity** high · **Status** ✅ **FIXED 2026-09-20, shipped in `just-dna-enricher` 0.7.1** ·
+**Owner** enricher (packaging) · **Motivating case** a peer session could not run
+`just-dna-enricher draft --gene <X>` at all
+
+**What shipped, against the three candidate repairs this entry argued.** All three, because the first
+two are independent defects and either alone leaves the tier killable. (1) `[build-system] requires`
+pins `grpcio-tools==1.83.1` and the runtime floor is `grpcio>=1.83.1` — one number, written twice and
+asserted equal, at the pair RM192 measured and `uv.lock` already resolved, so no floor bump in RM192's
+sense. (2) `alphagenome_check` and `expression` both guarded their module-scope `atlas_client` import
+already and both caught only `ImportError`, while grpc's bindings raise `RuntimeError`; both now catch
+either, walked so a third importer fails by existing — the second guard was found only after the first
+was fixed. (3) the console entrypoint is imported by a test, so this fails as one named thing rather
+than as thirty-eight collection errors.
+
+**A fourth thing, found by installing the wheel rather than by reading it.** `just_dna_enricher.resolver`
+imports `just_dna_compiler.resolution_findings`, a module RM244 created after `v0.7.0` — so the enricher
+wheel declared `just-dna-compiler>=0.7.0` and `ModuleNotFoundError`'d in a clean venv. Exactly the
+incident the intra-workspace floor guard exists for, arriving by a route that guard does not watch: it
+compares a declaration against the *local tree*, where every module exists by construction.
+`test_a_cross_tier_import_exists_in_the_version_its_floor_names` reads the dependency's modules off the
+`v<floor>` **tag** and fails on an import the published release does not carry. So `just-dna-compiler`
+is cut to 0.7.1 alongside, and `just-dna-format` stays at 0.7.0 — nothing new crossed into it.
+
+`uv run just-dna-enricher <anything> --help` raises before Typer is reached:
+
+```
+RuntimeError: The grpc package installed is at version 1.83.1, but the generated code in
+just_dna_enricher/generated/_alphagenome_atlas_protos/atlas_service_pb2_grpc.py depends on
+grpcio>=1.84.0.
+```
+
+**Two floors for one number, and only one of them is locked.** `[build-system] requires` is
+`["hatchling", "grpcio-tools>=1.68.0"]` — a floor with no ceiling, resolved in an **isolated build
+environment** that `uv.lock` does not constrain, so it picks up whatever `grpcio-tools` is current and
+stamps `GRPC_GENERATED_VERSION = '1.84.0'` into the generated bindings. The runtime dep is
+`grpcio>=1.68.0`, locked at **1.83.1**. The generated module raises at import time when the two
+disagree. They are the same number — the version that generates the code and the version that runs it
+— written twice, one pinned and one floating, which is the defect rather than either value.
+
+**Blast radius is the whole command surface, not the Atlas commands.** `cli.py` imports
+`alphagenome_check` → `atlas_client` → the generated bindings at module scope, so `enrich`, `draft`,
+`literature`, `pgx`, `frequencies` and every other subcommand die on an Atlas dependency they do not
+use. **17 test files error during collection** and 38 import `just_dna_enricher.cli`.
+
+**Reproduced from clean, so it is not one machine's stale artifact.** The generated tree is
+git-ignored and produced at install; deleting it and running
+`uv sync --reinstall-package just-dna-enricher` regenerates the *same* broken stamp. The repo's full
+suite was green at 4658 passed on 2026-09-13; the generated files on this tree are dated 2026-09-19.
+So the breakage arrived with a `grpcio-tools` release, not with a commit here — which is exactly what
+an unconstrained build requirement buys.
+
+**Do not fix it by bumping the runtime floor without re-reading RM192.** That entry *measured* the
+Atlas dependency cost at grpcio 1.83.1 / protobuf 7.36.1 — 19 MB of site-packages and +2 packages —
+and the floor is load-bearing for a tier whose weight is a charter concern. The candidate repairs, in
+the order they should be argued:
+
+1. **Make it one number.** Constrain the build requirement against the runtime lock rather than
+   letting them float apart — the rule is *the grpcio floor is whatever generated the bindings*, and
+   nothing currently states it anywhere a tool can read.
+2. **Import the Atlas bindings lazily**, so a `grpcio` problem breaks the Atlas commands and not
+   `draft`. The module-scope import is what turns a narrow dependency fault into a dead CLI, and this
+   is worth doing whichever way (1) goes. Note the house rule against inline imports has a stated
+   exception for a guarded optional dependency, which is what `atlas` is (`[project.optional-dependencies]`).
+3. **A smoke test that imports the CLI entrypoint the way the console script does.** 38 test files
+   import `just_dna_enricher.cli` and all 38 now error at *collection*, which reads as a broken suite
+   rather than a broken command — and a red collection is a different signal from a red assertion.
+   Whatever shape it takes, it has to fail as *one* named thing.
+
+**Not fixed in the filing session, deliberately**: the choice between (1) and a floor bump is a
+dependency-weight decision with a measurement behind it (RM192), which is `@fix-vs-surface` — surface
+it, name why each candidate repair is or is not right, and let the owner decide. The tree is red
+meanwhile, and that is the state this entry exists to make visible.
+
+**And the docs site will not build either**, which is the third surface and the one that makes this a
+release blocker rather than an inconvenience: `scripts/gen_cli_pages.py:47` does
+`from just_dna_enricher import cli as enricher_cli` to generate the command reference, so
+`uv run --group docs properdocs build --strict` dies on the same import. Two of the cut's gates — the
+suite (17 collection errors) and the docs build — are down on one dependency fault, and neither says
+"grpcio" in a way a reader would connect to the other.
+
+**It is a release hazard, not only a dev-tree one — this is the half that raises the severity.** The
+generated tree is git-ignored but **not** build-ignored: `hatch_build.py` force-includes it, so the
+wheel ships whatever stamp the machine that built it produced. The published **0.7.0 works** (a peer
+session runs it from PyPI and drafted from CPIC on it), because it was built before the
+`grpcio-tools` that stamps 1.84.0. **A release cut today would ship the broken stamp to every
+installer**, and nothing in the cut checks it — the sweep gate compiles modules, it does not import
+the enricher's console script. Whatever repair lands, the release procedure needs the smoke test in
+(3) or the next cut is a coin toss on the build machine's resolver.
+
+**Related** RM192 (the measured Atlas dependency cost), RM196 (why this tier alone is on hatchling).
+
+## RM252 — `pgx` said "no use was declared" about a module whose licence table declared it, and asked the author to say it twice
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher) · **Owner**
+enricher (`licensing`, every gate with a module) · **Motivating case**
+[S105](CONSUMER_SUGGESTIONS_HISTORY.md#s105--pgx-reports-no-use-was-declared-and-skips-both-legs-on-a-module-whose-licensingcsv-already-declares-non_commercial-for-cpic)
+
+### What was observed
+
+`enrich_pgx` loaded the licence table (it merges into it) and then gated each leg on the `--use` flag
+alone, so a module drafted under `--use non-commercial` was told *"cpic forbids sale and no use was
+declared"* by the command that had just read `declared_use=non_commercial` for CPIC. Reproduced: both
+legs `not_permitted`, the row untouched (the merge is never-clobber, so nothing was lost — the defect
+was the sentence and the skip, not the file). The same shape sat in every drafter: a second `draft` on
+the same module, without the flag, would have skipped too.
+
+### What shipped
+
+`licensing.effective_declared_use(spec_dir, terms, declared_use)` — the flag when it states one, else
+the row recorded for **that source at that layer**, else `unstated` — in front of `check_declared_use`
+at all nine gates that have a module directory, with the effective value also the one the pass records.
+`PgxResult.recorded_use` names the legs whose declaration came from the file and the summary line
+prints it; the drafters say so in a warning. The flag outranks the file in both directions, `unstated`
+on disk is not a declaration, and PharmVar with no row still asks — each pinned. An AST walk asserts
+set equality over every `check_declared_use` call site: the nine through the helper, and the cache
+lanes, which have no module, direct.
+
+**Refused:** treating a declaration for one source as the module's. `declared_use` is per source
+because the terms are; a CPIC row grants nothing about PharmVar (`@declared-use-third-axis`).
+
 ## RM251 — a row authoring both an rsID and a coordinate was copied into `resolution.csv`, and the loci the pair check had already fetched were thrown away
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher) · **Owner**

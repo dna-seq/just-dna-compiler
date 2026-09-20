@@ -343,89 +343,63 @@ you**, so check which `# ` heading you are under before writing the section, not
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
-## RM247 — the enricher CLI is dead on a fresh install: a build-isolated `grpcio-tools` outruns the locked `grpcio`
+## RM253 — a repeat-count star allele (UGT1A1 `*28` = TA(8)) has no home a diplotype can name, and the CPIC drafter translates none of CPIC's notation
 
-**Severity** high · **Status** open — **filed 2026-09-20, confirmed reproducible, unfixed** ·
-**Owner** enricher (packaging) · **Motivating case** a peer session could not run
-`just-dna-enricher draft --gene <X>` at all
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** format (schema) +
+enricher (`pgx_draft`) · **Motivating case**
+[S106](CONSUMER_SUGGESTIONS_HISTORY.md#s106--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-repeat_allelescsv-bins-a-count-and-haplotypescsv-names-an-allele-and-nothing-joins-the-two)
+— the most common UGT1A1 allele, the one atazanavir and the irinotecan labels key on, ships undefined
 
-`uv run just-dna-enricher <anything> --help` raises before Typer is reached:
+**Reproduced on the snapshot, and the reporter's reading holds with one correction.** CPIC defines
+`UGT1A1*1` as `TA(7)`, `*28` as `TA(8)`, `*36` as `TA(6)` and `*37` as `TA(9)`, all at **rs3064744**
+(the report said rs8175347, the promoter's other name in the literature), plus `*80+*28` and `*80+*37`
+as two-variant haplotypes. `draft_gene` skips all six repeat rows, so `haplotypes.csv` defines `*28` by
+nothing while `allele_function.csv` and `diplotypes.csv` name it, and `validate` warns *"Star allele(s)
+used but not defined"* — correctly, and unfixably by the author. Across the whole snapshot the notation
+the drafter skips is 25 distinct spellings: `DEL<bases>` (the bulk, e.g. `DELTCT`), a bare `DEL` (4
+rows, lengthless), `INSCGGG`, and `UNIT(n)` repeats (`TA(8)`, `AAAGGGGCG(2)`, `GGA(1)`, `TCAG(2)`).
+NUDT15 `*2` has **no** defining row in the snapshot at all, so that half of the report is scoped to the
+live API, which was not probed.
 
-```
-RuntimeError: The grpc package installed is at version 1.83.1, but the generated code in
-just_dna_enricher/generated/_alphagenome_atlas_protos/atlas_service_pb2_grpc.py depends on
-grpcio>=1.84.0.
-```
+**Three seams, and they are not one item's worth of the same thing.**
 
-**Two floors for one number, and only one of them is locked.** `[build-system] requires` is
-`["hatchling", "grpcio-tools>=1.68.0"]` — a floor with no ceiling, resolved in an **isolated build
-environment** that `uv.lock` does not constrain, so it picks up whatever `grpcio-tools` is current and
-stamps `GRPC_GENERATED_VERSION = '1.84.0'` into the generated bindings. The runtime dep is
-`grpcio>=1.68.0`, locked at **1.83.1**. The generated module raises at import time when the two
-disagree. They are the same number — the version that generates the code and the version that runs it
-— written twice, one pinned and one floating, which is the defect rather than either value.
+1. **A repeat count as a defining allele.** The format holds `<CNV:TR:n>` since RM5 — but `n` is a
+   *length in bases*, so `TA(8)` would be `<CNV:TR:16>`: legal, distinguishable from `*36`/`*37`/`*1`
+   by length, and lossy about the unit. Whether that is the right spelling, or whether the sequence
+   should be spelled out (sixteen bases, the standard's own preference when the sequence is known —
+   but VCF-anchored, which needs the preceding base the drafter does not have and the Ensembl row
+   RM251 now records does), or whether `repeat_alleles.csv` should gain a join to a haplotype name, is
+   the design question. The reporter's framing is exact: today it is a bin **or** a name, never both,
+   and the diplotype table needs the name. `@hosting-tri-state` says a symbolic allele compares as
+   *undecided* against a spelled call, so the first option moves the join to the consumer's caller
+   (`requires_callable`) — which may be the honest answer for a VNTR, and is still a decision.
+2. **`DEL<bases>` / `INS<bases>` → `<DEL:n>` / `<INS:n>`.** A drafter translation, not a schema gap:
+   the length is the notation's own, and the symbolic spelling is exactly what RM5 built for a variant
+   "whose sequence is deliberately unspelled". The bare `DEL` stays skipped (no length). The open
+   question is whether a spelled deletion should be spelled — CPIC gives the deleted bases and the
+   position, and the anchor base is one reference read away.
+3. **HGVS-named alleles (DPYD).** `HAPLOTYPE_NAME_PATTERN` refuses whitespace, and CPIC's names are
+   `c.1003G>T (*11)` and `c.1129-5923C>G, c.1236G>A (HapB3)`. The report's claim that
+   `haplotype_name` accepts them is **wrong as spelled** — probed, all three PGx models refuse on the
+   space — so this is a naming *policy* for the drafter (the legacy star in the parenthesis? the HGVS
+   string with the space removed? both, one as `suballele`?) before it is anything else. 167 defining
+   rows and 3,570 diplotypes wait on it.
 
-**Blast radius is the whole command surface, not the Atlas commands.** `cli.py` imports
-`alphagenome_check` → `atlas_client` → the generated bindings at module scope, so `enrich`, `draft`,
-`literature`, `pgx`, `frequencies` and every other subcommand die on an Atlas dependency they do not
-use. **17 test files error during collection** and 38 import `just_dna_enricher.cli`.
+**What shipped with the filing (message only, in the uncut 0.7 line):** the RM5 notation warning now
+names the three symbolic spellings the format holds and says the *drafter* does not translate into
+them, pointing here; and the unparsable-diplotype sentence is bucketed by reason, so DPYD's HGVS names
+are no longer reported as CYP2D6's copy-number notation.
 
-**Reproduced from clean, so it is not one machine's stale artifact.** The generated tree is
-git-ignored and produced at install; deleting it and running
-`uv sync --reinstall-package just-dna-enricher` regenerates the *same* broken stamp. The repo's full
-suite was green at 4658 passed on 2026-09-13; the generated files on this tree are dated 2026-09-19.
-So the breakage arrived with a `grpcio-tools` release, not with a commit here — which is exactly what
-an unconstrained build requirement buys.
-
-**Do not fix it by bumping the runtime floor without re-reading RM192.** That entry *measured* the
-Atlas dependency cost at grpcio 1.83.1 / protobuf 7.36.1 — 19 MB of site-packages and +2 packages —
-and the floor is load-bearing for a tier whose weight is a charter concern. The candidate repairs, in
-the order they should be argued:
-
-1. **Make it one number.** Constrain the build requirement against the runtime lock rather than
-   letting them float apart — the rule is *the grpcio floor is whatever generated the bindings*, and
-   nothing currently states it anywhere a tool can read.
-2. **Import the Atlas bindings lazily**, so a `grpcio` problem breaks the Atlas commands and not
-   `draft`. The module-scope import is what turns a narrow dependency fault into a dead CLI, and this
-   is worth doing whichever way (1) goes. Note the house rule against inline imports has a stated
-   exception for a guarded optional dependency, which is what `atlas` is (`[project.optional-dependencies]`).
-3. **A smoke test that imports the CLI entrypoint the way the console script does.** 38 test files
-   import `just_dna_enricher.cli` and all 38 now error at *collection*, which reads as a broken suite
-   rather than a broken command — and a red collection is a different signal from a red assertion.
-   Whatever shape it takes, it has to fail as *one* named thing.
-
-**Not fixed in the filing session, deliberately**: the choice between (1) and a floor bump is a
-dependency-weight decision with a measurement behind it (RM192), which is `@fix-vs-surface` — surface
-it, name why each candidate repair is or is not right, and let the owner decide. The tree is red
-meanwhile, and that is the state this entry exists to make visible.
-
-**And the docs site will not build either**, which is the third surface and the one that makes this a
-release blocker rather than an inconvenience: `scripts/gen_cli_pages.py:47` does
-`from just_dna_enricher import cli as enricher_cli` to generate the command reference, so
-`uv run --group docs properdocs build --strict` dies on the same import. Two of the cut's gates — the
-suite (17 collection errors) and the docs build — are down on one dependency fault, and neither says
-"grpcio" in a way a reader would connect to the other.
-
-**It is a release hazard, not only a dev-tree one — this is the half that raises the severity.** The
-generated tree is git-ignored but **not** build-ignored: `hatch_build.py` force-includes it, so the
-wheel ships whatever stamp the machine that built it produced. The published **0.7.0 works** (a peer
-session runs it from PyPI and drafted from CPIC on it), because it was built before the
-`grpcio-tools` that stamps 1.84.0. **A release cut today would ship the broken stamp to every
-installer**, and nothing in the cut checks it — the sweep gate compiles modules, it does not import
-the enricher's console script. Whatever repair lands, the release procedure needs the smoke test in
-(3) or the next cut is a coin toss on the build machine's resolver.
-
-**Related** RM192 (the measured Atlas dependency cost), RM196 (why this tier alone is on hatchling).
-
-# Not format scope
-
-Listed so they are not mistaken for format scope, and so nobody re-proposes them.
+**Parking-condition gate audit:** none of the three needs a consumer to act first — the corpus is the
+snapshot, already provisioned, and the probe module is a `draft_gene("UGT1A1")` away. This is a design
+decision, not a wait.
 
 ## RM248 — a declarative report schema: research, not a design
 
-**Severity** — (unsized, deliberately) · **Status** **open — a research item, asked by the maintainer
-2026-09-20.** Nothing here is a proposal yet; the exit is a measurement and a charter ruling, not a
-draft schema · **Owner** unassigned — the placement question is half the research · **Pairs with**
+**Severity** — (unsized, deliberately) · **Status** open — **a minor, release undecided** — a
+research item, asked by the maintainer 2026-09-20. Nothing here is a proposal yet; the exit is a
+measurement and a charter ruling, not a draft schema. The class is the most additive outcome this
+could have, which is a new optional table or spec block; two of its three exits ship nothing at all · **Owner** unassigned — the placement question is half the research · **Pairs with**
 [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half),
 [RM188](ROADMAP_0_8.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics),
 and RM7 below (which is **not** the same item — see *What this is not*)
@@ -524,6 +498,10 @@ One of three, and the research is choosing which:
 **The cheapest first measurement**, and the one to take before any syntax is discussed: read what
 `just-dna-lite` actually renders today, and list every field it needs that a module does not carry.
 That is a list, it is finite, and it decides between (1) and (2) without a design round.
+
+# Not format scope
+
+Listed so they are not mistaken for format scope, and so nobody re-proposes them.
 
 ## RM7 — Evaluation-output / report-card schema
 
