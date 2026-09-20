@@ -49,7 +49,7 @@ from just_dna_format.pgx import PharmVariantRow
 
 from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, _normalize_category, load_snapshot
 from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_draft_provenance
-from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use
+from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use, effective_declared_use
 from just_dna_enricher.locations import SNAPSHOT_LICENSE_FILENAME
 
 #: This provider's registry entry (RM228).
@@ -377,6 +377,7 @@ def draft_pharm_variants(
     `just-dna-enricher clinpgx build`). Re-runnable — narrow by `--drug` and run again as a module
     grows; a row already present is reported, not replaced.
     """
+    declared_use, declared_from = effective_declared_use(spec_dir, CLINPGX_TERMS, declared_use)  # S105
     skip_reason = check_declared_use(CLINPGX_TERMS, declared_use)
     if skip_reason:
         # Acquisition-time refusal: the terms are accepted by taking the data, so nothing is read.

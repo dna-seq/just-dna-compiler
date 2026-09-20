@@ -888,6 +888,11 @@ def pgx_(
         # The file the pass actually wrote, not a guessed name — the module may carry either spelling.
         typer.secho(f"sources: {sources_path(spec_dir, error=PgxEnrichmentError)}", fg=typer.colors.GREEN)
     typer.echo(f"sources recorded: {len(result.rows)}  declared use: {result.declared_use}")
+    if result.recorded_use:
+        typer.echo(
+            "  declared in the licence table by an earlier run: "
+            + ", ".join(f"{s}={u}" for s, u in sorted(result.recorded_use.items()))
+        )
     if result.routes:
         typer.echo("  routes: " + ", ".join(f"{s}={r}" for s, r in sorted(result.routes.items())))
     for reason in result.skipped_offline:

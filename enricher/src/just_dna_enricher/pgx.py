@@ -55,6 +55,7 @@ from just_dna_enricher.licensing import (
     PHARMVAR_TERMS,
     SourceTerms,
     check_declared_use,
+    effective_declared_use,
     sources_path,
     write_sources_csv,
 )
@@ -151,6 +152,11 @@ class PgxResult:
     #: refusal) and from a `warning` (the source answered and something was odd) — tri-state, as
     #: everywhere: "did not run" is not "ran and found nothing".
     skipped_offline: list[str] = field(default_factory=list)
+    #: `source -> declaration` for each leg whose declaration was read from the module's own licence
+    #: table rather than the flag (S105, RM252). Empty when the flag decided every leg. Reported so
+    #: the summary line can say where a declaration came from instead of printing `unstated` beside
+    #: a leg that ran.
+    recorded_use: dict[str, str] = field(default_factory=dict)
     #: Authored alleles an authority actually named back, which is the denominator the attestation
     #: records. Reported rather than left to a caller to recompute (RM40/RM41): the number is a
     #: property of the comparison, and one re-derived from `allele_function.csv` beside it would
@@ -316,12 +322,22 @@ def enrich_pgx(
         if not enabled:
             legs[terms.source] = ("not_requested", f"{terms.source}: the caller switched this leg off.")
             return
-        reason = check_declared_use(terms, declared_use)  # raises LicenseRefusal on `commercial`
+        # The module's own recorded declaration counts when the flag states none (S105, RM252): a
+        # module drafted under `--use non-commercial` carries that row for CPIC, and this check was
+        # saying "no use was declared" about the file it had just read. Per leg — a declaration for
+        # CPIC says nothing about PharmVar, which still asks.
+        use, declared_from = effective_declared_use(spec_dir, terms, declared_use)
+        reason = check_declared_use(terms, use)  # raises LicenseRefusal on `commercial`
         if reason is not None:
             result.skipped.append(reason)
             legs[terms.source] = ("not_permitted", reason)
             logger.warning("%s", reason)
             return
+        if declared_from is not None:
+            result.recorded_use[terms.source] = use
+            logger.info(
+                "%s: use %r read from %s, recorded by an earlier run.", terms.source, use, declared_from
+            )
         try:
             resolved = resolve()
         except (PharmVarError, CpicError) as exc:
@@ -360,7 +376,7 @@ def enrich_pgx(
             result.routes[terms.source] = route
             legs[terms.source] = ("tautology", tautological)
             releases[terms.source] = dataset
-            emitted.append(terms.row("annotation", declared_use=declared_use, dataset=dataset))
+            emitted.append(terms.row("annotation", declared_use=use, dataset=dataset))
             # On `result.warnings`, not `logger.info` alone, and the mixed case is why: when PharmVar
             # answers and CPIC skips, the record's `detail` names only the answered route, so a reader
             # sees a clean comparison and no sign that half of it was hollow. Every sibling branch
@@ -387,7 +403,7 @@ def enrich_pgx(
         compared.update(checked)
         legs[terms.source] = (_ANSWERED, route)
         releases[terms.source] = dataset
-        emitted.append(terms.row("annotation", declared_use=declared_use, dataset=dataset))
+        emitted.append(terms.row("annotation", declared_use=use, dataset=dataset))
 
     def _injected(client) -> tuple[object, bool, str] | None:
         """An injected client's route — and `None` when `offline` forbids using it.

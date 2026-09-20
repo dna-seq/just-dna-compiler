@@ -48,7 +48,7 @@ from just_dna_enricher.drafting import (
     missing_required,
     record_draft_provenance,
 )
-from just_dna_enricher.licensing import STRCHIVE_TERMS, check_declared_use
+from just_dna_enricher.licensing import STRCHIVE_TERMS, check_declared_use, effective_declared_use
 from just_dna_enricher.strchive import (
     REPEAT_ALLELES_CSV,
     StrchiveCatalogue,
@@ -216,6 +216,7 @@ def draft_repeat_loci(
     # MIT grants the fetch under every declaration, so this always returns `None` — kept because the
     # gate is per source and a caller reading this file should see which answer it gives, not have to
     # infer that the question was never asked.
+    declared_use, declared_from = effective_declared_use(spec_dir, STRCHIVE_TERMS, declared_use)  # S105
     refusal = check_declared_use(STRCHIVE_TERMS, declared_use)
     if refusal is not None:  # pragma: no cover - unreachable while the terms stay permissive
         raise StrchiveDraftError(refusal)

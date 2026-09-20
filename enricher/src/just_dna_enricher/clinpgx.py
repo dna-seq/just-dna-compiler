@@ -38,6 +38,7 @@ from just_dna_enricher.drafting import drafted_unchanged
 from just_dna_enricher.licensing import (
     CLINPGX_TERMS,
     check_declared_use,
+    effective_declared_use,
     merge_sources_file,
     read_sources_file,
 )
@@ -198,7 +199,13 @@ def enrich_clinpgx(
     if errors:
         raise ClinPgxEnrichmentError(f"pharm_variants.csv is invalid: {errors[0]}")
 
+    declared_use, declared_from = effective_declared_use(spec_dir, CLINPGX_TERMS, declared_use)  # S105
     reason = check_declared_use(CLINPGX_TERMS, declared_use)  # raises on `commercial`
+    if declared_from is not None:
+        result.warnings.append(
+            f"clinpgx: use {declared_use!r} read from {declared_from}, recorded by an earlier run; pass --use "
+            f"to declare otherwise."
+        )
     if reason is not None:
         result.warnings.append(reason)
         logger.warning("%s", reason)

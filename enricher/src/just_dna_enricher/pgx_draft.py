@@ -43,7 +43,7 @@ from just_dna_enricher.cpic import (
 )
 from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_draft_provenance
 from just_dna_enricher.enrich import source_build_mismatch
-from just_dna_enricher.licensing import CPIC_TERMS, check_declared_use
+from just_dna_enricher.licensing import CPIC_TERMS, check_declared_use, effective_declared_use
 from just_dna_enricher.locations import resolve_cpic_reference
 
 #: This provider's registry entry (RM228).
@@ -295,6 +295,7 @@ def draft_gene(
     and forgetting meant silent egress from a run documented as making none. A built CPIC snapshot
     serves the draft; with none and `offline` set, nothing is drafted and the reason is returned.
     """
+    declared_use, declared_from = effective_declared_use(spec_dir, CPIC_TERMS, declared_use)  # S105
     skip_reason = check_declared_use(CPIC_TERMS, declared_use)
     if skip_reason:
         # Acquisition-time refusal: nothing is fetched, because the terms are accepted by taking it.
@@ -370,6 +371,11 @@ def draft_gene(
             cpic.close()
 
     warnings = list(defining_warnings)
+    if declared_from is not None:
+        warnings.append(
+            f"{gene}: CPIC use {declared_use!r} read from {declared_from}, recorded by an earlier run; "
+            f"pass --use to declare otherwise."
+        )
     # CPIC's `sequence_location` is GRCh38 and `haplotypes.csv` gets a `chrom`/`start` from it, so a
     # module declaring another build is about to record a position from the wrong assembly. Computed
     # at the top of the function; reported here.

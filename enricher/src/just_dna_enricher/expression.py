@@ -56,6 +56,7 @@ from just_dna_enricher.gene_spans import (
 from just_dna_enricher.licensing import (
     ALPHAGENOME_ATLAS_TERMS,
     check_declared_use,
+    effective_declared_use,
     merge_sources_file,
     require_sources_file,
     sidecar_path,
@@ -404,7 +405,15 @@ def enrich_expression(
     # The gate runs before anything is fetched (`@acquisition-gate-is-not-a-read-gate`). With
     # `commercial_use=False` an undeclared run is a SKIP, not permission — the tool must not assert a
     # purpose on the operator's behalf.
+    declared_use, declared_from = effective_declared_use(
+        spec_dir, ALPHAGENOME_ATLAS_TERMS, declared_use
+    )  # S105
     refusal = check_declared_use(ALPHAGENOME_ATLAS_TERMS, declared_use)
+    if declared_from is not None:
+        result.warnings.append(
+            f"alphagenome: use {declared_use!r} read from {declared_from}, recorded by an earlier run; pass "
+            f"--use to declare otherwise."
+        )
     if refusal is not None:
         result.warnings.append(refusal)
         result.skipped = True

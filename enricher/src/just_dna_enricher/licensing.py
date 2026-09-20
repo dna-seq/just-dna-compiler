@@ -1010,6 +1010,41 @@ def check_declared_use(terms: SourceTerms, declared_use: str) -> str | None:
     )
 
 
+def effective_declared_use(
+    spec_dir: Path, terms: SourceTerms, declared_use: str, layer: str = "annotation"
+) -> tuple[str, str | None]:
+    """The declaration a gate should judge, and where it came from (S105, RM252).
+
+    The caller's flag when it states one. Otherwise the module's **own recorded declaration** for this
+    source at this layer — the row an earlier run wrote into the licence table, which is the same
+    author, the same module, and the very file the compile gate keys on. `pgx` on a module drafted
+    with `--use non-commercial` was saying *"no use was declared"* about CPIC while the declaration sat
+    in the file it had just read, and asking the author to assert the same position a second time —
+    which is the fabrication risk the draft's own message warns about, arriving at check time.
+
+    Three things this is not. It is not a default: with nothing recorded the answer is still
+    `unstated`, and the tool asserts no purpose (`@declared-use-third-axis`). It is not per module: a
+    declaration for CPIC says nothing about PharmVar, so a leg with no row still asks. And it is not a
+    reading of the *flag's* meaning, which is unchanged — an explicit `--use` outranks the file, in
+    both directions, and `commercial` against a forbidding source still refuses.
+
+    Returns `(declaration, origin)`: `origin` is `None` when the flag decided, else the licence file's
+    name, for the sentence that tells the author where the declaration was read from.
+    """
+    stated = check_vocab(declared_use, VALID_DECLARED_USE, "declared_use") or declared_use
+    if stated != "unstated":
+        return stated, None
+    for row in read_sources_file(spec_dir):
+        recorded = row.declared_use or "unstated"
+        if row.source == terms.source and row.layer == layer and recorded != "unstated":
+            try:
+                origin = sidecar_write_path(spec_dir, SOURCES_CSV).name
+            except SidecarCollision:  # pragma: no cover - read_sources_file already returned [] here
+                origin = SOURCES_CSV
+            return recorded, origin
+    return "unstated", None
+
+
 #: The `sources.csv` column order, **derived from the model** rather than hand-kept.
 #:
 #: It was a literal list, and it silently omitted `redistribution` — so every `sources.csv` this

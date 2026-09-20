@@ -49,6 +49,7 @@ from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_d
 from just_dna_enricher.licensing import (
     MITOMAP_TERMS,
     check_declared_use,
+    effective_declared_use,
 )
 from just_dna_enricher.locations import resolve_mitomap_miss_reference
 from just_dna_enricher.mitomap import indefinite_length
@@ -238,6 +239,7 @@ def draft_panel_from_mitomap_miss(
 
     # CC BY 3.0 states commercial and clinical use free, so this always answers `None`. Kept because
     # the gate is per source and a reader of this file should see which answer it gives.
+    declared_use, declared_from = effective_declared_use(spec_dir, MITOMAP_TERMS, declared_use)  # S105
     refusal = check_declared_use(MITOMAP_TERMS, declared_use)
     if refusal is not None:  # pragma: no cover - unreachable while the terms stay permissive
         raise MitomapDraftError(refusal)

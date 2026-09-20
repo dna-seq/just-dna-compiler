@@ -62,7 +62,7 @@ from just_dna_compiler.compiler import load_csv_rows
 from just_dna_format.manifest import VerificationRecord
 from just_dna_format.pgx import DiplotypeRow, PharmVariantRow
 
-from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use
+from just_dna_enricher.licensing import CLINPGX_TERMS, check_declared_use, effective_declared_use
 from just_dna_enricher.locations import (
     RELEASE_FILENAME,
     SNAPSHOT_DATA_DIRNAME,
@@ -677,7 +677,13 @@ def check_drug_labels(
         result.not_checked = "nothing_to_check"
         return result
 
+    declared_use, declared_from = effective_declared_use(spec_dir, CLINPGX_TERMS, declared_use)  # S105
     reason = check_declared_use(CLINPGX_TERMS, declared_use)  # raises on `commercial`
+    if declared_from is not None:
+        result.warnings.append(
+            f"clinpgx: use {declared_use!r} read from {declared_from}, recorded by an earlier run; pass --use "
+            f"to declare otherwise."
+        )
     if reason is not None:
         result.warnings.append(reason)
         logger.warning("%s", reason)

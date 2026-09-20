@@ -55,6 +55,7 @@ from just_dna_enricher.enrich import source_build_mismatch
 from just_dna_enricher.licensing import (
     CLINVAR_TERMS,
     check_declared_use,
+    effective_declared_use,
 )
 from just_dna_enricher.locations import resolve_clinvar_reference
 from just_dna_enricher.verification import examples
@@ -646,6 +647,7 @@ def draft_gene_panel(
     make a drafted panel compilable at all (`studies.csv` is mandatory and the VCF carries no PMIDs) and
     which now travel with the published snapshot.
     """
+    declared_use, declared_from = effective_declared_use(spec_dir, CLINVAR_TERMS, declared_use)  # S105
     skip_reason = check_declared_use(CLINVAR_TERMS, declared_use)
     if skip_reason:
         return ClinVarDraftResult(warnings=[skip_reason], skipped=True)

@@ -3975,6 +3975,21 @@ so it is skipped in every column, with a message that says which of the two it i
 The refusal lives **here, at acquisition**, because under a data-usage policy that is when the terms
 are accepted, and because refusing here means nothing is fetched rather than merely nothing written.
 
+**A module's own recorded declaration counts when the flag states none (S105, RM252).** Every gate that
+has a module directory — `pgx`'s two legs, the CPIC/ClinPGx/ClinVar/AlphaGenome drafters and checks —
+goes through `licensing.effective_declared_use(spec_dir, terms, declared_use)` before
+`check_declared_use`: the flag when it states one, otherwise the row an earlier run recorded for **that
+source at that layer** in the licence table, otherwise `unstated`. So `pgx` on a module drafted under
+`--use non-commercial` no longer says *"cpic forbids sale and no use was declared"* about the file it
+has just read; it runs the CPIC leg, reports `recorded_use={"cpic": "non_commercial"}` (the summary
+line says where the declaration came from), and PharmVar — which has no row — still asks. Three
+things it is not: not a default (`unstated` on disk is not a declaration, and with no row the tool
+asserts nothing); not per module (a declaration for CPIC says nothing about PharmVar); and not a change
+to the flag, which outranks the file in both directions — `--use commercial` against a recorded
+`non_commercial` still refuses. The cache lanes (`cache pull`, the builders) have no module and gate on
+the flag alone, and `test_declared_use_recorded.py` walks every `check_declared_use` call site to keep
+the two sets exact.
+
 ### Where the terms come from
 
 The per-source `SourceTerms` constants (`CPIC_TERMS`, `PHARMVAR_TERMS`, …, collected in
