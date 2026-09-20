@@ -144,6 +144,19 @@ def _split_diplotype(diplotype: str) -> tuple[str, str] | None:
     return parts[0], parts[1]
 
 
+def _unparsable_by_reason(diplotypes: Sequence[str]) -> dict[str, list[str]]:
+    """`copy_number` for a pair whose halves are star strings carrying `x`/`≥` copy-number notation;
+    `not_star` for a pair whose half is not a star string at all (DPYD's HGVS names)."""
+    out: dict[str, list[str]] = {}
+    for diplotype in diplotypes:
+        halves = [p.strip() for p in diplotype.split(_DIPLOTYPE_SEP)]
+        copy_number = len(halves) == 2 and all(
+            STAR_ALLELE_PATTERN.match(h.replace("≥", "")) or STAR_ALLELE_PATTERN.match(h) for h in halves
+        )
+        out.setdefault("copy_number" if copy_number else "not_star", []).append(diplotype)
+    return out
+
+
 #: The reference allele, always kept by an `--allele` filter. It is *defined* by carrying no variants, so
 #: including it costs no rows, and leaving it out would make `*1/*2` — the commonest real diplotype —
 #: undraftable while the author was asking for `*2`.
@@ -433,13 +446,23 @@ def draft_gene(
             )
         )
 
-    if unparsable:
-        shown = ", ".join(unparsable[:3])
-        rest = f" (+{len(unparsable) - 3} more)" if len(unparsable) > 3 else ""
+    # Two reasons a pair does not parse, and one sentence described both as copy number (S106):
+    # DPYD's 3,570 pairs are `c.1003G>T (*11)/Reference` — HGVS-named alleles, not star strings at all
+    # — and were reported as CYP2D6's `*4x≥3` shape. Bucketed by which it is, since the fix differs.
+    for bucket, entries in sorted(_unparsable_by_reason(unparsable).items()):
+        shown = ", ".join(entries[:3])
+        rest = f" (+{len(entries) - 3} more)" if len(entries) > 3 else ""
         warnings.append(
-            f"{gene}: {len(unparsable)} diplotype(s) are not a pair of star alleles and were "
-            f"skipped — CPIC writes copy number as `x≥3`, and `≥` is not a nucleotide-allele or "
-            f"star-string character. e.g. {shown}{rest}."
+            f"{gene}: {len(entries)} diplotype(s) "
+            + (
+                "carry copy-number notation and were skipped — CPIC writes `x≥3`, and `≥` is not a "
+                "star-string character"
+                if bucket == "copy_number"
+                else "name alleles that are not star strings and were skipped — CPIC names this gene's "
+                "alleles as HGVS variants (`c.1003G>T (*11)`), which the haplotype-name rule refuses "
+                "for their whitespace and this drafter does not yet translate (RM253)"
+            )
+            + f". e.g. {shown}{rest}."
         )
 
     for bucket, entries in sorted(unscorable.items()):

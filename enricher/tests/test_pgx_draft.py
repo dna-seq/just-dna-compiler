@@ -572,6 +572,46 @@ def test_an_unparsable_diplotype_is_reported_by_its_own_rule_not_hidden_by_the_f
     assert _pair_in("*1/*17", frozenset({"*1"})) is False
 
 
+def test_an_unparsable_pair_is_bucketed_by_why_it_did_not_parse() -> None:
+    """S106: DPYD's `c.1003G>T (*11)/Reference` was reported as CYP2D6's copy-number shape. Two
+    reasons, two sentences — an HGVS-named allele is a naming gap (RM253), `x≥3` is notation."""
+    from just_dna_enricher.pgx_draft import _unparsable_by_reason
+
+    buckets = _unparsable_by_reason(
+        ["*4x≥3/*95", "c.1003G>T (*11)/Reference", "*1x2/*2", "Reference/Reference"]
+    )
+    assert buckets == {
+        "copy_number": ["*4x≥3/*95", "*1x2/*2"],
+        "not_star": ["c.1003G>T (*11)/Reference", "Reference/Reference"],
+    }
+
+
+def test_the_hgvs_named_gene_is_told_its_names_are_the_problem(tmp_path: Path) -> None:
+    """The DPYD shape end to end: the sentence names HGVS and RM253, not copy number."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        if path.endswith("/diplotype"):
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "genesymbol": "CYP2C19",
+                        "diplotype": "c.1003G>T (*11)/Reference",
+                        "generesult": "Intermediate Metabolizer",
+                        "totalactivityscore": "1.0",
+                    }
+                ],
+            )
+        return _dispatch(request)
+
+    client = CpicClient(client=httpx.Client(transport=httpx.MockTransport(handler)))
+    result = draft_gene(_spec(tmp_path), "CYP2C19", declared_use="non_commercial", client=client)
+    [line] = [w for w in result.warnings if "diplotype(s)" in w and "skipped" in w]
+    assert "HGVS" in line and "RM253" in line
+    assert "copy-number" not in line
+
+
 def test_classification_maps_onto_the_vocabulary_and_drops_unclassified() -> None:
     from just_dna_format.vocab import VALID_RECOMMENDATION_STRENGTH
 

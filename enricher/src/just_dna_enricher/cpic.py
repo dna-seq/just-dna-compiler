@@ -119,10 +119,11 @@ _UNUSABLE_EXPLANATION: dict[str, str] = {
         "live source (CPIC publishes no `*`), and kept because the classifier is shared"
     ),
     "notation": (
-        "a deletion/insertion or repeat notation rather than a nucleotide string — a grammar gap "
-        "rather than an ambiguity. RM5 widened the grammar to hold VCF's five *symbolic* structural "
-        "alleles (`<DEL:1500>`), which is a different spelling from CPIC's `DELTCT`; holding this one "
-        "would still need a release"
+        "a deletion/insertion or repeat notation (`DELTCT`, `INSCGGG`, `TA(8)`) rather than a "
+        "nucleotide string — a drafter gap rather than an ambiguity. The format holds the symbolic "
+        "spellings `<DEL:n>`, `<INS:n>` and `<CNV:TR:n>` since RM5, and this drafter does not yet "
+        "translate CPIC's notation into them; a repeat *count* has no home a diplotype can name "
+        "either, so a bare `DEL` and every `UNIT(n)` stay skipped — RM253 tracks both"
     ),
     # The third reason `non_nucleotide_reason` answers since RM58. CPIC has never been observed to write
     # it, but this map is indexed directly by `_unusable_warnings`, so an unlisted member is a KeyError
