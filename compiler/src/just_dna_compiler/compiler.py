@@ -216,13 +216,8 @@ from just_dna_format.vrs import (
 )
 from pydantic import BaseModel, ValidationError
 
-from just_dna_compiler.models import ClosureResult, CompilationResult, ValidationResult
 from just_dna_compiler.ladder import LadderFinding, route
-from just_dna_compiler.resolution_findings import (
-    resolution_not_injected,
-    skipped_cross_build,
-    unresolved_rsid,
-)
+from just_dna_compiler.models import ClosureResult, CompilationResult, ValidationResult
 from just_dna_compiler.resolution import (
     ambiguous_refusals,
     hosting_verdict,
@@ -230,6 +225,11 @@ from just_dna_compiler.resolution import (
     resolve_positional_rows,
     unresolved_subjects,
     withdrawn_refusals,
+)
+from just_dna_compiler.resolution_findings import (
+    resolution_not_injected,
+    skipped_cross_build,
+    unresolved_rsid,
 )
 
 # `validate_spec`/`compile_module` return their findings on a result object, which is the right shape

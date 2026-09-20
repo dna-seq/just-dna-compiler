@@ -27,6 +27,10 @@ from just_dna_format.alleles import (
 )
 from just_dna_format.base import derive_variant_key
 from just_dna_format.findings import CodedWarning
+from just_dna_format.resolution import ResolutionRow
+from just_dna_format.spec import VariantRow
+from just_dna_format.vrs import par_partner
+
 from just_dna_compiler.ladder import LadderFinding
 from just_dna_compiler.resolution_findings import (
     ambiguous_pick,
@@ -38,9 +42,6 @@ from just_dna_compiler.resolution_findings import (
     unresolved_rsid,
     without_resolution_label,
 )
-from just_dna_format.resolution import ResolutionRow
-from just_dna_format.spec import VariantRow
-from just_dna_format.vrs import par_partner
 
 logger = logging.getLogger(__name__)
 
