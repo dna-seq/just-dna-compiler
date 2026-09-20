@@ -1009,6 +1009,31 @@ injected table, which `--strict` refuses. This **selects, it does not repair**: 
 touched, and every skipped record is logged. (The compiler applies the same predicate as a safety net
 for hand-authored or stale tables — `resolution.hosting_verdict` is shared, so the two cannot drift.)
 
+### A row that authors both halves is recorded from the reference, not copied (S104, RM251)
+
+A subject carrying `rsid` **and** `chrom`/`start` needs no resolution, and until 0.7.2 that was the
+whole of what happened to it: the verbatim branch wrote the authored coordinate into `resolution.csv`
+under `source="authored"`, with no `ref`, no `alts`, and therefore no VRS id. Yet the same run had
+already looked the rsID up — the rsid↔coordinate check rides its rsIDs in the Ensembl cache batch —
+and the answer was discarded. Every CPIC-drafted `haplotypes.csv` has this shape (`allele_definitions`
+gives an rsID, a position and, since the `gene.chr` join, a chromosome), so every such module compiled
+with *"VRS allele identity covers 0/N"* and nothing the author could do about it, and the compiler's
+`_verify` compared the module against a photocopy of itself.
+
+Now such a row takes the forward branch **when the reference knows its rsID**: the loci go through the
+same allele-aware filter and the same PAR rule, and are recorded with the link's `source`, `ref` and
+`alts`, so a VRS id mints and the compiler holds two *independent* values. The authored coordinate is
+untouched — it is the row's identity, the compiler keeps it, and its positional fill only completes
+the cells the author left empty (`ref`, for the CPIC shape). Where the two disagree, that is the
+finding: `rsid_coordinate_agreement` records it here, and `resolve_from_table._verify` warns in
+`best_effort` and refuses in `strict`, exactly as the mishap matrix already said for an authored
+coordinate that contradicts the table. Three cases still write the authored row: an rsID the snapshot
+does not know (no link is asked live for a pair, so there is no answer and no negative to invent), a
+reference whose every locus is rejected by the allele filter (the mismatch is reported, the row keeps
+its coordinate), and a run with no Ensembl snapshot at all. **A table written before this change keeps
+its `authored` rows** — merge-not-clobber covers them — so delete `resolution.csv` or run `--rederive`
+to record the reference's answer.
+
 ### Reverse (position→rsid) back-fill is allele-aware
 
 A coordinate-only variant (rsid `None`, coordinate authored) can have an rsid back-filled from the

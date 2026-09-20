@@ -55,6 +55,17 @@ contents, so the class is a patch in both tiers.
   `genome_build` still refuses, quoting the diagnosis the placeholder sentence had been hiding. The
   compiler's `append_rows` names a scaffold stub row by its line and says to delete it or scaffold
   without `--kind`, instead of calling the file broken.
+- **RM251 (S104) — a row authoring both an rsID and a coordinate was copied into `resolution.csv` as
+  `source=authored` with no `ref`/`alts`, so every CPIC-drafted module compiled with *"VRS allele
+  identity covers 0/N"*.** The same run had looked the rsID up for the pair check and discarded the
+  answer. Such a row now takes the forward branch when the reference knows its rsID: the link's loci
+  are recorded, an id mints, and the compiler's `_verify` compares two independent values instead of
+  the module against itself. **A corrected derivation, declared here as Principle 3 asks:** a table
+  written before this keeps its `authored` rows under merge-not-clobber — delete `resolution.csv` or
+  run `--rederive` to record the reference's answer — and a module whose authored pair disagrees with
+  Ensembl now warns in `best_effort` and refuses in `strict`, which is the finding the old branch could
+  not produce.
+
 ## 2026-09-19 — `just-dna-enricher` 0.7.1: three checks that could not run were reporting that they passed
 
 **Enricher only.** `just-dna-format` and `just-dna-compiler` stay at `0.7.0` and are unaffected — the

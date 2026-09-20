@@ -75,6 +75,52 @@ overturns the probe's verdict, and a build contradicts the entry again. Each sta
 one before, and each caught something the previous one asserted. That is an argument for probing early
 and for writing entries that can be contradicted, not for trusting any of the four stages on its own.
 
+## RM251 — a row authoring both an rsID and a coordinate was copied into `resolution.csv`, and the loci the pair check had already fetched were thrown away
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher) · **Owner**
+enricher · **Motivating case** [S104](CONSUMER_SUGGESTIONS_HISTORY.md#s104--a-row-carrying-both-an-rsid-and-a-position-is-stamped-sourceauthored-statusresolved-and-never-asked-of-ensembl-so-a-cpic-drafted-haplotype-table-gets-no-independent-coordinate-and-no-vrs-id)
+— every CPIC-drafted module compiled with *"VRS allele identity covers 0/N"* and nothing the author
+could do about it
+
+### What was observed
+
+`enrich()`'s last per-row branch — *"already complete, or has a position — a full record, nothing to
+resolve"* — wrote a subject carrying `rsid` **and** `chrom`/`start` into the table as
+`source="authored", status="resolved"`, with the authored cells and nothing else: no `ref`, no `alts`,
+so no VRS id could mint. Reproduced on a fresh CYP2C19 draft against the provisioned caches: three
+rows, all `authored`, `vrs_id` empty on every one, and `verification.json` recording
+`rsid_coordinate_agreement: subjects 3, findings 0` — because the **same run had looked the rsIDs up**.
+The pair check rides its rsIDs in the Ensembl cache batch, so the loci were in hand and discarded.
+
+Half the report did not reproduce, and the reply says which half. The consumer read *"the coordinate
+is never compared with what Ensembl holds"*: it is, by the enricher, and the record attests it. What
+was true is the other half — the table held a photocopy of the module, so the **compiler's** cross-check
+(`resolve_from_table._verify`) compared the module against itself, and no id existed to mint.
+
+Why `reference_examples/cyp2c19_star_alleles` disagreed with the consumer's run: its `haplotypes.csv`
+was drafted before the 0.5.1 `gene.chr` join and carries `rsid` + `start` with **no `chrom`**, so its
+rows were rsID-only to the resolver and took the forward branch. The join that made a drafted row
+complete is what moved every later draft onto the verbatim branch.
+
+### What shipped
+
+A pair row takes the forward branch **when the reference knows its rsID**: the same allele-aware filter,
+the same PAR rule, and the link's `source`, `ref` and `alts` are recorded, so an id mints and the
+compiler holds two independent values. The authored coordinate is untouched — it is the row's identity
+and the compiler keeps it; its positional fill completes only the cells the author left empty (`ref`, for
+the CPIC shape). A disagreement is now *reachable*: `rsid_coordinate_agreement` records it and the
+compiler's `_verify` warns in `best_effort` and refuses in `strict`, exactly the matrix row for an
+authored coordinate contradicting the table. Three cases still write the authored row, each pinned: an
+rsID the snapshot does not know (no link is asked live for a pair, so there is no answer and no negative
+to fabricate), a reference whose every locus the allele filter rejects (the mismatch is the finding and
+the row keeps its coordinate), and a run with no Ensembl snapshot. `enricher/tests/test_authored_pair_resolution.py`
+carries all seven cases including the round trip through `compile_module` in both modes.
+
+**Not done, deliberately.** The consumer's `authority`-or-`shifted` column: nothing needs it. The
+authored coordinate already lives in the module, the table now holds the reference's, and the compiler
+already compares the two. A recorded table keeps its `authored` rows under merge-not-clobber; the doc
+says to delete `resolution.csv` or run `--rederive`, which since 0.7 costs nothing.
+
 ## RM250 — `scaffold` then `draft` failed on the scaffold's own placeholders, and the remedy it offered was a parameter the drafters do not have
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher + compiler) ·

@@ -1251,7 +1251,21 @@ def _run_enrichment(
             if not any(r.chrom is not None for r in covered[subject]):
                 unresolved.append(key)
             continue
-        if v.rsid is not None and v.chrom is None:
+        if v.rsid is not None and (v.chrom is None or v.rsid in rsid_to_loci):
+            # **A row that authored both halves takes this branch too, once the reference has
+            # answered for its rsID (S104).** The pair check above already looked the rsID up — the
+            # verify rsIDs ride in the cache batch — and then the verbatim branch at the bottom
+            # copied the authored coordinate into the table and threw the answer away: no `ref`, no
+            # `alts`, so nothing to mint a VRS id from, and every CPIC-drafted module compiled with
+            # "VRS allele identity covers 0/N". Recording the reference's loci instead gives the
+            # compiler two *independent* values to compare, which is what its `_verify` was written
+            # for and could never see while the table was a photocopy of the module. The authored
+            # coordinate is untouched: it is the row's identity (`authored_ident`), the compiler
+            # keeps it, and a disagreement with the locus recorded here is the finding, not a repair.
+            # An rsID the reference does not know still falls through to the verbatim branch — no
+            # link was asked live for a pair, so there is no answer to record and no negative to
+            # fabricate.
+            #
             # Forward resolution is allele-aware, exactly as the reverse (position→rsid) back-fill
             # already is. An rsID is a position/multi-allelic tag, so one id routinely names several
             # records — `rs281864532` is `G>GT`, `GT>G` *and* `GTT>G` at one position in ClinVar — and
@@ -1363,6 +1377,24 @@ def _run_enrichment(
                             **locus,
                         )
                     )
+            elif v.chrom is not None:
+                # The reference knows the rsID but at no locus that can host the authored allele
+                # (S104, the pair case of S85). The row still has an authored coordinate, so it is
+                # neither `not_found` nor unresolved: it is recorded as authored, exactly as it was
+                # before the reference was consulted, and the allele mismatch above is the finding.
+                out.append(
+                    ResolutionRow(
+                        variant_key=key,
+                        rsid=v.rsid,
+                        chrom=v.chrom,
+                        start=v.start,
+                        ref=v.ref,
+                        alts=v.alts,
+                        genome_build=genome_build,
+                        source="authored",
+                        status="resolved",
+                    )
+                )
             elif genome_build == "GRCh38" and v.rsid in unreachable_rsids:
                 # The live link was asked and never answered (S20), so this row has the same shape as
                 # the non-GRCh38 case below and gets the same treatment: no row at all. Writing
@@ -1435,7 +1467,10 @@ def _run_enrichment(
                 )
             )
         else:
-            # already complete, or has a position — a full record, nothing to resolve
+            # Already complete with no reference answer to record, or a position with no rsID to ask
+            # about — the authored record is the whole fact. A pair whose rsID the reference knows
+            # never reaches here since S104; one it does not know, or one enriched with no Ensembl
+            # snapshot, still does, and stays `authored` rather than gaining a fabricated negative.
             out.append(
                 ResolutionRow(
                     variant_key=key,
