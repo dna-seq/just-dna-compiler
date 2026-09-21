@@ -4735,7 +4735,7 @@ declared* when one is on disk.
 
 ## S106 — a repeat-count star allele (UGT1A1 `*28` = TA(8)) has no home: `repeat_alleles.csv` bins a count and `haplotypes.csv` names an allele, and nothing joins the two
 
-**Status — accepted as a design item, filed as [RM253](ROADMAP.md#rm253--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-a-diplotype-can-name-and-the-cpic-drafter-translates-none-of-cpics-notation); the two message halves shipped in the uncut 0.7 line.**
+**Status — accepted as a design item, filed as [RM253](ROADMAP_0_8.md#rm253--a-repeat-count-star-allele-ugt1a1-28--ta8-has-no-home-a-diplotype-can-name-and-the-cpic-drafter-translates-none-of-cpics-notation); the two message halves shipped in the uncut 0.7 line.**
 Reproduced on the snapshot: six UGT1A1 rows skipped, `*28` defined by nothing, the warning right and
 unfixable. Two corrections to the report, both from the probe. CPIC keys the TA repeat on **rs3064744**,
 not rs8175347; and `haplotype_name` does **not** accept CPIC's DPYD names as spelled — all three PGx
