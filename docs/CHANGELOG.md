@@ -34,6 +34,58 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-21 — just-dna-lite adopted the 0.7 line (format 0.7.0 / compiler 0.7.1 / enricher 0.7.1)
+
+**Consumer-side record, no change to any package here.** Written by the just-dna-lite side under the
+working agreement that cross-repo integration changes are noted in this file so parallel work in the
+other repos is not surprised. What INTEGRATION_0_7 § 3 asked of the reference consumer, and what it did:
+
+- **Change 0** — `cache pull` → `cache prepare`: shipped as `pipelines prepare-caches` over
+  `caches.prepare_caches()` rather than the enricher's console script, because that script cannot be
+  imported in a workspace that also installs dagster (**S107**, filed today in
+  `CONSUMER_SUGGESTIONS.md`: the Atlas gencode is protobuf 7.35, dagster pins `protobuf<7`, and
+  `google.protobuf.runtime_version.VersionError` is neither of the two types RM247's guards catch).
+  just-dna-lite mounts the enricher's Typer app behind a guarded import that catches that type and
+  mounts a stub `enrich status` naming the reason when it fires.
+- **Changes 1–3** — nothing to do, and recorded as such: no warning-prose matching on the consumer
+  side, no derived-CSV reads on the consumer path, no reader of `manifest.verification`.
+- **Check 4** — `statistical_test` and `confidence`/`confidence_unit` render in the report's study
+  table, each column only when some study on the variant carries it; `confidence` renders with its
+  unit or not at all.
+- **Check 5** — `pharm_variants.pmid` renders as a PubMed-linked *Citation* row beside *Evidence level*.
+- **Check 6** — `requires_callable=True` now excludes a row from reference-genotype restoration
+  (`restoration.hom_ref_rows`); `False` and null are both kept, so the shipped corpus is unmoved.
+- **Check 7** — `clin_sig_concordance.parquet` is discovered and joined on `(variant_key, genotype)`;
+  a `discordant` row renders an *Authorities disagree* note naming `opposed`. Nothing resolves the
+  split. No reference example carries the table, so the consumer's test builds one from
+  `ClinSigConcordanceRow`.
+- **Check 8** — not read. **Check 9** — `contested` passes through `_effective_direction` with sign 0
+  and no colour, and the word reaches the reader.
+- **Pins**: format `>=0.7.0`, compiler/enricher `>=0.7.1`, registry `>=0.26.1`. Both public registry
+  instances answered `registry 0.25.2 / format 0.7.0 / compiler 0.7.0` on the day.
+
+One thing found on the way that is not the format's: the same relock floated `agno` 2.9 → 3.0.10,
+whose MCP toolkit imports the mcp 2.x names, against a consumer-side `mcp<2.0` cap written for agno 2.
+Unrelated to this repo; recorded because the symptom (the whole CLI dead at import) looked like S107
+until the traceback was read.
+
+## 2026-09-21 — RM254: the CLI died again beside anything pinning `protobuf<7`, and the guard that was meant to hold it caught two of three types
+
+`just-dna-enricher` only, inside the uncut 0.7 line (past 0.7.1). **A patch, and a release blocker
+for the reference consumer**: just-dna-lite (S107) installs the enricher beside dagster, which pins
+`protobuf<7`; the Atlas bindings RM247 regenerated are stamped protobuf 7.35.1 and refuse an older
+runtime with `google.protobuf.runtime_version.VersionError`, which is neither `ImportError` nor
+`RuntimeError`, so both RM247 guards let it through and every command in the tier died at import.
+
+- **`atlas_protos.ATLAS_IMPORT_FAILURES`** — `(ImportError, RuntimeError, VersionError)`, bound once
+  in the stdlib-only module and named by all three guards (`alphagenome_check`, `expression`, and the
+  lazy one inside `_atlas_client_or_none`). The RM247 walk asserts the name, not a per-guard set.
+- **`[atlas]` floors `protobuf>=7.35.1`**, the gencode stamp, read off the generated file by a test
+  as the grpcio stamp already was. A co-install that cannot satisfy it now fails to resolve instead of
+  at import; one that does not ask for the extra imports cleanly.
+- **A third absence**: `client_absence()` names a runtime older than the gencode with both numbers.
+- A subprocess test simulates the gencode refusal and asserts the console entrypoint still imports.
+
 ## 2026-09-20 — S102–S106: a drafter that claimed absence, a recipe that refused on its own stubs, a table that photocopied the module, and a gate that ignored the file it read
 
 `just-dna-enricher` and `just-dna-compiler`, inside the uncut 0.7 line (the enricher past 0.7.1, the

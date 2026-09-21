@@ -42,7 +42,7 @@ from just_dna_enricher.assertions import (
     ClinicalAssertionError,
     enrich_clinical_assertions,
 )
-from just_dna_enricher.atlas_protos import client_absence
+from just_dna_enricher.atlas_protos import ATLAS_IMPORT_FAILURES, client_absence
 from just_dna_enricher.caches import (
     CACHE_LANES,
     LANES_BY_NAME,
@@ -5042,8 +5042,8 @@ def alphagenome_check_(
 def _atlas_client_or_none():
     """An Atlas client, or `None` with a sentence — never a traceback from a missing extra.
 
-    Three absences and they are not the same: the extra is not installed, the bindings have not been
-    generated, or there is no key. Each names its own remedy, and the caller degrades to the
+    Four absences and they are not the same: the extra is not installed, the bindings have not been
+    generated, the runtime protobuf is older than the gencode (RM254), or there is no key. Each names its own remedy, and the caller degrades to the
     interval the knot table publishes rather than failing the run.
     """
     # `load_env()` before reading, at the point the credential is read (`@credential-where-read`,
@@ -5068,7 +5068,7 @@ def _atlas_client_or_none():
     # `RuntimeError` for the reason `alphagenome_check`'s twin carries it: a `grpcio` older than the
     # `grpcio-tools` that generated the bindings raises it at import, and this arm is where that has
     # to become "no Atlas client" rather than a traceback (RM247).
-    except (ImportError, RuntimeError):
+    except ATLAS_IMPORT_FAILURES:
         # The docstring above promises three absences each naming its own remedy, and this arm used
         # to fold two of them into one sentence telling the reader to do both — so the promise was
         # a claim the code did not keep. `client_absence()` decides which one it is; it lives in

@@ -47,7 +47,7 @@ from just_dna_enricher.alphagenome_avi_build import (
     RAW_SCORE_SCALE,
     to_long,
 )
-from just_dna_enricher.atlas_protos import client_absence
+from just_dna_enricher.atlas_protos import ATLAS_IMPORT_FAILURES, client_absence
 from just_dna_enricher.licensing import ALPHAGENOME_AVI_TERMS
 from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
@@ -80,7 +80,7 @@ try:
 # escape through this module into `cli.py`, killing `enrich`, `draft` and `literature` — commands that
 # touch no Atlas code — and taking 17 test modules down at collection with them (RM247). An optional
 # dependency that cannot be imported degrades the same way whichever exception it chose to say so.
-except (ImportError, RuntimeError):  # pragma: no cover - exercised where the [atlas] extra is absent
+except ATLAS_IMPORT_FAILURES:  # pragma: no cover - exercised where the [atlas] extra is absent
 
     class _NeverRaised(Exception):
         """Stands in for an Atlas error type when no client can exist to raise one."""

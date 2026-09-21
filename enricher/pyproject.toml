@@ -76,7 +76,11 @@ atlas = [
     # cost at, and the version `uv.lock` already resolves, so this is the declaration catching up
     # with reality rather than a new dependency cost. `test_atlas_grpc_is_one_number` asserts it.
     "grpcio>=1.83.1",
-    "protobuf>=5.29.0",
+    # RM254: the SAME rule for protobuf. `grpcio-tools==1.83.1` stamps protobuf 7.35.1 into
+    # `atlas_service_pb2.py`, whose first statement refuses a runtime older than that with
+    # protobuf's own `VersionError` — so a `>=5.29.0` floor let a co-install pinning `protobuf<7`
+    # (dagster) resolve 6.33 and die at import. The floor is the stamp; the test reads the stamp.
+    "protobuf>=7.35.1",
 ]
 # Publisher / developer surface. huggingface-hub and ga4gh.vrs are already core deps (snapshot
 # download; allele identity); this extra marks the upload CLI (`just-dna-enricher upload`), the

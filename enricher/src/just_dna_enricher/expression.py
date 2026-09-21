@@ -44,7 +44,7 @@ from just_dna_format.expression import ExpressionEffectRow
 from just_dna_format.layout import atomic_writer
 from just_dna_format.normalize import now_utc_iso
 
-from just_dna_enricher.atlas_protos import client_absence
+from just_dna_enricher.atlas_protos import ATLAS_IMPORT_FAILURES, client_absence
 from just_dna_enricher.enrich import source_build_mismatch
 from just_dna_enricher.gene_spans import (
     ATTRIBUTION_HORIZON_BP,
@@ -78,7 +78,7 @@ try:
 # older than the `grpcio-tools` that stamped them. This guard was the SECOND one the fault escaped
 # through, after `alphagenome_check`'s — which is why the repair is a walked guard rather than two
 # edits: `test_every_atlas_client_import_is_guarded_against_both` fails on a third.
-except (ImportError, RuntimeError):  # pragma: no cover - exercised where the [atlas] extra is absent
+except ATLAS_IMPORT_FAILURES:  # pragma: no cover - exercised where the [atlas] extra is absent
 
     class _NeverRaised(Exception):
         """Stands in for an Atlas error type when no client can exist to raise one."""

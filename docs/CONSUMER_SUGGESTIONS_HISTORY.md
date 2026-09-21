@@ -145,6 +145,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S104** authored rsid+coord row copied verbatim, no VRS id — accepted, RM251
 - **S105** `pgx` ignored the module's recorded declared use — accepted, RM252
 - **S106** a repeat-count star allele has no home — design item, RM253; messages shipped
+- **S107** the CLI died beside `protobuf<7`; RM247's guards caught two of three types — accepted, RM254
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -4781,3 +4782,89 @@ accepts and `drug_labels._allele_keys` already joins on. Both are drafter gaps, 
 are worth saying so beside the RM5 warning text, which currently reads as a format limit.
 
 Meanwhile: the module ships with `*28` undefined and the warning, and its README says why.
+
+# Field notes from just-dna-lite, 2026-09-21 — adopting the 0.7 line beside dagster
+
+*Filed 2026-09-21 while adopting format 0.7.0 / compiler 0.7.1 / enricher 0.7.1 into a workspace that
+also installs dagster. One note, and it is a release blocker for the reference consumer.*
+
+## S107 — enricher 0.7.1's CLI dies at import wherever dagster pins `protobuf<7`, because the Atlas gencode is 7.35 and the RM247 guard catches neither `ImportError` nor `RuntimeError` for it
+
+**Status — accepted; shipped as [RM254](ROADMAP_HISTORY.md#rm254--protobufs-gencoderuntime-error-is-neither-of-the-two-types-rm247s-guards-caught-so-the-cli-died-again-beside-anything-pinning-protobuf7) in the uncut 0.7 line (enricher, past 0.7.1) — the smallest change you named, done once rather than at three sites, plus the floor the resolver was missing.**
+Reproduced here by overlaying `protobuf<7` on the workspace: `import just_dna_enricher.cli` dies with
+the exact `VersionError` you quoted, gencode 7.35.1 against runtime 6.33.6. Your chain and your
+diagnosis of both guards are right, and RM247's entry now says so. What shipped: (1) the three
+failure types an unusable extra can raise are one tuple, `atlas_protos.ATLAS_IMPORT_FAILURES`
+(`ImportError`, `RuntimeError`, protobuf's `VersionError`), bound in the stdlib-only module that stays
+importable when everything else is missing, and named by all three guards — the two at module scope
+and the lazy one inside `_atlas_client_or_none`; the RM247 walk asserts the name, so a fourth type
+fails a test rather than a deployment. (2) The `[atlas]` extra floored `protobuf>=5.29.0`, two majors
+below the stamp; it is `>=7.35.1` now, read off the generated file by a test as the grpcio stamp
+already was — so a workspace that asks for the extra beside dagster fails to *resolve*, which is the
+honest place, and one that does not ask for it imports cleanly, which is your case. (3)
+`client_absence()` gained a third sentence naming both numbers and the usual cause. A subprocess test
+simulates the gencode refusal against the console entrypoint. Your argument against lowering the
+generator is recorded as the refused repair; the deeper shape (no module-scope import at all) is
+recorded as not done, because the guarded import exists to bind the exception classes the `except`
+arms need. Your guarded mount and `pipelines prepare-caches` are the right meanwhile. Answered is not
+installable: the next enricher cut carries it.
+<!-- triaged: 0.7.x · sha 52456e583566 -->
+
+**Reported by** just-dna-lite, 2026-09-21, adopting the 0.7 line (`just-dna-format 0.7.0`,
+`just-dna-compiler 0.7.1`, `just-dna-enricher 0.7.1`, all from PyPI) into a workspace that also
+installs `dagster 1.13.23`.
+
+**What we ran.** `uv sync` on the bumped lock, then `just-dna-enricher --help` and our own
+`pipelines --help` (which mounts `just_dna_enricher.cli.app` whole under `pipelines enrich`, per
+INTEGRATION_0_6's advice that mounting the app means new commands surface without wiring).
+
+**What we expected.** The enricher's console script to start, and the AlphaGenome lane to be absent
+in the way RM247 describes — *"both guards catch `RuntimeError` as well as `ImportError`"* — since
+this deployment has no `[atlas]` extra and no key.
+
+**What happened.** Both commands died at import with a traceback ending in
+
+```
+google.protobuf.runtime_version.VersionError: Detected incompatible Protobuf Gencode/Runtime
+versions when loading just_dna_enricher/generated/_alphagenome_atlas_protos/atlas_service.proto:
+gencode 7.35.1 runtime 6.33.6. Runtime version cannot be older than the linked gencode version.
+```
+
+The chain is `just_dna_enricher.cli` → `alphagenome_check` (module scope) → `atlas_client` (module
+scope) → `generated/_alphagenome_atlas_protos/atlas_service_pb2.py`, whose first statement is
+`_runtime_version.ValidateProtobufRuntimeVersion(...)`. RM247 pinned the generator at
+`grpcio-tools==1.83.1`, which stamps **protobuf 7.35.1** into the gencode. `VersionError` subclasses
+`Exception` directly — it is neither `ImportError` nor `RuntimeError` — so both RM247 guards
+(`alphagenome_check.py:68` and `cli.py`'s `_atlas_client_or_none`) let it through, and the failure
+is exactly the one RM247's entry describes as repaired: *"because two modules import `atlas_client`
+at module scope, `enrich`, `draft` and `literature` — which touch no Atlas code — died with it."*
+
+**Why the runtime is 6.x, and why this is not one consumer's stale venv.** `dagster` declares
+`protobuf<7,>=4` and `grpcio-health-checking` 1.81.1 declares `protobuf<7.0.0,>=6.33.5`; the newest
+protobuf a dagster deployment can resolve is 6.33.x. So *every* consumer that runs the enricher beside
+dagster — just-dna-lite, and the marketplace's server tier if it ever co-installs — meets this on a
+clean install, with nothing in the lock to point at: the enricher's base dependencies do not name
+`protobuf` at all (it is under `[atlas]`), so the resolver has no constraint to fail on and the break
+arrives at import time instead.
+
+The Python API is fine — `resolver`, `enrich`, `caches`, `clinvar*`, `clinpgx*`, `download`,
+`locations` all import cleanly, which is what we actually call — so the loss is the command line only,
+including `cache prepare`, which INTEGRATION_0_7 § 3 asks us to swap in for `cache pull`.
+
+**What we did meanwhile.** Moved the mount behind a guarded import in one module
+(`just_dna_pipelines.enricher_cli`) that catches `(ImportError, RuntimeError,
+google.protobuf.runtime_version.VersionError)` and mounts a stub `enrich` group whose `status`
+command prints the captured reason and exits 1, so the failure is visible rather than hidden. Added
+`pipelines prepare-caches`, a thin command over `caches.prepare_caches()`, as the provisioning step
+our docs name instead of the dead `cache prepare`.
+
+**Candidate fixes, and an argument against the obvious one.** Widening the two guards to include
+`google.protobuf.runtime_version.VersionError` is the smallest change and makes RM247's claim true;
+importing that name costs nothing since protobuf is present whenever the gencode is reached. The
+better shape is the one `_atlas_client_or_none` already argues for in its own comment — do not import
+`atlas_client` at module scope from `alphagenome_check` either, so the whole `[atlas]` question is
+decided inside the one command that needs it and no other command can be taken down by it. What we
+would argue *against* is lowering the generator to a protobuf-6 `grpcio-tools`: that trades this
+break for the one RM247 fixed, and the gencode/runtime rule cuts both ways. A test that imports the
+console entrypoint in a venv with `protobuf<7` installed is what would have caught this; the
+0.7.1 entry's new import test runs where the lock resolved protobuf 7.

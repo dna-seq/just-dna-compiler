@@ -79,51 +79,121 @@ def test_the_generated_stamp_is_that_number_when_the_bindings_exist() -> None:
     )
 
 
-def test_every_atlas_client_import_is_guarded_against_both_failures() -> None:
+def test_every_atlas_client_import_is_guarded_against_every_failure() -> None:
     """A module-scope `atlas_client` import must survive an absent client AND an unusable one.
 
     Walked rather than listed, because the fault escaped through `alphagenome_check` and then through
-    `expression` — a second guard nobody had looked at, found only because the first was fixed. A
-    third importer joins this assertion by existing.
+    `expression` — a second guard nobody had looked at, found only because the first was fixed — and
+    then, with both catching `(ImportError, RuntimeError)`, through protobuf's `VersionError`, which
+    is neither (S107, RM254). So the handler is no longer a set of names each guard spells for
+    itself: it is `ATLAS_IMPORT_FAILURES`, bound once in `atlas_protos`, and every guard — module
+    scope or the lazy one inside `_atlas_client_or_none` — must name it.
     """
-
-    def _atlas_imports(body: list[ast.stmt]) -> list[ast.ImportFrom]:
-        # Module scope is `tree.body` and a `try:` directly in it — never `ast.walk`, which descends
-        # into every function and would report the *deliberately* lazy imports inside
-        # `_atlas_client_or_none` as unguarded. Those are a different mechanism and already correct.
-        return [
-            node
-            for node in body
-            if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("atlas_client")
-        ]
-
     problems: list[str] = []
     for module in sorted(_SRC.glob("*.py")):
         tree = ast.parse(module.read_text(encoding="utf-8"))
-        for node in tree.body:
-            imports = _atlas_imports(node.body if isinstance(node, ast.Try) else [node])
+        guarded: set[int] = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Try):
+                continue
+            imports = [
+                stmt
+                for stmt in node.body
+                if isinstance(stmt, ast.ImportFrom) and (stmt.module or "").endswith("atlas_client")
+            ]
             if not imports:
                 continue
-            if not isinstance(node, ast.Try):
-                problems.append(
-                    f"{module.name}:{imports[0].lineno}: imports atlas_client at module scope "
-                    f"without a try/except, so an unusable grpcio kills every command in this tier"
-                )
-                continue
+            guarded.update(id(stmt) for stmt in imports)
             caught = {
                 name.id
                 for handler in node.handlers
+                if handler.type is not None
                 for name in ast.walk(handler.type)
                 if isinstance(name, ast.Name)
             }
-            missing = {"ImportError", "RuntimeError"} - caught
-            if missing:
+            if "ATLAS_IMPORT_FAILURES" not in caught:
                 problems.append(
-                    f"{module.name}:{imports[0].lineno}: guard catches {sorted(caught)}, missing "
-                    f"{sorted(missing)} — grpc's bindings raise RuntimeError, not ImportError, when "
-                    f"the runtime grpcio is older than the generator that stamped them"
+                    f"{module.name}:{imports[0].lineno}: guard catches {sorted(caught)}, not "
+                    f"`ATLAS_IMPORT_FAILURES` — the bindings raise three different types when they "
+                    f"cannot load, and a guard spelling its own subset has let one through twice"
+                )
+        for stmt in tree.body:
+            if isinstance(stmt, ast.ImportFrom) and (stmt.module or "").endswith("atlas_client"):
+                problems.append(
+                    f"{module.name}:{stmt.lineno}: imports atlas_client at module scope without a "
+                    f"try/except, so an unusable optional extra kills every command in this tier"
                 )
     assert not problems, "\n".join(problems)
+
+
+def test_the_failure_tuple_names_protobufs_own_error() -> None:
+    """`VersionError` subclasses `Exception` directly; a tuple without it is the S107 hole."""
+    from just_dna_enricher.atlas_protos import ATLAS_IMPORT_FAILURES
+
+    assert ImportError in ATLAS_IMPORT_FAILURES and RuntimeError in ATLAS_IMPORT_FAILURES
+    try:
+        from google.protobuf.runtime_version import VersionError
+    except ImportError:
+        return
+    assert VersionError in ATLAS_IMPORT_FAILURES
+    assert not issubclass(VersionError, (ImportError, RuntimeError)), "then the old guards would have held"
+
+
+def test_the_protobuf_floor_is_the_gencode_stamp() -> None:
+    """The grpcio rule again, for protobuf: `protoc` stamps the protobuf it generated against into
+    `atlas_service_pb2.py`, whose first statement refuses an older runtime. A floor below the stamp
+    lets a co-install pinning `protobuf<7` resolve and die at import (S107)."""
+    from just_dna_enricher.atlas_protos import gencode_protobuf_version
+
+    op, floor = _requirement(_PYPROJECT["project"]["optional-dependencies"]["atlas"], "protobuf")
+    assert op == ">=", f"the runtime protobuf requirement is {op!r}; the house spelling is a >= floor"
+    stamped = gencode_protobuf_version()
+    if stamped is None:
+        return  # an un-built checkout; the declaration above is still checked
+    assert floor == ".".join(map(str, stamped)), (
+        f"the bindings were generated against protobuf {stamped} but the [atlas] floor is {floor}"
+    )
+
+
+def test_a_protobuf_runtime_older_than_the_gencode_does_not_kill_the_entrypoint() -> None:
+    """S107 as a process: the gencode check raises `VersionError` at import, and the console
+    entrypoint must still come up with the Atlas client marked unavailable. Run in a subprocess so
+    the patched protobuf and the half-imported modules never reach this interpreter."""
+    import subprocess
+    import sys
+
+    from just_dna_enricher.atlas_protos import gencode_protobuf_version
+
+    if gencode_protobuf_version() is None:
+        return  # no bindings to fail on
+    script = (
+        "from google.protobuf import runtime_version as rv\n"
+        "def _refuse(*a, **k):\n"
+        "    raise rv.VersionError('Detected incompatible Protobuf Gencode/Runtime versions (simulated)')\n"
+        "rv.ValidateProtobufRuntimeVersion = _refuse\n"
+        "import just_dna_enricher.cli\n"
+        "import just_dna_enricher.alphagenome_check as a, just_dna_enricher.expression as e\n"
+        "print(a.ATLAS_CLIENT_AVAILABLE, e.ATLAS_CLIENT_AVAILABLE)\n"
+    )
+    run = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr[-1500:]
+    assert run.stdout.split() == ["False", "False"], run.stdout
+
+
+def test_the_absence_names_a_runtime_older_than_the_gencode(monkeypatch) -> None:
+    """The third absence has its own sentence, with both numbers and the fix that applies."""
+    import importlib.util
+
+    from just_dna_enricher import atlas_protos
+
+    if importlib.util.find_spec("grpc") is None or atlas_protos.gencode_protobuf_version() is None:
+        return
+    monkeypatch.setattr(atlas_protos, "gencode_protobuf_version", lambda entry=None: (7, 35, 1))
+    monkeypatch.setattr(atlas_protos, "protobuf_runtime_version", lambda: (6, 33, 6))
+    reason = atlas_protos.client_absence()
+    assert reason is not None and "6.33.6" in reason and "7.35.1" in reason and "protobuf<7" in reason
+    monkeypatch.setattr(atlas_protos, "protobuf_runtime_version", lambda: (7, 36, 1))
+    assert atlas_protos.client_absence() is None
 
 
 def test_the_console_entrypoint_imports() -> None:

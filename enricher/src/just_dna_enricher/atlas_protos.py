@@ -27,7 +27,9 @@ which is the claim RM192 rests on.
 """
 
 import hashlib
+import importlib.metadata
 import importlib.util
+import re
 import shutil
 import subprocess
 import sys
@@ -239,6 +241,51 @@ if __name__ == "__main__":
 _GENERATED_ENTRY: str = "atlas_service_pb2.py"
 
 
+# ── What an unusable [atlas] extra raises at import, all of it (RM247, RM254) ────────────────────
+# Three types, because the bindings answer "I cannot run here" in three voices and an optional
+# dependency must degrade the same way whichever one it uses: `ImportError` when grpc/protobuf are
+# absent; `RuntimeError` from `atlas_service_pb2_grpc` when the runtime `grpcio` is older than the
+# `grpcio-tools` that stamped it; and protobuf's own `VersionError` from `atlas_service_pb2` when the
+# runtime `protobuf` is older than the gencode it stamped — which subclasses `Exception` directly, so
+# the first two let it through and a deployment pinning `protobuf<7` beside us (dagster does) lost
+# every command in this tier (S107). Bound here, in the one stdlib-only module that stays importable
+# when everything it describes is missing, so the guards cannot drift apart again.
+try:
+    from google.protobuf.runtime_version import VersionError as _ProtobufVersionError
+except ImportError:  # pragma: no cover - no protobuf at all: the gencode check cannot run either
+
+    class _ProtobufVersionError(Exception):
+        """Stands in for protobuf's gencode/runtime error where no protobuf exists to raise it."""
+
+
+ATLAS_IMPORT_FAILURES: tuple[type[Exception], ...] = (ImportError, RuntimeError, _ProtobufVersionError)
+
+#: The gencode stamp `protoc` writes as the first statement of `atlas_service_pb2.py`.
+_GENCODE_STAMP = re.compile(
+    r"ValidateProtobufRuntimeVersion\(\s*_runtime_version\.Domain\.PUBLIC,\s*(\d+),\s*(\d+),\s*(\d+),"
+)
+
+
+def gencode_protobuf_version(entry: Path | None = None) -> tuple[int, int, int] | None:
+    """The protobuf version the generated bindings were stamped with, read off the file — or `None`
+    when there are no bindings to read. Text, not an import: importing is what fails."""
+    path = entry or (OUT_DIR / STAGE_PREFIX / _GENERATED_ENTRY)
+    if not path.is_file():
+        return None
+    match = _GENCODE_STAMP.search(path.read_text(encoding="utf-8"))
+    return tuple(int(x) for x in match.groups()) if match else None
+
+
+def protobuf_runtime_version() -> tuple[int, int, int] | None:
+    """The installed protobuf, from its distribution metadata — no import, for the reason above."""
+    try:
+        raw = importlib.metadata.version("protobuf")
+    except importlib.metadata.PackageNotFoundError:
+        return None
+    parts = re.match(r"(\d+)\.(\d+)(?:\.(\d+))?", raw)
+    return (int(parts[1]), int(parts[2]), int(parts[3] or 0)) if parts else None
+
+
 def client_absence() -> str | None:
     """Why `atlas_client` cannot be imported, in the words of the ONE fix that applies — or `None`.
 
@@ -278,5 +325,19 @@ def client_absence() -> str | None:
             "group. An installed wheel carries neither the .proto pins nor grpcio-tools and ships "
             "the bindings prebuilt instead (RM196), so a wheel reporting this is a packaging bug "
             "rather than something to generate your way out of."
+        )
+    # **The runtime protobuf is older than the gencode** — the third absence (S107, RM254). Neither
+    # of the first two: grpc is installed and the bindings exist, and `atlas_service_pb2` refuses at
+    # import with protobuf's `VersionError`. The remedy is a version, not a command, and the sentence
+    # names both numbers and the usual cause — a co-installed package pinning `protobuf<7`.
+    stamped, runtime = gencode_protobuf_version(), protobuf_runtime_version()
+    if stamped is not None and runtime is not None and runtime < stamped:
+        return (
+            f"the installed protobuf {'.'.join(map(str, runtime))} is older than the "
+            f"{'.'.join(map(str, stamped))} the Atlas bindings were generated with, so they refuse to "
+            f"load (protobuf's gencode/runtime rule). Something else in this environment pins protobuf "
+            f"below that — dagster pins `protobuf<7` — and the `[atlas]` extra declares "
+            f"`protobuf>={'.'.join(map(str, stamped))}` for exactly this reason: resolve the two in one "
+            f"environment, or run the enricher in its own."
         )
     return None

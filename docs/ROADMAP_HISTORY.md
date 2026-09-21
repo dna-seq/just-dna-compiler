@@ -168,6 +168,44 @@ the enricher's console script. Whatever repair lands, the release procedure need
 
 **Related** RM192 (the measured Atlas dependency cost), RM196 (why this tier alone is on hatchling).
 
+## RM254 — protobuf's gencode/runtime error is neither of the two types RM247's guards caught, so the CLI died again beside anything pinning `protobuf<7`
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-09-21 in the uncut 0.7 line** (enricher) · **Owner**
+enricher (packaging, `atlas_protos`) · **Motivating case**
+[S107](CONSUMER_SUGGESTIONS_HISTORY.md#s107--enricher-071s-cli-dies-at-import-wherever-dagster-pins-protobuf7-because-the-atlas-gencode-is-735-and-the-rm247-guard-catches-neither-importerror-nor-runtimeerror-for-it)
+— just-dna-lite's whole command line, dead on a clean install beside dagster
+
+### What was observed
+
+Reproduced by overlaying `protobuf<7` on the workspace: `import just_dna_enricher.cli` dies with
+`google.protobuf.runtime_version.VersionError: gencode 7.35.1 runtime 6.33.6`. `grpcio-tools==1.83.1`
+(RM247's pin) stamps protobuf 7.35.1 into `atlas_service_pb2.py`, whose first statement refuses an
+older runtime; `VersionError` subclasses `Exception` directly, so `except (ImportError, RuntimeError)`
+at both module-scope guards and inside `_atlas_client_or_none` let it through, and the chain
+`cli → alphagenome_check → atlas_client → generated` took every command with it — RM247's blast
+radius, repaired for one exception type and reopened by a third. The `[atlas]` extra floored
+`protobuf>=5.29.0`, two majors below the stamp, so a resolver had nothing to refuse on and the break
+arrived at import instead of at install.
+
+### What shipped
+
+**One tuple, bound where nothing can fail to import it.** `atlas_protos.ATLAS_IMPORT_FAILURES` is
+`(ImportError, RuntimeError, VersionError)` — protobuf's error when protobuf is present, a never-raised
+stand-in when it is not — and all three guards name it. The RM247 walk now asserts the *name* rather
+than a set each guard spells for itself, and walks the lazy guard inside `_atlas_client_or_none` too.
+**The protobuf floor is the gencode stamp**, `protobuf>=7.35.1` under `[atlas]`, read off the generated
+file by a test the way the grpcio stamp already was: a dagster co-install that asks for the extra now
+fails to resolve, which is the honest place to fail; one that does not ask for it imports cleanly.
+**A third absence with its own sentence**: `client_absence()` reads the stamp and the installed
+protobuf from metadata (never by importing) and names both numbers, the usual cause and the fix. A
+subprocess test simulates the gencode refusal and asserts the entrypoint comes up with the client
+marked unavailable.
+
+**Refused, as the reporter argued:** regenerating against a protobuf-6 `grpcio-tools` trades this
+break for RM247's. **Not done:** moving `alphagenome_check`'s import off module scope; the guarded
+import exists to bind exception classes for `except` arms, and with the tuple bound in one place a
+fourth exception type fails the walk by existing rather than escaping.
+
 ## RM252 — `pgx` said "no use was declared" about a module whose licence table declared it, and asked the author to say it twice
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher) · **Owner**
