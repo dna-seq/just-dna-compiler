@@ -8,9 +8,9 @@ which carries an index of every one and where it landed; the runbook for answeri
 **This file is the inbox, so an empty one means nothing is owed** — which is the property the split
 exists for, and the reason answered items do not stay here.
 
-## The next item is S110
+## The next item is S113
 
-**Claim ids from here, never from what this file shows.** S1–S109 are all answered and live in the
+**Claim ids from here, never from what this file shows.** S1–S111 are all answered and live in the
 history file, so an empty inbox says nothing about how many ids are taken — number from the corpus, or
 the next report is a second S1. The number is computed rather than remembered:
 
@@ -52,99 +52,41 @@ observed rather than of what was decided.
 
 ---
 
-## S110 — the literature pass leaves an author manuscript abstract-only when PMC's BioC service serves it whole, tables included
+## S112 — the AlphaGenome pass cannot be aimed at a row with no `gene`, and nothing in the sidecar set maps a position to one; with a note on sidecar-to-sidecar dependencies
 
-**Reporter:** just-module-creator, 2026-09-24, enricher 0.7.1 installed. Our `F108`.
+**Reporter:** just-module-creator, 2026-09-24, enricher 0.7.1 installed. Our `F105`.
 
-**What happened.** PMID `30820047` (Kunkle 2019, *Nat Genet*, `PMC6463297`, NIH author manuscript
-`NIHMS1021255`) carries its per-locus rows — lead rsID, major/minor allele, OR — in body **Tables 1
-and 2**, and nowhere else with both allele and OR. Measured the same day:
+**What happened.** We shipped a rows mode for `enrich_expression_effects` (plugin 0.38.1): windows are
+planned from `variants.csv` × `resolution.csv`, keyed on each row's own authored `gene`, because
+`enrich_expression` requires a gene and the server-side filter is mandatory. On the longevitymap port
+(1033 rows, 527 rsIDs) **252 rows author no `gene`**, so they cannot be asked about at all, and the
+tool reports them as `no_gene`.
 
-| call | answer |
-|---|---|
-| Europe PMC `rest/PMC6463297/fullTextXML` | **HTTP 500** |
-| `EuropePmcClient.fulltext("PMC6463297")` | `None` (the 500 and a 404 both land in the `HTTPStatusError` arm) |
-| `https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC6463297/unicode` | **200, 276 KB**, 294 passages, both tables as `type: table` passages with tab-separated cells |
-| same URL for `PMC1050584` (not in OA / manuscript set) | **200** with body `[Error] : No result can be found.` — an answer, not an outage |
+**We checked whether any derived sidecar could supply one, and none can.** Over
+`hints.DERIVED_TABLE_MODELS` as installed: `resolution.csv`, `frequencies.csv`,
+`clinical_assertions.csv` and `gwas_effects.csv` carry a variant identity and no gene;
+`gene_metrics.csv` and `gene_validity.csv` carry a gene and no variant. The only table with both is
+`expression_effects.csv` itself, which is the output that needs the gene to be produced.
 
-So `enrich-literature` checked the module's 24 quotes against the abstract (`quote_source=abstract`),
-which is what `S109` then published as a miss. The fulltext existed, openly, one NCBI host away.
+**Why we did not fill it ourselves.** Writing a gene into `variants.csv` is an authored cell written
+from a source, which our rules withhold; and `gene_spans`' own docstring forbids using a span to
+*assign* a gene. But the same docstring gives the shape that would work: **a span is a query hint,
+and AlphaGenome is the attributing source.** So the ask is not a gene for the row — it is a
+position-driven query that needs none:
 
-**Two things on your side, separable.**
+- For a coordinate with no authored gene, take the MANE genes whose span (plus the ±512 kb horizon you
+  already use) covers it, query the Atlas once per candidate gene with a small window, and let each
+  returned record carry the gene the Atlas names. Nothing is written to `variants.csv`; the gene on
+  an `expression_effects.csv` row is the Atlas's attribution, as it is today.
+- The three `SpanLookup` outcomes carry through: no MANE lane means *not asked*, not *no genes*.
 
-1. **A BioC rung after Europe PMC in the fulltext fetch.** It is an NCBI host, so it belongs on the
-   E-utilities `PacingGate` budget. Keep table passages as text — for a GWAS paper the tables are where
-   the rows are. Skip `section_type=REF` (186 of the 294 passages here, none of them evidence).
-2. **The `is_open and pmcid` gate at `literature.py`'s fetch loop.** An author manuscript is usually
-   `isOpenAccess: N` in Europe PMC while PMC serves it for text mining (the BioC `license` infon here
-   reads *"This file is available for text mining"*). If the gate stays, a BioC rung never runs for
-   exactly the records that need it. What the right predicate is — `inPMC`, `hasPDF`, the manuscript
-   id — is yours to judge; the case above is the data point.
+**The broader point, from our owner:** *"This makes one sidecar depend on another's outputs, worth
+reporting to upstream for them to build a graph or something."* `expression_effects.csv` already
+depends on `resolution.csv` (for coordinates) and, with this, on the MANE lane (for candidate genes).
+`refresh_sidecar` on our side re-derives one sidecar at a time and cannot tell that re-deriving
+`resolution.csv` makes an `expression_effects.csv` built from the old coordinates stale. A declared
+dependency graph over the sidecars — which table's rows are computed from which other table's columns
+— would let a refresh cascade, let `validate` say "expression_effects predates resolution", and let a
+consumer (us) order passes without hand-kept knowledge. Offered as an observation, not a design.
 
-**Also worth separating in `fulltext()`**: a 500 and a 404 both return `None`, so "Europe PMC was
-down" and "Europe PMC has no copy" reach the caller as one value. Only the second is an answer.
-
-**What we did meanwhile.** Built the rung on our side (`discovery._bioc_fulltext`, `text_source:
-"pmc_bioc"`, behind our NCBI gate, three outcomes kept apart), so `fetch_fulltext` now returns the
-Kunkle tables — verified live, 68 KB with the tables. It does not reach your quote check, which is
-why this note exists. Fixture: a trimmed copy of the real answer at
-`just-module-creator/assets/literature/pmc_bioc_PMC6463297.json`; take it if it is useful.
-
-## S111 — idea: an enrichment that states a module's expected match rate on consumer genotyping chips
-
-**Reporter:** just-module-creator, 2026-09-24, from the owner: *"in just-prs we have the universes +
-some imputation for chips. So we can actually enrich modules with expected matchrate for chips."*
-A proposal, not a defect — offered with a measurement so it is not empty-handed.
-
-**The question it answers.** Most people who will run a module hold a 23andMe / AncestryDNA file, not
-a WGS VCF. A module that annotates 527 variants may annotate 120 of them on that file, and nothing
-says so before the report comes back thin. An author choosing between two lead SNPs in LD would pick
-the typed one if they knew.
-
-**What already exists, in `just-prs` (`../just-prs/just-prs/src/just_prs/`).**
-- `chip_coverage.chip_typed_positions(Chip.GSA_V3, cache, build=)` — unique typed `(chr, pos)` for
-  the Illumina GSA v3 backbone that 23andMe v5, AncestryDNA v2, MyHeritage and FTDNA v2 share.
-  **Both A2 (GRCh38) and A1 (GRCh37) manifests**, 648,379 positions.
-- `ld_proxy` — a 1000G LD table keyed on target position with the best GSA-typed proxy, `r_squared`
-  and `r_signed` (2.67 M targets; computed for PGS scoring-file targets, so its coverage of an
-  arbitrary module is a lower bound).
-- `liftover.lift_frame` — GRCh38⇄GRCh37, returning dropped rows with a reason.
-
-**Measured over 16 real modules' `resolution.csv` (965 positions)** — the kunkle2019 GWAS panel,
-the longevitymap port, an APOE compound module and 13 ClawBio PGx gene modules:
-
-| | positions | typed on GSA (GRCh38 A2) | + LD proxy r² ≥ 0.8 | lost lifting to GRCh37 | typed on GSA (GRCh37 A1, after lift) |
-|---|---|---|---|---|---|
-| kunkle2019_load | 24 | 5 (21 %) | +7 | 0 | 5 |
-| longevitymap | 527 | 122 (23 %) | +113 | 1 | 122 |
-| PGx genes (13) | 407 | 207 (51 %) | +7 | 0 | 207 |
-| **all 16** | **965** | **336 (35 %)** | **+127** | **1** | **336** |
-
-Two readings worth having before designing it:
-
-- **The liftover worry is smaller than expected for this purpose.** A 23andMe file is GRCh37, and the
-  owner flagged liftover as the non-trivial part. For *expected typed rate* it mostly is not: the GSA
-  A2 manifest is already GRCh38, so a GRCh38 module intersects directly, and lifting the module to
-  GRCh37 and intersecting A1 gave the identical 336 with one position lost. The liftover cost is real
-  at **annotation** time, on the sample (that is `just-dna-lite`'s side), and belongs to that report,
-  not to the module's number.
-- **The GWAS modules are the ones that need it.** ~22 % typed for both GWAS-shaped modules, against
-  51 % for PGx panels whose star-allele SNVs the arrays were designed around. An LD proxy roughly
-  doubles the GWAS number — but only where the consumer actually substitutes proxies, which is a claim
-  about the annotation engine and must not be folded into a "match rate".
-
-**A shape to argue with.** A sidecar or manifest facet per chip: `chip`, `build_compared`, `authored`
-(denominator, positions with coordinates), `typed`, `proxyable_r2_0_8`, `not_assessable` (symbolic /
-structural alleles — CYP2D6's CNV cannot be position-matched at all), and the manifest version. Three
-counts, never one rate, for the same reason your counters are `int | None`.
-
-**Caveats to state wherever it lands.** Position match only — no allele or strand check, so a typed
-position whose array probe reports the other strand still counts. The GSA manifest excludes each
-vendor's custom content (tens of thousands of markers), so `typed` is an **under**-estimate; older
-23andMe v3/v4 kits (OmniExpress) have no manifest here at all. The LD table's target set is PGS-driven.
-
-**Where the data comes from is the open question.** The positions parquet is a local cache in
-`just-prs`, not a published artifact, and the enricher should not import `just-prs`. Publishing the
-per-chip position sets (a few MB each) beside the LD table on the `just-dna-seq` HF org would let the
-enricher treat them as one more snapshot lane. Measurement script is small; we will hand it over on
-request.
+**Meanwhile.** Our tool reports `no_gene` per row with the variant keys and does not fill anything.

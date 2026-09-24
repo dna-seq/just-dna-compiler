@@ -149,6 +149,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S108** `frequencies=True` asked nothing for a multi-allelic locus — accepted, RM255
 - **S109** abstract-only miss published as a checked quote — accepted, RM256
 - **S110** author manuscript left abstract-only — accepted, RM257, RM258
+- **S111** expected match rate on consumer chips — design input, RM188 axis 1
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -5061,3 +5062,91 @@ down" and "Europe PMC has no copy" reach the caller as one value. Only the secon
 Kunkle tables — verified live, 68 KB with the tables. It does not reach your quote check, which is
 why this note exists. Fixture: a trimmed copy of the real answer at
 `just-module-creator/assets/literature/pmc_bioc_PMC6463297.json`; take it if it is useful.
+
+# Field notes from just-module-creator, 2026-09-24 — what a consumer's genotyping chip will match
+
+## S111 — idea: an enrichment that states a module's expected match rate on consumer genotyping chips
+
+**Status — taken as a design input, not filed as its own item: it is axis 1 of [RM188](ROADMAP_0_8.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics), deferred to 0.8, and your measurement is recorded there.**
+The 0.8 competitor survey had already listed *which genotyping arrays can call this variant* as a gap
+with three independent sightings (dosedna, dna-engine, dna-annotator) and the note "we have nothing".
+Yours is the fourth, and the first to come with a source and numbers, so it went into that entry as a
+dated addendum. We have not re-run your measurement. The figures there are credited to you.
+
+Three things from your proposed shape that a design would keep or change:
+
+1. **The fact is per variant, and the module figure is a summary of it.** "Which platforms interrogate
+   this position" is annotation about the variant, the same kind of fact a frequency is. A module-level
+   count derived from a per-variant sidecar is the pattern the manifest's `literature` block already
+   follows. The per-variant form also serves your other use, an author choosing the typed one of two
+   lead SNPs in LD, which a module-level number cannot.
+2. **Three counts, never a rate: agreed, and the proxy count stays separate.** *Typed*, *LD-proxyable*
+   and *not position-matchable* (CYP2D6's CNV) answer different questions. As you say, whether a proxy
+   gets substituted is up to the annotation engine, so it is never added to *typed*. *Position-only*
+   belongs in the field's name or description, not only in the docs, because a position match says
+   nothing about allele or strand.
+3. **The data arrives as a snapshot lane, never as an import.** The enricher does not depend on
+   `just-prs`. Your suggestion of per-chip position sets on the HF org, with a `release.json`, is the
+   shape every other lane has, and `CACHE_SURFACE.md` lists what a new lane owes. One thing to check
+   before anything is republished: the GSA manifest's own terms.
+
+**What to do now:** nothing is owed on your side. Your measurement script would be useful when 0.8's
+survey reaches this axis, so hold on to it rather than sending it now.
+<!-- triaged: 0.7.1 · sha a841031c27f2 -->
+
+**Reporter:** just-module-creator, 2026-09-24, from the owner: *"in just-prs we have the universes +
+some imputation for chips. So we can actually enrich modules with expected matchrate for chips."*
+A proposal, not a defect — offered with a measurement so it is not empty-handed.
+
+**The question it answers.** Most people who will run a module hold a 23andMe / AncestryDNA file, not
+a WGS VCF. A module that annotates 527 variants may annotate 120 of them on that file, and nothing
+says so before the report comes back thin. An author choosing between two lead SNPs in LD would pick
+the typed one if they knew.
+
+**What already exists, in `just-prs` (`../just-prs/just-prs/src/just_prs/`).**
+- `chip_coverage.chip_typed_positions(Chip.GSA_V3, cache, build=)` — unique typed `(chr, pos)` for
+  the Illumina GSA v3 backbone that 23andMe v5, AncestryDNA v2, MyHeritage and FTDNA v2 share.
+  **Both A2 (GRCh38) and A1 (GRCh37) manifests**, 648,379 positions.
+- `ld_proxy` — a 1000G LD table keyed on target position with the best GSA-typed proxy, `r_squared`
+  and `r_signed` (2.67 M targets; computed for PGS scoring-file targets, so its coverage of an
+  arbitrary module is a lower bound).
+- `liftover.lift_frame` — GRCh38⇄GRCh37, returning dropped rows with a reason.
+
+**Measured over 16 real modules' `resolution.csv` (965 positions)** — the kunkle2019 GWAS panel,
+the longevitymap port, an APOE compound module and 13 ClawBio PGx gene modules:
+
+| | positions | typed on GSA (GRCh38 A2) | + LD proxy r² ≥ 0.8 | lost lifting to GRCh37 | typed on GSA (GRCh37 A1, after lift) |
+|---|---|---|---|---|---|
+| kunkle2019_load | 24 | 5 (21 %) | +7 | 0 | 5 |
+| longevitymap | 527 | 122 (23 %) | +113 | 1 | 122 |
+| PGx genes (13) | 407 | 207 (51 %) | +7 | 0 | 207 |
+| **all 16** | **965** | **336 (35 %)** | **+127** | **1** | **336** |
+
+Two readings worth having before designing it:
+
+- **The liftover worry is smaller than expected for this purpose.** A 23andMe file is GRCh37, and the
+  owner flagged liftover as the non-trivial part. For *expected typed rate* it mostly is not: the GSA
+  A2 manifest is already GRCh38, so a GRCh38 module intersects directly, and lifting the module to
+  GRCh37 and intersecting A1 gave the identical 336 with one position lost. The liftover cost is real
+  at **annotation** time, on the sample (that is `just-dna-lite`'s side), and belongs to that report,
+  not to the module's number.
+- **The GWAS modules are the ones that need it.** ~22 % typed for both GWAS-shaped modules, against
+  51 % for PGx panels whose star-allele SNVs the arrays were designed around. An LD proxy roughly
+  doubles the GWAS number — but only where the consumer actually substitutes proxies, which is a claim
+  about the annotation engine and must not be folded into a "match rate".
+
+**A shape to argue with.** A sidecar or manifest facet per chip: `chip`, `build_compared`, `authored`
+(denominator, positions with coordinates), `typed`, `proxyable_r2_0_8`, `not_assessable` (symbolic /
+structural alleles — CYP2D6's CNV cannot be position-matched at all), and the manifest version. Three
+counts, never one rate, for the same reason your counters are `int | None`.
+
+**Caveats to state wherever it lands.** Position match only — no allele or strand check, so a typed
+position whose array probe reports the other strand still counts. The GSA manifest excludes each
+vendor's custom content (tens of thousands of markers), so `typed` is an **under**-estimate; older
+23andMe v3/v4 kits (OmniExpress) have no manifest here at all. The LD table's target set is PGS-driven.
+
+**Where the data comes from is the open question.** The positions parquet is a local cache in
+`just-prs`, not a published artifact, and the enricher should not import `just-prs`. Publishing the
+per-chip position sets (a few MB each) beside the LD table on the `just-dna-seq` HF org would let the
+enricher treat them as one more snapshot lane. Measurement script is small; we will hand it over on
+request.
