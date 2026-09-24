@@ -146,6 +146,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S105** `pgx` ignored the module's recorded declared use — accepted, RM252
 - **S106** a repeat-count star allele has no home — design item, RM253; messages shipped
 - **S107** the CLI died beside `protobuf<7`; RM247's guards caught two of three types — accepted, RM254
+- **S108** `frequencies=True` asked nothing for a multi-allelic locus — accepted, RM255
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -4868,3 +4869,62 @@ would argue *against* is lowering the generator to a protobuf-6 `grpcio-tools`: 
 break for the one RM247 fixed, and the gencode/runtime rule cuts both ways. A test that imports the
 console entrypoint in a venv with `protobuf<7` installed is what would have caught this; the
 0.7.1 entry's new import test runs where the lock resolved protobuf 7.
+
+# Field notes from just-module-creator, 2026-09-24 — a GWAS panel's strand-ambiguous pairs
+
+*Filed 2026-09-24 while building a module from Kunkle 2019 (PMID 30820047), where matching the
+paper's MAF against gnomAD is the only way to fix a strand-ambiguous pair to the plus strand.*
+
+## S108 — `lookup_variant(frequencies=True)` returns empty `populations` for every multi-allelic rsID, and says nothing
+
+**Status — accepted; shipped as [RM255](ROADMAP_HISTORY.md#rm255--lookup_variantfrequenciestrue-asked-gnomad-nothing-for-a-multi-allelic-locus-and-said-nothing-about-it) in the uncut 0.7 line (enricher, past 0.7.1) — suggestion (3), which absorbs (1) and (2).**
+Reproduced on the suite's own fixture, which turned out to be this exact shape already
+(`rs1799945` → `6:26090951 C>G,T`), so the test that would have caught it was one assertion away for
+a release. Your reading of the cause is exact, and there was a second defect inside it that your
+report did not name: `single[0]` also dropped loci 2..N of a one-to-many rsID, in the same silence.
+What shipped: every allele of every resolved locus becomes a `chrom-pos-ref-alt` id and they go in
+**one** `fetch_frequencies` call — the client batches twenty per request, so your 15 multi-allelic
+leads cost the same one paced round trip each that a single-allele question did, not one per allele.
+`alts=` now filters that set, so `alts="C"` asks about C. The three ways the question cannot be put
+each append a finding instead of returning an empty list: no locus resolved, a locus carrying no
+ref/alts, and an `alts=` naming an allele no locus offers (that one names what you asked and what the
+locus holds, which is the case where you really did ask about a variant that is not there). *"gnomAD
+has no record for …"* is per allele now, so a `C>G,T` whose G is known and whose T is not says so.
+Two shape changes you will see: a `populations` row carries `allele`, `variant_id` and `vrs_id`,
+because a multi-allelic locus answers with one row per ancestry group *per allele* and nothing else
+in the row told them apart — the CLI's `population` line leads with the allele — and `hint.vrs_id`,
+being a scalar, is filled only when exactly one allele answered, the ids riding on the rows
+otherwise. For your Kunkle strand work that means `rs3752246` now returns both C and T with their
+MAFs, which is what the paper's frequency has to be matched against. Answered is not installable: the
+next enricher cut carries it.
+<!-- triaged: 0.7.x · sha 77c287314eae -->
+
+**Reporter:** just-module-creator, 2026-09-24, enricher 0.7.1 installed. Found building a module from
+Kunkle 2019 (PMID 30820047), where the only way to fix a strand-ambiguous pair (`rs3752246` C/G,
+`rs9271058` T/A) to the plus strand is to match the paper's MAF against gnomAD.
+
+**What happened.** 15 of the paper's 25 lead rsIDs resolve to a locus whose `alts` holds more than
+one allele (`rs3752246` → `19:1056493 G>C,T`; `rs4844610` → `1:207629207 A>C,G,T`). For every one of
+them `lookup_variant(rsid=…, frequencies=True)` returns `populations: []` with **no finding**. Passing
+`alts="C"`, or a full `chrom/start/ref/alts` key, changes nothing.
+
+**Why.** `lookup._lookup_frequencies` opens with
+
+```python
+single = [locus for locus in hint.loci if locus.get("alts") and "," not in str(locus["alts"])]
+if not single:
+    return
+```
+
+so no gnomAD request is made and no `Finding` is appended. The two neighbouring exits both append an
+`info` (*"frequencies unchecked: …"*, *"gnomAD has no record for …"*), and this one doesn't, so an empty
+list here reads the same as *"gnomAD has no data"* when the question was never asked.
+
+**Candidate fix, in order of cost.** (1) Append a finding on that exit, e.g. *"frequencies not looked
+up: the locus is multi-allelic (C,T); pass alts= to choose one"*. (2) Honour a caller's `alts=` by
+querying `chrom-start-ref-<that alt>`. (3) Query each alt of a multi-allelic locus, since
+`fetch_frequencies` already takes a list. Common GWAS lead SNPs are often multi-allelic in dbSNP, so
+(2) or (3) is what makes the flag usable for this job.
+
+**Meanwhile:** the module leaves the two ambiguous pairs in its decision list rather than guessing a
+strand.
