@@ -839,10 +839,23 @@ class Literature(BaseModel):
     quotes_found: int = Field(
         default=0,
         description=(
-            "Of those, how many were located in a fulltext. Read it against `quotes_authored`, "
-            "`quotes_unchecked` AND `open_access_count`: an unfound quote in a paywalled article was "
-            "never checked, not checked and missing."
+            "Of those, how many were located — in a fulltext, or in an abstract where that was all "
+            "that could be read. Read it against `quotes_checked`, never against `quotes_authored` "
+            "alone: an unfound quote in a paywalled article was never checked, not checked and missing."
         ),
+    )
+    quotes_checked: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Of `quotes_authored`, how many a retrieved text settled, found or missed — the "
+            "denominator `quotes_found` is read against, in the same unit (quotes). A fulltext settles "
+            "every quote; an abstract settles only its hits, since a quote missing from it may still "
+            "be in the body; nothing retrievable settles none. So `quotes_authored - quotes_checked` "
+            "is how many quotes nothing established either way (RM256, S109). Null on a manifest "
+            "compiled before 0.7.2, which did not publish it — unknown, never zero."
+        ),
+        json_schema_extra=since("0.7.2"),
     )
     quotes_unchecked: int = Field(
         default=0,
@@ -850,7 +863,9 @@ class Literature(BaseModel):
             "Citations whose `quotes_found` is null — the fulltext was never retrievable, so nothing "
             "was established either way. `quotes_found` is a sum over the rows that DID answer, so "
             "without this number a module where nothing was checked is indistinguishable from one "
-            "where every quote was checked and missed: both report zero (S56)."
+            "where every quote was checked and missed: both report zero (S56). **A count of "
+            "citations, not quotes**, and an abstract-only citation is not in it, since its "
+            "`quotes_found` is 0 rather than null; the quote-level answer is `quotes_checked`."
         ),
     )
 

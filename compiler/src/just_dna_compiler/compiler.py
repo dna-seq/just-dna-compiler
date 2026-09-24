@@ -6510,6 +6510,14 @@ def _literature_block(rows: list[LiteratureRow]) -> Literature | None:
     The count of null rows is published beside it rather than the pair being made nullable, because a
     reader needs the three states — found, missed, never asked — and `int | None` collapses the last
     two back into "no number".
+
+    **And `quotes_unchecked` was not enough either, because it counts citations** (RM256, S109). An
+    abstract-only row carries `quotes_found=0`, not null, so it was neither unchecked nor anything
+    but a miss here: twenty-four quotes on one paywalled paper published as `quotes_found: 0,
+    quotes_unchecked: 0`, the S56 reading one case over, while the enricher had already called all
+    twenty-four unchecked. `quotes_checked` is the denominator in quote units, from the rule the
+    enricher's report uses; `quotes_unchecked` keeps its published meaning rather than being
+    redefined under a consumer who reads it.
     """
     if not rows:
         return None
@@ -6523,6 +6531,7 @@ def _literature_block(rows: list[LiteratureRow]) -> Literature | None:
         abstract_only_count=sum(1 for r in rows if r.quote_source == "abstract"),
         quotes_authored=sum(r.quotes_authored or 0 for r in rows),
         quotes_found=sum(r.quotes_found for r in rows if r.quotes_found is not None),
+        quotes_checked=sum(r.quotes_checked() for r in rows),
         quotes_unchecked=sum(1 for r in rows if r.quotes_found is None),
     )
 

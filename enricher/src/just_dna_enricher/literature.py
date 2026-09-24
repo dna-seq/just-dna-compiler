@@ -1147,15 +1147,12 @@ def _tally_quotes(result: LiteratureResult, citations: dict[str, list[StudyRow]]
         if pinned != authored_now:
             unexamined += authored_now
             continue
-        if row.quotes_found is None:
-            unchecked += pinned
-            continue
-        found += row.quotes_found
-        if row.quote_source == "fulltext":
-            checked += pinned
-        else:
-            checked += row.quotes_found
-            unchecked += pinned - row.quotes_found
+        # The per-row arithmetic is `LiteratureRow.quotes_checked`, shared with the manifest block so
+        # the pass report and the published counters cannot disagree about what an abstract settled.
+        settled = row.quotes_checked()
+        found += row.quotes_found or 0
+        checked += settled
+        unchecked += pinned - settled
     result.noncommercial_quoted = sorted(noncommercial, key=int)
     result.quotes_found = found
     result.quotes_checked = checked

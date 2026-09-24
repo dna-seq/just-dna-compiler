@@ -1516,7 +1516,11 @@ the one that keeps the file readable by the human the DSL exists for. Facts: `pm
   this table's grain is the citation, and two study rows may cite one paper with different quotes, so a
   single flag would have to lie about one of them. `quotes_found` is **null when no fulltext could be
   retrieved** and `0` when a fulltext was read and the quote was not in it — a distinction the manifest
-  block preserves, because collapsing it would report an unread paper as a wrong citation.
+  block preserves, because collapsing it would report an unread paper as a wrong citation. **An
+  abstract-only `0` is the third state, and the manifest missed it until RM256** (S109): it is neither
+  null nor a verdict, so `quotes_unchecked`, which counts null *citations*, could not see it. The block
+  now publishes `quotes_checked`, the quotes a retrieved text settled, from the one rule both tiers read
+  (`LiteratureRow.quotes_checked`): fulltext settles every quote, an abstract only its hits.
 
 **`GeneValidityRow` — one row per curated gene–disease assertion (0.6, RM24).** The question
 `gene_metrics.csv` cannot answer: constraint says how intolerant of variation a gene looks and dosage

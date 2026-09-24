@@ -292,3 +292,29 @@ class LiteratureRow(BaseModel):
     def _canonical_fetched_at(cls, v: object) -> str | None:
         """One spelling, enforced on load — see `normalize.normalize_utc_timestamp`."""
         return normalize_utc_timestamp(v if v is None or isinstance(v, str) else str(v))
+
+    def quotes_checked(self) -> int:
+        """How many of this citation's quotes a retrieved text SETTLED, found or missed (RM256, S109).
+
+        The denominator `quotes_found` is read against, in the same unit — quotes, not citations. A
+        miss settles a quote only against fulltext: an abstract is not the body, so a quote absent
+        from it may still be in the article. Hence the three arms:
+
+        * `quotes_found` null — nothing was retrievable, so nothing is settled: `0`.
+        * `quote_source == "fulltext"` — every quote was looked for in the whole text: all of them.
+        * anything else (`abstract`, or a count with no `quote_source`) — only the hits are settled.
+
+        **One rule for both tiers.** The enricher's pass report and the compiler's manifest block both
+        read it from here; the manifest once summed `quotes_found` over rows without it, so an
+        abstract-only citation with twenty-four misses published as twenty-four quotes checked and
+        missed while the enricher, one command earlier, had called all twenty-four unchecked.
+
+        It reads the row as written. Whether `quotes_authored` still matches the quotes `studies.csv`
+        carries is a staleness question answered elsewhere — the compiler's `quote_counter_stale`
+        warning, and the enricher's `unexamined` count — and a stale row settles what it recorded.
+        """
+        if self.quotes_found is None:
+            return 0
+        if self.quote_source == "fulltext":
+            return self.quotes_authored or 0
+        return self.quotes_found

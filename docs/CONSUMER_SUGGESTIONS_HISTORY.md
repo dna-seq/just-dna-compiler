@@ -147,6 +147,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S106** a repeat-count star allele has no home — design item, RM253; messages shipped
 - **S107** the CLI died beside `protobuf<7`; RM247's guards caught two of three types — accepted, RM254
 - **S108** `frequencies=True` asked nothing for a multi-allelic locus — accepted, RM255
+- **S109** abstract-only miss published as a checked quote — accepted, RM256
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -4928,3 +4929,66 @@ querying `chrom-start-ref-<that alt>`. (3) Query each alt of a multi-allelic loc
 
 **Meanwhile:** the module leaves the two ambiguous pairs in its decision list rather than guessing a
 strand.
+
+# Field notes from just-module-creator, 2026-09-24 — reading back a rehearsal module's citation block
+
+## S109 — an abstract-only literature row publishes `quotes_found: 0, quotes_unchecked: 0`, which reads as every quote read and missed
+
+**Status — accepted; shipped in the tree as [RM256](ROADMAP_HISTORY.md#rm256--the-manifests-citation-block-read-an-abstract-only-miss-as-a-checked-quote), uncut, and it sizes as a minor.**
+Reproduced by passing one `LiteratureRow` (`quotes_authored=24, quotes_found=0,
+quote_source=abstract`) through `compiler._literature_block`: it published `quotes_found: 0,
+quotes_unchecked: 0` exactly as you read it. A second shape turned up while probing: 3 of 24 found in
+the abstract still published the other 21 as checked, so a fix that nulls only a zero would not have
+been enough.
+
+The manifest block now has **`quotes_checked`**, counted in quotes like the counters beside it: how
+many quotes a retrieved text settled, found or missed. Your module will publish `quotes_authored: 24,
+quotes_checked: 0, quotes_found: 0`. The per-row rule lives in the format tier as
+`LiteratureRow.quotes_checked()`. Fulltext settles every quote, an abstract settles only its hits, and
+null settles nothing. The enricher's report and the compiler's block both call it, and a test runs a
+real pass's rows through the block and checks the two agree.
+
+We turned down both of your candidates, for these reasons. Writing `quotes_found` as null on an
+abstract miss would merge two states the row keeps apart (null means nothing could be read, while 0
+against `abstract` means the abstract was read). It would also leave every sidecar already written
+unchanged, because the table is merge-not-clobber. Counting abstract rows in `quotes_unchecked`, or
+switching it to quote units, would redefine a published field that was accurate for the question it
+asked. Your unit point stands: that field counts citations, and its description now says so and
+points to `quotes_checked`.
+
+**What to do now:** once the next 0.7 minor is cut, recompile. A card should read `quotes_found`
+against `quotes_checked` and never against `quotes_authored` alone. On a manifest from an earlier
+compiler, `quotes_checked` is null, meaning unknown, not zero. Until then, `abstract_only_count > 0`
+beside `quotes_found < quotes_authored` is the case to treat as unchecked.
+<!-- triaged: 0.7.1 · sha 307839591fab -->
+
+**Reporter:** just-module-creator, 2026-09-24, enricher 0.7.1 / compiler 0.7.1 locally, registry
+0.25.2 on the polygon. Found by reading back the rehearsal `test-sheep/test_late_onset_alzheimers_kunkle2019@0.1.0`.
+
+**What happened.** The module has 24 `provenance_quote`/`provenance_regex` rows on one PMID
+(30820047, not OA). `enrich-literature` reports `quotes_unchecked: 24` and the `provenance_quote`
+check records `skipped: no_reference` — *"24 in articles whose fulltext could not be read (or only an
+abstract could, where a miss is not a verdict)"*. But `literature.csv` stores
+`quotes_found=0, quote_source=abstract`, and the manifest's `Literature` block, built by
+`compiler._literature_block` as `quotes_unchecked=sum(1 for r in rows if r.quotes_found is None)`,
+publishes:
+
+```
+quotes_authored: 24, quotes_found: 0, quotes_unchecked: 0, abstract_only_count: 1
+```
+
+That is S56's "checked and missed" reading exactly, one case over: the null guard covers *nothing
+retrieved* but not *only an abstract retrieved*, which the enricher itself calls not a verdict. Only
+`abstract_only_count` separates the two, and a card or a reader that doesn't know to look beside it
+sees 24 quotes that failed.
+
+**Two smaller points in the same block.** `quotes_unchecked` counts *citations* (rows of
+`literature.csv`), while `quotes_authored` and `quotes_found` count *quotes*, so even a correct value
+here would be 1 against 24. The field description says "Citations whose `quotes_found` is null", which
+is accurate, but the three numbers sit side by side as if they shared a unit.
+
+**Candidate fix.** Have the enricher write `quotes_found` as null when `quote_source == "abstract"`
+and nothing matched (a hit in an abstract can stay a count). Or have the compiler count
+abstract-only rows as unchecked, and sum `quotes_authored` over unchecked rows so the unit matches.
+The first keeps one definition of "unchecked" across the pass report, the check record and the
+manifest.

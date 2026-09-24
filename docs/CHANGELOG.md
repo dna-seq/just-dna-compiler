@@ -69,6 +69,20 @@ whose MCP toolkit imports the mcp 2.x names, against a consumer-side `mcp<2.0` c
 Unrelated to this repo; recorded because the symptom (the whole CLI dead at import) looked like S107
 until the traceback was read.
 
+## 2026-09-24 — RM256: the manifest published an abstract-only miss as a checked quote
+
+`just-dna-format`, `just-dna-compiler` and `just-dna-enricher`, inside the uncut 0.7 line. **A minor**:
+one new optional manifest field.
+
+An abstract-only citation stores `quotes_found=0, quote_source=abstract`, which is not a verdict, and
+the enricher's pass report already counted it as unchecked. The manifest's `literature` block counted
+only null rows as unchecked, so 24 quotes on one paywalled paper published as `quotes_found: 0,
+quotes_unchecked: 0` (S109). The block now carries **`quotes_checked`**, in quote units: the quotes a
+retrieved text settled, found or missed. Read `quotes_found` against it; `quotes_authored -
+quotes_checked` is what nothing established. The rule is `LiteratureRow.quotes_checked()` and the
+enricher's report uses the same one. `quotes_unchecked` keeps its meaning (a count of citations), and
+its description now says so. Null on manifests compiled before this release.
+
 ## 2026-09-24 — RM255: `hint variant --frequencies` asked gnomAD nothing for a multi-allelic locus, and said nothing about it
 
 `just-dna-enricher` only, inside the uncut 0.7 line. A patch: an advisory surface, no authored schema,

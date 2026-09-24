@@ -272,6 +272,42 @@ def test_a_module_where_nothing_was_checked_does_not_publish_a_confident_zero(tm
     assert block.quotes_unchecked != other.quotes_unchecked
 
 
+def test_an_abstract_miss_is_not_published_as_a_checked_quote(tmp_path: Path) -> None:
+    """S109: the S56 reading one case over, where the row says 0 rather than null.
+
+    An abstract-only citation stores `quotes_found=0, quote_source=abstract` — searched, not found, and
+    not a verdict, because the body was never read. `quotes_unchecked` counts null rows, so it cannot
+    see it: two abstract misses and two fulltext misses publish the same three counters. The
+    quote-level denominator is what separates them.
+    """
+    header = "pmid,doi,pmcid,exists,is_open_access,quotes_authored,quotes_found,quote_source,source,status,fetched_at\n"
+    spec = _spec(tmp_path, literature=True)
+
+    def compile_with(first: str, second: str, out: str):
+        (spec / "literature.csv").write_text(
+            header
+            + f"12345678,10.1234/2013/999990,,true,false,1,{first},pubmed,resolved,\n"
+            + f"23456789,10.1000/example,,true,false,1,{second},pubmed,resolved,\n",
+            encoding="utf-8",
+        )
+        result = compile_module(spec, tmp_path / out, resolve_with_ensembl=False)
+        assert result.success, result.errors
+        return result.manifest.literature
+
+    abstract_only = compile_with("0,abstract", "0,abstract", "a")
+    fulltext = compile_with("0,fulltext", "0,fulltext", "b")
+    counters = ("quotes_authored", "quotes_found", "quotes_unchecked")
+    # The defect: identical on every counter that existed before.
+    assert [getattr(abstract_only, c) for c in counters] == [getattr(fulltext, c) for c in counters]
+    assert (abstract_only.quotes_checked, fulltext.quotes_checked) == (0, 2)
+
+    # A hit in an abstract settles that quote, and the other arms of the rule sit beside it.
+    mixed = compile_with("1,abstract", ",", "c")
+    assert (mixed.quotes_found, mixed.quotes_checked, mixed.quotes_unchecked) == (1, 1, 1)
+    for block in (abstract_only, fulltext, mixed):
+        assert block.quotes_found <= block.quotes_checked <= block.quotes_authored
+
+
 def test_a_nonexistent_citation_recorded_by_the_enricher_surfaces_at_compile(tmp_path: Path) -> None:
     """The compiler cannot ask PubMed anything, but the enricher already wrote down the verdict —
     so an offline compile can still tell the author their citation does not resolve."""

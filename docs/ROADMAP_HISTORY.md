@@ -168,6 +168,57 @@ the enricher's console script. Whatever repair lands, the release procedure need
 
 **Related** RM192 (the measured Atlas dependency cost), RM196 (why this tier alone is on hatchling).
 
+## RM256 — the manifest's citation block read an abstract-only miss as a checked quote
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.7 line** (format + compiler +
+enricher) — **sizes as a minor**, a new manifest field · **Owner** compiler (`_literature_block`) ·
+**Motivating case**
+[S109](CONSUMER_SUGGESTIONS_HISTORY.md#s109--an-abstract-only-literature-row-publishes-quotes_found-0-quotes_unchecked-0-which-reads-as-every-quote-read-and-missed)
+— reading back a rehearsal module with 24 quotes on one paywalled PMID
+
+### What was observed
+
+An abstract-only citation stores `quotes_found=0, quote_source=abstract`: searched, missed, and not a
+verdict. The enricher's `_tally_quotes` already counted such a miss as unchecked, so the pass reported
+`quotes_unchecked: 24`. The compiler's `_literature_block` counted `quotes_unchecked` as citations
+whose `quotes_found` is **null**, so the same row published `quotes_found: 0, quotes_unchecked: 0`,
+which is S56's "checked and missed" reading one case over. Reproduced on a single `LiteratureRow`
+through `_literature_block`, and on a second shape the report did not name: 3 of 24 found in the
+abstract still published the other 21 as checked. `quotes_unchecked` also counts citations while the
+two counters beside it count quotes, so no value of it could have answered in the right unit.
+
+### What shipped
+
+`Literature.quotes_checked`, the quotes a retrieved text settled, in quote units, so `quotes_found`
+has a denominator it can be read against. The per-row rule is `LiteratureRow.quotes_checked()` in the
+format tier: null settles nothing, fulltext settles every quote, anything else settles only its hits.
+The enricher's `_tally_quotes` and the compiler's block both call it, so the pass report and the
+manifest cannot disagree again; an enricher test feeds the rows a real pass wrote into the compiler's
+block and asserts the two agree. `quotes_found`'s description no longer says "in a fulltext", which
+was false for abstract hits the block already summed. `quotes_unchecked` is unchanged and its
+description now says it counts citations and does not see an abstract-only row.
+
+### Why each candidate repair was refused
+
+- **The enricher writing `quotes_found` as null on an abstract miss** (the reporter's first choice).
+  It merges two states `LiteratureRow` holds apart on purpose: null means nothing could be read, and 0
+  against `abstract` means the abstract was read. It also fixes nothing already written, since
+  `literature.csv` is merge-not-clobber, and it leaves the partial-hit case wrong.
+- **Counting abstract-only citations in `quotes_unchecked`, or moving it to quote units.** The field's
+  published description ("citations whose `quotes_found` is null") is accurate: the value was never
+  wrong, the question was too narrow. Changing its basis or unit redefines a number a consumer already
+  reads, which is the S18 case (add beside, never redefine), and a citation-level count cannot express
+  a paper where some quotes were found in the abstract and others were not.
+
+**Scope, stated so it is not re-filed as an oversight.** `quotes_checked` reads the row as written,
+exactly as `quotes_found` does. A row whose `quotes_authored` no longer matches `studies.csv` is the
+enricher's `unexamined` count and the compiler's `quote_counter_stale` warning, not this counter.
+
+**Release class.** A new optional manifest field is a minor by the triage runbook's table, so the
+batch this lands in cuts as a minor. `Literature` sets no `extra="forbid"`, so an older reader ignores
+the field. **The next release record must declare `literature.quotes_checked` as an addition** on the
+`manifest_fields` axis, or the cut's sweep gate will refuse it.
+
 ## RM255 — `lookup_variant(frequencies=True)` asked gnomAD nothing for a multi-allelic locus, and said nothing about it
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.7 line** (enricher) · **Owner**

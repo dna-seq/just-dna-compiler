@@ -18,6 +18,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from just_dna_compiler.compiler import _literature_block
 from just_dna_enricher.eutils import EutilsClient, EutilsSettings
 from just_dna_enricher.literature import (
     CrossrefClient,
@@ -444,6 +445,33 @@ def test_an_abstract_hit_settles_a_quote_but_a_miss_does_not(tmp_path: Path) -> 
     assert (row.quote_source, row.quotes_found) == ("abstract", 0)
     assert result.quotes_unchecked == 1  # a miss in an abstract is not a verdict
     assert "not a verdict" in result.coverage
+
+
+def test_the_manifest_and_the_pass_report_agree_on_what_an_abstract_settled(tmp_path: Path) -> None:
+    """S109: the pass report called an abstract miss unchecked; the manifest called it checked.
+
+    Both now read `LiteratureRow.quotes_checked`, so the published denominator is the report's. Run on
+    real recorded responses — one abstract hit and one abstract miss on the same paywalled paper — and
+    the rows the pass wrote go straight into the compiler's block.
+    """
+    record = next(
+        r
+        for r in _EPMC_SEARCH["resultList"]["result"]
+        if r.get("abstractText") and r.get("isOpenAccess") == "N"
+    )
+    pmid, abstract = record["pmid"], record["abstractText"]
+    phrase = " ".join(abstract.split()[3:8]).replace('"', "")
+    spec = _spec(
+        tmp_path / "s",
+        f'rsid,pmid,provenance_quote\nrs334,{pmid},"{phrase}"\n'
+        f'rs429358,{pmid},"certainly not in this abstract at all"\n',
+    )
+    result = enrich_literature(spec, eutils=_eutils(), europepmc=_epmc(), crossref=_crossref())
+    block = _literature_block(result.rows)
+    assert (block.quotes_authored, block.quotes_found, block.quotes_checked) == (2, 1, 1)
+    assert block.quotes_found == result.quotes_found
+    assert block.quotes_checked == result.quotes_checked
+    assert block.quotes_authored - block.quotes_checked == result.quotes_unchecked
 
 
 # ── Crossref: the citations PubMed structurally cannot cover ────────────────────────────────────
