@@ -61,6 +61,7 @@ from just_dna_enricher.locations import (
     resolve_ensembl_reference,
     resolve_pubmind_reference,
 )
+from just_dna_enricher.net import dedupe
 from just_dna_enricher.pubmind_draft import PubMindDraftError, select_by_positions
 from just_dna_enricher.resolver import lookup_loci
 
@@ -284,7 +285,7 @@ def lookup_variant(
             _lookup_live_loci(hint, rsid, clients)
             _check_rsid_currency(hint, rsid, clients)
             if frequencies:
-                _lookup_frequencies(hint, clients)
+                _lookup_frequencies(hint, clients, alts)
         else:
             hint.findings.append(
                 Finding(None, None, "info", "offline: rsID currency and frequencies were not checked")
@@ -459,36 +460,93 @@ def _check_rsid_currency(hint: VariantHint, rsid: str | None, clients: LookupCli
         )
 
 
-def _lookup_frequencies(hint: VariantHint, clients: LookupClients) -> None:
-    """Population allele counts for the resolved locus. gnomAD serves no `af`; it is ac/an here."""
-    single = [locus for locus in hint.loci if locus.get("alts") and "," not in str(locus["alts"])]
-    if not single:
+def _lookup_frequencies(hint: VariantHint, clients: LookupClients, alts: str | None = None) -> None:
+    """Population allele counts for **every** resolved allele. gnomAD serves no `af`; it is ac/an here.
+
+    **Asked per allele, because that is what the question is** (S108, RM255). This leg used to keep
+    `[locus for locus in hint.loci if "," not in locus["alts"]][0]` — so a multi-allelic rsID, which
+    is what a common GWAS lead SNP usually is (`rs3752246` is `19:1056493 G>C,T`), made **no request
+    at all** and appended **no finding**, and an empty `populations` read exactly like "gnomAD has
+    nothing here". The two neighbouring exits both say what happened; this one said nothing, which is
+    the silent-pass shape the whole package is written against. The `[0]` was a second defect inside
+    the first: a one-to-many rsID with two single-allele loci had its second locus dropped in silence
+    too.
+
+    `fetch_frequencies` keys on `chrom-pos-ref-alt` and batches twenty ids per request, so asking
+    about every allele of every locus costs the same one paced round trip the old single-allele
+    question did.
+
+    `alts` is the caller's own filter, honoured here: a caller who names an allele gets that allele's
+    frequencies. An `alts=` naming something no resolved locus offers is a **finding**, not an empty
+    answer — it is the one case where the author asked about a variant this locus does not have.
+    """
+    wanted = {a.strip() for a in str(alts).split(",") if a.strip()} if alts else None
+    #: `variant_id -> (locus, alt)`, in resolution order, so a row can name the allele it describes.
+    asked: dict[str, tuple[dict, str]] = {}
+    offered: list[str] = []
+    for locus in hint.loci:
+        if not (locus.get("ref") and locus.get("alts")):
+            continue
+        for alt in str(locus["alts"]).split(","):
+            alt = alt.strip()
+            if not alt:
+                continue
+            offered.append(alt)
+            if wanted is not None and alt not in wanted:
+                continue
+            asked.setdefault(f"{locus['chrom']}-{locus['start']}-{locus['ref']}-{alt}", (locus, alt))
+    if not asked:
+        # Three reasons the question cannot be put, each naming its own remedy rather than returning
+        # an empty list that reads as an answer.
+        if not hint.loci:
+            reason = "no locus was resolved, so there is no coordinate to ask gnomAD about"
+        elif not offered:
+            reason = "the resolved locus carries no ref/alts, and gnomAD is keyed on an allele"
+        else:
+            reason = (
+                f"alts={alts!r} names no allele this locus offers ({','.join(dedupe(offered))}) — "
+                f"drop the filter to ask about all of them"
+            )
+        hint.findings.append(Finding(None, None, "info", f"frequencies not looked up: {reason}"))
         return
-    locus = single[0]
-    variant_id = f"{locus['chrom']}-{locus['start']}-{locus['ref']}-{locus['alts']}"
     client = clients.ensure("gnomad", GnomadClient)
     try:
-        found = client.fetch_frequencies([variant_id])
+        found = client.fetch_frequencies(list(asked))
     except Exception as exc:  # a lookup is advisory; a gnomAD outage must not raise at the author
         hint.findings.append(Finding(None, None, "info", f"frequencies unchecked: {exc}"))
         return
-    record = found.get(variant_id)
-    if record is None:
-        hint.findings.append(Finding(None, None, "info", f"gnomAD has no record for {variant_id}"))
-        return
-    hint.vrs_id = record.get("vrs_id")
-    for population in record.get("populations", []):
-        allele_count, allele_number = population.get("allele_count"), population.get("allele_number")
-        hint.populations.append(
-            {
-                **population,
-                # gnomAD deliberately exposes no per-group frequency, so it is computed here rather
-                # than read. `None` when the denominator is absent or zero — never a silent 0.0.
-                "allele_frequency": (
-                    allele_count / allele_number if allele_count is not None and allele_number else None
-                ),
-            }
-        )
+    answered: list[str] = []
+    for variant_id, (_locus, alt) in asked.items():
+        record = found.get(variant_id)
+        if record is None:
+            # Per allele, and the id carries the allele — so a `G>C,T` locus whose `C` is known and
+            # whose `T` is not says exactly that, rather than one sentence about the pair.
+            hint.findings.append(Finding(None, None, "info", f"gnomAD has no record for {variant_id}"))
+            continue
+        answered.append(alt)
+        for population in record.get("populations", []):
+            allele_count, allele_number = population.get("allele_count"), population.get("allele_number")
+            hint.populations.append(
+                {
+                    **population,
+                    # **The row carries its allele**, because a multi-allelic locus produces two rows
+                    # per ancestry group and nothing else in the row tells them apart — a cell key
+                    # carries the value when two rows may state two claims.
+                    "allele": alt,
+                    "variant_id": variant_id,
+                    "vrs_id": record.get("vrs_id"),
+                    # gnomAD deliberately exposes no per-group frequency, so it is computed here rather
+                    # than read. `None` when the denominator is absent or zero — never a silent 0.0.
+                    "allele_frequency": (
+                        allele_count / allele_number if allele_count is not None and allele_number else None
+                    ),
+                }
+            )
+    # **One id per ALT** (`@vrsid-per-alt`): the hint's scalar `vrs_id` can only name a variant when
+    # exactly one allele answered. With two, a first-wins scalar would label the hint with one of
+    # them and the reader could not tell which — the ids ride on the population rows instead.
+    if len(answered) == 1:
+        hint.vrs_id = found[next(k for k, (_l, a) in asked.items() if a == answered[0])].get("vrs_id")
 
 
 def _lookup_clin_sig(hint: VariantHint, clinvar_cache: Path | None) -> None:

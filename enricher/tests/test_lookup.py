@@ -627,3 +627,140 @@ def test_a_leg_that_used_to_close_per_request_now_keeps_the_client_on_the_bundle
     lookup_module.lookup_citation(pmid="12345678", clients=bundle)
     lookup_module.lookup_citation(pmid="12345679", clients=bundle)
     assert len(made) == 1 and bundle.eutils is made[0] and made[0].closed == 0
+
+
+# ── frequencies are asked per allele (S108, RM255) ───────────────────────────────────────────────
+
+
+class _FakeGnomad:
+    """A `GnomadClient` stand-in over `fetch_frequencies`, recording what was asked in one call."""
+
+    def __init__(self, records: dict[str, dict], *, unreachable: bool = False) -> None:
+        self.records = records
+        self.unreachable = unreachable
+        self.calls: list[list[str]] = []
+
+    def fetch_frequencies(self, variant_ids: list[str]) -> dict[str, dict]:
+        self.calls.append(list(variant_ids))
+        if self.unreachable:
+            raise RuntimeError("gnomAD refused (429)")
+        return {vid: self.records[vid] for vid in variant_ids if vid in self.records}
+
+    def close(self) -> None:  # pragma: no cover - nothing to release
+        pass
+
+
+def _record(count: int, vrs_id: str) -> dict:
+    return {
+        "populations": [{"population": "nfe", "allele_count": count, "allele_number": 1000}],
+        "vrs_id": vrs_id,
+    }
+
+
+#: The shape S108 was filed on: one rsID, one locus, two ALTs. `_H63D` is exactly this already.
+_MULTI = _H63D
+
+
+def _freq(tmp_path: Path, gnomad: _FakeGnomad, **over):
+    return lookup_variant(
+        rsid="rs1799945",
+        frequencies=True,
+        ensembl_cache=tmp_path,
+        clinvar_cache=tmp_path,
+        clients=LookupClients(ensembl=_FakeEnsembl([_MULTI]), eutils=_FakeEutils({}), gnomad=gnomad),
+        **over,
+    )
+
+
+def test_every_allele_of_a_multi_allelic_locus_is_asked_about(tmp_path: Path) -> None:
+    """The defect: `6:26090951 C>G,T` made no request and no finding, so an empty `populations`
+    read as "gnomAD has nothing" when the question had never been put."""
+    gnomad = _FakeGnomad(
+        {
+            "6-26090951-C-G": _record(12, "ga4gh:VA.G"),
+            "6-26090951-C-T": _record(34, "ga4gh:VA.T"),
+        }
+    )
+    hint = _freq(tmp_path, gnomad)
+
+    assert gnomad.calls == [["6-26090951-C-G", "6-26090951-C-T"]], "one batched call, both alleles"
+    assert [(p["allele"], p["allele_count"]) for p in hint.populations] == [("G", 12), ("T", 34)]
+    assert {p["population"] for p in hint.populations} == {"nfe"}
+
+
+def test_each_population_row_names_the_allele_it_describes(tmp_path: Path) -> None:
+    """Two rows per ancestry group, and nothing else in the row tells them apart."""
+    gnomad = _FakeGnomad(
+        {"6-26090951-C-G": _record(12, "ga4gh:VA.G"), "6-26090951-C-T": _record(34, "ga4gh:VA.T")}
+    )
+    hint = _freq(tmp_path, gnomad)
+
+    by_allele = {p["allele"]: p for p in hint.populations}
+    assert by_allele["G"]["variant_id"] == "6-26090951-C-G"
+    assert by_allele["G"]["vrs_id"] == "ga4gh:VA.G" and by_allele["T"]["vrs_id"] == "ga4gh:VA.T"
+    assert by_allele["G"]["allele_frequency"] == 12 / 1000
+
+
+def test_the_hints_scalar_vrs_id_is_withheld_when_two_alleles_answered(tmp_path: Path) -> None:
+    """`@vrsid-per-alt`: one id per ALT, so a scalar can only name a variant when one allele
+    answered. First-wins would label the hint with one of two and say which nowhere."""
+    both = _FakeGnomad(
+        {"6-26090951-C-G": _record(12, "ga4gh:VA.G"), "6-26090951-C-T": _record(34, "ga4gh:VA.T")}
+    )
+    assert _freq(tmp_path, both).vrs_id is None
+
+    one = _FakeGnomad({"6-26090951-C-T": _record(34, "ga4gh:VA.T")})
+    hint = _freq(tmp_path, one)
+    assert hint.vrs_id == "ga4gh:VA.T"
+
+
+def test_a_callers_alt_narrows_the_question_to_that_allele(tmp_path: Path) -> None:
+    """Suggestion (2) of the report: an author who names the allele gets that allele's counts."""
+    gnomad = _FakeGnomad({"6-26090951-C-T": _record(34, "ga4gh:VA.T")})
+    hint = _freq(tmp_path, gnomad, alts="T")
+
+    assert gnomad.calls == [["6-26090951-C-T"]]
+    assert [p["allele"] for p in hint.populations] == ["T"]
+
+
+def test_an_alt_the_locus_does_not_offer_is_a_finding_not_an_empty_answer(tmp_path: Path) -> None:
+    """The one case where the author asked about a variant this locus does not have. No request."""
+    gnomad = _FakeGnomad({})
+    hint = _freq(tmp_path, gnomad, alts="A")
+
+    assert gnomad.calls == []
+    [note] = [f.message for f in hint.findings if "frequencies not looked up" in f.message]
+    assert "'A'" in note and "G,T" in note
+    assert hint.populations == []
+
+
+def test_an_allele_gnomad_does_not_know_is_named_by_itself(tmp_path: Path) -> None:
+    """A `C>G,T` locus whose G is known and whose T is not says exactly that, per allele."""
+    gnomad = _FakeGnomad({"6-26090951-C-G": _record(12, "ga4gh:VA.G")})
+    hint = _freq(tmp_path, gnomad)
+
+    assert [p["allele"] for p in hint.populations] == ["G"]
+    [note] = [f.message for f in hint.findings if "no record" in f.message]
+    assert note.endswith("6-26090951-C-T")
+
+
+def test_a_locus_free_lookup_says_why_it_asked_nothing(tmp_path: Path) -> None:
+    """The silent `return` the report found, in its other arm: no locus, so no coordinate to ask."""
+    gnomad = _FakeGnomad({})
+    hint = lookup_variant(
+        rsid="rs1799945",
+        frequencies=True,
+        ensembl_cache=tmp_path,
+        clinvar_cache=tmp_path,
+        clients=LookupClients(ensembl=_FakeEnsembl([]), eutils=_FakeEutils({}), gnomad=gnomad),
+    )
+
+    assert gnomad.calls == []
+    assert any("frequencies not looked up" in f.message for f in hint.findings)
+
+
+def test_a_gnomad_outage_still_reports_rather_than_raises(tmp_path: Path) -> None:
+    """Unchanged by RM255, and pinned because the rewrite moved the call it guards."""
+    hint = _freq(tmp_path, _FakeGnomad({}, unreachable=True))
+    assert any("frequencies unchecked" in f.message for f in hint.findings)
+    assert hint.populations == []

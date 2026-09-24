@@ -168,6 +168,41 @@ the enricher's console script. Whatever repair lands, the release procedure need
 
 **Related** RM192 (the measured Atlas dependency cost), RM196 (why this tier alone is on hatchling).
 
+## RM255 — `lookup_variant(frequencies=True)` asked gnomAD nothing for a multi-allelic locus, and said nothing about it
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.7 line** (enricher) · **Owner**
+enricher (`lookup`) · **Motivating case**
+[S108](CONSUMER_SUGGESTIONS_HISTORY.md#s108--lookup_variantfrequenciestrue-returns-empty-populations-for-every-multi-allelic-rsid-and-says-nothing)
+— fixing a strand-ambiguous GWAS pair against gnomAD MAF, 15 of 25 lead rsIDs answered nothing
+
+### What was observed
+
+`_lookup_frequencies` opened with `single = [locus … if "," not in str(locus["alts"])]` and returned
+on an empty list — no request, **no finding**. Its two neighbouring exits both append an `info`, so an
+empty `populations` from this one read exactly like *"gnomAD has no data"* for a question that was
+never put. Reproduced on the suite's own `_H63D` fixture, which is `6:26090951 C>G,T`. A common GWAS
+lead SNP is usually multi-allelic in dbSNP, so this was most of the reporter's panel.
+
+**A second defect inside the first, which the report did not name**: `single[0]` also dropped loci
+2..N of a one-to-many rsID, in the same silence.
+
+### What shipped
+
+Suggestion (3), which absorbs (1) and (2). Every allele of every resolved locus becomes a
+`chrom-pos-ref-alt` id and they go in **one** `fetch_frequencies` call — the client batches twenty per
+request, so a multi-allelic question costs the same one paced round trip the single-allele question
+did. A caller's `alts=` filters that set, so naming an allele asks about that allele. Three things
+that could not be asked now say so instead of returning an empty list: no locus resolved, a locus
+with no ref/alts, and an `alts=` naming an allele no locus offers (which names what was asked and what
+the loci hold). "gnomAD has no record for …" fires **per allele**, so a locus whose `G` is known and
+whose `T` is not says exactly that.
+
+**Two shape consequences, both house rules.** Each `populations` row carries `allele`, `variant_id`
+and `vrs_id`, because a multi-allelic locus answers with one row per ancestry group *per allele* and
+nothing else in the row told them apart; the CLI's `population` line leads with the allele. And
+`hint.vrs_id`, a scalar, is filled only when exactly one allele answered — `@vrsid-per-alt` again: a
+first-wins scalar over two alleles labels the hint with one of them and says which nowhere.
+
 ## RM254 — protobuf's gencode/runtime error is neither of the two types RM247's guards caught, so the CLI died again beside anything pinning `protobuf<7`
 
 **Severity** high · **Status** ✅ **SHIPPED 2026-09-21 in the uncut 0.7 line** (enricher) · **Owner**

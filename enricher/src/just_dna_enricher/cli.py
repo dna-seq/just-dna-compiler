@@ -3330,8 +3330,11 @@ def hint_variant_(
         typer.echo(f"rsid_candidate\t{candidate}")
     for population in hint.populations:
         af = population.get("allele_frequency")
+        # The allele leads the row (S108, RM255): a multi-allelic locus answers with one row per
+        # ancestry group *per allele*, and without it two different claims render identically.
         typer.echo(
-            f"population\t{population.get('population')}\tAC={population.get('allele_count')}"
+            f"population\t{population.get('allele')}\t{population.get('population')}"
+            f"\tAC={population.get('allele_count')}"
             f"\tAN={population.get('allele_number')}\tAF={'' if af is None else f'{af:.6g}'}"
         )
     # One line per PubMind record, never a rolled-up verdict: several records can describe one

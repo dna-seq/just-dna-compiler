@@ -69,6 +69,22 @@ whose MCP toolkit imports the mcp 2.x names, against a consumer-side `mcp<2.0` c
 Unrelated to this repo; recorded because the symptom (the whole CLI dead at import) looked like S107
 until the traceback was read.
 
+## 2026-09-24 — RM255: `hint variant --frequencies` asked gnomAD nothing for a multi-allelic locus, and said nothing about it
+
+`just-dna-enricher` only, inside the uncut 0.7 line. A patch: an advisory surface, no authored schema,
+no compiled output.
+
+`_lookup_frequencies` kept only loci whose `alts` held one allele and returned silently when none did
+— so for a common GWAS lead SNP (`rs3752246` is `19:1056493 G>C,T`) no request was made and no finding
+appended, and an empty `populations` read as *"gnomAD has no data"* (S108). Every allele of every
+resolved locus is now asked about in one batched call, a caller's `alts=` filters that set, and the
+three ways the question cannot be put each say so. `gnomAD has no record for …` is per allele.
+
+**One additive key on an advisory payload**: a `populations` row carries `allele`, `variant_id` and
+`vrs_id`, since a multi-allelic locus answers with one row per ancestry group per allele; the CLI's
+`population` line leads with the allele. `hint.vrs_id` is filled only when exactly one allele answered
+(`@vrsid-per-alt`).
+
 ## 2026-09-21 — RM254: the CLI died again beside anything pinning `protobuf<7`, and the guard that was meant to hold it caught two of three types
 
 `just-dna-enricher` only, inside the uncut 0.7 line (past 0.7.1). **A patch, and a release blocker
