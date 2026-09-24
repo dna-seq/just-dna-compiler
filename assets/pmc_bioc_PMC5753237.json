@@ -1,0 +1,128 @@
+[
+ {
+  "bioctype": "BioCCollection",
+  "source": "PMC",
+  "date": "20260128",
+  "key": "pmc.key",
+  "version": "1.0",
+  "infons": {},
+  "documents": [
+   {
+    "bioctype": "BioCDocument",
+    "id": "PMC5753237",
+    "infons": {
+     "license": "NO-CC CODE"
+    },
+    "passages": [
+     {
+      "bioctype": "BioCPassage",
+      "offset": 0,
+      "infons": {
+       "article-id_doi": "10.1093/nar/gkx1153",
+       "article-id_pmc": "PMC5753237",
+       "article-id_pmid": "29165669",
+       "article-id_publisher-id": "gkx1153",
+       "fpage": "D1062",
+       "issue": "Database issue",
+       "license": "This work is written by (a) US Government employee(s) and is in the public domain in the US.",
+       "lpage": "D1067",
+       "name_0": "surname:Landrum;given-names:Melissa J",
+       "name_1": "surname:Lee;given-names:Jennifer M",
+       "name_10": "surname:Karapetyan;given-names:Karen",
+       "name_11": "surname:Katz;given-names:Kenneth",
+       "name_12": "surname:Liu;given-names:Chunlei",
+       "name_13": "surname:Maddipatla;given-names:Zenith",
+       "name_14": "surname:Malheiro;given-names:Adriana",
+       "name_15": "surname:McDaniel;given-names:Kurt",
+       "name_16": "surname:Ovetsky;given-names:Michael",
+       "name_17": "surname:Riley;given-names:George",
+       "name_18": "surname:Zhou;given-names:George",
+       "name_19": "surname:Holmes;given-names:J Bradley",
+       "name_2": "surname:Benson;given-names:Mark",
+       "name_20": "surname:Kattman;given-names:Brandi L",
+       "name_21": "surname:Maglott;given-names:Donna R",
+       "name_3": "surname:Brown;given-names:Garth R",
+       "name_4": "surname:Chao;given-names:Chen",
+       "name_5": "surname:Chitipiralla;given-names:Shanmuga",
+       "name_6": "surname:Gu;given-names:Baoshan",
+       "name_7": "surname:Hart;given-names:Jennifer",
+       "name_8": "surname:Hoffman;given-names:Douglas",
+       "name_9": "surname:Jang;given-names:Wonhee",
+       "section_type": "TITLE",
+       "type": "front",
+       "volume": "46",
+       "year": "2017"
+      },
+      "text": "ClinVar: improving access to variant interpretations and supporting evidence",
+      "sentences": [],
+      "annotations": [],
+      "relations": []
+     },
+     {
+      "bioctype": "BioCPassage",
+      "offset": 77,
+      "infons": {
+       "section_type": "ABSTRACT",
+       "type": "abstract_title_1"
+      },
+      "text": "Abstract",
+      "sentences": [],
+      "annotations": [],
+      "relations": []
+     },
+     {
+      "bioctype": "BioCPassage",
+      "offset": 1331,
+      "infons": {
+       "section_type": "INTRO",
+       "type": "paragraph"
+      },
+      "text": "ClinVar is a freely available, public archive of human genetic variants and interpretations of their significance to disease. It is maintained at the National Center for Biotechnology Information (NCBI), within the National Library of Medicine (NLM) at the National Institutes of Health (NIH). Assertions of the clinical significance of a variant or set of variants are submitted to ClinVar by clinical testing laboratories, research laboratories, locus-specific databases, expert panels and other groups. Submissions include a description of the variant(s); the condition for which the variant was interpreted; the interpretation of the clinical significance of the variant, with the option to provide mode of inheritance; and evidence for that interpretation. ClinVar aggregates submissions based both on the variant and the variant-condition pair, and calculates an aggregate interpretation to indicate whether there is consensus or disagreement among submitters for an interpretation. A review status (https://www.ncbi.nlm.nih.gov/clinvar/docs/review_status/) is assigned to each record to help the user understand what level of review supports the interpretation. Review status is based on submission of the criteria used by the submitter to classify variants, consensus across submitters in the interpretation of the variant and whether an expert panel or practice guideline-providing group has interpreted the variant. The ClinVar dataset may be searched and browsed on the website (https://www.ncbi.nlm.nih.gov/clinvar/) and downloaded on the ftp site (ftp.ncbi.nlm.nih.gov/pub/clinvar/). It is also available programmatically with NCBI’s E-utilities/Entrez direct(https://www.ncbi.nlm.nih.gov/books/NBK25501/).",
+      "sentences": [],
+      "annotations": [],
+      "relations": []
+     },
+     {
+      "bioctype": "BioCPassage",
+      "offset": 3053,
+      "infons": {
+       "section_type": "INTRO",
+       "type": "paragraph"
+      },
+      "text": "ClinVar currently holds more than half a million submitted records (https://www.ncbi.nlm.nih.gov/clinvar/submitters/), accounting for >331 000 variants (Figure 1). While most records in ClinVar report germline observations, about 3000 variants include somatic observations. ClinVar includes both sequence variants and structural variants; the database currently includes >15 000 variants >1 kilobase (kb). More than 800 groups from 60 countries submit to ClinVar (Figure 2), including 76 laboratories that submit interpretations from direct clinical testing. Approximately 4700 people use the ClinVar web site each weekday.",
+      "sentences": [],
+      "annotations": [],
+      "relations": []
+     },
+     {
+      "bioctype": "BioCPassage",
+      "offset": 23715,
+      "infons": {
+       "fpage": "D980",
+       "lpage": "D985",
+       "name_0": "surname:Landrum;given-names:M.J.",
+       "name_1": "surname:Lee;given-names:J.M.",
+       "name_2": "surname:Riley;given-names:G.R.",
+       "name_3": "surname:Jang;given-names:W.",
+       "name_4": "surname:Rubinstein;given-names:W.S.",
+       "name_5": "surname:Church;given-names:D.M.",
+       "name_6": "surname:Maglott;given-names:D.R.",
+       "pub-id_pmid": "24234437",
+       "section_type": "REF",
+       "source": "Nucleic Acids Res.",
+       "type": "ref",
+       "volume": "42",
+       "year": "2014"
+      },
+      "text": "ClinVar: public archive of relationships among sequence variation and human phenotype",
+      "sentences": [],
+      "annotations": [],
+      "relations": []
+     }
+    ],
+    "annotations": [],
+    "relations": []
+   }
+  ]
+ }
+]

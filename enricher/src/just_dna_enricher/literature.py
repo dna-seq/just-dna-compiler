@@ -89,6 +89,8 @@ DEFAULT_CROSSREF_BASE = "https://api.crossref.org"
 #: `www.ncbi.nlm.nih.gov/pmc/utils/idconv/v1.0/` 301-redirects here (probed 2026-08-13); named rather
 #: than relied on as a redirect so a client that follows none still lands in the right place.
 DEFAULT_PMC_IDCONV_URL = "https://pmc.ncbi.nlm.nih.gov/tools/idconv/api/v1/articles/"
+#: PMC's BioC service, JSON flavour; the pmcid and the `unicode` encoding are appended per request.
+DEFAULT_PMC_BIOC_URL = "https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json"
 
 #: Derived from the model, never hand-kept. `SOURCES_FIELDNAMES` was a literal and quietly omitted
 #: `redistribution`, so every `sources.csv` ever written recorded *unknown* for an axis the constants
@@ -633,6 +635,115 @@ class PmcIdConverterClient:
         return out
 
 
+@dataclass
+class PmcBiocClient:
+    """PMC's BioC text-mining service: the body text of an article Europe PMC will not serve (RM257, S110).
+
+    **The records this reaches are the ones the Europe PMC rung cannot.** An NIH author manuscript is
+    `isOpenAccess: N` in Europe PMC, so the pass never asked it for fulltext, and asking anyway
+    answered HTTP 500 for `PMC6463297` on 2026-09-24. PMC serves the same manuscript here for text
+    mining — 294 passages, both body tables among them as tab-separated `table` passages, and for a
+    GWAS paper the tables are where the per-locus rows live. Probed the same day: an article outside
+    the service's set answers **200** with the body `[Error] : No result can be found.`, which is an
+    answer (no copy) rather than an outage, so it reads as absent like a 404 does.
+
+    **Retrieval here says nothing about the article's licence.** The service's own infon reads *"This
+    file is available for text mining. It may also be used consistent with the principles of fair
+    use"*, which names no licence, so the row keeps Europe PMC's `is_open_access` and `license`
+    untouched (`@no-named-licence`). It changes how far the quote search reached, which is what
+    `quote_source` records, and nothing else.
+
+    `REF` passages are dropped: they are the reference list, most of the document by count (186 of
+    294 on the probed article), and a quote located in someone else's title is not located in this
+    paper. An NCBI host, so the pass hands it the E-utilities gate rather than giving it a budget of
+    its own (`@shared-pacing-gate`).
+    """
+
+    base_url: str = DEFAULT_PMC_BIOC_URL
+    min_request_interval: float = 0.5
+    timeout: float = 60.0
+    gate: PacingGate | None = None
+    _client: httpx.Client | None = None
+
+    def __post_init__(self) -> None:
+        if self.gate is None:
+            self.gate = PacingGate(self.min_request_interval)
+
+    def _http(self) -> httpx.Client:
+        if self._client is None:
+            self._client = httpx.Client(timeout=self.timeout, follow_redirects=True)
+        return self._client
+
+    def close(self) -> None:
+        if self._client is not None:
+            self._client.close()
+            self._client = None
+
+    def __enter__(self) -> "PmcBiocClient":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    @retry(
+        stop=attempt_floor(3),
+        wait=wait_exponential_jitter(initial=1.0, max=10.0),
+        retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
+        reraise=True,
+    )
+    def _get(self, pmcid: str) -> httpx.Response:
+        assert self.gate is not None
+        self.gate.wait()
+        response = self._http().get(f"{self.base_url.rstrip('/')}/{pmcid}/unicode")
+        response.raise_for_status()
+        return response
+
+    def fulltext(self, pmcid: str) -> str | None:
+        """Whitespace-normalized body text with the reference list removed, or `None`.
+
+        `None` has the meaning `EuropePmcClient.fulltext` gives it, and the same limit: an article
+        the service has no copy of and a request that never got an answer both land here, told apart
+        only in the log. That conflation is the pin-on-outage question filed beside this client, not
+        something one client can settle.
+        """
+        try:
+            response = self._get(pmcid)
+        except httpx.HTTPStatusError as exc:
+            logger.info("No BioC text for %s (HTTP %s)", pmcid, exc.response.status_code)
+            return None
+        except httpx.HTTPError as exc:
+            logger.warning("BioC fetch failed for %s (%s)", pmcid, exc)
+            return None
+        try:
+            payload = response.json()
+        except ValueError:
+            # The service's "no copy" answer is a 200 with a plain-text body, not JSON.
+            logger.info("No BioC text for %s (%s)", pmcid, response.text.strip()[:80])
+            return None
+        return extract_bioc_text(payload)
+
+
+def extract_bioc_text(payload: object) -> str | None:
+    """BioC JSON → one normalized string of every non-reference passage, or `None` if it holds none.
+
+    The service wraps its collection in a one-element list; a bare collection is accepted too, since
+    the BioC format itself does not require the wrapper.
+    """
+    collections = payload if isinstance(payload, list) else [payload]
+    texts: list[str] = []
+    for collection in collections:
+        if not isinstance(collection, dict):
+            continue
+        for document in collection.get("documents") or []:
+            for passage in document.get("passages") or []:
+                if (passage.get("infons") or {}).get("section_type") == "REF":
+                    continue
+                if passage.get("text"):
+                    texts.append(passage["text"])
+    joined = _WHITESPACE.sub(" ", " ".join(texts)).strip()
+    return joined or None
+
+
 def extract_text(xml: str) -> str | None:
     """JATS XML → one normalized string, or `None` if it does not parse.
 
@@ -754,6 +865,7 @@ def enrich_literature(
     eutils: EutilsClient | None = None,
     europepmc: EuropePmcClient | None = None,
     crossref: CrossrefClient | None = None,
+    bioc: PmcBiocClient | None = None,
 ) -> LiteratureResult:
     """Fill `literature.csv` from the citations a module makes.
 
@@ -883,6 +995,9 @@ def enrich_literature(
         epmc = europepmc or EuropePmcClient()
         owned_crossref = crossref is None
         crossref = crossref or CrossrefClient()
+        # On the E-utilities gate, which outlives the esummary client above: one NCBI budget.
+        owned_bioc = bioc is None
+        bioc = bioc or PmcBiocClient(gate=client.gate)
         try:
             indexed = epmc.lookup(wanted)
             for pmid in wanted:
@@ -921,6 +1036,11 @@ def enrich_literature(
                 quote_source: str | None = None
                 if check_fulltext and quotes:
                     text = epmc.fulltext(pmcid) if (is_open and pmcid) else None
+                    # PMC serves an author manuscript for text mining where Europe PMC calls it
+                    # closed or fails on it (RM257, S110). Any PMCID qualifies: an article outside
+                    # the service's set costs one paced request answering "no copy".
+                    if text is None and pmcid:
+                        text = bioc.fulltext(pmcid)
                     if text is not None:
                         result.fulltext_checked.append(pmid)
                         quote_source = "fulltext"
@@ -988,6 +1108,8 @@ def enrich_literature(
                 epmc.close()
             if owned_crossref:
                 crossref.close()
+            if owned_bioc:
+                bioc.close()
 
     result.titles_as_quotes = sorted(set(result.titles_as_quotes), key=int)
     result.rows.sort(key=lambda r: int(r.pmid))

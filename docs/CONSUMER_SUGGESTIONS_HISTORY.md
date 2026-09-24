@@ -148,6 +148,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S107** the CLI died beside `protobuf<7`; RM247's guards caught two of three types — accepted, RM254
 - **S108** `frequencies=True` asked nothing for a multi-allelic locus — accepted, RM255
 - **S109** abstract-only miss published as a checked quote — accepted, RM256
+- **S110** author manuscript left abstract-only — accepted, RM257, RM258
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -4992,3 +4993,71 @@ and nothing matched (a hit in an abstract can stay a count). Or have the compile
 abstract-only rows as unchecked, and sum `quotes_authored` over unchecked rows so the unit matches.
 The first keeps one definition of "unchecked" across the pass report, the check record and the
 manifest.
+
+# Field notes from just-module-creator, 2026-09-24 — an author manuscript the fulltext check never read
+
+## S110 — the literature pass leaves an author manuscript abstract-only when PMC's BioC service serves it whole, tables included
+
+**Status — accepted; point 1 shipped in the tree as [RM257](ROADMAP_HISTORY.md#rm257--pmcs-bioc-service-is-the-fulltext-rung-for-records-europe-pmc-calls-closed), uncut; point 2 is taken; the 404/500 split is filed open as [RM258](ROADMAP.md#rm258--an-outage-during-the-literature-fetch-writes-a-row-that-merge-not-clobber-never-asks-again).**
+Reproduced live the same day with your ids: Europe PMC reports `PMC6463297` as `isOpenAccess: N,
+inPMC: Y` and answers 500 for `fullTextXML`, while BioC answers 200 with 294 passages, and
+`PMC1050584` answers 200 with the `[Error]` body.
+
+The pass now has `PmcBiocClient`: Europe PMC fulltext for open records, then BioC for any citation
+with a PMCID that Europe PMC did not serve, then the abstract. The BioC rung is not gated on the
+open-access flag, which settles your point 2. The flag's gate had no licence reason behind it, and an
+article outside the BioC set costs one paced request that answers "no copy", so `inPMC` or the
+manuscript id would not save anything. The rung runs on the E-utilities `PacingGate`, keeps table
+passages (tabs normalize to spaces, and a run of your Table 1 header cells matches as a quote) and
+drops `REF`. A BioC hit writes `quote_source=fulltext`, because that column records how far the
+search reached; we did not add a `pmc_bioc` provider value. The licence stays Europe PMC's: the
+"available for text mining … fair use" note names no terms, so `is_open_access` and `license` are
+untouched. Your fixture was not needed, because we recorded and trimmed our own from the same
+responses.
+
+**Your third point went deeper than the conflation.** A 500 and a 404 both come back as `None`, the
+pass falls back to the abstract, and `literature.csv` pins that row, so a transient outage becomes a
+permanent abstract-only verdict. That is RM258, open with three candidate repairs and a minor.
+
+**What to do now:** RM257 does not re-ask rows already in `literature.csv`. On
+`test_late_onset_alzheimers_kunkle2019`, delete `literature.csv` and re-run `enrich-literature` on a
+build of this tree. Since 0.7 that delete loses nothing (RM124). The row should come back
+`quote_source=fulltext`, and with S109's `quotes_checked` the manifest will say how many of the 24
+were settled.
+<!-- triaged: 0.7.1 · sha 63492dc508ba -->
+
+**Reporter:** just-module-creator, 2026-09-24, enricher 0.7.1 installed. Our `F108`.
+
+**What happened.** PMID `30820047` (Kunkle 2019, *Nat Genet*, `PMC6463297`, NIH author manuscript
+`NIHMS1021255`) carries its per-locus rows — lead rsID, major/minor allele, OR — in body **Tables 1
+and 2**, and nowhere else with both allele and OR. Measured the same day:
+
+| call | answer |
+|---|---|
+| Europe PMC `rest/PMC6463297/fullTextXML` | **HTTP 500** |
+| `EuropePmcClient.fulltext("PMC6463297")` | `None` (the 500 and a 404 both land in the `HTTPStatusError` arm) |
+| `https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC6463297/unicode` | **200, 276 KB**, 294 passages, both tables as `type: table` passages with tab-separated cells |
+| same URL for `PMC1050584` (not in OA / manuscript set) | **200** with body `[Error] : No result can be found.` — an answer, not an outage |
+
+So `enrich-literature` checked the module's 24 quotes against the abstract (`quote_source=abstract`),
+which is what `S109` then published as a miss. The fulltext existed, openly, one NCBI host away.
+
+**Two things on your side, separable.**
+
+1. **A BioC rung after Europe PMC in the fulltext fetch.** It is an NCBI host, so it belongs on the
+   E-utilities `PacingGate` budget. Keep table passages as text — for a GWAS paper the tables are where
+   the rows are. Skip `section_type=REF` (186 of the 294 passages here, none of them evidence).
+2. **The `is_open and pmcid` gate at `literature.py`'s fetch loop.** An author manuscript is usually
+   `isOpenAccess: N` in Europe PMC while PMC serves it for text mining (the BioC `license` infon here
+   reads *"This file is available for text mining"*). If the gate stays, a BioC rung never runs for
+   exactly the records that need it. What the right predicate is — `inPMC`, `hasPDF`, the manuscript
+   id — is yours to judge; the case above is the data point.
+
+**Also worth separating in `fulltext()`**: a 500 and a 404 both return `None`, so "Europe PMC was
+down" and "Europe PMC has no copy" reach the caller as one value. Only the second is an answer.
+
+**What we did meanwhile.** Built the rung on our side (`discovery._bioc_fulltext`, `text_source:
+"pmc_bioc"`, behind our NCBI gate, three outcomes kept apart), so `fetch_fulltext` now returns the
+Kunkle tables — verified live, 68 KB with the tables. It does not reach your quote check, which is
+why this note exists. Fixture: a trimmed copy of the real answer at
+`just-module-creator/assets/literature/pmc_bioc_PMC6463297.json`; take it if it is useful.

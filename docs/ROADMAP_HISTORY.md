@@ -168,6 +168,54 @@ the enricher's console script. Whatever repair lands, the release procedure need
 
 **Related** RM192 (the measured Atlas dependency cost), RM196 (why this tier alone is on hatchling).
 
+## RM257 — PMC's BioC service is the fulltext rung for records Europe PMC calls closed
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.7 line** (enricher) · **Owner**
+enricher (`literature`) · **Motivating case**
+[S110](CONSUMER_SUGGESTIONS_HISTORY.md#s110--the-literature-pass-leaves-an-author-manuscript-abstract-only-when-pmcs-bioc-service-serves-it-whole-tables-included)
+— Kunkle 2019, 24 quotes checked against an abstract while the manuscript was open to text mining
+
+### What was observed
+
+Reproduced live on 2026-09-24. Europe PMC's search reports `PMC6463297` as `isOpenAccess: N`,
+`inPMC: Y`, with manuscript id `NIHMS1021255`. The pass's `is_open and pmcid` gate therefore never
+asked it for fulltext, and `fullTextXML` answers HTTP 500 when asked anyway. PMC's BioC service
+answers 200 with 294 passages: 186 of them the reference list, and 27 of them `TABLE`, including the
+per-locus tables that hold the module's rows. An article outside the service's set (`PMC1050584`)
+answers **200** with a plain-text `[Error] : No result can be found.` body. That gate had no recorded
+licence reason, and it arrived in the 0.5.0 commit with the pass itself, so relaxing it for a second
+host is a coverage change and not a reversal of a refusal.
+
+### What shipped
+
+`PmcBiocClient` beside `PmcIdConverterClient`, taking the E-utilities gate from the pass
+(`@shared-pacing-gate`), and `extract_bioc_text`, which keeps every passage except `REF`. The fetch
+order is Europe PMC fulltext (open records), then BioC (any PMCID Europe PMC did not serve), then the
+abstract. `enrich_literature(bioc=)` injects it the way the other three clients are injected. Tests run
+on recorded answers trimmed to a few passages: the suite's own ClinVar paper re-flagged as a
+manuscript, the Kunkle manuscript's table passage (a run of tab-separated cells matches as a quote,
+and a reference entry does not), and the service's "no copy" body. Each rung test fails with the rung
+disabled, which was checked. Two existing tests had been reaching the live service through a default
+client, and one of them would have silently changed meaning; both now inject one.
+
+### Refused, with reasons
+
+- **A `pmc_bioc` value in `quote_source`, or a `text_provider` column.** `quote_source` records how
+  far the search reached, which is what makes a miss conclusive or not, and a BioC body is a
+  fulltext. A provenance column is legal and half-cost, but nothing reads it; it can be added the day
+  something does.
+- **Reading the BioC `license` infon as the article's licence.** "Available for text mining … fair
+  use" names no terms (`@no-named-licence`), so the row keeps Europe PMC's `is_open_access` and
+  `license`.
+- **Gating the rung on `inPMC` or `hasPDF`.** Neither makes it cheaper: an article outside the set
+  costs the same one paced request and answers "no copy".
+- **Splitting 404 from 5xx inside this item.** Both clients still return one `None`, and the row it
+  leaves is pinned. That is its own design question, filed as RM258.
+
+**What a module already enriched gets from this: nothing, until `literature.csv` is deleted.** A
+pinned row is never fetched again. The delete costs nothing since 0.7 (RM124), and RM258 is where
+re-asking belongs.
+
 ## RM256 — the manifest's citation block read an abstract-only miss as a checked quote
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.7 line** (format + compiler +

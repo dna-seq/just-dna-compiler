@@ -28,7 +28,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Identifier agreement** | an authored `doi` vs the registry's for that PMID | `literature.enrich_literature` | `citation_identifier` |
 | **PMC id agreement** | an authored `PMC…` in the `pmid` cell vs PubMed's for that record (0.6) | `literature._pmcid_conflicts` (attested under `citation_identifier`, the same question one registry over) | `citation_identifier` |
 | **Article licence** | the cited article's own terms, recorded per article (0.6) | `literature.enrich_literature` → `licensing.article_terms` | — *(a recording pass: it writes a source's answer and compares nothing)* |
-| **Provenance quote** | `provenance_quote`/`provenance_regex` vs open-access fulltext | `literature.enrich_literature` (warning; partial coverage) | `provenance_quote` |
+| **Provenance quote** | `provenance_quote`/`provenance_regex` vs the article's fulltext (Europe PMC's open-access subset, then PMC's BioC service), else its abstract | `literature.enrich_literature` (warning; partial coverage) | `provenance_quote` |
 | **rsID currency** | an authored rsID vs dbSNP (live / merged / absent) | `identifiers.check_rsids` | `rsid_currency` |
 | **Trait currency** | `trait_efo_id` vs OLS4 (obsolete + replacement) | `identifiers.OntologyClient.trait` (attested by `check-identifiers` since RM72) | `trait_currency` |
 | **Gene symbol currency** | `gene` vs HGNC approved / previous symbols | `identifiers.OntologyClient.gene` (attested by `check-identifiers` since RM72) | `gene_symbol_currency` |
@@ -3214,7 +3214,8 @@ conventions out of the schema tier entirely.
 
 Pass 4: a module's citations in, `literature.csv` out. Three questions of decreasing coverage — does the
 citation exist (PubMed `esummary`), do the identifiers agree (DOI/PMCID arrive in the same response),
-and does the quoted passage appear in the article (Europe PMC fulltext, open-access subset only) — plus
+and does the quoted passage appear in the article (Europe PMC fulltext for its open-access subset, then
+PMC's BioC text-mining service for any record with a PMCID, then the abstract) — plus
 the article's own **licence**, which arrives in the same Europe PMC response.
 
 **`studies.csv` is one citation site of several, and this pass reads every one (RM47, RM132).** A
@@ -3268,6 +3269,20 @@ only citations that carry an authored quote: one that asks no question was not s
 answer. (That distinction is not hypothetical — it was a real bug, found by running the pass against
 `reference_examples/pathogenic_clinvar/`, whose single citation is open access *and* quote-free, and
 which the first wording therefore described as unretrievable.)
+
+**The fulltext has two rungs, and the second reaches the records the first calls closed (RM257,
+S110).** An NIH author manuscript is `isOpenAccess: N` in Europe PMC, so the pass never asked Europe PMC
+for its text, and asking anyway answered HTTP 500 for `PMC6463297` on 2026-09-24. PMC's BioC service
+(`PmcBiocClient`) serves the same manuscript for text mining, body tables included as tab-separated
+passages, and the pass asks it for any citation with a PMCID that Europe PMC did not serve. The
+reference list is dropped, since a quote found in a cited title is not in this paper. It is an NCBI
+host, so it runs on the E-utilities `PacingGate`. An article outside the service's set answers 200 with
+`[Error] : No result can be found.`, which counts as absent, the same as a 404. **Retrieval here is not
+a licence**: the service's own note says the file is "available for text mining", which names no
+terms, so `is_open_access` and `license` stay what Europe PMC said. A BioC hit is `quote_source=fulltext`,
+because that column records how far the search reached and not which host served it. A 5xx still reads
+as "no copy" on both rungs, and the row it leaves is pinned. That is
+[RM258](ROADMAP.md#rm258--an-outage-during-the-literature-fetch-writes-a-row-that-merge-not-clobber-never-asks-again), open.
 
 **A quote is an *attestation*, so no tool may write one — and retrieving the fulltext changes what the
 check proves.** `provenance_quote`/`provenance_regex` mean *a curator read this passage in this paper*,

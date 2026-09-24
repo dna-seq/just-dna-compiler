@@ -36,7 +36,7 @@ from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadSettings
 from just_dna_enricher.grch37 import Grch37Client
 from just_dna_enricher.gwas import GwasCatalogClient, GwasError
 from just_dna_enricher.identifiers import IdentifierUnavailable, OntologyClient
-from just_dna_enricher.literature import EuropePmcClient, LiteratureUnavailable
+from just_dna_enricher.literature import EuropePmcClient, LiteratureUnavailable, PmcBiocClient
 from just_dna_enricher.litvar import LitvarClient, LitvarUnavailable
 from just_dna_enricher.net import PacingGate
 from just_dna_enricher.pgs import PgsCatalogClient, PgsCatalogUnavailable
@@ -310,6 +310,11 @@ def test_every_network_client_in_the_tier_is_covered() -> None:
         # because a caller is never asked to: the three outcomes ARE the contract, and asserting an
         # exception here would pin the opposite of what this client promises.
         "clingen_allele.ClingenAlleleClient",
+        # RM257. `fulltext` answers text or `None`, and every failure leg is the `None`: a 404, the
+        # service's own 200 "no copy" body, a 5xx and a transport error alike. That one `None` for two
+        # answers is RM258's open question, not this roster's; what is pinned below is that no leg
+        # raises, since the pass calls it with no handler inside its fetch loop.
+        "literature.PmcBiocClient",
     }
     uncovered = {
         name for name in discovered if name.split(".")[0] not in covered and name not in covered_classes
@@ -420,6 +425,12 @@ def _ensembl(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[],
     return lambda: resolver.resolve_rsid("rs334")
 
 
+def _pmc_bioc(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    client = PmcBiocClient(gate=_instant_gate())
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    return lambda: client.fulltext("PMC6463297")
+
+
 #: `(label, builder, the value that means could-not-ask)`: the clients whose contract is a withhold
 #: rather than an exception. They are exempt from `CLIENTS` for the right reason, and that exemption
 #: is what let the non-JSON leg leak from both — a raw `JSONDecodeError` out of a method whose whole
@@ -428,6 +439,7 @@ def _ensembl(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[],
 WITHHOLDING_CLIENTS = [
     ("grch37", _grch37, None),
     ("ensembl", _ensembl, (None, None)),
+    ("pmc_bioc", _pmc_bioc, None),
 ]
 
 

@@ -69,6 +69,19 @@ whose MCP toolkit imports the mcp 2.x names, against a consumer-side `mcp<2.0` c
 Unrelated to this repo; recorded because the symptom (the whole CLI dead at import) looked like S107
 until the traceback was read.
 
+## 2026-09-24 — RM257: the literature pass reads an author manuscript through PMC's BioC service
+
+`just-dna-enricher` only, inside the uncut 0.7 line. Additive: one new client and one new
+`enrich_literature(bioc=)` parameter, with no schema or compiled-output change.
+
+A record Europe PMC flags `isOpenAccess: N`, which covers most NIH author manuscripts, was never asked
+for fulltext, so its quotes were checked against the abstract only (S110: Kunkle 2019, whose rows live
+in two body tables). The pass now asks PMC's BioC text-mining service for any citation with a PMCID
+that Europe PMC did not serve. Tables are kept and the reference list is dropped. It runs on the
+E-utilities pacing gate, and the licence columns stay what Europe PMC said. **Rows already in
+`literature.csv` are not re-asked**: delete it and re-run to pick this up. That a 5xx also leaves a
+pinned abstract-only row is filed as RM258.
+
 ## 2026-09-24 — RM256: the manifest published an abstract-only miss as a checked quote
 
 `just-dna-format`, `just-dna-compiler` and `just-dna-enricher`, inside the uncut 0.7 line. **A minor**:
