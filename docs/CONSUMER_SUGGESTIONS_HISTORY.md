@@ -4956,7 +4956,7 @@ switching it to quote units, would redefine a published field that was accurate 
 asked. Your unit point stands: that field counts citations, and its description now says so and
 points to `quotes_checked`.
 
-**What to do now:** once the next 0.7 minor is cut, recompile. A card should read `quotes_found`
+**What to do now:** once the next minor is cut, recompile. A card should read `quotes_found`
 against `quotes_checked` and never against `quotes_authored` alone. On a manifest from an earlier
 compiler, `quotes_checked` is null, meaning unknown, not zero. Until then, `abstract_only_count > 0`
 beside `quotes_found < quotes_authored` is the case to treat as unchecked.

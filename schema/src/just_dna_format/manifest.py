@@ -853,9 +853,8 @@ class Literature(BaseModel):
             "every quote; an abstract settles only its hits, since a quote missing from it may still "
             "be in the body; nothing retrievable settles none. So `quotes_authored - quotes_checked` "
             "is how many quotes nothing established either way (RM256, S109). Null on a manifest "
-            "compiled before 0.7.2, which did not publish it — unknown, never zero."
+            "compiled before this field existed — unknown, never zero."
         ),
-        json_schema_extra=since("0.7.2"),
     )
     quotes_unchecked: int = Field(
         default=0,
