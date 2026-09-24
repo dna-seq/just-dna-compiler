@@ -1347,6 +1347,28 @@ New ideas enter here as freeform suggestions, then graduate through the design c
   operator's word for "reach nothing" cannot quietly exclude the one hop that reaches something.
   Nobody has asked for this; when somebody does, start from the licence question.
 
+- **A declared dependency graph over a module's derived sidecars** (S112, just-module-creator,
+  2026-09-24 — *"offered as an observation, not a design"*, and filed here rather than as an `RMn`
+  for that reason). `expression_effects.csv` is computed from `resolution.csv`'s coordinates and,
+  since RM259, can also be computed from the MANE lane's candidate genes. Nothing records that, so a
+  consumer re-deriving one sidecar cannot tell that another one built from it is now stale, and
+  orders its passes from knowledge nobody wrote down.
+
+  **The shape exists one layer out.** A cache lane's parents are a field
+  (`@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`), and a parent that
+  moved is reported, never silently rebuilt. Spec-directory sidecars have no such field. Today's
+  settled answer for downstream staleness is delete-to-regenerate (`@sidecar-authoritative`), which
+  costs nothing since 0.7. So this is not a defect to re-file, and it is not a cascade either.
+
+  **What a design would have to answer first.** What does it mean for `expression_effects.csv` to
+  depend on `resolution.csv` when it is keyed on `variant_key`, which is rsID-first and does not move
+  when a coordinate does? A row can be stale in its *distance* column while its key is still right.
+  So a dependency is on columns, not tables, which is what the reporter wrote. Second, a staleness
+  signal needs a baseline, and a merge-not-clobber sidecar's rows were written on different runs. Per
+  row, the question is which parent state each row was computed from, and no sidecar records that
+  (`@currency-cannot-be-a-column`). Nobody has asked for the cascade itself; the observation is what
+  was offered.
+
 ## Consumer note (just-dna-lite, 2026-08-21) — a dogfooding pass over ten modules, and the eleven findings that are yours rather than the plugin's
 
 **Nothing here is a request to change an artifact, and none of it is urgent.** We ran a

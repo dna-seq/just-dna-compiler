@@ -150,6 +150,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S109** abstract-only miss published as a checked quote — accepted, RM256
 - **S110** author manuscript left abstract-only — accepted, RM257, RM258
 - **S111** expected match rate on consumer chips — design input, RM188 axis 1
+- **S112** no gene to aim the Atlas at — accepted, RM259; graph to idea-book
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -5150,3 +5151,78 @@ vendor's custom content (tens of thousands of markers), so `typed` is an **under
 per-chip position sets (a few MB each) beside the LD table on the `just-dna-seq` HF org would let the
 enricher treat them as one more snapshot lane. Measurement script is small; we will hand it over on
 request.
+
+# Field notes from just-module-creator, 2026-09-24 — aiming the AlphaGenome pass at a row with no gene
+
+## S112 — the AlphaGenome pass cannot be aimed at a row with no `gene`, and nothing in the sidecar set maps a position to one; with a note on sidecar-to-sidecar dependencies
+
+**Status — accepted; the lookup shipped in the tree as [RM259](ROADMAP_HISTORY.md#rm259--a-position-has-no-gene-to-ask-the-atlas-about-so-the-reverse-span-lookup-ships), uncut; the dependency graph went to the 0.7 idea-book in [ROADMAP.md](ROADMAP.md#freeform-suggestions--the-07-idea-book).**
+Your census of the derived tables checks out against the models: the variant-keyed ones carry no gene,
+the gene-keyed ones no position, and only `expression_effects.csv` has both. `gene_spans` answered
+symbol → span only, while `enrich_expression(spec, gene, chrom=, start=, end=)` already took an
+explicit interval, so the missing piece was the reverse lookup and nothing more.
+
+`gene_spans.genes_covering(chrom, position, mane_cache=)` returns a `NearbyGenes`: every MANE gene on
+that contig whose span plus `ATTRIBUTION_HORIZON_BP` covers the position, ordered by `(start, gene)`,
+or a reason (`no_snapshot` means not asked, `no_gene_within_horizon` means asked and none). The
+sentences for those are in `NEARBY_REASONS`. It is GRCh38 only, since MANE is, so pass it the row's
+coordinate only when the module's build is GRCh38. It is a query hint in exactly the sense of the
+`gene_spans` docstring you quoted: nothing writes a candidate anywhere, and the gene on an
+`expression_effects.csv` row stays the Atlas's attribution.
+
+**Price it before you loop over it.** Measured on the real MANE lane: **50 candidate genes** cover
+6:26090951 (HFE H63D, in the histone cluster) and **34** cover APOE's rs429358. The horizon is the
+model's own half-window, so none of these are noise, and we refused to narrow to the nearest gene
+because that would pick a gene on the Atlas's behalf. One query per candidate per position is
+therefore tens of Atlas requests per row. The cheaper plan is to invert: collect gene → the positions
+it covers across all 252 rows, then query each gene once with a window spanning its positions. That
+is your planner's call; we did not build a rows mode upstream, since yours exists.
+
+**The graph.** Filed as an observation, as you offered it, beside the precedent it would extend: cache
+lanes already record their parents as a field, and spec-directory sidecars do not. The entry records
+two questions a design has to answer first. `expression_effects.csv` keys on `variant_key`, which is
+rsID-first and does not move when a coordinate does, so the dependency is on columns, not tables.
+And a merge-not-clobber sidecar's rows come from different runs, so there is no single baseline to be
+stale against. Meanwhile, delete-and-rerun remains the answer, and it costs nothing since 0.7.
+
+**What to do now:** from a build of this tree, call `genes_covering` for your `no_gene` rows, invert
+the result to gene → positions, and hand each gene to `enrich_expression` with the window those
+positions need.
+<!-- triaged: 0.7.1 · sha df7fa4522e2a -->
+
+**Reporter:** just-module-creator, 2026-09-24, enricher 0.7.1 installed. Our `F105`.
+
+**What happened.** We shipped a rows mode for `enrich_expression_effects` (plugin 0.38.1): windows are
+planned from `variants.csv` × `resolution.csv`, keyed on each row's own authored `gene`, because
+`enrich_expression` requires a gene and the server-side filter is mandatory. On the longevitymap port
+(1033 rows, 527 rsIDs) **252 rows author no `gene`**, so they cannot be asked about at all, and the
+tool reports them as `no_gene`.
+
+**We checked whether any derived sidecar could supply one, and none can.** Over
+`hints.DERIVED_TABLE_MODELS` as installed: `resolution.csv`, `frequencies.csv`,
+`clinical_assertions.csv` and `gwas_effects.csv` carry a variant identity and no gene;
+`gene_metrics.csv` and `gene_validity.csv` carry a gene and no variant. The only table with both is
+`expression_effects.csv` itself, which is the output that needs the gene to be produced.
+
+**Why we did not fill it ourselves.** Writing a gene into `variants.csv` is an authored cell written
+from a source, which our rules withhold; and `gene_spans`' own docstring forbids using a span to
+*assign* a gene. But the same docstring gives the shape that would work: **a span is a query hint,
+and AlphaGenome is the attributing source.** So the ask is not a gene for the row — it is a
+position-driven query that needs none:
+
+- For a coordinate with no authored gene, take the MANE genes whose span (plus the ±512 kb horizon you
+  already use) covers it, query the Atlas once per candidate gene with a small window, and let each
+  returned record carry the gene the Atlas names. Nothing is written to `variants.csv`; the gene on
+  an `expression_effects.csv` row is the Atlas's attribution, as it is today.
+- The three `SpanLookup` outcomes carry through: no MANE lane means *not asked*, not *no genes*.
+
+**The broader point, from our owner:** *"This makes one sidecar depend on another's outputs, worth
+reporting to upstream for them to build a graph or something."* `expression_effects.csv` already
+depends on `resolution.csv` (for coordinates) and, with this, on the MANE lane (for candidate genes).
+`refresh_sidecar` on our side re-derives one sidecar at a time and cannot tell that re-deriving
+`resolution.csv` makes an `expression_effects.csv` built from the old coordinates stale. A declared
+dependency graph over the sidecars — which table's rows are computed from which other table's columns
+— would let a refresh cascade, let `validate` say "expression_effects predates resolution", and let a
+consumer (us) order passes without hand-kept knowledge. Offered as an observation, not a design.
+
+**Meanwhile.** Our tool reports `no_gene` per row with the variant keys and does not fill anything.

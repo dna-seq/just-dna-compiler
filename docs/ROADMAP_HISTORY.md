@@ -168,6 +168,44 @@ the enricher's console script. Whatever repair lands, the release procedure need
 
 **Related** RM192 (the measured Atlas dependency cost), RM196 (why this tier alone is on hatchling).
 
+## RM259 — a position has no gene to ask the Atlas about, so the reverse span lookup ships
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.7 line** (enricher) · **Owner**
+enricher (`gene_spans`) · **Motivating case**
+[S112](CONSUMER_SUGGESTIONS_HISTORY.md#s112--the-alphagenome-pass-cannot-be-aimed-at-a-row-with-no-gene-and-nothing-in-the-sidecar-set-maps-a-position-to-one-with-a-note-on-sidecar-to-sidecar-dependencies)
+— 252 of the longevitymap port's 1,033 rows author no `gene`
+
+### What was observed
+
+`enrich_expression` needs a gene, because the Atlas's gene filter is mandatory, and the reporter's
+rows mode keys each window on the row's authored `gene`. The reporter's census of the derived tables
+checks out against the models: the variant-keyed sidecars carry no gene, the gene-keyed ones carry no
+position, and only `expression_effects.csv`, the output, has both. `gene_spans` answered symbol →
+span only. `enrich_expression(spec, gene, chrom=, start=, end=)` already takes an explicit interval,
+so the one missing piece was the reverse lookup.
+
+### What shipped
+
+`gene_spans.genes_covering(chrom, position)` → `NearbyGenes`: every MANE gene on that contig whose
+span, widened by `ATTRIBUTION_HORIZON_BP`, covers the position, ordered by `(start, gene)`, or one of
+two reasons (`no_snapshot`, `no_gene_within_horizon`) in `NEARBY_REASONS`, a map of its own so the
+two lookups cannot print each other's sentences. GRCh38 only, because MANE is. **Measured on the real
+lane: 50 candidates at 6:26090951 (HFE H63D, the histone cluster) and 34 at APOE's rs429358.** That
+is the answer as it stands: the horizon is the model's own half-window, so each one is a gene the
+Atlas could attribute the variant to.
+
+### Refused, with reasons
+
+- **Narrowing to the nearest gene, or a top-N.** That picks a gene on the Atlas's behalf, which is
+  the span-as-attribution failure `@gene-map-is-another-sources-attribution` forbids, one step
+  removed.
+- **A rows mode in `enrich_expression` upstream.** The reporter's planner already exists. A second
+  consumer needing one would bring it here.
+- **A per-candidate query per position as the recommended plan.** At fifty candidates that is fifty
+  Atlas requests per row. Inverting gene → positions and querying each gene once over the window its
+  positions need is the cheaper plan, and the reply says so. It is the caller's plan, not this
+  function's.
+
 ## RM257 — PMC's BioC service is the fulltext rung for records Europe PMC calls closed
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.7 line** (enricher) · **Owner**

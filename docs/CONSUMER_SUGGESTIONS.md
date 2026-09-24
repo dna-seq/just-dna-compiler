@@ -10,7 +10,7 @@ exists for, and the reason answered items do not stay here.
 
 ## The next item is S113
 
-**Claim ids from here, never from what this file shows.** S1–S111 are all answered and live in the
+**Claim ids from here, never from what this file shows.** S1–S112 are all answered and live in the
 history file, so an empty inbox says nothing about how many ids are taken — number from the corpus, or
 the next report is a second S1. The number is computed rather than remembered:
 
@@ -51,42 +51,3 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
-
-## S112 — the AlphaGenome pass cannot be aimed at a row with no `gene`, and nothing in the sidecar set maps a position to one; with a note on sidecar-to-sidecar dependencies
-
-**Reporter:** just-module-creator, 2026-09-24, enricher 0.7.1 installed. Our `F105`.
-
-**What happened.** We shipped a rows mode for `enrich_expression_effects` (plugin 0.38.1): windows are
-planned from `variants.csv` × `resolution.csv`, keyed on each row's own authored `gene`, because
-`enrich_expression` requires a gene and the server-side filter is mandatory. On the longevitymap port
-(1033 rows, 527 rsIDs) **252 rows author no `gene`**, so they cannot be asked about at all, and the
-tool reports them as `no_gene`.
-
-**We checked whether any derived sidecar could supply one, and none can.** Over
-`hints.DERIVED_TABLE_MODELS` as installed: `resolution.csv`, `frequencies.csv`,
-`clinical_assertions.csv` and `gwas_effects.csv` carry a variant identity and no gene;
-`gene_metrics.csv` and `gene_validity.csv` carry a gene and no variant. The only table with both is
-`expression_effects.csv` itself, which is the output that needs the gene to be produced.
-
-**Why we did not fill it ourselves.** Writing a gene into `variants.csv` is an authored cell written
-from a source, which our rules withhold; and `gene_spans`' own docstring forbids using a span to
-*assign* a gene. But the same docstring gives the shape that would work: **a span is a query hint,
-and AlphaGenome is the attributing source.** So the ask is not a gene for the row — it is a
-position-driven query that needs none:
-
-- For a coordinate with no authored gene, take the MANE genes whose span (plus the ±512 kb horizon you
-  already use) covers it, query the Atlas once per candidate gene with a small window, and let each
-  returned record carry the gene the Atlas names. Nothing is written to `variants.csv`; the gene on
-  an `expression_effects.csv` row is the Atlas's attribution, as it is today.
-- The three `SpanLookup` outcomes carry through: no MANE lane means *not asked*, not *no genes*.
-
-**The broader point, from our owner:** *"This makes one sidecar depend on another's outputs, worth
-reporting to upstream for them to build a graph or something."* `expression_effects.csv` already
-depends on `resolution.csv` (for coordinates) and, with this, on the MANE lane (for candidate genes).
-`refresh_sidecar` on our side re-derives one sidecar at a time and cannot tell that re-deriving
-`resolution.csv` makes an `expression_effects.csv` built from the old coordinates stale. A declared
-dependency graph over the sidecars — which table's rows are computed from which other table's columns
-— would let a refresh cascade, let `validate` say "expression_effects predates resolution", and let a
-consumer (us) order passes without hand-kept knowledge. Offered as an observation, not a design.
-
-**Meanwhile.** Our tool reports `no_gene` per row with the variant keys and does not fill anything.

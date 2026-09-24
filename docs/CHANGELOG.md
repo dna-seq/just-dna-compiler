@@ -69,6 +69,17 @@ whose MCP toolkit imports the mcp 2.x names, against a consumer-side `mcp<2.0` c
 Unrelated to this repo; recorded because the symptom (the whole CLI dead at import) looked like S107
 until the traceback was read.
 
+## 2026-09-24 — RM259: a GRCh38 position to the genes worth asking the Atlas about
+
+`just-dna-enricher` only, inside the uncut 0.7 line. Additive: one public function.
+
+`gene_spans.genes_covering(chrom, position)` returns every MANE gene whose span plus the 512 kb
+attribution horizon covers the position, or says why there are none (`no_snapshot`,
+`no_gene_within_horizon`). It is a query hint for a row that authors no `gene` (S112: 252 of 1,033
+longevitymap rows). Each candidate goes to `enrich_expression(spec, gene, chrom=, start=, end=)`, and
+the Atlas names the gene on what it returns. Nothing writes a candidate into `variants.csv`. Expect
+dozens of candidates: 50 at HFE H63D and 34 at APOE.
+
 ## 2026-09-24 — RM257: the literature pass reads an author manuscript through PMC's BioC service
 
 `just-dna-enricher` only, inside the uncut 0.7 line. Additive: one new client and one new
