@@ -463,11 +463,16 @@ def test_the_check_names_its_own_member_rather_than_reusing_reference_allele(
 
 
 @needs_tabix
-def test_an_absent_snapshot_is_a_skip_with_a_reason_not_an_empty_result(tmp_path: Path) -> None:
+def test_an_absent_snapshot_is_a_skip_with_a_reason_not_an_empty_result(
+    tmp_path: Path, no_ambient_caches: Path
+) -> None:
     """Nobody-asked again, one level up: no snapshot means the question was never put.
 
     The reason has to reach the attestation, because "no rows disagreed" and "there was nothing to
     disagree with" are the same empty result and opposite facts.
+
+    `no_ambient_caches` arranges the absence rather than assuming it (`@test-no-credential`): this
+    read a real AVI snapshot the day `<base>/alphagenome_avi` was linked on the developer machine.
     """
     spec = _module(tmp_path, [{"chrom": "chr22", "pos": 20000000, "ref": "G", "alt": "A"}])
     result = ac.check_variant_impact(spec, reference=None)
