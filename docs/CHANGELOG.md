@@ -69,9 +69,23 @@ whose MCP toolkit imports the mcp 2.x names, against a consumer-side `mcp<2.0` c
 Unrelated to this repo; recorded because the symptom (the whole CLI dead at import) looked like S107
 until the traceback was read.
 
+## 2026-09-25 — `just-dna-enricher` 0.7.2: the CLI imports beside `protobuf<7`, and the frequencies leg asks about every allele
+
+**`just-dna-enricher` moves alone; `just-dna-format` stays at `0.7.0` and `just-dna-compiler` at
+`0.7.1`.** A patch cut from the `0.7` branch rather than from `main`: RM256, which landed in between,
+adds a manifest field and is therefore a minor, so it waits for 0.8 with RM257 (a new `bioc=`
+parameter) and RM259 (a new public function). What the patch carries is the two entries below plus a
+test that now arranges the absent snapshot it asserts. Neither touches a model, a parquet or the
+manifest, and the enricher's floors are unchanged.
+
+- **RM254** — the release blocker for just-dna-lite (S107): every command died at import beside
+  dagster's `protobuf<7`. See its entry below.
+- **RM255** — `hint variant --frequencies` asked gnomAD nothing for a multi-allelic locus (S108). See
+  its entry below.
+
 ## 2026-09-24 — RM259: a GRCh38 position to the genes worth asking the Atlas about
 
-`just-dna-enricher` only, inside the uncut 0.7 line. Additive: one public function.
+`just-dna-enricher` only, inside the uncut **0.8** line. Additive: one public function, so a minor.
 
 `gene_spans.genes_covering(chrom, position)` returns every MANE gene whose span plus the 512 kb
 attribution horizon covers the position, or says why there are none (`no_snapshot`,
@@ -82,7 +96,7 @@ dozens of candidates: 50 at HFE H63D and 34 at APOE.
 
 ## 2026-09-24 — RM257: the literature pass reads an author manuscript through PMC's BioC service
 
-`just-dna-enricher` only, inside the uncut 0.7 line. Additive: one new client and one new
+`just-dna-enricher` only, inside the uncut **0.8** line (a minor). Additive: one new client and one new
 `enrich_literature(bioc=)` parameter, with no schema or compiled-output change.
 
 A record Europe PMC flags `isOpenAccess: N`, which covers most NIH author manuscripts, was never asked
@@ -95,7 +109,7 @@ pinned abstract-only row is filed as RM258.
 
 ## 2026-09-24 — RM256: the manifest published an abstract-only miss as a checked quote
 
-`just-dna-format`, `just-dna-compiler` and `just-dna-enricher`, inside the uncut 0.7 line. **A minor**:
+`just-dna-format`, `just-dna-compiler` and `just-dna-enricher`, inside the uncut **0.8** line. **A minor**:
 one new optional manifest field.
 
 An abstract-only citation stores `quotes_found=0, quote_source=abstract`, which is not a verdict, and
@@ -109,7 +123,7 @@ its description now says so. Null on manifests compiled before this release.
 
 ## 2026-09-24 — RM255: `hint variant --frequencies` asked gnomAD nothing for a multi-allelic locus, and said nothing about it
 
-`just-dna-enricher` only, inside the uncut 0.7 line. A patch: an advisory surface, no authored schema,
+`just-dna-enricher` only, shipped in **0.7.2**. A patch: an advisory surface, no authored schema,
 no compiled output.
 
 `_lookup_frequencies` kept only loci whose `alts` held one allele and returned silently when none did
@@ -125,7 +139,7 @@ three ways the question cannot be put each say so. `gnomAD has no record for …
 
 ## 2026-09-21 — RM254: the CLI died again beside anything pinning `protobuf<7`, and the guard that was meant to hold it caught two of three types
 
-`just-dna-enricher` only, inside the uncut 0.7 line (past 0.7.1). **A patch, and a release blocker
+`just-dna-enricher` only, shipped in **0.7.2**. **A patch, and a release blocker
 for the reference consumer**: just-dna-lite (S107) installs the enricher beside dagster, which pins
 `protobuf<7`; the Atlas bindings RM247 regenerated are stamped protobuf 7.35.1 and refuse an older
 runtime with `google.protobuf.runtime_version.VersionError`, which is neither `ImportError` nor
@@ -142,8 +156,8 @@ runtime with `google.protobuf.runtime_version.VersionError`, which is neither `I
 
 ## 2026-09-20 — S102–S106: a drafter that claimed absence, a recipe that refused on its own stubs, a table that photocopied the module, and a gate that ignored the file it read
 
-`just-dna-enricher` and `just-dna-compiler`, inside the uncut 0.7 line (the enricher past 0.7.1, the
-compiler past 0.7.0). Five consumer reports from one session building a PGx panel: four answered as
+`just-dna-enricher` and `just-dna-compiler`, shipped in **0.7.1** (they landed after the cut commit and
+before the tag, which is what PyPI carries). Five consumer reports from one session building a PGx panel: four answered as
 shipped and one filed as a design item with its message half shipped. None needed a schema change —
 every fix is a message, a lookup, or a derived table's contents, so the class is a patch in both tiers.
 

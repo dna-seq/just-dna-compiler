@@ -170,7 +170,7 @@ the enricher's console script. Whatever repair lands, the release procedure need
 
 ## RM259 — a position has no gene to ask the Atlas about, so the reverse span lookup ships
 
-**Severity** low · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.7 line** (enricher) · **Owner**
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.8 line** (enricher) · **Owner**
 enricher (`gene_spans`) · **Motivating case**
 [S112](CONSUMER_SUGGESTIONS_HISTORY.md#s112--the-alphagenome-pass-cannot-be-aimed-at-a-row-with-no-gene-and-nothing-in-the-sidecar-set-maps-a-position-to-one-with-a-note-on-sidecar-to-sidecar-dependencies)
 — 252 of the longevitymap port's 1,033 rows author no `gene`
@@ -208,7 +208,7 @@ Atlas could attribute the variant to.
 
 ## RM257 — PMC's BioC service is the fulltext rung for records Europe PMC calls closed
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.7 line** (enricher) · **Owner**
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.8 line** (enricher) · **Owner**
 enricher (`literature`) · **Motivating case**
 [S110](CONSUMER_SUGGESTIONS_HISTORY.md#s110--the-literature-pass-leaves-an-author-manuscript-abstract-only-when-pmcs-bioc-service-serves-it-whole-tables-included)
 — Kunkle 2019, 24 quotes checked against an abstract while the manuscript was open to text mining
@@ -256,7 +256,7 @@ re-asking belongs.
 
 ## RM256 — the manifest's citation block read an abstract-only miss as a checked quote
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.7 line** (format + compiler +
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.8 line** (format + compiler +
 enricher) — **sizes as a minor**, a new manifest field · **Owner** compiler (`_literature_block`) ·
 **Motivating case**
 [S109](CONSUMER_SUGGESTIONS_HISTORY.md#s109--an-abstract-only-literature-row-publishes-quotes_found-0-quotes_unchecked-0-which-reads-as-every-quote-read-and-missed)
@@ -307,7 +307,7 @@ the field. **The next release record must declare `literature.quotes_checked` as
 
 ## RM255 — `lookup_variant(frequencies=True)` asked gnomAD nothing for a multi-allelic locus, and said nothing about it
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.7 line** (enricher) · **Owner**
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-24, released in 0.7.2** (enricher) · **Owner**
 enricher (`lookup`) · **Motivating case**
 [S108](CONSUMER_SUGGESTIONS_HISTORY.md#s108--lookup_variantfrequenciestrue-returns-empty-populations-for-every-multi-allelic-rsid-and-says-nothing)
 — fixing a strand-ambiguous GWAS pair against gnomAD MAF, 15 of 25 lead rsIDs answered nothing
@@ -342,7 +342,7 @@ first-wins scalar over two alleles labels the hint with one of them and says whi
 
 ## RM254 — protobuf's gencode/runtime error is neither of the two types RM247's guards caught, so the CLI died again beside anything pinning `protobuf<7`
 
-**Severity** high · **Status** ✅ **SHIPPED 2026-09-21 in the uncut 0.7 line** (enricher) · **Owner**
+**Severity** high · **Status** ✅ **SHIPPED 2026-09-21, released in 0.7.2** (enricher) · **Owner**
 enricher (packaging, `atlas_protos`) · **Motivating case**
 [S107](CONSUMER_SUGGESTIONS_HISTORY.md#s107--enricher-071s-cli-dies-at-import-wherever-dagster-pins-protobuf7-because-the-atlas-gencode-is-735-and-the-rm247-guard-catches-neither-importerror-nor-runtimeerror-for-it)
 — just-dna-lite's whole command line, dead on a clean install beside dagster
@@ -380,7 +380,7 @@ fourth exception type fails the walk by existing rather than escaping.
 
 ## RM252 — `pgx` said "no use was declared" about a module whose licence table declared it, and asked the author to say it twice
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher) · **Owner**
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20, released in 0.7.1** (enricher) · **Owner**
 enricher (`licensing`, every gate with a module) · **Motivating case**
 [S105](CONSUMER_SUGGESTIONS_HISTORY.md#s105--pgx-reports-no-use-was-declared-and-skips-both-legs-on-a-module-whose-licensingcsv-already-declares-non_commercial-for-cpic)
 
@@ -409,7 +409,7 @@ because the terms are; a CPIC row grants nothing about PharmVar (`@declared-use-
 
 ## RM251 — a row authoring both an rsID and a coordinate was copied into `resolution.csv`, and the loci the pair check had already fetched were thrown away
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher) · **Owner**
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20, released in 0.7.1** (enricher) · **Owner**
 enricher · **Motivating case** [S104](CONSUMER_SUGGESTIONS_HISTORY.md#s104--a-row-carrying-both-an-rsid-and-a-position-is-stamped-sourceauthored-statusresolved-with-no-refalts-and-no-vrs-id-so-a-cpic-drafted-haplotype-table-compiles-at-0-vrs-coverage)
 — every CPIC-drafted module compiled with *"VRS allele identity covers 0/N"* and nothing the author
 could do about it
@@ -455,7 +455,7 @@ says to delete `resolution.csv` or run `--rederive`, which since 0.7 costs nothi
 
 ## RM250 — `scaffold` then `draft` failed on the scaffold's own placeholders, and the remedy it offered was a parameter the drafters do not have
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher + compiler) ·
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20, released in 0.7.1** (enricher + compiler) ·
 **Owner** enricher (`spec_genome_build`) + compiler (`draft.append_rows`) · **Motivating case**
 [S103](CONSUMER_SUGGESTIONS_HISTORY.md#s103--scaffold-followed-by-draft-fails-on-the-scaffolds-own-placeholders-so-the-reference-readmes-recipe-does-not-run-as-written)
 — the reference README's recipe, run verbatim, refused
@@ -488,7 +488,7 @@ the drafter rewriting an existing row. Diagnose, never apply (`@specific-rejecti
 
 ## RM249 — the CPIC drafter said "the snapshot has no row for it" about a drug with 35 rows in that table, all keyed on a gene pair
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher) · **Owner**
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20, released in 0.7.1** (enricher) · **Owner**
 enricher (`pgx_draft`, both CPIC clients) · **Motivating case**
 [S102](CONSUMER_SUGGESTIONS_HISTORY.md#s102--the-cpic-drafter-drafts-only-gene_count--1-recommendations-and-on-the-snapshot-path-it-reports-every-two-gene-pair-as-the-snapshot-has-no-row-for-it)
 — one module per gene of ClawBio's panel, and every thiopurine came back "no row"
