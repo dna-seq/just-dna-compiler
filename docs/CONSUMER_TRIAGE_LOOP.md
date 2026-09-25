@@ -604,8 +604,8 @@ rejected if one changed. Do this by hand only if the tool cannot (it prints what
 The loop's output is roadmap items and patch-level fixes, and it will produce both indefinitely without
 ever deciding to build or release anything. Triage answers a consumer; it does not schedule the work or
 cut the version. Those two are the user's call, so the loop has to **ask** rather than keep accumulating
-silently. Note which way each threshold points — two of them say *start something* and only the last
-says *stop*, so do not collapse them into one "the loop halts" rule. All are counted off the tree, never
+silently. Since 2026-09-25 only the last of them asks anything: the item count is a lamp the handoff
+reports, and the ceiling says *stop*, so do not collapse them into one "the loop halts" rule. All are counted off the tree, never
 remembered:
 
 ```
@@ -626,27 +626,29 @@ fixed field written verbatim and kept on one line. §6 has the incident; the sho
 counter reading prose is only as stable as the sentence it reads, so the sentence has to know it is
 being read.
 
-**Twenty or more sizeable open items → development of the next minor should START. This is the dev-start
-trigger, and it is *not* "scope is closing".** Read it the wrong way — as a scope freeze, a ceiling, a
-stop-filing rule — and it inverts: it would silence the loop exactly when the release it feeds is ready
-to begin. A minor keeps taking additive items right up until it is cut, so filing continues after the
-trigger fires; what changes is that enough grounded work has accumulated to be worth *building*, and
-scheduling a build is the user's call. Re-read the set before calling it: an item that duplicates
-another, or that never had a reproduced case under it, is not grounded and should be merged or demoted
-rather than counted. If they all survive that pass — each with a motivating case and a reproduction —
-raise it with an `AskUserQuestion` (it shows red in herdr): the question is *shall the next minor start*,
-never *shall we stop filing*. Ask once per pass, not once per item over the line.
+**Twenty or more sizeable open items is a lamp, not a start pistol (since 2026-09-25).** Report the
+count in the pass handoff and do not ask about it. Whether a minor is worth starting is decided in an
+interview with the user, on the items themselves, and [RELEASE_CYCLE.md](RELEASE_CYCLE.md) is the
+sequence that follows. Until 2026-09-25 this paragraph said *development of the next minor should
+START* and told the loop to raise an `AskUserQuestion`; the user retired that because an item count
+says nothing about whether the items are worth building. One thing from the old reading still holds:
+the count is **never** a scope freeze or a stop-filing rule. A minor keeps taking additive items right
+up until it is cut. Re-read the set before reporting it: an item that duplicates another, or that
+never had a reproduced case under it, is not grounded and should be merged or demoted rather than
+counted.
 
 **Thirty sizeable open items is the ceiling — there, stop filing and block.** A backlog that size
-means the dev-start trigger fired and went unanswered for long enough that the queue is no longer being
+means the lamp has been lit and unanswered for long enough that the queue is no longer being
 managed by anyone, and a thirty-first item buys nothing: nobody reads that far, and an unread item is
 indistinguishable from an unfiled one. Say what you would have filed, in the reply to the consumer, and
 block rather than adding to a list that has stopped being a plan.
 
-**Around ten accumulated patch-level fixes → publish time.** The signal that they have accumulated is
-the CHANGELOG carrying a version the `pyproject.toml` files do not. **Publishing** is the user's domain
-and always an ask; **bumping, tagging and building a dist are inside §5's grant** for a patch, which is
-that section's own worked example.
+**Patch-level fixes are not counted toward a cut (since 2026-09-25).** Every non-blocked patch item
+goes into the next patch batch on `main` by default, and a patch carries however many fixes the latest
+wave of usage produced; see [RELEASE_CYCLE.md](RELEASE_CYCLE.md). This paragraph read *around ten
+accumulated patch-level fixes, publish time* until then. **Publishing** is the user's domain and always
+an ask; **bumping, tagging and building a dist are inside §5's grant** for a patch, which is that
+section's own worked example.
 
 **But the grant is scoped to a patch, and a batch's release class is set by its most additive item.**
 This sentence read *never bump a version, tag, or publish; ask* until 2026-08-24, which was written
@@ -654,8 +656,8 @@ before §5 existed and then contradicted it — found by running the loop, on a 
 were mostly warnings and error messages and which therefore *looked* like a patch. Three of them added
 an optional field or a public function, so the batch cut as a **minor**. The rule that resolves both
 halves: **legality sizes the release** (§3 Step 1), so count the class of the most additive item rather
-than the mood of the batch — and a minor is an ask, because §4's other trigger is already *shall the
-next minor start* and cutting one is the same decision arriving from the other end.
+than the mood of the batch — and a minor is an ask, because whether a minor starts and when it is cut are the user's
+decisions ([RELEASE_CYCLE.md](RELEASE_CYCLE.md)).
 
 **Fewer is fine when something is critical** — a wrong published number, a false claim in a printed
 contract, anything a consumer could act on and be harmed by. That is a judgement call and it is the
@@ -664,7 +666,8 @@ agent's to make; do not sit on one because a counter reads four.
 **The numbers will drift, and they are a trigger rather than a law.** This is an active testing phase, so
 they were picked to be roughly right and are expected to move — the two item counts were **10/20 until
 2026-08-20**, raised to 20/30 because a queue of eleven grounded items was nowhere near needing a
-planning decision and the loop was spending the trigger too early. Update them here when they move
+planning decision and the loop was spending the trigger too early. On **2026-09-25** the twenty stopped
+being a trigger at all and became a lamp, and the patch count was dropped (the two paragraphs above). Update them here when they move
 again — and note that the count is deliberately of *sizeable* items, since a batch of one-line
 legibility fixes is not the thing that needs a planning decision.
 

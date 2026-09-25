@@ -277,6 +277,7 @@ not_in_nav: |
   CONSUMER_TRIAGE_LOOP.md
   DRAFTING_MATURITY.md
   PUBMIND_ASSESSMENT.md
+  RELEASE_CYCLE.md
   audit/
   history/
   # Re-included, gitignore style: this one archived page is in the nav (see the *Upgrading* comment
