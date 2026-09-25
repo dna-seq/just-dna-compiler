@@ -31,8 +31,12 @@ curl -sf "https://api.github.com/gists/$GIST" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["history"][0]["version"])'
 ```
 
-**In sync through gist revision `f53d7e181ca89fcd26d5aa9cda365e9d93699345`**, ours, pushed 2026-09-13,
-so it is in sync by construction. It carries one thing outward — the allocator's argument surface, below
+**In sync through gist revision `b063b65ef777cf06002e6fa14953d6503692d1f1`**, inbound, adopted
+2026-09-25: the watcher became a newest-wins singleton per watched file (exit 3 when superseded), the
+arming moved to a one-shot background task (§1), and a fence-blindness note joined §6. The two Python
+scripts and `item-next.py` were byte-identical to the previous revision, so the fingerprint gate below
+was satisfied trivially. Before it, `f53d7e181ca89fcd26d5aa9cda365e9d93699345`, ours, pushed 2026-09-13,
+in sync by construction. It carries one thing outward — the allocator's argument surface, below
 — and touches no other file: the three scripts were verified byte-identical against the previous
 revision after the write. Its predecessor `e81d9a18755ea215144518489c52e5c5669b0b25` (2026-09-01, ours)
 was the baseline before it, and carried **two** things outward: the tracked-item allocator as the
@@ -262,27 +266,46 @@ The lock is pinned by `schema/tests/test_rm_allocator.py`, which runs eight allo
 runs the same eight with `flock` neutered** to show they collide. A guard nobody has watched fail is a
 guess.
 
-Arm the watcher with the `Monitor` tool, which turns each stdout line into a notification that
-re-invokes the agent:
+Arm the watcher as a **one-shot background task** that wakes the agent on a real event and on nothing
+else — `Bash` with `run_in_background: true`, command:
 
 ```
-Monitor({
-  command: '/data/sources/just-dna-format/.claude/watch-suggestions.sh',
-  description: 'CONSUMER_SUGGESTIONS.md settling',
-  persistent: true,
-})
+coproc W { exec .claude/watch-suggestions.sh; }; p=$W_PID
+while IFS= read -r line <&"${W[0]}"; do
+  case "$line" in *"nothing pending"*|*paus*|*resum*) continue;; esac
+  echo "$line"; break
+done
+kill "$p" 2>/dev/null; wait "$p"
 ```
 
-**It watches only while the tree is on `main`.** The loop commits as it goes (§5), and a branch — or a
-detached HEAD — is the user's own work, which is the one thing that permit does not cover: triaging into
-it would put unattended commits on top of whatever they are mid-way through. Off `main` the watcher idles
-at `BRANCH_PAUSE` (900s) instead of `POLL`, emits one line saying which branch it is on, and stays quiet
-until the branch changes back, when it emits one more. It does not touch its `last` mtime while paused,
-so a consumer's edit written during the pause is still picked up on the way back rather than lost —
-verified across a `main → branch → main` switch, with the edit made while paused arriving in the resume
-event. `BRANCH=<name>` overrides the branch it considers home.
+**Not the `Monitor` tool any more, decided 2026-09-25.** It once took `persistent: true`; it now caps
+every watch at 30 minutes, so a persistent watcher becomes a timer that wakes the agent at each expiry
+to be re-armed and spends tokens on an empty inbox. The background task has no expiry. Save `$W_PID`
+before the loop — bash may unset it once the coprocess exits — and arm again after each event. Adopted
+from the gist (revision `b063b65e…`), where it was found in another tree first.
 
-`persistent: true` keeps it alive for the session; `TaskStop` cancels it. It reacts only while the
+**Arm it on every run, and don't check first.** The watcher is a newest-wins singleton per watched file:
+a new start records itself in a pidfile under `$XDG_RUNTIME_DIR`, keyed on the watched file's resolved
+path, and stops the previous owner after checking that pid's command line; every poll it re-reads the
+pidfile and exits if it is no longer the owner. So arming twice leaves one watcher. Checking first is
+what goes wrong: the harness's task list shows only what the current session spawned, so re-arming on
+"no tasks found" left two, and every settle was reported twice. A sibling repository running its own
+`watch-suggestions.sh` is a different key and is never touched.
+
+**The task's exit status says how it ended**, because the wrapper ends in `wait` on the watcher:
+
+| status | meaning | action |
+|---|---|---|
+| 0, with a line | an event | triage, then arm again |
+| 3, no output | **superseded**: a newer arming took over | none, the newer watcher is live |
+| 0, no output | stopped on purpose (a TERM while it still owned the pidfile) | arm again if still wanted |
+| anything else | the watcher failed | read the output, fix, arm again |
+
+The harness reports the superseded case as *failed* with exit code 3; that is expected. Verified on a
+scratch inbox before adoption: a second arming made the first exit 3, a TERM to the owner exited 0 and
+removed the pidfile, and an append fired the event line.
+
+`TaskStop` cancels it. It reacts only while the
 session is open and the REPL is idle. **Editing the script does not reach a running monitor** — bash
 reads a script incrementally — so `TaskStop` and re-arm after changing it. Nothing needs installing — `inotify-tools`, `entr`, `fswatch` and
 python `watchdog` are all absent from this machine, and `stat` polling is enough at this cadence.
@@ -806,6 +829,14 @@ Each of these was a bug in the loop, not a hypothetical:
   name — so the fix is on the writing side: **do not open a preamble line with `**Status`** unless it
   is a real reply; a blockquote (`> **Status:** …`) is enough. Found while adopting the loop into a
   second repository rather than here, which is the argument for keeping the published copy in sync.
+- **`STATUS_RE` and `MARKER_RE` are still fence-blind, deliberately.** The boundary tests consult
+  `fenced_lines`, but reply and marker detection do not. So a consumer who quotes a `**Status` line or
+  a `<!-- triaged: … -->` marker inside a code block (while reporting a problem with this loop, say)
+  has a section the ledger treats as answered, or even as `current`. Left unfixed because the boundary
+  case is the one that loses data and this one has not happened yet. If it does, the fix is one
+  `if i in fenced` in `has_reply`, `consumer_text`, `stored_sha` and `block_replies`, using the scan
+  already there. Written down so nobody reads *the tools are fence-aware* as covering more than it
+  does. Adopted from the gist, 2026-09-25.
 - **A link guard and "the prose is evidence" collide, and the guard must give way.** `test_doc_links.py`
   requires every relative link in every markdown file to resolve, and it exists because an item moving
   live→history breaks every pointer at it. Consumers have now started citing `RMn` items by link inside
