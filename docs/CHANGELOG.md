@@ -34,19 +34,30 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
-## 2026-09-25 — `just-dna-enricher` 0.7.2: the CLI imports beside `protobuf<7`, and the frequencies leg asks about every allele
+**`main` is the patch line; minor-class work lives on the `0.8` branch (since 2026-09-25).** RM256,
+RM257, RM259, RM260 and RM262 were committed to `main` on 2026-09-24/25 although each sizes as a
+minor, and were moved to the `0.8` branch by a history rewrite the same evening. Their entries below
+stay here because this log is shared across the ecosystem, but their code is **not on `main`** and
+ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
+[RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
-**`just-dna-enricher` moves alone; `just-dna-format` stays at `0.7.0` and `just-dna-compiler` at
-`0.7.1`.** A patch cut from the `0.7` branch rather than from `main`: RM256, which landed in between,
-adds a manifest field and is therefore a minor, so it waits for 0.8 with RM257 (a new `bioc=`
-parameter) and RM259 (a new public function). What the patch carries is the two entries below plus a
-test that now arranges the absent snapshot it asserts. Neither touches a model, a parquet or the
-manifest, and the enricher's floors are unchanged.
+## 2026-09-25 — RM262: a DOI lookup names the paper it found
 
-- **RM254** — the release blocker for just-dna-lite (S107): every command died at import beside
-  dagster's `protobuf<7`. See its entry below.
-- **RM255** — `hint variant --frequencies` asked gnomAD nothing for a multi-allelic locus (S108). See
-  its entry below.
+`just-dna-enricher` only, inside the uncut **0.8** line. Additive: a new class and method beside
+`CrossrefClient.exists`, whose signature is unchanged. A minor.
+
+- `lookup_citation(doi=…)` / `hint citation --doi` now fills `title`, `journal`, `year` and
+  `first_author` from the Crossref record it was already fetching, and adds an `info` finding
+  `DOI <doi> names: '<title>' (…) — existence is not identity, …`. A record with no title says so.
+  With a PMID given too, PubMed's record fills the fields and the DOI's title is reported beside it
+  (S113).
+- `CrossrefClient.work(doi)` → `CrossrefWork`; `literature.crossref_bibliographic` parses a `/works`
+  message the way `bibliographic` parses an `esummary` record.
+- **Behaviour change on a failure leg:** a 200 from Crossref whose body is not a Crossref record now
+  withholds (`exists=None`) where it used to answer `True`. A maintenance page is not evidence that a
+  DOI exists.
+
+DOI → PMID is filed as RM263.
 
 ## 2026-09-21 — just-dna-lite adopted the 0.7 line (format 0.7.0 / compiler 0.7.1 / enricher 0.7.1)
 
@@ -82,6 +93,77 @@ One thing found on the way that is not the format's: the same relock floated `ag
 whose MCP toolkit imports the mcp 2.x names, against a consumer-side `mcp<2.0` cap written for agno 2.
 Unrelated to this repo; recorded because the symptom (the whole CLI dead at import) looked like S107
 until the traceback was read.
+
+## 2026-09-25 — RM260: the three largest modules are packages, under the same import paths
+
+`just-dna-compiler` and `just-dna-enricher`, inside the uncut **0.8** line. **No surface change**: every
+dotted path importable before resolves to the same object, `--help` is byte-identical, and every
+reference example compiles to identical bytes (`compiled_at` aside).
+
+- `just_dna_compiler.compiler` (was one 492 KB file) is 16 submodules: tables, load, the per-concern
+  checks, validate, pipeline, manifest, parquets, reverse.
+- `just_dna_enricher.cli` (244 KB) has one `*_commands` module per source or command group, with the
+  app assembled in `__init__` in its original order. The `just_dna_enricher.cli:app` entry point is
+  unchanged, and `python -m just_dna_enricher.cli` still works.
+- `just_dna_enricher.enrich` (152 KB) is `subjects`, `outcome`, `build_declaration`, `orchestration`,
+  `verification_records` and `resolution_csv`.
+
+Each `__init__.py` is a re-export shell kept for the published paths; RM260 removes them at 1.0. A
+consumer that monkeypatches a name on one of these modules must now patch the submodule where it is
+looked up. Two tests here had been reaching the live network that way without failing. Every
+source-reading guard walks the packages, and each was proved red on a planted defect.
+
+## 2026-09-25 — `just-dna-enricher` 0.7.2: the CLI imports beside `protobuf<7`, and the frequencies leg asks about every allele
+
+**`just-dna-enricher` moves alone; `just-dna-format` stays at `0.7.0` and `just-dna-compiler` at
+`0.7.1`.** A patch cut from the `0.7` branch rather than from `main`: RM256, which landed in between,
+adds a manifest field and is therefore a minor, so it waits for 0.8 with RM257 (a new `bioc=`
+parameter) and RM259 (a new public function). What the patch carries is the two entries below plus a
+test that now arranges the absent snapshot it asserts. Neither touches a model, a parquet or the
+manifest, and the enricher's floors are unchanged.
+
+- **RM254** — the release blocker for just-dna-lite (S107): every command died at import beside
+  dagster's `protobuf<7`. See its entry below.
+- **RM255** — `hint variant --frequencies` asked gnomAD nothing for a multi-allelic locus (S108). See
+  its entry below.
+
+## 2026-09-24 — RM259: a GRCh38 position to the genes worth asking the Atlas about
+
+`just-dna-enricher` only, inside the uncut **0.8** line. Additive: one public function, so a minor.
+
+`gene_spans.genes_covering(chrom, position)` returns every MANE gene whose span plus the 512 kb
+attribution horizon covers the position, or says why there are none (`no_snapshot`,
+`no_gene_within_horizon`). It is a query hint for a row that authors no `gene` (S112: 252 of 1,033
+longevitymap rows). Each candidate goes to `enrich_expression(spec, gene, chrom=, start=, end=)`, and
+the Atlas names the gene on what it returns. Nothing writes a candidate into `variants.csv`. Expect
+dozens of candidates: 50 at HFE H63D and 34 at APOE.
+
+## 2026-09-24 — RM257: the literature pass reads an author manuscript through PMC's BioC service
+
+`just-dna-enricher` only, inside the uncut **0.8** line (a minor). Additive: one new client and one new
+`enrich_literature(bioc=)` parameter, with no schema or compiled-output change.
+
+A record Europe PMC flags `isOpenAccess: N`, which covers most NIH author manuscripts, was never asked
+for fulltext, so its quotes were checked against the abstract only (S110: Kunkle 2019, whose rows live
+in two body tables). The pass now asks PMC's BioC text-mining service for any citation with a PMCID
+that Europe PMC did not serve. Tables are kept and the reference list is dropped. It runs on the
+E-utilities pacing gate, and the licence columns stay what Europe PMC said. **Rows already in
+`literature.csv` are not re-asked**: delete it and re-run to pick this up. That a 5xx also leaves a
+pinned abstract-only row is filed as RM258.
+
+## 2026-09-24 — RM256: the manifest published an abstract-only miss as a checked quote
+
+`just-dna-format`, `just-dna-compiler` and `just-dna-enricher`, inside the uncut **0.8** line. **A minor**:
+one new optional manifest field.
+
+An abstract-only citation stores `quotes_found=0, quote_source=abstract`, which is not a verdict, and
+the enricher's pass report already counted it as unchecked. The manifest's `literature` block counted
+only null rows as unchecked, so 24 quotes on one paywalled paper published as `quotes_found: 0,
+quotes_unchecked: 0` (S109). The block now carries **`quotes_checked`**, in quote units: the quotes a
+retrieved text settled, found or missed. Read `quotes_found` against it; `quotes_authored -
+quotes_checked` is what nothing established. The rule is `LiteratureRow.quotes_checked()` and the
+enricher's report uses the same one. `quotes_unchecked` keeps its meaning (a count of citations), and
+its description now says so. Null on manifests compiled before this release.
 
 ## 2026-09-24 — RM255: `hint variant --frequencies` asked gnomAD nothing for a multi-allelic locus, and said nothing about it
 

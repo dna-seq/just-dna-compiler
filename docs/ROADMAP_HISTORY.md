@@ -168,6 +168,194 @@ the enricher's console script. Whatever repair lands, the release procedure need
 
 **Related** RM192 (the measured Atlas dependency cost), RM196 (why this tier alone is on hatchling).
 
+## RM262 — a DOI answered existence and never identity, although the body naming the paper was already in hand
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-25 on the `0.8` branch, uncut** (enricher) · **Owner**
+enricher (`literature`, `lookup`) · **Motivating case** [S113](CONSUMER_SUGGESTIONS_HISTORY.md#s113--lookup_citationdoi-settles-existence-and-never-identity-title-journal-year-and-author-are-always-null) — `lookup_citation(doi="10.1038/ng826")`,
+Enattah 2002, came back `doi_exists: true` with title, journal, year and author all null and no finding
+
+### What was observed
+
+Reproduced live. `CrossrefClient.exists` made the `/works/{doi}` request, read the status and threw
+the body away; `lookup_citation` filled the four identity fields only on the PMID branch, from
+`esummary`. So a DOI-only citation got the one answer `@existence-not-identity` says settles nothing,
+and `findings` was empty, so nothing said the title had not been asked for. The reporter's round had
+four of four authoring runs fall back to a free-text search to learn what their DOI was.
+
+**Found on the way: the same method answered `True` for a 200 that was not Crossref.** `exists` read
+only the status, so an HTML maintenance page or a CDN interstitial read as "this DOI exists".
+Reproduced against the pre-fix code in a scratch worktree. It is the fourth leg of
+`@client-exception-contract`, on a client the contract suite exempted for a reason about its retry
+story rather than about what the class promises.
+
+### What shipped
+
+- `literature.CrossrefWork` (frozen: `exists` tri-state plus `title`/`journal`/`year`/`first_author`)
+  and `CrossrefClient.work(doi)`, off the same single request. `exists(doi)` keeps its signature and is
+  `work(doi).exists`, so the literature pass and every other caller are unchanged.
+- `literature.crossref_bibliographic(message)`, the Crossref twin of `bibliographic`: list-valued
+  `title`/`container-title` (an empty list is `None`), the year from `issued.date-parts`, and the first
+  author as the entry marked `sequence: "first"`, rendered `Family GI` to read like PubMed's
+  `sortfirstauthor`, or an organisation's `name`.
+- A 200 whose body is not a Crossref record withholds (`exists=None`). `CrossrefClient` joins
+  `WITHHOLDING_CLIENTS`, which pins the withheld value on the 5xx, transport and HTML legs.
+- `lookup_citation`'s DOI branch fills the four fields where the PMID branch left them `None`, and
+  adds an `info` finding, `DOI <doi> names: '<title>' (<author>, <journal>, <year>) — existence is not
+  identity, …`, the mirror of the PMID one. A record with no title (datasets, some preprints) says
+  `… names no title …` rather than returning silent nulls.
+- **With both identifiers, PubMed fills and both titles are reported.** `StudyRow` is keyed on the
+  PMID, so its record wins the fields; the DOI's title still arrives in its own finding, so a pair
+  naming two papers shows two titles side by side (`@roster-is-as-wide-as-the-tables-it-reads`: two
+  answers to one question go side by side).
+
+### Refused, with reasons
+
+- **Retyping `exists` to return the record.** Callers outside this repo may hold the `bool | None`
+  contract, and a retype is major (P3). `work` sits beside it.
+- **Rewriting title markup.** Crossref passes JATS tags (`<i>`) through. The field is for a person to
+  compare against the paper they meant; cleaning it would be a second opinion about the title.
+- **The reporter's second candidate, DOI → PMID, in the same change.** It is a separate request, a
+  separate client method, and an advisory rather than a fill. Filed as [RM263](ROADMAP.md#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).
+
+## RM259 — a position has no gene to ask the Atlas about, so the reverse span lookup ships
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-24 on the `0.8` branch, uncut** (enricher) · **Owner**
+enricher (`gene_spans`) · **Motivating case**
+[S112](CONSUMER_SUGGESTIONS_HISTORY.md#s112--the-alphagenome-pass-cannot-be-aimed-at-a-row-with-no-gene-and-nothing-in-the-sidecar-set-maps-a-position-to-one-with-a-note-on-sidecar-to-sidecar-dependencies)
+— 252 of the longevitymap port's 1,033 rows author no `gene`
+
+### What was observed
+
+`enrich_expression` needs a gene, because the Atlas's gene filter is mandatory, and the reporter's
+rows mode keys each window on the row's authored `gene`. The reporter's census of the derived tables
+checks out against the models: the variant-keyed sidecars carry no gene, the gene-keyed ones carry no
+position, and only `expression_effects.csv`, the output, has both. `gene_spans` answered symbol →
+span only. `enrich_expression(spec, gene, chrom=, start=, end=)` already takes an explicit interval,
+so the one missing piece was the reverse lookup.
+
+### What shipped
+
+`gene_spans.genes_covering(chrom, position)` → `NearbyGenes`: every MANE gene on that contig whose
+span, widened by `ATTRIBUTION_HORIZON_BP`, covers the position, ordered by `(start, gene)`, or one of
+two reasons (`no_snapshot`, `no_gene_within_horizon`) in `NEARBY_REASONS`, a map of its own so the
+two lookups cannot print each other's sentences. GRCh38 only, because MANE is. **Measured on the real
+lane: 50 candidates at 6:26090951 (HFE H63D, the histone cluster) and 34 at APOE's rs429358.** That
+is the answer as it stands: the horizon is the model's own half-window, so each one is a gene the
+Atlas could attribute the variant to.
+
+### Refused, with reasons
+
+- **Narrowing to the nearest gene, or a top-N.** That picks a gene on the Atlas's behalf, which is
+  the span-as-attribution failure `@gene-map-is-another-sources-attribution` forbids, one step
+  removed.
+- **A rows mode in `enrich_expression` upstream.** The reporter's planner already exists. A second
+  consumer needing one would bring it here.
+- **A per-candidate query per position as the recommended plan.** At fifty candidates that is fifty
+  Atlas requests per row. Inverting gene → positions and querying each gene once over the window its
+  positions need is the cheaper plan, and the reply says so. It is the caller's plan, not this
+  function's.
+
+## RM257 — PMC's BioC service is the fulltext rung for records Europe PMC calls closed
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-24 on the `0.8` branch, uncut** (enricher) · **Owner**
+enricher (`literature`) · **Motivating case**
+[S110](CONSUMER_SUGGESTIONS_HISTORY.md#s110--the-literature-pass-leaves-an-author-manuscript-abstract-only-when-pmcs-bioc-service-serves-it-whole-tables-included)
+— Kunkle 2019, 24 quotes checked against an abstract while the manuscript was open to text mining
+
+### What was observed
+
+Reproduced live on 2026-09-24. Europe PMC's search reports `PMC6463297` as `isOpenAccess: N`,
+`inPMC: Y`, with manuscript id `NIHMS1021255`. The pass's `is_open and pmcid` gate therefore never
+asked it for fulltext, and `fullTextXML` answers HTTP 500 when asked anyway. PMC's BioC service
+answers 200 with 294 passages: 186 of them the reference list, and 27 of them `TABLE`, including the
+per-locus tables that hold the module's rows. An article outside the service's set (`PMC1050584`)
+answers **200** with a plain-text `[Error] : No result can be found.` body. That gate had no recorded
+licence reason, and it arrived in the 0.5.0 commit with the pass itself, so relaxing it for a second
+host is a coverage change and not a reversal of a refusal.
+
+### What shipped
+
+`PmcBiocClient` beside `PmcIdConverterClient`, taking the E-utilities gate from the pass
+(`@shared-pacing-gate`), and `extract_bioc_text`, which keeps every passage except `REF`. The fetch
+order is Europe PMC fulltext (open records), then BioC (any PMCID Europe PMC did not serve), then the
+abstract. `enrich_literature(bioc=)` injects it the way the other three clients are injected. Tests run
+on recorded answers trimmed to a few passages: the suite's own ClinVar paper re-flagged as a
+manuscript, the Kunkle manuscript's table passage (a run of tab-separated cells matches as a quote,
+and a reference entry does not), and the service's "no copy" body. Each rung test fails with the rung
+disabled, which was checked. Two existing tests had been reaching the live service through a default
+client, and one of them would have silently changed meaning; both now inject one.
+
+### Refused, with reasons
+
+- **A `pmc_bioc` value in `quote_source`, or a `text_provider` column.** `quote_source` records how
+  far the search reached, which is what makes a miss conclusive or not, and a BioC body is a
+  fulltext. A provenance column is legal and half-cost, but nothing reads it; it can be added the day
+  something does.
+- **Reading the BioC `license` infon as the article's licence.** "Available for text mining … fair
+  use" names no terms (`@no-named-licence`), so the row keeps Europe PMC's `is_open_access` and
+  `license`.
+- **Gating the rung on `inPMC` or `hasPDF`.** Neither makes it cheaper: an article outside the set
+  costs the same one paced request and answers "no copy".
+- **Splitting 404 from 5xx inside this item.** Both clients still return one `None`, and the row it
+  leaves is pinned. That is its own design question, filed as RM258.
+
+**What a module already enriched gets from this: nothing, until `literature.csv` is deleted.** A
+pinned row is never fetched again. The delete costs nothing since 0.7 (RM124), and RM258 is where
+re-asking belongs.
+
+## RM256 — the manifest's citation block read an abstract-only miss as a checked quote
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-24 on the `0.8` branch, uncut** (format + compiler +
+enricher) — **sizes as a minor**, a new manifest field · **Owner** compiler (`_literature_block`) ·
+**0.7.x mitigation** [RM264](ROADMAP.md#rm264--the-07x-manifest-reads-an-abstract-only-miss-as-a-checked-quote-and-its-fix-is-minor-only)
+(split 2026-09-25: the field waits for 0.8, a patch re-describes the counters for the released line) ·
+**Motivating case**
+[S109](CONSUMER_SUGGESTIONS_HISTORY.md#s109--an-abstract-only-literature-row-publishes-quotes_found-0-quotes_unchecked-0-which-reads-as-every-quote-read-and-missed)
+— reading back a rehearsal module with 24 quotes on one paywalled PMID
+
+### What was observed
+
+An abstract-only citation stores `quotes_found=0, quote_source=abstract`: searched, missed, and not a
+verdict. The enricher's `_tally_quotes` already counted such a miss as unchecked, so the pass reported
+`quotes_unchecked: 24`. The compiler's `_literature_block` counted `quotes_unchecked` as citations
+whose `quotes_found` is **null**, so the same row published `quotes_found: 0, quotes_unchecked: 0`,
+which is S56's "checked and missed" reading one case over. Reproduced on a single `LiteratureRow`
+through `_literature_block`, and on a second shape the report did not name: 3 of 24 found in the
+abstract still published the other 21 as checked. `quotes_unchecked` also counts citations while the
+two counters beside it count quotes, so no value of it could have answered in the right unit.
+
+### What shipped
+
+`Literature.quotes_checked`, the quotes a retrieved text settled, in quote units, so `quotes_found`
+has a denominator it can be read against. The per-row rule is `LiteratureRow.quotes_checked()` in the
+format tier: null settles nothing, fulltext settles every quote, anything else settles only its hits.
+The enricher's `_tally_quotes` and the compiler's block both call it, so the pass report and the
+manifest cannot disagree again; an enricher test feeds the rows a real pass wrote into the compiler's
+block and asserts the two agree. `quotes_found`'s description no longer says "in a fulltext", which
+was false for abstract hits the block already summed. `quotes_unchecked` is unchanged and its
+description now says it counts citations and does not see an abstract-only row.
+
+### Why each candidate repair was refused
+
+- **The enricher writing `quotes_found` as null on an abstract miss** (the reporter's first choice).
+  It merges two states `LiteratureRow` holds apart on purpose: null means nothing could be read, and 0
+  against `abstract` means the abstract was read. It also fixes nothing already written, since
+  `literature.csv` is merge-not-clobber, and it leaves the partial-hit case wrong.
+- **Counting abstract-only citations in `quotes_unchecked`, or moving it to quote units.** The field's
+  published description ("citations whose `quotes_found` is null") is accurate: the value was never
+  wrong, the question was too narrow. Changing its basis or unit redefines a number a consumer already
+  reads, which is the S18 case (add beside, never redefine), and a citation-level count cannot express
+  a paper where some quotes were found in the abstract and others were not.
+
+**Scope, stated so it is not re-filed as an oversight.** `quotes_checked` reads the row as written,
+exactly as `quotes_found` does. A row whose `quotes_authored` no longer matches `studies.csv` is the
+enricher's `unexamined` count and the compiler's `quote_counter_stale` warning, not this counter.
+
+**Release class.** A new optional manifest field is a minor by the triage runbook's table, so the
+batch this lands in cuts as a minor. `Literature` sets no `extra="forbid"`, so an older reader ignores
+the field. **The next release record must declare `literature.quotes_checked` as an addition** on the
+`manifest_fields` axis, or the cut's sweep gate will refuse it.
+
 ## RM255 — `lookup_variant(frequencies=True)` asked gnomAD nothing for a multi-allelic locus, and said nothing about it
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-24, released in 0.7.2** (enricher) · **Owner**
@@ -243,7 +431,7 @@ fourth exception type fails the walk by existing rather than escaping.
 
 ## RM252 — `pgx` said "no use was declared" about a module whose licence table declared it, and asked the author to say it twice
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher) · **Owner**
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20, released in 0.7.1** (enricher) · **Owner**
 enricher (`licensing`, every gate with a module) · **Motivating case**
 [S105](CONSUMER_SUGGESTIONS_HISTORY.md#s105--pgx-reports-no-use-was-declared-and-skips-both-legs-on-a-module-whose-licensingcsv-already-declares-non_commercial-for-cpic)
 
@@ -272,7 +460,7 @@ because the terms are; a CPIC row grants nothing about PharmVar (`@declared-use-
 
 ## RM251 — a row authoring both an rsID and a coordinate was copied into `resolution.csv`, and the loci the pair check had already fetched were thrown away
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher) · **Owner**
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20, released in 0.7.1** (enricher) · **Owner**
 enricher · **Motivating case** [S104](CONSUMER_SUGGESTIONS_HISTORY.md#s104--a-row-carrying-both-an-rsid-and-a-position-is-stamped-sourceauthored-statusresolved-with-no-refalts-and-no-vrs-id-so-a-cpic-drafted-haplotype-table-compiles-at-0-vrs-coverage)
 — every CPIC-drafted module compiled with *"VRS allele identity covers 0/N"* and nothing the author
 could do about it
@@ -318,7 +506,7 @@ says to delete `resolution.csv` or run `--rederive`, which since 0.7 costs nothi
 
 ## RM250 — `scaffold` then `draft` failed on the scaffold's own placeholders, and the remedy it offered was a parameter the drafters do not have
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher + compiler) ·
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20, released in 0.7.1** (enricher + compiler) ·
 **Owner** enricher (`spec_genome_build`) + compiler (`draft.append_rows`) · **Motivating case**
 [S103](CONSUMER_SUGGESTIONS_HISTORY.md#s103--scaffold-followed-by-draft-fails-on-the-scaffolds-own-placeholders-so-the-reference-readmes-recipe-does-not-run-as-written)
 — the reference README's recipe, run verbatim, refused
@@ -351,7 +539,7 @@ the drafter rewriting an existing row. Diagnose, never apply (`@specific-rejecti
 
 ## RM249 — the CPIC drafter said "the snapshot has no row for it" about a drug with 35 rows in that table, all keyed on a gene pair
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20 in the uncut 0.7 line** (enricher) · **Owner**
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-20, released in 0.7.1** (enricher) · **Owner**
 enricher (`pgx_draft`, both CPIC clients) · **Motivating case**
 [S102](CONSUMER_SUGGESTIONS_HISTORY.md#s102--the-cpic-drafter-drafts-only-gene_count--1-recommendations-and-on-the-snapshot-path-it-reports-every-two-gene-pair-as-the-snapshot-has-no-row-for-it)
 — one module per gene of ClawBio's panel, and every thiopurine came back "no row"

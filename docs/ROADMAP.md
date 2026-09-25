@@ -184,14 +184,15 @@ Two consequences worth stating outright:
 
 # Active items
 
-**One — RM247** (the count is the `## RMn` sections below — it
+**Three — RM258, RM263 and RM264** (the count is the `## RMn` sections below — it
 read "four as of 2026-08-21" for two rounds after it stopped being four, then *not one of them is a
 decision* through the three that are, then *three* for the hour it took a fourth to be filed, then
 *two* until RM151 shipped, then *one* naming RM152, then *one* naming RM153, then none, then seven for
 the 2026-09-01 source-adoption round, then one, **none again on 2026-09-11** when RM164 moved to
 the 0.8 file, **one again on 2026-09-12** when RM232 was filed, none again the same day when it
 shipped, and **one again that evening** when RM235 was filed, then **none on 2026-09-20** once
-RM235 and RM244-RM246 had all shipped, then **one again the same day** when RM247 was filed — which
+RM235 and RM244-RM246 had all shipped, then **one again the same day** when RM247 was filed, none once it shipped in 0.7.1 — this line went on
+naming it until 2026-09-24 — and **one again on 2026-09-24** when RM258 was filed, then **two on 2026-09-25** when RM263 was filed, and **three the same day** when RM264 split from RM256 — which
 is why the paragraph under it says to count off the sections rather than off this sentence).
 
 **RM232 was filed open and shipped in the same session, and the filing is the part worth keeping.**
@@ -342,6 +343,98 @@ you**, so check which `# ` heading you are under before writing the section, not
 
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
+
+## RM258 — an outage during the literature fetch writes a row that merge-not-clobber never asks again
+
+**Severity** medium · **Status** open — **a minor, release undecided** — found while building RM257 ·
+**Owner** enricher (`literature`) · **Motivating case**
+[S110](CONSUMER_SUGGESTIONS_HISTORY.md#s110--the-literature-pass-leaves-an-author-manuscript-abstract-only-when-pmcs-bioc-service-serves-it-whole-tables-included)
+— Europe PMC answered HTTP 500 for `PMC6463297` on 2026-09-24
+
+**What was confirmed.** `EuropePmcClient.fulltext` and the new `PmcBiocClient.fulltext` both return
+`None` for a 404 (no copy) and for a 5xx or a transport failure (never answered). The pass then falls
+back to the abstract and writes `quote_source=abstract` with the abstract's count. The row is keyed by
+PMID and `literature.csv` is merge-not-clobber, so `wanted` skips it on every later run: **a transient
+outage becomes a permanent abstract-only pin.** Pinned by
+`test_every_way_bioc_has_no_text_reads_as_not_retrieved`, whose 500 arm writes exactly that row. That
+test asserts today's behaviour, not a decision. `@unreachable-not-absent` at the row level. The
+reporter named the conflation in `fulltext()`, and the pin is what it costs.
+
+**Rows pinned before RM257 have the same problem without any outage.** The BioC rung only runs for a
+citation the pass fetches, so a module enriched before it keeps its abstract-only rows until
+`literature.csv` is deleted. Since 0.7 that delete costs nothing (RM124), and that is the
+workaround the S110 reply gives. It is still a step nobody will know to take.
+
+**Candidate repairs, none chosen:**
+
+1. **Write no row when the fulltext could not be asked.** Refused in advance: existence, identifiers
+   and the licence were all answered, and answered is per field
+   (`@answered-is-not-absent`). Dropping those answers to get a retry is the wrong trade.
+2. **Re-ask fulltext on every run for any row whose `quote_source` is not `fulltext`.** No schema
+   change, and it picks up rows pinned before RM257. It costs one paced request per paywalled citation
+   per run, forever, for articles that will never have a copy. Changing the pass's merge from per row
+   to per field is the precedent this would set, and `--rederive` already has rules for that
+   (`@rederive-never-shortens`).
+3. **Record how the fulltext question ended, as a derived column** (`fulltext_status`, roughly
+   `retrieved | absent | unreachable`), and re-ask only `unreachable`, plus null on rows written
+   before the column existed. An optional column on a derived CSV is minor-legal and half-cost
+   (P9). It needs the two clients to stop returning one `None` for two answers, which is the
+   `@client-exception-contract` shape. The question for review is whether null on old rows should
+   mean "ask once" or "leave alone".
+
+## RM263 — a DOI has no route to its PMID, although `StudyRow.pmid` is the required half
+
+**Severity** low · **Status** open — **a minor, release undecided** · **Owner** enricher (`lookup`,
+`literature`) · **Motivating case** [S113](CONSUMER_SUGGESTIONS_HISTORY.md#s113--lookup_citationdoi-settles-existence-and-never-identity-title-journal-year-and-author-are-always-null), the reporter's second candidate fix
+
+**What was confirmed.** A curator holding only a DOI (what a paper's landing page gives you) can now
+learn which paper it is (RM262), but not its PMID, and `StudyRow.pmid` is the column the schema
+requires. RM50 built the same route for a PMC id through NCBI's converter; a DOI has none. Europe PMC's
+search answers it: `DOI:"10.1038/ng826"` returns PMID `11788828`, measured 2026-09-25, and covers all
+of PubMed. NCBI's converter also takes DOIs but only answers for articles in PMC, and Enattah 2002 is
+not in PMC, so it would miss exactly the paywalled case.
+
+**The shape is RM50's, and the open question is the second title.** The resolved PMID comes back as an
+advisory (`applied=False`, `refusal="redundancy_bearing"`), never a fill, since `pmid` is
+redundancy-bearing. Then PubMed is asked which paper that PMID is, as `_check_pmcid` does. That gives a
+DOI-only lookup two titles, Crossref's and PubMed's, and whether a disagreement between them is a
+`warning` or only two `info` findings side by side is the decision still to make. `EuropePmcClient`
+has no DOI search today; one method.
+
+## RM264 — the 0.7.x manifest reads an abstract-only miss as a checked quote, and its fix is minor-only
+
+**Severity** medium · **Status** open — **a patch** · **Owner** compiler (`_literature_block`) + format
+(the two `Literature` field descriptions) · **Motivating case**
+[S109](CONSUMER_SUGGESTIONS_HISTORY.md), the same report behind
+[RM256](ROADMAP_HISTORY.md#rm256--the-manifests-citation-block-read-an-abstract-only-miss-as-a-checked-quote)
+
+**Why this is a separate item.** RM256's real fix is `Literature.quotes_checked`, a new manifest field
+and a new public method — near-zero *cost* (Principle 9) but a **new optional field, so minor-legal
+only** (Principle 3), shipped in the 0.8 line on `main`. That leaves every 0.7.x consumer reading
+`quotes_found: 0, quotes_unchecked: 0` on an abstract-only miss, which is S56's "checked and missed"
+reading one case over. Principle 3's staleness clause says a known-misleading output must not wait for
+a version *unmitigated*, so RM264 is the mitigation half: what a **patch** off the newest 0.7.x tag
+may legally carry, which is nothing additive.
+
+**What the patch carries (adds, removes and retypes nothing).**
+- The `quotes_found` and `quotes_unchecked` descriptions on the 0.7.x `Literature`, corrected so an
+  abstract-only 0 is not read as a verdict, and **without naming `quotes_checked`**, which does not
+  exist on that line.
+- A consumer recipe in the docs: to find the quotes a text actually settled on 0.7.x, read
+  `quote_source` in `literature.csv` — `abstract` beside `quotes_found: 0` means unsettled, not missed.
+
+**The residue that stays minor** is RM256 itself (the field + method), already on `main`. **Redefining
+`quotes_unchecked`** was refused there under S18 (add beside, never redefine) and is refused here too;
+the patch only re-describes it.
+
+**The docs half landed on `main` on 2026-09-25**, independent of any cut: a [FAQ](FAQ.md) entry keyed by
+the question, with the 0.7.x reading (`quote_source`, and `abstract_only_count` for a manifest-only
+reader) beside the 0.8 one. What is left is the two descriptions, which exist only on the 0.7.x line and
+are the `just-dna-format` package alone (the compiler's `_literature_block` code needs no change).
+
+**Open: whether the patch cuts at all.** It needs a branch off a 0.7.x tag, because `main` is the 0.8 line
+and already holds the field — the mechanism the maintainer decides before branching
+([release cadence](RELEASE_CYCLE.md)).
 
 # Not format scope
 
@@ -1307,6 +1400,28 @@ New ideas enter here as freeform suggestions, then graduate through the design c
   the labels the payload's contract); and `--offline` has to mean *no peer either*, since the
   operator's word for "reach nothing" cannot quietly exclude the one hop that reaches something.
   Nobody has asked for this; when somebody does, start from the licence question.
+
+- **A declared dependency graph over a module's derived sidecars** (S112, just-module-creator,
+  2026-09-24 — *"offered as an observation, not a design"*, and filed here rather than as an `RMn`
+  for that reason). `expression_effects.csv` is computed from `resolution.csv`'s coordinates and,
+  since RM259, can also be computed from the MANE lane's candidate genes. Nothing records that, so a
+  consumer re-deriving one sidecar cannot tell that another one built from it is now stale, and
+  orders its passes from knowledge nobody wrote down.
+
+  **The shape exists one layer out.** A cache lane's parents are a field
+  (`@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`), and a parent that
+  moved is reported, never silently rebuilt. Spec-directory sidecars have no such field. Today's
+  settled answer for downstream staleness is delete-to-regenerate (`@sidecar-authoritative`), which
+  costs nothing since 0.7. So this is not a defect to re-file, and it is not a cascade either.
+
+  **What a design would have to answer first.** What does it mean for `expression_effects.csv` to
+  depend on `resolution.csv` when it is keyed on `variant_key`, which is rsID-first and does not move
+  when a coordinate does? A row can be stale in its *distance* column while its key is still right.
+  So a dependency is on columns, not tables, which is what the reporter wrote. Second, a staleness
+  signal needs a baseline, and a merge-not-clobber sidecar's rows were written on different runs. Per
+  row, the question is which parent state each row was computed from, and no sidecar records that
+  (`@currency-cannot-be-a-column`). Nobody has asked for the cascade itself; the observation is what
+  was offered.
 
 ## Consumer note (just-dna-lite, 2026-08-21) — a dogfooding pass over ten modules, and the eleven findings that are yours rather than the plugin's
 

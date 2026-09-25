@@ -147,6 +147,11 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S106** a repeat-count star allele has no home — design item, RM253; messages shipped
 - **S107** the CLI died beside `protobuf<7`; RM247's guards caught two of three types — accepted, RM254
 - **S108** `frequencies=True` asked nothing for a multi-allelic locus — accepted, RM255
+- **S109** abstract-only miss published as a checked quote — accepted, RM256
+- **S110** author manuscript left abstract-only — accepted, RM257, RM258
+- **S111** expected match rate on consumer chips — design input, RM188 axis 1
+- **S112** no gene to aim the Atlas at — accepted, RM259; graph to idea-book
+- **S113** a DOI lookup named no paper — accepted, RM262; DOI→PMID RM263
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -4928,3 +4933,348 @@ querying `chrom-start-ref-<that alt>`. (3) Query each alt of a multi-allelic loc
 
 **Meanwhile:** the module leaves the two ambiguous pairs in its decision list rather than guessing a
 strand.
+
+# Field notes from just-module-creator, 2026-09-24 — reading back a rehearsal module's citation block
+
+## S109 — an abstract-only literature row publishes `quotes_found: 0, quotes_unchecked: 0`, which reads as every quote read and missed
+
+**Status — accepted; shipped in the tree as [RM256](ROADMAP_HISTORY.md#rm256--the-manifests-citation-block-read-an-abstract-only-miss-as-a-checked-quote), uncut, and it sizes as a minor.**
+Reproduced by passing one `LiteratureRow` (`quotes_authored=24, quotes_found=0,
+quote_source=abstract`) through `compiler._literature_block`: it published `quotes_found: 0,
+quotes_unchecked: 0` exactly as you read it. A second shape turned up while probing: 3 of 24 found in
+the abstract still published the other 21 as checked, so a fix that nulls only a zero would not have
+been enough.
+
+The manifest block now has **`quotes_checked`**, counted in quotes like the counters beside it: how
+many quotes a retrieved text settled, found or missed. Your module will publish `quotes_authored: 24,
+quotes_checked: 0, quotes_found: 0`. The per-row rule lives in the format tier as
+`LiteratureRow.quotes_checked()`. Fulltext settles every quote, an abstract settles only its hits, and
+null settles nothing. The enricher's report and the compiler's block both call it, and a test runs a
+real pass's rows through the block and checks the two agree.
+
+We turned down both of your candidates, for these reasons. Writing `quotes_found` as null on an
+abstract miss would merge two states the row keeps apart (null means nothing could be read, while 0
+against `abstract` means the abstract was read). It would also leave every sidecar already written
+unchanged, because the table is merge-not-clobber. Counting abstract rows in `quotes_unchecked`, or
+switching it to quote units, would redefine a published field that was accurate for the question it
+asked. Your unit point stands: that field counts citations, and its description now says so and
+points to `quotes_checked`.
+
+**What to do now:** once the next minor is cut, recompile. A card should read `quotes_found`
+against `quotes_checked` and never against `quotes_authored` alone. On a manifest from an earlier
+compiler, `quotes_checked` is null, meaning unknown, not zero. Until then, `abstract_only_count > 0`
+beside `quotes_found < quotes_authored` is the case to treat as unchecked.
+<!-- triaged: 0.7.1 · sha 307839591fab -->
+
+**Reporter:** just-module-creator, 2026-09-24, enricher 0.7.1 / compiler 0.7.1 locally, registry
+0.25.2 on the polygon. Found by reading back the rehearsal `test-sheep/test_late_onset_alzheimers_kunkle2019@0.1.0`.
+
+**What happened.** The module has 24 `provenance_quote`/`provenance_regex` rows on one PMID
+(30820047, not OA). `enrich-literature` reports `quotes_unchecked: 24` and the `provenance_quote`
+check records `skipped: no_reference` — *"24 in articles whose fulltext could not be read (or only an
+abstract could, where a miss is not a verdict)"*. But `literature.csv` stores
+`quotes_found=0, quote_source=abstract`, and the manifest's `Literature` block, built by
+`compiler._literature_block` as `quotes_unchecked=sum(1 for r in rows if r.quotes_found is None)`,
+publishes:
+
+```
+quotes_authored: 24, quotes_found: 0, quotes_unchecked: 0, abstract_only_count: 1
+```
+
+That is S56's "checked and missed" reading exactly, one case over: the null guard covers *nothing
+retrieved* but not *only an abstract retrieved*, which the enricher itself calls not a verdict. Only
+`abstract_only_count` separates the two, and a card or a reader that doesn't know to look beside it
+sees 24 quotes that failed.
+
+**Two smaller points in the same block.** `quotes_unchecked` counts *citations* (rows of
+`literature.csv`), while `quotes_authored` and `quotes_found` count *quotes*, so even a correct value
+here would be 1 against 24. The field description says "Citations whose `quotes_found` is null", which
+is accurate, but the three numbers sit side by side as if they shared a unit.
+
+**Candidate fix.** Have the enricher write `quotes_found` as null when `quote_source == "abstract"`
+and nothing matched (a hit in an abstract can stay a count). Or have the compiler count
+abstract-only rows as unchecked, and sum `quotes_authored` over unchecked rows so the unit matches.
+The first keeps one definition of "unchecked" across the pass report, the check record and the
+manifest.
+
+# Field notes from just-module-creator, 2026-09-24 — an author manuscript the fulltext check never read
+
+## S110 — the literature pass leaves an author manuscript abstract-only when PMC's BioC service serves it whole, tables included
+
+**Status — accepted; point 1 shipped in the tree as [RM257](ROADMAP_HISTORY.md#rm257--pmcs-bioc-service-is-the-fulltext-rung-for-records-europe-pmc-calls-closed), uncut; point 2 is taken; the 404/500 split is filed open as [RM258](ROADMAP.md#rm258--an-outage-during-the-literature-fetch-writes-a-row-that-merge-not-clobber-never-asks-again).**
+Reproduced live the same day with your ids: Europe PMC reports `PMC6463297` as `isOpenAccess: N,
+inPMC: Y` and answers 500 for `fullTextXML`, while BioC answers 200 with 294 passages, and
+`PMC1050584` answers 200 with the `[Error]` body.
+
+The pass now has `PmcBiocClient`: Europe PMC fulltext for open records, then BioC for any citation
+with a PMCID that Europe PMC did not serve, then the abstract. The BioC rung is not gated on the
+open-access flag, which settles your point 2. The flag's gate had no licence reason behind it, and an
+article outside the BioC set costs one paced request that answers "no copy", so `inPMC` or the
+manuscript id would not save anything. The rung runs on the E-utilities `PacingGate`, keeps table
+passages (tabs normalize to spaces, and a run of your Table 1 header cells matches as a quote) and
+drops `REF`. A BioC hit writes `quote_source=fulltext`, because that column records how far the
+search reached; we did not add a `pmc_bioc` provider value. The licence stays Europe PMC's: the
+"available for text mining … fair use" note names no terms, so `is_open_access` and `license` are
+untouched. Your fixture was not needed, because we recorded and trimmed our own from the same
+responses.
+
+**Your third point went deeper than the conflation.** A 500 and a 404 both come back as `None`, the
+pass falls back to the abstract, and `literature.csv` pins that row, so a transient outage becomes a
+permanent abstract-only verdict. That is RM258, open with three candidate repairs and a minor.
+
+**What to do now:** RM257 does not re-ask rows already in `literature.csv`. On
+`test_late_onset_alzheimers_kunkle2019`, delete `literature.csv` and re-run `enrich-literature` on a
+build of this tree. Since 0.7 that delete loses nothing (RM124). The row should come back
+`quote_source=fulltext`, and with S109's `quotes_checked` the manifest will say how many of the 24
+were settled.
+<!-- triaged: 0.7.1 · sha 63492dc508ba -->
+
+**Reporter:** just-module-creator, 2026-09-24, enricher 0.7.1 installed. Our `F108`.
+
+**What happened.** PMID `30820047` (Kunkle 2019, *Nat Genet*, `PMC6463297`, NIH author manuscript
+`NIHMS1021255`) carries its per-locus rows — lead rsID, major/minor allele, OR — in body **Tables 1
+and 2**, and nowhere else with both allele and OR. Measured the same day:
+
+| call | answer |
+|---|---|
+| Europe PMC `rest/PMC6463297/fullTextXML` | **HTTP 500** |
+| `EuropePmcClient.fulltext("PMC6463297")` | `None` (the 500 and a 404 both land in the `HTTPStatusError` arm) |
+| `https://www.ncbi.nlm.nih.gov/research/bionlp/RESTful/pmcoa.cgi/BioC_json/PMC6463297/unicode` | **200, 276 KB**, 294 passages, both tables as `type: table` passages with tab-separated cells |
+| same URL for `PMC1050584` (not in OA / manuscript set) | **200** with body `[Error] : No result can be found.` — an answer, not an outage |
+
+So `enrich-literature` checked the module's 24 quotes against the abstract (`quote_source=abstract`),
+which is what `S109` then published as a miss. The fulltext existed, openly, one NCBI host away.
+
+**Two things on your side, separable.**
+
+1. **A BioC rung after Europe PMC in the fulltext fetch.** It is an NCBI host, so it belongs on the
+   E-utilities `PacingGate` budget. Keep table passages as text — for a GWAS paper the tables are where
+   the rows are. Skip `section_type=REF` (186 of the 294 passages here, none of them evidence).
+2. **The `is_open and pmcid` gate at `literature.py`'s fetch loop.** An author manuscript is usually
+   `isOpenAccess: N` in Europe PMC while PMC serves it for text mining (the BioC `license` infon here
+   reads *"This file is available for text mining"*). If the gate stays, a BioC rung never runs for
+   exactly the records that need it. What the right predicate is — `inPMC`, `hasPDF`, the manuscript
+   id — is yours to judge; the case above is the data point.
+
+**Also worth separating in `fulltext()`**: a 500 and a 404 both return `None`, so "Europe PMC was
+down" and "Europe PMC has no copy" reach the caller as one value. Only the second is an answer.
+
+**What we did meanwhile.** Built the rung on our side (`discovery._bioc_fulltext`, `text_source:
+"pmc_bioc"`, behind our NCBI gate, three outcomes kept apart), so `fetch_fulltext` now returns the
+Kunkle tables — verified live, 68 KB with the tables. It does not reach your quote check, which is
+why this note exists. Fixture: a trimmed copy of the real answer at
+`just-module-creator/assets/literature/pmc_bioc_PMC6463297.json`; take it if it is useful.
+
+# Field notes from just-module-creator, 2026-09-24 — what a consumer's genotyping chip will match
+
+## S111 — idea: an enrichment that states a module's expected match rate on consumer genotyping chips
+
+**Status — taken as a design input, not filed as its own item: it is axis 1 of [RM188](ROADMAP_0_8.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics), deferred to 0.8, and your measurement is recorded there.**
+The 0.8 competitor survey had already listed *which genotyping arrays can call this variant* as a gap
+with three independent sightings (dosedna, dna-engine, dna-annotator) and the note "we have nothing".
+Yours is the fourth, and the first to come with a source and numbers, so it went into that entry as a
+dated addendum. We have not re-run your measurement. The figures there are credited to you.
+
+Three things from your proposed shape that a design would keep or change:
+
+1. **The fact is per variant, and the module figure is a summary of it.** "Which platforms interrogate
+   this position" is annotation about the variant, the same kind of fact a frequency is. A module-level
+   count derived from a per-variant sidecar is the pattern the manifest's `literature` block already
+   follows. The per-variant form also serves your other use, an author choosing the typed one of two
+   lead SNPs in LD, which a module-level number cannot.
+2. **Three counts, never a rate: agreed, and the proxy count stays separate.** *Typed*, *LD-proxyable*
+   and *not position-matchable* (CYP2D6's CNV) answer different questions. As you say, whether a proxy
+   gets substituted is up to the annotation engine, so it is never added to *typed*. *Position-only*
+   belongs in the field's name or description, not only in the docs, because a position match says
+   nothing about allele or strand.
+3. **The data arrives as a snapshot lane, never as an import.** The enricher does not depend on
+   `just-prs`. Your suggestion of per-chip position sets on the HF org, with a `release.json`, is the
+   shape every other lane has, and `CACHE_SURFACE.md` lists what a new lane owes. One thing to check
+   before anything is republished: the GSA manifest's own terms.
+
+**What to do now:** nothing is owed on your side. Your measurement script would be useful when 0.8's
+survey reaches this axis, so hold on to it rather than sending it now.
+<!-- triaged: 0.7.1 · sha a841031c27f2 -->
+
+**Reporter:** just-module-creator, 2026-09-24, from the owner: *"in just-prs we have the universes +
+some imputation for chips. So we can actually enrich modules with expected matchrate for chips."*
+A proposal, not a defect — offered with a measurement so it is not empty-handed.
+
+**The question it answers.** Most people who will run a module hold a 23andMe / AncestryDNA file, not
+a WGS VCF. A module that annotates 527 variants may annotate 120 of them on that file, and nothing
+says so before the report comes back thin. An author choosing between two lead SNPs in LD would pick
+the typed one if they knew.
+
+**What already exists, in `just-prs` (`../just-prs/just-prs/src/just_prs/`).**
+- `chip_coverage.chip_typed_positions(Chip.GSA_V3, cache, build=)` — unique typed `(chr, pos)` for
+  the Illumina GSA v3 backbone that 23andMe v5, AncestryDNA v2, MyHeritage and FTDNA v2 share.
+  **Both A2 (GRCh38) and A1 (GRCh37) manifests**, 648,379 positions.
+- `ld_proxy` — a 1000G LD table keyed on target position with the best GSA-typed proxy, `r_squared`
+  and `r_signed` (2.67 M targets; computed for PGS scoring-file targets, so its coverage of an
+  arbitrary module is a lower bound).
+- `liftover.lift_frame` — GRCh38⇄GRCh37, returning dropped rows with a reason.
+
+**Measured over 16 real modules' `resolution.csv` (965 positions)** — the kunkle2019 GWAS panel,
+the longevitymap port, an APOE compound module and 13 ClawBio PGx gene modules:
+
+| | positions | typed on GSA (GRCh38 A2) | + LD proxy r² ≥ 0.8 | lost lifting to GRCh37 | typed on GSA (GRCh37 A1, after lift) |
+|---|---|---|---|---|---|
+| kunkle2019_load | 24 | 5 (21 %) | +7 | 0 | 5 |
+| longevitymap | 527 | 122 (23 %) | +113 | 1 | 122 |
+| PGx genes (13) | 407 | 207 (51 %) | +7 | 0 | 207 |
+| **all 16** | **965** | **336 (35 %)** | **+127** | **1** | **336** |
+
+Two readings worth having before designing it:
+
+- **The liftover worry is smaller than expected for this purpose.** A 23andMe file is GRCh37, and the
+  owner flagged liftover as the non-trivial part. For *expected typed rate* it mostly is not: the GSA
+  A2 manifest is already GRCh38, so a GRCh38 module intersects directly, and lifting the module to
+  GRCh37 and intersecting A1 gave the identical 336 with one position lost. The liftover cost is real
+  at **annotation** time, on the sample (that is `just-dna-lite`'s side), and belongs to that report,
+  not to the module's number.
+- **The GWAS modules are the ones that need it.** ~22 % typed for both GWAS-shaped modules, against
+  51 % for PGx panels whose star-allele SNVs the arrays were designed around. An LD proxy roughly
+  doubles the GWAS number — but only where the consumer actually substitutes proxies, which is a claim
+  about the annotation engine and must not be folded into a "match rate".
+
+**A shape to argue with.** A sidecar or manifest facet per chip: `chip`, `build_compared`, `authored`
+(denominator, positions with coordinates), `typed`, `proxyable_r2_0_8`, `not_assessable` (symbolic /
+structural alleles — CYP2D6's CNV cannot be position-matched at all), and the manifest version. Three
+counts, never one rate, for the same reason your counters are `int | None`.
+
+**Caveats to state wherever it lands.** Position match only — no allele or strand check, so a typed
+position whose array probe reports the other strand still counts. The GSA manifest excludes each
+vendor's custom content (tens of thousands of markers), so `typed` is an **under**-estimate; older
+23andMe v3/v4 kits (OmniExpress) have no manifest here at all. The LD table's target set is PGS-driven.
+
+**Where the data comes from is the open question.** The positions parquet is a local cache in
+`just-prs`, not a published artifact, and the enricher should not import `just-prs`. Publishing the
+per-chip position sets (a few MB each) beside the LD table on the `just-dna-seq` HF org would let the
+enricher treat them as one more snapshot lane. Measurement script is small; we will hand it over on
+request.
+
+# Field notes from just-module-creator, 2026-09-24 — aiming the AlphaGenome pass at a row with no gene
+
+## S112 — the AlphaGenome pass cannot be aimed at a row with no `gene`, and nothing in the sidecar set maps a position to one; with a note on sidecar-to-sidecar dependencies
+
+**Status — accepted; the lookup shipped in the tree as [RM259](ROADMAP_HISTORY.md#rm259--a-position-has-no-gene-to-ask-the-atlas-about-so-the-reverse-span-lookup-ships), uncut; the dependency graph went to the 0.7 idea-book in [ROADMAP.md](ROADMAP.md#freeform-suggestions--the-07-idea-book).**
+Your census of the derived tables checks out against the models: the variant-keyed ones carry no gene,
+the gene-keyed ones no position, and only `expression_effects.csv` has both. `gene_spans` answered
+symbol → span only, while `enrich_expression(spec, gene, chrom=, start=, end=)` already took an
+explicit interval, so the missing piece was the reverse lookup and nothing more.
+
+`gene_spans.genes_covering(chrom, position, mane_cache=)` returns a `NearbyGenes`: every MANE gene on
+that contig whose span plus `ATTRIBUTION_HORIZON_BP` covers the position, ordered by `(start, gene)`,
+or a reason (`no_snapshot` means not asked, `no_gene_within_horizon` means asked and none). The
+sentences for those are in `NEARBY_REASONS`. It is GRCh38 only, since MANE is, so pass it the row's
+coordinate only when the module's build is GRCh38. It is a query hint in exactly the sense of the
+`gene_spans` docstring you quoted: nothing writes a candidate anywhere, and the gene on an
+`expression_effects.csv` row stays the Atlas's attribution.
+
+**Price it before you loop over it.** Measured on the real MANE lane: **50 candidate genes** cover
+6:26090951 (HFE H63D, in the histone cluster) and **34** cover APOE's rs429358. The horizon is the
+model's own half-window, so none of these are noise, and we refused to narrow to the nearest gene
+because that would pick a gene on the Atlas's behalf. One query per candidate per position is
+therefore tens of Atlas requests per row. The cheaper plan is to invert: collect gene → the positions
+it covers across all 252 rows, then query each gene once with a window spanning its positions. That
+is your planner's call; we did not build a rows mode upstream, since yours exists.
+
+**The graph.** Filed as an observation, as you offered it, beside the precedent it would extend: cache
+lanes already record their parents as a field, and spec-directory sidecars do not. The entry records
+two questions a design has to answer first. `expression_effects.csv` keys on `variant_key`, which is
+rsID-first and does not move when a coordinate does, so the dependency is on columns, not tables.
+And a merge-not-clobber sidecar's rows come from different runs, so there is no single baseline to be
+stale against. Meanwhile, delete-and-rerun remains the answer, and it costs nothing since 0.7.
+
+**What to do now:** from a build of this tree, call `genes_covering` for your `no_gene` rows, invert
+the result to gene → positions, and hand each gene to `enrich_expression` with the window those
+positions need.
+<!-- triaged: 0.7.1 · sha df7fa4522e2a -->
+
+**Reporter:** just-module-creator, 2026-09-24, enricher 0.7.1 installed. Our `F105`.
+
+**What happened.** We shipped a rows mode for `enrich_expression_effects` (plugin 0.38.1): windows are
+planned from `variants.csv` × `resolution.csv`, keyed on each row's own authored `gene`, because
+`enrich_expression` requires a gene and the server-side filter is mandatory. On the longevitymap port
+(1033 rows, 527 rsIDs) **252 rows author no `gene`**, so they cannot be asked about at all, and the
+tool reports them as `no_gene`.
+
+**We checked whether any derived sidecar could supply one, and none can.** Over
+`hints.DERIVED_TABLE_MODELS` as installed: `resolution.csv`, `frequencies.csv`,
+`clinical_assertions.csv` and `gwas_effects.csv` carry a variant identity and no gene;
+`gene_metrics.csv` and `gene_validity.csv` carry a gene and no variant. The only table with both is
+`expression_effects.csv` itself, which is the output that needs the gene to be produced.
+
+**Why we did not fill it ourselves.** Writing a gene into `variants.csv` is an authored cell written
+from a source, which our rules withhold; and `gene_spans`' own docstring forbids using a span to
+*assign* a gene. But the same docstring gives the shape that would work: **a span is a query hint,
+and AlphaGenome is the attributing source.** So the ask is not a gene for the row — it is a
+position-driven query that needs none:
+
+- For a coordinate with no authored gene, take the MANE genes whose span (plus the ±512 kb horizon you
+  already use) covers it, query the Atlas once per candidate gene with a small window, and let each
+  returned record carry the gene the Atlas names. Nothing is written to `variants.csv`; the gene on
+  an `expression_effects.csv` row is the Atlas's attribution, as it is today.
+- The three `SpanLookup` outcomes carry through: no MANE lane means *not asked*, not *no genes*.
+
+**The broader point, from our owner:** *"This makes one sidecar depend on another's outputs, worth
+reporting to upstream for them to build a graph or something."* `expression_effects.csv` already
+depends on `resolution.csv` (for coordinates) and, with this, on the MANE lane (for candidate genes).
+`refresh_sidecar` on our side re-derives one sidecar at a time and cannot tell that re-deriving
+`resolution.csv` makes an `expression_effects.csv` built from the old coordinates stale. A declared
+dependency graph over the sidecars — which table's rows are computed from which other table's columns
+— would let a refresh cascade, let `validate` say "expression_effects predates resolution", and let a
+consumer (us) order passes without hand-kept knowledge. Offered as an observation, not a design.
+
+**Meanwhile.** Our tool reports `no_gene` per row with the variant keys and does not fill anything.
+
+# Field notes from just-module-creator, 2026-09-25 — a DOI lookup that named no paper
+
+## S113 — `lookup_citation(doi=…)` settles existence and never identity: title, journal, year and author are always null
+
+**Status — accepted; your fix (1) shipped as [RM262](ROADMAP_HISTORY.md#rm262--a-doi-answered-existence-and-never-identity-although-the-body-naming-the-paper-was-already-in-hand) on the `0.8` branch, uncut (enricher), your (3) with it, and your (2) filed as [RM263](ROADMAP.md#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).**
+Reproduced live on `10.1038/ng826`, exactly as you wrote it. `CrossrefClient.work(doi)` now parses
+the `/works` body the existence request already returned (no extra request), and `lookup_citation`
+fills `title`, `journal`, `year` and `first_author` from it, with an `info` finding
+`DOI 10.1038/ng826 names: 'Identification of a variant associated with adult-type hypolactasia'
+(Enattah NS, Nature Genetics, 2002) — existence is not identity, …`. A record with no title
+(datasets, some preprints) gets a finding saying `names no title` instead of silent nulls. With a
+PMID given too, PubMed's record fills the fields and the DOI's title still arrives in its own
+finding, so a PMID/DOI pair naming two papers shows two titles.
+
+Found on the way: `exists()` answered `True` for a 200 whose body was not Crossref (an HTML
+maintenance page). That now withholds (`doi_exists: null`). `exists()` keeps its signature.
+
+DOI → PMID is RM263, open: it would come back as an advisory like the `pmcid=` route, never a fill.
+The open question there is what to do when Crossref's and PubMed's titles disagree.
+
+**What to do now:** nothing on your side once you take the next enricher release. Your pass-through
+gets the fields and the finding for free. Until then, the PMID route still names the paper.
+<!-- triaged: 0.8 (uncut) · sha f635d059aa22 -->
+
+*Filed 2026-09-25 by just-module-creator (our `F113`). Enricher 0.7.2, installed from PyPI.*
+
+**What we ran.** `just_dna_enricher.lookup.lookup_citation(doi="10.1038/ng826")`, which is Enattah 2002,
+PMID 11788828, through our `lookup_citation` tool (a pass-through). The result:
+
+```
+doi_exists: true, pmid: null, pmcid: null, title: null, journal: null, year: null,
+first_author: null, findings: []
+```
+
+**Why it matters.** The DOI branch calls `CrossrefClient.exists(doi)` and stops there. A title is only
+filled on the PMID branch, from `esummary`. So a DOI gets an existence answer and no identity answer.
+That is exactly the shape the module docs warn against: existence never settles identity, only a title
+does. And `findings` is empty, so nothing says the title was not asked for. In a 2026-08-31 round, four
+of four independent authoring runs arrived with a DOI (that is what a paper's landing page gives you),
+got this result, and fell back to pasting the DOI into a free-text literature search to learn the title.
+
+**Candidate fixes, in the order we'd take them.**
+1. Crossref already answered the request that `exists()` made. `/works/{doi}` returns `title`,
+   `container-title`, `issued` and `author`. Parse them instead of discarding the body. No extra request.
+2. Resolve DOI → PMID/PMCID via Europe PMC search (`DOI:"…"`) or the NCBI ID converter, then take
+   the PMID branch. This costs a request, but it also fills `pmid`/`pmcid`, which Crossref cannot.
+3. At minimum, an `info` finding saying the title was not looked up on the DOI path, so a null title
+   is not read as "no such paper".
+
+**Meanwhile, on our side:** nothing yet. The tool passes the null through.

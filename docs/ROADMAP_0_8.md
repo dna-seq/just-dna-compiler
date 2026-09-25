@@ -48,6 +48,28 @@ decisions that touched these items are in [PROPOSAL_0_6.md](proposals/PROPOSAL_0
 
 ---
 
+## RM261 — strip comments from the enricher wheel (measured, deferred)
+
+**Severity** low · **Status** open — deferred by the maintainer on 2026-09-25 as risky ("dangerous,
+defer") · **Owner** enricher (packaging) · **Motivating case** the 0.7.2 enricher wheel is 893 KB
+zipped, all of it Python source
+
+**Measured on `just_dna_enricher-0.7.2`.** Of 2.58 MB of `.py`, docstrings are 31%, comments 19%, and
+code plus whitespace 51%. Removing the comments alone takes the zipped `.py` from 847 KB to 664 KB
+(−22%). Docstrings stay in any version of this item: they are the `help()` text and the API pages.
+
+**Why it is not simply done.** `hatch_build.py` would have to leave the original `.py` out of the wheel
+and force-include stripped copies. `artifacts` / `force_include` collide on the same path (see that
+file's own note). The copies must keep line numbers, with a comment-only line becoming an empty line,
+or a traceback from an installed wheel points at the wrong source line. Editable installs must not be
+touched. It reaches the **enricher only**: format and compiler are on `uv_build`, which has no hooks,
+and covering them means changing their build backend.
+
+**Considered and refused in the same round:** taking the 15 `*_build.py` snapshot builders out of the
+wheel (112 KB zipped). `scripts/rebuild-caches.sh` documents `pip install 'just-dna-enricher[dev]'`
+then `cache rebuild` as a supported deployment, and `caches.py` imports every builder at module
+level. The maintainer kept them in.
+
 ## RM253 — a repeat-count star allele (UGT1A1 `*28` = TA(8)) has no home a diplotype can name, and the CPIC drafter translates none of CPIC's notation
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-21** · **Owner** format (schema) +
@@ -335,6 +357,26 @@ landscape — it is a list of places to go looking for annotation *shapes*.
 field, the field is answering a real question.
 
 1. **Which genotyping arrays can call this variant** — three sightings: dosedna's `array_callable` + free-text `coverage_note` per gene, dna-engine's `chips` per marker, and `MrOrtiz/dna-annotator`'s measured-vs-imputed tiering per source array (it refuses to let an imputed call outvote a measured one). **We have nothing.** `requires_callable` / `callable_from` / `min_quality` ask whether the *consumer's own VCF* saw the position; this asks which *platforms in the world* interrogate it, which is a fact about the variant and therefore annotation. Note the per-gene / per-variant scope split, which is the shape [that already cost 39 variants once](ROADMAP_HISTORY.md).
+
+   **A fourth sighting, and the first with a source and a measurement: S111 (just-module-creator,
+   2026-09-24).** `just-prs` already holds the Illumina GSA v3 backbone that 23andMe v5, AncestryDNA v2,
+   MyHeritage and FTDNA v2 share, as typed positions on both builds (648,379), plus a 1000G LD-proxy
+   table. Measured over 16 real modules' `resolution.csv`: 336 of 965 positions typed (35%). The GWAS
+   modules came out near 22% and the PGx panels at 51%, and lifting to GRCh37 lost one position. The
+   report asks for a *module-level* expected match rate. Recorded here rather than as an `RMn` because
+   it is this axis with a candidate source, and three things a design would have to settle came up in
+   the reply ([CONSUMER_SUGGESTIONS_HISTORY § S111](CONSUMER_SUGGESTIONS_HISTORY.md)):
+   **(a)** the fact is per variant (*which platforms interrogate this position*), and the module figure
+   is a manifest summary derived from it, the way the `literature` block summarizes
+   `literature.csv`. The per-variant form is also what the reporter's other use, picking the typed one
+   of two lead SNPs in LD, actually needs. **(b)** Counts, never a rate, with *typed*, *LD-proxyable*
+   and *not position-matchable* kept apart. The proxy count describes a substitution the consumer's
+   engine may or may not make, so it stays beside *typed* and is never added to it. *Position-only* goes
+   in the field's name or description, since a position match says nothing about allele or strand.
+   **(c)** The source is a snapshot lane, never an import of `just-prs`: the per-chip position sets
+   published on the HF org with a `release.json`, walked through [CACHE_SURFACE.md](CACHE_SURFACE.md)'s
+   checklist, and the GSA manifest's licence probed before it is republished
+   (`@probe-the-real-file`, `@no-named-licence`).
 2. **A per-variant claim's ancestry transferability** — three sightings: dna-engine's `transferability`, `Bluefinee/kaiseki`'s Japanese-cohort reconciliation, `drhudsonandrade/OmniGenis` recording discovery-cohort ancestry per GWAS association. We carry `PgsRow.training_ancestry` and `GwasEffectRow.ancestry`, both scoped to their own table; there is no way to say *this variants.csv row was established in one population*.
 3. **Effect modified by a non-genetic factor** — two sightings, and genomi is the third: `sinhaankur/open-genome-atlas` splits each marker's evidence by `kind` (diet / lifestyle / geo), **each axis independently cited**; `drdaviddelorenzo/nutrigenomics` scopes its `weight` to a `nutrient_domain`; genomi's own caveat *"folate fortification status of the population modifies effect size"* is the same fact in prose. `CopyNumberRow`'s `modifier_gene` / `modifier_cn` is the precedent shape for a *genetic* modifier and there is no environmental one. Note that the second sighting also lands on `@weight-has-no-unit`: their `weight` at least names the domain it is a weight *in*.
 4. **Two sources disagreeing, as a recorded verdict** — three sightings: kaiseki's `DISCORDANCE_RATIO`, which **refuses to publish a consensus frequency** when cohorts disagree; `Gunshipz/genomine`'s cross-tool confidence/disagreement layer; allelix's ADRs. `clin_sig_concordance.csv` does exactly this for clinical significance and **only** for clinical significance — kaiseki does it for allele frequency, where `frequencies.csv` has per-population rows and no verdict.

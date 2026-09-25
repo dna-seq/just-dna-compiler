@@ -33,6 +33,36 @@ they must still set.
 
 ---
 
+## RM260 — the re-export shells left behind by the monolith split
+
+**Severity** low · **Status** open — 1.0 (the split shipped in the 0.8 line; removing the shells moves
+import paths, which only a major may do) · **Owner** compiler + enricher · **Motivating case** the
+2026-09-25 wheel-size read: `compiler.py` was 492 KB in one file, `cli.py` 244 KB, `enrich.py` 152 KB
+
+**What shipped.** The three modules became packages under the **same** import paths:
+`just_dna_compiler.compiler/` (16 submodules), `just_dna_enricher.cli/` (15 command modules plus
+`_shared` and `__main__`), `just_dna_enricher.enrich/` (6 submodules). Each package's `__init__.py`
+re-exports every name the old module bound, using the `name as name` idiom, so all 378 + 248 + 136
+old dotted paths resolve to the same objects. No importer here or in the sibling repos changed. The
+logger names stayed the same too.
+
+**What is left for 1.0.** The shells are the pure-re-export `__init__.py` the coding standards say to
+avoid, because they obscure where a symbol lives. They exist only because the paths were published.
+At 1.0:
+- importers move to the defining submodule (`just_dna_compiler.compiler.pipeline.compile_module`,
+  `just_dna_enricher.enrich.orchestration.enrich`, …);
+- each `__init__.py` keeps only what the package itself owns (for `cli`, the app assembly);
+- the sibling repos move with it. just-dna-lite imports `enrich`, `EnrichmentError`,
+  `EnrichmentResult` and the `cli` app; marketplace names `enrich._collect_subjects` in a comment.
+
+The two-step cadence applies: a `DeprecationWarning` on the shell path in the last 0.x minor, then
+removal at 1.0.
+
+**The hazard any further split inherits.** A test that monkeypatches a name on the shell stops
+reaching the code once the caller lives in a submodule. Two such patches in `enrich` had been going to
+the live network and passing anyway. Patch where the name is **looked up**, and prove it with
+outbound connections blocked.
+
 ## RM226 — the three declared warts the code carries in comments and no tracker
 
 **Severity** low · **Status** open — 1.0 (both repairs move published identities; neither is legal in
