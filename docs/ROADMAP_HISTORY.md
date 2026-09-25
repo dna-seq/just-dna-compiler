@@ -170,7 +170,7 @@ the enricher's console script. Whatever repair lands, the release procedure need
 
 ## RM255 — `lookup_variant(frequencies=True)` asked gnomAD nothing for a multi-allelic locus, and said nothing about it
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.7 line** (enricher) · **Owner**
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-24, released in 0.7.2** (enricher) · **Owner**
 enricher (`lookup`) · **Motivating case**
 [S108](CONSUMER_SUGGESTIONS_HISTORY.md#s108--lookup_variantfrequenciestrue-returns-empty-populations-for-every-multi-allelic-rsid-and-says-nothing)
 — fixing a strand-ambiguous GWAS pair against gnomAD MAF, 15 of 25 lead rsIDs answered nothing
@@ -205,7 +205,7 @@ first-wins scalar over two alleles labels the hint with one of them and says whi
 
 ## RM254 — protobuf's gencode/runtime error is neither of the two types RM247's guards caught, so the CLI died again beside anything pinning `protobuf<7`
 
-**Severity** high · **Status** ✅ **SHIPPED 2026-09-21 in the uncut 0.7 line** (enricher) · **Owner**
+**Severity** high · **Status** ✅ **SHIPPED 2026-09-21, released in 0.7.2** (enricher) · **Owner**
 enricher (packaging, `atlas_protos`) · **Motivating case**
 [S107](CONSUMER_SUGGESTIONS_HISTORY.md#s107--enricher-071s-cli-dies-at-import-wherever-dagster-pins-protobuf7-because-the-atlas-gencode-is-735-and-the-rm247-guard-catches-neither-importerror-nor-runtimeerror-for-it)
 — just-dna-lite's whole command line, dead on a clean install beside dagster

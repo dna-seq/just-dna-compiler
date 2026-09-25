@@ -34,6 +34,20 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-25 — `just-dna-enricher` 0.7.2: the CLI imports beside `protobuf<7`, and the frequencies leg asks about every allele
+
+**`just-dna-enricher` moves alone; `just-dna-format` stays at `0.7.0` and `just-dna-compiler` at
+`0.7.1`.** A patch cut from the `0.7` branch rather than from `main`: RM256, which landed in between,
+adds a manifest field and is therefore a minor, so it waits for 0.8 with RM257 (a new `bioc=`
+parameter) and RM259 (a new public function). What the patch carries is the two entries below plus a
+test that now arranges the absent snapshot it asserts. Neither touches a model, a parquet or the
+manifest, and the enricher's floors are unchanged.
+
+- **RM254** — the release blocker for just-dna-lite (S107): every command died at import beside
+  dagster's `protobuf<7`. See its entry below.
+- **RM255** — `hint variant --frequencies` asked gnomAD nothing for a multi-allelic locus (S108). See
+  its entry below.
+
 ## 2026-09-21 — just-dna-lite adopted the 0.7 line (format 0.7.0 / compiler 0.7.1 / enricher 0.7.1)
 
 **Consumer-side record, no change to any package here.** Written by the just-dna-lite side under the
@@ -71,7 +85,7 @@ until the traceback was read.
 
 ## 2026-09-24 — RM255: `hint variant --frequencies` asked gnomAD nothing for a multi-allelic locus, and said nothing about it
 
-`just-dna-enricher` only, inside the uncut 0.7 line. A patch: an advisory surface, no authored schema,
+`just-dna-enricher` only, shipped in **0.7.2**. A patch: an advisory surface, no authored schema,
 no compiled output.
 
 `_lookup_frequencies` kept only loci whose `alts` held one allele and returned silently when none did
@@ -87,7 +101,7 @@ three ways the question cannot be put each say so. `gnomAD has no record for …
 
 ## 2026-09-21 — RM254: the CLI died again beside anything pinning `protobuf<7`, and the guard that was meant to hold it caught two of three types
 
-`just-dna-enricher` only, inside the uncut 0.7 line (past 0.7.1). **A patch, and a release blocker
+`just-dna-enricher` only, shipped in **0.7.2**. **A patch, and a release blocker
 for the reference consumer**: just-dna-lite (S107) installs the enricher beside dagster, which pins
 `protobuf<7`; the Atlas bindings RM247 regenerated are stamped protobuf 7.35.1 and refuse an older
 runtime with `google.protobuf.runtime_version.VersionError`, which is neither `ImportError` nor
@@ -104,8 +118,8 @@ runtime with `google.protobuf.runtime_version.VersionError`, which is neither `I
 
 ## 2026-09-20 — S102–S106: a drafter that claimed absence, a recipe that refused on its own stubs, a table that photocopied the module, and a gate that ignored the file it read
 
-`just-dna-enricher` and `just-dna-compiler`, inside the uncut 0.7 line (the enricher past 0.7.1, the
-compiler past 0.7.0). Five consumer reports from one session building a PGx panel: four answered as
+`just-dna-enricher` and `just-dna-compiler`, shipped in **0.7.1** (they landed after the cut commit and
+before the tag, which is what PyPI carries). Five consumer reports from one session building a PGx panel: four answered as
 shipped and one filed as a design item with its message half shipped. None needed a schema change —
 every fix is a message, a lookup, or a derived table's contents, so the class is a patch in both tiers.
 
