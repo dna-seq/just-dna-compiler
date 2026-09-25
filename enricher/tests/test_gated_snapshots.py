@@ -532,7 +532,13 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
     # whole modules, so the guard was blind on both axes at once. `@registry-completeness`: a registry
     # nothing iterates is a number somebody has to remember.
     found: dict[str, BaseRetrying] = {}
-    for info in sorted(pkgutil.iter_modules(just_dna_enricher.__path__), key=lambda m: m.name):
+    # `enrich` is a package since RM260: its submodules define what its `__init__` only re-exports, and
+    # the `__module__ == here` filter below would skip every one of them there.
+    walked = [
+        *pkgutil.iter_modules(just_dna_enricher.__path__),
+        *pkgutil.iter_modules(importlib.import_module("just_dna_enricher.enrich").__path__, prefix="enrich."),
+    ]
+    for info in sorted(walked, key=lambda m: m.name):
         module = importlib.import_module(f"just_dna_enricher.{info.name}")
         # `@retry` hangs the policy off the wrapped function, so the walk is: module attributes, and
         # for a class its own `vars` (the methods). This is the same walk the consumer had to write.

@@ -560,7 +560,8 @@ def test_the_run_reads_the_baseline_before_the_commit_overwrites_it() -> None:
     import ast
     import inspect
 
-    from just_dna_enricher import enrich as enrich_module
+    # The submodule holding the run since RM260; the package `__init__` is only a re-export shell.
+    from just_dna_enricher.enrich import orchestration as enrich_module
 
     tree = ast.parse(inspect.getsource(enrich_module))
     # Found by the call it must precede rather than by the enclosing function's name: the pipeline

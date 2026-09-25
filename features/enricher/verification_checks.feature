@@ -36,7 +36,7 @@ Feature: The verification checks and their three outcomes
       | ran and disagreed                     | ran, subjects=N, findings>0            |
       | could not be put at all               | skipped, with a vocabulary reason      |
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @check:reference_allele
   Scenario: an authored ref against the actual reference sequence
@@ -49,7 +49,7 @@ Feature: The verification checks and their three outcomes
     # mismatch" has three causes and one window read cannot separate them, so an ambiguous case is
     # withheld and the findings group by reason (`@ref-mismatch-causes`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @check:genome_build_agreement
   Scenario: authored coordinates against the declared assembly
@@ -61,7 +61,7 @@ Feature: The verification checks and their three outcomes
     # (`@a-recorded-judgement-is-a-fact`). The ±1 shift reading is wrong on an old-assembly coordinate,
     # and only two evidence tiers supersede it (`@old-assembly-vs-shift`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @check:clinical_significance
   Scenario: an authored clin_sig against ClinVar's own, allele-exactly
@@ -76,7 +76,7 @@ Feature: The verification checks and their three outcomes
     # disagrees with a one-star submission is doing their job. Failing the compile would make the format
     # arbitrate a clinical dispute (`@clinsig-never-escalates`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @check:rsid_coordinate_agreement
   Scenario: an authored rsID and coordinate PAIR against the reference
@@ -86,7 +86,7 @@ Feature: The verification checks and their three outcomes
     # The pair co-identifies one variant, so the redundancy is checkable. NCBI rather than Ensembl is the
     # oracle for merge status (`@ncbi-merge-oracle`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @check:rsid_currency
   Scenario: an authored rsID against dbSNP's own status
@@ -98,7 +98,7 @@ Feature: The verification checks and their three outcomes
     # absence are not automatically equal (`@rsid-absent-two-readings`,
     # `@absence-is-weighted-by-the-base-rate`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @check:dataset_currency
   Scenario: a recorded dataset against the release that source publishes now
@@ -109,7 +109,7 @@ Feature: The verification checks and their three outcomes
     # currency check asks the SOURCE, never the cache the rows were drafted from, and a digest label does
     # not compare against a dated one (`@currency-asks-the-source-not-the-cache`).
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @check:evidence_status_currency
   Scenario: a recorded curation status against what the source says about that item now
@@ -122,7 +122,7 @@ Feature: The verification checks and their three outcomes
     # table came from, this one whether a per-ITEM judgement has moved, and the two currency findings stay
     # apart (`@a-source-recuring-is-not-a-strict-matter`). A source re-curating is not an authoring error.
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @check:published_refutation
   Scenario: an authored direction against the refutations a source publishes

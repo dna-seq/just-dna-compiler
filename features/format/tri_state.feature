@@ -195,7 +195,7 @@ Feature: The three-valued house algebra
     And it ends "This is an unknown, not a zero."
     And it fires once for the run rather than once per allele
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/orchestration.py
   # anchor: _run_enrichment
   @tri_state
   Scenario Outline: the resolution table's third member is a query that cannot be narrowed

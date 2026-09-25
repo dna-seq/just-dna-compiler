@@ -201,11 +201,14 @@ def _error_classes() -> dict[str, type]:
     import pkgutil
 
     out: dict[str, type] = {}
-    # `cli` is a package since RM260: its submodules hold the definitions its `__init__` only re-exports,
-    # and `obj.__module__ == module.__name__` would skip every one of them there.
+    # `cli` and `enrich` are packages since RM260: their submodules hold the definitions each `__init__`
+    # only re-exports, and `obj.__module__ == module.__name__` would skip every one of them there.
     for info in [
         *pkgutil.iter_modules(list(just_dna_enricher.__path__)),
         *pkgutil.iter_modules(list(importlib.import_module("just_dna_enricher.cli").__path__), prefix="cli."),
+        *pkgutil.iter_modules(
+            list(importlib.import_module("just_dna_enricher.enrich").__path__), prefix="enrich."
+        ),
     ]:
         module = importlib.import_module(f"just_dna_enricher.{info.name}")
         for name, obj in vars(module).items():

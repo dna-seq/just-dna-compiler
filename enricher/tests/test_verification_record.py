@@ -948,7 +948,8 @@ def test_the_wired_block_in_vocab_names_exactly_what_enrich_writes() -> None:
     actually passes to `ran`/`skipped`, and the names commented `— \\`enrich\\`` in `vocab.py` — and
     asserts they are the same set. A number is not re-counted anywhere (`@registry-completeness`).
     """
-    enrich_source = Path(inspect.getfile(enrich)).read_text(encoding="utf-8")
+    # The file that defines `_verification_records` (a submodule since RM260), not the one defining `enrich`.
+    enrich_source = Path(inspect.getfile(_verification_records)).read_text(encoding="utf-8")
     written: set[str] = set()
     for node in ast.walk(ast.parse(enrich_source)):
         if isinstance(node, ast.FunctionDef) and node.name == "_verification_records":

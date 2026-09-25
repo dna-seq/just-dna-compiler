@@ -261,11 +261,14 @@ def test_every_pass_taking_an_injected_client_is_covered() -> None:
 
     clientish = {"client", "eutils", "europepmc", "crossref", "resolver", "gnomad_client"}
     discovered: set[str] = set()
-    # `cli` is a package since RM260: its submodules hold the definitions its `__init__` only re-exports,
-    # and `obj.__module__ == module.__name__` would skip every one of them there.
+    # `cli` and `enrich` are packages since RM260: their submodules hold the definitions each `__init__`
+    # only re-exports, and `obj.__module__ == module.__name__` would skip every one of them there.
     for module_info in [
         *pkgutil.iter_modules(list(just_dna_enricher.__path__)),
         *pkgutil.iter_modules(list(importlib.import_module("just_dna_enricher.cli").__path__), prefix="cli."),
+        *pkgutil.iter_modules(
+            list(importlib.import_module("just_dna_enricher.enrich").__path__), prefix="enrich."
+        ),
     ]:
         module = importlib.import_module(f"just_dna_enricher.{module_info.name}")
         for name, obj in vars(module).items():
@@ -286,7 +289,7 @@ def test_every_pass_taking_an_injected_client_is_covered() -> None:
         # last-resort link must not sink the whole enrichment" and logs a warning, and the Ensembl
         # leg answers an unreachable rsID with `None` rather than an exception. Both are the
         # withhold, which is the correct shape and the opposite of the defect here.
-        "enrich.enrich",
+        "enrich.orchestration.enrich",
         # `Grch37Client` raises nothing at all: every httpx path returns `None` or `[]`. There is no
         # exception for these two to translate, and asserting a type would assert the wrong contract.
         "grch37.recover_rsid",

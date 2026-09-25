@@ -358,7 +358,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 
 | Module | Role | Notable deps |
 |---|---|---|
-| `enrich` | orchestration: `enrich()` runs the resolver chain, writes `resolution.csv` | compiler `_load_csv_rows`, format `ResolutionRow` |
+| `enrich` | A package since RM260 — `__init__` re-exports every name `enrich.py` carried; the code is in `subjects`, `outcome`, `build_declaration`, `orchestration`, `verification_records` and `resolution_csv`. Orchestration: `enrich()` runs the resolver chain, writes `resolution.csv` | compiler `_load_csv_rows`, format `ResolutionRow` |
 | `transaction` | **0.7** (RM128): the run's durability — staged answers beside the target, the advisory `flock` over the read-modify-write window, and the `(done, total)` progress unit | format `atomic_writer`, stdlib `fcntl` |
 | `resolver` | the DuckDB rsid↔coord resolver (moved from the compiler in 0.5) | `duckdb`, format |
 | `clinvar` | the DuckDB ClinVar resolver link (`lookup_loci`) + the annotation reader (`lookup_clin_sig`) | `duckdb`, format |

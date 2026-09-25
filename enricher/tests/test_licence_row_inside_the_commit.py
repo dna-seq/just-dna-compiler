@@ -176,7 +176,7 @@ def test_every_pass_that_records_a_licence_row_does_so_inside_its_tables_commit(
     # — which was one of that round's two exemptions until the compiler's writer took the parameter
     # (RM232) and it could hand its merge to the append that lands `studies.csv`.
     assert {key[0] for key in committing} == {
-        "enrich.py",
+        "orchestration.py",  # `enrich/orchestration.py` since RM260 split `enrich.py`
         "assertions.py",
         "gene_metrics.py",
         "frequencies.py",

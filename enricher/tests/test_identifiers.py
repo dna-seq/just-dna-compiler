@@ -199,7 +199,8 @@ def test_a_live_rsid_is_not_reported_as_merged() -> None:
 
 
 def test_enrich_stamps_the_status_without_substituting_the_rsid(tmp_path: Path, monkeypatch) -> None:
-    from just_dna_enricher import enrich as enrich_module
+    # The submodule that runs the enrichment (RM260): a patch on the re-export shell would not reach it.
+    from just_dna_enricher.enrich import orchestration as enrich_module
 
     spec = tmp_path / "spec"
     spec.mkdir()

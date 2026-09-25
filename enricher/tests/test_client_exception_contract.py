@@ -254,11 +254,14 @@ def test_every_network_client_in_the_tier_is_covered() -> None:
     import just_dna_enricher
 
     discovered: set[str] = set()
-    # `cli` is a package since RM260: its submodules hold the definitions its `__init__` only re-exports,
-    # and `obj.__module__ == module.__name__` would skip every one of them there.
+    # `cli` and `enrich` are packages since RM260: their submodules hold the definitions each `__init__`
+    # only re-exports, and `obj.__module__ == module.__name__` would skip every one of them there.
     for module_info in [
         *pkgutil.iter_modules(list(just_dna_enricher.__path__)),
         *pkgutil.iter_modules(list(importlib.import_module("just_dna_enricher.cli").__path__), prefix="cli."),
+        *pkgutil.iter_modules(
+            list(importlib.import_module("just_dna_enricher.enrich").__path__), prefix="enrich."
+        ),
     ]:
         module = importlib.import_module(f"just_dna_enricher.{module_info.name}")
         for name, obj in vars(module).items():

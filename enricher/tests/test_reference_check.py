@@ -280,7 +280,8 @@ def _grch37_with_nothing_to_say(calls: list[str] | None = None) -> Grch37Client:
 
 def _patched(monkeypatch: pytest.MonkeyPatch) -> None:
     """Route the enrichment's sequence reads at the fake proxy (no network in the unit suite)."""
-    monkeypatch.setattr("just_dna_enricher.enrich.SequenceProxy", lambda **_kw: _FakeProxy())
+    # The name the run looks up lives in the submodule that runs it (RM260), not the re-export shell.
+    monkeypatch.setattr("just_dna_enricher.enrich.orchestration.SequenceProxy", lambda **_kw: _FakeProxy())
 
 
 def test_best_effort_reports_the_mismatch_and_still_writes(

@@ -28,7 +28,7 @@ Feature: The skip vocabulary
     # between *the check was not run* and *it ran without the flag*, which reintroduces the
     # two-readings-of-one-absence defect the vocabulary was built to end.
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/verification_records.py
   # anchor: _verification_records
   @skip:offline
   Scenario: the check needs egress and the run had none
@@ -70,7 +70,7 @@ Feature: The skip vocabulary
     # A check that cannot fail must not report a zero (`@tautology-zero`). This is the shape where the
     # subject set is genuinely empty, as opposed to the tautology below where it is not.
 
-  # source: enricher/src/just_dna_enricher/enrich.py
+  # source: enricher/src/just_dna_enricher/enrich/orchestration.py
   # anchor: _run_enrichment
   # text: enricher/src/just_dna_enricher/clinical.py
   @skip:tautology

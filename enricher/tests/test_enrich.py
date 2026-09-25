@@ -412,7 +412,8 @@ def test_a_dbsnp_outage_does_not_sink_a_finished_enrichment(
         client._client = httpx.Client(transport=httpx.MockTransport(unwell))
         return identifiers.check_rsids(rsids, client=client)
 
-    monkeypatch.setattr("just_dna_enricher.enrich.check_rsids", failing_check)
+    # The name `enrich()` looks up lives in the submodule that runs it (RM260), not the re-export shell.
+    monkeypatch.setattr("just_dna_enricher.enrich.orchestration.check_rsids", failing_check)
     spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs1801133,C/T,risk,c\n")
 
     result = enrich(
