@@ -209,6 +209,14 @@ Only if it ran. A check that could not run reports *why* (`clin_sig_not_checked`
 `gene_loci_not_checked`, `verification.json`'s `skipped` key), because an empty finding list otherwise
 says both "compared everything" and "never compared". → [ENRICHER.md](ENRICHER.md).
 
+**The manifest says `quotes_found: 0, quotes_unchecked: 0` — were the quotes checked and missed?**
+Not if the text searched was only the abstract: an abstract miss settles nothing, and
+`quotes_unchecked` counts only citations with no text at all. From the 0.8 line, read `quotes_found`
+against `quotes_checked`. On a 0.7.x manifest, which has no `quotes_checked`, a row in
+`literature.csv` with `quote_source` = `abstract` beside `quotes_found` = 0 is unsettled; holding only
+the manifest, `abstract_only_count > 0` beside `quotes_found < quotes_authored` is the case to treat as
+unchecked. → RM256 / RM264 / S109.
+
 ---
 
 ## Schema shape — repairs that were checked and rejected

@@ -184,7 +184,7 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Two — RM258 and RM263** (the count is the `## RMn` sections below — it
+**Three — RM258, RM263 and RM264** (the count is the `## RMn` sections below — it
 read "four as of 2026-08-21" for two rounds after it stopped being four, then *not one of them is a
 decision* through the three that are, then *three* for the hour it took a fourth to be filed, then
 *two* until RM151 shipped, then *one* naming RM152, then *one* naming RM153, then none, then seven for
@@ -192,7 +192,7 @@ the 2026-09-01 source-adoption round, then one, **none again on 2026-09-11** whe
 the 0.8 file, **one again on 2026-09-12** when RM232 was filed, none again the same day when it
 shipped, and **one again that evening** when RM235 was filed, then **none on 2026-09-20** once
 RM235 and RM244-RM246 had all shipped, then **one again the same day** when RM247 was filed, none once it shipped in 0.7.1 — this line went on
-naming it until 2026-09-24 — and **one again on 2026-09-24** when RM258 was filed, then **two on 2026-09-25** when RM263 was filed — which
+naming it until 2026-09-24 — and **one again on 2026-09-24** when RM258 was filed, then **two on 2026-09-25** when RM263 was filed, and **three the same day** when RM264 split from RM256 — which
 is why the paragraph under it says to count off the sections rather than off this sentence).
 
 **RM232 was filed open and shipped in the same session, and the filing is the part worth keeping.**
@@ -426,6 +426,11 @@ may legally carry, which is nothing additive.
 **The residue that stays minor** is RM256 itself (the field + method), already on `main`. **Redefining
 `quotes_unchecked`** was refused there under S18 (add beside, never redefine) and is refused here too;
 the patch only re-describes it.
+
+**The docs half landed on `main` on 2026-09-25**, independent of any cut: a [FAQ](FAQ.md) entry keyed by
+the question, with the 0.7.x reading (`quote_source`, and `abstract_only_count` for a manifest-only
+reader) beside the 0.8 one. What is left is the two descriptions, which exist only on the 0.7.x line and
+are the `just-dna-format` package alone (the compiler's `_literature_block` code needs no change).
 
 **Open: whether the patch cuts at all.** It needs a branch off a 0.7.x tag, because `main` is the 0.8 line
 and already holds the field — the mechanism the maintainer decides before branching
