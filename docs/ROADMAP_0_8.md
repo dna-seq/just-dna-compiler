@@ -48,6 +48,28 @@ decisions that touched these items are in [PROPOSAL_0_6.md](proposals/PROPOSAL_0
 
 ---
 
+## RM261 — strip comments from the enricher wheel (measured, deferred)
+
+**Severity** low · **Status** open — deferred by the maintainer on 2026-09-25 as risky ("dangerous,
+defer") · **Owner** enricher (packaging) · **Motivating case** the 0.7.2 enricher wheel is 893 KB
+zipped, all of it Python source
+
+**Measured on `just_dna_enricher-0.7.2`.** Of 2.58 MB of `.py`, docstrings are 31%, comments 19%, and
+code plus whitespace 51%. Removing the comments alone takes the zipped `.py` from 847 KB to 664 KB
+(−22%). Docstrings stay in any version of this item: they are the `help()` text and the API pages.
+
+**Why it is not simply done.** `hatch_build.py` would have to leave the original `.py` out of the wheel
+and force-include stripped copies. `artifacts` / `force_include` collide on the same path (see that
+file's own note). The copies must keep line numbers, with a comment-only line becoming an empty line,
+or a traceback from an installed wheel points at the wrong source line. Editable installs must not be
+touched. It reaches the **enricher only**: format and compiler are on `uv_build`, which has no hooks,
+and covering them means changing their build backend.
+
+**Considered and refused in the same round:** taking the 15 `*_build.py` snapshot builders out of the
+wheel (112 KB zipped). `scripts/rebuild-caches.sh` documents `pip install 'just-dna-enricher[dev]'`
+then `cache rebuild` as a supported deployment, and `caches.py` imports every builder at module
+level. The maintainer kept them in.
+
 ## RM253 — a repeat-count star allele (UGT1A1 `*28` = TA(8)) has no home a diplotype can name, and the CPIC drafter translates none of CPIC's notation
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-21** · **Owner** format (schema) +

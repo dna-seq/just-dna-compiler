@@ -69,6 +69,25 @@ whose MCP toolkit imports the mcp 2.x names, against a consumer-side `mcp<2.0` c
 Unrelated to this repo; recorded because the symptom (the whole CLI dead at import) looked like S107
 until the traceback was read.
 
+## 2026-09-25 — RM260: the three largest modules are packages, under the same import paths
+
+`just-dna-compiler` and `just-dna-enricher`, inside the uncut **0.8** line. **No surface change**: every
+dotted path importable before resolves to the same object, `--help` is byte-identical, and every
+reference example compiles to identical bytes (`compiled_at` aside).
+
+- `just_dna_compiler.compiler` (was one 492 KB file) is 16 submodules: tables, load, the per-concern
+  checks, validate, pipeline, manifest, parquets, reverse.
+- `just_dna_enricher.cli` (244 KB) has one `*_commands` module per source or command group, with the
+  app assembled in `__init__` in its original order. The `just_dna_enricher.cli:app` entry point is
+  unchanged, and `python -m just_dna_enricher.cli` still works.
+- `just_dna_enricher.enrich` (152 KB) is `subjects`, `outcome`, `build_declaration`, `orchestration`,
+  `verification_records` and `resolution_csv`.
+
+Each `__init__.py` is a re-export shell kept for the published paths; RM260 removes them at 1.0. A
+consumer that monkeypatches a name on one of these modules must now patch the submodule where it is
+looked up. Two tests here had been reaching the live network that way without failing. Every
+source-reading guard walks the packages, and each was proved red on a planted defect.
+
 ## 2026-09-25 — `just-dna-enricher` 0.7.2: the CLI imports beside `protobuf<7`, and the frequencies leg asks about every allele
 
 **`just-dna-enricher` moves alone; `just-dna-format` stays at `0.7.0` and `just-dna-compiler` at
