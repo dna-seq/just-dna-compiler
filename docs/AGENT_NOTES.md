@@ -463,7 +463,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   resolver fixture, use the pipe shape for multi-allelic sites.
 
 - `@resolution-reads-pgx-tables` — **Resolution reads `pharm_variants.csv` and `haplotypes.csv` too, not just `variants.csv`** (0.5,
-  `enrich._collect_subjects`). PGx modules carry no `variants.csv`, so they used to enrich to an empty
+  `enrich.collect_subjects`). PGx modules carry no `variants.csv`, so they used to enrich to an empty
   `resolution.csv`. Subjects dedupe by `variant_key` with **`variants.csv` first** — it alone carries
   `alts`, a fact column, so a PGx row winning would move `artifact.digest`. PGx tables key **without**
   `alts`; a `HaplotypeRow` passes its defining `allele` to the shared `hosting_verdict`.

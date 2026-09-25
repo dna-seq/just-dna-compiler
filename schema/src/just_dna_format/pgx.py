@@ -542,7 +542,7 @@ class PharmVariantRow(AuthoredModel):
     #: `ref` (the locus) and `genotype` (what the response applies to). The compiler-filled `alts`
     #: stays out for the reason given on `HaplotypeRow.ALLELE_COLUMNS`: it is an injected fact.
     ALLELE_COLUMNS: ClassVar[tuple[str, ...]] = ("ref", "genotype")
-    #: The key omits `alts` — see `stamped_identity_field` on `alts` above, and `_collect_subjects`.
+    #: The key omits `alts` — see `stamped_identity_field` on `alts` above, and `enrich.collect_subjects`.
     _KEY_INCLUDES_ALTS: ClassVar[bool] = False
     #: rsid, or a full coordinate. Mirrors `_validate_identification` below.
     REQUIRED_ANY_OF: ClassVar[tuple[frozenset[str], ...]] = (

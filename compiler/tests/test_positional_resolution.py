@@ -560,7 +560,7 @@ def test_the_rebuilt_table_is_filed_under_the_key_the_fill_looks_up(tmp_path: Pa
 
 def test_weights_own_a_key_the_positional_tables_also_name(tmp_path: Path) -> None:
     """`variants.csv` is the only table carrying `alts` as an *authored* fact, so it wins any shared
-    key — the same precedence `enrich._collect_subjects` uses, for the same reason. And one row per
+    key — the same precedence `enrich.collect_subjects` uses, for the same reason. And one row per
     key, or the next compile reads two rows as a one-to-many rsID and enters the expansion path."""
     spec = _pharm_module(
         tmp_path / "spec",

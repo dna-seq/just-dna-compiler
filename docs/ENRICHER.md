@@ -882,7 +882,7 @@ all; repairing a stale label is a re-draft, which is an author's decision and a 
 
 The chain was never variant-specific; only its input was. Until 0.5 it read `variants.csv` alone, so a
 **PGx module — which by design carries none** (one CSV = one concern) — enriched to an empty
-`resolution.csv` and shipped with no coordinates at all. `enrich._collect_subjects` normalizes every
+`resolution.csv` and shipped with no coordinates at all. `enrich.collect_subjects` normalizes every
 eligible row to a `_Subject` and feeds it through the unchanged chain, caches, ordering and back-fill:
 
 | Table | Identity | Allele constraint fed to `hosting_verdict` |

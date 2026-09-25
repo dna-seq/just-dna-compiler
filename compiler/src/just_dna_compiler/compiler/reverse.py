@@ -415,7 +415,7 @@ def _write_resolution_csv(
     the artifact, breaking Principle 7. A PGx module carries no `weights.parquet` at all, and it is
     exactly the module this matters most for.
 
-    Two ordering rules hold the two sources together, both borrowed from `enrich._collect_subjects`
+    Two ordering rules hold the two sources together, both borrowed from `enrich.collect_subjects`
     rather than invented here:
 
     * **weights first, and a key it emitted is never re-emitted.** `variants.csv` is the only table

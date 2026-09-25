@@ -447,7 +447,7 @@ def _stated_allele(row: object) -> str | None:
 
     A `PharmVariantRow` states a `genotype` (optional, so it really can be absent), a `HaplotypeRow`
     states its defining `allele`, and a `HeteroplasmyRow` states neither. Reading the two field names
-    rather than branching on the model keeps this agreeing with `enrich._collect_subjects`, which
+    rather than branching on the model keeps this agreeing with `enrich.collect_subjects`, which
     feeds the identical pair into the identical predicate.
     """
     return getattr(row, "genotype", None) or getattr(row, "allele", None)
