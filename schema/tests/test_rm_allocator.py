@@ -24,7 +24,7 @@ CLAUDE = ROOT / ".claude"
 
 _TOC = """# `RM` table of contents
 
-## ⏳ Open, no release decided — [ROADMAP.md](ROADMAP.md#active-items)
+## 🔷 Reservations — numbers claimed, entries not yet written
 
 - ✅ **[RM1](ROADMAP_HISTORY.md#rm1)** — the first item
 - ✅ **[RM2](ROADMAP_HISTORY.md#rm2)** — the second item
@@ -221,6 +221,26 @@ def test_a_reservation_lands_under_the_open_heading_not_in_the_trailing_prose(
     assert heading < row < prose
 
 
+def test_a_reservation_in_an_empty_section_stays_above_the_next_heading(tmp_path: pathlib.Path) -> None:
+    """The reservations section is usually empty and is followed by a section of bullet rows (the major
+    bucket). A walk that looks only for the first `- ` line would file the reservation inside that one."""
+    toc = (
+        "# TOC\n\n## 🔷 Reservations — numbers claimed\n\nProse about reservations.\n\n"
+        "## 🔒 The major bucket\n\n- `VariantRow.state` — an unnumbered row\n\n- ✅ **RM1** — one\n"
+    )
+    repo = _sandbox(tmp_path, toc=toc)
+    module = _load(repo)
+    module.DOCS = repo / "docs"
+    module.TOC = repo / "docs" / "RM_TOC.md"
+    module.allocate(note=None, dry_run=False)
+    lines = module.TOC.read_text().splitlines()
+    row = next(i for i, line in enumerate(lines) if line.startswith("- 🔷"))
+    heading = next(i for i, line in enumerate(lines) if line.startswith(module.ANCHOR))
+    bucket = next(i for i, line in enumerate(lines) if line.startswith("## 🔒 The major bucket"))
+    assert heading < row < bucket
+    assert lines[row + 1] == "", "the row must not run into the heading below it"
+
+
 def test_a_missing_anchor_appends_and_says_so(
     tmp_path: pathlib.Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -231,7 +251,7 @@ def test_a_missing_anchor_appends_and_says_so(
     module.DOCS = repo / "docs"
     module.TOC = repo / "docs" / "RM_TOC.md"
     assert module.allocate(note=None, dry_run=False) == 2
-    assert "no '## ⏳ Open, no release decided' heading" in capsys.readouterr().err
+    assert "no '## 🔷 Reservations' heading" in capsys.readouterr().err
     assert module.TOC.read_text().rstrip().endswith("--release`).")
 
 
@@ -257,7 +277,7 @@ def test_the_number_climbs_past_a_gap_rather_than_filling_it(tmp_path: pathlib.P
     """A gap means an item was withdrawn, and its number stays referenced wherever that was argued."""
     repo = _sandbox(
         tmp_path,
-        toc="# TOC\n\n## ⏳ Open, no release decided\n\n- ✅ **RM1** — one\n- ✅ **RM5** — five\n",
+        toc="# TOC\n\n## 🔷 Reservations\n\n- ✅ **RM1** — one\n- ✅ **RM5** — five\n",
     )
     module = _load(repo)
     module.DOCS = repo / "docs"

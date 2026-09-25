@@ -21,7 +21,7 @@ CHARTER_SUFFIX = "docs/CONSTITUTION.md"
 GATED_PATTERNS = (
     re.compile(r"(^|/)schema/src/"),  # schema tier
     re.compile(r"(^|/)docs/ROADMAP(_[0-9_]+)?\.md$"),  # open-RM processing + class/severity
-    re.compile(r"(^|/)docs/RM_TOC\.md$"),  # RM status/class index
+    re.compile(r"(^|/)docs/RM_TOC(_\d{3}_\d{3})?\.md$"),  # RM status/class index
 )
 
 # Prompt intents that should trigger the early nudge.

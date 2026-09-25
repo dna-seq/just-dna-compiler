@@ -401,7 +401,7 @@ third's preferred option had shipped in 0.5.2 from a different report (S14). Ans
 they were open would have designed a feature that existed.
 
 Cheap and mechanical: grep the item's symbols in the source, then `docs/CHANGELOG.md`,
-`ROADMAP_HISTORY.md` and `RM_TOC.md` for its subject; `git log -S "<a phrase from the fix>"` finds when a
+`ROADMAP_HISTORY.md` and `RM_TOC*.md` for its subject; `git log -S "<a phrase from the fix>"` finds when a
 guard landed. For S1 this collapsed a feature request into one missing error message.
 
 ### Step 0b — reproduce before classifying

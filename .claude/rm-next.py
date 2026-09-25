@@ -75,14 +75,16 @@ RM_RE = re.compile(r"\bRM(\d+)\b")
 RESERVED_MARK = "🔷 **reserved**"
 RESERVED_RE = re.compile(r"^- 🔷 \*\*reserved\*\* \*\*RM(\d+)\*\*")
 
-#: Where a reservation is appended. A heading rather than the file's end, because the end of RM_TOC.md
+#: Where a reservation is appended: the entry page's own section for them, since the index is paged by
+#: number and a reserved number has no page until its entry is written. A heading rather than the file's
+#: end, because the end of RM_TOC.md
 #: is a prose section ("Where an item comes from") and a row landing under it would read as part of it
 #: — the furniture hazard the triage loop's own § 6 records.
-ANCHOR = "## ⏳ Open, no release decided"
+ANCHOR = "## 🔷 Reservations"
 
 LOCK_UNAVAILABLE = (
     "advisory locking is unavailable for {docs} ({why}), so this reservation is NOT excluded from a "
-    "concurrent one. Check `grep -n 'RM{n}' docs/RM_TOC.md` before writing the entry."
+    "concurrent one. Check `grep -n 'RM{n}' docs/RM_TOC*.md` before writing the entry."
 )
 
 
@@ -150,7 +152,10 @@ def _tombstone(number: int) -> str:
 
 
 def _insert(text: str, row: str) -> str:
-    """Put `row` directly under the open-items heading, or at the end if that heading is gone.
+    """Put `row` directly under the reservations heading, or at the end if that heading is gone.
+
+    The section may hold no rows at all (the usual state), so the walk stops at the next heading too:
+    otherwise the row would land among the first `- ` lines of whatever section follows.
 
     The fallback is announced rather than silent: a renamed heading means the reservation lands
     somewhere a reader is not looking, and finding that out from a misplaced row later is worse.
@@ -160,9 +165,12 @@ def _insert(text: str, row: str) -> str:
         if line.startswith(ANCHOR):
             # After the heading and the blank line that follows it, before the first row.
             at = i + 1
-            while at < len(lines) and not lines[at].startswith("- "):
+            while at < len(lines) and not lines[at].startswith(("- ", "#")):
                 at += 1
-            lines.insert(at, row)
+            if at < len(lines) and lines[at].startswith("#"):
+                lines[at:at] = [row, ""]
+            else:
+                lines.insert(at, row)
             return "\n".join(lines) + "\n"
     print(
         f"warning: no {ANCHOR!r} heading in {TOC.name}; appending at the end of the file instead",

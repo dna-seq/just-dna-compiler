@@ -260,6 +260,9 @@ nav:
       - Deferred to 0.8: ROADMAP_0_8.md
       - Deferred to 1.0: ROADMAP_1_0.md
       - Index of every item: RM_TOC.md
+      - Items 1–99: RM_TOC_000_099.md
+      - Items 100–199: RM_TOC_100_199.md
+      - Items 200–299: RM_TOC_200_299.md
   - Project:
       - Constitution: CONSTITUTION.md
       - Amendment history: CONSTITUTION_AMENDMENTS_HISTORY.md
