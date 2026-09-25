@@ -307,6 +307,8 @@ re-asking belongs.
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.8 line** (format + compiler +
 enricher) — **sizes as a minor**, a new manifest field · **Owner** compiler (`_literature_block`) ·
+**0.7.x mitigation** [RM264](ROADMAP.md#rm264--the-07x-manifest-reads-an-abstract-only-miss-as-a-checked-quote-and-its-fix-is-minor-only)
+(split 2026-09-25: the field waits for 0.8, a patch re-describes the counters for the released line) ·
 **Motivating case**
 [S109](CONSUMER_SUGGESTIONS_HISTORY.md#s109--an-abstract-only-literature-row-publishes-quotes_found-0-quotes_unchecked-0-which-reads-as-every-quote-read-and-missed)
 — reading back a rehearsal module with 24 quotes on one paywalled PMID

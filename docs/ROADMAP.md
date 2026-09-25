@@ -401,6 +401,36 @@ DOI-only lookup two titles, Crossref's and PubMed's, and whether a disagreement 
 `warning` or only two `info` findings side by side is the decision still to make. `EuropePmcClient`
 has no DOI search today; one method.
 
+## RM264 — the 0.7.x manifest reads an abstract-only miss as a checked quote, and its fix is minor-only
+
+**Severity** medium · **Status** open — **a patch** · **Owner** compiler (`_literature_block`) + format
+(the two `Literature` field descriptions) · **Motivating case**
+[S109](CONSUMER_SUGGESTIONS_HISTORY.md), the same report behind
+[RM256](ROADMAP_HISTORY.md#rm256--the-manifests-citation-block-read-an-abstract-only-miss-as-a-checked-quote)
+
+**Why this is a separate item.** RM256's real fix is `Literature.quotes_checked`, a new manifest field
+and a new public method — near-zero *cost* (Principle 9) but a **new optional field, so minor-legal
+only** (Principle 3), shipped in the 0.8 line on `main`. That leaves every 0.7.x consumer reading
+`quotes_found: 0, quotes_unchecked: 0` on an abstract-only miss, which is S56's "checked and missed"
+reading one case over. Principle 3's staleness clause says a known-misleading output must not wait for
+a version *unmitigated*, so RM264 is the mitigation half: what a **patch** off the newest 0.7.x tag
+may legally carry, which is nothing additive.
+
+**What the patch carries (adds, removes and retypes nothing).**
+- The `quotes_found` and `quotes_unchecked` descriptions on the 0.7.x `Literature`, corrected so an
+  abstract-only 0 is not read as a verdict, and **without naming `quotes_checked`**, which does not
+  exist on that line.
+- A consumer recipe in the docs: to find the quotes a text actually settled on 0.7.x, read
+  `quote_source` in `literature.csv` — `abstract` beside `quotes_found: 0` means unsettled, not missed.
+
+**The residue that stays minor** is RM256 itself (the field + method), already on `main`. **Redefining
+`quotes_unchecked`** was refused there under S18 (add beside, never redefine) and is refused here too;
+the patch only re-describes it.
+
+**Open: whether the patch cuts at all.** It needs a branch off a 0.7.x tag, because `main` is the 0.8 line
+and already holds the field — the mechanism the maintainer decides before branching
+([release cadence](RELEASE_CYCLE.md)).
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
