@@ -28,6 +28,16 @@ Patches are built and cut on `main`. A patch carries however many fixes the late
 produced; there is no count to reach. Patches keep coming until the minor roadmap holds enough to be
 worth doing.
 
+**A commit on `main` is patch scope only.** Anything that sizes as a minor under Principle 3 (a new
+field, table, public function, method or CLI surface) never lands on `main`, not even uncut: it goes on
+the open minor branch (`0.8` today), or it is filed and waits for one. Everything on `main` must be
+cuttable as a patch at any moment, because the next patch is cut from whatever `main` holds.
+
+This was implicit until 2026-09-25 and broke the day before: the triage seat committed RM256, RM257,
+RM259, RM260 and RM262 to `main` as "shipped, uncut, sizes as a minor", which left `main` unable to cut
+a patch. 0.7.2 then had to be cut off a revived `0.7` branch, and RM264 had no line to ship on. `main`
+was rebuilt from `v0.7.2` with the patch-scope commits only, and the five moved to the `0.8` branch.
+
 **The item counts in the triage runbook's §4 are a "worth doing" lamp, not a start pistol.** They are
 reported, never asked about, and they never freeze scope.
 
