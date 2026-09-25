@@ -532,11 +532,22 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
     # whole modules, so the guard was blind on both axes at once. `@registry-completeness`: a registry
     # nothing iterates is a number somebody has to remember.
     found: dict[str, BaseRetrying] = {}
-    # `enrich` is a package since RM260: its submodules define what its `__init__` only re-exports, and
-    # the `__module__ == here` filter below would skip every one of them there.
+    # `cli` and `enrich` are packages since RM260: their submodules define what an `__init__` only
+    # re-exports, and the `__module__ == here` filter below would skip every one of them there. Every
+    # subpackage is walked rather than a named two, so the next split cannot fall out of the walk the
+    # way `cli` did at 8910a59. `generated` holds protoc output, not clients.
+    top = list(pkgutil.iter_modules(just_dna_enricher.__path__))
     walked = [
-        *pkgutil.iter_modules(just_dna_enricher.__path__),
-        *pkgutil.iter_modules(importlib.import_module("just_dna_enricher.enrich").__path__, prefix="enrich."),
+        *top,
+        *(
+            sub
+            for package in top
+            if package.ispkg and package.name != "generated"
+            for sub in pkgutil.iter_modules(
+                importlib.import_module(f"just_dna_enricher.{package.name}").__path__,
+                prefix=f"{package.name}.",
+            )
+        ),
     ]
     for info in sorted(walked, key=lambda m: m.name):
         module = importlib.import_module(f"just_dna_enricher.{info.name}")
