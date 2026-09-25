@@ -168,6 +168,34 @@ the enricher's console script. Whatever repair lands, the release procedure need
 
 **Related** RM192 (the measured Atlas dependency cost), RM196 (why this tier alone is on hatchling).
 
+## RM264 — the 0.7.x manifest read an abstract-only miss as a checked quote, and the patch line re-describes it
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-25 on `main`, uncut — a patch** (format +
+compiler docstring) · **Owner** format (the two `Literature` descriptions) · **Motivating case**
+[S109](CONSUMER_SUGGESTIONS_HISTORY.md), the report behind
+[RM256](#rm256--the-manifests-citation-block-read-an-abstract-only-miss-as-a-checked-quote)
+
+**The mitigation half of RM256.** RM256's fix is a new manifest field, `quotes_checked`, which only a
+minor may add (Principle 3), and it lives on the `0.8` branch. Until 0.8 ships, a 0.7.x manifest
+publishes `quotes_found: 0, quotes_unchecked: 0` for an abstract-only miss, the "checked and missed"
+reading S56 was about, one case over. Principle 3's staleness clause does not let a known-misleading
+output wait for a version unmitigated, so this patch carries what adds, removes and retypes nothing:
+
+- `Literature.quotes_found` no longer claims to count fulltext hits only (it sums abstract hits too),
+  and both it and `quotes_unchecked` send the reader to `abstract_only_count`, the one counter on this
+  line that separates an abstract miss from a checked one. `quotes_unchecked` says it counts
+  citations, not quotes. Neither names `quotes_checked`, which does not exist here.
+- `_literature_block`'s docstring states the gap; a [FAQ](FAQ.md) entry gives the reading, per
+  manifest and per `literature.csv` row (`quote_source`).
+- `test_an_abstract_only_miss_is_told_apart_by_abstract_only_count_alone` compiles the two modules
+  (abstract miss vs fulltext miss), asserts they agree on the pair a reader looks at and differ only
+  on `abstract_only_count`, and pins that both descriptions name it.
+
+**Refused, as in RM256:** redefining `quotes_unchecked` to count abstract rows (S18: add beside, never
+redefine). **Merge note for `0.8`:** its descriptions already name `quotes_checked`; at the first
+merge of `main` into `0.8`, take `0.8`'s text for these two fields and keep this test only if its
+description assertion still holds there.
+
 ## RM262 — a DOI answered existence and never identity, although the body naming the paper was already in hand
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-25 on the `0.8` branch, uncut** (enricher) · **Owner**
@@ -307,7 +335,7 @@ re-asking belongs.
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-24 on the `0.8` branch, uncut** (format + compiler +
 enricher) — **sizes as a minor**, a new manifest field · **Owner** compiler (`_literature_block`) ·
-**0.7.x mitigation** [RM264](ROADMAP.md#rm264--the-07x-manifest-reads-an-abstract-only-miss-as-a-checked-quote-and-its-fix-is-minor-only)
+**0.7.x mitigation** [RM264](#rm264--the-07x-manifest-read-an-abstract-only-miss-as-a-checked-quote-and-the-patch-line-re-describes-it)
 (split 2026-09-25: the field waits for 0.8, a patch re-describes the counters for the released line) ·
 **Motivating case**
 [S109](CONSUMER_SUGGESTIONS_HISTORY.md#s109--an-abstract-only-literature-row-publishes-quotes_found-0-quotes_unchecked-0-which-reads-as-every-quote-read-and-missed)

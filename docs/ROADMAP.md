@@ -184,7 +184,7 @@ Two consequences worth stating outright:
 
 # Active items
 
-**Three — RM258, RM263 and RM264** (the count is the `## RMn` sections below — it
+**Two — RM258 and RM263** (the count is the `## RMn` sections below — it
 read "four as of 2026-08-21" for two rounds after it stopped being four, then *not one of them is a
 decision* through the three that are, then *three* for the hour it took a fourth to be filed, then
 *two* until RM151 shipped, then *one* naming RM152, then *one* naming RM153, then none, then seven for
@@ -192,7 +192,7 @@ the 2026-09-01 source-adoption round, then one, **none again on 2026-09-11** whe
 the 0.8 file, **one again on 2026-09-12** when RM232 was filed, none again the same day when it
 shipped, and **one again that evening** when RM235 was filed, then **none on 2026-09-20** once
 RM235 and RM244-RM246 had all shipped, then **one again the same day** when RM247 was filed, none once it shipped in 0.7.1 — this line went on
-naming it until 2026-09-24 — and **one again on 2026-09-24** when RM258 was filed, then **two on 2026-09-25** when RM263 was filed, and **three the same day** when RM264 split from RM256 — which
+naming it until 2026-09-24 — and **one again on 2026-09-24** when RM258 was filed, then **two on 2026-09-25** when RM263 was filed, and **three the same day** when RM264 split from RM256, then **two** when RM264 shipped on the rebuilt patch line — which
 is why the paragraph under it says to count off the sections rather than off this sentence).
 
 **RM232 was filed open and shipped in the same session, and the filing is the part worth keeping.**
@@ -264,6 +264,144 @@ number that then shipped. The third was an item filed with no such token at all 
 2026-09-12 — so the field is now **asserted by a test** rather than only described:
 `schema/tests/test_triage_tools.py` walks every `## RMn` between this heading and
 `# Not format scope` and refuses the one the counters cannot see. Write the token, or the suite says
+which item is invisible and to whom.
+
+**The 2026-08-21 decision round is what emptied the other half.** Six items stood here, every one of
+them a decision rather than a missing line of code, and one pass answered all six: **RM102** closed
+outright, **RM122** parked on demand and moved to the minor-deferral file ([ROADMAP_0_8.md](ROADMAP_0_8.md) since
+the 0.7 cut), **RM117** narrowed
+to the half that costs nobody a decision, and **RM103** split — the manifest half stays here, the
+refusal is a tightening and moved to [§ The 1.0 cleanup](#the-10-cleanup-candidate-tracker). The
+reasoning is in
+[ROADMAP_HISTORY § the 2026-08-21 decision round](ROADMAP_HISTORY.md#the-2026-08-21-decision-round--six-undecided-minors-answered-in-one-pass).
+
+**Two of the six turned out not to be design-blocked at all, and that is the finding worth keeping.**
+RM110's encoding was already pinned by a test on one producer — `test_gnomad.py` asserts an empty flag
+list is `None`, *not* `""` — so nothing was undecided; it was parked because normalizing the other
+producer moves a fact signature and the round that found it was a *patch* round. That is a
+release-class reason wearing a design label, and it held the item for two days of looking harder than
+it was. RM102's was the mirror image: the item read as a security question and the record held one lost
+hour and no incident, which is a disposition nobody had asked for out loud. **Ask what a filed
+decision would actually change before treating it as one** — a status line saying *undecided* is not
+evidence that anything is.
+
+**The six patches filed beside them shipped on 2026-08-20**
+(RM104–RM107, RM109, RM111) and moved to
+[ROADMAP_HISTORY § the 2026-08-19 doc-audit patch round](history/ROADMAP_HISTORY_0_6.md#the-2026-08-19-doc-audit-patch-round--six-of-the-eight-fixed).
+
+RM88 and RM93–RM100 all **shipped in 0.6.1** and moved to
+[ROADMAP_HISTORY § 0.6.1](history/ROADMAP_HISTORY_0_6.md#061--the-eight-the-documents-caught-the-two-the-fixes-found-and-rm88),
+with their rationale and with the five places the eight filings turned out to understate what was
+there. **An empty list here is not an all-clear** — it means nothing is *filed*, and this file has read
+empty twice before while carrying real work one heading down. The live consumer inbox
+([CONSUMER_SUGGESTIONS.md](CONSUMER_SUGGESTIONS.md)) is the other half of that question, and
+[ROADMAP_0_8.md](ROADMAP_0_8.md) / [ROADMAP_1_0.md](ROADMAP_1_0.md) hold the deferred items.
+Every one of them broke a rule this repo had already written down — which is the finding worth keeping
+out of the item entries and stating once: **the gotcha book is not the thing that catches a
+regression.** In four of the eight the file carrying the violation also carried the rule, sometimes in
+an adjacent comment. So the durable half of each is a test, and in six of the nine that test walks a
+registry rather than a list.
+
+**RM88 and RM89 were both filed 2026-08-17 out of the 0.6 PT2 batch's lane D**, both *found by
+building RM84 rather than by planning it* — neither a defect in what shipped, and neither a blocker
+for it. Both are closed now, and RM88's close is worth one line here because the *shape* recurs: the
+code half was always cheap and the entry had mispriced it, so what actually held the item for a
+release was an undecided policy wearing a technical objection.
+**RM89 closed the same week**: the consumer's answer arrived as
+[S35](CONSUMER_SUGGESTIONS_HISTORY.md) the day after it was filed, the open question it was waiting on
+was the only thing holding it, and building the answer found the defect underneath it — see
+[ROADMAP_HISTORY](history/ROADMAP_HISTORY_0_6.md#rm89--the-publisher-cannot-upload-a-table-only-module-at-all).
+RM74–RM79, the whole 0.6 dogfooding fix round, shipped on 2026-08-15 and moved
+to [ROADMAP_HISTORY.md](history/ROADMAP_HISTORY_0_6.md#06-dogfooding--the-fix-rounds-own-findings-repaired) — but
+read that as *the sprouts are repaired*, and the ground with them: RM76's narrow repair is what shipped
+in that round, and the question it asks from underneath —
+[RM73](history/ROADMAP_HISTORY_0_6.md#rm73-phase-boundary--authoring-is-a-process-and-it-now-has-an-end), the root
+several of these grew from — closed on 2026-08-16, both halves. What remains of it is the
+**promotion**: making a closure a precondition of compiling is major-only and is filed, with its own
+blocker, in [ROADMAP_1_0.md](ROADMAP_1_0.md). Everything that was open on the
+`0.6` branch *before* that round was built in the 0.6 batch and moved to
+[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) with its rationale; what was deferred moved to the roadmap of
+the release that will decide it — [ROADMAP_0_8.md](ROADMAP_0_8.md) (RM16, RM23, RM28, the deferred
+halves of RM55, RM56, RM65, plus RM66 and RM67, and the dogfooding items RM68–RM72) and
+[ROADMAP_1_0.md](ROADMAP_1_0.md) (RM15, RM52, RM55's removal half). *That sentence records the
+2026-08-13 split and is not a current inventory — RM69 has since moved to the 1.0 file, and five of the
+0.7 entries shipped in the PT2 round. Follow [RM_TOC.md](RM_TOC.md) for where an item lives today.*
+
+**This section read "None in this file" for a day after the six were filed**, because they were appended
+below the *Not format scope* heading and nothing moved the boundary — so the roadmap's own summary line
+said it had no open work while carrying two high-severity items. Recorded rather than quietly fixed: it
+is the [RM_TOC.md](RM_TOC.md) failure mode (an item nobody can find) arriving in the file the index
+points *at*, and it is why a new item starts here as a `## RMn` section and gets its RM_TOC row in the
+same commit.
+
+**It happened a second time, to RM160, and the repair is the same one line.** Filed 2026-09-01 as
+`open — worth doing` with owner *enricher*, it was appended below the same heading and sat under *Not
+format scope* — a section whose own intro says it lists things "so they are not mistaken for format
+scope" — until the 2026-09-01 source-adoption round moved the boundary back down to RM7. Twice is a
+pattern rather than a slip: **appending an item to this file puts it wherever the last heading left
+you**, so check which `# ` heading you are under before writing the section, not after.
+
+The trackers further down are the other live part of this file: the reserved-namespace tracker and the
+1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
+
+## RM258 — an outage during the literature fetch writes a row that merge-not-clobber never asks again
+
+**Severity** medium · **Status** open — **a minor, release undecided** — found while building RM257 ·
+**Owner** enricher (`literature`) · **Motivating case**
+[S110](CONSUMER_SUGGESTIONS_HISTORY.md#s110--the-literature-pass-leaves-an-author-manuscript-abstract-only-when-pmcs-bioc-service-serves-it-whole-tables-included)
+— Europe PMC answered HTTP 500 for `PMC6463297` on 2026-09-24
+
+**What was confirmed.** `EuropePmcClient.fulltext` and the new `PmcBiocClient.fulltext` both return
+`None` for a 404 (no copy) and for a 5xx or a transport failure (never answered). The pass then falls
+back to the abstract and writes `quote_source=abstract` with the abstract's count. The row is keyed by
+PMID and `literature.csv` is merge-not-clobber, so `wanted` skips it on every later run: **a transient
+outage becomes a permanent abstract-only pin.** Pinned by
+`test_every_way_bioc_has_no_text_reads_as_not_retrieved`, whose 500 arm writes exactly that row. That
+test asserts today's behaviour, not a decision. `@unreachable-not-absent` at the row level. The
+reporter named the conflation in `fulltext()`, and the pin is what it costs.
+
+**Rows pinned before RM257 have the same problem without any outage.** The BioC rung only runs for a
+citation the pass fetches, so a module enriched before it keeps its abstract-only rows until
+`literature.csv` is deleted. Since 0.7 that delete costs nothing (RM124), and that is the
+workaround the S110 reply gives. It is still a step nobody will know to take.
+
+**Candidate repairs, none chosen:**
+
+1. **Write no row when the fulltext could not be asked.** Refused in advance: existence, identifiers
+   and the licence were all answered, and answered is per field
+   (`@answered-is-not-absent`). Dropping those answers to get a retry is the wrong trade.
+2. **Re-ask fulltext on every run for any row whose `quote_source` is not `fulltext`.** No schema
+   change, and it picks up rows pinned before RM257. It costs one paced request per paywalled citation
+   per run, forever, for articles that will never have a copy. Changing the pass's merge from per row
+   to per field is the precedent this would set, and `--rederive` already has rules for that
+   (`@rederive-never-shortens`).
+3. **Record how the fulltext question ended, as a derived column** (`fulltext_status`, roughly
+   `retrieved | absent | unreachable`), and re-ask only `unreachable`, plus null on rows written
+   before the column existed. An optional column on a derived CSV is minor-legal and half-cost
+   (P9). It needs the two clients to stop returning one `None` for two answers, which is the
+   `@client-exception-contract` shape. The question for review is whether null on old rows should
+   mean "ask once" or "leave alone".
+
+## RM263 — a DOI has no route to its PMID, although `StudyRow.pmid` is the required half
+
+**Severity** low · **Status** open — **a minor, release undecided** · **Owner** enricher (`lookup`,
+`literature`) · **Motivating case** [S113](CONSUMER_SUGGESTIONS_HISTORY.md#s113--lookup_citationdoi-settles-existence-and-never-identity-title-journal-year-and-author-are-always-null), the reporter's second candidate fix
+
+**What was confirmed.** A curator holding only a DOI (what a paper's landing page gives you) can now
+learn which paper it is (RM262), but not its PMID, and `StudyRow.pmid` is the column the schema
+requires. RM50 built the same route for a PMC id through NCBI's converter; a DOI has none. Europe PMC's
+search answers it: `DOI:"10.1038/ng826"` returns PMID `11788828`, measured 2026-09-25, and covers all
+of PubMed. NCBI's converter also takes DOIs but only answers for articles in PMC, and Enattah 2002 is
+not in PMC, so it would miss exactly the paywalled case.
+
+**The shape is RM50's, and the open question is the second title.** The resolved PMID comes back as an
+advisory (`applied=False`, `refusal="redundancy_bearing"`), never a fill, since `pmid` is
+redundancy-bearing. Then PubMed is asked which paper that PMID is, as `_check_pmcid` does. That gives a
+DOI-only lookup two titles, Crossref's and PubMed's, and whether a disagreement between them is a
+`warning` or only two `info` findings side by side is the decision still to make. `EuropePmcClient`
+has no DOI search today; one method.
+
+# Not format scope` and refuses the one the counters cannot see. Write the token, or the suite says
 which item is invisible and to whom.
 
 **The 2026-08-21 decision round is what emptied the other half.** Six items stood here, every one of

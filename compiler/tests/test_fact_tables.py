@@ -272,6 +272,39 @@ def test_a_module_where_nothing_was_checked_does_not_publish_a_confident_zero(tm
     assert block.quotes_unchecked != other.quotes_unchecked
 
 
+def test_an_abstract_only_miss_is_told_apart_by_abstract_only_count_alone(tmp_path: Path) -> None:
+    """RM264 (S109): the 0.7.x mitigation, which may add nothing.
+
+    A 0 found against an abstract is unsettled, a 0 found against a fulltext is a miss, and the pair
+    a reader looks at (`quotes_found`, `quotes_unchecked`) is identical for the two. On this line the
+    only counter separating them is `abstract_only_count`, so the two field descriptions must send
+    the reader there. The field that settles it properly is a minor's (RM256, on the 0.8 branch).
+    """
+    spec = _spec(tmp_path, literature=True)
+    header = "pmid,doi,pmcid,exists,is_open_access,quotes_authored,quotes_found,quote_source,source,status,fetched_at\n"
+    (spec / "literature.csv").write_text(
+        header + "12345678,10.1234/2013/999990,,true,false,1,0,abstract,pubmed,resolved,\n"
+        "23456789,10.1000/example,,true,false,1,0,abstract,pubmed,resolved,\n",
+        encoding="utf-8",
+    )
+    abstract = compile_module(spec, tmp_path / "a", resolve_with_ensembl=False)
+    assert abstract.success, abstract.errors
+    (spec / "literature.csv").write_text(
+        header + "12345678,10.1234/2013/999990,PMC999990,true,true,1,0,fulltext,pubmed,resolved,\n"
+        "23456789,10.1000/example,PMC1234567,true,true,1,0,fulltext,pubmed,resolved,\n",
+        encoding="utf-8",
+    )
+    fulltext = compile_module(spec, tmp_path / "b", resolve_with_ensembl=False)
+    assert fulltext.success, fulltext.errors
+    a, f = abstract.manifest.literature, fulltext.manifest.literature
+    assert (a.quotes_found, a.quotes_unchecked) == (f.quotes_found, f.quotes_unchecked)
+    assert (a.abstract_only_count, f.abstract_only_count) == (a.row_count, 0)
+
+    fields = type(a).model_fields
+    for name in ("quotes_found", "quotes_unchecked"):
+        assert "abstract_only_count" in fields[name].description, name
+
+
 def test_a_nonexistent_citation_recorded_by_the_enricher_surfaces_at_compile(tmp_path: Path) -> None:
     """The compiler cannot ask PubMed anything, but the enricher already wrote down the verdict —
     so an offline compile can still tell the author their citation does not resolve."""

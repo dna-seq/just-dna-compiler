@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-25 — RM264: the 0.7.x manifest's quote counters say what an abstract-only miss is (patch, on `main`)
+
+**`just-dna-format` (next patch), descriptions only — nothing added, removed or retyped.**
+`Literature.quotes_found` no longer claims to count fulltext hits only, and it and `quotes_unchecked`
+now send a reader to `abstract_only_count`: a manifest reading `quotes_found: 0, quotes_unchecked: 0`
+beside `abstract_only_count > 0` checked nothing against a body. A FAQ entry gives the per-row
+reading (`quote_source` = `abstract` beside `quotes_found` = 0 is unsettled). The field that settles it
+outright is RM256's `quotes_checked`, a minor's, on the `0.8` branch. S109.
+
 ## 2026-09-25 — RM262: a DOI lookup names the paper it found
 
 `just-dna-enricher` only, inside the uncut **0.8** line. Additive: a new class and method beside

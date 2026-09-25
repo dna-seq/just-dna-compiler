@@ -839,18 +839,24 @@ class Literature(BaseModel):
     quotes_found: int = Field(
         default=0,
         description=(
-            "Of those, how many were located in a fulltext. Read it against `quotes_authored`, "
-            "`quotes_unchecked` AND `open_access_count`: an unfound quote in a paywalled article was "
-            "never checked, not checked and missing."
+            "Of those, how many were located, in a fulltext or in an abstract. Read it against "
+            "`quotes_authored`, `quotes_unchecked` AND `abstract_only_count`: a quote not found in an "
+            "abstract was never checked against the body, so it is unsettled, not missing. "
+            "`quotes_authored - quotes_found` is therefore NOT the number of quotes checked and "
+            "missed whenever `abstract_only_count > 0`; per citation, `quote_source` = `abstract` in "
+            "literature.csv beside `quotes_found` = 0 means unsettled (RM264)."
         ),
     )
     quotes_unchecked: int = Field(
         default=0,
         description=(
-            "Citations whose `quotes_found` is null — the fulltext was never retrievable, so nothing "
-            "was established either way. `quotes_found` is a sum over the rows that DID answer, so "
-            "without this number a module where nothing was checked is indistinguishable from one "
-            "where every quote was checked and missed: both report zero (S56)."
+            "Citations (not quotes) whose `quotes_found` is null — no text at all was retrievable, so "
+            "nothing was established either way. `quotes_found` is a sum over the rows that DID "
+            "answer, so without this number a module where nothing was checked is indistinguishable "
+            "from one where every quote was checked and missed: both report zero (S56). It does NOT "
+            "count abstract-only citations, whose misses are unsettled too: a manifest reading "
+            "`quotes_found: 0, quotes_unchecked: 0` beside `abstract_only_count > 0` checked nothing "
+            "against a body (RM264)."
         ),
     )
 

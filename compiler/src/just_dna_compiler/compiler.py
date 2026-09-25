@@ -6510,6 +6510,12 @@ def _literature_block(rows: list[LiteratureRow]) -> Literature | None:
     The count of null rows is published beside it rather than the pair being made nullable, because a
     reader needs the three states — found, missed, never asked — and `int | None` collapses the last
     two back into "no number".
+
+    **And neither counter reaches an abstract-only miss** (RM264, S109). A row with `quote_source`
+    `abstract` and `quotes_found` 0 read only the abstract, so its miss is unsettled, yet it lands in
+    `quotes_found` as a 0 and outside `quotes_unchecked`. On this line `abstract_only_count` is the
+    only counter that separates it, and the two field descriptions say so; the counter that settles
+    it is a minor's.
     """
     if not rows:
         return None
