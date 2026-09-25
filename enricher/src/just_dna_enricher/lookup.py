@@ -202,8 +202,9 @@ class CitationHint:
     densely allocated, so a recalled or invented 8-digit number is very likely to be a real record —
     for a different paper — and `pmid_exists=True` alone therefore cannot catch a fabricated citation.
     Fabrication is a failure of *identity*, so the answer has to name the paper it found and let the
-    caller compare it against the one they meant. `title`/`journal`/`year`/`first_author` all arrive in
-    the same `esummary` response that answers existence, so this costs no extra request.
+    caller compare it against the one they meant. `title`/`journal`/`year`/`first_author` arrive in the
+    response that answers existence — PubMed's `esummary` for a PMID, Crossref's `/works` record for a
+    DOI (RM262) — so neither costs an extra request. With both identifiers, PubMed's fill the fields.
     """
 
     pmid: str | None = None
@@ -833,7 +834,8 @@ def lookup_citation(
     """Answer "does this citation exist, and what is its other identifier?".
 
     A paywall hides the *fulltext*, never the PubMed record, so existence is answerable for
-    paywalled work. Crossref covers what PubMed does not index at all (preprints, books, datasets).
+    paywalled work. Crossref covers what PubMed does not index at all (preprints, books, datasets),
+    and a DOI's answer names the work it found as a PMID's does (RM262, S113).
 
     **`pmcid=` is the reverse direction, and it reports rather than fills** (RM50). PubMed and PubMed
     Central number articles independently, `StudyRow.pmid` requires the PubMed one, and a curator
@@ -864,15 +866,60 @@ def lookup_citation(
         if doi:
             # The **authored** DOI, never a derived one: a DOI the registry just handed over exists
             # by construction, so checking it would answer a question nobody asked.
-            hint.doi_exists = clients.ensure("crossref", CrossrefClient).exists(doi)
-            if hint.doi_exists is False:
-                hint.findings.append(Finding(None, "doi", "warning", f"Crossref has no record of {doi}"))
-            elif hint.doi_exists is None:
-                hint.findings.append(Finding(None, "doi", "info", "Crossref could not be asked"))
+            _check_doi(hint, doi, clients)
     finally:
         if owned:
             clients.close()
     return hint
+
+
+def _check_doi(hint: CitationHint, doi: str, clients: LookupClients) -> None:
+    """Crossref existence, plus which work the DOI names (RM262, S113).
+
+    The DOI branch used to stop at existence, so a DOI-only citation came back with every identity
+    field null and no finding saying the title had not been asked for — and four of four authoring
+    runs in one consumer round then pasted the DOI into a free-text search to learn what it was.
+
+    The fields fill only where the PMID branch left them `None`. With both identifiers given, the
+    PMID's record is the one `StudyRow` is keyed on, and the DOI's title is still *reported*, in its
+    own finding beside the PMID's, so a pair naming two different papers shows up as two titles side
+    by side rather than as one silently kept.
+    """
+    work = clients.ensure("crossref", CrossrefClient).work(doi)
+    hint.doi_exists = work.exists
+    if work.exists is False:
+        hint.findings.append(Finding(None, "doi", "warning", f"Crossref has no record of {doi}"))
+        return
+    if work.exists is None:
+        hint.findings.append(Finding(None, "doi", "info", "Crossref could not be asked"))
+        return
+    for name in ("title", "journal", "year", "first_author"):
+        if getattr(hint, name) is None:
+            setattr(hint, name, getattr(work, name))
+    if work.title is None:
+        # Datasets and some preprints carry a record and no title. Said, so a null title is not read
+        # as "no such paper" or as "nobody asked" — the S113 shape, one case narrower.
+        hint.findings.append(
+            Finding(
+                None,
+                "doi",
+                "info",
+                f"Crossref has a record for DOI {doi} but it names no title — existence is not "
+                f"identity, so confirm this is the work you meant from the DOI's landing page.",
+            )
+        )
+        return
+    named = ", ".join(part for part in (work.first_author, work.journal, work.year) if part)
+    hint.findings.append(
+        Finding(
+            None,
+            "doi",
+            "info",
+            f"DOI {doi} names: {work.title!r}"
+            + (f" ({named})" if named else "")
+            + " — existence is not identity, so confirm this is the paper you meant.",
+        )
+    )
 
 
 def _check_pmid(hint: CitationHint, pmid: str, clients: LookupClients) -> None:

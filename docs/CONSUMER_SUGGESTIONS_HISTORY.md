@@ -151,6 +151,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S110** author manuscript left abstract-only — accepted, RM257, RM258
 - **S111** expected match rate on consumer chips — design input, RM188 axis 1
 - **S112** no gene to aim the Atlas at — accepted, RM259; graph to idea-book
+- **S113** a DOI lookup named no paper — accepted, RM262; DOI→PMID RM263
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -5226,3 +5227,54 @@ dependency graph over the sidecars — which table's rows are computed from whic
 consumer (us) order passes without hand-kept knowledge. Offered as an observation, not a design.
 
 **Meanwhile.** Our tool reports `no_gene` per row with the variant keys and does not fill anything.
+
+# Field notes from just-module-creator, 2026-09-25 — a DOI lookup that named no paper
+
+## S113 — `lookup_citation(doi=…)` settles existence and never identity: title, journal, year and author are always null
+
+**Status — accepted; your fix (1) shipped as [RM262](ROADMAP_HISTORY.md#rm262--a-doi-answered-existence-and-never-identity-although-the-body-naming-the-paper-was-already-in-hand) in the uncut 0.8 line (enricher), your (3) with it, and your (2) filed as [RM263](ROADMAP.md#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).**
+Reproduced live on `10.1038/ng826`, exactly as you wrote it. `CrossrefClient.work(doi)` now parses
+the `/works` body the existence request already returned (no extra request), and `lookup_citation`
+fills `title`, `journal`, `year` and `first_author` from it, with an `info` finding
+`DOI 10.1038/ng826 names: 'Identification of a variant associated with adult-type hypolactasia'
+(Enattah NS, Nature Genetics, 2002) — existence is not identity, …`. A record with no title
+(datasets, some preprints) gets a finding saying `names no title` instead of silent nulls. With a
+PMID given too, PubMed's record fills the fields and the DOI's title still arrives in its own
+finding, so a PMID/DOI pair naming two papers shows two titles.
+
+Found on the way: `exists()` answered `True` for a 200 whose body was not Crossref (an HTML
+maintenance page). That now withholds (`doi_exists: null`). `exists()` keeps its signature.
+
+DOI → PMID is RM263, open: it would come back as an advisory like the `pmcid=` route, never a fill.
+The open question there is what to do when Crossref's and PubMed's titles disagree.
+
+**What to do now:** nothing on your side once you take the next enricher release. Your pass-through
+gets the fields and the finding for free. Until then, the PMID route still names the paper.
+<!-- triaged: 0.8 (uncut) · sha f635d059aa22 -->
+
+*Filed 2026-09-25 by just-module-creator (our `F113`). Enricher 0.7.2, installed from PyPI.*
+
+**What we ran.** `just_dna_enricher.lookup.lookup_citation(doi="10.1038/ng826")`, which is Enattah 2002,
+PMID 11788828, through our `lookup_citation` tool (a pass-through). The result:
+
+```
+doi_exists: true, pmid: null, pmcid: null, title: null, journal: null, year: null,
+first_author: null, findings: []
+```
+
+**Why it matters.** The DOI branch calls `CrossrefClient.exists(doi)` and stops there. A title is only
+filled on the PMID branch, from `esummary`. So a DOI gets an existence answer and no identity answer.
+That is exactly the shape the module docs warn against: existence never settles identity, only a title
+does. And `findings` is empty, so nothing says the title was not asked for. In a 2026-08-31 round, four
+of four independent authoring runs arrived with a DOI (that is what a paper's landing page gives you),
+got this result, and fell back to pasting the DOI into a free-text literature search to learn the title.
+
+**Candidate fixes, in the order we'd take them.**
+1. Crossref already answered the request that `exists()` made. `/works/{doi}` returns `title`,
+   `container-title`, `issued` and `author`. Parse them instead of discarding the body. No extra request.
+2. Resolve DOI → PMID/PMCID via Europe PMC search (`DOI:"…"`) or the NCBI ID converter, then take
+   the PMID branch. This costs a request, but it also fills `pmid`/`pmcid`, which Crossref cannot.
+3. At minimum, an `info` finding saying the title was not looked up on the DOI path, so a null title
+   is not read as "no such paper".
+
+**Meanwhile, on our side:** nothing yet. The tool passes the null through.

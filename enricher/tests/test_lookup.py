@@ -12,6 +12,7 @@ import pytest
 from just_dna_compiler.hints import REDUNDANCY_BEARING
 from just_dna_enricher import lookup as lookup_module
 from just_dna_enricher.eutils import NO_SUMMARY
+from just_dna_enricher.literature import CrossrefWork
 from just_dna_enricher.lookup import (
     CLIENT_FIELDS,
     LookupClients,
@@ -48,13 +49,17 @@ class _FakeEuropePmc:
 
 
 class _FakeCrossref:
-    def __init__(self, answer: bool | None) -> None:
+    def __init__(self, answer: bool | None, work: CrossrefWork | None = None) -> None:
         self.answer = answer
+        self.record = work or CrossrefWork(exists=answer)
         self.asked: list[str] = []
 
     def exists(self, doi: str) -> bool | None:
+        return self.work(doi).exists
+
+    def work(self, doi: str) -> CrossrefWork:
         self.asked.append(doi)
-        return self.answer
+        return self.record
 
     def close(self) -> None:  # pragma: no cover
         pass
@@ -408,6 +413,63 @@ def test_crossref_tri_state_is_carried_through() -> None:
         assert hint.doi_exists is answer
         # the AUTHORED doi is what gets checked — a derived one exists by construction
         assert crossref.asked == ["10.1234/abc"]
+
+
+_ENATTAH = CrossrefWork(
+    exists=True,
+    title="Identification of a variant associated with adult-type hypolactasia",
+    journal="Nature Genetics",
+    year="2002",
+    first_author="Enattah NS",
+)
+
+
+def test_a_doi_alone_names_the_paper_it_found() -> None:
+    """S113: `doi_exists=True` with every identity field null and `findings: []` was the whole answer.
+
+    The fields fill from Crossref's record, and a finding names the paper in prose — the phrase is
+    pinned because a caller reading findings rather than fields greps for it (`@warning-text-is-api`).
+    """
+    crossref = _FakeCrossref(True, _ENATTAH)
+    hint = lookup_citation(doi="10.1038/ng826", clients=LookupClients(crossref=crossref))
+    assert (hint.title, hint.journal, hint.year, hint.first_author) == (
+        _ENATTAH.title,
+        _ENATTAH.journal,
+        _ENATTAH.year,
+        _ENATTAH.first_author,
+    )
+    [named] = [f for f in hint.findings if f.column == "doi"]
+    assert named.level == "info"
+    assert named.message.startswith(f"DOI 10.1038/ng826 names: {_ENATTAH.title!r}")
+    assert "existence is not identity" in named.message
+    assert crossref.asked == ["10.1038/ng826"]
+
+
+def test_a_record_with_no_title_says_so_rather_than_returning_silent_nulls() -> None:
+    """A dataset or preprint may carry a Crossref record and no title — the S113 shape one case
+    narrower. The null must not read as "no such paper" or as "not asked"."""
+    crossref = _FakeCrossref(True, CrossrefWork(exists=True, year="2024"))
+    hint = lookup_citation(doi="10.5061/dryad.x", clients=LookupClients(crossref=crossref))
+    assert hint.doi_exists is True and hint.title is None and hint.year == "2024"
+    assert any("names no title" in f.message and f.column == "doi" for f in hint.findings)
+
+
+def test_with_both_identifiers_pubmed_fills_and_the_doi_title_is_reported_beside_it() -> None:
+    """Two answers to one question go side by side: the PMID's record fills the fields (`StudyRow` is
+    keyed on it), and the DOI's title still arrives as its own finding, so a pair naming two different
+    papers shows two titles rather than one silently kept."""
+    eutils = _FakeEutils({"1": {"uid": "1", "articleids": [], "title": "A different paper."}})
+    crossref = _FakeCrossref(True, _ENATTAH)
+    hint = lookup_citation(
+        pmid="1",
+        doi="10.1038/ng826",
+        clients=LookupClients(eutils=eutils, europepmc=_FakeEuropePmc(), crossref=crossref),
+    )
+    assert hint.title == "A different paper."
+    assert hint.journal == _ENATTAH.journal  # PubMed left it unset, so Crossref's fills it
+    messages = [f.message for f in hint.findings]
+    assert any(m.startswith("PMID 1 names: 'A different paper.'") for m in messages)
+    assert any(m.startswith(f"DOI 10.1038/ng826 names: {_ENATTAH.title!r}") for m in messages)
 
 
 def test_the_injected_client_is_reused_rather_than_rebuilt() -> None:

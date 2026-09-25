@@ -25,5 +25,101 @@
  },
  "10.9999/definitely-not-a-real-doi": {
   "status": 404
+ },
+ "10.1038/ng826": {
+  "status": 200,
+  "message": {
+   "DOI": "10.1038/ng826",
+   "type": "journal-article",
+   "container-title": [
+    "Nature Genetics"
+   ],
+   "title": [
+    "Identification of a variant associated with adult-type hypolactasia"
+   ],
+   "issued": {
+    "date-parts": [
+     [
+      2002,
+      1,
+      14
+     ]
+    ]
+   },
+   "author": [
+    {
+     "given": "Nabil Sabri",
+     "family": "Enattah",
+     "sequence": "first",
+     "affiliation": [],
+     "role": [
+      {
+       "vocabulary": "crossref",
+       "role": "author"
+      }
+     ]
+    },
+    {
+     "given": "Timo",
+     "family": "Sahi",
+     "sequence": "additional",
+     "affiliation": [],
+     "role": [
+      {
+       "vocabulary": "crossref",
+       "role": "author"
+      }
+     ]
+    },
+    {
+     "given": "Erkki",
+     "family": "Savilahti",
+     "sequence": "additional",
+     "affiliation": [],
+     "role": [
+      {
+       "vocabulary": "crossref",
+       "role": "author"
+      }
+     ]
+    },
+    {
+     "given": "Joseph D.",
+     "family": "Terwilliger",
+     "sequence": "additional",
+     "affiliation": [],
+     "role": [
+      {
+       "vocabulary": "crossref",
+       "role": "author"
+      }
+     ]
+    },
+    {
+     "given": "Leena",
+     "family": "Peltonen",
+     "sequence": "additional",
+     "affiliation": [],
+     "role": [
+      {
+       "vocabulary": "crossref",
+       "role": "author"
+      }
+     ]
+    },
+    {
+     "given": "Irma",
+     "family": "J\u00e4rvel\u00e4",
+     "sequence": "additional",
+     "affiliation": [],
+     "role": [
+      {
+       "vocabulary": "crossref",
+       "role": "author"
+      }
+     ]
+    }
+   ]
+  }
  }
 }

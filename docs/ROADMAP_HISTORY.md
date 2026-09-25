@@ -168,6 +168,55 @@ the enricher's console script. Whatever repair lands, the release procedure need
 
 **Related** RM192 (the measured Atlas dependency cost), RM196 (why this tier alone is on hatchling).
 
+## RM262 — a DOI answered existence and never identity, although the body naming the paper was already in hand
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-25 in the uncut 0.8 line** (enricher) · **Owner**
+enricher (`literature`, `lookup`) · **Motivating case** [S113](CONSUMER_SUGGESTIONS_HISTORY.md#s113--lookup_citationdoi-settles-existence-and-never-identity-title-journal-year-and-author-are-always-null) — `lookup_citation(doi="10.1038/ng826")`,
+Enattah 2002, came back `doi_exists: true` with title, journal, year and author all null and no finding
+
+### What was observed
+
+Reproduced live. `CrossrefClient.exists` made the `/works/{doi}` request, read the status and threw
+the body away; `lookup_citation` filled the four identity fields only on the PMID branch, from
+`esummary`. So a DOI-only citation got the one answer `@existence-not-identity` says settles nothing,
+and `findings` was empty, so nothing said the title had not been asked for. The reporter's round had
+four of four authoring runs fall back to a free-text search to learn what their DOI was.
+
+**Found on the way: the same method answered `True` for a 200 that was not Crossref.** `exists` read
+only the status, so an HTML maintenance page or a CDN interstitial read as "this DOI exists".
+Reproduced against the pre-fix code in a scratch worktree. It is the fourth leg of
+`@client-exception-contract`, on a client the contract suite exempted for a reason about its retry
+story rather than about what the class promises.
+
+### What shipped
+
+- `literature.CrossrefWork` (frozen: `exists` tri-state plus `title`/`journal`/`year`/`first_author`)
+  and `CrossrefClient.work(doi)`, off the same single request. `exists(doi)` keeps its signature and is
+  `work(doi).exists`, so the literature pass and every other caller are unchanged.
+- `literature.crossref_bibliographic(message)`, the Crossref twin of `bibliographic`: list-valued
+  `title`/`container-title` (an empty list is `None`), the year from `issued.date-parts`, and the first
+  author as the entry marked `sequence: "first"`, rendered `Family GI` to read like PubMed's
+  `sortfirstauthor`, or an organisation's `name`.
+- A 200 whose body is not a Crossref record withholds (`exists=None`). `CrossrefClient` joins
+  `WITHHOLDING_CLIENTS`, which pins the withheld value on the 5xx, transport and HTML legs.
+- `lookup_citation`'s DOI branch fills the four fields where the PMID branch left them `None`, and
+  adds an `info` finding, `DOI <doi> names: '<title>' (<author>, <journal>, <year>) — existence is not
+  identity, …`, the mirror of the PMID one. A record with no title (datasets, some preprints) says
+  `… names no title …` rather than returning silent nulls.
+- **With both identifiers, PubMed fills and both titles are reported.** `StudyRow` is keyed on the
+  PMID, so its record wins the fields; the DOI's title still arrives in its own finding, so a pair
+  naming two papers shows two titles side by side (`@roster-is-as-wide-as-the-tables-it-reads`: two
+  answers to one question go side by side).
+
+### Refused, with reasons
+
+- **Retyping `exists` to return the record.** Callers outside this repo may hold the `bool | None`
+  contract, and a retype is major (P3). `work` sits beside it.
+- **Rewriting title markup.** Crossref passes JATS tags (`<i>`) through. The field is for a person to
+  compare against the paper they meant; cleaning it would be a second opinion about the title.
+- **The reporter's second candidate, DOI → PMID, in the same change.** It is a separate request, a
+  separate client method, and an advisory rather than a fill. Filed as [RM263](ROADMAP.md#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).
+
 ## RM259 — a position has no gene to ask the Atlas about, so the reverse span lookup ships
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-24 in the uncut 0.8 line** (enricher) · **Owner**

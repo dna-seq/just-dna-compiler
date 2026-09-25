@@ -470,7 +470,7 @@ really sleeping.
 | **gnomAD GraphQL** | `gnomad` (resolve, frequencies, live constraint) | **10 req / IP / 60 s** | `min_request_interval=6.0` (exactly that budget); GraphQL alias batches of **20** (25 worked live; 29 → HTTP 400) ≈ 200 variants/min | none |
 | **NCBI E-utilities** | `eutils` → literature + rsID currency | **3 req/s** without a key; **10 req/s** with `NCBI_API_KEY` | `1/3 s` or `1/10 s` from whether the key is present; esummary batches of **200** | `tool=just-dna-enricher`; `email` from `JUST_DNA_CONTACT_EMAIL` when set; key optional |
 | **PharmVar** | `pharmvar` / `pgx` | **2 req/s** (OpenAPI “Limitations”) | `PHARMVAR_MIN_INTERVAL=0.5` | `Api-Key` header from `PHARMVAR_API_KEY` (personal; never written to a module) |
-| **Crossref** | `literature.CrossrefClient` (DOI existence) | **polite pool**: 10 req/s single-DOI (5 public); concurrency 3 polite / 1 public (Crossref docs, Dec 2025 revision) | `min_request_interval=0.1` (10/s — polite single-DOI ceiling) | User-Agent `just-dna-enricher (mailto:…)` when `JUST_DNA_CONTACT_EMAIL` is set → polite pool; omitted rather than invented |
+| **Crossref** | `literature.CrossrefClient` (DOI existence, and the work it names since RM262) | **polite pool**: 10 req/s single-DOI (5 public); concurrency 3 polite / 1 public (Crossref docs, Dec 2025 revision) | `min_request_interval=0.1` (10/s — polite single-DOI ceiling) | User-Agent `just-dna-enricher (mailto:…)` when `JUST_DNA_CONTACT_EMAIL` is set → polite pool; omitted rather than invented |
 | **Europe PMC** | `literature.EuropePmcClient` (OA fulltext + abstracts + per-article licence) | no durable official figure on the developer pages (community reports vary) | `min_request_interval=0.5` (2/s), batches of **25** on `search` | none |
 | **PMC ID converter** | `literature.PmcIdConverterClient` (PMCID → PMID, reporting only) | no published figure; the service documents a **200-id** batch ceiling | `min_request_interval=0.5` (2/s), batches of **200** | `tool=just-dna-enricher`; `email` from `JUST_DNA_CONTACT_EMAIL` when set |
 | **OLS4 + HGNC** | `identifiers.OntologyClient` | neither publishes a documented limit | `min_request_interval=0.2` (courtesy — GET-per-id, unbatched) | `Accept: application/json` |
@@ -3347,6 +3347,11 @@ diagnosis and none of them repair:
   `21551363 (PMC3110567)` carries a real PubMed id, so nothing refuses it, while the two halves name
   different articles. It costs no request — the PMC id is already in the `esummary` `articleids` block
   — and it is the `_doi_conflicts` shape, including `strict` refusing.
+- **`lookup_citation(doi=…)` / `hint citation --doi`** names the work as well as confirming it exists
+  (RM262, S113): `CrossrefClient.work` parses the `/works` record the existence request already
+  returned into the same four fields the PMID branch fills from `esummary`, with the matching
+  `DOI … names: '…'` finding. With a PMID given too, PubMed's record fills the fields and the DOI's
+  title is still reported. A 200 that is not a Crossref record withholds. DOI → PMID is RM263.
 - **`lookup_citation(pmcid=…)` / `hint citation --pmcid`** resolves the other direction through NCBI's
   converter and then asks PubMed *which paper that is*, because a converter that hands back a number and
   stops is the same existence-is-not-identity failure one registry over. The resolved id comes back as

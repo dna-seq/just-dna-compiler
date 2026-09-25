@@ -36,7 +36,7 @@ from just_dna_enricher.gnomad import GnomadClient, GnomadError, GnomadSettings
 from just_dna_enricher.grch37 import Grch37Client
 from just_dna_enricher.gwas import GwasCatalogClient, GwasError
 from just_dna_enricher.identifiers import IdentifierUnavailable, OntologyClient
-from just_dna_enricher.literature import EuropePmcClient, LiteratureUnavailable, PmcBiocClient
+from just_dna_enricher.literature import CrossrefClient, EuropePmcClient, LiteratureUnavailable, PmcBiocClient
 from just_dna_enricher.litvar import LitvarClient, LitvarUnavailable
 from just_dna_enricher.net import PacingGate
 from just_dna_enricher.pgs import PgsCatalogClient, PgsCatalogUnavailable
@@ -303,6 +303,10 @@ def test_every_network_client_in_the_tier_is_covered() -> None:
         # `httpx.ConnectError` and `json.JSONDecodeError`. A justification that names one method
         # exempts every other method beside it. When adding a name here, say what the **class**
         # promises, or the next reader inherits a blind spot that reads as a decision.
+        #
+        # `CrossrefClient` promises a withhold, not an error: `exists` and `work` answer `None` (or a
+        # `CrossrefWork` with `exists=None`) on every failure leg. Pinned in `WITHHOLDING_CLIENTS`
+        # since RM262, which found the HTML leg answering `True` — `exists` read only the status.
         "literature.CrossrefClient",
         "literature.PmcIdConverterClient",
         # Raises nothing at all: every httpx path returns `None` or `[]`, which is the withhold. A
@@ -439,6 +443,12 @@ def _pmc_bioc(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[]
     return lambda: client.fulltext("PMC6463297")
 
 
+def _crossref(handler: Callable[[httpx.Request], httpx.Response]) -> Callable[[], object]:
+    client = CrossrefClient(gate=_instant_gate())
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    return lambda: client.exists("10.1038/ng826")
+
+
 #: `(label, builder, the value that means could-not-ask)`: the clients whose contract is a withhold
 #: rather than an exception. They are exempt from `CLIENTS` for the right reason, and that exemption
 #: is what let the non-JSON leg leak from both — a raw `JSONDecodeError` out of a method whose whole
@@ -448,6 +458,7 @@ WITHHOLDING_CLIENTS = [
     ("grch37", _grch37, None),
     ("ensembl", _ensembl, (None, None)),
     ("pmc_bioc", _pmc_bioc, None),
+    ("crossref", _crossref, None),
 ]
 
 

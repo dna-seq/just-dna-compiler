@@ -34,6 +34,24 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+## 2026-09-25 — RM262: a DOI lookup names the paper it found
+
+`just-dna-enricher` only, inside the uncut **0.8** line. Additive: a new class and method beside
+`CrossrefClient.exists`, whose signature is unchanged. A minor.
+
+- `lookup_citation(doi=…)` / `hint citation --doi` now fills `title`, `journal`, `year` and
+  `first_author` from the Crossref record it was already fetching, and adds an `info` finding
+  `DOI <doi> names: '<title>' (…) — existence is not identity, …`. A record with no title says so.
+  With a PMID given too, PubMed's record fills the fields and the DOI's title is reported beside it
+  (S113).
+- `CrossrefClient.work(doi)` → `CrossrefWork`; `literature.crossref_bibliographic` parses a `/works`
+  message the way `bibliographic` parses an `esummary` record.
+- **Behaviour change on a failure leg:** a 200 from Crossref whose body is not a Crossref record now
+  withholds (`exists=None`) where it used to answer `True`. A maintenance page is not evidence that a
+  DOI exists.
+
+DOI → PMID is filed as RM263.
+
 ## 2026-09-21 — just-dna-lite adopted the 0.7 line (format 0.7.0 / compiler 0.7.1 / enricher 0.7.1)
 
 **Consumer-side record, no change to any package here.** Written by the just-dna-lite side under the

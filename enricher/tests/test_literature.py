@@ -25,6 +25,7 @@ from just_dna_enricher.literature import (
     EuropePmcClient,
     LiteratureEnrichmentError,
     PmcBiocClient,
+    crossref_bibliographic,
     enrich_literature,
     extract_bioc_text,
     extract_text,
@@ -640,6 +641,54 @@ def test_crossref_confirms_a_real_doi_and_rejects_a_fabricated_one() -> None:
     assert client.exists("10.1101/2024.06.17.599351") is True  # bioRxiv preprint, no PMID
     assert client.exists("10.9999/definitely-not-a-real-doi") is False
     assert _CROSSREF["10.1101/2024.06.17.599351"]["message"]["type"] == "posted-content"
+
+
+def test_a_doi_names_the_work_it_found_off_the_same_request() -> None:
+    """RM262, S113: the body `exists` used to discard says which paper the DOI is.
+
+    Expected values are read off the recording, never typed: `10.1038/ng826` is Enattah 2002, the DOI
+    the consumer ran, recorded 2026-09-25 and trimmed to the identity fields. The preprint keeps its
+    title and has no journal — an empty `container-title` is `None`, never `""`.
+    """
+    client = _crossref()
+    message = _CROSSREF["10.1038/ng826"]["message"]
+    work = client.work("10.1038/ng826")
+    first = next(a for a in message["author"] if a["sequence"] == "first")
+    assert work.exists is True
+    assert work.title == message["title"][0]
+    assert work.journal == message["container-title"][0]
+    assert work.year == str(message["issued"]["date-parts"][0][0])
+    assert work.first_author is not None and work.first_author.startswith(first["family"] + " ")
+
+    preprint = client.work("10.1101/2024.06.17.599351")
+    assert preprint.exists is True
+    assert preprint.title == _CROSSREF["10.1101/2024.06.17.599351"]["message"]["title"][0]
+    assert preprint.journal is None
+
+    absent = client.work("10.9999/definitely-not-a-real-doi")
+    assert (absent.exists, absent.title, absent.journal, absent.year, absent.first_author) == (
+        False,
+        None,
+        None,
+        None,
+        None,
+    )
+
+
+def test_the_first_author_is_the_one_crossref_marks_first_not_index_zero() -> None:
+    """`sequence: "first"` decides, and an organisational author has only a `name`. Both shapes are
+    constructed here because no recording carries them; the recorded one above has the first author at
+    index 0, which is exactly the case that cannot tell the two rules apart."""
+    reordered = {
+        "author": [
+            {"given": "Timo", "family": "Sahi", "sequence": "additional"},
+            {"given": "Nabil Sabri", "family": "Enattah", "sequence": "first"},
+        ]
+    }
+    assert crossref_bibliographic(reordered)["first_author"] == "Enattah NS"
+    consortium = {"author": [{"name": "The 1000 Genomes Project Consortium", "sequence": "first"}]}
+    assert crossref_bibliographic(consortium)["first_author"] == "The 1000 Genomes Project Consortium"
+    assert crossref_bibliographic({}) == {"title": None, "journal": None, "year": None, "first_author": None}
 
 
 def test_a_doi_crossref_cannot_resolve_is_reported(tmp_path: Path) -> None:

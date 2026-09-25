@@ -418,6 +418,61 @@ class EuropePmcClient:
         return extract_text(response.text)
 
 
+@dataclass(frozen=True)
+class CrossrefWork:
+    """What Crossref said about one DOI: whether it exists, and *which work* it names (RM262, S113).
+
+    `exists` is the tri-state `CrossrefClient.exists` has always answered. The four bibliographic
+    fields are the same four `bibliographic` pulls out of a PubMed record, so a DOI-only citation can
+    be checked for identity and not merely existence. Each is `None` when the record does not carry
+    it, never `""`, and all four are `None` whenever `exists` is not `True`.
+    """
+
+    exists: bool | None
+    title: str | None = None
+    journal: str | None = None
+    year: str | None = None
+    first_author: str | None = None
+
+
+def crossref_bibliographic(message: dict) -> dict[str, str | None]:
+    """The four identity fields out of a Crossref `/works/{doi}` `message`, shaped like `bibliographic`.
+
+    The shapes differ from PubMed's and each difference is a place to go wrong. `title` and
+    `container-title` are **lists**, empty for much `posted-content`. The year is the leading int of
+    `issued.date-parts[0]`, Crossref's earliest-publication date. The first author is the entry marked
+    `sequence: "first"`, which need not be at index 0, and is rendered `Family GI` so it reads the same
+    as PubMed's `sortfirstauthor`; an organisational author has only a `name`. Title markup (Crossref
+    passes JATS tags such as `<i>` through) is kept verbatim: the field is for a person to compare
+    against the paper they meant, and rewriting it would be a second opinion about the title.
+    """
+    out: dict[str, str | None] = {"title": None, "journal": None, "year": None, "first_author": None}
+    for key, target in (("title", "title"), ("container-title", "journal")):
+        values = message.get(key)
+        if isinstance(values, list) and values and isinstance(values[0], str) and values[0].strip():
+            out[target] = " ".join(values[0].split())
+    parts = (message.get("issued") or {}).get("date-parts")
+    if (
+        isinstance(parts, list)
+        and parts
+        and isinstance(parts[0], list)
+        and parts[0]
+        and isinstance(parts[0][0], int)
+    ):
+        out["year"] = str(parts[0][0])
+    authors = [a for a in message.get("author") or [] if isinstance(a, dict)]
+    first = next((a for a in authors if a.get("sequence") == "first"), authors[0] if authors else None)
+    if first is not None:
+        family = first.get("family")
+        if isinstance(family, str) and family.strip():
+            given = first.get("given") if isinstance(first.get("given"), str) else ""
+            initials = "".join(part[0] for part in given.replace("-", " ").split() if part[:1].isalpha())
+            out["first_author"] = f"{family.strip()} {initials}".strip()
+        elif isinstance(first.get("name"), str) and first["name"].strip():
+            out["first_author"] = first["name"].strip()
+    return out
+
+
 @dataclass
 class CrossrefClient:
     """DOI existence, for the citations PubMed does not index.
@@ -499,25 +554,42 @@ class CrossrefClient:
         return self._http().get(f"{self.base_url.rstrip('/')}/works/{doi}")
 
     def exists(self, doi: str) -> bool | None:
-        """`True`/`False`, or `None` when Crossref could not be asked.
+        """`True`/`False`, or `None` when Crossref could not be asked. `work(doi).exists`."""
+        return self.work(doi).exists
 
-        `None` rather than `False` on a transport failure or an unexpected status: "we could not
+    def work(self, doi: str) -> CrossrefWork:
+        """Existence **and** identity, from the one request `exists` always made (RM262, S113).
+
+        `exists` used to read the status and throw the body away, so a DOI got an existence answer and
+        never the title that says which paper it is — the answer `existence is not identity` exists to
+        refuse. The body was already in hand; parsing it costs no request.
+
+        `exists=None` rather than `False` on a transport failure or an unexpected status: "we could not
         check" and "this DOI does not exist" are different claims, and only the second is a finding
         against the module. The translation stays here and the retrying stays in `_request` above —
         `reraise=True` means the last failure arrives back at this `except` after the attempts are
-        spent, so the three-valued contract is unchanged and only the number of tries moved.
+        spent. **A 200 whose body is not a Crossref record withholds too** (`@client-exception-contract`,
+        the fourth leg): a maintenance page or a CDN interstitial is not Crossref saying the DOI exists,
+        and `exists` used to answer `True` for one because it read only the status.
         """
         try:
             response = self._request(doi)
         except httpx.HTTPError as exc:
             logger.warning("Crossref lookup failed for %s (%s); not checked", doi, exc)
-            return None
+            return CrossrefWork(exists=None)
         if response.status_code == 404:
-            return False
+            return CrossrefWork(exists=False)
         if response.status_code != 200:
             logger.warning("Crossref answered HTTP %s for %s; not checked", response.status_code, doi)
-            return None
-        return True
+            return CrossrefWork(exists=None)
+        try:
+            message = response.json().get("message")
+        except (ValueError, AttributeError):
+            message = None
+        if not isinstance(message, dict):
+            logger.warning("Crossref answered 200 for %s with no readable record; not checked", doi)
+            return CrossrefWork(exists=None)
+        return CrossrefWork(exists=True, **crossref_bibliographic(message))
 
 
 @dataclass(frozen=True)
