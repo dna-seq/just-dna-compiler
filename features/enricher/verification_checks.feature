@@ -325,7 +325,7 @@ Feature: The verification checks and their three outcomes
     # question too: letting one registry's outage write a skip against another's check is exactly what
     # `@one-registrys-outage-may-not-speak-for-another` forbids.
 
-  # source: enricher/src/just_dna_enricher/cli.py
+  # source: enricher/src/just_dna_enricher/cli/authoring_commands.py
   # anchor: _mint_record
   @check:vrs_allele_id
   Scenario: the check whose every record is a skip, deliberately

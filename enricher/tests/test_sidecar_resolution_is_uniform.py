@@ -83,7 +83,8 @@ def test_no_pass_joins_a_sidecar_filename_onto_spec_dir_by_hand() -> None:
 
     src = Path(__file__).resolve().parents[1] / "src" / "just_dna_enricher"
     offenders: list[str] = []
-    for module in sorted(src.glob("*.py")):
+    # Recursive since RM260 split `cli.py` into a package; `generated/` is protoc output, not ours.
+    for module in sorted(p for p in src.rglob("*.py") if "generated" not in p.relative_to(src).parts):
         if module.name in read_only_fallbacks:
             continue
         source = ast.parse(module.read_text(encoding="utf-8"))

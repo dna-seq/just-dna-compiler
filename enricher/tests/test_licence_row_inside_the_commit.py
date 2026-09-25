@@ -113,7 +113,8 @@ def _effective_calls(func: ast.FunctionDef) -> list[ast.Call]:
 
 def _all_functions() -> dict[tuple[str, str], ast.FunctionDef]:
     found: dict[tuple[str, str], ast.FunctionDef] = {}
-    for path in sorted(_SRC.glob("*.py")):
+    # Recursive since RM260 split `cli.py` into a package; `generated/` is protoc output, not ours.
+    for path in sorted(p for p in _SRC.rglob("*.py") if "generated" not in p.relative_to(_SRC).parts):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef):

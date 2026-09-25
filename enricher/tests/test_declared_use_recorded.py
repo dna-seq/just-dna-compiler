@@ -141,7 +141,8 @@ def _gates() -> dict[str, set[str]]:
     src = Path(__file__).resolve().parents[1] / "src" / "just_dna_enricher"
     through: set[str] = set()
     direct: set[str] = set()
-    for path in sorted(src.glob("*.py")):
+    # Recursive since RM260 split `cli.py` into a package; `generated/` is protoc output, not ours.
+    for path in sorted(p for p in src.rglob("*.py") if "generated" not in p.relative_to(src).parts):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         functions = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
         for node in functions:
@@ -153,7 +154,7 @@ def _gates() -> dict[str, set[str]]:
             ]
             if "check_declared_use" not in own:
                 continue
-            label = f"{path.stem}.{node.name}"
+            label = f"{'.'.join(path.relative_to(src).with_suffix('').parts)}.{node.name}"
             if "effective_declared_use" in own and own.index("effective_declared_use") < own.index(
                 "check_declared_use"
             ):
@@ -182,9 +183,9 @@ def test_every_gate_with_a_module_reads_its_recorded_declaration() -> None:
     assert gates["direct"] == {
         "caches._gate",
         "caches.prepare_lane",
-        "cli.cache_pull_",
-        "cli.clinpgx_build_",
-        "cli.clinpgx_build_labels_",
-        "cli.cpic_build_",
-        "cli.pharmvar_build_",
+        "cli.cache_commands.cache_pull_",
+        "cli.pgx_commands.clinpgx_build_",
+        "cli.pgx_commands.clinpgx_build_labels_",
+        "cli.pgx_commands.cpic_build_",
+        "cli.pgx_commands.pharmvar_build_",
     }, gates

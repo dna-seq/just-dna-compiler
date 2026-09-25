@@ -614,7 +614,8 @@ def test_the_cli_prints_the_gap_and_says_when_it_could_not_ask(tmp_path, monkeyp
         return real(spec_dir, **kwargs)
 
     monkeypatch.setattr(enrich_module, "enrich", moved)
-    monkeypatch.setattr("just_dna_enricher.cli.enrich", moved)
+    # The name `enrich_` looks up lives in the submodule that defines it (RM260), not the re-export shell.
+    monkeypatch.setattr("just_dna_enricher.cli.pass_commands.enrich", moved)
     result = CliRunner().invoke(app, ["enrich", str(spec), "--no-verify-rsids"])
     assert result.exit_code == 0, result.output
     assert (

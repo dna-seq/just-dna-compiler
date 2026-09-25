@@ -3402,11 +3402,12 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   **Derive the default, then guard the derivation.** `locations.repro_out(name)` is the one place
   `data/repro/` is spelled; `CACHES_DIRNAME` sits beside it for `cache rebuild`, a different concept
   named in the same file so that neither is inline. The guard is `test_build_out_defaults.py`, an AST
-  walk over `cli.py` that finds every `typer.Option` bound to `--out` and refuses a literal default —
-  walked, never listed (`@registry-completeness`), because a floor of nine would pass while the tenth
-  builder wrote wherever it liked. Cross-check the walk against the file: sixteen `"--out"` strings,
-  sixteen options found. The one required `--out` left names an *input* (`clinvar citations` adds a
-  sidecar to a snapshot that exists) and is enumerated as an equality so the exemption cannot grow.
+  walk over every file of the `cli` package (one `cli.py` until RM260) that finds every `typer.Option`
+  bound to `--out` and refuses a literal default — walked, never listed (`@registry-completeness`),
+  because a floor of nine would pass while the tenth builder wrote wherever it liked. Cross-check the
+  walk against the file: seventeen `"--out"` strings, seventeen options found. The one required `--out`
+  left names an *input* (`clinvar citations` adds a sidecar to a snapshot that exists) and is
+  enumerated as an equality so the exemption cannot grow.
 
   **The refused repair is the one that was already tried.** A `.gitignore` line per lane is what
   `civic reproduce` first got, and it is a prose rule at a different address: every new builder owes a

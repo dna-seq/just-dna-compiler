@@ -261,7 +261,12 @@ def test_every_pass_taking_an_injected_client_is_covered() -> None:
 
     clientish = {"client", "eutils", "europepmc", "crossref", "resolver", "gnomad_client"}
     discovered: set[str] = set()
-    for module_info in pkgutil.iter_modules(list(just_dna_enricher.__path__)):
+    # `cli` is a package since RM260: its submodules hold the definitions its `__init__` only re-exports,
+    # and `obj.__module__ == module.__name__` would skip every one of them there.
+    for module_info in [
+        *pkgutil.iter_modules(list(just_dna_enricher.__path__)),
+        *pkgutil.iter_modules(list(importlib.import_module("just_dna_enricher.cli").__path__), prefix="cli."),
+    ]:
         module = importlib.import_module(f"just_dna_enricher.{module_info.name}")
         for name, obj in vars(module).items():
             if not (inspect.isfunction(obj) and obj.__module__ == module.__name__):

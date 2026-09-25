@@ -47,7 +47,8 @@ def _download_functions() -> dict[str, ast.FunctionDef]:
     install too — an import-based walk quietly skips exactly the builder modules this guards.
     """
     found: dict[str, ast.FunctionDef] = {}
-    for path in sorted(_SRC.glob("*.py")):
+    # Recursive since RM260 split `cli.py` into a package; `generated/` is protoc output, not ours.
+    for path in sorted(p for p in _SRC.rglob("*.py") if "generated" not in p.relative_to(_SRC).parts):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) and node.name.startswith("download_"):
@@ -110,7 +111,8 @@ def test_the_only_raw_stream_in_the_package_is_the_shared_one() -> None:
     `fetch_dump` or `_pull` would satisfy it by not matching. This one cannot be evaded by naming.
     """
     streaming = set()
-    for path in sorted(_SRC.glob("*.py")):
+    # Recursive since RM260 split `cli.py` into a package; `generated/` is protoc output, not ours.
+    for path in sorted(p for p in _SRC.rglob("*.py") if "generated" not in p.relative_to(_SRC).parts):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if (

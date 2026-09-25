@@ -60,8 +60,14 @@ def _mapped_modules() -> list[str]:
 
 
 def _package_modules() -> set[str]:
-    """Top-level modules only. Subpackages are excluded by the glob, so adding one is a decision."""
-    return {p.stem for p in _PACKAGE.glob("*.py")} - {"__init__"}
+    """Top-level modules only. Subpackages are excluded by the glob, so adding one is a decision.
+
+    `cli` is the one taken (RM260 turned `cli.py` into a package with the same import path, so its map
+    row still describes one module); `generated/` is protoc output and stays out.
+    """
+    return ({p.stem for p in _PACKAGE.glob("*.py")} - {"__init__"}) | (
+        {p.parent.name for p in _PACKAGE.glob("*/__init__.py")} - {"generated"}
+    )
 
 
 def _attested_in_the_check_table() -> set[str]:
@@ -195,7 +201,12 @@ def _error_classes() -> dict[str, type]:
     import pkgutil
 
     out: dict[str, type] = {}
-    for info in pkgutil.iter_modules(list(just_dna_enricher.__path__)):
+    # `cli` is a package since RM260: its submodules hold the definitions its `__init__` only re-exports,
+    # and `obj.__module__ == module.__name__` would skip every one of them there.
+    for info in [
+        *pkgutil.iter_modules(list(just_dna_enricher.__path__)),
+        *pkgutil.iter_modules(list(importlib.import_module("just_dna_enricher.cli").__path__), prefix="cli."),
+    ]:
         module = importlib.import_module(f"just_dna_enricher.{info.name}")
         for name, obj in vars(module).items():
             if inspect.isclass(obj) and issubclass(obj, Exception) and obj.__module__ == module.__name__:

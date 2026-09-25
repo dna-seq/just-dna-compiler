@@ -80,7 +80,12 @@ def _caught_types(func: ast.FunctionDef) -> list[type]:
 def _retried_functions() -> list[tuple[str, ast.FunctionDef, list[type]]]:
     """Every `@retry`-decorated function in the package, with the httpx types it retries on."""
     out: list[tuple[str, ast.FunctionDef, list[type]]] = []
-    for info in pkgutil.iter_modules(list(just_dna_enricher.__path__)):
+    # `cli` is a package since RM260: its submodules hold the definitions its `__init__` only re-exports,
+    # and `obj.__module__ == module.__name__` would skip every one of them there.
+    for info in [
+        *pkgutil.iter_modules(list(just_dna_enricher.__path__)),
+        *pkgutil.iter_modules(list(importlib.import_module("just_dna_enricher.cli").__path__), prefix="cli."),
+    ]:
         module = importlib.import_module(f"just_dna_enricher.{info.name}")
         source = Path(inspect.getfile(module)).read_text(encoding="utf-8")
         for node in ast.walk(ast.parse(source)):

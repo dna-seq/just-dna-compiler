@@ -32,7 +32,7 @@ def _commands(argv: list[str]) -> set[str]:
 
 
 def test_the_module_form_exposes_every_command_the_console_script_does() -> None:
-    """`if __name__ == "__main__": app()` must be the LAST thing in `cli.py`.
+    """`if __name__ == "__main__": app()` must be the LAST thing in `cli.py` (`cli/__main__.py` since RM260).
 
     It sat two-thirds of the way down, above the `hint` sub-app, `draft-clinpgx`, `draft-panel` and
     `clinvar citations` -- so `python -m just_dna_enricher.cli` called `app()` before those
@@ -60,7 +60,9 @@ def test_the_main_guard_is_the_last_statement_in_the_cli() -> None:
     The test above needs a console script and a subprocess; this one reads the module's AST and would
     fail the moment a command is appended below the guard, which is exactly how the defect arose.
     """
-    tree = ast.parse((_SRC / "cli.py").read_text(encoding="utf-8"))
+    # `python -m just_dna_enricher.cli` runs the package's `__main__.py` (RM260), so that is the file
+    # whose last statement the guard must be.
+    tree = ast.parse((_SRC / "cli" / "__main__.py").read_text(encoding="utf-8"))
     guards = [
         node
         for node in tree.body
@@ -71,7 +73,7 @@ def test_the_main_guard_is_the_last_statement_in_the_cli() -> None:
     ]
     assert len(guards) == 1, "expected exactly one `if __name__ == '__main__'` block"
     assert tree.body[-1] is guards[0], (
-        "`if __name__ == '__main__'` is not the last statement in cli.py, so every registration "
+        "`if __name__ == '__main__'` is not the last statement in cli/__main__.py, so every registration "
         "below it is invisible to `python -m just_dna_enricher.cli`"
     )
 
@@ -87,7 +89,8 @@ def test_no_module_defines_the_same_function_twice() -> None:
     silent by nature — nothing warns, and the wrong one may be the one being read.
     """
     duplicates: list[str] = []
-    for module in sorted(_SRC.glob("*.py")):
+    # Recursive since RM260 split `cli.py` into a package; `generated/` is protoc output, not ours.
+    for module in sorted(p for p in _SRC.rglob("*.py") if "generated" not in p.relative_to(_SRC).parts):
         tree = ast.parse(module.read_text(encoding="utf-8"))
         seen: set[str] = set()
         for node in tree.body:  # module level only; a method may legitimately share a name
@@ -121,7 +124,8 @@ def test_every_pass_that_owns_a_client_closes_it_on_the_error_path() -> None:
     thing that was wrong.
     """
     offenders: list[str] = []
-    for module in sorted(_SRC.glob("*.py")):
+    # Recursive since RM260 split `cli.py` into a package; `generated/` is protoc output, not ours.
+    for module in sorted(p for p in _SRC.rglob("*.py") if "generated" not in p.relative_to(_SRC).parts):
         tree = ast.parse(module.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef):
