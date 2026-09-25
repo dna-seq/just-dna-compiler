@@ -134,7 +134,7 @@ extend-immutable-calls = ["typer.Option", "typer.Argument", "just_dna_enricher.l
 #            reports `unchecked`). Blanket breadth is correct when the next link must run whatever
 #            the cause was.
 #   ISC004 — a long diagnostic written as one implicitly-concatenated f-string inside a single-element
-#            list is the idiom of every check in `compiler.py`. Consistent and intentional.
+#            list is the idiom of every check in the `compiler` package. Consistent and intentional.
 #   E501   — see `line-length` above.
 
 [tool.ruff.lint.per-file-ignores]

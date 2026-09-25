@@ -31,8 +31,12 @@ from pathlib import Path
 
 from just_dna_compiler.compiler import ARTIFACT_PARQUETS
 
-_SOURCE_PATH = Path(__file__).resolve().parents[1] / "src" / "just_dna_compiler" / "compiler.py"
-_SOURCE = _SOURCE_PATH.read_text(encoding="utf-8")
+#: The `compiler` package, which was one `compiler.py` until RM260 split it. The module docstring is the
+#: package's (`__init__.py`), and a function is looked up across every submodule, so the guard follows a
+#: symbol wherever the split put it rather than breaking the day it moves again.
+_PACKAGE = Path(__file__).resolve().parents[1] / "src" / "just_dna_compiler" / "compiler"
+_SOURCE = (_PACKAGE / "__init__.py").read_text(encoding="utf-8")
+_MODULES = [ast.parse(path.read_text(encoding="utf-8")) for path in sorted(_PACKAGE.glob("*.py"))]
 
 #: The same map `test_counted_prose.py` uses, for the same reason: a word outside it should fail
 #: loudly as an unreadable claim rather than be silently skipped.
@@ -43,10 +47,11 @@ _NUMBER_WORDS = (
 
 
 def _function(name: str) -> ast.FunctionDef:
-    for node in ast.walk(ast.parse(_SOURCE)):
-        if isinstance(node, ast.FunctionDef) and node.name == name:
-            return node
-    raise AssertionError(f"{name} is gone from compiler.py; this guard needs re-aiming")
+    for module in _MODULES:
+        for node in ast.walk(module):
+            if isinstance(node, ast.FunctionDef) and node.name == name:
+                return node
+    raise AssertionError(f"{name} is gone from the compiler package; this guard needs re-aiming")
 
 
 def test_the_module_docstring_names_the_registry_rather_than_a_number() -> None:

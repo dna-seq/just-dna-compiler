@@ -29,6 +29,17 @@ contract: this document is the maintained one. The method is
 
 Import from `just_dna_compiler.compiler`.
 
+That path was one `compiler.py` until RM260 made it a package. Its `__init__.py` is a re-export shell
+over every name the single file bound, so an import or attribute written against the old path still
+reaches the same object; the shell is removed at 1.0. The code lives in the submodules beside it:
+`tables` (the table registry and the row → polars/CSV helpers), `load` (reading a spec directory,
+`spec_tables`, `content_signature`), the check modules `variant_checks`, `positional`, `binning_checks`,
+`vcf_checks`, `allele_checks`, `vrs_checks`, `table_checks` and `fact_checks`, `validate`
+(`validate_spec`), `pipeline` (`compile_module`, `close_module`), `manifest` (manifest assembly, the
+sources/licence gate and the verification blocks), `parquets` (the SNP-core and frequency parquets) and
+`reverse` (`reverse_module`). A test that monkeypatches a private helper patches the submodule that
+looks the name up, not the package.
+
 - **`validate_spec(spec_dir, authority_keys=None, *, strict=False) -> ValidationResult`** — validate a
   spec dir without producing output; strips inject-only authority keys pre-validation (dropped keys →
   `.info`), runs `validate_bins` and the duplicate/identity checks, populates `.stats`. `strict` grades

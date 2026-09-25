@@ -59,7 +59,7 @@ Out:
 ## Reading a scenario
 
 ```gherkin
-  # source: compiler/src/just_dna_compiler/compiler.py:1208
+  # source: compiler/src/just_dna_compiler/compiler/variant_checks.py:199
   @code:contig_ploidy_mismatch @actionable
   Scenario: a two-allele genotype on a contig that is not diploid there
     Given a module whose variants.csv states genotype "A/G" at a chrom=MT locus

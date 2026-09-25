@@ -341,7 +341,9 @@ def test_the_positional_comment_no_longer_claims_repeats_have_no_coordinates() -
     `_POSITIONAL_TABLE_KINDS` is correct and stays (the columns are 0.7+ work), which is why that is
     asserted rather than the reverse.
     """
-    source = (_REPO / "compiler" / "src" / "just_dna_compiler" / "compiler.py").read_text(encoding="utf-8")
+    # The whole `compiler` package (one `compiler.py` until RM260): the claim may not survive in any module.
+    package = _REPO / "compiler" / "src" / "just_dna_compiler" / "compiler"
+    source = "\n".join(path.read_text(encoding="utf-8") for path in sorted(package.glob("*.py")))
     false_claim = "property of what they describe rather than a gap"
     assert source.count(false_claim) == 1
     preamble = source[max(0, source.index(false_claim) - 400) : source.index(false_claim)]

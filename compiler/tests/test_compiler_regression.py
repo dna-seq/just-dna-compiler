@@ -108,16 +108,17 @@ def _build_weights_dicts() -> list[list[str]]:
     other the polars schema it declares — and nothing compared them to each other or to the file that
     comes out. This pulls both so the assertions below can (RM218).
     """
-    source = (Path(__file__).resolve().parents[1] / "src" / "just_dna_compiler" / "compiler.py").read_text(
-        encoding="utf-8"
-    )
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.FunctionDef) and node.name == "_build_weights":
-            return [
-                [k.value for k in d.keys if isinstance(k, ast.Constant)]
-                for d in ast.walk(node)
-                if isinstance(d, ast.Dict) and len(d.keys) > 20
-            ]
+    # Every module of the `compiler` package (one `compiler.py` until RM260), so the lookup follows the
+    # function to whichever submodule holds it.
+    package = Path(__file__).resolve().parents[1] / "src" / "just_dna_compiler" / "compiler"
+    for path in sorted(package.glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.FunctionDef) and node.name == "_build_weights":
+                return [
+                    [k.value for k in d.keys if isinstance(k, ast.Constant)]
+                    for d in ast.walk(node)
+                    if isinstance(d, ast.Dict) and len(d.keys) > 20
+                ]
     raise AssertionError("_build_weights is gone; this guard needs re-aiming")
 
 

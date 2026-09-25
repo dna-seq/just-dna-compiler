@@ -1,6 +1,6 @@
 # The mode ladder, the parity rule, and what `strict` actually means.
 #
-# Source of truth: compiler/src/just_dna_compiler/compiler.py, and docs/COMPILER.md
+# Source of truth: compiler/src/just_dna_compiler/compiler/, and docs/COMPILER.md
 # § "What the compiler can and cannot validate".
 #
 # `strict` means *reproducible artifact*. It does NOT mean "be harsher": a finding about a module that
@@ -33,7 +33,7 @@ Feature: The mode ladder and validate/compile parity
   and `compile(strict=x)` reach the same verdict — not that the two modes of `validate` differ by a
   fixed amount.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/allele_checks.py
   # anchor: _check_allele_membership
   @ladder
   Scenario Outline: the four checks whose own sentence changes channel
@@ -49,7 +49,7 @@ Feature: The mode ladder and validate/compile parity
       | a study's effect_allele naming an allele its locus lacks     |
       | a p_value string disagreeing with the p_value_num beside it  |
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/allele_checks.py
   # anchor: _check_allele_membership
   Scenario: provenance shapes the message and cannot shape the severity
     Given a genotype naming an allele the locus does not have
@@ -62,7 +62,7 @@ Feature: The mode ladder and validate/compile parity
     # its own locus's alleles beside the ONE authored genotype, so exactly one can match. Escalating
     # unconditionally would break Principle 7's fixed point with a lint.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/pipeline.py
   # anchor: compile_module
   @strict_only @refusal
   Scenario: unresolved genomic positions refuse under strict and warn otherwise
@@ -73,7 +73,7 @@ Feature: The mode ladder and validate/compile parity
     Then the compile refuses with a message containing "strict compile:"
     And the message names the count of variants that have unresolved genomic positions
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/validate.py
   # anchor: _validate_spec
   @parity @strict_only
   Scenario: the pre-flight predicts that refusal rather than discovering it at compile
@@ -84,7 +84,7 @@ Feature: The mode ladder and validate/compile parity
     # `validate` followed by a failing `compile` is the sequence the rule exists to prevent, and this
     # file has closed that gap four times (`@validate-refuses-all`).
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/manifest.py
   # anchor: build_disagreement_error
   @strict_only @refusal
   Scenario: the one recorded judgement strict acts on
@@ -99,7 +99,7 @@ Feature: The mode ladder and validate/compile parity
     # (`@a-recorded-judgement-is-a-fact`). Every other verification finding is a disagreement with a
     # SOURCE, where the archive is the stale side often enough that escalating would be wrong.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/allele_checks.py
   # anchor: _check_symbolic_alleles
   @strict_only
   Scenario: strict reports an unusable symbolic allele where best_effort drops the row
@@ -112,7 +112,7 @@ Feature: The mode ladder and validate/compile parity
     # it refuses instead of dropping — which is also why the pre-flight asks for the drop set under
     # `strict` and gets an empty one.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/allele_checks.py
   # anchor: _emptied_table_errors
   @refusal @both_modes
   Scenario: a drop that would empty a table outright refuses in both modes
@@ -125,7 +125,7 @@ Feature: The mode ladder and validate/compile parity
     # application, so the pre-flight predicts it — the first cut refused inside the drop, which only
     # `compile_module` performs, and produced exactly the green-validate-then-failing-compile sequence.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/variant_checks.py
   # anchor: _check_build_coordinates
   @refusal @both_modes
   Scenario: a coordinate past the end of its contig is false, not unreproducible
@@ -140,7 +140,7 @@ Feature: The mode ladder and validate/compile parity
     # was. The remedy is an rs-number, which resolves into a coordinate the compiler can cross-examine,
     # where a converted position is its own only witness.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/variant_checks.py
   # anchor: _check_build_coordinates
   @refusal @both_modes
   Scenario: a contig only one build names
@@ -152,7 +152,7 @@ Feature: The mode ladder and validate/compile parity
     # A shared scaffold, a patch, an alt locus or an unversioned accession settles nothing and is left
     # alone.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/variant_checks.py
   # anchor: _build_remedy
   Scenario: where the build is declared is not the same file for both shapes
     Given a wrong-build coordinate on an authored table
@@ -163,7 +163,7 @@ Feature: The mode ladder and validate/compile parity
     Then the remedy names deleting the sidecar and re-running enrich instead
     And it says the build "is a per-row column here, not the module's declaration"
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/validate.py
   # anchor: validate_spec
   @parity
   Scenario: validate takes a mode for exactly one reason
@@ -174,7 +174,7 @@ Feature: The mode ladder and validate/compile parity
     # compile. Under `strict` the unresolved-position aggregate is genuinely ADDED rather than
     # promoted, because the per-row warning fires in both modes.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/pipeline.py
   # anchor: _frequency_checks
   @parity
   Scenario: the one check the pre-flight does not run, and why that is not a parity break
@@ -190,7 +190,7 @@ Feature: The mode ladder and validate/compile parity
 
   # source: compiler/src/just_dna_compiler/resolution.py
   # anchor: ResolutionOutcome
-  # text: compiler/src/just_dna_compiler/compiler.py
+  # text: compiler/src/just_dna_compiler/compiler/pipeline.py
   Scenario: resolution has three severity channels, not two
     Given a module whose resolution table produces one finding of each severity
     When it is compiled in best_effort mode

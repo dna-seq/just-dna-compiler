@@ -1,7 +1,7 @@
 # Resolution — the injected table, and what the compiler will and will not do with it.
 #
 # Source of truth: compiler/src/just_dna_compiler/resolution.py,
-# compiler/src/just_dna_compiler/compiler.py, and docs/COMPILER.md § Resolution + the mishap matrix.
+# compiler/src/just_dna_compiler/compiler/, and docs/COMPILER.md § Resolution + the mishap matrix.
 #
 # Principle 2: the compiler NEVER fetches. `resolution.csv` is injected, and with nothing injected the
 # compiler skips with a warning rather than downloading. Every finding here is about a table that was
@@ -11,7 +11,7 @@ Feature: Resolution from the injected table
   Three operations: fill a 1:1 key, expand a one-to-many key, and verify a pair the author wrote both
   halves of. A locus that cannot host the authored genotype is never expanded onto.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/validate.py
   # anchor: _validate_spec
   # text: compiler/src/just_dna_compiler/resolution_findings.py
   @code:resolution_not_injected @actionable @both_modes
@@ -24,7 +24,7 @@ Feature: Resolution from the injected table
     # This is Principle 2 as a behaviour rather than a promise. The enricher emits the same code from
     # its own resolver when it has no cache, so one code covers both tiers' version of "nobody asked".
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/pipeline.py
   # anchor: compile_module
   @code:resolution_disabled @actionable @both_modes
   Scenario: the flag named after Ensembl is the master switch
@@ -39,7 +39,7 @@ Feature: Resolution from the injected table
     # flag, which is the rule a warning quantifying over a table follows (`@warning-text-is-api`).
     # Renaming the parameter is a 1.0 conversation, because it is part of a published signature.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/positional.py
   # anchor: _apply_positional_resolution
   @code:resolution_skipped_cross_build @carried @both_modes
   Scenario: a non-GRCh38 module is not joined against a GRCh38-bound table
@@ -179,7 +179,7 @@ Feature: Resolution from the injected table
     # Three causes, and one window read cannot separate them (`@ref-mismatch-causes`). The enricher's
     # twin of this code adds the dbSNP merge reading, which is the one the compiler cannot check.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/positional.py
   # anchor: _apply_positional_resolution
   @code:positional_identity_contradicted @actionable @both_modes
   Scenario: a positional row whose own coordinate contradicts the table is left alone
@@ -192,7 +192,7 @@ Feature: Resolution from the injected table
     # coordinate neither side stated. Fill only what the author left empty; a cell the author wrote is
     # never overwritten, which is `enrich`'s inject-only doctrine and what makes the fill idempotent.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/positional.py
   # anchor: _check_positional_joinability
   @code:positional_rows_unjoinable @actionable @both_modes
   Scenario: the residue the positional fill could not place
@@ -205,7 +205,7 @@ Feature: Resolution from the injected table
     # rather than prose. The counts are also published structurally in `manifest.compilation`, because
     # anything a consumer can only learn from a warning string is an unversioned interface (RM44).
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/positional.py
   # anchor: _check_positional_joinability
   @tri_state
   Scenario Outline: why a positional row is still unplaced is a three-way answer
@@ -221,7 +221,7 @@ Feature: Resolution from the injected table
       | the table names it at several loci        | the compiler leaves them rather than picking  |
       | the fill never ran at all                | the coordinates may be right there, untried   |
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/positional.py
   # anchor: _check_positional_joinability
   Scenario: a half coordinate is counted apart, because it is the more deceptive shape
     Given a haplotypes.csv row carrying a start with no chrom
@@ -239,7 +239,7 @@ Feature: Resolution from the injected table
     # loci the author never named. One usable locus fills; several filter by hosting verdict, and if
     # that leaves one it fills, otherwise nothing does.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/positional.py
   # anchor: _check_positional_joinability
   @parity
   Scenario: the fill runs on both sides, and before the report

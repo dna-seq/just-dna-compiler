@@ -45,7 +45,7 @@ Feature: The three-valued house algebra
     # disagreement already witnessed. But on its own it produces nothing, because a question nobody
     # could put is not a finding.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/allele_checks.py
   # anchor: _allele_verdict
   Scenario: the union reading over loci is the same combinator
     Given a one-to-many rsID where one locus can host the genotype and another cannot

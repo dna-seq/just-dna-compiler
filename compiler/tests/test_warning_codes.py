@@ -137,7 +137,7 @@ def _channel_receivers() -> set[str]:
     found: set[str] = set()
     for path in _participating_modules():
         tree = ast.parse(path.read_text(encoding="utf-8"))
-        producers = _warning_producers(tree)
+        producers = _warning_producers(_producer_tree(path))
         for node in ast.walk(tree):
             if not (
                 isinstance(node, ast.Call)
@@ -247,9 +247,35 @@ def _participating_modules() -> list[Path]:
     found = []
     for root in _SOURCE_ROOTS:
         for path in sorted(root.rglob("*.py")):
-            if "CodedWarning" in path.read_text(encoding="utf-8"):
+            if any("CodedWarning" in sibling.read_text(encoding="utf-8") for sibling in _unit(path)):
                 found.append(path)
     return found
+
+
+def _unit(path: Path) -> list[Path]:
+    """The modules that count as ONE module for this guard: a subpackage's files together, else the file.
+
+    The `compiler` package was a single `compiler.py` until RM260 split it, and everything here that
+    reads "one module" — the producer closure above all — was sound only because the caller and the
+    helper it calls sat in one file. After a split, `warnings.extend(_closure_warning(...))` is in one
+    submodule and `def _closure_warning` in another, so a per-file closure finds the producer in
+    neither, and every `return [...]` site behind it stops being walked while the suite stays green.
+    Treating a subpackage as one unit keeps the closure exactly as wide as it was before the split.
+    A tier's root package is not a unit: its modules were always separate files.
+    """
+    if path.parent in _SOURCE_ROOTS or not (path.parent / "__init__.py").is_file():
+        return [path]
+    return sorted(path.parent.glob("*.py"))
+
+
+def _producer_tree(path: Path) -> ast.Module:
+    """`path`'s unit (`_unit`) as one parsed module, which is what `_warning_producers` reads."""
+    body = [
+        statement
+        for member in _unit(path)
+        for statement in ast.parse(member.read_text(encoding="utf-8")).body
+    ]
+    return ast.Module(body=body, type_ignores=[])
 
 
 def _warning_producers(tree: ast.Module) -> set[str]:
@@ -321,7 +347,7 @@ def _emission_sites() -> list[tuple[Path, int, str]]:
         # lives here and is unpacked in `compiler.py`, so it was in nobody's producer set and its
         # returns were never walked — which is the second half of why three uncoded early exits
         # shipped. The cross-file unpack is already recorded by `_channel_slots`, so seed from it too.
-        producers = _warning_producers(tree) | set(channel_slots)
+        producers = _warning_producers(_producer_tree(path)) | set(channel_slots)
         for function in [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]:
             for node in ast.walk(function):
                 if (
@@ -386,8 +412,10 @@ def test_the_walk_finds_the_emission_surface_it_claims_to() -> None:
 
     sites = _emission_sites()
     assert len(sites) > 50
-    by_module = {path: _warning_producers(ast.parse(path.read_text())) for path in _coded_calls()}
-    compiler_producers = next(v for k, v in by_module.items() if k.name == "compiler.py")
+    by_module = {path: _warning_producers(_producer_tree(path)) for path in _coded_calls()}
+    # The `compiler` package (one `compiler.py` until RM260) is one unit, so any of its modules answers.
+    package = _SOURCE_ROOTS[1] / "compiler"
+    compiler_producers = next(v for k, v in by_module.items() if k.parent == package)
     assert {"_closure_warning", "_findings_warning"} <= compiler_producers
     assert "_check_license_gate" not in compiler_producers, "a refusal is a different channel"
 

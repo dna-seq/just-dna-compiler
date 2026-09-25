@@ -2561,7 +2561,7 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   column (that one is `reverse`'s problem — see RM43).
 
 - `@three-touch-points` — **Adding an authored column is exactly three touch points, and the third is the one that gets
-  missed.** The pydantic model; the compile-side row dict + polars schema in `compiler.py`; and the
+  missed.** The pydantic model; the compile-side row dict + polars schema in `compiler/parquets.py`; and the
   **reverse-side `fieldnames` list + `_scalar_cell` mapping**. A column missing from the reverse list
   round-trips as silent data loss, which is why every new column gets a round-trip test. Table kinds
   under `_TABLE_KINDS` are exempt — `_build_table`/`_write_table_csv` are generic over `model_fields`,

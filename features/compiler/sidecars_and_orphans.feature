@@ -1,6 +1,6 @@
 # Derived sidecars: the facts the compiler consumes on trust, and the parts it can cross-examine.
 #
-# Source of truth: compiler/src/just_dna_compiler/compiler.py, docs/COMPILER.md § the trust boundary
+# Source of truth: compiler/src/just_dna_compiler/compiler/, docs/COMPILER.md § the trust boundary
 # and § "Validate-by-redundancy", docs/SCHEMAS.md's CSV families.
 #
 # `resolution.csv`, `frequencies.csv`, `gene_metrics.csv`, `literature.csv`, `gene_validity.csv` and
@@ -15,7 +15,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
   Two independently-authored numbers that must agree are checkable with no reference at all. The
   compiler cannot know whether an allele count is right; it can know when a set of counts is impossible.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _cross_check_frequencies
   @code:derived_row_orphan @actionable @both_modes
   Scenario Outline: a sidecar describing something the module does not carry
@@ -35,7 +35,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
       | clin_sig_concordance.csv  | variant_key, against the AUTHORED keys            |
       | gwas_effects.csv          | variant_key, against the AUTHORED keys            |
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _cross_check_frequencies
   Scenario: the position-level join is not a preference
     Given a frequencies.csv row about the same locus as a module row under a different key
@@ -44,7 +44,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # The sidecar is keyed per-allele while a module row may be position-only or multi-allelic, so
     # `variant_key` equality would false-alarm on rows that are in fact about the same locus.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _cross_check_gwas_effects
   Scenario: the variant_key join is a property of the source, and it uses the authored keys
     Given a gwas_effects.csv row and a one-to-many rsID in variants.csv
@@ -56,7 +56,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # to compare, and comparing it to the expanded keys would let a one-to-many rsID report its own
     # siblings.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _cross_check_clin_sig_concordance
   Scenario: an orphan in the concordance record means something narrower than elsewhere
     Given a clin_sig_concordance.csv row about a variant the module no longer carries
@@ -66,7 +66,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # This record is rewritten whole rather than merged, so a row cannot survive a re-run of the check
     # that produced it — an orphan can only mean `variants.csv` was narrowed since.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _cross_check_clin_sig_concordance
   Scenario: one function serves both halves of the concordance pair
     Given a concordance detail row and a concordance subject row that have both gone stale
@@ -75,7 +75,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # A detail row and a subject row go stale together and for the same reason, and two functions saying
     # so differently is how the two spellings of one finding get reported as two findings.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _check_frequency_arithmetic
   @code:faf95_exceeds_frequency @actionable @both_modes
   Scenario: a confidence bound above the point estimate it bounds
@@ -87,7 +87,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # tolerance argument to have, but these compare numbers a source computed on possibly-different
     # denominators, and failing a good module over a rounding difference would be worse than the miss.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _check_frequency_arithmetic
   @refusal @both_modes
   Scenario: an impossible set of integer counts refuses
@@ -98,7 +98,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # are not independent — they constrain each other — so a violation is detectable with no reference,
     # which is exactly the class of check a no-network tier can own.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _check_gene_metrics_arithmetic
   @code:oe_lof_outside_interval @actionable @both_modes
   Scenario: a point estimate outside its own confidence interval
@@ -106,7 +106,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     When the module is compiled
     Then a warning says the point estimate and the bounds "may have come from different releases or columns"
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _check_gene_metrics_arithmetic
   @code:oe_lof_disagrees_with_counts @actionable @both_modes
   Scenario: the same quantity stored three ways, disagreeing
@@ -117,7 +117,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # is what makes the relation safe to check. Warnings rather than errors throughout: every value here
     # is a float that has been through a CSV, and a constraint score is advisory to begin with.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/allele_checks.py
   # anchor: _check_p_value_num
   @code:p_value_encodings_disagree @actionable @ladder
   Scenario: two encodings of one p-value disagreeing
@@ -127,7 +127,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     When the same module is compiled in strict mode
     Then the compile refuses
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/allele_checks.py
   # anchor: _check_p_value_num
   @tri_state
   Scenario Outline: a free-form cell that denotes no definite value is skipped in silence
@@ -145,7 +145,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
       | "NS"               | skipped in silence              |
       | "5e-8 (adjusted)"  | skipped in silence              |
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/table_checks.py
   # anchor: _cross_validate_studies
   @code:study_variant_orphan @actionable @both_modes
   Scenario: a study citing a variant the module does not carry
@@ -153,7 +153,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     When the module is compiled
     Then a warning fires whose text contains "Studies reference variants not in variants.csv"
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/table_checks.py
   # anchor: _cross_validate_studies
   Scenario: a study matches on any shared identifier, not on frozen-key equality
     Given a coordinate-keyed variant and a study referencing it by rsID
@@ -162,7 +162,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # Keying strictly on `variant_key` would false-orphan a study that references a variant by a
     # different but co-identifying handle than the one the variant froze its key to.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/table_checks.py
   # anchor: _cross_validate_studies
   Scenario: a study row that names no variant at all is not an orphan
     Given a studies.csv row grounding a binning bound and naming no variant
@@ -171,7 +171,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # RM47: since 0.6 a citation row may ground the module or a bound rather than a locus, and a row
     # referencing nothing cannot reference something missing.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/table_checks.py
   # anchor: _cross_validate_studies
   @code:duplicate_study_citation @actionable @both_modes
   Scenario: one paper cited twice for one variant
@@ -181,7 +181,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # Two subject-less rows citing one paper are still a duplicate, deliberately: they are the same claim
     # written twice, and the whole point of the 0.6 relaxation is that one such row is enough.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/table_checks.py
   # anchor: _cross_validate_studies
   @tri_state
   Scenario Outline: a stated statistical_test splits the dedup key, and only when both are stated
@@ -199,7 +199,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
       | "logistic"       | absent           | reported   |
       | absent           | absent           | reported   |
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _cross_check_literature
   @code:citation_not_in_pubmed @actionable @both_modes
   Scenario: a citation PubMed has no record of
@@ -210,7 +210,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # Not an orphan but a defect in the module, and the compiler can surface it offline because the
     # enricher already recorded the verdict as a fact. `None` is unknown and withholds.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _cross_check_literature
   @code:literature_row_uncited @actionable @both_modes
   Scenario: a literature row nothing in the module cites
@@ -221,7 +221,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # The compiler discards an uncited literature row and `literature.csv` keeps it
     # (`@uncited-literature-dropped`).
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _cross_check_literature
   Scenario: every citation site counts, and the set of them is derived
     Given a module whose only citation is a `pmid` on a binning row
@@ -233,7 +233,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # worse than the honest gap the column replaced. `table_citations` walks `_CITING_TABLE_KINDS`
     # (`@roster-is-as-wide-as-the-tables-it-reads`).
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _cross_check_literature
   Scenario: PMIDs are matched through one normalizer both tiers share
     Given a literature.csv pmid cell written with a bracketed PMID wrapper
@@ -243,7 +243,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # (`@one-normalizer-two-spellings`). PMID and PMCID are one letter apart, and `PMC 3110566` once
     # parsed as a real unrelated PMID (`@pmid-vs-pmcid`).
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _check_quote_counter_is_current
   @code:quote_counter_stale @actionable @both_modes
   Scenario: a merge-not-clobber sidecar whose counter predates the quotes
@@ -257,7 +257,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # later run treated that row as authoritative. Four published modules are in that state — 3,668
     # authored quotes, every counter reading zero — and they compile green.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _check_gene_validity_currency
   @code:gene_validity_superseded @carried @both_modes
   Scenario: a curating body re-curating is not an error in your module
@@ -272,7 +272,7 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # published ["definitive", "refuted"] as a pair with nothing saying which was current. Both rows are
     # true records of what a curating body published, and deleting one would falsify the file.
 
-  # source: compiler/src/just_dna_compiler/compiler.py
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _check_gene_validity_currency
   @code:gene_validity_currency_undecidable @carried @both_modes
   Scenario: two curations and nothing to order them by
