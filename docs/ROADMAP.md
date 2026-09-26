@@ -523,6 +523,32 @@ matches no sample.
 Measured scale (the reporter's join, not re-run here): 5,788 insertion and 2,111 deletion alleles in
 the −1 class, of which roughly three in four of the sampled insertions are a different event.
 
+**Addendum 2026-09-27, [S121](CONSUMER_SUGGESTIONS_HISTORY.md#s121--the-enricher-resolves-a-coordinate-from-one-authority-and-validates-it-against-that-same-authority-so-a-wrong-anchor-is-confirmed-rather-than-caught-a-cross-authority-discordance-should-warnwithhold-not-resolve-silently):
+candidate 4 is the general rule, not an Ensembl special case.** Confirmed in code: the ClinVar link
+(`enrich.py`, the "ClinVar cache link" block) fills only what the Ensembl cache missed. The same run
+already holds the ClinVar snapshot for the `clin_sig` cross-check, yet it never compares a placement.
+The comment gives the reason for that order as *"so no compiled module's artifact.digest moves"*, which
+is the one reason the house rules say is never enough on its own. So every
+coordinate in `resolution.csv` has one witness, and `authority=ensembl` reads the same whether a
+second authority agreed, disagreed, or was never asked. The build is therefore:
+
+- **Compare every placement two loaded authorities give for one rsID, and withhold on disagreement.**
+  Compare by minted `vrs_id` where both sides can be minted, because it needs no tolerance. Probed for
+  RM270: a respelling mints one id (`rs72613567`, `rs77944059`) and S117's wrong event mints two
+  (`rs8176719`). Elsewhere, use `parsimony_reduce` plus a reference window. A disagreement is a finding
+  naming both placements, and the row is not written. The count of rsIDs that had only one witness is
+  published beside it (`@tautology-zero`).
+- **Record the witness on the row.** A new optional `resolution.csv` column saying which second
+  authority was asked and what it answered, tri-state. This is the minor-legal addition this item was
+  already sized for.
+- **S121's third ask is inverted, not adopted.** The VRS id is the arbiter, not the hazard: the three
+  rows S121 cites mint the *same* id as ClinVar's spelling, so their ids are correct. A −1-class row
+  is withheld whole, id included, by the first bullet.
+
+This is the same failure `@start-1based` recorded on 2026-08-06 ("validate-by-redundancy assumes
+independence"), and the RM31 residual (0.5) that went unfiled. The postmortem of the 2026-09-27 round
+covers the procedure side.
+
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 
 **Severity** high · **Status** open — **a minor, release undecided** · **Owner** enricher (resolution

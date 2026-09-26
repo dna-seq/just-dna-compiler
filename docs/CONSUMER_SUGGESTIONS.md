@@ -146,3 +146,87 @@ no schema change to the authored side. Not checked: whether `DiplotypeRow`/`Repe
 (where they exist per VCF_4_4_AUDIT.md §10) would want the same declaration.
 
 ---
+
+## S121 — the enricher resolves a coordinate from one authority and validates it against that same authority, so a wrong anchor is confirmed rather than caught; a cross-authority discordance should warn/withhold, not resolve silently
+
+**Status — accepted, and folded into
+[RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event)
+as a dated addendum rather than filed separately.** Your generalization is exactly RM267's candidate 4,
+so one item carries it and the remediation is not counted twice. Nothing has shipped.
+
+Confirmed in code. The ClinVar link in `enrich()` fills only rows the Ensembl cache missed. The same
+run loads the ClinVar snapshot for the `clin_sig` cross-check and never compares a placement against
+it. The comment on that ordering says it keeps `artifact.digest` from moving, and our own rules say a
+digest move is never enough reason on its own. So `authority=ensembl` does not distinguish "a second
+authority agreed" from "nobody asked", as you say. Asks 1 and 2 are adopted as RM267's build: compare
+every placement two loaded authorities give for one rsID, withhold with a finding naming both when
+they disagree, publish how many rsIDs had a single witness, and record the witness per row in a new
+optional `resolution.csv` column (minor).
+
+**Two corrections, both from probing rather than argument.**
+
+- **Ask 3 is inverted.** The VRS id is the arbiter, not the hazard. Your three rows' Ensembl-spelled
+  ids are *correct*: `4:87310241 A>AA` and ClinVar's `4:87310240 T>TA` both mint
+  `ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7`, because VRS justifies the indel before hashing. Only a
+  genuinely different event mints a different id (`rs8176719`, S117's case). So RM267 compares
+  *by* the id where it can mint one, and a disagreeing row is withheld whole, id included. Clearing the
+  VRS id in your re-anchor step throws away the one key that would have joined those rows (RM270).
+- **"0 of 57,742 matching ClinVar" is exact-string agreement.** By `parsimony_reduce`, 56,696 of those
+  are the same event respelled (your S117 table). The *systematic* error is the −1 class. The +1 class
+  is a spelling difference, which RM270 carries.
+
+**What to do now:** keep the ClinVar re-anchor for indel rsIDs where ClinVar disagrees with the
+Ensembl placement, but keep the VRS id rather than clearing it, and re-mint it from the adopted
+coordinate if you want the column to reflect your placement. It will come out the same for a
+respelling.
+
+**On your framing:** you are right that this is the architecture and not one bug, and it is the third
+time the repository has recorded the lesson without acting on it. A postmortem of the procedures that
+let it through is being written now.
+<!-- triaged: RM267 addendum · sha 134d32d2e127 -->
+
+**The enricher tier of S117/S120, and it is why S117 stayed silent.** S117 is the specific Ensembl-anchor
+defect; S120 is the missing contract declaration; this is the resolver behaviour that lets a
+single-authority coordinate ship unquestioned.
+
+**What I ran (just-dna-lite, 2026-09-27).** `enrich(..., use_clinvar=True)` on `superhuman`. Every row
+in the produced `resolution.csv` is `source=cache, authority=ensembl` — Ensembl is the **sole** coordinate
+authority. For the three confirmed misses the enricher wrote `4:87310241 A>AA`, `2:166204471 AAACA>A`,
+`3:46373453 ACAGT…CCAGA>A`, and **minted a `ga4gh:VA.…` VRS id from each**. The ClinVar snapshot the same
+run loaded holds `4:87310240 T>TA`, `2:166204470 GAAAC>G`, `3:46373452 TACAGT…CCAG>T` — the caller
+placement — for those exact rsIDs. The consumer told me the enricher checks the resolved ref/alt against
+the Ensembl parquet for consistency; that check **passes by construction**, because it validates a source
+against itself. The one authority that disagrees was in memory and was never asked.
+
+**The footgun (why this is a bug in itself, not just an instance of S117).** "One authority resolved it,
+and it is self-consistent" is treated as "it is right." But self-consistency across a single source cannot
+detect a source-level systematic error — and S117 established this one is systematic (Ensembl's dump
+anchors an insertion class one base off, 0 of 57,742 matching ClinVar). A resolver that picks one
+authority silently, validates it only against itself, and even content-addresses it (a VRS id on the
+wrong anchor is a *stable wrong identity*), has no place where a second authority's disagreement can
+surface. RM267 proposes the withhold-with-second-witness for this class; this item asks for the
+generalization, because the next silently-resolved coordinate will be from some other single source and
+the architecture will swallow it the same way.
+
+**What I did meanwhile.** Building a consumer-side re-anchor: for a port's indel rsIDs where the ClinVar
+snapshot disagrees with the Ensembl resolution, adopt ClinVar's `(start, ref, alt)` (the dbSNP/caller
+authority for the rsID), re-derive the genotype, and clear the Ensembl-anchored VRS id. This is the
+pipeline's job per RM267 — but it is us re-implementing, per consumer, the cross-authority check the
+resolver is the right place for.
+
+**Ask / candidate fixes.**
+1. **When more than one loaded authority resolves an rsID to a coordinate and they disagree, emit a
+   finding** (warn by default; a strict mode could make it fatal) naming both placements, rather than
+   taking a fixed-precedence winner silently. This is the general form of RM267's second-witness withhold.
+2. **Record the arbitrating authority per row** — `resolution.csv` already has `source`/`authority`, but
+   they name only the winner; a second column (or the finding) should say a second authority was checked
+   and agreed/disagreed, so "authority=ensembl" stops meaning "unchecked" and "checked, sole" alike.
+3. **Do not mint a content-addressed VRS id from a coordinate that failed or skipped a cross-authority
+   check** — a stable id on an unverified anchor is worse than no id, because it dedups and propagates.
+
+Legality: findings + an additive provenance column, network-tier only — a patch or minor on
+`just-dna-enricher`, no authored-schema change. Related but distinct: S117 (the data defect), S120 (the
+format-side convention declaration). The three want deciding together — one declares the convention, one
+detects a violation of it at resolve time, one records which authority was trusted.
+
+---
