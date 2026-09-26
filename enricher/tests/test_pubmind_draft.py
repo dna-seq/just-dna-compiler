@@ -27,6 +27,7 @@ from just_dna_enricher.pubmind_draft import (
     PUBMIND_WITHHELD_REASONS,
     PubMindDraftError,
     _group_by_key,
+    _shifts_left,
     _withhold_reason,
     draft_gene_panel_from_pubmind,
     gene_positions,
@@ -793,3 +794,32 @@ def test_one_reader_serves_both_passes_because_the_label_is_a_guard_key(tmp_path
     # Withheld, not raised: an unreadable release is an unknown, and `None` is never a label
     # something could match.
     assert pubmind_draft.pubmind_dataset_label(reference) is None
+
+
+# ── RM273: PubMind's indels are not left-normalized, and the row alone can show it ───────────────
+
+
+@pytest.mark.parametrize(
+    ("ref", "alt", "shifts"),
+    [
+        ("G", "GAG", True),  # the payload `AG` ends in the anchor `G`: `?>?GA` one base earlier
+        ("GAG", "G", True),  # the same event as a deletion
+        ("C", "CC", True),  # a one-base homopolymer insertion
+        ("G", "GA", False),  # undecided from the row: the base before `G` is not in it
+        ("G", "A", False),  # not an indel
+        ("GA", "TC", False),  # not single-base-anchored
+    ],
+)
+def test_a_left_shift_is_read_from_the_row_alone(ref: str, alt: str, shifts: bool) -> None:
+    assert _shifts_left(ref, alt) is shifts
+
+
+def test_the_indel_warning_states_the_measured_count_not_an_open_question(tmp_path: Path) -> None:
+    records = [
+        _pubmind_record(start=43093240, ref="G", alt="GAG", pvid="PVs", derivation="indel"),
+        _pubmind_record(start=43093250, ref="G", alt="GA", pvid="PVu", derivation="indel"),
+    ]
+    result = _draft(_spec(tmp_path), tmp_path, records)
+    (line,) = [w for w in result.warnings if "length-changing" in w]
+    assert "not left-normalized (1 of these spell an event that shifts left" in line
+    assert "not established" not in line

@@ -74,8 +74,9 @@ rows) and carries five useful columns: `PVID`, `pathogenicity_sum`, `paper_level
 **Its coordinates are VCF-style, not ANNOVAR-style, despite the packaging.** There is not a single
 `-` allele in the file; a one-base deletion appears as `1 1014264 1014265 CC C`, anchor base retained.
 That is our `chrom`/`start`/`ref`/`alts` convention exactly, `start` being the 1-based VCF position
-(`@start-1based`), so a join needs no coordinate translation. Whether the indels are left-normalized
-is **not** established and a pass must not assume it.
+(`@start-1based`), so a join needs no coordinate translation. The indels are **not** left-normalized
+(answered 2026-09-27, RM273): 5,158 of the 20,006 single-base-anchored indel rows have an anchor base
+equal to their payload's last base, so each spells an event that also sits one base further left.
 
 ### The channel is smaller than "1.3 million variants" implies
 
@@ -517,8 +518,9 @@ test pinning them fails on the next ANNOVAR release for no reason. Assert the re
 
 ## Open questions
 
-- Are the indel rows left-normalized? Unestablished, and it decides whether the 20,131 length-changing
-  rows can be joined at all.
+- ~~Are the indel rows left-normalized?~~ **Answered 2026-09-27 (RM273): no.** 5,158 of 20,006
+  single-base-anchored indel rows provably shift left, read from the row alone; the rest are undecided
+  without the reference. `pubmind_draft` states the count for the rows it withholds.
 - What are the ANNOVAR-distributed table's data terms? Only CHOP can answer, and the answer decides
   whether sections B and C are ever shippable.
 - Does the table get a stable release cadence? One snapshot dated 2026-08-24 is not a cadence, and the
