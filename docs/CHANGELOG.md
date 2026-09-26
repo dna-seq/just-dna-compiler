@@ -2838,12 +2838,14 @@ the uncut 0.7.0.
 
 ## 2026-08-28 — 0.7.0: the items PROPOSAL_0_7 decided
 
-**A MINOR, being built; the number is decided and not yet cut.** Every item in this batch is additive
+**Cut as 0.7.0** across all three packages and tagged `v0.7.0` at `2001215` on 2026-09-12; until the
+tag this entry read "a MINOR, being built; the number is decided" and said the cut was still to come,
+and six replies (S75–S80) cited it as the record of that state. The tag is the record. Every item in this batch is additive
 under Principles 3 and 8, and a new optional column is what sizes a release. The heading names `0.7.0`
-because the proposal decided it per item, so unlike the 2026-08-24 batch below — which is also an
-uncut minor and deliberately names no number — there is a version to write down here. The three
-`pyproject.toml` files were bumped to `0.7.0` on 2026-08-31 and **the tag is not cut**, so work still
-lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
+because the proposal decided it per item, so unlike the 2026-08-24 batch below — which was also an
+uncut minor when written and deliberately names no number — there is a version to write down here. The three
+`pyproject.toml` files were bumped to `0.7.0` on 2026-08-31 and work kept landing inside this number
+until the tag; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
 **The twelve entries dated 2026-08-31 are a batch of their own and are worth reading as one.** They are
@@ -4295,8 +4297,8 @@ arriving rather than drift.
 
 ## 2026-08-24 — twelve consumer items in one pass (S63–S74)
 
-**Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a MINOR, deliberately
-left uncut (2026-08-27).** The number is not decided, so nothing here names one: the replies'
+**Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a MINOR, cut inside 0.7.0
+(tagged `v0.7.0` on 2026-09-12); it was deliberately left uncut when written (2026-08-27).** The number is not decided, so nothing here names one: the replies'
 markers read `next-minor` and every doc dates a change by its `Sn` rather than by a version that
 does not exist yet. Answered is not installable, and here it is not even tagged.
 Most of what follows is patch-class legibility, but three changes are each independently additive
