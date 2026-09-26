@@ -2384,7 +2384,11 @@ Three properties, and the last two are the ones a design is likely to get wrong:
 - **Neither identity moves.** `content_signature` and `artifact.digest` are equal across a pair of
   modules differing only by an outrank record, so recording the disagreement costs nothing. Pinned.
 
-**What is deliberately unsettled: whether any check reads it.** The proposal it came from asks that a
+**Settled in 0.7: no check reads `outranks`, and the overlay is the record a check reads.** RM124's
+`overrides.csv` became the machine-readable response to a finding, and RM136 wired the enricher to
+read it per field. `outranks` stays carried and attested and folds into the overlay at 1.0 (RM135,
+§ The `outranks` succession). The paragraph below is the question as S52 left it, kept for the
+argument that decided it. The proposal it came from asks that a
 filled record downgrade a source-mismatch warning from WARNING to INFO — never to silence, never to a
 pass, since the record is an author's assertion and not evidence. That is a live question and this
 field does not answer it; what the field settles is that the record has somewhere to live. The

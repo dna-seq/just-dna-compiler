@@ -1338,7 +1338,8 @@ plus `overrides.csv` when `overrides.parquet` is present (0.7, RM124).
 
 - **Preserved (round-trip-critical, Principle 7):** every authored `VariantRow`/`StudyRow`/table value;
   genotype phase (the `phased` bit re-emits `A|G` vs sorted `A/G`); tri-state bools; `priority` verbatim;
-  poly-effect annotations keyed on `(variant_key, conclusion, negatives)`.
+  poly-effect annotations keyed on `(variant_key, genotype, conclusion, negatives)` (`genotype` since
+  0.6, RM80 / S29).
 - **The authored shape is restored, not guessed:** `authored_ident` says which identity columns the
   author wrote, and reverse emits exactly those — an rsid-only row comes back rsid-only, a position-only
   row comes back position-only, a pair comes back as a pair. An expanded one-to-many rsid collapses back
