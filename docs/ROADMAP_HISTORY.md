@@ -205,11 +205,12 @@ anchor and read no base.
 - `_loci_from_rest` anchors any mapping whose allele string holds a `-`, prefixing **every** allele
   with the base at `start - 1` through `anchor_indel`, and returns how many mappings it withheld.
   `rs8176719` now resolves to `9:133257521 T>TC`, the ClinVar/dbSNP spelling. Checked live.
-- `EnsemblResolver.read_base` is injected; unset, it builds `sequences.grch38_base_reader` over a lazy
-  `SequenceProxy`. A contig outside the refget table (a patch contig) reads as unreadable.
+- The base reader is the private `EnsemblResolver._read_base` (set like `_client` in a test); unset,
+  it reads through a lazy `SequenceProxy`. A contig outside the refget table (a patch contig) reads as
+  unreadable.
 - **A fourth outcome for `resolve_rsid`: `(None, "ensembl-rest")`**, Ensembl answered and every locus
-  was withheld. `enrich` writes no row for it, the same as an unreachable rsID, but names it in the
-  new `EnrichmentResult.unanchored_rsids` with its own warning, because the request did not fail.
+  was withheld. `enrich` writes no row for it, the same as an unreachable rsID, but names it in its
+  own warning, because the request did not fail.
   `lookup` gives it its own finding. An rsID where some mappings anchor keeps the anchored ones.
 - `_loci_from_graphql` withholds a one-sided node as `[]`, which already hands the rsID to REST. The
   beta endpoint now 301s and answers no bare rsID, so its convention stays unprobed; it is withheld
@@ -219,6 +220,14 @@ anchor and read no base.
 sidecar is merged, never clobbered: delete the file or re-run with `--rederive`. Tests:
 `enricher/tests/test_ensembl_indel_anchor.py` and
 `test_an_unanchorable_ensembl_answer_writes_no_row_and_is_named_apart`.
+
+**Scope correction, same day.** The first commit (`61c6984`) added `EnrichmentResult.unanchored_rsids`,
+an `EnsemblResolver.read_base` constructor field and a public `sequences.grch38_base_reader`: a new
+field, parameter and public function, each minor-class under the triage runbook's release table, and
+[RELEASE_CYCLE](RELEASE_CYCLE.md) keeps `main` patch-only. Fixed forward: the reader is private, the
+field is gone, and the warning carries the naming. The structured list is
+[RM272](ROADMAP.md#rm272--an-answered-but-unplaceable-rsid-has-no-structured-name-in-enrichmentresult),
+for `0.8`.
 
 ## RM264 — the 0.7.x manifest read an abstract-only miss as a checked quote, and the patch line re-describes it
 

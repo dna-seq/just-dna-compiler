@@ -102,7 +102,8 @@ def _rest_only(payload: dict) -> httpx.MockTransport:
 
 
 def test_resolve_rsid_answers_the_anchored_locus() -> None:
-    resolver = EnsemblResolver(read_base=_read_base)
+    resolver = EnsemblResolver()
+    resolver._read_base = _read_base
     resolver._client = httpx.Client(transport=_rest_only({"mappings": [_INSERTION]}))
     assert resolver.resolve_rsid("rs8176719") == (
         [{"chrom": "9", "start": 133257521, "ref": "T", "alts": "TC"}],
@@ -112,7 +113,8 @@ def test_resolve_rsid_answers_the_anchored_locus() -> None:
 
 def test_an_answer_with_every_locus_withheld_is_unchecked_not_empty() -> None:
     """The fourth outcome: `None` loci WITH a source. `[]` would read as "Ensembl has no locus"."""
-    resolver = EnsemblResolver(read_base=_unreadable)
+    resolver = EnsemblResolver()
+    resolver._read_base = _unreadable
     resolver._client = httpx.Client(transport=_rest_only({"mappings": [_INSERTION]}))
     assert resolver.resolve_rsid("rs8176719") == (None, "ensembl-rest")
 
@@ -135,7 +137,8 @@ def test_a_one_sided_graphql_node_is_handed_to_rest() -> None:
             return httpx.Response(200, json={"data": {"variant": node}})
         return httpx.Response(200, json={"mappings": [_INSERTION]})
 
-    resolver = EnsemblResolver(read_base=_read_base)
+    resolver = EnsemblResolver()
+    resolver._read_base = _read_base
     resolver._client = httpx.Client(transport=httpx.MockTransport(handler))
     loci, source = resolver.resolve_rsid("rs8176719")
     assert source == "ensembl-rest" and loci[0]["ref"] == "T"

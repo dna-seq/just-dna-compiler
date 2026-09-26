@@ -55,9 +55,13 @@ one-sided deletion (`AGTAAG/-`) anchors the same way; strings with no `-` are un
   existing sidecar keeps its old row (merge, never clobber): delete it or run `enrich --rederive`.
 - **When the anchor base cannot be read** (sequence service down, or a contig outside the refget
   table) the locus is withheld. An answer with every locus withheld is `resolve_rsid` →
-  `(None, "ensembl-rest")`: no row, the key stays unresolved, and the rsID is named in the new
-  `EnrichmentResult.unanchored_rsids` with its own warning, apart from `unreachable_rsids`.
+  `(None, "ensembl-rest")`: no row, the key stays unresolved, and the rsID is named by its own
+  warning, apart from `unreachable_rsids`.
 - The GraphQL rung withholds a one-sided node and lets REST answer; its convention is unprobed.
+- **No new public surface.** The first commit added `EnrichmentResult.unanchored_rsids`,
+  `EnsemblResolver.read_base` and `sequences.grch38_base_reader`, each minor-class and so not legal on
+  `main`; the fix-forward commit made the reader private and dropped the field. A structured list is
+  RM272, for the `0.8` branch.
 
 RM268; RM267 (the snapshot's one-base-early insertions) is still open.
 

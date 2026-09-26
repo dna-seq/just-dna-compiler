@@ -626,11 +626,24 @@ nothing to place there. An `N` run is an allele of unknown sequence. Neither `Re
 the same refusal RM268 records.
 
 **Repair (a sketch, unbuilt).** Withhold at both reads: a mapping whose `ref` or any alt is outside
-`^[ACGT]+$` (after RM268's anchoring of `-`) is not a locus, counted and named apart from not-found, the
-way RM268's `unanchored_rsids` is. Decide per shape before building: `dbSNP_novariation` / empty alt
+`^[ACGT]+$` (after RM268's anchoring of `-`) is not a locus, counted and warned apart from not-found
+(a structured field is RM272's, minor). Decide per shape before building: `dbSNP_novariation` / empty alt
 look like an answered absence at that mapping, not an unknown, and a `<.>` may deserve the symbolic
 allele path instead. Patch scope under P3's corrected-derivation clause, declared in the CHANGELOG, as
 long as it adds no schema member. · *related* RM268, RM267, `@non-nucleotide-spelling`, `@symbolic-alleles`
+
+## RM272 — an answered-but-unplaceable rsID has no structured name in `EnrichmentResult`
+
+**Severity** low · **Status** open — **a minor**, for the `0.8` branch · **Owner** enricher
+(`EnrichmentResult`) · **Motivating case** RM268 and RM271, 2026-09-27
+
+RM268 withholds a live REST locus whose anchor base cannot be read, and RM271 withholds loci whose
+alleles are not bases. On `main` both are reported by a log warning only, because a new
+`EnrichmentResult` field is minor-class (the first RM268 commit added `unanchored_rsids` there and was
+fixed forward). A caller reading the result sees these rsIDs only in `unresolved`, which is silent about
+why, the gap `unreachable_rsids`, `unconsulted_rsids` and `allele_mismatches` each closed for their
+state. Add the field (or fields) on `0.8`, beside those, and decide whether "anchor base unreadable"
+(transient, re-run) and "not a base" (permanent) are one list or two. · *related* RM268, RM271, S20, S85
 
 # Not format scope
 

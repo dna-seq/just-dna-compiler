@@ -384,10 +384,12 @@ def test_an_unreachable_rsid_writes_no_not_found_row(cache: Path, tmp_path: Path
     assert not result.fully_resolved
 
 
-def test_an_unanchorable_ensembl_answer_writes_no_row_and_is_named_apart(cache: Path, tmp_path: Path) -> None:
+def test_an_unanchorable_ensembl_answer_writes_no_row_and_is_named_apart(
+    cache: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
     """RM268, the artifact half. Live REST answers rs8176719 as `-/C`; with the anchor base unreadable
     the locus is withheld, so no `ref='-'` row and no `not_found` row are written, and the rsID is
-    named in `unanchored_rsids` — not `unreachable_rsids`, because the request did not fail."""
+    named by its own warning — not in `unreachable_rsids`, because the request did not fail."""
 
     def rest_insertion(request: httpx.Request) -> httpx.Response:
         if "graphql" in str(request.url):
@@ -401,7 +403,8 @@ def test_an_unanchorable_ensembl_answer_writes_no_row_and_is_named_apart(cache: 
         }
         return httpx.Response(200, json={"mappings": [mapping]})
 
-    resolver = EnsemblResolver(read_base=lambda _chrom, _pos: None)
+    resolver = EnsemblResolver()
+    resolver._read_base = lambda _chrom, _pos: None
     resolver._client = httpx.Client(transport=httpx.MockTransport(rest_insertion))
     spec = _spec(tmp_path / "spec", "rsid,genotype,state,conclusion\nrs8176719,T/TC,risk,c\n")
     result = enrich(
@@ -413,7 +416,8 @@ def test_an_unanchorable_ensembl_answer_writes_no_row_and_is_named_apart(cache: 
         download=False,
     )
 
-    assert result.unanchored_rsids == ["rs8176719"]
+    unanchored = [r.getMessage() for r in caplog.records if "could not be anchored" in r.getMessage()]
+    assert len(unanchored) == 1 and "rs8176719" in unanchored[0]
     assert result.unreachable_rsids == []
     assert result.unresolved == ["rs8176719"]
     assert [row for row in result.rows if row.rsid == "rs8176719"] == []

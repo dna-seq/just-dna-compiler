@@ -1122,11 +1122,11 @@ a set, which is unreadable in practice.
 2026-09-27).** REST spells an insertion `-/C` with `start = end + 1` and a one-sided deletion
 `AGTAAG/-` over `[start, end]`; `_loci_from_rest` used to copy both through, so `rs8176719` resolved
 to `9:133257522 ref='-'`. It now prefixes every allele with the GRCh38 base at `start - 1`
-(`clingen_allele.anchor_indel`, reading through the injected `EnsemblResolver.read_base`, by default
-`sequences.grch38_base_reader`), giving `9:133257521 T>TC`. An allele string with no `-` is already
+(`clingen_allele.anchor_indel`, reading through the private `EnsemblResolver._read_base`, by default
+a lazy `SequenceProxy`), giving `9:133257521 T>TC`. An allele string with no `-` is already
 anchored and reads nothing. When the base cannot be read the locus is withheld, and an answer whose
 every locus was withheld returns `(None, "ensembl-rest")`: unchecked like a failed request, but
-`enrich` names it in `EnrichmentResult.unanchored_rsids` with its own warning, and `lookup` gives it its
+`enrich` names it in its own warning (a structured field is RM272, minor), and `lookup` gives it its
 own finding, because the request did not fail. The GraphQL leg's convention is unprobed, so a one-sided
 node there answers `[]` and the rsID goes to REST.
 

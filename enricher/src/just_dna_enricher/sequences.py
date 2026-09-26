@@ -33,7 +33,7 @@ one tier that has the sequence to do it with.
 """
 
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 
 from ga4gh.vrs.dataproxy import create_dataproxy
@@ -103,22 +103,6 @@ class SequenceProxy:
                 logger.warning("Sequence read failed for %s:[%d,%d) (%s)", accession, start, end, exc)
         self._cache[key] = result
         return result
-
-
-def grch38_base_reader(sequences: SequenceProxy) -> Callable[[str, int], str | None]:
-    """A `read_base` for `clingen_allele.anchor_indel`: one GRCh38 base at a 1-based position, or `None`.
-
-    `None` for a contig outside the refget table (an Ensembl patch or haplotype contig) as well as for
-    an unreachable sequence service, so the anchoring caller withholds rather than guessing a base.
-    """
-
-    def read_base(chrom: str, pos: int) -> str | None:
-        accession = refget_accession(chrom)
-        if accession is None or pos < 1:
-            return None
-        return sequences.subsequence(accession, pos - 1, pos)
-
-    return read_base
 
 
 @dataclass

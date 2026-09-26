@@ -18,6 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import httpx
+from just_dna_format.vrs import refget_accession
 from tenacity import (
     retry,
     retry_if_exception_type,
@@ -26,7 +27,7 @@ from tenacity import (
 
 from just_dna_enricher.clingen_allele import anchor_indel
 from just_dna_enricher.net import attempt_floor
-from just_dna_enricher.sequences import SequenceProxy, grch38_base_reader
+from just_dna_enricher.sequences import SequenceProxy
 
 logger = logging.getLogger(__name__)
 
@@ -68,15 +69,15 @@ class EnsemblResolver:
     """Resolve a bare rsID to its GRCh38 loci via live Ensembl (V2 GraphQL → V1 REST fallback)."""
 
     settings: EnsemblSettings = field(default_factory=EnsemblSettings)
-    # One GRCh38 base at a 1-based position, or `None` — what anchors a one-sided REST indel (RM268).
-    # Injected so a test runs without a sequence service; unset, a lazily-built `SequenceProxy` answers.
-    read_base: Callable[[str, int], str | None] | None = None
     _client: httpx.Client | None = None
+    # One GRCh38 base at a 1-based position, or `None` — what anchors a one-sided REST indel (RM268).
+    # Private like `_client`, so a patch adds no constructor surface; a test sets it the same way.
+    _read_base: Callable[[str, int], str | None] | None = None
 
     def _base_reader(self) -> Callable[[str, int], str | None]:
-        if self.read_base is None:
-            self.read_base = grch38_base_reader(SequenceProxy())
-        return self.read_base
+        if self._read_base is None:
+            self._read_base = _grch38_base_reader(SequenceProxy())
+        return self._read_base
 
     def _http(self) -> httpx.Client:
         if self._client is None:
@@ -185,6 +186,18 @@ class EnsemblResolver:
         )
         resp.raise_for_status()
         return _loci_from_rest(_json(resp), self._base_reader())
+
+
+def _grch38_base_reader(sequences: SequenceProxy) -> Callable[[str, int], str | None]:
+    """A `read_base` for `anchor_indel`: `None` off the refget table (a patch contig) or when unreadable."""
+
+    def read_base(chrom: str, pos: int) -> str | None:
+        accession = refget_accession(chrom)
+        if accession is None or pos < 1:
+            return None
+        return sequences.subsequence(accession, pos - 1, pos)
+
+    return read_base
 
 
 def _json(response: httpx.Response) -> dict:

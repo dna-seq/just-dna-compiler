@@ -688,10 +688,6 @@ class EnrichmentResult:
     # same entry there, and only one of them is worth re-running. Same reason `clin_sig_not_checked`
     # exists beside an empty conflict list. Empty offline, since nothing was asked in the first place.
     unreachable_rsids: list[str] = field(default_factory=list)
-    # rsIDs live Ensembl DID answer, with one-sided indels whose anchor base could not be read
-    # (RM268). No row, like `unreachable_rsids`, and named apart from it because the request did not
-    # fail: re-running with the sequence service reachable is what clears it.
-    unanchored_rsids: list[str] = field(default_factory=list)
     # rsIDs **no link was consulted about at all** — the `--offline` run on a machine with no Ensembl
     # and no ClinVar cache, where every link is gated off and there is nothing to ask (RM98). A third
     # state, deliberately not folded into either neighbour: `unreachable_rsids` means the request was
@@ -1024,6 +1020,8 @@ def _run_enrichment(
     snapshot_unusable = False
     # rsIDs the live link could not put a question to at all — a failed request, not an empty answer.
     unreachable_rsids: set[str] = set()
+    # Live Ensembl answered with one-sided indels whose anchor base could not be read (RM268). Warned
+    # apart from `unreachable_rsids`; a result field naming them is minor-scope, so it waits for 0.8.
     unanchored_rsids: set[str] = set()
     unconsulted_rsids: set[str] = set()  # nobody looked (RM98) — see the EnrichResult field
     # The source answered and every locus it gave was rejected by the allele-aware filter (S85). A
@@ -1962,7 +1960,6 @@ def _run_enrichment(
         par_twins_dropped=sorted(par_twins_dropped),
         vrs=mint_result,
         unreachable_rsids=sorted(unreachable_rsids),
-        unanchored_rsids=sorted(unanchored_rsids),
         unconsulted_rsids=sorted(unconsulted_rsids),
         allele_mismatches=allele_mismatches,
         rsid_coordinates=pair_check,
