@@ -892,6 +892,26 @@ sibling archives' dates on the same fetch, reporting and never refusing (a sourc
 trap: every ClinPGx HTML route is a JS shell), so it stays a manual step written into the lane's
 rebuild runbook, not machinery.
 
+## RM284 — a skip is a fact about the run, and `verification.json` has no run-level place to keep one
+
+**Severity** low · **Status** open — **a minor, release undecided** · **Owner** format (the
+verification document) + enricher (the writer) · **Motivating case** RM72's *"a run-level fact needs a
+run-level place, which is a separate question and was not opened"* (decided in 0.6 PT2), found unfiled
+by the 2026-09-27 postmortem sweep (P11) · *related* RM72
+
+RM72 decided the merge rule for `verification.json`: newest wins between two records of the same
+disposition, and a skip does not displace an answer while the earlier record still binds the authored
+bytes (`existing_still_binds`). The design half it answered and set aside is this one. A reader may
+legitimately want to know that *today's* enrichment could not reach a source, and under the shipped
+rule that fact is dropped: the older `ran` record is what stays.
+
+**Confirmed on 2026-09-27.** No open item names a run-level skip record, and `verification.json`
+remains a per-check document.
+
+**Why a minor.** A run-level record is a new field or block in a published document, whatever shape it
+takes. The shape question is where it lives: in `verification.json` beside the per-check records, or
+in the run's own output (`EnrichmentResult`), which RM272 is already widening on the `0.8` branch.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
