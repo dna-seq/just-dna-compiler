@@ -4,7 +4,7 @@ ROADMAP_HISTORY.md :: RM165 :: left for its own item :: homed
 ROADMAP_HISTORY.md :: RM232 :: still owes :: self
 ROADMAP_HISTORY.md :: The second signal was filed rather :: filed rather than :: homed
 history/ROADMAP_0_7.md :: The premise this item exists to :: filed rather than :: self
-history/ROADMAP_HISTORY_0_6.md :: RM106 :: still owes :: leak
+history/ROADMAP_HISTORY_0_6.md :: RM106 :: still owes :: self
 history/ROADMAP_HISTORY_0_6.md :: RM47 :: filed rather than :: self
 history/ROADMAP_HISTORY_PRE_0_6.md :: RM36 :: filed rather than :: self
 proposals/PROPOSAL_0_5.md :: Still deferred :: the remaining half :: homed
