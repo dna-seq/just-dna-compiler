@@ -279,8 +279,8 @@ class LiteratureResult:
             )
         if self.quotes_unexamined:
             parts.append(
-                f"{self.quotes_unexamined} not looked up, because literature.csv already pins their "
-                f"citation — delete it to re-derive"
+                f"{self.quotes_unexamined} not looked up, because literature.csv pins their citation "
+                f"at another quote count — re-run the pass online to re-derive it"
             )
         return "; ".join(parts)
 
@@ -849,12 +849,31 @@ def enrich_literature(
             check_doi=check_doi,
         )
 
+    # **A pin whose quote count no longer matches `studies.csv` is re-fetched (RM277).** The row's own
+    # input changed, so it describes a different set of quotes: its `quotes_found` cannot be paired
+    # with the new count (`_tally_quotes` reads exactly that mismatch as "unexamined"), and rewriting
+    # the count alone would attach the old verdict to the new quotes. Re-deriving the row is the
+    # corrected derivation, and it is what makes the compiler's `quote_counter_stale` remedy, "re-run
+    # the literature pass", true. Offline has returned above and keeps the pin.
+    stale_pins = {
+        row.pmid
+        for row in existing.values()
+        if row.pmid in citations
+        and (row.quotes_authored or 0)
+        != sum(1 for s in citations[row.pmid] if s.provenance_quote or s.provenance_regex)
+    }
+    if stale_pins:
+        logger.info(
+            "Literature: re-fetching %d pinned citation(s) whose quote count changed in studies.csv: %s",
+            len(stale_pins),
+            ", ".join(sorted(stale_pins, key=int)),
+        )
     # Against the rows rather than the dict's keys, which are merge-key tuples and not bare PMIDs.
-    have = {row.pmid for row in existing.values()}
+    have = {row.pmid for row in existing.values()} - stale_pins
     wanted = [pmid for pmid in citations if pmid not in have]
     fetched_at = now_utc_iso()
     result = LiteratureResult(
-        rows=list(existing.values()),
+        rows=[row for row in existing.values() if row.pmid not in stale_pins],
         mode=mode,
         cited=sorted(citations, key=int),
         quotes_authored=authored_total,
@@ -1106,10 +1125,10 @@ def _tally_quotes(result: LiteratureResult, citations: dict[str, list[StudyRow]]
     one sentence, since only the second is about the article being unreadable.
 
     * `quotes_unexamined` — the pinned row does not describe the quotes the module carries now.
-      Merge-not-clobber never refetches a pinned row, so a quote authored since is one nothing ever
-      looked for. Calling that "no fulltext could be retrieved" states a retrievability failure that
-      never happened, and for an open-access article it is flatly false; the remedy is also
-      different, since deleting the sidecar re-derives it.
+      Since RM277 an online run re-fetches such a row before this tally, so the arm is a guard: it
+      fires only if a stale pin reaches the tally anyway. Calling that "no fulltext could be
+      retrieved" would state a retrievability failure that never happened, and for an open-access
+      article it is flatly false.
     * the remainder — the article's text could not be read, or only its abstract could, where a
       **hit** settles a quote and a miss does not (`quote_source` records which text was searched).
       A row carrying a count with no `quote_source` is read the same conservative way, since the
@@ -1513,8 +1532,8 @@ def _quote_gap_detail(result: LiteratureResult) -> str:
         )
     if result.quotes_unexamined:
         parts.append(
-            f"{result.quotes_unexamined} never looked up, because literature.csv already pinned "
-            f"their citation and a merge never refetches one — delete the sidecar to re-derive"
+            f"{result.quotes_unexamined} never looked up, because literature.csv pinned their "
+            f"citation at another quote count — re-run the pass online to re-derive it"
         )
     return "; ".join(parts)
 

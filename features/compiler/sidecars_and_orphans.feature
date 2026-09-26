@@ -251,7 +251,8 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     And studies.csv rows carrying provenance quotes for that citation
     When the module is compiled
     Then a warning names both numbers
-    And the remedy is to re-run the literature pass
+    And the remedy is to re-run the literature pass online
+    And that re-run re-fetches a pinned citation whose quote count changed
     # The sidecar can be stale in exactly the way that matters and nothing said so: it is
     # merge-not-clobber, so a pass that ran while `provenance_quote` was empty wrote zero and every
     # later run treated that row as authoritative. Four published modules are in that state — 3,668

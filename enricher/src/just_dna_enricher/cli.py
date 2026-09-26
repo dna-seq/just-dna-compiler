@@ -793,7 +793,7 @@ def literature_(
         # fulltext the previous run read.
         typer.secho(
             f"  {result.quotes_unexamined} authored quote(s) were never looked up: literature.csv "
-            f"already pins their citation and a merge never refetches one — delete it to re-derive",
+            f"pins their citation at another quote count — re-run the pass online to re-derive it",
             fg=typer.colors.YELLOW,
         )
     if result.missing:

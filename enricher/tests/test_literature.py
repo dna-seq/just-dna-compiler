@@ -705,13 +705,12 @@ def test_offline_with_no_pin_still_says_why_it_could_not_ask(tmp_path: Path) -> 
     assert _records(spec)["citation_existence"].skipped == "offline"
 
 
-def test_a_quote_authored_after_the_pin_was_never_looked_up_not_unretrievable(tmp_path: Path) -> None:
-    """Two ways of having read nothing, and this one is not the article's fault.
+def test_a_quote_authored_after_the_pin_is_re_fetched_and_checked(tmp_path: Path) -> None:
+    """RM277: a pin whose quote count no longer matches `studies.csv` describes other quotes.
 
-    Merge-not-clobber never refetches a pinned citation, so a quote added after `literature.csv` was
-    written is simply never examined — the row still says `quotes_authored=0`. Reporting that as "no
-    fulltext could be retrieved" states a retrievability failure that never happened, and for this
-    PMID it is flatly false: its fulltext is open access and was read on the first run.
+    It used to be kept, so a quote added after `literature.csv` was written was never examined, and the
+    compiler's `quote_counter_stale` told the author to re-run a pass that could not fix it. The row's
+    own input changed, so the re-run re-derives it: the new quote is looked up in the article's text.
     """
     studies = f"rsid,pmid,provenance_quote\nrs334,{_REAL},\n"
     spec = _spec(tmp_path / "s", studies)
@@ -723,12 +722,23 @@ def test_a_quote_authored_after_the_pin_was_never_looked_up_not_unretrievable(tm
     )
     result = _run(spec)
 
-    assert (result.quotes_authored, result.quotes_checked) == (1, 0)
-    assert result.quotes_unexamined == 1
-    record = _records(spec)["provenance_quote"]
-    assert record.skipped == "no_reference"
-    assert "never looked up" in (record.detail or "")
-    assert "could not be read" not in (record.detail or "")
+    assert (result.quotes_authored, result.quotes_checked, result.quotes_found) == (1, 1, 1)
+    assert result.quotes_unexamined == 0
+    (row,) = [r for r in result.rows if r.pmid == _REAL]
+    assert (row.quotes_authored, row.quotes_found) == (1, 1)
+    assert "never looked up" not in (_records(spec)["provenance_quote"].detail or "")
+
+
+def test_offline_keeps_a_stale_pin_rather_than_re_deriving_it(tmp_path: Path) -> None:
+    """The re-fetch needs the network; offline, the pin stays exactly as written."""
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},\n")
+    _run(spec)
+    (spec / "studies.csv").write_text(
+        f"rsid,pmid,provenance_quote\nrs334,{_REAL},variant interpretations\n", encoding="utf-8"
+    )
+    result = enrich_literature(spec, offline=True)
+    (row,) = [r for r in result.rows if r.pmid == _REAL]
+    assert row.quotes_authored == 0
 
 
 def test_a_citation_removed_from_studies_stops_being_counted(tmp_path: Path) -> None:
@@ -752,13 +762,12 @@ def test_a_citation_removed_from_studies_stops_being_counted(tmp_path: Path) -> 
     _run(spec, mode="strict")  # and the module is compilable again without deleting anything
 
 
-def test_a_quote_removed_since_the_pin_is_not_a_finding_about_the_module(tmp_path: Path) -> None:
+def test_a_quote_removed_since_the_pin_is_re_checked_not_misattributed(tmp_path: Path) -> None:
     """The same rule one level down: a pin that counts two quotes describes neither of one.
 
     The row's `quotes_found` says which of *its* quotes matched, not which of these, and nothing can
-    say which one the author deleted. Keeping the verdict published a finding about a quote the
-    module no longer makes — clearable only by deleting the sidecar, which is the defect class this
-    round fixed for whole citations. Understating is the fallback, never misattributing.
+    say which one the author deleted. Since RM277 the re-run re-fetches the row and checks the quote
+    that remains, so the stale verdict is neither kept nor misattributed.
     """
     both = (
         f"rsid,pmid,provenance_quote\nrs334,{_REAL},variant interpretations\n"
@@ -774,10 +783,9 @@ def test_a_quote_removed_since_the_pin_is_not_a_finding_about_the_module(tmp_pat
     )
     result = _run(spec)
 
-    assert (result.quotes_authored, result.quotes_checked) == (1, 0)
-    assert result.quotes_unexamined == 1 and result.quotes_found == 0
-    record = _records(spec)["provenance_quote"]
-    assert record.skipped == "no_reference" and "never looked up" in (record.detail or "")
+    assert (result.quotes_authored, result.quotes_checked, result.quotes_found) == (1, 1, 1)
+    assert result.quotes_unexamined == 0
+    assert _records(spec)["provenance_quote"].findings == 0
 
 
 def test_coverage_never_calls_a_pinned_verdict_unretrievable(tmp_path: Path) -> None:
@@ -1023,19 +1031,21 @@ def test_a_title_quote_is_reported_even_when_the_sidecar_row_is_already_pinned(
     not have fired on a single one of the 3,668 quotes it was written for.
 
     The comparison needs only the summary, so it answers here where `quotes_found` structurally
-    cannot: the row is authoritative and stays untouched, and the finding is still raised.
+    cannot: the row is authoritative and stays untouched, and the finding is still raised. The pin
+    counts the one quote the module carries: since RM277 a pin at another count is re-fetched, a
+    different path from the one this test is about.
     """
     title = _title_of(_REAL)
     spec = _spec(tmp_path / "s", f'rsid,pmid,provenance_quote\nrs334,{_REAL},"{title}"\n')
     (spec / "literature.csv").write_text(
         "pmid,doi,pmcid,exists,is_open_access,quotes_authored,quotes_found,source,status,fetched_at\n"
-        f"{_REAL},10.1093/nar/gkx1153,,true,,0,,pubmed,resolved,2026-08-04T21:58:24Z\n",
+        f"{_REAL},10.1093/nar/gkx1153,,true,,1,,pubmed,resolved,2026-08-04T21:58:24Z\n",
         encoding="utf-8",
     )
     result = _run(spec)
 
     # The pinned row is authoritative and untouched — that is the merge rule, not a defect.
-    assert [r.quotes_authored for r in result.rows] == [0]
+    assert [r.quotes_authored for r in result.rows] == [1]
     assert [r.quotes_found for r in result.rows] == [None]
     # And the title is still reported, which is what the correction asked for.
     assert result.titles_as_quotes == [_REAL]

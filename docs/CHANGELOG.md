@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-27 — RM277: a stale literature pin is re-fetched, so "re-run the pass" works (patch, on `main`)
+
+**`just-dna-enricher` + `just-dna-compiler` (warning text only).** The compiler's `quote_counter_stale`
+told the author to re-run the literature pass, and the pass never refetched a pinned citation, so the
+remedy could not work; the enricher CLI said to delete the sidecar instead. Now the pass re-fetches a
+pinned citation whose quote count no longer matches `studies.csv` and re-checks its quotes, and both
+tiers say the same thing: re-run online (offline keeps the pin). A corrected derivation of a derived
+row (Principle 3): a re-run over a sidecar that predates its quotes rewrites those rows. No schema,
+field or code change. RM277, postmortem P5.
+
 ## 2026-09-27 — RM271: neither Ensembl rung serves a non-base allele as a locus (patch, on `main`)
 
 **`just-dna-enricher` only; a corrected derivation, declared here (Principle 3).** Both Ensembl

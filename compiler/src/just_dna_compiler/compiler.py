@@ -7175,8 +7175,9 @@ def _check_quote_counter_is_current(
                 f"pmid {pmid} records {recorded} but {counted} quote(s) cite it"
                 for pmid, recorded, counted in stale
             )
-            + " — the sidecar predates the quotes (it is merge-not-clobber, so a re-run keeps the old "
-            "row); re-run the literature pass to bring the counters and quotes_found up to date",
+            + " — the sidecar predates the quotes; re-run the literature pass online, which re-fetches "
+            "a pinned citation whose quote count changed and re-checks its quotes (an offline run "
+            "keeps the pin)",
         )
     ]
 

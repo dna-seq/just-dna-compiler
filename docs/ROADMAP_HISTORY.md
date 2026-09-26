@@ -174,6 +174,60 @@ neither of this entry's guards caught, so the CLI died again beside anything pin
 
 **Residuals** RM254
 
+## RM277 — `quote_counter_stale` tells the author to re-run the literature pass, which skips exactly the rows it is about
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** · **Owner** compiler
+(the warning text) + enricher (the merge) · **Motivating case**
+[S56](history/CONSUMER_SUGGESTIONS_HISTORY_0_6.md#s56--literaturecsv-can-claim-quotes_authored-0-beside-859-authored-quotes-and-nothing-compares-them), whose second candidate the reply said *"we would still like"*,
+found unfiled by the 2026-09-27 postmortem sweep (P5) · *related* RM119, S56
+
+**Residuals** won't fix — an offline run keeps a stale pin because re-deriving it needs the network, and the warning says so
+
+RM119 shipped S56's first candidate, the compile-time comparison. The reply declined the second,
+recomputing `quotes_authored` on merge, as enricher work for *"the next literature-pass change"*, and
+nothing filed it. Several literature-pass changes have landed since.
+
+**Confirmed on 2026-09-27, in the code.** The warning ends *"the sidecar predates the quotes (it is
+merge-not-clobber, so a re-run keeps the old row); re-run the literature pass to bring the counters
+and quotes_found up to date"* (`compiler.py`, `_check_quote_counter_is_current`). Its own clause says
+the remedy fails. The pass fetches only PMIDs with no row (`wanted = [pmid … if pmid not in have]`),
+and pinned rows are never rewritten. The enricher's CLI already gives the working remedy for the same
+state: *"literature.csv already pins their citation and a merge never refetches one — delete it to
+re-derive"*. So the two tiers give an author contradicting instructions for one condition.
+
+**Build, in order.**
+
+1. **The remedy text** (compiler): say to delete `literature.csv`, or `--rederive` once the pass has
+   it, as the enricher CLI does. The code and its scenario
+   (`features/compiler/sidecars_and_orphans.feature`, *"the remedy is to re-run the literature pass"*)
+   change together (`@warning-text-is-api`: the code stays, the remedy sentence moves).
+2. **Recompute on merge** (enricher): `quotes_authored` is derivable from `studies.csv` (RM119's own
+   argument), so the pass should rewrite it on every run, pinned row or not. That is a corrected
+   derivation of a derived cell, with no schema member. After it lands, step 1's text can say a
+   re-run fixes it, and be true.
+
+**What shipped — step 2 changed on the way, and why.** Recomputing `quotes_authored` in place was
+refused: `_tally_quotes` reads a count mismatch as *this pin's `quotes_found` is about other quotes*,
+so rewriting the count alone attaches the old verdict to the new quotes, and clearing the verdict too
+would give a null `quote_source` a second meaning. Instead the literature pass **re-fetches** a pinned
+citation whose count no longer matches `studies.csv` (the same `_citations` / `extract_pmids` basis
+the compile check uses), so the counter, `quotes_found` and `quote_source` are re-derived together.
+Offline returns before that and keeps the pin.
+
+- The compiler's `quote_counter_stale` now says *"re-run the literature pass online, which re-fetches a
+  pinned citation whose quote count changed and re-checks its quotes (an offline run keeps the pin)"*,
+  and its scenario moved with it. The code is unchanged.
+- The three "a merge never refetches one — delete it to re-derive" sentences (CLI, coverage line,
+  attestation detail) now name the online re-run, and `quotes_unexamined` is a guard an online run no
+  longer reaches.
+- What moves: a re-run over a module whose sidecar predates its quotes now rewrites those rows
+  (`fetched_at`, the counter, the quote verdict). The four published modules with 3,668 quotes pinned
+  at zero are that case.
+
+Tests: `test_a_quote_authored_after_the_pin_is_re_fetched_and_checked`,
+`test_offline_keeps_a_stale_pin_rather_than_re_deriving_it`,
+`test_a_quote_removed_since_the_pin_is_re_checked_not_misattributed`.
+
 ## RM271 — both Ensembl rungs serve a non-nucleotide allele as a resolved locus: `dbSNP_novariation`, `<.>`, an empty `alts`, an `N` run
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (enricher only) ·

@@ -5094,8 +5094,9 @@ quote for a citation is the title: a module quoting the title on one row and a p
 an author doing the work.
 
 **It answers for a *pinned* row too, and that is the whole difference between working and not.**
-`literature.csv` is merge-not-clobber, so a row an earlier pass wrote is never refetched — and on the
-four modules that motivated this, every row is pinned, so a check living only in the fetch loop would
+`literature.csv` is merge-not-clobber, so a row an earlier pass wrote is not refetched while it still
+counts the module's quotes (since RM277 a pin at another count is re-fetched and re-checked online;
+offline keeps it) — and on the four modules that motivated this, every row is pinned, so a check living only in the fetch loop would
 have fired on none of the 3,668 quotes. The summary is therefore fetched for **any cited PMID carrying
 a quote**, pinned or not; `esummary` batches, so it costs no extra round trip in the common case. The
 pinned row itself stays authoritative and untouched — the merge rule is not the thing that was wrong.
