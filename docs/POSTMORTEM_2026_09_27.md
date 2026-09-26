@@ -217,7 +217,7 @@ any of them.
 | D2 | **Done.** The CHANGELOG 0.7.0 heading still says *being built … not yet cut*; six replies (S75–S80) cite it as the record ✔ | CHANGELOG.md:2839-2841 |
 | D3 | **Done.** SCHEMAS says *exactly five* row models carry `source`; there are nine ✔ | SCHEMAS.md:1619 |
 | D4 | **Done.** The HTT README says bin bounds cannot be cited and sends authors to RM47, which shipped ✔ | reference_examples/htt_repeat_expansion/README.md:73-84 |
-| D5 | RM247's entry never names RM254, the protobuf failure its guards missed | ROADMAP_HISTORY.md `## RM247` |
+| D5 | **Done.** RM247's entry never names RM254, the protobuf failure its guards missed | ROADMAP_HISTORY.md `## RM247` |
 | D6 | The S81 sentence, never written: a patch can add an authored column under `extra="forbid"`, so a reader pinned to a minor cannot assume a fixed authored schema | CONSUMER_SUGGESTIONS_HISTORY.md:2807-2811 |
 | D7 | COMPILER.md's annotations key lacks `genotype` (S29); SCHEMAS' `provenance.json` section still calls a closed question unsettled (S52) | COMPILER.md:1341; SCHEMAS.md:2379-2386 |
 | D8 | The ENRICHING guide never says to `--rederive` or delete `resolution.csv` after an upgrade that corrects it (RM268, RM251) | ENRICHING.md:22 |

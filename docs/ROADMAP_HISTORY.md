@@ -168,6 +168,12 @@ the enricher's console script. Whatever repair lands, the release procedure need
 
 **Related** RM192 (the measured Atlas dependency cost), RM196 (why this tier alone is on hatchling).
 
+**What its guards missed, found a day later.** RM254: protobuf's gencode/runtime mismatch raises a type
+neither of this entry's guards caught, so the CLI died again beside anything pinning `protobuf<7`
+(S107). Read the two entries together.
+
+**Residuals** RM254
+
 ## RM271 — both Ensembl rungs serve a non-nucleotide allele as a resolved locus: `dbSNP_novariation`, `<.>`, an empty `alts`, an `N` run
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (enricher only) ·
