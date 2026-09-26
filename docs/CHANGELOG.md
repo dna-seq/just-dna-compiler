@@ -43,7 +43,7 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 
 ## 2026-09-27 — triage S117–S119: the haplotype convention written down, three items filed
 
-**Docs and one code comment; no package changes.** TABLES.md § `haplotypes.csv` now states the rule
+**Docs and one code comment; no behaviour change.** TABLES.md § `haplotypes.csv` now states the rule
 the phase-ambiguity check already computes with: a haplotype carries the reference at every site of
 its gene that it does not list, closed-world per module. It also says the `*1` exemption silences only
 the used-but-not-defined warning and infers no definition, so a gene whose reference has another name

@@ -5411,8 +5411,8 @@ reproduce the same way. The snapshot is faithful to its source. Ensembl's own cu
 133257521, -/C`, an insertion between 521 and 522, which anchors at your `521 T>TC`. On the two cited
 cases plus five sampled from your −1 class, the dump's POS is REST `end` − 1 every time, and REST `end`
 equals ClinVar's POS every time. So this is arbitrated: Ensembl's VCF export anchors a class of
-insertions one base left of Ensembl's own interbase point, and ClinVar, REST, gnomAD and your callers
-agree with each other.
+insertions one base left of Ensembl's own interbase point. ClinVar and REST agree with each other (checked
+here), and with the gnomAD and caller placements you measured.
 
 Nothing here catches it today. The early anchor base is a real genome base, so the reference-allele
 check passes it by construction. The rsID↔coordinate check deliberately treats indel position
