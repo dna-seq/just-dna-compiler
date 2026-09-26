@@ -523,6 +523,17 @@ test pinning them fails on the next ANNOVAR release for no reason. Assert the re
   without the reference. `pubmind_draft` states the count for the rows it withholds.
 - What are the ANNOVAR-distributed table's data terms? Only CHOP can answer, and the answer decides
   whether sections B and C are ever shippable.
+
+  **Searched 2026-09-27, still unanswered in writing.** No page names terms for
+  `hg38_pubmind_db.txt.gz`. WGLab's README and pubmind.wglab.org send the *full* PubMind-DB (references,
+  reasoning, evidence) to `LICENSE.md` and a CHOP contact, and list the ANNOVAR file as the other tier
+  with no licence pointer. `LICENSE.md` licenses "this software and associated documentation files"
+  (academic, non-commercial) and never says data. The bioRxiv preprint's Data Availability covers only
+  PubMed/PMC, and it calls PubMind "open-source", which contradicts `LICENSE.md`. ANNOVAR's EULA covers
+  its software, and its database table flags gated sources (CADD, SPIDEX) but not `pubmind_db`. The
+  published Nature Communications version could not be read. So `None` on every axis stands. The
+  written question goes to CHOP's Office of Technology Transfer (`techtransfer@chop.edu`, named in
+  `LICENSE.md`) or the WGLab/PubMind GitHub repo.
 - Does the table get a stable release cadence? One snapshot dated 2026-08-24 is not a cadence, and the
   refresh design depends on it.
 - Is the PVID stable across releases? If it is not, then nothing about a PubMind reference is
