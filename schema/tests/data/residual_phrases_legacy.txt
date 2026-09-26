@@ -4,7 +4,6 @@ ROADMAP_HISTORY.md :: RM134 :: still owes :: leak
 ROADMAP_HISTORY.md :: RM165 :: left for its own item :: homed
 ROADMAP_HISTORY.md :: RM166 :: wants its own entry :: leak
 ROADMAP_HISTORY.md :: RM166 :: wants its own number :: leak
-ROADMAP_HISTORY.md :: RM192 :: filed rather than :: leak
 ROADMAP_HISTORY.md :: RM232 :: still owes :: self
 ROADMAP_HISTORY.md :: The second signal was filed rather :: filed rather than :: homed
 history/ROADMAP_0_7.md :: The premise this item exists to :: filed rather than :: self
@@ -17,4 +16,4 @@ proposals/PROPOSAL_0_6.md :: Same-release obligation :: filed rather than :: sel
 proposals/PROPOSAL_0_7_PT2.md :: The decision :: belongs to rm66 :: homed
 proposals/PROPOSAL_0_7_PT2.md :: The decision :: wants its own entry :: leak
 proposals/PROPOSAL_0_7_PT3.md :: What a first cut still owes, :: still owes :: leak
-proposals/PROPOSAL_0_7_PT4.md :: Implementation debt, filed rather than improvised :: filed rather than :: leak
+proposals/PROPOSAL_0_7_PT4.md :: Implementation debt, filed rather than improvised :: filed rather than :: homed

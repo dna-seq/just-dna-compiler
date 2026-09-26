@@ -168,6 +168,66 @@ the enricher's console script. Whatever repair lands, the release procedure need
 
 **Related** RM192 (the measured Atlas dependency cost), RM196 (why this tier alone is on hatchling).
 
+## RM271 — both Ensembl rungs serve a non-nucleotide allele as a resolved locus: `dbSNP_novariation`, `<.>`, an empty `alts`, an `N` run
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (enricher only) ·
+**Owner** enricher (`ensembl._loci_from_rest`, the snapshot reads in `resolver`) · **Motivating case** found 2026-09-27 closing RM268, checking whether the
+live rung copies other non-base allele strings through the way it copied `-`
+
+**Residuals** RM272 · won't fix — the patch-contig loci an rsID keeps (`rs2100212723` now resolves only on `HSCHR1_1_CTG3`) predate RM271 and are not an allele question · won't fix — scoped to the two Ensembl rungs; the ClinVar and gnomAD links were not probed
+
+**What was confirmed, on 2026-09-27.**
+
+- **Live REST.** Ensembl answers some rsIDs with a mapping whose `allele_string` is the literal
+  `dbSNP_novariation` (`rs2100212723` on chr1; `rs1553119428` on chr1 and two patch contigs).
+  `_loci_from_rest` takes the first `/`-token as `ref`, so `resolve_rsid("rs2100212723")` returns
+  `{'chrom': '1', 'start': 2651767, 'ref': 'dbSNP_novariation', 'alts': None}`, and an `enrich` run with
+  an empty snapshot dir wrote it to `resolution.csv` as `status=resolved`. The allele-aware filter
+  did not reject it (genotype `C/T`). Also seen: `rs2101156061` answers `G/TTTTTTTTTTTNNNNNNNNNNN`,
+  an `N` run in an alt, which the resolver returned as-is (the `enrich` run hit a REST 500 on it, so
+  the written row is unconfirmed for that one).
+- **Snapshot.** The same class sits in the Ensembl VCF-dump snapshot, and `enrich --offline` against
+  it wrote all three as `status=resolved, source=cache`: `rs2100212723` with `alts=''`, `rs1553186440`
+  with `alts='<.>'`, `rs2101156061` with `alts='TTTTTTTTTTTTNNNNNNNNNNN'`. Measured over the snapshot's
+  rs-prefixed rows: 10,065 with an empty `alt` and 121 with `<.>`, plus some with `N` in `alt`.
+- Not checked: what the compiler does with each shape downstream (`<.>` is a lengthless symbolic
+  allele, which the compiler drops per `@symbolic-alleles`; an empty `alts` and `dbSNP_novariation`
+  in `ref` were not followed through).
+
+**What it is.** `dbSNP_novariation` and an empty alt both say *dbSNP records no variation at this
+mapping*. Writing either as a resolved locus states a position for an rsID whose source says there is
+nothing to place there. An `N` run is an allele of unknown sequence. Neither `ResolutionRow.ref` nor
+`alts` has a grammar to refuse them, and tightening one would invalidate existing derived files (P8),
+the same refusal RM268 records.
+
+**Repair (a sketch, unbuilt).** Withhold at both reads: a mapping whose `ref` or any alt is outside
+`^[ACGT]+$` (after RM268's anchoring of `-`) is not a locus, counted and warned apart from not-found
+(a structured field is RM272's, minor). Decide per shape before building: `dbSNP_novariation` / empty alt
+look like an answered absence at that mapping, not an unknown, and a `<.>` may deserve the symbolic
+allele path instead. Patch scope under P3's corrected-derivation clause, declared in the CHANGELOG, as
+long as it adds no schema member. · *related* RM268, RM267, `@non-nucleotide-spelling`, `@symbolic-alleles`
+
+**What shipped.** One predicate, `ensembl._placeable_alleles`, at every read of both rungs: REST and
+GraphQL parsing, and the four snapshot reads in `resolver` (rsID → loci, the position back-fill, the
+pair check's position set, and the legacy `resolve_variants` position read). A `ref` outside
+`^[ACGT]+$` withholds the locus; an alt outside it is dropped; a locus with no alt left is withheld.
+REST also serves the literal `dbSNP_variant` (seen on three of three empty-alt rsIDs sampled); the
+predicate withholds it the same way. Four `<.>` and empty-alt rsIDs sampled against REST all read
+`dbSNP_novariation` or `dbSNP_variant` there, so both spell *no variation recorded at this mapping*.
+
+- **REST** returns `([], "ensembl-rest")`, the existing answered-empty, when no mapping is left: this
+  is permanent, unlike RM268's unreadable anchor, so it is written as `not_found`, with a warning
+  naming the rsID. GraphQL answers `[]` and REST is asked.
+- **Snapshot**: an rsID whose every locus is withheld is named by one aggregated warning, and no
+  longer gets `rsid_unresolved` ("not in the injected snapshot"), which would be false.
+- **What moves**: `alts` narrows where a placeholder or an `N` allele sat beside real ones
+  (`rs33946775` HBB `CA,CC,CG,<R>` → `CA,CC,CG`; `rs3838485` `GGG,GGGN` → `GGG`); loci with no
+  nucleotide allele leave `resolution.csv`; an N-masked chrY locus goes, leaving its X twin.
+- No new public surface: the predicate is private, the warnings are log lines, and a structured
+  result field is RM272 (minor).
+
+Tests: `enricher/tests/test_ensembl_non_nucleotide.py`.
+
 ## RM268 — the live Ensembl REST rung writes an unanchored insertion into `resolution.csv`: `ref='-'` at the interbase `start`
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (enricher only) ·
@@ -3084,7 +3144,7 @@ with a maintenance cost attached". Commit `1f9a84a` had already refuted it by do
 and a comment arguing against what the file now declares is worse than no comment. Rewritten in the
 same commit as the extra it describes.
 
-**What it did not do, filed rather than improvised.** No `tenacity` layer over the vendored
+**What it did not do, filed rather than improvised** (filed as RM280 on 2026-09-27; nothing was filed at the time). No `tenacity` layer over the vendored
 `grpc_service_config.json` (`@retry-attempt-floor`), no shared pacing gate, and no interval RPC —
 `ListDenseVariantScores` needs an `x-goog-fieldmask` header and 32 bp chunking, which RM194 owes.
 And the bindings are a build product no wheel can build, which is **RM196**.

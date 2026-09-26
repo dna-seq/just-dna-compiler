@@ -199,7 +199,7 @@ any of them.
 
 | id | what | source |
 |---|---|---|
-| P8 | RM192 says the Atlas client's retry and shared pacing were *"filed rather than improvised"*; nothing was filed | ROADMAP_HISTORY.md:3076-3078; PROPOSAL_0_7_PT4.md:374-378 |
+| P8 | **Filed as RM280.** RM192 says the Atlas client's retry and shared pacing were *"filed rather than improvised"*; nothing was filed | ROADMAP_HISTORY.md:3076-3078; PROPOSAL_0_7_PT4.md:374-378 |
 | P9 | RM166: licence diversification for the PGx lane, and the `clinicalVariants.zip` adoption (*"it wants its own number"*) | ROADMAP_HISTORY.md:4196-4198, 4222-4227; PROPOSAL_0_7_PT2.md:557-560; CHANGELOG.md:2674-2676 |
 | P10 | RM175: nothing notices `summaryAnnotations.zip` itself going quiet | ROADMAP_HISTORY.md:4144-4161 |
 | P11 | RM72: a run-level place for a skip (*"a separate question and was not opened"*) | history/ROADMAP_0_7.md:252-254 |

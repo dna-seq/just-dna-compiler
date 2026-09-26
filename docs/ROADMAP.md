@@ -595,43 +595,6 @@ carries a `vrs_id`, and that one is gnomAD's. `@dont-discard-computed`.
 The build is 3 + 4, plus the stamped verdict from 2. The part that ships without a decision, the
 consumer guide stating that no normalization is guaranteed, landed with the S120 reply.
 
-## RM271 — both Ensembl rungs serve a non-nucleotide allele as a resolved locus: `dbSNP_novariation`, `<.>`, an empty `alts`, an `N` run
-
-**Severity** medium · **Status** open — **a patch** · **Owner** enricher (`ensembl._loci_from_rest`, the
-snapshot read in `resolver`) · **Motivating case** found 2026-09-27 closing RM268, checking whether the
-live rung copies other non-base allele strings through the way it copied `-`
-
-**What was confirmed, on 2026-09-27.**
-
-- **Live REST.** Ensembl answers some rsIDs with a mapping whose `allele_string` is the literal
-  `dbSNP_novariation` (`rs2100212723` on chr1; `rs1553119428` on chr1 and two patch contigs).
-  `_loci_from_rest` takes the first `/`-token as `ref`, so `resolve_rsid("rs2100212723")` returns
-  `{'chrom': '1', 'start': 2651767, 'ref': 'dbSNP_novariation', 'alts': None}`, and an `enrich` run with
-  an empty snapshot dir wrote it to `resolution.csv` as `status=resolved`. The allele-aware filter
-  did not reject it (genotype `C/T`). Also seen: `rs2101156061` answers `G/TTTTTTTTTTTNNNNNNNNNNN`,
-  an `N` run in an alt, which the resolver returned as-is (the `enrich` run hit a REST 500 on it, so
-  the written row is unconfirmed for that one).
-- **Snapshot.** The same class sits in the Ensembl VCF-dump snapshot, and `enrich --offline` against
-  it wrote all three as `status=resolved, source=cache`: `rs2100212723` with `alts=''`, `rs1553186440`
-  with `alts='<.>'`, `rs2101156061` with `alts='TTTTTTTTTTTTNNNNNNNNNNN'`. Measured over the snapshot's
-  rs-prefixed rows: 10,065 with an empty `alt` and 121 with `<.>`, plus some with `N` in `alt`.
-- Not checked: what the compiler does with each shape downstream (`<.>` is a lengthless symbolic
-  allele, which the compiler drops per `@symbolic-alleles`; an empty `alts` and `dbSNP_novariation`
-  in `ref` were not followed through).
-
-**What it is.** `dbSNP_novariation` and an empty alt both say *dbSNP records no variation at this
-mapping*. Writing either as a resolved locus states a position for an rsID whose source says there is
-nothing to place there. An `N` run is an allele of unknown sequence. Neither `ResolutionRow.ref` nor
-`alts` has a grammar to refuse them, and tightening one would invalidate existing derived files (P8),
-the same refusal RM268 records.
-
-**Repair (a sketch, unbuilt).** Withhold at both reads: a mapping whose `ref` or any alt is outside
-`^[ACGT]+$` (after RM268's anchoring of `-`) is not a locus, counted and warned apart from not-found
-(a structured field is RM272's, minor). Decide per shape before building: `dbSNP_novariation` / empty alt
-look like an answered absence at that mapping, not an unknown, and a `<.>` may deserve the symbolic
-allele path instead. Patch scope under P3's corrected-derivation clause, declared in the CHANGELOG, as
-long as it adds no schema member. · *related* RM268, RM267, `@non-nucleotide-spelling`, `@symbolic-alleles`
-
 ## RM272 — an answered-but-unplaceable rsID has no structured name in `EnrichmentResult`
 
 **Severity** low · **Status** open — **a minor**, for the `0.8` branch · **Owner** enricher
@@ -842,6 +805,26 @@ tractable (an earlier version flagged *"(TG) levels"*).
 the reference examples plus the reporter's corpus. A warning an author reads on every compile at 60%
 precision is how the channel stops being read (S68). Anyone can run that measurement today, so the gate is not
 circular. Being a warning with no schema member, it is patch-class once built.
+
+## RM280 — the AlphaGenome Atlas client has no retry layer of its own and no shared pacing gate, which RM192 said was filed
+
+**Severity** low · **Status** open — **a patch** · **Owner** enricher (`atlas_client`) · **Motivating
+case** RM192's *"What it did not do, filed rather than improvised"* and PROPOSAL_0_7_PT4's
+*Implementation debt* list. The 2026-09-27 postmortem sweep (P8) found nothing had been filed · *related*
+RM192, RM194, RM196
+
+**Confirmed on 2026-09-27.** `atlas_client.py` still says, in its module docstring, *"What a first cut
+does not carry, filed rather than improvised: no `tenacity` layer over the vendored
+`grpc_service_config.json` (`@retry-attempt-floor`) and no shared pacing gate
+(`@shared-pacing-gate`)"*. No ROADMAP file names either. The channel does take upstream's own
+retry policy from the vendored service config (`atlas_protos`), so the client is not unretried. What
+is missing is the house layer every other network client has: a floor an operator can raise, and one
+gate shared across concurrent callers.
+
+**What to decide before building.** Whether upstream's service-config policy already satisfies
+`@retry-attempt-floor` (a knob with a floor), or whether a second layer on top would retry twice. And
+whether any caller runs the client concurrently: if none does, the pacing gate is a guard with nothing
+to guard, and saying so closes this half. Internal behaviour only, so either answer is a patch.
 
 # Not format scope
 
