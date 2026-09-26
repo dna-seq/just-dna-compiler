@@ -2843,7 +2843,7 @@ the uncut 0.7.0.
 ## 2026-08-28 — 0.7.0: the items PROPOSAL_0_7 decided
 
 **Cut as 0.7.0** across all three packages and tagged `v0.7.0` at `2001215` on 2026-09-12; until the
-tag this entry read "a MINOR, being built; the number is decided" and said the cut was still to come,
+tag this entry described the minor as still in progress, with its number decided and no tag,
 and six replies (S75–S80) cited it as the record of that state. The tag is the record. Every item in this batch is additive
 under Principles 3 and 8, and a new optional column is what sizes a release. The heading names `0.7.0`
 because the proposal decided it per item, so unlike the 2026-08-24 batch below — which was also an
