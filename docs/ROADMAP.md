@@ -801,6 +801,24 @@ re-derive"*. So the two tiers give an author contradicting instructions for one 
    derivation of a derived cell, with no schema member. After it lands, step 1's text can say a
    re-run fixes it, and be true.
 
+## RM278 — the `compile` command cannot pass `ensembl_reference` or `ba1_threshold`, so every CLI-compiled manifest has a null `ensembl_reference`
+
+**Severity** low · **Status** open — **a minor**, for the `0.8` branch · **Owner** compiler (`cli.py`
+`compile`) · **Motivating case** RM218's *surfaced, not fixed* (§13.8), which left the question open
+and tracked nowhere, found by the 2026-09-27 postmortem sweep (P6) · *related* RM218
+
+**Confirmed on 2026-09-27.** `compile_module` takes `ensembl_reference` and `ba1_threshold`, and
+`just-dna-compiler compile --help` offers neither. So
+`manifest.compilation.ensembl_reference` cannot be stamped by the shipped command, and a module
+compiled through the CLI records no reference, whatever it was resolved against. `ba1_threshold` is
+the ACMG BA1 cutoff its own docstring says a carrier-allele module would want to move. COMPILER.md
+states the gap and `test_cli_parity.py` does not assert compile-flag parity, so nothing will move it.
+
+**Why a minor, not a patch.** Two new CLI options are new public surface, and `main` takes none
+(the RM268 fix-forward). The decision is small: add both, or say in COMPILER.md why the CLI
+deliberately stays narrower than the API. Either way, extend `test_cli_parity.py` to assert the
+decided set, so the next parameter cannot drift in unweighed.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

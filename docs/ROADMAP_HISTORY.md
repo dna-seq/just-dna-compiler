@@ -2061,7 +2061,7 @@ the two modes of `validate` differ by a severity column.
 parameters the CLI cannot reach, so `manifest.compilation.ensembl_reference` cannot be stamped by the
 shipped command at all. Neither is a defect and neither is a decision anyone took —
 `test_cli_parity.py` does not assert compile-flag parity — so COMPILER.md records the gap and leaves
-whether to close it open.
+whether to close it open. That question is RM278 (filed 2026-09-27).
 
 ## RM216 — fifty-one error types named nowhere, in the § titled *what a caller catches*
 
