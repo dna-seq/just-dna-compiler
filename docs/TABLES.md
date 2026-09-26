@@ -41,7 +41,9 @@ gets the authored surface *except* `gene`, `phenotype` and `category`; `annotati
 columns *including* those three. So a gene symbol exists in the artifact **only** in
 `annotations.parquet`, and a consumer reading `weights.parquet` alone cannot see one. The two also
 disagree on how they store the call: `annotations` keeps the authored `genotype` string while
-`weights` keeps a sorted allele list plus a `phased` bool.
+`weights` keeps the alleles as a list plus a `phased` bool. **The list is in authored order and never
+sorted**, so a phased `G|A` and `A|G` stay two calls; sort it and you match a larger set than the
+module states (S30). `just_dna_format.alleles.split_genotype` is the split to call rather than rewrite.
 
 **`start` is the 1-based VCF position.** Never subtract one from it. The bound is `ge=0` rather than
 `ge=1` because VCF permits POS 0, not because the column is ever interbase — every check and every
