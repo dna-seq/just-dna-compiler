@@ -848,8 +848,8 @@ axis. That half is RM282.
 
 ## RM282 — the PGx lane has one licence class, CC BY-SA with no sale, and nothing looks for a source outside it
 
-**Severity** low · **Status** open — parked on a **survey chosen for terms first**, release class
-decided by what it finds · **Owner** enricher (source adoption) · **Motivating case** RM166's *"it
+**Severity** low · **Status** open — **a minor, release undecided** · parked on a survey chosen for
+terms first, and the class is settled by what it finds · **Owner** enricher (source adoption) · **Motivating case** RM166's *"it
 wants its own entry"* (also PROPOSAL_0_7_PT2 § the decision), unfiled until the 2026-09-27 postmortem
 sweep (P9) · *related* RM166, RM281, `@pgx-research-only`
 
