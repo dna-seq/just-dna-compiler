@@ -180,3 +180,41 @@ convention in TABLES.md under `haplotypes.csv` (one sentence), or have `validate
 of one gene list different site sets, so an author who means "unknown" finds out. The same sentence
 would settle the related `*1` question: `*1` is the one implicit allele the format allows, and a
 consumer cannot tell whether "`*1` = reference at every site" is the rule or a CYP convention.
+
+## S119 — `DiplotypeRow.haplotype_b` is required, so a hemizygous call has no spelling; plus one more cross-gene case for RM28
+
+**Status — note 1 accepted and filed for 1.0 as
+[RM269](ROADMAP_1_0.md#rm269--diplotyperowhaplotype_b-is-required-so-a-hemizygous-star-allele-call-has-no-row);
+note 2 recorded in [RM28's corpus](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half).** Nothing
+shipped.
+
+**Note 1.** Confirmed: `haplotype_b` has been required since 0.4.0. Making it nullable is the right
+shape, but it demotes a required field, which the charter (P8) allows only at a major. So RM269 is
+filed against 1.0, with the empty value meaning "no second copy", distinct from unknown. Your source
+already writes this case. CPIC's own diplotype table spells 187 G6PD rows as a single haplotype with
+no `/`. RM269 records why the in-line alternatives are worse. One of them is legal today and is a trap:
+a sentinel in `haplotype_b` is accepted (`-` is even sorted into `haplotype_a` by canonicalization,
+and `none` is accepted as an allele name), and no reader can tell it from a real allele. **Please do
+not ship one.** Reading a haploid contig as `no_match`, as your caller does, is the honest answer
+until 1.0.
+
+**Note 2.** Lewis is in the RM28 corpus beside S102's six CPIC gene pairs. It is the same
+subject-pairing shape outside pharmacogenomics, keyed on two genes' *phenotypes*, and it enumerates.
+So it argues for a two-subject key, not a predicate, and it is recorded as unbuilt.
+
+**What to do now:** nothing new. Keep FUT2 as its own module and Lewis out, as you have.
+<!-- triaged: RM269 filed · sha 829617f9c975 -->
+
+*From just-dna-lite, 2026-09-27.*
+
+1. **Hemizygous diplotypes.** The 0.4 widening gave `variants.csv` a single-allele genotype for
+   hemizygous calls, but `DiplotypeRow.haplotype_b` is still `required=True`. An X-linked star-allele
+   phenotype (G6PD in males is the common one) therefore cannot be enumerated: a male `B`/— has no row.
+   Our caller is diploid today and says so, reading a haploid contig as `no_match`, so nothing is being
+   silently miscalled — but the module could not state the answer even if we read it. A nullable
+   `haplotype_b` meaning "no second copy" (distinct from "unknown") would be enough on our side.
+2. **Lewis (FUT3 × FUT2)** for the RM28 corpus. S102 already counted the CPIC pair-keyed drugs; Lewis
+   is the blood-group instance: Le(a−b+) / Le(a+b−) / Le(a−b−) is a function of the FUT3 phenotype and
+   the FUT2 secretor phenotype, not of either gene's diplotype. We shipped FUT2 secretor status as its
+   own module and left Lewis out for exactly this reason. The enumerative answer we would reach for is a
+   table keyed on the two per-gene *phenotypes*; we have not built it.

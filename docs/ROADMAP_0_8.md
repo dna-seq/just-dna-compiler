@@ -1083,6 +1083,14 @@ row*, when it has 35 or 206 of them and filtered every one. That is `@answered-i
 remedy — consult the live API — reaches the identical filter. The fourth arm, the one whose text
 names warfarin, is unreachable whenever a snapshot is present.
 
+**A blood-group instance, S119 (2026-09-27): Lewis is keyed on two genes' *phenotypes*.** The
+Lewis phenotype (Le(a−b+), Le(a+b−), Le(a−b−)) is a function of the FUT3 phenotype and the FUT2
+secretor phenotype, not of either gene's diplotype. `just-dna-lite` shipped FUT2 secretor status as
+its own module and left Lewis out for exactly this reason. It is the same subject-pairing shape as
+CPIC's six gene pairs, outside pharmacogenomics, and like them it enumerates (a small table over two
+per-gene phenotype vocabularies), so it argues for a two-subject key and not for a predicate.
+Unbuilt, so it is corpus evidence and not a measured case.
+
 ### What dissolved, so it is not re-proposed
 
 - **No operator is missing.** Rows are a disjunction and columns are a conjunction, so the existing

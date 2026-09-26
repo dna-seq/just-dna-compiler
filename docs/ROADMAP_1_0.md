@@ -137,6 +137,42 @@ only values that *parse* as nucleotides, and decide what to do with the ones tha
 Pinned meanwhile by `test_allele_case_is_outside_content_identity.py`'s last test, which asserts the
 current splitting behaviour so this note cannot rot into a silent fix.
 
+## RM269 — `DiplotypeRow.haplotype_b` is required, so a hemizygous star-allele call has no row
+
+**Severity** low · **Status** open, 1.0 — a Principle 8 demotion · **Owner** format (`pgx.DiplotypeRow`) ·
+**Motivating case** [S119](CONSUMER_SUGGESTIONS_HISTORY.md#s119--diplotyperowhaplotype_b-is-required-so-a-hemizygous-call-has-no-spelling-plus-one-more-cross-gene-case-for-rm28), note 1
+
+**What was confirmed.** `haplotype_b` has been required since 0.4.0, while `variants.csv` has spelled a
+hemizygous genotype as a single allele since the same widening. So an X-linked phenotype in a male,
+G6PD being the common one, can be stated per variant and not per haplotype. The source already writes
+it: CPIC's `diplotypes` table (the local snapshot) spells **187 G6PD rows as a single haplotype with no
+`/`** (`A`, `Aachen`, `A- 202A_376G`). Our drafter never meets them, because every G6PD name fails
+`STAR_ALLELE_PATTERN` whether it is a pair or not, so the gap is masked there rather than reported.
+The reporter's caller is diploid and reads a haploid contig as `no_match`, so nothing is being
+silently miscalled today.
+
+**Why this is 1.0.** The requested repair, a nullable `haplotype_b` meaning "no second copy", demotes a
+required field, which Principle 8 forbids inside a major. An older reader would meet a pair with one
+half missing.
+
+**Why the in-line alternatives are wrong.**
+
+1. **A sentinel name in `haplotype_b`.** It is legal today and it is the trap. Probed: `-` is accepted
+   and canonicalization (`a <= b`) sorts it into `haplotype_a`, so `B/-` is stored as `-/B`, and `none`
+   is accepted as an allele called "none". A name column would then carry a structural claim that no
+   reader can tell from a real allele (P5).
+2. **Repeat the haplotype plus a new optional `ploidy` column.** Minor-legal, and harmful: every
+   reader that predates the column reads `B/B` as a homozygous female. A new column may not change what
+   the old ones mean.
+3. **A new optional haplotype-keyed phenotype table.** Minor-legal and harmless to old readers. But it
+   is a second home for "a genotype → a phenotype" beside `diplotypes.csv`, one table over, for one
+   ploidy. If a corpus needs it before 1.0, it is the one to weigh against waiting.
+
+**The 1.0 shape.** Make `haplotype_b` optional, and give the empty value its own meaning ("no second
+copy") distinct from unknown, which the format never states on this table. The ledger row in RM52 is
+owed when it lands. The author's upgrade route is "no action needed", since every existing row sets the
+field. A consumer needs to handle a null `haplotype_b` in `diplotypes.parquet`.
+
 ## RM15 — Build-agnostic identity & multi-build support
 
 **Severity** large · **Status** deferred to 1.0 — **and not for digest reasons** · **Owner** format
