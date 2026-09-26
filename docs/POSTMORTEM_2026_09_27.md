@@ -224,7 +224,8 @@ any of them.
 | D9 | **Done**: S15 and S95 in ENRICHER § Rate limits, S78 in ENRICHING § the checks, RM31's frame in CONSUMING § the indel warning. Workarounds that exist only in a reply: `PacingGate` is not a concurrency limit (S15); billing egress on the five clients with a private `_gate` (S95); an older `verification.json` is not re-examined (S78); the RM31 genotype-frame reduction for consumers | CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md:1084-1087; CONSUMER_SUGGESTIONS_HISTORY.md:3926-3929, :2471-2473 |
 | D10 | **Done, one closed:** the S45 pointer, RM84's reason, the `weight` evidence, `public_key` in the README, the `stats.genes` bullet and the co-authoring bullet are written. RM70's second TOC row is a deliberate pointer left when the entry moved (it says so), so it stays. Small: the 0.6.3 CHANGELOG entry's forward pointer (S45); RM84's *which build* reason (S34); `weight` authored zero times, beside its 1.0 review (S36/RM92); `public_key` in the schema README (S34); RM70's duplicate TOC row; the idea-book `stats.genes` bullet, fixed by RM121; the co-authoring bullet, which eight documents lean on and which names none of their defects | history/CHANGELOG_0_6.md:454-455; ROADMAP_0_8.md RM84; ROADMAP.md 1.0 tracker `weight`; schema/README.md; RM_TOC_000_099.md:183, :253; ROADMAP.md idea-book |
 
-The procedure mitigations M3–M6, M8 and M9 (§ 5) are also this seat's, decided with the maintainer.
+The procedure mitigations M3–M6, M8 and M9 (§ 5) are also this seat's, decided with the maintainer. **Decided 2026-09-27:** M3 is filed as RM292 (a minor, for `0.8`) and M4 as RM291 (a patch, a test).
+M5, M6, M8 and M9 the maintainer takes separately.
 
 ### 6.4 The triage seat's share: the residual gates
 

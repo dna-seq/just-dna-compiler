@@ -1020,6 +1020,52 @@ reading is the only one (as on the concordance table) or one of two, which would
 (`@two-vocabularies-that-do-not-meet-withhold`). Turning the constant into a per-table field on
 `OverlayTarget` is internal. Reporting it reuses the existing warning code, so it is a patch.
 
+## RM291 — no test does what a consumer does: join a compiled module against an independently normalized VCF
+
+**Severity** high · **Status** open — **a patch** (a test only) · **Owner** compiler (`compiler/tests/`)
+· **Motivating case** the 2026-09-27 postmortem, blindspot B3 and mitigation M4, decided with the
+maintainer that day · *related* RM270, RM267, RM273, RM31
+
+The suite compiles, reverses, recompiles and cross-checks tables against each other, and every one of
+those checks is internal. None of them joins a compiled artifact against a VCF produced by someone
+else, which is a consumer's whole operation. That is why the +1 indel respelling (RM31, 2026-08-03)
+and CCR5-Δ32's dropped carriers (S120) passed every gate for three minors.
+
+**The test.** Commit a small ClinVar VCF slice covering the reference examples' variants, normalized
+with `bcftools norm -f <GRCh38>` (left-aligned and trimmed, as a caller emits). Compile every reference
+example and join each on `(chrom, pos, ref, alt)` the way a consumer does. Assert that every row
+expected to match does, as set equality over the walked rows, never a count. It would have failed
+on 2026-08-03.
+
+**It fails today, on purpose.** The respelled indels RM270 names miss. Land it with those rows as an
+explicit expected-failure set pinned to RM270. A row leaving that set, fixed or newly broken, fails
+the test, so the set can only shrink when RM270 ships. The fixture is small and travels in `assets/`,
+under the ~5 MB LFS threshold.
+
+## RM292 — a verification check does not say what it checked against, so a check that witnesses itself reads as verified
+
+**Severity** high · **Status** open — **a minor**, for the `0.8` branch · **Owner** format
+(`VerificationRecord`) + enricher (the check roster) · **Motivating case** the 2026-09-27 postmortem,
+blindspot B2 and mitigation M3, decided with the maintainer that day · *related* RM267, RM270,
+RM274, `@start-1based`, `@registry-completeness`
+
+Every check that could have seen the indel anchor error either compared a source with itself or was
+tolerant by design. The reference-allele check passes a wrong anchor because the anchor base is a real
+genome base. `check_rsid_coordinates` abstains on every indel position difference and counts none of
+them. The ClinVar snapshot was loaded in the same run and used only as a fallback. `@start-1based`
+wrote the lesson down on 2026-08-06 (*validate-by-redundancy assumes independence*), but only as a
+sentence.
+
+**The change.** Each check declares two things: the source of what it checks, and the source it checks
+against. When those are the same source, the record reads *self-consistent*, never *verified*. A
+tolerance that makes a class undecided counts that class and publishes the count (`@tautology-zero`).
+It is carried as a field on the check registry and asserted by an equality over the roster, so a new
+check cannot ship without stating its witness.
+
+**Why a minor.** The field on `VerificationRecord` is a new member of a published document, and
+*self-consistent* is a new verdict vocabulary member. Both are additive and minor-legal (P3, P8).
+Price: the record is machine-written, so half cost (P9). Not on `main`.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
