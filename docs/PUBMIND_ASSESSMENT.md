@@ -538,7 +538,8 @@ test pinning them fails on the next ANNOVAR release for no reason. Assert the re
   `LICENSE.md`'s academic, non-commercial grant for the same software. A contradiction between two of
   the owner's own statements is not terms either. So `None` on every axis stands. The
   written question goes to CHOP's Office of Technology Transfer (`techtransfer@chop.edu`, named in
-  `LICENSE.md`) or the WGLab/PubMind GitHub repo.
+  `LICENSE.md`) or the WGLab/PubMind GitHub repo. **Asked 2026-09-27 as
+  [WGLab/PubMind#5](https://github.com/WGLab/PubMind/issues/5)**; the answer goes here.
 - Does the table get a stable release cadence? One snapshot dated 2026-08-24 is not a cadence, and the
   refresh design depends on it.
 - Is the PVID stable across releases? If it is not, then nothing about a PubMind reference is
