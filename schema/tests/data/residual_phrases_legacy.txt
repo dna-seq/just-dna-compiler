@@ -11,5 +11,5 @@ history/ROADMAP_HISTORY_PRE_0_6.md :: RM32 :: belongs to rm15 :: leak
 history/ROADMAP_HISTORY_PRE_0_6.md :: RM36 :: filed rather than :: self
 proposals/PROPOSAL_0_5.md :: Still deferred :: the remaining half :: homed
 proposals/PROPOSAL_0_6.md :: Same-release obligation :: filed rather than :: self
-proposals/PROPOSAL_0_7_PT3.md :: What a first cut still owes, :: still owes :: leak
+proposals/PROPOSAL_0_7_PT3.md :: What a first cut still owes, :: still owes :: homed
 proposals/PROPOSAL_0_7_PT4.md :: Implementation debt, filed rather than improvised :: filed rather than :: homed

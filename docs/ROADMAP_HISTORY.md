@@ -3995,7 +3995,7 @@ relationships (a miss key is absent from the parent, a photocopy key is present,
 `clin_sig` is the normalizer's image of its bracket, the four buckets partition the source rows, a
 child whose parent pin does not match the parent on disk is stale).
 
-Still open, and none of it blocking: **`VUS*` is withheld rather than understood** — a legend, or
+Still open, and none of it blocking (RM285 carries the first three, filed 2026-09-27): **`VUS*` is withheld rather than understood** — a legend, or
 McCormick 2020 read in full, would revisit it, and until then a rated-miss count that silently included
 those rows would be a lie. **The 388 unrated misses are a real identity increment with no mappable
 class**, counted and not drafted; whether their identity earns a row at all is a second, smaller call.

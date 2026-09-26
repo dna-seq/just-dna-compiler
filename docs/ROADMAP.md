@@ -912,6 +912,33 @@ remains a per-check document.
 takes. The shape question is where it lives: in `verification.json` beside the per-check records, or
 in the run's own output (`EnrichmentResult`), which RM272 is already widening on the `0.8` branch.
 
+## RM285 — the MITOMAP lane's three open remainders: the `:` deletions no pass anchors, `VUS*` withheld, and the unrated-miss identity rows
+
+**Severity** low · **Status** open — **a patch** (the anchoring pass), the other two are decisions ·
+**Owner** enricher (`mitomap_build`, `mitomap_miss_build`, `mitomap_draft`) · **Motivating case**
+RM171's *"Still open, and none of it blocking"* paragraph and PROPOSAL_0_7_PT3 § *What a first cut
+still owes*, never filed, found by the 2026-09-27 postmortem sweep (P12) · *related* RM171, RM273
+
+RM171 listed what it left, and nothing carried the list. Checked on 2026-09-27 against the local
+`mitomap_miss` snapshot (47 unmintable rows, 388 unrated misses).
+
+1. **The `:` deletions want an enricher pass that anchors them against the rCRS.** MITOMAP writes a
+   deletion as `refna="TA"` against `regna=":"`, which needs the preceding rCRS base to become a VCF
+   allele. The lane counts them as `unmintable`. Thirteen of the sixteen bracketed rows that motivated
+   RM171 were these. Anchoring in the enricher is legal (the tier may fetch). The chrM sequence is
+   16,569 bases and fetches in one request. This is the patch half. Anchor through
+   `clingen_allele.anchor_indel` only after RM273 has fixed its left-alignment claim, or the new rows
+   inherit it.
+2. **`VUS*` is withheld rather than understood.** A MITOMAP legend, or McCormick 2020 read in full,
+   decides whether it maps to a `clin_sig` member. Until then the withhold is right, and this is a
+   reading task, not code.
+3. **The unrated misses are an identity increment with no mappable class.** They are counted and never
+   drafted. Whether an identity with no classification earns a drafted row at all is the smaller call
+   RM171 deferred.
+
+Indel normalization, RM171's fourth remainder, is RM273 (1). Publishing the MITOMAP snapshot to
+HuggingFace is outbound and the maintainer's (postmortem P16).
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
