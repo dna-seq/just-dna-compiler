@@ -939,6 +939,30 @@ RM171 listed what it left, and nothing carried the list. Checked on 2026-09-27 a
 Indel normalization, RM171's fourth remainder, is RM273 (1). Publishing the MITOMAP snapshot to
 HuggingFace is outbound and the maintainer's (postmortem P16).
 
+## RM286 — PharmVar's research-use-only, personal-key restriction lives in `notice` prose, and RM27 closed without the axis RM38 handed it
+
+**Severity** low · **Status** open — **a minor, release undecided** · **Owner** format (`SourceRow`) +
+enricher (the PharmVar terms constant) · **Motivating case** RM38's *"belongs to the RM27 design
+round"*, a pointer to an item that closed without it, found by the 2026-09-27 postmortem sweep (P13)
+· *related* RM38, RM27, `@pgx-research-only`, `@gated-source-caches`
+
+RM38 declined a `SourceRow` column for PharmVar's restriction (research use only, a non-transferable
+personal key). The restriction is narrower than `commercial_use=False`, so today it lives only in
+`notice` as prose. RM38 handed the axis to *"the RM27 design round, which already owns 'the recorded
+axes do not cover every real restriction'"*. RM27 shipped in 0.6 as a record-only redistribution
+verdict with the registry named as enforcer. It designed no further axis, so the handoff landed
+nowhere.
+
+**One premise to correct before designing.** RM38 sized the column as 1.0 because *"a new column on an
+existing parquet moves every compiled module's digest"*. A digest moving is not by itself a reason to
+defer (the house coding standards say so), and a new optional column is minor-legal under P3 and P8.
+So this is a minor if built.
+
+**What to decide.** Whether research-use-only and personal-key are one axis or two, and whether
+either is tri-state like `share_alike`/`commercial_use` (an unestablished permission is never a
+permission). Also whether the compile gate reads it, or it stays recorded-only like `redistribution`.
+A new authored-schema column costs the full P9 price, though `sources.csv` is mostly machine-written.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
@@ -1374,9 +1398,9 @@ Mandatory `pmid` (must parse to a real PubMed id) rejects DOI-only provenance �
 adding optional `doi` (RM11) alone can't unblock it. **Disposition:** **doi-first at 1.0**: make
 `pmid` optional/legacy and require **≥1 of `{doi, pmid}`** (every citation has a stable id, not
 necessarily a PMID; the reverse holds). Requiredness change → major-only. **Pairs with RM50**, which
-carries the PMCID axis and the `LiteratureRow` key question: this entry decides what a *study row* may
-be authored with, and says nothing about what the pmid-keyed sidecar does with a row that has no PMID.
-Settle both in one release.
+shipped the PMCID axis in 0.6 and left the `LiteratureRow` key question open (its *re-key on a general
+citation id* option), so **this entry now carries both questions**: what a *study row* may be authored
+with, and what the pmid-keyed sidecar does with a row that has no PMID. Settle them in one release.
 
 ### Compiler `ensembl_cache` deprecated shim
 
@@ -1904,7 +1928,8 @@ New ideas enter here as freeform suggestions, then graduate through the design c
   snapshot is not a fetch (`@acquisition-gate-is-not-a-read-gate`) — but a rung that fetches answers
   from somebody else's snapshot is neither of those two, and the licence table has no row shape for
   it. ClinPGx and PharmVar are CC BY-SA + no-sale with a personal key; whether an answer served over
-  HTTP is a redistribution is exactly the axis RM27 filed and never designed
+  HTTP is a redistribution is outside what RM27 designed: RM27 shipped redistribution as record-only,
+  enforced by the registry at *publish*, and a served answer is neither a publish nor a fetch
   (`@redistribution-ungated`). So the design order is: settle what a served answer is under each
   gated source's terms, *then* the rung. Not before, because a rung that works for Ensembl and ClinVar
   and silently also works for PharmVar is the failure mode.

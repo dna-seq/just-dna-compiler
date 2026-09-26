@@ -227,6 +227,9 @@ findable from its gate)*:
   it came from there is nothing left to refuse or strip. It stays filed in 0.7 because its other exit —
   an author with a non-GRCh38 module saying which outcome they wanted — is reachable first and would
   settle it without RM15; check its status before assuming this closes it too.
+- **RM32's PAR multi-build half lands here.** PAR intervals are per-assembly, so `par_partner`
+  withholds on every build but GRCh38; RM32 (0.5) handed the generalization to this item. Multi-build
+  support has to carry a PAR table per assembly, or PAR modules stay GRCh38-only.
 
 ---
 

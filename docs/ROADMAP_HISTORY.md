@@ -6924,8 +6924,9 @@ B and C acquire and carry values. The ANNOVAR-distributed table publishes **no d
 `LICENSE.md` covers the software (academic, non-commercial), the paper is CC BY-NC-ND, the table itself
 says nothing, and unknown is not permissive (`@no-named-licence`). Ask WGLab and CHOP's Office of
 Technology Transfer in writing; it will not resolve itself by the file continuing to download without
-a key. Separately, RM27 still owes the redistribution axis (`@redistribution-ungated`) — a gate on
-*publishing a module that carries such bytes*, not on building the snapshot or running the check
+a key. Separately, the redistribution axis is RM27's, shipped in 0.6 as record-only with the registry named as
+the enforcer at publish (`@redistribution-ungated`; this sentence said RM27 still owed it until
+2026-09-27) — a gate on *publishing a module that carries such bytes*, not on building the snapshot or running the check
 locally, and conflating the two is what stalled this area in the first draft.
 
 ## RM133 — a card subtitle has no amendable home, and the binding is not where that gets fixed

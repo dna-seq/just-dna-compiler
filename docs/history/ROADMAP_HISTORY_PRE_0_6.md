@@ -802,7 +802,7 @@ already do, so a module can say whether a live API or a pinned file gave it the 
   genuinely narrower than `commercial_use=False` and today lives only in `notice` as prose — but a new
   column on an existing parquet moves every compiled module's digest, so it is **1.0**, not a minor. It
   is surfaced here and belongs to the RM27 design round, which already owns "the recorded axes do not
-  cover every real restriction".
+  cover every real restriction". RM27 closed record-only without designing it; the axis is RM286 (filed 2026-09-27).
 - **No second CLI flag.** `--offline` is the switch and an explicit `--snapshot`/`--*-cache` path is the
   inject-only escape hatch. A `--use-snapshot` would be the second flag the `ensure_*` shape exists to
   avoid.
