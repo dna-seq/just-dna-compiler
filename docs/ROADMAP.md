@@ -653,8 +653,8 @@ count and publish the undecided set (`@tautology-zero`) rather than keep it sile
 
 ## RM275 — seven derived fact tables have no duplicate rule, so two contradicting rows under one key compile green under `--strict`
 
-**Severity** medium · **Status** open — **a patch** (a warning), with refusal at **1.0** · **Owner**
-compiler (`_TABLE_DUPE_KEYS`) · **Motivating case** RM107's residual (0.6), *"it wants its own item"*,
+**Severity** medium · **Status** open — **a minor** (re-sized 2026-09-27, see the last paragraph), with
+refusal at **1.0** · **Owner** compiler (`_TABLE_DUPE_KEYS`) · **Motivating case** RM107's residual (0.6), *"it wants its own item"*,
 found unfiled by the 2026-09-27 postmortem sweep (P3) · *related* RM107, RM109, RM124, RM130
 
 RM107 widened the duplicate check to `sources.csv` and wrote down what it left: *"The remaining gap is
@@ -679,6 +679,14 @@ reads one or the other depending on row order.
   existing modules keep validating inside a major. So the check lands as a warning in both modes on
   `main`, and becomes a refusal at 1.0 (a 1.0-tracker line when this is built).
 
+
+**Re-sized to a minor, 2026-09-27, before building.** The warning needs its own code, and a new member
+of `VALID_WARNING_CODES` is not legibility-only: `ModuleManifest.warnings_summary` validates every key
+against that closed set, so a just-dna-format 0.7.2 reader **refuses** a manifest carrying the new
+code. That is an old-reader break (the INTEGRATION_0_7 shape), which `main` cannot take. Reusing an
+existing code would name the wrong finding (`@warning-code-names-the-finding`), and a log line alone
+is invisible to every consumer reading findings. Build it on the `0.8` branch, with the INTEGRATION
+note that says a reader must be at 0.8 to read such a manifest.
 ## RM294 — STRchive's evidence grade has no place in the module, so a Refuted locus is doubted only in a draft note
 
 **Severity** low · **Status** open — **a minor, release undecided** · **Owner** format / enricher ·
