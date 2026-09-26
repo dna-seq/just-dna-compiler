@@ -1345,7 +1345,9 @@ pointless — while the **removal** stays major, which is the half the amendment
 **Severity** low · **Status** queued for 1.0 — review only
 
 Potential confusion — module-local score vs published magnitude (both kept, documented).
-**Disposition:** Review at 1.0 whether `weight` stays or is subsumed by `effect_size`.
+**Disposition:** Review at 1.0 whether `weight` stays or is subsumed by `effect_size`. Evidence for
+that review is in § D5 of the consumer-note triage below: a real module (`superhuman`) authors
+`weight` on none of its 190 rows and declares no `weighting:` block.
 
 ### `sources.csv` — the name, and the `source` column it collides with
 
@@ -1669,6 +1671,13 @@ its prose in git at `635da8c`; each idea was run through the what-blocks lens in
   reject as a duplicate, and rows are appended **at the end** — authored row order is preserved through
   compile → reverse → recompile, so re-sorting an existing file would move a compiled module's digest.
 
+  **This bullet is a refused mechanism, never a home for a defect** (added 2026-09-27, after the
+  postmortem of that day). Most documents cite it for what it is: the reason a repair that would
+  rewrite an authored cell is refused. One used it as a home. RM31's genotype-frame residual pointed
+  here, and that defect went unowned for 55 days. Its consumer workaround is now in CONSUMING.md's
+  indel warning, and the artifact-side answer is RM270. A defect that needs an authored cell rewritten
+  gets its own `RMn`, and names this bullet only as the repair it cannot use.
+
 - **Escalating the ClinVar `clin_sig` cross-check when the disagreement is with an expert panel.**
   Tempting, because a VCEP or practice-guideline assertion genuinely is a different kind of claim from a
   one-star submitter's, and the snapshot already carries `review_status`/`review_stars` to tell them
@@ -1877,8 +1886,9 @@ New ideas enter here as freeform suggestions, then graduate through the design c
 (feedback → USE_CASES lens → PROPOSAL → shipped or parked as an `RMn` above).
 
 
-- **`manifest.stats.genes` is derived from `variants.csv` alone, so a table-only module publishes
-  `gene_count: 0`.** Relayed from just-dna-lite (2026-08-21), originally measured by
+- *Fixed by RM121 (2026-08-20): `stats.genes` now unions the gene column of every family a module
+  carries. Kept for the triage record.* **`manifest.stats.genes` was derived from `variants.csv` alone,
+  so a table-only module published `gene_count: 0`.** Relayed from just-dna-lite (2026-08-21), originally measured by
   just-module-creator; filed here because neither of us owns `variant_stats` and we could not tell
   whether it had already been reported. `compiler.py` computes
   `genes = sorted({v.gene for v in variants if v.gene})`, so a module whose gene is stated only in a

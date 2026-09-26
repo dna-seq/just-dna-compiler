@@ -452,7 +452,9 @@ evidence. The event key is now the whole `(chrom, start, ref, alt)`, which also 
 distinct positions; distinctness is over the allele event and not over records, so a re-submission
 under a second `variation_id` still does not flag. Six tests, all run against the unfixed predicate and
 watched to fail, the real-snapshot one at exactly 725. **Modules published before this need a
-re-draft** — no fix here reaches an artifact already built.
+re-draft** — no fix here reaches an artifact already built. *(Incomplete, as S45 measured: a re-draft
+repairs the records this dropped and not the ones it wrote under a moved identity. The 0.6.4 entry
+above says what does.)*
 
 **The ClinPGx drafter's genotype gate was narrower than the schema it writes into (S44).**
 `_authored_genotype` took only `CC`, on the argument that the general case needs the resolved ref/alt

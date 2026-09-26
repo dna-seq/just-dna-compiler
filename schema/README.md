@@ -46,7 +46,10 @@ verify_manifest(module_dir, manifest, require_marketplace=False)  # a locally-co
 **Those two calls are different policies, not a strict and a lax mode** — pick per install route
 rather than picking one. The default additionally requires `compiled_by == "marketplace-server"`, so
 it rejects any module compiled anywhere else, this project's own compiler included (it leaves
-`compiled_by` null on purpose). Both check every file hash and the digest in full.
+`compiled_by` null on purpose). Both check every file hash and the digest in full. `compiled_by` is an
+unsigned string written by whoever compiled the module, so it proves nothing on its own. The check that
+carries weight is a signature verified against a key you pinned in advance:
+`verify_signature(digest, signature, trusted_public_key=...)`.
 
 All hashes are SHA-256, lowercase hex, prefixed `sha256:`. The `artifact.digest` is a Merkle-style
 root over the canonical file listing — verifying it verifies the whole set and is the version's

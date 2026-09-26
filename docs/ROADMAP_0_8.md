@@ -1578,6 +1578,10 @@ reference consumer, and their half is already agreed in writing** · **Owner** e
 (`upload.upload_module`) + `just-dna-lite` discovery ·
 **Motivating case** a republished module on the HuggingFace path
 
+**Why a partial mitigation does not close it** (S34 §3): the fields a consumer can read today record
+*where* a module came from, never *which build* of it. Two uploads under one path are then
+indistinguishable on the discovery side, which is the half this item exists for.
+
 ### What was observed
 
 [MODULE_LIFECYCLE § 6.8](MODULE_LIFECYCLE.md#68-what-a-consumer-sees-when-v2-lands) traces two
