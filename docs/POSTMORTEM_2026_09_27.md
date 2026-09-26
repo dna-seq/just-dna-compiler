@@ -201,7 +201,7 @@ any of them.
 |---|---|---|
 | P8 | **Filed as RM280.** RM192 says the Atlas client's retry and shared pacing were *"filed rather than improvised"*; nothing was filed | ROADMAP_HISTORY.md:3076-3078; PROPOSAL_0_7_PT4.md:374-378 |
 | P9 | **Filed as RM281 and RM282.** RM166: licence diversification for the PGx lane, and the `clinicalVariants.zip` adoption (*"it wants its own number"*) | ROADMAP_HISTORY.md:4196-4198, 4222-4227; PROPOSAL_0_7_PT2.md:557-560; CHANGELOG.md:2674-2676 |
-| P10 | RM175: nothing notices `summaryAnnotations.zip` itself going quiet | ROADMAP_HISTORY.md:4144-4161 |
+| P10 | **Filed as RM283.** RM175: nothing notices `summaryAnnotations.zip` itself going quiet | ROADMAP_HISTORY.md:4144-4161 |
 | P11 | RM72: a run-level place for a skip (*"a separate question and was not opened"*) | history/ROADMAP_0_7.md:252-254 |
 | P12 | RM171's rCRS anchoring pass for `:` deletions, the `VUS*` revisit, the 388 unrated misses | ROADMAP_HISTORY.md:3927-3932; PROPOSAL_0_7_PT3.md:240-245 |
 | P13 | Pointers to closed items: RM38's PharmVar personal-key axis → RM27; the idea-book's served-answer redistribution → RM27; the 1.0 tracker's `LiteratureRow` key → RM50; RM32's PAR multi-build half → RM15, which does not mention it | PRE_0_6.md:801-805, :627-628; ROADMAP.md idea-book (S94 peer rung); ROADMAP.md 1.0 tracker `StudyRow.pmid` |

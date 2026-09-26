@@ -4229,7 +4229,7 @@ is a design in its own right:
 The name check that shipped is narrower than any of them on purpose: it catches *this* failure — a
 retired name still serving — at the only moment the lane can see it, without claiming to detect
 staleness in general. Nothing built here would notice `summaryAnnotations.zip` itself going quiet, and
-that gap is the honest remainder.
+that gap is the honest remainder (RM283, filed 2026-09-27).
 
 **A trap that cost the investigation real time, and belongs in the record.** Every ClinPGx HTML route
 — `/downloads`, every help page — serves the same JS shell whose no-JS body is *"Javascript Is

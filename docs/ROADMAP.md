@@ -867,6 +867,31 @@ on every module drafted from them. A commercial author has no PGx source at all.
 Anyone can do it today and it needs nothing built. If it finds a candidate, adopting it is a normal
 source adoption (a minor). If it finds none, this closes as measured, with the survey as the record.
 
+## RM283 — nothing notices the ClinPGx archive the lane builds from going quiet, which is how it served a fourteen-month-old snapshot
+
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher
+(`clinpgx_build`, its `release.json`) · **Motivating case** RM175's *"that gap is the honest
+remainder"*, left unfiled, found by the 2026-09-27 postmortem sweep (P10) · *related* RM175, RM173,
+`@currency-asks-the-source-not-the-cache`
+
+RM175 found the lane building from `clinicalAnnotations.zip`, retired upstream and frozen on S3 for
+fourteen months while still answering 200. It shipped a narrow guard, refusing the retired member
+names, and listed three wider ones it did not build: audit each default URL against the source's
+listing, record the S3 `Last-Modified` beside `CREATED_*.txt` in `release.json`, and fire when one
+archive of a multi-archive source is much older than its siblings. It closed with *"Nothing built
+here would notice `summaryAnnotations.zip` itself going quiet, and that gap is the honest
+remainder"*, and gave that remainder no number.
+
+**Confirmed on 2026-09-27.** `clinpgx_build` records `CREATED_*.txt` only. It reads no
+`Last-Modified` and compares nothing across archives.
+
+**What to build, cheapest first.** Record `Last-Modified` in `release.json`. That is a new field in a
+published snapshot's description, so it is minor-class. Then a finding that compares it with the
+sibling archives' dates on the same fetch, reporting and never refusing (a source going quiet is not a
+`strict` matter, `@a-source-recuring-is-not-a-strict-matter`). The URL audit needs a browser (RM175's
+trap: every ClinPGx HTML route is a JS shell), so it stays a manual step written into the lane's
+rebuild runbook, not machinery.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
