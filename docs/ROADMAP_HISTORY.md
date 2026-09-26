@@ -4265,7 +4265,7 @@ is a rule with exceptions, the entry said so, and the page does not settle it. S
 supplies a quarter of the FDA content ClinPGx already carries, in a shape that must be scraped, on
 terms that are unestablished. Leaving that half open would have left an item riding on a source shown
 not to serve it. **If licence diversification for the PGx lane still matters — and it plausibly does,
-being a single point of failure on the axis the format gates on — it wants its own entry, with
+being a single point of failure on the axis the format gates on — it wants its own entry (RM282, filed 2026-09-27), with
 candidates chosen for their terms first**, which is the opposite of how this one chose.
 
 **It is five regulators, not one, and the surface is named for the labels.** `Source` counts: FDA,
@@ -4295,7 +4295,7 @@ archives and `clinpgx_build` reads one. `clinicalVariants.zip` is the one bearin
 kind — ~5,190 rows of `pharm_variants.csv` territory, whose `type` is a six-member base vocabulary that
 **comma-combines**, so any adoption normalizes the *combination* rather than the token. The honest
 restatement is that the PGx lane reads one of twelve files from a source it has already adopted and
-gated, and the FDA question was a narrow way into a broad finding. It wants its own number.
+gated, and the FDA question was a narrow way into a broad finding. It wants its own number, filed as RM281 on 2026-09-27.
 
 **What the code review found after the item was written, and it is a shape rather than a slip.** The
 lane shipped a `VALID_AUTHORED_POSITION` holding five members while `just_dna_format.vocab` already had

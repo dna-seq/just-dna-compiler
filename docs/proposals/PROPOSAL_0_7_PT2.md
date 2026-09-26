@@ -556,7 +556,7 @@ withhold, never `No Clinical PGx`.
 class by this route, and the direct route cannot supply one either.** Leaving that half open would
 leave an item riding on a source that has been shown not to serve it. If licence diversification for
 the PGx lane still matters — and it plausibly does, since it is a single point of failure on the axis
-the format gates on — it wants its own entry, with candidates chosen *for their terms first*, which
+the format gates on — it wants its own entry (RM282, filed 2026-09-27), with candidates chosen *for their terms first*, which
 is the opposite of how this one chose.
 
 ### Repairs rejected

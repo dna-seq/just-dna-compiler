@@ -826,6 +826,47 @@ gate shared across concurrent callers.
 whether any caller runs the client concurrently: if none does, the pacing gate is a guard with nothing
 to guard, and saying so closes this half. Internal behaviour only, so either answer is a patch.
 
+## RM281 — the PGx lane reads one of ClinPGx's archives, and `clinicalVariants.zip` bears on a shipped table kind
+
+**Severity** low · **Status** open — **a minor, release undecided** (a source adoption) · **Owner**
+enricher (`clinpgx_build`, `clinpgx_draft`) · **Motivating case** RM166's *"It wants its own number"*,
+unfiled until the 2026-09-27 postmortem sweep (P9) · *related* RM166, RM173, RM175
+
+RM166 noticed that ClinPGx publishes at least twelve archives while the lane builds from one
+(`summaryAnnotations.zip` today, per RM173). `clinicalVariants.zip` is the one that bears on a shipped
+kind: about 5,190 rows of `pharm_variants.csv` territory. Its `type` is a six-member base vocabulary
+that **comma-combines**, so an adoption has to normalize the *combination*, not the token
+(`@one-normalizer-two-spellings`).
+
+**Confirmed on 2026-09-27.** No module in `enricher/` names `clinicalVariants`. The lane's builder
+reads `summaryAnnotations.zip` and refuses the retired `clinicalAnnotations.zip` (RM173), and the
+`drug_labels` lane is separate.
+
+**Why a minor.** Adopting it is a new drafting route, or new columns in a published snapshot. It is
+also the same terms as the rest of the lane (CC BY-SA, no sale), so it widens nothing on the licence
+axis. That half is RM282.
+
+## RM282 — the PGx lane has one licence class, CC BY-SA with no sale, and nothing looks for a source outside it
+
+**Severity** low · **Status** open — parked on a **survey chosen for terms first**, release class
+decided by what it finds · **Owner** enricher (source adoption) · **Motivating case** RM166's *"it
+wants its own entry"* (also PROPOSAL_0_7_PT2 § the decision), unfiled until the 2026-09-27 postmortem
+sweep (P9) · *related* RM166, RM281, `@pgx-research-only`
+
+RM166 closed its FDA half measured: *"the lane does not gain a member outside its licence class by
+this route, and the direct route cannot supply one either"*. It then said that if licence
+diversification for the PGx lane still matters (*"it plausibly does, since it is a single point of
+failure on the axis the format gates on"*), it wants its own entry, with candidates chosen for their
+terms first. No entry was written.
+
+**What is true today.** ClinPGx, CPIC and PharmVar are all CC BY-SA with no sale
+(`@pgx-research-only`), and the compile gate (`@gate-is-data-driven`) refuses a commercial declared use
+on every module drafted from them. A commercial author has no PGx source at all.
+
+**The gate, and why it is satisfiable now.** A survey of PGx sources ranked by terms before content.
+Anyone can do it today and it needs nothing built. If it finds a candidate, adopting it is a normal
+source adoption (a minor). If it finds none, this closes as measured, with the survey as the record.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
