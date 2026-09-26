@@ -4239,7 +4239,7 @@ those values, RM27's undesigned axis, and a compiled module lands `pubmind` in
 `manifest.sources.unknown_terms_sources` with the module-wide verdict `None`. Two things are ours:
 the gate's skip sentence reads as *not recorded yet* rather than *unsettleable*, and the function's
 docstring says nothing about it — the FAQ now answers the question by name, and the sentence itself
-is a patch-level candidate for after 0.7.0 publishes, not a promise. **What to do now:** call the
+is a patch-level candidate for after 0.7.0 publishes, not a promise (filed as RM289 on 2026-09-27). **What to do now:** call the
 drafter without gating it, read `warnings` for the null-terms line, and reword your description to
 "drafts with a null licence row; unknown terms govern publishing, not drafting".
 <!-- triaged: 0.7.0 · sha 07811db132e2 -->

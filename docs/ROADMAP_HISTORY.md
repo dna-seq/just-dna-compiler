@@ -4539,7 +4539,7 @@ never reaches the Catalog and the malformed case has to be probed at the client.
 the author's to fix or to answer in `overrides.csv`"* is **impossible** for these cells — the overlay
 is derived-tables-only and `pgs.csv` is authored, so the sentence names a remedy that does not exist
 and the finding has no silencing route. `PgsRow` disagrees with itself about which ancestry
-`training_ancestry` means: the name says training, the description says *"validated in"*. And
+`training_ancestry` means: the name says training, the description says *"validated in"* (RM289, filed 2026-09-27). And
 `/rest/release/current` bought nothing over `/rest/info`, so it is not read.
 
 **Severity is deliberately split.** An unrecognised accession escalates under `--strict`; a metadata

@@ -1005,6 +1005,51 @@ types, which makes a caller's `except` order load-bearing: `@client-exception-co
 applies), or whether the list shape is kept on purpose and the exemption comment is rewritten as a
 decision rather than a deferral. A new public exception base is new surface, so building it is a minor.
 
+## RM289 — two author-facing sentences state something false: `PgsRow.training_ancestry`'s description, and the licence gate's skip for unknown terms
+
+**Severity** low · **Status** open — **a patch** · **Owner** format (`pgs.py`) + enricher
+(`licensing.py`) · **Motivating case** RM163's own finding and the S99 reply, both left as sentences,
+found by the 2026-09-27 postmortem sweep (P15) · *related* RM163, S99, RM27, `@field-description-is-a-claim`
+
+1. **`PgsRow.training_ancestry` says "validated in".** RM163 recorded that *"the name says training,
+   the description says 'validated in'"* and changed nothing. The description still reads
+   *"Superpopulation(s) the score was validated in"* (`schema/src/just_dna_format/pgs.py`). A PGS
+   Catalog score's development ancestry and its evaluation ancestry are different facts, and the
+   column is named for the first. The description is published by `describe`, `requirements` and
+   `json_schemas()`, so it is a claim every author reads. Fix the description to match the name, and
+   check which Catalog field the drafter fills it from before choosing the words.
+2. **The skip sentence for unknown terms reads as "not recorded yet".** S99's reply said the gate's
+   sentence (*"terms could not be established, so the data is not used … the absence of a finding
+   either way"*, `licensing.py`) reads as *not recorded yet* when for PubMind it is *unsettleable*
+   (no party publishes terms for the bytes). It called this *"a patch-level candidate for after 0.7.0
+   publishes"*, and 0.7.0 has shipped. The same reply calls publishing *"RM27's undesigned axis"*,
+   which is stale: RM27 shipped record-only (see RM286).
+
+Both are text. No field, no vocabulary member. A description change moves no digest.
+
+## RM290 — the "vindicated" reading of an unmatched overlay row exists for one overridable table, and nobody decided the others
+
+**Severity** low · **Status** open — **a patch** (a finding's classification), a decision first ·
+**Owner** schema (`overrides.VINDICATING_OVERLAY_TABLE`) + compiler · **Motivating case** S60's
+*"what we are keeping regardless of the shape"* and RM117, found unhomed by the 2026-09-27 postmortem
+sweep (P15) · *related* S60, S52, RM117, RM137
+
+S60 found that an overlay row which no longer changes anything can mean the source caught up: the
+author's judgement was later vindicated and the row can retire. The reply kept it as *"a property of
+the design rather than a nice detail"*, since S52 had seen the same shape. RM117 built it for exactly
+one table: `VINDICATING_OVERLAY_TABLE = "clin_sig_concordance.csv"`, which the compiler routes away
+from the generic *"may be mistyped"* finding.
+
+**Confirmed on 2026-09-27.** `OVERRIDABLE_TABLES` has more members, and every other table's unmatched
+row still reads *may be mistyped*. On a table whose values a later source release can change (for
+example `gene_validity.csv`, whose classifications drift), that is the wrong thing to tell an author
+whose correction the source has since adopted.
+
+**What to decide.** Per table, whether an unmatched update has a vindicated reading, and whether that
+reading is the only one (as on the concordance table) or one of two, which would be withheld
+(`@two-vocabularies-that-do-not-meet-withhold`). Turning the constant into a per-table field on
+`OverlayTarget` is internal. Reporting it reuses the existing warning code, so it is a patch.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

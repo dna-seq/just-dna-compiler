@@ -4066,7 +4066,7 @@ is built from `SPEC_DATA_FILES` — a **hand-kept mirror** of our table constant
 the `licensing.csv` loss as the reason it must be kept current. So an overlay needs one entry added
 there, which is the same one-line coordination every new table kind already needs. Not a blocker; a step.
 
-**What we are keeping regardless of the shape.** The terminal-state observation — an overlay row that no
+**What we are keeping regardless of the shape.** (Built for one table as RM117; the rest is RM290, filed 2026-09-27.) The terminal-state observation — an overlay row that no
 longer changes anything means the source caught up, so an authored judgement was later vindicated and
 the record is retirable. It is free, it is available nowhere else in this format, and it is the second
 time you have found the same shape: S52's reply records the same property for a resolved outrank. Two
