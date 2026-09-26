@@ -175,6 +175,8 @@ the enricher's console script. Whatever repair lands, the release procedure need
 **Motivating case** found while reproducing
 [S117](CONSUMER_SUGGESTIONS_HISTORY.md#s117--the-ensembl-variation-cache-spells-indel-rsids-at-a-different-anchor-from-clinvar-for-every-insertion-and-for-some-it-names-a-different-event)
 
+**Residuals** RM272 · won't fix — the GraphQL beta endpoint now 301s and answers no bare rsID, so one-sided nodes go to REST · won't fix — stale `ref='-'` rows in existing sidecars are documented in ENRICHER and CHANGELOG, and `--rederive` clears them
+
 **What was confirmed.** `EnsemblResolver().resolve_rsid("rs8176719")` answers via `ensembl-rest` with
 `{'chrom': '9', 'start': 133257522, 'ref': '-', 'alts': 'C'}`, and `rs546596010` likewise
 (`2:26455250 - > A`). `_loci_from_rest` splits `allele_string` and copies REST's `start` through, and
