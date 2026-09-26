@@ -8,7 +8,7 @@ what a draft appends is the increment rather than an inventory somebody wrote do
 
 **Three buckets, and only one of them drafts.**
 
-* **photocopy** — the exact allele is in ClinVar. Nothing is drafted. On the measured vintage every
+* **photocopy** — the same event is in ClinVar, under either source's spelling. Nothing is drafted. On the measured vintage every
   matched bracketed row carried `reviewed_by_expert_panel`, so these are the same ClinGen VCEP call
   arriving by two routes; drafting them would attribute an adopted source's judgement to the wrong
   publisher, and feeding them to a ClinVar concordance check would be a tautology.
@@ -24,12 +24,12 @@ right-anchored (`refna="TA"`, `regna=":"`), and turning that into a VCF allele n
 they are not photocopies; they are rows the join has no key for, and folding them into either would be
 a claim about a comparison that could not run.
 
-**The exact join, and no position-level fallback.** `(start, ref, alt)` on chrMT, upper-cased on both
-sides. A position-level hit is a *different allele at the same locus*, and collapsing onto it would
-either hide a real increment or invent one where the two sources left-align an indel differently. The
-same left-alignment caveat is why the snapshot marks every indel key: an exact join over
-un-normalized indels cannot distinguish "ClinVar does not carry this" from "ClinVar carries it,
-spelled at another anchor", so the count is published rather than quietly folded into the miss.
+**The event join, and no position-level fallback.** `(start, ref, alt)` on chrMT, upper-cased, with
+every indel on both sides **left-aligned against rCRS first** (RM273). An exact join on spelling
+called 8 of 23 miss indels new although ClinVar holds each at another anchor (`7471 C>CC` and
+`7472 A>CA` are both ClinVar's `7465 A>AC`), among them 5 of the 6 rated misses RM171 reported. rCRS
+is vendored (`_rcrs`), so the build stays a function of its two parents. A position-level hit is still
+a *different allele at the same locus*, and collapsing onto it would hide a real increment.
 
 **Its `release.json` pins both parents**, which is what makes a ClinVar rebuild without a child
 rebuild a *detectable* stale child rather than a silent one. `stale_parents` re-reads the parents on
@@ -47,6 +47,7 @@ from pathlib import Path
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
 
+from just_dna_enricher._rcrs import RCRS
 from just_dna_enricher.clinvar_build import chrom_parquet_name
 from just_dna_enricher.locations import RELEASE_FILENAME
 from just_dna_enricher.mitomap import MitomapError
@@ -57,6 +58,7 @@ from just_dna_enricher.mitomap_build import (
     VARIANT_COLUMNS,
     VARIANT_PARQUET,
 )
+from just_dna_enricher.sequences import _left_align
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
     import polars as pl
@@ -114,8 +116,8 @@ class MissBuildResult:
     buckets_by_table: dict[str, dict[str, int]] = field(default_factory=dict)
     #: `clin_sig -> rows` over the rated misses — the classes this increment would actually draft.
     rated_miss_by_class: dict[str, int] = field(default_factory=dict)
-    #: Rated misses whose key is an indel. Published because an exact join over un-normalized indels
-    #: cannot tell an absence from a difference of anchor.
+    #: Rated misses whose key is an indel. Published since before the join compared events (RM273);
+    #: kept, because an indel miss is still the kind a reader should look at twice.
     rated_miss_indels: int = 0
     #: `bracket -> rows` for a *missing* row whose only rating is a bracket this tier will not map.
     withheld_in_miss: dict[str, int] = field(default_factory=dict)
@@ -220,6 +222,24 @@ def miss_dataset_label(release: dict) -> str | None:
     return f"{mitomap}+clinvar_{clinvar}"
 
 
+def _rcrs_window(_chrom: str, start: int, end: int) -> str | None:
+    """rCRS bases over 1-based `[start, end]`, the `read_window` `_left_align` takes."""
+    if start < 1 or end > len(RCRS) or start > end:
+        return None
+    return RCRS[start - 1 : end]
+
+
+def _event_key(start: int, ref: str, alt: str) -> tuple[int, str, str]:
+    """The join key: a substitution as spelled, an indel at its leftmost rCRS spelling (RM273)."""
+    ref, alt = ref.upper(), alt.upper()
+    if len(ref) == len(alt):
+        return start, ref, alt
+    aligned = _left_align(CONTIG, start, ref, alt, _rcrs_window)
+    if aligned is None:  # pragma: no cover - rCRS is whole; only an event at base 1 cannot shift
+        return start, ref, alt
+    return aligned[1], aligned[2], aligned[3]
+
+
 def _clinvar_calls(clinvar_dir: Path) -> dict[tuple[int, str, str], dict]:
     """Every chrMT allele the ClinVar parent publishes, keyed, with the call it carries.
 
@@ -245,7 +265,7 @@ def _clinvar_calls(clinvar_dir: Path) -> dict[tuple[int, str, str], dict]:
     for row in frame.iter_rows(named=True):
         if row["start"] is None or not row["ref"] or not row["alt"]:
             continue
-        out.setdefault((int(row["start"]), str(row["ref"]).upper(), str(row["alt"]).upper()), row)
+        out.setdefault(_event_key(int(row["start"]), str(row["ref"]), str(row["alt"])), row)
     return out
 
 
@@ -295,7 +315,7 @@ def build_miss_snapshot(mitomap_dir: Path, clinvar_dir: Path, out_dir: Path) -> 
             bucket = "unmintable"
             unmintable[str(defect or "non_nucleotide")] += 1
         else:
-            match = calls.get((int(start), str(ref).upper(), str(alt).upper()))
+            match = calls.get(_event_key(int(start), str(ref), str(alt)))
             if match is not None:
                 bucket = "photocopy"
             elif row.get("clin_sig"):

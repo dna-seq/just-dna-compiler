@@ -41,6 +41,23 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-27 — RM273: three enricher surfaces stop keying an indel on its spelling (patch, on `main`)
+
+**`just-dna-enricher` only; corrected derivations, declared here (Principle 3).**
+
+- **The MITOMAP-minus-ClinVar lane joins on events.** Both sides' indels are left-aligned against a
+  vendored rCRS (NC_012920.1) before the join. **The published `mitomap_miss` lane's counts are stale
+  until it is rebuilt**: on the same parents, photocopy 655 → 663 and rated_miss 6 → 1, because five
+  of the six "new" calls were ClinVar's own at another anchor. A MITOMAP draft from an older build
+  still carries them; rebuild the lane.
+- **A CIViC-drafted indel is left-aligned.** The ClinGen registry's anchor is HGVS's 3′-most point, so
+  a drafted indel in a repeat was right of every caller's spelling (`rs72613567`: `4:87310241 A>AA`,
+  now `87310240 T>TA`). Rows drafted earlier keep their spelling; drafting only appends.
+- **PubMind's withheld-indel warning states a count**: its indels are not left-normalized, 5,158 of
+  20,006 provably so from the row alone.
+
+No new field, parameter or public function. RM273, postmortem P1; RM293 filed for the `:` deletions.
+
 ## 2026-09-27 — RM277: a stale literature pin is re-fetched, so "re-run the pass" works (patch, on `main`)
 
 **`just-dna-enricher` + `just-dna-compiler` (warning text only).** The compiler's `quote_counter_stale`

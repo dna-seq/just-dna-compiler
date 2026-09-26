@@ -4362,7 +4362,7 @@ because they send an author somewhere different:
 
 | bucket | why nothing is written |
 |---|---|
-| **photocopy** | the exact allele is in ClinVar, so that VCEP call already reaches this repository with ClinVar's own provenance. Drafting a second copy attributes it to the wrong publisher, and hands a ClinVar concordance check a copy of ClinVar to agree with (`@tautology-zero`) |
+| **photocopy** | the same event is in ClinVar under either spelling (indels left-aligned against a vendored rCRS on both sides since RM273), so that VCEP call already reaches this repository with ClinVar's own provenance. Drafting a second copy attributes it to the wrong publisher, and hands a ClinVar concordance check a copy of ClinVar to agree with (`@tautology-zero`) |
 | **unrated miss** | absent from ClinVar, and MITOMAP published no class this tier may map — no bracket, a bare confirmation token, or `[VUS*]`. A real identity increment, counted, with no significance invented for it |
 | **unmintable** | the published alleles do not spell a VCF pair. A `:` deletion needs the rCRS base at `position-1`, which Principle 2 forbids these tiers from fetching, so the question was never askable |
 
@@ -4377,9 +4377,10 @@ bins. So the cell is stubbed, `conclusion` with it, and the draft prints **one u
 per row** carrying the alleles and the flags MITOMAP did publish. A MITOMAP-drafted module does not
 compile until a human writes those cells; that is the cost of the adoption rather than a defect in it.
 
-**Four more things the draft says out loud.** A drafted row keying on an indel is named, because the
-join is exact and neither side is left-aligned — such a row is either an allele ClinVar does not carry
-or one it carries at another anchor, and this pass cannot tell you which. A row whose `allele` *name*
+**Four more things the draft says out loud.** A drafted row keying on an indel is named. Since RM273
+the lane compares events, so such a row is absent from ClinVar under any spelling; an increment built
+before that compared spellings, and on the real lane five of the six rated misses were ClinVar's own
+calls at another anchor, so the note tells an author holding an older build to rebuild it. A row whose `allele` *name*
 states a variable number of copies while the allele columns state one definite pair is named too: the
 source disagreeing with itself, kept rather than repaired, because rewriting it needs a rule for what
 `(n)` means that MITOMAP has not given. A parent that has moved since the increment was built is

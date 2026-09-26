@@ -608,45 +608,20 @@ why, the gap `unreachable_rsids`, `unconsulted_rsids` and `allele_mismatches` ea
 state. Add the field (or fields) on `0.8`, beside those, and decide whether "anchor base unreadable"
 (transient, re-run) and "not a base" (permanent) are one list or two. · *related* RM268, RM271, S20, S85
 
-## RM273 — three more enricher surfaces take an indel's spelling for its identity: the MITOMAP increment, the ClinGen anchor, PubMind
+## RM293 — MITOMAP's `:` deletions are mintable now that rCRS is vendored, and three texts still say Principle 2 forbids it
 
-**Severity** high · **Status** open — **a patch**, filed only · **Owner** enricher
-(`mitomap_miss_build`, `clingen_allele.anchor_indel` and its CIViC/LitVar callers, `pubmind_draft`) ·
-**Motivating case** the 2026-09-27 postmortem sweep (P1), residuals of RM171, RM153 and RM134 · *related*
-RM270 (the root: an indel's key is its source's spelling), RM267, RM31
+**Severity** low · **Status** open — **a patch** · **Owner** enricher (`mitomap_build`,
+`mitomap_miss_build`, the `mitomap` CLI note) · **Motivating case** RM273's residual, 2026-09-27
 
-RM270 names the artifact key. These are the same mistake one tier earlier, inside the enricher, where
-it reaches an author as a drafted row or a published count. Each was reproduced on 2026-09-27.
-
-**1. RM171's MITOMAP increment calls a ClinVar allele "new".** `_clinvar_calls` joins on the exact
-`(start, ref, alt)`. Applying both spellings to a GRCh38 chrM window over the local `mitomap_miss`
-snapshot: **8 of its 23 miss indels are an allele ClinVar already holds at another anchor**, among them
-**5 of the 6 rated misses** the RM171 entry reports as the lane's increment. For example `7471 C>CC`
-and `7472 A>CA` are both ClinVar's `7465 A>AC` (`pathogenic`), and `8618 T>TT` is ClinVar's
-`8617 A>AT`. The photocopy test has to compare events (a reference window, or the minted `vrs_id`
-RM270 describes), and the entry's rated-miss number has to be re-measured.
-
-**2. RM153's `anchor_indel` docstring calls prefix-anchoring "the left-aligned representation VCF
-requires".** That is true only outside a repeat. The registry's interbase `start` follows HGVS's
-3′ rule: `rs72613567` (`CA2999458`) comes back as an insertion of `A` after `4:87310241`, so the
-anchored row is `87310241 A>AA`, where the left-aligned spelling is `87310240 T>TA`. `rs77944059`
-(`CA180415`) is a `CAAA` deletion anchored at `2:166204477`, four bases right of left-aligned
-`166204473`. CIViC and LitVar draft through this function, so their drafted indels carry the
-right-shifted spelling into authored rows, which RM270 then keys on.
-
-**3. RM134's open question is answered, and the drafter still says it is open.** PUBMIND_ASSESSMENT
-§ Open questions asks whether PubMind's indels are left-normalized. They are not. Of the 20,006
-single-base-anchored indels in the local snapshot, **5,158 have an anchor base equal to the payload's
-last base**, so each could shift left and is not left-aligned. That is decidable from the row alone.
-`pubmind_draft` still warns that the rows are "not established to be left-normalized".
-
-**4. RM31's genotype-frame half** (`genotype C/CAG` beside `ref=AGAG`) is a consumer-document gap,
-not code. It is handled as postmortem D9, not here.
-
-**Why a patch.** Every repair is a corrected derivation under P3's clause: a bucket reassigned, a
-drafted coordinate left-aligned, a warning that states a measured fact. None adds a schema member.
-If the MITOMAP fix wants a new bucket name for "respelled photocopy", that is a new member in a
-published `release.json` vocabulary, and it has to be priced before it is built.
+MITOMAP writes a deletion right-anchored (`refna="TA"`, `regna=":"`), and the lane puts those rows in
+`unmintable` (47 on the local build) because a VCF pair needs the rCRS base at `position - 1`. The
+reason given in `mitomap_miss_build`'s docstring, the `mitomap` CLI note and ENRICHER.md's bucket table
+is that *Principle 2 forbids these tiers from fetching* it. That was never quite the charter
+(Principle 2 binds format and compiler, not the enricher), and since RM273 the base needs no fetch:
+`_rcrs.RCRS` is vendored and verified against ClinVar's chrMT `ref` alleles (3,104 of 3,104). Minting
+those rows moves them out of `unmintable` into `photocopy` / `rated_miss` / `unrated_miss` through the
+event join, a corrected derivation with no new bucket. Measure how many land where before building,
+and correct the three texts in the same change.
 
 ## RM274 — a same-size, different-content indel is kept as *undecided*, and RM31's reference half that would settle it was never filed
 

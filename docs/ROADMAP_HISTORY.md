@@ -174,6 +174,68 @@ neither of this entry's guards caught, so the CLI died again beside anything pin
 
 **Residuals** RM254
 
+## RM273 — three more enricher surfaces take an indel's spelling for its identity: the MITOMAP increment, the ClinGen anchor, PubMind
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** · **Owner** enricher
+(`mitomap_miss_build`, `clingen_allele.anchor_indel` and its CIViC/LitVar callers, `pubmind_draft`) ·
+**Motivating case** the 2026-09-27 postmortem sweep (P1), residuals of RM171, RM153 and RM134 · *related*
+RM270 (the root: an indel's key is its source's spelling), RM267, RM31
+
+**Residuals** RM293 · won't fix — LitVar compares a CAID only at the module's own start and withholds elsewhere, so it writes no shifted row · won't fix — the published mitomap_miss snapshot changes only when an operator rebuilds and republishes the lane
+
+RM270 names the artifact key. These are the same mistake one tier earlier, inside the enricher, where
+it reaches an author as a drafted row or a published count. Each was reproduced on 2026-09-27.
+
+**1. RM171's MITOMAP increment calls a ClinVar allele "new".** `_clinvar_calls` joins on the exact
+`(start, ref, alt)`. Applying both spellings to a GRCh38 chrM window over the local `mitomap_miss`
+snapshot: **8 of its 23 miss indels are an allele ClinVar already holds at another anchor**, among them
+**5 of the 6 rated misses** the RM171 entry reports as the lane's increment. For example `7471 C>CC`
+and `7472 A>CA` are both ClinVar's `7465 A>AC` (`pathogenic`), and `8618 T>TT` is ClinVar's
+`8617 A>AT`. The photocopy test has to compare events (a reference window, or the minted `vrs_id`
+RM270 describes), and the entry's rated-miss number has to be re-measured.
+
+**2. RM153's `anchor_indel` docstring calls prefix-anchoring "the left-aligned representation VCF
+requires".** That is true only outside a repeat. The registry's interbase `start` follows HGVS's
+3′ rule: `rs72613567` (`CA2999458`) comes back as an insertion of `A` after `4:87310241`, so the
+anchored row is `87310241 A>AA`, where the left-aligned spelling is `87310240 T>TA`. `rs77944059`
+(`CA180415`) is a `CAAA` deletion anchored at `2:166204477`, four bases right of left-aligned
+`166204473`. CIViC and LitVar draft through this function, so their drafted indels carry the
+right-shifted spelling into authored rows, which RM270 then keys on.
+
+**3. RM134's open question is answered, and the drafter still says it is open.** PUBMIND_ASSESSMENT
+§ Open questions asks whether PubMind's indels are left-normalized. They are not. Of the 20,006
+single-base-anchored indels in the local snapshot, **5,158 have an anchor base equal to the payload's
+last base**, so each could shift left and is not left-aligned. That is decidable from the row alone.
+`pubmind_draft` still warns that the rows are "not established to be left-normalized".
+
+**4. RM31's genotype-frame half** (`genotype C/CAG` beside `ref=AGAG`) is a consumer-document gap,
+not code. It is handled as postmortem D9, not here.
+
+**Why a patch.** Every repair is a corrected derivation under P3's clause: a bucket reassigned, a
+drafted coordinate left-aligned, a warning that states a measured fact. None adds a schema member.
+If the MITOMAP fix wants a new bucket name for "respelled photocopy", that is a new member in a
+published `release.json` vocabulary, and it has to be priced before it is built.
+
+**What shipped, one commit per part (all cite P1).**
+
+- **Part 3, PubMind** (`75fd810`). `pubmind_draft._shifts_left` reads the fact from the row alone: an
+  anchor base equal to the payload's last base spells an event that also sits one base left. The
+  withheld-indel warning states that count instead of "not established"; re-measured on the
+  2026-08-24 snapshot, **5,158 of 20,006** single-base-anchored indel rows (4,334 of 16,737 keys).
+  PUBMIND_ASSESSMENT marks its open question answered. The rows stay withheld.
+- **Part 2, the ClinGen anchor** (`f8440b5`). `anchor_indel`'s docstring no longer calls its output
+  left-aligned. `civic_draft` left-aligns the anchored row against one bounded reference window
+  (private `sequences._left_align`); running off the window withholds under the existing
+  `anchor_base_unreadable`. LitVar is unaffected, as a residual above says. **Correction to this
+  entry's own example:** `rs77944059`'s leftmost spelling is `166204470 GAAAC>G`, not `166204473`
+  (both are the same event; 470 is the leftmost), checked on Ensembl's GRCh38 bases.
+- **Part 1, the MITOMAP increment** (this commit). rCRS (NC_012920.1, GRCh38's chrM) is vendored as
+  `_rcrs.RCRS`, agreeing with all 3,104 ClinVar chrMT `ref` alleles, so the build stays a function of
+  its two parents. Both sides' indels are left-aligned before the join; a respelled ClinVar call is a
+  `photocopy` (no new bucket). Rebuilt from the local parents: photocopy 655 → **663**, rated_miss
+  6 → **1**, unrated_miss 388 → 385, unmintable 47. The drafter's indel note now says which build
+  compared events.
+
 ## RM277 — `quote_counter_stale` tells the author to re-run the literature pass, which skips exactly the rows it is about
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** · **Owner** compiler
@@ -4070,6 +4132,12 @@ permission — a pulled copy would carry a currency check its holder cannot run.
 [MITOMAP_STATUS](probes/MITOMAP_STATUS.md), [rm171_diff_strategy](probes/rm171_diff_strategy.md),
 `@one-normalizer-two-spellings`, `@lookup-with-a-default-hides-a-new-member`, `@tautology-zero`,
 `@currency-asks-the-source-not-the-cache`, `@stub-cannot-compile`, `@probe-names-the-table`.
+
+
+**Correction, 2026-09-27 (RM273).** The six rated misses above were measured by an exact join on
+spelling, and five of them are ClinVar's own calls at another anchor (`7471 C>CC` and `7472 A>CA` are
+ClinVar's `7465 A>AC`; `8618 T>TT` is `8617 A>AT`). The lane now compares events against a vendored
+rCRS, and on the same parents it reports **one** rated miss (`likely_benign`) and 663 photocopies.
 
 ## RM176 — eleven builders, three stages each, and the roster that was supposed to name them was a list
 

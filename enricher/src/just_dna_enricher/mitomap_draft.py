@@ -400,10 +400,12 @@ def _notes(result: MitomapDraftResult, drafted: Sequence[dict], incomplete: Sequ
         )
     if result.indel_keys:
         notes.append(
-            f"{result.indel_keys} of the drafted row(s) key on an indel. The join is exact and "
-            f"neither side is left-aligned, so one of those is an allele ClinVar does not carry or "
-            f"one it carries at another anchor — this pass cannot tell you which, and the drafted "
-            f"row states MITOMAP's spelling."
+            f"{result.indel_keys} of the drafted row(s) key on an indel. An increment built since "
+            f"RM273 compares events (both sides left-aligned against rCRS), so these are absent from "
+            f"ClinVar under any spelling; one built before it compared spellings, and five of the "
+            f"real lane's six rated misses were ClinVar's own calls at another anchor — rebuild the "
+            f"mitomap-miss lane if yours predates 2026-09-27. The drafted row states MITOMAP's "
+            f"spelling, which need not be the left-aligned one."
         )
     if result.indefinite_alleles:
         notes.append(

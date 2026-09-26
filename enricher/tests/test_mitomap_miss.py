@@ -28,9 +28,11 @@ from just_dna_enricher.caches import (
 )
 from just_dna_enricher.clin_sig import normalize_clin_sig
 from just_dna_enricher.mitomap import MITOMAP_VCEP_CLASSES, MitomapError, parse_status
+from just_dna_enricher.mitomap_build import build_snapshot as build_mitomap_snapshot
 from just_dna_enricher.mitomap_miss_build import (
     BUCKETS,
     MISS_PARQUET,
+    _event_key,
     build_miss_snapshot,
     parent_pin,
     stale_parents,
@@ -63,8 +65,9 @@ def test_a_miss_key_is_absent_from_the_parent_and_a_photocopy_key_is_present(par
     clinvar = pl.read_parquet(clinvar_dir / "data" / "clinvar-chrMT.parquet")
     keys = set(zip(clinvar["start"], clinvar["ref"], clinvar["alt"], strict=True))
 
+    keys = {_event_key(start, ref, alt) for start, ref, alt in keys}
     for row in frame.iter_rows(named=True):
-        key = (row["start"], row["ref"], row["alt"])
+        key = _event_key(row["start"], row["ref"], row["alt"]) if row["ref"] and row["alt"] else None
         if row["bucket"] == "photocopy":
             assert key in keys, f"{key} is a photocopy and the parent does not carry it"
             assert row["clinvar_variation_id"], "and it names the record it is a copy of"
@@ -88,6 +91,41 @@ def test_a_different_allele_at_the_same_position_is_a_miss_not_a_photocopy(paren
     assert row["clinvar_variation_id"] is None
     clinvar = pl.read_parquet(clinvar_dir / "data" / "clinvar-chrMT.parquet")
     assert 8993 in clinvar["start"].to_list(), "the position IS in the parent, which is the point"
+
+
+@pytest.mark.parametrize(
+    ("spelling", "clinvar"),
+    [
+        ((7471, "C", "CC"), (7465, "A", "AC")),  # rCRS 7466..7471 is a C run: one event, two anchors
+        ((7472, "A", "CA"), (7465, "A", "AC")),
+        ((8618, "T", "TT"), (8617, "A", "AT")),
+    ],
+)
+def test_an_indel_is_keyed_on_its_event_not_its_spelling(spelling, clinvar) -> None:
+    """RM273: the respelled pairs the 2026-09-27 sweep found in the real lane, on real rCRS bases."""
+    assert _event_key(*spelling) == _event_key(*clinvar) == clinvar
+
+
+def test_a_respelled_clinvar_indel_is_a_photocopy_not_a_rated_miss(
+    mitomap_corpus, build_clinvar_mt, clinvar_mt_vcf: str, tmp_path: Path
+) -> None:
+    """Five of RM171's six rated misses were this: ClinVar's own call, spelled at another anchor."""
+    blocks = mitomap_corpus.without("no_such_table")
+    header, rows = blocks[0]
+    blocks[0] = (
+        header,
+        [*rows, "9\tMT-CO1\tdeafness\tm.7471dupC\t7471\tC\tCC\t.\t.\t0\t-\t+\tCfrm [LP]\t\\N"],
+    )
+    dump = mitomap_corpus.write(tmp_path / "respelled.dump.sql.gz", blocks)
+    build_mitomap_snapshot(dump, tmp_path / "mitomap", source_last_modified="Mon, 24 Aug 2026 05:01:10 GMT")
+    clinvar = build_clinvar_mt(
+        clinvar_mt_vcf
+        + "MT\t7465\t9990\tA\tAC\t.\t.\tALLELEID=9;CLNSIG=Pathogenic;CLNREVSTAT=reviewed_by_expert_panel\n"
+    )
+    result = build_miss_snapshot(tmp_path / "mitomap", clinvar, tmp_path / "miss")
+    row = pl.read_parquet(result.parquet_file).filter(pl.col("start") == 7471).to_dicts()[0]
+    assert row["bucket"] == "photocopy"
+    assert row["clinvar_variation_id"] is not None
 
 
 def test_every_source_row_lands_in_exactly_one_bucket(parents, tmp_path: Path) -> None:
