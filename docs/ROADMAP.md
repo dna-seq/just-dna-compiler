@@ -679,35 +679,19 @@ reads one or the other depending on row order.
   existing modules keep validating inside a major. So the check lands as a warning in both modes on
   `main`, and becomes a refusal at 1.0 (a 1.0-tracker line when this is built).
 
-## RM276 — `draft-repeats` drops STRchive's `evidence`, so a locus STRchive grades *Refuted* drafts exactly like a *Definitive* one
+## RM294 — STRchive's evidence grade has no place in the module, so a Refuted locus is doubted only in a draft note
 
-**Severity** medium · **Status** open — **a patch** (a drafter warning), with a column as a separate
-**minor** decision · **Owner** enricher (`strchive.StrchiveLocus`, `strchive_draft`) · **Motivating
-case** RM170's STRchive half (0.7) and RM165's note, found unhomed by the 2026-09-27 postmortem sweep
-(P4) · *related* RM170, RM165, RM66
+**Severity** low · **Status** open — **a minor, release undecided** · **Owner** format / enricher ·
+**Motivating case** RM276's minor half, split off when the warning shipped on 2026-09-27 · *related*
+RM276, RM170, RM165
 
-RM165 recorded that STRchive grades every locus with a ClinGen-style validity classification, *"a
-second instance of RM170's problem in a different domain"*. RM170 then measured that a real
-`draft-repeats --gene DMD` run writes a row indistinguishable from HTT's, and it named the STRchive
-half *"a source-adoption question wearing a check's clothes"*. RM170 shipped the CIViC check, and
-nothing took the STRchive half.
-
-**Confirmed on 2026-09-27.** `StrchiveLocus` still has no `evidence` field (its docstring lists it as
-deliberately dropped). In the local snapshot the grades are Definitive 46, Limited 14, Moderate 8,
-Provisional 6, Strong 4, Disputed 3 (`DIP2B`, `NIPA1`, `POLG`) and Refuted 1 (`DMD`). An author
-drafting any of those four gets a pathogenic band with no word that the source itself doubts the
-association.
-
-**What to build, sized by what it adds.**
-
-- **Patch:** carry `evidence` on `StrchiveLocus` and have the drafter warn, naming the grade, for
-  `Refuted` and `Disputed`. That is a report with no schema member, and it matches RM170's own severity
-  rule (warn in both modes, never gate: a source doubting itself is not an authoring error).
-  `Provisional` is STRchive's *not yet curated*, a nobody-asked rather than a grade, so it is counted
-  and named apart, never read as weak evidence.
-- **Minor, decide separately:** whether the grade should travel into the module, and if so where. An
-  authored `repeat_alleles.csv` column costs full price (P9), and the vocabulary is open upstream
-  (`combobox: true`).
+RM276 names a drafted locus STRchive grades `Refuted` or `Disputed`, in a note the drafting run prints
+once. Nothing in the module keeps it, so the next reader of `repeat_alleles.csv` sees `DMD`'s bands
+with no trace of the source's doubt. Carrying it is a minor: an authored column costs full price (P9),
+and STRchive's vocabulary is open upstream (`combobox: true`), so a closed `frozenset` would have to be
+priced against a source that adds members. The alternatives to weigh first are a derived sidecar
+(half price) or the manifest's provenance block, and whether RM170's CIViC answer already fixed the
+shape. Decide on the `0.8` branch.
 
 ## RM278 — the `compile` command cannot pass `ensembl_reference` or `ba1_threshold`, so every CLI-compiled manifest has a null `ensembl_reference`
 

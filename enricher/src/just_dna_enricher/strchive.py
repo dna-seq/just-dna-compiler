@@ -141,9 +141,10 @@ class Band:
 class StrchiveLocus:
     """One catalogue record, reduced to what the two halves of this item read.
 
-    Deliberately not the whole record. `evidence`, the HPO terms and the cross-references are real and
-    are not parsed, because nothing here emits them — a field carried and never used is the dead
-    weight this tree refactors out rather than keeps.
+    Deliberately not the whole record. The HPO terms and the cross-references are real and are not
+    parsed, because nothing here emits them — a field carried and never used is the dead weight this
+    tree refactors out rather than keeps. `evidence` is read by the drafter through `_evidence_by_locus`
+    (RM276), off the same file, rather than as a field here, which a patch may not add.
     """
 
     locus_id: str
@@ -329,6 +330,28 @@ def load_strchive_catalogue(path: Path) -> StrchiveCatalogue:
         source_url=source_url,
         path=path,
     )
+
+
+def _evidence_by_locus(path: Path | None) -> dict[str, tuple[str, ...]] | None:
+    """`locus_id -> STRchive's evidence grade(s)`, read off the catalogue file, or `None` if unreadable.
+
+    STRchive grades every locus ClinGen-style (`Definitive` … `Refuted`), and `Provisional` is its
+    *not yet curated*. `None` means the grades could not be read (no path, or the file is gone), which
+    the caller withholds on rather than reading as "no locus is doubted".
+    """
+    if path is None or not Path(path).is_file():
+        return None
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(payload, list):
+        return None
+    return {
+        str(record.get("id") or "").strip(): _strings(record.get("evidence"))
+        for record in payload
+        if isinstance(record, dict)
+    }
 
 
 # ── The comparison ──────────────────────────────────────────────────────────────────────────────

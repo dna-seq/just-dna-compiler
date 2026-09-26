@@ -3827,6 +3827,14 @@ reference allele that is not a whole number of motif copies — RM55's case arri
 than in a caller's VCF), and how many publish a `locus_structure`. Neither is rounded into a cell and
 neither is silently discarded.
 
+**STRchive's own evidence grade is named, since RM276.** Every locus carries a ClinGen-style grade
+(`Definitive` … `Refuted`), and no authored column holds it, so a locus STRchive grades `Refuted`
+(`DMD`) or `Disputed` (`DIP2B`, `NIPA1`, `POLG`) used to draft exactly like `HTT`. A drafted row
+carrying one of those two grades is now named in a note, in both modes and never as a gate; a
+`Provisional` locus (STRchive's *not yet curated*) is named apart and never called weak. The grade is
+read off the catalogue file by a private reader; with no file to read, the note says the grades were
+unread rather than implying none is doubted. Whether the grade should travel into the module is RM294.
+
 What the thin row is still worth is the part an author cannot get from anywhere else: the list of
 loci, the motif in the orientation the catalogue publishes, and the MONDO id. On HTT the provider
 derives `MONDO_0007739` from `mondo` and the shipped module's human author wrote the same value —

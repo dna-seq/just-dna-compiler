@@ -174,6 +174,45 @@ neither of this entry's guards caught, so the CLI died again beside anything pin
 
 **Residuals** RM254
 
+## RM276 — `draft-repeats` drops STRchive's `evidence`, so a locus STRchive grades *Refuted* drafts exactly like a *Definitive* one
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (the drafter
+warning); the column is RM294 · **Owner** enricher (`strchive.StrchiveLocus`, `strchive_draft`) · **Motivating
+case** RM170's STRchive half (0.7) and RM165's note, found unhomed by the 2026-09-27 postmortem sweep
+(P4) · *related* RM170, RM165, RM66
+
+**Residuals** RM294
+
+RM165 recorded that STRchive grades every locus with a ClinGen-style validity classification, *"a
+second instance of RM170's problem in a different domain"*. RM170 then measured that a real
+`draft-repeats --gene DMD` run writes a row indistinguishable from HTT's, and it named the STRchive
+half *"a source-adoption question wearing a check's clothes"*. RM170 shipped the CIViC check, and
+nothing took the STRchive half.
+
+**Confirmed on 2026-09-27.** `StrchiveLocus` still has no `evidence` field (its docstring lists it as
+deliberately dropped). In the local snapshot the grades are Definitive 46, Limited 14, Moderate 8,
+Provisional 6, Strong 4, Disputed 3 (`DIP2B`, `NIPA1`, `POLG`) and Refuted 1 (`DMD`). An author
+drafting any of those four gets a pathogenic band with no word that the source itself doubts the
+association.
+
+**What to build, sized by what it adds.**
+
+- **Patch:** carry `evidence` on `StrchiveLocus` and have the drafter warn, naming the grade, for
+  `Refuted` and `Disputed`. That is a report with no schema member, and it matches RM170's own severity
+  rule (warn in both modes, never gate: a source doubting itself is not an authoring error).
+  `Provisional` is STRchive's *not yet curated*, a nobody-asked rather than a grade, so it is counted
+  and named apart, never read as weak evidence.
+- **Minor, decide separately:** whether the grade should travel into the module, and if so where. An
+  authored `repeat_alleles.csv` column costs full price (P9), and the vocabulary is open upstream
+  (`combobox: true`).
+
+**What shipped.** The grade is read by a private `strchive._evidence_by_locus` off the catalogue file
+the `StrchiveCatalogue` already records, not as a `StrchiveLocus` field: a new field on that public
+dataclass is minor-class, and `main` is patch-only. `draft-repeats` names each drafted locus STRchive
+grades `Refuted` or `Disputed` (`DMD (Refuted)`), names `Provisional` loci apart as not yet curated,
+and when no file is readable says the grades were unread instead of staying silent. Notes only, both
+modes, never a gate. Tests use two real catalogue records (`DMD_DMD`, `SCA_EP400`) beside the slice.
+
 ## RM273 — three more enricher surfaces take an indel's spelling for its identity: the MITOMAP increment, the ClinGen anchor, PubMind
 
 **Severity** high · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** · **Owner** enricher

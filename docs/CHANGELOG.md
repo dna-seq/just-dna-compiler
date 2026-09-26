@@ -41,6 +41,14 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-27 — RM276: `draft-repeats` names a locus STRchive itself doubts (patch, on `main`)
+
+**`just-dna-enricher` only; notes, no schema or field.** STRchive grades every locus, and a drafted
+row for `DMD` (graded *Refuted*) looked exactly like `HTT`'s. `draft-repeats` now names a drafted locus
+graded `Refuted` or `Disputed` (DMD, DIP2B, NIPA1, POLG) and counts `Provisional` apart as not yet
+curated. Both modes, never a gate. Carrying the grade into the module is RM294, a minor. RM276,
+postmortem P4.
+
 ## 2026-09-27 — RM273: three enricher surfaces stop keying an indel on its spelling (patch, on `main`)
 
 **`just-dna-enricher` only; corrected derivations, declared here (Principle 3).**
