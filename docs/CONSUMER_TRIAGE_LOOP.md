@@ -482,8 +482,12 @@ of its two obvious fixes is charter-illegal.
 
 If **(a)** ships in the same pass rather than being filed: code plus a test, a
 [CHANGELOG.md](CHANGELOG.md) entry, and the item moves to
-[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) with its rationale. `RM_TOC.md` is updated either way — it is
-the single complete index, and an item missing from it is how `RM33` became unfindable.
+[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) with its rationale **and a `**Residuals**` paragraph**
+([RELEASE_CYCLE.md § Closing an item](RELEASE_CYCLE.md#closing-an-item), enforced by
+`test_closure_residuals.py`). A remainder is filed as its own `RMn` whose entry names this one, or
+closed with `won't fix — <reason>`. It never goes to a parked bullet or to the consumer's reply alone:
+RM31 did both, and the defect came back as S117, S120 and S121. `RM_TOC.md` is updated either way — it
+is the single complete index, and an item missing from it is how `RM33` became unfindable.
 
 ### Step 3 — write the reply
 

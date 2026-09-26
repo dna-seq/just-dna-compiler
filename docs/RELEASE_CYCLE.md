@@ -22,6 +22,37 @@ A seat does not take another seat's work or offer to.
    assigned to it. Legality under the Constitution still sizes the release; the interview settles the
    design question, not the class.
 
+## Closing an item
+
+An entry that moves to [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) states what it did **not** fix, in one
+`**Residuals**` paragraph after its Status/Owner/Motivating block:
+
+```
+**Residuals** none
+**Residuals** RM272 · won't fix — the beta endpoint 301s and answers no bare rsID
+```
+
+Items are separated by ` · `. Each one is an `RMn` or `won't fix — <reason>`, and nothing else:
+
+- **An `RMn` counts only if that item's own entry mentions this one**, by number or by this entry's
+  motivating `Sn`. File the residual first, with `.claude/rm-next.py`, and write the back-reference
+  into it. Pointing at an item that is merely open is not enough, and pointing at one that is closed
+  never was. RM38 pointed at RM27 and RM50's tracker line pointed at RM50; both targets closed without
+  a word about what pointed at them.
+- **An idea-book bullet, a parked list, a probe, a code comment or a reference doc is not a home.**
+  RM31's residual pointed at the parked "enricher co-authoring" bullet and at a workaround no consumer
+  document carried, and a defect nobody chose to leave went unowned for three minors.
+- **"Filed" means an `RMn` in the same sentence.** RM192 said *"filed rather than improvised"* and
+  filed nothing.
+- **`won't fix` needs a reason of at least five words**, and beyond that it is reviewed prose. Decided
+  2026-09-27: a longer minimum, or a required citation, would make the escape hatch cost more than
+  filing the RM and push authors toward vaguer residuals rather than none.
+
+`schema/tests/test_closure_residuals.py` enforces this. Entries closed before the rule are listed in
+`schema/tests/data/residuals_legacy.txt`, which is asserted exact, so it can only shrink: give a legacy
+entry its line and delete it from the list in the same commit. The why is
+[POSTMORTEM_2026_09_27.md](POSTMORTEM_2026_09_27.md).
+
 ## Patches
 
 Patches are built and cut on `main`. A patch carries however many fixes the latest wave of usage
