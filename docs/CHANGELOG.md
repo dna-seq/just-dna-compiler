@@ -41,6 +41,20 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-27 — triage S117–S119: the haplotype convention written down, three items filed
+
+**Docs and one code comment; no package changes.** TABLES.md § `haplotypes.csv` now states the rule
+the phase-ambiguity check already computes with: a haplotype carries the reference at every site of
+its gene that it does not list, closed-world per module. It also says the `*1` exemption silences only
+the used-but-not-defined warning and infers no definition, so a gene whose reference has another name
+(NAT2 `*4`) defines it with reference-matching rows. The `_REFERENCE_HAPLOTYPE` comment claimed `*1`
+can never appear in `haplotypes.csv`. That was probed false and is corrected. S118.
+
+Filed, not built: **RM267** (Ensembl's VCF dump anchors a class of insertions one base early, so
+`resolution.csv` can serve a different event; `rs8176719`, ABO O1, is one), **RM268** (the live REST
+rung writes `ref='-'` at the interbase `start`), and **RM269** (a hemizygous diplotype has no row,
+since `haplotype_b` is required; a 1.0 item under P8). S117, S119.
+
 ## 2026-09-25 — RM264: the 0.7.x manifest's quote counters say what an abstract-only miss is (patch, on `main`)
 
 **`just-dna-format` (next patch), descriptions only — nothing added, removed or retyped.**
