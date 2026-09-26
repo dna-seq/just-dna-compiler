@@ -401,6 +401,47 @@ DOI-only lookup two titles, Crossref's and PubMed's, and whether a disagreement 
 `warning` or only two `info` findings side by side is the decision still to make. `EuropePmcClient`
 has no DOI search today; one method.
 
+## RM265 — the `panel:` deprecation has no "accepted" signal: on the replaced branch the warning fires whether or not you need the three fields it tells you to keep the block for
+
+**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** compiler / format
+(`panel:`, the licence row) · **Motivating case** [S114](CONSUMER_SUGGESTIONS_HISTORY.md#s114--the-panel_block_deprecated-replaced-branch-warns-whether-or-not-you-need-the-three-fields-it-says-to-keep-the-block-for-so-there-is-no-way-to-signal-accepted)
+
+**What was confirmed.** Reproduced against all three just-dna-lite ClinVar panel modules and against
+the code. `panel_block_deprecated` fires on the `replaced=True` branch (`compiler.py:4231`) for a
+module that has done everything the migration asks — its `clinvar/annotation` licence row carries a
+non-empty `dataset`, so the block's one machine reader (the enricher's clin_sig cross-check) is
+migrated. The message's closing clause, correct since S69, is that `genes`, `significance` and
+`reference_sha256` "have no replacement anywhere — keep the block until 1.0 if you need them recorded."
+But keeping the block *is* the permanent warning: the block emits `panel_block_deprecated` whether or
+not those fields are wanted, and there is no key to say "accepted, I need the three, stop." A consumer
+who needs them warns forever; a consumer who wants a clean compile drops provenance the format itself
+says has no home. The two outcomes are "warn forever" and "lose data".
+
+**The design question this records.** Is `panel:` deprecated *as a whole*, or only its reader? P3
+deprecates in a minor only where the audience can **act** — the replacement exists and the deprecated
+thing is not still the only record — and for these three fields on the replaced branch no replacement
+exists, which is the state P3 forbids. Two candidate fixes, and the naive one is not free:
+
+- **Give the three fields a non-deprecated home** — a small `panel_provenance:` sub-block, or three
+  keys beside `dataset` on the licence row. This is the P3-clean answer: it completes the replacement,
+  so the deprecation becomes actionable. Cost is P9-full if authored (a `panel_provenance:` block the
+  rare author writes) or P9-half if it rides the machine-written licence row; additive either way, so
+  **minor**. It is a schema-shape decision — where the fields live, whether the gene *denominator*
+  (S114's one lossy field: `cardio` requested 327 genes, 297 matched a variant, the 30 that matched
+  none are absent from `variants.csv`) is a list or a count — and belongs in the version interview,
+  not an unattended pass.
+- **Fire `panel_block_deprecated` only on the `replaced=False` branch** (patch). Tempting and **not
+  free**: it silences a *true* statement on exactly the modules that keep the block for the three
+  fields, so they compile clean until 1.0 removes the block under `extra="forbid"` and the data with
+  it. P3 requires a major to ship its upgrade procedure; theirs would read "lose the data." So this
+  mitigates the noise at the cost of hiding the loss — a stopgap, not the resolution.
+
+**Related.** The idea-book's § D19 (this file) raised the same two candidates against the pre-S69
+message; S114 is its sharpened, corpus-backed form. The stale RM4 row in
+[ROADMAP_1_0.md](ROADMAP_1_0.md) § the upgrade tracker still tells the author "delete it, nothing
+replaces it, consumer: no action needed" — corrected there in the same triage pass as a doc fix,
+since that tracker is the procedure P3 turns on.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
@@ -1440,6 +1481,9 @@ likely to be working on interactively. `_vrs_coverage`'s grouping already exists
   drafter filled it — so following the instruction deletes its only record of which snapshot it came
   from, and `refresh_sidecar` will not backfill a sidecar that is already present. A conditional
   warning, or carrying `panel` into `manifest.json` the way `weighting` is, would settle it.
+  **Update:** S69 shipped the message half (the warning stopped claiming nothing else is lost); the
+  home-for-the-three-fields half is [RM265](#rm265--the-panel-deprecation-has-no-accepted-signal-on-the-replaced-branch-the-warning-fires-whether-or-not-you-need-the-three-fields-it-tells-you-to-keep-the-block-for)
+  (S114), which showed the replaced-branch warning is unclearable for a module that needs them.
 
 ### Absences that pass in silence (compiler)
 
@@ -1552,8 +1596,8 @@ undispositioned note is one nobody reads again.
 
 **Answered as `Sn`, in [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md):** D2 → S67
 (shipped, the VRS flood is grouped by reason). D3 + D4 → S68 (filed as RM131; the `blame`
-discriminator they name is the item). D19 → S69 (shipped, both halves — the warning is conditional
-*and* stopped claiming nothing else is lost). D16 → S70 (shipped: `detail` on the clin-sig record and
+discriminator they name is the item). D19 → S69 (the message half shipped — the warning is per-branch
+*and* stopped claiming nothing else is lost; the home-for-the-three-fields half is RM265, from S114). D16 → S70 (shipped: `detail` on the clin-sig record and
 a findings warning; the sidecar is RM130). D20 → S71 (shipped, `producer` per record). D7 + D9 → S72
 (`row_count` and the delimiter warning shipped; the `0`→`None` retype is queued for 1.0).
 
