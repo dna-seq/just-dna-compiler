@@ -74,6 +74,11 @@ Each is a flag, each defaults on, and each **reports**:
 A disagreement is a finding, not a correction. The enricher will tell you that an authored `ref`
 disagrees with the reference sequence; it will not write the reference's value into your file.
 
+The findings are recorded in `verification.json`, and a later `compile --strict` reads that record.
+**A record written by an older enricher is not re-examined**, so it carries none of the diagnoses
+added since. After upgrading the enricher, re-run `enrich` on a module you mean to compile strictly, so
+the record, and the gate reading it, reflect the current checks (S78).
+
 ## 2. Draft — rows from a source
 
 ```bash

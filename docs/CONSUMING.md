@@ -95,6 +95,16 @@ order. It is a string, it is stable across recompiles, and it is what the derive
     [RM270](ROADMAP.md#rm270--an-indels-artifact-key-is-its-sources-spelling-a-left-aligned-vcf-misses-a-respelled-row-and-the-spelling-independent-id-the-enricher-mints-never-reaches-the-artifact).
     Substitutions are unaffected, since a single-base change has only one spelling.
 
+    **The genotype cell can be in a third spelling.** A row's `genotype` keeps its author's frame
+    while `ref`/`alts` take the resolver's, so they can differ on one row: `reference_examples/shox_par1`
+    carries `rs1569493663` as `genotype C/CAG` (ClinVar's frame) beside `ref=AGAG`,
+    `alts=[AG, AGAGAG]` (Ensembl's). Comparing the genotype's alleles with your VCF's by string
+    equality misses it. Reduce both sides first with `just_dna_format.alleles.parsimony_reduce`, which
+    is pure Python with no dependencies: it strips the flank a set of alleles shares, so `{C, CAG}` and
+    `{AGAG, AG}` both become `{'', 'AG'}`. It cannot reconcile a homozygous indel call, because one
+    allele has no flank to strip (see `alleles.event_profile`). This is RM31's consumer half, which
+    until 2026-09-27 lived only in its closing entry.
+
 ## 3. The join contract — two obligations that are yours
 
 A module supplies the annotation; you supply the measurement. Two things the module cannot do for you:

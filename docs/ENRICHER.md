@@ -451,7 +451,9 @@ shape of a request, an upper bound that bills a caller for a call that never hap
 client waits on its gate once per attempt, inside its retry loop, so one increment is one upstream
 attempt — a 429 retried three times counts three, a snapshot hit counts nothing. Monotonic, bumped
 under the slot lock, never reset; a rate is two readings apart. It is the one thing this counter says;
-what the call *cost* stays the client's to know.
+what the call *cost* stays the client's to know. Five clients keep their gate private as `_gate`
+(`pgs`, `litvar`, `civic_api`, `pharmvar`, `clingen_allele`), so there the reading is
+`client._gate.spent`; the rest expose `client.gate`.
 
 **One `PacingGate` is safe to share across threads, and that is now a stated contract rather than an
 accident of who happened to call it** (S15). It matters because the injection API asks for sharing:
@@ -463,7 +465,8 @@ published 3/s budget into 6/s — a budget somebody else enforces by blocking th
 covers the bookkeeping only: each caller reserves the next free slot and waits for it alone, so N
 callers get N slots spaced one interval apart and no worker is blocked by another's sleep.
 Single-threaded behaviour is unchanged, and `test_net.py` proves the spacing on a frozen clock without
-really sleeping.
+really sleeping. **It is a pace, not a concurrency limit.** If what you need is one request in flight
+per service, put a semaphore around your call site; the gate will not give you that.
 
 | Service | Used by | Published budget | Our pace / batching | Auth / identity |
 |---|---|---|---|---|
