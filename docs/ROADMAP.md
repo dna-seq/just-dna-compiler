@@ -601,7 +601,8 @@ consumer guide stating that no normalization is guaranteed, landed with the S120
 (`EnrichmentResult`) · **Motivating case** RM268 and RM271, 2026-09-27
 
 RM268 withholds a live REST locus whose anchor base cannot be read, and RM271 withholds loci whose
-alleles are not bases. On `main` both are reported by a log warning only, because a new
+alleles are not bases; RM274 keeps an indel the reference could not settle, and drops one it showed is
+a different event. On `main` all of these are reported by a log warning only, because a new
 `EnrichmentResult` field is minor-class (the first RM268 commit added `unanchored_rsids` there and was
 fixed forward). A caller reading the result sees these rsIDs only in `unresolved`, which is silent about
 why, the gap `unreachable_rsids`, `unconsulted_rsids` and `allele_mismatches` each closed for their
@@ -622,34 +623,6 @@ is that *Principle 2 forbids these tiers from fetching* it. That was never quite
 those rows moves them out of `unmintable` into `photocopy` / `rated_miss` / `unrated_miss` through the
 event join, a corrected derivation with no new bucket. Measure how many land where before building,
 and correct the three texts in the same change.
-
-## RM274 — a same-size, different-content indel is kept as *undecided*, and RM31's reference half that would settle it was never filed
-
-**Severity** medium · **Status** open — **a patch**, filed only · **Owner** enricher (the hosting
-filter in `enrich.py`, `vrs.py`'s sequence proxy) · **Motivating case** the RM31 residual (0.5), found
-unfiled by the 2026-09-27 postmortem sweep (P2) · *related* RM31, RM270, RM273, RM267
-
-RM31 made the allele-aware filter tolerant of respelling: `hosting_verdict` strips the flank a
-collection shares, so `{C, CAG}` and `{AGAG, AG}` both reduce to `{'', 'AG'}`. Different event
-**sizes** prove different variants. A same-size pair with different content cannot be told apart
-without the reference, because inside a repeat it may be one event anchored twice or two events. So
-the verdict is `None` and **the locus is kept**, with a log warning. The RM31 entry says *"the enricher
-can still settle it with seqrepo (not yet wired — see the residual below)"*. The only other record of
-that half is a code comment in `enrich.py`: *"doing that automatically is the remaining half of RM31"*.
-
-**What a consumer gets.** A kept undecided locus goes into `resolution.csv` like a confirmed one, and
-nothing on the row says which it was. When the pair really is two events, the module's genotype is
-joined to a different variant's coordinate. That is the S117 outcome, reached by a different route.
-
-**Why it is not already RM270's or RM267's.** Both compare two placements that each carry a position,
-so a `vrs_id` settles them. Here one side is the authored genotype of an rsID-only row, and it has no
-position of its own. The first design question is whether the resolved locus's window is enough to
-place the genotype's alleles in both frames. If it is not, the verdict stays `None` and the fix is to
-count and publish the undecided set (`@tautology-zero`) rather than keep it silently.
-
-**Why a patch.** Settling a `None` into `True`/`False` is a corrected derivation of the fill, outside
-`content_signature` (`@rm43-positional-fill`). A structured field naming the undecided set on
-`EnrichmentResult` would be a minor, the same line RM272 draws.
 
 ## RM275 — seven derived fact tables have no duplicate rule, so two contradicting rows under one key compile green under `--strict`
 

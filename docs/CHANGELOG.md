@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-27 — RM274: an indel the allele strings cannot decide is settled with the reference (patch, on `main`)
+
+**`just-dna-enricher` only; a corrected derivation of the fill, declared here (Principle 3).** When an
+rsID-only row's genotype and the resolved locus name indels of the same size with different content,
+`hosting_verdict` withholds and the locus used to be kept regardless. `enrich` now reads the GRCh38
+reference around the locus and slides its indel across the repeat: if the genotype's payload is one of
+its spellings the locus is kept (same event), and if not it is **dropped from `resolution.csv`** and
+named in one warning, because the genotype belongs to a different variant. Offline or unreadable, it
+stays undecided and kept, as before. **What moves:** a module whose genotype named a different
+same-size indel than its rsID's locus now resolves that row to nothing instead of to the wrong
+coordinate. RM274, postmortem P2.
+
 ## 2026-09-27 — RM276: `draft-repeats` names a locus STRchive itself doubts (patch, on `main`)
 
 **`just-dna-enricher` only; notes, no schema or field.** STRchive grades every locus, and a drafted

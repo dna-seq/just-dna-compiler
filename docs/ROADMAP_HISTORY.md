@@ -174,6 +174,50 @@ neither of this entry's guards caught, so the CLI died again beside anything pin
 
 **Residuals** RM254
 
+## RM274 — a same-size, different-content indel is kept as *undecided*, and RM31's reference half that would settle it was never filed
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** · **Owner** enricher
+(the hosting filter in `enrich.py`, the run's sequence proxy) · **Motivating case** the RM31 residual (0.5), found
+unfiled by the 2026-09-27 postmortem sweep (P2) · *related* RM31, RM270, RM273, RM267
+
+**Residuals** RM272 · won't fix — the compiler's own hosting filter keeps arm 9 undecided because Principle 2 gives that tier no reference
+
+RM31 made the allele-aware filter tolerant of respelling: `hosting_verdict` strips the flank a
+collection shares, so `{C, CAG}` and `{AGAG, AG}` both reduce to `{'', 'AG'}`. Different event
+**sizes** prove different variants. A same-size pair with different content cannot be told apart
+without the reference, because inside a repeat it may be one event anchored twice or two events. So
+the verdict is `None` and **the locus is kept**, with a log warning. The RM31 entry says *"the enricher
+can still settle it with seqrepo (not yet wired — see the residual below)"*. The only other record of
+that half is a code comment in `enrich.py`: *"doing that automatically is the remaining half of RM31"*.
+
+**What a consumer gets.** A kept undecided locus goes into `resolution.csv` like a confirmed one, and
+nothing on the row says which it was. When the pair really is two events, the module's genotype is
+joined to a different variant's coordinate. That is the S117 outcome, reached by a different route.
+
+**Why it is not already RM270's or RM267's.** Both compare two placements that each carry a position,
+so a `vrs_id` settles them. Here one side is the authored genotype of an rsID-only row, and it has no
+position of its own. The first design question is whether the resolved locus's window is enough to
+place the genotype's alleles in both frames. If it is not, the verdict stays `None` and the fix is to
+count and publish the undecided set (`@tautology-zero`) rather than keep it silently.
+
+**Why a patch.** Settling a `None` into `True`/`False` is a corrected derivation of the fill, outside
+`content_signature` (`@rm43-positional-fill`). A structured field naming the undecided set on
+`EnrichmentResult` would be a minor, the same line RM272 draws.
+
+**What shipped — the design question answered yes.** The resolved locus's window is enough: an
+rsID-only row's genotype has no position, but it claims to be this locus's allele, so the question is
+whether any spelling of the locus's indel carries the genotype's payload. `sequences._indel_payloads`
+left-aligns the locus event and slides it right across its repeat on the reference, collecting every
+payload (`2:166204477 ACAAA>A` gives `{AAAC, AACA, ACAA, CAAA}`); `enrich._settle_by_reference` runs
+only on `hosting_verdict`'s arm 9 and answers `True` when the genotype's payload is among them,
+`False` when a same-size alt exists and none is, and `None` otherwise (offline, an unreadable read, a
+repeat longer than the window, a genotype that is not one plain insertion/deletion against the empty
+allele). A settled `True` keeps the locus as before without the undecided warning; a settled `False`
+drops it, named in one aggregated warning, so a module's genotype is no longer joined to a different
+variant's coordinate. Existing `True`/`False` verdicts cannot move: the settle runs on `None` only.
+The run's one `SequenceProxy` is now built above the table and reused by minting and the reference
+check. No field, no code; the structured undecided set is RM272.
+
 ## RM276 — `draft-repeats` drops STRchive's `evidence`, so a locus STRchive grades *Refuted* drafts exactly like a *Definitive* one
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (the drafter

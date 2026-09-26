@@ -28,7 +28,12 @@ from just_dna_compiler.resolution import (
     hosting_verdict,
     undecided_reason,
 )
-from just_dna_format.alleles import strand_flip_explains
+from just_dna_format.alleles import (
+    is_unobservable_allele,
+    parsimony_reduce,
+    split_genotype,
+    strand_flip_explains,
+)
 from just_dna_format.base import derive_variant_key, merge_key
 from just_dna_format.binning import HeteroplasmyRow
 from just_dna_format.layout import atomic_writer
@@ -37,8 +42,8 @@ from just_dna_format.normalize import now_utc_iso
 from just_dna_format.pgx import HaplotypeRow, PharmVariantRow
 from just_dna_format.resolution import RESOLUTION_FACT_FIELDS, ResolutionRow
 from just_dna_format.spec import ModuleSpecConfig, VariantRow
-from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
-from just_dna_format.vrs import normalize_chrom, par_partner
+from just_dna_format.vocab import ALLELE_PATTERN, TEMPLATE_PLACEHOLDER
+from just_dna_format.vrs import normalize_chrom, par_partner, refget_accession
 from pydantic import ValidationError
 
 from just_dna_enricher import clinvar
@@ -114,6 +119,7 @@ from just_dna_enricher.sequences import (
     RefCheck,
     RefMismatch,
     SequenceProxy,
+    _indel_payloads,
     summarize_ref_mismatches,
     verify_reference_alleles,
 )
@@ -880,6 +886,55 @@ def enrich(
         )
 
 
+def _grch38_window(sequences: SequenceProxy) -> Callable[[str, int, int], str | None]:
+    """GRCh38 reference bases over 1-based `[start, end]`, or `None` (offline, unreachable, off-table)."""
+
+    def read_window(chrom: str, start: int, end: int) -> str | None:
+        accession = refget_accession(chrom)
+        if accession is None or start < 1 or end < start:
+            return None
+        return sequences.subsequence(accession, start - 1, end)
+
+    return read_window
+
+
+def _settle_by_reference(
+    constraint: str, locus: Mapping[str, object], read_window: Callable[[str, int, int], str | None]
+) -> bool | None:
+    """Settle `hosting_verdict`'s arm 9 (same event size, different content) with the reference (RM274).
+
+    The genotype of an rsID-only row has no position, but it claims to be this locus's allele, so the
+    question is whether any spelling of the locus's indel carries the genotype's payload. `True` if
+    one does; `False` if an alt of the same size exists and none of its spellings do; `None` when the
+    genotype is not one plain insertion/deletion against the empty allele, or a reference read failed.
+    """
+    called = {a.upper() for a in split_genotype(constraint) if not is_unobservable_allele(a)}
+    reduced = parsimony_reduce(called)
+    if len(reduced) != 2 or "" not in reduced:
+        return None
+    (payload,) = reduced - {""}
+    if not ALLELE_PATTERN.match(payload):
+        return None
+    chrom, start, ref = locus.get("chrom"), locus.get("start"), str(locus.get("ref") or "")
+    if chrom is None or start is None or not ref:
+        return None
+    same_size = unreadable = False
+    for alt in str(locus.get("alts") or "").split(","):
+        alt = alt.strip()
+        if not alt or abs(len(ref) - len(alt)) != len(payload):
+            continue
+        payloads = _indel_payloads(str(chrom), int(start), ref, alt, read_window)
+        if payloads is None:
+            unreadable = True
+            continue
+        same_size = True
+        if payload in payloads:
+            return True
+    if unreadable:
+        return None
+    return False if same_size else None
+
+
 def _run_enrichment(
     spec_dir: Path,
     *,
@@ -1234,6 +1289,11 @@ def _run_enrichment(
                 if owned:
                     client.close()
 
+    # One proxy, one read cache for the run: the hosting filter below settles an undecided indel with
+    # it (RM274), and minting and the reference check reuse it after the table is assembled.
+    sequences = SequenceProxy(offline=offline)
+    read_window = _grch38_window(sequences) if genome_build == "GRCh38" else None
+
     # ── assemble the table (a row for every subject; expansion → N rows) ───────────────────────
     # **Was any rsID link consulted at all?** (RM98.) Every one of them is gated: the two caches on
     # having resolved to a snapshot, the live Ensembl and gnomAD links on `not offline`. When all four
@@ -1247,6 +1307,8 @@ def _run_enrichment(
     # Collected across the loop and reported once. A per-row line here would be one line per variant —
     # ten for the SHOX panel — which buries every other finding a run produces.
     par_twins_dropped: list[tuple[str, str, int]] = []
+    # Loci the reference showed cannot host the authored genotype (RM274), named once after the loop.
+    reference_rejected: list[str] = []
     for v in subjects:
         key = v.variant_key
         subject = _subject_key(v)
@@ -1293,6 +1355,30 @@ def _run_enrichment(
                     if v.constraint is None
                     else hosting_verdict(v.constraint, lo.get("ref"), lo.get("alts"))
                 )
+                settled = (
+                    _settle_by_reference(v.constraint, lo, read_window)
+                    if verdict is None and v.constraint is not None and read_window is not None
+                    else None
+                )
+                if settled is not None:
+                    # RM274: the reference decided what the allele strings could not. Logged apart
+                    # from both arms below, whose reasons are about the strings.
+                    verdict = settled
+                    logger.info(
+                        "%s: %s:%s %s>%s %s the authored %s %s: read against the GRCh38 reference, "
+                        "the locus's event %s the authored one inside its repeat (RM274).",
+                        v.rsid,
+                        lo.get("chrom"),
+                        lo.get("start"),
+                        lo.get("ref"),
+                        lo.get("alts"),
+                        "hosts" if settled else "cannot host",
+                        subject,
+                        v.constraint,
+                        "is" if settled else "is never",
+                    )
+                if settled is False:
+                    reference_rejected.append(f"{v.rsid} {lo.get('chrom')}:{lo.get('start')}")
                 if verdict is not False:
                     loci.append(lo)
                 if verdict is None:
@@ -1301,8 +1387,9 @@ def _run_enrichment(
                     # from ClinVar as `X:634689 CAG>C` now matches the `X:634690 AGAG>AG` Ensembl
                     # publishes, which is the same 2 bp AG deletion anchored one base earlier. What it
                     # cannot do is re-anchor inside a repeat, so a same-size different-content pair is
-                    # reported as undecided rather than as a contradiction. This tier *can* settle it —
-                    # `vrs.py` has seqrepo — and doing that automatically is the remaining half of RM31.
+                    # reported as undecided rather than as a contradiction. RM274 settles it above with
+                    # the reference when one is readable; this arm is what is left: offline, an
+                    # unreadable read, or a genotype that is not one plain insertion/deletion.
                     #
                     # The *reason* comes from the shared `undecided_reason` rather than being spelled
                     # here, because `None` has four causes and this sentence used to assert one of them
@@ -1320,7 +1407,7 @@ def _run_enrichment(
                         v.constraint,
                         undecided_reason(v.constraint, lo.get("ref"), lo.get("alts")),
                     )
-                elif verdict is False:
+                elif verdict is False and settled is None:
                     # **The verdict is right and the old sentence was not.** `hosting_verdict` returns
                     # a confident `False` from two different arms — step 6 (the locus is a substitution
                     # or MNV, so there is no flank and no spelling freedom) and step 8 (an event length
@@ -1535,6 +1622,18 @@ def _run_enrichment(
     # One line for the whole run, grouped by reason and counted. These are not findings about the
     # module — they are the resolver's second spelling of a place the module already names — so a line
     # per variant would be pure volume.
+    if reference_rejected:
+        # One line for the run. These were undecided from the strings until RM274 and were kept; the
+        # reference shows the locus's event is a different indel of the same size, so the authored
+        # genotype would have been joined to another variant's coordinate.
+        logger.warning(
+            "%d locus/loci were left out of resolution.csv because, read against the GRCh38 "
+            "reference, their indel is a different event of the same size from the authored "
+            "genotype's (RM274): %s",
+            len(reference_rejected),
+            ", ".join(reference_rejected),
+        )
+
     if par_twins_dropped:
         logger.info(
             "Pseudoautosomal: kept the X spelling of %d locus/loci and left the Y twin out of "
@@ -1547,9 +1646,8 @@ def _run_enrichment(
         )
 
     # Content-addressed allele identity, stamped after the chain has settled the coordinates (there is
-    # nothing to mint from before that). Existing ids are never overwritten.
-    # One proxy, one read cache, shared by minting and the reference check below.
-    sequences = SequenceProxy(offline=offline)
+    # nothing to mint from before that). Existing ids are never overwritten. `sequences` is the run's
+    # one proxy, built above the table so the hosting filter shares its cache.
     mint_result: MintResult | None = None
     if mint_vrs:
         mint_result = mint_resolution_rows(out, minter=VrsMinter(offline=offline, sequences=sequences))

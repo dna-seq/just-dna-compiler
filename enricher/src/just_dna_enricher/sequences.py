@@ -150,6 +150,43 @@ def _left_align(
     return chrom, pos, ref, alt
 
 
+def _indel_payloads(
+    chrom: str,
+    pos: int,
+    ref: str,
+    alt: str,
+    read_window: Callable[[str, int, int], str | None],
+) -> frozenset[str] | None:
+    """Every payload one pure indel can be spelled with inside its repeat, or `None` (RM274).
+
+    Left-align, then slide the event right one base at a time while the reference allows it: a
+    deletion of `P` over `[pos+1, pos+n]` also reads as a deletion one base right when the base after
+    it equals `P[0]`, and its payload rotates to `P[1:] + base`; an insertion slides the same way
+    against the bases after its anchor. `AGAG>AG` in an `AGAGAG` run is therefore `{AG, GA}`. `None`
+    for anything that is not a single-anchored insertion or deletion, for an unreadable reference,
+    and for a repeat longer than the window, which is withheld rather than truncated.
+    """
+    left = _left_align(chrom, pos, ref, alt, read_window)
+    if left is None:
+        return None
+    _, pos, ref, alt = left
+    if len(ref) == len(alt) or min(len(ref), len(alt)) != 1 or ref[0] != alt[0]:
+        return None
+    deletion = len(ref) > len(alt)
+    payload = (ref if deletion else alt)[1:]
+    first = pos + 1 + (len(payload) if deletion else 0)
+    window = read_window(chrom, first, first + _LEFT_ALIGN_WINDOW - 1)
+    if window is None:
+        return None
+    seen = [payload]
+    for base in window.upper():
+        if base != payload[0]:
+            return frozenset(seen)
+        payload = payload[1:] + base
+        seen.append(payload)
+    return None
+
+
 @dataclass
 class RefMismatch:
     """One row whose authored reference allele disagrees with the reference sequence.
