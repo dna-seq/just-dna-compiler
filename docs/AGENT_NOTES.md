@@ -3615,6 +3615,22 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   plausible-looking mechanistic claim; the mechanistic claim, unfalsified, was a mechanical re-flag of
   an already-closed item.
 
+- `@a-closure-states-its-residuals` — **Closing an item is where a defect gets lost, so a closed entry
+  names what it did not fix, and each name must be carried by its target.** RM31 shipped in 0.5 with a
+  residual (a consumer joining an indel genotype against a VCF *"will still miss"*) that pointed at a
+  parked idea-book bullet and at a consumer workaround. The bullet never mentioned it and no consumer
+  document carried the workaround. The defect came back 55 days later as three consumer reports in one
+  day. The sweep that followed found the same shape in about one closure in seven, worst of all
+  RM192's *"filed rather than improvised"* with nothing filed. The repair that looks obvious, "point at
+  an open RM", is not enough: RM38 pointed at RM27 and the 1.0 tracker at RM50, and both targets closed
+  without a word about what pointed at them. **What is checked is carrying**: the target's own entry
+  mentions the source RM or its motivating `Sn`. The rule is RELEASE_CYCLE.md § Closing an item; the
+  guards are `schema/tests/test_closure_residuals.py` (M1 the `**Residuals**` line, M2 the legacy
+  phrases pinned by sentence, M7 a cut release's CHANGELOG heading). Two things the first cut got
+  wrong and the test now says: a paragraph is too wide a window for M2 (RM107 and RM192 resolved
+  through a neighbour carrying a different half), and a sentence ends at `.**` as well as at `. `. The
+  full record is POSTMORTEM_2026_09_27.md.
+
 ## Testing traps
 
 - `@test-no-credential` — **A test that means "no credential" must SAY so — `api_key=None` does not, and `.env` leaks across

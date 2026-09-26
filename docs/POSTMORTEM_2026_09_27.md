@@ -231,4 +231,9 @@ The procedure mitigations M3–M6, M8 and M9 (§ 5) are also this seat's, decide
 M1 (a closure states its residuals), M2 (the legacy phrases pinned, with an allowlist that may only
 shrink) and M7 (no CHANGELOG heading for a tagged version says *not yet cut*). They are tooling, they
 guard the step this incident leaked through, and the triage loop is the process that closes most
-items. D2 is left to § 6.3, and M7's test is expected to fail until D2 lands.
+items.
+
+**Done 2026-09-27**, all three in `schema/tests/test_closure_residuals.py`: M1 as `1b45201`, M2 as
+`917b092`, M7 as `2c38031`, each shown to fail on the defect it guards. M2's list
+(`schema/tests/data/residual_phrases_legacy.txt`) holds 11 `leak` rows, and they are § 6.1–6.2 items:
+homing one deletes its row, so the count of `leak` rows is this backlog's progress.
