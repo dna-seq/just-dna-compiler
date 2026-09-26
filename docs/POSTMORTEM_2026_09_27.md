@@ -215,7 +215,7 @@ any of them.
 |---|---|---|
 | D1 | **Done.** TABLES.md says `weights` keeps a *sorted* allele list; phased rows keep authored order ✔ | TABLES.md:43-44; `schema/tests/test_split_genotype.py` |
 | D2 | **Done.** The CHANGELOG 0.7.0 heading still says *being built … not yet cut*; six replies (S75–S80) cite it as the record ✔ | CHANGELOG.md:2839-2841 |
-| D3 | SCHEMAS says *exactly five* row models carry `source`; there are nine ✔ | SCHEMAS.md:1619 |
+| D3 | **Done.** SCHEMAS says *exactly five* row models carry `source`; there are nine ✔ | SCHEMAS.md:1619 |
 | D4 | The HTT README says bin bounds cannot be cited and sends authors to RM47, which shipped ✔ | reference_examples/htt_repeat_expansion/README.md:73-84 |
 | D5 | RM247's entry never names RM254, the protobuf failure its guards missed | ROADMAP_HISTORY.md `## RM247` |
 | D6 | The S81 sentence, never written: a patch can add an authored column under `extra="forbid"`, so a reader pinned to a minor cannot assume a fixed authored schema | CONSUMER_SUGGESTIONS_HISTORY.md:2807-2811 |

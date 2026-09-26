@@ -1616,10 +1616,11 @@ three letters.
   provenance — which link happened to answer — and is excluded so a human-filled and a machine-filled
   table hash equal. Here the source *is* the subject: "ClinPGx, at the annotation layer, is CC BY-SA
   and forbids sale" is the fact. Drop it and the row loses its key.
-- **Exactly five row models carry a `source` column, and four of them are generated** (S17):
-  `ResolutionRow`, `FrequencyRow`, `GeneMetricsRow` and `LiteratureRow` — the enricher-produced
-  sidecars, where a pass records which link answered — plus `SourceRow` itself, where it is the subject
-  as above. **No hand-authored fact table has one**, by design: a curated annotation's provenance is the
+- **Every row model carrying a `source` column is machine-written, except `SourceRow` itself** (S17).
+  The rest are the enricher-produced sidecars (resolution, frequencies, gene metrics, literature and
+  the derived fact tables), where a pass records which link answered; in `SourceRow` it is the subject
+  as above. The rule is the claim here, not a count: a new derived table adds a member without making
+  this sentence false. **No hand-authored fact table has one**, by design: a curated annotation's provenance is the
   module's, not a per-row link. The consequence is worth stating because it is structural rather than a
   matter of care — the compiler's `used_sources` coverage check is built from those columns, so a source
   an author read **by hand** is invisible to it no matter how carefully they work, and the remedy is to
