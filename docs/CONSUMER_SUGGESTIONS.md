@@ -51,3 +51,85 @@ Prose is left byte-for-byte when it is answered and when it is moved, so it stay
 observed rather than of what was decided.
 
 ---
+
+## S117 — the Ensembl variation cache spells indel rsIDs at a different anchor from ClinVar for every insertion, and for some it names a different event
+
+**Status — accepted; filed as [RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event)
+(a minor, release undecided), with a second defect found while reproducing it filed as
+[RM268](ROADMAP.md#rm268--the-live-ensembl-rest-rung-writes-an-unanchored-insertion-into-resolutioncsv-ref--at-the-interbase-start)
+(a patch).** Nothing has shipped.
+
+Reproduced: `lookup_loci` on our snapshot returns `rs8176719` as `9:133257520 G>GC`, and applied to the
+GRCh38 window that is `GGGGCTACC` against ClinVar/dbSNP's `GGGGTCACC`. Your other two −1 examples
+reproduce the same way. The snapshot is faithful to its source. Ensembl's own current VCF dump carries
+`133257520 G GC`, while Ensembl's **REST** mapping for the same rsID says `start 133257522, end
+133257521, -/C`, an insertion between 521 and 522, which anchors at your `521 T>TC`. On the two cited
+cases plus five sampled from your −1 class, the dump's POS is REST `end` − 1 every time, and REST `end`
+equals ClinVar's POS every time. So this is arbitrated: Ensembl's VCF export anchors a class of
+insertions one base left of Ensembl's own interbase point, and ClinVar, REST, gnomAD and your callers
+agree with each other.
+
+Nothing here catches it today. The early anchor base is a real genome base, so the reference-allele
+check passes it by construction. The rsID↔coordinate check deliberately treats indel position
+differences as undecided (RM31). And an rsID-only row gets no coordinate cross-check at all. RM267
+sets out why each candidate repair is wrong alone. Your left-normalization fixes only the +1 class,
+because `G>GC` after `GGGG` has no room to shift. Re-anchoring at build is `just-dna-pipelines`' job.
+The part that fits the enricher is a finding that withholds, using the ClinVar or REST placement as the
+second witness and applying both spellings to the window the way you did.
+
+RM268 is the live fallback for rsIDs the snapshot misses. It writes REST's spelling straight into
+`resolution.csv`, so `rs8176719` through that rung becomes `9:133257522 ref='-' alts='C'`, and the
+table accepts it.
+
+**What to do now:** keep what you have. Author ABO's indels at the left-normalized position with the
+`record_override` naming the cache value, and keep the ±10 bp respelling tolerance labelled as a
+tolerance. For any rsID-authored insertion, do not trust a snapshot-resolved coordinate until RM267
+lands.
+<!-- triaged: RM267 RM268 filed · sha bc9d8aadc361 -->
+
+*From just-dna-lite, 2026-09-27, while authoring an ABO blood-group phenotype module.*
+
+**What we ran.** `lookup_variant(rsid="rs8176719")` (ABO c.261delG, the O1 marker) returned
+`9:133257520 G>GC`. dbSNP, gnomAD and both of our callsets that carry it (one DRAGEN, one DeepVariant) place it at
+`9:133257521 T>TC`. GRCh38 reads `…GGGG T ACC…` at 517–524, so the two are **not** one event
+respelled: inserting C after the G gives `GGGGCTACC`, after the T gives `GGGGTCACC`. gnomAD records
+`520 G>GC` separately at AF ~6e-7, while the cache row carries MAF 0.34 — the common variant, placed
+one base early. A module that resolves rs8176719 through `resolution.csv` matches no real sample.
+
+**Measured corpus-wide**, joining the Ensembl cache (`ensembl_variations/data/*.parquet`) to the
+ClinVar snapshot (`clinvar/data/*.parquet`) on rsID, over ClinVar's length-changing alleles:
+
+| | ClinVar alleles | same `(start, ref, alt)` | same event by `parsimony_reduce`, other anchor | no matching event |
+|---|---|---|---|---|
+| insertions | 57,742 | **0** | 56,696 | 1,046 |
+| deletions | 108,685 | 25,745 | 82,317 | 623 |
+
+The respelled ones split by offset (Ensembl start − ClinVar start): insertions +1: 50,882, −1: 5,788;
+deletions +1: 80,157, −1: 2,111. We applied both spellings to the reference (Ensembl REST sequence)
+for samples of each:
+
+- **+1 is harmless respelling**: 7/7 sampled produce the identical haplotype. The cache spells an
+  indel one base right of VCF left-normalization (`C>CT` at 38343142 becomes `T>TT` at 38343143 in a
+  T run).
+- **−1 is mostly a different event**: 23 of 30 sampled insertions (chr1, 2, 7, 11, 17, 19) produce a
+  different haplotype, e.g. rs546596010 ClinVar `2:26455249 T>TA` vs cache `26455248 C>CA`,
+  rs1553364018 `1:224434032 C>CT` vs `224434031 G>GT`. Extrapolated, a few thousand insertion rsIDs.
+  We did not arbitrate which side is right beyond rs8176719, where reads-based callers and gnomAD agree
+  with ClinVar.
+
+**Why it matters to a consumer.** `parsimony_reduce` alone cannot tell the two classes apart (it drops
+position), so a consumer tolerant of respelling cannot also refuse a real misplacement without sequence
+access, which is enricher-side. And even the harmless +1 class means an rsID-authored indel resolved
+through the cache never meets a left-normalized VCF record in a position join.
+
+**What we did meanwhile.** The pilot authors both ABO indels at the left-normalized position, checked
+against the reference sequence, with `record_override` naming the cache value. Our phenotype caller
+matches an indel respelled within ±10 bp when exactly one record in the window reduces to the same
+event, and refuses (and never restores to hom-ref) when two do. That is a tolerance, not a check, and
+it is labelled as such in the report.
+
+**Candidate fix, and an argument against it.** Left-normalize at cache build (or in `resolve_variants`)
+against the reference the enricher already holds, so `resolution.csv` carries VCF spellings. That fixes
+the +1 class outright. It does not fix the −1 class, which is a placement disagreement, not a spelling
+one — there the enricher could flag rather than choose, since it can apply both spellings to the
+sequence the way we did.

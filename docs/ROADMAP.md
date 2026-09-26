@@ -472,6 +472,83 @@ question is manifest field versus parquet, and whether it subsumes or sits besid
 `warnings_summary` (§ D3). Corpus, not code, decides urgency: this is `just-dna-lite`'s first caller and
 it already re-derives the set successfully, so nothing is blocked.
 
+## RM267 — the Ensembl snapshot anchors a class of insertions one base early, and `resolution.csv` serves them as a different event
+
+**Severity** high · **Status** open — **a minor, release undecided** · **Owner** enricher (the resolver
+chain's snapshot link), with the upstream half in `just-dna-pipelines` · **Motivating case**
+[S117](CONSUMER_SUGGESTIONS_HISTORY.md#s117--the-ensembl-variation-cache-spells-indel-rsids-at-a-different-anchor-from-clinvar-for-every-insertion-and-for-some-it-names-a-different-event)
+
+**What was confirmed.** `lookup_loci` against the local snapshot returns `rs8176719` (ABO O1, MAF 0.34)
+as `9:133257520 G>GC`. GRCh38 reads `GGGG T ACC` at 517–524, so that spelling is the haplotype
+`GGGGCTACC` and ClinVar/dbSNP's `521 T>TC` is `GGGGTCACC`: two events, not one respelled. Both of the
+report's other −1 examples reproduce the same way against the reference (`rs546596010`: `CCATTCC`
+vs `CCTATCC`; `rs1553364018`: `GTCCCC` vs `GCTCCCC`).
+
+**The mechanism, and where it lives.** The snapshot is faithful: Ensembl's own current VCF dump
+(`homo_sapiens-chr9.vcf.gz`, read by remote `bcftools`) carries `133257520 rs8176719 G GC`. Ensembl's
+**REST** mapping for the same rsID disagrees with its VCF and agrees with ClinVar — `start 133257522,
+end 133257521, -/C`, an insertion between 521 and 522, which VCF-anchors at `521 T>TC`. Across seven
+insertions (the two cited plus five sampled from the −1 class on chr3/5/12/16) the dump's POS is REST
+`end` − 1 every time, and REST `end` is ClinVar's POS every time. So the dump anchors a class of
+insertions one base left of Ensembl's own interbase point: invisible inside a run of the anchor base,
+a different event outside one. `@two-surfaces-two-denominators` applies to Ensembl against itself.
+
+**Why no check here sees it.** The wrong anchor base is a real genome base, so
+`sequences.verify_reference_alleles` passes it by construction. `check_rsid_coordinates` calls every
+indel position difference *undecided* (RM31: an indel re-anchors legitimately). And for an rsID-only row
+`_verify` never runs. A module resolving `rs8176719` through the table therefore compiles green and
+matches no sample.
+
+**Why each candidate repair is wrong alone.**
+
+1. **Re-anchor at snapshot build.** Correct, and it is `just-dna-pipelines`' build, not this tier's
+   (`CACHE_LANES["ensembl"].unbuilt`). It also leaves every deployed snapshot wrong until rebuilt.
+2. **Left-normalize in `resolve_variants`** (the reporter's first candidate). It fixes the +1 class,
+   which is harmless respelling one base right of VCF left-normalization. It cannot fix the −1 class:
+   `G>GC` after `GGGG` has no left-shift room, so it normalizes to itself and stays the wrong event.
+3. **Re-derive insertions from REST.** Right values, but it turns a bulk snapshot into one request
+   per insertion rsID, and REST's rung has its own defect (RM268) to fix first.
+4. **A finding that withholds** (the reporter's second candidate): for each insertion the snapshot
+   resolves, compare against a second placement the enricher holds (the ClinVar snapshot on rsID,
+   else REST). Apply both spellings to the reference window, report a different haplotype, and
+   withhold the row rather than choosing. It reports without repairing (`@enrichment-is-validation`)
+   and is the part that fits here. What it does not settle is whether the enricher may then
+   **write** the corrected spelling. Under `@provenance-beside-a-claim-is-outside-content-identity` a
+   rewritten snapshot value should say so on its row, which is a new optional `resolution.csv`
+   column. That column is minor-legal, and it is why this item is sized as a minor, not a patch.
+
+`content_signature` is unaffected either way (a resolution fill is `authored_ident`, `@rm43-positional-fill`).
+`@sidecar-authoritative` applies: a corrected spelling reaches an existing `resolution.csv` only on
+`--rederive` or a deleted sidecar, so the release that ships it must say so.
+Measured scale (the reporter's join, not re-run here): 5,788 insertion and 2,111 deletion alleles in
+the −1 class, of which roughly three in four of the sampled insertions are a different event.
+
+## RM268 — the live Ensembl REST rung writes an unanchored insertion into `resolution.csv`: `ref='-'` at the interbase `start`
+
+**Severity** medium · **Status** open — **a patch** · **Owner** enricher (`ensembl._loci_from_rest`) ·
+**Motivating case** found while reproducing
+[S117](CONSUMER_SUGGESTIONS_HISTORY.md#s117--the-ensembl-variation-cache-spells-indel-rsids-at-a-different-anchor-from-clinvar-for-every-insertion-and-for-some-it-names-a-different-event)
+
+**What was confirmed.** `EnsemblResolver().resolve_rsid("rs8176719")` answers via `ensembl-rest` with
+`{'chrom': '9', 'start': 133257522, 'ref': '-', 'alts': 'C'}`, and `rs546596010` likewise
+(`2:26455250 - > A`). `_loci_from_rest` splits `allele_string` and copies REST's `start` through, and
+for an insertion REST's `start` is the base *after* the interbase point and `-` is its spelling of
+"nothing". `ResolutionRow` has no grammar on `ref`, so the row validates and is written. The result is
+a position one base right of any VCF record, and a `ref` that `ALLELE_PATTERN` (`^[ACGT]+$`) would refuse
+anywhere authored. The rung only runs for rsIDs the snapshot misses, which bounds the reach and is also
+why nothing has hit it. Scoped to REST; the GraphQL rung (`_loci_from_graphql`) was not probed.
+
+**Repair.** Anchor a one-sided REST allele before it becomes a locus: read the base before the
+interbase point and prefix both sides (`clingen_allele.anchor_indel` is the existing pure function,
+taking an injected `read_base`), and withhold the locus as unresolved when the base cannot be read,
+the way `caid_unresolved` does. Two things to probe before writing the rule: REST's deletion shapes
+(`rs121908745` answers an already-anchored `ATCATC/ATC`, so not every indel is one-sided) and which
+coordinate is the anchor, since `anchor_indel` assumes ClinGen's convention (interbase `start` is the
+preceding base) and Ensembl's insertion puts that base at `end`. This corrects a derivation and adds
+nothing to any schema, so it is a patch under P3's corrected-derivation clause, declared in the
+CHANGELOG. Tightening `ResolutionRow.ref` to the allele grammar instead is refused: it would make an
+existing derived file invalid, which P8 does not allow within a major.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
