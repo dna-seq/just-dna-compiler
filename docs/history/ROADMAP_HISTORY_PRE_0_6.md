@@ -337,7 +337,7 @@ real invariant behind it — re-anchoring moves an indel but never changes how m
 removes — so differing event **sizes** prove different variants (`rs281864532`'s 1 bp insertion vs its
 2 bp deletion), while same-size different-content pairs are reported as **undecided** and the locus is
 *kept*. That is the residual the reference would settle, named rather than swallowed, and the enricher can
-still settle it with seqrepo (not yet wired — see the residual below).
+still settle it with seqrepo (not yet wired; filed as RM274 on 2026-09-27).
 
 **Monotonicity is what made it safe to ship inside the window.** The raw string comparison runs *first*,
 so normalization can only ever add acceptances: every locus that was hostable is hostable, byte for byte,

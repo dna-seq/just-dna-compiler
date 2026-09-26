@@ -11,7 +11,6 @@ history/ROADMAP_0_7.md :: The premise this item exists to :: filed rather than :
 history/ROADMAP_HISTORY_0_6.md :: RM106 :: still owes :: leak
 history/ROADMAP_HISTORY_0_6.md :: RM107 :: wants its own item :: leak
 history/ROADMAP_HISTORY_0_6.md :: RM47 :: filed rather than :: self
-history/ROADMAP_HISTORY_PRE_0_6.md :: RM31 :: not yet wired :: leak
 history/ROADMAP_HISTORY_PRE_0_6.md :: RM32 :: belongs to rm15 :: leak
 history/ROADMAP_HISTORY_PRE_0_6.md :: RM36 :: filed rather than :: self
 proposals/PROPOSAL_0_5.md :: Still deferred :: the remaining half :: homed
