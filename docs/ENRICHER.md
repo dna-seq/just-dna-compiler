@@ -672,9 +672,10 @@ coord but no rsid), runs a **first-hit-wins chain**, and writes/merges `resoluti
    is a complementary reference (4.4M clinically-curated records, 1.54M with no rsid) that makes an
    offline clinical enrich possible without provisioning the 14 GB dbSNP cache.
 5. **Live Ensembl** — for rsIDs every cache missed, `ensembl.EnsemblResolver.resolve_rsid`
-   (V2 GraphQL → V1 REST fallback). Sources `ensembl-graphql` / `ensembl-rest`. It has **three**
-   outcomes, not two: loci, an answered `[]`, or `None` for could-not-ask — see *Live Ensembl* below,
-   and note that an unreachable rsID leaves **no `resolution.csv` row at all**.
+   (V2 GraphQL → V1 REST fallback). Sources `ensembl-graphql` / `ensembl-rest`. It has **four**
+   outcomes: loci, an answered `[]`, `(None, None)` for could-not-ask, and `(None, source)` for an
+   answer whose one-sided indels could not be anchored (RM268) — see *Live Ensembl* below, and note
+   that neither `None` leaves **any `resolution.csv` row at all**.
 6. **Live gnomAD** (`use_gnomad`) — the last link, for whatever nothing else could resolve.
    `gnomad.GnomadClient.resolve_rsids` batches the leftovers. Source `gnomad`. It goes last for exactly
    the reason ClinVar goes after the Ensembl cache: gnomAD reports only the alleles **observed in
@@ -1116,6 +1117,18 @@ Two boundaries. **A 4xx is an answer**, not a failure: Ensembl 400s on rsIDs it 
 `None`. And an **answered-empty carries its source**, so `hint.checked` records `ensembl-rest` when
 Ensembl was reached and said nothing — the old code's only trace of that case was a *missing* element in
 a set, which is unreadable in practice.
+
+**A one-sided indel is anchored before it becomes a locus, and a fourth outcome withholds it (RM268,
+2026-09-27).** REST spells an insertion `-/C` with `start = end + 1` and a one-sided deletion
+`AGTAAG/-` over `[start, end]`; `_loci_from_rest` used to copy both through, so `rs8176719` resolved
+to `9:133257522 ref='-'`. It now prefixes every allele with the GRCh38 base at `start - 1`
+(`clingen_allele.anchor_indel`, reading through the injected `EnsemblResolver.read_base`, by default
+`sequences.grch38_base_reader`), giving `9:133257521 T>TC`. An allele string with no `-` is already
+anchored and reads nothing. When the base cannot be read the locus is withheld, and an answer whose
+every locus was withheld returns `(None, "ensembl-rest")`: unchecked like a failed request, but
+`enrich` names it in `EnrichmentResult.unanchored_rsids` with its own warning, and `lookup` gives it its
+own finding, because the request did not fail. The GraphQL leg's convention is unprobed, so a one-sided
+node there answers `[]` and the rsID goes to REST.
 
 **`checked` carries labels only, and `snapshots` is where a path lives (S93, RM205).** The set used to
 be mixed — `ensembl-rest` for the live leg beside an absolute path for a snapshot, and the

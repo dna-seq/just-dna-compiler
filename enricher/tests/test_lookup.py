@@ -187,6 +187,29 @@ def test_an_unreachable_ensembl_reports_unchecked_rather_than_absent(tmp_path: P
     assert "ensembl-rest" not in hint.checked
 
 
+def test_an_unanchorable_ensembl_answer_is_named_as_such_not_as_unreachable(tmp_path: Path) -> None:
+    """RM268's fourth outcome, `(None, source)`: Ensembl answered with a one-sided indel whose anchor
+    base could not be read. Unchecked, like S20, but the request did not fail and the words say so."""
+
+    class _Unanchorable(_FakeEnsembl):
+        def resolve_rsid(self, rsid: str) -> tuple[list[dict] | None, str | None]:
+            self.asked.append(rsid)
+            return None, "ensembl-rest"
+
+    ensembl = _Unanchorable([])
+    hint = lookup_variant(
+        rsid="rs8176719",
+        ensembl_cache=tmp_path,
+        clinvar_cache=tmp_path,
+        clients=LookupClients(ensembl=ensembl, eutils=_FakeEutils({})),
+    )
+    assert ensembl.asked == ["rs8176719"] and hint.loci == []
+    unanchored = [f for f in hint.findings if "anchor base could not be read" in f.message]
+    assert len(unanchored) == 1 and unanchored[0].level == "warning"
+    assert not any("could not be reached" in f.message for f in hint.findings)
+    assert not any("has no GRCh38 locus" in f.message for f in hint.findings)
+
+
 def _snapshot(tmp_path: Path, name: str, rows: dict) -> Path:
     """A **populated** reference that simply lacks the rsID under test.
 

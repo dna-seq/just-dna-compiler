@@ -523,32 +523,6 @@ matches no sample.
 Measured scale (the reporter's join, not re-run here): 5,788 insertion and 2,111 deletion alleles in
 the −1 class, of which roughly three in four of the sampled insertions are a different event.
 
-## RM268 — the live Ensembl REST rung writes an unanchored insertion into `resolution.csv`: `ref='-'` at the interbase `start`
-
-**Severity** medium · **Status** open — **a patch** · **Owner** enricher (`ensembl._loci_from_rest`) ·
-**Motivating case** found while reproducing
-[S117](CONSUMER_SUGGESTIONS_HISTORY.md#s117--the-ensembl-variation-cache-spells-indel-rsids-at-a-different-anchor-from-clinvar-for-every-insertion-and-for-some-it-names-a-different-event)
-
-**What was confirmed.** `EnsemblResolver().resolve_rsid("rs8176719")` answers via `ensembl-rest` with
-`{'chrom': '9', 'start': 133257522, 'ref': '-', 'alts': 'C'}`, and `rs546596010` likewise
-(`2:26455250 - > A`). `_loci_from_rest` splits `allele_string` and copies REST's `start` through, and
-for an insertion REST's `start` is the base *after* the interbase point and `-` is its spelling of
-"nothing". `ResolutionRow` has no grammar on `ref`, so the row validates and is written. The result is
-a position one base right of any VCF record, and a `ref` that `ALLELE_PATTERN` (`^[ACGT]+$`) would refuse
-anywhere authored. The rung only runs for rsIDs the snapshot misses, which bounds the reach and is also
-why nothing has hit it. Scoped to REST; the GraphQL rung (`_loci_from_graphql`) was not probed.
-
-**Repair.** Anchor a one-sided REST allele before it becomes a locus: read the base before the
-interbase point and prefix both sides (`clingen_allele.anchor_indel` is the existing pure function,
-taking an injected `read_base`), and withhold the locus as unresolved when the base cannot be read,
-the way `caid_unresolved` does. Two things to probe before writing the rule: REST's deletion shapes
-(`rs121908745` answers an already-anchored `ATCATC/ATC`, so not every indel is one-sided) and which
-coordinate is the anchor, since `anchor_indel` assumes ClinGen's convention (interbase `start` is the
-preceding base) and Ensembl's insertion puts that base at `end`. This corrects a derivation and adds
-nothing to any schema, so it is a patch under P3's corrected-derivation clause, declared in the
-CHANGELOG. Tightening `ResolutionRow.ref` to the allele grammar instead is refused: it would make an
-existing derived file invalid, which P8 does not allow within a major.
-
 ## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
 
 **Severity** high · **Status** open — **a minor, release undecided** · **Owner** enricher (resolution

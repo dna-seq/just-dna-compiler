@@ -688,6 +688,10 @@ class EnrichmentResult:
     # same entry there, and only one of them is worth re-running. Same reason `clin_sig_not_checked`
     # exists beside an empty conflict list. Empty offline, since nothing was asked in the first place.
     unreachable_rsids: list[str] = field(default_factory=list)
+    # rsIDs live Ensembl DID answer, with one-sided indels whose anchor base could not be read
+    # (RM268). No row, like `unreachable_rsids`, and named apart from it because the request did not
+    # fail: re-running with the sequence service reachable is what clears it.
+    unanchored_rsids: list[str] = field(default_factory=list)
     # rsIDs **no link was consulted about at all** — the `--offline` run on a machine with no Ensembl
     # and no ClinVar cache, where every link is gated off and there is nothing to ask (RM98). A third
     # state, deliberately not folded into either neighbour: `unreachable_rsids` means the request was
@@ -1020,6 +1024,7 @@ def _run_enrichment(
     snapshot_unusable = False
     # rsIDs the live link could not put a question to at all — a failed request, not an empty answer.
     unreachable_rsids: set[str] = set()
+    unanchored_rsids: set[str] = set()
     unconsulted_rsids: set[str] = set()  # nobody looked (RM98) — see the EnrichResult field
     # The source answered and every locus it gave was rejected by the allele-aware filter (S85). A
     # list rather than a set: it carries a finding per subject, not a bare id.
@@ -1182,7 +1187,12 @@ def _run_enrichment(
             try:
                 for rsid in missing:
                     loci, src = client.resolve_rsid(rsid)
-                    if loci is None:
+                    if loci is None and src is not None:
+                        # Ensembl answered, with one-sided indels whose anchor base could not be read
+                        # (RM268). Unchecked like a failed request, and no row for the same reason,
+                        # but not named as one: the request did not fail.
+                        unanchored_rsids.add(rsid)
+                    elif loci is None:
                         # Could not ask (S20). Distinct from an empty answer, and the distinction has
                         # to survive to the row-writing loop below, which would otherwise record
                         # `status="not_found", source="ensembl"` — a negative nobody established.
@@ -1395,7 +1405,7 @@ def _run_enrichment(
                         status="resolved",
                     )
                 )
-            elif genome_build == "GRCh38" and v.rsid in unreachable_rsids:
+            elif genome_build == "GRCh38" and v.rsid in unreachable_rsids | unanchored_rsids:
                 # The live link was asked and never answered (S20), so this row has the same shape as
                 # the non-GRCh38 case below and gets the same treatment: no row at all. Writing
                 # `not_found` here would state, in the artifact, that Ensembl was asked and does not
@@ -1952,6 +1962,7 @@ def _run_enrichment(
         par_twins_dropped=sorted(par_twins_dropped),
         vrs=mint_result,
         unreachable_rsids=sorted(unreachable_rsids),
+        unanchored_rsids=sorted(unanchored_rsids),
         unconsulted_rsids=sorted(unconsulted_rsids),
         allele_mismatches=allele_mismatches,
         rsid_coordinates=pair_check,
@@ -1971,6 +1982,18 @@ def _run_enrichment(
             "not have.",
             len(unreachable_rsids),
             ", ".join(sorted(unreachable_rsids)),
+        )
+
+    if unanchored_rsids:
+        # Same footing as the warning above (both modes, never escalated), different words: Ensembl
+        # did answer, with an insertion or deletion whose anchor base the sequence service could not
+        # supply, so no position was written rather than a `ref='-'` one (RM268).
+        logger.warning(
+            "%d rsID(s) were answered by live Ensembl as indels that could not be anchored (the "
+            "reference base before the event could not be read), so no position was written: %s. "
+            "Re-run with the sequence service reachable.",
+            len(unanchored_rsids),
+            ", ".join(sorted(unanchored_rsids)),
         )
 
     if allele_mismatches:

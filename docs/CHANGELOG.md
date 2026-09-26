@@ -41,6 +41,26 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-27 — RM268: the live Ensembl REST rung anchors a one-sided indel (patch, on `main`)
+
+**`just-dna-enricher` only; a corrected derivation, declared here (Principle 3).** Nothing added to
+any schema. The live REST link used to copy Ensembl's `-/C` and interbase `start` straight into
+`resolution.csv`, so `rs8176719` (ABO O1) resolved to `9:133257522 ref='-' alts='C'`: a `ref` the
+allele grammar refuses, one base right of every VCF record. It now reads the base at `start - 1` and
+prefixes every allele, so the same rsID resolves to `9:133257521 T>TC`, the ClinVar/dbSNP spelling. A
+one-sided deletion (`AGTAAG/-`) anchors the same way; strings with no `-` are untouched.
+
+- **What moves:** any `resolution.csv` row the live REST link wrote with `ref='-'` or an `alts` member
+  `-` gets a new `start`, `ref` and `alts`. Only rsIDs the snapshot misses reach that link. An
+  existing sidecar keeps its old row (merge, never clobber): delete it or run `enrich --rederive`.
+- **When the anchor base cannot be read** (sequence service down, or a contig outside the refget
+  table) the locus is withheld. An answer with every locus withheld is `resolve_rsid` →
+  `(None, "ensembl-rest")`: no row, the key stays unresolved, and the rsID is named in the new
+  `EnrichmentResult.unanchored_rsids` with its own warning, apart from `unreachable_rsids`.
+- The GraphQL rung withholds a one-sided node and lets REST answer; its convention is unprobed.
+
+RM268; RM267 (the snapshot's one-base-early insertions) is still open.
+
 ## 2026-09-27 — triage S117–S119: the haplotype convention written down, three items filed
 
 **Docs and one code comment; no behaviour change.** TABLES.md § `haplotypes.csv` now states the rule

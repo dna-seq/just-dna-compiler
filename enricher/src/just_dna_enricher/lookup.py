@@ -408,6 +408,17 @@ def _lookup_live_loci(hint: VariantHint, rsid: str | None, clients: LookupClient
     if not rsid or hint.loci:
         return
     loci, source = clients.ensure("ensembl", EnsemblResolver).resolve_rsid(rsid)
+    if loci is None and source is not None:
+        hint.findings.append(
+            Finding(
+                None,
+                None,
+                "warning",
+                f"{rsid}: live {source} answered with an indel whose anchor base could not be read, "
+                f"so no position is given — re-run with the sequence service reachable",
+            )
+        )
+        return
     if loci is None:
         hint.findings.append(
             Finding(

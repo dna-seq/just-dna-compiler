@@ -168,6 +168,58 @@ the enricher's console script. Whatever repair lands, the release procedure need
 
 **Related** RM192 (the measured Atlas dependency cost), RM196 (why this tier alone is on hatchling).
 
+## RM268 — the live Ensembl REST rung writes an unanchored insertion into `resolution.csv`: `ref='-'` at the interbase `start`
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (enricher only) ·
+**Owner** enricher (`ensembl._loci_from_rest`) ·
+**Motivating case** found while reproducing
+[S117](CONSUMER_SUGGESTIONS_HISTORY.md#s117--the-ensembl-variation-cache-spells-indel-rsids-at-a-different-anchor-from-clinvar-for-every-insertion-and-for-some-it-names-a-different-event)
+
+**What was confirmed.** `EnsemblResolver().resolve_rsid("rs8176719")` answers via `ensembl-rest` with
+`{'chrom': '9', 'start': 133257522, 'ref': '-', 'alts': 'C'}`, and `rs546596010` likewise
+(`2:26455250 - > A`). `_loci_from_rest` splits `allele_string` and copies REST's `start` through, and
+for an insertion REST's `start` is the base *after* the interbase point and `-` is its spelling of
+"nothing". `ResolutionRow` has no grammar on `ref`, so the row validates and is written. The result is
+a position one base right of any VCF record, and a `ref` that `ALLELE_PATTERN` (`^[ACGT]+$`) would refuse
+anywhere authored. The rung only runs for rsIDs the snapshot misses, which bounds the reach and is also
+why nothing has hit it. Scoped to REST; the GraphQL rung (`_loci_from_graphql`) was not probed.
+
+**Repair.** Anchor a one-sided REST allele before it becomes a locus: read the base before the
+interbase point and prefix both sides (`clingen_allele.anchor_indel` is the existing pure function,
+taking an injected `read_base`), and withhold the locus as unresolved when the base cannot be read,
+the way `caid_unresolved` does. Two things to probe before writing the rule: REST's deletion shapes
+(`rs121908745` answers an already-anchored `ATCATC/ATC`, so not every indel is one-sided) and which
+coordinate is the anchor, since `anchor_indel` assumes ClinGen's convention (interbase `start` is the
+preceding base) and Ensembl's insertion puts that base at `end`. This corrects a derivation and adds
+nothing to any schema, so it is a patch under P3's corrected-derivation clause, declared in the
+CHANGELOG. Tightening `ResolutionRow.ref` to the allele grammar instead is refused: it would make an
+existing derived file invalid, which P8 does not allow within a major.
+
+**What shipped.** Probed first, on 2026-09-27: REST spells an insertion `-/C` with `start = end + 1`
+(`rs8176719`, `rs546596010`, and `rs3917`'s six insertions at one point), and a one-sided deletion
+`AGTAAG/-` over `[start, end]` (`rs3834129`). In both the base before the event is `start - 1`, which is
+`anchor_indel`'s own convention, so one rule covers both shapes; the sequence endpoint confirmed it
+(`2:201232808..201232814` reads `TAGTAAG`). Two-sided strings (`ATCATC/ATC`, `TCTT/T/TCTTCTT`) need no
+anchor and read no base.
+
+- `_loci_from_rest` anchors any mapping whose allele string holds a `-`, prefixing **every** allele
+  with the base at `start - 1` through `anchor_indel`, and returns how many mappings it withheld.
+  `rs8176719` now resolves to `9:133257521 T>TC`, the ClinVar/dbSNP spelling. Checked live.
+- `EnsemblResolver.read_base` is injected; unset, it builds `sequences.grch38_base_reader` over a lazy
+  `SequenceProxy`. A contig outside the refget table (a patch contig) reads as unreadable.
+- **A fourth outcome for `resolve_rsid`: `(None, "ensembl-rest")`**, Ensembl answered and every locus
+  was withheld. `enrich` writes no row for it, the same as an unreachable rsID, but names it in the
+  new `EnrichmentResult.unanchored_rsids` with its own warning, because the request did not fail.
+  `lookup` gives it its own finding. An rsID where some mappings anchor keeps the anchored ones.
+- `_loci_from_graphql` withholds a one-sided node as `[]`, which already hands the rsID to REST. The
+  beta endpoint now 301s and answers no bare rsID, so its convention stays unprobed; it is withheld
+  rather than anchored on a guess.
+
+**Not repaired here.** A `resolution.csv` already written with a `ref='-'` row keeps it, since a
+sidecar is merged, never clobbered: delete the file or re-run with `--rederive`. Tests:
+`enricher/tests/test_ensembl_indel_anchor.py` and
+`test_an_unanchorable_ensembl_answer_writes_no_row_and_is_named_apart`.
+
 ## RM264 — the 0.7.x manifest read an abstract-only miss as a checked quote, and the patch line re-describes it
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-25 on `main`, uncut — a patch** (format +

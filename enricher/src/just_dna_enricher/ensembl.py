@@ -14,6 +14,7 @@ triggers the V2→V1 fallback. All network lives here (never in format/compiler)
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import httpx
@@ -23,7 +24,9 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
+from just_dna_enricher.clingen_allele import anchor_indel
 from just_dna_enricher.net import attempt_floor
+from just_dna_enricher.sequences import SequenceProxy, grch38_base_reader
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +68,15 @@ class EnsemblResolver:
     """Resolve a bare rsID to its GRCh38 loci via live Ensembl (V2 GraphQL → V1 REST fallback)."""
 
     settings: EnsemblSettings = field(default_factory=EnsemblSettings)
+    # One GRCh38 base at a 1-based position, or `None` — what anchors a one-sided REST indel (RM268).
+    # Injected so a test runs without a sequence service; unset, a lazily-built `SequenceProxy` answers.
+    read_base: Callable[[str, int], str | None] | None = None
     _client: httpx.Client | None = None
+
+    def _base_reader(self) -> Callable[[str, int], str | None]:
+        if self.read_base is None:
+            self.read_base = grch38_base_reader(SequenceProxy())
+        return self.read_base
 
     def _http(self) -> httpx.Client:
         if self._client is None:
@@ -97,6 +108,13 @@ class EnsemblResolver:
         nothing came back at all — return `None`. An empty answer now carries its source too, so a
         caller can record *which* link said nothing; that omission was the only trace the old code
         left, and it was a missing element in a set nobody diffs.
+
+        **`None` with a source is the fourth outcome (RM268): Ensembl answered, and nothing it said
+        could be placed.** REST spells an insertion or a deletion with one side `-` at an interbase
+        `start`, and such a locus is written only once the reference base before the event has been
+        read and prefixed to every allele. When that base cannot be read, the locus is withheld, and an
+        answer whose every locus was withheld is unchecked rather than empty, exactly like a request
+        that failed; the source is returned so a caller can say which of the two happened.
         """
         try:
             loci = self._graphql_rsid(rsid)
@@ -109,7 +127,7 @@ class EnsemblResolver:
             logger.warning("V2 GraphQL for %s errored (%s); trying REST", rsid, exc)
 
         try:
-            return self._rest_rsid(rsid), "ensembl-rest"
+            loci, withheld = self._rest_rsid(rsid)
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code in _FALLBACK_STATUS:
                 logger.warning("V1 REST for %s failed: %s", rsid, exc)
@@ -119,6 +137,16 @@ class EnsemblResolver:
         except (httpx.HTTPError, EnsemblError) as exc:
             logger.warning("V1 REST for %s could not be reached: %s", rsid, exc)
             return None, None
+        if withheld:
+            logger.info(
+                "V1 REST for %s: %d one-sided indel locus/loci withheld, the anchor base could not be "
+                "read (RM268)",
+                rsid,
+                withheld,
+            )
+            if not loci:
+                return None, "ensembl-rest"
+        return loci, "ensembl-rest"
 
     # ── V2: beta GraphQL ──────────────────────────────────────────────────────────────────────
     @retry(
@@ -149,14 +177,14 @@ class EnsemblResolver:
         retry=retry_if_exception_type((httpx.TransportError, httpx.TimeoutException)),
         reraise=True,
     )
-    def _rest_rsid(self, rsid: str) -> list[dict]:
+    def _rest_rsid(self, rsid: str) -> tuple[list[dict], int]:
         resp = self._http().get(
             f"{self.settings.rest_endpoint}/variation/{self.settings.species}/{rsid}",
             params={"content-type": "application/json"},
             headers={"Accept": "application/json"},
         )
         resp.raise_for_status()
-        return _loci_from_rest(_json(resp))
+        return _loci_from_rest(_json(resp), self._base_reader())
 
 
 def _json(response: httpx.Response) -> dict:
@@ -177,21 +205,52 @@ def _json(response: httpx.Response) -> dict:
     return payload
 
 
-def _loci_from_rest(payload: dict) -> list[dict]:
-    """Parse Ensembl REST /variation mappings into GRCh38 loci, deterministically ordered."""
+def _loci_from_rest(payload: dict, read_base: Callable[[str, int], str | None]) -> tuple[list[dict], int]:
+    """Parse Ensembl REST /variation mappings into GRCh38 loci, deterministically ordered.
+
+    Returns the loci and the number of mappings withheld because a one-sided indel could not be
+    anchored (RM268). REST states an insertion as `-/C` with `start = end + 1` and a deletion as
+    `AGTAAG/-` over `[start, end]`; in both the base before the event sits at `start - 1`, which is
+    `anchor_indel`'s convention (the interbase point is the preceding base). Every allele is prefixed
+    with that base, so a mixed string such as `-/G/GT` anchors whole; a string with no `-`
+    (`ATCATC/ATC`, `TCTT/T/TCTTCTT`) is already anchored and passes through untouched.
+    """
     loci: list[dict] = []
+    withheld = 0
     for m in payload.get("mappings", []):
         if m.get("assembly_name") != _ASSEMBLY:
             continue
         alleles = str(m.get("allele_string", "")).split("/")
-        ref = alleles[0] if alleles and alleles[0] else None
-        alts = ",".join(alleles[1:]) if len(alleles) > 1 else None
         chrom = m.get("seq_region_name")
         start = m.get("start")
-        if chrom is None or start is None or ref is None:
+        if chrom is None or start is None or not alleles or not alleles[0]:
             continue
-        loci.append({"chrom": str(chrom), "start": int(start), "ref": str(ref), "alts": alts})
-    return sorted(loci, key=lambda locus: (locus["chrom"], locus["start"], locus["ref"]))
+        chrom, start = str(chrom), int(start)
+        if "-" in alleles:
+            anchored = _anchor_rest_alleles(chrom, start, alleles, read_base)
+            if anchored is None:
+                withheld += 1
+                continue
+            start, alleles = anchored
+        ref = alleles[0]
+        alts = ",".join(alleles[1:]) if len(alleles) > 1 else None
+        loci.append({"chrom": chrom, "start": start, "ref": ref, "alts": alts})
+    return sorted(loci, key=lambda locus: (locus["chrom"], locus["start"], locus["ref"])), withheld
+
+
+def _anchor_rest_alleles(
+    chrom: str, start: int, alleles: list[str], read_base: Callable[[str, int], str | None]
+) -> tuple[int, list[str]] | None:
+    """A one-sided REST allele list → `(anchor position, anchored alleles)`, or `None` when unreadable."""
+    sides = ["" if allele == "-" else allele for allele in alleles]
+    anchored: list[str] = []
+    for side in sides:
+        # The first side is the reference itself, so its anchored form is the anchored `ref`.
+        placed = anchor_indel((chrom, start - 1, sides[0], side), read_base)
+        if placed is None:
+            return None
+        anchored.append(placed[3])
+    return start - 1, anchored
 
 
 def _loci_from_graphql(variant: dict | None) -> list[dict]:
@@ -217,4 +276,9 @@ def _loci_from_graphql(variant: dict | None) -> list[dict]:
         for a in variant.get("alleles", [])
         if (a.get("allele_type") or {}).get("value") != "reference" and a.get("reference_sequence")
     )
+    if ref in ("", "-") or "-" in (alts or "").split(","):
+        # A one-sided indel. REST's coordinate convention for it was probed (RM268) and this node's
+        # was not — the beta endpoint answers no bare rsID today — so it is withheld rather than
+        # anchored on a guess. `[]` hands the rsID to the REST leg, which anchors it.
+        return []
     return [{"chrom": str(chrom), "start": int(start), "ref": str(ref), "alts": alts or None}]

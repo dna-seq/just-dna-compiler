@@ -5401,7 +5401,7 @@ needed.
 
 **Status — accepted; filed as [RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event)
 (a minor, release undecided), with a second defect found while reproducing it filed as
-[RM268](ROADMAP.md#rm268--the-live-ensembl-rest-rung-writes-an-unanchored-insertion-into-resolutioncsv-ref--at-the-interbase-start)
+[RM268](ROADMAP_HISTORY.md#rm268--the-live-ensembl-rest-rung-writes-an-unanchored-insertion-into-resolutioncsv-ref--at-the-interbase-start)
 (a patch).** Nothing has shipped.
 
 Reproduced: `lookup_loci` on our snapshot returns `rs8176719` as `9:133257520 G>GC`, and applied to the
