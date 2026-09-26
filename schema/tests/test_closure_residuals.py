@@ -236,6 +236,26 @@ def _section_key(heading: str) -> str:
     return rm.group(0) if rm else " ".join(heading.split()[:6])
 
 
+def _source_tokens(
+    name: str, start: int, headings: list[tuple[int, str]], entries: dict[str, str]
+) -> set[str]:
+    """What a home's entry may cite to show it carries this hit: the nearest enclosing `RMn` (a
+    subheading such as *"Cost, priced honestly"* sits inside one), that item's motivating `Sn`, and for
+    a proposal the proposal's own file name, because a proposal section's heading names no `RMn` and
+    its hits could otherwise never resolve (raised by the postmortem seat, 2026-09-27)."""
+    tokens: set[str] = set()
+    for offset, heading in reversed(headings):
+        found = _RM.search(heading) if offset <= start else None
+        if found:
+            tokens.add(found.group(0))
+            if found.group(0) in entries:
+                tokens |= _motivating_sns(entries[found.group(0)])
+            break
+    if name.startswith("proposals/"):
+        tokens.add(Path(name).stem)
+    return tokens
+
+
 def _phrase_hits() -> set[tuple[str, str, str]]:
     """Every `(file, section, phrase)` whose paragraph does not name a carrying home."""
     entries = _entries()
@@ -247,17 +267,13 @@ def _phrase_hits() -> set[tuple[str, str, str]]:
             for m in _PHRASE.finditer(paragraph):
                 heading = next((h for s, h in reversed(headings) if s <= start), "")
                 section = _section_key(heading)
-                tokens = {section} | (_motivating_sns(entries[section]) if section in entries else set())
+                tokens = _source_tokens(name, start, headings, entries)
                 homes = [
                     rm
                     for rm in _RM.findall(_sentence(paragraph, m.start(), m.end()))
                     if rm != section
                     and rm in entries
-                    and any(
-                        re.search(rf"\b{t}\b", entries[rm])
-                        for t in tokens
-                        if _RM.fullmatch(t) or _SN.fullmatch(t)
-                    )
+                    and any(re.search(rf"\b{t}\b", entries[rm]) for t in tokens)
                 ]
                 if not homes:
                     unresolved.add((name, section, m.group(0).lower()))
