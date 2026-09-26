@@ -549,6 +549,52 @@ nothing to any schema, so it is a patch under P3's corrected-derivation clause, 
 CHANGELOG. Tightening `ResolutionRow.ref` to the allele grammar instead is refused: it would make an
 existing derived file invalid, which P8 does not allow within a major.
 
+## RM270 — an indel's artifact key is its source's spelling: a left-aligned VCF misses a respelled row, and the spelling-independent id the enricher mints never reaches the artifact
+
+**Severity** high · **Status** open — **a minor, release undecided** · **Owner** enricher (resolution
+fill, `vrs.mint_resolution_rows`) + compiler (the parquet column) · **Motivating case**
+[S120](CONSUMER_SUGGESTIONS_HISTORY.md#s120--the-format-declares-no-coordinate-normalization-convention-so-a-legal-respelling-of-an-indel-is-a-silent-position-join-miss-no-one-is-wrong-is-the-footgun)
+
+**What was confirmed.** The three cases S120 cites (`rs72613567`, `rs77944059`, `rs333` CCR5-Δ32) sit
+in our Ensembl snapshot one base right of ClinVar's left-aligned spelling, which is also what the
+callers emit. Against GRCh38 (UCSC `hg38`; Ensembl REST was down) each pair gives the same haplotype,
+so they are one event spelled two legal ways. That is RM267's harmless +1 class, not its wrong-event
+−1 class. Nothing in the contract names a normalization. The compiler cannot apply one either, because
+left-alignment reads flanking sequence and the compiler has no sequence (P2). So an indel's
+`variant_key` is `chrom:start:ref:alts` in whatever spelling its source used. Compiling
+`reference_examples/hboc_palb2` keys `rs1555461597` as `16:23635706:G:GT`.
+
+**The identity that would join them already exists and is dropped.** The enricher mints each indel's
+`vrs_id` over the *fully justified* allele. Probed: both spellings of `rs72613567` mint
+`ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7`, and both of `rs77944059` mint
+`ga4gh:VA.ks2GTWYOW0aKfGbJ2aeQUOZxOT_xC2ts`. S117's `rs8176719` pair mints **two different** ids, so the
+id also tells RM267's wrong event apart from a respelling instead of masking it. That id lives in
+`resolution.csv`, which has no parquet by design. Of the compiled parquets only `frequencies.parquet`
+carries a `vrs_id`, and that one is gnomAD's. `@dont-discard-computed`.
+
+**Candidate repairs, and why each is wrong or partial.**
+
+1. **Compiler left-normalizes and stamps a field** (the reporter's preferred option). Refused twice.
+   It needs reference sequence in the compile path, the line COMPILER.md § the VRS verify pass says
+   not to cross (P2). And on an *authored* coordinate it rewrites a value `reverse_module` then
+   re-emits, so lap 1 moves `content_signature` (P7).
+2. **An authored `coordinate_normalization` key.** It is a claim no offline tier can check. It costs
+   the full authored price (P9) and would be believed by exactly the consumer it misleads. As a
+   **verdict the enricher stamps** (tri-state: checked left-aligned / not / unknown), it is honest and
+   minor-legal, and it is part of the answer.
+3. **The enricher left-normalizes the coordinates it fills.** Legal: a resolution fill is outside
+   `content_signature` (`@rm43-positional-fill`). It fixes the +1 class for rsID-authored rows. It
+   does not reach an authored coordinate. For those the enricher reports the normalized spelling as a
+   finding and never rewrites the cell (`@enrichment-is-validation`). `@sidecar-authoritative`: it
+   reaches an existing table only on `--rederive`.
+4. **Carry the per-ALT `vrs_id` onto the variant parquets.** A parquet column is approximately free
+   (P9) and it is already computed. It gives a consumer who can mint VRS from its VCF a key that does
+   not depend on spelling. Alone it is not enough, because minting an indel needs sequence access the
+   consumer may not have. Hence it pairs with 3.
+
+The build is 3 + 4, plus the stamped verdict from 2. The part that ships without a decision, the
+consumer guide stating that no normalization is guaranteed, landed with the S120 reply.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

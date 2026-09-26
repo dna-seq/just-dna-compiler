@@ -81,6 +81,20 @@ haplotypes = pl.read_parquet(module / "haplotypes.parquet")
 `variant_key` is the join key, minted as rsID → VRS allele id → `chrom:start:ref[:alts]`, in that
 order. It is a string, it is stable across recompiles, and it is what the derived tables key on.
 
+!!! warning "An indel's coordinates are in its source's spelling, not left-aligned"
+
+    The format names no normalization convention for indels, and the compiler cannot apply one:
+    left-alignment reads the reference sequence around the event, and the compile path has none. So an
+    insertion or deletion keeps the spelling its source used, and VCF allows several spellings of one
+    event. The Ensembl snapshot the enricher resolves rsIDs from often writes an indel one base right
+    of the left-aligned form your caller emits. CCR5-Δ32 (`rs333`) is one example:
+    `3:46373453 ACAGT…CCAGA>A` in the module, `3:46373452 TACAGT…CCAG>T` in a GATK or DeepVariant VCF.
+    A position join that requires `POS` and `REF` to agree, as it should for indels, then misses the
+    row with no error. **Normalize both sides before joining indels** (left-align and trim, the way
+    `bcftools norm -f <reference>` does), or join on the rsID where the row has one. This is
+    [RM270](ROADMAP.md#rm270--an-indels-artifact-key-is-its-sources-spelling-a-left-aligned-vcf-misses-a-respelled-row-and-the-spelling-independent-id-the-enricher-mints-never-reaches-the-artifact).
+    Substitutions are unaffected, since a single-base change has only one spelling.
+
 ## 3. The join contract — two obligations that are yours
 
 A module supplies the annotation; you supply the measurement. Two things the module cannot do for you:
