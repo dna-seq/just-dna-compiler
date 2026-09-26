@@ -34,6 +34,7 @@ from just_dna_format.findings import CodedWarning
 from just_dna_format.spec import VariantRow
 from just_dna_format.vrs import normalize_chrom
 
+from just_dna_enricher.ensembl import _placeable_alleles
 from just_dna_enricher.locations import DUCKDB_NAME, resolve_ensembl_reference
 
 logger = logging.getLogger(__name__)
@@ -406,6 +407,8 @@ def _lookup_rsid_candidates(
     for chrom, start, ref, alt in uniq:
         cands: list[str] = []
         for rref, ralt, rid in by_pos.get((str(chrom), int(start)) if chrom is not None else (), []):
+            if _placeable_alleles(rref, _snapshot_alleles(ralt)) is None:
+                continue  # RM271: a row with no nucleotide allele names no variant to back-fill from
             if ref is not None and rref != ref:
                 continue
             # Membership, not equality: a multi-allelic snapshot row names several alleles in one
@@ -460,15 +463,31 @@ def _lookup_positions_by_rsid(
         rsids,
     ).fetchall()
     result: dict[str, list[dict]] = defaultdict(list)
+    unplaceable: set[str] = set()
     for row_id, chrom, start, ref, alts in rows:
         # `string_agg` already joined the group with commas; `_snapshot_alleles` additionally splits
         # any pipe-joined multi-allelic cell, then re-joins sorted+deduped so the order is stable (P7).
-        alleles = sorted(set(_snapshot_alleles(alts)))
+        # RM271: an alt that is not bases (`<.>`, `<Y>`, an `N` run, empty) is dropped, and a locus
+        # whose `ref` is not bases or which keeps no alt is not a locus at all.
+        placed = _placeable_alleles(ref, sorted(set(_snapshot_alleles(alts))))
+        if placed is None:
+            unplaceable.add(str(row_id))
+            continue
         result[row_id].append(
-            {"chrom": str(chrom), "start": int(start), "ref": str(ref), "alts": ",".join(alleles)}
+            {"chrom": str(chrom), "start": int(start), "ref": placed[0], "alts": ",".join(placed[1])}
+        )
+    only_unplaceable = sorted(unplaceable - set(result))
+    if only_unplaceable:
+        # In the snapshot, so "not in the injected snapshot" would be false; said once, not per rsID.
+        logger.warning(
+            "%d rsID(s) are in the injected Ensembl snapshot with no nucleotide allele at any locus "
+            "(dbSNP records no variation there, or the allele is not bases), so none is placed: %s "
+            "(RM271)",
+            len(only_unplaceable),
+            ", ".join(only_unplaceable),
         )
     for rsid in rsids:
-        if rsid not in result:
+        if rsid not in result and rsid not in unplaceable:
             # Two things this line must not do, and it did each of them in turn. It must not speak
             # for Ensembl — "in the injected snapshot", not "in Ensembl", because a partial snapshot
             # missing rs1799945 says nothing about the HFE H63D locus Ensembl serves at 6:26090951.
@@ -756,12 +775,14 @@ def _lookup_rsid_sets_by_position(
     for chrom, start, ref in concrete:
         params.extend([chrom, start, ref])
     rows = con.execute(
-        f"SELECT DISTINCT chrom, start, ref, id FROM ensembl_variations "
+        f"SELECT DISTINCT chrom, start, ref, alt, id FROM ensembl_variations "
         f"WHERE ({conditions}) AND id LIKE 'rs%'",
         params,
     ).fetchall()
     result: dict[str, set[str]] = defaultdict(set)
-    for chrom, start, ref, row_id in rows:
+    for chrom, start, ref, alt, row_id in rows:
+        if _placeable_alleles(ref, _snapshot_alleles(alt)) is None:
+            continue  # RM271
         result[derive_variant_key(None, chrom, start, ref)].add(str(row_id))
     return dict(result)
 
@@ -785,11 +806,11 @@ def _lookup_rsids_by_position(
             params.extend([chrom, start])
     where = " OR ".join(conditions)
     rows = con.execute(
-        f"SELECT DISTINCT chrom, start, ref, id FROM ensembl_variations "
+        f"SELECT DISTINCT chrom, start, ref, alt, id FROM ensembl_variations "
         f"WHERE ({where}) AND id LIKE 'rs%' "
         # ORDER BY makes the pick deterministic when a position is multi-allelic: two runs against the
         # same DB resolve a ref-less position to the same id, so `resolve_with_ensembl` stays idempotent.
-        f"ORDER BY chrom, start, ref, id",
+        f"ORDER BY chrom, start, ref, id, alt",
         params,
     ).fetchall()
     # A ref-less input position (ref=None) matched on (chrom, start) only, so the caller's lookup key
@@ -798,7 +819,9 @@ def _lookup_rsids_by_position(
     refless = {(str(c), s) for c, s, r in positions if r is None}
     result: dict[str, str] = {}
     refless_warned: set[tuple[str, int]] = set()
-    for chrom, start, ref, row_id in rows:
+    for chrom, start, ref, alt, row_id in rows:
+        if _placeable_alleles(ref, _snapshot_alleles(alt)) is None:
+            continue  # RM271
         full = derive_variant_key(None, chrom, start, ref)
         result.setdefault(full, str(row_id))
         pos = (str(chrom), start)

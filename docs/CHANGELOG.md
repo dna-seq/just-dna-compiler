@@ -41,6 +41,22 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-27 — RM271: neither Ensembl rung serves a non-base allele as a locus (patch, on `main`)
+
+**`just-dna-enricher` only; a corrected derivation, declared here (Principle 3).** Both Ensembl
+rungs wrote allele strings that are not bases into `resolution.csv` as `status=resolved`: live REST's
+literal `dbSNP_novariation` as a `ref` (`rs2100212723`), and the snapshot's empty alt, `<.>`, IUPAC
+placeholders (`<R>`, `<Y>`), `N` runs and N-masked chrY refs. Every read now keeps only the
+`^[ACGT]+$` alleles: a non-base `ref` withholds the locus, a non-base alt is dropped, and a locus with
+no alt left is withheld.
+
+- **What moves:** `alts` narrows where a placeholder or `N` allele sat beside real ones
+  (`rs33946775`, HBB: `CA,CC,CG,<R>` → `CA,CC,CG`); loci with no base allele leave the table; an rsID
+  REST answers with none is now `not_found` (Ensembl records no variation there), with a warning. An
+  existing sidecar keeps its old rows: delete it or run `enrich --rederive`.
+- The snapshot no longer calls such an rsID "not in the injected snapshot"; one warning names them.
+- No new public surface; a structured result field for these rsIDs is RM272, a minor.
+
 ## 2026-09-27 — RM268: the live Ensembl REST rung anchors a one-sided indel (patch, on `main`)
 
 **`just-dna-enricher` only; a corrected derivation, declared here (Principle 3).** Nothing added to

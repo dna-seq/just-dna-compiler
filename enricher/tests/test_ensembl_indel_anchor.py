@@ -40,26 +40,26 @@ _MULTI_INSERTION = _mapping("7", 94431048, 94431047, "-/G/GCTGTCC/GT")
 
 
 def test_an_insertion_is_anchored_on_the_base_before_it() -> None:
-    loci, withheld = _loci_from_rest({"mappings": [_INSERTION]}, _read_base)
+    loci, withheld, _ = _loci_from_rest({"mappings": [_INSERTION]}, _read_base)
     # The VCF spelling ClinVar and dbSNP use for rs8176719.
     assert loci == [{"chrom": "9", "start": 133257521, "ref": "T", "alts": "TC"}]
     assert withheld == 0
 
 
 def test_a_one_sided_deletion_is_anchored_on_the_base_before_it() -> None:
-    loci, withheld = _loci_from_rest({"mappings": [_DELETION]}, _read_base)
+    loci, withheld, _ = _loci_from_rest({"mappings": [_DELETION]}, _read_base)
     assert loci == [{"chrom": "2", "start": 201232808, "ref": "TAGTAAG", "alts": "T"}]
     assert withheld == 0
 
 
 def test_every_allele_of_a_multi_allelic_insertion_is_anchored() -> None:
-    loci, _ = _loci_from_rest({"mappings": [_MULTI_INSERTION]}, _read_base)
+    loci, _, _ = _loci_from_rest({"mappings": [_MULTI_INSERTION]}, _read_base)
     assert loci == [{"chrom": "7", "start": 94431047, "ref": "A", "alts": "AG,AGCTGTCC,AGT"}]
 
 
 def test_every_written_allele_is_in_the_allele_grammar() -> None:
     """The defect's signature was a `ref` the authored grammar refuses; no anchored locus carries one."""
-    loci, _ = _loci_from_rest({"mappings": [_INSERTION, _DELETION, _MULTI_INSERTION]}, _read_base)
+    loci, _, _ = _loci_from_rest({"mappings": [_INSERTION, _DELETION, _MULTI_INSERTION]}, _read_base)
     alleles = [locus["ref"] for locus in loci] + [a for locus in loci for a in locus["alts"].split(",")]
     assert alleles and all(ALLELE_PATTERN.fullmatch(allele) for allele in alleles)
 
@@ -76,7 +76,7 @@ def test_an_already_anchored_string_passes_through_without_a_base_read() -> None
             _mapping("7", 117559591, 117559594, "TCTT/T/TCTTCTT"),
         ]
     }
-    loci, withheld = _loci_from_rest(payload, must_not_read)
+    loci, withheld, _ = _loci_from_rest(payload, must_not_read)
     assert loci == [
         {"chrom": "7", "start": 117559587, "ref": "ATCATC", "alts": "ATC"},
         {"chrom": "7", "start": 117559591, "ref": "TCTT", "alts": "T,TCTTCTT"},
@@ -85,7 +85,7 @@ def test_an_already_anchored_string_passes_through_without_a_base_read() -> None
 
 
 def test_an_unreadable_anchor_withholds_the_locus_and_counts_it() -> None:
-    loci, withheld = _loci_from_rest(
+    loci, withheld, _ = _loci_from_rest(
         {"mappings": [_INSERTION, _mapping("1", 11856377, 11856377, "G/A")]}, _unreadable
     )
     assert loci == [{"chrom": "1", "start": 11856377, "ref": "G", "alts": "A"}]  # the SNV is untouched

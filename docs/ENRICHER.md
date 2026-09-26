@@ -1133,6 +1133,14 @@ every locus was withheld returns `(None, "ensembl-rest")`: unchecked like a fail
 own finding, because the request did not fail. The GraphQL leg's convention is unprobed, so a one-sided
 node there answers `[]` and the rsID goes to REST.
 
+**A non-base allele is not a locus, at either rung (RM271, 2026-09-27).** REST serves the literals
+`dbSNP_novariation` and `dbSNP_variant` as an `allele_string`; the VCF-dump snapshot serves an empty
+alt, `<.>`, IUPAC placeholders (`<R>`, `<Y>`), `N` runs and N-masked chrY refs. One private predicate,
+`ensembl._placeable_alleles`, runs at every read of both (REST, GraphQL, and the four snapshot reads in
+`resolver`): a `ref` outside `^[ACGT]+$` withholds the locus, an alt outside it is dropped, and a locus
+with no alt left is withheld. REST with nothing left answers the ordinary `[]` (it is permanent, so no
+re-run helps), and the snapshot names such rsIDs in one warning instead of `rsid_unresolved`.
+
 **`checked` carries labels only, and `snapshots` is where a path lives (S93, RM205).** The set used to
 be mixed — `ensembl-rest` for the live leg beside an absolute path for a snapshot, and the
 unreadable-snapshot finding interpolated the same path — so a host serving `lookup_variant` over HTTP
