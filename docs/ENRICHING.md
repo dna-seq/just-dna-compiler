@@ -21,6 +21,10 @@ The chain is **first-hit-wins**, in this order:
 
 1. **What is already there.** A `resolution.csv` beside the spec is authoritative and never clobbered.
    A `variant_key` it already covers is skipped entirely.
+   **So an enricher upgrade that corrects a resolution does not reach a table you already have.** After
+   one (RM251 and RM268 are two), run `just-dna-enricher enrich --rederive ./my_module`: it re-asks every
+   subject, replaces what was answered, keeps rows it could not re-ask, and reports what changed.
+   Deleting `resolution.csv` and re-running also works, but loses that report.
 2. **Local Ensembl cache** — DuckDB lookups, offline.
 3. **HuggingFace snapshot** — fetched if no cache is present. A static slice of popular rsIDs, not a
    canonical reference, so a miss falls through rather than answering.
