@@ -98,6 +98,13 @@ consumer-side log) works but is per-consumer; every consumer of the panel route 
 
 ## S115 — RM7: a consumer's diplotype-call output schema, and the one thing the artifact could not tell it
 
+**Status — recorded; output schema is RM7 corpus (a consumer contract, no format RM), the defining-site gap is (b): the artifact already carries it, derivably.** Two halves.
+
+The output shape — the four-state `status`, the phenotype-only-on-agreement rule, the consistent candidates, the tri-state per-site evidence, `phase_would_decide` — is exactly the kind of ground-truth [RM7](ROADMAP.md#rm7--evaluation-output--report-card-schema) is parked on. RM7 is **not format scope**: per-sample results are a *measurement*, so the caller's output is `just-dna-lite`'s contract to settle, and this shape is now noted on RM7 as the first corpus entry a shipped caller produced. Nothing to file here — that would put a measurement in the format.
+
+The defining-site gap is `@derived-not-stored`, and the reconstruction you already do is provably the whole answer. A gene's defining-site set is the union of the sites named across that gene's `haplotypes.parquet` rows, and that union is complete: a site is *defining* only if some haplotype is non-reference there, and every such site appears in that haplotype's row — even under the sparse convention where a row lists only its non-reference variants. So "this site was a `no_call`" versus "this gene defines no site there" is decidable by any artifact reader, not just your caller: (defining set = the union) minus (the sites your sample called) is the withheld-because-uncalled set, and it needs nothing the artifact does not already ship. A per-gene completeness column would be a convenience over a derivable fact, which P9 keeps out of the authored layer — so we do not materialize it, on the same reasoning `effective_*` reads a derivation rather than storing it. If it ever turns out the union is *not* complete for some real module — a defining site no haplotype row can name — that is a genuine gap and worth a fresh report with the case; we probed `hfe_compound_het` and `apoe_epsilon` and did not find one.
+<!-- triaged: 0.7.x · sha 865633adb667 -->
+
 **What we ran.** just-dna-lite built the phenotype caller RM7 assigns to the consumer — the thing that
 turns a VCF into a diplotype. It reads a `haplotypes` + `diplotypes` module and emits one call per
 (module, gene). Compiled the `apoe_epsilon` and `hfe_compound_het` reference examples with the installed

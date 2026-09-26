@@ -455,6 +455,15 @@ For the verification harness — **NOT a format task.** Per-sample results are a
 by the data-agnostic north star this is a **consumer** contract (`just-dna-lite`), listed here
 only so it is not mistaken for format scope.
 
+**Corpus (S115, 2026-09-26).** The first output shape a shipped caller produced, recorded here as
+ground truth for whatever RM7 settles on (in the consumer, not the format): a four-state `status`
+(`called` / `ambiguous` / `not_assessable` / `no_match` — never silence, never a reference default);
+`phenotype` set only when every consistent diplotype agrees; the consistent candidates; a tri-state
+per-site evidence list (`called` / `restored_hom_ref` / `no_call`); and a `phase_would_decide`
+predicate. The one artifact question it raised — a per-gene defining-site set — resolved (b): it is
+the union of the gene's `haplotypes` rows, derivable by any reader, so it stays out of the format
+(`@derived-not-stored`).
+
 ## Annotating core, not format scope (the 0.5 source assessment)
 
 RM7 and RM13 are listed above so they are not mistaken for format scope. The same needs saying about
