@@ -174,6 +174,42 @@ neither of this entry's guards caught, so the CLI died again beside anything pin
 
 **Residuals** RM254
 
+## RM291 — no test does what a consumer does: join a compiled module against an independently normalized VCF
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (a test only) ·
+**Owner** compiler (`compiler/tests/`)
+· **Motivating case** the 2026-09-27 postmortem, blindspot B3 and mitigation M4, decided with the
+maintainer that day · *related* RM270, RM267, RM273, RM31
+
+**Residuals** RM270 · RM295
+
+The suite compiles, reverses, recompiles and cross-checks tables against each other, and every one of
+those checks is internal. None of them joins a compiled artifact against a VCF produced by someone
+else, which is a consumer's whole operation. That is why the +1 indel respelling (RM31, 2026-08-03)
+and CCR5-Δ32's dropped carriers (S120) passed every gate for three minors.
+
+**The test.** Commit a small ClinVar VCF slice covering the reference examples' variants, normalized
+with `bcftools norm -f <GRCh38>` (left-aligned and trimmed, as a caller emits). Compile every reference
+example and join each on `(chrom, pos, ref, alt)` the way a consumer does. Assert that every row
+expected to match does, as set equality over the walked rows, never a count. It would have failed
+on 2026-08-03.
+
+**It fails today, on purpose.** The respelled indels RM270 names miss. Land it with those rows as an
+explicit expected-failure set pinned to RM270. A row leaving that set, fixed or newly broken, fails
+the test, so the set can only shrink when RM270 ships. The fixture is small and travels in `assets/`,
+under the ~5 MB LFS threshold.
+
+**What shipped.** `compiler/tests/test_consumer_join.py` and `assets/consumer_join/` (a 75 KB ClinVar
+2026-06-27 slice, ±100 bp around every placed allele row of the GRCh38 examples, split and normalized
+with `bcftools norm -f` against Ensembl's GRCh38 primary assembly; and those regions' reference bases,
+4 KB). `norm` realigned 0 of 5,285 records, since ClinVar's VCF is already in caller form. "Expected to
+match" is **haplotype equality** over the windows, so it does not depend on the normalization under
+test; "does match" is the consumer's exact `(chrom, pos, ref, alt)` join. On the day: 825 allele rows
+ClinVar carries, of which 823 join and 2 miss, the SHOX pair pinned to RM270. Symbolic alleles
+(`<DEL:4977>`, `N` ref) are outside by rule, and one row whose `ref` GRCh38 lacks is pinned to RM295,
+found by this test. A row outside every window fails by name, so a new example forces a fixture
+rebuild. Emptying the RM270 pin was run and turns the test red.
+
 ## RM274 — a same-size, different-content indel is kept as *undecided*, and RM31's reference half that would settle it was never filed
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** · **Owner** enricher

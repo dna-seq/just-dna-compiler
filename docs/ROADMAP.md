@@ -595,6 +595,11 @@ carries a `vrs_id`, and that one is gnomAD's. `@dont-discard-computed`.
 The build is 3 + 4, plus the stamped verdict from 2. The part that ships without a decision, the
 consumer guide stating that no normalization is guaranteed, landed with the S120 reply.
 
+
+**Pinned by RM291 (2026-09-27).** `compiler/tests/test_consumer_join.py` joins every reference example
+against a bcftools-normalized ClinVar slice, and the two SHOX rows Ensembl spells at `X:634690`
+(`AGAG>AG`, `AGAG>AGAGAG`; ClinVar and callers write `X:634689`) are its expected misses, pinned to
+this item. Shipping this empties that set, and the test fails until the pin is removed.
 ## RM272 — an answered-but-unplaceable rsID has no structured name in `EnrichmentResult`
 
 **Severity** low · **Status** open — **a minor**, for the `0.8` branch · **Owner** enricher
@@ -960,27 +965,17 @@ reading is the only one (as on the concordance table) or one of two, which would
 (`@two-vocabularies-that-do-not-meet-withhold`). Turning the constant into a per-table field on
 `OverlayTarget` is internal. Reporting it reuses the existing warning code, so it is a patch.
 
-## RM291 — no test does what a consumer does: join a compiled module against an independently normalized VCF
+## RM295 — `cyp2d6_structural` places CYP2D6*4 at a coordinate whose `ref` GRCh38 does not have
 
-**Severity** high · **Status** open — **a patch** (a test only) · **Owner** compiler (`compiler/tests/`)
-· **Motivating case** the 2026-09-27 postmortem, blindspot B3 and mitigation M4, decided with the
-maintainer that day · *related* RM270, RM267, RM273, RM31
+**Severity** low · **Status** open — **a patch** (a reference-example correction) · **Owner** docs /
+`reference_examples/cyp2d6_structural` · **Motivating case** found by RM291's consumer-join test on
+2026-09-27 · *related* RM291
 
-The suite compiles, reverses, recompiles and cross-checks tables against each other, and every one of
-those checks is internal. None of them joins a compiled artifact against a VCF produced by someone
-else, which is a consumer's whole operation. That is why the +1 indel respelling (RM31, 2026-08-03)
-and CCR5-Δ32's dropped carriers (S120) passed every gate for three minors.
-
-**The test.** Commit a small ClinVar VCF slice covering the reference examples' variants, normalized
-with `bcftools norm -f <GRCh38>` (left-aligned and trimmed, as a caller emits). Compile every reference
-example and join each on `(chrom, pos, ref, alt)` the way a consumer does. Assert that every row
-expected to match does, as set equality over the walked rows, never a count. It would have failed
-on 2026-08-03.
-
-**It fails today, on purpose.** The respelled indels RM270 names miss. Land it with those rows as an
-explicit expected-failure set pinned to RM270. A row leaving that set, fixed or newly broken, fails
-the test, so the set can only shrink when RM270 ships. The fixture is small and travels in `assets/`,
-under the ~5 MB LFS threshold.
+`variants.csv` and `studies.csv` state `22:42127941 C>T` for CYP2D6*4's splice variant. GRCh38 has `G`
+there, and Ensembl places `rs3892097` at **`22:42128945`** (`C/A/G/T`), about a kilobase away. The
+example compiles green because the compiler holds no reference, and no enrich run over it was checked.
+RM291's test pins the row as its one reference disagreement; correcting the example empties that set.
+Check the README's prose and any test that reads the example's coordinates in the same change.
 
 ## RM292 — a verification check does not say what it checked against, so a check that witnesses itself reads as verified
 
