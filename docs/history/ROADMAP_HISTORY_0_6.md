@@ -2647,7 +2647,7 @@ so zero corpus modules would fire either finding today.
   post-join contradiction and a per-locus published grade are two different findings that would only
   look like one in a vocabulary. Deciding this is deciding whether STRchive's `evidence` is adopted at
   all — today it is dropped at parse, so the STRchive half is a **source-adoption** question wearing a
-  check's clothes.
+  check's clothes (filed as RM276 on 2026-09-27).
 - **Open — the combination-profile stamp is a defect, not a design question.** `molecular_profile_id`
   overwritten with the variant's own profile is wrong regardless of what this item decides; it belongs
   to whoever fixes it first, and it makes 8721 look like two independent refutations.
