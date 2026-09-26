@@ -128,6 +128,13 @@ put that distinction in the artifact. Filed as an observation, not a blocker —
 
 ## S116 — RM28: the HFE compound-het-vs-cis case is a meta-conclusion a consumer can name but not resolve
 
+**Status — note 1 recorded on [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half) (it confirms the boundary); note 2 filed as [RM266](ROADMAP.md#rm266--the-phase-confusable-diplotype-pair-set-is-computed-at-compile-and-dropped-it-reaches-the-artifact-only-as-a-capped-warning-string), open, a minor.** Two distinct findings, and they route apart.
+
+Note 1 — keep the enumerative property — is exactly RM28's boundary, and your building it confirms it from the caller side. Because the module defines the *cis* allele (`C282Y-H63D`) as its own haplotype with its own diplotype row, the enumeration let your caller **name** the ambiguity rather than guess or report `no_match`. RM28 is parked precisely because enumeration reaches the small-arity cases without a predicate, and `hfe_compound_het` was already its "cis/trans closed as a check, not a table" entry; S116 is now recorded there as the shipped-caller confirmation that the boundary holds. Nothing to add to the format for note 1.
+
+Note 2 — the artifact cannot carry which pairs are the phase-confusable set — reproduced, and it is **not** an RM28 axis. We compiled the example: `diplotype_phase_ambiguous` fires and names the set already — `HFE: 1 group(s) … e.g. C282Y/H63D, C282Y-H63D/wt`. `_cross_validate_diplotypes` groups pairs by a phase-preserving definition signature and separates "indistinguishable at all" from "phase would decide," which is the distinction your caller reconstructs. So the compiler *computes* the confusable set; it just flattens it into a warning string capped at three examples. The author does not need to state it (it is derived), so the fix is `@dont-discard-computed` — surface the computed groups as structured data (a manifest field or small parquet) — which is RM266, additive and minor. Filed, not built: `main` is patch scope, and your caller already re-derives the set, so nothing is blocked.
+<!-- triaged: 0.7.x · sha bc09f64bd4d3 -->
+
 **What we ran.** The caller from S115 against the compiled `hfe_compound_het` example, with a sample
 heterozygous at both rs1800562 (C282Y) and rs1799945 (H63D), unphased.
 

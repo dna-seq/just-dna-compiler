@@ -442,6 +442,36 @@ message; S114 is its sharpened, corpus-backed form. The stale RM4 row in
 replaces it, consumer: no action needed" — corrected there in the same triage pass as a doc fix,
 since that tracker is the procedure P3 turns on.
 
+## RM266 — the phase-confusable diplotype-pair set is computed at compile and dropped: it reaches the artifact only as a capped warning string
+
+**Severity** low · **Status** open — **a minor, release undecided** · **Owner** compiler
+(`_cross_validate_diplotypes`) · **Motivating case** [S116](CONSUMER_SUGGESTIONS_HISTORY.md#s116--rm28-the-hfe-compound-het-vs-cis-case-is-a-meta-conclusion-a-consumer-can-name-but-not-resolve), note 2
+
+**What was confirmed.** Reproduced by compiling `reference_examples/hfe_compound_het`: the
+`diplotype_phase_ambiguous` warning fires and names the exact set S116 says the artifact cannot carry —
+`HFE: 1 group(s) … e.g. C282Y/H63D, C282Y-H63D/wt`. So the compiler **already computes** the
+phase-confusable pair set. `_cross_validate_diplotypes` (`compiler.py:3457`) groups a gene's diplotype
+pairs by their phase-preserving definition signature and separates *indistinguishable at all* (identical
+definitions, `diplotype_definitions_identical`) from *phase would decide* (`diplotype_phase_ambiguous`) —
+which is precisely the distinction a caller reconstructs at query time. It is then flattened into a
+warning string and capped at three examples (`_examples`), so a reader of the artifact who is not
+running a caller cannot recover the set, and beyond three groups cannot see it at all.
+
+**Why this is not RM28.** S116 frames note 2 as wanting an RM28 axis — an author *stating* "this pair
+is distinguishable from that one only by phase." But the author does not need to state it and should
+not: it is **derived** from `haplotypes` + `diplotypes`, and the compiler derives it today. This is
+`@dont-discard-computed`, not a new authored surface — the fix is to stop discarding the structure, not
+to add an axis. The general shape is the idea-book's § D3/§ D4 (warnings are `list[str]` with no code,
+count or payload); RM266 is the specific case where the *payload* — the confusable groups, by name — is
+the thing worth carrying, over and above D3's per-code count.
+
+**The shape, filed not built.** A structured surface for the computed groups — a `manifest.json` field
+keyed by gene, or a small optional parquet — so a downstream reader sees the confusable set without
+re-deriving it. Additive (a new optional derived surface, P9 ≈ free-to-half), so **minor**; the open
+question is manifest field versus parquet, and whether it subsumes or sits beside a general
+`warnings_summary` (§ D3). Corpus, not code, decides urgency: this is `just-dna-lite`'s first caller and
+it already re-derives the set successfully, so nothing is blocked.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

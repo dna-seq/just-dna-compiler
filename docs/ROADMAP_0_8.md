@@ -1098,7 +1098,14 @@ names warfarin, is unreachable whenever a snapshot is present.
   surfaced instead was that the two rows are **indistinguishable without phase**, which shipped as
   `_cross_validate_phase_ambiguity` (a warning, never a block). A `requires_phase` column was rejected:
   it would make an author restate what the data determines and go stale the moment a haplotype is
-  edited.
+  edited. **Confirmed from the caller side, S116 (2026-09-26):** a shipped `just-dna-lite` caller ran
+  against this example and the enumeration held — because the module defines the *cis* allele
+  (`C282Y-H63D`) as its own haplotype with its own diplotype row, the caller could *name* the
+  ambiguity (`ambiguous`, both candidates) rather than guessing or reporting `no_match`. So this is a
+  case where enumeration succeeds and no predicate is wanted, which is where the entry drew its line.
+  The one thing the caller had to re-derive — *which* diplotype pairs are the phase-confusable set — is
+  not a predicate the author states but a value the compiler already computes and discards, filed as
+  [RM266](ROADMAP.md#rm266--the-phase-confusable-diplotype-pair-set-is-computed-at-compile-and-dropped-it-reaches-the-artifact-only-as-a-capped-warning-string), not here.
 
 ### What remains
 
