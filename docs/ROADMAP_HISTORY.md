@@ -4124,7 +4124,7 @@ class**, counted and not drafted; whether their identity earns a row at all is a
 **The `:` deletions want an enricher pass** that anchors them against the rCRS — legal in that tier,
 which may fetch. **Indel normalization** would turn the left-alignment caveat into an answer. And
 **publishing the MITOMAP snapshot to HuggingFace is outbound and stays the maintainer's**: the lane has
-`mitomap publish` and CC BY 3.0 permits it, but nothing has been uploaded. The derived child is
+`mitomap publish` and CC BY 3.0 permits it, but nothing has been uploaded. *(Stale by 2026-09-03: `just-dna-seq/mitomap` was published that day, commit `dd99d54e`; confirmed 2026-09-27.)* The derived child is
 deliberately unpublishable for a fourth reason that is neither a refusal nor an unestablished
 permission — a pulled copy would carry a currency check its holder cannot run.
 

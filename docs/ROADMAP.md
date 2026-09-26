@@ -881,8 +881,8 @@ RM171 listed what it left, and nothing carried the list. Checked on 2026-09-27 a
    drafted. Whether an identity with no classification earns a drafted row at all is the smaller call
    RM171 deferred.
 
-Indel normalization, RM171's fourth remainder, is RM273 (1). Publishing the MITOMAP snapshot to
-HuggingFace is outbound and the maintainer's (postmortem P16).
+Indel normalization, RM171's fourth remainder, is RM273 (1). The MITOMAP snapshot has been on HuggingFace since
+2026-09-03 (`just-dna-seq/mitomap`), so RM171's publish remainder is already closed.
 
 ## RM286 — PharmVar's research-use-only, personal-key restriction lives in `notice` prose, and RM27 closed without the axis RM38 handed it
 
