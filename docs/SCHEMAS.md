@@ -1868,6 +1868,13 @@ distinguish them.
 A consumer still cannot be told *which* release it is missing without also knowing its own — that
 pairing is theirs. This supplies the half nobody outside this repo can compute.
 
+**A patch can add an authored column, so pinning a minor does not fix the authored schema** (S81).
+The parquet contract and `artifact.digest` hold within a minor; the authored row schema does not,
+because a new optional column breaks no existing module and so needs no minor. Under
+`extra="forbid"`, a spec written against the newer patch is refused by the older one. It has
+happened: `StudyRow.curator` is `since("0.6.5")`. A tool that reads authored CSVs should pin the
+patch it validates against, or read `field_first_seen` to name the column it is missing.
+
 ### Which curation is current, and where nothing can say (0.7, RM108)
 
 ClinGen's `assertion_id` **embeds the curation timestamp**

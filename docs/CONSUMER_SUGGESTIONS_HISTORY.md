@@ -2810,7 +2810,7 @@ reached for it too. Filing your reasoning verbatim in the entry is the point of 
 and was right to. The authored row schema tightens at PATCH under `extra="forbid"`, that distinction
 was unwritten, and your correction is yours and is made. We will say the same thing on our side when
 RM146 lands, since a reader who learns *when* a column appeared will want to know why a patch could
-introduce it.
+introduce it. *(Written 2026-09-27, in SCHEMAS.md § Which release a column appeared in.)*
 
 **What this will not settle**, so you can plan around it: a reader still cannot be told *which* release
 it is missing without also knowing its own, and that pairing is yours and already shipped. RM146
