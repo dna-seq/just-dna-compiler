@@ -8,6 +8,7 @@ not counts: the expected anchored rows follow from them by the VCF left-anchor r
 
 import httpx
 from just_dna_enricher.ensembl import EnsemblResolver, _loci_from_graphql, _loci_from_rest
+from just_dna_enricher.sequences import _left_align
 from just_dna_format.vocab import ALLELE_PATTERN
 
 _GRCH38_BASES = {("9", 133257521): "T", ("2", 201232808): "T", ("7", 94431047): "A"}
@@ -142,3 +143,52 @@ def test_a_one_sided_graphql_node_is_handed_to_rest() -> None:
     resolver._client = httpx.Client(transport=httpx.MockTransport(handler))
     loci, source = resolver.resolve_rsid("rs8176719")
     assert source == "ensembl-rest" and loci[0]["ref"] == "T"
+
+
+# ── RM273: the registry's anchor is HGVS's 3'-most point; a written row is left-aligned ───────────
+#
+# GRCh38 bases read from Ensembl's sequence endpoint on 2026-09-27, 1-based inclusive.
+_CHR4 = (87310220, "TGGGTGTTCTGTGCTGTACTTACTTCTGTAG")
+_CHR2 = (166204460, "CCAAGGTAAAGAAACAAACAAAAAATAAATG")
+
+
+def _window_over(chrom_seqs: dict[str, tuple[int, str]]):
+    def read_window(chrom: str, start: int, end: int) -> str | None:
+        first, seq = chrom_seqs[chrom]
+        if start < first or end >= first + len(seq):
+            return None
+        return seq[start - first : end - first + 1]
+
+    return read_window
+
+
+def _apply(first: int, seq: str, pos: int, ref: str, alt: str) -> str:
+    """The haplotype a VCF record spells over a reference window: the event equality check."""
+    i = pos - first
+    assert seq[i : i + len(ref)] == ref
+    return seq[:i] + alt + seq[i + len(ref) :]
+
+
+def test_rs72613567_is_moved_to_vcf_spelling() -> None:
+    clipped = lambda c, s, e: _window_over({"4": _CHR4})(c, max(s, _CHR4[0]), e)  # noqa: E731
+    assert _left_align("4", 87310241, "A", "AA", clipped) == ("4", 87310240, "T", "TA")
+    assert _apply(*_CHR4, 87310241, "A", "AA") == _apply(*_CHR4, 87310240, "T", "TA")
+
+
+def test_an_unreadable_window_withholds_rather_than_guessing() -> None:
+    assert _left_align("4", 87310241, "A", "AA", lambda _c, _s, _e: None) is None
+
+
+def test_rs77944059_deletion_moves_to_the_leftmost_equivalent() -> None:
+    """RM273 named 166204473 as the left-aligned spelling; the reference says 166204470."""
+    read = lambda c, s, e: _window_over({"2": _CHR2})(c, max(s, _CHR2[0]), e)  # noqa: E731
+    left = _left_align("2", 166204477, "ACAAA", "A", read)
+    assert left == ("2", 166204470, "GAAAC", "G")
+    haplotype = _apply(*_CHR2, 166204477, "ACAAA", "A")
+    assert _apply(*_CHR2, 166204470, "GAAAC", "G") == haplotype
+    assert _apply(*_CHR2, 166204473, "ACAAA", "A") == haplotype  # also equivalent, just not leftmost
+
+
+def test_an_already_left_aligned_row_is_unchanged() -> None:
+    read = lambda c, s, e: _window_over({"4": _CHR4})(c, max(s, _CHR4[0]), e)  # noqa: E731
+    assert _left_align("4", 87310240, "T", "TA", read) == ("4", 87310240, "T", "TA")

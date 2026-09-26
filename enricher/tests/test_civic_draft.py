@@ -363,7 +363,12 @@ def test_the_caid_pass_leaves_the_accounting_closed(spec, snapshot):
 
 
 def test_a_one_sided_indel_is_anchored_into_a_vcf_row(spec, snapshot, monkeypatch):
-    """The Picard-style recovery: one reference base turns a stated indel into a drafted row."""
+    """The Picard-style recovery: one reference base turns a stated indel into a drafted row.
+
+    Then left-aligned (RM273): the fake reference is `A`s up to the anchor `G` at 10142013, so the
+    registry's `G` inserted after that `G` is the same event as a `G` inserted after the `A` before it,
+    and VCF's spelling is the leftmost, `10142012 A>AG`.
+    """
     caid = _caid_rows(snapshot)["allele_registry_id"][0]
     registry = _StubRegistry(
         {
@@ -372,12 +377,16 @@ def test_a_one_sided_indel_is_anchored_into_a_vcf_row(spec, snapshot, monkeypatc
     )
     monkeypatch.setattr(
         "just_dna_enricher.civic_draft.SequenceProxy",
-        lambda **kw: type("_S", (), {"subsequence": lambda self, a, s, e: "G"})(),
+        lambda **kw: type(
+            "_S", (), {"subsequence": lambda self, a, s, e: "G" if e - s == 1 else "A" * (e - s)}
+        )(),
     )
     result = draft_panel_from_civic(spec, snapshot=snapshot, registry=registry)
     assert result.caid_anchored_indels >= 1
-    placed = [r for r in _rows(spec / "variants.csv") if r["start"] == "10142013"]
-    assert placed and all(r["ref"] == "G" and r["alts"] == "GG" for r in placed)
+    rows = _rows(spec / "variants.csv")
+    assert not [r for r in rows if r["start"] == "10142013"]
+    placed = [r for r in rows if r["start"] == "10142012"]
+    assert placed and all(r["ref"] == "A" and r["alts"] == "AG" for r in placed)
     assert result.accounts_for_every_candidate()
 
 

@@ -1738,8 +1738,10 @@ only route is a ClinGen `allele_registry_id` is *kept* in the snapshot as `ident
 the registry returns an rs-number (preferred, because Ensembl then verifies it and two authorities
 make the check real) or a GRCh38 coordinate. **One-sided indels are anchored VCF/Picard-style**: the
 registry states an insertion with an empty reference allele and a deletion with an empty allele, and
-prefixing both sides with the reference base before the event is the left-aligned form VCF requires.
-That takes recovery from 48% of the direction set to **82%**. `--offline` withholds those rows as
+prefixing both sides with the reference base before the event gives a VCF row at the registry's own
+position. That position is HGVS's 3′-most one, so inside a repeat the row is then **left-aligned**
+against the reference (`sequences._left_align`, RM273: `rs72613567` anchors as `4:87310241 A>AA` and is
+written `87310240 T>TA`); a repeat longer than the read window withholds as an unreadable anchor. That takes recovery from 48% of the direction set to **82%**. `--offline` withholds those rows as
 `caid_unresolved` — unplaced, not unplaceable — and an unreadable anchor withholds under its own
 reason rather than being guessed at. Liftover was measured and refused: its ceiling is 13 rows, and
 the one precise event in the class lifts exactly to the *wrong allele*.

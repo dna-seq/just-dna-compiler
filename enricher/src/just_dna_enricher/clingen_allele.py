@@ -169,10 +169,13 @@ def _parse(caid: str, payload: dict) -> AlleleIdentity:
 def anchor_indel(unanchored: tuple[str, int, str, str], read_base) -> tuple[str, int, str, str] | None:
     """A one-sided indel plus one reference base → a VCF-style row, or `None` if the base is unknown.
 
-    **This is the left-aligned representation VCF requires and Picard/GATK produce.** An insertion and
-    a deletion each state one side of the change and leave the other empty, which no `ref`/`alts` pair
-    can hold; anchoring prefixes both sides with the single reference base immediately before the
-    event, so `ref` and `alts` are both non-empty and the row means exactly what the registry said:
+    **This is VCF's anchored form at the registry's own position, which is not always the left-aligned
+    one** (RM273). An insertion and a deletion each state one side of the change and leave the other
+    empty, which no `ref`/`alts` pair can hold; anchoring prefixes both sides with the single reference
+    base immediately before the event, so `ref` and `alts` are both non-empty and the row means exactly
+    what the registry said. The registry's interbase point follows HGVS's 3′ rule, so inside a repeat
+    the result sits right of VCF's left-aligned spelling (`rs72613567`: `4:87310241 A>AA`, where VCF
+    writes `87310240 T>TA`); a caller writing a row left-aligns it after (`sequences._left_align`):
 
         deletion of `A` after base P   →  POS=P, REF=<base P> + "A", ALT=<base P>
         insertion of `G` after base P  →  POS=P, REF=<base P>,       ALT=<base P> + "G"
