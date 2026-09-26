@@ -3610,7 +3610,7 @@ Warning rather than error, for your reason. Your `LITERATURE_FACT_FIELDS` observ
 where it goes — the comment already argues that `quotes_authored` is derivable from `studies.csv`, and
 that is the argument for recomputing rather than trusting the stored copy.
 
-**Your second candidate — recompute on merge — is not shipped, and we would still like it.** You are
+**Your second candidate — recompute on merge — is not shipped, and we would still like it.** *(Filed as RM277 on 2026-09-27, after the 2026-09-27 postmortem found it unfiled.)* You are
 right that it fixes new runs and leaves every published module reporting zero, which is why the
 comparison came first; the pass-side half is enricher work and belongs with the next literature-pass
 change rather than being bolted on here. Your rejected candidate is rejected for your reason: treating
