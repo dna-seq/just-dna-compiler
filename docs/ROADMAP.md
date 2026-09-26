@@ -819,6 +819,30 @@ states the gap and `test_cli_parity.py` does not assert compile-flag parity, so 
 deliberately stays narrower than the API. Either way, extend `test_cli_parity.py` to assert the
 decided set, so the next parameter cannot drift in unweighed.
 
+## RM279 — nothing checks a `conclusion` against the other cells on its own row, so a swapped pair compiles green
+
+**Severity** low · **Status** open — **a patch** (a warning), parked on a precision measurement · **Owner**
+compiler (a hint or lint over the authored row) · **Motivating case** consumer-note D14 (the 0.7
+idea-book), numbered by the 2026-09-27 postmortem (P7), because an idea-book bullet is not a home
+
+**What the reporter measured, and what we reproduced.** 20 hits in 1,418 rows at about 60% precision
+by hand. The finds that matter are real curation errors: `coronary` `rs17514846` has its `C/C` and
+`A/A` conclusions **swapped**, and `rs11591147` is scored `protective +1.2` on `T/T` under text saying
+`GG` is protective. `lint_rows` over twelve real `thrombophilia` rows returned no finding on three
+more (`rs1799963 A/A` → *"GA carriers have 6.74x risk"*; `rs2519093 C/T` → *"TT genotype is
+associated…"*; `rs1799889 G/G` with `state: risk` under *"…is not increased"*). Both measurements are
+recorded in the idea-book and the consumer-note triage section of this file.
+
+**Two candidate rules, neither needing an external source.** A conclusion naming a genotype **built
+from alleles at this row's own locus** that is not this row's genotype; and a `state` of
+`risk`/`protective` the conclusion's text negates. The locus restriction is what makes the first
+tractable (an earlier version flagged *"(TG) levels"*).
+
+**Parked on, and the gate is satisfiable now.** A measured precision for the locus-restricted rule over
+the reference examples plus the reporter's corpus. A warning an author reads on every compile at 60%
+precision is how the channel stops being read (S68). Anyone can run that measurement today, so the gate is not
+circular. Being a warning with no schema member, it is patch-class once built.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
@@ -1312,6 +1336,7 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM28** — the predicate half | parked on a corpus | **Sound.** A corpus is counted off other people's published data; it has three entries and none of them needed us to ship anything. |
 | **RM23** — predictor scores | "the acquisition measurement done, and a decision on per-transcript grain" | **Sound.** Both are actions available today; the item is unstarted, not blocked. |
 | **RM68** — a drafting provider off GRCh38 | "an author with a non-GRCh38 module saying which outcome they wanted" | **Sound.** Such modules exist — `reference_examples/grch37_build` is one. |
+| **RM279** — a `conclusion` checked against its own row (filed 2026-09-27) | a measured precision for the locus-restricted rule | **Sound.** The corpus and the rule both exist; anyone can run it before anything ships. |
 | **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
 
 **What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on
@@ -1751,7 +1776,8 @@ New ideas enter here as freeform suggestions, then graduate through the design c
   — and note it would have fired on a module whose other 22 warnings were the S67 flood, so the two
   interact.
 
-- **Nothing checks a `conclusion` against the other cells on its own row.** From the same pass (D14),
+- **Nothing checks a `conclusion` against the other cells on its own row.** *Numbered as RM279 on
+  2026-09-27.* From the same pass (D14),
   and the reporter measured it before proposing it: **20 hits in 1,418 rows, ≈60% precision by hand
   inspection**, which is why they asked for `warning` rather than `error`. Two of the finds are worth
   quoting because they are exactly what a curation check is for — `coronary` `rs17514846`'s `C/C` and

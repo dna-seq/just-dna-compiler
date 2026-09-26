@@ -193,7 +193,7 @@ any of them.
 | P4 | **Filed as RM276.** **RM170, STRchive.** `StrchiveLocus` drops `evidence` at parse, so a *Refuted* locus (DMD) drafts looking exactly like a solid one | 0_6.md:2617-2621, 2646-2650 | The entry calls it a source-adoption question |
 | P5 | **Filed as RM277.** **S56: the compiler's remedy does nothing.** `quote_counter_stale` says to re-run the literature pass, which skips pinned rows. The recompute-on-merge fix we said we *"would still like"* was never filed | CONSUMER_SUGGESTIONS_HISTORY_0_6.md:3613-3616; `compiler.py` `quote_counter_stale`; `literature.py:854, :977`; `cli.py:795` | The warning text alone is a patch |
 | P6 | **Filed as RM278.** **RM218: the CLI cannot pass `ensembl_reference` or `ba1_threshold`**, so every CLI-compiled manifest has a null `ensembl_reference` | ROADMAP_HISTORY.md:2049-2053; COMPILER.md:1820-1831 | |
-| P7 | **D14: swapped or contradicted `conclusion` cells go unflagged** (`coronary` `rs17514846`) | ROADMAP.md idea-book, consumer-note D14 | Self-carried in the idea-book with a reason; decide whether it now earns a number |
+| P7 | **Filed as RM279** (numbered, parked on a precision measurement). **D14: swapped or contradicted `conclusion` cells go unflagged** (`coronary` `rs17514846`) | ROADMAP.md idea-book, consumer-note D14 | Self-carried in the idea-book with a reason; decide whether it now earns a number |
 
 ### 6.2 File or close — promised, pointed at, never homed
 
