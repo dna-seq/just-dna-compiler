@@ -58,10 +58,25 @@ only the enricher, holding a reference, can catch that.
 the haplotype. Many rows per haplotype, and a variant recurs across many: CYP2D6's rs1065852 is
 core-defining in 22 alleles. Nobody should expect one row to describe `*4`.
 
+**A haplotype carries the reference allele at every site of its gene that it does not list.** This
+is the PharmVar/CPIC reading, and the compiler's phase-ambiguity check already computes with it: an
+unlisted site and a row whose `allele` equals its own `ref` mean the same thing. So a sparse table is
+normal. A CPIC-drafted gene lists only each allele's own defining variants, and two of the four
+reference examples with this table do exactly that. The rule is closed-world *per module*: "reference"
+is about the sites some haplotype of this gene in this module lists, never about sites the module
+does not mention. There is no spelling for "unknown at this site". An author who means it has no row
+to write, so a haplotype whose definition is incomplete should not be defined here at all.
+
 **A star allele can be used without being defined**, and that is legal. `diplotypes.csv` and
 `allele_function.csv` may name an allele this table never defines; the compiler warns only when
-`haplotypes.csv` is present at all, and `*1` is exempt by construction — it is the reference allele
-and has no defining variants to list.
+`haplotypes.csv` is present at all, and `*1` is exempt. **That exemption is the literal name `*1`, for
+every gene, and it only silences that one warning.** Nothing infers a definition for an undefined
+`*1`: the phase check skips any diplotype naming a haplotype this table does not define, `*1`
+included. So "`*1` is the reference at every site" is the CYP naming convention, not a rule of the
+format. A gene whose reference allele has another name (NAT2's is `*4`, and blood groups use names
+like `wt`) defines it the way `hfe_compound_het` defines `wt`, with a row per site whose `allele` is
+the `ref`. That makes it a haplotype the checks can see, and it clears the used-but-not-defined
+warning honestly.
 
 **`requires_callable` lives here** rather than on `diplotypes.csv`, because a row here names a locus,
 so a callability claim is about a position the row actually states.

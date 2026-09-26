@@ -3297,8 +3297,11 @@ def _recompute_vrs_id(row: ResolutionRow, alt: str | None) -> tuple[str | None, 
     return recomputed, None, None
 
 
-#: The reference star allele. Defined by carrying **none** of a gene's variants, so it can never
-#: appear in `haplotypes.csv` and must never be reported as undefined.
+#: The reference star allele by CYP naming, exempt from the used-but-not-defined warning for every
+#: gene. It carries none of a gene's variants, so an author usually lists no rows for it — but a module
+#: *may* define it with reference-matching rows, and then the phase check sees it like any haplotype.
+#: The exemption infers nothing: an undefined `*1` is skipped by that check, not read as reference
+#: (S118). A gene whose reference allele has another name (NAT2 `*4`) defines it instead.
 _REFERENCE_HAPLOTYPE = "*1"
 
 

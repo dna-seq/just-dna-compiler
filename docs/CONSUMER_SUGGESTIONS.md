@@ -133,3 +133,50 @@ against the reference the enricher already holds, so `resolution.csv` carries VC
 the +1 class outright. It does not fix the −1 class, which is a placement disagreement, not a spelling
 one — there the enricher could flag rather than choose, since it can apply both spellings to the
 sequence the way we did.
+
+## S118 — a haplotype carries `ref` at any defining site it does not list, and nothing in the format says so
+
+**Status — documentation defect, fixed in [TABLES.md § haplotypes.csv](TABLES.md#haplotypescsv); the
+validate warning is declined.** Nothing to install: it is a doc and a code comment.
+
+Confirmed in the code, not just in your reading of it. `_cross_validate_phase_ambiguity` already says
+*"a haplotype that does not mention a variant is treated as carrying the reference there"* and
+normalizes a row whose `allele` equals its `ref` to the same sentinel. So your caller and the compiler
+agree, and the gap was only that TABLES.md never said it. It now does, closed-world per module: the
+sites are the ones some haplotype of the gene in this module lists, and "unknown at a site" has no
+spelling.
+
+**On `*1`, the answer is that it is a CYP convention, and the format only exempts the name.** The
+used-but-not-defined warning skips the literal `*1` for every gene, and that is all. Nothing infers a
+definition. A diplotype naming an undefined `*1` is skipped by the phase check, not read as
+all-reference. Probed: renaming `hfe_compound_het`'s `wt` to `*1` validates, and the phase warning
+then names `*1/C282Y-H63D`, so a *defined* `*1` is an ordinary haplotype. The comment on
+`_REFERENCE_HAPLOTYPE` claimed `*1` "can never appear in `haplotypes.csv`", which is false, and it is
+corrected. TABLES.md now says a gene whose reference has another name (NAT2's `*4`, your blood-group
+`wt`) defines it with reference-matching rows, as your pilots already do.
+
+**Why no warning on differing site sets.** Sparse is the norm this rule exists for. Two of the four
+reference examples with `haplotypes.csv` (the CPIC-drafted `cyp2c19_star_alleles` and
+`cyp2c9_warfarin_grch37`) list different site sets per haplotype, as every CPIC draft does. The
+warning would fire on each of them while catching an author who means "unknown", and that author has no
+row to write either way.
+
+**What to do now:** nothing changes on your side. Keep listing every allele at every site if you like.
+It is redundant under the rule but not wrong.
+<!-- triaged: doc fix · sha 52d96d1ab43f -->
+
+*From just-dna-lite, 2026-09-27.*
+
+Our diplotype caller (and, as far as we can tell, the compiler's own phase-ambiguity check) assumes the
+PharmVar/CPIC reading: a haplotype that lists no row at a site the gene's other haplotypes define
+carries the reference allele there. TABLES.md never states it. It decides results: remove the
+reference-matching rows from `hfe_compound_het`'s `H63D` haplotype and the caller's answer is unchanged
+only because of this assumption; a consumer reading "unlisted" as "unknown" would turn every such site
+into a wildcard and call far more `ambiguous`.
+
+The corpus avoids the question by listing every allele at every site (`apoe_epsilon`, `hfe_compound_het`
+and our ABO/FUT2 pilots all do), so it has never been tested. Two ways out, either fine by us: state the
+convention in TABLES.md under `haplotypes.csv` (one sentence), or have `validate` warn when haplotypes
+of one gene list different site sets, so an author who means "unknown" finds out. The same sentence
+would settle the related `*1` question: `*1` is the one implicit allele the format allows, and a
+consumer cannot tell whether "`*1` = reference at every site" is the rule or a CYP convention.
