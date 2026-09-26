@@ -53,6 +53,12 @@ Items are separated by ` · `. Each one is an `RMn` or `won't fix — <reason>`,
 entry its line and delete it from the list in the same commit. The why is
 [POSTMORTEM_2026_09_27.md](POSTMORTEM_2026_09_27.md).
 
+**A cut rewrites the lead paragraph of every CHANGELOG heading that names its version**, to say it was
+cut and tagged. A reply never cites a heading as *the record* of a state that will change; it cites
+the tag. The 0.7.0 heading said *"being built … not yet cut"* for a month after `v0.7.0`, while six
+replies (S75–S80) pointed consumers at it. `test_closure_residuals.py` refuses a present-tense uncut
+claim under any version that has a release record or is older than the newest versioned heading.
+
 ## Patches
 
 Patches are built and cut on `main`. A patch carries however many fixes the latest wave of usage

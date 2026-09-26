@@ -35,13 +35,16 @@ class`, where the class is `leak` (a remainder nothing owns, and a postmortem ba
 but in a way the walker cannot see). The list is asserted exact. Homing a `leak` resolves its hit, and
 the test then asks for its row to be deleted, so the number of `leak` rows is the backlog's progress.
 
-Walks the repository and imports nothing from any package, like `test_doc_links.py`.
+**A cut release's heading (M7)** may not go on saying it is uncut; see the test's docstring.
+
+Walks the repository like `test_doc_links.py`, and imports one thing, `RELEASE_RECORDS`, for M7.
 """
 
 import re
 from pathlib import Path
 
 import pytest
+from just_dna_format.release_records import RELEASE_RECORDS
 
 _ROOT = Path(__file__).resolve().parents[2]
 _DOCS = _ROOT / "docs"
@@ -302,3 +305,42 @@ def test_legacy_residual_phrases_are_exactly_the_listed_ones() -> None:
     assert not resolved, f"now resolved — delete these rows from {_PHRASES_LEGACY.name}: " + "; ".join(
         " :: ".join(h) for h in sorted(resolved)
     )
+
+
+# ── M7: a cut release's CHANGELOG heading does not say it is uncut ─────────────────────────────────
+
+_CHANGELOGS = ("CHANGELOG.md", "history/CHANGELOG_0_6.md", "history/CHANGELOG_PRE_0_6.md")
+_VERSION_HEADING = re.compile(r"^## \d{4}-\d\d-\d\d(?: \([^)]*\))? — (\d+)\.(\d+)\.(\d+)\b.*$", re.MULTILINE)
+#: Present-tense claims only. *"which was also an uncut minor when written"* is history and stays legal.
+_UNCUT_CLAIM = re.compile(
+    r"not yet cut|being built|\b(?:is|still) uncut\b|not (?:yet )?tagged", re.IGNORECASE
+)
+
+
+def _versioned_headings() -> list[tuple[str, tuple[int, int, int], str, str]]:
+    out = []
+    for name in _CHANGELOGS:
+        text = (_DOCS / name).read_text(encoding="utf-8")
+        for m in _VERSION_HEADING.finditer(text):
+            lead = text[m.end() :].lstrip("\n").split("\n\n", 1)[0]
+            out.append((name, (int(m.group(1)), int(m.group(2)), int(m.group(3))), m.group(0), lead))
+    return out
+
+
+def test_a_cut_release_heading_does_not_claim_to_be_uncut() -> None:
+    """S75–S80 told consumers *"CHANGELOG.md's 0.7.0 heading is the record"* of whether 0.7.0 was cut,
+    and the heading went on saying *"being built … not yet cut"* for a month after the tag.
+
+    Which versions are cut is decided offline, because a shallow CI checkout has no tags: every version
+    with a release record, and every version older than the newest versioned heading. The newest one
+    is exempt, since it may honestly be in flight between its bump and its tag. The procedure half is
+    RELEASE_CYCLE's: the cut rewrites the lead paragraph."""
+    headings = _versioned_headings()
+    newest = max(version for _, version, _, _ in headings)
+    recorded = {tuple(int(part) for part in key.split(".")) for key in RELEASE_RECORDS}
+    stale = [
+        f"{name}: {heading!r} still says {claim.group(0)!r}"
+        for name, version, heading, lead in headings
+        if (version in recorded or version < newest) and (claim := _UNCUT_CLAIM.search(lead))
+    ]
+    assert not stale, "\n".join(stale)
