@@ -70,18 +70,19 @@ carrier as normal. A missing measurement selects the sentinel, never the referen
 `validate_bins()` rejects overlapping resolved bins as an error and warns on interior gaps; because
 `repeat_count` is an integer kind, adjacent bins (`27–35`, `36–39`) are treated as contiguous.
 
-**No `variants.csv`, so no `studies.csv` — and this module is the reason that is a tracked gap.** One
+**No `variants.csv`, so no `studies.csv` — and this module is why a bin can cite.** One
 CSV = one concern, and grounding evidence is mandatory only where variants are, so these four
 thresholds compile green under `--strict` with no citation anywhere. That is the wrong way round: 26/27
 and 35/36 and 39/40 are clinical judgements drawn from a specific literature, and they are exactly the
 numbers a reader would want to check. Since 0.5.4 the compiler says so — a binning table stating
 thresholds in a module with no study rows warns in both modes.
 
-You *can* add a `studies.csv` here: it is accepted in a module carrying no `variants.csv`, and it
-silences the warning. What it cannot do is name one bound — a study row identifies its subject by rsid
-or `chrom`+`start`, and a `(gene, repeat_unit)` row has neither — so the citation grounds the module,
-not the 36. Closing that properly is **RM47**; the thresholds here are the established clinical ones and
-are left uncited deliberately, so this example keeps showing the gap.
+Since 0.6 (RM47) a bound can be cited where it is stated: `repeat_alleles.csv` rows take an optional
+`pmid`, and a bin carrying one is grounded. The row cites and `studies.csv` describes the paper, which
+may now name no variant at all. Before 0.6 a study row could only ground the module, never the 36,
+because it identified its subject by rsid or `chrom`+`start` and a `(gene, repeat_unit)` row has
+neither. The thresholds here are the established clinical ones and are **left uncited on purpose**, so
+this example keeps showing the warning an uncited binning module gets.
 
 ## What it deliberately does not contain
 
