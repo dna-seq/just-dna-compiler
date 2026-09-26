@@ -25,6 +25,16 @@ module does not pretend to judge it (decided 2026-09-27, recorded in RELEASE_CYC
 asserted **exact**: an entry that gains its line must leave the list in the same commit, so the file can
 only shrink. `@registry-completeness`: an equality over a walked set, never a floor.
 
+**The legacy phrases (M2).** The closed records written before the rule (all three history halves, the
+closed 0.7 deferral file and the proposals) say *"wants its own item"*, *"filed rather than"*, *"still
+owes"*, *"belongs to RMn"*. A hit is **resolved** when its paragraph names an `RMn`, other than its own
+section's, whose entry mentions that section's `RMn` or motivating `Sn`: the same carrying test as M1.
+Every unresolved hit is listed in `data/residual_phrases_legacy.txt` as `file :: section :: phrase ::
+class`, where the class is `leak` (a remainder nothing owns, and a postmortem backlog item), `self`
+(the phrase describes the entry itself, as in *"this is filed rather than fixed"*), or `homed` (carried,
+but in a way the walker cannot see). The list is asserted exact. Homing a `leak` resolves its hit, and
+the test then asks for its row to be deleted, so the number of `leak` rows is the backlog's progress.
+
 Walks the repository and imports nothing from any package, like `test_doc_links.py`.
 """
 
@@ -186,3 +196,109 @@ def test_pending_line(rm: str) -> None:
     if _residuals_paragraph(body) is None:
         pytest.xfail(_PENDING[rm])
     pytest.fail(f"{rm} now carries its Residuals line — remove it from _PENDING")
+
+
+# ── M2: the legacy residual phrases ────────────────────────────────────────────────────────────────
+
+_PHRASE_FILES = (
+    "ROADMAP_HISTORY.md",
+    "history/ROADMAP_HISTORY_0_6.md",
+    "history/ROADMAP_HISTORY_PRE_0_6.md",
+    "history/ROADMAP_0_7.md",
+)
+_PHRASE_DIRS = ("proposals",)
+_PHRASE = re.compile(
+    r"wants its own (?:item|number|entry)|its own number|left for its own item|filed rather than"
+    r"|filed separately|still owes|not yet wired|the remaining half|belongs to RM\d+|belongs with the next",
+    re.IGNORECASE,
+)
+_PHRASES_LEGACY = Path(__file__).parent / "data" / "residual_phrases_legacy.txt"
+_PHRASE_CLASSES = frozenset({"leak", "self", "homed"})
+#: A sentence ends at `.`/`?`/`!`, optionally closing bold or italics, then whitespace — `**…improvised.** No`
+#: is two sentences.
+_SENTENCE_END = re.compile(r"[.?!][*_)]*\s")
+_SECTION_HEADING = re.compile(r"^#{1,4} (.*)$", re.MULTILINE)
+
+
+def _phrase_files() -> list[str]:
+    names = list(_PHRASE_FILES)
+    for directory in _PHRASE_DIRS:
+        names += sorted(str(p.relative_to(_DOCS)) for p in (_DOCS / directory).glob("*.md"))
+    return names
+
+
+def _section_key(heading: str) -> str:
+    """The section's `RMn` if its heading names one, else the heading's first words."""
+    rm = _RM.search(heading)
+    return rm.group(0) if rm else " ".join(heading.split()[:6])
+
+
+def _phrase_hits() -> set[tuple[str, str, str]]:
+    """Every `(file, section, phrase)` whose paragraph does not name a carrying home."""
+    entries = _entries()
+    unresolved = set()
+    for name in _phrase_files():
+        text = (_DOCS / name).read_text(encoding="utf-8")
+        headings = [(m.start(), m.group(1)) for m in _SECTION_HEADING.finditer(text)]
+        for start, paragraph in _paragraphs(text):
+            for m in _PHRASE.finditer(paragraph):
+                heading = next((h for s, h in reversed(headings) if s <= start), "")
+                section = _section_key(heading)
+                tokens = {section} | (_motivating_sns(entries[section]) if section in entries else set())
+                homes = [
+                    rm
+                    for rm in _RM.findall(_sentence(paragraph, m.start(), m.end()))
+                    if rm != section
+                    and rm in entries
+                    and any(
+                        re.search(rf"\b{t}\b", entries[rm])
+                        for t in tokens
+                        if _RM.fullmatch(t) or _SN.fullmatch(t)
+                    )
+                ]
+                if not homes:
+                    unresolved.add((name, section, m.group(0).lower()))
+    return unresolved
+
+
+def _sentence(paragraph: str, start: int, end: int) -> str:
+    """The sentence around a match. A paragraph is too wide: RM107's *"it wants its own item"* sits
+    beside a mention of RM109, and RM192's *"filed rather than improvised"* beside RM194, and both
+    resolved through an item that carries a different half."""
+    ends = [m.end() for m in _SENTENCE_END.finditer(paragraph)]
+    left = max((e for e in ends if e <= start), default=0)
+    right = min((e for e in ends if e > end), default=len(paragraph))
+    return paragraph[left:right]
+
+
+def _paragraphs(text: str) -> list[tuple[int, str]]:
+    out, offset = [], 0
+    for block in text.split("\n\n"):
+        out.append((offset, block))
+        offset += len(block) + 2
+    return out
+
+
+def _phrases_legacy() -> dict[tuple[str, str, str], str]:
+    rows = {}
+    for line in _PHRASES_LEGACY.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        name, section, phrase, cls = (part.strip() for part in line.split(" :: "))
+        assert cls in _PHRASE_CLASSES, f"{_PHRASES_LEGACY.name}: unknown class {cls!r} in {line!r}"
+        rows[(name, section, phrase)] = cls
+    return rows
+
+
+def test_legacy_residual_phrases_are_exactly_the_listed_ones() -> None:
+    hits = _phrase_hits()
+    listed = _phrases_legacy()
+    new = hits - set(listed)
+    resolved = set(listed) - hits
+    assert not new, (
+        "a residual phrase with no carrying home in the same paragraph (name an RMn whose entry "
+        "mentions this section, or say `won't fix`): " + "; ".join(" :: ".join(h) for h in sorted(new))
+    )
+    assert not resolved, f"now resolved — delete these rows from {_PHRASES_LEGACY.name}: " + "; ".join(
+        " :: ".join(h) for h in sorted(resolved)
+    )

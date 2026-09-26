@@ -1,0 +1,22 @@
+ROADMAP_HISTORY.md :: Cost, priced honestly :: filed rather than :: self
+ROADMAP_HISTORY.md :: RM126 :: filed rather than :: self
+ROADMAP_HISTORY.md :: RM134 :: still owes :: leak
+ROADMAP_HISTORY.md :: RM165 :: left for its own item :: homed
+ROADMAP_HISTORY.md :: RM166 :: wants its own entry :: leak
+ROADMAP_HISTORY.md :: RM166 :: wants its own number :: leak
+ROADMAP_HISTORY.md :: RM192 :: filed rather than :: leak
+ROADMAP_HISTORY.md :: RM232 :: still owes :: self
+ROADMAP_HISTORY.md :: The second signal was filed rather :: filed rather than :: homed
+history/ROADMAP_0_7.md :: The premise this item exists to :: filed rather than :: self
+history/ROADMAP_HISTORY_0_6.md :: RM106 :: still owes :: leak
+history/ROADMAP_HISTORY_0_6.md :: RM107 :: wants its own item :: leak
+history/ROADMAP_HISTORY_0_6.md :: RM47 :: filed rather than :: self
+history/ROADMAP_HISTORY_PRE_0_6.md :: RM31 :: not yet wired :: leak
+history/ROADMAP_HISTORY_PRE_0_6.md :: RM32 :: belongs to rm15 :: leak
+history/ROADMAP_HISTORY_PRE_0_6.md :: RM36 :: filed rather than :: self
+proposals/PROPOSAL_0_5.md :: Still deferred :: the remaining half :: homed
+proposals/PROPOSAL_0_6.md :: Same-release obligation :: filed rather than :: self
+proposals/PROPOSAL_0_7_PT2.md :: The decision :: belongs to rm66 :: homed
+proposals/PROPOSAL_0_7_PT2.md :: The decision :: wants its own entry :: leak
+proposals/PROPOSAL_0_7_PT3.md :: What a first cut still owes, :: still owes :: leak
+proposals/PROPOSAL_0_7_PT4.md :: Implementation debt, filed rather than improvised :: filed rather than :: leak
