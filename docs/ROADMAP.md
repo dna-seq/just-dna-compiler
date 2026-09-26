@@ -713,6 +713,34 @@ count and publish the undecided set (`@tautology-zero`) rather than keep it sile
 `content_signature` (`@rm43-positional-fill`). A structured field naming the undecided set on
 `EnrichmentResult` would be a minor, the same line RM272 draws.
 
+## RM275 — seven derived fact tables have no duplicate rule, so two contradicting rows under one key compile green under `--strict`
+
+**Severity** medium · **Status** open — **a patch** (a warning), with refusal at **1.0** · **Owner**
+compiler (`_TABLE_DUPE_KEYS`) · **Motivating case** RM107's residual (0.6), *"it wants its own item"*,
+found unfiled by the 2026-09-27 postmortem sweep (P3) · *related* RM107, RM109, RM124, RM130
+
+RM107 widened the duplicate check to `sources.csv` and wrote down what it left: *"The remaining gap is
+the other fact tables, which have no duplicate rule at all; RM109's own defect produced exactly such a
+pair and nothing reported it."* Walked on 2026-09-27, `_FACT_TABLES` minus `_TABLE_DUPE_KEYS` is
+`frequencies`, `gene_metrics`, `literature`, `gene_validity`, `clinical_assertions`, `gwas_effects`
+and `expression_effects`. RM124 and RM130 registered their own tables, and none of these.
+
+**Reproduced.** `reference_examples/hboc_palb2` with its first `gene_validity.csv` row duplicated and
+the copy's `classification` changed from `definitive` to `refuted`. `compile --strict` exits 0, and
+`gene_validity.parquet` carries both rows for `PALB2 / MONDO:0012565 / autosomal_recessive`. A consumer
+reads one or the other depending on row order.
+
+**Two constraints on the build.**
+
+- **Derive each key from the merge key the enricher already writes the table by**
+  (`base.merge_key`, `@suppression-from-merge-key`), never a second hand-kept tuple. `gene_validity`
+  keeps two rows on purpose when the source's classification drifts (the comment at
+  `gene_validity.py:288-311`). So "duplicate" means **both stated and different** under the merge key
+  (`@absent-is-not-different`), not merely a repeated key.
+- **Refusing is a tightening.** A published module carrying such a pair compiles today, and P3 says
+  existing modules keep validating inside a major. So the check lands as a warning in both modes on
+  `main`, and becomes a refusal at 1.0 (a 1.0-tracker line when this is built).
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

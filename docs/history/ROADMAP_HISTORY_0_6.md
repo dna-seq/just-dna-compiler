@@ -142,7 +142,7 @@ other four are the binning kinds, whose duplicate rule is *overlap* rather than 
 `validate_bins` owns — so the authored side is complete. The remaining gap is the other fact tables,
 which have no duplicate rule at all; RM109's own defect produced exactly such a pair and nothing
 reported it. Not widened here: that is a tightening across every module carrying a fact sidecar, and it
-wants its own item.
+wants its own item, filed as RM275 on 2026-09-27.
 
 ## RM109 — the gene-metrics fetch-suppression key was not derived from the merge key
 
