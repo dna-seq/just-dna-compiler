@@ -890,7 +890,7 @@ not run because this deployment is offline"*), and it is different both from "it
 **An injected `curation_text` still wins, deliberately** — handing over bytes you already hold is not
 egress, and refusing it would break the inject-only escape hatch every pass in this tier keeps.
 
-**Not done, and it was asked for explicitly: a ClinGen *snapshot*.** That is RM38's family and a much
+**Not done, and it was asked for explicitly: a ClinGen *snapshot*** (RM287, filed 2026-09-27). That is RM38's family and a much
 bigger question. This was only about the flag meaning the same thing in every function that takes one.
 
 ## RM40 — VRS coverage was computed and thrown away

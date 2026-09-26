@@ -963,6 +963,48 @@ either is tri-state like `share_alike`/`commercial_use` (an unestablished permis
 permission). Also whether the compile gate reads it, or it stays recorded-only like `redistribution`.
 A new authored-schema column costs the full P9 price, though `sources.csv` is mostly machine-written.
 
+## RM287 — ClinGen's dosage pass is a live download with no snapshot lane, so an offline deployment never runs it
+
+**Severity** low · **Status** open — **a minor, release undecided** (a new cache lane) · **Owner**
+enricher (`clingen`, `CACHE_LANES`) · **Motivating case** RM39's *"Not done, and it was asked for
+explicitly: a ClinGen snapshot"*, never filed, found by the 2026-09-27 postmortem sweep (P14) ·
+*related* RM39, RM38, `@gated-source-caches`
+
+RM39 gave the ClinGen dosage pass an `offline` flag and a `skipped_offline` state, so an offline run
+says it did not ask. It left the snapshot the reporter asked for explicitly, calling it *"RM38's family
+and a much bigger question"*. Nothing filed it.
+
+**Confirmed on 2026-09-27.** `CACHE_LANES` has fifteen lanes and none is ClinGen. `clingen.py` still
+fetches the gene-curation list live and skips under `--offline`. Every other pass in the family reads
+a snapshot, so an offline deployment gets every answer but this one.
+
+**What building it owes.** A lane, so `docs/CACHE_SURFACE.md`'s checklist applies line by line
+(three stages, each absent one with its reason as a field, `repro_out` default, parents). ClinGen's
+terms have to be recorded as a `SourceRow` before the lane can be published. A new lane is new public
+surface, so this is a minor.
+
+## RM288 — two snapshot builders and the PGx drafter make every caller enumerate their exception family, a question RM101 named and left in a test's exemption block
+
+**Severity** low · **Status** open — **a minor, release undecided** (a public exception base) ·
+**Owner** enricher (`cpic_build`, `pharmvar_build`, `pgx_draft`) · **Motivating case** RM101's
+exemption block in `enricher/tests/test_pass_exception_contract.py`, *"a real question and a wider one
+than this item"*, found unhomed by the 2026-09-27 postmortem sweep (P14) · *related* RM101, RM96,
+`@client-exception-contract`
+
+RM101 made every enrichment pass raise one documented type. It exempted `cpic_build.build_snapshot`,
+`pharmvar_build.build_snapshot` and `pgx_draft.draft_gene` by name. Their callers spell the family out
+(`except (CpicError, CpicBuildError)`, `except (CpicError, *_DRAFT_PRECONDITION_ERRORS)`). That works,
+but it is the *list* shape: a caller has to know which types to name, which is the drift RM96 was the
+lesson for. The only record of the question is the comment in the test's `exempt` set.
+
+**Confirmed on 2026-09-27.** The three entries are still exempt, and no ROADMAP file names the
+question.
+
+**What to decide.** Whether each surface gets one catchable base (a subclass relation over the existing
+types, which makes a caller's `except` order load-bearing: `@client-exception-contract`'s AST guard
+applies), or whether the list shape is kept on purpose and the exemption comment is rewritten as a
+decision rather than a deferral. A new public exception base is new surface, so building it is a minor.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

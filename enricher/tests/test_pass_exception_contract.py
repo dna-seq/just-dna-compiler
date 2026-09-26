@@ -293,7 +293,7 @@ def test_every_pass_taking_an_injected_client_is_covered() -> None:
         # which four to name, which is the drift the report argued against and RM96 is the lesson
         # for. Left alone here on purpose: it is a real question and a wider one than this item,
         # which is about passes whose documented type was silently wrong, not about callers who
-        # correctly enumerate a family.
+        # correctly enumerate a family. Filed as RM288 (2026-09-27).
         "cpic_build.build_snapshot",
         "pharmvar_build.build_snapshot",
         "pgx_draft.draft_gene",
