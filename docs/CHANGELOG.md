@@ -41,13 +41,20 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-27 — RM295: `cyp2d6_structural` places CYP2D6*4 where GRCh38 has it (patch, on `main`)
+
+**A reference-example correction; no package changes.** The example stated CYP2D6*4's splice variant
+at `22:42127941 C>T`, where GRCh38 has `G`; it is `rs3892097` at `22:42128945`. Both rows moved and the
+example was re-closed. Anyone who copied the old coordinate from the example should move it too.
+Found by RM291's consumer-join test.
+
 ## 2026-09-27 — RM291: a test that joins every reference example the way a consumer does (patch, on `main`)
 
 **Tests and fixtures only; nothing in any package moves.** `compiler/tests/test_consumer_join.py`
 compiles every GRCh38 reference example and joins each allele row on `(chrom, pos, ref, alt)` against a
-bcftools-normalized ClinVar slice (`assets/consumer_join/`). Today 823 of 825 rows ClinVar carries
-join; the 2 misses (SHOX, spelled one base right) are pinned to RM270, and a CYP2D6 row whose `ref`
-GRCh38 lacks is pinned to RM295, which this test found. RM291, postmortem M4.
+bcftools-normalized ClinVar slice (`assets/consumer_join/`). 614 distinct allele keys ClinVar carries
+join; the 2 misses (SHOX, spelled one base right) are pinned to RM270. It also found RM295, below.
+RM291, postmortem M4.
 
 ## 2026-09-27 — RM274: an indel the allele strings cannot decide is settled with the reference (patch, on `main`)
 

@@ -12,7 +12,7 @@ every internal gate; this is the test that would have seen them.
   every placed allele-bearing row of the GRCh38 reference examples, INFO reduced to `RS`/`CLNSIG`,
   split to one ALT per record and normalized: `bcftools view -T regions | bcftools reheader --fai
   <fa>.fai | bcftools annotate -x ^INFO/RS,INFO/CLNSIG | bcftools norm -f <Ensembl GRCh38 primary
-  assembly> -m -any -c w | bcftools sort`. `norm` realigned 0 of 5,285 records: ClinVar's VCF is
+  assembly> -m -any -c w | bcftools sort`. `norm` realigned 0 of 5,281 records: ClinVar's VCF is
   already in caller form, which is what makes it a fair stand-in for one.
 - `grch38_windows.fa.gz`: the same regions from the same FASTA (`samtools faidx -r`), so the test can
   decide whether two spellings are one event without a reference genome on disk.
@@ -24,8 +24,8 @@ the normalization under test, and a miss is a row ClinVar carries under a spelli
 not use.
 
 **It fails today, on purpose, and the failures are pinned.** `_MISSES_PINNED_TO_RM270` are the rows
-RM270 describes (the artifact keys an indel on its source's spelling), and `_REF_DISAGREES_RM295` is a
-row whose `ref` the reference does not have. Each is an equality, so a row leaving either set, fixed or
+RM270 describes (the artifact keys an indel on its source's spelling). `_REF_DISAGREES` held the one
+row whose `ref` the reference does not have until RM295 corrected it. Each is an equality, so a row leaving either set, fixed or
 newly broken, fails the test, and the sets can only shrink as those items ship.
 
 **Regenerating.** A new reference example with rows outside the windows fails
@@ -55,11 +55,9 @@ _MISSES_PINNED_TO_RM270: frozenset[tuple[str, str, str, int, str, str]] = frozen
     }
 )
 
-#: Rows whose `ref` the GRCh38 reference does not have at their `start` (RM295): CYP2D6*4's splice
-#: variant, `rs3892097`, which GRCh38 places at `22:42128945 C>T`.
-_REF_DISAGREES_RM295: frozenset[tuple[str, str, str, int, str, str]] = frozenset(
-    {("cyp2d6_structural", "weights", "22", 42127941, "C", "T")}
-)
+#: Rows whose `ref` the GRCh38 reference does not have at their `start`. Empty since RM295 moved
+#: `cyp2d6_structural`'s CYP2D6*4 row from `22:42127941` (where GRCh38 has `G`) to `22:42128945`.
+_REF_DISAGREES: frozenset[tuple[str, str, str, int, str, str]] = frozenset()
 
 
 def _is_symbolic(ref: str, alt: str) -> bool:
@@ -157,7 +155,7 @@ def test_every_row_clinvar_carries_joins_except_the_pinned_rm270_set(join: dict[
     assert join["missed"] == _MISSES_PINNED_TO_RM270
 
 
-def test_the_rows_whose_ref_the_reference_lacks_are_exactly_the_pinned_rm295_set(
+def test_no_row_states_a_ref_the_reference_lacks(
     join: dict[str, set],
 ) -> None:
-    assert join["ref_disagrees"] == _REF_DISAGREES_RM295
+    assert join["ref_disagrees"] == _REF_DISAGREES

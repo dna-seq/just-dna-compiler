@@ -174,6 +174,27 @@ neither of this entry's guards caught, so the CLI died again beside anything pin
 
 **Residuals** RM254
 
+## RM295 — `cyp2d6_structural` places CYP2D6*4 at a coordinate whose `ref` GRCh38 does not have
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (a reference-example
+correction) · **Owner** docs /
+`reference_examples/cyp2d6_structural` · **Motivating case** found by RM291's consumer-join test on
+2026-09-27 · *related* RM291
+
+**Residuals** none
+
+`variants.csv` and `studies.csv` state `22:42127941 C>T` for CYP2D6*4's splice variant. GRCh38 has `G`
+there, and Ensembl places `rs3892097` at **`22:42128945`** (`C/A/G/T`), about a kilobase away. The
+example compiles green because the compiler holds no reference, and no enrich run over it was checked.
+RM291's test pins the row as its one reference disagreement; correcting the example empties that set.
+Check the README's prose and any test that reads the example's coordinates in the same change.
+
+**What shipped.** Both rows moved to `22:42128945` (GRCh38 reads `C` there; Ensembl's sequence
+endpoint, 2026-09-27), the example re-closed with `just-dna-compiler close`, and
+`schema/tests/test_polyploid_genotype.py`, which called the old locus "real", now uses the corrected
+one. RM291's reference-disagreement set is now empty and asserted so, and the corrected row joins
+ClinVar's own `rs3892097` record. The consumer-join fixture was rebuilt to cover the new position.
+
 ## RM291 — no test does what a consumer does: join a compiled module against an independently normalized VCF
 
 **Severity** high · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (a test only) ·
@@ -204,10 +225,12 @@ under the ~5 MB LFS threshold.
 with `bcftools norm -f` against Ensembl's GRCh38 primary assembly; and those regions' reference bases,
 4 KB). `norm` realigned 0 of 5,285 records, since ClinVar's VCF is already in caller form. "Expected to
 match" is **haplotype equality** over the windows, so it does not depend on the normalization under
-test; "does match" is the consumer's exact `(chrom, pos, ref, alt)` join. On the day: 825 allele rows
-ClinVar carries, of which 823 join and 2 miss, the SHOX pair pinned to RM270. Symbolic alleles
-(`<DEL:4977>`, `N` ref) are outside by rule, and one row whose `ref` GRCh38 lacks is pinned to RM295,
-found by this test. A row outside every window fails by name, so a new example forces a fixture
+test; "does match" is the consumer's exact `(chrom, pos, ref, alt)` join. On the day, over distinct
+`(example, table, chrom, pos, ref, alt)` keys ClinVar carries: 613 join and 2 miss, the SHOX pair
+pinned to RM270. Symbolic alleles (`<DEL:4977>`, `N` ref) are outside by rule, and one row whose `ref`
+GRCh38 lacks was pinned to RM295, found by this test and corrected the same day (the row now joins, so
+614). *(An earlier draft of this paragraph said "823 of 825", a count over table rows with
+duplicates; the test asserts sets.)* A row outside every window fails by name, so a new example forces a fixture
 rebuild. Emptying the RM270 pin was run and turns the test red.
 
 ## RM274 — a same-size, different-content indel is kept as *undecided*, and RM31's reference half that would settle it was never filed

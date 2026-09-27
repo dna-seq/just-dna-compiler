@@ -965,18 +965,6 @@ reading is the only one (as on the concordance table) or one of two, which would
 (`@two-vocabularies-that-do-not-meet-withhold`). Turning the constant into a per-table field on
 `OverlayTarget` is internal. Reporting it reuses the existing warning code, so it is a patch.
 
-## RM295 — `cyp2d6_structural` places CYP2D6*4 at a coordinate whose `ref` GRCh38 does not have
-
-**Severity** low · **Status** open — **a patch** (a reference-example correction) · **Owner** docs /
-`reference_examples/cyp2d6_structural` · **Motivating case** found by RM291's consumer-join test on
-2026-09-27 · *related* RM291
-
-`variants.csv` and `studies.csv` state `22:42127941 C>T` for CYP2D6*4's splice variant. GRCh38 has `G`
-there, and Ensembl places `rs3892097` at **`22:42128945`** (`C/A/G/T`), about a kilobase away. The
-example compiles green because the compiler holds no reference, and no enrich run over it was checked.
-RM291's test pins the row as its one reference disagreement; correcting the example empties that set.
-Check the README's prose and any test that reads the example's coordinates in the same change.
-
 ## RM292 — a verification check does not say what it checked against, so a check that witnesses itself reads as verified
 
 **Severity** high · **Status** open — **a minor**, for the `0.8` branch · **Owner** format
