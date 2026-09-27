@@ -77,9 +77,9 @@ was rebuilt from `v0.7.2` with the patch-scope commits only, and the five moved 
 
 **One number per cut (from `v0.7.4`).** A cut's tag names the release, `vX.Y.Z`, and **every package
 that changed since the previous tag takes that same number**, skipping whatever its own line never
-used; a package that did not change keeps its version and is not built. Every intra-workspace floor a
-changed package declares is raised to the release number, which is also each dependency's current
-version, so `test_workspace_versions` holds unchanged. Worked example: after `v0.7.3` (format 0.7.1,
+used; a package that did not change keeps its version and is not built. Every intra-workspace floor
+names its dependency's current version, as `test_workspace_versions` already requires: the release
+number for a dependency that moved in this cut, its old version for one that did not. Worked example: after `v0.7.3` (format 0.7.1,
 compiler 0.7.2, enricher 0.7.3), a cut changing format and enricher is `v0.7.4` with format **0.7.4**,
 enricher **0.7.4**, compiler staying 0.7.2, and enricher's floors `format>=0.7.4, compiler>=0.7.2`.
 A skipped number is legal SemVer and legal on PyPI. The gain is that the tag and every moved package
