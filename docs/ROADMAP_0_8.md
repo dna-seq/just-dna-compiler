@@ -1170,6 +1170,11 @@ Numbered and triaged on 2026-08-13 from [VCF_4_4_AUDIT.md](probes/VCF_4_4_AUDIT.
 [PROPOSAL_0_6.md](proposals/PROPOSAL_0_6.md). The audit remains the evidence document: spec quotations,
 `file:line` references and probe transcripts live there and are not duplicated.
 
+
+**Register cross-reference (2026-09-27).** [RM302](ROADMAP.md#rm302--one-conclusion-serves-every-place-a-report-shows-it-a-table-cell-a-details-card-and-an-explanatory-mode-want-different-wordings)
+gives `conclusion` optional lay and concise wordings, two columns by default. If this item lands a
+separate meta-conclusion table, the maintainer's steer is that the registers may live there instead,
+so the two are decided together.
 ## RM56 (policy half) — the rule for a measurement that spans bins
 
 **Severity** high on the flagship example · **Status** 0.6 ships withhold plus an explicitly

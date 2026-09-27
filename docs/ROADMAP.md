@@ -1122,9 +1122,9 @@ variants per tier are wanted too, since the existing counts are per genotype row
 
 ## RM302 — one `conclusion` serves every place a report shows it; a table cell, a details card and an explanatory mode want different wordings
 
-**Severity** medium · **Status** open — **a minor, release undecided**; design undecided, interview
-first · **Owner** format (the authored models) + compiler (the parquet columns) · **Motivating case**
-the maintainer, 2026-09-27: a report shows a variant's conclusion in a table, in a details card and in
+**Severity** medium · **Status** open — **a minor, release undecided**; principle decided, shape kept
+open (see *Decided*) · **Owner** format (the authored models) + compiler (the parquet columns) ·
+**Motivating case** the maintainer, 2026-09-27: a report shows a variant's conclusion in a table, in a details card and in
 an explanatory mode, and one text cannot be right for all three · *related* RM7, RM28, the "not format
 scope" note on lay-language rendering
 
@@ -1153,7 +1153,19 @@ rework), which constrains every option below.
   paying is that a consumer cannot derive a correct lay or concise wording from the detailed one
   without an LLM in the loop, which the charter keeps out of every tier.
 
-**Design options, for the interview.**
+**Decided by the maintainer, 2026-09-27.**
+
+- **Tools never write a register; authors and curators may, if they see fit.** No drafter, enricher
+  pass or compiler step fills, rewrites or derives a lay or concise wording, and none is required: a
+  module with only `conclusion` is complete. This is the line the § Not format scope note on
+  lay-language rendering draws from the other side.
+- **Shape: kept open, with two columns as the default.** Unless something below changes it, the build
+  is option 1: two optional columns on the carrying kinds.
+- **The exception is meta-conclusions.** If [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half)
+  lands its own table, the registers may belong there instead (a meta-conclusion is the claim a report
+  most needs in lay words), and the two items then decide the shape together.
+
+**Design options, as they stood before the decision.**
 
 1. **Two optional columns on each carrying kind** (`conclusion_lay`, `conclusion_concise`, names to be
    audited under P5). Simplest to read and to author row by row; costs two columns on five kinds, and
