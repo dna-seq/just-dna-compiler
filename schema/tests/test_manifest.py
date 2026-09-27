@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from just_dna_format.derive import benign_from_clin_sig, pathogenic_from_clin_sig
 from just_dna_format.integrity import build_artifact
 from just_dna_format.manifest import (
     Compilation,
@@ -14,6 +15,7 @@ from just_dna_format.manifest import (
     read_manifest,
     write_manifest,
 )
+from just_dna_format.vocab import VALID_CLIN_SIG
 from pydantic import ValidationError
 
 
@@ -134,3 +136,21 @@ def test_authorship_survives_manifest_write_read(tmp_path: Path) -> None:
 def test_authorship_defaults_to_empty_list(tmp_path: Path) -> None:
     # Optional and backward-compatible: an older manifest with no authorship still validates.
     assert _manifest(tmp_path).authorship == []
+
+
+def test_stats_clinvar_counts_describe_the_fold_they_count() -> None:
+    """RM299 (S123): the tier fold and the row grain are what a catalog misreads, so each description names both.
+
+    Pinned against the derivation rather than a phrase: every tier the legacy boolean folds in must be
+    named in the description of the count that sums that boolean.
+    """
+    for field, fold in (
+        ("pathogenic_count", pathogenic_from_clin_sig),
+        ("benign_count", benign_from_clin_sig),
+    ):
+        description = Stats.model_fields[field].description or ""
+        folded = {tier for tier in VALID_CLIN_SIG if fold(tier)}
+        assert len(folded) > 1, field
+        assert {tier for tier in folded if f"`{tier}`" in description} == folded, field
+        assert "Rows, not variants" in description, field
+    assert "Rows, not variants" in (Stats.model_fields["clinvar_count"].description or "")

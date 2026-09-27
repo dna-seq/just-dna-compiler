@@ -161,6 +161,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S120** no indel normalization convention — RM270; consumer guide fixed
 - **S121** one authority witnesses itself — folded into RM267
 - **S122** pharmgkb tiers moved on rebuild — (b) snapshot; RM297 filed
+- **S123** pathogenic_count folds likely_pathogenic — RM299; RM300 filed
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -5826,3 +5827,57 @@ notice.
 **What I did meanwhile.** I did not republish pharmgkb; it stays at the published 1.0.0 pending a look
 at the draft-logic diff. Every other v1-port module's `resolution_signature` was byte-identical under
 0.7.3, so this is isolated to the ClinPGx draft path, not the resolution tier.
+
+# Field notes from just-dna-lite, 2026-09-27 — rendering the Catalog cards
+
+## S123 — `stats.pathogenic_count` counts likely-pathogenic rows too, while its description says pathogenic
+
+**Status — accepted, as a documentation defect in the field. The description is fixed as
+[RM299](ROADMAP_HISTORY.md#rm299--statspathogenic_count-says-pathogenic-and-counts-both-pathogenic-tiers-per-genotype-row)
+(format, on `main`, uncut), and the split count is filed as
+[RM300](ROADMAP.md#rm300--the-manifest-cannot-say-how-many-rows-are-pathogenic-only-how-many-carry-the-folded-flag),
+a minor.** Reproduced from the code: `_variant_stats` sums `v.pathogenic` over authored `variants.csv`
+rows, and `derive.pathogenic_from_clin_sig` maps both `pathogenic` and `likely_pathogenic` to `True`.
+The count was behaving as SCHEMAS.md has described it since S43 (*"counts the boolean and therefore
+counts both tiers"*). But the one sentence a consumer actually reads, the field's own description,
+said only "pathogenic". Your reading was the natural one.
+
+- **What changed.** `pathogenic_count` and `benign_count` now say they count authored rows, one per
+  genotype, of a flag covering both tiers, and point at `clin_sig` for the split. `clinvar_count` says the
+  same about grain. A test ties each description to the fold it counts. No value moves.
+- **Why the number stays folded.** Your first candidate, deriving it from `clin_sig`, would change what
+  the field means for every reader already keyed on it, with no way for them to tell (the S18
+  precedent). A new optional manifest field is additive and nearly free, so the per-tier count is
+  RM300, your second candidate. It waits for the minor.
+- **What to do now.** Your tooltip is correct and matches the new description. Until RM300, the only
+  source for a per-tier number is `weights.parquet`'s `clin_sig`, as you measured. The registry listing
+  cannot carry one.
+<!-- triaged: RM299 shipped · sha 98cbdcba30b8 -->
+
+Consumer: just-dna-lite (the Catalog cards render `stats.pathogenic_count` from the registry listing).
+
+**What I ran.** Read `stats` for `just-dna-seq/pathogenic@2.0.0` from the prod listing, and counted the
+local rebuild's `weights.parquet` (compiler 0.7.2).
+
+**What I expected.** From `Stats.pathogenic_count`'s description, "Rows flagged ClinVar-pathogenic",
+a count of rows whose ClinVar significance is pathogenic.
+
+**What happened.** The listing says `pathogenic_count = clinvar_count = 617822` against
+`variant_count = 308990`. Locally, `weights.parquet` has 618,629 rows over 309,394 variant keys; by
+`clin_sig`, 403,534 are `pathogenic` and 215,095 `likely_pathogenic`, and the boolean `pathogenic` is
+true on all 618,629. The compiler computes the stat as `sum(1 for v in variants if v.pathogenic)`
+(compiler.py, around line 4687), so it inherits the legacy boolean, which cannot say
+`likely_pathogenic`. The count is therefore right as a count of rows and wrong against its own
+description: about a third of what it calls pathogenic is likely pathogenic. The same holds for
+cancer (141,316) and cardio (115,263).
+
+**Why it matters to a consumer.** The field is meant for faceting without reading the artifact, and
+a facet is read as "this many pathogenic". Ours rendered it as "617822 path" beside the variant
+count, which reads as twice as many pathogenic variants as the module holds, a third of them not
+pathogenic at all.
+
+**What I did meanwhile.** Our card now spells out "pathogenic" and its tooltip says the number is
+genotype rows including likely pathogenic. Nothing on our side can split the two, since the listing
+carries only the combined number. A candidate, if wanted: derive the stat from `clin_sig` rather than
+the boolean, or add a `likely_pathogenic_count` beside it (a new optional field, so a minor); at the
+least, the description could say it includes likely pathogenic.

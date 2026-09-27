@@ -1099,6 +1099,27 @@ rest. Empty stays the unknown arm, never "not ClinPGx".
 price (P9), because a curator has to learn it. That cost is why it waits for a minor and a case,
 rather than shipping with RM297.
 
+## RM300 — the manifest cannot say how many rows are pathogenic, only how many carry the folded flag
+
+**Severity** low · **Status** open — **a minor, release undecided** (new optional manifest fields) ·
+**Owner** format (`manifest.Stats`) + compiler (`_variant_stats`) · **Motivating case** S123 in
+CONSUMER_SUGGESTIONS_HISTORY.md, via RM299 · *related* RM299, S43
+
+**What is missing.** `stats.pathogenic_count` and `stats.benign_count` sum the legacy booleans, and
+each boolean folds a tier pair. A catalog facets on the listing without reading the artifact, so it
+cannot split `pathogenic` from `likely_pathogenic`. just-dna-lite's card had to fall back to a tooltip.
+The reporter's own measurement for `just-dna-seq/pathogenic`: 403,534 `pathogenic` rows and 215,095
+`likely_pathogenic`.
+
+**The shape.** Per-tier counts derived from `clin_sig` (the effective value, so a boolean-only row
+still counts through `clin_sig_from_booleans` where it can), beside the existing fields. The existing
+fields keep their meaning. Whether it is a count per tier or a mapping keyed on `VALID_CLIN_SIG` is
+the one design question: a mapping takes a new tier without a new field. Decide whether distinct
+variants per tier are wanted too, since the existing counts are per genotype row.
+
+**Legality and price.** A new optional manifest field is additive and minor-legal (P3). It is not in
+`artifact.digest`, and the compiler writes it, so it costs nearly nothing (P9). Not on `main`.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

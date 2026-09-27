@@ -202,6 +202,28 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM299 — `stats.pathogenic_count` says "pathogenic" and counts both pathogenic tiers, per genotype row
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (field descriptions) ·
+**Owner** format (`manifest.Stats`) · **Motivating case** S123 in CONSUMER_SUGGESTIONS_HISTORY.md ·
+*related* S43, RM300
+
+**Residuals** RM300
+
+`Stats.pathogenic_count` sums the legacy `pathogenic` boolean over authored `variants.csv` rows. The
+boolean folds `likely_pathogenic` into `pathogenic` by design (P8 pins it; SCHEMAS.md has said so
+since S43), and a module carries one row per genotype. The field's description said only *"Rows
+flagged ClinVar-pathogenic"*. A catalog read `just-dna-seq/pathogenic@2.0.0`'s 617,822 as that many
+pathogenic variants: twice the module's 308,990 variants, with about a third of the rows
+`likely_pathogenic`. `benign_count` has the same fold and `clinvar_count` the same grain.
+
+**What shipped.** The three descriptions say what they count: authored rows, one per genotype, never
+distinct variants. The two tier counts name both tiers their boolean folds and point at `clin_sig`
+for the split. The value is unchanged. Redefining it from `clin_sig` would change what an existing
+reader is told without any way to know (the S18 precedent), so a per-tier count is additive and is
+RM300. `schema/tests/test_manifest.py` pins each description against the derivation: every tier
+`derive.*_from_clin_sig` folds must be named in the description of the count that sums that flag.
+
 ## RM295 — `cyp2d6_structural` places CYP2D6*4 at a coordinate whose `ref` GRCh38 does not have
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-27 on `main`, cut 2026-09-27 as `v0.7.3` — a patch** (a reference-example

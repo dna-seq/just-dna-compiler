@@ -14,10 +14,11 @@ item in its hundred, under the status or round heading it had in the single file
 - [items 1–99](RM_TOC_000_099.md)
 - [items 100–199](RM_TOC_100_199.md)
 - [items 200–299](RM_TOC_200_299.md)
+- [items 300–399](RM_TOC_300_399.md)
 
 **Add an entry whenever you add an item, on the page for its hundred.** A new item goes under that
-page's *⏳ Open, no release decided* heading until its release is decided. Item 300 opens
-`RM_TOC_300_399.md`, which also goes into `mkdocs.yml`'s nav beside the others. Search all pages at
+page's *⏳ Open, no release decided* heading until its release is decided. A new hundred opens its
+own page, which also goes into `mkdocs.yml`'s nav beside the others. Search all pages at
 once with `grep -n 'RM47' docs/RM_TOC*.md`. **Page labels never spell an unfiled number with the
 `RM` prefix**: the allocator counts every `RMn` string under `docs/` as used, and a label reading
 "up to 299" that way once made it skip to 301. If you find yourself wanting a second index somewhere

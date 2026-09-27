@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-27 — RM299: the `stats` ClinVar counts say what they count (patch, on `main`)
+
+**format** — `Stats.pathogenic_count` and `Stats.benign_count` now say they count authored
+`variants.csv` rows, one per genotype, whose legacy boolean folds a tier pair (`pathogenic` +
+`likely_pathogenic`, `benign` + `likely_benign`). `clinvar_count` says the same about grain. Before,
+the description read *"Rows flagged ClinVar-pathogenic"*, and a catalog showed
+`just-dna-seq/pathogenic`'s 617,822 as that many pathogenic variants (S123). No value moves, and no
+field is added. Per-tier counts are RM300, a minor.
+
 ## 2026-09-27 — release numbering: one number per cut, from `v0.7.4`
 
 **Process only.** From the next cut, every package that changed since the previous tag takes the
