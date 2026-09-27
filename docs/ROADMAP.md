@@ -1120,6 +1120,64 @@ variants per tier are wanted too, since the existing counts are per genotype row
 **Legality and price.** A new optional manifest field is additive and minor-legal (P3). It is not in
 `artifact.digest`, and the compiler writes it, so it costs nearly nothing (P9). Not on `main`.
 
+## RM302 — one `conclusion` serves every place a report shows it; a table cell, a details card and an explanatory mode want different wordings
+
+**Severity** medium · **Status** open — **a minor, release undecided**; design undecided, interview
+first · **Owner** format (the authored models) + compiler (the parquet columns) · **Motivating case**
+the maintainer, 2026-09-27: a report shows a variant's conclusion in a table, in a details card and in
+an explanatory mode, and one text cannot be right for all three · *related* RM7, RM28, the "not format
+scope" note on lay-language rendering
+
+**The ask.** Today every annotation carries one `conclusion`, the detailed wording. The report needs up
+to three **registers** of the same claim: **detailed** (today's text), **lay** (a simpler explanation for
+someone without the background), and **concise** (scientifically accurate but very brief, for a table
+cell). They are one claim written three ways, never three claims.
+
+**Where `conclusion` lives today**, all authored: `VariantRow` (required), every `MeasureBinRow` kind
+(required), `DiplotypeRow` (required), `PharmVariantRow` (required) and `StudyRow` (optional). It is
+also inside `annotations.parquet`'s key, `(variant_key, conclusion, negatives)` (USE_CASES § the S-key
+rework), which constrains every option below.
+
+**What the charter already settles.**
+
+- **Legal as a minor** (P3/P8): new optional columns or a new optional table. `conclusion` itself stays
+  what it is and stays required; it becomes the *detailed* register by declaration, not by rename (a
+  rename is a removal plus an addition, major-only).
+- **Not in any key.** A register is a rendering of the claim the key already identifies. Keying on it
+  would split one effect into several rows whenever an author adds a lay text, the dedup failure the
+  annotations key exists to prevent.
+- **Not the refused "lay-language rendering".** That note (§ Not format scope) is about *generating*
+  patient prose from a CURIE, a presentation job. This is text a curator writes and signs, which is
+  annotation data like `conclusion` is. The entry adds a line there so the two are not read as one.
+- **Priced at full** (P9): every option is authored text, the most expensive layer. The argument for
+  paying is that a consumer cannot derive a correct lay or concise wording from the detailed one
+  without an LLM in the loop, which the charter keeps out of every tier.
+
+**Design options, for the interview.**
+
+1. **Two optional columns on each carrying kind** (`conclusion_lay`, `conclusion_concise`, names to be
+   audited under P5). Simplest to read and to author row by row; costs two columns on five kinds, and
+   every future register is another column on all five.
+2. **One optional side table** (`conclusions.csv`: the row's key, a closed `register` vocabulary, the
+   text). One CSV, one concern: an author who writes no registers never sees it, a new register is a
+   vocabulary member rather than a column, and the key is the carrying row's own. Costs a join for
+   every consumer and a key per carrying kind.
+3. **A register vocabulary with `detailed` implicit** either way, so `conclusion` never has to move.
+
+**Open questions.**
+
+- Which of the five kinds need registers. `StudyRow.conclusion` is a study's finding, not the report's
+  claim, and may not.
+- Does `content_signature` include the registers? They are authored claim text, so the default reading
+  is yes; the counter-argument is that a lay rewording does not change what the module asserts
+  (`@provenance-beside-a-claim-is-outside-content-identity` decides it).
+- Language is a **separate axis** from register (P5: no overloaded fields). A lay text in German is
+  register `lay`, language `de`; a design that folds the two into one vocabulary would have to be
+  unwound when a second language arrives. Reserve the language axis's name now if it is expected.
+- Does the reference consumer (just-dna-lite) need all three, or `concise` first? That orders the build.
+- Should drafting ever fill a register? The house answer so far is that a provider fills facts, never
+  prose; a register is prose.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
@@ -1161,7 +1219,8 @@ the following can land in these libs no matter how useful it is:
   flag and (since 0.5) validates it against the published list; deciding what to report to
   whom is the consumer's.
 - **Lay-language rendering.** A module already carries the ontology CURIE and a human `conclusion`;
-  turning a MONDO term into patient-facing prose is a presentation concern.
+  turning a MONDO term into patient-facing prose is a presentation concern. Author-written lay text is a
+  different thing, annotation data a curator signs, and is filed as RM302.
 
 **Cross-repo (tracked elsewhere):** **just-dna-marketplace** — take `just-dna-compiler` as the M4
 publish dependency; serve `logs` via the files endpoint; render the cross-version provenance union
