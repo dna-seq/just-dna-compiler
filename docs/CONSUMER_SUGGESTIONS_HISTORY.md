@@ -160,6 +160,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S119** hemizygous diplotype; Lewis — RM269 (1.0); RM28 corpus
 - **S120** no indel normalization convention — RM270; consumer guide fixed
 - **S121** one authority witnesses itself — folded into RM267
+- **S122** pharmgkb tiers moved on rebuild — (b) snapshot; RM297 filed
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -5746,3 +5747,79 @@ format-side convention declaration). The three want deciding together — one de
 detects a violation of it at resolve time, one records which authority was trusted.
 
 ---
+
+# Field notes from just-dna-lite, 2026-09-27 — rebuilding pharmgkb under 0.7.3
+
+## S122 — pharmgkb ClinPGx draft moves evidence tiers and drops rows between 0.7.0 and 0.7.3 on the same snapshot
+
+**Status — the diff is not a draft regression: the two builds read different snapshots, and the
+rebuild is the faithful one. Your 1A concern did find a real defect, in the check that should have
+caught it: filed as [RM297](ROADMAP.md#rm297--the-clinpgx-currency-check-reads-a-withdrawn-annotation-as-a-re-tiered-one).** Your baseline (`prebuild_baseline/pharmgkb/manifest.json`, the one whose
+`content_signature` is `sha256:53685843…`) records **`clinpgx_2025-07-05`**, not `2026-08-05`. So does
+the 0.5-era `v1_port_0_5/pharmgkb/sources.csv`. Only the rebuild's manifest names
+`clinpgx_2026-08-05`, and the two `sources.signature` values differ (`798f5dae…` against `03ca0771…`),
+which is the field that says so. Probed against both snapshots on disk. They are
+`data/interim/clinpgx` (2025-07-05) and `/data/just-dna-cache/clinpgx` (2026-08-05), and each
+agrees with its own build row for row:
+
+- annotations `1183680546` and `1183888969` (rs12979860) read `1A` in 2025-07-05 and `2A` in
+  2026-08-05, and `827862764` reads `1A` then `1B`. ClinPGx re-levelled them, and the drafter copies
+  `evidence_level` verbatim.
+- annotation `1184514050` (NUDT15 rs116855232, azathioprine, `1A`) is in 2025-07-05 and **absent from
+  2026-08-05 altogether**: not re-tiered, withdrawn by ClinPGx. That is your net −3. The two other
+  rs116855232 annotations are in both snapshots: `1451290840` (`1A`, mercaptopurine) is in both builds,
+  and `1450934767` (`3`, azathioprine;mercaptopurine) is in neither, being under your pipeline's
+  `min_evidence_level`.
+
+The draft logic did not move either. Between `v0.7.0` and `v0.7.3` the only change to
+`clinpgx_draft.py` / `clinpgx.py` is RM252's read of a recorded `declared_use`, which gates whether the
+pass runs and touches no row. `clinpgx_build.py` and `just_dna_format.pgx` are unchanged.
+
+**What to do now.** Republish pharmgkb from the rebuild. The tier moves and the NUDT15 loss are
+ClinPGx's own curation, and 1.0.0 is the stale copy.
+
+**The check that should have told you says the wrong thing (RM297).** The currency check for a
+published module is `enrich_clinpgx` (the `clinpgx` command's cross-check) against the newer snapshot.
+Run over your baseline, it reports 36 level conflicts. The 33 on rs12979860 are right. The three on
+`1184514050` read *"module says level 1A, ClinPGx says 3"*, and `unmatched` is 0. The authored
+annotation id is absent from the snapshot, so the lookup fell through to `1450934767`, which shares the
+rsid, drug and category. A curator following that message would edit the level of a withdrawn
+annotation instead of removing it. RM297 makes an absent `annotation_id` its own finding, *withdrawn or
+mistyped*. It is a patch, with one decision left to the maintainer: whether that finding refuses under
+`strict`. Until then, treat any conflict on a row whose `annotation_id` your snapshot does not hold as
+a withdrawal, not a re-tier.
+<!-- triaged: RM297 filed · sha 72886a82671c -->
+
+Consumer: just-dna-lite. `pipelines v1-port pharmgkb` drafts `pharm_variants.csv` through
+`just_dna_enricher.clinpgx_draft.draft_pharm_variants` from the ClinPGx snapshot, then compiles.
+
+**What I ran.** Adopting the `v0.7.3` cut (format 0.7.1 / compiler 0.7.2 / enricher 0.7.3), I rebuilt
+pharmgkb and compared it against the published `just-dna-seq/pharmgkb@1.0.0`. The published artifact
+records `compiler_version 0.7.0`; the rebuild ran on 0.7.2/0.7.3 (confirmed in the manifest). Both
+record the same ClinPGx snapshot, `clinpgx_2026-08-05`, and the same licences.
+
+**What I expected.** `v0.7.3` is described as a derivation-only patch whose corrections (RM268, RM271,
+RM273, RM274, RM276, RM277, RM293) touch Ensembl resolution, MITOMAP/CIViC/STRchive drafting and the
+literature pass, none of which is the ClinPGx path. On an unchanged snapshot I expected
+`draft_pharm_variants` to produce a byte-identical `pharm_variants.csv`.
+
+**What happened.** Coordinate resolution was unchanged (`resolution.csv` byte-identical, so no
+RM268/271/274 effect), but the authored `pharm_variants.csv` changed: 1532 rows to 1529.
+- `rs12979860` (IFNL3;IFNL4, HCV drugs) moved evidence tier: `1A` to `2A` for the
+  boceprevir / peginterferon alfa-2a / -2b / ribavirin efficacy rows (PMIDs 1183680546, 1183888969),
+  and `1A` to `1B` for the peginterferon alfa-2a/-2b / ribavirin rows citing PMID 827862764.
+- Three `rs116855232` (NUDT15, azathioprine toxicity, PMID 1184514050, published as `1A`) rows are
+  gone from the rebuild under any tier, i.e. dropped rather than retiered. This is the net -3.
+- The baseline's `content_signature` equals the published one (`sha256:53685843…`), so the rebuild
+  introduced the change; it is not pre-existing local drift.
+
+**What I could not isolate.** I rebuilt only at 0.7.3, so I do not know whether 0.7.1, 0.7.2 or 0.7.3
+moved it, and I have not decided whether the tier move is a correction (ClinPGx's own tiers, read more
+faithfully) or a regression. The same snapshot date argues this is a change in the draft logic, not new
+data. Dropping a `1A` NUDT15/azathioprine annotation is the case worth a second look: a 1A PGx call is
+the highest evidence tier, and losing it silently on a re-draft is the outcome a consumer would not
+notice.
+
+**What I did meanwhile.** I did not republish pharmgkb; it stays at the published 1.0.0 pending a look
+at the draft-logic diff. Every other v1-port module's `resolution_signature` was byte-identical under
+0.7.3, so this is isolated to the ClinPGx draft path, not the resolution tier.

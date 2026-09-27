@@ -1016,6 +1016,49 @@ RM16 (authored weights) is a different question and this does not depend on it. 
 `pgs.py`'s docstring, TABLES.md § `pgs.csv` and ROADMAP_0_8 § RM16's *"a shape the format does not
 bin"* all change with it.
 
+## RM297 — the ClinPGx currency check reads a withdrawn annotation as a re-tiered one
+
+**Severity** medium · **Status** open — **a patch** (a check's finding and reason), one decision first ·
+**Owner** enricher (`clinpgx.enrich_clinpgx`) · **Motivating case** S122 in
+CONSUMER_SUGGESTIONS_HISTORY.md · *related* `@existence-not-identity`,
+`@the-signal-may-already-be-firing-with-the-wrong-words`, `@a-source-recuring-is-not-a-strict-matter`,
+`@warning-code-names-the-finding`
+
+**Reproduced.** `just-dna-seq/pharmgkb@1.0.0` was drafted from `clinpgx_2025-07-05`. It carries three
+`rs116855232 + azathioprine` rows citing annotation `1184514050` at `1A`. ClinPGx withdrew that
+annotation before `clinpgx_2026-08-05`. Run against the newer snapshot, `enrich_clinpgx` reports
+`module says level 1A, ClinPGx says 3` for all three and `unmatched 0`. The `3` belongs to a different
+annotation, `1450934767` (Toxicity, azathioprine;mercaptopurine), which has been in both snapshots.
+
+**The mechanism.** The lookup tries `(annotation_id, genotype)`, then `(rsid, drug, genotype,
+category)`, then the bare triple. When the authored `annotation_id` is absent from the snapshot
+altogether, the fall-through compares the row against whichever annotation shares its category. It
+then reports a level change on a record the source no longer holds. Under `strict` the refusal
+names the wrong remedy: a curator told *"1A should be 3"* edits the level of a withdrawn annotation. The
+same fall-through can also **agree** silently, when the other annotation happens to share the level.
+
+**The repair.** An authored `annotation_id` that the snapshot does not hold anywhere stops the lookup.
+It becomes its own finding, *withdrawn or mistyped* (`@rsid-absent-two-readings`: both readings are
+named), carrying the id and what the snapshot holds at the triple. An id that is present but lacks
+that genotype keeps today's fall-through. The existing conflict text stays byte-identical
+(`@warning-text-is-api`). A new field on `ClinPgxResult` is additive. The new warning code needs its
+`features/` scenario.
+
+**The decision, and it is the maintainer's.** Does the new finding refuse under `strict`?
+
+- **Refuse** (the recommendation). An annotation's existence is ClinPGx's own record about itself,
+  which is the argument the module docstring already makes for the level. The edit that clears it is
+  real: re-draft, or drop a row whose cited record is gone. This keeps refusing the three S122 rows.
+  It newly refuses a row whose fall-through happened to agree, which is a tightening. So the patch
+  must declare it.
+- **Warn in both modes.** This reads `@a-source-recuring-is-not-a-strict-matter` across. But that entry's
+  premise is that the only clearing edit falsifies the record, and here the record *is* the
+  withdrawn citation. It would also stop refusing the three S122 rows, a loosening under `strict`.
+
+Either way `verification.json`'s `findings` for `pgx_evidence_level` must count the new finding. If it
+did not, moving these rows out of `conflicts` would lower a published number for a module that did not
+change.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
