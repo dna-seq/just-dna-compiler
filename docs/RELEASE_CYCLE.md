@@ -75,6 +75,18 @@ RM259, RM260 and RM262 to `main` as "shipped, uncut, sizes as a minor", which le
 a patch. 0.7.2 then had to be cut off a revived `0.7` branch, and RM264 had no line to ship on. `main`
 was rebuilt from `v0.7.2` with the patch-scope commits only, and the five moved to the `0.8` branch.
 
+**One number per cut (from `v0.7.4`).** A cut's tag names the release, `vX.Y.Z`, and **every package
+that changed since the previous tag takes that same number**, skipping whatever its own line never
+used; a package that did not change keeps its version and is not built. Every intra-workspace floor a
+changed package declares is raised to the release number, which is also each dependency's current
+version, so `test_workspace_versions` holds unchanged. Worked example: after `v0.7.3` (format 0.7.1,
+compiler 0.7.2, enricher 0.7.3), a cut changing format and enricher is `v0.7.4` with format **0.7.4**,
+enricher **0.7.4**, compiler staying 0.7.2, and enricher's floors `format>=0.7.4, compiler>=0.7.2`.
+A skipped number is legal SemVer and legal on PyPI. The gain is that the tag and every moved package
+say one number, so "which versions are in this release" has one answer. `v0.7.3` was the last cut that
+bumped each package by one on its own line (format 0.7.1, compiler 0.7.2, enricher 0.7.3), already
+published when the rule was set on 2026-09-27.
+
 **The item counts in the triage runbook's §4 are a "worth doing" lamp, not a start pistol.** They are
 reported, never asked about, and they never freeze scope.
 

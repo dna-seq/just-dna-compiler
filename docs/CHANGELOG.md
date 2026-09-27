@@ -41,6 +41,14 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-27 — release numbering: one number per cut, from `v0.7.4`
+
+**Process only.** From the next cut, every package that changed since the previous tag takes the
+tag's number (a skipped number is legal), unchanged packages keep theirs, and the floors a changed
+package declares rise to the release number. So `v0.7.4` will publish each moved package as 0.7.4.
+`v0.7.3` (format 0.7.1, compiler 0.7.2, enricher 0.7.3) is published and stays as it is. The rule is in
+[RELEASE_CYCLE § Patches](RELEASE_CYCLE.md#patches).
+
 ## 2026-09-27 — `v0.7.3`: format 0.7.1, compiler 0.7.2, enricher 0.7.3 (a patch, cut from `main`)
 
 **All three packages move, each by a patch, and the intra-workspace floors move with them** (compiler
