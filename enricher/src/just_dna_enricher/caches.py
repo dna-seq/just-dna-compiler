@@ -132,7 +132,7 @@ from just_dna_enricher.locations import (
     default_pharmvar_cache_dir,
     default_pubmind_cache_dir,
     default_strchive_cache_dir,
-    load_env,
+    env_value,
     missing_credential_reason,
     read_release,
     resolve_acmg_reference,
@@ -485,14 +485,13 @@ def _rebuild_pharmvar(request: RebuildRequest) -> RebuildOutcome:
     # and non-transferable, so a machine without one is a machine PharmVar never meant to serve —
     # while a configured key that then fails is asked-and-failed, and folding that into *not run*
     # would have a nightly rebuild stay quiet about a lane that broke (`@answered-is-not-absent`).
-    # `load_env()` first, at the point the credential is read (`@credential-where-read`).
-    # `PharmVarClient.__init__` loads it before reading the same variable, so a key that lives only
+    # The `.env` is read at the point the credential is read (`@credential-where-read`), through the
+    # same `env_value` `PharmVarClient.__init__` uses. Before RM176 the client read it and this guard did not, so a key that lives only
     # in a `.env` — which is where this workspace's does — is visible to the *builder* and was
     # invisible to this guard. The lane then reported "no key" and never built, on the one machine
     # most likely to have one. A pre-check that answers differently from the code it is guarding is
     # worse than no pre-check.
-    load_env()
-    if not os.environ.get(pharmvar.API_KEY_ENV):
+    if not env_value(pharmvar.API_KEY_ENV):
         return RebuildOutcome(
             "pharmvar",
             None,

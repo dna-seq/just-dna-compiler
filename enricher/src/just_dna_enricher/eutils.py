@@ -22,7 +22,6 @@ be worse than sending none, because it would misattribute the traffic to someone
 """
 
 import logging
-import os
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -33,7 +32,7 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
-from just_dna_enricher.locations import load_env
+from just_dna_enricher.locations import env_value
 from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe
 
 logger = logging.getLogger(__name__)
@@ -80,12 +79,12 @@ class EutilsSettings:
         # key the rate gate below stayed at 1 request / 3 s instead of 10 / s, three times slower,
         # for a reason nothing reported.
         #
-        # `override=False`, so a real environment variable and a test's neutralizing `""` both win.
-        load_env()
+        # An exported variable and a test's neutralizing `""` both win over the file. `env_value` reads
+        # the one key without exporting the rest of the `.env` into the host's environment (RM301).
         if self.api_key is None:
-            self.api_key = os.environ.get("NCBI_API_KEY") or None
+            self.api_key = env_value("NCBI_API_KEY") or None
         if self.email is None:
-            self.email = os.environ.get("JUST_DNA_CONTACT_EMAIL") or None
+            self.email = env_value("JUST_DNA_CONTACT_EMAIL") or None
         if self.min_request_interval is None:
             self.min_request_interval = _KEYED_INTERVAL if self.api_key else _UNKEYED_INTERVAL
 

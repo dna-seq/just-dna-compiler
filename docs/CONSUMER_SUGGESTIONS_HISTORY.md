@@ -162,6 +162,7 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S121** one authority witnesses itself — folded into RM267
 - **S122** pharmgkb tiers moved on rebuild — (b) snapshot; RM297 filed
 - **S123** pathogenic_count folds likely_pathogenic — RM299; RM300 filed
+- **S124** client ctor exports the whole .env — RM301 (reopens RM102)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -5881,3 +5882,81 @@ genotype rows including likely pathogenic. Nothing on our side can split the two
 carries only the combined number. A candidate, if wanted: derive the stat from `clin_sig` rather than
 the boolean, or add a `likely_pathogenic_count` beside it (a new optional field, so a minor); at the
 least, the description could say it includes likely pathogenic.
+
+# Field notes from just-dna-registry
+
+*Filed 2026-09-27 against enricher 0.7.3 as installed from PyPI. Relayed: the consumer who hit it is
+`just-module-creator` (their report is our S27), and the registry is reporting because the report
+reached us first and blamed our package. Our half is fixed on our side; this is only the enricher's.*
+
+## S124 — constructing an enricher client writes the working directory's `.env` into `os.environ`, with no way to decline
+
+**Status — accepted; your first ask shipped as
+[RM301](ROADMAP_HISTORY.md#rm301--constructing-an-enricher-client-exported-the-whole-env-into-the-hosts-environment)
+(enricher, on `main`, uncut, a patch).** Reproduced as you describe: `locations.load_env()` is
+`load_dotenv(find_dotenv(usecwd=True), override=False)`, and it was called by nine library sites, not
+three. Besides `EutilsSettings`, `CrossrefClient` and `PharmVarClient` there were `PmcIdConverterClient`,
+`net.retry_attempts`, the `caches` PharmVar guard, the AlphaGenome key in `expression` and `cli`, and
+the HuggingFace token reads in `upload` and `download`.
+
+- **What changed.** Each now reads its one variable through `locations.env_value`. The value comes
+  from the process environment if the variable is present, else from the nearest `.env`, and nothing
+  is written into `os.environ`. Precedence is unchanged: an exported value wins and an exported empty
+  string stays empty. RM100's guarantee holds, and a credential kept only in `.env` still arrives
+  whatever the call order. A subprocess test builds the four clients from a `.env` alone and asserts
+  that nothing from the file lands in `os.environ`. It fails on 0.7.3. An AST walk keeps `load_env()`
+  out of every module but `locations`.
+- **What did not change.** The cache resolvers (`resolve_*`, `default_*_cache_dir`) still export the
+  file, and `load_dotenv_file=False` still declines it. That is RM102's closed decision, and nothing in
+  your report is on that path. RM102 recorded its reopen trigger as *"any boundary at all"*, and a
+  host's own record of where its settings came from is one. RM102 is now marked reopened by RM301 for
+  the credential half only.
+- **Your second ask** (a `load_dotenv_file=False` on the constructors) is not needed with the first
+  shipped, so it was not added.
+- **What to do now.** Installed 0.7.3 still exports. Until the next patch is cut and published, your
+  layer guess stays necessary. Once it lands, constructing these clients leaves `os.environ` as the host
+  set it. The CHANGELOG names the one thing a host could notice: code that read a `.env`-only variable
+  from `os.environ` after building a client, relying on us to have exported it.
+<!-- triaged: RM301 shipped · sha d3f10b7025eb -->
+
+**What we ran.** just-module-creator's own repro (their checkout, `JMC_USER_EMAIL` defined only in its
+`.env`), with `dotenv.main.load_dotenv` wrapped to record each call and whether that call was the one
+that set the variable:
+
+```
+env -u JMC_USER_EMAIL uv run --no-dev python -c "import just_module_creator.server"
+load_dotenv ('.../just-module-creator/.env',) {'override': False}  set JMC_USER_EMAIL
+    just_dna_enricher/eutils.py:84       EutilsSettings.__post_init__ -> load_env()
+load_dotenv ('.../just-module-creator/.env',) {'override': False}
+    just_dna_enricher/literature.py:449  CrossrefClient.__post_init__ -> load_env()
+```
+
+`just_dna_registry` is not the loader: its `config` module is never imported on that path. The two
+calls come from `EutilsSettings()` and `CrossrefClient()`, which the consumer's `build_services`
+constructs. `PharmVarClient` (`pharmvar.py:229`) does the same.
+
+**What happens.** `locations.load_env()` is `load_dotenv(find_dotenv(usecwd=True), override=False)`,
+so constructing one of these clients copies **every** key of the working directory's `.env` into
+`os.environ`, not only the credential the client reads. There is no parameter to decline it.
+
+**Why it cost the consumer something.** just-module-creator resolves its own settings in a fixed order
+(process environment, then the working directory's `.env`, then a per-user file) and tells an author
+which layer each value came from, so an agent can explain why a saved token is not the one in force.
+After one of these constructors has run, every value from the `.env` looks like an exported shell
+variable. They now guess the layer by comparing values against the files, where it used to be a record.
+
+**The argument against the obvious fix.** "Load nothing" would reopen RM100: credentials used to reach
+`os.environ` only as a side effect of some unrelated cache resolution, so whether NCBI ran at 10/s or
+1 every 3s depended on call order, and nothing reported which. `@credential-where-read` is the right
+rule, and nothing here asks you to drop it. The narrower asks, in our order of preference:
+
+1. **Read the one key without exporting the file.** `dotenv_values(find_dotenv(usecwd=True))` gives the
+   client its `NCBI_API_KEY` / `JUST_DNA_CONTACT_EMAIL` and leaves `os.environ` as the host set it. It
+   keeps RM100's guarantee (the credential is read where it is used, whatever the call order), and
+   `override=False` precedence carries over as "an environment variable wins over the file".
+2. Failing that, **an opt-out** on the constructors (`load_dotenv_file=False`, the spelling S39 gave the
+   cache resolvers), for a host that owns its configuration.
+
+**What the registry did meanwhile.** Nothing that touches the enricher. Our own CLI had the
+package-relative version of the same shape (a bare `load_dotenv()` walking up from its install
+location), and 0.27.1 changes it to `usecwd=True`. Our SDK imports no dotenv at all.

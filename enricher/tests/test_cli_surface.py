@@ -179,21 +179,24 @@ def test_the_ncbi_credential_is_loaded_where_it_is_read(monkeypatch: pytest.Monk
     `EutilsSettings` read `os.environ` directly, so the key reached it only as a side effect of some
     *unrelated* call resolving a cache path. The live effect was silent and threefold: the rate gate
     stayed at 1 request / 3 s instead of 10 / s. `PharmVarClient` carried the same `load_env()` call
-    with a comment describing this exact failure.
+    with a comment describing this exact failure. Since RM301 the read is `env_value`, which consults
+    the `.env` without exporting it, so the spy records the variables each constructor asked for.
     """
     from just_dna_enricher import eutils, literature
 
-    calls: list[bool] = []
-    monkeypatch.setattr(eutils, "load_env", lambda *a, **k: calls.append(True))
-    monkeypatch.setattr(literature, "load_env", lambda *a, **k: calls.append(True))
+    asked: list[str] = []
+    monkeypatch.setattr(eutils, "env_value", lambda var: asked.append(var))
+    monkeypatch.setattr(literature, "env_value", lambda var: asked.append(var))
 
     eutils.EutilsSettings()
-    assert calls, "EutilsSettings did not load `.env` where it reads NCBI_API_KEY"
+    assert "NCBI_API_KEY" in asked, "EutilsSettings did not read `.env` where it reads NCBI_API_KEY"
 
-    calls.clear()
+    asked.clear()
     literature.CrossrefClient()
     literature.PmcIdConverterClient()
-    assert len(calls) == 2, "the two polite-identification clients must each load `.env`"
+    assert asked == ["JUST_DNA_CONTACT_EMAIL"] * 2, (
+        "the two polite-identification clients must each read `.env`"
+    )
 
 
 def test_an_empty_key_still_means_no_key(monkeypatch: pytest.MonkeyPatch) -> None:

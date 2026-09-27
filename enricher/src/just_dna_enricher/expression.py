@@ -33,7 +33,6 @@ no-flag run writes nothing and explains why; every documented invocation carries
 import csv
 import logging
 import math
-import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -61,7 +60,7 @@ from just_dna_enricher.licensing import (
     require_sources_file,
     sidecar_path,
 )
-from just_dna_enricher.locations import load_env, missing_credential_reason
+from just_dna_enricher.locations import env_value, missing_credential_reason
 
 # Guarded at module scope rather than imported inside the function, which is the documented exception
 # to this workspace's no-inline-imports rule and the shape `alphagenome_check` uses. The fallback
@@ -305,15 +304,15 @@ def _connect():
     call (`@credential-where-read`), and an empty string and an unset variable are one absence —
     `export ALPHAGENOME_API_KEY=` must mean the same thing as never setting it.
 
-    **`load_env()` first, which is the half this had missing** (RM212). Reading `os.environ` at the
+    **The `.env` is read too, which is the half this had missing** (RM212), through `env_value`, which
+    exports nothing (RM301). Reading `os.environ` at the
     point of use is only half the rule; nothing else on this command's path loads a `.env`, so a key
     that lives only there — which is where this workspace's does — was invisible and the pass refused
     with *is not set* while the file sat in the working directory. Measured. It is the same incident
     `caches._rebuild_pharmvar` carries a comment about, one lane over: a check that answers
     differently from the code it stands in front of is worse than no check.
     """
-    load_env()
-    key = os.environ.get("ALPHAGENOME_API_KEY") or ""
+    key = env_value("ALPHAGENOME_API_KEY") or ""
     if not key:
         raise ExpressionError(
             f"ALPHAGENOME_API_KEY is unusable: {missing_credential_reason('ALPHAGENOME_API_KEY')}. "

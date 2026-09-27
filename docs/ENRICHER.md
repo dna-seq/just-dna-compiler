@@ -1292,10 +1292,14 @@ variable is what lets the file supply it, so a test isolating itself with `del o
 the enricher's own tests follow. Every resolver and every `default_*_cache_dir` takes
 `load_dotenv_file`, and since 0.6.3 (in the tree, uncut) passing `False` really does reach the load —
 before that it reached none of the six, because the default directory is computed as an *argument* and
-loaded the file on its own way in (S39). The credential paths — `net`, `eutils`, `literature`,
-`pharmvar` — call `load_env()` with no flag at all, so a caller who wants nothing loaded anywhere still
-has to neutralize the loader; **RM102** carried the whole question and closed on 2026-08-21 as a
-decision not to act, after the half of it that was a real defect had shipped.
+loaded the file on its own way in (S39). **The credential paths export nothing since RM301 (S124).**
+Every client, the PharmVar guard, the AlphaGenome key, the HuggingFace token and the retry floor read
+their one variable through `locations.env_value`: the process environment first, then the nearest
+`.env`, with `load_env`'s precedence and without writing into `os.environ`. So constructing a client no
+longer hands its host the rest of the file. Only the cache resolvers above still export, and they take
+the switch. **RM102** carried the whole question and closed on 2026-08-21 as a decision not to act. It
+was reopened as RM301 when a host's own configuration record turned out to be the boundary its
+trigger named.
 
 Inside a cache the layout is fixed, because **four parties have to agree on it** — builder writes,
 publisher uploads, provisioner fetches, reader queries — and every past disagreement was silent:
@@ -1507,9 +1511,10 @@ Three things about it are worth reading before a deployment runs it nightly.
   here — and the exit code counts only real failures, so a nightly run does not alarm on four lanes
   behaving exactly as designed.
 - **Credentials come from the `.env` too, and until RM176's follow-up two of them did not.**
-  `$PHARMVAR_API_KEY` and `$HF_TOKEN` are read through `load_env()` at the point they are used
-  (`@credential-where-read`), so a workspace that keeps them in a `.env` beside the working directory
-  needs nothing exported. An exported variable still wins — `load_env` uses `override=False`. The two
+  `$PHARMVAR_API_KEY` and `$HF_TOKEN` are read at the point they are used (`@credential-where-read`),
+  through `env_value` since RM301, so a workspace that keeps them in a `.env` beside the working
+  directory needs nothing exported and the rest of the file is not exported either. An exported
+  variable still wins, as it did under `load_env`'s `override=False`. The two
   that were missing it failed in opposite directions: the PharmVar guard read `os.environ` in front of
   a builder that *does* load the file, so the lane reported "no key" and never built on the machine
   most likely to have one; `_hf_api` refused a publish outright.

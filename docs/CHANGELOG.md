@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-27 — RM301: a client reads its credential from `.env` without exporting the file (patch, on `main`)
+
+**enricher** — Constructing `EutilsSettings`, `CrossrefClient`, `PmcIdConverterClient` or
+`PharmVarClient` no longer writes the working directory's `.env` into `os.environ`. The same holds for
+the retry floor, the PharmVar rebuild guard, the AlphaGenome key and the HuggingFace token reads. Each
+reads its one variable through the new `locations.env_value`: an exported value wins, and the `.env`
+beside the working directory is read without being exported. A credential kept only in `.env` still
+arrives, whatever the call order (RM100). **Behaviour change a host may notice:** code that read a
+`.env`-only variable from `os.environ` *after* constructing one of these clients, relying on the
+enricher to have exported it, now sees nothing. The cache resolvers still export, and
+`load_dotenv_file=False` still declines that. Reopens RM102's credential half, from S124.
+
 ## 2026-09-27 — RM299: the `stats` ClinVar counts say what they count (patch, on `main`)
 
 **format** — `Stats.pathogenic_count` and `Stats.benign_count` now say they count authored

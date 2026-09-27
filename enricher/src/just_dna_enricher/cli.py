@@ -12,7 +12,6 @@ just-dna-enricher upload out/coronary --repo just-dna-seq/annotators            
 """
 
 import json
-import os
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -140,7 +139,7 @@ from just_dna_enricher.locations import (
     RELEASE_FILENAME,
     SNAPSHOT_LICENSE_FILENAME,
     STRCHIVE_CATALOGUE_FILENAME,
-    load_env,
+    env_value,
     missing_credential_reason,
     read_release,
     repro_out,
@@ -5049,11 +5048,10 @@ def _atlas_client_or_none():
     generated, the runtime protobuf is older than the gencode (RM254), or there is no key. Each names its own remedy, and the caller degrades to the
     interval the knot table publishes rather than failing the run.
     """
-    # `load_env()` before reading, at the point the credential is read (`@credential-where-read`,
-    # RM212). Without it this reported "no key" on a machine whose `.env` holds one, and degraded to
-    # the knot interval for rows the Atlas could have refined.
-    load_env()
-    key = os.environ.get("ALPHAGENOME_API_KEY") or ""
+    # The `.env` is read at the point the credential is read (`@credential-where-read`, RM212). Without
+    # it this reported "no key" on a machine whose `.env` holds one, and degraded to the knot interval
+    # for rows the Atlas could have refined. `env_value` exports nothing else from the file (RM301).
+    key = env_value("ALPHAGENOME_API_KEY") or ""
     if not key:
         typer.secho(
             f"  ALPHAGENOME_API_KEY unusable ({missing_credential_reason('ALPHAGENOME_API_KEY')}), so "

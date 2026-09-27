@@ -37,7 +37,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
     SNAPSHOT_ROOT_FILENAMES,
     SNAPSHOT_SIDECAR_DIRNAMES,
-    load_env,
+    env_value,
     missing_credential_reason,
 )
 
@@ -135,13 +135,12 @@ DEFAULT_ALPHAGENOME_AVI_REPO_ID = "just-dna-seq/alphagenome_avi"
 def _hf_api(repo_id: str, token: str | None = None):
     """Resolve a write token and return an authenticated ``HfApi``.
 
-    **`load_env()` first, because `HF_TOKEN` is a credential like any other.** `get_token()` reads the
-    real environment and `~/.cache/huggingface/token`, and neither is a `.env` — so a workspace that
-    keeps its token there, as this one does, got *"No HuggingFace token found"* from a publish while
-    every other credential path in the tier read the same file without being asked. The load happens
-    where the credential is read rather than as a side effect of some other call
-    (`@credential-where-read`), and an exported variable still wins: `load_env` uses
-    ``override=False``.
+    **`HF_TOKEN` is read from the `.env` too, because it is a credential like any other.** `get_token()`
+    reads the real environment and `~/.cache/huggingface/token`, and neither is a `.env` — so a
+    workspace that keeps its token there, as this one does, got *"No HuggingFace token found"* from a
+    publish while every other credential path in the tier read the same file without being asked. It is
+    read where it is used (`@credential-where-read`) through `env_value`, so an exported variable still
+    wins and nothing else in the file is exported (RM301).
 
     Raises PermissionError if no token is available and ImportError if huggingface_hub is absent
     (a guarded lazy import, so a download-only install that somehow lacks the wheel fails clearly).
@@ -153,8 +152,7 @@ def _hf_api(repo_id: str, token: str | None = None):
             "huggingface_hub is required to publish to HuggingFace; install just-dna-enricher "
             "(or just-dna-enricher[dev] for the publisher surface)"
         ) from exc
-    load_env()
-    resolved_token = token or get_token()
+    resolved_token = token or env_value("HF_TOKEN") or get_token()
     if not resolved_token:
         raise PermissionError(
             f"No HuggingFace token found: {missing_credential_reason('HF_TOKEN')}. Or authenticate "
@@ -669,8 +667,7 @@ def check_publish_orphans_no_sidecar(plan: SnapshotPlan, api=None, token: str | 
             raise ImportError(
                 "huggingface_hub is required to check a publish against the published repo"
             ) from exc
-        load_env()
-        api = HfApi(token=get_token())
+        api = HfApi(token=env_value("HF_TOKEN") or get_token())
     try:
         remote = list(api.list_repo_files(repo_id=plan.repo_id, repo_type="dataset"))
     except Exception as exc:
@@ -734,8 +731,7 @@ def plan_prune(repo_id: str, filename_glob: str, api=None) -> PrunePlan:
             from huggingface_hub import HfApi, get_token
         except ImportError as exc:
             raise ImportError("huggingface_hub is required to inspect a published repo") from exc
-        load_env()
-        api = HfApi(token=get_token())
+        api = HfApi(token=env_value("HF_TOKEN") or get_token())
     entries = list(api.list_repo_tree(repo_id=repo_id, repo_type="dataset", recursive=True, expand=True))
     sizes = {getattr(e, "path", ""): getattr(e, "size", None) for e in entries}
     remote = [path for path in sizes if path]

@@ -1947,6 +1947,18 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   same rule one register up). Every snapshot this tier writes carries `built_at`; check it against the
   fix before explaining a report, because "which code did this run" is a question with an answer and
   not one to reason about.
+
+  **Read the credential, never load the file (RM301, S124).** "Load it where it is read" was carried
+  out with `load_env()`, which is `load_dotenv(override=False)` and exports the *whole* `.env` into
+  `os.environ`. Nine library sites did it, so constructing any client handed a host every value in its
+  working directory's `.env` as though a shell had exported it. just-module-creator reports which layer
+  each of its settings came from, and that report went wrong silently. RM102 had closed the question in
+  2026-08 on a lost hour and named "any boundary at all" as the trigger to reopen, and a host's own
+  configuration record was that boundary. `locations.env_value(var)` reads one key with `load_env`'s
+  precedence (an exported value wins and an exported empty stays empty) and writes nothing. An AST walk
+  in `test_env_value_exports_nothing.py` keeps `load_env()` inside `locations`, where the cache
+  resolvers still export on purpose and `load_dotenv_file=False` declines it. The two readings RM102
+  rejected are still rejected: this neither flips a default nor filters someone else's file.
 - `@absent-is-not-different` — **A new optional column that splits a dedup key suppresses only when
   BOTH rows state it and the two values differ — and it is the CHECK that learns the column, never the
   key** (RM140, S75). `studies.csv` is keyed `(variant_key, pmid)`, and `duplicate_study_citation`

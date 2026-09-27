@@ -111,8 +111,10 @@ RETRY_ATTEMPTS_ENV = "JUST_DNA_HTTP_RETRY_ATTEMPTS"
 
 #: `.env` is walked for at most once per process. The lookup below runs inside a retry decision, which
 #: is rare and already about to sleep for seconds — but a filesystem walk per attempt would still be
-#: silly, and a module-level `load_env()` would make importing `net` touch the disk.
+#: silly, and a module-level read would make importing `net` touch the disk. Only the file's value is
+#: memoized: an exported variable is re-read every call and still wins. Nothing is exported (RM301).
 _env_loaded = False
+_file_attempts: str | None = None
 
 
 def retry_attempts(default: int) -> int:
@@ -134,16 +136,17 @@ def retry_attempts(default: int) -> int:
     Safe to raise because every gated client **paces before it retries**: an extra attempt spends a slot
     of the published budget rather than bursting past it.
     """
-    global _env_loaded
+    global _env_loaded, _file_attempts
     if not _env_loaded:
         # Imported here rather than at module scope: `locations` is a leaf and `net` is a leaf, and
         # making one import the other for one call would couple them permanently. This is the guarded
         # exception the house rule allows for exactly this shape.
-        from just_dna_enricher.locations import load_env
+        from just_dna_enricher.locations import env_value
 
-        load_env()
+        _file_attempts = env_value(RETRY_ATTEMPTS_ENV)
         _env_loaded = True
-    raw = (os.environ.get(RETRY_ATTEMPTS_ENV) or "").strip()
+    stated = os.environ.get(RETRY_ATTEMPTS_ENV, _file_attempts)
+    raw = (stated or "").strip()
     if not raw:
         return default
     try:

@@ -202,6 +202,45 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM301 — constructing an enricher client exported the whole `.env` into the host's environment
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (decided with the
+maintainer that day) · **Owner** enricher (`locations`, every credential reader) · **Motivating
+case** S124 in CONSUMER_SUGGESTIONS_HISTORY.md, from just-dna-registry on just-module-creator's
+behalf · *related* RM102 (reopened by this), RM100, RM176, RM212, `@credential-where-read`
+
+**Residuals** none — the cache resolvers' export is RM102's closed decision, kept on purpose
+
+`EutilsSettings`, `CrossrefClient`, `PmcIdConverterClient` and `PharmVarClient` called `load_env()` in
+their constructors, as did `net.retry_attempts`, the `caches` PharmVar guard, `expression._connect`,
+`cli._atlas_client_or_none`, `upload`'s three HuggingFace sites and `download`'s two provisioners.
+`load_env` is `load_dotenv(override=False)`, so each exported every key in the working directory's
+`.env`, not only the credential it read. just-module-creator resolves its settings in layers and tells
+an author which layer a value came from. After one of these constructors ran, every file value read as
+an exported shell variable.
+
+**What shipped.** `locations.env_value(var)` returns the process environment's value if the variable
+is present, else the nearest `.env`'s, and writes nothing. The precedence is `load_env`'s: an exported
+value wins and an exported empty string stays empty. Every credential reader above uses it, so RM100's
+guarantee (the credential arrives whatever the call order) holds without the export.
+`missing_credential_reason` gained a third reading for a key the `.env` sets empty. `net` memoizes the
+file's value once and re-reads the environment on every call.
+
+**Why a patch.** The export was a side effect, not a promise. The only code it breaks is host code that
+reads a variable which exists only in a `.env`, after constructing one of our clients, and relies on us
+to have exported it. That is the call-order dependence RM100 called a bug. RM102's two rejected repairs
+stay rejected: no default flips, and nobody's file is filtered.
+
+**Tests.** `enricher/tests/test_env_value_exports_nothing.py` constructs the four clients in a
+subprocess whose only source is a `.env`. It asserts that each credential arrived and that none of the
+file's keys is in `os.environ`, and it fails on the pre-fix tree with the credentials present and the
+whole file exported. An AST walk keeps `load_env()` inside `locations`. `test_dotenv_credentials.py`'s
+two before-the-fix probes and RM212's structural check now target `env_value`. The first full run turned
+up the fix's own side effect: the HuggingFace sites now consult `env_value("HF_TOKEN")` before
+`get_token()`, so the upload tests, which stub `get_token()`, received the real token from this
+repository's `.env` instead of the stub's. `HfApi` was mocked, so nothing left the machine. An autouse
+fixture in the enricher `conftest.py` now sets `HF_TOKEN` to empty for every test.
+
 ## RM299 — `stats.pathogenic_count` says "pathogenic" and counts both pathogenic tiers, per genotype row
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (field descriptions) ·
@@ -8263,6 +8302,10 @@ Both cost more attention than they were worth, and the same question would have 
 would a decision here actually change?*
 
 ## RM102 — the enricher loads a `.env` into `os.environ` from library paths
+
+**Reopened 2026-09-27 by S124 as [RM301](#rm301--constructing-an-enricher-client-exported-the-whole-env-into-the-hosts-environment)**,
+on this entry's own trigger: a host's configuration record was the boundary. RM301 takes the credential
+half only. The cache resolvers keep exporting, behind their switch, as decided below.
 
 ✖ **Closed 2026-08-21 as a decision not to act**, after the half of it that was a real defect had
 already shipped. Motivating case [S39](CONSUMER_SUGGESTIONS_HISTORY.md) from just-module-creator.

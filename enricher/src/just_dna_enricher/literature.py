@@ -55,7 +55,6 @@ the process on the way out. See `regex_matches`.
 import csv
 import logging
 import multiprocessing
-import os
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -77,7 +76,7 @@ from tenacity import (
 
 from just_dna_enricher.eutils import EutilsClient, EutilsError, is_missing
 from just_dna_enricher.licensing import article_terms, sidecar_path
-from just_dna_enricher.locations import load_env
+from just_dna_enricher.locations import env_value
 from just_dna_enricher.net import PacingGate, attempt_floor, batched, dedupe
 from just_dna_enricher.verification import ran, record_verification, skipped
 
@@ -445,12 +444,12 @@ class CrossrefClient:
         # Same rule as `EutilsSettings` and `PharmVarClient` (RM100, `@credential-where-read`): the
         # contact address lives in `.env`, and reading `os.environ` without loading it meant the
         # `mailto:` in the User-Agent appeared or not depending on whether some unrelated call had
-        # resolved a cache path first. Both polite-identification services ask for it by name.
-        load_env()
+        # resolved a cache path first. Both polite-identification services ask for it by name. Read
+        # without exporting the rest of the `.env` (RM301).
         if self.gate is None:
             self.gate = PacingGate(self.min_request_interval)
         if self.contact_email is None:
-            self.contact_email = os.environ.get("JUST_DNA_CONTACT_EMAIL") or None
+            self.contact_email = env_value("JUST_DNA_CONTACT_EMAIL") or None
 
     def _http(self) -> httpx.Client:
         if self._client is None:
@@ -563,12 +562,12 @@ class PmcIdConverterClient:
         # Same rule as `EutilsSettings` and `PharmVarClient` (RM100, `@credential-where-read`): the
         # contact address lives in `.env`, and reading `os.environ` without loading it meant the
         # `mailto:` in the User-Agent appeared or not depending on whether some unrelated call had
-        # resolved a cache path first. Both polite-identification services ask for it by name.
-        load_env()
+        # resolved a cache path first. Both polite-identification services ask for it by name. Read
+        # without exporting the rest of the `.env` (RM301).
         if self.gate is None:
             self.gate = PacingGate(self.min_request_interval)
         if self.contact_email is None:
-            self.contact_email = os.environ.get("JUST_DNA_CONTACT_EMAIL") or None
+            self.contact_email = env_value("JUST_DNA_CONTACT_EMAIL") or None
 
     def _http(self) -> httpx.Client:
         if self._client is None:

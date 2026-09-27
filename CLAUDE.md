@@ -312,6 +312,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A source publishing both assemblies lists the wrong one first; filter on the assembly field. `@assembly-first-wins`
 - An interbase coordinate is `start + 1`; a single-base allele cannot reveal the off-by-one. `@a-one-base-allele-hides-an-off-by-one`
 - Load a credential where it is read, not as a side effect of some other call. `@credential-where-read`
+- Read it with `env_value`, never `load_env()` — that exports the whole `.env` into the host's environment. `@credential-where-read`
 - A guard in front of a loader must load too, or it answers differently from what it guards. `@credential-where-read`
 - `export FOO=` outranks a `.env` where `unset FOO` does not; diagnose the two absences apart. `@credential-where-read`
 - A reproduced mechanism is not a diagnosis: check the run's `built_at` against the fix first. `@credential-where-read`

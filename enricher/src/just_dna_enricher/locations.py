@@ -21,7 +21,7 @@ import logging
 import os
 from pathlib import Path
 
-from dotenv import find_dotenv, load_dotenv
+from dotenv import dotenv_values, find_dotenv, load_dotenv
 from platformdirs import user_cache_dir
 
 logger = logging.getLogger(__name__)
@@ -279,13 +279,38 @@ def read_release(reference: Path) -> dict | None:
 
 
 def load_env(override: bool = False) -> str | None:
-    """Load the nearest `.env` (walking up from CWD), so cache paths can be set there.
-    Returns the loaded path, or None."""
+    """Load the nearest `.env` (walking up from CWD) into `os.environ`, so cache paths can be set there.
+    Returns the loaded path, or None.
+
+    **Every variable in the file is exported, so only the cache resolvers call this.** A credential is
+    read with `env_value`, which exports nothing (RM301, S124).
+    """
     env_path = find_dotenv(usecwd=True)
     if env_path:
         load_dotenv(env_path, override=override)
         return env_path
     return None
+
+
+def env_value(var: str) -> str | None:
+    """One variable, from the process environment or else the nearest `.env`, **without exporting the file**.
+
+    This is how a credential is read where it is used (`@credential-where-read`). The precedence is
+    `load_env`'s: `override=False` keeps a variable that is present, so an exported value wins over the
+    file, and an exported empty string stays empty. The difference is that nothing is written into
+    `os.environ`. RM301 (S124): every client used to call `load_env()`, which copied the *whole* `.env`
+    into the host's environment. A host that reports which layer each of its own settings came from
+    then saw every file value as an exported shell variable.
+
+    The file is found per call, walking up from the CWD, like `load_env`. `None` means neither source
+    names the variable. An empty string means one of them sets it empty.
+    """
+    if var in os.environ:
+        return os.environ[var]
+    path = find_dotenv(usecwd=True)
+    if not path:
+        return None
+    return dotenv_values(path).get(var)
 
 
 def missing_credential_reason(var: str) -> str:
@@ -304,6 +329,11 @@ def missing_credential_reason(var: str) -> str:
     actions (`@rsid-absent-two-readings` is the same rule about a different absence).
     """
     value = os.getenv(var)
+    if value is None and env_value(var) == "":
+        return (
+            f"${var} is set EMPTY in the `.env` beside the working directory. Give it a value there, "
+            f"or export it"
+        )
     if value is None:
         return (
             f"no ${var} is set. A `.env` beside the working directory is read automatically, so "
