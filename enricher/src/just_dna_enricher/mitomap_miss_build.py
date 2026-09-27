@@ -18,11 +18,11 @@ what a draft appends is the increment rather than an inventory somebody wrote do
   `[VUS*]`, or a confirmation token on its own. Counted, never given a class.
 
 A fourth bucket sits beside those three because the question cannot be *asked* of it. **unmintable**
-is a row whose published alleles do not spell a VCF `(ref, alt)` — MITOMAP writes a deletion
-right-anchored (`refna="TA"`, `regna=":"`), and turning that into a VCF allele needs the rCRS base at
-`position - 1`, which Principle 2 forbids these tiers from fetching. Those rows are not misses and
-they are not photocopies; they are rows the join has no key for, and folding them into either would be
-a claim about a comparison that could not run.
+is a row whose published alleles do not spell a VCF `(ref, alt)`: prose in an allele column, or no
+event at all. MITOMAP also writes a deletion with an empty alt (`refna="TA"`, `regna=":"`), and since
+RM293 that row is **anchored** on the vendored rCRS base at `position - 1` and joined like any other,
+after checking MITOMAP's `refna` is what rCRS has there; a row that disagrees with rCRS stays
+unmintable. Its row in this lane carries the VCF spelling; `allele_defect` still records MITOMAP's.
 
 **The event join, and no position-level fallback.** `(start, ref, alt)` on chrMT, upper-cased, with
 every indel on both sides **left-aligned against rCRS first** (RM273). An exact join on spelling
@@ -240,6 +240,19 @@ def _event_key(start: int, ref: str, alt: str) -> tuple[int, str, str]:
     return aligned[1], aligned[2], aligned[3]
 
 
+def _anchor_colon_deletion(start: int, ref: str) -> tuple[int, str, str] | None:
+    """MITOMAP's `m.p_qdel` (`refna` the deleted bases, `regna=":"`) → a VCF row, or `None` (RM293).
+
+    The base before the event comes from the vendored rCRS, so nothing is fetched. `None` when
+    MITOMAP's deleted bases are not what rCRS has at `start`, or the event is at base 1.
+    """
+    ref = ref.upper()
+    if start < 2 or not ref or RCRS[start - 1 : start - 1 + len(ref)] != ref:
+        return None
+    base = RCRS[start - 2]
+    return start - 1, base + ref, base
+
+
 def _clinvar_calls(clinvar_dir: Path) -> dict[tuple[int, str, str], dict]:
     """Every chrMT allele the ClinVar parent publishes, keyed, with the call it carries.
 
@@ -307,9 +320,18 @@ def build_miss_snapshot(mitomap_dir: Path, clinvar_dir: Path, out_dir: Path) -> 
     withheld: Counter[str] = Counter()
     unmintable: Counter[str] = Counter()
     rows: list[dict] = []
+    # MITOMAP `:` deletions anchored on rCRS and joined (RM293). Logged, not a result field: a new
+    # field is minor-class, and `main` is patch-only.
+    anchored_deletions = 0
     for row in source.iter_rows(named=True):
         defect = row.get("allele_defect")
         start, ref, alt = row.get("start"), row.get("ref"), row.get("alt")
+        if defect == "right_anchored_deletion" and start is not None and ref:
+            anchored = _anchor_colon_deletion(int(start), str(ref))
+            if anchored is not None:
+                start, ref, alt = anchored
+                defect = None
+                anchored_deletions += 1
         match: dict | None = None
         if defect is not None or start is None or not ref or not alt:
             bucket = "unmintable"
@@ -332,6 +354,9 @@ def build_miss_snapshot(mitomap_dir: Path, clinvar_dir: Path, out_dir: Path) -> 
         rows.append(
             {
                 **row,
+                "start": start,
+                "ref": ref,
+                "alt": alt,
                 "chrom": CONTIG,
                 "bucket": bucket,
                 "key_shape": (
@@ -366,9 +391,10 @@ def build_miss_snapshot(mitomap_dir: Path, clinvar_dir: Path, out_dir: Path) -> 
     result.citation_links = _write_citations(mitomap_dir, data_dir, frame)
     _write_release_json(out_dir, result, source_rows=source.height)
     logger.info(
-        "Built the MITOMAP-miss snapshot: %s → %s",
+        "Built the MITOMAP-miss snapshot: %s → %s (%d `:` deletion(s) anchored on rCRS, RM293)",
         ", ".join(f"{name} {count}" for name, count in result.buckets.items()),
         result.parquet_file,
+        anchored_deletions,
     )
     return result
 

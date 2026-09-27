@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-27 — RM293: MITOMAP's `:` deletions are anchored on rCRS and joined (patch, on `main`)
+
+**`just-dna-enricher` only; a corrected derivation of a derived lane.** MITOMAP writes a deletion with
+an empty alt (`m.7402del`, `refna=C`, `regna=:`), and the miss lane called those 39 rows unmintable,
+citing Principle 2. The lane has vendored rCRS since RM273, so it now anchors each on the base before
+it (after checking MITOMAP's bases against rCRS) and joins it. On the local parents: unmintable
+47 → 8, photocopy 663 → 686, rated_miss 1 → 2, unrated_miss 385 → 400. Rebuild the lane
+(`just-dna-enricher cache rebuild --only mitomap_miss`); it is never published. RM293.
+
 ## 2026-09-27 — RM295: `cyp2d6_structural` places CYP2D6*4 where GRCh38 has it (patch, on `main`)
 
 **A reference-example correction; no package changes.** The example stated CYP2D6*4's splice variant
@@ -81,8 +90,9 @@ postmortem P4.
 **`just-dna-enricher` only; corrected derivations, declared here (Principle 3).**
 
 - **The MITOMAP-minus-ClinVar lane joins on events.** Both sides' indels are left-aligned against a
-  vendored rCRS (NC_012920.1) before the join. **The published `mitomap_miss` lane's counts are stale
-  until it is rebuilt**: on the same parents, photocopy 655 → 663 and rated_miss 6 → 1, because five
+  vendored rCRS (NC_012920.1) before the join. **Every machine's `mitomap_miss` lane is stale until it
+  is rebuilt** (the lane is derived and never published; rebuild it with `cache rebuild --only
+  mitomap_miss`): on the same parents, photocopy 655 → 663 and rated_miss 6 → 1, because five
   of the six "new" calls were ClinVar's own at another anchor. A MITOMAP draft from an older build
   still carries them; rebuild the lane.
 - **A CIViC-drafted indel is left-aligned.** The ClinGen registry's anchor is HGVS's 3′-most point, so

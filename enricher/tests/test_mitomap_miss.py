@@ -32,6 +32,7 @@ from just_dna_enricher.mitomap_build import build_snapshot as build_mitomap_snap
 from just_dna_enricher.mitomap_miss_build import (
     BUCKETS,
     MISS_PARQUET,
+    _anchor_colon_deletion,
     _event_key,
     build_miss_snapshot,
     parent_pin,
@@ -178,15 +179,28 @@ def test_an_undocumented_bracket_and_a_bare_confirmation_token_are_both_unrated(
     )
 
 
-def test_the_colon_deletions_are_unmintable_rather_than_missing(parents, tmp_path: Path) -> None:
-    """They are not misses and not photocopies: the join has no key to ask the question with."""
+def test_a_colon_deletion_is_anchored_on_rcrs_and_joined(parents, tmp_path: Path) -> None:
+    """RM293: MITOMAP's `m.7402del` (`refna=C`, `regna=:`) is `7401 CC>C` on rCRS, and gets a bucket.
+
+    It used to be unmintable on the stated grounds that the base before it could not be fetched; the
+    lane vendors rCRS since RM273, so nothing is fetched. `allele_defect` keeps MITOMAP's own shape.
+    """
     mitomap_dir, clinvar_dir = parents
     result = build_miss_snapshot(mitomap_dir, clinvar_dir, tmp_path / "miss")
     frame = pl.read_parquet(result.parquet_file)
     deletions = frame.filter(pl.col("allele_defect") == "right_anchored_deletion")
     assert deletions.height, "the fixture carries one"
-    assert set(deletions["bucket"].to_list()) == {"unmintable"}
-    assert result.unmintable["right_anchored_deletion"] == deletions.height
+    row = deletions.to_dicts()[0]
+    assert (row["start"], row["ref"], row["alt"]) == (7401, "CC", "C")
+    assert row["bucket"] != "unmintable" and row["key_shape"] == "indel"
+    assert "right_anchored_deletion" not in result.unmintable
+
+
+def test_a_colon_deletion_rcrs_disagrees_with_stays_unanchored() -> None:
+    """MITOMAP's deleted bases are checked against rCRS first; a disagreement is never anchored."""
+    assert _anchor_colon_deletion(7402, "C") == (7401, "CC", "C")
+    assert _anchor_colon_deletion(7402, "G") is None
+    assert _anchor_colon_deletion(1, "G") is None  # nothing before base 1 to anchor on
 
 
 def test_a_rebuild_from_the_same_parents_is_byte_identical(parents, tmp_path: Path) -> None:

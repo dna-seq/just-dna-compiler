@@ -389,9 +389,9 @@ def _notes(result: MitomapDraftResult, drafted: Sequence[dict], incomplete: Sequ
     if result.withheld.get("unmintable"):
         notes.append(
             f"{result.withheld['unmintable']} MITOMAP row(s) publish no allele pair this schema can "
-            f"spell — a deletion written right-anchored as `:` needs the rCRS base at position-1, and "
-            f"nothing in the format or compiler tiers may fetch a reference sequence. They are "
-            f"neither misses nor photocopies: the join has no key to ask the question with."
+            f"spell: prose in an allele column, no event, or (in a lane built before RM293) a `:` "
+            f"deletion not yet anchored on rCRS. They are neither misses nor photocopies: the join "
+            f"has no key to ask the question with."
         )
     if incomplete:
         notes.append(

@@ -174,6 +174,34 @@ neither of this entry's guards caught, so the CLI died again beside anything pin
 
 **Residuals** RM254
 
+## RM293 — MITOMAP's `:` deletions are mintable now that rCRS is vendored, and three texts still say Principle 2 forbids it
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** · **Owner** enricher (`mitomap_build`,
+`mitomap_miss_build`, the `mitomap` CLI note) · **Motivating case** RM273's residual, 2026-09-27
+
+**Residuals** none
+
+MITOMAP writes a deletion right-anchored (`refna="TA"`, `regna=":"`), and the lane puts those rows in
+`unmintable` (47 on the local build) because a VCF pair needs the rCRS base at `position - 1`. The
+reason given in `mitomap_miss_build`'s docstring, the `mitomap` CLI note and ENRICHER.md's bucket table
+is that *Principle 2 forbids these tiers from fetching* it. That was never quite the charter
+(Principle 2 binds format and compiler, not the enricher), and since RM273 the base needs no fetch:
+`_rcrs.RCRS` is vendored and verified against ClinVar's chrMT `ref` alleles (3,104 of 3,104). Minting
+those rows moves them out of `unmintable` into `photocopy` / `rated_miss` / `unrated_miss` through the
+event join, a corrected derivation with no new bucket. Measure how many land where before building,
+and correct the three texts in the same change.
+
+**What shipped, measured.** Of the 47 `unmintable` rows, **39** were `:` deletions; the other 8
+(`ref_equals_alt` 6, `non_nucleotide` 2) are unmintable for other reasons and stay. The miss build
+anchors a `:` deletion on the vendored rCRS base at `position - 1` after checking MITOMAP's deleted
+bases against rCRS (all 39 agree; one that did not would stay unmintable), writes the VCF spelling into
+the lane's row, keeps `allele_defect` as MITOMAP's shape, and joins it through RM273's event key.
+Rebuilt from the local parents: photocopy 663 → **686**, rated_miss 1 → **2** (one
+`uncertain_significance` joins the `likely_benign`), unrated_miss 385 → **400**, unmintable 47 → **8**.
+The count is a log line, not a `MissBuildResult` field (minor-class). The three texts citing
+Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
+bucket table now say what happens instead.
+
 ## RM295 — `cyp2d6_structural` places CYP2D6*4 at a coordinate whose `ref` GRCh38 does not have
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (a reference-example
@@ -323,7 +351,7 @@ modes, never a gate. Tests use two real catalogue records (`DMD_DMD`, `SCA_EP400
 **Motivating case** the 2026-09-27 postmortem sweep (P1), residuals of RM171, RM153 and RM134 · *related*
 RM270 (the root: an indel's key is its source's spelling), RM267, RM31
 
-**Residuals** RM293 · won't fix — LitVar compares a CAID only at the module's own start and withholds elsewhere, so it writes no shifted row · won't fix — the published mitomap_miss snapshot changes only when an operator rebuilds and republishes the lane
+**Residuals** RM293 · won't fix — LitVar compares a CAID only at the module's own start and withholds elsewhere, so it writes no shifted row · won't fix — mitomap_miss is a derived lane that is never published, so each machine's copy changes only when that machine rebuilds it
 
 RM270 names the artifact key. These are the same mistake one tier earlier, inside the enricher, where
 it reaches an author as a drafted row or a published count. Each was reproduced on 2026-09-27.
@@ -4280,6 +4308,7 @@ permission — a pulled copy would carry a currency check its holder cannot run.
 spelling, and five of them are ClinVar's own calls at another anchor (`7471 C>CC` and `7472 A>CA` are
 ClinVar's `7465 A>AC`; `8618 T>TT` is `8617 A>AT`). The lane now compares events against a vendored
 rCRS, and on the same parents it reports **one** rated miss (`likely_benign`) and 663 photocopies.
+RM293 then anchored MITOMAP's 39 `:` deletions, and the lane reads **two** rated misses and 686 photocopies.
 
 ## RM176 — eleven builders, three stages each, and the roster that was supposed to name them was a list
 

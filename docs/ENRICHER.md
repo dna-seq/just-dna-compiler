@@ -4373,7 +4373,7 @@ because they send an author somewhere different:
 |---|---|
 | **photocopy** | the same event is in ClinVar under either spelling (indels left-aligned against a vendored rCRS on both sides since RM273), so that VCEP call already reaches this repository with ClinVar's own provenance. Drafting a second copy attributes it to the wrong publisher, and hands a ClinVar concordance check a copy of ClinVar to agree with (`@tautology-zero`) |
 | **unrated miss** | absent from ClinVar, and MITOMAP published no class this tier may map — no bracket, a bare confirmation token, or `[VUS*]`. A real identity increment, counted, with no significance invented for it |
-| **unmintable** | the published alleles do not spell a VCF pair. A `:` deletion needs the rCRS base at `position-1`, which Principle 2 forbids these tiers from fetching, so the question was never askable |
+| **unmintable** | the published alleles do not spell a VCF pair: prose in an allele column, or no event. A `:` deletion is anchored on the vendored rCRS base at `position-1` since RM293 and joined like any other row, unless MITOMAP's deleted bases disagree with rCRS |
 
 **`genotype` is a placeholder, and the reason is not the contig's.** `clinvar_draft.sole_expressible_genotype`
 *fills* the ALT on chrMT — a haploid contig leaves no zygosity open, so there is no decision for a

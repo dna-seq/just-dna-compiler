@@ -614,21 +614,6 @@ why, the gap `unreachable_rsids`, `unconsulted_rsids` and `allele_mismatches` ea
 state. Add the field (or fields) on `0.8`, beside those, and decide whether "anchor base unreadable"
 (transient, re-run) and "not a base" (permanent) are one list or two. · *related* RM268, RM271, S20, S85
 
-## RM293 — MITOMAP's `:` deletions are mintable now that rCRS is vendored, and three texts still say Principle 2 forbids it
-
-**Severity** low · **Status** open — **a patch** · **Owner** enricher (`mitomap_build`,
-`mitomap_miss_build`, the `mitomap` CLI note) · **Motivating case** RM273's residual, 2026-09-27
-
-MITOMAP writes a deletion right-anchored (`refna="TA"`, `regna=":"`), and the lane puts those rows in
-`unmintable` (47 on the local build) because a VCF pair needs the rCRS base at `position - 1`. The
-reason given in `mitomap_miss_build`'s docstring, the `mitomap` CLI note and ENRICHER.md's bucket table
-is that *Principle 2 forbids these tiers from fetching* it. That was never quite the charter
-(Principle 2 binds format and compiler, not the enricher), and since RM273 the base needs no fetch:
-`_rcrs.RCRS` is vendored and verified against ClinVar's chrMT `ref` alleles (3,104 of 3,104). Minting
-those rows moves them out of `unmintable` into `photocopy` / `rated_miss` / `unrated_miss` through the
-event join, a corrected derivation with no new bucket. Measure how many land where before building,
-and correct the three texts in the same change.
-
 ## RM275 — seven derived fact tables have no duplicate rule, so two contradicting rows under one key compile green under `--strict`
 
 **Severity** medium · **Status** open — **a minor** (re-sized 2026-09-27, see the last paragraph), with

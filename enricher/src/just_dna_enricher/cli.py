@@ -4449,8 +4449,8 @@ def mitomap_miss_(
         )
     if result.unmintable:
         typer.echo(
-            "  rows the join has no key for (Principle 2 forbids fetching the rCRS anchor): "
-            + ", ".join(f"{k} {v}" for k, v in result.unmintable.items())
+            "  rows the join has no key for (prose in an allele column, no event, or a `:` deletion "
+            "whose bases rCRS does not have): " + ", ".join(f"{k} {v}" for k, v in result.unmintable.items())
         )
 
 
