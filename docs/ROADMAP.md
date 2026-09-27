@@ -974,6 +974,48 @@ check cannot ship without stating its witness.
 *self-consistent* is a new verdict vocabulary member. Both are additive and minor-legal (P3, P8).
 Price: the record is machine-written, so half cost (P9). Not on `main`.
 
+## RM296 — a PRS has no condition → conclusion table, so `pgs.csv` only restates what the PGS Catalog already publishes
+
+**Severity** medium · **Status** open — **a minor, release undecided** (a new optional binning kind) ·
+**Owner** format (schema) + compiler · **Motivating case** the maintainer, 2026-09-27: *"modules are
+condition → conclusion by design; just listing PGS is a bit tautological, they have own EFOs"* ·
+*related* RM16, RM47, RM289, RM163
+
+**What is missing.** Every other kind a module carries maps a measured condition to an authored
+conclusion: a genotype to a `conclusion`, an activity score to a metabolizer phenotype, a repeat count
+or a copy number or a heteroplasmy fraction to a band. `pgs.csv` maps nothing. Its row is an accession,
+the trait's EFO ids, ancestry and a research tier, all of which the PGS Catalog already publishes per
+score. A module cannot say *"above the 95th percentile of PGS000018 in a matched reference: elevated
+CAD risk relative to that reference"*, which is the sentence a PRS module exists to carry.
+
+**Why the refusal it replaces was a choice, not a constraint.** `pgs.py`'s docstring says a PRS yields a
+Z or percentile within a matched reference distribution, *"which the format does not bin"*. Binning
+one is the `activity_phenotype.csv` shape: the consumer computes the number and the module bins it, so
+the data-agnostic line (no measured value in a module) holds exactly as it does there. Nothing in the
+charter forbids it. A new optional table is minor-legal (P3, P8) and costs the full authored price
+(P9).
+
+**The shape, as a starting point.** A `MeasureBinRow` subclass keyed on `pgs_id` (joining `pgs.csv`,
+which becomes the declaration the bins hang on rather than the whole module). It inherits bounds,
+`measure_tiling`, the `unresolved` no-call sentinel and bin-level `pmid` (RM47).
+
+**What has to be designed, and it is the part that stops this being a tautology too.**
+
+- **The measure's unit and frame are part of the claim.** A percentile and a Z are different axes, and
+  either is meaningful only against a named reference distribution. A bin has to say which
+  (`measure_unit`, and a reference identifier), or a band means nothing.
+- **Ancestry mismatch withholds.** A sample outside the bin's reference or `training_ancestry` gets
+  *unknown*, never the band (the house tri-state). The same applies below `match_rate_floor`, which is
+  what `unresolved` is for.
+- **`research_tier` constrains the conclusion.** A `research_only` score supports only relative
+  statements (*"higher than N% of the reference"*). An absolute-risk band needs `calibrated`. Whether
+  that is a check or a documented rule is open.
+- **Continuous tiling** is the natural default for a percentile or a Z (`@measure-tiling`).
+
+RM16 (authored weights) is a different question and this does not depend on it. When this ships,
+`pgs.py`'s docstring, TABLES.md § `pgs.csv` and ROADMAP_0_8 § RM16's *"a shape the format does not
+bin"* all change with it.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
