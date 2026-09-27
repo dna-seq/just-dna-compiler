@@ -5754,7 +5754,7 @@ detects a violation of it at resolve time, one records which authority was trust
 
 **Status — the diff is not a draft regression: the two builds read different snapshots, and the
 rebuild is the faithful one. Your 1A concern did find a real defect, in the check that should have
-caught it: filed as [RM297](ROADMAP.md#rm297--the-clinpgx-currency-check-reads-a-withdrawn-annotation-as-a-re-tiered-one).** Your baseline (`prebuild_baseline/pharmgkb/manifest.json`, the one whose
+caught it: filed as [RM297](ROADMAP.md#rm297--the-clinpgx-currency-check-compares-a-row-against-an-annotation-it-never-cited).** Your baseline (`prebuild_baseline/pharmgkb/manifest.json`, the one whose
 `content_signature` is `sha256:53685843…`) records **`clinpgx_2025-07-05`**, not `2026-08-05`. So does
 the 0.5-era `v1_port_0_5/pharmgkb/sources.csv`. Only the rebuild's manifest names
 `clinpgx_2026-08-05`, and the two `sources.signature` values differ (`798f5dae…` against `03ca0771…`),
@@ -5785,9 +5785,12 @@ Run over your baseline, it reports 36 level conflicts. The 33 on rs12979860 are 
 annotation id is absent from the snapshot, so the lookup fell through to `1450934767`, which shares the
 rsid, drug and category. A curator following that message would edit the level of a withdrawn
 annotation instead of removing it. RM297 makes an absent `annotation_id` its own finding, *withdrawn or
-mistyped*. It is a patch, with one decision left to the maintainer: whether that finding refuses under
-`strict`. Until then, treat any conflict on a row whose `annotation_id` your snapshot does not hold as
-a withdrawal, not a re-tier.
+mistyped*. It is a patch that warns and never blocks, decided with the maintainer the same day. The
+check cannot know that a row cites ClinPGx at all, since a curator may author a row from an article
+with its own accession, so an absent id withholds rather than refuses. The per-row provenance that
+would let it block again is [RM298](ROADMAP.md#rm298--nothing-records-per-row-that-a-pharm_variantscsv-row-came-from-clinpgx),
+a minor. Until RM297 ships, treat any conflict on a row whose `annotation_id` your snapshot does not
+hold as a withdrawal, not a re-tier.
 <!-- triaged: RM297 filed · sha 72886a82671c -->
 
 Consumer: just-dna-lite. `pipelines v1-port pharmgkb` drafts `pharm_variants.csv` through

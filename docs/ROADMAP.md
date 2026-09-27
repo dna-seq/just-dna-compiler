@@ -1016,13 +1016,13 @@ RM16 (authored weights) is a different question and this does not depend on it. 
 `pgs.py`'s docstring, TABLES.md § `pgs.csv` and ROADMAP_0_8 § RM16's *"a shape the format does not
 bin"* all change with it.
 
-## RM297 — the ClinPGx currency check reads a withdrawn annotation as a re-tiered one
+## RM297 — the ClinPGx currency check compares a row against an annotation it never cited
 
-**Severity** medium · **Status** open — **a patch** (a check's finding and reason), one decision first ·
+**Severity** medium · **Status** open — **a patch** (a warning; the check withholds rather than blocks) ·
 **Owner** enricher (`clinpgx.enrich_clinpgx`) · **Motivating case** S122 in
-CONSUMER_SUGGESTIONS_HISTORY.md · *related* `@existence-not-identity`,
-`@the-signal-may-already-be-firing-with-the-wrong-words`, `@a-source-recuring-is-not-a-strict-matter`,
-`@warning-code-names-the-finding`
+CONSUMER_SUGGESTIONS_HISTORY.md · *related* RM298 (the minor that settles it), `@existence-not-identity`,
+`@the-signal-may-already-be-firing-with-the-wrong-words`, `@warning-code-names-the-finding`,
+`@rsid-absent-two-readings`
 
 **Reproduced.** `just-dna-seq/pharmgkb@1.0.0` was drafted from `clinpgx_2025-07-05`. It carries three
 `rs116855232 + azathioprine` rows citing annotation `1184514050` at `1A`. ClinPGx withdrew that
@@ -1031,33 +1031,73 @@ annotation before `clinpgx_2026-08-05`. Run against the newer snapshot, `enrich_
 annotation, `1450934767` (Toxicity, azathioprine;mercaptopurine), which has been in both snapshots.
 
 **The mechanism.** The lookup tries `(annotation_id, genotype)`, then `(rsid, drug, genotype,
-category)`, then the bare triple. When the authored `annotation_id` is absent from the snapshot
-altogether, the fall-through compares the row against whichever annotation shares its category. It
-then reports a level change on a record the source no longer holds. Under `strict` the refusal
-names the wrong remedy: a curator told *"1A should be 3"* edits the level of a withdrawn annotation. The
-same fall-through can also **agree** silently, when the other annotation happens to share the level.
+category)`, then the bare triple. When the row's `annotation_id` is absent from the snapshot, or the
+row has none, the fall-through compares it against whichever ClinPGx annotation shares its category. It
+then reports a level difference against a record the row never cited, and under `strict` refuses on
+it. The same fall-through can also **agree** silently when the other annotation happens to share the
+level.
 
-**The repair.** An authored `annotation_id` that the snapshot does not hold anywhere stops the lookup.
-It becomes its own finding, *withdrawn or mistyped* (`@rsid-absent-two-readings`: both readings are
-named), carrying the id and what the snapshot holds at the triple. An id that is present but lacks
-that genotype keeps today's fall-through. The existing conflict text stays byte-identical
-(`@warning-text-is-api`). A new field on `ClinPgxResult` is additive. The new warning code needs its
-`features/` scenario.
+**Why the check cannot know better, and why that decides the severity.** Nothing marks a row as
+ClinPGx-derived. `sources.csv` records ClinPGx per `(source, layer)`, and so does
+`record_draft_provenance`. `annotation_id` is source-agnostic by its own field description (*"the
+source's own accession"*), and a curator may author a row from an article, CPIC or DPWG with its own
+accession or none. So an `annotation_id` the snapshot does not hold has **three** readings:
 
-**The decision, and it is the maintainer's.** Does the new finding refuse under `strict`?
+- ClinPGx withdrew it (the S122 case).
+- It is mistyped.
+- It was never a ClinPGx accession.
 
-- **Refuse** (the recommendation). An annotation's existence is ClinPGx's own record about itself,
-  which is the argument the module docstring already makes for the level. The edit that clears it is
-  real: re-draft, or drop a row whose cited record is gone. This keeps refusing the three S122 rows.
-  It newly refuses a row whose fall-through happened to agree, which is a tightening. So the patch
-  must declare it.
-- **Warn in both modes.** This reads `@a-source-recuring-is-not-a-strict-matter` across. But that entry's
-  premise is that the only clearing edit falsifies the record, and here the record *is* the
-  withdrawn citation. It would also stop refusing the three S122 rows, a loosening under `strict`.
+A refusal under the third reading blocks a legitimate row with an error its author cannot clear. A
+row with no `annotation_id` has the same problem one step earlier.
 
-Either way `verification.json`'s `findings` for `pgx_evidence_level` must count the new finding. If it
-did not, moving these rows out of `conflicts` would lower a published number for a module that did not
-change.
+**The patch, decided with the maintainer 2026-09-27: warn, never block.**
+
+- A row whose `annotation_id` is set and absent from the snapshot stops the lookup. It becomes its own
+  finding, warned in both modes and never raised under `strict`. The finding names all three readings
+  and says what the snapshot holds at the triple.
+- A row with no `annotation_id` whose level is compared only through the category or triple fall-through
+  is still reported, but it no longer refuses under `strict`. The row has not claimed that record.
+- An id that is present but lacks that genotype keeps today's fall-through.
+- A conflict reached through the row's own `annotation_id` is unchanged. It keeps its text
+  byte-for-byte (`@warning-text-is-api`) and still refuses under `strict`.
+- A new `ClinPgxResult` field is additive. The new warning code needs its `features/` scenario.
+- `verification.json`'s `findings` for `pgx_evidence_level` counts the new finding, so moving rows out
+  of `conflicts` does not lower a published number for an unchanged module.
+- The patch loosens `strict` for fall-through rows. It must declare that in the CHANGELOG entry.
+
+**What the patch leaves open is RM298's.** Knowing *per row* that a row cites ClinPGx is what would
+let a withdrawn annotation block again, and that needs an authored column.
+
+## RM298 — nothing records per row that a `pharm_variants.csv` row came from ClinPGx
+
+**Severity** medium · **Status** open — **a minor, release undecided** (a new optional authored
+column) · **Owner** format (`PharmVariantRow`) + enricher (`clinpgx_draft`, `clinpgx`) · **Motivating
+case** S122 via RM297, decided with the maintainer 2026-09-27: *"the mitigation is warning, not
+blocking. Solution comes in minor"* · *related* RM297, `@source-vs-authority`, `@write-the-sourcerow`
+
+**What is missing.** Provenance for this table is recorded per `(source, layer)` in `sources.csv`. A
+module that mixes ClinPGx-drafted rows with rows a curator took from an article, CPIC or DPWG cannot
+say which is which. So the ClinPGx currency check cannot tell a withdrawn ClinPGx annotation from a
+row that never cited one, and RM297 has to withhold on both.
+
+**The shape, as a starting point.** An optional per-row column naming the source whose accession
+`annotation_id` is. `draft_pharm_variants` fills it, and a curator may set it or leave it empty. The
+check then refuses under `strict` on an absent id only for rows that name ClinPGx, and withholds on the
+rest. Empty stays the unknown arm, never "not ClinPGx".
+
+**To design before building.**
+
+- **The name and the vocabulary.** The value set is the `sources.csv` `source` column, so an
+  undeclared name is a finding. Audit the name against the reserved namespace (P5).
+- **Back-fill for published modules.** An existing drafted row has none. Whether `draft-clinpgx`
+  fills it on a row it recognises as `already_present` is a merge-not-clobber question
+  (`@draft-appends`: drafting appends and never mutates).
+- **Whether other tables want it too.** The same gap exists wherever one table takes rows from
+  several sources. Build it here first, on the table with the incident.
+
+**Price and legality.** A new optional column is minor-legal (P3, P8) and costs the full authored
+price (P9), because a curator has to learn it. That cost is why it waits for a minor and a case,
+rather than shipping with RM297.
 
 # Not format scope
 
