@@ -176,7 +176,7 @@ neither of this entry's guards caught, so the CLI died again beside anything pin
 
 ## RM293 — MITOMAP's `:` deletions are mintable now that rCRS is vendored, and three texts still say Principle 2 forbids it
 
-**Severity** low · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** · **Owner** enricher (`mitomap_build`,
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-27 on `main`, cut 2026-09-27 as `v0.7.3` — a patch** · **Owner** enricher (`mitomap_build`,
 `mitomap_miss_build`, the `mitomap` CLI note) · **Motivating case** RM273's residual, 2026-09-27
 
 **Residuals** none
@@ -204,7 +204,7 @@ bucket table now say what happens instead.
 
 ## RM295 — `cyp2d6_structural` places CYP2D6*4 at a coordinate whose `ref` GRCh38 does not have
 
-**Severity** low · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (a reference-example
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-27 on `main`, cut 2026-09-27 as `v0.7.3` — a patch** (a reference-example
 correction) · **Owner** docs /
 `reference_examples/cyp2d6_structural` · **Motivating case** found by RM291's consumer-join test on
 2026-09-27 · *related* RM291
@@ -225,7 +225,7 @@ ClinVar's own `rs3892097` record. The consumer-join fixture was rebuilt to cover
 
 ## RM291 — no test does what a consumer does: join a compiled module against an independently normalized VCF
 
-**Severity** high · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (a test only) ·
+**Severity** high · **Status** ✅ **SHIPPED 2026-09-27 on `main`, cut 2026-09-27 as `v0.7.3` — a patch** (a test only) ·
 **Owner** compiler (`compiler/tests/`)
 · **Motivating case** the 2026-09-27 postmortem, blindspot B3 and mitigation M4, decided with the
 maintainer that day · *related* RM270, RM267, RM273, RM31
@@ -263,7 +263,7 @@ rebuild. Emptying the RM270 pin was run and turns the test red.
 
 ## RM274 — a same-size, different-content indel is kept as *undecided*, and RM31's reference half that would settle it was never filed
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** · **Owner** enricher
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, cut 2026-09-27 as `v0.7.3` — a patch** · **Owner** enricher
 (the hosting filter in `enrich.py`, the run's sequence proxy) · **Motivating case** the RM31 residual (0.5), found
 unfiled by the 2026-09-27 postmortem sweep (P2) · *related* RM31, RM270, RM273, RM267
 
@@ -307,7 +307,7 @@ check. No field, no code; the structured undecided set is RM272.
 
 ## RM276 — `draft-repeats` drops STRchive's `evidence`, so a locus STRchive grades *Refuted* drafts exactly like a *Definitive* one
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (the drafter
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, cut 2026-09-27 as `v0.7.3` — a patch** (the drafter
 warning); the column is RM294 · **Owner** enricher (`strchive.StrchiveLocus`, `strchive_draft`) · **Motivating
 case** RM170's STRchive half (0.7) and RM165's note, found unhomed by the 2026-09-27 postmortem sweep
 (P4) · *related* RM170, RM165, RM66
@@ -346,7 +346,7 @@ modes, never a gate. Tests use two real catalogue records (`DMD_DMD`, `SCA_EP400
 
 ## RM273 — three more enricher surfaces take an indel's spelling for its identity: the MITOMAP increment, the ClinGen anchor, PubMind
 
-**Severity** high · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** · **Owner** enricher
+**Severity** high · **Status** ✅ **SHIPPED 2026-09-27 on `main`, cut 2026-09-27 as `v0.7.3` — a patch** · **Owner** enricher
 (`mitomap_miss_build`, `clingen_allele.anchor_indel` and its CIViC/LitVar callers, `pubmind_draft`) ·
 **Motivating case** the 2026-09-27 postmortem sweep (P1), residuals of RM171, RM153 and RM134 · *related*
 RM270 (the root: an indel's key is its source's spelling), RM267, RM31
@@ -408,7 +408,7 @@ published `release.json` vocabulary, and it has to be priced before it is built.
 
 ## RM277 — `quote_counter_stale` tells the author to re-run the literature pass, which skips exactly the rows it is about
 
-**Severity** low · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** · **Owner** compiler
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-27 on `main`, cut 2026-09-27 as `v0.7.3` — a patch** · **Owner** compiler
 (the warning text) + enricher (the merge) · **Motivating case**
 [S56](history/CONSUMER_SUGGESTIONS_HISTORY_0_6.md#s56--literaturecsv-can-claim-quotes_authored-0-beside-859-authored-quotes-and-nothing-compares-them), whose second candidate the reply said *"we would still like"*,
 found unfiled by the 2026-09-27 postmortem sweep (P5) · *related* RM119, S56
@@ -462,7 +462,7 @@ Tests: `test_a_quote_authored_after_the_pin_is_re_fetched_and_checked`,
 
 ## RM271 — both Ensembl rungs serve a non-nucleotide allele as a resolved locus: `dbSNP_novariation`, `<.>`, an empty `alts`, an `N` run
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (enricher only) ·
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, cut 2026-09-27 as `v0.7.3` — a patch** (enricher only) ·
 **Owner** enricher (`ensembl._loci_from_rest`, the snapshot reads in `resolver`) · **Motivating case** found 2026-09-27 closing RM268, checking whether the
 live rung copies other non-base allele strings through the way it copied `-`
 
@@ -522,7 +522,7 @@ Tests: `enricher/tests/test_ensembl_non_nucleotide.py`.
 
 ## RM268 — the live Ensembl REST rung writes an unanchored insertion into `resolution.csv`: `ref='-'` at the interbase `start`
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (enricher only) ·
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, cut 2026-09-27 as `v0.7.3` — a patch** (enricher only) ·
 **Owner** enricher (`ensembl._loci_from_rest`) ·
 **Motivating case** found while reproducing
 [S117](CONSUMER_SUGGESTIONS_HISTORY.md#s117--the-ensembl-variation-cache-spells-indel-rsids-at-a-different-anchor-from-clinvar-for-every-insertion-and-for-some-it-names-a-different-event)
@@ -585,7 +585,7 @@ for `0.8`.
 
 ## RM264 — the 0.7.x manifest read an abstract-only miss as a checked quote, and the patch line re-describes it
 
-**Severity** medium · **Status** ✅ **SHIPPED 2026-09-25 on `main`, uncut — a patch** (format +
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-25 on `main`, cut 2026-09-27 as `v0.7.3` — a patch** (format +
 compiler docstring) · **Owner** format (the two `Literature` descriptions) · **Motivating case**
 [S109](CONSUMER_SUGGESTIONS_HISTORY.md), the report behind
 [RM256](#rm256--the-manifests-citation-block-read-an-abstract-only-miss-as-a-checked-quote)

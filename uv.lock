@@ -720,7 +720,7 @@ wheels = [
 
 [[package]]
 name = "just-dna-compiler"
-version = "0.7.1"
+version = "0.7.2"
 source = { editable = "compiler" }
 dependencies = [
     { name = "just-dna-format" },
@@ -747,7 +747,7 @@ dev = [{ name = "pytest", specifier = ">=9.0.3" }]
 
 [[package]]
 name = "just-dna-enricher"
-version = "0.7.2"
+version = "0.7.3"
 source = { editable = "enricher" }
 dependencies = [
     { name = "duckdb" },
@@ -808,7 +808,7 @@ dev = [
 
 [[package]]
 name = "just-dna-format"
-version = "0.7.0"
+version = "0.7.1"
 source = { editable = "schema" }
 dependencies = [
     { name = "cryptography" },

@@ -41,6 +41,29 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-27 — `v0.7.3`: format 0.7.1, compiler 0.7.2, enricher 0.7.3 (a patch, cut from `main`)
+
+**All three packages move, each by a patch, and the intra-workspace floors move with them** (compiler
+needs format `>=0.7.1`; enricher needs format `>=0.7.1` and compiler `>=0.7.2`), because the workspace
+pins each floor to its dependency's current version. Nothing adds a field,
+table, parameter, public function or warning code. The sweep gate over the 16 reference modules,
+compiler 0.7.1 against this cut from one spec root, moved **nothing** on any axis
+(`content_signature`, manifest fields, parquet bytes, parquet schema, warnings), so a compiled module
+needs no recompile for the compiler's sake. The corrections are in what the enricher derives, and a
+module picks them up by re-running it.
+
+- **format 0.7.1** — RM264: the quote-counter descriptions.
+- **compiler 0.7.2** — RM264's docstring and RM277's `quote_counter_stale` remedy text.
+- **enricher 0.7.3** — RM268, RM271 (the Ensembl rungs), RM273 (MITOMAP events, CIViC left-alignment,
+  PubMind), RM274 (same-size indels settled with the reference), RM276 (STRchive's own grade), RM277
+  (stale literature pins re-fetched), RM293 (MITOMAP `:` deletions). Each entry below says what moves.
+- **Tests and examples** — RM291 (a consumer-join test against a normalized ClinVar slice) and RM295
+  (`cyp2d6_structural`'s CYP2D6*4 coordinate).
+
+**After upgrading**: `just-dna-enricher enrich <spec> --rederive` for `resolution.csv`, the literature
+pass online for a stale `literature.csv`, and `just-dna-enricher cache rebuild --only mitomap_miss`
+(a derived lane, never published). No HuggingFace snapshot changed.
+
 ## 2026-09-27 — RM293: MITOMAP's `:` deletions are anchored on rCRS and joined (patch, on `main`)
 
 **`just-dna-enricher` only; a corrected derivation of a derived lane.** MITOMAP writes a deletion with
