@@ -918,9 +918,9 @@ def _compare_ancestry(pgs_id: str, authored: list[str], payload: dict) -> tuple[
     might be behind one of them, and reporting that would be a difference we cannot stand behind.
 
     The comparison is one-directional on purpose. An authored cell **narrower** than the published
-    set is not flagged: claiming a score is validated in fewer populations than the Catalog lists is
-    the conservative direction, and it is a curation decision (a score the Catalog evaluated in eight
-    ancestries at 1.5 % each is not thereby validated in all eight).
+    set is not flagged: claiming a score was developed and evaluated in fewer populations than the
+    Catalog lists is the conservative direction, and it is a curation decision (a score the Catalog
+    evaluated in eight ancestries at 1.5 % each is not thereby fit for all eight).
     """
     published, unresolved = score_ancestries(payload)
     if not published and not unresolved:

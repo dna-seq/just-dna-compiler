@@ -61,7 +61,7 @@ from just_dna_enricher.pgs import (
     score_ancestries,
     score_cohort_names,
 )
-from just_dna_format.pgs import VALID_TRAINING_ANCESTRY
+from just_dna_format.pgs import VALID_TRAINING_ANCESTRY, PgsRow
 from just_dna_format.sources import taints_commercial_use
 from typer.testing import CliRunner
 
@@ -1041,3 +1041,21 @@ def test_the_live_surface_still_answers_200_with_an_empty_body_for_every_negativ
         assert client.score("PGS999999") == {}
         release = client.release()
     assert release.date and dataset_label(release).startswith(PGS_DATASET_PREFIX)
+
+
+#: The word each compared stage of the Catalog's `ancestry_distribution` goes by in prose. A stage added
+#: to `COMPARED_ANCESTRY_STAGES` with no entry here fails the test below, which is the point.
+_STAGE_WORDS = {"dev": "developed", "eval": "evaluated"}
+
+
+def test_training_ancestry_description_names_the_stages_the_check_compares() -> None:
+    """RM289: the description said "validated in" while the only machine reading the column compares
+    it against the Catalog's development AND evaluation samples. `describe`, `requirements` and
+    `json_schemas()` publish the description, so it is a claim every author reads
+    (`@field-description-is-a-claim`); it must name what the check actually compares.
+    """
+    description = PgsRow.model_fields["training_ancestry"].description or ""
+    assert set(COMPARED_ANCESTRY_STAGES) == set(_STAGE_WORDS)
+    missing = [word for stage, word in _STAGE_WORDS.items() if word not in description]
+    assert not missing, (missing, description)
+    assert "validated" not in description, description

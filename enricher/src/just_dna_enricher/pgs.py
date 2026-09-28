@@ -190,7 +190,7 @@ def score_ancestries(payload: dict) -> tuple[frozenset[str], frozenset[str]]:
     answer, and only the negative is unsafe.
 
     Every stratum with a positive share counts, however small. A threshold would be a second judgement
-    about what "the score was validated in" means, on top of the stage choice above.
+    about what "the score was developed and evaluated in" means, on top of the stage choice above.
     """
     distribution = payload.get("ancestry_distribution") or {}
     mapped: set[str] = set()

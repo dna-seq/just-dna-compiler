@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-28 — RM289: two author-facing sentences say what is true (patch, on `main`)
+
+**format** — `PgsRow.training_ancestry`'s description said the score was *validated in* those
+superpopulations. It now says *developed and evaluated in*, naming the PGS Catalog's development and
+evaluation samples, which are the two stages the enricher's `pgs_metadata_agreement` check compares the
+cell against. No value, field or digest moves.
+
+**enricher** — The declared-use gate's skip for a source whose terms are unknown kept its leading
+phrase (*"terms could not be established, so the data is not used"*) and now says that no declared use
+changes the outcome, then quotes the terms' recorded `notice` and `license_url`. For PubMind that is
+why its terms are unsettleable, not a constant left unfilled (S99).
+
 ## 2026-09-27 — RM301: a client reads its credential from `.env` without exporting the file (patch, on `main`)
 
 **enricher** — Constructing `EutilsSettings`, `CrossrefClient`, `PmcIdConverterClient` or

@@ -202,6 +202,46 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM289 — two author-facing sentences state something false: `PgsRow.training_ancestry`'s description, and the licence gate's skip for unknown terms
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-28 on `main`, uncut — a patch** (text only) · **Owner**
+format (`pgs.py`) + enricher (`licensing.py`) · **Motivating case** RM163's own finding and the S99
+reply, both left as sentences, found by the 2026-09-27 postmortem sweep (P15) · *related* RM163, S99,
+RM27, `@field-description-is-a-claim`, `@warning-text-is-api`
+
+**Residuals** won't fix — S99's archived reply still calls RM27's axis undesigned, and answered replies belong to the triage seat
+
+1. **`PgsRow.training_ancestry` said "validated in".** RM163 recorded that *"the name says training,
+   the description says 'validated in'"* and changed nothing. The description is published by
+   `describe`, `requirements` and `json_schemas()`, so it is a claim every author reads.
+2. **The skip sentence for unknown terms read as "not recorded yet".** S99's reply said the gate's
+   sentence (*"terms could not be established, so the data is not used … the absence of a finding
+   either way"*) reads as *not recorded yet* when for PubMind it is *unsettleable*, and called it a
+   patch-level candidate for after 0.7.0.
+
+**What shipped.** No drafter fills `training_ancestry`. The one machine that reads it is RM163's drift
+check, which compares it against the PGS Catalog's `dev` **and** `eval` stages
+(`pgs.COMPARED_ANCESTRY_STAGES`, the discovery GWAS excluded on purpose). So the description now says
+the score was *developed and evaluated in* those superpopulations, naming both Catalog stages and
+excluding the discovery GWAS. A dev-only wording would have matched the column's name and contradicted
+the check, which accepts an evaluation-only ancestry as agreeing. The module docstring and two code
+comments that quoted "validated in" say the same.
+
+`check_declared_use`'s unknown arm keeps its leading phrase and now says that no declared use changes
+the outcome, then quotes what *is* established: the terms' own `notice` and `license_url`. Every source
+held at `commercial_use=None` today (`clingen_allele_registry`, `gwas_catalog`, `mane`, `pgs_catalog`,
+`pubmind`) is a probed absence whose reading is already recorded in `notice`, so the sentence reads as
+*unsettleable, and here is why* rather than as a constant left unfilled. Two `licensing.py` comments
+calling RM27's redistribution axis *undesigned* now say it shipped record-only.
+
+**Why a patch.** Both are text: no field, no vocabulary member, no digest moves.
+
+**Tests.** `enricher/tests/test_pgs.py::test_training_ancestry_description_names_the_stages_the_check_compares`
+ties the description to `COMPARED_ANCESTRY_STAGES` through a stage-to-word map that must cover the
+tuple exactly. `enricher/tests/test_pubmind_licensing.py::test_the_unknown_terms_skip_says_why_the_terms_are_unknown`
+walks every unknown-terms source in `TERMS_BY_SOURCE` against every `declared_use` member. Both failed
+on the previous tree for the stated reason.
+
 ## RM301 — constructing an enricher client exported the whole `.env` into the host's environment
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-27 on `main`, uncut — a patch** (decided with the

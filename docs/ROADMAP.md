@@ -905,28 +905,6 @@ types, which makes a caller's `except` order load-bearing: `@client-exception-co
 applies), or whether the list shape is kept on purpose and the exemption comment is rewritten as a
 decision rather than a deferral. A new public exception base is new surface, so building it is a minor.
 
-## RM289 — two author-facing sentences state something false: `PgsRow.training_ancestry`'s description, and the licence gate's skip for unknown terms
-
-**Severity** low · **Status** open — **a patch** · **Owner** format (`pgs.py`) + enricher
-(`licensing.py`) · **Motivating case** RM163's own finding and the S99 reply, both left as sentences,
-found by the 2026-09-27 postmortem sweep (P15) · *related* RM163, S99, RM27, `@field-description-is-a-claim`
-
-1. **`PgsRow.training_ancestry` says "validated in".** RM163 recorded that *"the name says training,
-   the description says 'validated in'"* and changed nothing. The description still reads
-   *"Superpopulation(s) the score was validated in"* (`schema/src/just_dna_format/pgs.py`). A PGS
-   Catalog score's development ancestry and its evaluation ancestry are different facts, and the
-   column is named for the first. The description is published by `describe`, `requirements` and
-   `json_schemas()`, so it is a claim every author reads. Fix the description to match the name, and
-   check which Catalog field the drafter fills it from before choosing the words.
-2. **The skip sentence for unknown terms reads as "not recorded yet".** S99's reply said the gate's
-   sentence (*"terms could not be established, so the data is not used … the absence of a finding
-   either way"*, `licensing.py`) reads as *not recorded yet* when for PubMind it is *unsettleable*
-   (no party publishes terms for the bytes). It called this *"a patch-level candidate for after 0.7.0
-   publishes"*, and 0.7.0 has shipped. The same reply calls publishing *"RM27's undesigned axis"*,
-   which is stale: RM27 shipped record-only (see RM286).
-
-Both are text. No field, no vocabulary member. A description change moves no digest.
-
 ## RM290 — the "vindicated" reading of an unmatched overlay row exists for one overridable table, and nobody decided the others
 
 **Severity** low · **Status** open — **a patch** (a finding's classification), a decision first ·
