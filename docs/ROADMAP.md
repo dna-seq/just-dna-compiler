@@ -996,55 +996,10 @@ bin"* all change with it.
 
 ## RM297 — the ClinPGx currency check compares a row against an annotation it never cited
 
-**Severity** medium · **Status** open — **a patch** (a warning; the check withholds rather than blocks) ·
-**Owner** enricher (`clinpgx.enrich_clinpgx`) · **Motivating case** S122 in
-CONSUMER_SUGGESTIONS_HISTORY.md · *related* RM298 (the minor that settles it), `@existence-not-identity`,
-`@the-signal-may-already-be-firing-with-the-wrong-words`, `@warning-code-names-the-finding`,
-`@rsid-absent-two-readings`
-
-**Reproduced.** `just-dna-seq/pharmgkb@1.0.0` was drafted from `clinpgx_2025-07-05`. It carries three
-`rs116855232 + azathioprine` rows citing annotation `1184514050` at `1A`. ClinPGx withdrew that
-annotation before `clinpgx_2026-08-05`. Run against the newer snapshot, `enrich_clinpgx` reports
-`module says level 1A, ClinPGx says 3` for all three and `unmatched 0`. The `3` belongs to a different
-annotation, `1450934767` (Toxicity, azathioprine;mercaptopurine), which has been in both snapshots.
-
-**The mechanism.** The lookup tries `(annotation_id, genotype)`, then `(rsid, drug, genotype,
-category)`, then the bare triple. When the row's `annotation_id` is absent from the snapshot, or the
-row has none, the fall-through compares it against whichever ClinPGx annotation shares its category. It
-then reports a level difference against a record the row never cited, and under `strict` refuses on
-it. The same fall-through can also **agree** silently when the other annotation happens to share the
-level.
-
-**Why the check cannot know better, and why that decides the severity.** Nothing marks a row as
-ClinPGx-derived. `sources.csv` records ClinPGx per `(source, layer)`, and so does
-`record_draft_provenance`. `annotation_id` is source-agnostic by its own field description (*"the
-source's own accession"*), and a curator may author a row from an article, CPIC or DPWG with its own
-accession or none. So an `annotation_id` the snapshot does not hold has **three** readings:
-
-- ClinPGx withdrew it (the S122 case).
-- It is mistyped.
-- It was never a ClinPGx accession.
-
-A refusal under the third reading blocks a legitimate row with an error its author cannot clear. A
-row with no `annotation_id` has the same problem one step earlier.
-
-**The patch, decided with the maintainer 2026-09-27: warn, never block.**
-
-- A row whose `annotation_id` is set and absent from the snapshot stops the lookup. It becomes its own
-  finding, warned in both modes and never raised under `strict`. The finding names all three readings
-  and says what the snapshot holds at the triple.
-- A row with no `annotation_id` whose level is compared only through the category or triple fall-through
-  is still reported, but it no longer refuses under `strict`. The row has not claimed that record.
-- An id that is present but lacks that genotype keeps today's fall-through.
-- A conflict reached through the row's own `annotation_id` is unchanged. It keeps its text
-  byte-for-byte (`@warning-text-is-api`) and still refuses under `strict`.
-- A new `ClinPgxResult` field is additive. The new warning code needs its `features/` scenario.
-- `verification.json`'s `findings` for `pgx_evidence_level` counts the new finding, so moving rows out
-  of `conflicts` does not lower a published number for an unchanged module.
-- The patch loosens `strict` for fall-through rows. It must declare that in the CHANGELOG entry.
-
-**What the patch leaves open is RM298's.** Knowing *per row* that a row cites ClinPGx is what would
-let a withdrawn annotation block again, and that needs an authored column.
+✅ **Shipped 2026-09-28 on `main`, uncut — a patch.** The entry is in
+[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md#rm297--the-clinpgx-currency-check-compares-a-row-against-an-annotation-it-never-cited).
+This heading stays only because S122's reply links here, and replies are the triage seat's to
+retarget; delete it in the same commit that moves that link.
 
 ## RM298 — nothing records per row that a `pharm_variants.csv` row came from ClinPGx
 

@@ -18,6 +18,10 @@ definitionally right about it and the severity follows the mode ladder. This is 
 `clin_sig` and allele-function checks, which compare two expert judgements and therefore warn in both
 modes — here a disagreement means the module is stale, not that two panels differ.
 
+**Only for a row compared with the annotation it cites (RM297).** A cited id the snapshot does not hold,
+and a row citing none, are reported in both modes as `withheld` and never refused: nothing per row says
+the row came from ClinPGx at all, which is RM298's.
+
 It does **not** check the annotation text, and it does not write `pharm_variants.csv`. Those tables
 are authored `_TABLE_KINDS`; a network pass filling them would blur the authored/derived line.
 """
@@ -47,7 +51,7 @@ from just_dna_enricher.locations import (
     SNAPSHOT_DATA_DIRNAME,
     resolve_clinpgx_reference,
 )
-from just_dna_enricher.verification import ran, record_verification, skipped
+from just_dna_enricher.verification import examples, ran, record_verification, skipped
 
 logger = logging.getLogger(__name__)
 
@@ -73,10 +77,72 @@ class EvidenceConflict:
         return f"{where}: module says level {self.authored}, ClinPGx says {self.reported}"
 
 
+#: The two findings RM297 withholds from `strict`, one code per finding (`@warning-code-names-the-finding`).
+#: Lane-local and prefixed (`@a-lane-local-vocabulary-may-not-shadow-a-schema-one`), and deliberately
+#: not `VALID_WARNING_CODES` members: that vocabulary is the compiler's, and an enricher finding reaches
+#: a compile through the attestation as `verification_findings_recorded`. These travel in the record's
+#: `detail`, the shape `civic_refutation`'s two codes set.
+#:
+#: * `clinpgx_annotation_not_in_snapshot` — the row cites an `annotation_id` the snapshot does not hold.
+#:   Three readings, and nothing per row says which (RM298): ClinPGx withdrew it, it is mistyped, or it
+#:   was never a ClinPGx accession. The third is why this cannot refuse: `annotation_id` is the
+#:   source's own accession, whatever the source, and a curator's DPWG row is not stale ClinPGx data.
+#: * `clinpgx_level_differs_from_uncited_annotation` — the row cites no annotation, and the one it was
+#:   matched to through its category or the bare triple carries another level. Reported, because the
+#:   difference may be real; not refused, because the row never claimed that record.
+CLINPGX_ANNOTATION_NOT_IN_SNAPSHOT: str = "clinpgx_annotation_not_in_snapshot"
+CLINPGX_LEVEL_DIFFERS_FROM_UNCITED: str = "clinpgx_level_differs_from_uncited_annotation"
+VALID_CLINPGX_WITHHELD_CODES: frozenset[str] = frozenset(
+    {CLINPGX_ANNOTATION_NOT_IN_SNAPSHOT, CLINPGX_LEVEL_DIFFERS_FROM_UNCITED}
+)
+
+
+@dataclass
+class WithheldLevel:
+    """An authored evidence level this pass could not hold against the record it cites (RM297).
+
+    `held` is what the snapshot carries for the row's (rsid, drug, genotype) — narrowed to its
+    category where the row states one — sorted, and empty when the snapshot holds nothing there.
+    """
+
+    code: str
+    rsid: str
+    drug: str
+    genotype: str | None
+    authored: str
+    annotation_id: str | None
+    held: tuple[str, ...]
+
+    def __str__(self) -> str:
+        where = f"{self.rsid} + {self.drug}"
+        if self.genotype:
+            where += f" [{self.genotype}]"
+        there = (
+            f"the snapshot holds level(s) {', '.join(self.held)} there"
+            if self.held
+            else "the snapshot holds nothing there"
+        )
+        if self.code == CLINPGX_ANNOTATION_NOT_IN_SNAPSHOT:
+            return (
+                f"{where}: module says level {self.authored} citing annotation {self.annotation_id}, "
+                f"which this ClinPGx snapshot does not hold, and {there}. Three readings: ClinPGx "
+                f"withdrew it, it is mistyped, or it was never a ClinPGx accession. Nothing per row "
+                f"says which, so the level is not compared and strict does not refuse on it."
+            )
+        return (
+            f"{where}: module says level {self.authored} and cites no annotation_id; {there}. The row "
+            f"never claimed that record, so strict does not refuse on it."
+        )
+
+
 @dataclass
 class ClinPgxResult:
     rows: list[SourceRow] = field(default_factory=list)
     conflicts: list[EvidenceConflict] = field(default_factory=list)
+    #: Findings reported in both modes and never refused under strict (RM297): a cited annotation the
+    #: snapshot lacks, or a difference from an annotation the row never cited. `conflicts` keeps only
+    #: what the strict gate may refuse on.
+    withheld: list[WithheldLevel] = field(default_factory=list)
     unmatched: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     dataset: str | None = None
@@ -276,6 +342,7 @@ def enrich_clinpgx(
     # is the primary key, the category is the secondary one, and the bare triple is a last resort
     # that reports ambiguity instead of guessing.
     by_annotation: dict[tuple[str, str | None], str] = {}
+    known_annotations: set[str] = set()
     by_category: dict[tuple[str, str, str | None, str | None], str] = {}
     by_triple: dict[tuple[str, str, str | None], set[str]] = {}
     for row in snapshot_rows:
@@ -285,6 +352,7 @@ def enrich_clinpgx(
         genotype = _normalize_genotype(row["genotype"])
         category = _normalize_category(row["phenotype_category"])
         by_annotation.setdefault((row["annotation_id"], genotype), level)
+        known_annotations.add(str(row["annotation_id"]))
         for drug in MULTI_SEP.split(row["drugs"] or ""):
             drug = drug.strip().lower()
             if not drug:
@@ -303,6 +371,22 @@ def enrich_clinpgx(
         drug, genotype = row.drug.strip().lower(), _normalize_genotype(row.genotype)
         category = _normalize_category(row.phenotype_category)
         reported: str | None = None
+        if row.annotation_id and row.annotation_id not in known_annotations:
+            # RM297: the row cites a record this snapshot does not hold. Falling through compared it
+            # against another annotation that happened to share its category (S122: a withdrawn 1A
+            # read as "ClinPGx says 3") — so the lookup stops here and says what is held instead.
+            result.withheld.append(
+                WithheldLevel(
+                    CLINPGX_ANNOTATION_NOT_IN_SNAPSHOT,
+                    row.rsid,
+                    row.drug,
+                    row.genotype,
+                    row.evidence_level,
+                    row.annotation_id,
+                    _held(by_category, by_triple, row.rsid, drug, genotype, category),
+                )
+            )
+            continue
         if row.annotation_id:
             reported = by_annotation.get((row.annotation_id, genotype))
         if reported is None and category is not None:
@@ -322,13 +406,33 @@ def enrich_clinpgx(
         if reported is None:
             result.unmatched.append(f"{row.rsid} + {row.drug}")
             continue
-        if reported != row.evidence_level:
-            result.conflicts.append(
-                EvidenceConflict(row.rsid, row.drug, row.genotype, row.evidence_level, reported)
+        if reported == row.evidence_level:
+            continue
+        if not row.annotation_id:
+            # The row claimed no record, so the category/triple match is a neighbour, not a citation:
+            # reported in both modes, never refused (RM297). A cited id present without this genotype
+            # keeps the fall-through into `conflicts` below, as before.
+            result.withheld.append(
+                WithheldLevel(
+                    CLINPGX_LEVEL_DIFFERS_FROM_UNCITED,
+                    row.rsid,
+                    row.drug,
+                    row.genotype,
+                    row.evidence_level,
+                    None,
+                    (reported,),
+                )
             )
+            continue
+        result.conflicts.append(
+            EvidenceConflict(row.rsid, row.drug, row.genotype, row.evidence_level, reported)
+        )
 
     for conflict in result.conflicts:
         logger.warning("ClinPGx evidence-level difference — %s", conflict)
+    for withheld in result.withheld:
+        result.warnings.append(str(withheld))
+        logger.warning("ClinPGx evidence level not compared — %s", withheld)
     if result.unmatched:
         result.warnings.append(
             f"{len(result.unmatched)} authored annotation(s) have no matching ClinPGx record: "
@@ -336,7 +440,8 @@ def enrich_clinpgx(
             f"point-in-time slice and a curator may annotate what ClinPGx has not."
         )
 
-    # Strict refuses a *stale* level, because that is a currency fact rather than an opinion.
+    # Strict refuses a *stale* level, because that is a currency fact rather than an opinion — and only
+    # one reached through the row's own citation. `withheld` never refuses (RM297).
     if mode == "strict" and result.conflicts:
         raise ClinPgxEnrichmentError(
             f"strict: {len(result.conflicts)} authored evidence level(s) disagree with ClinPGx "
@@ -355,6 +460,35 @@ def enrich_clinpgx(
     if write:
         merge_sources_file(result.rows, spec_dir, error=ClinPgxEnrichmentError)
     return _attest(result, spec_dir, write=write)
+
+
+def _held(
+    by_category: dict[tuple[str, str, str | None, str | None], str],
+    by_triple: dict[tuple[str, str, str | None], set[str]],
+    rsid: str,
+    drug: str,
+    genotype: str | None,
+    category: str | None,
+) -> tuple[str, ...]:
+    """What the snapshot carries at a row's (rsid, drug, genotype): its category's level when the row
+    states a category the snapshot has there, otherwise every level at the triple, sorted."""
+    if category is not None and (rsid, drug, genotype, category) in by_category:
+        return (by_category[(rsid, drug, genotype, category)],)
+    return tuple(sorted(by_triple.get((rsid, drug, genotype), set())))
+
+
+def _withheld_detail(withheld: list[WithheldLevel]) -> str | None:
+    """The withheld findings grouped by code, for the record's `detail`; `None` when there are none,
+    so a run with nothing withheld writes the record it always wrote."""
+    parts = []
+    for code in sorted(VALID_CLINPGX_WITHHELD_CODES):
+        group = [w for w in withheld if w.code == code]
+        if group:
+            named = examples([f"{w.rsid} + {w.drug}" for w in group])
+            parts.append(f"{len(group)} {code}: {named}")
+    if not parts:
+        return None
+    return "; ".join(parts) + " (counted as findings, never refused under strict)"
 
 
 def _attest(result: ClinPgxResult, spec_dir: Path, *, write: bool) -> ClinPgxResult:
@@ -379,9 +513,12 @@ def _attest(result: ClinPgxResult, spec_dir: Path, *, write: bool) -> ClinPgxRes
         else ran(
             "pgx_evidence_level",
             subjects=result.compared,
-            findings=len(result.conflicts),
+            # RM297 moved rows out of `conflicts` without making them any less a disagreement, so the
+            # published count stays what it was for an unchanged module.
+            findings=len(result.conflicts) + len(result.withheld),
             source="clinpgx",
             release=result.dataset,
+            detail=_withheld_detail(result.withheld),
         )
     )
     if write:

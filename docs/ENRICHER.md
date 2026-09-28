@@ -23,7 +23,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` | — *(recorded onto the row, not attested)* |
 | **Clinical significance** | authored `clin_sig` vs **every annotation authority** consulted — ClinVar and, since 0.7, PubMind — allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the N-authority concordance record by `clinical.clin_sig_concordance` (0.7, RM130 + RM134 § B) | `clinical_significance` |
 | **Answered-call currency** | an authority's call **now** vs what it said when the author's `overrides.csv` answer was written (0.7, RM151) | `clinical.answered_call_shift` → `concordance.shifted_authority_calls` (**warns in both modes**; the baseline is the previous run's `clin_sig_authority_calls.csv`, so it is read before the commit rewrites it and a move is observable exactly once) | — *(logged; the record it reads is the attestation)* |
-| **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does) | `pgx_evidence_level` |
+| **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does — on a row's own cited annotation only; RM297) | `pgx_evidence_level` |
 | **Citation existence** | a cited `pmid` vs PubMed | `literature.enrich_literature` | `citation_existence` |
 | **Identifier agreement** | an authored `doi` vs the registry's for that PMID | `literature.enrich_literature` | `citation_identifier` |
 | **PMC id agreement** | an authored `PMC…` in the `pmid` cell vs PubMed's for that record (0.6) | `literature._pmcid_conflicts` (attested under `citation_identifier`, the same question one registry over) | `citation_identifier` |
@@ -4601,6 +4601,22 @@ compared against an arbitrary one.
 Severity follows the **mode ladder**, unlike the allele-function check beside it. An evidence level
 is ClinPGx's own metadata about its own annotation, so a difference means the module is stale — not
 that two expert panels disagree.
+
+**That holds only for a row compared with the annotation it cites (RM297, from S122).** Nothing marks a
+row as ClinPGx-derived, and `annotation_id` is the source's own accession whatever the source. So two
+cases are reported in both modes and **never refused under `strict`**, in `ClinPgxResult.withheld`:
+
+- `clinpgx_annotation_not_in_snapshot`: the row cites an id the snapshot does not hold. The lookup
+  stops there instead of falling through to a neighbour sharing the category. The warning names three
+  readings (ClinPGx withdrew it, it is mistyped, it was never a ClinPGx accession) and what the
+  snapshot holds at the row's triple.
+- `clinpgx_level_differs_from_uncited_annotation`: the row cites no id, and the annotation its
+  category or triple reached carries another level.
+
+A cited id that is present but lacks the row's genotype keeps the fall-through and can still refuse.
+Both codes are lane-local, not `VALID_WARNING_CODES` members. They are counted in the record's
+`findings` and named in its `detail`, so an unchanged module publishes the same number it did before.
+Knowing per row that a row cites ClinPGx is RM298's.
 
 The declared-use gate still applies even though nothing is fetched: the terms were accepted when the
 snapshot was *built*, and using it is the same act.

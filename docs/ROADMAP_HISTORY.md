@@ -202,6 +202,81 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM297 — the ClinPGx currency check compares a row against an annotation it never cited
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-28 on `main`, uncut — a patch** (a warning; the check withholds rather than blocks) ·
+**Owner** enricher (`clinpgx.enrich_clinpgx`) · **Motivating case** S122 in
+CONSUMER_SUGGESTIONS_HISTORY.md · *related* RM298 (the minor that settles it), `@existence-not-identity`,
+`@the-signal-may-already-be-firing-with-the-wrong-words`, `@warning-code-names-the-finding`,
+`@rsid-absent-two-readings`
+
+**Reproduced.** `just-dna-seq/pharmgkb@1.0.0` was drafted from `clinpgx_2025-07-05`. It carries three
+`rs116855232 + azathioprine` rows citing annotation `1184514050` at `1A`. ClinPGx withdrew that
+annotation before `clinpgx_2026-08-05`. Run against the newer snapshot, `enrich_clinpgx` reports
+`module says level 1A, ClinPGx says 3` for all three and `unmatched 0`. The `3` belongs to a different
+annotation, `1450934767` (Toxicity, azathioprine;mercaptopurine), which has been in both snapshots.
+
+**The mechanism.** The lookup tries `(annotation_id, genotype)`, then `(rsid, drug, genotype,
+category)`, then the bare triple. When the row's `annotation_id` is absent from the snapshot, or the
+row has none, the fall-through compares it against whichever ClinPGx annotation shares its category. It
+then reports a level difference against a record the row never cited, and under `strict` refuses on
+it. The same fall-through can also **agree** silently when the other annotation happens to share the
+level.
+
+**Why the check cannot know better, and why that decides the severity.** Nothing marks a row as
+ClinPGx-derived. `sources.csv` records ClinPGx per `(source, layer)`, and so does
+`record_draft_provenance`. `annotation_id` is source-agnostic by its own field description (*"the
+source's own accession"*), and a curator may author a row from an article, CPIC or DPWG with its own
+accession or none. So an `annotation_id` the snapshot does not hold has **three** readings:
+
+- ClinPGx withdrew it (the S122 case).
+- It is mistyped.
+- It was never a ClinPGx accession.
+
+A refusal under the third reading blocks a legitimate row with an error its author cannot clear. A
+row with no `annotation_id` has the same problem one step earlier.
+
+**The patch, decided with the maintainer 2026-09-27: warn, never block.**
+
+- A row whose `annotation_id` is set and absent from the snapshot stops the lookup. It becomes its own
+  finding, warned in both modes and never raised under `strict`. The finding names all three readings
+  and says what the snapshot holds at the triple.
+- A row with no `annotation_id` whose level is compared only through the category or triple fall-through
+  is still reported, but it no longer refuses under `strict`. The row has not claimed that record.
+- An id that is present but lacks that genotype keeps today's fall-through.
+- A conflict reached through the row's own `annotation_id` is unchanged. It keeps its text
+  byte-for-byte (`@warning-text-is-api`) and still refuses under `strict`.
+- A new `ClinPgxResult` field is additive. The new warning code needs its `features/` scenario.
+- `verification.json`'s `findings` for `pgx_evidence_level` counts the new finding, so moving rows out
+  of `conflicts` does not lower a published number for an unchanged module.
+- The patch loosens `strict` for fall-through rows. It must declare that in the CHANGELOG entry.
+
+**What the patch leaves open is RM298's.** Knowing *per row* that a row cites ClinPGx is what would
+let a withdrawn annotation block again, and that needs an authored column.
+
+**What shipped.** `enrich_clinpgx` collects every row a cited id cannot settle into a new
+`ClinPgxResult.withheld` list of `WithheldLevel`s, each carrying one of two lane-local codes
+(`VALID_CLINPGX_WITHHELD_CODES`): `clinpgx_annotation_not_in_snapshot` for a cited id the snapshot
+does not hold, and `clinpgx_level_differs_from_uncited_annotation` for a row with no id whose category
+or triple match carries another level. The first stops the lookup at the cited id and quotes what the
+snapshot holds at the row's category, or else at its triple. Each lands in `warnings` in both modes, and
+the `strict` gate reads `conflicts` only. The `pgx_evidence_level` record counts `conflicts + withheld`
+as `findings` and names the codes in `detail`, which stays `None` when nothing is withheld, so a run
+with nothing withheld writes the record it always wrote. An own-id conflict, and a cited id present
+without the row's genotype, are unchanged. The codes are not `VALID_WARNING_CODES` members: that
+vocabulary is the compiler's, and the finding reaches a compile as `verification_findings_recorded`,
+the shape `civic_refutation`'s two codes set. **One widening beyond the entry's letter**: a cited id
+absent from the snapshot with nothing at its triple used to be an `unmatched` miss and is now this
+finding, because the id is the claim and the entry makes an absent id its own finding.
+
+**Tests.** `enricher/tests/test_clinpgx.py`: the S122 shape (a cited id derived to be absent from the
+slice, at a level its category neighbour does not carry) and a row citing no id both refused under
+`strict` on the previous tree and now pass with one `withheld` each. The record still counts the
+withheld row as a finding. An own-id conflict keeps its text byte for byte, and the two codes have
+pairwise distinct sentences. The `features/` scenario sits beside `@check:pgx_evidence_level`.
+
+**Residuals** RM298
+
 ## RM289 — two author-facing sentences state something false: `PgsRow.training_ancestry`'s description, and the licence gate's skip for unknown terms
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-28 on `main`, uncut — a patch** (text only) · **Owner**

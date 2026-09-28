@@ -51,6 +51,21 @@ a fresh `enrich` mint ids that disagree with `resolution.csv`, gnomAD and ClinVa
 to say why. The locked version stays 2.3.3, so nothing mints differently today. A consumer that needs
 `ga4gh.vrs` 2.4 (metakb's server pins a 2.4 alpha) conflicts until RM304 lifts the cap.
 
+## 2026-09-28 — RM297: the ClinPGx currency check no longer refuses on an annotation a row never cited (patch, on `main`)
+
+**enricher** — `enrich_clinpgx` (`clinpgx check`) stops at a row's cited `annotation_id` when the
+snapshot does not hold it, instead of comparing the row against another annotation that shares its
+category (S122: a withdrawn `1A` read as *"ClinPGx says 3"*). The warning names three readings
+(withdrawn, mistyped, never a ClinPGx accession) and what the snapshot holds there. A row citing no
+`annotation_id` whose category or triple match carries another level is still reported. Both land in
+the new `ClinPgxResult.withheld` and in `warnings`, coded `clinpgx_annotation_not_in_snapshot` and
+`clinpgx_level_differs_from_uncited_annotation`. **`strict` is loosened for these rows:** they no
+longer refuse. A difference reached through the row's own cited annotation still refuses, and its text
+is unchanged. `verification.json`'s `pgx_evidence_level` counts both lists in `findings` and names the
+codes in `detail`, so an unchanged module does not publish a lower number. A cited id with no match at
+all used to be an `unmatched` miss and is now a finding. RM298 is the per-row source column that would
+let a withdrawal refuse again.
+
 ## 2026-09-28 — RM289: two author-facing sentences say what is true (patch, on `main`)
 
 **format** — `PgsRow.training_ancestry`'s description said the score was *validated in* those

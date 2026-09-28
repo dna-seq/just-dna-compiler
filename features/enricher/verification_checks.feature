@@ -214,6 +214,24 @@ Feature: The verification checks and their three outcomes
     # `(variant_key, drug, genotype, phenotype_category, annotation_id)`; the bare triple is a bug
     # (`@clinpgx-per-genotype`, `@clinpgx-full-key`).
 
+  # source: enricher/src/just_dna_enricher/clinpgx.py
+  # anchor: WithheldLevel
+  Scenario Outline: a level the row cannot be held to is reported and never refused
+    Given a pharm_variants.csv row that <situation>
+    When `clinpgx check --strict` runs
+    Then the run is not refused, and the record detail names <code>
+    And the warning says "strict does not refuse on it"
+    And the record counts it as a finding
+    # RM297, from S122: a withdrawn `1A` annotation fell through to a neighbour sharing its category and
+    # read as "ClinPGx says 3". Nothing per row says a row is ClinPGx-derived (that is RM298), so an id
+    # the snapshot lacks has three readings, and one of them is a legitimate non-ClinPGx accession.
+    # A conflict reached through the row's own cited annotation still refuses.
+
+    Examples:
+      | situation                                                           | code                                           |
+      | cites an annotation_id the snapshot does not hold                   | clinpgx_annotation_not_in_snapshot             |
+      | cites no annotation_id and its category match carries another level | clinpgx_level_differs_from_uncited_annotation  |
+
   # source: enricher/src/just_dna_enricher/drug_labels.py
   # anchor: verification_record
   @check:regulator_label_agreement
