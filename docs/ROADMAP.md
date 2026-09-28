@@ -792,23 +792,21 @@ remains a per-check document.
 takes. The shape question is where it lives: in `verification.json` beside the per-check records, or
 in the run's own output (`EnrichmentResult`), which RM272 is already widening on the `0.8` branch.
 
-## RM285 — the MITOMAP lane's three open remainders: the `:` deletions no pass anchors, `VUS*` withheld, and the unrated-miss identity rows
+## RM285 — the MITOMAP lane's two open remainders: `VUS*` withheld, and the unrated-miss identity rows
 
-**Severity** low · **Status** open — **a patch** (the anchoring pass), the other two are decisions ·
-**Owner** enricher (`mitomap_build`, `mitomap_miss_build`, `mitomap_draft`) · **Motivating case**
+**Severity** low · **Status** open — **a patch** (either answer is drafter behaviour), two decisions first; the anchoring pass shipped as RM293 ·
+**Owner** enricher (`mitomap_miss_build`, `mitomap_draft`) · **Motivating case**
 RM171's *"Still open, and none of it blocking"* paragraph and PROPOSAL_0_7_PT3 § *What a first cut
-still owes*, never filed, found by the 2026-09-27 postmortem sweep (P12) · *related* RM171, RM273
+still owes*, never filed, found by the 2026-09-27 postmortem sweep (P12) · *related* RM171, RM273, RM293
 
 RM171 listed what it left, and nothing carried the list. Checked on 2026-09-27 against the local
 `mitomap_miss` snapshot (47 unmintable rows, 388 unrated misses).
 
-1. **The `:` deletions want an enricher pass that anchors them against the rCRS.** MITOMAP writes a
-   deletion as `refna="TA"` against `regna=":"`, which needs the preceding rCRS base to become a VCF
-   allele. The lane counts them as `unmintable`. Thirteen of the sixteen bracketed rows that motivated
-   RM171 were these. Anchoring in the enricher is legal (the tier may fetch). The chrM sequence is
-   16,569 bases and fetches in one request. This is the patch half. Anchor through
-   `clingen_allele.anchor_indel` only after RM273 has fixed its left-alignment claim, or the new rows
-   inherit it.
+1. **Closed by RM293 (2026-09-27, `v0.7.3`).** The `:` deletions (`refna="TA"` against `regna=":"`)
+   are anchored on the vendored rCRS base at `position - 1` in `mitomap_miss_build`, checked against
+   rCRS and joined through RM273's event key: 39 of the 47 `unmintable` rows left that bucket, and the
+   8 that stay are `ref_equals_alt` and `non_nucleotide`. RM293 was filed as RM273's residual and did
+   not name this entry; the two now point at each other.
 2. **`VUS*` is withheld rather than understood.** A MITOMAP legend, or McCormick 2020 read in full,
    decides whether it maps to a `clin_sig` member. Until then the withhold is right, and this is a
    reading task, not code.

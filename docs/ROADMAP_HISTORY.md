@@ -177,9 +177,11 @@ neither of this entry's guards caught, so the CLI died again beside anything pin
 ## RM293 — MITOMAP's `:` deletions are mintable now that rCRS is vendored, and three texts still say Principle 2 forbids it
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-27 on `main`, cut 2026-09-27 as `v0.7.3` — a patch** · **Owner** enricher (`mitomap_build`,
-`mitomap_miss_build`, the `mitomap` CLI note) · **Motivating case** RM273's residual, 2026-09-27
+`mitomap_miss_build`, the `mitomap` CLI note) · **Motivating case** RM273's residual, 2026-09-27 ·
+*related* RM285
 
-**Residuals** none
+**Residuals** RM285 — this was its item 1, which it did not name when it shipped; the `VUS*` reading
+and the unrated-miss call stay there
 
 MITOMAP writes a deletion right-anchored (`refna="TA"`, `regna=":"`), and the lane puts those rows in
 `unmintable` (47 on the local build) because a VCF pair needs the rCRS base at `position - 1`. The
@@ -4518,7 +4520,7 @@ relationships (a miss key is absent from the parent, a photocopy key is present,
 `clin_sig` is the normalizer's image of its bracket, the four buckets partition the source rows, a
 child whose parent pin does not match the parent on disk is stale).
 
-Still open, and none of it blocking (RM285 carries the first three, filed 2026-09-27): **`VUS*` is withheld rather than understood** — a legend, or
+Still open, and none of it blocking (RM285 carries the first three, filed 2026-09-27; the third, the anchoring pass, shipped as RM293): **`VUS*` is withheld rather than understood** — a legend, or
 McCormick 2020 read in full, would revisit it, and until then a rated-miss count that silently included
 those rows would be a lie. **The 388 unrated misses are a real identity increment with no mappable
 class**, counted and not drafted; whether their identity earns a row at all is a second, smaller call.
