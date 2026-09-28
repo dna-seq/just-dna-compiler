@@ -1124,15 +1124,10 @@ rework), which constrains every option below.
 - Should drafting ever fill a register? The house answer so far is that a provider fills facts, never
   prose; a register is prose.
 
-# Not format scope
-
-Listed so they are not mistaken for format scope, and so nobody re-proposes them.
-
 ## RM304 — a `vrs_id` does not say which VRS minted it, and VRS 2.1 moves some insertion ids
 
-**Severity** high (because RM270 would carry the id into the artifact) · **Status** open — **a minor,
-release undecided; land before RM270** · **Owner** format (where the version is recorded) + enricher
-(the minting) · **Motivating case** [GKS_SURVEY.md](probes/GKS_SURVEY.md) §0 findings 2 and 3,
+**Severity** high · **Status** open — **a minor, release undecided**, to land before RM270 · **Owner**
+format (where the version is recorded) + enricher (the minting) · **Motivating case** [GKS_SURVEY.md](probes/GKS_SURVEY.md) §0 findings 2 and 3,
 2026-09-28
 
 **Two facts, both measured in the survey.**
@@ -1239,6 +1234,10 @@ v46 lane too (about one more day)? And the answering surface: `gene_exons(symbol
 `gene_span`, or a position → (gene, transcript, exon) lookup. The attribution rule in `gene_spans.py`
 constrains both: an exon lookup answers *where*, and AlphaGenome's own per-record gene remains the
 attribution.
+
+# Not format scope
+
+Listed so they are not mistaken for format scope, and so nobody re-proposes them.
 
 ## RM7 — Evaluation-output / report-card schema
 
