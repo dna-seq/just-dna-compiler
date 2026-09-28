@@ -1172,6 +1172,118 @@ rework), which constrains every option below.
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
 
+## RM304 — a `vrs_id` does not say which VRS minted it, and VRS 2.1 moves some insertion ids
+
+**Severity** high (because RM270 would carry the id into the artifact) · **Status** open — **a minor,
+release undecided; land before RM270** · **Owner** format (where the version is recorded) + enricher
+(the minting) · **Motivating case** [GKS_SURVEY.md](probes/GKS_SURVEY.md) §0 findings 2 and 3,
+2026-09-28
+
+**Two facts, both measured in the survey.**
+
+1. **The id carries no version.** For BRAF V600E (`chr7:140753336 A>T`) three `ga4gh:VA.` ids exist:
+   ours under VRS 2.0 (`…Otc5ovrw…`), vrs-python's VRS 1.3 computation (`…fZiBjQEo…`), and the ClinGen
+   Allele Registry's (`…HaPTmn-r…`, a VRS 1.x shape). All three are well-formed and none says which
+   spec produced it. Nothing in the repo records the version: `grep -rni 'vrs_version'` over
+   `schema/`, `enricher/` and SCHEMAS.md finds nothing.
+2. **VRS 2.1.0 (2026-09-01) changes ambiguous-insertion normalization**: it now picks the smallest
+   repeat-unit factor where 2.0 picked the greatest, and that moves the digest of affected alleles.
+   vrs-python has not implemented it. Both 2.3.3 (ours) and 2.4.0a4 still iterate the factors
+   descending, and the change is open as vrs-python issue #637. Today everyone we compare against
+   mints 2.0.x ids: our enricher, ClinVar-GKM and gnomAD. The first vrs-python release that ships the
+   2.1 rule will make a fresh `enrich` mint a different id for some insertions than the one stored
+   in `resolution.csv` and the one gnomAD publishes, with nothing to say why.
+
+**Why it is filed before RM270.** RM270's candidate repair carries the enricher's `vrs_id` onto the
+parquets as the spelling-independent join key. A key whose derivation silently changes under a
+dependency upgrade is the failure RM270 exists to remove, moved one layer down.
+
+**Mitigation shipped separately, the same day.** `ga4gh.vrs` is capped `<2.4` in the enricher, so no
+upgrade can change the rule unannounced. The cap is a stopgap. It is lifted by this item, never
+quietly: once the version is recorded, an upgrade becomes a declared re-id instead of a silent one.
+
+**Open questions.**
+
+1. **Where the version lives.** It could be one run-level fact on `resolution.csv`'s provenance or in
+   the manifest (every id in a run is minted by one library), or a column beside `vrs_id`. Both
+   spellings of one allele can coexist only in the column form. The run-level form is cheaper, and a
+   merge-not-clobber sidecar mixing runs is the case that breaks it (`@currency-cannot-be-a-column`
+   asks which run writes it).
+2. **What the verify pass does on a version mismatch.** Recomputing a stored 2.0 id under 2.1 gives a
+   mismatch that is neither corruption nor a wrong event. It needs its own reason, never the
+   existing mismatch error (`@vrs-three-outcomes`).
+3. **A pinned insertion.** The ground-truth tests pin substitutions against gnomAD. `rs72613567`
+   (`4-87310240-T-TA` → `ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7`, present in ClinVar-GKM) is the
+   insertion to pin, behind `JUST_DNA_NETWORK_TESTS=1` since indel minting reads the SeqRepo proxy.
+   The test is what turns a future rule change red.
+
+## RM305 — ClinVar-GKM's allele table is an offline, independent witness for where an indel sits, and nothing reads it
+
+**Severity** medium · **Status** open — **a minor, release undecided** (a new cache lane and a check)
+· **Owner** enricher (a lane beside the ClinVar VCF lane, and the check) · **Motivating case**
+[GKS_SURVEY.md](probes/GKS_SURVEY.md) §0 finding 4, 2026-09-28 · *related* RM267, RM270, RM292
+
+**What exists.** ClinGen's ClinVar-GKM pipeline republishes each ClinVar release in GA4GH form. Its
+`allele.parquet` is 1.09 GB, **CC0**, and holds 4.46 M alleles, each with a VRS 2.0 id beside
+`spdi`, `hgvs.g` and a gnomAD-style VCF expression. The survey found **exactly** the two insertion
+ids RM270 minted (`rs72613567`, `rs77944059`) in it, and our stdlib SNV ids matched it byte for byte
+on the two rows sampled.
+
+**Why it matters here.** Three open items need to know whether a placement is right, and each checks
+it today against a source that shares our failure: RM267's anchoring error comes from the Ensembl
+snapshot, RM270's respelling from the source's spelling, and RM292 asks that a check say what it
+checked against. A table built by a different pipeline, with a spelling-independent id on every row,
+is a witness none of them has. It **does not replace** the ClinVar VCF lane: clinical significance
+still comes from there, and this lane is used for placement only.
+
+**Things the survey recorded that the design must carry.**
+
+- **Maturity.** The dataset is at 1.0-rc3, and a breaking change landed mid-RC. The lane pins a
+  release and records it in `release.json` (RM303's model, if it has landed).
+- **Currency.** The latest weekly delta was dated 2026-08-22, about five weeks stale at survey time,
+  so the lane owes a currency finding (`@currency-asks-the-source-not-the-cache`).
+- **Distribution** is Google Cloud Storage, not FTP. The builder's download is a new transport and
+  owes the client contract (`@client-exception-contract`).
+- **VRS version.** Its ids are 2.0.x (`vrs_output_2_0_1.schema.json`). Comparing them against ours
+  is exactly where RM304's version record is needed.
+
+**Open questions.** Is it a new check, or the witness an existing check gains (RM292's shape)? Should
+the lane carry the full 4.46 M rows, or only the 270,161 `ReferenceLengthExpression` alleles and
+other indels, where placement is actually in doubt?
+
+## RM306 — no exon structure anywhere in the tier, and AlphaGenome's gene attribution wants one
+
+**Severity** medium · **Status** open — **a minor, release undecided** (a second table in the MANE
+lane) · **Owner** enricher (`mane_build`, `gene_spans`) · **Motivating case**
+[GKS_SURVEY.md](probes/GKS_SURVEY.md) §5, 2026-09-28; the maintainer's ask for gene/exon coordinate
+mapping behind the AlphaGenome lane
+
+**What exists.** `gene_spans.py` reads the MANE *summary* for one span per gene, and its docstring
+fixes the rule: a span is a query hint, never an attribution. Nothing in the tier knows an exon.
+`grep -ri exon` over the enricher finds only `civic_identities.py`.
+
+**The measured options, lightest first.**
+
+| Option | Size | Covers | Misses | Licence |
+|---|---|---|---|---|
+| **MANE Ensembl GTF**, a second file in the existing MANE lane | 8.6 MB gz; 19,437 transcripts, 204,815 exons, CDS and UTR rows, `exon_number`, versioned ENSG/ENST, RefSeq xref | exon boundaries and numbers for MANE Select + Plus Clinical | non-coding genes; non-MANE isoforms | NCBI policy, already `MANE_TERMS` |
+| **GENCODE v46 basic GTF** | 29 MB gz | the exact annotation AlphaGenome used, all biotypes | MANE selection, unless joined by ENST | "open access", no named licence (`@no-named-licence`) |
+| cool-seq-tool + UTA + SeqRepo | 309 MB install, a UTA Postgres service, 13.5 GB SeqRepo | any transcript version, c.↔g. with exon offsets | nothing AlphaGenome attribution needs | UTA is CC BY-SA 4.0 |
+
+The third is refused on weight, not on merit. It needs a database service and a 13.5 GB store, which
+conflicts with the tier's `--offline` provisioning and with "builder in polars, runtime in duckdb".
+
+**Release skew to state, not hide.** MANE 1.5 corresponds to Ensembl 116, while AlphaGenome was
+annotated with GENCODE v46 (Ensembl 112). An exon boundary that moved between the two releases
+attributes differently in each. The lane records both release labels, and a lookup answers in MANE's
+frame by default.
+
+**Open questions.** Is MANE alone enough (1–1.5 days), or does non-coding coverage justify a GENCODE
+v46 lane too (about one more day)? And the answering surface: `gene_exons(symbol)` next to
+`gene_span`, or a position → (gene, transcript, exon) lookup. The attribution rule in `gene_spans.py`
+constrains both: an exon lookup answers *where*, and AlphaGenome's own per-record gene remains the
+attribution.
+
 ## RM7 — Evaluation-output / report-card schema
 
 **Severity** — · **Status** **not format scope** — a consumer contract · **Owner** consumer
