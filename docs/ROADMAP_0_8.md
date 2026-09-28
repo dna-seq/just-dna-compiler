@@ -48,6 +48,92 @@ decisions that touched these items are in [PROPOSAL_0_6.md](proposals/PROPOSAL_0
 
 ---
 
+## RM303 — the snapshot layout is a contract with six parties and no model, so it belongs in `just-dna-format`
+
+**Severity** medium · **Status** open — filed 2026-09-28 at the maintainer's request, **taken into
+0.8** · **Owner** format (the model) + enricher (the writers and readers) · **Motivating case** the
+builders' `release.json` keys have drifted, and one drift already reached `cache status`
+
+**The problem.** A reference snapshot is `data/*.parquet`, optional sidecars, `LICENSE.txt` and
+`release.json`, and `locations.py`'s own header says that at least four parties (builder, publisher,
+provisioner, reader) have to agree on those names. The names are constants in the enricher, so any
+other repo that wants the layout has to import the network tier to get them. `release.json` has no
+model at all. `read_release` returns a `dict`, and the 14 builders write it by hand at 15 sites. The
+keys have drifted:
+
+| Key | Writers |
+|---|---|
+| `built_at` | all 15 sites |
+| `builder_version` | 13 |
+| `source_url`, `source_sha256`, `dataset` | 11 each |
+| `rows` | alphagenome_avi, mane, mitomap |
+| `row_count` | clinvar, clinpgx, acmg |
+| `license` / `licence` | strchive / civic |
+| `builder`, `release`, `parents` | acmg; civic; mitomap_miss |
+
+ClinVar writes no `dataset`, so `cache status` printed a blank release label for it. The repair was a
+per-lane exception (`clinvar_dataset_label`, see `caches.py` near `_dataset_label`). That is the drift
+surfacing as an incident, and it was repaired at the reader rather than at the contract.
+
+**The split.** The two files mix two kinds of thing, and they are separated by what each is tied to:
+
+- **Contract → `just_dna_format.snapshot`**, pydantic + stdlib only, no environment, no network: the
+  layout names (`data/`, `release.json`, `LICENSE.txt`, the sidecar and root-filename tuples), a
+  `SnapshotRelease` model, `read_release(dir) -> SnapshotRelease | None`, and a payload predicate
+  ("this directory holds a snapshot") that reads no environment.
+- **Deployment → stays in the enricher**: `CACHE_BASE_VAR` and the per-lane variables, `.env` loading,
+  platformdirs and `APPNAME`, the per-lane resolvers, `CACHE_LANES`, prepare, rebuild and publish. It
+  provisions and fetches, and it is tied to specific lanes. The enricher's `locations` names become
+  imports from format.
+
+**Charter checks.**
+
+- **Goals: an amendment is owed.** Goal 1 scopes format to "annotation modules", and a snapshot is not
+  a module. No principle forbids the move (no network, no new dependency), but it widens what the
+  package is for, so it lands as a deliberate one-bullet Goals amendment, with the reasoning in
+  CONSTITUTION_AMENDMENTS_HISTORY.md.
+- **P3 from then on.** Once the model is published, `release.json` keys are additive-only within the
+  major. That makes the drift above a decision to take **before** the first publish: which spelling
+  of each drifted pair becomes the field, and whether the other is read as an alias.
+- **P9.** A derived file that no human authors: half price at most, and no authored schema moves.
+- **The tri-state rule.** `read_release` keeps `None` for both absent and unreadable, as it does
+  today. A key the model makes optional stays `None` when it is unstated, never a default, because
+  the ClinVar label bug above is exactly a missing key being read as a blank answer.
+
+**Open questions.**
+
+1. **Core plus extension.** `parents` (the derived lane) and lane-specific keys either get typed
+   optional fields or ride in `extra="allow"`. Typed fields are safer; extra keys keep the model small.
+   Decide by listing what each reader actually reads.
+2. **The drifted pairs.** `rows`/`row_count` and `license`/`licence` pick one spelling each; the old
+   spelling is read on input and never written again. `builder` against `builder_version` needs a look
+   at what acmg means by it.
+3. **A guard.** Every builder writes through the model rather than through `json.dumps`. An AST walk
+   over `*_build.py` refusing a hand-built `release.json` dict is the usual shape
+   (`@registry-completeness`).
+4. **Published snapshots.** Snapshots already on HuggingFace keep their old keys. The model reads
+   them, and a republish writes the canonical spelling, never an in-place edit.
+
+**Considered and refused on the same day.**
+
+- **Renaming `just-dna-format`** (e.g. to `just-dna-schema`, the workspace directory's name). With the
+  snapshot contract added, "format" becomes *more* accurate: the package defines two on-disk formats.
+  A rename would touch about 130 importing files across five repos and keep two distribution names
+  alive for a major. Refused by the maintainer.
+- **A `just-dna-datasets` / `just-dna-builders` package.** First offered on 2026-09-25 (the RM261
+  round) as the recommended way to take the builders out of the wheel, and declined then without being
+  recorded. Weighed again now, it forms a cycle: builders need the layout from the enricher, and
+  `cache rebuild` needs the builders. Breaking the cycle means moving the layout below both, which is
+  this item, and after that the separate package buys nothing. Its dependencies are the enricher's
+  own, and the columns it writes are read by enricher passes, so every snapshot change would become
+  a release of two packages. It would also need a Goal 2 / Principle 2 amendment, since builders fetch
+  and the enricher is named as the only tier that may. Builders and readers stay beside the pass that
+  reads their columns. just-prs's parquet lanes stay in just-prs (`PRS_CACHE_DIR`), and the v1 port is
+  a consumer (pipelines → enricher), not a dataset.
+- **A nano-library holding only the convention.** Too small to be its own package. Format already
+  depends on pydantic and already owns the module's provenance record (`manifest.json`), and
+  `release.json` is that record's snapshot twin.
+
 ## RM261 — strip comments from the enricher wheel (measured, deferred)
 
 **Severity** low · **Status** open — deferred by the maintainer on 2026-09-25 as risky ("dangerous,
