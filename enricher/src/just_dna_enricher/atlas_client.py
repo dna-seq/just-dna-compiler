@@ -29,22 +29,34 @@ Three house rules shape the code rather than the wire format:
 * **A verdict function with several arms owes a reason function with the same arms**
   (`@answered-is-not-absent`), which is why every refusal carries the server's own words.
 
-What a first cut does not carry, filed rather than improvised: no `tenacity` layer over the vendored
-`grpc_service_config.json` (`@retry-attempt-floor`) and no shared pacing gate
-(`@shared-pacing-gate`).
+**One retry layer, and it is ours** (RM280). The vendored `grpc_service_config.json` asks grpc to
+retry, and grpc 1.83.1 caps service-config retries at five attempts, which is what upstream already
+asks for — so `JUST_DNA_HTTP_RETRY_ATTEMPTS` could not raise it, and a `tenacity` layer stacked on
+top would have multiplied attempts (5 x N) rather than set a floor. The channel therefore gets
+grpc's retry switched off (`channel_options`), and `AtlasClient._call` retries with upstream's own
+budget and backoff under `net.attempt_floor`, like every other client in this tier
+(`@retry-attempt-floor`). What it retries is **derived from `_translate`**: exactly the statuses
+that become `AtlasUnavailable`, so `INTERNAL`, which the contract always called retryable and
+upstream's config never retried, is now asked again.
+
+No pacing gate yet (`@shared-pacing-gate`): the Atlas publishes no rate budget and none was measured,
+so the interval a gate needs is a decision rather than a fact. That is RM307.
 
 `ListDenseVariantScores` **is** here — `score_interval` — and the reason it took a second attempt is
 recorded in `_interval`: the blocker was `Interval.strand` having no zero member, not the
 `x-goog-fieldmask` header or 32 bp chunking that this docstring blamed for a day.
 """
 
+import json
 import math
 import struct
 from dataclasses import dataclass
 
 import grpc
+from tenacity import retry, retry_if_exception, wait_random_exponential
 
 from just_dna_enricher.atlas_protos import OUT_DIR, SERVICE_CONFIG_NAME
+from just_dna_enricher.net import attempt_floor
 
 # The one guarded module-level import the house rules allow, and the reason it is guarded is that
 # the bindings are a build product rather than source: `generated/` is git-ignored, so a fresh
@@ -72,6 +84,53 @@ DEFAULT_ADDRESS = "dns:///gdmscience.googleapis.com:443"
 #: has the bindings must have the policy too — one directory the client needs, not two. The
 #: generator copies it there.
 SERVICE_CONFIG_PATH = OUT_DIR / SERVICE_CONFIG_NAME
+
+#: The vendored config, parsed once. Present whenever the bindings are: the generator writes both.
+#: Read at import since RM280 (it was read at `connect` before), so a tree holding bindings without
+#: it raises `ImportError` like the missing bindings above: every module-scope importer degrades on
+#: that type (RM247), and a bare `FileNotFoundError` would take the whole CLI down with it.
+try:
+    _SERVICE_CONFIG = json.loads(SERVICE_CONFIG_PATH.read_text())
+except FileNotFoundError as _exc:  # pragma: no cover - a half-generated tree, not a state tests build
+    raise ImportError(
+        f"{SERVICE_CONFIG_PATH} is missing beside the Atlas bindings. Re-run `just-dna-enricher atlas generate`."
+    ) from _exc
+#: Upstream's retry policy for the service. **Read, not obeyed by the channel** — `channel_options`
+#: strips it and switches grpc's retry off — so that `AtlasClient._call` can spend the same budget
+#: under the house floor. One method config today; a second with a different policy would need its
+#: own retried method, so this refuses to guess rather than pick one.
+(_UPSTREAM_RETRY,) = [m["retryPolicy"] for m in _SERVICE_CONFIG["methodConfig"] if "retryPolicy" in m]
+
+#: Upstream's `maxAttempts` (5), which `JUST_DNA_HTTP_RETRY_ATTEMPTS` may raise and never lower.
+RETRY_DEFAULT_ATTEMPTS: int = int(_UPSTREAM_RETRY["maxAttempts"])
+
+
+def _seconds(duration: str) -> float:
+    """A protobuf-JSON `Duration` (`"1s"`, `"0.5s"`) as seconds — the only spelling the format has."""
+    if not duration.endswith("s"):
+        raise ValueError(f"not a protobuf JSON duration: {duration!r}")
+    return float(duration[:-1])
+
+
+def channel_options() -> tuple[tuple[str, object], ...]:
+    """The options `connect` opens its channel with: upstream's config minus its retry policy.
+
+    **Two retry layers multiply, they do not floor.** grpc retries under the service config and caps
+    that at five attempts, so a `tenacity` layer over it would make 5 x N attempts per call while the
+    knob could still not raise grpc's five. So grpc's retry is off twice over: `grpc.enable_retries`
+    is `0`, and the config the channel receives carries no `retryPolicy` at all, so neither a flipped
+    grpc default nor a dropped option turns it back on unnoticed. Everything else in the method config
+    — the per-attempt `timeout` in particular, which is a deadline and not a retry — is kept verbatim.
+    """
+    config = {
+        **_SERVICE_CONFIG,
+        "methodConfig": [
+            {key: value for key, value in method.items() if key != "retryPolicy"}
+            for method in _SERVICE_CONFIG["methodConfig"]
+        ],
+    }
+    return (("grpc.service_config", json.dumps(config)), ("grpc.enable_retries", 0))
+
 
 #: The largest `float32` strictly below 1.0, and therefore the largest quantile the wire format can
 #: carry. It caps a derived Phred at ~72.247 — while the **published AVI artifact reaches 89.451**,
@@ -340,12 +399,41 @@ def _translate(error: grpc.RpcError, *, variant: str) -> AtlasError:
     return AtlasRefused(f"{variant}: {code.name}: {details}")
 
 
+def _retryable(exc: BaseException) -> bool:
+    """Retry exactly what `_translate` calls retryable — derived from it, never restated beside it.
+
+    `AtlasUnavailable`'s docstring says "Retryable", and before RM280 nothing made that true for
+    `INTERNAL`: upstream's config retries three codes and the translation names four. Asking the
+    translation keeps the two from drifting apart again when a code moves between its arms.
+    """
+    return isinstance(exc, grpc.RpcError) and isinstance(_translate(exc, variant=""), AtlasUnavailable)
+
+
 class AtlasClient:
     """The three Atlas RPCs, with the transport's exceptions kept inside."""
 
     def __init__(self, stub, *, api_key: str) -> None:
         self._stub = stub
         self._metadata = (("x-goog-api-key", api_key),)
+
+    @retry(
+        stop=attempt_floor(RETRY_DEFAULT_ATTEMPTS),
+        # Upstream's own backoff, in the form grpc applies it: a uniform draw below
+        # `initialBackoff * backoffMultiplier ** (n - 1)`, capped at `maxBackoff`.
+        wait=wait_random_exponential(
+            multiplier=_seconds(_UPSTREAM_RETRY["initialBackoff"]),
+            max=_seconds(_UPSTREAM_RETRY["maxBackoff"]),
+            exp_base=_UPSTREAM_RETRY["backoffMultiplier"],
+        ),
+        retry=retry_if_exception(_retryable),
+        # Load-bearing: the spent attempt re-raises the `grpc.RpcError` itself, so each caller's
+        # `except grpc.RpcError` translates it. Without it tenacity raises `RetryError`, which no
+        # caller catches — the leak `@client-exception-contract` exists to prevent.
+        reraise=True,
+    )
+    def _call(self, rpc, request, metadata):
+        """The retried half: one RPC, re-asked while `_retryable`. The callers translate (retry, then translate)."""
+        return rpc(request, metadata=metadata)
 
     def score_variant(
         self, chrom: str, position: int, ref: str, alt: str, *, scorers: tuple[str, ...] = ()
@@ -367,7 +455,7 @@ class AtlasClient:
             filter=scorer_filter(*scorers),
         )
         try:
-            response = self._stub.GetDenseVariantScores(request, metadata=self._metadata)
+            response = self._call(self._stub.GetDenseVariantScores, request, self._metadata)
         except grpc.RpcError as exc:
             raise _translate(exc, variant=label) from exc
         return tuple(
@@ -432,7 +520,7 @@ class AtlasClient:
         out: list[IntervalScore] = []
         while True:
             try:
-                response = self._stub.ListDenseVariantScores(request, metadata=metadata)
+                response = self._call(self._stub.ListDenseVariantScores, request, metadata)
             except grpc.RpcError as exc:
                 raise _translate(exc, variant=label) from exc
             for entry in response.variant_scores:
@@ -477,7 +565,7 @@ class AtlasClient:
             organism=dna_model_pb2.ORGANISM_HOMO_SAPIENS
         )
         try:
-            response = self._stub.ListVariantScoresMetadata(request, metadata=self._metadata)
+            response = self._call(self._stub.ListVariantScoresMetadata, request, self._metadata)
         except grpc.RpcError as exc:
             raise _translate(exc, variant="<metadata>") from exc
         return tuple(entry.variant_scorer.name for entry in response.variant_scorer_metadata)
@@ -488,7 +576,7 @@ def connect(api_key: str, *, address: str = DEFAULT_ADDRESS, timeout: float = 30
     channel = grpc.secure_channel(
         address,
         grpc.ssl_channel_credentials(),
-        options=(("grpc.service_config", SERVICE_CONFIG_PATH.read_text()),),
+        options=channel_options(),
     )
     try:
         grpc.channel_ready_future(channel).result(timeout)

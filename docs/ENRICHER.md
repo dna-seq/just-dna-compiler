@@ -558,6 +558,18 @@ Org limits apply **per member**, not shared. Source of truth:
   of policies is deliberately not stated here: `net.py` deleted *"the nine"* from its own comments after
   the tree carried twelve, because a count in prose is a registry nothing iterates.
 
+  **The Atlas client reads it too since RM280, and it had to lose grpc's retry to do so.** Its channel
+  used to retry under the vendored `grpc_service_config.json`, which grpc caps at five attempts, the
+  number upstream already asks for, so the variable could not raise it. A `tenacity` layer on top
+  would have made 5 × N attempts instead of a floor. `atlas_client.channel_options()` now switches grpc's
+  retry off (`grpc.enable_retries = 0`, and no `retryPolicy` in the config it hands the channel), and
+  `AtlasClient._call` retries under `attempt_floor(5)` with upstream's backoff. What it retries is
+  derived from `_translate`: every status that becomes `AtlasUnavailable`, which adds `INTERNAL` to
+  upstream's three. **It has no pacing gate**, so the "paces before it retries" reasoning above does
+  not hold for it: the Atlas publishes no rate budget and none has been measured, so raising its floor
+  spends attempts nothing meters. RM307
+  is that gate.
+
 ## The author's overlay, read but never written (RM136, 0.7)
 
 The compiler applies `overrides.csv` before any check reads a row — a check must report on what the
@@ -4715,7 +4727,7 @@ apart because its third arm is not a failure at all:
 
 | what happened | type | remedy |
 | --- | --- | --- |
-| transport failed | `AtlasUnavailable` | retry |
+| transport failed | `AtlasUnavailable` | retry later: the client has already spent `attempt_floor(5)` attempts (RM280) |
 | `REF` disagrees with GRCh38 | `AtlasRefMismatch` | fix the caller's data — **the server names the real base**, which `@va-omits-ref` says only this tier can discover |
 | an indel | `AtlasNotScored` | none: the answer does not exist |
 | a quantile saturated at `1.0` | `AtlasNotScored` | read `PHRED` from the downloaded artifact instead |

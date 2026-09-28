@@ -706,26 +706,6 @@ the reference examples plus the reporter's corpus. A warning an author reads on 
 precision is how the channel stops being read (S68). Anyone can run that measurement today, so the gate is not
 circular. Being a warning with no schema member, it is patch-class once built.
 
-## RM280 — the AlphaGenome Atlas client has no retry layer of its own and no shared pacing gate, which RM192 said was filed
-
-**Severity** low · **Status** open — **a patch** · **Owner** enricher (`atlas_client`) · **Motivating
-case** RM192's *"What it did not do, filed rather than improvised"* and PROPOSAL_0_7_PT4's
-*Implementation debt* list. The 2026-09-27 postmortem sweep (P8) found nothing had been filed · *related*
-RM192, RM194, RM196
-
-**Confirmed on 2026-09-27.** `atlas_client.py` still says, in its module docstring, *"What a first cut
-does not carry, filed rather than improvised: no `tenacity` layer over the vendored
-`grpc_service_config.json` (`@retry-attempt-floor`) and no shared pacing gate
-(`@shared-pacing-gate`)"*. No ROADMAP file names either. The channel does take upstream's own
-retry policy from the vendored service config (`atlas_protos`), so the client is not unretried. What
-is missing is the house layer every other network client has: a floor an operator can raise, and one
-gate shared across concurrent callers.
-
-**What to decide before building.** Whether upstream's service-config policy already satisfies
-`@retry-attempt-floor` (a knob with a floor), or whether a second layer on top would retry twice. And
-whether any caller runs the client concurrently: if none does, the pacing gate is a guard with nothing
-to guard, and saying so closes this half. Internal behaviour only, so either answer is a patch.
-
 ## RM281 — the PGx lane reads one of ClinPGx's archives, and `clinicalVariants.zip` bears on a shipped table kind
 
 **Severity** low · **Status** open — **a minor, release undecided** (a source adoption) · **Owner**
@@ -1234,6 +1214,31 @@ v46 lane too (about one more day)? And the answering surface: `gene_exons(symbol
 `gene_span`, or a position → (gene, transcript, exon) lookup. The attribution rule in `gene_spans.py`
 constrains both: an exon lookup answers *where*, and AlphaGenome's own per-record gene remains the
 attribution.
+
+## RM307 — the AlphaGenome Atlas client has no pacing gate, and the interval one needs is unmeasured
+
+**Severity** low · **Status** open — **a patch** (internal behaviour; no schema, no parquet) ·
+**Owner** enricher (`atlas_client`) · **Motivating case** RM280's pacing half, split off when RM280
+shipped its retry half on 2026-09-28 · *related* RM280, RM192, `@shared-pacing-gate`,
+`@retry-attempt-floor`
+
+**What is missing.** Most retried clients in the tier wait on a `net.PacingGate` once per attempt
+(`cpic` and `ensembl` are the other two that do not). `AtlasClient` does not. RM280 gave it the house retry floor, so
+`JUST_DNA_HTTP_RETRY_ATTEMPTS` can now raise its attempts, and those attempts are not paced. The
+gate is also what counts `spent` (S95), so an Atlas call is the one upstream attempt a host metering
+egress cannot see.
+
+**Why RM280 did not build it.** A gate needs an interval, and nothing settles one.
+[ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md) records that no quota or rate-limit figure is
+published and none was measured. Nothing in this repository calls the client from more than one
+thread, but `check_variant_impact(client=...)` takes a host's client, so a host threading its work
+shares one client by following the injection API. That is the S15 argument for making a gate
+shareable in the first place.
+
+**What to decide.** The interval: measured against the service, or a stated courtesy value with no
+upstream figure behind it. And whether `AtlasClient` takes an injected `gate=` like the httpx
+clients, so a host running several clients can hand them one. Internal behaviour either way, so a
+patch.
 
 # Not format scope
 

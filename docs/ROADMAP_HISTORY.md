@@ -202,6 +202,61 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM280 — the AlphaGenome Atlas client has no retry layer of its own and no shared pacing gate, which RM192 said was filed
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-28 on `main`, uncut — a patch** (the retry half; the
+pacing half is RM307) · **Owner** enricher (`atlas_client`) · **Motivating case** RM192's *"What it
+did not do"* paragraph and PROPOSAL_0_7_PT4's *Implementation debt* list. The 2026-09-27 postmortem
+sweep (P8) found nothing had been filed · *related* RM192, RM194, RM196, RM307
+
+**Confirmed on 2026-09-27.** RM192's client docstring said it carried no `tenacity` layer over the
+vendored `grpc_service_config.json` (`@retry-attempt-floor`) and no shared pacing gate
+(`@shared-pacing-gate`), and no ROADMAP file named either. The channel did take upstream's retry
+policy from the vendored service config, so the client was not unretried. What was missing was the
+house layer every other network client has: a floor an operator can raise, and one gate shared
+across concurrent callers.
+
+**What was measured.** grpc 1.83.1 caps service-config retries at five attempts, and upstream's config
+already asks for five. So `JUST_DNA_HTTP_RETRY_ATTEMPTS` could not raise the Atlas client's attempts,
+and a `tenacity` layer stacked on the channel would have multiplied them (5 × N) rather than set a
+floor. A loopback server answering `UNAVAILABLE` saw **five** calls for one stub call under the
+vendored options, sixteen seconds of grpc backoff, and **one** under the new ones. `_translate` also
+classified `INTERNAL` as `AtlasUnavailable`, whose docstring says *retryable*, and nothing retried it:
+upstream's config names `RESOURCE_EXHAUSTED`, `UNAVAILABLE` and `DEADLINE_EXCEEDED` only.
+
+**What shipped: option (b), the maintainer's choice.** grpc's retry is off, and the client retries in
+the house layer.
+
+- `atlas_client.channel_options()` is what `connect` opens the channel with: `grpc.enable_retries = 0`,
+  and the vendored config with `retryPolicy` removed from every method config. The per-attempt
+  `timeout` stays, since it is a deadline.
+- `AtlasClient._call` is the one retried method, and all three RPCs go through it. It uses
+  `attempt_floor(RETRY_DEFAULT_ATTEMPTS)`, which is upstream's `maxAttempts` (5) read from the vendored
+  file. Its wait is `wait_random_exponential` with upstream's `initialBackoff`, `maxBackoff` and
+  `backoffMultiplier`, which is the form grpc applies them in. It sets `reraise=True`, so each caller's
+  `except grpc.RpcError` still translates after the last attempt. Retry inside, translate outside.
+- What it retries is `_retryable`, which asks `_translate` whether the status becomes
+  `AtlasUnavailable`. The retry set is derived from the classification rather than restated beside
+  it, so `INTERNAL` is retried now, and a code moved between arms moves the retry with it.
+
+**What pins it** (`enricher/tests/test_atlas_client.py`). Every `grpc.StatusCode` is walked, and the
+expected attempt count is computed from `_translate` at run time: the floor's value for a retryable
+status, one for any other. The knob is run at `""`, `0`, `1`, `2` and `8`. It is a floor, so the low
+values leave five in place and `8` makes eight. The options test asserts `enable_retries == 0`, no
+`retryPolicy`, and the vendored `timeout` kept, and a second test probes `connect` itself for those
+options. The policy's stop and wait are compared with the vendored JSON read independently. The
+package-wide roster in `test_gated_snapshots.py` now lists `atlas_client.AtlasClient._call`, and its
+defaults are `{3, 4, 5}`. `test_retry_is_reachable.py` does not see this client: its walk resolves
+only `retry_if_exception_type(httpx.…)`, and `_call` has no `except` for it to check. The import-floor
+test admits `tenacity`, a core dependency of the tier, so `[atlas]` is still grpcio + protobuf.
+
+**The pacing half was not built.** A gate needs an interval. The Atlas publishes no rate budget, and
+ALPHAGENOME_ATLAS.md records that none was measured. Nothing here calls the client from two threads,
+but `check_variant_impact(client=...)` takes a host's client, so "no concurrent caller" is true of
+this repository and not of its consumers. RM307 carries it.
+
+**Residuals** RM307
+
 ## RM297 — the ClinPGx currency check compares a row against an annotation it never cited
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-28 on `main`, uncut — a patch** (a warning; the check withholds rather than blocks) ·

@@ -41,6 +41,17 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-28 — RM280: the Atlas client retries in the house layer, and `JUST_DNA_HTTP_RETRY_ATTEMPTS` reaches it (patch, on `main`)
+
+**enricher** — The AlphaGenome Atlas channel no longer retries inside grpc. `connect` opens it with
+`grpc.enable_retries = 0` and the vendored service config minus its `retryPolicy`
+(`atlas_client.channel_options()`), and `AtlasClient` retries each RPC itself under
+`attempt_floor(5)` with upstream's backoff. Before, grpc capped the retries at five and
+`JUST_DNA_HTTP_RETRY_ATTEMPTS` could not raise them. Now it can, like every other client. The retried
+statuses are the ones `_translate` maps to `AtlasUnavailable`, so **`INTERNAL` is now retried**, which
+upstream's config never did. Exceptions and their types are unchanged. A caller sees
+`AtlasUnavailable` after the last attempt, as before. The client still has no pacing gate (RM307).
+
 ## 2026-09-28 — `ga4gh.vrs` capped below 2.4 until RM304 records the VRS version (patch, on `main`)
 
 **enricher** — The dependency is now `ga4gh.vrs>=2.3.3,<2.4`. VRS 2.1.0 (2026-09-01) normalizes an

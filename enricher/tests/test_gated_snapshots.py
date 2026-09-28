@@ -555,6 +555,10 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
     # An EQUALITY over what the walk found, so a new policy has to be named here and a deleted one
     # cannot go unnoticed — the two things the floor allowed through.
     assert set(found) == {
+        # RM280. The one gRPC client: grpc's own service-config retry is switched off on the channel
+        # (it capped at five and multiplied under a second layer), and this retries exactly what
+        # `_translate` calls `AtlasUnavailable`. Its callers translate after the last attempt.
+        "atlas_client.AtlasClient._call",
         # RM153's registry leg. Retried inner, and the *outer* returns a three-state outcome rather
         # than translating to an error type — see the exemption in the exception-contract suite.
         # RM160's CIViC GraphQL leg. Same split as the two below it — the retried inner paces and
@@ -596,9 +600,10 @@ def test_every_live_client_reads_the_floor_rather_than_a_frozen_constant(
     assert all(isinstance(p.stop, attempt_floor) for p in found.values()), [
         type(p.stop) for p in found.values()
     ]
-    # The two tightest budgets keep their own, higher default.
+    # The two tightest budgets keep their own, higher default, and the Atlas keeps upstream's
+    # `maxAttempts` from its vendored service config (RM280).
     defaults = {p.stop.default for p in found.values()}
-    assert defaults == {3, 4}
+    assert defaults == {3, 4, 5}
 
     class _State:
         attempt_number = 5
