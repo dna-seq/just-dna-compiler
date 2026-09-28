@@ -1740,7 +1740,8 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM28** — the predicate half | parked on a corpus | **Sound.** A corpus is counted off other people's published data; it has three entries and none of them needed us to ship anything. |
 | **RM23** — predictor scores | "the acquisition measurement done, and a decision on per-transcript grain" | **Sound.** Both are actions available today; the item is unstarted, not blocked. |
 | **RM68** — a drafting provider off GRCh38 | "an author with a non-GRCh38 module saying which outcome they wanted" | **Sound.** Such modules exist — `reference_examples/grch37_build` is one. |
-| **RM279** — a `conclusion` checked against its own row (filed 2026-09-27) | a measured precision for the locus-restricted rule | **Sound, and met on 2026-09-28**: 10 of 10 real over 653,706 rows, shipped as a hint. The second rule inherits the same gate as RM309, sound for the same reason. |
+| **RM279** — a `conclusion` checked against its own row (filed 2026-09-27) | a measured precision for the locus-restricted rule | **Sound, and met on 2026-09-28**: 10 of 10 real over 653,706 rows, shipped as a hint. |
+| **RM309** — a `state` its own conclusion negates (filed 2026-09-28) | a hand-judged precision over the reporter's six curated modules and the registry corpus | **Sound.** The corpus and the rule both exist today, and RM279 met the same gate the day this was filed. |
 | **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
 
 **What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on

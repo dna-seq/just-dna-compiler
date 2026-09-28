@@ -232,6 +232,10 @@ the reference examples plus the reporter's corpus. A warning an author reads on 
 precision is how the channel stops being read (S68). Anyone can run that measurement today, so the gate is not
 circular. Being a warning with no schema member, it is patch-class once built.
 
+*Refuted by the build, 2026-09-28.* A warning at `validate`/`compile` is a schema member: it needs a
+key in `VALID_WARNING_CODES`, and a new key is minor-class. Only the hint was patch-class, and the
+compile half is RM308.
+
 **What shipped, measured.** The gate was a precision for the locus-restricted rule, and it was run
 over 653,706 diploid rows: the six curated v1 ports the reporter measured (1,418 rows, from
 `just-dna-lite/data/interim/v1_port_0_5`), `reference_examples/`, and the registry's `cardio`, `cancer`
