@@ -33,7 +33,10 @@ dependencies = [
     # pure-Python packages with no compiled dependencies (pydantic is already ours). At that price
     # there is no reason to make complete allele identity opt-in, so it is the default and `--offline`
     # is the only mode that degrades to substitutions-only.
-    "ga4gh.vrs>=2.3.3",
+    # Capped below 2.4 (RM304): VRS 2.1 changes ambiguous-insertion normalization and moves those
+    # ids, vrs-python has not shipped it yet (issue #637), and a stored `vrs_id` records no VRS
+    # version. The cap is lifted by RM304, which makes the upgrade a declared re-id.
+    "ga4gh.vrs>=2.3.3,<2.4",
 ]
 
 [project.scripts]

@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-28 — `ga4gh.vrs` capped below 2.4 until RM304 records the VRS version (patch, on `main`)
+
+**enricher** — The dependency is now `ga4gh.vrs>=2.3.3,<2.4`. VRS 2.1.0 (2026-09-01) normalizes an
+ambiguous insertion to the smallest repeat unit where 2.0 took the greatest, which moves that
+allele's `ga4gh:VA.` id. vrs-python has not implemented it yet (issue #637), and a stored `vrs_id`
+does not say which VRS minted it. Without the cap, the first release that ships the rule would make
+a fresh `enrich` mint ids that disagree with `resolution.csv`, gnomAD and ClinVar-GKM, with nothing
+to say why. The locked version stays 2.3.3, so nothing mints differently today. A consumer that needs
+`ga4gh.vrs` 2.4 (metakb's server pins a 2.4 alpha) conflicts until RM304 lifts the cap.
+
 ## 2026-09-28 — RM289: two author-facing sentences say what is true (patch, on `main`)
 
 **format** — `PgsRow.training_ancestry`'s description said the score was *validated in* those
