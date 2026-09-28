@@ -372,3 +372,9 @@ Costs are the surveyor's estimates [I]. Tiers follow the CLAUDE.md tier rules.
 **Not taken, on the measurements:** a hosted or local variation-normalizer as a VRS witness (it
 duplicates our minter and hides its version), and metakb's data (stale, somatic, mixed licence, and it
 carries a semantic inversion).
+
+**Not to be confused with PubMind's "Variant Normalizer (Beta)"** (`pubmind.wglab.org/variant_normalizer`,
+added 2026-09-28). That tool shares the name and nothing else: it maps `gene:variant` positions with
+pyensembl against every protein-coding isoform whose reference base matches, and mints no id. It is
+read in [PUBMIND_ASSESSMENT.md](../PUBMIND_ASSESSMENT.md#how-pubmind-places-a-variant-read-from-its-code-2026-09-28),
+because it is the step that placed every coordinate in our PubMind lane.

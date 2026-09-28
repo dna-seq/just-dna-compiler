@@ -154,6 +154,39 @@ Our 40.9 % locus coverage against a ClinVar-derived corpus sits comfortably besi
 breadth we do not have and would not gain by curating harder; it subtracts confidence we already
 have.** That is the profile of a cross-check source, not of a fact source.
 
+### How PubMind places a variant, read from its code (2026-09-28)
+
+PubMind's site has a **Variant Normalizer (Beta)** page (`pubmind.wglab.org/variant_normalizer`),
+which it says is *"derived from PubMind's variant normalization module"*. It takes one `gene:variant`
+line per input (`BRCA1:c.68delA`, `BRAF:p.Val600Glu`) and offers a JSON download. It is **not** the
+VICC `variation-normalizer` that [METAKB_VARNORM_SURVEY.md](probes/METAKB_VARNORM_SURVEY.md) ran. The
+two share a name and nothing else: VICC mints VRS ids through cool-seq-tool, UTA and SeqRepo, while
+PubMind maps positions with pyensembl.
+
+The mapping step is `normalization/4-genome_coordinates/variant_genome_coordinates.py` in
+[WGLab/PubMind](https://github.com/WGLab/PubMind), read at the default branch on 2026-09-28 (last push
+2026-08-24; GitHub reports its licence as `NOASSERTION`). What the code does:
+
+- **The engine is `pyensembl` `EnsemblRelease(111)`** (a comment above it still says release 104),
+  with Biopython to translate the CDS. This matches the Ensembl v111 already stated above.
+- **No transcript is chosen.** `cdna_to_genomic(gene, pos, ref)` and `protein_to_genomic(gene, pos,
+  ref_aa)` walk *every* protein-coding transcript of *every* gene the symbol names. They keep each one
+  whose CDS has the stated reference base (or amino acid) at the stated position and return all of
+  them. A text mention names no transcript, so a `c.` number is tried against every isoform, and each
+  isoform that happens to carry the same base there becomes a separate placement.
+- **It maps a position, not an event.** The cDNA path maps one base, the protein path one reference
+  codon. Nothing in this step reads an indel's extent or normalizes one, which fits the un-normalized
+  indels RM273 measured.
+- **Nothing is identified.** No VRS id, CAID or rsID comes out of this step.
+
+**Why it matters to the lane.** Our PubMind snapshot receives coordinates this code produced. A PubMind
+row sitting on an unexpected locus can therefore come from an isoform the author never meant, whose
+reference base happened to match, rather than from a wrong extraction. The two causes call for
+different remedies, and the table alone cannot tell them apart. **Not measured:** how often one PubMind
+mention (one PVID) fans out to more than one locus through this multi-isoform match. The 68,744 keys
+counted above are the opposite direction, one locus carrying several PVIDs. The fan-out count is the
+number that would size this, and it can be taken from the snapshot we already build.
+
 ## What we cannot adopt at all
 
 The part of PubMind that is genuinely novel — the per-record `LLM_reasoning`, the
