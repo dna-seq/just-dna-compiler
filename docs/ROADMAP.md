@@ -994,12 +994,13 @@ RM16 (authored weights) is a different question and this does not depend on it. 
 `pgs.py`'s docstring, TABLES.md § `pgs.csv` and ROADMAP_0_8 § RM16's *"a shape the format does not
 bin"* all change with it.
 
-## RM297 — the ClinPGx currency check compares a row against an annotation it never cited
+### RM297 — the ClinPGx currency check compares a row against an annotation it never cited
 
 ✅ **Shipped 2026-09-28 on `main`, uncut — a patch.** The entry is in
 [ROADMAP_HISTORY.md](ROADMAP_HISTORY.md#rm297--the-clinpgx-currency-check-compares-a-row-against-an-annotation-it-never-cited).
 This heading stays only because S122's reply links here, and replies are the triage seat's to
-retarget; delete it in the same commit that moves that link.
+retarget; delete it in the same commit that moves that link. It is a `###` on purpose: a `## RMn` here
+is an open item to the §4 counter (`test_triage_tools.py`), and this one is not open.
 
 ## RM298 — nothing records per row that a `pharm_variants.csv` row came from ClinPGx
 
