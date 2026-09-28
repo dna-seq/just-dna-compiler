@@ -1784,10 +1784,15 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   would make the tool assert a purpose for the user. A forbidding source is *skipped* on `unstated`
   and *refused* on `commercial`, at acquisition (nothing is fetched), in both modes.
 
-- `@redistribution-ungated` — **`redistribution` is a third licensing axis, recorded but NOT gated.** CC BY-NC forbids sale and
-  allows sharing; academic-use-only (OMIM, dbNSFP) forbids both. The compile gate deliberately keys
-  only on `commercial_use` — a distribution right is not a *use*, so `declared_use` is the wrong axis
-  to resolve it against (RM27). Don't "finish" the gate without doing that design.
+- `@redistribution-ungated` — **`redistribution` is a third licensing axis, stamped but NOT gated in these packages.** CC BY-NC
+  forbids sale and allows sharing; academic-use-only (OMIM, dbNSFP) forbids both. The compile gate
+  deliberately keys only on `commercial_use` — a distribution right is not a *use*, so `declared_use`
+  is the wrong axis to resolve it against. RM27 settled the design in 0.6 as **record-only with a named
+  enforcer**: the most-restrictive verdict is stamped into `manifest.Sources.redistribution` (`null` =
+  undetermined, never permitted), and the gate belongs at *publish*, downstream, with the ask to the
+  registry written in SCHEMAS.md. Don't add a compile-time redistribution gate: a module may be built
+  legitimately and still not be shippable, and that verdict is the publisher's to issue. (Until
+  2026-09-28 this line and its CLAUDE.md headline still said the axis awaited design.)
 
 - `@per-article-terms` — **A literature source's terms are PER ARTICLE, and that is why there is no `pubmed` row (RM46,
   0.6).** `enrich_literature` writes `source="pubmed"` into every row, `TERMS_BY_SOURCE` has no entry

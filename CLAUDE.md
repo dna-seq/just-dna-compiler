@@ -301,7 +301,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A layer with no `source` column to join is structurally exempt from the orphan check. `@orphan-check-exempt`
 - The compile gate is data-driven; a `--non-commercial` flag would break the round trip. `@gate-is-data-driven`
 - `declared_use` is a third axis with three states, not a mode. `@declared-use-third-axis`
-- `redistribution` is recorded but not gated — RM27 must design the axis first. `@redistribution-ungated`
+- `redistribution` is stamped (`manifest.Sources.redistribution`, tri-state) and gated nowhere here — the gate is the registry's, at publish (RM27). `@redistribution-ungated`
 - Literature terms are per **article**; there is deliberately no `pubmed` terms constant. `@per-article-terms`
 - A host's terms are not its contents' terms: write the floor, let each record override it. `@a-hosts-terms-are-not-its-contents-terms`
 - ClinPGx/CPIC/PharmVar are CC BY-SA + no-sale, never a resolution link, and the PharmVar key is personal. `@pgx-research-only`
