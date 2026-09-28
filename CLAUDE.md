@@ -58,7 +58,10 @@ edited as routine work:
   second corpus entry**); `GKS_SURVEY` (the GA4GH GKM family against our tables — **our
   per-genotype grain has no GKS counterpart**, a Cat-VRS id is publisher-assigned rather than a digest,
   VRS 2.1 re-ids ambiguous insertions while vrs-python still mints 2.0.x, and ClinVar-GKM's CC0
-  `allele.parquet` is an offline placement check); and the dogfood and VCF audit rounds. **No `RMn` is filed there.**
+  `allele.parquet` is an offline placement check) with its companion `METAKB_VARNORM_SURVEY`
+  (variation-normalizer mints our ids byte for byte and refuses the names our identity protocol exists
+  for; metakb has no public v2 API and turns CIViC's `NOT KIT D816V` into a positive claim); and the
+  dogfood and VCF audit rounds. **No `RMn` is filed there.**
 - **`docs/audit/`** — the tier references re-derived from the code, **evidence, never contract**; the
   maintained reference is the one in `docs/` root.
 - **`docs/vendor/`** — upstream files kept for reference; **count them from `ls`, never from a
