@@ -55,7 +55,10 @@ edited as routine work:
   (the other half of RM188 — 97 agent skills, **68 `planned`**, whose four inlined variant tables
   are a module in a shape nothing validates; its five gaps are `consequence`/`impact`, a
   region-keyed dosage row, a per-tissue eQTL, a fine-mapping posterior, and **warfarin as RM28's
-  second corpus entry**); and the dogfood and VCF audit rounds. **No `RMn` is filed there.**
+  second corpus entry**); `GKS_SURVEY` (the GA4GH GKM family against our tables — **our
+  per-genotype grain has no GKS counterpart**, a Cat-VRS id is publisher-assigned rather than a digest,
+  VRS 2.1 re-ids ambiguous insertions while vrs-python still mints 2.0.x, and ClinVar-GKM's CC0
+  `allele.parquet` is an offline placement check); and the dogfood and VCF audit rounds. **No `RMn` is filed there.**
 - **`docs/audit/`** — the tier references re-derived from the code, **evidence, never contract**; the
   maintained reference is the one in `docs/` root.
 - **`docs/vendor/`** — upstream files kept for reference; **count them from `ls`, never from a
