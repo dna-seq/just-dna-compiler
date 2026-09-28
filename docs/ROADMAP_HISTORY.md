@@ -239,7 +239,7 @@ the house layer.
   `AtlasUnavailable`. The retry set is derived from the classification rather than restated beside
   it, so `INTERNAL` is retried now, and a code moved between arms moves the retry with it.
 
-**What pins it** (`enricher/tests/test_atlas_client.py`). Every `grpc.StatusCode` is walked, and the
+**What pins it** (`enricher/tests/test_atlas_client.py`). Every `grpc.StatusCode` except `OK` is walked, and the
 expected attempt count is computed from `_translate` at run time: the floor's value for a retryable
 status, one for any other. The knob is run at `""`, `0`, `1`, `2` and `8`. It is a floor, so the low
 values leave five in place and `8` makes eight. The options test asserts `enable_retries == 0`, no
