@@ -552,6 +552,11 @@ ladder, because the checks that do have one already exist here and in the enrich
 severity the charter assigns it (including the two deliberate exceptions that warn in both modes). A
 hint that could fail a compile would be a third copy of a rule that already lives in two places.
 
+**Two findings are the exception.** The missing-sentinel warning
+(§ 1 above) and, since RM279, a `variants.csv` conclusion that names genotypes at its own locus and
+never its own (`just_dna_compiler.conclusion`) are computed here and nowhere on the compile path. The
+second waits on a warning code, which is minor-class (RM308). Neither can fail anything.
+
 What hints add is *when*: the same verdict, before the author has written the file, plus the allowed
 values and the reason a cell is deliberately left empty. That last part is the load-bearing one — see
 `hints.REDUNDANCY_BEARING`. Class 2 works because two independently-authored things must agree, so a

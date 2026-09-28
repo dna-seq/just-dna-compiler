@@ -42,10 +42,12 @@ from just_dna_format.base import authored_field_names, field_category, field_voc
 from just_dna_format.binning import MeasureBinRow, deprecation_warnings, validate_bins
 from just_dna_format.layout import sidecar_spellings
 from just_dna_format.resolution import ResolutionRow
+from just_dna_format.spec import VariantRow
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from pydantic import BaseModel
 
 from just_dna_compiler.compiler import _FACT_TABLES, _list_cell, _list_fields, _scalar_cell
+from just_dna_compiler.conclusion import conclusion_genotype_mismatches
 from just_dna_compiler.draft import (
     DRAFTABLE,
     DraftError,
@@ -551,6 +553,7 @@ def inspect_rows(csv_name: str, csv_text: str) -> HintReport:
     _flag_advisory_columns(emitted, model, report)
     _check_duplicate_keys(parsed, report)
     _check_bins(parsed, model, report)
+    _check_conclusions(parsed, model, header_lines, report)
 
     # Every row-scoped finding gains its file line number in one place, rather than each producer
     # remembering to pass it — the header offset is known here and nowhere else.
@@ -831,6 +834,35 @@ def _check_bins(parsed: list[BaseModel | None], model: type[BaseModel], report: 
                 "warning",
                 "no unresolved sentinel row: a consumer with no measurement would match nothing. "
                 "The contract is that a missing measurement selects this row, never the lowest bin",
+            )
+        )
+
+
+def _check_conclusions(
+    parsed: list[BaseModel | None], model: type[BaseModel], header_lines: int, report: HintReport
+) -> None:
+    """A `variants.csv` conclusion that names another genotype at its locus and never its own (RM279).
+
+    **Authoring surface only, like the missing-sentinel finding above.** The compile half needs a
+    member of `VALID_WARNING_CODES`, and a new member is minor-class: a reader pinned to an older
+    `just-dna-format` refuses a manifest carrying it. That half is RM308, a minor."""
+    if model is not VariantRow:
+        return
+    rows = [r if isinstance(r, VariantRow) else None for r in parsed]
+    for hit in conclusion_genotype_mismatches(rows):
+        spelled = ", ".join("/".join(pair) for pair in hit.named)
+        # Named by file line, like the finding's own `line`: the CLI prints that one, and a message
+        # counting from 0 beside it would point one row up.
+        lines = ", ".join(str(i + header_lines + 1) for i in hit.named_rows)
+        where = f" (on line {lines})" if hit.named_rows else ""
+        report.findings.append(
+            Finding(
+                hit.row,
+                "conclusion",
+                "warning",
+                f"conclusion names genotype {spelled}{where} at this locus and never this row's "
+                f"{hit.genotype} — check that the text belongs to this genotype: two rows' "
+                f"conclusions may be swapped, or one copied from its neighbour",
             )
         )
 

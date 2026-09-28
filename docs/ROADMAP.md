@@ -682,30 +682,6 @@ states the gap and `test_cli_parity.py` does not assert compile-flag parity, so 
 deliberately stays narrower than the API. Either way, extend `test_cli_parity.py` to assert the
 decided set, so the next parameter cannot drift in unweighed.
 
-## RM279 — nothing checks a `conclusion` against the other cells on its own row, so a swapped pair compiles green
-
-**Severity** low · **Status** open — **a patch** (a warning), parked on a precision measurement · **Owner**
-compiler (a hint or lint over the authored row) · **Motivating case** consumer-note D14 (the 0.7
-idea-book), numbered by the 2026-09-27 postmortem (P7), because an idea-book bullet is not a home
-
-**What the reporter measured, and what we reproduced.** 20 hits in 1,418 rows at about 60% precision
-by hand. The finds that matter are real curation errors: `coronary` `rs17514846` has its `C/C` and
-`A/A` conclusions **swapped**, and `rs11591147` is scored `protective +1.2` on `T/T` under text saying
-`GG` is protective. `lint_rows` over twelve real `thrombophilia` rows returned no finding on three
-more (`rs1799963 A/A` → *"GA carriers have 6.74x risk"*; `rs2519093 C/T` → *"TT genotype is
-associated…"*; `rs1799889 G/G` with `state: risk` under *"…is not increased"*). Both measurements are
-recorded in the idea-book and the consumer-note triage section of this file.
-
-**Two candidate rules, neither needing an external source.** A conclusion naming a genotype **built
-from alleles at this row's own locus** that is not this row's genotype; and a `state` of
-`risk`/`protective` the conclusion's text negates. The locus restriction is what makes the first
-tractable (an earlier version flagged *"(TG) levels"*).
-
-**Parked on, and the gate is satisfiable now.** A measured precision for the locus-restricted rule over
-the reference examples plus the reporter's corpus. A warning an author reads on every compile at 60%
-precision is how the channel stops being read (S68). Anyone can run that measurement today, so the gate is not
-circular. Being a warning with no schema member, it is patch-class once built.
-
 ## RM281 — the PGx lane reads one of ClinPGx's archives, and `clinicalVariants.zip` bears on a shipped table kind
 
 **Severity** low · **Status** open — **a minor, release undecided** (a source adoption) · **Owner**
@@ -1238,6 +1214,36 @@ upstream figure behind it. And whether `AtlasClient` takes an injected `gate=` l
 clients, so a host running several clients can hand them one. Internal behaviour either way, so a
 patch.
 
+## RM308 — the conclusion-genotype finding runs only on the authoring surface, so a module nobody linted compiles green with a swapped pair
+
+**Severity** low · **Status** open — **a minor, release undecided** (a new warning code) · **Owner** format
+(`VALID_WARNING_CODES`) + compiler (`validate_spec`, `compile_module`) · **Motivating case** RM279's
+residual, 2026-09-28 · *related* RM279, RM309
+
+RM279 shipped the rule as a hint because the compile half needs a member of `VALID_WARNING_CODES`, and a
+new member is minor-class: a reader pinned to an older `just-dna-format` refuses a manifest carrying it.
+So an author who never runs `hint` or `lint_rows` still gets a green `--strict` compile on a swapped
+pair. The rule is `just_dna_compiler.conclusion.conclusion_genotype_mismatches`, already separate from
+`hints` so the compile path can call it. What the minor owes: one code named for the finding (for
+example `conclusion_names_other_genotype`), emission at both `validate` and `compile`
+(`@parity-by-check`), aggregated by reason, a `features/` scenario, and the phrase pinned in the
+COMPILER.md warning catalogue. It stays a warning in both modes: 10 of 10 is a measurement over one
+corpus, not a licence to refuse.
+
+## RM309 — a `risk`/`protective` state whose own conclusion negates it goes unflagged
+
+**Severity** low · **Status** open — **a patch** (a hint), parked on a precision measurement · **Owner**
+compiler (`conclusion.py`) · **Motivating case** RM279's second rule, 2026-09-28, never measured ·
+*related* RM279, RM308
+
+D14 proposed two rules, and RM279 built the first. The second is a row whose `state` is `risk` or
+`protective` under a conclusion that negates it: `thrombophilia` `rs1799889 G/G` carries `state: risk`
+under *"…is not increased"*. A negation reader is noisier than a genotype token, since *"not associated"*
+on a neutral row is correct, and *"does not reduce risk"* can support either state. **Parked on the
+same gate RM279 had**, a hand-judged precision over the reporter's six curated modules plus the
+registry corpus. The gate is satisfiable today, because both the corpus and the rule exist. Like
+RM279 it is patch-class only as a hint, and its compile half would join RM308.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
@@ -1734,7 +1740,7 @@ possibly already satisfied, and the rest sound** — the sweep's value is mostly
 | **RM28** — the predicate half | parked on a corpus | **Sound.** A corpus is counted off other people's published data; it has three entries and none of them needed us to ship anything. |
 | **RM23** — predictor scores | "the acquisition measurement done, and a decision on per-transcript grain" | **Sound.** Both are actions available today; the item is unstarted, not blocked. |
 | **RM68** — a drafting provider off GRCh38 | "an author with a non-GRCh38 module saying which outcome they wanted" | **Sound.** Such modules exist — `reference_examples/grch37_build` is one. |
-| **RM279** — a `conclusion` checked against its own row (filed 2026-09-27) | a measured precision for the locus-restricted rule | **Sound.** The corpus and the rule both exist; anyone can run it before anything ships. |
+| **RM279** — a `conclusion` checked against its own row (filed 2026-09-27) | a measured precision for the locus-restricted rule | **Sound, and met on 2026-09-28**: 10 of 10 real over 653,706 rows, shipped as a hint. The second rule inherits the same gate as RM309, sound for the same reason. |
 | **RM15** / **RM69** / **RM52** and the 1.0 queue | a major-version bump | **Sound, and not this kind of gate.** A release boundary is a schedule, not a satisfier. |
 
 **What the sweep did not find, stated so it is not re-run for a while.** No gate anywhere is parked on
@@ -2183,7 +2189,7 @@ New ideas enter here as freeform suggestions, then graduate through the design c
   interact.
 
 - **Nothing checks a `conclusion` against the other cells on its own row.** *Numbered as RM279 on
-  2026-09-27.* From the same pass (D14),
+  2026-09-27; the genotype rule shipped as a hint on 2026-09-28, with RM308 and RM309 left.* From the same pass (D14),
   and the reporter measured it before proposing it: **20 hits in 1,418 rows, ≈60% precision by hand
   inspection**, which is why they asked for `warning` rather than `error`. Two of the finds are worth
   quoting because they are exactly what a curation check is for — `coronary` `rs17514846`'s `C/C` and

@@ -204,6 +204,57 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM279 — nothing checks a `conclusion` against the other cells on its own row, so a swapped pair compiles green
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-28 on `main`, uncut — a patch** (the genotype rule, as an
+authoring hint) · **Owner** compiler (`conclusion.py`, `hints._check_conclusions`) · **Motivating case**
+consumer-note D14 (the 0.7 idea-book), numbered by the 2026-09-27 postmortem (P7), because an idea-book
+bullet is not a home · *related* S68, RM308, RM309
+
+**Residuals** RM308 (the same finding at `validate`/`compile`, which needs a warning code and so a
+minor) and RM309 (the second rule, a `state` the conclusion negates, never measured)
+
+**What the reporter measured, and what we reproduced.** 20 hits in 1,418 rows at about 60% precision
+by hand. The finds that matter are real curation errors: `coronary` `rs17514846` has its `C/C` and
+`A/A` conclusions **swapped**, and `rs11591147` is scored `protective +1.2` on `T/T` under text saying
+`GG` is protective. `lint_rows` over twelve real `thrombophilia` rows returned no finding on three
+more (`rs1799963 A/A` → *"GA carriers have 6.74x risk"*; `rs2519093 C/T` → *"TT genotype is
+associated…"*; `rs1799889 G/G` with `state: risk` under *"…is not increased"*). Both measurements are
+recorded in the idea-book and the consumer-note triage section of this file.
+
+**Two candidate rules, neither needing an external source.** A conclusion naming a genotype **built
+from alleles at this row's own locus** that is not this row's genotype; and a `state` of
+`risk`/`protective` the conclusion's text negates. The locus restriction is what makes the first
+tractable (an earlier version flagged *"(TG) levels"*).
+
+**Parked on, and the gate is satisfiable now.** A measured precision for the locus-restricted rule over
+the reference examples plus the reporter's corpus. A warning an author reads on every compile at 60%
+precision is how the channel stops being read (S68). Anyone can run that measurement today, so the gate is not
+circular. Being a warning with no schema member, it is patch-class once built.
+
+**What shipped, measured.** The gate was a precision for the locus-restricted rule, and it was run
+over 653,706 diploid rows: the six curated v1 ports the reporter measured (1,418 rows, from
+`just-dna-lite/data/interim/v1_port_0_5`), `reference_examples/`, and the registry's `cardio`, `cancer`
+and `pathogenic` modules. The reporter's reading ("names a genotype that is not this row's") fired
+**24** times, about 40% real, because a correct row that also names its neighbour (*"AA is protective,
+AC carriers less so"*) matches. Reading it as **names genotypes at this locus and never its own** left
+14, and four of those were three shapes of prose that are not a genotype: an allele description after
+an rsID (*"rs1042718 (C/A)"*), a haplotype across two sites, and (on the registry modules) the row's
+own gene symbol (*"variant in TG"*). Excluding those three left **10 findings, all 10 real by hand**:
+`rs17514846`'s swapped pair, five rows carrying a neighbour's sentence (`rs1799963`, `rs1800790`,
+`rs17228212`, `rs2519093`, `rs6025`), `rs4977574`, `rs11591147`, and `rs17822931`'s strand-mixed
+`G/G` row under `TT` text. Zero on every reference example.
+
+**Where it runs, and why only there.** `hints.inspect_rows`, so `hint variants.csv` and the creator's
+`lint_rows` report it as a `warning` on the `conclusion` column, naming the row that carries the
+genotype the text names, which is how a swap reads as two findings pointing at each other. It does not
+run at `validate` or `compile`. A finding there needs a member of `VALID_WARNING_CODES`, and adding one is
+minor-class because a reader pinned to an older `just-dna-format` refuses a manifest carrying it. The
+missing-sentinel finding already lives on the authoring surface only, so this is the second such hint,
+not a new kind. The rule is its own module (`just_dna_compiler.conclusion`) so RM308 calls it from the
+compile path without a cycle through `hints`. Every exclusion has a test that goes red without it,
+and the two positive tests go red with the check switched off.
+
 ## RM280 — the AlphaGenome Atlas client has no retry layer of its own and no shared pacing gate, which RM192 said was filed
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-28 on `main`, uncut — a patch** (the retry half; the

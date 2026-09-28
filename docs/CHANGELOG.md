@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-28 — RM279: `hint` names a conclusion written for another genotype (patch, on `main`)
+
+**compiler** — `hints.inspect_rows` on `variants.csv` (so `just-dna-compiler hint variants.csv` and the
+creator's `lint_rows`) now warns on the `conclusion` column when the text names genotypes built from
+the locus's own alleles and never the row's own, and gives the line of the row carrying the genotype it names. A
+swapped `C/C`/`A/A` pair shows as two findings pointing at each other. Over 653,706 diploid rows it
+fired 10 times, all real. It does not run at `validate` or `compile`: that half needs a new warning
+code, which is a minor (RM308). The rule is `just_dna_compiler.conclusion`.
+
 ## 2026-09-28 — RM280: the Atlas client retries in the house layer, and `JUST_DNA_HTTP_RETRY_ATTEMPTS` reaches it (patch, on `main`)
 
 **enricher** — The AlphaGenome Atlas channel no longer retries inside grpc. `connect` opens it with
