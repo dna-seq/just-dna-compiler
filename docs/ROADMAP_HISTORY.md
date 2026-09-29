@@ -901,9 +901,9 @@ description assertion still holds there.
 
 **Merged into `0.8` on 2026-09-29.** `0.8`'s text was taken for both fields, and `quotes_checked`'s
 description gained one clause naming `abstract_only_count` as the only sign on a manifest compiled
-before that field existed. The test was dropped: neither 0.8 description names `abstract_only_count`,
-and `test_an_abstract_miss_is_not_published_as_a_checked_quote` covers the same pair of modules with
-the counter that settles it. The docstring paragraph was not ported, since on `0.8` it would be false:
+before that field existed. The test stays, with its description assertion moved to `quotes_checked`
+(neither 0.8 description of the two counters names `abstract_only_count`); its behavioural assertion,
+that the two modules differ on `abstract_only_count`, is the only test pinning that counter's value. The docstring paragraph was not ported, since on `0.8` it would be false:
 `abstract_only_count` is no longer the only counter that separates the two.
 
 ## RM262 — a DOI answered existence and never identity, although the body naming the paper was already in hand
