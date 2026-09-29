@@ -1319,6 +1319,71 @@ the registry tests have to accept a retired, unemitted member. The honest replac
 field the reference record usually leaves missing, is a new code and therefore a minor on `0.8`.
 Whether to build that at all, or only document it, is the call.
 
+## RM314 — the reference-block rule we print reads INFO `END`, which VCF 4.5 made a cross-sample maximum, so a multi-sample file credits one sample's block to another's positions
+
+**Severity** medium · **Status** open — **a patch** · **Owner** format (the `callable_from` description) + docs (SCHEMAS.md, the consumer contract) · **Motivating case** [VCF_4_5_AUDIT § 1](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313
+
+**What 4.5 changed.** §5.5 moves a gVCF reference block's extent to a per-sample FORMAT `LEN`. §1.6.1
+deprecates INFO `END` and, when it is present, makes it *"the maximum end reference position"* over
+every sample's `LEN`. §5.5 also says a position covered by a sample's own earlier `<*>` block carries
+`GT=.` for that sample.
+
+**What we tell consumers.** `VariantRow.callable_from`'s description and SCHEMAS.md's *Reference
+evidence is a block* paragraph say a block is *"one record with END="*, found by interval containment
+on it. In the record `1 100 . A <*> . . END=199 GT:MIN_DP:LEN 0/0:30:100 0/0:30:10`, sample two called
+100–109 only, and our rule credits it with 150. For a `requires_callable` row at 150 that is a
+confident absence nobody screened for: the direction SCHEMAS.md itself calls dangerous. The `GT=.` rule
+errs the safe way, but our text still sends the consumer to the wrong record.
+
+**The patch (text only).** Read the sample's own FORMAT `LEN` first, and `END` only where `LEN` is
+absent (the spec's own fallback). A `.` GT inside that sample's own earlier block is that block's call,
+not a no-call. Update the `callable_from` description, the SCHEMAS.md paragraph and its quoted 4.4
+record, and the consumer contract. No column, no validator: P3 and P8 are not reached. Severity is
+stated for the file the spec permits; no real multi-sample 4.5 file with per-sample `LEN` was measured.
+
+## RM315 — the VCF reserved-key tables we transcribe miss keys the spec reserves, among them `RUC`, and name no spec version
+
+**Severity** medium · **Status** open — **a patch** · **Owner** format (`vocab.VCF_FIELD_NUMBER`, `VCF_COLLIDING_KEYS`, `VCF_NUMBER_MEANINGS`) + docs · **Motivating case** [VCF_4_5_AUDIT §§ 3–4](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313
+
+**What is missing.** `VCF_FIELD_NUMBER` claims to transcribe the spec's reserved keys, but it lacks
+§3's INFO keys (`RUC`, `RN`, `RUS`, `RUL`, `RB`, `RUB`, `CIRUC`, `CIRB`, `SVLEN`, `CIPOS`, `CIEND`,
+`CILEN`, `CICN`, …), §4's FORMAT `CICN`, `NQ`, `HAP` and `AHAP`, Table 2's `PP`, and every 4.5 key
+(`LEN`, `LAA`, `LA`, the local-allele family, the base-modification aliases). `CICN` is reserved in both
+namespaces with different cardinality, like `CN`, and is absent from `VCF_COLLIDING_KEYS`. And no doc a
+consumer reads says which spec version the tables describe.
+
+**Why it bites.** `binning._VCF_MEASURE_FIELDS` names `RUC` as the field a `repeat_count` is read
+from, and `RUC` is `Number=.`. Probed on `htt_repeat_expansion` with `source_element` emptied:
+`INFO/RUC` gives no warning, while `FORMAT/AD` gives `vcf_pointer_unselected_element`.
+
+**The patch.** Transcribe the missing keys, add `CICN` with its sentence in `VCF_COLLISION_REASONS`
+(asserted total), and fix the comment placing the structural keys in §5.6 (they are §3 and §4). Add
+`VCF_NUMBER_MEANINGS` entries for `LA`/`LR`/`LG`/`M`: it is read through `.get(..., default)`, so a
+missing meaning prints the default silently (`@lookup-with-a-default-hides-a-new-member`). Assert
+equality between the codes the table uses and the codes the meanings cover. State "VCF 4.5; a key added
+after it is unknown and withholds" in SCHEMAS.md and COMPILER.md. Leave the pinned `"is not a whole
+number in VCF 4.4"` phrase alone: it is API and still true. The `M[0-9]+[ACGTUN]` family is a pattern,
+so its named aliases go in, and the ChEBI-numbered form stays unknown. No new code.
+
+## RM316 — the `annotated_alt` element rule counts by ALT position, and VCF 4.5's local-allele fields order their values through `LAA`
+
+**Severity** low (medium for the first module that points at an `A`/`R`/`G` FORMAT field with it) · **Status** open — **a patch** · **Owner** format (`vocab.ELEMENT_RULE_MEANINGS`) + docs (the consumer contract) · **Motivating case** [VCF_4_5_AUDIT § 5](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313
+
+**What 4.5 added.** §1.6.2: `LAA` lists, per sample, which ALT alleles are in play and in what order.
+Every `A`/`R`/`G` FORMAT field has a local equivalent (`LAD`, `LPL`, …) read through it, and a file may
+carry only the local one. In the spec's example, ALT `A,C,T,<*>` with `LAA=2,4` gives `LAD=20,30,10` as
+REF, C, `<*>`.
+
+**What we say.** `annotated_alt` is *"at its index in the record's ALT list, which is element index+1
+on a Number=R field"*. On `LAD`, ALT `C` (index 2) is element 1. A module rightly writes
+`source_field=FORMAT/AD`. A consumer whose merged 4.5 file carries only `LAD`, and falls back to it
+under our sentence, reads the wrong allele's depth: well-formed and wrong.
+
+**The patch (text).** In `annotated_alt`'s meaning and in the consumer contract: resolve a local-allele
+field to its global equivalent through `LAA` before applying any element rule, as §1.6.2 recommends.
+The value-ranging rules survive unchanged. A `local_annotated_alt` rule is refused, because it would
+make the module describe how the consumer's file was merged (P2).
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
@@ -2329,6 +2394,16 @@ New ideas enter here as freeform suggestions, then graduate through the design c
   row, the question is which parent state each row was computed from, and no sidecar records that
   (`@currency-cannot-be-a-column`). Nobody has asked for the cascade itself; the observation is what
   was offered.
+
+- **A measure kind for base-modification fractions** (the VCF 4.5 audit, § 6, 2026-09-30). 4.5
+  reserves FORMAT `M5mC`, `M5hmC`, `M6mA` and the `M[0-9]+[ACGTUN]` family: the fraction of bases
+  modified, `Number=M`, strand-specific. The pointer grammar accepts them and the cardinality lookup
+  withholds, so nothing is wrong today. What is missing is a home: no `measure_kind` is a methylation
+  fraction (binning one as `allele_fraction` would put two quantities under one name, P5), and no
+  element rule selects the value at one base on one strand. FMR1 full-mutation methylation is the
+  plausible first case, and `fmr1_cgg_repeat` is in the corpus, but no module or consumer has asked. If
+  built, a minor: two vocabulary members, no column, with the names audited first (P5). Design it
+  against a real file, as RM65 and RM66 are.
 
 ## Consumer note (just-dna-lite, 2026-08-21) — a dogfooding pass over ten modules, and the eleven findings that are yours rather than the plugin's
 
