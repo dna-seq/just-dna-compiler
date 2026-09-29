@@ -868,7 +868,7 @@ an `EnsemblResolver.read_base` constructor field and a public `sequences.grch38_
 field, parameter and public function, each minor-class under the triage runbook's release table, and
 [RELEASE_CYCLE](RELEASE_CYCLE.md) keeps `main` patch-only. Fixed forward: the reader is private, the
 field is gone, and the warning carries the naming. The structured list is
-[RM272](ROADMAP.md#rm272--an-answered-but-unplaceable-rsid-has-no-structured-name-in-enrichmentresult),
+[RM272](ROADMAP_0_8.md#rm272--an-answered-but-unplaceable-rsid-has-no-structured-name-in-enrichmentresult),
 for `0.8`.
 
 ## RM264 — the 0.7.x manifest read an abstract-only miss as a checked quote, and the patch line re-describes it
@@ -953,7 +953,7 @@ story rather than about what the class promises.
 - **Rewriting title markup.** Crossref passes JATS tags (`<i>`) through. The field is for a person to
   compare against the paper they meant; cleaning it would be a second opinion about the title.
 - **The reporter's second candidate, DOI → PMID, in the same change.** It is a separate request, a
-  separate client method, and an advisory rather than a fill. Filed as [RM263](ROADMAP.md#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).
+  separate client method, and an advisory rather than a fill. Filed as [RM263](ROADMAP_0_8.md#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).
 
 ## RM259 — a position has no gene to ask the Atlas about, so the reverse span lookup ships
 

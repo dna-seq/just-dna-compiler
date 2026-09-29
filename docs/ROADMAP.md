@@ -344,63 +344,6 @@ you**, so check which `# ` heading you are under before writing the section, not
 The trackers further down are the other live part of this file: the reserved-namespace tracker and the
 1.0-cleanup candidate tracker, which the Constitution deliberately keeps out of itself.
 
-## RM258 — an outage during the literature fetch writes a row that merge-not-clobber never asks again
-
-**Severity** medium · **Status** open — **a minor, release undecided** — found while building RM257 ·
-**Owner** enricher (`literature`) · **Motivating case**
-[S110](CONSUMER_SUGGESTIONS_HISTORY.md#s110--the-literature-pass-leaves-an-author-manuscript-abstract-only-when-pmcs-bioc-service-serves-it-whole-tables-included)
-— Europe PMC answered HTTP 500 for `PMC6463297` on 2026-09-24
-
-**What was confirmed.** `EuropePmcClient.fulltext` and the new `PmcBiocClient.fulltext` both return
-`None` for a 404 (no copy) and for a 5xx or a transport failure (never answered). The pass then falls
-back to the abstract and writes `quote_source=abstract` with the abstract's count. The row is keyed by
-PMID and `literature.csv` is merge-not-clobber, so `wanted` skips it on every later run: **a transient
-outage becomes a permanent abstract-only pin.** Pinned by
-`test_every_way_bioc_has_no_text_reads_as_not_retrieved`, whose 500 arm writes exactly that row. That
-test asserts today's behaviour, not a decision. `@unreachable-not-absent` at the row level. The
-reporter named the conflation in `fulltext()`, and the pin is what it costs.
-
-**Rows pinned before RM257 have the same problem without any outage.** The BioC rung only runs for a
-citation the pass fetches, so a module enriched before it keeps its abstract-only rows until
-`literature.csv` is deleted. Since 0.7 that delete costs nothing (RM124), and that is the
-workaround the S110 reply gives. It is still a step nobody will know to take.
-
-**Candidate repairs, none chosen:**
-
-1. **Write no row when the fulltext could not be asked.** Refused in advance: existence, identifiers
-   and the licence were all answered, and answered is per field
-   (`@answered-is-not-absent`). Dropping those answers to get a retry is the wrong trade.
-2. **Re-ask fulltext on every run for any row whose `quote_source` is not `fulltext`.** No schema
-   change, and it picks up rows pinned before RM257. It costs one paced request per paywalled citation
-   per run, forever, for articles that will never have a copy. Changing the pass's merge from per row
-   to per field is the precedent this would set, and `--rederive` already has rules for that
-   (`@rederive-never-shortens`).
-3. **Record how the fulltext question ended, as a derived column** (`fulltext_status`, roughly
-   `retrieved | absent | unreachable`), and re-ask only `unreachable`, plus null on rows written
-   before the column existed. An optional column on a derived CSV is minor-legal and half-cost
-   (P9). It needs the two clients to stop returning one `None` for two answers, which is the
-   `@client-exception-contract` shape. The question for review is whether null on old rows should
-   mean "ask once" or "leave alone".
-
-## RM263 — a DOI has no route to its PMID, although `StudyRow.pmid` is the required half
-
-**Severity** low · **Status** open — **a minor, release undecided** · **Owner** enricher (`lookup`,
-`literature`) · **Motivating case** [S113](CONSUMER_SUGGESTIONS_HISTORY.md#s113--lookup_citationdoi-settles-existence-and-never-identity-title-journal-year-and-author-are-always-null), the reporter's second candidate fix
-
-**What was confirmed.** A curator holding only a DOI (what a paper's landing page gives you) can now
-learn which paper it is (RM262), but not its PMID, and `StudyRow.pmid` is the column the schema
-requires. RM50 built the same route for a PMC id through NCBI's converter; a DOI has none. Europe PMC's
-search answers it: `DOI:"10.1038/ng826"` returns PMID `11788828`, measured 2026-09-25, and covers all
-of PubMed. NCBI's converter also takes DOIs but only answers for articles in PMC, and Enattah 2002 is
-not in PMC, so it would miss exactly the paywalled case.
-
-**The shape is RM50's, and the open question is the second title.** The resolved PMID comes back as an
-advisory (`applied=False`, `refusal="redundancy_bearing"`), never a fill, since `pmid` is
-redundancy-bearing. Then PubMed is asked which paper that PMID is, as `_check_pmcid` does. That gives a
-DOI-only lookup two titles, Crossref's and PubMed's, and whether a disagreement between them is a
-`warning` or only two `info` findings side by side is the decision still to make. `EuropePmcClient`
-has no DOI search today; one method.
-
 ## RM265 — the `panel:` deprecation has no "accepted" signal: on the replaced branch the warning fires whether or not you need the three fields it tells you to keep the block for
 
 **Severity** medium · **Status** open — **a minor, release undecided** · **Owner** compiler / format
@@ -596,60 +539,18 @@ The build is 3 + 4, plus the stamped verdict from 2. The part that ships without
 consumer guide stating that no normalization is guaranteed, landed with the S120 reply.
 
 
+**Addendum 2026-09-29, from [PROPOSAL_0_8_PT1 § RM270](proposals/PROPOSAL_0_8_PT1.md): a round trip
+drops every `vrs_id`.** Compiling `reference_examples/hfe_hemochromatosis`, reversing it and compiling
+again takes `compilation.vrs_alleles_identified` from 10 to 0 of 12. `reverse` rebuilds
+`resolution.csv` from the parquets, and no variant parquet carries the id. By P7's own remedy ("the
+artifact is missing a field, not the spec") that is candidate 4 above, so it is evidence for this
+item rather than a new one.
+
 **Pinned by RM291 (2026-09-27).** `compiler/tests/test_consumer_join.py` joins every reference example
 against a bcftools-normalized ClinVar slice, and the two SHOX rows Ensembl spells at `X:634690`
 (`AGAG>AG`, `AGAG>AGAGAG`; ClinVar and callers write `X:634689`) are its expected misses, pinned to
 this item. Shipping this empties that set, and the test fails until the pin is removed.
-## RM272 — an answered-but-unplaceable rsID has no structured name in `EnrichmentResult`
 
-**Severity** low · **Status** open — **a minor**, for the `0.8` branch · **Owner** enricher
-(`EnrichmentResult`) · **Motivating case** RM268 and RM271, 2026-09-27
-
-RM268 withholds a live REST locus whose anchor base cannot be read, and RM271 withholds loci whose
-alleles are not bases; RM274 keeps an indel the reference could not settle, and drops one it showed is
-a different event. On `main` all of these are reported by a log warning only, because a new
-`EnrichmentResult` field is minor-class (the first RM268 commit added `unanchored_rsids` there and was
-fixed forward). A caller reading the result sees these rsIDs only in `unresolved`, which is silent about
-why, the gap `unreachable_rsids`, `unconsulted_rsids` and `allele_mismatches` each closed for their
-state. Add the field (or fields) on `0.8`, beside those, and decide whether "anchor base unreadable"
-(transient, re-run) and "not a base" (permanent) are one list or two. · *related* RM268, RM271, S20, S85
-
-## RM275 — seven derived fact tables have no duplicate rule, so two contradicting rows under one key compile green under `--strict`
-
-**Severity** medium · **Status** open — **a minor** (re-sized 2026-09-27, see the last paragraph), with
-refusal at **1.0** · **Owner** compiler (`_TABLE_DUPE_KEYS`) · **Motivating case** RM107's residual (0.6), *"it wants its own item"*,
-found unfiled by the 2026-09-27 postmortem sweep (P3) · *related* RM107, RM109, RM124, RM130
-
-RM107 widened the duplicate check to `sources.csv` and wrote down what it left: *"The remaining gap is
-the other fact tables, which have no duplicate rule at all; RM109's own defect produced exactly such a
-pair and nothing reported it."* Walked on 2026-09-27, `_FACT_TABLES` minus `_TABLE_DUPE_KEYS` is
-`frequencies`, `gene_metrics`, `literature`, `gene_validity`, `clinical_assertions`, `gwas_effects`
-and `expression_effects`. RM124 and RM130 registered their own tables, and none of these.
-
-**Reproduced.** `reference_examples/hboc_palb2` with its first `gene_validity.csv` row duplicated and
-the copy's `classification` changed from `definitive` to `refuted`. `compile --strict` exits 0, and
-`gene_validity.parquet` carries both rows for `PALB2 / MONDO:0012565 / autosomal_recessive`. A consumer
-reads one or the other depending on row order.
-
-**Two constraints on the build.**
-
-- **Derive each key from the merge key the enricher already writes the table by**
-  (`base.merge_key`, `@suppression-from-merge-key`), never a second hand-kept tuple. `gene_validity`
-  keeps two rows on purpose when the source's classification drifts (the comment at
-  `gene_validity.py:288-311`). So "duplicate" means **both stated and different** under the merge key
-  (`@absent-is-not-different`), not merely a repeated key.
-- **Refusing is a tightening.** A published module carrying such a pair compiles today, and P3 says
-  existing modules keep validating inside a major. So the check lands as a warning in both modes on
-  `main`, and becomes a refusal at 1.0 (a 1.0-tracker line when this is built).
-
-
-**Re-sized to a minor, 2026-09-27, before building.** The warning needs its own code, and a new member
-of `VALID_WARNING_CODES` is not legibility-only: `ModuleManifest.warnings_summary` validates every key
-against that closed set, so a just-dna-format 0.7.2 reader **refuses** a manifest carrying the new
-code. That is an old-reader break (the INTEGRATION_0_7 shape), which `main` cannot take. Reusing an
-existing code would name the wrong finding (`@warning-code-names-the-finding`), and a log line alone
-is invisible to every consumer reading findings. Build it on the `0.8` branch, with the INTEGRATION
-note that says a reader must be at 0.8 to read such a manifest.
 ## RM294 — STRchive's evidence grade has no place in the module, so a Refuted locus is doubted only in a draft note
 
 **Severity** low · **Status** open — **a minor, release undecided** · **Owner** format / enricher ·
@@ -663,24 +564,6 @@ and STRchive's vocabulary is open upstream (`combobox: true`), so a closed `froz
 priced against a source that adds members. The alternatives to weigh first are a derived sidecar
 (half price) or the manifest's provenance block, and whether RM170's CIViC answer already fixed the
 shape. Decide on the `0.8` branch.
-
-## RM278 — the `compile` command cannot pass `ensembl_reference` or `ba1_threshold`, so every CLI-compiled manifest has a null `ensembl_reference`
-
-**Severity** low · **Status** open — **a minor**, for the `0.8` branch · **Owner** compiler (`cli.py`
-`compile`) · **Motivating case** RM218's *surfaced, not fixed* (§13.8), which left the question open
-and tracked nowhere, found by the 2026-09-27 postmortem sweep (P6) · *related* RM218
-
-**Confirmed on 2026-09-27.** `compile_module` takes `ensembl_reference` and `ba1_threshold`, and
-`just-dna-compiler compile --help` offers neither. So
-`manifest.compilation.ensembl_reference` cannot be stamped by the shipped command, and a module
-compiled through the CLI records no reference, whatever it was resolved against. `ba1_threshold` is
-the ACMG BA1 cutoff its own docstring says a carrier-allele module would want to move. COMPILER.md
-states the gap and `test_cli_parity.py` does not assert compile-flag parity, so nothing will move it.
-
-**Why a minor, not a patch.** Two new CLI options are new public surface, and `main` takes none
-(the RM268 fix-forward). The decision is small: add both, or say in COMPILER.md why the CLI
-deliberately stays narrower than the API. Either way, extend `test_cli_parity.py` to assert the
-decided set, so the next parameter cannot drift in unweighed.
 
 ## RM281 — the PGx lane reads one of ClinPGx's archives, and `clinicalVariants.zip` bears on a shipped table kind
 
@@ -722,31 +605,6 @@ on every module drafted from them. A commercial author has no PGx source at all.
 **The gate, and why it is satisfiable now.** A survey of PGx sources ranked by terms before content.
 Anyone can do it today and it needs nothing built. If it finds a candidate, adopting it is a normal
 source adoption (a minor). If it finds none, this closes as measured, with the survey as the record.
-
-## RM283 — nothing notices the ClinPGx archive the lane builds from going quiet, which is how it served a fourteen-month-old snapshot
-
-**Severity** medium · **Status** open — **a minor, release undecided** · **Owner** enricher
-(`clinpgx_build`, its `release.json`) · **Motivating case** RM175's *"that gap is the honest
-remainder"*, left unfiled, found by the 2026-09-27 postmortem sweep (P10) · *related* RM175, RM173,
-`@currency-asks-the-source-not-the-cache`
-
-RM175 found the lane building from `clinicalAnnotations.zip`, retired upstream and frozen on S3 for
-fourteen months while still answering 200. It shipped a narrow guard, refusing the retired member
-names, and listed three wider ones it did not build: audit each default URL against the source's
-listing, record the S3 `Last-Modified` beside `CREATED_*.txt` in `release.json`, and fire when one
-archive of a multi-archive source is much older than its siblings. It closed with *"Nothing built
-here would notice `summaryAnnotations.zip` itself going quiet, and that gap is the honest
-remainder"*, and gave that remainder no number.
-
-**Confirmed on 2026-09-27.** `clinpgx_build` records `CREATED_*.txt` only. It reads no
-`Last-Modified` and compares nothing across archives.
-
-**What to build, cheapest first.** Record `Last-Modified` in `release.json`. That is a new field in a
-published snapshot's description, so it is minor-class. Then a finding that compares it with the
-sibling archives' dates on the same fetch, reporting and never refusing (a source going quiet is not a
-`strict` matter, `@a-source-recuring-is-not-a-strict-matter`). The URL audit needs a browser (RM175's
-trap: every ClinPGx HTML route is a JS shell), so it stays a manual step written into the lane's
-rebuild runbook, not machinery.
 
 ## RM284 — a skip is a fact about the run, and `verification.json` has no run-level place to keep one
 
@@ -836,28 +694,6 @@ a snapshot, so an offline deployment gets every answer but this one.
 (three stages, each absent one with its reason as a field, `repro_out` default, parents). ClinGen's
 terms have to be recorded as a `SourceRow` before the lane can be published. A new lane is new public
 surface, so this is a minor.
-
-## RM288 — two snapshot builders and the PGx drafter make every caller enumerate their exception family, a question RM101 named and left in a test's exemption block
-
-**Severity** low · **Status** open — **a minor, release undecided** (a public exception base) ·
-**Owner** enricher (`cpic_build`, `pharmvar_build`, `pgx_draft`) · **Motivating case** RM101's
-exemption block in `enricher/tests/test_pass_exception_contract.py`, *"a real question and a wider one
-than this item"*, found unhomed by the 2026-09-27 postmortem sweep (P14) · *related* RM101, RM96,
-`@client-exception-contract`
-
-RM101 made every enrichment pass raise one documented type. It exempted `cpic_build.build_snapshot`,
-`pharmvar_build.build_snapshot` and `pgx_draft.draft_gene` by name. Their callers spell the family out
-(`except (CpicError, CpicBuildError)`, `except (CpicError, *_DRAFT_PRECONDITION_ERRORS)`). That works,
-but it is the *list* shape: a caller has to know which types to name, which is the drift RM96 was the
-lesson for. The only record of the question is the comment in the test's `exempt` set.
-
-**Confirmed on 2026-09-27.** The three entries are still exempt, and no ROADMAP file names the
-question.
-
-**What to decide.** Whether each surface gets one catchable base (a subclass relation over the existing
-types, which makes a caller's `except` order load-bearing: `@client-exception-contract`'s AST guard
-applies), or whether the list shape is kept on purpose and the exemption comment is rewritten as a
-decision rather than a deferral. A new public exception base is new surface, so building it is a minor.
 
 ## RM290 — the "vindicated" reading of an unmatched overlay row exists for one overridable table, and nobody decided the others
 
@@ -986,27 +822,6 @@ rest. Empty stays the unknown arm, never "not ClinPGx".
 **Price and legality.** A new optional column is minor-legal (P3, P8) and costs the full authored
 price (P9), because a curator has to learn it. That cost is why it waits for a minor and a case,
 rather than shipping with RM297.
-
-## RM300 — the manifest cannot say how many rows are pathogenic, only how many carry the folded flag
-
-**Severity** low · **Status** open — **a minor, release undecided** (new optional manifest fields) ·
-**Owner** format (`manifest.Stats`) + compiler (`_variant_stats`) · **Motivating case** S123 in
-CONSUMER_SUGGESTIONS_HISTORY.md, via RM299 · *related* RM299, S43
-
-**What is missing.** `stats.pathogenic_count` and `stats.benign_count` sum the legacy booleans, and
-each boolean folds a tier pair. A catalog facets on the listing without reading the artifact, so it
-cannot split `pathogenic` from `likely_pathogenic`. just-dna-lite's card had to fall back to a tooltip.
-The reporter's own measurement for `just-dna-seq/pathogenic`: 403,534 `pathogenic` rows and 215,095
-`likely_pathogenic`.
-
-**The shape.** Per-tier counts derived from `clin_sig` (the effective value, so a boolean-only row
-still counts through `clin_sig_from_booleans` where it can), beside the existing fields. The existing
-fields keep their meaning. Whether it is a count per tier or a mapping keyed on `VALID_CLIN_SIG` is
-the one design question: a mapping takes a new tier without a new field. Decide whether distinct
-variants per tier are wanted too, since the existing counts are per genotype row.
-
-**Legality and price.** A new optional manifest field is additive and minor-legal (P3). It is not in
-`artifact.digest`, and the compiler writes it, so it costs nearly nothing (P9). Not on `main`.
 
 ## RM302 — one `conclusion` serves every place a report shows it; a table cell, a details card and an explanatory mode want different wordings
 
@@ -1213,22 +1028,6 @@ shareable in the first place.
 upstream figure behind it. And whether `AtlasClient` takes an injected `gate=` like the httpx
 clients, so a host running several clients can hand them one. Internal behaviour either way, so a
 patch.
-
-## RM308 — the conclusion-genotype finding runs only on the authoring surface, so a module nobody linted compiles green with a swapped pair
-
-**Severity** low · **Status** open — **a minor, release undecided** (a new warning code) · **Owner** format
-(`VALID_WARNING_CODES`) + compiler (`validate_spec`, `compile_module`) · **Motivating case** RM279's
-residual, 2026-09-28 · *related* RM279, RM309
-
-RM279 shipped the rule as a hint because the compile half needs a member of `VALID_WARNING_CODES`, and a
-new member is minor-class: a reader pinned to an older `just-dna-format` refuses a manifest carrying it.
-So an author who never runs `hint` or `lint_rows` still gets a green `--strict` compile on a swapped
-pair. The rule is `just_dna_compiler.conclusion.conclusion_genotype_mismatches`, already separate from
-`hints` so the compile path can call it. What the minor owes: one code named for the finding (for
-example `conclusion_names_other_genotype`), emission at both `validate` and `compile`
-(`@parity-by-check`), aggregated by reason, a `features/` scenario, and the phrase pinned in the
-COMPILER.md warning catalogue. It stays a warning in both modes: 10 of 10 is a measurement over one
-corpus, not a licence to refuse.
 
 ## RM309 — a `risk`/`protective` state whose own conclusion negates it goes unflagged
 

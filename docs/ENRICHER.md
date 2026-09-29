@@ -3326,7 +3326,7 @@ a licence**: the service's own note says the file is "available for text mining"
 terms, so `is_open_access` and `license` stay what Europe PMC said. A BioC hit is `quote_source=fulltext`,
 because that column records how far the search reached and not which host served it. A 5xx still reads
 as "no copy" on both rungs, and the row it leaves is pinned. That is
-[RM258](ROADMAP.md#rm258--an-outage-during-the-literature-fetch-writes-a-row-that-merge-not-clobber-never-asks-again), open.
+[RM258](ROADMAP_0_8.md#rm258--an-outage-during-the-literature-fetch-writes-a-row-that-merge-not-clobber-never-asks-again), open.
 
 **A quote is an *attestation*, so no tool may write one — and retrieving the fulltext changes what the
 check proves.** `provenance_quote`/`provenance_regex` mean *a curator read this passage in this paper*,

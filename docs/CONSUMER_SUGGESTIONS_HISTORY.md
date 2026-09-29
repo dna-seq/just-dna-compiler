@@ -5012,7 +5012,7 @@ manifest.
 
 ## S110 — the literature pass leaves an author manuscript abstract-only when PMC's BioC service serves it whole, tables included
 
-**Status — accepted; point 1 shipped in the tree as [RM257](ROADMAP_HISTORY.md#rm257--pmcs-bioc-service-is-the-fulltext-rung-for-records-europe-pmc-calls-closed), uncut; point 2 is taken; the 404/500 split is filed open as [RM258](ROADMAP.md#rm258--an-outage-during-the-literature-fetch-writes-a-row-that-merge-not-clobber-never-asks-again).**
+**Status — accepted; point 1 shipped in the tree as [RM257](ROADMAP_HISTORY.md#rm257--pmcs-bioc-service-is-the-fulltext-rung-for-records-europe-pmc-calls-closed), uncut; point 2 is taken; the 404/500 split is filed open as [RM258](ROADMAP_0_8.md#rm258--an-outage-during-the-literature-fetch-writes-a-row-that-merge-not-clobber-never-asks-again).**
 Reproduced live the same day with your ids: Europe PMC reports `PMC6463297` as `isOpenAccess: N,
 inPMC: Y` and answers 500 for `fullTextXML`, while BioC answers 200 with 294 passages, and
 `PMC1050584` answers 200 with the `[Error]` body.
@@ -5243,7 +5243,7 @@ consumer (us) order passes without hand-kept knowledge. Offered as an observatio
 
 ## S113 — `lookup_citation(doi=…)` settles existence and never identity: title, journal, year and author are always null
 
-**Status — accepted; your fix (1) shipped as [RM262](ROADMAP_HISTORY.md#rm262--a-doi-answered-existence-and-never-identity-although-the-body-naming-the-paper-was-already-in-hand) on the `0.8` branch, uncut (enricher), your (3) with it, and your (2) filed as [RM263](ROADMAP.md#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).**
+**Status — accepted; your fix (1) shipped as [RM262](ROADMAP_HISTORY.md#rm262--a-doi-answered-existence-and-never-identity-although-the-body-naming-the-paper-was-already-in-hand) on the `0.8` branch, uncut (enricher), your (3) with it, and your (2) filed as [RM263](ROADMAP_0_8.md#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).**
 Reproduced live on `10.1038/ng826`, exactly as you wrote it. `CrossrefClient.work(doi)` now parses
 the `/works` body the existence request already returned (no extra request), and `lookup_citation`
 fills `title`, `journal`, `year` and `first_author` from it, with an `info` finding
@@ -5836,7 +5836,7 @@ at the draft-logic diff. Every other v1-port module's `resolution_signature` was
 **Status — accepted, as a documentation defect in the field. The description is fixed as
 [RM299](ROADMAP_HISTORY.md#rm299--statspathogenic_count-says-pathogenic-and-counts-both-pathogenic-tiers-per-genotype-row)
 (format, on `main`, uncut), and the split count is filed as
-[RM300](ROADMAP.md#rm300--the-manifest-cannot-say-how-many-rows-are-pathogenic-only-how-many-carry-the-folded-flag),
+[RM300](ROADMAP_0_8.md#rm300--the-manifest-cannot-say-how-many-rows-are-pathogenic-only-how-many-carry-the-folded-flag),
 a minor.** Reproduced from the code: `_variant_stats` sums `v.pathogenic` over authored `variants.csv`
 rows, and `derive.pathogenic_from_clin_sig` maps both `pathogenic` and `likely_pathogenic` to `True`.
 The count was behaving as SCHEMAS.md has described it since S43 (*"counts the boolean and therefore
