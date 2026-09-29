@@ -204,6 +204,39 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM310 — `cache rebuild --only cpic` lets a CPIC outage escape as a traceback, and the lanes after it never build
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-29 on `main`, uncut — a patch** (one handler, no surface) · **Owner** enricher
+(`caches._rebuild_cpic`) · **Motivating case** found 2026-09-29 while vetting RM288 for the 0.8 pt1
+proposal · *related* RM288, RM97, RM101, `@client-exception-contract`
+
+**Residuals** RM288 — which side owns a builder's error list, so the next caller cannot name half of it
+
+**Reproduced.** `caches._rebuild_cpic` catches `(cpic_build.CpicBuildError, ImportError, OSError)`.
+`cpic_build.build_snapshot` fetches through `CpicClient`, which raises `CpicError` on a transport
+failure or a 5xx (RM97 made it do so), and nothing in `cpic_build` translates it. With
+`build_snapshot` stubbed to raise `CpicError("… 503")`, `_rebuild_cpic` raises instead of returning a
+failed `RebuildOutcome`. The CLI's `cache rebuild` loop (`cli.py`, the `rebuild_lane` call) and
+`rebuild_caches` have no per-lane backstop, so every lane after CPIC in registry order is neither
+built nor reported. `prepare_caches` survives only through its catch-all `except Exception`, which
+reports the lane as a generic crash.
+
+**Why it happened.** It is the list shape RM288 records: the CLI's `cpic_build_` names
+`(CpicError, CpicBuildError)` correctly, and the second caller, written later, named one of the two.
+That is the drift RM96 was the lesson for, and it is the first incident RM288 had lacked.
+
+**The patch.** Add `cpic.CpicError` to the handler, and a test that stubs each builder's client to
+raise its documented type and asserts every `_rebuild_*` returns an outcome rather than raising. The
+test walks `CACHE_LANES`, never a hand-kept list. Which mechanism stops the next drift is RM288's
+question, not this one's.
+
+**What shipped.** `_rebuild_cpic` names `cpic.CpicError` beside `CpicBuildError`, as the CLI's
+`cpic build` does. `test_rebuild_adapters_contain_their_errors.py` walks `CACHE_LANES`, makes each
+adapter's first builder call raise its documented type (both of CPIC's), and asserts the adapter
+returns `built=False` with the error in its detail. A set-equality guard fails when a lane gains an
+adapter with no stated errors. With the handler reverted, only the `CpicError` case fails. Routed by
+the maintainer through a peer session; the mechanism stays RM288's.
+
 ## RM290 — the "vindicated" reading of an unmatched overlay row exists for one overridable table, and nobody decided the others
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-29 on `main`, uncut — a patch** (a registry field; no

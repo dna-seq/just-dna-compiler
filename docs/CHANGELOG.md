@@ -41,6 +41,13 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-29 — RM310: a CPIC outage during `cache rebuild` is a failed lane, not a traceback (patch, on `main`)
+
+**enricher** — `caches._rebuild_cpic` now catches `cpic.CpicError`, which `CpicClient` raises on a
+transport failure or a 5xx. Before, it escaped `cache rebuild` and `rebuild_caches`, so every lane
+after CPIC was neither built nor reported. A new test walks `CACHE_LANES` and asserts every adapter
+returns a failed outcome for its builder's documented errors.
+
 ## 2026-09-29 — RM290: each overridable table states whether an unmatched correction can mean the source caught up (patch, on `main`)
 
 **format** — `overrides.OverlayTarget` gains `vindication` (`sole` / `withheld` / `none`, closed as

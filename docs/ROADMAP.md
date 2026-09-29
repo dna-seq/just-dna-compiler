@@ -862,6 +862,9 @@ types, which makes a caller's `except` order load-bearing: `@client-exception-co
 applies), or whether the list shape is kept on purpose and the exemption comment is rewritten as a
 decision rather than a deferral. A new public exception base is new surface, so building it is a minor.
 
+**The first incident, 2026-09-29: RM310.** `caches._rebuild_cpic` named one of CPIC's two error types
+and a 503 escaped `cache rebuild`. RM310 patched that one list and left the mechanism here.
+
 ## RM311 — a `gene_validity.csv` correction the source has since adopted, or superseded, says nothing
 
 **Severity** low · **Status** open — **a patch** if both arms reuse existing codes (a new one would make it a minor), a decision first · **Owner** schema (`gene_validity`, `overrides`) + compiler ·
@@ -1215,30 +1218,6 @@ on a neutral row is correct, and *"does not reduce risk"* can support either sta
 same gate RM279 had**, a hand-judged precision over the reporter's six curated modules plus the
 registry corpus. The gate is satisfiable today, because both the corpus and the rule exist. Like
 RM279 it is patch-class only as a hint, and its compile half would join RM308.
-
-## RM310 — `cache rebuild --only cpic` lets a CPIC outage escape as a traceback, and the lanes after it never build
-
-**Severity** medium · **Status** open — **a patch** (one handler, no surface) · **Owner** enricher
-(`caches._rebuild_cpic`) · **Motivating case** found 2026-09-29 while vetting RM288 for the 0.8 pt1
-proposal · *related* RM288, RM97, RM101, `@client-exception-contract`
-
-**Reproduced.** `caches._rebuild_cpic` catches `(cpic_build.CpicBuildError, ImportError, OSError)`.
-`cpic_build.build_snapshot` fetches through `CpicClient`, which raises `CpicError` on a transport
-failure or a 5xx (RM97 made it do so), and nothing in `cpic_build` translates it. With
-`build_snapshot` stubbed to raise `CpicError("… 503")`, `_rebuild_cpic` raises instead of returning a
-failed `RebuildOutcome`. The CLI's `cache rebuild` loop (`cli.py`, the `rebuild_lane` call) and
-`rebuild_caches` have no per-lane backstop, so every lane after CPIC in registry order is neither
-built nor reported. `prepare_caches` survives only through its catch-all `except Exception`, which
-reports the lane as a generic crash.
-
-**Why it happened.** It is the list shape RM288 records: the CLI's `cpic_build_` names
-`(CpicError, CpicBuildError)` correctly, and the second caller, written later, named one of the two.
-That is the drift RM96 was the lesson for, and it is the first incident RM288 had lacked.
-
-**The patch.** Add `cpic.CpicError` to the handler, and a test that stubs each builder's client to
-raise its documented type and asserts every `_rebuild_*` returns an outcome rather than raising. The
-test walks `CACHE_LANES`, never a hand-kept list. Which mechanism stops the next drift is RM288's
-question, not this one's.
 
 ## RM312 — `test_a_wrapped_diagnostic_is_matchable_through_cli_text` passes or fails on the length of `tmp_path`
 
