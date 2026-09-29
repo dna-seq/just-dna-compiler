@@ -1268,6 +1268,22 @@ raise its documented type and asserts every `_rebuild_*` returns an outcome rath
 test walks `CACHE_LANES`, never a hand-kept list. Which mechanism stops the next drift is RM288's
 question, not this one's.
 
+## RM312 — `test_a_wrapped_diagnostic_is_matchable_through_cli_text` passes or fails on the length of `tmp_path`
+
+**Severity** low · **Status** open — **a patch** (test only) · **Owner** enricher tests
+(`test_cli_rendering.py`) · **Motivating case** the 0.8 post-merge suite, 2026-09-29 · *related* RM233
+
+**Reproduced on `main` and on `0.8` alike.** The test's last assertion says the raw CLI output does
+**not** contain *"nothing will fetch it"*, because Typer's error box wraps the sentence. Whether it
+wraps depends on how long the missing file's path is, and that path is `tmp_path`. Under
+`/tmp/pytest-of-mau/pytest-9/…` the phrase fits on one line and the test fails. Under a longer
+basetemp it wraps and the test passes. Its docstring says this half "was never environment-dependent";
+it is, through the path length. The `cli_text` half, which is the behaviour, holds either way.
+
+**The patch.** Pin the path length. Build the missing path from a fixed long name, or feed a path whose
+length makes the box wrap inside the phrase by construction. Drop the negative assertion if it cannot
+be made deterministic, since the helper's reason is recorded in the docstring.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
