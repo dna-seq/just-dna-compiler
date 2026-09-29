@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# Starts the triage seat: a Claude Code session that the consumer inbox can wake unattended.
+# Starts the triage seat: an auto-mode Claude Code session the consumer inbox can wake unattended.
 #
-# Two things the repo's own settings cannot do, so they ride in on --settings, which scopes
-# them to this one session and no other seat:
-#   - crossSessionInbound=accept. A session that bypasses prompts holds every message posted
-#     to its inbox socket for approval, and a repo setting may only tighten this value, never
-#     loosen it. Only user settings or the --settings flag can say accept.
-#   - a SessionStart hook that arms .claude/wake-on-suggestions.sh. Hooks receive the session's
-#     $CLAUDE_CODE_MESSAGING_SOCKET, and a hook is not subject to auto mode's classifier. It
-#     re-fires on /clear and on resume, and the watcher is a newest-wins singleton, so re-arming
-#     replaces the old watcher rather than adding one.
+# The watcher is armed by a SessionStart hook passed with --settings, so it belongs to this one
+# session and no other seat in the repo. A hook receives the session's
+# $CLAUDE_CODE_MESSAGING_SOCKET and is not subject to auto mode's classifier, which refuses to
+# write or launch .claude/wake-on-suggestions.sh itself, as a session driving itself. The hook
+# re-fires on /clear and on resume, and the watcher is a newest-wins singleton, so re-arming
+# replaces the old watcher rather than adding one.
+#
+# Auto mode matters twice. It keeps the classifier on, and it is what lets the watcher's messages
+# in: a session that bypasses prompts holds every inbox message whose sender declared no
+# permission mode, and the only setting that lifts that hold (crossSessionInbound=accept) opens
+# the inbox to every other session on the machine as well.
 #
 #   .claude/triage-session.sh [extra claude args...]
 set -euo pipefail
@@ -20,9 +22,7 @@ cd "$REPO"
 settings=$(python3 -c '
 import json, sys
 arm = f"setsid -f {sys.argv[1]}/.claude/wake-on-suggestions.sh >/dev/null 2>&1"
-print(json.dumps({
-    "crossSessionInbound": "accept",
-    "hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": arm, "timeout": 10}]}]},
-}))' "$REPO")
+print(json.dumps({"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": arm, "timeout": 10}]}]}}))
+' "$REPO")
 
-exec claude --dangerously-skip-permissions --name triage --settings "$settings" "$@"
+exec claude --permission-mode auto --name triage --settings "$settings" "$@"
