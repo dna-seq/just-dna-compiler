@@ -36,6 +36,11 @@ s.close()
 '
 }
 
+# ARMED_NOTICE=1 posts one line first: the live check that the socket still takes this format.
+if [ "${ARMED_NOTICE:-}" = 1 ]; then
+    post "[watcher $(date -u +%FT%TZ)] armed on ${FILE:-docs/CONSUMER_SUGGESTIONS.md}" || exit 1
+fi
+
 coproc W { exec "$REPO/.claude/watch-suggestions.sh"; }
 p=$W_PID
 # Keep our own copy of the read end: bash unsets W once the coprocess exits. A blocking read

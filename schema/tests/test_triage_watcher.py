@@ -17,6 +17,7 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -259,3 +260,82 @@ def test_outside_a_session_it_refuses_to_start(suggestions, scratch):
     assert result.returncode != 0
     assert "inside a Claude Code session" in result.stderr
     assert not (scratch / "watch.pid").exists()
+
+
+def test_an_armed_notice_is_the_first_post_and_the_only_one(arm, inbox):
+    arm(ARMED_NOTICE="1")
+    assert wait_for(lambda: inbox.messages(), 5)
+    time.sleep(2)
+    [notice] = inbox.messages()
+    assert "armed on" in notice
+
+
+HOOK = REPO / ".claude" / "hooks" / "arm_triage_watcher.py"
+
+
+def run_hook(prompt: str, env: dict[str, str]) -> str:
+    result = subprocess.run(
+        [sys.executable, str(HOOK)],
+        input=json.dumps({"hook_event_name": "UserPromptSubmit", "prompt": prompt}),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0
+    return result.stdout
+
+
+@pytest.fixture
+def hook_env(scratch, inbox, suggestions):
+    env = {
+        **os.environ,
+        "CLAUDE_CODE_MESSAGING_SOCKET": str(inbox.path),
+        "CLAUDE_CODE_MESSAGING_TOKEN": TOKEN,
+        "FILE": str(suggestions),
+        "PIDFILE": str(scratch / "watch.pid"),
+        "COOLDOWN": "2",
+        "POLL": "0.3",
+        "READ_TIMEOUT": "1",
+        "BRANCH": "",
+    }
+    yield env
+    pidfile = scratch / "watch.pid"
+    if pidfile.exists():
+        os.kill(int(pidfile.read_text()), signal.SIGTERM)
+        time.sleep(1.5)  # the detached wrapper notices within READ_TIMEOUT and exits
+
+
+def test_a_prompt_naming_the_runbook_arms_a_watcher_that_wakes(hook_env, inbox, suggestions):
+    out = run_hook("@docs/CONSUMER_TRIAGE_LOOP.md rearm", hook_env)
+    assert "armed on" in out
+    assert wait_for(lambda: inbox.messages(), 5), "no armed notice: the hook did not start the wrapper"
+    time.sleep(1.2)
+    append(suggestions, SUGGESTION)
+    assert wait_for(lambda: len(inbox.messages()) == 2, 10)
+    assert "S1(new)" in inbox.messages()[1]
+
+
+def test_any_other_prompt_arms_nothing(hook_env, inbox, scratch):
+    assert run_hook("fix the compiler warning in resolve.py", hook_env) == ""
+    time.sleep(2)
+    assert inbox.messages() == []
+    assert not (scratch / "watch.pid").exists()
+
+
+def test_the_hook_says_so_when_the_session_has_no_inbox(hook_env, scratch):
+    env = {k: v for k, v in hook_env.items() if not k.startswith("CLAUDE_CODE_MESSAGING")}
+    assert "NOT armed" in run_hook("@docs/CONSUMER_TRIAGE_LOOP.md rearm", env)
+    assert not (scratch / "watch.pid").exists()
+
+
+def test_the_hook_ignores_input_that_is_not_json(hook_env):
+    result = subprocess.run(
+        [sys.executable, str(HOOK)],
+        input="not json",
+        env=hook_env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert (result.returncode, result.stdout) == (0, "")
