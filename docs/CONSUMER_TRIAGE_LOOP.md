@@ -31,8 +31,15 @@ curl -sf "https://api.github.com/gists/$GIST" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["history"][0]["version"])'
 ```
 
-**In sync through gist revision `b063b65ef777cf06002e6fa14953d6503692d1f1`**, inbound, adopted
-2026-09-25: the watcher became a newest-wins singleton per watched file (exit 3 when superseded), the
+**In sync through gist revision `96b6953362bb4854e05db04334086c43c9eeb170`**, ours, pushed
+2026-09-30. It carries the Claude Code arming outward: `wake-on-inbox.sh` (the uncapped socket
+wrapper with its `armed` canary) and `arm-on-prompt.py` (the prompt hook, which ignores the watcher's
+own `[watcher ` posts), plus a §2 paragraph and two README rows. The existing scripts went across
+byte-identical, verified against the pushed version. **The unauthenticated API read above was stale
+after that push**: for a while it still named the previous head and file list, while
+`gh api /gists/<id>` already showed the new one. So verify an outward push through `gh api`, or by
+fetching pinned to the returned version, never by the anonymous check. Before it,
+`b063b65ef777cf06002e6fa14953d6503692d1f1`, inbound, adopted 2026-09-25: the watcher became a newest-wins singleton per watched file (exit 3 when superseded), the
 arming moved to a one-shot background task (§1), and a fence-blindness note joined §6. The two Python
 scripts and `item-next.py` were byte-identical to the previous revision, so the fingerprint gate below
 was satisfied trivially. Before it, `f53d7e181ca89fcd26d5aa9cda365e9d93699345`, ours, pushed 2026-09-13,
