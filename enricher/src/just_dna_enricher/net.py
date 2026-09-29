@@ -135,8 +135,8 @@ def retry_attempts(default: int) -> int:
 
     Safe to raise because every gated client with a published rate budget **paces before it retries**:
     an extra attempt spends a slot of that budget rather than bursting past it. The AlphaGenome Atlas
-    client is the exception: it retries without a pacing gate, because the Atlas publishes no budget to
-    pace against (RM307).
+    client's gate has a zero interval, because the Atlas publishes no budget and none was found up to
+    21 calls/s (RM307); it still counts every attempt.
     """
     global _env_loaded, _file_attempts
     if not _env_loaded:

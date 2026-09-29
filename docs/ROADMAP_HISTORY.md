@@ -204,6 +204,48 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM307 — the AlphaGenome Atlas client has no pacing gate, and the interval one needs is unmeasured
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-29 on `main`, uncut — a patch** (internal behaviour;
+no schema, no parquet) · **Owner** enricher (`atlas_client`) · **Motivating case** RM280's pacing half, split off when RM280
+shipped its retry half on 2026-09-28 · *related* RM280, RM192, `@shared-pacing-gate`,
+`@retry-attempt-floor`
+
+**Residuals** won't fix — a daily quota, if one exists: finding it means spending it, and a hit would
+arrive as `RESOURCE_EXHAUSTED`, which is already `AtlasUnavailable` and retried.
+
+**What is missing.** Most retried clients in the tier wait on a `net.PacingGate` once per attempt
+(`cpic` and `ensembl` are the other two that do not). `AtlasClient` does not. RM280 gave it the house retry floor, so
+`JUST_DNA_HTTP_RETRY_ATTEMPTS` can now raise its attempts, and those attempts are not paced. The
+gate is also what counts `spent` (S95), so an Atlas call is the one upstream attempt a host metering
+egress cannot see.
+
+**Why RM280 did not build it.** A gate needs an interval, and nothing settles one.
+[ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md) records that no quota or rate-limit figure is
+published and none was measured. Nothing in this repository calls the client from more than one
+thread, but `check_variant_impact(client=...)` takes a host's client, so a host threading its work
+shares one client by following the injection API. That is the S15 argument for making a gate
+shareable in the first place.
+
+**What to decide.** The interval: measured against the service, or a stated courtesy value with no
+upstream figure behind it. And whether `AtlasClient` takes an injected `gate=` like the httpx
+clients, so a host running several clients can hand them one. Internal behaviour either way, so a
+patch.
+
+**Decided by the maintainer on 2026-09-29: measure it, and if nothing needs pacing, record that.**
+Measured with the stub called directly, so no retry could absorb a throttle
+([ALPHAGENOME_ATLAS.md § 6.7](probes/ALPHAGENOME_ATLAS.md), program in A.8): 479 sequential calls in
+90 s, then 1,493 calls from four threads in 70 s (21/s, about 1,270 a minute), all `OK`. Sixteen threads
+got *less* through (16.7/s) and 32 of 1,600 calls hit the 30 s deadline, so concurrency degrades before
+any quota answers. No `RESOURCE_EXHAUSTED` in about 3,570 calls.
+
+**What shipped.** `ATLAS_REQUEST_INTERVAL = 0.0`, stated as a measurement. `AtlasClient` holds a
+`net.PacingGate` (its own, or one injected with `gate=`, also on `connect`) and waits on it once per
+attempt inside the retry, so `gate.spent` counts upstream attempts like every other client's (S95). A
+host sharing one gate across clients sets whatever interval it wants. The probe's *"API quota and rate
+limits. Not measured"* line is struck, and a stale pointer in the same probe (A.8 for the two-package
+recipe, which is A.6) is corrected.
+
 ## RM279 — nothing checks a `conclusion` against the other cells on its own row, so a swapped pair compiles green
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-28 on `main`, uncut — a patch** (the genotype rule, as an

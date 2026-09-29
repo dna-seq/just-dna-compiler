@@ -41,6 +41,14 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-29 — RM307: the Atlas client waits on a pacing gate, at the measured interval of zero (patch, on `main`)
+
+**enricher** — The AlphaGenome Atlas showed no throttle up to 21 calls/s (about 1,270 a minute, 3,570
+calls in all), so `atlas_client.ATLAS_REQUEST_INTERVAL` is `0.0`. `AtlasClient` now waits on a
+`net.PacingGate` once per attempt, so `client.gate.spent` counts Atlas attempts like every other
+client's, and `AtlasClient(..., gate=)` / `connect(..., gate=)` take a shared gate with a real interval.
+Behaviour for an existing caller is unchanged. The measurement is in ALPHAGENOME_ATLAS.md § 6.7.
+
 ## 2026-09-28 — RM279: `hint` names a conclusion written for another genotype (patch, on `main`)
 
 **compiler** — `hints.inspect_rows` on `variants.csv` (so `just-dna-compiler hint variants.csv` and the

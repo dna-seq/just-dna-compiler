@@ -1192,31 +1192,6 @@ v46 lane too (about one more day)? And the answering surface: `gene_exons(symbol
 constrains both: an exon lookup answers *where*, and AlphaGenome's own per-record gene remains the
 attribution.
 
-## RM307 — the AlphaGenome Atlas client has no pacing gate, and the interval one needs is unmeasured
-
-**Severity** low · **Status** open — **a patch** (internal behaviour; no schema, no parquet) ·
-**Owner** enricher (`atlas_client`) · **Motivating case** RM280's pacing half, split off when RM280
-shipped its retry half on 2026-09-28 · *related* RM280, RM192, `@shared-pacing-gate`,
-`@retry-attempt-floor`
-
-**What is missing.** Most retried clients in the tier wait on a `net.PacingGate` once per attempt
-(`cpic` and `ensembl` are the other two that do not). `AtlasClient` does not. RM280 gave it the house retry floor, so
-`JUST_DNA_HTTP_RETRY_ATTEMPTS` can now raise its attempts, and those attempts are not paced. The
-gate is also what counts `spent` (S95), so an Atlas call is the one upstream attempt a host metering
-egress cannot see.
-
-**Why RM280 did not build it.** A gate needs an interval, and nothing settles one.
-[ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md) records that no quota or rate-limit figure is
-published and none was measured. Nothing in this repository calls the client from more than one
-thread, but `check_variant_impact(client=...)` takes a host's client, so a host threading its work
-shares one client by following the injection API. That is the S15 argument for making a gate
-shareable in the first place.
-
-**What to decide.** The interval: measured against the service, or a stated courtesy value with no
-upstream figure behind it. And whether `AtlasClient` takes an injected `gate=` like the httpx
-clients, so a host running several clients can hand them one. Internal behaviour either way, so a
-patch.
-
 ## RM308 — the conclusion-genotype finding runs only on the authoring surface, so a module nobody linted compiles green with a swapped pair
 
 **Severity** low · **Status** open — **a minor, release undecided** (a new warning code) · **Owner** format

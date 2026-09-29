@@ -1626,7 +1626,7 @@ dependency set of exactly `grpcio` + `protobuf`.
 Verified end to end: in a venv with **no `alphagenome` package installed** (`import alphagenome`
 → `ModuleNotFoundError`), bindings generated from the three vendored protos returned
 `chr1:10001 T>A raw=-0.03868196 calibrated=0.21739846` in 372 ms, decoded with `struct.unpack`
-from the standard library. Appendix A.8 is the recipe. That makes four shapes below, not three,
+from the standard library. Appendix A.6 is the recipe. That makes four shapes below, not three,
 and it is the only one that is both light and declarable — at the cost of owning generated code
 against a service whose protos can move.
 
@@ -1958,6 +1958,26 @@ accessibility buys a module anything at all. Every number above says what the sc
 that a consumer wants it. That is a use-case question and belongs in USE_CASES.md rather than here.
 
 Filed as RM200.
+### 6.7 The service's rate, measured (2026-09-29, RM307)
+
+No quota or rate budget is published, so it was measured. The stub was called directly, with no
+retry layer to absorb a throttle, on one `GetDenseVariantScores` request (`chr22:36201698 A>C`,
+one scorer) repeated. Program in Appendix A.8.
+
+| phase | threads | calls | seconds | calls/s | outcome |
+| --- | --- | --- | --- | --- | --- |
+| sequential | 1 | 479 | 90.1 | 5.3 | all `OK`, p50 0.19 s |
+| burst | 4 | 1,493 | 70.2 | 21.3 | all `OK`, p50 0.19 s |
+| burst | 16 | 1,600 | 96.1 | 16.7 | 1,568 `OK`, 32 `DEADLINE_EXCEEDED` at 30 s |
+
+**No throttle appeared.** About 3,570 calls in five minutes, including 1,270 a minute sustained,
+drew no `RESOURCE_EXHAUSTED`. That is well above the per-minute quotas of Google's other free APIs, so
+either the quota is higher still or it is per day, and a daily budget cannot be found honestly
+without spending one. **Concurrency degrades first.** Sixteen threads on one channel got less
+through than four, and 2% of their calls waited out the deadline. So `ATLAS_REQUEST_INTERVAL` is
+`0.0` on this evidence, and the client's gate is there to count attempts and to be shared, not to
+wait. A daily quota, if one exists, is the open half.
+
 ## 7. Not probed
 
 Named so the next reader knows the shape of the hole rather than inheriting a silent one.
@@ -1983,7 +2003,8 @@ Named so the next reader knows the shape of the hole rather than inheriting a si
 - **Everything a shipped lane would need beyond reachability**: retry layering, pacing, caching and
   a `SourceRow`. The blueprint proves the transport and deliberately stops there; its README lists
   what it omits.
-- **API quota and rate limits.** Not measured; roughly a dozen calls were made in total.
+- ~~**API quota and rate limits.**~~ **Measured in §6.7**: no throttle up to 21 calls/s; a daily
+  quota, if there is one, is still unmeasured.
 - **The exact merged-splicing aggregation.** The formula is documented and §6.3 shows it lands
   within ~15% but does not reproduce the file, and fails entirely at one locus. What is *not*
   known is which tracks, which axis and which window the published file used.
@@ -2159,3 +2180,67 @@ whether or not the session that queued it is alive. Same 12-way `tabix`-per-cont
 with two differences the extra column forces: `raw_score` is **signed**, so every threshold is
 counted twice (all, and negative-only), and `PHRED` gets its own half-unit histogram since it is
 a percentile transform and a log-decade bin would say nothing.
+
+### A.8 The rate probe (§6.7)
+
+Run from the enricher's environment with `ALPHAGENOME_API_KEY` set. It stops escalating at the first
+`RESOURCE_EXHAUSTED`.
+
+```python
+"""RM307 probe: does the AlphaGenome Atlas throttle? Stub called directly, no retry layer."""
+import sys, time, json, threading
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
+import grpc
+from just_dna_enricher.atlas_client import connect, wire_contig, scorer_filter
+from just_dna_enricher.atlas_protos import *  # noqa  (proto modules loaded by atlas_client)
+from just_dna_enricher import atlas_client as ac
+from just_dna_enricher.locations import env_value
+
+key = env_value("ALPHAGENOME_API_KEY"); assert key
+client = connect(key)
+stub, md = client._stub, client._metadata
+# a real SNV the client docs/tests use; any scored SNV will do
+REQ = ac.atlas_service_pb2.GetDenseVariantScoresRequest(
+    variant=ac.dna_model_pb2.Variant(chromosome="chr22", position=36201698, reference_bases="A", alternate_bases="C"),
+    organism=ac.dna_model_pb2.ORGANISM_HOMO_SAPIENS, filter=scorer_filter("RNA_SEQ"))
+
+def one():
+    t = time.monotonic()
+    try:
+        stub.GetDenseVariantScores(REQ, metadata=md, timeout=30)
+        return "OK", time.monotonic() - t, None
+    except grpc.RpcError as e:
+        return e.code().name, time.monotonic() - t, (e.details() or "")[:300]
+
+def phase(name, workers, seconds, cap):
+    codes = Counter(); lat = []; details = {}
+    start = time.monotonic(); n = 0; lock = threading.Lock()
+    def worker():
+        nonlocal n
+        while True:
+            with lock:
+                if n >= cap or time.monotonic() - start > seconds: return
+                n += 1
+            c, l, d = one()
+            with lock:
+                codes[c] += 1; lat.append(l)
+                if d and c not in details: details[c] = d
+    with ThreadPoolExecutor(workers) as ex:
+        for _ in range(workers): ex.submit(worker)
+    el = time.monotonic() - start
+    lat.sort()
+    print(json.dumps({"phase": name, "workers": workers, "calls": sum(codes.values()), "elapsed_s": round(el,1),
+        "rate_per_s": round(sum(codes.values())/el, 2), "codes": codes, "p50_s": round(lat[len(lat)//2],3),
+        "p95_s": round(lat[int(len(lat)*.95)],3), "details": details}), flush=True)
+    return codes
+
+c, l, d = one(); print("warmup", c, round(l,3), d, flush=True)
+if c != "OK": sys.exit(1)
+phase("sequential", 1, 90, 1500)
+time.sleep(30)
+for w in (4, 16):
+    codes = phase(f"burst{w}", w, 70, 2000)
+    time.sleep(30)
+    if codes.get("RESOURCE_EXHAUSTED"): break
+```

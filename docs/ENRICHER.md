@@ -565,10 +565,10 @@ Org limits apply **per member**, not shared. Source of truth:
   retry off (`grpc.enable_retries = 0`, and no `retryPolicy` in the config it hands the channel), and
   `AtlasClient._call` retries under `attempt_floor(5)` with upstream's backoff. What it retries is
   derived from `_translate`: every status that becomes `AtlasUnavailable`, which adds `INTERNAL` to
-  upstream's three. **It has no pacing gate**, so the "paces before it retries" reasoning above does
-  not hold for it: the Atlas publishes no rate budget and none has been measured, so raising its floor
-  spends attempts nothing meters. RM307
-  is that gate.
+  upstream's three. **Its pacing gate has a zero interval, on a measurement** (RM307): no throttle
+  appeared up to 21 calls/s ([ALPHAGENOME_ATLAS.md § 6.7](probes/ALPHAGENOME_ATLAS.md)), so the
+  "paces before it retries" reasoning holds trivially. The gate is still waited on once per attempt,
+  so `spent` meters Atlas calls, and `connect(gate=…)` takes a shared one with a real interval.
 
 ## The author's overlay, read but never written (RM136, 0.7)
 
