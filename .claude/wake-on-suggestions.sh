@@ -22,6 +22,7 @@ set -uo pipefail
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 SOCK=${CLAUDE_CODE_MESSAGING_SOCKET:?run from inside a Claude Code session}
 TOKEN=${CLAUDE_CODE_MESSAGING_TOKEN:-}
+READ_TIMEOUT=${READ_TIMEOUT:-60}   # how often a quiet loop checks the watcher and socket are alive
 
 post() {
     SOCK=$SOCK TOKEN=$TOKEN TEXT=$1 python3 -c '
@@ -38,10 +39,10 @@ s.close()
 coproc W { exec "$REPO/.claude/watch-suggestions.sh"; }
 p=$W_PID
 # Keep our own copy of the read end: bash unsets W once the coprocess exits. A blocking read
-# was seen to outlive a killed watcher, so it wakes every minute to check both ends are alive.
+# was seen to outlive a killed watcher, so it wakes every READ_TIMEOUT seconds to check both ends.
 exec {rfd}<&"${W[0]}"
 while :; do
-    IFS= read -r -t 60 line <&"$rfd"
+    IFS= read -r -t "$READ_TIMEOUT" line <&"$rfd"
     rc=$?                           # >128 is the timeout; anything else non-zero is EOF
     if [ "$rc" -ne 0 ]; then
         [ "$rc" -gt 128 ] && kill -0 "$p" 2>/dev/null && [ -S "$SOCK" ] && continue
