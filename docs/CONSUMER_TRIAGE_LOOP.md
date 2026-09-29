@@ -269,7 +269,9 @@ guess.
 **Since 2026-09-30 a prompt arms it: name this runbook in a prompt, in any wording.** The committed
 `UserPromptSubmit` hook `.claude/hooks/arm_triage_watcher.py` (registered in `.claude/settings.json`)
 fires on any prompt citing `CONSUMER_TRIAGE_LOOP.md`. The citation is the only invariant, because the
-triage seat is the session pointed at this runbook, so no other seat arms a watcher. The hook starts
+triage seat is the session pointed at this runbook, so no other seat arms a watcher. A prompt carrying
+the watcher's own `[watcher ` prefix never arms it: its event line cites this runbook too, and a
+machine-written line re-arming the machine that wrote it is a loop to rule out, not merely bound. The hook starts
 `.claude/wake-on-suggestions.sh` detached. That wrapper runs the watcher outside the harness, which
 since Claude Code 2.1.285 stops every background task it owns after its `timeout` (30 minutes by
 default, 2 hours at most). It wakes the session by posting a user message to the session's own

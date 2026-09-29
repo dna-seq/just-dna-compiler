@@ -331,6 +331,28 @@ def test_the_doc_citation_is_the_only_invariant(hook_env, inbox, prompt):
     assert wait_for(lambda: inbox.messages(), 5)
 
 
+def test_the_watchers_own_posts_never_arm_it(hook_env, inbox, suggestions, scratch):
+    # The event line cites the runbook, so if Claude Code ran the hook on a socket message, the
+    # watcher's own post would re-arm it. Feed back what the real wrapper really posted, bare and
+    # inside an envelope, and require that none of it starts a second wrapper.
+    run_hook("@docs/CONSUMER_TRIAGE_LOOP.md arm", hook_env)
+    assert wait_for(lambda: inbox.messages(), 5)
+    time.sleep(1.2)
+    append(suggestions, SUGGESTION)
+    assert wait_for(lambda: len(inbox.messages()) == 2, 10)
+    posts = inbox.messages()
+    assert "CONSUMER_TRIAGE_LOOP.md" in posts[1], (
+        "the event no longer cites the runbook: this test proves nothing"
+    )
+    owner = watcher_pid(scratch)
+    for post in posts:
+        for prompt in (post, f"Another Claude session sent a message:\n{post}"):
+            assert run_hook(prompt, hook_env) == ""
+    time.sleep(2)
+    assert watcher_pid(scratch) == owner
+    assert len(inbox.messages()) == 2  # no second "armed" canary
+
+
 def test_any_other_prompt_arms_nothing(hook_env, inbox, scratch):
     assert run_hook("fix the compiler warning in resolve.py", hook_env) == ""
     time.sleep(2)
