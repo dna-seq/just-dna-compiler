@@ -41,8 +41,10 @@ p=$W_PID
 # was seen to outlive a killed watcher, so it wakes every minute to check both ends are alive.
 exec {rfd}<&"${W[0]}"
 while :; do
-    if ! IFS= read -r -t 60 line <&"$rfd"; then
-        [ $? -gt 128 ] && kill -0 "$p" 2>/dev/null && [ -S "$SOCK" ] && continue
+    IFS= read -r -t 60 line <&"$rfd"
+    rc=$?                           # >128 is the timeout; anything else non-zero is EOF
+    if [ "$rc" -ne 0 ]; then
+        [ "$rc" -gt 128 ] && kill -0 "$p" 2>/dev/null && [ -S "$SOCK" ] && continue
         break
     fi
     case "$line" in *"nothing pending"*|*paus*|*resum*) continue;; esac
