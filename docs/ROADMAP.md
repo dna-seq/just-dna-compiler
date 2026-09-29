@@ -1287,6 +1287,38 @@ it is, through the path length. The `cli_text` half, which is the behaviour, hol
 length makes the box wrap inside the phrase by construction. Drop the negative assertion if it cannot
 be made deterministic, since the helper's reason is recorded in the docstring.
 
+## RM313 — RM57's `quality_floor_inverted` warning reads VCF QUAL backwards, and tells authors so on every compile
+
+**Severity** medium · **Status** open — **a patch** (correct a shipped claim; the replacement finding is a minor), one decision first · **Owner** compiler (`_check_quality_inversion`) + format (the `quality_from` description) · **Motivating case** relayed 2026-09-30 by the just-vcf session, which found it checking its own frame schema against VCFv4.5 · *related* RM57, RM6, [VCF_4_4_AUDIT § 5](probes/VCF_4_4_AUDIT.md#5-a-min_quality-floor-against-qual-inverts-on-exactly-the-rows-it-exists-for)
+
+**The misreading.** VCF §1.6.1 item 6 (identical in 4.4 and 4.5): QUAL is *"Phred-scaled quality score
+for the assertion made in ALT. i.e. −10log10 prob(call in ALT is wrong). If ALT is '.' (no variant)
+then this is −10log10 prob(variant), and if ALT is not '.' this is −10log10 prob(no variant)."* On a
+monomorphic record the assertion is *no variant*, so QUAL 60 means P(variant) = 10⁻⁶: a confident
+reference call. QUAL is the confidence in whatever ALT asserts on both kinds of record, and an
+inclusive floor moves the same way on both. The 4.4 audit's § 5 read it as *"almost certainly
+variant"*, and RM57 built that into code.
+
+**What ships the false claim today.** `compiler._check_quality_inversion` emits
+`quality_floor_inverted` in both modes on any `requires_callable` row with `quality_from` naming QUAL,
+saying *"a HIGH QUAL says the position is probably variant"* (`QUAL_INVERSION_PHRASE`). The
+`VariantRow.quality_from` description says the same, and so do the COMPILER.md catalogue,
+`test_vcf_conformance_warnings.py` and the `features/` scenario. Its remedy recommends GQ, which Table 2
+defines as *conditioned on the site's being variant*, so it is not a reference-call confidence either.
+
+**What survives from § 5.** Its second half: reference evidence is an interval (a `<*>` block;
+FORMAT `LEN` in 4.5, with INFO `END` deprecated), found by containment, with `MIN_DP` as the right
+depth. And a narrower true finding: a `<*>` block usually carries QUAL `.`, so a QUAL floor on a
+`requires_callable` row is a check that **cannot run**, not an inverted one
+(`@unreachable-not-absent`).
+
+**The decision.** `quality_floor_inverted` is a permanent key naming a finding that is false
+(`@warning-code-names-the-finding`). The patch stops emitting it and corrects the description, the
+catalogue and the scenario. The code stays in `VALID_WARNING_CODES`, because removing it is major, and
+the registry tests have to accept a retired, unemitted member. The honest replacement, a floor on a
+field the reference record usually leaves missing, is a new code and therefore a minor on `0.8`.
+Whether to build that at all, or only document it, is the call.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
