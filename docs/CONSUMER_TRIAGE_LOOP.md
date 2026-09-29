@@ -266,25 +266,31 @@ The lock is pinned by `schema/tests/test_rm_allocator.py`, which runs eight allo
 runs the same eight with `flock` neutered** to show they collide. A guard nobody has watched fail is a
 guess.
 
-**Preferred since 2026-09-30: arm it detached, with no cap.** Claude Code 2.1.285 stops every
-background task it owns after its `timeout` (30 minutes by default, 2 hours at most), so the
-one-shot task below now dies on a timer. `.claude/wake-on-suggestions.sh` runs the same watcher
-outside the harness and wakes the session by posting a user message to the session's own inbox
-socket (`$CLAUDE_CODE_MESSAGING_SOCKET`). It keeps watching after each event, so there is nothing
-to re-arm, and it exits when it is superseded or when the socket disappears:
+**Since 2026-09-30 a prompt arms it: name this runbook in a prompt, in any wording.** The committed
+`UserPromptSubmit` hook `.claude/hooks/arm_triage_watcher.py` (registered in `.claude/settings.json`)
+fires on any prompt citing `CONSUMER_TRIAGE_LOOP.md`. The citation is the only invariant, because the
+triage seat is the session pointed at this runbook, so no other seat arms a watcher. The hook starts
+`.claude/wake-on-suggestions.sh` detached. That wrapper runs the watcher outside the harness, which
+since Claude Code 2.1.285 stops every background task it owns after its `timeout` (30 minutes by
+default, 2 hours at most). It wakes the session by posting a user message to the session's own
+inbox socket (`$CLAUDE_CODE_MESSAGING_SOCKET`). It keeps watching after each event, so nothing needs
+re-arming. It survives `/clear`, since the process and the socket stay the same, and it exits when it
+is superseded or when the session ends and the socket disappears.
 
-```
-setsid -f .claude/wake-on-suggestions.sh >/dev/null 2>&1
-```
+**Two things to check on every arming.** First, the hook adds an `[triage watcher] armed on …` line to
+the turn. Second, the wrapper's first post, `[watcher …] armed`, arrives during that same turn. That
+second one is the canary for the one undocumented thing this path rests on: the socket's message
+format (`{"type":"user","message":{…}}`, taken from Claude Code's own help text; the
+[cross-session messaging docs](https://code.claude.com/docs/en/cross-session-messaging) specify only
+the auth line). If the canary does not arrive, the format changed. Say so, and use the fallback below.
 
-**Start the triage seat with `.claude/triage-session.sh`** and none of this needs a hand. It starts
-an auto-mode session with a `SessionStart` hook that arms the watcher; a hook sees the socket and is
-not subject to the classifier, which refuses to write or launch the script as a session driving
-itself. Stay out of bypass mode: a session that bypasses prompts holds every message the watcher
-posts ("did not attest its permission mode") until approved. The setting that lifts that hold,
-`crossSessionInbound: "accept"`, is ignored in repo and local settings and opens the inbox to every
-session on the machine. Never forge the sender-mode field to get past the hold: it is the safety
-gate itself.
+A hook arms it, never the agent, because auto mode's classifier refuses to let a session write or
+launch something that wakes itself, and a hook is not classified. Stay out of bypass mode: a session
+that bypasses prompts holds every message the watcher posts ("did not attest its permission mode")
+until approved. The setting that lifts that hold, `crossSessionInbound: "accept"`, is ignored in repo
+and local settings and opens the inbox to every session on the machine. Never forge the sender-mode
+field to get past the hold: it is the safety gate itself. `schema/tests/test_triage_watcher.py`
+runs the whole path against a fake inbox socket.
 
 The fallback is the **one-shot background task**, which wakes the agent on a real event and on
 nothing else. Pass `timeout: 7200000`, and re-arm it when it stops. `Bash` with

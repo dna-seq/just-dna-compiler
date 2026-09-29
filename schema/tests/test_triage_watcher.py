@@ -316,6 +316,21 @@ def test_a_prompt_naming_the_runbook_arms_a_watcher_that_wakes(hook_env, inbox, 
     assert "S1(new)" in inbox.messages()[1]
 
 
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "@docs/CONSUMER_TRIAGE_LOOP.md Arm",
+        "@docs/CONSUMER_TRIAGE_LOOP.md",
+        "start triage per docs/CONSUMER_TRIAGE_LOOP.md please",
+        "Arm\n@docs/CONSUMER_TRIAGE_LOOP.md",
+    ],
+)
+def test_the_doc_citation_is_the_only_invariant(hook_env, inbox, prompt):
+    # The seat is the session pointed at the runbook; the verb around the citation is free.
+    assert "armed on" in run_hook(prompt, hook_env)
+    assert wait_for(lambda: inbox.messages(), 5)
+
+
 def test_any_other_prompt_arms_nothing(hook_env, inbox, scratch):
     assert run_hook("fix the compiler warning in resolve.py", hook_env) == ""
     time.sleep(2)
