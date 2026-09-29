@@ -204,6 +204,65 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM290 — the "vindicated" reading of an unmatched overlay row exists for one overridable table, and nobody decided the others
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-29 on `main`, uncut — a patch** (a registry field; no
+finding moves) · **Owner** schema (`overrides.OverlayTarget.vindication`) + compiler · **Motivating case** S60's
+*"what we are keeping regardless of the shape"* and RM117, found unhomed by the 2026-09-27 postmortem
+sweep (P15) · *related* S60, S52, RM117, RM137, RM311
+
+**Residuals** RM311 — the `gene_validity.csv` case this entry names is not an absence, and it needs a
+value comparison rather than a classification
+
+S60 found that an overlay row which no longer changes anything can mean the source caught up: the
+author's judgement was later vindicated and the row can retire. The reply kept it as *"a property of
+the design rather than a nice detail"*, since S52 had seen the same shape. RM117 built it for exactly
+one table: `VINDICATING_OVERLAY_TABLE = "clin_sig_concordance.csv"`, which the compiler routes away
+from the generic *"may be mistyped"* finding.
+
+**Confirmed on 2026-09-27.** `OVERRIDABLE_TABLES` has more members, and every other table's unmatched
+row still reads *may be mistyped*. On a table whose values a later source release can change (for
+example `gene_validity.csv`, whose classifications drift), that is the wrong thing to tell an author
+whose correction the source has since adopted.
+
+**What to decide.** Per table, whether an unmatched update has a vindicated reading, and whether that
+reading is the only one (as on the concordance table) or one of two, which would be withheld
+(`@two-vocabularies-that-do-not-meet-withhold`). Turning the constant into a per-table field on
+`OverlayTarget` is internal. Reporting it reuses the existing warning code, so it is a patch.
+
+**Decided by the maintainer on 2026-09-29: yes, with concordance's shape as the default.** Taken as
+the shape of the mechanism rather than a reading for every table, because generalising
+vindication-by-absence would tell an author with a mistyped `variant_key` that the authorities now
+agree, which is the misleading message RM117 was built to remove, reversed.
+
+**What shipped.** `VINDICATING_OVERLAY_TABLE` became `OverlayTarget.vindication`, a closed
+`VINDICATION_READINGS` member (`sole` / `withheld` / `none`) with a mandatory `vindication_reason`
+beside it, and `VINDICATING_OVERLAY_TABLES` is derived from the registry. The per-table decision,
+checked against each writer rather than assumed:
+
+* `clin_sig_concordance.csv` is **`sole`**. It holds contested subjects only and is rewritten whole
+  (`concordance.py`), unchanged from RM117.
+* `resolution.csv` is **`withheld`**. A re-derivation replaces a subject's locus group whole (RM115)
+  and `locus_index` is a position in it, so the author's corrected locus can return under another index
+  while the source agrees with them. The generic finding already names every reading.
+* The seven merged tables (`frequencies`, `gene_metrics`, `gene_validity`, `clinical_assertions`,
+  `literature`, `gwas_effects`, `expression_effects`) are **`none`**. Each writer merges and never
+  clobbers, and each key is the source's stable identity, so a source adopting the author's value
+  leaves the row in place and the update keeps matching. An absent row was never written, was
+  withdrawn, or is mistyped, and none of those is agreement.
+
+**No finding moves**, so `warnings_summary` on every existing manifest is unchanged, and Principle 3
+has no correction to declare. Walked tests pin the set to the concordance record alone, refuse a
+reading outside the vocabulary or without a reason, and assert that no other table's unmatched update
+is ever called vindicated.
+
+**The entry's premise was partly wrong.** It named `gene_validity.csv` as the table where "may be
+mistyped" is the wrong thing to tell an author whose correction the source adopted. But a source
+adopting it there does not remove a row: a newer curation joins the currency group, the corrected one
+stays (`classify_currency` deletes nothing), and the overlay still matches. So the author is told
+nothing at all rather than told the wrong thing. The signal is a value comparison of the overlay
+against the group's `CURRENT` row, which is RM311.
+
 ## RM307 — the AlphaGenome Atlas client has no pacing gate, and the interval one needs is unmeasured
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-29 on `main`, uncut — a patch** (internal behaviour;

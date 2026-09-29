@@ -27,8 +27,15 @@ import re
 import shutil
 from pathlib import Path
 
+import pytest
 from just_dna_compiler.compiler import compile_module, validate_spec
-from just_dna_format.overrides import VINDICATING_OVERLAY_TABLE
+from just_dna_format.overrides import (
+    OVERRIDABLE_TABLES,
+    VINDICATING_OVERLAY_TABLES,
+    VINDICATION_READINGS,
+    OverlayTarget,
+    classify_vindicated_answers,
+)
 from just_dna_format.vocab import ACTIONABLE_WARNING_CODES, VALID_WARNING_CODES
 
 _EXAMPLES = Path(__file__).resolve().parents[2] / "reference_examples"
@@ -217,9 +224,36 @@ def test_the_pre_flight_reports_what_the_compile_reports(tmp_path: Path) -> None
 
 
 def test_it_is_scoped_to_the_one_table_whose_absence_has_a_single_reading() -> None:
-    """Every other table's unmatched update is ambiguous; this one's is not, because the record holds
-    contested subjects only and is rewritten whole rather than merged."""
-    assert VINDICATING_OVERLAY_TABLE == "clin_sig_concordance.csv"
+    """Every other table's unmatched update is ambiguous or cannot mean vindication; this one's is
+    not, because the record holds contested subjects only and is rewritten whole rather than merged.
+    Derived from the registry since RM290, so the set is the decision and this pins it."""
+    assert VINDICATING_OVERLAY_TABLES == {"clin_sig_concordance.csv"}
+
+
+def test_every_overridable_table_states_its_vindication_reading_and_why() -> None:
+    """RM290: the decision is per table and travels with the table, as a member and a reason."""
+    for name, target in OVERRIDABLE_TABLES.items():
+        assert target.vindication in VINDICATION_READINGS, name
+        assert target.vindication_reason.strip(), name
+    assert VINDICATING_OVERLAY_TABLES == {
+        name for name, target in OVERRIDABLE_TABLES.items() if target.vindication == "sole"
+    }
+
+
+def test_a_reading_outside_the_vocabulary_or_without_a_reason_is_refused() -> None:
+    concordance = OVERRIDABLE_TABLES["clin_sig_concordance.csv"]
+    with pytest.raises(ValueError):
+        OverlayTarget(concordance.model, "variant_key", "genotype", "probably", "a reason")
+    with pytest.raises(ValueError):
+        OverlayTarget(concordance.model, "variant_key", "genotype", "sole", "  ")
+
+
+def test_no_other_table_calls_an_unmatched_update_vindicated() -> None:
+    """A mistyped key on a merge-not-clobber table must never read as "the authorities now agree"."""
+    unmatched = [(("rs0", "x"), False)]
+    for name in OVERRIDABLE_TABLES:
+        found = classify_vindicated_answers(name, unmatched)
+        assert bool(found) == (name in VINDICATING_OVERLAY_TABLES), name
 
 
 def test_the_code_is_published_and_actionable() -> None:

@@ -862,28 +862,22 @@ types, which makes a caller's `except` order load-bearing: `@client-exception-co
 applies), or whether the list shape is kept on purpose and the exemption comment is rewritten as a
 decision rather than a deferral. A new public exception base is new surface, so building it is a minor.
 
-## RM290 — the "vindicated" reading of an unmatched overlay row exists for one overridable table, and nobody decided the others
+## RM311 — a `gene_validity.csv` correction the source has since adopted, or superseded, says nothing
 
-**Severity** low · **Status** open — **a patch** (a finding's classification), a decision first ·
-**Owner** schema (`overrides.VINDICATING_OVERLAY_TABLE`) + compiler · **Motivating case** S60's
-*"what we are keeping regardless of the shape"* and RM117, found unhomed by the 2026-09-27 postmortem
-sweep (P15) · *related* S60, S52, RM117, RM137
+**Severity** low · **Status** open — **a patch** if both arms reuse existing codes (a new one would make it a minor), a decision first · **Owner** schema (`gene_validity`, `overrides`) + compiler ·
+**Motivating case** RM290's refuted premise, 2026-09-29 · *related* RM290, RM108, RM117
 
-S60 found that an overlay row which no longer changes anything can mean the source caught up: the
-author's judgement was later vindicated and the row can retire. The reply kept it as *"a property of
-the design rather than a nice detail"*, since S52 had seen the same shape. RM117 built it for exactly
-one table: `VINDICATING_OVERLAY_TABLE = "clin_sig_concordance.csv"`, which the compiler routes away
-from the generic *"may be mistyped"* finding.
+When ClinGen adopts an author's corrected classification, it publishes a newer curation in the same
+currency group, and the corrected row stays, marked `SUPERSEDED` (`classify_currency` deletes nothing).
+The overlay `update` still matches that old row, so no finding fires. The author is never told the
+source caught up, and never told their correction now targets a superseded curation.
 
-**Confirmed on 2026-09-27.** `OVERRIDABLE_TABLES` has more members, and every other table's unmatched
-row still reads *may be mistyped*. On a table whose values a later source release can change (for
-example `gene_validity.csv`, whose classifications drift), that is the wrong thing to tell an author
-whose correction the source has since adopted.
-
-**What to decide.** Per table, whether an unmatched update has a vindicated reading, and whether that
-reading is the only one (as on the concordance table) or one of two, which would be withheld
-(`@two-vocabularies-that-do-not-meet-withhold`). Turning the constant into a per-table field on
-`OverlayTarget` is internal. Reporting it reuses the existing warning code, so it is a patch.
+**Two arms, both a value comparison against the group's `CURRENT` row.** If the overlay's value equals
+the current curation's, the author was vindicated (`overlay_answer_vindicated`'s meaning). If it
+differs, the correction patches history while a newer curation says something else
+(`gene_validity_superseded` is the nearest existing code). A group whose currency is undecidable
+withholds, as `classify_currency` already does. **What to decide:** whether the second arm is the
+existing superseded finding or a new code, which sizes this item.
 
 ## RM292 — a verification check does not say what it checked against, so a check that witnesses itself reads as verified
 

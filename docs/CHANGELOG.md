@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-29 — RM290: each overridable table states whether an unmatched correction can mean the source caught up (patch, on `main`)
+
+**format** — `overrides.OverlayTarget` gains `vindication` (`sole` / `withheld` / `none`, closed as
+`VINDICATION_READINGS`) and a mandatory `vindication_reason`. `VINDICATING_OVERLAY_TABLE` (a string)
+is replaced by `VINDICATING_OVERLAY_TABLES` (a frozenset read off the registry). Only
+`clin_sig_concordance.csv` is `sole`, so **no finding moves** and no manifest changes. A caller
+importing the old constant should switch to the set (nothing in the ecosystem did). RM311 carries the
+`gene_validity` case, which is a value comparison rather than an absence.
+
 ## 2026-09-29 — RM307: the Atlas client waits on a pacing gate, at the measured interval of zero (patch, on `main`)
 
 **enricher** — The AlphaGenome Atlas showed no throttle up to 21 calls/s (about 1,270 a minute, 3,570

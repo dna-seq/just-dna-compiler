@@ -1592,6 +1592,14 @@ subject may be mistyped* line, put to an author whose judgement had just been co
 nothing about who was right about the biology: the authorities agreed, and the overlay row is now
 unnecessary.
 
+**Which tables can say it is a field on each table, decided once for all nine (RM290).**
+`OverlayTarget.vindication` is `sole`, `withheld` or `none`, with its reason beside it, and
+`overrides.VINDICATING_OVERLAY_TABLES` is read off it. Only the concordance record is `sole`.
+`resolution.csv` is `withheld`, because a re-derivation renumbers `locus_index` and the author's locus
+can return under another index. The seven merged tables are `none`: their keys are stable, so a source
+adopting the author's value leaves the row in place and the update keeps matching. Absence there is
+never agreement. Every other table keeps the generic finding it had.
+
 The two `gene_validity_*` codes are new in 0.7 (RM108) and are the first fact-table findings the
 **pre-flight also computes**, so `validate` reports them exactly as `compile` does. They stay apart on
 purpose: `gene_validity_superseded` says a later curation replaced an earlier one and the manifest now

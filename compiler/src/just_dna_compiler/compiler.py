@@ -157,7 +157,7 @@ from just_dna_format.normalize import now_utc_iso, parse_p_value, strip_authorit
 from just_dna_format.overrides import (
     LOSSY_OVERLAY_TABLES,
     OVERRIDABLE_TABLES,
-    VINDICATING_OVERLAY_TABLE,
+    VINDICATING_OVERLAY_TABLES,
     OverrideRow,
     apply_overrides,
     classify_update_targets,
@@ -4090,7 +4090,7 @@ def _validate_spec(
                 # first because reachability needs `studies.csv`, the second because an unmatched
                 # answer there is the archive having caught up rather than a fault, and saying so is
                 # the point.
-                lossy = csv_name in LOSSY_OVERLAY_TABLES or csv_name == VINDICATING_OVERLAY_TABLE
+                lossy = csv_name in LOSSY_OVERLAY_TABLES or csv_name in VINDICATING_OVERLAY_TABLES
                 if lossy:
                     deferred_unmatched[csv_name] = update_targets(csv_name, injected_rows, overrides)
                 injected_rows, apply_errors, apply_warnings = apply_overrides(
@@ -5578,7 +5578,7 @@ def compile_module(
         # from the same post-overlay rows.
         if csv_name in OVERRIDABLE_TABLES:
             overlaid.add(csv_name)
-            lossy = csv_name in LOSSY_OVERLAY_TABLES or csv_name == VINDICATING_OVERLAY_TABLE
+            lossy = csv_name in LOSSY_OVERLAY_TABLES or csv_name in VINDICATING_OVERLAY_TABLES
             if lossy:
                 compile_deferred[csv_name] = update_targets(csv_name, rows, overrides)
             rows, apply_errors, apply_warnings = apply_overrides(
@@ -7330,7 +7330,7 @@ def _classify_deferred_overlay_updates(
     for table, targets in deferred.items():
         if not targets:
             continue
-        if table == VINDICATING_OVERLAY_TABLE:
+        if table in VINDICATING_OVERLAY_TABLES:
             # RM117. Not a reachability question: an unmatched answer here has ONE reading, and it is
             # the good one. Routed away from `classify_update_targets` entirely rather than given a
             # predicate, because the generic finding's "may be mistyped" is the wrong thing to put to
