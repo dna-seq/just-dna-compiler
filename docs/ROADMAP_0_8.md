@@ -258,6 +258,38 @@ example `conclusion_names_other_genotype`), emission at both `validate` and `com
 COMPILER.md warning catalogue. It stays a warning in both modes: 10 of 10 is a measurement over one
 corpus, not a licence to refuse.
 
+## RM313 — RM57's `quality_floor_inverted` warning reads VCF QUAL backwards, and tells authors so on every compile
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-30** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)): the retirement alone would be a patch, and the replacement finding's new code makes the pair a minor · **Owner** compiler (`_check_quality_inversion`) + format (the `quality_from` description) · **Motivating case** relayed 2026-09-30 by the just-vcf session, which found it checking its own frame schema against VCFv4.5 · *related* RM57, RM6, [VCF_4_4_AUDIT § 5](probes/VCF_4_4_AUDIT.md#5-a-min_quality-floor-against-qual-inverts-on-exactly-the-rows-it-exists-for)
+
+**The misreading.** VCF §1.6.1 item 6 (identical in 4.4 and 4.5): QUAL is *"Phred-scaled quality score
+for the assertion made in ALT. i.e. −10log10 prob(call in ALT is wrong). If ALT is '.' (no variant)
+then this is −10log10 prob(variant), and if ALT is not '.' this is −10log10 prob(no variant)."* On a
+monomorphic record the assertion is *no variant*, so QUAL 60 means P(variant) = 10⁻⁶: a confident
+reference call. QUAL is the confidence in whatever ALT asserts on both kinds of record, and an
+inclusive floor moves the same way on both. The 4.4 audit's § 5 read it as *"almost certainly
+variant"*, and RM57 built that into code.
+
+**What ships the false claim today.** `compiler._check_quality_inversion` emits
+`quality_floor_inverted` in both modes on any `requires_callable` row with `quality_from` naming QUAL,
+saying *"a HIGH QUAL says the position is probably variant"* (`QUAL_INVERSION_PHRASE`). The
+`VariantRow.quality_from` description says the same, and so do the COMPILER.md catalogue,
+`test_vcf_conformance_warnings.py` and the `features/` scenario. Its remedy recommends GQ, which Table 2
+defines as *conditioned on the site's being variant*, so it is not a reference-call confidence either.
+
+**What survives from § 5.** Its second half: reference evidence is an interval (a `<*>` block;
+FORMAT `LEN` in 4.5, with INFO `END` deprecated), found by containment, with `MIN_DP` as the right
+depth. And a narrower true finding: a `<*>` block usually carries QUAL `.`, so a QUAL floor on a
+`requires_callable` row is a check that **cannot run**, not an inverted one
+(`@unreachable-not-absent`).
+
+**The decision.** `quality_floor_inverted` is a permanent key naming a finding that is false
+(`@warning-code-names-the-finding`). The patch stops emitting it and corrects the description, the
+catalogue and the scenario. The code stays in `VALID_WARNING_CODES`, because removing it is major, and
+the registry tests have to accept a retired, unemitted member. The honest replacement, a floor on a
+field the reference record usually leaves missing, is a new code and therefore a minor on `0.8`.
+Whether to build that at all, or only document it, is the call.
+
 ## RM303 — the snapshot layout is a contract with six parties and no model, so it belongs in `just-dna-format`
 
 **Severity** medium · **Status** open — filed 2026-09-28 at the maintainer's request, **taken into

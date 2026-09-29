@@ -12,7 +12,7 @@ never an improvised design (RELEASE_CYCLE § Minors, step 4).
 
 **Why these are on `0.8` and not `main`.** Every item adds public surface: a warning code, a result
 field, a manifest field, a CLI option, a public constant, or a changed default on a public function.
-`main` is patch scope only. Two of the items add a member to `VALID_WARNING_CODES`, which a reader
+`main` is patch scope only. Three of the items add a member to `VALID_WARNING_CODES`, which a reader
 pinned to an older `just-dna-format` refuses (`ModuleManifest.warnings_summary` validates its keys
 against the closed set). **So 0.8 has an old-reader break of the INTEGRATION_0_7 kind.** The first item
 that adds a code also opens `docs/INTEGRATION_0_8.md` and records it there, and each later code adds
@@ -50,7 +50,8 @@ DOI lookup names the paper it found), and RM264's docs half.
 
 1. **RM241**, first, because it widens the round-trip test that every later item's compile changes
    run through.
-2. **RM275, RM308**: the two compiler warnings. They open `INTEGRATION_0_8.md`.
+2. **RM275, RM308, RM313**: the three compiler warnings. The first of them to land opens
+   `INTEGRATION_0_8.md`.
 3. **RM300, RM278**: manifest counts and the CLI flags that stamp the manifest.
 4. **RM272, RM258, RM263, RM283, RM288**: enricher-only, independent of each other. Any order works.
 5. **RM270's addendum**: a docs line, which can land with anything.
@@ -188,6 +189,69 @@ Parity is asserted by check. A `features/` scenario, the catalogue phrase, and t
 line.
 
 **Legality and price.** One vocabulary member; nothing authored.
+
+## RM313: retire RM57's QUAL warning, which states the spec backwards, and say what is true instead
+
+**Added 2026-09-30 by the maintainer**, after the round was written: *"to 0.8, retrofit it into
+bugfixes"*. Found by the just-vcf session and confirmed against the code the same day. The VCF 4.5
+audit (`docs/probes/VCF_4_5_AUDIT.md`, its finding 2) re-read the spec
+independently and agrees.
+
+**What is wrong.** VCF §1.6.1 item 6, identical in 4.4 and 4.5: QUAL is the Phred confidence in
+whatever ALT asserts. Where ALT is `.`, it is −10log10 P(variant), so a high QUAL is a **confident
+reference call**. The 4.4 audit read it as *"almost certainly variant"*, and RM57 shipped that
+reading. `quality_floor_inverted` fires on every `requires_callable` row whose `quality_from` names
+QUAL and tells the author the opposite of the spec. Its remedy recommends GQ, which Table 2 conditions
+on the site being variant, so that advice is ungrounded too.
+
+**What is true, and is what the replacement says.** A `requires_callable` row's evidence is a
+reference record, usually a `<*>` block, and such a block conventionally carries QUAL `.`. A QUAL floor
+there is a check that **cannot run** (`@unreachable-not-absent`): the row either always withholds or,
+if the consumer skips a missing value, is never gated. On a joint-called site record QUAL is also a
+site-level number, not this sample's. Neither is an inversion.
+
+**Decided (assumption stated, per the maintainer's "retrofit it"):** both halves ship together on `0.8`.
+
+**The build.**
+
+- **Retire `quality_floor_inverted`.** Nothing emits it any more. It **stays** in
+  `VALID_WARNING_CODES`, because removing a member is major and published manifests carry it. The
+  registries that walk the codes (the emission-site walk in `test_warning_codes.py` and
+  `test_feature_corpus.py`'s equality) gain a declared `RETIRED_WARNING_CODES` set in `vocab`, each
+  member with its reason, so that "in the vocabulary but emitted nowhere" is a stated state rather than
+  an exemption. `QUAL_INVERSION_PHRASE` goes, and COMPILER.md's catalogue keeps the phrase under a
+  *retired* heading, because a consumer may still grep old manifests for it (`@warning-text-is-api`).
+- **The replacement code, `qual_floor_on_reference_evidence`**, is a warning in both modes on the same
+  trigger: `requires_callable=true` with `quality_from` naming QUAL, matched as `_quality_fields`
+  already matches it. The message says the floor states a site-level confidence that a reference block
+  usually leaves missing, so on the record this row is decided from it either cannot be read or is not
+  about this sample. It recommends **no** field. What a caller writes on its reference blocks varies,
+  and the spec reserves no per-sample reference-confidence key, so naming one would be the same
+  mistake again. Aggregated, with a count and examples, as the old one was. It fires from both
+  `validate` and `compile` (`@parity-by-check`).
+- **Correct every place that states the claim:** the `VariantRow.quality_from` description in
+  `spec.py`, the docstring of the check, SCHEMAS.md, COMPILER.md's catalogue, the `features/` scenario,
+  and `test_vcf_conformance_warnings.py`. The 4.4 audit already carries a dated correction note, and
+  its body stays as evidence.
+- **INTEGRATION_0_8.md:** one line for the new code, and one saying the old code is retired, with
+  the reason that it misstated the spec, so a consumer who keyed on it knows why it stopped.
+
+**Tests.** Show the current test asserting the false claim before changing it. Then:
+- the old code is never emitted over the reference corpus and a synthetic `requires_callable` + QUAL row;
+- the new code fires on exactly that row, and not on the same row without `requires_callable` or
+  with `quality_from=FORMAT/GQ`;
+- `validate` and `compile` parity;
+- the retired set is disjoint from every emission site the walk finds, and a subset of
+  `VALID_WARNING_CODES`.
+
+**Legality and price.** The retirement adds and removes nothing from the contract (P3); a code that is
+no longer emitted still validates in every reader. The replacement is one new vocabulary member,
+minor-legal, and it is what puts this item on `0.8` rather than `main`. Nothing authored.
+
+**Residuals.** The 4.5 audit's finding 1 touches the neighbouring `callable_from` text. It says a
+reference block's end is read from each sample's FORMAT `LEN` in 4.5, with INFO `END` now the maximum
+across samples. That is a separate correction and is not folded in here; it is left for the decision
+on the 4.5 audit's candidates.
 
 ## RM300: per-tier ClinVar counts in the manifest
 
@@ -360,7 +424,8 @@ walk already covers the rebuild side.
 
 - Every item above is built, with its test shown failing on the code before it (for a defect item) or
   shown asserting the decided set (for a surface item).
-- `INTEGRATION_0_8.md` names both new warning codes as the old-reader break.
+- `INTEGRATION_0_8.md` names all three new warning codes as the old-reader break, and says that
+  `quality_floor_inverted` is retired and why.
 - The full suite, `ruff format --check`, and `properdocs build --strict` pass at the last commit.
 - Each item's record has moved to ROADMAP_HISTORY with its **Residuals**, and its RM_TOC row is updated.
 - What the build found is filed, not folded in, unless it is the same item (RELEASE_CYCLE § Minors,
