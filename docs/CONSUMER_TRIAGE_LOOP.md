@@ -266,8 +266,26 @@ The lock is pinned by `schema/tests/test_rm_allocator.py`, which runs eight allo
 runs the same eight with `flock` neutered** to show they collide. A guard nobody has watched fail is a
 guess.
 
-Arm the watcher as a **one-shot background task** that wakes the agent on a real event and on nothing
-else — `Bash` with `run_in_background: true`, command:
+**Preferred since 2026-09-30: arm it detached, with no cap.** Claude Code 2.1.285 stops every
+background task it owns after its `timeout` (30 minutes by default, 2 hours at most), so the
+one-shot task below now dies on a timer. `.claude/wake-on-suggestions.sh` runs the same watcher
+outside the harness and wakes the session by posting a user message to the session's own inbox
+socket (`$CLAUDE_CODE_MESSAGING_SOCKET`). It keeps watching after each event, so there is nothing
+to re-arm, and it exits when it is superseded or when the socket disappears:
+
+```
+setsid -f .claude/wake-on-suggestions.sh >/dev/null 2>&1
+```
+
+Two conditions. Auto mode's classifier refuses to write or launch it, as a session driving itself,
+so the operator arms it or allows it. And a session running with permissions **bypassed** holds each
+message it posts ("did not attest its permission mode") until approved, so the triage session runs in
+auto or default mode, or sets `crossSessionInbound: "accept"`. Never forge the sender-mode field to get
+past that hold: it is the safety gate itself.
+
+The fallback is the **one-shot background task**, which wakes the agent on a real event and on
+nothing else. Pass `timeout: 7200000`, and re-arm it when it stops. `Bash` with
+`run_in_background: true`, command:
 
 ```
 coproc W { exec .claude/watch-suggestions.sh; }; p=$W_PID
@@ -280,7 +298,7 @@ kill "$p" 2>/dev/null; wait "$p"
 
 **Not the `Monitor` tool any more, decided 2026-09-25.** It once took `persistent: true`; it now caps
 every watch at 30 minutes, so a persistent watcher becomes a timer that wakes the agent at each expiry
-to be re-armed and spends tokens on an empty inbox. The background task has no expiry. Save `$W_PID`
+to be re-armed and spends tokens on an empty inbox. A background task had no expiry until 2.1.285. Save `$W_PID`
 before the loop — bash may unset it once the coprocess exits — and arm again after each event. Adopted
 from the gist (revision `b063b65e…`), where it was found in another tree first.
 
