@@ -5,6 +5,7 @@ Sets the per-session marker only when docs/CONSTITUTION.md was Read in full
 (no offset, no narrowing limit). Always exits 0 — this hook never blocks.
 """
 
+import contextlib
 import sys
 from pathlib import Path
 
@@ -15,10 +16,9 @@ from charter_gate_lib import is_full_charter_read, load_input, marker_path  # no
 def main() -> int:
     data = load_input()
     if data.get("tool_name") == "Read" and is_full_charter_read(data.get("tool_input", {})):
-        try:
+        # A marker we cannot write just means the gate stays closed — safe.
+        with contextlib.suppress(OSError):
             marker_path(data).touch()
-        except OSError:
-            pass  # a marker we cannot write just means the gate stays closed — safe
     return 0
 
 
