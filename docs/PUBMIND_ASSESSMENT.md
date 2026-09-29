@@ -74,8 +74,9 @@ rows) and carries five useful columns: `PVID`, `pathogenicity_sum`, `paper_level
 **Its coordinates are VCF-style, not ANNOVAR-style, despite the packaging.** There is not a single
 `-` allele in the file; a one-base deletion appears as `1 1014264 1014265 CC C`, anchor base retained.
 That is our `chrom`/`start`/`ref`/`alts` convention exactly, `start` being the 1-based VCF position
-(`@start-1based`), so a join needs no coordinate translation. Whether the indels are left-normalized
-is **not** established and a pass must not assume it.
+(`@start-1based`), so a join needs no coordinate translation. The indels are **not** left-normalized
+(answered 2026-09-27, RM273): 5,158 of the 20,006 single-base-anchored indel rows have an anchor base
+equal to their payload's last base, so each spells an event that also sits one base further left.
 
 ### The channel is smaller than "1.3 million variants" implies
 
@@ -152,6 +153,39 @@ Our 40.9 % locus coverage against a ClinVar-derived corpus sits comfortably besi
 10.6 % ClinVar overlap: the two measure opposite directions of the same asymmetry. **PubMind adds
 breadth we do not have and would not gain by curating harder; it subtracts confidence we already
 have.** That is the profile of a cross-check source, not of a fact source.
+
+### How PubMind places a variant, read from its code (2026-09-28)
+
+PubMind's site has a **Variant Normalizer (Beta)** page (`pubmind.wglab.org/variant_normalizer`),
+which it says is *"derived from PubMind's variant normalization module"*. It takes one `gene:variant`
+line per input (`BRCA1:c.68delA`, `BRAF:p.Val600Glu`) and offers a JSON download. It is **not** the
+VICC `variation-normalizer` that [METAKB_VARNORM_SURVEY.md](probes/METAKB_VARNORM_SURVEY.md) ran. The
+two share a name and nothing else: VICC mints VRS ids through cool-seq-tool, UTA and SeqRepo, while
+PubMind maps positions with pyensembl.
+
+The mapping step is `normalization/4-genome_coordinates/variant_genome_coordinates.py` in
+[WGLab/PubMind](https://github.com/WGLab/PubMind), read at the default branch on 2026-09-28 (last push
+2026-08-24; GitHub reports its licence as `NOASSERTION`). What the code does:
+
+- **The engine is `pyensembl` `EnsemblRelease(111)`** (a comment above it still says release 104),
+  with Biopython to translate the CDS. This matches the Ensembl v111 already stated above.
+- **No transcript is chosen.** `cdna_to_genomic(gene, pos, ref)` and `protein_to_genomic(gene, pos,
+  ref_aa)` walk *every* protein-coding transcript of *every* gene the symbol names. They keep each one
+  whose CDS has the stated reference base (or amino acid) at the stated position and return all of
+  them. A text mention names no transcript, so a `c.` number is tried against every isoform, and each
+  isoform that happens to carry the same base there becomes a separate placement.
+- **It maps a position, not an event.** The cDNA path maps one base, the protein path one reference
+  codon. Nothing in this step reads an indel's extent or normalizes one, which fits the un-normalized
+  indels RM273 measured.
+- **Nothing is identified.** No VRS id, CAID or rsID comes out of this step.
+
+**Why it matters to the lane.** Our PubMind snapshot receives coordinates this code produced. A PubMind
+row sitting on an unexpected locus can therefore come from an isoform the author never meant, whose
+reference base happened to match, rather than from a wrong extraction. The two causes call for
+different remedies, and the table alone cannot tell them apart. **Not measured:** how often one PubMind
+mention (one PVID) fans out to more than one locus through this multi-isoform match. The 68,744 keys
+counted above are the opposite direction, one locus carrying several PVIDs. The fan-out count is the
+number that would size this, and it can be taken from the snapshot we already build.
 
 ## What we cannot adopt at all
 
@@ -517,10 +551,28 @@ test pinning them fails on the next ANNOVAR release for no reason. Assert the re
 
 ## Open questions
 
-- Are the indel rows left-normalized? Unestablished, and it decides whether the 20,131 length-changing
-  rows can be joined at all.
+- ~~Are the indel rows left-normalized?~~ **Answered 2026-09-27 (RM273): no.** 5,158 of 20,006
+  single-base-anchored indel rows provably shift left, read from the row alone; the rest are undecided
+  without the reference. `pubmind_draft` states the count for the rows it withholds.
 - What are the ANNOVAR-distributed table's data terms? Only CHOP can answer, and the answer decides
   whether sections B and C are ever shippable.
+
+  **Searched 2026-09-27, still unanswered in writing.** No page names terms for
+  `hg38_pubmind_db.txt.gz`. WGLab's README and pubmind.wglab.org send the *full* PubMind-DB (references,
+  reasoning, evidence) to `LICENSE.md` and a CHOP contact, and list the ANNOVAR file as the other tier
+  with no licence pointer. `LICENSE.md` licenses "this software and associated documentation files"
+  (academic, non-commercial) and never says data. The bioRxiv preprint's Data Availability covers only
+  PubMed/PMC, and it calls PubMind "open-source", which contradicts `LICENSE.md`. ANNOVAR's EULA covers
+  its software, and its database table flags gated sources (CADD, SPIDEX) but not `pubmind_db`. The
+  published Nature Communications version (s41467-026-76834-4, itself CC BY-NC-ND 4.0) was then read
+  directly. Its Data availability says only *"The PubMind-DB generated in this study can be accessed
+  here: https://pubmind.wglab.org/"*, with no terms. Its code archive (Zenodo 10.5281/zenodo.20632115,
+  a 26 MB `PubMind-v0.1.0.zip`, typed *software*) is labelled **CC BY 4.0**, which contradicts
+  `LICENSE.md`'s academic, non-commercial grant for the same software. A contradiction between two of
+  the owner's own statements is not terms either. So `None` on every axis stands. The
+  written question goes to CHOP's Office of Technology Transfer (`techtransfer@chop.edu`, named in
+  `LICENSE.md`) or the WGLab/PubMind GitHub repo. **Asked 2026-09-27 as
+  [WGLab/PubMind#5](https://github.com/WGLab/PubMind/issues/5)**; the answer goes here.
 - Does the table get a stable release cadence? One snapshot dated 2026-08-24 is not a cadence, and the
   refresh design depends on it.
 - Is the PVID stable across releases? If it is not, then nothing about a PubMind reference is

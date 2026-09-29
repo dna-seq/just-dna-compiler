@@ -1,6 +1,6 @@
 [project]
 name = "just-dna-enricher"
-version = "0.7.1"
+version = "0.7.3"
 description = "Network tier for just-dna: fills the source-independent resolution table (cache + Ensembl) that the compiler consumes"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -15,8 +15,8 @@ maintainers = [
 # the 0.5 amendment scoping the network tier + HuggingFace here). This is the only package allowed to
 # fetch; format and compiler stay strictly inject-only.
 dependencies = [
-    "just-dna-format>=0.7.0",
-    "just-dna-compiler>=0.7.1",
+    "just-dna-format>=0.7.1",
+    "just-dna-compiler>=0.7.2",
     "duckdb>=1.1.0",
     "platformdirs>=4.0.0",
     "python-dotenv>=1.0.1",
@@ -33,7 +33,10 @@ dependencies = [
     # pure-Python packages with no compiled dependencies (pydantic is already ours). At that price
     # there is no reason to make complete allele identity opt-in, so it is the default and `--offline`
     # is the only mode that degrades to substitutions-only.
-    "ga4gh.vrs>=2.3.3",
+    # Capped below 2.4 (RM304): VRS 2.1 changes ambiguous-insertion normalization and moves those
+    # ids, vrs-python has not shipped it yet (issue #637), and a stored `vrs_id` records no VRS
+    # version. The cap is lifted by RM304, which makes the upgrade a declared re-id.
+    "ga4gh.vrs>=2.3.3,<2.4",
 ]
 
 [project.scripts]

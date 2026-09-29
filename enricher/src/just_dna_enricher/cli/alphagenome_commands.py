@@ -2,7 +2,6 @@
 single-file `cli.py`).
 """
 
-import os
 from pathlib import Path
 
 import typer
@@ -20,7 +19,7 @@ from just_dna_enricher.enrich import EnrichmentError
 from just_dna_enricher.expression import DEFAULT_MAX_ROWS, ExpressionError, enrich_expression
 from just_dna_enricher.expression import SIDECAR_NAME as EXPRESSION_SIDECAR
 from just_dna_enricher.licensing import sidecar_path
-from just_dna_enricher.locations import load_env, missing_credential_reason, repro_out
+from just_dna_enricher.locations import env_value, missing_credential_reason, repro_out
 from just_dna_enricher.upload import DEFAULT_ALPHAGENOME_AVI_REPO_ID
 
 # ── the AlphaGenome Atlas (RM192) ───────────────────────────────────────────────────────────────
@@ -251,11 +250,10 @@ def _atlas_client_or_none():
     generated, the runtime protobuf is older than the gencode (RM254), or there is no key. Each names its own remedy, and the caller degrades to the
     interval the knot table publishes rather than failing the run.
     """
-    # `load_env()` before reading, at the point the credential is read (`@credential-where-read`,
-    # RM212). Without it this reported "no key" on a machine whose `.env` holds one, and degraded to
-    # the knot interval for rows the Atlas could have refined.
-    load_env()
-    key = os.environ.get("ALPHAGENOME_API_KEY") or ""
+    # The `.env` is read at the point the credential is read (`@credential-where-read`, RM212). Without
+    # it this reported "no key" on a machine whose `.env` holds one, and degraded to the knot interval
+    # for rows the Atlas could have refined. `env_value` exports nothing else from the file (RM301).
+    key = env_value("ALPHAGENOME_API_KEY") or ""
     if not key:
         typer.secho(
             f"  ALPHAGENOME_API_KEY unusable ({missing_credential_reason('ALPHAGENOME_API_KEY')}), so "

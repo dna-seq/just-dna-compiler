@@ -21,6 +21,10 @@ The chain is **first-hit-wins**, in this order:
 
 1. **What is already there.** A `resolution.csv` beside the spec is authoritative and never clobbered.
    A `variant_key` it already covers is skipped entirely.
+   **So an enricher upgrade that corrects a resolution does not reach a table you already have.** After
+   one (RM251 and RM268 are two), run `just-dna-enricher enrich --rederive ./my_module`: it re-asks every
+   subject, replaces what was answered, keeps rows it could not re-ask, and reports what changed.
+   Deleting `resolution.csv` and re-running also works, but loses that report.
 2. **Local Ensembl cache** — DuckDB lookups, offline.
 3. **HuggingFace snapshot** — fetched if no cache is present. A static slice of popular rsIDs, not a
    canonical reference, so a miss falls through rather than answering.
@@ -69,6 +73,11 @@ Each is a flag, each defaults on, and each **reports**:
 
 A disagreement is a finding, not a correction. The enricher will tell you that an authored `ref`
 disagrees with the reference sequence; it will not write the reference's value into your file.
+
+The findings are recorded in `verification.json`, and a later `compile --strict` reads that record.
+**A record written by an older enricher is not re-examined**, so it carries none of the diagnoses
+added since. After upgrading the enricher, re-run `enrich` on a module you mean to compile strictly, so
+the record, and the gate reading it, reflect the current checks (S78).
 
 ## 2. Draft — rows from a source
 

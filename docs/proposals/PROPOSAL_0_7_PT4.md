@@ -376,7 +376,7 @@ the result before treating any threshold in RM191 as a default.
 Anything below is a decision the maintainer has not made and that the night run must **not** invent.
 File each as an `RMn` in ROADMAP if it becomes load-bearing:
 
-- Retry/pacing layering for the Atlas client (`@retry-attempt-floor`, `@shared-pacing-gate`).
+- Retry/pacing layering for the Atlas client (`@retry-attempt-floor`, `@shared-pacing-gate`). Filed as RM280 on 2026-09-27.
 - Whether the lane is `cache pull`-able. It rests on RM195 *and* on whether an HF-published snapshot
   counts as an "open source release" under the Terms' §2.4/1b carve-out — a legal question, not ours.
 - A distance-aware threshold for RM194's distal variants.

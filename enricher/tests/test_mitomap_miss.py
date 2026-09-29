@@ -28,9 +28,12 @@ from just_dna_enricher.caches import (
 )
 from just_dna_enricher.clin_sig import normalize_clin_sig
 from just_dna_enricher.mitomap import MITOMAP_VCEP_CLASSES, MitomapError, parse_status
+from just_dna_enricher.mitomap_build import build_snapshot as build_mitomap_snapshot
 from just_dna_enricher.mitomap_miss_build import (
     BUCKETS,
     MISS_PARQUET,
+    _anchor_colon_deletion,
+    _event_key,
     build_miss_snapshot,
     parent_pin,
     stale_parents,
@@ -63,8 +66,9 @@ def test_a_miss_key_is_absent_from_the_parent_and_a_photocopy_key_is_present(par
     clinvar = pl.read_parquet(clinvar_dir / "data" / "clinvar-chrMT.parquet")
     keys = set(zip(clinvar["start"], clinvar["ref"], clinvar["alt"], strict=True))
 
+    keys = {_event_key(start, ref, alt) for start, ref, alt in keys}
     for row in frame.iter_rows(named=True):
-        key = (row["start"], row["ref"], row["alt"])
+        key = _event_key(row["start"], row["ref"], row["alt"]) if row["ref"] and row["alt"] else None
         if row["bucket"] == "photocopy":
             assert key in keys, f"{key} is a photocopy and the parent does not carry it"
             assert row["clinvar_variation_id"], "and it names the record it is a copy of"
@@ -88,6 +92,41 @@ def test_a_different_allele_at_the_same_position_is_a_miss_not_a_photocopy(paren
     assert row["clinvar_variation_id"] is None
     clinvar = pl.read_parquet(clinvar_dir / "data" / "clinvar-chrMT.parquet")
     assert 8993 in clinvar["start"].to_list(), "the position IS in the parent, which is the point"
+
+
+@pytest.mark.parametrize(
+    ("spelling", "clinvar"),
+    [
+        ((7471, "C", "CC"), (7465, "A", "AC")),  # rCRS 7466..7471 is a C run: one event, two anchors
+        ((7472, "A", "CA"), (7465, "A", "AC")),
+        ((8618, "T", "TT"), (8617, "A", "AT")),
+    ],
+)
+def test_an_indel_is_keyed_on_its_event_not_its_spelling(spelling, clinvar) -> None:
+    """RM273: the respelled pairs the 2026-09-27 sweep found in the real lane, on real rCRS bases."""
+    assert _event_key(*spelling) == _event_key(*clinvar) == clinvar
+
+
+def test_a_respelled_clinvar_indel_is_a_photocopy_not_a_rated_miss(
+    mitomap_corpus, build_clinvar_mt, clinvar_mt_vcf: str, tmp_path: Path
+) -> None:
+    """Five of RM171's six rated misses were this: ClinVar's own call, spelled at another anchor."""
+    blocks = mitomap_corpus.without("no_such_table")
+    header, rows = blocks[0]
+    blocks[0] = (
+        header,
+        [*rows, "9\tMT-CO1\tdeafness\tm.7471dupC\t7471\tC\tCC\t.\t.\t0\t-\t+\tCfrm [LP]\t\\N"],
+    )
+    dump = mitomap_corpus.write(tmp_path / "respelled.dump.sql.gz", blocks)
+    build_mitomap_snapshot(dump, tmp_path / "mitomap", source_last_modified="Mon, 24 Aug 2026 05:01:10 GMT")
+    clinvar = build_clinvar_mt(
+        clinvar_mt_vcf
+        + "MT\t7465\t9990\tA\tAC\t.\t.\tALLELEID=9;CLNSIG=Pathogenic;CLNREVSTAT=reviewed_by_expert_panel\n"
+    )
+    result = build_miss_snapshot(tmp_path / "mitomap", clinvar, tmp_path / "miss")
+    row = pl.read_parquet(result.parquet_file).filter(pl.col("start") == 7471).to_dicts()[0]
+    assert row["bucket"] == "photocopy"
+    assert row["clinvar_variation_id"] is not None
 
 
 def test_every_source_row_lands_in_exactly_one_bucket(parents, tmp_path: Path) -> None:
@@ -140,15 +179,28 @@ def test_an_undocumented_bracket_and_a_bare_confirmation_token_are_both_unrated(
     )
 
 
-def test_the_colon_deletions_are_unmintable_rather_than_missing(parents, tmp_path: Path) -> None:
-    """They are not misses and not photocopies: the join has no key to ask the question with."""
+def test_a_colon_deletion_is_anchored_on_rcrs_and_joined(parents, tmp_path: Path) -> None:
+    """RM293: MITOMAP's `m.7402del` (`refna=C`, `regna=:`) is `7401 CC>C` on rCRS, and gets a bucket.
+
+    It used to be unmintable on the stated grounds that the base before it could not be fetched; the
+    lane vendors rCRS since RM273, so nothing is fetched. `allele_defect` keeps MITOMAP's own shape.
+    """
     mitomap_dir, clinvar_dir = parents
     result = build_miss_snapshot(mitomap_dir, clinvar_dir, tmp_path / "miss")
     frame = pl.read_parquet(result.parquet_file)
     deletions = frame.filter(pl.col("allele_defect") == "right_anchored_deletion")
     assert deletions.height, "the fixture carries one"
-    assert set(deletions["bucket"].to_list()) == {"unmintable"}
-    assert result.unmintable["right_anchored_deletion"] == deletions.height
+    row = deletions.to_dicts()[0]
+    assert (row["start"], row["ref"], row["alt"]) == (7401, "CC", "C")
+    assert row["bucket"] != "unmintable" and row["key_shape"] == "indel"
+    assert "right_anchored_deletion" not in result.unmintable
+
+
+def test_a_colon_deletion_rcrs_disagrees_with_stays_unanchored() -> None:
+    """MITOMAP's deleted bases are checked against rCRS first; a disagreement is never anchored."""
+    assert _anchor_colon_deletion(7402, "C") == (7401, "CC", "C")
+    assert _anchor_colon_deletion(7402, "G") is None
+    assert _anchor_colon_deletion(1, "G") is None  # nothing before base 1 to anchor on
 
 
 def test_a_rebuild_from_the_same_parents_is_byte_identical(parents, tmp_path: Path) -> None:

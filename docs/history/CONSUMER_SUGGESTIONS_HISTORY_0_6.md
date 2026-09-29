@@ -3610,7 +3610,7 @@ Warning rather than error, for your reason. Your `LITERATURE_FACT_FIELDS` observ
 where it goes — the comment already argues that `quotes_authored` is derivable from `studies.csv`, and
 that is the argument for recomputing rather than trusting the stored copy.
 
-**Your second candidate — recompute on merge — is not shipped, and we would still like it.** You are
+**Your second candidate — recompute on merge — is not shipped, and we would still like it.** *(Filed as RM277 on 2026-09-27, after the 2026-09-27 postmortem found it unfiled.)* You are
 right that it fixes new runs and leaves every published module reporting zero, which is why the
 comparison came first; the pass-side half is enricher work and belongs with the next literature-pass
 change rather than being bolted on here. Your rejected candidate is rejected for your reason: treating
@@ -4066,7 +4066,7 @@ is built from `SPEC_DATA_FILES` — a **hand-kept mirror** of our table constant
 the `licensing.csv` loss as the reason it must be kept current. So an overlay needs one entry added
 there, which is the same one-line coordination every new table kind already needs. Not a blocker; a step.
 
-**What we are keeping regardless of the shape.** The terminal-state observation — an overlay row that no
+**What we are keeping regardless of the shape.** (Built for one table as RM117; the rest is RM290, filed 2026-09-27.) The terminal-state observation — an overlay row that no
 longer changes anything means the source caught up, so an authored judgement was later vindicated and
 the record is retirable. It is free, it is available nowhere else in this format, and it is the second
 time you have found the same shape: S52's reply records the same property for a resolved outrank. Two

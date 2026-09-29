@@ -34,6 +34,257 @@ cache-location work is enricher-only, and the one compiler change (a warning whe
 `resolve_with_ensembl=False` discards an injected `resolution.csv`) writes no parquet and moves no
 signature, so `just-dna-compiler` took the patch alongside while `just-dna-format` stayed at 0.5.0.
 
+**`main` is the patch line; minor-class work lives on the `0.8` branch (since 2026-09-25).** RM256,
+RM257, RM259, RM260 and RM262 were committed to `main` on 2026-09-24/25 although each sizes as a
+minor, and were moved to the `0.8` branch by a history rewrite the same evening. Their entries below
+stay here because this log is shared across the ecosystem, but their code is **not on `main`** and
+ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
+[RELEASE_CYCLE.md](RELEASE_CYCLE.md).
+
+## 2026-09-28 — RM279: `hint` names a conclusion written for another genotype (patch, on `main`)
+
+**compiler** — `hints.inspect_rows` on `variants.csv` (so `just-dna-compiler hint variants.csv` and the
+creator's `lint_rows`) now warns on the `conclusion` column when the text names genotypes built from
+the locus's own alleles and never the row's own, and gives the line of the row carrying the genotype it names. A
+swapped `C/C`/`A/A` pair shows as two findings pointing at each other. Over 653,706 diploid rows it
+fired 10 times, all real. It does not run at `validate` or `compile`: that half needs a new warning
+code, which is a minor (RM308). The rule is `just_dna_compiler.conclusion`.
+
+## 2026-09-28 — RM280: the Atlas client retries in the house layer, and `JUST_DNA_HTTP_RETRY_ATTEMPTS` reaches it (patch, on `main`)
+
+**enricher** — The AlphaGenome Atlas channel no longer retries inside grpc. `connect` opens it with
+`grpc.enable_retries = 0` and the vendored service config minus its `retryPolicy`
+(`atlas_client.channel_options()`), and `AtlasClient` retries each RPC itself under
+`attempt_floor(5)` with upstream's backoff. Before, grpc capped the retries at five and
+`JUST_DNA_HTTP_RETRY_ATTEMPTS` could not raise them. Now it can, like every other client. The retried
+statuses are the ones `_translate` maps to `AtlasUnavailable`, so **`INTERNAL` is now retried**, which
+upstream's config never did. Exceptions and their types are unchanged. A caller sees
+`AtlasUnavailable` after the last attempt, as before. The client still has no pacing gate (RM307).
+
+## 2026-09-28 — `ga4gh.vrs` capped below 2.4 until RM304 records the VRS version (patch, on `main`)
+
+**enricher** — The dependency is now `ga4gh.vrs>=2.3.3,<2.4`. VRS 2.1.0 (2026-09-01) normalizes an
+ambiguous insertion to the smallest repeat unit where 2.0 took the greatest, which moves that
+allele's `ga4gh:VA.` id. vrs-python has not implemented it yet (issue #637), and a stored `vrs_id`
+does not say which VRS minted it. Without the cap, the first release that ships the rule would make
+a fresh `enrich` mint ids that disagree with `resolution.csv`, gnomAD and ClinVar-GKM, with nothing
+to say why. The locked version stays 2.3.3, so nothing mints differently today. A consumer that needs
+`ga4gh.vrs` 2.4 (metakb's server pins a 2.4 alpha) conflicts until RM304 lifts the cap.
+
+## 2026-09-28 — RM297: the ClinPGx currency check no longer refuses on an annotation a row never cited (patch, on `main`)
+
+**enricher** — `enrich_clinpgx` (`clinpgx check`) stops at a row's cited `annotation_id` when the
+snapshot does not hold it, instead of comparing the row against another annotation that shares its
+category (S122: a withdrawn `1A` read as *"ClinPGx says 3"*). The warning names three readings
+(withdrawn, mistyped, never a ClinPGx accession) and what the snapshot holds there. A row citing no
+`annotation_id` whose category or triple match carries another level is still reported. Both land in
+the new `ClinPgxResult.withheld` and in `warnings`, coded `clinpgx_annotation_not_in_snapshot` and
+`clinpgx_level_differs_from_uncited_annotation`. **`strict` is loosened for these rows:** they no
+longer refuse. A difference reached through the row's own cited annotation still refuses, and its text
+is unchanged. `verification.json`'s `pgx_evidence_level` counts both lists in `findings` and names the
+codes in `detail`, so an unchanged module does not publish a lower number. A cited id with no match at
+all used to be an `unmatched` miss and is now a finding. RM298 is the per-row source column that would
+let a withdrawal refuse again.
+
+## 2026-09-28 — RM289: two author-facing sentences say what is true (patch, on `main`)
+
+**format** — `PgsRow.training_ancestry`'s description said the score was *validated in* those
+superpopulations. It now says *developed and evaluated in*, naming the PGS Catalog's development and
+evaluation samples, which are the two stages the enricher's `pgs_metadata_agreement` check compares the
+cell against. No value, field or digest moves.
+
+**enricher** — The declared-use gate's skip for a source whose terms are unknown kept its leading
+phrase (*"terms could not be established, so the data is not used"*) and now says that no declared use
+changes the outcome, then quotes the terms' recorded `notice` and `license_url`. For PubMind that is
+why its terms are unsettleable, not a constant left unfilled (S99).
+
+## 2026-09-27 — RM301: a client reads its credential from `.env` without exporting the file (patch, on `main`)
+
+**enricher** — Constructing `EutilsSettings`, `CrossrefClient`, `PmcIdConverterClient` or
+`PharmVarClient` no longer writes the working directory's `.env` into `os.environ`. The same holds for
+the retry floor, the PharmVar rebuild guard, the AlphaGenome key and the HuggingFace token reads. Each
+reads its one variable through the new `locations.env_value`: an exported value wins, and the `.env`
+beside the working directory is read without being exported. A credential kept only in `.env` still
+arrives, whatever the call order (RM100). **Behaviour change a host may notice:** code that read a
+`.env`-only variable from `os.environ` *after* constructing one of these clients, relying on the
+enricher to have exported it, now sees nothing. The cache resolvers still export, and
+`load_dotenv_file=False` still declines that. Reopens RM102's credential half, from S124.
+
+## 2026-09-27 — RM299: the `stats` ClinVar counts say what they count (patch, on `main`)
+
+**format** — `Stats.pathogenic_count` and `Stats.benign_count` now say they count authored
+`variants.csv` rows, one per genotype, whose legacy boolean folds a tier pair (`pathogenic` +
+`likely_pathogenic`, `benign` + `likely_benign`). `clinvar_count` says the same about grain. Before,
+the description read *"Rows flagged ClinVar-pathogenic"*, and a catalog showed
+`just-dna-seq/pathogenic`'s 617,822 as that many pathogenic variants (S123). No value moves, and no
+field is added. Per-tier counts are RM300, a minor.
+
+## 2026-09-27 — release numbering: one number per cut, from `v0.7.4`
+
+**Process only.** From the next cut, every package that changed since the previous tag takes the
+tag's number (a skipped number is legal), unchanged packages keep theirs, and each floor names its
+dependency's current version, so it is the release number exactly when that dependency moved. So `v0.7.4` will publish each moved package as 0.7.4.
+`v0.7.3` (format 0.7.1, compiler 0.7.2, enricher 0.7.3) is published and stays as it is. The rule is in
+[RELEASE_CYCLE § Patches](RELEASE_CYCLE.md#patches).
+
+## 2026-09-27 — `v0.7.3`: format 0.7.1, compiler 0.7.2, enricher 0.7.3 (a patch, cut from `main`)
+
+**All three packages move, each by a patch, and the intra-workspace floors move with them** (compiler
+needs format `>=0.7.1`; enricher needs format `>=0.7.1` and compiler `>=0.7.2`), because the workspace
+pins each floor to its dependency's current version. Nothing adds a field,
+table, parameter, public function or warning code. The sweep gate over the 16 reference modules,
+compiler 0.7.1 against this cut from one spec root, moved **nothing** on any axis
+(`content_signature`, manifest fields, parquet bytes, parquet schema, warnings), so a compiled module
+needs no recompile for the compiler's sake. The corrections are in what the enricher derives, and a
+module picks them up by re-running it.
+
+- **format 0.7.1** — RM264: the quote-counter descriptions.
+- **compiler 0.7.2** — RM264's docstring and RM277's `quote_counter_stale` remedy text.
+- **enricher 0.7.3** — RM268, RM271 (the Ensembl rungs), RM273 (MITOMAP events, CIViC left-alignment,
+  PubMind), RM274 (same-size indels settled with the reference), RM276 (STRchive's own grade), RM277
+  (stale literature pins re-fetched), RM293 (MITOMAP `:` deletions). Each entry below says what moves.
+- **Tests and examples** — RM291 (a consumer-join test against a normalized ClinVar slice) and RM295
+  (`cyp2d6_structural`'s CYP2D6*4 coordinate).
+
+**After upgrading**: `just-dna-enricher enrich <spec> --rederive` for `resolution.csv`, the literature
+pass online for a stale `literature.csv`, and `just-dna-enricher cache rebuild --only mitomap_miss`
+(a derived lane, never published). No HuggingFace snapshot changed.
+
+## 2026-09-27 — RM293: MITOMAP's `:` deletions are anchored on rCRS and joined (patch, on `main`)
+
+**`just-dna-enricher` only; a corrected derivation of a derived lane.** MITOMAP writes a deletion with
+an empty alt (`m.7402del`, `refna=C`, `regna=:`), and the miss lane called those 39 rows unmintable,
+citing Principle 2. The lane has vendored rCRS since RM273, so it now anchors each on the base before
+it (after checking MITOMAP's bases against rCRS) and joins it. On the local parents: unmintable
+47 → 8, photocopy 663 → 686, rated_miss 1 → 2, unrated_miss 385 → 400. Rebuild the lane
+(`just-dna-enricher cache rebuild --only mitomap_miss`); it is never published. RM293.
+
+## 2026-09-27 — RM295: `cyp2d6_structural` places CYP2D6*4 where GRCh38 has it (patch, on `main`)
+
+**A reference-example correction; no package changes.** The example stated CYP2D6*4's splice variant
+at `22:42127941 C>T`, where GRCh38 has `G`; it is `rs3892097` at `22:42128945`. Both rows moved and the
+example was re-closed. Anyone who copied the old coordinate from the example should move it too.
+Found by RM291's consumer-join test.
+
+## 2026-09-27 — RM291: a test that joins every reference example the way a consumer does (patch, on `main`)
+
+**Tests and fixtures only; nothing in any package moves.** `compiler/tests/test_consumer_join.py`
+compiles every GRCh38 reference example and joins each allele row on `(chrom, pos, ref, alt)` against a
+bcftools-normalized ClinVar slice (`assets/consumer_join/`). 614 distinct allele keys ClinVar carries
+join; the 2 misses (SHOX, spelled one base right) are pinned to RM270. It also found RM295, below.
+RM291, postmortem M4.
+
+## 2026-09-27 — RM274: an indel the allele strings cannot decide is settled with the reference (patch, on `main`)
+
+**`just-dna-enricher` only; a corrected derivation of the fill, declared here (Principle 3).** When an
+rsID-only row's genotype and the resolved locus name indels of the same size with different content,
+`hosting_verdict` withholds and the locus used to be kept regardless. `enrich` now reads the GRCh38
+reference around the locus and slides its indel across the repeat: if the genotype's payload is one of
+its spellings the locus is kept (same event), and if not it is **dropped from `resolution.csv`** and
+named in one warning, because the genotype belongs to a different variant. Offline or unreadable, it
+stays undecided and kept, as before. **What moves:** a module whose genotype named a different
+same-size indel than its rsID's locus now resolves that row to nothing instead of to the wrong
+coordinate. RM274, postmortem P2.
+
+## 2026-09-27 — RM276: `draft-repeats` names a locus STRchive itself doubts (patch, on `main`)
+
+**`just-dna-enricher` only; notes, no schema or field.** STRchive grades every locus, and a drafted
+row for `DMD` (graded *Refuted*) looked exactly like `HTT`'s. `draft-repeats` now names a drafted locus
+graded `Refuted` or `Disputed` (DMD, DIP2B, NIPA1, POLG) and counts `Provisional` apart as not yet
+curated. Both modes, never a gate. Carrying the grade into the module is RM294, a minor. RM276,
+postmortem P4.
+
+## 2026-09-27 — RM273: three enricher surfaces stop keying an indel on its spelling (patch, on `main`)
+
+**`just-dna-enricher` only; corrected derivations, declared here (Principle 3).**
+
+- **The MITOMAP-minus-ClinVar lane joins on events.** Both sides' indels are left-aligned against a
+  vendored rCRS (NC_012920.1) before the join. **Every machine's `mitomap_miss` lane is stale until it
+  is rebuilt** (the lane is derived and never published; rebuild it with `cache rebuild --only
+  mitomap_miss`): on the same parents, photocopy 655 → 663 and rated_miss 6 → 1, because five
+  of the six "new" calls were ClinVar's own at another anchor. A MITOMAP draft from an older build
+  still carries them; rebuild the lane.
+- **A CIViC-drafted indel is left-aligned.** The ClinGen registry's anchor is HGVS's 3′-most point, so
+  a drafted indel in a repeat was right of every caller's spelling (`rs72613567`: `4:87310241 A>AA`,
+  now `87310240 T>TA`). Rows drafted earlier keep their spelling; drafting only appends.
+- **PubMind's withheld-indel warning states a count**: its indels are not left-normalized, 5,158 of
+  20,006 provably so from the row alone.
+
+No new field, parameter or public function. RM273, postmortem P1; RM293 filed for the `:` deletions.
+
+## 2026-09-27 — RM277: a stale literature pin is re-fetched, so "re-run the pass" works (patch, on `main`)
+
+**`just-dna-enricher` + `just-dna-compiler` (warning text only).** The compiler's `quote_counter_stale`
+told the author to re-run the literature pass, and the pass never refetched a pinned citation, so the
+remedy could not work; the enricher CLI said to delete the sidecar instead. Now the pass re-fetches a
+pinned citation whose quote count no longer matches `studies.csv` and re-checks its quotes, and both
+tiers say the same thing: re-run online (offline keeps the pin). A corrected derivation of a derived
+row (Principle 3): a re-run over a sidecar that predates its quotes rewrites those rows. No schema,
+field or code change. RM277, postmortem P5.
+
+## 2026-09-27 — RM271: neither Ensembl rung serves a non-base allele as a locus (patch, on `main`)
+
+**`just-dna-enricher` only; a corrected derivation, declared here (Principle 3).** Both Ensembl
+rungs wrote allele strings that are not bases into `resolution.csv` as `status=resolved`: live REST's
+literal `dbSNP_novariation` as a `ref` (`rs2100212723`), and the snapshot's empty alt, `<.>`, IUPAC
+placeholders (`<R>`, `<Y>`), `N` runs and N-masked chrY refs. Every read now keeps only the
+`^[ACGT]+$` alleles: a non-base `ref` withholds the locus, a non-base alt is dropped, and a locus with
+no alt left is withheld.
+
+- **What moves:** `alts` narrows where a placeholder or `N` allele sat beside real ones
+  (`rs33946775`, HBB: `CA,CC,CG,<R>` → `CA,CC,CG`); loci with no base allele leave the table; an rsID
+  REST answers with none is now `not_found` (Ensembl records no variation there), with a warning. An
+  existing sidecar keeps its old rows: delete it or run `enrich --rederive`.
+- The snapshot no longer calls such an rsID "not in the injected snapshot"; one warning names them.
+- No new public surface; a structured result field for these rsIDs is RM272, a minor.
+
+## 2026-09-27 — RM268: the live Ensembl REST rung anchors a one-sided indel (patch, on `main`)
+
+**`just-dna-enricher` only; a corrected derivation, declared here (Principle 3).** Nothing added to
+any schema. The live REST link used to copy Ensembl's `-/C` and interbase `start` straight into
+`resolution.csv`, so `rs8176719` (ABO O1) resolved to `9:133257522 ref='-' alts='C'`: a `ref` the
+allele grammar refuses, one base right of every VCF record. It now reads the base at `start - 1` and
+prefixes every allele, so the same rsID resolves to `9:133257521 T>TC`, the ClinVar/dbSNP spelling. A
+one-sided deletion (`AGTAAG/-`) anchors the same way; strings with no `-` are untouched.
+
+- **What moves:** any `resolution.csv` row the live REST link wrote with `ref='-'` or an `alts` member
+  `-` gets a new `start`, `ref` and `alts`. Only rsIDs the snapshot misses reach that link. An
+  existing sidecar keeps its old row (merge, never clobber): delete it or run `enrich --rederive`.
+- **When the anchor base cannot be read** (sequence service down, or a contig outside the refget
+  table) the locus is withheld. An answer with every locus withheld is `resolve_rsid` →
+  `(None, "ensembl-rest")`: no row, the key stays unresolved, and the rsID is named by its own
+  warning, apart from `unreachable_rsids`.
+- The GraphQL rung withholds a one-sided node and lets REST answer; its convention is unprobed.
+- **No new public surface.** The first commit added `EnrichmentResult.unanchored_rsids`,
+  `EnsemblResolver.read_base` and `sequences.grch38_base_reader`, each minor-class and so not legal on
+  `main`; the fix-forward commit made the reader private and dropped the field. A structured list is
+  RM272, for the `0.8` branch.
+
+RM268; RM267 (the snapshot's one-base-early insertions) is still open.
+
+## 2026-09-27 — triage S117–S119: the haplotype convention written down, three items filed
+
+**Docs and one code comment; no behaviour change.** TABLES.md § `haplotypes.csv` now states the rule
+the phase-ambiguity check already computes with: a haplotype carries the reference at every site of
+its gene that it does not list, closed-world per module. It also says the `*1` exemption silences only
+the used-but-not-defined warning and infers no definition, so a gene whose reference has another name
+(NAT2 `*4`) defines it with reference-matching rows. The `_REFERENCE_HAPLOTYPE` comment claimed `*1`
+can never appear in `haplotypes.csv`. That was probed false and is corrected. S118.
+
+Filed, not built: **RM267** (Ensembl's VCF dump anchors a class of insertions one base early, so
+`resolution.csv` can serve a different event; `rs8176719`, ABO O1, is one), **RM268** (the live REST
+rung writes `ref='-'` at the interbase `start`), and **RM269** (a hemizygous diplotype has no row,
+since `haplotype_b` is required; a 1.0 item under P8). S117, S119.
+
+## 2026-09-25 — RM264: the 0.7.x manifest's quote counters say what an abstract-only miss is (patch, on `main`)
+
+**`just-dna-format` (next patch), descriptions only — nothing added, removed or retyped.**
+`Literature.quotes_found` no longer claims to count fulltext hits only, and it and `quotes_unchecked`
+now send a reader to `abstract_only_count`: a manifest reading `quotes_found: 0, quotes_unchecked: 0`
+beside `abstract_only_count > 0` checked nothing against a body. A FAQ entry gives the per-row
+reading (`quote_source` = `abstract` beside `quotes_found` = 0 is unsettled). The field that settles it
+outright is RM256's `quotes_checked`, a minor's, on the `0.8` branch. S109.
+
 ## 2026-09-25 — RM262: a DOI lookup names the paper it found
 
 `just-dna-enricher` only, inside the uncut **0.8** line. Additive: a new class and method beside
@@ -2788,12 +3039,14 @@ the uncut 0.7.0.
 
 ## 2026-08-28 — 0.7.0: the items PROPOSAL_0_7 decided
 
-**A MINOR, being built; the number is decided and not yet cut.** Every item in this batch is additive
+**Cut as 0.7.0** across all three packages and tagged `v0.7.0` at `2001215` on 2026-09-12; until the
+tag this entry described the minor as still in progress, with its number decided and no tag,
+and six replies (S75–S80) cited it as the record of that state. The tag is the record. Every item in this batch is additive
 under Principles 3 and 8, and a new optional column is what sizes a release. The heading names `0.7.0`
-because the proposal decided it per item, so unlike the 2026-08-24 batch below — which is also an
-uncut minor and deliberately names no number — there is a version to write down here. The three
-`pyproject.toml` files were bumped to `0.7.0` on 2026-08-31 and **the tag is not cut**, so work still
-lands inside this number; the 2026-08-24 batch ships inside it too. Each entry below names the
+because the proposal decided it per item, so unlike the 2026-08-24 batch below — which was also an
+uncut minor when written and deliberately names no number — there is a version to write down here. The three
+`pyproject.toml` files were bumped to `0.7.0` on 2026-08-31 and work kept landing inside this number
+until the tag; the 2026-08-24 batch ships inside it too. Each entry below names the
 packages it actually touched.
 
 **The twelve entries dated 2026-08-31 are a batch of their own and are worth reading as one.** They are
@@ -4245,8 +4498,8 @@ arriving rather than drift.
 
 ## 2026-08-24 — twelve consumer items in one pass (S63–S74)
 
-**Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a MINOR, deliberately
-left uncut (2026-08-27).** The number is not decided, so nothing here names one: the replies'
+**Packages: `just-dna-format`, `just-dna-compiler`, `just-dna-enricher` — a MINOR, cut inside 0.7.0
+(tagged `v0.7.0` on 2026-09-12); it was deliberately left uncut when written (2026-08-27).** The number is not decided, so nothing here names one: the replies'
 markers read `next-minor` and every doc dates a change by its `Sn` rather than by a version that
 does not exist yet. Answered is not installable, and here it is not even tagged.
 Most of what follows is patch-class legibility, but three changes are each independently additive

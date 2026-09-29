@@ -27,7 +27,12 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, enrich_clinpgx
+from just_dna_enricher.clinpgx import (
+    VALID_CLINPGX_WITHHELD_CODES,
+    ClinPgxEnrichmentError,
+    WithheldLevel,
+    enrich_clinpgx,
+)
 from just_dna_enricher.clinpgx_build import (
     CURRENT_ARCHIVE,
     RETIRED_ARCHIVE,
@@ -508,3 +513,92 @@ def test_the_strict_refusal_attests_nothing(snapshot: Path, tmp_path: Path) -> N
     with pytest.raises(ClinPgxEnrichmentError):
         enrich_clinpgx(spec, snapshot=snapshot, mode="strict", declared_use="non_commercial")
     assert not (spec / VERIFICATION_JSON).exists()
+
+
+# ── a row checked against an annotation it never cited (RM297, S122) ─────────────────────────────
+
+
+def _absent_id(rows: list[dict[str, str]]) -> str:
+    """An annotation id the slice does not hold, derived from the ids it does."""
+    held = {row[CURRENT_ARCHIVE.id_column] for row in _slice_rows(CURRENT_ARCHIVE.annotations)}
+    candidate = str(max(int(i) for i in held) + 1)
+    assert candidate not in held
+    return candidate
+
+
+def _moved(level: str) -> str:
+    """A level that is not `level`, so the fixture cannot accidentally state the truth."""
+    return "4" if level != "4" else "1A"
+
+
+def _withdrawn_citation() -> tuple[dict[str, str], str]:
+    """S122's shape: a row citing an annotation the snapshot no longer holds, at a level another
+    annotation sharing its (rsid, drug, genotype, category) does not carry. Returns the row and the
+    level the snapshot holds there."""
+    row = _faithful_rows()[0]
+    held = row["evidence_level"]
+    return {**row, "annotation_id": _absent_id([row]), "evidence_level": _moved(held)}, held
+
+
+def test_an_annotation_the_snapshot_lacks_is_withheld_not_compared(snapshot: Path, tmp_path: Path) -> None:
+    """The fall-through used to compare the row against whichever annotation shared its category and
+    refuse under strict on a record the row never cited. Now the lookup stops at the cited id."""
+    row, held = _withdrawn_citation()
+    result = enrich_clinpgx(
+        _spec(tmp_path, _csv([row])), snapshot=snapshot, mode="strict", declared_use="non_commercial"
+    )
+    assert result.conflicts == []
+    assert [(w.annotation_id, w.code) for w in result.withheld] == [
+        (row["annotation_id"], "clinpgx_annotation_not_in_snapshot")
+    ]
+    text = str(result.withheld[0])
+    for reading in ("withdrew", "mistyped", "never a ClinPGx accession"):
+        assert reading in text, text
+    assert held in text and row["annotation_id"] in text
+
+
+def test_a_row_citing_no_annotation_is_reported_but_never_refused(snapshot: Path, tmp_path: Path) -> None:
+    """No `annotation_id`: the category match is still reported, but the row claimed no record."""
+    row = _faithful_rows()[0]
+    uncited = {**row, "annotation_id": "", "evidence_level": _moved(row["evidence_level"])}
+    result = enrich_clinpgx(
+        _spec(tmp_path, _csv([uncited])), snapshot=snapshot, mode="strict", declared_use="non_commercial"
+    )
+    assert result.conflicts == []
+    assert [(w.code, w.authored, w.held) for w in result.withheld] == [
+        ("clinpgx_level_differs_from_uncited_annotation", uncited["evidence_level"], (row["evidence_level"],))
+    ]
+
+
+def test_a_withheld_row_still_counts_as_a_finding(snapshot: Path, tmp_path: Path) -> None:
+    """Moving a row out of `conflicts` must not lower the published number for an unchanged module."""
+    row, _ = _withdrawn_citation()
+    spec = _spec(tmp_path, _csv([row]))
+    enrich_clinpgx(spec, snapshot=snapshot, declared_use="non_commercial")
+    record = _records(spec)["pgx_evidence_level"]
+    assert (record.subjects, record.findings) == (1, 1)
+    assert "clinpgx_annotation_not_in_snapshot" in (record.detail or "")
+
+
+def test_a_conflict_through_the_rows_own_annotation_keeps_its_text(snapshot: Path, tmp_path: Path) -> None:
+    """`@warning-text-is-api`: the own-id conflict is unchanged, byte for byte, and still refuses."""
+    rows, moved = _stale(_faithful_rows())
+    reported = next(
+        r["evidence_level"] for r in _faithful_rows() if r["annotation_id"] == moved["annotation_id"]
+    )
+    result = enrich_clinpgx(_spec(tmp_path, _csv(rows)), snapshot=snapshot, declared_use="non_commercial")
+    assert result.withheld == []
+    assert [str(c) for c in result.conflicts] == [
+        f"{moved['rsid']} + {moved['drug']} [{moved['genotype']}]: module says level "
+        f"{moved['evidence_level']}, ClinPGx says {reported}"
+    ]
+
+
+def test_each_withheld_code_has_its_own_sentence() -> None:
+    """A verdict with several arms owes a reason per arm, pairwise distinct (`@answered-is-not-absent`)."""
+    texts = {
+        code: str(WithheldLevel(code, "rs1", "d", "A/A", "1A", "1" if "snapshot" in code else None, ("3",)))
+        for code in VALID_CLINPGX_WITHHELD_CODES
+    }
+    assert len(set(texts.values())) == len(VALID_CLINPGX_WITHHELD_CODES) == 2
+    assert all("strict does not refuse" in text for text in texts.values())

@@ -12,6 +12,7 @@ locus, so the provider withholds it. Neither number is typed into an assertion.
 """
 
 import csv
+import json
 import os
 from pathlib import Path
 
@@ -521,3 +522,75 @@ def test_the_whole_published_catalogue_drafts_without_losing_a_locus(tmp_path: P
     assert result.dataset == built.dataset
     for row in _rows(spec):
         assert {name for name in WITHHELD_COLUMNS if (row.get(name) or "").strip()} == set()
+
+
+# ── RM276: STRchive's own evidence grade is named, never dropped ─────────────────────────────────
+#
+# Two real records from the STRchive catalogue (release in the local cache, 2026-09-27), cut to the
+# fields the reader and the drafter use. DMD is the one locus STRchive grades Refuted, EP400 one of
+# its six Provisional (not yet curated).
+_DMD = {
+    "id": "DMD_DMD",
+    "gene": "DMD",
+    "disease": "Duchenne muscular dystrophy",
+    "pathogenic_motif_reference_orientation": ["CTT"],
+    "pathogenic_motif_gene_orientation": ["AAG"],
+    "mondo": ["0010679"],
+    "ref_copies": 16.7,
+    "benign_min": 16,
+    "benign_max": 33,
+    "pathogenic_min": 59,
+    "pathogenic_max": 82,
+    "evidence": ["Refuted"],
+    "chrom": "chrX",
+    "start_hg38": 31284557,
+    "stop_hg38": 31284605,
+    "locus_structure": [{"motif": "TTC", "count": None, "type": "pathogenic_repeat"}],
+}
+_EP400 = {
+    "id": "SCA_EP400",
+    "gene": "EP400",
+    "disease": "Spinocerebellar ataxia",
+    "pathogenic_motif_reference_orientation": ["CAG"],
+    "pathogenic_motif_gene_orientation": ["CAG"],
+    "mondo": [],
+    "ref_copies": 29.0,
+    "benign_min": 19,
+    "benign_max": 39,
+    "pathogenic_min": 71,
+    "pathogenic_max": 77,
+    "evidence": ["Provisional"],
+    "chrom": "chr12",
+    "start_hg38": 132062524,
+    "stop_hg38": 132062611,
+    "locus_structure": [],
+}
+
+
+def _graded_catalogue(tmp_path: Path) -> Path:
+    records = [*json.loads(_SLICE.read_text(encoding="utf-8")), _DMD, _EP400]
+    path = tmp_path / "STRchive-loci.json"
+    path.write_text(json.dumps(records), encoding="utf-8")
+    return path
+
+
+def test_a_locus_strchive_refutes_is_named_when_drafted(tmp_path: Path) -> None:
+    result = draft_repeat_loci(_spec(tmp_path), ["DMD", "HTT"], catalogue=_graded_catalogue(tmp_path))
+    (line,) = [w for w in result.warnings if "grades as doubted" in w]
+    assert "DMD (Refuted)" in line and "HTT" not in line
+    assert {r["gene"] for r in _rows(_spec(tmp_path))} >= {"DMD"}, "named, not withheld"
+
+
+def test_provisional_is_counted_apart_and_never_called_doubted(tmp_path: Path) -> None:
+    result = draft_repeat_loci(_spec(tmp_path), ["EP400"], catalogue=_graded_catalogue(tmp_path))
+    assert not [w for w in result.warnings if "grades as doubted" in w]
+    (line,) = [w for w in result.warnings if "Provisional" in w]
+    assert "EP400" in line and "not-yet-curated" in line
+
+
+def test_an_unreadable_grade_withholds_rather_than_clearing(tmp_path: Path) -> None:
+    catalogue = load_strchive_catalogue(_graded_catalogue(tmp_path))
+    unread = StrchiveCatalogue(loci=catalogue.loci, dataset=None, path=None)
+    result = draft_repeat_loci(_spec(tmp_path), ["DMD"], catalogue=unread)
+    assert any("evidence grades could not be read" in w for w in result.warnings)
+    assert not [w for w in result.warnings if "grades as doubted" in w]

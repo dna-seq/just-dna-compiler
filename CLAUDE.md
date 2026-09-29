@@ -55,7 +55,13 @@ edited as routine work:
   (the other half of RM188 — 97 agent skills, **68 `planned`**, whose four inlined variant tables
   are a module in a shape nothing validates; its five gaps are `consequence`/`impact`, a
   region-keyed dosage row, a per-tissue eQTL, a fine-mapping posterior, and **warfarin as RM28's
-  second corpus entry**); and the dogfood and VCF audit rounds. **No `RMn` is filed there.**
+  second corpus entry**); `GKS_SURVEY` (the GA4GH GKM family against our tables — **our
+  per-genotype grain has no GKS counterpart**, a Cat-VRS id is publisher-assigned rather than a digest,
+  VRS 2.1 re-ids ambiguous insertions while vrs-python still mints 2.0.x, and ClinVar-GKM's CC0
+  `allele.parquet` is an offline placement check) with its companion `METAKB_VARNORM_SURVEY`
+  (variation-normalizer mints our ids byte for byte and refuses the names our identity protocol exists
+  for; metakb has no public v2 API and turns CIViC's `NOT KIT D816V` into a positive claim); and the
+  dogfood and VCF audit rounds. **No `RMn` is filed there.**
 - **`docs/audit/`** — the tier references re-derived from the code, **evidence, never contract**; the
   maintained reference is the one in `docs/` root.
 - **`docs/vendor/`** — upstream files kept for reference; **count them from `ls`, never from a
@@ -67,7 +73,7 @@ edited as routine work:
 | [CONSTITUTION_AMENDMENTS_HISTORY.md](docs/CONSTITUTION_AMENDMENTS_HISTORY.md) | *why* each amendment was made — the reasoning the charter bans from itself | `grep -n '^## ' docs/CONSTITUTION_AMENDMENTS_HISTORY.md` |
 | [BLIND_REDERIVATION.md](docs/BLIND_REDERIVATION.md) | the **method** behind `docs/audit/` — derive a surface twice, top-down from the release and bottom-up from the code with the reference unread, and reconcile. The contradictions are the deliverable; run it before a cut | `grep -n '^## ' docs/BLIND_REDERIVATION.md` |
 | [AGENT_NOTES.md](docs/AGENT_NOTES.md) | the long-form gotcha book behind this file | `grep -n '^## ' docs/AGENT_NOTES.md`, then the symbol name |
-| [RM_TOC.md](docs/RM_TOC.md) | where any `RMn` lives, status included — the complete list. **Claim a new number with `.claude/rm-next.py`** (scan + locked reservation), never by reading the highest off the file — an index is not an allocator, and two sessions once filed the same RM159 | `grep -n 'RM47' docs/RM_TOC.md` |
+| [RM_TOC.md](docs/RM_TOC.md) | where any `RMn` lives, status included — the complete list, **paged by number** (`RM_TOC_000_099.md`, …) behind one entry page that holds the reservations. **Claim a new number with `.claude/rm-next.py`** (scan + locked reservation), never by reading the highest off the file — an index is not an allocator, and two sessions once filed the same RM159 | `grep -n 'RM47' docs/RM_TOC*.md` |
 | [ROADMAP.md](docs/ROADMAP.md) | open items, the idea-book, and **three** trackers: reserved-namespace, 1.0-cleanup, and the **parking-condition gate audit** (a deferral's gate is dishonest when nothing can satisfy it until the item ships — check a new parked item against it at filing) | `grep -n '^## RM' docs/ROADMAP.md` |
 | [ROADMAP_HISTORY.md](docs/ROADMAP_HISTORY.md) | shipped items with their rationale, **0.7 onward**. The 0.6 line is in [history/](docs/history/ROADMAP_HISTORY_0_6.md) and pre-0.6 in [history/](docs/history/ROADMAP_HISTORY_PRE_0_6.md) — three halves now, so **use RM_TOC rather than guessing one**. The boundary is a **tag** read off `git show v0.6.6:`, never a date: three rounds dated 2026-08-21 shipped in 0.7.0 | `grep -rn '^## RM' docs/ROADMAP_HISTORY.md docs/history/` |
 | [ROADMAP_0_8.md](docs/ROADMAP_0_8.md) / [ROADMAP_1_0.md](docs/ROADMAP_1_0.md) | deferred items, with the reason for the deferral. **The minor file is named for the release that will decide its contents**, so a cut closes one and opens the next — 0_7 closed on 2026-08-31 into [history/](docs/history/ROADMAP_0_7.md) | `grep -n '^## RM' docs/ROADMAP_1_0.md` |
@@ -83,7 +89,7 @@ edited as routine work:
 | [CACHE_SURFACE.md](docs/CACHE_SURFACE.md) | what a `CACHE_LANES` entry is, the three stages and the reason an absent one must state, and **a checklist for adding a lane where every line names the test that asserts it**. Written after a lane shipped with a `publish_repo` no command could reach (RM202) | `grep -n '^- \[ \]' docs/CACHE_SURFACE.md` |
 | [MODULE_LIFECYCLE.md](docs/MODULE_LIFECYCLE.md) | origin → publish → a consumer's join; **what pass 2+ moves** | `grep -n '^## ' docs/MODULE_LIFECYCLE.md` |
 | [FAQ.md](docs/FAQ.md) | settled questions keyed by *question* ("why did my digest move?") | `grep -n '^\*\*' docs/FAQ.md` |
-| [RELEASE_CYCLE.md](docs/RELEASE_CYCLE.md) | how an `RMn` becomes a release: the seats, **version by omission** (non-blocked patch items go into the next patch on `main` unasked; an undecided part gets an interview first), the minor cycle from interview to cut, and tic/tac **after 1.0 only**. The §4 item counts are a lamp, never a start pistol | `grep -n '^## ' docs/RELEASE_CYCLE.md` |
+| [RELEASE_CYCLE.md](docs/RELEASE_CYCLE.md) | how an `RMn` becomes a release: the seats, **version by omission** (non-blocked patch items go into the next patch on `main` unasked; an undecided part gets an interview first; **a commit on `main` is patch scope only** — minor-class work goes on the open minor branch, `0.8` today), the minor cycle from interview to cut, and tic/tac **after 1.0 only**. The §4 item counts are a lamp, never a start pistol | `grep -n '^## ' docs/RELEASE_CYCLE.md` |
 | [CONSUMER_SUGGESTIONS.md](docs/CONSUMER_SUGGESTIONS.md) | the **open** consumer inbox (`Sn`) — empty means nothing owed | `grep -n '^## S' docs/CONSUMER_SUGGESTIONS.md` |
 | [CONSUMER_SUGGESTIONS_HISTORY.md](docs/CONSUMER_SUGGESTIONS_HISTORY.md) | answered `Sn`, verbatim, with the reply; it keeps the **whole** contents list across all three halves. **S62 onward live here**; the 0.6 line's S25–S61 sit in [history/](docs/history/CONSUMER_SUGGESTIONS_HISTORY_0_6.md) and 0.5's S1–S24, S27, S28 in [history/](docs/history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md) | `grep -rn '^## S[0-9]' docs/CONSUMER_SUGGESTIONS_HISTORY.md docs/history/` |
 | [CONSUMER_TRIAGE_LOOP.md](docs/CONSUMER_TRIAGE_LOOP.md) | the runbook for answering an `Sn`, and the ledger | `grep -n '^## ' docs/CONSUMER_TRIAGE_LOOP.md` |
@@ -253,6 +259,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - `MULTI_SEP` splits on `,;|`; a source using one writes the other two as data — measure its separator. `@a-shared-separator-constant-is-not-a-sources-separator`
 - A lane-local vocabulary carries the lane's prefix; a reason map only a test reads speaks to nobody. `@a-lane-local-vocabulary-may-not-shadow-a-schema-one`
 - `fetch origin <branch>` leaves the tracking ref; an empty `A..B` may mean B does not exist. `@a-ref-that-reads-as-landed-may-not-be`
+- A closed entry states its `**Residuals**`; each `RMn` named there must mention the source back. A parked bullet is not a home. `@a-closure-states-its-residuals`
 
 - A release record's measured half and declared half drift; re-measure when a declaration lands. `@a-record-written-in-two-passes-drifts-between-them`
 - Assert the asymmetric invariant when only one direction is entailed; equality forces false claims. `@a-record-written-in-two-passes-drifts-between-them`
@@ -294,7 +301,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A layer with no `source` column to join is structurally exempt from the orphan check. `@orphan-check-exempt`
 - The compile gate is data-driven; a `--non-commercial` flag would break the round trip. `@gate-is-data-driven`
 - `declared_use` is a third axis with three states, not a mode. `@declared-use-third-axis`
-- `redistribution` is recorded but not gated — RM27 must design the axis first. `@redistribution-ungated`
+- `redistribution` is stamped (`manifest.Sources.redistribution`, tri-state) and gated nowhere here — the gate is the registry's, at publish (RM27). `@redistribution-ungated`
 - Literature terms are per **article**; there is deliberately no `pubmed` terms constant. `@per-article-terms`
 - A host's terms are not its contents' terms: write the floor, let each record override it. `@a-hosts-terms-are-not-its-contents-terms`
 - ClinPGx/CPIC/PharmVar are CC BY-SA + no-sale, never a resolution link, and the PharmVar key is personal. `@pgx-research-only`
@@ -311,6 +318,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - A source publishing both assemblies lists the wrong one first; filter on the assembly field. `@assembly-first-wins`
 - An interbase coordinate is `start + 1`; a single-base allele cannot reveal the off-by-one. `@a-one-base-allele-hides-an-off-by-one`
 - Load a credential where it is read, not as a side effect of some other call. `@credential-where-read`
+- Read it with `env_value`, never `load_env()` — that exports the whole `.env` into the host's environment. `@credential-where-read`
 - A guard in front of a loader must load too, or it answers differently from what it guards. `@credential-where-read`
 - `export FOO=` outranks a `.env` where `unset FOO` does not; diagnose the two absences apart. `@credential-where-read`
 - A reproduced mechanism is not a diagnosis: check the run's `built_at` against the fix first. `@credential-where-read`

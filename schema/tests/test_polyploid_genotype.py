@@ -19,7 +19,7 @@ sentences, none of which mentioned ploidy:
 * `T|T|C` — three pipe-separated alleles, the fully phased one.
 * `T|T/C` — VCF's partial phasing, which used to be reported as the *allele* `'T/C'` being unspellable.
 
-The locus is real: `22:42127941 C>T` is the CYP2D6 row `reference_examples/cyp2d6_structural/`
+The locus is real: `22:42128945 C>T` (`rs3892097`, CYP2D6*4) is the CYP2D6 row `reference_examples/cyp2d6_structural/`
 already carries, on the gene whose duplication motivates the whole case.
 """
 
@@ -27,7 +27,7 @@ import pytest
 from just_dna_format.spec import VariantRow
 
 #: The CYP2D6 splice variant the reference example carries, on the duplicated gene.
-_CHROM, _START, _REF, _ALT = "22", 42127941, "C", "T"
+_CHROM, _START, _REF, _ALT = "22", 42128945, "C", "T"
 
 
 def _variant(genotype: str) -> VariantRow:

@@ -251,7 +251,7 @@ every check wired from here on, so it wants deciding once.
 **Decided and shipped in 0.6 PT2.** Newest-wins holds between two records of the same disposition; a
 skip does not displace an answer. The counter-argument above is answered rather than dismissed — a
 skip is a fact about the **run** and `verification.json` is a per-check document, so a run-level fact
-needs a run-level place, which is a separate question and was not opened. The stale-verdict half of
+needs a run-level place, which is a separate question and was not opened (RM284, filed 2026-09-27). The stale-verdict half of
 the counter-argument turned out to be the real constraint and is handled by a condition the
 implementation added: the protection applies only while the earlier record still describes the
 module's authored bytes (`existing_still_binds`). Once they have moved the older record is about rows

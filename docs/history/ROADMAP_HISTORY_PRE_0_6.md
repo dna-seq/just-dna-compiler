@@ -337,7 +337,7 @@ real invariant behind it — re-anchoring moves an indel but never changes how m
 removes — so differing event **sizes** prove different variants (`rs281864532`'s 1 bp insertion vs its
 2 bp deletion), while same-size different-content pairs are reported as **undecided** and the locus is
 *kept*. That is the residual the reference would settle, named rather than swallowed, and the enricher can
-still settle it with seqrepo (not yet wired — see the residual below).
+still settle it with seqrepo (not yet wired; filed as RM274 on 2026-09-27).
 
 **Monotonicity is what made it safe to ship inside the window.** The raw string comparison runs *first*,
 so normalization can only ever add acceptances: every locus that was hostable is hostable, byte for byte,
@@ -802,7 +802,7 @@ already do, so a module can say whether a live API or a pinned file gave it the 
   genuinely narrower than `commercial_use=False` and today lives only in `notice` as prose — but a new
   column on an existing parquet moves every compiled module's digest, so it is **1.0**, not a minor. It
   is surfaced here and belongs to the RM27 design round, which already owns "the recorded axes do not
-  cover every real restriction".
+  cover every real restriction". RM27 closed record-only without designing it; the axis is RM286 (filed 2026-09-27).
 - **No second CLI flag.** `--offline` is the switch and an explicit `--snapshot`/`--*-cache` path is the
   inject-only escape hatch. A `--use-snapshot` would be the second flag the `ensure_*` shape exists to
   avoid.
@@ -890,7 +890,7 @@ not run because this deployment is offline"*), and it is different both from "it
 **An injected `curation_text` still wins, deliberately** — handing over bytes you already hold is not
 egress, and refusing it would break the inject-only escape hatch every pass in this tier keeps.
 
-**Not done, and it was asked for explicitly: a ClinGen *snapshot*.** That is RM38's family and a much
+**Not done, and it was asked for explicitly: a ClinGen *snapshot*** (RM287, filed 2026-09-27). That is RM38's family and a much
 bigger question. This was only about the flag meaning the same thing in every function that takes one.
 
 ## RM40 — VRS coverage was computed and thrown away

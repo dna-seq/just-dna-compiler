@@ -30,7 +30,6 @@ resolution table): the instinctive conversion to 0-based would introduce an off-
 
 import json
 import logging
-import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,7 +43,7 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
-from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME, load_env
+from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME, env_value
 from just_dna_enricher.net import PacingGate, attempt_floor
 
 logger = logging.getLogger(__name__)
@@ -225,9 +224,9 @@ class PharmVarClient:
         # `enrich_pgx` by accident and not at all for the snapshot builder, which resolves nothing —
         # `pharmvar build` reported "no PharmVar API key" on a machine that had one in `.env`. Loading
         # it where the key is read makes the credential path independent of unrelated calls.
-        # `override=False`, so a real environment variable and a test's neutralizing `""` both win.
-        load_env()
-        self._api_key = api_key or os.environ.get(API_KEY_ENV)
+        # An exported variable and a test's neutralizing `""` both win over the file, and nothing else
+        # in the `.env` is exported (RM301).
+        self._api_key = api_key or env_value(API_KEY_ENV)
         self._client = client or httpx.Client(timeout=timeout)
         self._owned = client is None
         self._gate = gate or PacingGate(interval=PHARMVAR_MIN_INTERVAL)

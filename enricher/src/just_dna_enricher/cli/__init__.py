@@ -236,6 +236,7 @@ from just_dna_enricher.locations import CITATIONS_DIRNAME as CITATIONS_DIRNAME
 from just_dna_enricher.locations import RELEASE_FILENAME as RELEASE_FILENAME
 from just_dna_enricher.locations import SNAPSHOT_LICENSE_FILENAME as SNAPSHOT_LICENSE_FILENAME
 from just_dna_enricher.locations import STRCHIVE_CATALOGUE_FILENAME as STRCHIVE_CATALOGUE_FILENAME
+from just_dna_enricher.locations import env_value as env_value
 from just_dna_enricher.locations import load_env as load_env
 from just_dna_enricher.locations import missing_credential_reason as missing_credential_reason
 from just_dna_enricher.locations import read_release as read_release

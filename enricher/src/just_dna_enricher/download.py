@@ -33,7 +33,7 @@ from just_dna_enricher.locations import (
     default_ensembl_cache_dir,
     default_mitomap_cache_dir,
     default_strchive_cache_dir,
-    load_env,
+    env_value,
 )
 from just_dna_enricher.resolver import EnsemblReferenceError
 
@@ -236,10 +236,10 @@ def _provision_snapshot(
 
     data_dir.mkdir(parents=True, exist_ok=True)
     # A token is optional on the read side and doubles the per-IP rate allowance, so the `.env`
-    # is loaded here for the same reason the publisher loads it (`@credential-where-read`):
-    # anonymous traffic sleeping on a 429 looks exactly like a hung download.
-    load_env()
-    fs = HfFileSystem(token=get_token())
+    # is read here for the same reason the publisher reads it (`@credential-where-read`):
+    # anonymous traffic sleeping on a 429 looks exactly like a hung download. `env_value` reads the
+    # one key and exports nothing else from the file (RM301).
+    fs = HfFileSystem(token=env_value("HF_TOKEN") or get_token())
     try:
         listing = fs.ls(hf_repo_prefix, detail=False)
     except Exception as exc:
@@ -571,10 +571,10 @@ def _provision_root_file_snapshot(
 
     cache_dir.mkdir(parents=True, exist_ok=True)
     # A token is optional on the read side and doubles the per-IP rate allowance, so the `.env`
-    # is loaded here for the same reason the publisher loads it (`@credential-where-read`):
-    # anonymous traffic sleeping on a 429 looks exactly like a hung download.
-    load_env()
-    fs = HfFileSystem(token=get_token())
+    # is read here for the same reason the publisher reads it (`@credential-where-read`):
+    # anonymous traffic sleeping on a 429 looks exactly like a hung download. `env_value` reads the
+    # one key and exports nothing else from the file (RM301).
+    fs = HfFileSystem(token=env_value("HF_TOKEN") or get_token())
     tmp_path = target.with_suffix(target.suffix + ".part")
     try:
         fs.get(f"{hf_repo}/{payload}", str(tmp_path))

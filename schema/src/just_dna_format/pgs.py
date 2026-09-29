@@ -9,9 +9,10 @@ format does not bin.
 
 The one-way-door fields (consumer round-2 Q8) are pinned here from day one so a
 consumer can refuse or caveat an out-of-ancestry application instead of silently miscalibrating:
-- `training_ancestry` — the superpopulation(s) the score was validated in (required floor), plus an
-  optional free-form `training_cohort` for the sub-superpop precision superpop codes can't express
-  (a Northwest-EUR-trained score applied to a Finnish/Ashkenazi sample).
+- `training_ancestry` — the superpopulation(s) the score was developed and evaluated in (the PGS
+  Catalog's `dev` and `eval` samples; required floor), plus an optional free-form `training_cohort`
+  for the sub-superpop precision superpop codes can't express (a Northwest-EUR-trained score applied
+  to a Finnish/Ashkenazi sample).
 - `match_rate_floor` — the author-set floor (a > ~20% variant mismatch invalidates the score). Only
   the *floor* lives here: the *observed* per-sample match rate is a **measurement**, so by the
   data-agnostic north star (CLAUDE.md) it is consumer/runtime-side and must NOT live in the module.
@@ -63,7 +64,11 @@ class PgsRow(AuthoredModel):
         # a gnomAD population list. `vocab.py` forbids merging them; keying the marker by vocabulary
         # *name* rather than by field name is what keeps two ancestry lists from collapsing into one.
         json_schema_extra={**vocabulary("training_ancestry", VALID_TRAINING_ANCESTRY), **since("0.4.0")},
-        description="Superpopulation(s) the score was validated in (1000G superpop codes; multi-valued)",
+        description=(
+            "Superpopulation(s) the score was developed and evaluated in: the PGS Catalog's development "
+            "and evaluation samples, not the discovery GWAS behind its weights (1000G superpop codes; "
+            "multi-valued)"
+        ),
     )
     training_cohort: str | None = Field(
         json_schema_extra=since("0.4.0"),

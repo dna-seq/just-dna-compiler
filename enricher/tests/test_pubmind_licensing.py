@@ -119,3 +119,23 @@ def test_the_manifest_records_pubmind_as_undetermined_rather_than_permitted(tmp_
     assert sources.commercial_use is None
     assert sources.redistribution is None
     assert "annotation" not in sources.noncommercial_layers
+
+
+def test_the_unknown_terms_skip_says_why_the_terms_are_unknown() -> None:
+    """RM289 (from S99): the unknown-terms sentence read as *not recorded yet*, and a reader went looking
+    for missing configuration. For every source this tier holds at `commercial_use=None` the absence is
+    a probed reading, recorded in the terms' `notice`, so the skip carries that reading and its URL and
+    says no declaration changes it. The leading phrase stays (`@warning-text-is-api`).
+    """
+    unknown = sorted(
+        (terms for terms in TERMS_BY_SOURCE.values() if terms.commercial_use is None), key=lambda t: t.source
+    )
+    assert PUBMIND_TERMS in unknown
+    for terms in unknown:
+        for declared in sorted(VALID_DECLARED_USE):
+            reason = check_declared_use(terms, declared)
+            assert reason is not None
+            assert reason.startswith(f"{terms.source}: terms could not be established"), reason
+            assert terms.notice and terms.notice in reason, reason
+            assert terms.license_url and terms.license_url in reason, reason
+            assert "no declared use changes" in reason, reason

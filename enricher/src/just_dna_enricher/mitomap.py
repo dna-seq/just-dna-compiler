@@ -26,10 +26,10 @@ withheld is carried rather than folded into `VUS`. Collapsing the star would inv
 cannot be left to the normalizer's own default, because that default is `other`, a *definite* member
 of the vocabulary rather than an unknown (`@lookup-with-a-default-hides-a-new-member`).
 
-**The `:` deletions mint no identity here and that is Principle 2, not an oversight.** MITOMAP spells
-a deletion right-anchored, `refna="TA"` against `regna=":"`, which needs an rCRS base at
-`position - 1` to become a VCF allele — and this tier does not fetch a reference sequence. They are
-counted as unmintable, by reason, and never guessed at.
+**The `:` deletions mint no identity in this snapshot.** MITOMAP spells a deletion with an empty
+alt, `refna="TA"` against `regna=":"`, which needs the rCRS base at `position - 1` to become a VCF
+allele. This lane stores MITOMAP's own spelling and counts them by reason; the derived miss lane
+anchors them on its vendored rCRS (RM293), so nothing is fetched and nothing is guessed.
 """
 
 import gzip
@@ -89,8 +89,9 @@ MITOMAP_VCEP_CLASSES: frozenset[str] = frozenset({"P", "LP", "VUS", "LB", "B"})
 MITOMAP_CONFIRMATION_TOKENS: tuple[str, ...] = ("Conflicting reports", "Reported", "Cfrm", "Unclear")
 
 #: Why a row's published alleles cannot be spelled as a VCF `(ref, alt)` pair. Named rather than
-#: counted anonymously, because each sends a reader somewhere different: the first needs an rCRS base
-#: this tier may not fetch, the second is prose in an allele column, the third is not an event.
+#: counted anonymously, because each sends a reader somewhere different: the first needs the rCRS
+#: base before it (the miss lane supplies it, RM293), the second is prose in an allele column, the
+#: third is not an event.
 ALLELE_DEFECTS: tuple[str, ...] = (
     "right_anchored_deletion",  # regna is ":" — the VCF form needs the base at position-1
     "non_nucleotide",  # "24bp_deletion", or an absent cell

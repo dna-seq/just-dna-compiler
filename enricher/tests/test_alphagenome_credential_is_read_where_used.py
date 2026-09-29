@@ -91,11 +91,12 @@ def test_the_cli_helper_reads_the_same_way() -> None:
     """The second site, asserted structurally rather than by driving Typer.
 
     `_atlas_client_or_none` degrades to a printed sentence rather than raising, so a behavioural test
-    would assert on stderr; what actually has to hold is that it loads before it reads. Both call
+    would assert on stderr; what actually has to hold is that it reads the `.env` too. Both call
     sites are checked here so neither can regress alone — the gap existed in both at once, which is
-    what a per-function test would have missed.
+    what a per-function test would have missed. Since RM301 the read is `env_value`, which consults
+    the file without exporting it, so a bare `os.environ` read of the key is the regression.
     """
     for func in (cli._atlas_client_or_none, expression._connect):
         source = inspect.getsource(func)
-        assert "load_env()" in source, func.__qualname__
-        assert source.index("load_env()") < source.index("os.environ.get"), func.__qualname__
+        assert 'env_value("ALPHAGENOME_API_KEY")' in source, func.__qualname__
+        assert 'os.environ.get("ALPHAGENOME_API_KEY")' not in source, func.__qualname__

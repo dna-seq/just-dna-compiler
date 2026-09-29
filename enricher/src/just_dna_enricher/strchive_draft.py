@@ -53,8 +53,15 @@ from just_dna_enricher.strchive import (
     REPEAT_ALLELES_CSV,
     StrchiveCatalogue,
     StrchiveLocus,
+    _evidence_by_locus,
     load_strchive_catalogue,
 )
+
+#: STRchive's grades that doubt the association itself (RM276). Named on every drafted row carrying
+#: one, in both modes and never as a gate: a source doubting itself is not an authoring error.
+_DOUBTED_GRADES: tuple[str, ...] = ("Refuted", "Disputed")
+#: STRchive's *not yet curated*. No grade, so never read as weak evidence; counted apart.
+_UNCURATED_GRADE = "Provisional"
 
 
 class StrchiveDraftError(RuntimeError):
@@ -237,6 +244,7 @@ def draft_repeat_loci(
     result.contested = sorted(contested)
 
     partials: list[PartialRow] = []
+    offered: list[StrchiveLocus] = []
     incomplete: list[str] = []
     for locus in admitted:
         result.fractional_ref_copies += int(
@@ -259,6 +267,7 @@ def draft_repeat_loci(
             incomplete.append(f"{locus.locus_id} ({', '.join(missing)})")
             continue
         partials.append(row)
+        offered.append(locus)
 
     # The licence row lands inside the table's commit (RM232).
     commit_licence = licence_commit(
@@ -276,6 +285,7 @@ def draft_repeat_loci(
     # Carried on the result, not logged: every caller here renders `warnings` itself, and
     # `civic_draft`/`clinvar_draft` do the same. Logging them as well printed each note twice.
     result.warnings.extend(_notes(result, incomplete))
+    result.warnings.extend(_evidence_notes(offered, _evidence_by_locus(loaded.path)))
 
     # **A pass that consults a source writes its `SourceRow`; one that contributed nothing writes
     # none** (`@write-the-sourcerow`). The key is what *this run covered*: a row is written when at
@@ -303,6 +313,43 @@ def draft_repeat_loci(
             )
         )
     return result
+
+
+def _evidence_notes(offered: Sequence[StrchiveLocus], grades: dict[str, tuple[str, ...]] | None) -> list[str]:
+    """What STRchive itself says about the loci this run offered a row for (RM276).
+
+    `evidence` is dropped by every authored column, so a locus STRchive grades `Refuted` drafted
+    exactly like a `Definitive` one. Named, grouped by reason, and never a gate. `grades is None` is
+    the unread arm: withheld with one sentence rather than read as "nothing is doubted".
+    """
+    if not offered:
+        return []
+    if grades is None:
+        return [
+            "STRchive's evidence grades could not be read from the catalogue file, so a drafted locus "
+            "the source grades Refuted or Disputed is not named here. Draft from a built snapshot or "
+            "STRchive-loci.json to get them."
+        ]
+    doubted = [
+        f"{locus.gene} ({'/'.join(g for g in grades.get(locus.locus_id, ()) if g in _DOUBTED_GRADES)})"
+        for locus in offered
+        if set(grades.get(locus.locus_id, ())) & set(_DOUBTED_GRADES)
+    ]
+    uncurated = [locus.gene for locus in offered if _UNCURATED_GRADE in grades.get(locus.locus_id, ())]
+    notes: list[str] = []
+    if doubted:
+        notes.append(
+            f"{len(doubted)} drafted locus/loci are ones STRchive itself grades as doubted: "
+            f"{', '.join(doubted)}. Their pathogenic band is the source's, and so is its doubt about "
+            f"the disease association; the row keeps neither. Decide whether this module should "
+            f"carry them."
+        )
+    if uncurated:
+        notes.append(
+            f"{len(uncurated)} drafted locus/loci are Provisional in STRchive, which is its "
+            f"not-yet-curated state rather than a weak grade: {', '.join(uncurated)}."
+        )
+    return notes
 
 
 def _notes(result: StrchiveDraftResult, incomplete: Sequence[str]) -> list[str]:

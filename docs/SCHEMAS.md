@@ -1620,10 +1620,11 @@ three letters.
   provenance — which link happened to answer — and is excluded so a human-filled and a machine-filled
   table hash equal. Here the source *is* the subject: "ClinPGx, at the annotation layer, is CC BY-SA
   and forbids sale" is the fact. Drop it and the row loses its key.
-- **Exactly five row models carry a `source` column, and four of them are generated** (S17):
-  `ResolutionRow`, `FrequencyRow`, `GeneMetricsRow` and `LiteratureRow` — the enricher-produced
-  sidecars, where a pass records which link answered — plus `SourceRow` itself, where it is the subject
-  as above. **No hand-authored fact table has one**, by design: a curated annotation's provenance is the
+- **Every row model carrying a `source` column is machine-written, except `SourceRow` itself** (S17).
+  The rest are the enricher-produced sidecars (resolution, frequencies, gene metrics, literature and
+  the derived fact tables), where a pass records which link answered; in `SourceRow` it is the subject
+  as above. The rule is the claim here, not a count: a new derived table adds a member without making
+  this sentence false. **No hand-authored fact table has one**, by design: a curated annotation's provenance is the
   module's, not a per-row link. The consequence is worth stating because it is structural rather than a
   matter of care — the compiler's `used_sources` coverage check is built from those columns, so a source
   an author read **by hand** is invisible to it no matter how carefully they work, and the remedy is to
@@ -1870,6 +1871,13 @@ distinguish them.
 
 A consumer still cannot be told *which* release it is missing without also knowing its own — that
 pairing is theirs. This supplies the half nobody outside this repo can compute.
+
+**A patch can add an authored column, so pinning a minor does not fix the authored schema** (S81).
+The parquet contract and `artifact.digest` hold within a minor; the authored row schema does not,
+because a new optional column breaks no existing module and so needs no minor. Under
+`extra="forbid"`, a spec written against the newer patch is refused by the older one. It has
+happened: `StudyRow.curator` is `since("0.6.5")`. A tool that reads authored CSVs should pin the
+patch it validates against, or read `field_first_seen` to name the column it is missing.
 
 ### Which curation is current, and where nothing can say (0.7, RM108)
 
@@ -2380,7 +2388,11 @@ Three properties, and the last two are the ones a design is likely to get wrong:
 - **Neither identity moves.** `content_signature` and `artifact.digest` are equal across a pair of
   modules differing only by an outrank record, so recording the disagreement costs nothing. Pinned.
 
-**What is deliberately unsettled: whether any check reads it.** The proposal it came from asks that a
+**Settled in 0.7: no check reads `outranks`, and the overlay is the record a check reads.** RM124's
+`overrides.csv` became the machine-readable response to a finding, and RM136 wired the enricher to
+read it per field. `outranks` stays carried and attested and folds into the overlay at 1.0 (RM135,
+§ The `outranks` succession). The paragraph below is the question as S52 left it, kept for the
+argument that decided it. The proposal it came from asks that a
 filled record downgrade a source-mismatch warning from WARNING to INFO — never to silence, never to a
 pass, since the record is an author's assertion and not evidence. That is a live question and this
 field does not answer it; what the field settles is that the record has somewhere to live. The

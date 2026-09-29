@@ -152,6 +152,17 @@ One line each; the verdict in full is the `**Status —**` paragraph inside the 
 - **S111** expected match rate on consumer chips — design input, RM188 axis 1
 - **S112** no gene to aim the Atlas at — accepted, RM259; graph to idea-book
 - **S113** a DOI lookup named no paper — accepted, RM262; DOI→PMID RM263
+- **S114** panel: deprecation has no "accepted" signal — RM265; doc fix
+- **S115** diplotype-caller output schema — RM7 corpus; defining-site (b)
+- **S116** HFE compound-het vs cis — RM28 boundary held; set → RM266
+- **S117** Ensembl dump anchors insertions early — RM267; REST `-` RM268
+- **S118** unlisted haplotype site means ref — doc fix; warning declined
+- **S119** hemizygous diplotype; Lewis — RM269 (1.0); RM28 corpus
+- **S120** no indel normalization convention — RM270; consumer guide fixed
+- **S121** one authority witnesses itself — folded into RM267
+- **S122** pharmgkb tiers moved on rebuild — (b) snapshot; RM297 filed
+- **S123** pathogenic_count folds likely_pathogenic — RM299; RM300 filed
+- **S124** client ctor exports the whole .env — RM301 (reopens RM102)
 
 **Keep this list one line per item.** It is a contents list, not a second copy of the replies: the
 detail belongs in each section's `**Status —**` paragraph, where it cannot drift out of step with the
@@ -2802,7 +2813,7 @@ reached for it too. Filing your reasoning verbatim in the entry is the point of 
 and was right to. The authored row schema tightens at PATCH under `extra="forbid"`, that distinction
 was unwritten, and your correction is yours and is made. We will say the same thing on our side when
 RM146 lands, since a reader who learns *when* a column appeared will want to know why a patch could
-introduce it.
+introduce it. *(Written 2026-09-27, in SCHEMAS.md § Which release a column appeared in.)*
 
 **What this will not settle**, so you can plan around it: a reader still cannot be told *which* release
 it is missing without also knowing its own, and that pairing is yours and already shipped. RM146
@@ -4231,7 +4242,7 @@ those values, RM27's undesigned axis, and a compiled module lands `pubmind` in
 `manifest.sources.unknown_terms_sources` with the module-wide verdict `None`. Two things are ours:
 the gate's skip sentence reads as *not recorded yet* rather than *unsettleable*, and the function's
 docstring says nothing about it — the FAQ now answers the question by name, and the sentence itself
-is a patch-level candidate for after 0.7.0 publishes, not a promise. **What to do now:** call the
+is a patch-level candidate for after 0.7.0 publishes, not a promise (filed as RM289 on 2026-09-27). **What to do now:** call the
 drafter without gating it, read `warnings` for the null-terms line, and reword your description to
 "drafts with a null licence row; unknown terms govern publishing, not drafting".
 <!-- triaged: 0.7.0 · sha 07811db132e2 -->
@@ -5232,7 +5243,7 @@ consumer (us) order passes without hand-kept knowledge. Offered as an observatio
 
 ## S113 — `lookup_citation(doi=…)` settles existence and never identity: title, journal, year and author are always null
 
-**Status — accepted; your fix (1) shipped as [RM262](ROADMAP_HISTORY.md#rm262--a-doi-answered-existence-and-never-identity-although-the-body-naming-the-paper-was-already-in-hand) in the uncut 0.8 line (enricher), your (3) with it, and your (2) filed as [RM263](ROADMAP.md#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).**
+**Status — accepted; your fix (1) shipped as [RM262](ROADMAP_HISTORY.md#rm262--a-doi-answered-existence-and-never-identity-although-the-body-naming-the-paper-was-already-in-hand) on the `0.8` branch, uncut (enricher), your (3) with it, and your (2) filed as [RM263](ROADMAP.md#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).**
 Reproduced live on `10.1038/ng826`, exactly as you wrote it. `CrossrefClient.work(doi)` now parses
 the `/works` body the existence request already returned (no extra request), and `lookup_citation`
 fills `title`, `journal`, `year` and `first_author` from it, with an `info` finding
@@ -5278,3 +5289,674 @@ got this result, and fell back to pasting the DOI into a free-text literature se
    is not read as "no such paper".
 
 **Meanwhile, on our side:** nothing yet. The tool passes the null through.
+
+# Field notes from just-dna-lite, 2026-09-26 — rebuilding the ClinVar panels and the diplotype caller under 0.7
+
+## S114 — the `panel_block_deprecated` replaced-branch warns whether or not you need the three fields it says to keep the block for, so there is no way to signal "accepted"
+
+**Status — accepted, filed as [RM265](ROADMAP.md#rm265--the-panel-deprecation-has-no-accepted-signal-on-the-replaced-branch-the-warning-fires-whether-or-not-you-need-the-three-fields-it-tells-you-to-keep-the-block-for) (open, a minor), plus a doc fix shipped this pass.** Reproduced against the code: on the `replaced=True` branch (`compiler.py:4231`) `panel_block_deprecated` fires for a fully-migrated module, and its `unreplaced` clause tells the author to keep the block for `genes`/`significance`/`reference_sha256` — so keeping it *is* the permanent warning, with no key to say "accepted". Your reading is exactly right, and it is the state P3 forbids: a deprecation is legal in a minor only where the audience can act, and for these three fields on the replaced branch no replacement exists.
+
+The design question RM265 records is whether `panel:` is deprecated *as a whole* or only its reader. Your candidate (1) — a home for the three fields, a `panel_provenance:` sub-block or keys beside `dataset` — is the P3-clean answer and is minor (additive); it is a schema-shape decision for the version interview (where the gene *denominator* lives, and that it is your one lossy field). Your candidate (2) — fire only on `replaced=False` — we are **not** taking on its own: it silences a *true* statement on the modules that keep the block, so they would compile clean until 1.0 removes the block under `extra="forbid"` and the data with it, and P3 makes a major ship its upgrade procedure rather than a silent loss. So (2) is a noise stopgap, not the fix.
+
+Doc fix landed now (patch): the RM4 row in [ROADMAP_1_0.md](ROADMAP_1_0.md)'s upgrade tracker still carried the pre-S69 line "delete it, nothing replaces it, consumer no action needed" — that is the migration procedure P3 turns on, and it is corrected to name the three-field loss, the empty-`dataset` trap, and RM265. Your workaround (record the three in a `manifest.logs`-hashed provenance log) is exactly the right shape meanwhile, and RM265 exists so it does not stay per-consumer.
+<!-- triaged: 0.7.x · sha 436f69c4b141 -->
+
+**What we ran.** just-dna-lite rebuilt its three ClinVar gene-panel modules (`cardio`, `cancer`,
+`pathogenic`) under 0.7 (compiler 0.7.1). Each authored a `panel:` block and each compiled with
+`panel_block_deprecated`. All three are in the **`replaced=True`** branch: their licence row carries a
+`clinvar,annotation` entry with a non-empty `dataset` (`clinvar_2026-06-27`), which `draft_gene_panel`
+writes, so the block's one machine reader — the clin_sig cross-check — is already migrated.
+
+**The contradiction we hit.** The replaced-branch message ends "`genes`, `significance` and
+`reference_sha256` have no replacement anywhere — keep the block until 1.0 if you need them recorded."
+But the block emits `panel_block_deprecated` *whether or not* you need those fields, and there is no key
+to say "I read this, I need the three, stop telling me." A consumer who follows the advice keeps a
+permanent deprecation warning on every compile of a module that is otherwise fully on the upgrade path;
+a consumer who wants it clean has to drop provenance the format itself says has no home. The two
+outcomes the message offers are "warn forever" and "lose data", with nothing in between.
+
+**What we did meanwhile.** We moved the three fields into our own provenance record (`clinvar_panel.log`,
+already hashed into `manifest.logs`, which survives the 1.0 removal) and dropped the block, so the
+warning clears with no loss. Two of the three were **already** in that log before we touched it —
+`reference_sha256` as the `clinvar_source_sha256` line and `significance` as the `clin_sig` line — so
+only the requested **gene list** actually needed adding. Worth noting for the 1.0 upgrade-path doc:
+of the three, only the gene list is not trivially reconstructable — `significance` is a build constant
+and `reference_sha256` was already duplicated; the gene list is recoverable from `variants.csv`'s
+`gene` column but **lossily** (cardio requested 327 genes and 297 matched a pathogenic variant; the 30
+that matched none are absent from `variants.csv` entirely).
+
+**What 1.0 needs (candidate fixes, either suffices).** Give the three fields a home that is not the
+deprecated block — a small `panel_provenance:` sub-block under `module_spec.yaml`, or three keys beside
+`dataset` on the licence row — so a derived-panel module can record what it was built from without a
+deprecated surface. Or, if they are genuinely meant to have no home, **split the warning so
+`panel_block_deprecated` fires only on the `replaced=False` branch** (where the block is still the sole
+record of the snapshot and the warning is actionable): on the `replaced=True` branch it currently tells
+a consumer who has done everything right that they are still wrong. Our workaround (record them in a
+consumer-side log) works but is per-consumer; every consumer of the panel route will re-derive it.
+
+---
+
+## S115 — RM7: a consumer's diplotype-call output schema, and the one thing the artifact could not tell it
+
+**Status — recorded; output schema is RM7 corpus (a consumer contract, no format RM), the defining-site gap is (b): the artifact already carries it, derivably.** Two halves.
+
+The output shape — the four-state `status`, the phenotype-only-on-agreement rule, the consistent candidates, the tri-state per-site evidence, `phase_would_decide` — is exactly the kind of ground-truth [RM7](ROADMAP.md#rm7--evaluation-output--report-card-schema) is parked on. RM7 is **not format scope**: per-sample results are a *measurement*, so the caller's output is `just-dna-lite`'s contract to settle, and this shape is now noted on RM7 as the first corpus entry a shipped caller produced. Nothing to file here — that would put a measurement in the format.
+
+The defining-site gap is `@derived-not-stored`, and the reconstruction you already do is provably the whole answer. A gene's defining-site set is the union of the sites named across that gene's `haplotypes.parquet` rows, and that union is complete: a site is *defining* only if some haplotype is non-reference there, and every such site appears in that haplotype's row — even under the sparse convention where a row lists only its non-reference variants. So "this site was a `no_call`" versus "this gene defines no site there" is decidable by any artifact reader, not just your caller: (defining set = the union) minus (the sites your sample called) is the withheld-because-uncalled set, and it needs nothing the artifact does not already ship. A per-gene completeness column would be a convenience over a derivable fact, which P9 keeps out of the authored layer — so we do not materialize it, on the same reasoning `effective_*` reads a derivation rather than storing it. If it ever turns out the union is *not* complete for some real module — a defining site no haplotype row can name — that is a genuine gap and worth a fresh report with the case; we probed `hfe_compound_het` and `apoe_epsilon` and did not find one.
+<!-- triaged: 0.7.x · sha 865633adb667 -->
+
+**What we ran.** just-dna-lite built the phenotype caller RM7 assigns to the consumer — the thing that
+turns a VCF into a diplotype. It reads a `haplotypes` + `diplotypes` module and emits one call per
+(module, gene). Compiled the `apoe_epsilon` and `hfe_compound_het` reference examples with the installed
+compiler 0.7.1 (both clean, `haplotypes.parquet` + `diplotypes.parquet` + `manifest.json`, coordinates
+fully populated) and ran the caller against real WGS samples.
+
+**The output shape that survived contact with two real modules**, as corpus evidence for whatever RM7
+settles on: a **status** of `called` | `ambiguous` | `not_assessable` | `no_match` (never silence, never
+a reference default); a `phenotype` set only when every consistent diplotype agrees; the **consistent
+candidates** themselves; a **per-site evidence** list, tri-state `called` | `restored_hom_ref` |
+`no_call`; and a `phase_would_decide` predicate (see S116).
+
+**The one place the artifact could not answer a question the caller needed.** There is no stated *defining
+site set* for a gene. The caller reconstructs it from the union of the gene's `haplotypes` rows — which
+works — but it makes two different situations indistinguishable to anything reading the *artifact* rather
+than our derived call: "this site was a `no_call`, we could not observe it" versus "this gene does not
+define a site there at all". A `called` status that had to withhold because a defining site was uncalled
+is a different statement from one that had nothing to withhold, and only the consumer's reconstruction
+currently tells them apart. A per-gene defining-site set (or a completeness flag derived from one) would
+put that distinction in the artifact. Filed as an observation, not a blocker — we derive it and move on.
+
+## S116 — RM28: the HFE compound-het-vs-cis case is a meta-conclusion a consumer can name but not resolve
+
+**Status — note 1 recorded on [RM28](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half) (it confirms the boundary); note 2 filed as [RM266](ROADMAP.md#rm266--the-phase-confusable-diplotype-pair-set-is-computed-at-compile-and-dropped-it-reaches-the-artifact-only-as-a-capped-warning-string), open, a minor.** Two distinct findings, and they route apart.
+
+Note 1 — keep the enumerative property — is exactly RM28's boundary, and your building it confirms it from the caller side. Because the module defines the *cis* allele (`C282Y-H63D`) as its own haplotype with its own diplotype row, the enumeration let your caller **name** the ambiguity rather than guess or report `no_match`. RM28 is parked precisely because enumeration reaches the small-arity cases without a predicate, and `hfe_compound_het` was already its "cis/trans closed as a check, not a table" entry; S116 is now recorded there as the shipped-caller confirmation that the boundary holds. Nothing to add to the format for note 1.
+
+Note 2 — the artifact cannot carry which pairs are the phase-confusable set — reproduced, and it is **not** an RM28 axis. We compiled the example: `diplotype_phase_ambiguous` fires and names the set already — `HFE: 1 group(s) … e.g. C282Y/H63D, C282Y-H63D/wt`. `_cross_validate_diplotypes` groups pairs by a phase-preserving definition signature and separates "indistinguishable at all" from "phase would decide," which is the distinction your caller reconstructs. So the compiler *computes* the confusable set; it just flattens it into a warning string capped at three examples. The author does not need to state it (it is derived), so the fix is `@dont-discard-computed` — surface the computed groups as structured data (a manifest field or small parquet) — which is RM266, additive and minor. Filed, not built: `main` is patch scope, and your caller already re-derives the set, so nothing is blocked.
+<!-- triaged: 0.7.x · sha bc09f64bd4d3 -->
+
+**What we ran.** The caller from S115 against the compiled `hfe_compound_het` example, with a sample
+heterozygous at both rs1800562 (C282Y) and rs1799945 (H63D), unphased.
+
+**What happened.** The genotype is consistent with **two** diplotypes the module maps to **different**
+phenotypes: `C282Y / H63D` (compound heterozygous, in *trans*) and `C282Y-H63D / wt` (both variants in
+*cis*). Nothing in an unphased VCF distinguishes them, so the honest call is `ambiguous`, and the caller
+marks `phase_would_decide` because the two candidates share the observed allele multiset at every site and
+differ only in homolog assignment. This is RM28's "predicate keyed on more than one subject" as it reaches
+a consumer: the readings are enumerable, the resolution is not. Two notes from having built it:
+
+1. What made the ambiguity **expressible** is that the module defines the cis allele (`C282Y-H63D`) as an
+   explicit haplotype with its own diplotype row. Without that row the caller would have reported
+   `no_match` or a single wrong phenotype. The enumerative `diplotypes` table already carries what a
+   consumer needs to *name* the ambiguity — keep that property.
+2. What the artifact cannot carry is **which diplotype pairs are the phase-confusable set.** The caller
+   derives `phase_would_decide` by comparing the consistent candidates' per-site multisets — a
+   reconstruction. If an RM28 axis let an author state "this pair is distinguishable from that one only by
+   phase", a downstream reader of the artifact could see the confusable set without running our engine.
+
+Both S115 and S116 are usage observations from a consumer that shipped the feature; neither blocks
+anything, and both are left as the record of what building the diplotype caller against 0.7 actually
+needed.
+
+---
+
+# Field notes from just-dna-lite, 2026-09-27 — authoring the ABO and FUT2 blood-group pilots
+
+## S117 — the Ensembl variation cache spells indel rsIDs at a different anchor from ClinVar for every insertion, and for some it names a different event
+
+**Status — accepted; filed as [RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event)
+(a minor, release undecided), with a second defect found while reproducing it filed as
+[RM268](ROADMAP_HISTORY.md#rm268--the-live-ensembl-rest-rung-writes-an-unanchored-insertion-into-resolutioncsv-ref--at-the-interbase-start)
+(a patch).** Nothing has shipped.
+
+Reproduced: `lookup_loci` on our snapshot returns `rs8176719` as `9:133257520 G>GC`, and applied to the
+GRCh38 window that is `GGGGCTACC` against ClinVar/dbSNP's `GGGGTCACC`. Your other two −1 examples
+reproduce the same way. The snapshot is faithful to its source. Ensembl's own current VCF dump carries
+`133257520 G GC`, while Ensembl's **REST** mapping for the same rsID says `start 133257522, end
+133257521, -/C`, an insertion between 521 and 522, which anchors at your `521 T>TC`. On the two cited
+cases plus five sampled from your −1 class, the dump's POS is REST `end` − 1 every time, and REST `end`
+equals ClinVar's POS every time. So this is arbitrated: Ensembl's VCF export anchors a class of
+insertions one base left of Ensembl's own interbase point. ClinVar and REST agree with each other (checked
+here), and with the gnomAD and caller placements you measured.
+
+Nothing here catches it today. The early anchor base is a real genome base, so the reference-allele
+check passes it by construction. The rsID↔coordinate check deliberately treats indel position
+differences as undecided (RM31). And an rsID-only row gets no coordinate cross-check at all. RM267
+sets out why each candidate repair is wrong alone. Your left-normalization fixes only the +1 class,
+because `G>GC` after `GGGG` has no room to shift. Re-anchoring at build is `just-dna-pipelines`' job.
+The part that fits the enricher is a finding that withholds, using the ClinVar or REST placement as the
+second witness and applying both spellings to the window the way you did.
+
+RM268 is the live fallback for rsIDs the snapshot misses. It writes REST's spelling straight into
+`resolution.csv`, so `rs8176719` through that rung becomes `9:133257522 ref='-' alts='C'`, and the
+table accepts it.
+
+**What to do now:** keep what you have. Author ABO's indels at the left-normalized position with the
+`record_override` naming the cache value, and keep the ±10 bp respelling tolerance labelled as a
+tolerance. For any rsID-authored insertion, do not trust a snapshot-resolved coordinate until RM267
+lands.
+<!-- triaged: RM267 RM268 filed · sha bc9d8aadc361 -->
+
+*From just-dna-lite, 2026-09-27, while authoring an ABO blood-group phenotype module.*
+
+**What we ran.** `lookup_variant(rsid="rs8176719")` (ABO c.261delG, the O1 marker) returned
+`9:133257520 G>GC`. dbSNP, gnomAD and both of our callsets that carry it (one DRAGEN, one DeepVariant) place it at
+`9:133257521 T>TC`. GRCh38 reads `…GGGG T ACC…` at 517–524, so the two are **not** one event
+respelled: inserting C after the G gives `GGGGCTACC`, after the T gives `GGGGTCACC`. gnomAD records
+`520 G>GC` separately at AF ~6e-7, while the cache row carries MAF 0.34 — the common variant, placed
+one base early. A module that resolves rs8176719 through `resolution.csv` matches no real sample.
+
+**Measured corpus-wide**, joining the Ensembl cache (`ensembl_variations/data/*.parquet`) to the
+ClinVar snapshot (`clinvar/data/*.parquet`) on rsID, over ClinVar's length-changing alleles:
+
+| | ClinVar alleles | same `(start, ref, alt)` | same event by `parsimony_reduce`, other anchor | no matching event |
+|---|---|---|---|---|
+| insertions | 57,742 | **0** | 56,696 | 1,046 |
+| deletions | 108,685 | 25,745 | 82,317 | 623 |
+
+The respelled ones split by offset (Ensembl start − ClinVar start): insertions +1: 50,882, −1: 5,788;
+deletions +1: 80,157, −1: 2,111. We applied both spellings to the reference (Ensembl REST sequence)
+for samples of each:
+
+- **+1 is harmless respelling**: 7/7 sampled produce the identical haplotype. The cache spells an
+  indel one base right of VCF left-normalization (`C>CT` at 38343142 becomes `T>TT` at 38343143 in a
+  T run).
+- **−1 is mostly a different event**: 23 of 30 sampled insertions (chr1, 2, 7, 11, 17, 19) produce a
+  different haplotype, e.g. rs546596010 ClinVar `2:26455249 T>TA` vs cache `26455248 C>CA`,
+  rs1553364018 `1:224434032 C>CT` vs `224434031 G>GT`. Extrapolated, a few thousand insertion rsIDs.
+  We did not arbitrate which side is right beyond rs8176719, where reads-based callers and gnomAD agree
+  with ClinVar.
+
+**Why it matters to a consumer.** `parsimony_reduce` alone cannot tell the two classes apart (it drops
+position), so a consumer tolerant of respelling cannot also refuse a real misplacement without sequence
+access, which is enricher-side. And even the harmless +1 class means an rsID-authored indel resolved
+through the cache never meets a left-normalized VCF record in a position join.
+
+**What we did meanwhile.** The pilot authors both ABO indels at the left-normalized position, checked
+against the reference sequence, with `record_override` naming the cache value. Our phenotype caller
+matches an indel respelled within ±10 bp when exactly one record in the window reduces to the same
+event, and refuses (and never restores to hom-ref) when two do. That is a tolerance, not a check, and
+it is labelled as such in the report.
+
+**Candidate fix, and an argument against it.** Left-normalize at cache build (or in `resolve_variants`)
+against the reference the enricher already holds, so `resolution.csv` carries VCF spellings. That fixes
+the +1 class outright. It does not fix the −1 class, which is a placement disagreement, not a spelling
+one — there the enricher could flag rather than choose, since it can apply both spellings to the
+sequence the way we did.
+
+## S118 — a haplotype carries `ref` at any defining site it does not list, and nothing in the format says so
+
+**Status — documentation defect, fixed in [TABLES.md § haplotypes.csv](TABLES.md#haplotypescsv); the
+validate warning is declined.** Nothing to install: it is a doc and a code comment.
+
+Confirmed in the code, not just in your reading of it. `_cross_validate_phase_ambiguity` already says
+*"a haplotype that does not mention a variant is treated as carrying the reference there"* and
+normalizes a row whose `allele` equals its `ref` to the same sentinel. So your caller and the compiler
+agree, and the gap was only that TABLES.md never said it. It now does, closed-world per module: the
+sites are the ones some haplotype of the gene in this module lists, and "unknown at a site" has no
+spelling.
+
+**On `*1`, the answer is that it is a CYP convention, and the format only exempts the name.** The
+used-but-not-defined warning skips the literal `*1` for every gene, and that is all. Nothing infers a
+definition. A diplotype naming an undefined `*1` is skipped by the phase check, not read as
+all-reference. Probed: renaming `hfe_compound_het`'s `wt` to `*1` validates, and the phase warning
+then names `*1/C282Y-H63D`, so a *defined* `*1` is an ordinary haplotype. The comment on
+`_REFERENCE_HAPLOTYPE` claimed `*1` "can never appear in `haplotypes.csv`", which is false, and it is
+corrected. TABLES.md now says a gene whose reference has another name (NAT2's `*4`, your blood-group
+`wt`) defines it with reference-matching rows, as your pilots already do.
+
+**Why no warning on differing site sets.** Sparse is the norm this rule exists for. Two of the four
+reference examples with `haplotypes.csv` (the CPIC-drafted `cyp2c19_star_alleles` and
+`cyp2c9_warfarin_grch37`) list different site sets per haplotype, as every CPIC draft does. The
+warning would fire on each of them while catching an author who means "unknown", and that author has no
+row to write either way.
+
+**What to do now:** nothing changes on your side. Keep listing every allele at every site if you like.
+It is redundant under the rule but not wrong.
+<!-- triaged: doc fix · sha 52d96d1ab43f -->
+
+*From just-dna-lite, 2026-09-27.*
+
+Our diplotype caller (and, as far as we can tell, the compiler's own phase-ambiguity check) assumes the
+PharmVar/CPIC reading: a haplotype that lists no row at a site the gene's other haplotypes define
+carries the reference allele there. TABLES.md never states it. It decides results: remove the
+reference-matching rows from `hfe_compound_het`'s `H63D` haplotype and the caller's answer is unchanged
+only because of this assumption; a consumer reading "unlisted" as "unknown" would turn every such site
+into a wildcard and call far more `ambiguous`.
+
+The corpus avoids the question by listing every allele at every site (`apoe_epsilon`, `hfe_compound_het`
+and our ABO/FUT2 pilots all do), so it has never been tested. Two ways out, either fine by us: state the
+convention in TABLES.md under `haplotypes.csv` (one sentence), or have `validate` warn when haplotypes
+of one gene list different site sets, so an author who means "unknown" finds out. The same sentence
+would settle the related `*1` question: `*1` is the one implicit allele the format allows, and a
+consumer cannot tell whether "`*1` = reference at every site" is the rule or a CYP convention.
+
+## S119 — `DiplotypeRow.haplotype_b` is required, so a hemizygous call has no spelling; plus one more cross-gene case for RM28
+
+**Status — note 1 accepted and filed for 1.0 as
+[RM269](ROADMAP_1_0.md#rm269--diplotyperowhaplotype_b-is-required-so-a-hemizygous-star-allele-call-has-no-row);
+note 2 recorded in [RM28's corpus](ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half).** Nothing
+shipped.
+
+**Note 1.** Confirmed: `haplotype_b` has been required since 0.4.0. Making it nullable is the right
+shape, but it demotes a required field, which the charter (P8) allows only at a major. So RM269 is
+filed against 1.0, with the empty value meaning "no second copy", distinct from unknown. Your source
+already writes this case. CPIC's own diplotype table spells 187 G6PD rows as a single haplotype with
+no `/`. RM269 records why the in-line alternatives are worse. One of them is legal today and is a trap:
+a sentinel in `haplotype_b` is accepted (`-` is even sorted into `haplotype_a` by canonicalization,
+and `none` is accepted as an allele name), and no reader can tell it from a real allele. **Please do
+not ship one.** Reading a haploid contig as `no_match`, as your caller does, is the honest answer
+until 1.0.
+
+**Note 2.** Lewis is in the RM28 corpus beside S102's six CPIC gene pairs. It is the same
+subject-pairing shape outside pharmacogenomics, keyed on two genes' *phenotypes*, and it enumerates.
+So it argues for a two-subject key, not a predicate, and it is recorded as unbuilt.
+
+**What to do now:** nothing new. Keep FUT2 as its own module and Lewis out, as you have.
+<!-- triaged: RM269 filed · sha 829617f9c975 -->
+
+*From just-dna-lite, 2026-09-27.*
+
+1. **Hemizygous diplotypes.** The 0.4 widening gave `variants.csv` a single-allele genotype for
+   hemizygous calls, but `DiplotypeRow.haplotype_b` is still `required=True`. An X-linked star-allele
+   phenotype (G6PD in males is the common one) therefore cannot be enumerated: a male `B`/— has no row.
+   Our caller is diploid today and says so, reading a haploid contig as `no_match`, so nothing is being
+   silently miscalled — but the module could not state the answer even if we read it. A nullable
+   `haplotype_b` meaning "no second copy" (distinct from "unknown") would be enough on our side.
+2. **Lewis (FUT3 × FUT2)** for the RM28 corpus. S102 already counted the CPIC pair-keyed drugs; Lewis
+   is the blood-group instance: Le(a−b+) / Le(a+b−) / Le(a−b−) is a function of the FUT3 phenotype and
+   the FUT2 secretor phenotype, not of either gene's diplotype. We shipped FUT2 secretor status as its
+   own module and left Lewis out for exactly this reason. The enumerative answer we would reach for is a
+   table keyed on the two per-gene *phenotypes*; we have not built it.
+
+# Field notes from just-dna-lite, 2026-09-27 — the indel-coordinate contract, from the superhuman rebuild
+
+## S120 — the format declares no coordinate-normalization convention, so a legal respelling of an indel is a silent position-join miss ("no one is wrong" is the footgun)
+
+**Status — accepted; filed as
+[RM270](ROADMAP.md#rm270--an-indels-artifact-key-is-its-sources-spelling-a-left-aligned-vcf-misses-a-respelled-row-and-the-spelling-independent-id-the-enricher-mints-never-reaches-the-artifact)
+(a minor, release undecided). The documentation half shipped: [CONSUMING.md § Identity](CONSUMING.md#identity)
+now says indel coordinates are not normalized and tells a consumer to normalize both sides.** No
+package change.
+
+Reproduced. All three of your rows sit in our Ensembl snapshot one base right of ClinVar's spelling,
+which matches your callers. Against GRCh38 (UCSC `hg38`; Ensembl REST was down during this pass) each
+pair gives the same sequence, so these are RM267's harmless +1 class, not its wrong-event −1 class.
+
+**Your option 2 is refused where you placed it, for two reasons.** The compiler has no reference
+sequence and is kept that way deliberately (P2). Left-alignment needs flanking sequence, and
+COMPILER.md § the VRS verify pass names giving the compiler sequence access as the line not to cross.
+And on an *authored* coordinate, rewriting it at compile would move `content_signature` on the first
+round trip (P7). The same normalization is legal one tier up. The enricher holds sequence and may
+left-normalize the coordinates *it fills* (a fill is outside `content_signature`). For an authored
+coordinate like `superhuman`'s, it can report the normalized spelling as a finding but not rewrite it.
+
+**Your option 1 is part of the answer only as a checked verdict.** An authored
+`coordinate_normalization` key would be believed without anyone having checked it. A tri-state
+verdict the enricher stamps after checking is honest, and RM270 carries it.
+
+**What the probe added.** A key that ignores spelling already exists and is thrown away. The
+enricher mints `vrs_id` over the fully justified allele. Both spellings of `rs72613567` mint
+`ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7`, and both of `rs77944059` mint one id too. S117's
+`rs8176719` pair mints two different ids, so this key also keeps a wrong event apart instead of
+hiding it. It lives in `resolution.csv` and never reaches `weights`/`annotations.parquet`, where an
+indel is keyed by its source spelling (`16:23635706:G:GT` in `hboc_palb2`). RM270's build is to
+left-normalize enricher fills, carry `vrs_id` onto the variant parquets, and stamp the verdict. You did
+not ask about `DiplotypeRow`/`RepeatAlleleRow` coordinates, and they were not checked here either.
+
+**What to do now:** keep re-anchoring `superhuman` to left-aligned + parsimony against the FASTA before
+compile. That is exactly right, and after RM270 it becomes something the enricher reports instead of
+something you have to know about.
+<!-- triaged: RM270 filed · sha 6649f7b00bb9 -->
+
+**This sits one level above S117/RM267/RM268.** Those arbitrate a specific defect — the Ensembl snapshot
+anchors a class of insertions one base early, and the fix is re-anchoring at build plus an enricher
+finding that withholds against a ClinVar/REST second witness. This item is the contract gap they rest
+on: **nothing in the schema or manifest states which normalization a module's coordinates are in**, so
+even a perfectly-sourced module and a perfectly-sourced VCF can hold two VCF-legal spellings of the same
+indel, and the position join misses them with no error, no warning, and every offline gate green. S117
+made that concrete for one data source; the point of this item is that the *class* is unbounded as long
+as the convention is unstated, and the maintainer's own arbitration of S117 ("ClinVar and REST agree,
+Ensembl's dump is one base left") is exactly the kind of judgement that should be a declared convention
+rather than settled case by case.
+
+**What I ran (consumer: just-dna-lite, 2026-09-27).** Rebuilt `superhuman` on 0.7; its indel rows are
+placed from the Ensembl-cache resolution. Measured against four real GRCh38 genomes: the module places
+`rs72613567` at `4:87310241 A>AA`, `rs77944059` at `2:166204471 AAACA>A`, `rs333` (CCR5-Δ32) at
+`3:46373453 ACAGT…CCAGA>A`; the callers (GATK/DeepVariant, left-aligned) carry them at `…240 T>TA`,
+`…470 GAAAC>G`, `…452 TACAGT…CCAG>T` — one base left. `hf_logic._lead_join_strategy` routes the module
+to a position join (it has coordinates), the join requires POS+REF agreement (correctly — that REF check
+is what stops indel false-matches), and the rows carry no rsID, so there is no fallback. Real carriers,
+silently dropped.
+
+**Why nothing catches it, and why that is the footgun.** Both spellings are legal VCF §1.6.1.4 — VCF
+permits multiple representations of one indel and names no canonical position without a normalization
+convention. The de-facto standard (`bcftools norm` / `vt`, and what every caller emits) is
+left-alignment + parsimony. But the format tier does **parsimony only**: `alleles.parsimony_reduce`
+trims shared bases both ends (VCF_4_4_AUDIT.md §9, "Position-1 padding", records this as clean) and there
+is no left-aligner and no declared assumption that coordinates arrive left-aligned. So "no one is wrong"
+is true and is precisely the problem: it is VCF_4_4_AUDIT.md's own thesis — a legal-on-both-sides
+mismatch that is a silent wrong answer at query time — arriving through coordinate spelling rather than
+through a field namespace.
+
+**What I did meanwhile.** Held `superhuman` out of our publish set and am re-anchoring its indel
+coordinates (and the genotype allele strings) to left-aligned + parsimony against the GRCh38 FASTA in
+`v1_port/runner.py` before compile — the build-side re-anchoring S117/RM267 says is the pipeline's job.
+That fixes our artifact; it does nothing for the next consumer who resolves the same rsIDs.
+
+**Ask / candidate fixes (either the flag or the compiler-side; the reporter's own preference is the
+second).**
+1. **A declared convention field** — a manifest (and/or `module_spec.yaml`) key such as
+   `coordinate_normalization: left_aligned` (closed vocab: `left_aligned` | `unnormalized` | `unknown`),
+   additive and minor. It makes the convention explicit so a consumer/engine can assert its VCF is on the
+   same one and **warn on mismatch instead of silently missing**. This is the "left-aligned flag" a
+   consumer asked for by name.
+2. **Better: the compiler left-normalizes coordinates to that convention and stamps the field**, so the
+   burden is not re-derived by every consumer and every rsID-resolving build. This is where a normalizer
+   belongs — it needs the reference, which the compiler tier can reach and a bare consumer cannot.
+   `parsimony_reduce` already exists; left-alignment is the missing half.
+3. **At minimum**, name a single canonical convention in the contract (left-aligned + parsimony) so
+   "no one is wrong" becomes "here is the convention; conform, or be flagged." The `−1` class S117 found
+   (`G>GC` with no room to shift) shows a naming-only rule is not sufficient alone — it still needs the
+   second-witness withhold — but an undeclared convention guarantees the silence continues.
+
+Legality: (1) is an additive optional field, minor. (2) is compiler behaviour over injected coordinates,
+no schema change to the authored side. Not checked: whether `DiplotypeRow`/`RepeatAlleleRow` coordinates
+(where they exist per VCF_4_4_AUDIT.md §10) would want the same declaration.
+
+---
+
+## S121 — the enricher resolves a coordinate from one authority and validates it against that same authority, so a wrong anchor is confirmed rather than caught; a cross-authority discordance should warn/withhold, not resolve silently
+
+**Status — accepted, and folded into
+[RM267](ROADMAP.md#rm267--the-ensembl-snapshot-anchors-a-class-of-insertions-one-base-early-and-resolutioncsv-serves-them-as-a-different-event)
+as a dated addendum rather than filed separately.** Your generalization is exactly RM267's candidate 4,
+so one item carries it and the remediation is not counted twice. Nothing has shipped.
+
+Confirmed in code. The ClinVar link in `enrich()` fills only rows the Ensembl cache missed. The same
+run loads the ClinVar snapshot for the `clin_sig` cross-check and never compares a placement against
+it. The comment on that ordering says it keeps `artifact.digest` from moving, and our own rules say a
+digest move is never enough reason on its own. So `authority=ensembl` does not distinguish "a second
+authority agreed" from "nobody asked", as you say. Asks 1 and 2 are adopted as RM267's build: compare
+every placement two loaded authorities give for one rsID, withhold with a finding naming both when
+they disagree, publish how many rsIDs had a single witness, and record the witness per row in a new
+optional `resolution.csv` column (minor).
+
+**Two corrections, both from probing rather than argument.**
+
+- **Ask 3 is inverted.** The VRS id is the arbiter, not the hazard. Your three rows' Ensembl-spelled
+  ids are *correct*: `4:87310241 A>AA` and ClinVar's `4:87310240 T>TA` both mint
+  `ga4gh:VA.Jml7SNku3QQBCVIj78BGiFvR21bNkos7`, because VRS justifies the indel before hashing. Only a
+  genuinely different event mints a different id (`rs8176719`, S117's case). So RM267 compares
+  *by* the id where it can mint one, and a disagreeing row is withheld whole, id included. Clearing the
+  VRS id in your re-anchor step throws away the one key that would have joined those rows (RM270).
+- **"0 of 57,742 matching ClinVar" is exact-string agreement.** By `parsimony_reduce`, 56,696 of those
+  are the same event respelled (your S117 table). The *systematic* error is the −1 class. The +1 class
+  is a spelling difference, which RM270 carries.
+
+**What to do now:** keep the ClinVar re-anchor for indel rsIDs where ClinVar disagrees with the
+Ensembl placement, but keep the VRS id rather than clearing it, and re-mint it from the adopted
+coordinate if you want the column to reflect your placement. It will come out the same for a
+respelling.
+
+**On your framing:** you are right that this is the architecture and not one bug, and it is the third
+time the repository has recorded the lesson without acting on it. A postmortem of the procedures that
+let it through is being written now.
+<!-- triaged: RM267 addendum · sha 134d32d2e127 -->
+
+**The enricher tier of S117/S120, and it is why S117 stayed silent.** S117 is the specific Ensembl-anchor
+defect; S120 is the missing contract declaration; this is the resolver behaviour that lets a
+single-authority coordinate ship unquestioned.
+
+**What I ran (just-dna-lite, 2026-09-27).** `enrich(..., use_clinvar=True)` on `superhuman`. Every row
+in the produced `resolution.csv` is `source=cache, authority=ensembl` — Ensembl is the **sole** coordinate
+authority. For the three confirmed misses the enricher wrote `4:87310241 A>AA`, `2:166204471 AAACA>A`,
+`3:46373453 ACAGT…CCAGA>A`, and **minted a `ga4gh:VA.…` VRS id from each**. The ClinVar snapshot the same
+run loaded holds `4:87310240 T>TA`, `2:166204470 GAAAC>G`, `3:46373452 TACAGT…CCAG>T` — the caller
+placement — for those exact rsIDs. The consumer told me the enricher checks the resolved ref/alt against
+the Ensembl parquet for consistency; that check **passes by construction**, because it validates a source
+against itself. The one authority that disagrees was in memory and was never asked.
+
+**The footgun (why this is a bug in itself, not just an instance of S117).** "One authority resolved it,
+and it is self-consistent" is treated as "it is right." But self-consistency across a single source cannot
+detect a source-level systematic error — and S117 established this one is systematic (Ensembl's dump
+anchors an insertion class one base off, 0 of 57,742 matching ClinVar). A resolver that picks one
+authority silently, validates it only against itself, and even content-addresses it (a VRS id on the
+wrong anchor is a *stable wrong identity*), has no place where a second authority's disagreement can
+surface. RM267 proposes the withhold-with-second-witness for this class; this item asks for the
+generalization, because the next silently-resolved coordinate will be from some other single source and
+the architecture will swallow it the same way.
+
+**What I did meanwhile.** Building a consumer-side re-anchor: for a port's indel rsIDs where the ClinVar
+snapshot disagrees with the Ensembl resolution, adopt ClinVar's `(start, ref, alt)` (the dbSNP/caller
+authority for the rsID), re-derive the genotype, and clear the Ensembl-anchored VRS id. This is the
+pipeline's job per RM267 — but it is us re-implementing, per consumer, the cross-authority check the
+resolver is the right place for.
+
+**Ask / candidate fixes.**
+1. **When more than one loaded authority resolves an rsID to a coordinate and they disagree, emit a
+   finding** (warn by default; a strict mode could make it fatal) naming both placements, rather than
+   taking a fixed-precedence winner silently. This is the general form of RM267's second-witness withhold.
+2. **Record the arbitrating authority per row** — `resolution.csv` already has `source`/`authority`, but
+   they name only the winner; a second column (or the finding) should say a second authority was checked
+   and agreed/disagreed, so "authority=ensembl" stops meaning "unchecked" and "checked, sole" alike.
+3. **Do not mint a content-addressed VRS id from a coordinate that failed or skipped a cross-authority
+   check** — a stable id on an unverified anchor is worse than no id, because it dedups and propagates.
+
+Legality: findings + an additive provenance column, network-tier only — a patch or minor on
+`just-dna-enricher`, no authored-schema change. Related but distinct: S117 (the data defect), S120 (the
+format-side convention declaration). The three want deciding together — one declares the convention, one
+detects a violation of it at resolve time, one records which authority was trusted.
+
+---
+
+# Field notes from just-dna-lite, 2026-09-27 — rebuilding pharmgkb under 0.7.3
+
+## S122 — pharmgkb ClinPGx draft moves evidence tiers and drops rows between 0.7.0 and 0.7.3 on the same snapshot
+
+**Status — the diff is not a draft regression: the two builds read different snapshots, and the
+rebuild is the faithful one. Your 1A concern did find a real defect, in the check that should have
+caught it: filed as [RM297](ROADMAP.md#rm297--the-clinpgx-currency-check-compares-a-row-against-an-annotation-it-never-cited).** Your baseline (`prebuild_baseline/pharmgkb/manifest.json`, the one whose
+`content_signature` is `sha256:53685843…`) records **`clinpgx_2025-07-05`**, not `2026-08-05`. So does
+the 0.5-era `v1_port_0_5/pharmgkb/sources.csv`. Only the rebuild's manifest names
+`clinpgx_2026-08-05`, and the two `sources.signature` values differ (`798f5dae…` against `03ca0771…`),
+which is the field that says so. Probed against both snapshots on disk. They are
+`data/interim/clinpgx` (2025-07-05) and `/data/just-dna-cache/clinpgx` (2026-08-05), and each
+agrees with its own build row for row:
+
+- annotations `1183680546` and `1183888969` (rs12979860) read `1A` in 2025-07-05 and `2A` in
+  2026-08-05, and `827862764` reads `1A` then `1B`. ClinPGx re-levelled them, and the drafter copies
+  `evidence_level` verbatim.
+- annotation `1184514050` (NUDT15 rs116855232, azathioprine, `1A`) is in 2025-07-05 and **absent from
+  2026-08-05 altogether**: not re-tiered, withdrawn by ClinPGx. That is your net −3. The two other
+  rs116855232 annotations are in both snapshots: `1451290840` (`1A`, mercaptopurine) is in both builds,
+  and `1450934767` (`3`, azathioprine;mercaptopurine) is in neither, being under your pipeline's
+  `min_evidence_level`.
+
+The draft logic did not move either. Between `v0.7.0` and `v0.7.3` the only change to
+`clinpgx_draft.py` / `clinpgx.py` is RM252's read of a recorded `declared_use`, which gates whether the
+pass runs and touches no row. `clinpgx_build.py` and `just_dna_format.pgx` are unchanged.
+
+**What to do now.** Republish pharmgkb from the rebuild. The tier moves and the NUDT15 loss are
+ClinPGx's own curation, and 1.0.0 is the stale copy.
+
+**The check that should have told you says the wrong thing (RM297).** The currency check for a
+published module is `enrich_clinpgx` (the `clinpgx` command's cross-check) against the newer snapshot.
+Run over your baseline, it reports 36 level conflicts. The 33 on rs12979860 are right. The three on
+`1184514050` read *"module says level 1A, ClinPGx says 3"*, and `unmatched` is 0. The authored
+annotation id is absent from the snapshot, so the lookup fell through to `1450934767`, which shares the
+rsid, drug and category. A curator following that message would edit the level of a withdrawn
+annotation instead of removing it. RM297 makes an absent `annotation_id` its own finding, *withdrawn or
+mistyped*. It is a patch that warns and never blocks, decided with the maintainer the same day. The
+check cannot know that a row cites ClinPGx at all, since a curator may author a row from an article
+with its own accession, so an absent id withholds rather than refuses. The per-row provenance that
+would let it block again is [RM298](ROADMAP.md#rm298--nothing-records-per-row-that-a-pharm_variantscsv-row-came-from-clinpgx),
+a minor. Until RM297 ships, treat any conflict on a row whose `annotation_id` your snapshot does not
+hold as a withdrawal, not a re-tier.
+<!-- triaged: RM297 filed · sha 72886a82671c -->
+
+Consumer: just-dna-lite. `pipelines v1-port pharmgkb` drafts `pharm_variants.csv` through
+`just_dna_enricher.clinpgx_draft.draft_pharm_variants` from the ClinPGx snapshot, then compiles.
+
+**What I ran.** Adopting the `v0.7.3` cut (format 0.7.1 / compiler 0.7.2 / enricher 0.7.3), I rebuilt
+pharmgkb and compared it against the published `just-dna-seq/pharmgkb@1.0.0`. The published artifact
+records `compiler_version 0.7.0`; the rebuild ran on 0.7.2/0.7.3 (confirmed in the manifest). Both
+record the same ClinPGx snapshot, `clinpgx_2026-08-05`, and the same licences.
+
+**What I expected.** `v0.7.3` is described as a derivation-only patch whose corrections (RM268, RM271,
+RM273, RM274, RM276, RM277, RM293) touch Ensembl resolution, MITOMAP/CIViC/STRchive drafting and the
+literature pass, none of which is the ClinPGx path. On an unchanged snapshot I expected
+`draft_pharm_variants` to produce a byte-identical `pharm_variants.csv`.
+
+**What happened.** Coordinate resolution was unchanged (`resolution.csv` byte-identical, so no
+RM268/271/274 effect), but the authored `pharm_variants.csv` changed: 1532 rows to 1529.
+- `rs12979860` (IFNL3;IFNL4, HCV drugs) moved evidence tier: `1A` to `2A` for the
+  boceprevir / peginterferon alfa-2a / -2b / ribavirin efficacy rows (PMIDs 1183680546, 1183888969),
+  and `1A` to `1B` for the peginterferon alfa-2a/-2b / ribavirin rows citing PMID 827862764.
+- Three `rs116855232` (NUDT15, azathioprine toxicity, PMID 1184514050, published as `1A`) rows are
+  gone from the rebuild under any tier, i.e. dropped rather than retiered. This is the net -3.
+- The baseline's `content_signature` equals the published one (`sha256:53685843…`), so the rebuild
+  introduced the change; it is not pre-existing local drift.
+
+**What I could not isolate.** I rebuilt only at 0.7.3, so I do not know whether 0.7.1, 0.7.2 or 0.7.3
+moved it, and I have not decided whether the tier move is a correction (ClinPGx's own tiers, read more
+faithfully) or a regression. The same snapshot date argues this is a change in the draft logic, not new
+data. Dropping a `1A` NUDT15/azathioprine annotation is the case worth a second look: a 1A PGx call is
+the highest evidence tier, and losing it silently on a re-draft is the outcome a consumer would not
+notice.
+
+**What I did meanwhile.** I did not republish pharmgkb; it stays at the published 1.0.0 pending a look
+at the draft-logic diff. Every other v1-port module's `resolution_signature` was byte-identical under
+0.7.3, so this is isolated to the ClinPGx draft path, not the resolution tier.
+
+# Field notes from just-dna-lite, 2026-09-27 — rendering the Catalog cards
+
+## S123 — `stats.pathogenic_count` counts likely-pathogenic rows too, while its description says pathogenic
+
+**Status — accepted, as a documentation defect in the field. The description is fixed as
+[RM299](ROADMAP_HISTORY.md#rm299--statspathogenic_count-says-pathogenic-and-counts-both-pathogenic-tiers-per-genotype-row)
+(format, on `main`, uncut), and the split count is filed as
+[RM300](ROADMAP.md#rm300--the-manifest-cannot-say-how-many-rows-are-pathogenic-only-how-many-carry-the-folded-flag),
+a minor.** Reproduced from the code: `_variant_stats` sums `v.pathogenic` over authored `variants.csv`
+rows, and `derive.pathogenic_from_clin_sig` maps both `pathogenic` and `likely_pathogenic` to `True`.
+The count was behaving as SCHEMAS.md has described it since S43 (*"counts the boolean and therefore
+counts both tiers"*). But the one sentence a consumer actually reads, the field's own description,
+said only "pathogenic". Your reading was the natural one.
+
+- **What changed.** `pathogenic_count` and `benign_count` now say they count authored rows, one per
+  genotype, of a flag covering both tiers, and point at `clin_sig` for the split. `clinvar_count` says the
+  same about grain. A test ties each description to the fold it counts. No value moves.
+- **Why the number stays folded.** Your first candidate, deriving it from `clin_sig`, would change what
+  the field means for every reader already keyed on it, with no way for them to tell (the S18
+  precedent). A new optional manifest field is additive and nearly free, so the per-tier count is
+  RM300, your second candidate. It waits for the minor.
+- **What to do now.** Your tooltip is correct and matches the new description. Until RM300, the only
+  source for a per-tier number is `weights.parquet`'s `clin_sig`, as you measured. The registry listing
+  cannot carry one.
+<!-- triaged: RM299 shipped · sha 98cbdcba30b8 -->
+
+Consumer: just-dna-lite (the Catalog cards render `stats.pathogenic_count` from the registry listing).
+
+**What I ran.** Read `stats` for `just-dna-seq/pathogenic@2.0.0` from the prod listing, and counted the
+local rebuild's `weights.parquet` (compiler 0.7.2).
+
+**What I expected.** From `Stats.pathogenic_count`'s description, "Rows flagged ClinVar-pathogenic",
+a count of rows whose ClinVar significance is pathogenic.
+
+**What happened.** The listing says `pathogenic_count = clinvar_count = 617822` against
+`variant_count = 308990`. Locally, `weights.parquet` has 618,629 rows over 309,394 variant keys; by
+`clin_sig`, 403,534 are `pathogenic` and 215,095 `likely_pathogenic`, and the boolean `pathogenic` is
+true on all 618,629. The compiler computes the stat as `sum(1 for v in variants if v.pathogenic)`
+(compiler.py, around line 4687), so it inherits the legacy boolean, which cannot say
+`likely_pathogenic`. The count is therefore right as a count of rows and wrong against its own
+description: about a third of what it calls pathogenic is likely pathogenic. The same holds for
+cancer (141,316) and cardio (115,263).
+
+**Why it matters to a consumer.** The field is meant for faceting without reading the artifact, and
+a facet is read as "this many pathogenic". Ours rendered it as "617822 path" beside the variant
+count, which reads as twice as many pathogenic variants as the module holds, a third of them not
+pathogenic at all.
+
+**What I did meanwhile.** Our card now spells out "pathogenic" and its tooltip says the number is
+genotype rows including likely pathogenic. Nothing on our side can split the two, since the listing
+carries only the combined number. A candidate, if wanted: derive the stat from `clin_sig` rather than
+the boolean, or add a `likely_pathogenic_count` beside it (a new optional field, so a minor); at the
+least, the description could say it includes likely pathogenic.
+
+# Field notes from just-dna-registry
+
+*Filed 2026-09-27 against enricher 0.7.3 as installed from PyPI. Relayed: the consumer who hit it is
+`just-module-creator` (their report is our S27), and the registry is reporting because the report
+reached us first and blamed our package. Our half is fixed on our side; this is only the enricher's.*
+
+## S124 — constructing an enricher client writes the working directory's `.env` into `os.environ`, with no way to decline
+
+**Status — accepted; your first ask shipped as
+[RM301](ROADMAP_HISTORY.md#rm301--constructing-an-enricher-client-exported-the-whole-env-into-the-hosts-environment)
+(enricher, on `main`, uncut, a patch).** Reproduced as you describe: `locations.load_env()` is
+`load_dotenv(find_dotenv(usecwd=True), override=False)`, and it was called by nine library sites, not
+three. Besides `EutilsSettings`, `CrossrefClient` and `PharmVarClient` there were `PmcIdConverterClient`,
+`net.retry_attempts`, the `caches` PharmVar guard, the AlphaGenome key in `expression` and `cli`, and
+the HuggingFace token reads in `upload` and `download`.
+
+- **What changed.** Each now reads its one variable through `locations.env_value`. The value comes
+  from the process environment if the variable is present, else from the nearest `.env`, and nothing
+  is written into `os.environ`. Precedence is unchanged: an exported value wins and an exported empty
+  string stays empty. RM100's guarantee holds, and a credential kept only in `.env` still arrives
+  whatever the call order. A subprocess test builds the four clients from a `.env` alone and asserts
+  that nothing from the file lands in `os.environ`. It fails on 0.7.3. An AST walk keeps `load_env()`
+  out of every module but `locations`.
+- **What did not change.** The cache resolvers (`resolve_*`, `default_*_cache_dir`) still export the
+  file, and `load_dotenv_file=False` still declines it. That is RM102's closed decision, and nothing in
+  your report is on that path. RM102 recorded its reopen trigger as *"any boundary at all"*, and a
+  host's own record of where its settings came from is one. RM102 is now marked reopened by RM301 for
+  the credential half only.
+- **Your second ask** (a `load_dotenv_file=False` on the constructors) is not needed with the first
+  shipped, so it was not added.
+- **What to do now.** Installed 0.7.3 still exports. Until the next patch is cut and published, your
+  layer guess stays necessary. Once it lands, constructing these clients leaves `os.environ` as the host
+  set it. The CHANGELOG names the one thing a host could notice: code that read a `.env`-only variable
+  from `os.environ` after building a client, relying on us to have exported it.
+<!-- triaged: RM301 shipped · sha d3f10b7025eb -->
+
+**What we ran.** just-module-creator's own repro (their checkout, `JMC_USER_EMAIL` defined only in its
+`.env`), with `dotenv.main.load_dotenv` wrapped to record each call and whether that call was the one
+that set the variable:
+
+```
+env -u JMC_USER_EMAIL uv run --no-dev python -c "import just_module_creator.server"
+load_dotenv ('.../just-module-creator/.env',) {'override': False}  set JMC_USER_EMAIL
+    just_dna_enricher/eutils.py:84       EutilsSettings.__post_init__ -> load_env()
+load_dotenv ('.../just-module-creator/.env',) {'override': False}
+    just_dna_enricher/literature.py:449  CrossrefClient.__post_init__ -> load_env()
+```
+
+`just_dna_registry` is not the loader: its `config` module is never imported on that path. The two
+calls come from `EutilsSettings()` and `CrossrefClient()`, which the consumer's `build_services`
+constructs. `PharmVarClient` (`pharmvar.py:229`) does the same.
+
+**What happens.** `locations.load_env()` is `load_dotenv(find_dotenv(usecwd=True), override=False)`,
+so constructing one of these clients copies **every** key of the working directory's `.env` into
+`os.environ`, not only the credential the client reads. There is no parameter to decline it.
+
+**Why it cost the consumer something.** just-module-creator resolves its own settings in a fixed order
+(process environment, then the working directory's `.env`, then a per-user file) and tells an author
+which layer each value came from, so an agent can explain why a saved token is not the one in force.
+After one of these constructors has run, every value from the `.env` looks like an exported shell
+variable. They now guess the layer by comparing values against the files, where it used to be a record.
+
+**The argument against the obvious fix.** "Load nothing" would reopen RM100: credentials used to reach
+`os.environ` only as a side effect of some unrelated cache resolution, so whether NCBI ran at 10/s or
+1 every 3s depended on call order, and nothing reported which. `@credential-where-read` is the right
+rule, and nothing here asks you to drop it. The narrower asks, in our order of preference:
+
+1. **Read the one key without exporting the file.** `dotenv_values(find_dotenv(usecwd=True))` gives the
+   client its `NCBI_API_KEY` / `JUST_DNA_CONTACT_EMAIL` and leaves `os.environ` as the host set it. It
+   keeps RM100's guarantee (the credential is read where it is used, whatever the call order), and
+   `override=False` precedence carries over as "an environment variable wins over the file".
+2. Failing that, **an opt-out** on the constructors (`load_dotenv_file=False`, the spelling S39 gave the
+   cache resolvers), for a host that owns its configuration.
+
+**What the registry did meanwhile.** Nothing that touches the enricher. Our own CLI had the
+package-relative version of the same shape (a bare `load_dotenv()` walking up from its install
+location), and 0.27.1 changes it to `usecwd=True`. Our SDK imports no dotenv at all.

@@ -33,7 +33,7 @@ one tier that has the sequence to do it with.
 """
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from ga4gh.vrs.dataproxy import create_dataproxy
@@ -103,6 +103,88 @@ class SequenceProxy:
                 logger.warning("Sequence read failed for %s:[%d,%d) (%s)", accession, start, end, exc)
         self._cache[key] = result
         return result
+
+
+#: How far left `_left_align` reads before it withholds. A shift longer than this is a repeat longer
+#: than this, which is rare enough that withholding it costs less than an unbounded read.
+_LEFT_ALIGN_WINDOW = 1024
+
+
+def _left_align(
+    chrom: str,
+    pos: int,
+    ref: str,
+    alt: str,
+    read_window: Callable[[str, int, int], str | None],
+) -> tuple[str, int, str, str] | None:
+    """An anchored indel → its leftmost VCF spelling, or `None` when the reference cannot be read (RM273).
+
+    Prefix-anchoring at a registry's interbase point is not left-alignment: HGVS places an event at
+    its 3′-most position inside a repeat, so `rs72613567` anchors as `4:87310241 A>AA` where VCF's
+    spelling is `87310240 T>TA`. This is the standard normalization: drop a shared last base, and when
+    a side empties, prefix the base before it and step left; then drop shared leading bases while both
+    sides keep two. `read_window(chrom, start, end)` returns the 1-based inclusive reference bases,
+    read once over `_LEFT_ALIGN_WINDOW` bases; running off its edge withholds rather than guessing.
+    """
+    window = read_window(chrom, max(1, pos - _LEFT_ALIGN_WINDOW), pos - 1) if pos > 1 else ""
+    if window is None:
+        return None
+    # Indexed from the right end, which is `pos - 1` whatever the start: a read clipped at a contig's
+    # first base is shorter, not shifted.
+    end = pos - 1
+    ref, alt = ref.upper(), alt.upper()
+    while True:
+        if ref and alt and ref[-1] == alt[-1]:
+            ref, alt = ref[:-1], alt[:-1]
+        elif not ref or not alt:
+            k = len(window) - 1 - (end - (pos - 1))
+            if k < 0:
+                return None
+            base = window[k].upper()
+            pos -= 1
+            ref, alt = base + ref, base + alt
+        else:
+            break
+    while len(ref) > 1 and len(alt) > 1 and ref[0] == alt[0]:
+        ref, alt, pos = ref[1:], alt[1:], pos + 1
+    return chrom, pos, ref, alt
+
+
+def _indel_payloads(
+    chrom: str,
+    pos: int,
+    ref: str,
+    alt: str,
+    read_window: Callable[[str, int, int], str | None],
+) -> frozenset[str] | None:
+    """Every payload one pure indel can be spelled with inside its repeat, or `None` (RM274).
+
+    Left-align, then slide the event right one base at a time while the reference allows it: a
+    deletion of `P` over `[pos+1, pos+n]` also reads as a deletion one base right when the base after
+    it equals `P[0]`, and its payload rotates to `P[1:] + base`; an insertion slides the same way
+    against the bases after its anchor. `AGAG>AG` in an `AGAGAG` run is therefore `{AG, GA}`. `None`
+    for anything that is not a single-anchored insertion or deletion, for an unreadable reference,
+    and for a repeat longer than the window, which is withheld rather than truncated.
+    """
+    left = _left_align(chrom, pos, ref, alt, read_window)
+    if left is None:
+        return None
+    _, pos, ref, alt = left
+    if len(ref) == len(alt) or min(len(ref), len(alt)) != 1 or ref[0] != alt[0]:
+        return None
+    deletion = len(ref) > len(alt)
+    payload = (ref if deletion else alt)[1:]
+    first = pos + 1 + (len(payload) if deletion else 0)
+    window = read_window(chrom, first, first + _LEFT_ALIGN_WINDOW - 1)
+    if window is None:
+        return None
+    seen = [payload]
+    for base in window.upper():
+        if base != payload[0]:
+            return frozenset(seen)
+        payload = payload[1:] + base
+        seen.append(payload)
+    return None
 
 
 @dataclass

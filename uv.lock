@@ -768,7 +768,7 @@ wheels = [
 
 [[package]]
 name = "just-dna-compiler"
-version = "0.7.1"
+version = "0.7.2"
 source = { editable = "compiler" }
 dependencies = [
     { name = "just-dna-format" },
@@ -795,7 +795,7 @@ dev = [{ name = "pytest", specifier = ">=9.0.3" }]
 
 [[package]]
 name = "just-dna-enricher"
-version = "0.7.1"
+version = "0.7.3"
 source = { editable = "enricher" }
 dependencies = [
     { name = "duckdb" },
@@ -830,7 +830,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "duckdb", specifier = ">=1.1.0" },
-    { name = "ga4gh-vrs", specifier = ">=2.3.3" },
+    { name = "ga4gh-vrs", specifier = ">=2.3.3,<2.4" },
     { name = "grpcio", marker = "extra == 'atlas'", specifier = ">=1.83.1" },
     { name = "grpcio-tools", marker = "extra == 'dev'", specifier = "==1.83.1" },
     { name = "httpx", specifier = ">=0.28.1" },
@@ -856,7 +856,7 @@ dev = [
 
 [[package]]
 name = "just-dna-format"
-version = "0.7.0"
+version = "0.7.1"
 source = { editable = "schema" }
 dependencies = [
     { name = "cryptography" },

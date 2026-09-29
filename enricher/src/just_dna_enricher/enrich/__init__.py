@@ -32,6 +32,9 @@ from just_dna_compiler.compiler import load_spec as load_spec
 from just_dna_compiler.resolution import contradiction_reason as contradiction_reason
 from just_dna_compiler.resolution import hosting_verdict as hosting_verdict
 from just_dna_compiler.resolution import undecided_reason as undecided_reason
+from just_dna_format.alleles import is_unobservable_allele as is_unobservable_allele
+from just_dna_format.alleles import parsimony_reduce as parsimony_reduce
+from just_dna_format.alleles import split_genotype as split_genotype
 from just_dna_format.alleles import strand_flip_explains as strand_flip_explains
 from just_dna_format.base import derive_variant_key as derive_variant_key
 from just_dna_format.base import merge_key as merge_key
@@ -45,9 +48,11 @@ from just_dna_format.resolution import RESOLUTION_FACT_FIELDS as RESOLUTION_FACT
 from just_dna_format.resolution import ResolutionRow as ResolutionRow
 from just_dna_format.spec import ModuleSpecConfig as ModuleSpecConfig
 from just_dna_format.spec import VariantRow as VariantRow
+from just_dna_format.vocab import ALLELE_PATTERN as ALLELE_PATTERN
 from just_dna_format.vocab import TEMPLATE_PLACEHOLDER as TEMPLATE_PLACEHOLDER
 from just_dna_format.vrs import normalize_chrom as normalize_chrom
 from just_dna_format.vrs import par_partner as par_partner
+from just_dna_format.vrs import refget_accession as refget_accession
 from pydantic import ValidationError as ValidationError
 
 from just_dna_enricher import clinvar as clinvar
@@ -85,7 +90,9 @@ from just_dna_enricher.enrich.build_declaration import (
 from just_dna_enricher.enrich.build_declaration import _fill_placeholders as _fill_placeholders
 from just_dna_enricher.enrich.build_declaration import source_build_mismatch as source_build_mismatch
 from just_dna_enricher.enrich.build_declaration import spec_genome_build as spec_genome_build
+from just_dna_enricher.enrich.orchestration import _grch38_window as _grch38_window
 from just_dna_enricher.enrich.orchestration import _run_enrichment as _run_enrichment
+from just_dna_enricher.enrich.orchestration import _settle_by_reference as _settle_by_reference
 from just_dna_enricher.enrich.orchestration import enrich as enrich
 from just_dna_enricher.enrich.orchestration import logger as logger
 from just_dna_enricher.enrich.outcome import EnrichmentError as EnrichmentError
@@ -140,6 +147,7 @@ from just_dna_enricher.resolver import lookup_loci as lookup_loci
 from just_dna_enricher.sequences import RefCheck as RefCheck
 from just_dna_enricher.sequences import RefMismatch as RefMismatch
 from just_dna_enricher.sequences import SequenceProxy as SequenceProxy
+from just_dna_enricher.sequences import _indel_payloads as _indel_payloads
 from just_dna_enricher.sequences import summarize_ref_mismatches as summarize_ref_mismatches
 from just_dna_enricher.sequences import verify_reference_alleles as verify_reference_alleles
 from just_dna_enricher.transaction import ResolutionJournal as ResolutionJournal

@@ -389,9 +389,9 @@ def _notes(result: MitomapDraftResult, drafted: Sequence[dict], incomplete: Sequ
     if result.withheld.get("unmintable"):
         notes.append(
             f"{result.withheld['unmintable']} MITOMAP row(s) publish no allele pair this schema can "
-            f"spell — a deletion written right-anchored as `:` needs the rCRS base at position-1, and "
-            f"nothing in the format or compiler tiers may fetch a reference sequence. They are "
-            f"neither misses nor photocopies: the join has no key to ask the question with."
+            f"spell: prose in an allele column, no event, or (in a lane built before RM293) a `:` "
+            f"deletion not yet anchored on rCRS. They are neither misses nor photocopies: the join "
+            f"has no key to ask the question with."
         )
     if incomplete:
         notes.append(
@@ -400,10 +400,12 @@ def _notes(result: MitomapDraftResult, drafted: Sequence[dict], incomplete: Sequ
         )
     if result.indel_keys:
         notes.append(
-            f"{result.indel_keys} of the drafted row(s) key on an indel. The join is exact and "
-            f"neither side is left-aligned, so one of those is an allele ClinVar does not carry or "
-            f"one it carries at another anchor — this pass cannot tell you which, and the drafted "
-            f"row states MITOMAP's spelling."
+            f"{result.indel_keys} of the drafted row(s) key on an indel. An increment built since "
+            f"RM273 compares events (both sides left-aligned against rCRS), so these are absent from "
+            f"ClinVar under any spelling; one built before it compared spellings, and five of the "
+            f"real lane's six rated misses were ClinVar's own calls at another anchor — rebuild the "
+            f"mitomap-miss lane if yours predates 2026-09-27. The drafted row states MITOMAP's "
+            f"spelling, which need not be the left-aligned one."
         )
     if result.indefinite_alleles:
         notes.append(

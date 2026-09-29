@@ -15,10 +15,12 @@ the `[dev]` group.
 """
 
 import ast
+import json
 import math
 import os
 import struct
 import sys
+import time
 from pathlib import Path
 
 import just_dna_enricher
@@ -43,6 +45,7 @@ from just_dna_enricher.generated._alphagenome_atlas_protos import (  # noqa: E40
     atlas_service_pb2,
     dna_model_pb2,
 )
+from just_dna_enricher.net import RETRY_ATTEMPTS_ENV, attempt_floor, retry_attempts  # noqa: E402
 
 NETWORK = os.environ.get("JUST_DNA_NETWORK_TESTS") == "1"
 API_KEY = os.environ.get("ALPHAGENOME_API_KEY") or ""
@@ -65,7 +68,7 @@ BULK_AVI = {
 
 
 def test_imports_stay_within_the_declared_floor():
-    """The client must import nothing beyond the standard library, `grpc`, and the generated protos.
+    """The client imports nothing beyond the standard library, `grpc`, core `tenacity` and this package.
 
     An AST walk rather than a runtime check on `sys.modules`, because by the time the module is
     imported a heavier package pulled in by some other test would already be resident and the
@@ -80,10 +83,13 @@ def test_imports_stay_within_the_declared_floor():
         elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
             roots.add(node.module.split(".")[0])
     third_party = roots - set(sys.stdlib_module_names)
-    assert third_party == {"grpc", "just_dna_enricher"}, (
+    # `tenacity` since RM280: the house retry layer. It is a core dependency of this tier, already
+    # installed by every `just-dna-enricher`, so the `[atlas]` extra is still grpcio + protobuf.
+    assert third_party == {"grpc", "just_dna_enricher", "tenacity"}, (
         f"the Atlas client's dependency floor moved: {sorted(third_party)}. "
-        "`just_dna_enricher` is this package (the generated protos and the generator); anything "
-        "else is a new runtime dependency and moves the [atlas] extra off two packages."
+        "`just_dna_enricher` is this package (the generated protos and the generator) and "
+        "`tenacity` is core to it; anything else is a new runtime dependency and moves the "
+        "[atlas] extra off two packages."
     )
 
 
@@ -276,6 +282,17 @@ def test_scorer_filter_builds_the_aip160_string():
 # ── the error contract ──────────────────────────────────────────────────────────────────────────
 
 
+@pytest.fixture
+def no_backoff(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Neutralize the retry layer's backoff: the attempt *count* is the contract, not the wall-clock.
+
+    Upstream's backoff is 1s doubling to a 60s cap, so a retryable status exhausting five attempts
+    would otherwise sleep up to fifteen seconds per case. `tenacity` sleeps through `time.sleep`,
+    resolved at call time, which is the same neutralizer `test_client_exception_contract.py` uses.
+    """
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+
+
 class _RpcError(grpc.RpcError):
     def __init__(self, code, details):
         self._code, self._details = code, details
@@ -314,7 +331,7 @@ class _RaisingStub:
         (grpc.StatusCode.PERMISSION_DENIED, "bad key", ac.AtlasRefused),
     ],
 )
-def test_every_transport_error_becomes_this_modules_contract(code, details, expected):
+def test_every_transport_error_becomes_this_modules_contract(code, details, expected, no_backoff):
     """No `grpc.RpcError` reaches a caller, and each arm lands on the type its remedy needs.
 
     The three remedies are genuinely different — retry, fix the request, or accept that the answer
@@ -661,3 +678,149 @@ def test_a_token_on_an_exactly_full_final_page_does_not_send_a_seventh_request()
 
     assert stub.calls == 1, "the walk must stop once the requested interval is covered"
     assert [s.position for s in out] == [1, 2, 3, 4]
+
+
+# ── RM280: one retry layer, ours, reading the house floor ───────────────────────────────────────
+
+#: The vendored service config, read as bytes on disk rather than through the client, so a test
+#: pinning the client against it compares two independent readings.
+VENDORED = json.loads(ac.SERVICE_CONFIG_PATH.read_text())
+UPSTREAM_RETRY = VENDORED["methodConfig"][0]["retryPolicy"]
+
+
+class _CountingStub:
+    """Fails every RPC with one status and counts how many times each was asked."""
+
+    def __init__(self, code):
+        self.code = code
+        self.calls: dict[str, int] = {}
+
+    def _fail(self, name):
+        self.calls[name] = self.calls.get(name, 0) + 1
+        raise _RpcError(self.code, "fake")
+
+    def GetDenseVariantScores(self, request, metadata=None):  # camelCase: the proto's own method name
+        self._fail("GetDenseVariantScores")
+
+    def ListDenseVariantScores(self, request, metadata=None):  # camelCase: the proto's own method name
+        self._fail("ListDenseVariantScores")
+
+    def ListVariantScoresMetadata(self, request, metadata=None):  # camelCase: the proto's own method name
+        self._fail("ListVariantScoresMetadata")
+
+
+def _is_retryable_per_translate(code) -> bool:
+    """What `_translate` says about a status — the classification the retry layer must follow."""
+    return isinstance(ac._translate(_RpcError(code, ""), variant=""), ac.AtlasUnavailable)
+
+
+@pytest.mark.parametrize(
+    "code", [c for c in grpc.StatusCode if c is not grpc.StatusCode.OK], ids=lambda c: c.name
+)
+def test_every_status_translate_calls_retryable_is_retried_and_no_other(code, no_backoff, monkeypatch):
+    """The retry set is `_translate`'s `AtlasUnavailable` arm, derived rather than restated beside it.
+
+    Walked over **every** status code, so a code moved between arms moves the retry with it. Before
+    RM280 `INTERNAL` was classified retryable and nothing retried it: upstream's service config
+    retries three codes, and the client's own contract named four.
+    """
+    monkeypatch.setenv(RETRY_ATTEMPTS_ENV, "")
+    stub = _CountingStub(code)
+    with pytest.raises(ac.AtlasError):
+        ac.AtlasClient(stub, api_key="x").score_variant("chr1", 10001, "T", "A", scorers=("AVI_SCORE",))
+    expected = retry_attempts(ac.RETRY_DEFAULT_ATTEMPTS) if _is_retryable_per_translate(code) else 1
+    assert stub.calls == {"GetDenseVariantScores": expected}
+
+
+def test_internal_is_retried_because_translate_calls_it_retryable(no_backoff, monkeypatch):
+    """The named case of the gap: `INTERNAL` is `AtlasUnavailable`, and it is now asked again."""
+    monkeypatch.setenv(RETRY_ATTEMPTS_ENV, "")
+    assert _is_retryable_per_translate(grpc.StatusCode.INTERNAL)
+    stub = _CountingStub(grpc.StatusCode.INTERNAL)
+    with pytest.raises(ac.AtlasUnavailable):
+        ac.AtlasClient(stub, api_key="x").score_variant("chr1", 10001, "T", "A", scorers=("AVI_SCORE",))
+    assert stub.calls["GetDenseVariantScores"] == ac.RETRY_DEFAULT_ATTEMPTS > 1
+
+
+def test_all_three_rpcs_go_through_the_retry_layer(no_backoff, monkeypatch):
+    """One retried method, three callers — and each caller still translates after the last attempt."""
+    monkeypatch.setenv(RETRY_ATTEMPTS_ENV, "")
+    stub = _CountingStub(grpc.StatusCode.UNAVAILABLE)
+    client = ac.AtlasClient(stub, api_key="x")
+    for call in (
+        lambda: client.score_variant("chr1", 10001, "T", "A", scorers=("AVI_SCORE",)),
+        lambda: client.score_interval("chr22", 1, 33, scorers=("AVI_SCORE",)),
+        client.scorer_names,
+    ):
+        with pytest.raises(ac.AtlasUnavailable) as caught:
+            call()
+        assert isinstance(caught.value.__cause__, grpc.RpcError), "the transport error is the cause"
+    n = ac.RETRY_DEFAULT_ATTEMPTS
+    assert stub.calls == {
+        "GetDenseVariantScores": n,
+        "ListDenseVariantScores": n,
+        "ListVariantScoresMetadata": n,
+    }
+
+
+@pytest.mark.parametrize(("configured", "expected"), [("", 5), ("2", 5), ("1", 5), ("0", 5), ("8", 8)])
+def test_the_attempt_count_follows_the_house_floor(configured, expected, no_backoff, monkeypatch):
+    """`JUST_DNA_HTTP_RETRY_ATTEMPTS` reaches this client like every other (`@retry-attempt-floor`).
+
+    The disabling and low values are run, not read (`@off-switch-needs-a-probe`): the knob is a floor,
+    so `1`, `2` and `0` leave upstream's five in place, and `8` raises it to eight. Under grpc's own
+    retry the service config capped attempts at five and no environment variable could reach it.
+    """
+    monkeypatch.setenv(RETRY_ATTEMPTS_ENV, configured)
+    stub = _CountingStub(grpc.StatusCode.UNAVAILABLE)
+    with pytest.raises(ac.AtlasUnavailable):
+        ac.AtlasClient(stub, api_key="x").score_variant("chr1", 10001, "T", "A", scorers=("AVI_SCORE",))
+    assert stub.calls == {"GetDenseVariantScores": expected}
+
+
+def test_the_retry_policy_is_upstreams_budget_under_the_house_floor():
+    """Default attempts and backoff are the vendored config's numbers, read off the file independently."""
+    assert ac.RETRY_DEFAULT_ATTEMPTS == UPSTREAM_RETRY["maxAttempts"] == 5
+    policy = ac.AtlasClient._call.retry
+    assert isinstance(policy.stop, attempt_floor)
+    assert policy.stop.default == UPSTREAM_RETRY["maxAttempts"]
+    assert policy.wait.multiplier == float(UPSTREAM_RETRY["initialBackoff"].removesuffix("s"))
+    assert policy.wait.max == float(UPSTREAM_RETRY["maxBackoff"].removesuffix("s"))
+    assert policy.wait.exp_base == UPSTREAM_RETRY["backoffMultiplier"]
+
+
+def test_grpcs_own_retry_is_off_in_the_options_the_channel_gets():
+    """Two retry layers multiply (5 x N), they do not floor — so grpc's is switched off, twice over.
+
+    `grpc.enable_retries = 0` disables the channel's retry machinery, and the service config the
+    channel receives carries no `retryPolicy`, so neither a grpc default flip nor a dropped option
+    re-enables it silently. The per-attempt `timeout` is kept: it is a deadline, not a retry.
+    """
+    options = dict(ac.channel_options())
+    assert options["grpc.enable_retries"] == 0
+    config = json.loads(options["grpc.service_config"])
+    assert [m for m in config["methodConfig"] if "retryPolicy" in m] == []
+    assert [m.get("timeout") for m in config["methodConfig"]] == [
+        m.get("timeout") for m in VENDORED["methodConfig"]
+    ]
+    assert [m["name"] for m in config["methodConfig"]] == [m["name"] for m in VENDORED["methodConfig"]]
+
+
+def test_connect_hands_the_channel_those_options(monkeypatch):
+    """Probed at the outermost caller (`@off-switch-needs-a-probe`), since that is what a host calls."""
+    seen: dict = {}
+
+    def fake_secure_channel(address, credentials, options=None):
+        seen["options"] = options
+        return object()
+
+    class _Ready:
+        def result(self, timeout):
+            return None
+
+    monkeypatch.setattr(ac.grpc, "secure_channel", fake_secure_channel)
+    monkeypatch.setattr(ac.grpc, "channel_ready_future", lambda channel: _Ready())
+    monkeypatch.setattr(ac.atlas_service_pb2_grpc, "AtlasServiceStub", lambda channel: object())
+    ac.connect("x")
+    assert tuple(seen["options"]) == tuple(ac.channel_options())
+    assert dict(seen["options"])["grpc.enable_retries"] == 0

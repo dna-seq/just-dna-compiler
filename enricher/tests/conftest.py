@@ -17,6 +17,9 @@ that rule gives — a `delenv` leaves the *default* directory still in play, whi
 the ladder and the half that actually holds a built snapshot. A test that wants a snapshot passes one
 explicitly and is unaffected.
 
+**A second autouse fixture blanks `HF_TOKEN`** (RM301), for the same reason one layer over: the
+publisher's tests stub `get_token()`, and the repository's own `.env` must not outrank the stub.
+
 **And one opt-in fixture, `no_ambient_caches`, for the test that means "no snapshot" about any lane.**
 The PubMind fixture is autouse because *every* lookup test wants it; the general one is not, because
 the integration tests (`test_resolver_integration`, the `_needs_snapshot` drafters) deliberately use
@@ -49,6 +52,20 @@ def _no_ambient_pubmind_snapshot(
 ) -> None:
     absent = Path(tmp_path_factory.getbasetemp()) / "no-pubmind-snapshot"
     monkeypatch.setenv(locations.PUBMIND_CACHE_VAR, str(absent))
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_hf_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No test sees the developer's `HF_TOKEN`, from the environment or from the repository's `.env`.
+
+    Since RM301 the HuggingFace sites read `env_value("HF_TOKEN")` *before* `get_token()`. The upload
+    tests stub `get_token()` as the token's only source, so on a machine whose `.env` holds a real
+    publish token that token reached their mocked `HfApi` instead of the stub's, and four tests failed on
+    exactly the machine that can publish. Set to empty, never deleted (`@test-no-credential`): an
+    exported empty string is present, so the `.env` cannot refill it. A test that wants a token from a
+    `.env` runs in a subprocess with the variable stripped, as `test_dotenv_credentials.py` does.
+    """
+    monkeypatch.setenv("HF_TOKEN", "")
 
 
 @pytest.fixture

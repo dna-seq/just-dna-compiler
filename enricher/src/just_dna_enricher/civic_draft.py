@@ -51,7 +51,7 @@ from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_d
 from just_dna_enricher.drafting import identity_refused_by_model as scaffold_identity_refused
 from just_dna_enricher.licensing import CIVIC_TERMS, CLINGEN_ALLELE_REGISTRY_TERMS
 from just_dna_enricher.locations import RELEASE_FILENAME, resolve_civic_reference
-from just_dna_enricher.sequences import SequenceProxy
+from just_dna_enricher.sequences import SequenceProxy, _left_align
 from just_dna_enricher.verification import examples
 
 #: This provider's registry entry — `match_on`, table and kind, held once (RM228).
@@ -524,6 +524,16 @@ def draft_panel_from_civic(
             return None
         return sequences.subsequence(accession, pos - 1, pos)
 
+    def read_window(chrom: str, start: int, end: int) -> str | None:
+        """GRCh38 reference bases over 1-based `[start, end]`, or `None`."""
+        try:
+            accession = refget_accession(chrom)
+        except UnsupportedBuildError:  # pragma: no cover - GRCh38 is this snapshot's only build
+            return None
+        if accession is None:
+            return None
+        return sequences.subsequence(accession, start - 1, end)
+
     variant_partials: list[PartialRow] = []
     study_partials: list[PartialRow] = []
     for row in admitted:
@@ -550,6 +560,11 @@ def draft_panel_from_civic(
                 # reference base turns it into a row; without one it stays withheld rather than
                 # becoming a half-written coordinate.
                 placed = anchor_indel(found.unanchored, read_base)
+                # RM273: the registry's interbase point is HGVS's 3'-most one, so inside a repeat the
+                # anchored row is right of VCF's spelling. Left-align it before it becomes a row, or the
+                # drafted coordinate keys a different spelling from every caller's.
+                if placed is not None:
+                    placed = _left_align(*placed, read_window)
                 if placed is None:
                     result.withheld["anchor_base_unreadable"] += 1
                     continue

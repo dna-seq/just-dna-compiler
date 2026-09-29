@@ -1784,10 +1784,15 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   would make the tool assert a purpose for the user. A forbidding source is *skipped* on `unstated`
   and *refused* on `commercial`, at acquisition (nothing is fetched), in both modes.
 
-- `@redistribution-ungated` — **`redistribution` is a third licensing axis, recorded but NOT gated.** CC BY-NC forbids sale and
-  allows sharing; academic-use-only (OMIM, dbNSFP) forbids both. The compile gate deliberately keys
-  only on `commercial_use` — a distribution right is not a *use*, so `declared_use` is the wrong axis
-  to resolve it against (RM27). Don't "finish" the gate without doing that design.
+- `@redistribution-ungated` — **`redistribution` is a third licensing axis, stamped but NOT gated in these packages.** CC BY-NC
+  forbids sale and allows sharing; academic-use-only (OMIM, dbNSFP) forbids both. The compile gate
+  deliberately keys only on `commercial_use` — a distribution right is not a *use*, so `declared_use`
+  is the wrong axis to resolve it against. RM27 settled the design in 0.6 as **record-only with a named
+  enforcer**: the most-restrictive verdict is stamped into `manifest.Sources.redistribution` (`null` =
+  undetermined, never permitted), and the gate belongs at *publish*, downstream, with the ask to the
+  registry written in SCHEMAS.md. Don't add a compile-time redistribution gate: a module may be built
+  legitimately and still not be shippable, and that verdict is the publisher's to issue. (Until
+  2026-09-28 this line and its CLAUDE.md headline still said the axis awaited design.)
 
 - `@per-article-terms` — **A literature source's terms are PER ARTICLE, and that is why there is no `pubmed` row (RM46,
   0.6).** `enrich_literature` writes `source="pubmed"` into every row, `TERMS_BY_SOURCE` has no entry
@@ -1947,6 +1952,18 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   same rule one register up). Every snapshot this tier writes carries `built_at`; check it against the
   fix before explaining a report, because "which code did this run" is a question with an answer and
   not one to reason about.
+
+  **Read the credential, never load the file (RM301, S124).** "Load it where it is read" was carried
+  out with `load_env()`, which is `load_dotenv(override=False)` and exports the *whole* `.env` into
+  `os.environ`. Nine library sites did it, so constructing any client handed a host every value in its
+  working directory's `.env` as though a shell had exported it. just-module-creator reports which layer
+  each of its settings came from, and that report went wrong silently. RM102 had closed the question in
+  2026-08 on a lost hour and named "any boundary at all" as the trigger to reopen, and a host's own
+  configuration record was that boundary. `locations.env_value(var)` reads one key with `load_env`'s
+  precedence (an exported value wins and an exported empty stays empty) and writes nothing. An AST walk
+  in `test_env_value_exports_nothing.py` keeps `load_env()` inside `locations`, where the cache
+  resolvers still export on purpose and `load_dotenv_file=False` declines it. The two readings RM102
+  rejected are still rejected: this neither flips a default nor filters someone else's file.
 - `@absent-is-not-different` — **A new optional column that splits a dedup key suppresses only when
   BOTH rows state it and the two values differ — and it is the CHECK that learns the column, never the
   key** (RM140, S75). `studies.csv` is keyed `(variant_key, pmid)`, and `duplicate_study_citation`
@@ -3615,6 +3632,22 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   the variant-effect-pair keying already fixed. Lesson: empirical probing + a real-example test beat a
   plausible-looking mechanistic claim; the mechanistic claim, unfalsified, was a mechanical re-flag of
   an already-closed item.
+
+- `@a-closure-states-its-residuals` — **Closing an item is where a defect gets lost, so a closed entry
+  names what it did not fix, and each name must be carried by its target.** RM31 shipped in 0.5 with a
+  residual (a consumer joining an indel genotype against a VCF *"will still miss"*) that pointed at a
+  parked idea-book bullet and at a consumer workaround. The bullet never mentioned it and no consumer
+  document carried the workaround. The defect came back 55 days later as three consumer reports in one
+  day. The sweep that followed found the same shape in about one closure in seven, worst of all
+  RM192's *"filed rather than improvised"* with nothing filed. The repair that looks obvious, "point at
+  an open RM", is not enough: RM38 pointed at RM27 and the 1.0 tracker at RM50, and both targets closed
+  without a word about what pointed at them. **What is checked is carrying**: the target's own entry
+  mentions the source RM or its motivating `Sn`. The rule is RELEASE_CYCLE.md § Closing an item; the
+  guards are `schema/tests/test_closure_residuals.py` (M1 the `**Residuals**` line, M2 the legacy
+  phrases pinned by sentence, M7 a cut release's CHANGELOG heading). Two things the first cut got
+  wrong and the test now says: a paragraph is too wide a window for M2 (RM107 and RM192 resolved
+  through a neighbour carrying a different half), and a sentence ends at `.**` as well as at `. `. The
+  full record is POSTMORTEM_2026_09_27.md.
 
 ## Testing traps
 

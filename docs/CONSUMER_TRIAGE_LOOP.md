@@ -401,7 +401,7 @@ third's preferred option had shipped in 0.5.2 from a different report (S14). Ans
 they were open would have designed a feature that existed.
 
 Cheap and mechanical: grep the item's symbols in the source, then `docs/CHANGELOG.md`,
-`ROADMAP_HISTORY.md` and `RM_TOC.md` for its subject; `git log -S "<a phrase from the fix>"` finds when a
+`ROADMAP_HISTORY.md` and `RM_TOC*.md` for its subject; `git log -S "<a phrase from the fix>"` finds when a
 guard landed. For S1 this collapsed a feature request into one missing error message.
 
 ### Step 0b — reproduce before classifying
@@ -482,8 +482,12 @@ of its two obvious fixes is charter-illegal.
 
 If **(a)** ships in the same pass rather than being filed: code plus a test, a
 [CHANGELOG.md](CHANGELOG.md) entry, and the item moves to
-[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) with its rationale. `RM_TOC.md` is updated either way — it is
-the single complete index, and an item missing from it is how `RM33` became unfindable.
+[ROADMAP_HISTORY.md](ROADMAP_HISTORY.md) with its rationale **and a `**Residuals**` paragraph**
+([RELEASE_CYCLE.md § Closing an item](RELEASE_CYCLE.md#closing-an-item), enforced by
+`test_closure_residuals.py`). A remainder is filed as its own `RMn` whose entry names this one, or
+closed with `won't fix — <reason>`. It never goes to a parked bullet or to the consumer's reply alone:
+RM31 did both, and the defect came back as S117, S120 and S121. `RM_TOC.md` is updated either way — it
+is the single complete index, and an item missing from it is how `RM33` became unfindable.
 
 ### Step 3 — write the reply
 
@@ -645,7 +649,10 @@ block rather than adding to a list that has stopped being a plan.
 
 **Patch-level fixes are not counted toward a cut (since 2026-09-25).** Every non-blocked patch item
 goes into the next patch batch on `main` by default, and a patch carries however many fixes the latest
-wave of usage produced; see [RELEASE_CYCLE.md](RELEASE_CYCLE.md). This paragraph read *around ten
+wave of usage produced; see [RELEASE_CYCLE.md](RELEASE_CYCLE.md). **A minor-class fix is never built
+on `main`**: file it, and build it only on the open minor branch (`0.8` today) when the loop runs there
+with the maintainer's grant; `main` holds patch scope only, so a patch can be cut from it at any
+moment. This paragraph read *around ten
 accumulated patch-level fixes, publish time* until then. **Publishing** is the user's domain and always
 an ask; **bumping, tagging and building a dist are inside §5's grant** for a patch, which is that
 section's own worked example.

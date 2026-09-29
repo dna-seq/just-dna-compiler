@@ -394,7 +394,7 @@ GWAS_CATALOG_TERMS = SourceTerms(
 # `taints_commercial_use` requires `commercial_use is False`, so a module carrying PubMind values
 # compiles, records `pubmind` in `manifest.sources.unknown_terms_sources`, and drives the module-wide
 # verdict to `None` — undetermined, never permitted. What the answer would gate is *publishing* such a
-# module, which is RM27's undesigned redistribution axis rather than this source's problem.
+# module, which RM27 records per source and leaves to the registry, downstream, to gate.
 #
 # The unblock action is to ask WGLab and CHOP's Office of Technology Transfer, in writing, whether the
 # ANNOVAR-shipped subset may be redistributed and on what terms. Nobody else can answer it, and it
@@ -843,7 +843,7 @@ ALPHAGENOME_AVI_TERMS = SourceTerms(
 # text; recording `None` would claim the terms could not be established, which is not true, since the
 # clause is pinned in `docs/vendor/` and says what it says. What is uncertain is a reading, not a
 # fact, and this row records readings the way the one above does: as the value, with the ground named.
-# `@redistribution-ungated` means nothing gates on it either way until RM27 designs the axis.
+# `@redistribution-ungated`: RM27 shipped the axis record-only, so nothing in this tier gates on it.
 ALPHAGENOME_ATLAS_TERMS = SourceTerms(
     source="alphagenome_atlas",
     # Two documents bind, not one, and they are not the same document that binds AVI. The Additional
@@ -990,9 +990,17 @@ def check_declared_use(terms: SourceTerms, declared_use: str) -> str | None:
     # the same string written into the file.
     declared_use = check_vocab(declared_use, VALID_DECLARED_USE, "declared_use") or declared_use
     if terms.commercial_use is None:
+        # RM289, from S99: the sentence used to stop at "could not be established", which read as a
+        # constant nobody had filled in yet. Every source held at `None` here is a probed absence
+        # whose reading is recorded in `notice`, so the skip quotes that reading and its URL rather
+        # than leaving the reader to hunt for missing configuration. The leading phrase is pinned.
+        established = terms.notice or "this tier records no reading of the source's terms."
+        where = f" ({terms.license_url})" if terms.license_url else ""
         return (
-            f"{terms.source}: terms could not be established, so the data is not used. Unknown is "
-            f"not a finding that it is forbidden — it is the absence of a finding either way."
+            f"{terms.source}: terms could not be established, so the data is not used, and no declared "
+            f"use changes that: there are no stated terms to judge a declaration against. What is "
+            f"established: {established}{where} Unknown is not a finding that it is forbidden — it is "
+            f"the absence of a finding either way."
         )
     if terms.commercial_use is True:
         return None

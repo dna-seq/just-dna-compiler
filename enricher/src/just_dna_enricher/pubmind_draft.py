@@ -128,8 +128,10 @@ DEFAULT_MIN_CONFIDENCE = 1
 PUBMIND_WITHHELD_REASONS: tuple[str, ...] = (
     # The PVIDs at one coordinate do not agree on the call. Withheld rather than resolved.
     "contested_key",
-    # A length-changing row: PubMind's indels are not established to be left-normalized upstream, so
-    # a join against them is unverified.
+    # A length-changing row. PubMind's indels are not left-normalized (RM273: in the 2026-08-24
+    # snapshot 5,158 of 20,006 single-base-anchored indel rows, 4,334 of 16,737 distinct keys, have an
+    # anchor equal to their payload's last base, so each shifts left), and a join on a spelling that
+    # is not canonical can miss or mismatch.
     "indel_derivation",
     # PubMind's call is outside `--clin-sig`. The author's dial, reported so a verdict this run
     # deliberately did not take is still visible.
@@ -320,6 +322,19 @@ def _group_by_key(records: Sequence[dict]) -> list[_Key]:
     ]
 
 
+def _shifts_left(ref: str, alt: str) -> bool:
+    """Is this single-base-anchored indel provably not left-aligned, from the row alone? (RM273)
+
+    `G>GAG` inserts `AG` after a `G`; since the payload ends in the anchor base, the same event also
+    spells `?>?GA` one base earlier, so this spelling is not the leftmost. `False` is not the converse:
+    a spelling that passes may still shift once the base before the anchor is read, which no row says.
+    """
+    if len(ref) == len(alt) or min(len(ref), len(alt)) != 1 or ref[0] != alt[0]:
+        return False
+    payload = (alt if len(alt) > len(ref) else ref)[1:]
+    return bool(payload) and payload[-1] == ref[0]
+
+
 def _withhold_reason(key: _Key, *, clin_sig: frozenset[str], min_confidence: int) -> str | None:
     """Why this key gets no row, or `None` to draft it. One reason per key, in registry order.
 
@@ -389,6 +404,7 @@ def _withheld_warnings(
     contested: Sequence[_Key],
     min_confidence: int,
     clin_sig: frozenset[str],
+    indels: Sequence[_Key] = (),
 ) -> list[str]:
     """One line per withheld class that actually withheld something, grouped by **reason**.
 
@@ -407,10 +423,12 @@ def _withheld_warnings(
             f"one position. Decide each by hand, or take the call from a source that states one."
         )
     if withheld["indel_derivation"]:
+        shifted = sum(1 for key in indels if _shifts_left(key.ref, key.alt))
         lines.append(
             f"{withheld['indel_derivation']} length-changing coordinate(s) were not drafted: PubMind's "
-            f"indel rows are not established to be left-normalized, so a join against them may match "
-            f"the wrong representation of the same event. They are in the snapshot marked "
+            f"indel rows are not left-normalized ({shifted} of these spell an event that shifts left, "
+            f"read from the row alone; the rest are undecided without the reference), so a join on "
+            f"their spelling may miss or mismatch the same event. They are in the snapshot marked "
             f"`derivation=indel` if you want to work through them by hand."
         )
     if withheld["clin_sig_not_selected"]:
@@ -515,6 +533,7 @@ def draft_gene_panel_from_pubmind(
     keys = _group_by_key(select_by_positions(reference, list(positions)))
     withheld = dict.fromkeys(PUBMIND_WITHHELD_REASONS, 0)
     contested: list[_Key] = []
+    indels: list[_Key] = []
     ambiguous_gene: list[str] = []
     partials: list[PartialRow] = []
     record_by_signature: dict[tuple[str, ...], dict] = {}
@@ -525,6 +544,8 @@ def draft_gene_panel_from_pubmind(
             withheld[reason] += 1
             if reason == "contested_key":
                 contested.append(key)
+            elif reason == "indel_derivation":
+                indels.append(key)
             continue
         genes_here = positions[(key.chrom, key.start)]
         if len(genes_here) > 1:
@@ -563,7 +584,7 @@ def draft_gene_panel_from_pubmind(
         mapped_positions=len(positions),
         spoken_positions=len({(k.chrom, k.start) for k in keys}),
     )
-    result.warnings.extend(_withheld_warnings(withheld, contested, min_confidence, clin_sig))
+    result.warnings.extend(_withheld_warnings(withheld, contested, min_confidence, clin_sig, indels))
     if ambiguous_gene:
         result.warnings.append(
             f"{len(ambiguous_gene)} coordinate(s) are attributed to more than one of the genes you "

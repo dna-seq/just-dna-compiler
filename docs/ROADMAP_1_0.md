@@ -137,6 +137,42 @@ only values that *parse* as nucleotides, and decide what to do with the ones tha
 Pinned meanwhile by `test_allele_case_is_outside_content_identity.py`'s last test, which asserts the
 current splitting behaviour so this note cannot rot into a silent fix.
 
+## RM269 — `DiplotypeRow.haplotype_b` is required, so a hemizygous star-allele call has no row
+
+**Severity** low · **Status** open, 1.0 — a Principle 8 demotion · **Owner** format (`pgx.DiplotypeRow`) ·
+**Motivating case** [S119](CONSUMER_SUGGESTIONS_HISTORY.md#s119--diplotyperowhaplotype_b-is-required-so-a-hemizygous-call-has-no-spelling-plus-one-more-cross-gene-case-for-rm28), note 1
+
+**What was confirmed.** `haplotype_b` has been required since 0.4.0, while `variants.csv` has spelled a
+hemizygous genotype as a single allele since the same widening. So an X-linked phenotype in a male,
+G6PD being the common one, can be stated per variant and not per haplotype. The source already writes
+it: CPIC's `diplotypes` table (the local snapshot) spells **187 G6PD rows as a single haplotype with no
+`/`** (`A`, `Aachen`, `A- 202A_376G`). Our drafter never meets them, because every G6PD name fails
+`STAR_ALLELE_PATTERN` whether it is a pair or not, so the gap is masked there rather than reported.
+The reporter's caller is diploid and reads a haploid contig as `no_match`, so nothing is being
+silently miscalled today.
+
+**Why this is 1.0.** The requested repair, a nullable `haplotype_b` meaning "no second copy", demotes a
+required field, which Principle 8 forbids inside a major. An older reader would meet a pair with one
+half missing.
+
+**Why the in-line alternatives are wrong.**
+
+1. **A sentinel name in `haplotype_b`.** It is legal today and it is the trap. Probed: `-` is accepted
+   and canonicalization (`a <= b`) sorts it into `haplotype_a`, so `B/-` is stored as `-/B`, and `none`
+   is accepted as an allele called "none". A name column would then carry a structural claim that no
+   reader can tell from a real allele (P5).
+2. **Repeat the haplotype plus a new optional `ploidy` column.** Minor-legal, and harmful: every
+   reader that predates the column reads `B/B` as a homozygous female. A new column may not change what
+   the old ones mean.
+3. **A new optional haplotype-keyed phenotype table.** Minor-legal and harmless to old readers. But it
+   is a second home for "a genotype → a phenotype" beside `diplotypes.csv`, one table over, for one
+   ploidy. If a corpus needs it before 1.0, it is the one to weigh against waiting.
+
+**The 1.0 shape.** Make `haplotype_b` optional, and give the empty value its own meaning ("no second
+copy") distinct from unknown, which the format never states on this table. The ledger row in RM52 is
+owed when it lands. The author's upgrade route is "no action needed", since every existing row sets the
+field. A consumer needs to handle a null `haplotype_b` in `diplotypes.parquet`.
+
 ## RM15 — Build-agnostic identity & multi-build support
 
 **Severity** large · **Status** deferred to 1.0 — **and not for digest reasons** · **Owner** format
@@ -191,6 +227,9 @@ findable from its gate)*:
   it came from there is nothing left to refuse or strip. It stays filed in 0.7 because its other exit —
   an author with a non-GRCh38 module saying which outcome they wanted — is reachable first and would
   settle it without RM15; check its status before assuming this closes it too.
+- **RM32's PAR multi-build half lands here.** PAR intervals are per-assembly, so `par_partner`
+  withholds on every build but GRCh38; RM32 (0.5) handed the generalization to this item. Multi-build
+  support has to carry a PAR table per assembly, or PAR modules stay GRCh38-only.
 
 ---
 
@@ -340,7 +379,7 @@ breaking half, and the line is owed by whoever created the obligation.
 | landed | item | what breaks at 1.0 | upgrade route |
 |---|---|---|---|
 | 0.6.0 | **RM51** — `sources.csv` deprecated in favour of `licensing.csv` | the old input filename stops being read | **Author:** `git mv sources.csv licensing.csv`. No content change, and no signature moves — verified across all eleven reference examples when four of them were renamed. **Consumer: no action needed** — `sources.parquet` and `manifest.sources` keep their names through the whole 0.x line and are untouched by this item. |
-| 0.6.0 | **RM4** — the `module_spec.yaml` `panel:` block deprecated | the block stops being read | **Author:** delete it. Nothing replaces it — the enricher now records the drafted-from release into the licence row's `dataset` column itself, which is what the tautology check reads. Deleting it moves neither `artifact.digest` nor `content_signature`, measured on `reference_examples/apoe_epsilon` with the block appended. **Consumer: no action needed** — `manifest.panel` is passthrough metadata nothing derives from. |
+| 0.6.0 | **RM4** — the `module_spec.yaml` `panel:` block deprecated | the block stops being read | **Author:** the block's one machine reader moved to the licence row's `dataset` column (what the tautology check reads), so once that column is filled you may delete the block *if you do not need the three fields it also carried*. But `genes`, `significance` and `reference_sha256` have **no replacement anywhere** (S69), so for a **drafted panel** deleting the block loses the gene denominator that distinguishes *not in the panel* from *in the panel, nothing found*, and if the licence row's `dataset` is empty — a module drafted before the drafter filled it, which the never-clobber merge does not backfill — it loses the only record of the drafted-from snapshot too. Deleting a block that carries nothing you need moves neither `artifact.digest` nor `content_signature` (measured on `reference_examples/apoe_epsilon`). **The home for the three fields is an open design question — [RM265](ROADMAP.md#rm265--the-panel-deprecation-has-no-accepted-signal-on-the-replaced-branch-the-warning-fires-whether-or-not-you-need-the-three-fields-it-tells-you-to-keep-the-block-for); this row is not settled until it is.** Meanwhile the consumer-side workaround is to record the three in a provenance log hashed into `manifest.logs`, which survives the removal. **Consumer: no action needed** — `manifest.panel` is passthrough metadata nothing derives from. |
 | 1.0 (planned) | **RM73** (gate half) — a closed authoring attestation becomes a **precondition of compiling** | a module with no closure stops compiling; since 0.6.0 it only warns. **Blocked, not merely planned — see § RM73 below: the gate refuses on step 3 of the round trip** | **Author:** run `just-dna-compiler close spec/` once the module is finished, and re-run it after any edit. It is a deliberate act by design — `validate` stays read-only, so nothing stamps behind your back. **Consumer:** no action; the artifact already carries `manifest.verification.closure` where a module was closed, and reading it is optional. The whole mechanism (`Closure`, `close`, the warning) **shipped additively in 0.6.0**; what waits for the major is only the promotion of the warning to a refusal, which is P8. |
 | 1.0 (planned) | **`fetched_at` → `updated_at`/`recorded_at`** on the seven sidecar models — bundled with the `sources.parquet` rename, which moves the same digests. Unnumbered; see the 1.0 cleanup tracker | the column name changes in six parquets and seven CSVs. **No signature moves** — it is outside all seven fact sets — so `content_signature` and every `*_signature` are untouched; only `artifact.digest` moves, on modules carrying a sidecar | **Author: no action needed.** The loader keeps accepting `fetched_at` as a deprecated input spelling through 1.x, so an existing sidecar loads unchanged; the writer emits the new name from the next pass that touches it. No 0.x deprecation warning is owed, because nobody authors this column and `extra="forbid"` means an author could not act on one. **Consumer:** re-read the column by its new name in `frequencies`/`gene_metrics`/`literature`/`gene_validity`/`clinical_assertions`/`sources.parquet`; nothing derives from it, and it is in no signature |
 | 0.6.0 | **RM55** — `CopyNumberRow.modifier_cn` deprecated in favour of `modifier_copy_number` | the integer column is **removed** (not retyped — the float one has existed since 0.6), and with it the kind-keyed tiling defaults | **Author:** move the dosage to `modifier_copy_number`; a whole number is still a whole number, so no re-authoring of the *value* is needed, and setting both was always an error so there is nothing to reconcile. If your `copy_number`/`repeat_count` bins are a genuine grid, state `measure_tiling: quantised` before 1.0 removes the default that assumed it. **Consumer:** read `modifier_copy_number` (or `effective_modifier_copy_number`, which is what everything in-tier already reads) and take a group's tiling from `measure_tiling` rather than from `measure_kind`. |

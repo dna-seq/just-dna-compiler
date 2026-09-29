@@ -206,7 +206,9 @@ class Stats(BaseModel):
 
     `clinvar_count`/`pathogenic_count`/`benign_count` summarize the per-row ClinVar quality flags
     that `weights.parquet` already carries, so consumers can facet on them without reading the
-    artifact (SPEC ROADMAP item 5). They are additive and default to 0 for older manifests.
+    artifact (SPEC ROADMAP item 5). They are additive and default to 0 for older manifests. Each
+    counts the legacy boolean, so a count spans a tier pair (`pathogenic` + `likely_pathogenic`),
+    and counts authored rows, one per genotype, never distinct variants.
 
     `gene_count`/`genes` are a **union over every authored table kind with a `gene` column**, which is
     what the first sentence has always said and what the compiler did not do until RM121: they were
@@ -221,9 +223,29 @@ class Stats(BaseModel):
     gene_count: int = 0
     genes: list[str] = Field(default_factory=list)
     categories: list[str] = Field(default_factory=list)
-    clinvar_count: int = Field(default=0, description="Rows flagged in ClinVar")
-    pathogenic_count: int = Field(default=0, description="Rows flagged ClinVar-pathogenic")
-    benign_count: int = Field(default=0, description="Rows flagged ClinVar-benign")
+    # RM299 (S123): each count is of authored `variants.csv` rows carrying the legacy boolean, which
+    # folds a ClinVar tier pair into one flag. A description that says only "pathogenic" was read by a
+    # catalog as a count of pathogenic variants, a third of which were likely pathogenic.
+    clinvar_count: int = Field(
+        default=0,
+        description="Authored variants.csv rows whose legacy `clinvar` flag is true. Rows, not variants.",
+    )
+    pathogenic_count: int = Field(
+        default=0,
+        description=(
+            "Authored variants.csv rows whose legacy `pathogenic` flag is true, which covers both "
+            "`pathogenic` and `likely_pathogenic` (the flag cannot tell them apart). Rows, not variants: "
+            "one variant counts once per genotype row. Facet on `clin_sig` to split the tiers."
+        ),
+    )
+    benign_count: int = Field(
+        default=0,
+        description=(
+            "Authored variants.csv rows whose legacy `benign` flag is true, which covers both `benign` "
+            "and `likely_benign` (the flag cannot tell them apart). Rows, not variants: one variant "
+            "counts once per genotype row. Facet on `clin_sig` to split the tiers."
+        ),
+    )
 
 
 class Compilation(BaseModel):
@@ -853,7 +875,8 @@ class Literature(BaseModel):
             "every quote; an abstract settles only its hits, since a quote missing from it may still "
             "be in the body; nothing retrievable settles none. So `quotes_authored - quotes_checked` "
             "is how many quotes nothing established either way (RM256, S109). Null on a manifest "
-            "compiled before this field existed — unknown, never zero."
+            "compiled before this field existed — unknown, never zero; there, `abstract_only_count > "
+            "0` is the only sign that a `quotes_found` of 0 includes unsettled abstract misses (RM264)."
         ),
     )
     quotes_unchecked: int = Field(

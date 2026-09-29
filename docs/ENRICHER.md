@@ -23,7 +23,7 @@ the mode** (`best_effort` warns and carries on; `strict` refuses). What exists t
 | **Ambiguous back-fill** | ≥2 rsIDs for one exact allele → recorded, never guessed | `resolver._lookup_rsid_candidates` | — *(recorded onto the row, not attested)* |
 | **Clinical significance** | authored `clin_sig` vs **every annotation authority** consulted — ClinVar and, since 0.7, PubMind — allele-exactly | `clinical.verify_clin_sig` (**warns in both modes**), persisted as the N-authority concordance record by `clinical.clin_sig_concordance` (0.7, RM130 + RM134 § B) | `clinical_significance` |
 | **Answered-call currency** | an authority's call **now** vs what it said when the author's `overrides.csv` answer was written (0.7, RM151) | `clinical.answered_call_shift` → `concordance.shifted_authority_calls` (**warns in both modes**; the baseline is the previous run's `clin_sig_authority_calls.csv`, so it is read before the commit rewrites it and a move is observable exactly once) | — *(logged; the record it reads is the attestation)* |
-| **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does) | `pgx_evidence_level` |
+| **PGx evidence level** | authored `evidence_level` vs ClinPGx's own for that annotation | `clinpgx.enrich_clinpgx` (**refuses in `strict`** — the only enricher cross-check that does — on a row's own cited annotation only; RM297) | `pgx_evidence_level` |
 | **Citation existence** | a cited `pmid` vs PubMed | `literature.enrich_literature` | `citation_existence` |
 | **Identifier agreement** | an authored `doi` vs the registry's for that PMID | `literature.enrich_literature` | `citation_identifier` |
 | **PMC id agreement** | an authored `PMC…` in the `pmid` cell vs PubMed's for that record (0.6) | `literature._pmcid_conflicts` (attested under `citation_identifier`, the same question one registry over) | `citation_identifier` |
@@ -406,6 +406,7 @@ core was ported, not depended on, dropping `fastmcp`/`eliot`). In the workspace:
 | `mitomap` | RM171: MITOMAP's published `pg_dump` reader, and the **two-token grammar** its `status` column is written in | `duckdb` |
 | `mitomap_build` | RM171 builder: the 63 MB gzipped SQL dump → snapshot parquet + `release.json`. CC BY 3.0 with commercial use stated free, so a deployment may publish it | `polars` (lazy), `httpx` |
 | `mitomap_miss_build` | RM171: the **derived** lane — MITOMAP minus the ClinVar cache, recomputed from both parents rather than frozen as a diff | `polars` (lazy), `mitomap` + `clinvar` lanes |
+| `_rcrs` | RM273: the revised Cambridge Reference Sequence (NC_012920.1, GRCh38's chrM) as a vendored constant, so `mitomap_miss_build` left-aligns both sides' indels without a fetch | none |
 | `mitomap_draft` | RM171: the rated misses → `variants.csv` + `studies.csv`. Only the rated ones; the photocopies and `VUS*` are each refused for their own stated reason | `mitomap_miss`, compiler `draft` |
 | `clinvar_build` | `[dev]`: VCF → snapshot parquet; `var_citations.txt` → `citations/` (+ its own `release.json` block) | `polars`, `httpx` |
 | `lookup` | authoring lookups — rsID validity/loci, ref/alts + populations, which paper a PMID names. **Writes nothing** | every client above, compiler `hints` |
@@ -451,7 +452,9 @@ shape of a request, an upper bound that bills a caller for a call that never hap
 client waits on its gate once per attempt, inside its retry loop, so one increment is one upstream
 attempt — a 429 retried three times counts three, a snapshot hit counts nothing. Monotonic, bumped
 under the slot lock, never reset; a rate is two readings apart. It is the one thing this counter says;
-what the call *cost* stays the client's to know.
+what the call *cost* stays the client's to know. Five clients keep their gate private as `_gate`
+(`pgs`, `litvar`, `civic_api`, `pharmvar`, `clingen_allele`), so there the reading is
+`client._gate.spent`; the rest expose `client.gate`.
 
 **One `PacingGate` is safe to share across threads, and that is now a stated contract rather than an
 accident of who happened to call it** (S15). It matters because the injection API asks for sharing:
@@ -463,7 +466,8 @@ published 3/s budget into 6/s — a budget somebody else enforces by blocking th
 covers the bookkeeping only: each caller reserves the next free slot and waits for it alone, so N
 callers get N slots spaced one interval apart and no worker is blocked by another's sleep.
 Single-threaded behaviour is unchanged, and `test_net.py` proves the spacing on a frozen clock without
-really sleeping.
+really sleeping. **It is a pace, not a concurrency limit.** If what you need is one request in flight
+per service, put a semaphore around your call site; the gate will not give you that.
 
 | Service | Used by | Published budget | Our pace / batching | Auth / identity |
 |---|---|---|---|---|
@@ -553,6 +557,18 @@ Org limits apply **per member**, not shared. Source of truth:
   silently change a policy whose author meant the conjunction. None is composed today — and the number
   of policies is deliberately not stated here: `net.py` deleted *"the nine"* from its own comments after
   the tree carried twelve, because a count in prose is a registry nothing iterates.
+
+  **The Atlas client reads it too since RM280, and it had to lose grpc's retry to do so.** Its channel
+  used to retry under the vendored `grpc_service_config.json`, which grpc caps at five attempts, the
+  number upstream already asks for, so the variable could not raise it. A `tenacity` layer on top
+  would have made 5 × N attempts instead of a floor. `atlas_client.channel_options()` now switches grpc's
+  retry off (`grpc.enable_retries = 0`, and no `retryPolicy` in the config it hands the channel), and
+  `AtlasClient._call` retries under `attempt_floor(5)` with upstream's backoff. What it retries is
+  derived from `_translate`: every status that becomes `AtlasUnavailable`, which adds `INTERNAL` to
+  upstream's three. **It has no pacing gate**, so the "paces before it retries" reasoning above does
+  not hold for it: the Atlas publishes no rate budget and none has been measured, so raising its floor
+  spends attempts nothing meters. RM307
+  is that gate.
 
 ## The author's overlay, read but never written (RM136, 0.7)
 
@@ -672,9 +688,10 @@ coord but no rsid), runs a **first-hit-wins chain**, and writes/merges `resoluti
    is a complementary reference (4.4M clinically-curated records, 1.54M with no rsid) that makes an
    offline clinical enrich possible without provisioning the 14 GB dbSNP cache.
 5. **Live Ensembl** — for rsIDs every cache missed, `ensembl.EnsemblResolver.resolve_rsid`
-   (V2 GraphQL → V1 REST fallback). Sources `ensembl-graphql` / `ensembl-rest`. It has **three**
-   outcomes, not two: loci, an answered `[]`, or `None` for could-not-ask — see *Live Ensembl* below,
-   and note that an unreachable rsID leaves **no `resolution.csv` row at all**.
+   (V2 GraphQL → V1 REST fallback). Sources `ensembl-graphql` / `ensembl-rest`. It has **four**
+   outcomes: loci, an answered `[]`, `(None, None)` for could-not-ask, and `(None, source)` for an
+   answer whose one-sided indels could not be anchored (RM268) — see *Live Ensembl* below, and note
+   that neither `None` leaves **any `resolution.csv` row at all**.
 6. **Live gnomAD** (`use_gnomad`) — the last link, for whatever nothing else could resolve.
    `gnomad.GnomadClient.resolve_rsids` batches the leftovers. Source `gnomad`. It goes last for exactly
    the reason ClinVar goes after the Ensembl cache: gnomAD reports only the alleles **observed in
@@ -1117,6 +1134,26 @@ Two boundaries. **A 4xx is an answer**, not a failure: Ensembl 400s on rsIDs it 
 Ensembl was reached and said nothing — the old code's only trace of that case was a *missing* element in
 a set, which is unreadable in practice.
 
+**A one-sided indel is anchored before it becomes a locus, and a fourth outcome withholds it (RM268,
+2026-09-27).** REST spells an insertion `-/C` with `start = end + 1` and a one-sided deletion
+`AGTAAG/-` over `[start, end]`; `_loci_from_rest` used to copy both through, so `rs8176719` resolved
+to `9:133257522 ref='-'`. It now prefixes every allele with the GRCh38 base at `start - 1`
+(`clingen_allele.anchor_indel`, reading through the private `EnsemblResolver._read_base`, by default
+a lazy `SequenceProxy`), giving `9:133257521 T>TC`. An allele string with no `-` is already
+anchored and reads nothing. When the base cannot be read the locus is withheld, and an answer whose
+every locus was withheld returns `(None, "ensembl-rest")`: unchecked like a failed request, but
+`enrich` names it in its own warning (a structured field is RM272, minor), and `lookup` gives it its
+own finding, because the request did not fail. The GraphQL leg's convention is unprobed, so a one-sided
+node there answers `[]` and the rsID goes to REST.
+
+**A non-base allele is not a locus, at either rung (RM271, 2026-09-27).** REST serves the literals
+`dbSNP_novariation` and `dbSNP_variant` as an `allele_string`; the VCF-dump snapshot serves an empty
+alt, `<.>`, IUPAC placeholders (`<R>`, `<Y>`), `N` runs and N-masked chrY refs. One private predicate,
+`ensembl._placeable_alleles`, runs at every read of both (REST, GraphQL, and the four snapshot reads in
+`resolver`): a `ref` outside `^[ACGT]+$` withholds the locus, an alt outside it is dropped, and a locus
+with no alt left is withheld. REST with nothing left answers the ordinary `[]` (it is permanent, so no
+re-run helps), and the snapshot names such rsIDs in one warning instead of `rsid_unresolved`.
+
 **`checked` carries labels only, and `snapshots` is where a path lives (S93, RM205).** The set used to
 be mixed — `ensembl-rest` for the live leg beside an absolute path for a snapshot, and the
 unreadable-snapshot finding interpolated the same path — so a host serving `lookup_variant` over HTTP
@@ -1267,10 +1304,14 @@ variable is what lets the file supply it, so a test isolating itself with `del o
 the enricher's own tests follow. Every resolver and every `default_*_cache_dir` takes
 `load_dotenv_file`, and since 0.6.3 (in the tree, uncut) passing `False` really does reach the load —
 before that it reached none of the six, because the default directory is computed as an *argument* and
-loaded the file on its own way in (S39). The credential paths — `net`, `eutils`, `literature`,
-`pharmvar` — call `load_env()` with no flag at all, so a caller who wants nothing loaded anywhere still
-has to neutralize the loader; **RM102** carried the whole question and closed on 2026-08-21 as a
-decision not to act, after the half of it that was a real defect had shipped.
+loaded the file on its own way in (S39). **The credential paths export nothing since RM301 (S124).**
+Every client, the PharmVar guard, the AlphaGenome key, the HuggingFace token and the retry floor read
+their one variable through `locations.env_value`: the process environment first, then the nearest
+`.env`, with `load_env`'s precedence and without writing into `os.environ`. So constructing a client no
+longer hands its host the rest of the file. Only the cache resolvers above still export, and they take
+the switch. **RM102** carried the whole question and closed on 2026-08-21 as a decision not to act. It
+was reopened as RM301 when a host's own configuration record turned out to be the boundary its
+trigger named.
 
 Inside a cache the layout is fixed, because **four parties have to agree on it** — builder writes,
 publisher uploads, provisioner fetches, reader queries — and every past disagreement was silent:
@@ -1482,9 +1523,10 @@ Three things about it are worth reading before a deployment runs it nightly.
   here — and the exit code counts only real failures, so a nightly run does not alarm on four lanes
   behaving exactly as designed.
 - **Credentials come from the `.env` too, and until RM176's follow-up two of them did not.**
-  `$PHARMVAR_API_KEY` and `$HF_TOKEN` are read through `load_env()` at the point they are used
-  (`@credential-where-read`), so a workspace that keeps them in a `.env` beside the working directory
-  needs nothing exported. An exported variable still wins — `load_env` uses `override=False`. The two
+  `$PHARMVAR_API_KEY` and `$HF_TOKEN` are read at the point they are used (`@credential-where-read`),
+  through `env_value` since RM301, so a workspace that keeps them in a `.env` beside the working
+  directory needs nothing exported and the rest of the file is not exported either. An exported
+  variable still wins, as it did under `load_env`'s `override=False`. The two
   that were missing it failed in opposite directions: the PharmVar guard read `os.environ` in front of
   a builder that *does* load the file, so the lane reported "no key" and never built on the machine
   most likely to have one; `_hf_api` refused a publish outright.
@@ -1714,8 +1756,10 @@ only route is a ClinGen `allele_registry_id` is *kept* in the snapshot as `ident
 the registry returns an rs-number (preferred, because Ensembl then verifies it and two authorities
 make the check real) or a GRCh38 coordinate. **One-sided indels are anchored VCF/Picard-style**: the
 registry states an insertion with an empty reference allele and a deletion with an empty allele, and
-prefixing both sides with the reference base before the event is the left-aligned form VCF requires.
-That takes recovery from 48% of the direction set to **82%**. `--offline` withholds those rows as
+prefixing both sides with the reference base before the event gives a VCF row at the registry's own
+position. That position is HGVS's 3′-most one, so inside a repeat the row is then **left-aligned**
+against the reference (`sequences._left_align`, RM273: `rs72613567` anchors as `4:87310241 A>AA` and is
+written `87310240 T>TA`); a repeat longer than the read window withholds as an unreadable anchor. That takes recovery from 48% of the direction set to **82%**. `--offline` withholds those rows as
 `caid_unresolved` — unplaced, not unplaceable — and an unreadable anchor withholds under its own
 reason rather than being guessed at. Liftover was measured and refused: its ceiling is 13 rows, and
 the one precise event in the class lifts exactly to the *wrong allele*.
@@ -3821,6 +3865,14 @@ reference allele that is not a whole number of motif copies — RM55's case arri
 than in a caller's VCF), and how many publish a `locus_structure`. Neither is rounded into a cell and
 neither is silently discarded.
 
+**STRchive's own evidence grade is named, since RM276.** Every locus carries a ClinGen-style grade
+(`Definitive` … `Refuted`), and no authored column holds it, so a locus STRchive grades `Refuted`
+(`DMD`) or `Disputed` (`DIP2B`, `NIPA1`, `POLG`) used to draft exactly like `HTT`. A drafted row
+carrying one of those two grades is now named in a note, in both modes and never as a gate; a
+`Provisional` locus (STRchive's *not yet curated*) is named apart and never called weak. The grade is
+read off the catalogue file by a private reader; with no file to read, the note says the grades were
+unread rather than implying none is doubted. Whether the grade should travel into the module is RM294.
+
 What the thin row is still worth is the part an author cannot get from anywhere else: the list of
 loci, the motif in the orientation the catalogue publishes, and the MONDO id. On HTT the provider
 derives `MONDO_0007739` from `mondo` and the shipped module's human author wrote the same value —
@@ -4356,9 +4408,9 @@ because they send an author somewhere different:
 
 | bucket | why nothing is written |
 |---|---|
-| **photocopy** | the exact allele is in ClinVar, so that VCEP call already reaches this repository with ClinVar's own provenance. Drafting a second copy attributes it to the wrong publisher, and hands a ClinVar concordance check a copy of ClinVar to agree with (`@tautology-zero`) |
+| **photocopy** | the same event is in ClinVar under either spelling (indels left-aligned against a vendored rCRS on both sides since RM273), so that VCEP call already reaches this repository with ClinVar's own provenance. Drafting a second copy attributes it to the wrong publisher, and hands a ClinVar concordance check a copy of ClinVar to agree with (`@tautology-zero`) |
 | **unrated miss** | absent from ClinVar, and MITOMAP published no class this tier may map — no bracket, a bare confirmation token, or `[VUS*]`. A real identity increment, counted, with no significance invented for it |
-| **unmintable** | the published alleles do not spell a VCF pair. A `:` deletion needs the rCRS base at `position-1`, which Principle 2 forbids these tiers from fetching, so the question was never askable |
+| **unmintable** | the published alleles do not spell a VCF pair: prose in an allele column, or no event. A `:` deletion is anchored on the vendored rCRS base at `position-1` since RM293 and joined like any other row, unless MITOMAP's deleted bases disagree with rCRS |
 
 **`genotype` is a placeholder, and the reason is not the contig's.** `clinvar_draft.sole_expressible_genotype`
 *fills* the ALT on chrMT — a haploid contig leaves no zygosity open, so there is no decision for a
@@ -4371,9 +4423,10 @@ bins. So the cell is stubbed, `conclusion` with it, and the draft prints **one u
 per row** carrying the alleles and the flags MITOMAP did publish. A MITOMAP-drafted module does not
 compile until a human writes those cells; that is the cost of the adoption rather than a defect in it.
 
-**Four more things the draft says out loud.** A drafted row keying on an indel is named, because the
-join is exact and neither side is left-aligned — such a row is either an allele ClinVar does not carry
-or one it carries at another anchor, and this pass cannot tell you which. A row whose `allele` *name*
+**Four more things the draft says out loud.** A drafted row keying on an indel is named. Since RM273
+the lane compares events, so such a row is absent from ClinVar under any spelling; an increment built
+before that compared spellings, and on the real lane five of the six rated misses were ClinVar's own
+calls at another anchor, so the note tells an author holding an older build to rebuild it. A row whose `allele` *name*
 states a variable number of copies while the allele columns state one definite pair is named too: the
 source disagreeing with itself, kept rather than repaired, because rewriting it needs a rule for what
 `(n)` means that MITOMAP has not given. A parent that has moved since the increment was built is
@@ -4581,6 +4634,22 @@ Severity follows the **mode ladder**, unlike the allele-function check beside it
 is ClinPGx's own metadata about its own annotation, so a difference means the module is stale — not
 that two expert panels disagree.
 
+**That holds only for a row compared with the annotation it cites (RM297, from S122).** Nothing marks a
+row as ClinPGx-derived, and `annotation_id` is the source's own accession whatever the source. So two
+cases are reported in both modes and **never refused under `strict`**, in `ClinPgxResult.withheld`:
+
+- `clinpgx_annotation_not_in_snapshot`: the row cites an id the snapshot does not hold. The lookup
+  stops there instead of falling through to a neighbour sharing the category. The warning names three
+  readings (ClinPGx withdrew it, it is mistyped, it was never a ClinPGx accession) and what the
+  snapshot holds at the row's triple.
+- `clinpgx_level_differs_from_uncited_annotation`: the row cites no id, and the annotation its
+  category or triple reached carries another level.
+
+A cited id that is present but lacks the row's genotype keeps the fall-through and can still refuse.
+Both codes are lane-local, not `VALID_WARNING_CODES` members. They are counted in the record's
+`findings` and named in its `detail`, so an unchanged module publishes the same number it did before.
+Knowing per row that a row cites ClinPGx is RM298's.
+
 The declared-use gate still applies even though nothing is fetched: the terms were accepted when the
 snapshot was *built*, and using it is the same act.
 
@@ -4678,7 +4747,7 @@ apart because its third arm is not a failure at all:
 
 | what happened | type | remedy |
 | --- | --- | --- |
-| transport failed | `AtlasUnavailable` | retry |
+| transport failed | `AtlasUnavailable` | retry later: the client has already spent `attempt_floor(5)` attempts (RM280) |
 | `REF` disagrees with GRCh38 | `AtlasRefMismatch` | fix the caller's data — **the server names the real base**, which `@va-omits-ref` says only this tier can discover |
 | an indel | `AtlasNotScored` | none: the answer does not exist |
 | a quantile saturated at `1.0` | `AtlasNotScored` | read `PHRED` from the downloaded artifact instead |
@@ -5090,8 +5159,9 @@ quote for a citation is the title: a module quoting the title on one row and a p
 an author doing the work.
 
 **It answers for a *pinned* row too, and that is the whole difference between working and not.**
-`literature.csv` is merge-not-clobber, so a row an earlier pass wrote is never refetched — and on the
-four modules that motivated this, every row is pinned, so a check living only in the fetch loop would
+`literature.csv` is merge-not-clobber, so a row an earlier pass wrote is not refetched while it still
+counts the module's quotes (since RM277 a pin at another count is re-fetched and re-checked online;
+offline keeps it) — and on the four modules that motivated this, every row is pinned, so a check living only in the fetch loop would
 have fired on none of the 3,668 quotes. The summary is therefore fetched for **any cited PMID carrying
 a quote**, pinned or not; `esummary` batches, so it costs no extra round trip in the common case. The
 pinned row itself stays authoritative and untouched — the merge rule is not the thing that was wrong.

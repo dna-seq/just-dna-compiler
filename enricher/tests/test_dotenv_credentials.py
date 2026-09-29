@@ -99,7 +99,7 @@ from just_dna_enricher.caches import LANES_BY_NAME, RebuildRequest
 import just_dna_enricher.pharmvar_build as pb
 from just_dna_enricher.pharmvar import PharmVarError
 
-caches.load_env = lambda override=False: None      # the arrangement before the repair
+caches.env_value = lambda var: os.environ.get(var)  # the arrangement before the repair: no file read
 pb.build_snapshot = lambda *a, **k: (_ for _ in ()).throw(PharmVarError("reached the builder"))
 outcome = caches.rebuild_lane(
     LANES_BY_NAME["pharmvar"],
@@ -129,8 +129,9 @@ def test_an_hf_token_that_lives_only_in_a_dotenv_authenticates_a_publish(workspa
 
 
 _HF_WITHOUT_THE_FIX = """
+import os
 import just_dna_enricher.upload as upload
-upload.load_env = lambda override=False: None      # the arrangement before the repair
+upload.env_value = lambda var: os.environ.get(var)  # the arrangement before the repair: no file read
 try:
     upload._hf_api("just-dna-seq/strchive")
     print("resolved")
@@ -145,6 +146,9 @@ def test_without_the_load_a_publish_really_did_refuse(workspace: Path) -> None:
 
 def test_an_exported_variable_still_outranks_the_dotenv(workspace: Path) -> None:
     """`load_env` uses `override=False`, so loading the file never silently replaces a real one.
+
+    Pinned on `load_env` because the cache resolvers still export through it. The credential readers
+    use `env_value`, which has the same precedence and is pinned in `test_env_value_exports_nothing.py`.
 
     Worth pinning at each new call site rather than trusting the loader: an operator who exports a
     token for one run expects that run to use it, and this is the property that makes adding a load
