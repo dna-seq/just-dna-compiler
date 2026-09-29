@@ -48,6 +48,110 @@ decisions that touched these items are in [PROPOSAL_0_6.md](proposals/PROPOSAL_0
 
 ---
 
+## RM317 — FMR1 repeat methylation is in every PacBio TRGT VCF as `FORMAT/AM`, and no module can bin it on a two-allele record
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-30**, design first · **Owner** format (a `measure_kind` member, the element-rule vocabulary, the host table) + compiler · **Motivating case** the maintainer, 2026-09-30: a beneficiary will soon hold PacBio samples, so methylation is wanted, "just don't build on thin air"; evidence in [METHYLATION_PACBIO §§ 1.1, 3, 4.1](probes/METHYLATION_PACBIO.md) · *related* RM317–RM319, RM66, RM65, RM164
+
+**What is real.** TRGT, PacBio's tandem-repeat genotyper and part of the HiFi WGS pipeline since at
+least v2.1.0, writes `##FORMAT=<ID=AM,Number=.,Type=Float,Description="Mean methylation level per
+allele">`: the mean 5mC level over the CpGs **inside the repeat tract**, one value per called allele.
+Open samples exist: NA09237 (male full mutation) is `GT=1`, `MC=898`, `AM=0.85`, reproduced with TRGT
+5.1.0, and HG002 (normal male) is `AM=0.1`. `source_field: FORMAT/AM` already passes the pointer
+grammar. `fmr1_cgg_repeat` asserts in prose that a full mutation "is methylated and silenced", and this
+is the field that can check it.
+
+**What a module cannot do today.**
+
+- **Select the right allele.** HM06968 (female) is `MC=33,112`, `AM=0.90,0.07`: the expanded allele
+  is the *unmethylated* one. NA06905 goes the other way. The band means "the methylation of the
+  expanded allele", i.e. the `AM` at the index where `MC` is largest. Every element rule picks by the
+  field's own values, so none can say it.
+- **Name the quantity.** No `measure_kind` is a methylation fraction. `allele_fraction` would put two
+  quantities under one name (P5). `repeat_alleles.csv` pins `measure_kind=repeat_count`.
+- **Name the absence.** `AM=.` means either no CpG in the span or no MM/ML tags in the BAM, and the
+  file cannot tell them apart.
+
+**Scale trap.** TRGT 0.5.0 wrote `AM` as an Integer (values up to 185; probably the 0–255 byte,
+unverified). From 0.7.0 it is a Float on `[0, 1]`, and the changelog is silent about the change.
+
+**To design (the 0.8 interview).** The kind's name, audited under P5, and whether the modification
+(5mC) is its own axis. Whether `repeat_alleles.csv` hosts a second kind or a sibling table does. How a
+cross-field selection is stated without hard-coding TRGT's `MC` into a vocabulary: the probe prices an
+optional pointer column naming the selecting field at full cost. And **the band values**: none is
+cited yet. The probe quotes sample observations, not boundaries, and a row needs a paper behind it
+(`@rm47-bin-cites`).
+
+**Legality and price.** Everything is additive, so it is minor-legal (P3, P6, P8). A kind member is
+cheap but a one-way door (P5). The selector column is full cost.
+
+## RM318 — imprinting-region methylation is real in PacBio outputs, but lives in BED and TSV files that no pointer can name
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-30**, design first · **Owner** format (a new optional region table kind, a non-VCF pointer) + compiler · **Motivating case** the maintainer, 2026-09-30: a beneficiary will soon hold PacBio samples, so methylation is wanted, "just don't build on thin air"; evidence in [METHYLATION_PACBIO §§ 1.2–1.4, 3, 4.2](probes/METHYLATION_PACBIO.md) · *related* RM317–RM319, RM66, RM65, RM164
+
+**What is real.** HG002 shows allele-specific methylation at two imprinted regions in public PacBio
+pipeline outputs, and MethBat 1.1.0 run on them reports `PASS`:
+SNURF:TSS-DMR (15q11–13) hap1 80.1 / hap2 14.6, and KCNQ1OT1:TSS-DMR (11p15 IC2) hap1 15.3 / hap2 86.4,
+with pooled values near 49. The consumer holds per-CpG `5mC.bed.gz` (MethBat 1.x) or
+`cpg_pileup.*.bed.gz` (pb-CpG-tools 3.x), plus a `profile.tsv`. None of it is in a VCF, and no PacBio
+tool writes VCF 4.5 `M5mC`.
+
+**What a row would need.** Every item comes from the probe's measurements:
+
+- a region (chrom, start, end, build), with no `variant_key`;
+- a pointer to a BED or TSV column, which `source_field` (a VCF pointer) cannot be widened to without
+  overloading it (P5);
+- the aggregation from sites to region;
+- a row selector (`Total`, or a statement about both haplotypes);
+- the unit and the modification;
+- a coverage floor, because a missing row is never "unmethylated";
+- bands: pooled around 20% and 80%, plus a haplotype-delta band.
+
+**Traps the data showed.**
+
+- **Haplotype labels are not parental.** The same sample has hap1 methylated at SNURF and hap2 at
+  KCNQ1OT1, so no band can say "the maternal allele".
+- **The scale moved at MethBat 1.0.0** (fractions to percent) under unchanged column names.
+- **pb-CpG-tools `model` and `count` modes disagree** (hap2 4.1% vs 16.1% at one CpG). The mode is a
+  header line, not a column.
+- **The pipeline runs `methbat profile` over CpG islands, never `methbat report`**, so a user holds
+  island numbers, not the imprinted regions.
+- **H19 had no haplotype rows at all.**
+
+**Not decided, and not to be built on thin air.** The 20%/80% cut-offs are MethBat's defaults, not a
+guideline. No clinical source was read. MethBat ships 15 imprinted regions from Mackay et al. 2022
+(Table 2), which is the corpus a design would start from.
+
+**Legality and price.** A new optional table kind is minor-legal (P3). Its price is full, and it is the
+largest addition in the methylation work. The probe prices a separate pointer column over widening
+`source_field`.
+
+## RM319 — PacBio's TRGT carries the repeat count as `FORMAT/MC`, a per-motif String, so `repeat_alleles.csv`'s count half does not reach a PacBio user
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-30**, design first · **Owner** format (the consumer contract, possibly the element-rule vocabulary) + the corpus · **Motivating case** the maintainer, 2026-09-30: a beneficiary will soon hold PacBio samples, so methylation is wanted, "just don't build on thin air"; evidence in [METHYLATION_PACBIO § 4.1, last paragraph](probes/METHYLATION_PACBIO.md) · *related* RM317–RM319, RM66, RM65, RM164
+
+**What was found.** No PacBio file opened in the probe carries `REPCN`, the ExpansionHunter key that
+`fmr1_cgg_repeat` (and the corpus's other repeat examples) point at. TRGT writes the count as `MC`,
+`Type=String`, per allele, with `_`-joined per-motif counts inside each allele (`18_8,25_8` at HTT
+under TRGT 5.x). A PacBio consumer therefore cannot follow the module's `source_field` at all. An
+author who writes `FORMAT/REPCN|FORMAT/MC` hands the consumer a motif-segmented string that no element
+rule defines a reading of.
+
+**Why it matters now.** A beneficiary of this work is about to hold PacBio samples, and TRGT is the
+repeat caller in PacBio's pipeline. Every `repeat_alleles.csv` module is invisible to them today.
+
+**To decide.**
+
+- Whether this is a consumer-contract rule ("sum the motifs", or "the motif the row's `repeat_unit`
+  names") or a vocabulary addition. The second is a minor.
+- How it meets RM66, one repeat locus with several motifs: TRGT's per-motif segments are exactly RM66's
+  shape.
+- Whether the reference examples gain the TRGT alternation.
+
+Measure against the PureTarget VCFs first. The probe lists them, with FMR1, HTT and more.
+
+**Legality.** A contract sentence alone is a patch. A new element rule or pointer shape is a minor. It
+is filed against 0.8 because the RM66 overlap wants one decision.
+
 ## RM303 — the snapshot layout is a contract with six parties and no model, so it belongs in `just-dna-format`
 
 **Severity** medium · **Status** open — filed 2026-09-28 at the maintainer's request, **taken into

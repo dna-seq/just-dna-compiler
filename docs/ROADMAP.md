@@ -2343,15 +2343,12 @@ New ideas enter here as freeform suggestions, then graduate through the design c
   (`@currency-cannot-be-a-column`). Nobody has asked for the cascade itself; the observation is what
   was offered.
 
-- **A measure kind for base-modification fractions** (the VCF 4.5 audit, § 6, 2026-09-30). 4.5
-  reserves FORMAT `M5mC`, `M5hmC`, `M6mA` and the `M[0-9]+[ACGTUN]` family: the fraction of bases
-  modified, `Number=M`, strand-specific. The pointer grammar accepts them and the cardinality lookup
-  withholds, so nothing is wrong today. What is missing is a home: no `measure_kind` is a methylation
-  fraction (binning one as `allele_fraction` would put two quantities under one name, P5), and no
-  element rule selects the value at one base on one strand. FMR1 full-mutation methylation is the
-  plausible first case, and `fmr1_cgg_repeat` is in the corpus, but no module or consumer has asked. If
-  built, a minor: two vocabulary members, no column, with the names audited first (P5). Design it
-  against a real file, as RM65 and RM66 are.
+- **~~A measure kind for base-modification fractions~~ — promoted 2026-09-30.** The VCF 4.5 audit
+  (§ 6) parked it for lack of demand. The maintainer then named demand (PacBio samples arriving), and
+  [METHYLATION_PACBIO](probes/METHYLATION_PACBIO.md) measured what PacBio users actually hold. The
+  per-base VCF 4.5 `M5mC` shape this bullet described has no PacBio producer. What exists became
+  RM317 (TRGT `FORMAT/AM`, FMR1), RM318 (imprinting regions in BED/TSV) and RM319 (TRGT's `MC` count),
+  all in [ROADMAP_0_8.md](ROADMAP_0_8.md).
 
 ## Consumer note (just-dna-lite, 2026-08-21) — a dogfooding pass over ten modules, and the eleven findings that are yours rather than the plugin's
 
