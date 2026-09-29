@@ -1289,7 +1289,7 @@ be made deterministic, since the helper's reason is recorded in the docstring.
 
 ## RM313 — RM57's `quality_floor_inverted` warning reads VCF QUAL backwards, and tells authors so on every compile
 
-**Severity** medium · **Status** open — **a patch** (correct a shipped claim; the replacement finding is a minor), one decision first · **Owner** compiler (`_check_quality_inversion`) + format (the `quality_from` description) · **Motivating case** relayed 2026-09-30 by the just-vcf session, which found it checking its own frame schema against VCFv4.5 · *related* RM57, RM6, [VCF_4_4_AUDIT § 5](probes/VCF_4_4_AUDIT.md#5-a-min_quality-floor-against-qual-inverts-on-exactly-the-rows-it-exists-for)
+**Severity** medium · **Status** open — **a patch, taken into 0.8 on 2026-09-30** with its replacement finding, as part of `docs/proposals/PROPOSAL_0_8_PT1.md` on the `0.8` branch; not built on `main` · **Owner** compiler (`_check_quality_inversion`) + format (the `quality_from` description) · **Motivating case** relayed 2026-09-30 by the just-vcf session, which found it checking its own frame schema against VCFv4.5 · *related* RM57, RM6, [VCF_4_4_AUDIT § 5](probes/VCF_4_4_AUDIT.md#5-a-min_quality-floor-against-qual-inverts-on-exactly-the-rows-it-exists-for)
 
 **The misreading.** VCF §1.6.1 item 6 (identical in 4.4 and 4.5): QUAL is *"Phred-scaled quality score
 for the assertion made in ALT. i.e. −10log10 prob(call in ALT is wrong). If ALT is '.' (no variant)
