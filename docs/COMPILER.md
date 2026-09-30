@@ -481,7 +481,7 @@ place because the *check* that survives it is again a legibility warning rather 
 
 Three authored columns point into a VCF (`source_field`, `callable_from`, `quality_from`) and all
 three took a bare token. A VCF field is identified by **namespace** — INFO and FORMAT are two
-reserved-key tables that collide on `DP`, `AD`, `ADF`, `ADR`, `MQ`, `AF` and, since 4.4, `CN` — and
+reserved-key tables that collide on `DP`, `AD`, `ADF`, `ADR`, `MQ`, `AF`, `CICN` and, since 4.4, `CN` — and
 described by **cardinality** (`Number`, which decides how many values come back and what each is *of*).
 Where both readings are type-compatible, and for `DP`, `AF` and `CN` they are, nothing detects the
 confusion: the consumer reads a well-formed number of the wrong kind and bins it without error. Both
@@ -501,7 +501,7 @@ is (P5). Both are aggregated by reason, since a panel pointing every bin at one 
 print the same sentence hundreds of times.
 
 Two things it declines to say, both for the reason this section exists. Cardinality is read from a
-transcription of the spec's reserved-key tables and **nothing else** — `REPCN` is ExpansionHunter's
+transcription of the spec's reserved keys (VCF 4.5; a key added later is unknown) and **nothing else** — `REPCN` is ExpansionHunter's
 key, not the spec's, so this tier is not entitled to assert its `Number`, and a bare `CN` disagrees
 across the two namespaces. Unknown withholds. And the cardinality finding is scoped to pointers that
 *have* a companion column: `callable_from`/`quality_from` did not get one in 0.6, and telling an author

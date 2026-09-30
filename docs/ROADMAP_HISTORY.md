@@ -204,6 +204,34 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM315 — the VCF reserved-key tables we transcribe miss keys the spec reserves, among them `RUC`, and name no spec version
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-30 on `main`, uncut — a patch** · **Owner** format (`vocab.VCF_FIELD_NUMBER`, `VCF_COLLIDING_KEYS`, `VCF_NUMBER_MEANINGS`) + docs · **Motivating case** [VCF_4_5_AUDIT §§ 3–4](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313
+
+**Residuals** none
+
+**What is missing.** `VCF_FIELD_NUMBER` claims to transcribe the spec's reserved keys, but it lacks
+§3's INFO keys (`RUC`, `RN`, `RUS`, `RUL`, `RB`, `RUB`, `CIRUC`, `CIRB`, `SVLEN`, `CIPOS`, `CIEND`,
+`CILEN`, `CICN`, …), §4's FORMAT `CICN`, `NQ`, `HAP` and `AHAP`, Table 2's `PP`, and every 4.5 key
+(`LEN`, `LAA`, `LA`, the local-allele family, the base-modification aliases). `CICN` is reserved in both
+namespaces with different cardinality, like `CN`, and is absent from `VCF_COLLIDING_KEYS`. And no doc a
+consumer reads says which spec version the tables describe.
+
+**Why it bites.** `binning._VCF_MEASURE_FIELDS` names `RUC` as the field a `repeat_count` is read
+from, and `RUC` is `Number=.`. Probed on `htt_repeat_expansion` with `source_element` emptied:
+`INFO/RUC` gives no warning, while `FORMAT/AD` gives `vcf_pointer_unselected_element`.
+
+**The patch.** Transcribe the missing keys, add `CICN` with its sentence in `VCF_COLLISION_REASONS`
+(asserted total), and fix the comment placing the structural keys in §5.6 (they are §3 and §4). Add
+`VCF_NUMBER_MEANINGS` entries for `LA`/`LR`/`LG`/`M`: it is read through `.get(..., default)`, so a
+missing meaning prints the default silently (`@lookup-with-a-default-hides-a-new-member`). Assert
+equality between the codes the table uses and the codes the meanings cover. State "VCF 4.5; a key added
+after it is unknown and withholds" in SCHEMAS.md and COMPILER.md. Leave the pinned `"is not a whole
+number in VCF 4.4"` phrase alone: it is API and still true. The `M[0-9]+[ACGTUN]` family is a pattern,
+so its named aliases go in, and the ChEBI-numbered form stays unknown. No new code.
+
+**What shipped.** `VCF_FIELD_NUMBER` now holds every key VCF 4.5 reserves: Table 1, Table 2 (with `PP`, `LEN`, `LA`, `LAA`, the local-allele fields and the ten named base-modification aliases in their `M`/`DPM`/`ADM` forms), and the keys §3 and §4 reserve (the structural, copy-number and tandem-repeat keys, `RUC` among them). It was extracted from the 4.5 LaTeX and compared back to it: nothing missing, no `Number` disagreeing. The extractor's header regex also picked up example-only keys (`ALLELEID`, `ASP`, `RSPOS`, `dbSNPBuildID`), which were left out because the spec does not reserve them. `CICN` joins `VCF_COLLIDING_KEYS` with its reason. `VCF_NUMBER_MEANINGS` gains `LA`/`LR`/`LG`/`M`. Three tests: the multi-valued codes the table uses equal the codes with a meaning; every key reserved in both namespaces is a named collision (a subset, because `AF` is a collision by practice); and the audit's probe, `INFO/RUC` with no element rule, now draws `vcf_pointer_unselected_element`. All three fail on the old table. The comments and SCHEMAS.md/COMPILER.md state VCF 4.5; the pinned `is not a whole number in VCF 4.4` phrase is untouched. No new code: an existing warning fires on more pointers, and an existing collision set gains a member.
+
 ## RM314 — the reference-block rule we print reads INFO `END`, which VCF 4.5 made a cross-sample maximum, so a multi-sample file credits one sample's block to another's positions
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-30 on `main`, uncut — a patch** · **Owner** format (the `callable_from` description) + docs (SCHEMAS.md, the consumer contract) · **Motivating case** [VCF_4_5_AUDIT § 1](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313

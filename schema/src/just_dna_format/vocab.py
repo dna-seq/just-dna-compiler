@@ -105,14 +105,17 @@ SOURCE_FIELD_PATTERN: re.Pattern[str] = re.compile(rf"^{_VCF_POINTER_ATOM}(?:\|{
 # A bare token names neither, and where both readings are type-compatible nothing detects the
 # confusion: a consumer reads a well-formed number of the wrong kind and bins it without error.
 #
-# Both constants below are transcribed from the VCFv4.4 specification's own reserved-key tables and are
-# fixed for that spec version — this is not a source convention (P2): nothing here describes what any
-# particular caller emits, and a key the tables do not reserve is simply absent, which reads as
-# *unknown* rather than as a claim (the house three-valued rule).
+# Both constants below are transcribed from the VCFv4.5 specification's own reserved keys (Table 1,
+# Table 2, and the keys §3 and §4 reserve for structural variants) and are fixed for that spec version
+# — this is not a source convention (P2): nothing here describes what any particular caller emits, and
+# a key the spec does not reserve is simply absent, which reads as *unknown* rather than as a claim
+# (the house three-valued rule). A key a later spec version adds is unknown too, and withholds.
+# Until RM315 this said 4.4 and held Tables 1 and 2 only, which left out §3's `RUC` — the field
+# `binning` names for a repeat count — so the one pointer the schema recommends was never checked.
 
 #: Keys reserved in **both** namespaces with different meanings. A bare one of these is ambiguous in a
 #: way that costs a wrong answer rather than a parse error, which is why it earns its own warning.
-VCF_COLLIDING_KEYS: frozenset[str] = frozenset({"DP", "AD", "ADF", "ADR", "MQ", "AF", "CN"})
+VCF_COLLIDING_KEYS: frozenset[str] = frozenset({"DP", "AD", "ADF", "ADR", "MQ", "AF", "CN", "CICN"})
 
 #: What each collision *costs* — the two readings, so a message can name them rather than saying
 #: "ambiguous". Total over `VCF_COLLIDING_KEYS` (a test pins that).
@@ -140,10 +143,16 @@ VCF_COLLISION_REASONS: dict[str, str] = {
         "INFO/CN is the allele-specific copy number and FORMAT/CN is the sample's total copy number "
         "(redefined that way in VCF 4.4, §7.2) — the two answers differ by a factor of the ploidy"
     ),
+    "CICN": (
+        "INFO/CICN is the confidence interval around the allele-specific INFO/CN, an unbounded list "
+        "(Number=.); FORMAT/CICN is the interval around the sample's total FORMAT/CN, a fixed pair "
+        "(Number=2) — the same scope split as CN, and a different cardinality"
+    ),
 }
 
-#: `Number` per **qualified** key, from the reserved-key tables (VCF 4.4 §1.6.1.8 Table 1 for INFO,
-#: §1.6.2 Table 2 for FORMAT, plus the structural/copy-number keys of §5.6). Deliberately partial: it
+#: `Number` per **qualified** key, from the spec's reserved keys (VCF 4.5 §1.6.1 Table 1 for INFO,
+#: §1.6.2 Table 2 for FORMAT, plus the keys §3 and §4 reserve for structural variants, copy number and
+#: tandem repeats). Deliberately partial: it
 #: carries the reserved keys and nothing else, because a caller-specific key's cardinality is a source
 #: convention this tier does not get to assert. An absent key is *unknown*, and unknown withholds.
 VCF_FIELD_NUMBER: dict[str, str] = {
@@ -170,6 +179,36 @@ VCF_FIELD_NUMBER: dict[str, str] = {
     "INFO/SOMATIC": "0",
     "INFO/VALIDATED": "0",
     "INFO/1000G": "0",
+    # INFO — §3, the keys reserved for structural variants, copy number and tandem repeats.
+    "INFO/IMPRECISE": "0",
+    "INFO/NOVEL": "0",
+    "INFO/SVTYPE": "1",
+    "INFO/SVLEN": "A",
+    "INFO/CIPOS": ".",
+    "INFO/CIEND": ".",
+    "INFO/CILEN": ".",
+    "INFO/HOMLEN": "A",
+    "INFO/HOMSEQ": "A",
+    "INFO/BKPTID": "A",
+    "INFO/MEINFO": ".",
+    "INFO/METRANS": ".",
+    "INFO/DGVID": "A",
+    "INFO/DBVARID": "A",
+    "INFO/DBRIPID": "A",
+    "INFO/MATEID": "A",
+    "INFO/PARID": "A",
+    "INFO/EVENT": "A",
+    "INFO/EVENTTYPE": "A",
+    "INFO/SVCLAIM": "A",
+    "INFO/CICN": ".",
+    "INFO/RN": "A",
+    "INFO/RUS": ".",
+    "INFO/RUL": ".",
+    "INFO/RUC": ".",
+    "INFO/RB": ".",
+    "INFO/CIRUC": ".",
+    "INFO/CIRB": ".",
+    "INFO/RUB": ".",
     # FORMAT — Table 2.
     "FORMAT/AD": "R",
     "FORMAT/ADF": "R",
@@ -193,6 +232,33 @@ VCF_FIELD_NUMBER: dict[str, str] = {
     "FORMAT/PSL": "P",
     "FORMAT/PSO": "P",
     "FORMAT/PSQ": "P",
+    "FORMAT/PP": "G",
+    # FORMAT — Table 2, added in 4.5: the reference-block length and the local-allele family (§1.6.2).
+    # `LA` is reserved with no meaning yet; the `L*` fields are read through `LAA` (RM316).
+    "FORMAT/LEN": "1",
+    "FORMAT/LA": ".",
+    "FORMAT/LAA": ".",
+    "FORMAT/LAD": "LR",
+    "FORMAT/LADF": "LR",
+    "FORMAT/LADR": "LR",
+    "FORMAT/LEC": "LA",
+    "FORMAT/LGL": "LG",
+    "FORMAT/LGP": "LG",
+    "FORMAT/LPL": "LG",
+    "FORMAT/LPP": "LG",
+    # FORMAT — Table 2, 4.5's base modifications. The spec reserves the pattern `M[0-9]+[ACGTUN]` (and
+    # its `DPM`/`ADM` depths) keyed by ChEBI id; a pattern is not a key, so the numbered form stays
+    # unknown and withholds, and only the named aliases the table lists are here.
+    **{
+        f"FORMAT/{prefix}{alias}": "M"
+        for alias in ("5mC", "5hmC", "5fC", "5caC", "5hmU", "5fU", "5caU", "6mA", "8oxoG", "XaoN")
+        for prefix in ("M", "DPM", "ADM")
+    },
+    # FORMAT — §4, the keys reserved for structural variants and copy number.
+    "FORMAT/CICN": "2",
+    "FORMAT/NQ": "1",
+    "FORMAT/HAP": "1",
+    "FORMAT/AHAP": "1",
 }
 
 #: What each multi-valued `Number` code means, for a message that explains rather than accuses.
@@ -204,6 +270,10 @@ VCF_NUMBER_MEANINGS: dict[str, str] = {
     ".": "an unbounded list",
     "2": "a fixed pair",
     "4": "a fixed quadruple",
+    "LA": "one value per local ALT allele, in the sample's LAA order",
+    "LR": "one value per local allele, reference first, then the sample's LAA order",
+    "LG": "one value per genotype over the sample's local alleles",
+    "M": "one value per possible base modification for the ChEBI id",
 }
 
 #: Which element of a multi-valued field a pointer means — a **closed set of named rules**, applied by

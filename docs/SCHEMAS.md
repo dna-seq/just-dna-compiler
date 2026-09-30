@@ -1097,7 +1097,7 @@ Three authored columns point into a VCF: `MeasureBinRow.source_field`, `VariantR
 identify a VCF field.
 
 **A VCF field is identified by its namespace.** INFO and FORMAT are two reserved-key tables that
-overlap deliberately, and they collide on `DP`, `AD`, `ADF`, `ADR`, `MQ`, `AF` and — new in 4.4 — `CN`.
+overlap deliberately, and they collide on `DP`, `AD`, `ADF`, `ADR`, `MQ`, `AF`, `CICN` and — new in 4.4 — `CN`.
 `INFO/DP` is the cohort's combined depth and `FORMAT/DP` is this sample's; `INFO/AF` is the cohort
 allele frequency of an ALT and `FORMAT/AF` is this sample's fraction of it; `INFO/CN` is
 allele-specific copy number where `FORMAT/CN` is the sample's total, so the two differ by a factor of
@@ -1153,8 +1153,11 @@ one later is additive and minor-legal, and everything that reads the relation
 pointers that *have* a companion for the same reason: telling an author to fill a column the schema
 does not have is a finding no edit could clear.
 
-**What the compiler declines to say.** `vocab.VCF_FIELD_NUMBER` transcribes the spec's own reserved-key
-tables and nothing else. A caller's private key — `REPCN` is ExpansionHunter's, not the spec's — has no
+**What the compiler declines to say.** `vocab.VCF_FIELD_NUMBER` transcribes the spec's own reserved keys
+and nothing else, and the spec is **VCF 4.5**: Table 1, Table 2, and the keys §3 and §4 reserve for
+structural variants, copy number and tandem repeats (`RUC` among them), including 4.5's `LEN`, the
+local-allele family and the named base-modification aliases. A key a later version adds is unknown
+until it is transcribed, and unknown withholds (RM315). A caller's private key — `REPCN` is ExpansionHunter's, not the spec's — has no
 cardinality this tier is entitled to assert, and a bare key whose two namespaces disagree (`CN`) has
 none either. Unknown withholds; asserting one would be a source convention wearing a fact (P2). Two
 consequences worth naming. `FORMAT/AF` is emitted by every caller and reserved by none, so the
