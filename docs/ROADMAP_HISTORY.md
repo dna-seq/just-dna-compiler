@@ -35,6 +35,69 @@ up.
 The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on
 the `0.8` branch in the proposal's order. Newest first.
 
+## RM258 — an outage during the literature fetch writes a row that merge-not-clobber never asks again
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) — found while building RM257 ·
+**Owner** enricher (`literature`) · **Motivating case**
+[S110](CONSUMER_SUGGESTIONS_HISTORY.md#s110--the-literature-pass-leaves-an-author-manuscript-abstract-only-when-pmcs-bioc-service-serves-it-whole-tables-included)
+— Europe PMC answered HTTP 500 for `PMC6463297` on 2026-09-24
+
+**Residuals** none
+
+**What was confirmed.** `EuropePmcClient.fulltext` and the new `PmcBiocClient.fulltext` both return
+`None` for a 404 (no copy) and for a 5xx or a transport failure (never answered). The pass then falls
+back to the abstract and writes `quote_source=abstract` with the abstract's count. The row is keyed by
+PMID and `literature.csv` is merge-not-clobber, so `wanted` skips it on every later run: **a transient
+outage becomes a permanent abstract-only pin.** Pinned by
+`test_every_way_bioc_has_no_text_reads_as_not_retrieved`, whose 500 arm writes exactly that row. That
+test asserts today's behaviour, not a decision. `@unreachable-not-absent` at the row level. The
+reporter named the conflation in `fulltext()`, and the pin is what it costs.
+
+**Rows pinned before RM257 have the same problem without any outage.** The BioC rung only runs for a
+citation the pass fetches, so a module enriched before it keeps its abstract-only rows until
+`literature.csv` is deleted. Since 0.7 that delete costs nothing (RM124), and that is the
+workaround the S110 reply gives. It is still a step nobody will know to take.
+
+**Candidate repairs, none chosen:**
+
+1. **Write no row when the fulltext could not be asked.** Refused in advance: existence, identifiers
+   and the licence were all answered, and answered is per field
+   (`@answered-is-not-absent`). Dropping those answers to get a retry is the wrong trade.
+2. **Re-ask fulltext on every run for any row whose `quote_source` is not `fulltext`.** No schema
+   change, and it picks up rows pinned before RM257. It costs one paced request per paywalled citation
+   per run, forever, for articles that will never have a copy. Changing the pass's merge from per row
+   to per field is the precedent this would set, and `--rederive` already has rules for that
+   (`@rederive-never-shortens`).
+3. **Record how the fulltext question ended, as a derived column** (`fulltext_status`, roughly
+   `retrieved | absent | unreachable`), and re-ask only `unreachable`, plus null on rows written
+   before the column existed. An optional column on a derived CSV is minor-legal and half-cost
+   (P9). It needs the two clients to stop returning one `None` for two answers, which is the
+   `@client-exception-contract` shape. The question for review is whether null on old rows should
+   mean "ask once" or "leave alone".
+
+**What shipped, and one departure recorded rather than silent.** Candidate 3, with null meaning *ask
+once*. Both clients gained `fetch_fulltext`, which returns text, returns `None` for a service that holds
+no copy, and raises the new `FulltextUnavailable` (a `LiteratureUnavailable` subclass) for a 5xx or a
+transport failure. **The departure:** PT1 said `fulltext()` itself should stop returning one `None`. The
+handler grep found a consumer relying on exactly that: `just-module-creator`'s `fetch_fulltext` tool
+calls `EuropePmcClient.fulltext` and treats `None` as "try BioC" for Europe PMC's 500s (its F108). A
+retype would turn a handled outage into a crash there on 0.8. So `fulltext()` keeps its contract as a
+wrapper over the three-way method, and the pass uses the new one. The second departure: PT1 listed a
+non-JSON 200 as the fourth leg to raise on, but BioC's recorded "no copy" reply *is* a plain-text 200, so
+it stays `absent`.
+
+`literature.csv` gains `fulltext_status` (`VALID_FULLTEXT_STATUS`, in `just_dna_format.vocab`, bound on
+the field, first seen 0.8.0), outside `LITERATURE_FACT_FIELDS` so a heal moves no signature. The pass
+records the status on every row it asks about, and re-asks only the fulltext question for a pinned row
+that is `unreachable`, or null and not already matched against a fulltext. An answer rewrites
+`quote_source`, `quotes_found`, the status and `fetched_at`; a second failure leaves the row unchanged.
+`test_every_way_bioc_has_no_text_reads_as_not_retrieved` now asserts `absent`/`absent`/`unreachable`
+across its arms. New tests: an outage heals on the next run with exactly one request and every answered
+field unchanged; a second failure leaves `literature.csv` byte-identical; `absent` and `retrieved` rows
+are never asked again; a row stripped of the column is asked once and the run after changes nothing. The
+heal sequence run against the pre-RM258 code in a disposable worktree made **no** second request
+(`requested == []`), which is the defect.
+
 ## RM272 — an answered-but-unplaceable rsID has no structured name in `EnrichmentResult`
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** enricher

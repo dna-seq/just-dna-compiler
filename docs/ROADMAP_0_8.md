@@ -152,44 +152,6 @@ Measure against the PureTarget VCFs first. The probe lists them, with FMR1, HTT 
 **Legality.** A contract sentence alone is a patch. A new element rule or pointer shape is a minor. It
 is filed against 0.8 because the RM66 overlap wants one decision.
 
-## RM258 — an outage during the literature fetch writes a row that merge-not-clobber never asks again
-
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) — found while building RM257 ·
-**Owner** enricher (`literature`) · **Motivating case**
-[S110](CONSUMER_SUGGESTIONS_HISTORY.md#s110--the-literature-pass-leaves-an-author-manuscript-abstract-only-when-pmcs-bioc-service-serves-it-whole-tables-included)
-— Europe PMC answered HTTP 500 for `PMC6463297` on 2026-09-24
-
-**What was confirmed.** `EuropePmcClient.fulltext` and the new `PmcBiocClient.fulltext` both return
-`None` for a 404 (no copy) and for a 5xx or a transport failure (never answered). The pass then falls
-back to the abstract and writes `quote_source=abstract` with the abstract's count. The row is keyed by
-PMID and `literature.csv` is merge-not-clobber, so `wanted` skips it on every later run: **a transient
-outage becomes a permanent abstract-only pin.** Pinned by
-`test_every_way_bioc_has_no_text_reads_as_not_retrieved`, whose 500 arm writes exactly that row. That
-test asserts today's behaviour, not a decision. `@unreachable-not-absent` at the row level. The
-reporter named the conflation in `fulltext()`, and the pin is what it costs.
-
-**Rows pinned before RM257 have the same problem without any outage.** The BioC rung only runs for a
-citation the pass fetches, so a module enriched before it keeps its abstract-only rows until
-`literature.csv` is deleted. Since 0.7 that delete costs nothing (RM124), and that is the
-workaround the S110 reply gives. It is still a step nobody will know to take.
-
-**Candidate repairs, none chosen:**
-
-1. **Write no row when the fulltext could not be asked.** Refused in advance: existence, identifiers
-   and the licence were all answered, and answered is per field
-   (`@answered-is-not-absent`). Dropping those answers to get a retry is the wrong trade.
-2. **Re-ask fulltext on every run for any row whose `quote_source` is not `fulltext`.** No schema
-   change, and it picks up rows pinned before RM257. It costs one paced request per paywalled citation
-   per run, forever, for articles that will never have a copy. Changing the pass's merge from per row
-   to per field is the precedent this would set, and `--rederive` already has rules for that
-   (`@rederive-never-shortens`).
-3. **Record how the fulltext question ended, as a derived column** (`fulltext_status`, roughly
-   `retrieved | absent | unreachable`), and re-ask only `unreachable`, plus null on rows written
-   before the column existed. An optional column on a derived CSV is minor-legal and half-cost
-   (P9). It needs the two clients to stop returning one `None` for two answers, which is the
-   `@client-exception-contract` shape. The question for review is whether null on old rows should
-   mean "ask once" or "leave alone".
-
 ## RM263 — a DOI has no route to its PMID, although `StudyRow.pmid` is the required half
 
 **Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** enricher (`lookup`,

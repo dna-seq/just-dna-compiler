@@ -5012,7 +5012,7 @@ manifest.
 
 ## S110 — the literature pass leaves an author manuscript abstract-only when PMC's BioC service serves it whole, tables included
 
-**Status — accepted; point 1 shipped in the tree as [RM257](ROADMAP_HISTORY.md#rm257--pmcs-bioc-service-is-the-fulltext-rung-for-records-europe-pmc-calls-closed), uncut; point 2 is taken; the 404/500 split is filed open as [RM258](ROADMAP_0_8.md#rm258--an-outage-during-the-literature-fetch-writes-a-row-that-merge-not-clobber-never-asks-again).**
+**Status — accepted; point 1 shipped in the tree as [RM257](ROADMAP_HISTORY.md#rm257--pmcs-bioc-service-is-the-fulltext-rung-for-records-europe-pmc-calls-closed), uncut; point 2 is taken; the 404/500 split is filed open as [RM258](ROADMAP_HISTORY.md#rm258--an-outage-during-the-literature-fetch-writes-a-row-that-merge-not-clobber-never-asks-again).**
 Reproduced live the same day with your ids: Europe PMC reports `PMC6463297` as `isOpenAccess: N,
 inPMC: Y` and answers 500 for `fullTextXML`, while BioC answers 200 with 294 passages, and
 `PMC1050584` answers 200 with the `[Error]` body.

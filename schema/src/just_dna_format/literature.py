@@ -46,6 +46,7 @@ from just_dna_format.base import since, vocabulary
 from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.spec import DOI_PATTERN
 from just_dna_format.vocab import (
+    VALID_FULLTEXT_STATUS,
     VALID_QUOTE_SOURCE,
     VALID_RESOLUTION_STATUS,
     check_vocab,
@@ -66,6 +67,9 @@ from just_dna_format.vocab import (
 # `quotes_authored` / `quotes_found` are **out** for two reasons: the first is derivable from
 # `studies.csv` (so storing it as a fact duplicates one fact in two files), and the second depends on
 # whether a fulltext happened to be retrievable on the day the pass ran.
+#
+# `fulltext_status` (0.8, RM258) is **out** for the same reason: it records how a fetch ended on the
+# day it ran, so a re-ask that turns `unreachable` into `retrieved` changes the run, not the article.
 #
 # What remains is stable identity: which article this is, and whether the registry has it.
 LITERATURE_FACT_FIELDS: tuple[str, ...] = (
@@ -209,6 +213,18 @@ class LiteratureRow(BaseModel):
         ),
         json_schema_extra={**vocabulary("quote_source", VALID_QUOTE_SOURCE), **since("0.5.0")},
     )
+    fulltext_status: str | None = Field(
+        default=None,
+        description=(
+            "How the fulltext question ended: retrieved|absent|unreachable (RM258). `unreachable` "
+            "means the request never got an answer, so the next run asks again; `absent` means no "
+            "service holds a copy, which is permanent. Null means the question was not asked: no "
+            "quote to check, or a row written before 0.8, which the next run asks once. Provenance "
+            "about the fetch rather than a fact about the article, so it is outside "
+            "`literature_signature` and a re-ask that heals a row moves no signature."
+        ),
+        json_schema_extra={**vocabulary("fulltext_status", VALID_FULLTEXT_STATUS), **since("0.8.0")},
+    )
     doi_exists: bool | None = Field(
         json_schema_extra=since("0.5.0"),
         default=None,
@@ -286,6 +302,11 @@ class LiteratureRow(BaseModel):
     @classmethod
     def _validate_quote_source(cls, v: str | None) -> str | None:
         return check_vocab(v, VALID_QUOTE_SOURCE, "quote_source")
+
+    @field_validator("fulltext_status")
+    @classmethod
+    def _validate_fulltext_status(cls, v: str | None) -> str | None:
+        return check_vocab(v, VALID_FULLTEXT_STATUS, "fulltext_status")
 
     @field_validator("fetched_at", mode="before")
     @classmethod

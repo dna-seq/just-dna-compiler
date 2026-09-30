@@ -133,6 +133,17 @@ class LiteratureUnavailable(LiteratureEnrichmentError):
     """
 
 
+class FulltextUnavailable(LiteratureUnavailable):
+    """A fulltext request never got an answer: a 5xx or a transport failure, after retries (RM258).
+
+    Raised by `EuropePmcClient.fetch_fulltext` and `PmcBiocClient.fetch_fulltext`, the three-way form
+    of the question. It is the *unreachable* arm, kept apart from a `None` return, which is *absent*
+    (the service holds no copy). The two used to be one `None`, and the pass pinned an outage as an
+    abstract-only row that merge-not-clobber never asked about again. A subclass, so an existing
+    `except LiteratureUnavailable` still catches it.
+    """
+
+
 @dataclass
 class DoiConflict:
     """An authored DOI that disagrees with the one the registry reports for the same PMID."""
@@ -400,21 +411,41 @@ class EuropePmcClient:
                 }
         return out
 
-    def fulltext(self, pmcid: str) -> str | None:
-        """Whitespace-normalized article text, or `None` when it cannot be retrieved.
+    def fetch_fulltext(self, pmcid: str) -> str | None:
+        """Whitespace-normalized article text; `None` when Europe PMC holds no copy; raises
+        `FulltextUnavailable` when the request never got an answer (RM258).
 
-        `None` is a normal outcome, not an error: an embargoed or author-manuscript-only record answers
-        404, and the caller must record that as *unchecked* rather than as a failed match.
+        A 4xx is an answer: an embargoed or author-manuscript-only record answers 404, which is
+        *absent*. A 5xx or a transport failure, after the transport retries, is *unreachable*, and the
+        caller asks again on a later run.
         """
         try:
             response = self._get(f"{pmcid}/fullTextXML")
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code >= 500:
+                raise FulltextUnavailable(
+                    f"Europe PMC answered {exc.response.status_code} for {pmcid}'s fulltext"
+                ) from exc
             logger.info("No retrievable fulltext for %s (HTTP %s)", pmcid, exc.response.status_code)
             return None
         except httpx.HTTPError as exc:
+            raise FulltextUnavailable(
+                f"Europe PMC could not be reached for {pmcid}'s fulltext: {exc}"
+            ) from exc
+        return extract_text(response.text)
+
+    def fulltext(self, pmcid: str) -> str | None:
+        """`fetch_fulltext` with its two negative answers folded into one `None`, as before 0.8.
+
+        Kept for callers that already treat `None` as "no text either way" (the authoring plugin's
+        `fetch_fulltext` tool relies on it for Europe PMC's 500s). A caller that needs to tell an
+        outage from an absent copy uses `fetch_fulltext`.
+        """
+        try:
+            return self.fetch_fulltext(pmcid)
+        except FulltextUnavailable as exc:
             logger.warning("Fulltext fetch failed for %s (%s)", pmcid, exc)
             return None
-        return extract_text(response.text)
 
 
 @dataclass(frozen=True)
@@ -769,22 +800,25 @@ class PmcBiocClient:
         response.raise_for_status()
         return response
 
-    def fulltext(self, pmcid: str) -> str | None:
-        """Whitespace-normalized body text with the reference list removed, or `None`.
+    def fetch_fulltext(self, pmcid: str) -> str | None:
+        """Body text with the reference list removed; `None` when the service holds no copy; raises
+        `FulltextUnavailable` when the request never got an answer (RM258).
 
-        `None` has the meaning `EuropePmcClient.fulltext` gives it, and the same limit: an article
-        the service has no copy of and a request that never got an answer both land here, told apart
-        only in the log. That conflation is the pin-on-outage question filed beside this client, not
-        something one client can settle.
+        **A 200 that is not JSON is an answer here, not the fourth leg.** The service's recorded "no
+        copy" reply is a 200 with a plain-text body, so it reads as *absent*. A 4xx is absent too; a
+        5xx or a transport failure, after the transport retries, is *unreachable*.
         """
         try:
             response = self._get(pmcid)
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code >= 500:
+                raise FulltextUnavailable(
+                    f"PMC BioC answered {exc.response.status_code} for {pmcid}"
+                ) from exc
             logger.info("No BioC text for %s (HTTP %s)", pmcid, exc.response.status_code)
             return None
         except httpx.HTTPError as exc:
-            logger.warning("BioC fetch failed for %s (%s)", pmcid, exc)
-            return None
+            raise FulltextUnavailable(f"PMC BioC could not be reached for {pmcid}: {exc}") from exc
         try:
             payload = response.json()
         except ValueError:
@@ -792,6 +826,14 @@ class PmcBiocClient:
             logger.info("No BioC text for %s (%s)", pmcid, response.text.strip()[:80])
             return None
         return extract_bioc_text(payload)
+
+    def fulltext(self, pmcid: str) -> str | None:
+        """`fetch_fulltext` with its two negative answers folded into one `None`, as before 0.8."""
+        try:
+            return self.fetch_fulltext(pmcid)
+        except FulltextUnavailable as exc:
+            logger.warning("BioC fetch failed for %s (%s)", pmcid, exc)
+            return None
 
 
 def extract_bioc_text(payload: object) -> str | None:
@@ -924,6 +966,52 @@ def _citations(studies: list[StudyRow], table_pmids: list[str] | None = None) ->
     return out
 
 
+def _ask_fulltext(
+    epmc: "EuropePmcClient", bioc: "PmcBiocClient", pmcid: str | None, is_open: bool | None
+) -> tuple[str | None, str]:
+    """The fulltext question for one article, and how it ended: `(text, fulltext_status)` (RM258).
+
+    Europe PMC first when it calls the article open, then PMC's BioC service, which serves author
+    manuscripts Europe PMC calls closed (RM257). `retrieved` when either answered with text;
+    `unreachable` when neither did and at least one request never got an answer, because that one
+    may answer next time; `absent` otherwise, including an article with no PMCID, which neither
+    service can hold.
+    """
+    if not pmcid:
+        return None, "absent"
+    unreachable = False
+    if is_open:
+        try:
+            text = epmc.fetch_fulltext(pmcid)
+        except FulltextUnavailable as exc:
+            logger.warning("Europe PMC fulltext for %s was not answered (%s)", pmcid, exc)
+            unreachable = True
+        else:
+            if text is not None:
+                return text, "retrieved"
+    try:
+        text = bioc.fetch_fulltext(pmcid)
+    except FulltextUnavailable as exc:
+        logger.warning("BioC text for %s was not answered (%s)", pmcid, exc)
+        unreachable = True
+    else:
+        if text is not None:
+            return text, "retrieved"
+    return None, "unreachable" if unreachable else "absent"
+
+
+def _needs_reask(row: LiteratureRow) -> bool:
+    """A pinned row whose fulltext question is still open (RM258).
+
+    `unreachable` was asked and never answered. A null status on a row that did not match against a
+    fulltext was written before the column existed, and is asked once; a null row whose quotes were
+    matched against a fulltext already has its answer. `absent` and `retrieved` are settled.
+    """
+    if row.fulltext_status == "unreachable":
+        return True
+    return row.fulltext_status is None and row.quote_source != "fulltext"
+
+
 def enrich_literature(
     spec_dir: Path,
     *,
@@ -1054,6 +1142,23 @@ def enrich_literature(
     # Against the rows rather than the dict's keys, which are merge-key tuples and not bare PMIDs.
     have = {row.pmid for row in existing.values()} - stale_pins
     wanted = [pmid for pmid in citations if pmid not in have]
+    # **Pinned rows whose fulltext question never got an answer are asked that one question again
+    # (RM258).** Everything else on the row stays merged, since answered is per field
+    # (`@answered-is-not-absent`): existence, identifiers and the licence were answered, and dropping
+    # them to get a retry is the refused repair. Only rows with a quote to check, and only when this run
+    # checks fulltext at all.
+    reask = (
+        [
+            row
+            for row in sorted(existing.values(), key=lambda r: int(r.pmid))
+            if row.pmid in have
+            and row.pmid in citations
+            and _has_quote(citations[row.pmid])
+            and _needs_reask(row)
+        ]
+        if check_fulltext
+        else []
+    )
     fetched_at = now_utc_iso()
     result = LiteratureResult(
         rows=[row for row in existing.values() if row.pmid not in stale_pins],
@@ -1070,7 +1175,7 @@ def enrich_literature(
     # adding the already-pinned PMIDs that carry a quote costs no extra round trip in the common
     # case and nothing at all when there are none.
     titled = [pmid for pmid in citations if pmid not in wanted and _has_quote(citations[pmid])]
-    if wanted or titled:
+    if wanted or titled or reask:
         owned_eutils = eutils is None
         client = eutils or EutilsClient()
         try:
@@ -1124,13 +1229,13 @@ def enrich_literature(
                 quotes = [s for s in citations[pmid] if s.provenance_quote or s.provenance_regex]
                 found: int | None = None
                 quote_source: str | None = None
+                fulltext_status: str | None = None
                 if check_fulltext and quotes:
-                    text = epmc.fulltext(pmcid) if (is_open and pmcid) else None
                     # PMC serves an author manuscript for text mining where Europe PMC calls it
                     # closed or fails on it (RM257, S110). Any PMCID qualifies: an article outside
-                    # the service's set costs one paced request answering "no copy".
-                    if text is None and pmcid:
-                        text = bioc.fulltext(pmcid)
+                    # the service's set costs one paced request answering "no copy". How the question
+                    # ended is recorded, so an outage is asked again rather than pinned (RM258).
+                    text, fulltext_status = _ask_fulltext(epmc, bioc, pmcid, is_open)
                     if text is not None:
                         result.fulltext_checked.append(pmid)
                         quote_source = "fulltext"
@@ -1171,6 +1276,7 @@ def enrich_literature(
                         quotes_authored=len(quotes),
                         quotes_found=found,
                         quote_source=quote_source,
+                        fulltext_status=fulltext_status,
                         doi_exists=doi_exists,
                         # Which DOI that verdict is about. Without it the pin cannot say, and a
                         # re-run pairs the stored answer with whatever the author writes next.
@@ -1184,6 +1290,26 @@ def enrich_literature(
                         fetched_at=fetched_at,
                     )
                 )
+            # The pinned rows whose fulltext question is still open (RM258): that one question, and a
+            # row rewritten only where the answer changed it. An answer overwrites the quote counts,
+            # `quote_source` and the status; a request that fails again leaves the row as it was,
+            # marked `unreachable`, so the next run asks again.
+            for row in reask:
+                text, status = _ask_fulltext(epmc, bioc, row.pmcid, row.is_open_access)
+                update: dict[str, object] = {"fulltext_status": status}
+                if text is not None:
+                    quotes = [s for s in citations[row.pmid] if s.provenance_quote or s.provenance_regex]
+                    update |= {
+                        "quote_source": "fulltext",
+                        "quotes_found": sum(
+                            1 for s in quotes if _study_quote_found(s, text, regex_timeout=regex_timeout)
+                        ),
+                    }
+                    result.fulltext_checked.append(row.pmid)
+                if all(getattr(row, name) == value for name, value in update.items()):
+                    continue
+                healed = row.model_copy(update={**update, "fetched_at": fetched_at})
+                result.rows = [healed if r.pmid == row.pmid else r for r in result.rows]
             # The pinned rows: no row is written for them (the sidecar is authoritative) and the
             # fulltext is never fetched, but the title comparison needs only the summary — so it
             # answers here where `quotes_found` cannot.

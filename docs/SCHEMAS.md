@@ -264,6 +264,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_ELEMENT_RULES` | 8 (closed) | the composition rules a `Display` element may declare |
   | `VALID_EVIDENCE_LEVELS` | 6 (closed) |  |
   | `VALID_FREQUENCY_STATUS` | 3 (closed) |  |
+  | `VALID_FULLTEXT_STATUS` | 3 (closed) | how the literature pass's fulltext question ended (RM258); a null cell is the fourth reading, *not asked* |
   | `VALID_GENE_VALIDITY` | 9 (closed) |  |
   | `VALID_INHERITANCE_MODE` | 9 (closed) |  |
   | `VALID_PHENOTYPE_CATEGORIES` | 6 (closed) |  |
@@ -1477,7 +1478,8 @@ hundred with the same DOI repeated — the same argument that put gene constrain
 the one that keeps the file readable by the human the DSL exists for. Facts: `pmid`, `doi?`, `pmcid?`,
 `exists?`. Everything else is provenance or time-varying state: `doi_exists?`, `doi_checked?`,
 `is_open_access?`, `license?`, `share_alike?`, `commercial_use?`, `redistribution?`,
-`quotes_authored?`, `quotes_found?`, `quote_source?`, `source?`, `status?`, `fetched_at?`.
+`quotes_authored?`, `quotes_found?`, `quote_source?`, `fulltext_status?` (0.8), `source?`, `status?`,
+`fetched_at?`.
 
 - **No `dataset` column**, unlike its two siblings. gnomAD ships numbered releases; PubMed and Europe
   PMC are continuously updated and publish no release identifier, so the column could only ever be null
@@ -1516,6 +1518,10 @@ the one that keeps the file readable by the human the DSL exists for. Facts: `pm
   phrase found in an abstract is in the paper, while a phrase absent from a 200-word abstract says
   nothing about the body. Without the column a `quotes_found` of 0 would read as a verdict when it was
   only a partial look.
+- **`fulltext_status` records how the fulltext question ended** (0.8, RM258): `retrieved`, `absent` (no
+  service holds a copy, permanent) or `unreachable` (never answered, asked again next run). Null is the
+  fourth reading, *not asked*. Outside `literature_signature`, like every other column here but the four
+  identity facts, so a re-ask that heals a row moves no signature.
 - **Quote coverage is two integer counts, not a boolean.** A quote is authored per *study row* while
   this table's grain is the citation, and two study rows may cite one paper with different quotes, so a
   single flag would have to lie about one of them. `quotes_found` is **null when no fulltext could be

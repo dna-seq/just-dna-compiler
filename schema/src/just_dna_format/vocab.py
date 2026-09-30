@@ -661,6 +661,14 @@ VALID_RSID_STATUS: frozenset[str] = frozenset({"live", "merged", "absent", "with
 # body. Collapsing the two would let "not in the 200-word abstract" read as "not in the paper".
 VALID_QUOTE_SOURCE: frozenset[str] = frozenset({"fulltext", "abstract"})
 
+# How the literature pass's fulltext question ended for one article (RM258). Three answers the two
+# clients used to fold into one `None`: the text was **retrieved**; the article has no copy either
+# service will serve (**absent**: a 404, BioC's "no result" body, or no PMCID at all), which is
+# permanent; or the request never got an answer (**unreachable**: a 5xx or a transport failure),
+# which is transient and is asked again on the next run. A null cell on a row is the fourth reading,
+# *not asked*: a row with no quote to check, or one written before the column existed.
+VALID_FULLTEXT_STATUS: frozenset[str] = frozenset({"retrieved", "absent", "unreachable"})
+
 # ── The clinical-significance concordance record (0.7, RM130) ───────────────────────────────────
 #
 # Two vocabularies, and the *separation* is the design (Principle 5). A single set naming the

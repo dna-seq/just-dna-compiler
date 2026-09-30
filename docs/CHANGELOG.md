@@ -41,6 +41,16 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-30 — RM258: the literature pass records how the fulltext question ended, and asks an outage again (0.8, uncut)
+
+**enricher** + **format** — A Europe PMC or BioC 5xx used to read like "no copy": the row was written on
+the abstract and merge-not-clobber never asked again, so an outage became a permanent abstract-only pin.
+`literature.csv` gains the derived column **`fulltext_status`** (`retrieved | absent | unreachable`,
+vocabulary `VALID_FULLTEXT_STATUS`), and a later run re-asks only the fulltext question for a pinned row
+that is `unreachable`, or null and not already matched against a fulltext (rows written before 0.8, asked
+once). Both clients gain `fetch_fulltext`, which raises the new `FulltextUnavailable` for an unanswered
+request; `fulltext()` keeps its old contract.
+
 ## 2026-09-30 — RM272: `EnrichmentResult` names three answered-but-withheld states (0.8, uncut)
 
 **enricher** — `unanchored_rsids` (live Ensembl's one-sided indel whose anchor base could not be read,

@@ -3338,9 +3338,18 @@ host, so it runs on the E-utilities `PacingGate`. An article outside the service
 `[Error] : No result can be found.`, which counts as absent, the same as a 404. **Retrieval here is not
 a licence**: the service's own note says the file is "available for text mining", which names no
 terms, so `is_open_access` and `license` stay what Europe PMC said. A BioC hit is `quote_source=fulltext`,
-because that column records how far the search reached and not which host served it. A 5xx still reads
-as "no copy" on both rungs, and the row it leaves is pinned. That is
-[RM258](ROADMAP_0_8.md#rm258--an-outage-during-the-literature-fetch-writes-a-row-that-merge-not-clobber-never-asks-again), open.
+because that column records how far the search reached and not which host served it.
+
+**An outage is asked again; an absent copy is not (RM258, 0.8).** Both clients now have a three-way
+`fetch_fulltext`: text, `None` for a service that holds no copy (a 4xx, or BioC's plain-text "no result"
+200), and `FulltextUnavailable` for a request that never got an answer (a 5xx or a transport failure,
+after the transport retries). The pass records how the question ended in `literature.csv`'s
+`fulltext_status` (`retrieved | absent | unreachable`), and on every later run it asks that one question
+again for a pinned row that is `unreachable`, or null and not already matched against a fulltext (a row
+written before the column existed, asked once). Nothing else on the row is re-fetched: existence,
+identifiers and the licence were answered and stay merged. An answer rewrites `quote_source`,
+`quotes_found` and the status; a second failure leaves the row as it was. The older `fulltext()` keeps its
+one-`None` contract for callers that rely on it, such as the authoring plugin's `fetch_fulltext` tool.
 
 **A quote is an *attestation*, so no tool may write one — and retrieving the fulltext changes what the
 check proves.** `provenance_quote`/`provenance_regex` mean *a curator read this passage in this paper*,

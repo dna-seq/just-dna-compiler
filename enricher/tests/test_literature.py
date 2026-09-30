@@ -23,6 +23,7 @@ from just_dna_enricher.eutils import EutilsClient, EutilsSettings
 from just_dna_enricher.literature import (
     CrossrefClient,
     EuropePmcClient,
+    FulltextUnavailable,
     LiteratureEnrichmentError,
     PmcBiocClient,
     crossref_bibliographic,
@@ -398,12 +399,15 @@ def test_the_fulltext_off_switch_reaches_the_bioc_rung(tmp_path: Path) -> None:
     assert result.rows[0].quote_source is None
 
 
-@pytest.mark.parametrize("status", [200, 404, 500])
-def test_every_way_bioc_has_no_text_reads_as_not_retrieved(tmp_path: Path, status: int) -> None:
+@pytest.mark.parametrize("status, recorded", [(200, "absent"), (404, "absent"), (500, "unreachable")])
+def test_every_way_bioc_has_no_text_reads_as_not_retrieved(
+    tmp_path: Path, status: int, recorded: str
+) -> None:
     """The recorded "no copy" 200, a 404 and a 500 all leave the row on the abstract, never on a miss.
 
-    A 500 reads the same as a 404 here, and that is RM258's question rather than a verdict of this
-    test: what an outage should leave pinned is open.
+    RM258 split the arms: the first two are the service saying it holds no copy, which is permanent,
+    and the 500 is a request that never got an answer, which the next run asks again. Until RM258 all
+    three wrote the same row, and the 500's was never asked about again.
     """
     spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},anything\n")
     result = enrich_literature(
@@ -415,6 +419,100 @@ def test_every_way_bioc_has_no_text_reads_as_not_retrieved(tmp_path: Path, statu
     )
     assert result.rows[0].quote_source == "abstract"
     assert result.quotes_unchecked == 1
+    assert result.rows[0].fulltext_status == recorded
+
+
+def _literature_run(spec: Path, bioc: PmcBiocClient):
+    return enrich_literature(
+        spec, eutils=_eutils(), europepmc=_epmc(search=_manuscript_search()), crossref=_crossref(), bioc=bioc
+    )
+
+
+def test_an_outage_is_asked_again_and_heals_when_it_answers(tmp_path: Path) -> None:
+    """RM258. The first run's BioC request 500s, so the row is written on the abstract as
+    `unreachable`; the second run asks that one question again (one request), gets the text, and the
+    row moves to `fulltext` with its counts, while every answered field stays as it was."""
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},anything\n")
+    first = _literature_run(spec, _bioc(None, status=500))
+    [row] = first.rows
+    assert (row.quote_source, row.fulltext_status) == ("abstract", "unreachable")
+
+    healed_by = _bioc(_BIOC_CLINVAR)
+    second = _literature_run(spec, healed_by)
+    assert healed_by.requested == ["PMC5753237"]  # asked once, never more
+    [healed] = second.rows
+    assert (healed.quote_source, healed.fulltext_status) == ("fulltext", "retrieved")
+    for field in ("pmid", "doi", "pmcid", "exists", "is_open_access", "license", "quotes_authored"):
+        assert getattr(healed, field) == getattr(row, field), field
+
+
+def test_an_outage_that_fails_again_keeps_the_row_and_stays_open(tmp_path: Path) -> None:
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},anything\n")
+    _literature_run(spec, _bioc(None, status=500))
+    written = (spec / "literature.csv").read_bytes()
+    again = _bioc(None, status=503)
+    second = _literature_run(spec, again)
+    assert again.requested == ["PMC5753237"]
+    assert second.rows[0].fulltext_status == "unreachable"
+    assert (spec / "literature.csv").read_bytes() == written
+
+
+def test_an_absent_copy_is_never_asked_again(tmp_path: Path) -> None:
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},anything\n")
+    _literature_run(spec, _bioc(None, status=404))
+    again = _bioc(_BIOC_CLINVAR)
+    second = _literature_run(spec, again)
+    assert again.requested == []
+    assert second.rows[0].fulltext_status == "absent"
+
+
+def test_a_row_written_before_the_column_is_asked_exactly_once(tmp_path: Path) -> None:
+    """A null status on a row that did not match against a fulltext means *not asked*: the next run
+    asks once, and the run after that has nothing to do and changes nothing (`@empty-work-is-a-path`)."""
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},anything\n")
+    _literature_run(spec, _bioc(None, status=404))
+    path = spec / "literature.csv"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    header = lines[0].split(",")
+    column = header.index("fulltext_status")
+    # Strip the column, as a pre-0.8 writer produced it.
+    path.write_text(
+        "\n".join(",".join(c for i, c in enumerate(line.split(",")) if i != column) for line in lines) + "\n",
+        encoding="utf-8",
+    )
+
+    once = _bioc(None, status=404)
+    second = _literature_run(spec, once)
+    assert once.requested == ["PMC5753237"]
+    assert second.rows[0].fulltext_status == "absent"
+    settled = path.read_bytes()
+
+    never = _bioc(None, status=404)
+    _literature_run(spec, never)
+    assert never.requested == []
+    assert path.read_bytes() == settled
+
+
+def test_a_row_already_matched_against_a_fulltext_is_not_asked_again(tmp_path: Path) -> None:
+    spec = _spec(tmp_path / "s", f"rsid,pmid,provenance_quote\nrs334,{_REAL},anything\n")
+    first = _literature_run(spec, _bioc(_BIOC_CLINVAR))
+    assert first.rows[0].fulltext_status == "retrieved"
+    again = _bioc(_BIOC_CLINVAR)
+    _literature_run(spec, again)
+    assert again.requested == []
+
+
+def test_the_three_way_clients_raise_only_for_an_unanswered_request() -> None:
+    assert _bioc(None, status=404).fetch_fulltext("PMC5753237") is None
+    assert _bioc(None, status=200).fetch_fulltext("PMC5753237") is None
+    with pytest.raises(FulltextUnavailable):
+        _bioc(None, status=502).fetch_fulltext("PMC5753237")
+    with pytest.raises(FulltextUnavailable):
+        _epmc(fulltext=None, fulltext_status=500).fetch_fulltext("PMC5753237")
+    assert _epmc(fulltext=None, fulltext_status=404).fetch_fulltext("PMC5753237") is None
+    # The folded form keeps its pre-0.8 contract for callers that rely on it.
+    assert _bioc(None, status=502).fulltext("PMC5753237") is None
+    assert _epmc(fulltext=None, fulltext_status=500).fulltext("PMC5753237") is None
 
 
 def test_bioc_text_keeps_the_tables_and_drops_the_reference_list() -> None:

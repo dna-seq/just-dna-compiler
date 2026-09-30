@@ -49,6 +49,8 @@ _RELEASES: frozenset[str] = frozenset(
         "0.6.5",
         "0.6.6",
         "0.7.0",
+        # Uncut, on the `0.8` branch: the release the PT1 round lands in (RM258 is the first field).
+        "0.8.0",
     }
 )
 
