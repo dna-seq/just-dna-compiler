@@ -277,7 +277,7 @@ reason its `source` column is inside its fact set while everywhere else `source`
   | `VALID_SOURCE_LAYERS` | 9 (closed) |  |
   | `VALID_VERIFICATION_CHECKS` | 26 (closed) |  |
   | `VALID_VERIFICATION_SKIPS` | 8 (closed) |  |
-  | `VALID_WARNING_CODES` | 75 (closed) | every code a compile may stamp on a finding; the catalogue with texts is in [COMPILER.md](COMPILER.md) |
+  | `VALID_WARNING_CODES` | 76 (closed) | every code a compile may stamp on a finding (members in `RETIRED_WARNING_CODES` are no longer emitted); the catalogue with texts is in [COMPILER.md](COMPILER.md) |
 
   Vocabularies owned by a leaf rather than by `vocab` (`spec`, `binning`, `pgx`, `pgs`, `manifest`,
   `sources`) are reached through the field markers above and not listed here, for the reason the bullet
@@ -986,17 +986,18 @@ Four columns above name fields in a file this format never sees, so the rules fo
 part of the same contract. Each of these is a real way to get a well-formed number and a wrong answer,
 and none of them is detectable by any offline gate.
 
-**`QUAL` changes sign with the record, and `requires_callable` rows are read from the record where it
-is inverted (RM57).** §1.6.1.6 defines QUAL as `−10log10 prob(no variant)` when ALT is present and
-`−10log10 prob(variant)` when ALT is `.`. So a QUAL of 60 on a variant record means the variant is
-almost certainly real, while the same 60 on a monomorphic reference record means the position is almost
-certainly *variant* — the opposite of a clean reference call. A `requires_callable` row is exactly the
-one a consumer proves against the reference record, so `quality_from=QUAL, min_quality=30` there asks
-for evidence that the position *is* variant before concluding that it is not, and raising the floor
-makes the answer more confidently wrong. Prefer a per-sample confidence field (`GQ`). The compiler
-warns when it sees the combination and does not refuse it: whether QUAL is inverted depends on the
-record, which the compile path will never see, and the same row read against a variant record elsewhere
-in the file is legitimate.
+**A QUAL floor cannot be read on the evidence a `requires_callable` row is decided from (RM313).** VCF
+§1.6.1 item 6 (the same in 4.4 and 4.5) makes QUAL the Phred-scaled confidence in whatever ALT asserts:
+where ALT is `.` it is `−10log10 P(variant)`, so a high QUAL there is a confident *reference* call, and
+QUAL does not invert. A `requires_callable` row is decided from a reference record, usually a gVCF `<*>`
+block, and such a block conventionally carries QUAL `.`. So `quality_from=QUAL, min_quality=30` there is
+a check that **cannot run**: the row either always withholds or, if the consumer skips a missing value,
+is never gated. On a joint-called site record QUAL is also a site-level number, not this sample's. No
+replacement field is named, because what a caller writes on its reference blocks varies and the spec
+reserves no per-sample reference-confidence key; `GQ`, which this paragraph used to recommend, is
+conditioned on the site being variant. The compiler warns (`qual_floor_on_reference_evidence`) and does
+not refuse. **Until 0.8 this paragraph said the opposite** (RM57's reading, that a high QUAL on the
+reference record means "probably variant"); the 4.4 audit carries the dated correction.
 
 **Reference evidence is a block, so callability is interval containment and the depth field is
 `MIN_DP` (RM57).** A gVCF states reference confidence as one record spanning a range (`1 4370 . G <*>

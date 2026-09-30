@@ -666,7 +666,7 @@ def compile_module(
     all_warnings.extend(w for w in _check_binning_deprecations(kind_rows) if w not in all_warnings)
 
     # **THREE checks of this round are deliberately NOT re-run here, and that is the fix rather than an
-    # omission.** `_check_missing_allele_marker`, `_check_quality_inversion` and `_check_vcf_pointers`
+    # omission.** `_check_missing_allele_marker`, `_check_qual_floor_on_reference_evidence` and `_check_vcf_pointers`
     # all read authored cells (`alts`, `requires_callable` + `quality_from`, the pointer columns) that
     # resolution never fills, so `validate_spec`'s pass — which runs before any expansion — already has
     # the right answer, and it reaches this list through `all_warnings = list(validation.warnings)`

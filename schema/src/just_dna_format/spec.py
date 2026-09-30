@@ -803,11 +803,11 @@ class VariantRow(AuthoredModel):
             "Optional VCF field the `min_quality` floor is stated against, best written with the "
             "namespace (e.g. FORMAT/GQ, QUAL, FORMAT/DP). Same pointer grammar as "
             "`source_field`/`callable_from`; a pointer, never an expression. A bare key means "
-            "unqualified, and INFO/MQ is a Float where FORMAT/MQ is an Integer. Prefer a per-sample "
-            "confidence field: QUAL changes sign with the record (VCF 1.6.1.6 — prob(no variant) on "
-            "a variant record, prob(variant) where ALT is '.'), so on a requires_callable row, whose "
-            "evidence is the reference record, a high QUAL says the position is probably variant and "
-            "the floor demands the opposite of what the row is about."
+            "unqualified, and INFO/MQ is a Float where FORMAT/MQ is an Integer. Avoid QUAL on a "
+            "requires_callable row: QUAL is the confidence in what ALT asserts (VCF 1.6.1 item 6), "
+            "and the reference block such a row is decided from usually leaves it missing, so the "
+            "floor cannot be read there; on a joint-called record it is a site-level number, not "
+            "this sample's."
         ),
     )
     # No `quality_element` either, and for the same reason as `callable_element` above: `min_quality`

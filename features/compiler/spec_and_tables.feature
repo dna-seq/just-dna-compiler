@@ -159,19 +159,19 @@ Feature: The spec directory and the cells inside it
     # fact (P2). Unknown withholds.
 
   # source: compiler/src/just_dna_compiler/compiler/vcf_checks.py
-  # anchor: _check_quality_inversion
-  @code:quality_floor_inverted @actionable @both_modes
-  Scenario: a quality floor stated against QUAL on a row where absence is the informative call
+  # anchor: _check_qual_floor_on_reference_evidence
+  @code:qual_floor_on_reference_evidence @actionable @both_modes
+  Scenario: a quality floor stated against QUAL on a row decided from a reference record
     Given variants.csv rows with requires_callable true, quality_from "QUAL" and min_quality 30
     When the module is compiled
-    Then a warning fires quoting VCF §1.6.1.6's two definitions of QUAL
-    And it says "the higher the floor, the more confidently wrong"
+    Then a warning says "a QUAL floor cannot be read on the evidence this row is decided from"
+    And it says the spec "reserves no per-sample reference-confidence key"
     And it is aggregated to one line with examples
-    # The sign of the assertion FLIPS with the record: QUAL 60 on a variant record means the variant is
-    # almost certainly real, and the same 60 on a monomorphic reference record means the position is
-    # almost certainly variant. Refusing was considered and rejected — it would encode one reading of a
-    # field whose meaning depends on a record this tier will never see, and would refuse the legitimate
-    # case of the same row read against a variant record elsewhere in the same file.
+    # QUAL is the confidence in whatever ALT asserts (VCF §1.6.1 item 6), so it never inverts, and a
+    # high QUAL where ALT is '.' is a confident reference call. RM57 read it the other way round and
+    # told authors so on every compile; RM313 retired that code (`quality_floor_inverted` stays in the
+    # vocabulary, emitted by nothing, because published manifests carry it). What is actually wrong
+    # with the combination is that a reference block usually leaves QUAL missing, so the check cannot run.
 
   # source: compiler/src/just_dna_compiler/compiler/validate.py
   # anchor: _validate_spec

@@ -33,6 +33,7 @@ from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vocab import (
     ACTIONABLE_WARNING_CODES,
     CARRIED_WARNING_CODES,
+    RETIRED_WARNING_CODES,
     VALID_WARNING_CODES,
 )
 
@@ -453,7 +454,17 @@ def test_every_warning_code_declared_is_a_code_some_check_actually_builds() -> N
     walk rather than at whichever compile first reaches that branch.
     """
     emitted = {code for sites in _coded_calls().values() for _line, code in sites if code is not None}
-    assert emitted == VALID_WARNING_CODES
+    assert emitted == VALID_WARNING_CODES - set(RETIRED_WARNING_CODES)
+
+
+def test_a_retired_code_is_declared_with_its_reason_and_emitted_nowhere() -> None:
+    """RM313. A retired code stays a member (removing one is major) and is subtracted by declaration,
+    never by an exemption: it is a subset of the vocabulary, disjoint from every emission site the walk
+    finds, and it says why it was retired."""
+    emitted = {code for sites in _coded_calls().values() for _line, code in sites if code is not None}
+    assert set(RETIRED_WARNING_CODES) <= VALID_WARNING_CODES
+    assert not set(RETIRED_WARNING_CODES) & emitted
+    assert all(len(reason.split()) >= 5 for reason in RETIRED_WARNING_CODES.values())
 
 
 def test_every_emission_site_names_a_code_rather_than_a_bare_message() -> None:

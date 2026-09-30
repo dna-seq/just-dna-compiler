@@ -1458,7 +1458,8 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "effect_allele_not_at_locus",  # `effect_allele` is not among the locus's alleles
         "genotype_coverage_gap",  # a site states two or more genotypes and misses one
         "conclusion_names_other_genotype",  # a conclusion naming another genotype and never its own (RM308)
-        "quality_floor_inverted",  # a QUAL floor read against the reference record
+        "quality_floor_inverted",  # RETIRED in 0.8 (RM313): stated the spec backwards; see below
+        "qual_floor_on_reference_evidence",  # a QUAL floor on a row decided from a reference record (RM313)
         "missing_allele_marker_in_alts",  # `.` in `alts` — VCF's no-alternate marker, not an allele
         "vcf_pointer_key_collision",  # a pointer key INFO and FORMAT both define
         "vcf_pointer_unselected_element",  # a pointer at a multi-valued field with no element rule
@@ -1516,6 +1517,19 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "closure_discarded_unreadable_record",  # `close` replaced a record it could not read
     }
 )
+
+#: Members of `VALID_WARNING_CODES` that nothing emits any more, each with the reason (RM313). A code
+#: stays in the vocabulary after it is retired, because removing a member is a major change and
+#: published manifests carry it; a reader pinned to any 0.x version keeps validating them. Declared
+#: rather than exempted, so "in the vocabulary but emitted nowhere" is a stated state that the
+#: emission-site walk and the scenario corpus both subtract, never an oversight either can hide.
+RETIRED_WARNING_CODES: dict[str, str] = {
+    "quality_floor_inverted": (
+        "RM57 stated VCF QUAL backwards: it said a high QUAL on a reference record means probably "
+        "variant, and QUAL there is the confidence in the reference call. Replaced in 0.8 by "
+        "qual_floor_on_reference_evidence (RM313)."
+    ),
+}
 
 # The subset an author cannot clear. Membership is a claim about REMEDIATION, not about severity:
 # every member here is a warning in both modes, and so are most of the codes that are not here.

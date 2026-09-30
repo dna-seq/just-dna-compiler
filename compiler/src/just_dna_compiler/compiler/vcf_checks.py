@@ -1,4 +1,4 @@
-"""VCF-conformance warnings: QUAL inversion, VCF's MISSING marker used as an allele, and the
+"""VCF-conformance warnings: a QUAL floor on reference evidence, VCF's MISSING marker used as an allele, and the
 `vcf_*` pointer columns.
 """
 
@@ -23,15 +23,15 @@ from just_dna_format.vocab import (
 from just_dna_compiler.compiler.binning_checks import _BINNING_TABLE_KINDS
 from just_dna_compiler.compiler.tables import _TABLE_KINDS
 
-#: The fragment of the RM57 warning that names the finding, for the same reason the two phrases in
-#: `binning` are named: a manifest carries the prose and no field.
-QUAL_INVERSION_PHRASE = "QUAL means the opposite thing on the record this row is read from"
+#: The fragment of the RM313 warning that names the finding, for the same reason the two phrases in
+#: `binning` are named: a manifest carries the prose and no field. It replaced RM57's
+#: `QUAL_INVERSION_PHRASE`, which stated the spec backwards (`vocab.RETIRED_WARNING_CODES`).
+QUAL_REFERENCE_EVIDENCE_PHRASE = "a QUAL floor cannot be read on the evidence this row is decided from"
 
 
-#: The one VCF column whose Phred-scaled assertion changes sign with the record (§1.6.1.6). Matched on
-#: the bare token: a `quality_from` cell is `|`-alternated and may carry an `INFO/`-style namespace,
-#: neither of which changes which field is named.
-_INVERTING_QUALITY_FIELD = "QUAL"
+#: The VCF column this check is about. Matched on the bare token: a `quality_from` cell is
+#: `|`-alternated and may carry an `INFO/`-style namespace, neither of which changes which field is named.
+_SITE_QUALITY_FIELD = "QUAL"
 
 
 def _quality_fields(pointer: str | None) -> list[str]:
@@ -47,32 +47,32 @@ def _quality_fields(pointer: str | None) -> list[str]:
     return [part.rsplit("/", 1)[-1].strip().upper() for part in pointer.split("|") if part.strip()]
 
 
-def _check_quality_inversion(variants: list[VariantRow]) -> list[str]:
-    """A `requires_callable` row whose quality floor is stated against `QUAL` (RM57).
+def _check_qual_floor_on_reference_evidence(variants: list[VariantRow]) -> list[str]:
+    """A `requires_callable` row whose quality floor is stated against `QUAL` (RM313, replacing RM57).
 
-    §1.6.1.6 defines QUAL as *"−10log10 prob(variant)"* where ALT is `.` and *"−10log10 prob(no
-    variant)"* otherwise — **the sign of the assertion flips with the record**. A QUAL of 60 on a variant
-    record means the variant is almost certainly real; the same 60 on a monomorphic reference record
-    means the position is almost certainly *variant*, which is the opposite of a clean reference call.
+    **What is true.** VCF §1.6.1 item 6 (the same in 4.4 and 4.5) makes QUAL the Phred-scaled confidence
+    in whatever ALT asserts: where ALT is `.` it is −10log10 P(variant), so a high QUAL there is a
+    *confident reference call*, and QUAL never inverts. A `requires_callable` row is decided from a
+    reference record, usually a gVCF `<*>` block, and such a block conventionally carries QUAL `.`. So a
+    floor on QUAL is a check that **cannot run** where the row needs it (`@unreachable-not-absent`): the
+    row either always withholds or, if the consumer skips a missing value, is never gated. On a
+    joint-called site record QUAL is also a site-level number, not this sample's.
 
-    `requires_callable` marks the rows where the *absence* of the variant is the informative call, and a
-    consumer evaluating one reads the reference record — a gVCF `<*>` block (§5.5) or a monomorphic
-    `ALT=.` record — which is exactly where QUAL is inverted. So `requires_callable=true,
-    quality_from=QUAL, min_quality=30` asks the consumer to require evidence that the position *is*
-    variant before asserting that it is not, and raising the floor makes the answer more confidently
-    wrong rather than safer. `min_quality` is monotone in one direction only, so nothing else catches it.
+    **What RM57 said instead, and why it was retired.** It told authors a high QUAL on the reference
+    record means *probably variant* and recommended GQ, which the spec conditions on the site being
+    variant. Both halves were wrong, so the code `quality_floor_inverted` is emitted nowhere and kept in
+    the vocabulary only because published manifests carry it (`vocab.RETIRED_WARNING_CODES`).
 
-    **A warning in both modes, and refusing the combination was considered and rejected.** A validator
-    here would encode one reading of a field whose meaning depends on a record this tier will never see,
-    and it would refuse the legitimate case — the same row read against a *variant* record elsewhere in
-    the same file, where the floor means what its author intended. Aggregated to one line with examples,
-    because a gene panel can carry hundreds of `requires_callable` rows and a line each would bury every
-    other finding the run produces.
+    **No replacement field is named.** What a caller writes on its reference blocks varies, and the spec
+    reserves no per-sample reference-confidence key, so naming one would repeat RM57's mistake.
+
+    A warning in both modes, aggregated to one line with examples, because a gene panel can carry
+    hundreds of `requires_callable` rows.
     """
     offenders = [
         v
         for v in variants
-        if v.requires_callable is True and _INVERTING_QUALITY_FIELD in _quality_fields(v.quality_from)
+        if v.requires_callable is True and _SITE_QUALITY_FIELD in _quality_fields(v.quality_from)
     ]
     if not offenders:
         return []
@@ -80,13 +80,13 @@ def _check_quality_inversion(variants: list[VariantRow]) -> list[str]:
     rest = f" (+{len(offenders) - 3} more)" if len(offenders) > 3 else ""
     return [
         CodedWarning(
-            "quality_floor_inverted",
+            "qual_floor_on_reference_evidence",
             f"variants.csv: {len(offenders)} row(s) set requires_callable=true and state their min_quality "
-            f"floor against QUAL. {QUAL_INVERSION_PHRASE}: VCF §1.6.1.6 makes QUAL -10log10 prob(no "
-            f"variant) on a variant record but -10log10 prob(variant) where ALT is '.', so on the reference "
-            f"record a consumer must read to prove this absence, a HIGH QUAL says the position is probably "
-            f"variant — and the higher the floor, the more confidently wrong the result. State the floor "
-            f"against a per-sample confidence field instead (GQ), or against the reference block's MIN_DP. "
+            f"floor against QUAL, and {QUAL_REFERENCE_EVIDENCE_PHRASE}. A requires_callable row is decided "
+            f"from a reference record, usually a gVCF <*> block, and such a block conventionally leaves "
+            f"QUAL missing ('.'), so the floor either always withholds or is never applied; on a "
+            f"joint-called site record QUAL is a site-level number, not this sample's. Nothing here "
+            f"recommends a replacement field: the spec reserves no per-sample reference-confidence key. "
             f"e.g. {shown}{rest}.",
         )
     ]

@@ -384,11 +384,15 @@ from just_dna_compiler.compiler.variant_checks import _CoordinateTable as _Coord
 from just_dna_compiler.compiler.variant_checks import _cross_validate_variants as _cross_validate_variants
 from just_dna_compiler.compiler.variant_checks import _restamp_for_build as _restamp_for_build
 from just_dna_compiler.compiler.vcf_checks import _ALTS_BEARING_KINDS as _ALTS_BEARING_KINDS
-from just_dna_compiler.compiler.vcf_checks import _INVERTING_QUALITY_FIELD as _INVERTING_QUALITY_FIELD
+from just_dna_compiler.compiler.vcf_checks import _SITE_QUALITY_FIELD as _SITE_QUALITY_FIELD
 from just_dna_compiler.compiler.vcf_checks import MISSING_ALLELE_PHRASE as MISSING_ALLELE_PHRASE
-from just_dna_compiler.compiler.vcf_checks import QUAL_INVERSION_PHRASE as QUAL_INVERSION_PHRASE
+from just_dna_compiler.compiler.vcf_checks import (
+    QUAL_REFERENCE_EVIDENCE_PHRASE as QUAL_REFERENCE_EVIDENCE_PHRASE,
+)
 from just_dna_compiler.compiler.vcf_checks import _check_missing_allele_marker as _check_missing_allele_marker
-from just_dna_compiler.compiler.vcf_checks import _check_quality_inversion as _check_quality_inversion
+from just_dna_compiler.compiler.vcf_checks import (
+    _check_qual_floor_on_reference_evidence as _check_qual_floor_on_reference_evidence,
+)
 from just_dna_compiler.compiler.vcf_checks import _check_vcf_pointers as _check_vcf_pointers
 from just_dna_compiler.compiler.vcf_checks import _quality_fields as _quality_fields
 from just_dna_compiler.compiler.vrs_checks import _BLAME_ROW as _BLAME_ROW

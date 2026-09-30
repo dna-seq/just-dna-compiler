@@ -130,31 +130,52 @@ def test_a_module_with_no_binning_table_says_nothing(tmp_path: Path) -> None:
     assert not _matching(warnings, SPANNING_MEASUREMENT_PHRASE)
 
 
-# ── RM57: the quality floor that inverts ───────────────────────────────────────────────────────
+# ── RM313 (was RM57): a QUAL floor on a row decided from reference evidence ─────────────────────
 
 
 def test_a_requires_callable_row_floored_against_qual_is_reported(tmp_path: Path) -> None:
-    """The row asks a consumer to require evidence that the position *is* variant before saying it is not.
+    """The floor cannot be read on the record the row is decided from.
+
+    Until RM313 this test asserted RM57's sentence, which said a high QUAL on the reference record
+    means *probably variant* and recommended GQ and MIN_DP instead. VCF §1.6.1 item 6 says the
+    opposite (QUAL is the confidence in what ALT asserts, so a high QUAL where ALT is `.` is a
+    confident reference call), and GQ is conditioned on the site being variant. The retired code is
+    now emitted nowhere, and the replacement names no field.
 
     Aggregated to one line naming the count and an example, not a line per row: a gene panel carries
     hundreds of `requires_callable` rows.
     """
     warnings = _warnings(_spec(tmp_path, _QUAL_FLOOR_ROW), tmp_path)
-    found = _matching(warnings, compiler_mod.QUAL_INVERSION_PHRASE)
+    found = _matching(warnings, compiler_mod.QUAL_REFERENCE_EVIDENCE_PHRASE)
     assert len(found) == 1
     assert "rs113993960" in found[0]
-    assert "MIN_DP" in found[0] and "GQ" in found[0]
+    # The false claim and the ungrounded remedy are both gone.
+    assert "probably variant" not in found[0]
+    assert "GQ" not in found[0] and "MIN_DP" not in found[0]
+
+
+def test_the_retired_code_is_emitted_nowhere(tmp_path: Path) -> None:
+    """Over the synthetic row and the reference corpus, `quality_floor_inverted` never appears."""
+    compiled = compile_module(_spec(tmp_path, _QUAL_FLOOR_ROW), tmp_path / "out")
+    assert compiled.success, compiled.errors
+    summary = compiled.manifest.compilation.warnings_summary
+    assert "quality_floor_inverted" not in summary
+    assert summary["qual_floor_on_reference_evidence"] == 1
+    examples = Path(__file__).resolve().parents[2] / "reference_examples"
+    for spec in sorted(d for d in examples.iterdir() if (d / "module_spec.yaml").is_file()):
+        result = compile_module(spec, tmp_path / spec.name)
+        assert "quality_floor_inverted" not in result.manifest.compilation.warnings_summary, spec.name
 
 
 @pytest.mark.parametrize(
     "row, expected, why",
     [
-        (_GQ_FLOOR_ROW, False, "a per-sample confidence field is the correct spelling"),
+        (_GQ_FLOOR_ROW, False, "a floor on another field is not this finding"),
         (
             "rs113993960,,,,,G/G,ref,F508del absent,CFTR,benign,true,,QUAL,30\n",
             False,
-            "QUAL on a row that is NOT requires_callable is the legitimate combination this "
-            "deliberately does not refuse — the row is read against a variant record",
+            "QUAL on a row that is NOT requires_callable is read against a variant record, where "
+            "QUAL is present and means what the author intended",
         ),
         (
             "rs113993960,,,,,G/G,ref,F508del absent,CFTR,benign,true,true,DP|QUAL,30\n",
@@ -168,11 +189,11 @@ def test_a_requires_callable_row_floored_against_qual_is_reported(tmp_path: Path
         ),
     ],
 )
-def test_the_inversion_check_fires_on_the_pointer_and_not_on_the_mode(
+def test_the_check_fires_on_the_pointer_and_not_on_the_mode(
     tmp_path: Path, row: str, expected: bool, why: str
 ) -> None:
     warnings = _warnings(_spec(tmp_path, row), tmp_path)
-    assert bool(_matching(warnings, compiler_mod.QUAL_INVERSION_PHRASE)) is expected, why
+    assert bool(_matching(warnings, compiler_mod.QUAL_REFERENCE_EVIDENCE_PHRASE)) is expected, why
 
 
 # ── RM58: `.` in alts ──────────────────────────────────────────────────────────────────────────
@@ -283,7 +304,7 @@ def test_an_expanded_rsid_does_not_report_the_same_finding_with_two_counts(
         "rs113993960,rs113993960,7,117559592,TCTA,T,GRCh38,1,cache,resolved\n"
     )
     warnings = _warnings(spec, tmp_path)
-    found = _matching(warnings, compiler_mod.QUAL_INVERSION_PHRASE)
+    found = _matching(warnings, compiler_mod.QUAL_REFERENCE_EVIDENCE_PHRASE)
     assert len(found) == 1, found
     # And the count it reports is the authored one — one row was written, however many loci it
     # resolved to. The finding is about the cell, and the author wrote the cell once.
@@ -293,7 +314,7 @@ def test_an_expanded_rsid_does_not_report_the_same_finding_with_two_counts(
 @pytest.mark.parametrize(
     "row",
     [_MISSING_MARKER_ROW, _QUAL_FLOOR_ROW],
-    ids=["RM58 missing marker", "RM57 inverted quality floor"],
+    ids=["RM58 missing marker", "RM313 QUAL floor on reference evidence"],
 )
 def test_validate_reports_exactly_what_compile_reports(tmp_path: Path, row: str) -> None:
     """The author's pre-flight must not be quieter than the compile that follows it.
@@ -305,7 +326,7 @@ def test_validate_reports_exactly_what_compile_reports(tmp_path: Path, row: str)
     from_validate = set(validate_spec(spec).warnings)
     from_compile = set(_warnings(spec, tmp_path))
     assert from_validate <= from_compile
-    for phrase in (compiler_mod.QUAL_INVERSION_PHRASE, compiler_mod.MISSING_ALLELE_PHRASE):
+    for phrase in (compiler_mod.QUAL_REFERENCE_EVIDENCE_PHRASE, compiler_mod.MISSING_ALLELE_PHRASE):
         assert bool(_matching(list(from_validate), phrase)) == bool(_matching(list(from_compile), phrase))
 
 

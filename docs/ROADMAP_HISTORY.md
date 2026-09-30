@@ -35,6 +35,62 @@ up.
 The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on
 the `0.8` branch in the proposal's order. Newest first.
 
+## RM313 — RM57's `quality_floor_inverted` warning reads VCF QUAL backwards, and tells authors so on every compile
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-30** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)): the retirement alone would be a patch, and the replacement finding's new code makes the pair a minor · **Owner** compiler (`_check_quality_inversion`) + format (the `quality_from` description) · **Motivating case** relayed 2026-09-30 by the just-vcf session, which found it checking its own frame schema against VCFv4.5 · *related* RM57, RM6, [VCF_4_4_AUDIT § 5](probes/VCF_4_4_AUDIT.md#5-a-min_quality-floor-against-qual-inverts-on-exactly-the-rows-it-exists-for)
+
+**Residuals** RM314 — the neighbouring callable_from text, which reads INFO END where VCF 4.5 made it a cross-sample maximum
+
+**The misreading.** VCF §1.6.1 item 6 (identical in 4.4 and 4.5): QUAL is *"Phred-scaled quality score
+for the assertion made in ALT. i.e. −10log10 prob(call in ALT is wrong). If ALT is '.' (no variant)
+then this is −10log10 prob(variant), and if ALT is not '.' this is −10log10 prob(no variant)."* On a
+monomorphic record the assertion is *no variant*, so QUAL 60 means P(variant) = 10⁻⁶: a confident
+reference call. QUAL is the confidence in whatever ALT asserts on both kinds of record, and an
+inclusive floor moves the same way on both. The 4.4 audit's § 5 read it as *"almost certainly
+variant"*, and RM57 built that into code.
+
+**What ships the false claim today.** `compiler._check_quality_inversion` emits
+`quality_floor_inverted` in both modes on any `requires_callable` row with `quality_from` naming QUAL,
+saying *"a HIGH QUAL says the position is probably variant"* (`QUAL_INVERSION_PHRASE`). The
+`VariantRow.quality_from` description says the same, and so do the COMPILER.md catalogue,
+`test_vcf_conformance_warnings.py` and the `features/` scenario. Its remedy recommends GQ, which Table 2
+defines as *conditioned on the site's being variant*, so it is not a reference-call confidence either.
+
+**What survives from § 5.** Its second half: reference evidence is an interval (a `<*>` block;
+FORMAT `LEN` in 4.5, with INFO `END` deprecated), found by containment, with `MIN_DP` as the right
+depth. And a narrower true finding: a `<*>` block usually carries QUAL `.`, so a QUAL floor on a
+`requires_callable` row is a check that **cannot run**, not an inverted one
+(`@unreachable-not-absent`).
+
+**The decision.** `quality_floor_inverted` is a permanent key naming a finding that is false
+(`@warning-code-names-the-finding`). The patch stops emitting it and corrects the description, the
+catalogue and the scenario. The code stays in `VALID_WARNING_CODES`, because removing it is major, and
+the registry tests have to accept a retired, unemitted member. The honest replacement, a floor on a
+field the reference record usually leaves missing, is a new code and therefore a minor on `0.8`.
+Whether to build that at all, or only document it, is the call.
+
+**What shipped.** `vcf_checks._check_quality_inversion` is replaced by
+`_check_qual_floor_on_reference_evidence`, same trigger (`requires_callable=true` with `quality_from`
+naming QUAL, matched as before), new code **`qual_floor_on_reference_evidence`**, a warning in both
+modes, aggregated. Its sentence says the floor cannot be read on the reference record the row is
+decided from (a block usually leaves QUAL missing, and on a joint-called site QUAL is not this
+sample's), and it recommends no field. `quality_floor_inverted` is emitted nowhere and stays in
+`VALID_WARNING_CODES`; the new `vocab.RETIRED_WARNING_CODES` declares it with its reason, and the
+emission-site walk and the scenario corpus both subtract that set by declaration. `QUAL_INVERSION_PHRASE`
+is gone (`QUAL_REFERENCE_EVIDENCE_PHRASE` replaces it in the re-export shell), and COMPILER.md keeps the
+old text under *Retired phrases* for grepping old manifests.
+
+**The false claim, shown before it was changed:**
+`test_a_requires_callable_row_floored_against_qual_is_reported` asserted that the warning contained
+`GQ` and `MIN_DP`, which pinned RM57's remedy, and its docstring restated the inversion. It now asserts
+the replacement phrase and that neither the inversion wording nor the GQ advice appears. A new test
+compiles the synthetic row and every reference example and asserts the retired code never appears.
+
+**Corrected everywhere the claim was stated:** `VariantRow.quality_from`'s description, SCHEMAS.md's
+consumer-contract paragraph, COMPILER.md's schema-limit paragraph and catalogue, the `features/`
+scenario, and INTEGRATION_0_8.md (the new code, and § 1.1 on the retirement). The 4.4 audit keeps its
+body as evidence under its dated correction.
+
 ## RM308 — the conclusion-genotype finding runs only on the authoring surface, so a module nobody linted compiles green with a swapped pair
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (a new warning code) · **Owner** format

@@ -82,7 +82,7 @@ from just_dna_compiler.compiler.variant_checks import (
 )
 from just_dna_compiler.compiler.vcf_checks import (
     _check_missing_allele_marker,
-    _check_quality_inversion,
+    _check_qual_floor_on_reference_evidence,
     _check_vcf_pointers,
 )
 from just_dna_compiler.compiler.vrs_checks import _verify_vrs_ids, _vrs_coverage_warnings
@@ -860,10 +860,10 @@ def _validate_spec(
         cross_errors, cross_warnings = _cross_validate_variants(variants)
         all_errors.extend(cross_errors)
         all_warnings.extend(cross_warnings)
-        # The quality floor that inverts on the record it is read from (RM57). Authored cells only —
-        # resolution fills neither `requires_callable` nor `quality_from` — so the pre-flight sees
-        # exactly what the compile will.
-        all_warnings.extend(_check_quality_inversion(variants))
+        # A QUAL floor on a row decided from reference evidence (RM313, which retired RM57's inverted
+        # reading). Authored cells only — resolution fills neither `requires_callable` nor
+        # `quality_from` — so the pre-flight sees exactly what the compile will.
+        all_warnings.extend(_check_qual_floor_on_reference_evidence(variants))
         # Allele membership, which was compile-only and should never have been. It is pure computation
         # over authored rows plus the injected table, needs no `output_dir` — the standing rule for what
         # belongs here — and it is a **mode ladder**, so `validate --strict` reported `valid` for a

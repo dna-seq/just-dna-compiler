@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-30 — RM313: the QUAL warning that stated the spec backwards is retired, and the true finding replaces it (0.8, uncut)
+
+**compiler** + **format** — RM57's `quality_floor_inverted` told authors that a high QUAL on a
+reference record means the position is probably variant, and recommended GQ. VCF §1.6.1 item 6 says
+QUAL is the confidence in what ALT asserts, so a high QUAL there is a confident reference call, and GQ
+is conditioned on the site being variant. The same rows (`requires_callable` with a QUAL floor) now warn
+as **`qual_floor_on_reference_evidence`**: the reference block such a row is decided from usually
+leaves QUAL missing, so the floor cannot be read. No field is recommended. `quality_floor_inverted`
+stays in `VALID_WARNING_CODES`, emitted by nothing, and is declared in the new
+`vocab.RETIRED_WARNING_CODES`; `QUAL_INVERSION_PHRASE` is replaced by `QUAL_REFERENCE_EVIDENCE_PHRASE`.
+The new code is an old-reader break, in `INTEGRATION_0_8.md`.
+
 ## 2026-09-30 — RM308: a conclusion naming another genotype warns at `validate` and `compile` (0.8, uncut)
 
 **compiler** + **format** — RM279's rule ran only on the authoring surface (`hint`, `lint_rows`), so a

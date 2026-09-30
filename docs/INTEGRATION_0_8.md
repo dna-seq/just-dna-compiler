@@ -25,10 +25,23 @@ rely on that.
 | Code | Item | What it says |
 | --- | --- | --- |
 | `conclusion_names_other_genotype` | RM308 | A `variants.csv` conclusion names another genotype at its locus and never its own row's: two conclusions look swapped, or one was copied from a neighbour. RM279's hint rule, now at `validate`/`compile`. A warning in both modes. Actionable. |
+| `qual_floor_on_reference_evidence` | RM313 | A `requires_callable` row states its `min_quality` floor against QUAL, which the reference record it is decided from usually leaves missing. Replaces `quality_floor_inverted` (§ 1.1). A warning in both modes. Actionable. |
 | `fact_rows_contradict` | RM275 | Two rows of a derived fact table (`frequencies`, `gene_metrics`, `literature`, `gene_validity`, `clinical_assertions`, `gwas_effects`, `expression_effects`) share a merge key and state different values for one fact. A warning in both modes; refused from 1.0. Actionable: delete the wrong row, or delete the table and re-run the pass. |
+
+### 1.1 A retired code: `quality_floor_inverted`
+
+RM57's `quality_floor_inverted` is **emitted by nothing from 0.8 on**, because it misstated the VCF
+spec: it said a high QUAL on a reference record means the position is probably variant, and QUAL there
+is the confidence in the reference call (§1.6.1 item 6, unchanged in 4.5). Its advice to use GQ was
+ungrounded too. The code **stays in `VALID_WARNING_CODES`**, so every reader keeps parsing manifests
+that carry it, and `vocab.RETIRED_WARNING_CODES` declares it with the reason. If you keyed on it, key on
+`qual_floor_on_reference_evidence` instead, which fires on the same rows and says what is actually
+wrong. The phrase constant `QUAL_INVERSION_PHRASE` is gone from the compiler; its text stays listed in
+COMPILER.md § The phrases, under *retired*, for grepping old manifests.
 
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading
    manifests compiled by 0.8 (§ 1).
-2. If you key on `warnings_summary`, the new codes are listed in § 1 with their meaning.
+2. If you key on `warnings_summary`, the new codes are listed in § 1 with their meaning, and
+   `quality_floor_inverted` will stop appearing (§ 1.1).

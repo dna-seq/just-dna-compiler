@@ -482,9 +482,10 @@ non-nucleotide alt, so no VA is minted and no content-addressed claim is false.
 
 One finding from the same round is **not** a schema limit and is listed with the pointer columns in
 [SCHEMAS.md](SCHEMAS.md) instead: a `min_quality` floor stated against `QUAL` on a `requires_callable`
-row inverts, because QUAL changes sign with the record (§1.6.1.6) and such a row is proved against the
-reference record. The compiler warns and deliberately does not refuse — the meaning depends on a record
-this tier will never see, and the same row read against a variant record is legitimate.
+row cannot be read on the evidence the row is decided from, because a reference block usually leaves
+QUAL missing (RM313). The compiler warns and deliberately does not refuse — what a caller writes on its
+reference records is something this tier never sees. Until 0.8 this paragraph said QUAL *inverts* on a
+reference record, which is the spec read backwards; see the retired phrase below.
 ### And a fourth — a pointer that does not identify a VCF field (RM53/RM54, 0.6)
 
 Same class as the three above: a limit of the schema, closed in 0.6, and worth keeping in the same
@@ -1581,7 +1582,8 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
   `rsid_no_hosting_locus`
 - **VRS** — `vrs_id_unverifiable`, `vrs_coverage_incomplete`
 - **`variants.csv` coherence** — `weight_sign_disagrees_with_effect`, `genotype_allele_not_at_locus`,
-  `effect_allele_not_at_locus`, `genotype_coverage_gap`, `conclusion_names_other_genotype`, `quality_floor_inverted`,
+  `effect_allele_not_at_locus`, `genotype_coverage_gap`, `conclusion_names_other_genotype`,
+  `qual_floor_on_reference_evidence`,
   `missing_allele_marker_in_alts`, `vcf_pointer_key_collision`, `vcf_pointer_unselected_element`,
   `composite_gene_cell`, `symbolic_allele_unusable`
 - **binning tables** — `bin_tiling_inferred`, `bin_tiling_contradicted`, `bin_coverage_gap`,
@@ -1668,15 +1670,25 @@ so a consumer subtracts) rather than an oversight, and the cheaper encodings are
 ### The phrases
 
 **A warning's text is an API.** The manifest carries the prose and, for anything published before the
-structured field existed, no other handle — so a downstream consumer greps it. Four fragments are named
-constants for exactly that reason:
+structured field existed, no other handle — so a downstream consumer greps it. These fragments are
+named constants for exactly that reason:
 
 ```python
-UNJOINABLE_PHRASE     = "have no chrom+start"
-QUAL_INVERSION_PHRASE = "QUAL means the opposite thing on the record this row is read from"
-MISSING_ALLELE_PHRASE = "is VCF's MISSING marker, not an allele"
-UNCLOSED_PHRASE       = "records no closure"
+UNJOINABLE_PHRASE              = "have no chrom+start"
+QUAL_REFERENCE_EVIDENCE_PHRASE = "a QUAL floor cannot be read on the evidence this row is decided from"
+MISSING_ALLELE_PHRASE          = "is VCF's MISSING marker, not an allele"
+UNCLOSED_PHRASE                = "records no closure"
 ```
+
+**Retired phrases.** A consumer may still grep manifests compiled before the retirement, so the text
+stays listed here after nothing emits it.
+
+- `QUAL means the opposite thing on the record this row is read from` — code `quality_floor_inverted`
+  (RM57), **retired in 0.8 by RM313** because it stated VCF §1.6.1 item 6 backwards: QUAL is the
+  confidence in whatever ALT asserts, so a high QUAL where ALT is `.` is a confident reference call,
+  never "probably variant". Its remedy (GQ) was ungrounded too, since GQ is conditioned on the site
+  being variant. The code stays in `VALID_WARNING_CODES` (removing a member is major) and is declared in
+  `vocab.RETIRED_WARNING_CODES`. Its replacement is `qual_floor_on_reference_evidence`.
 
 `UNJOINABLE_PHRASE` has a **named external consumer**: `just-dna-registry` 0.11.3 pins
 `UNJOINABLE_MARKER = "have no chrom+start"` in its facet builder. The structured replacement
