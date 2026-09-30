@@ -291,27 +291,6 @@ decision rather than a deferral. A new public exception base is new surface, so 
 **The first incident, 2026-09-29: RM310.** `caches._rebuild_cpic` named one of CPIC's two error types
 and a 503 escaped `cache rebuild`. RM310 patched that one list and left the mechanism here.
 
-## RM300 — the manifest cannot say how many rows are pathogenic, only how many carry the folded flag
-
-**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (new optional manifest fields) ·
-**Owner** format (`manifest.Stats`) + compiler (`_variant_stats`) · **Motivating case** S123 in
-CONSUMER_SUGGESTIONS_HISTORY.md, via RM299 · *related* RM299, S43
-
-**What is missing.** `stats.pathogenic_count` and `stats.benign_count` sum the legacy booleans, and
-each boolean folds a tier pair. A catalog facets on the listing without reading the artifact, so it
-cannot split `pathogenic` from `likely_pathogenic`. just-dna-lite's card had to fall back to a tooltip.
-The reporter's own measurement for `just-dna-seq/pathogenic`: 403,534 `pathogenic` rows and 215,095
-`likely_pathogenic`.
-
-**The shape.** Per-tier counts derived from `clin_sig` (the effective value, so a boolean-only row
-still counts through `clin_sig_from_booleans` where it can), beside the existing fields. The existing
-fields keep their meaning. Whether it is a count per tier or a mapping keyed on `VALID_CLIN_SIG` is
-the one design question: a mapping takes a new tier without a new field. Decide whether distinct
-variants per tier are wanted too, since the existing counts are per genotype row.
-
-**Legality and price.** A new optional manifest field is additive and minor-legal (P3). It is not in
-`artifact.digest`, and the compiler writes it, so it costs nearly nothing (P9). Not on `main`.
-
 ## RM303 — the snapshot layout is a contract with six parties and no model, so it belongs in `just-dna-format`
 
 **Severity** medium · **Status** open — filed 2026-09-28 at the maintainer's request, **taken into

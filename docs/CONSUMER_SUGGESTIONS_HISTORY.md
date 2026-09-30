@@ -5836,7 +5836,7 @@ at the draft-logic diff. Every other v1-port module's `resolution_signature` was
 **Status — accepted, as a documentation defect in the field. The description is fixed as
 [RM299](ROADMAP_HISTORY.md#rm299--statspathogenic_count-says-pathogenic-and-counts-both-pathogenic-tiers-per-genotype-row)
 (format, on `main`, uncut), and the split count is filed as
-[RM300](ROADMAP_0_8.md#rm300--the-manifest-cannot-say-how-many-rows-are-pathogenic-only-how-many-carry-the-folded-flag),
+[RM300](ROADMAP_HISTORY.md#rm300--the-manifest-cannot-say-how-many-rows-are-pathogenic-only-how-many-carry-the-folded-flag),
 a minor.** Reproduced from the code: `_variant_stats` sums `v.pathogenic` over authored `variants.csv`
 rows, and `derive.pathogenic_from_clin_sig` maps both `pathogenic` and `likely_pathogenic` to `True`.
 The count was behaving as SCHEMAS.md has described it since S43 (*"counts the boolean and therefore

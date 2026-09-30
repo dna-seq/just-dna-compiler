@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-30 — RM300: the manifest counts rows and variants per ClinVar tier (0.8, uncut)
+
+**format** + **compiler** — `stats.pathogenic_count`/`benign_count` fold a tier pair each, so a
+catalog could not split `pathogenic` from `likely_pathogenic` without reading the artifact. Two new
+optional `Stats` fields, `clin_sig_counts` (authored rows per tier) and `clin_sig_variant_counts`
+(distinct variants per tier), keyed on every `VALID_CLIN_SIG` member with zeros included, from the
+effective `clin_sig`. The existing counts keep their meaning. Outside `artifact.digest`; a 0.7 reader
+ignores them.
+
 ## 2026-09-30 — RM313: the QUAL warning that stated the spec backwards is retired, and the true finding replaces it (0.8, uncut)
 
 **compiler** + **format** — RM57's `quality_floor_inverted` told authors that a high QUAL on a

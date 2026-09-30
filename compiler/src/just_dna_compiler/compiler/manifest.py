@@ -66,7 +66,7 @@ from just_dna_format.verification import (
     read_verification,
     verification_block,
 )
-from just_dna_format.vocab import population_sort_key
+from just_dna_format.vocab import VALID_CLIN_SIG, population_sort_key
 
 from just_dna_compiler.compiler.positional import _GENE_BEARING_TABLE_KINDS
 from just_dna_compiler.compiler.tables import (
@@ -243,6 +243,30 @@ def variant_stats(variants: list[VariantRow]) -> dict[str, Any]:
         "clinvar_count": sum(1 for v in variants if v.clinvar),
         "pathogenic_count": sum(1 for v in variants if v.pathogenic),
         "benign_count": sum(1 for v in variants if v.benign),
+        **clin_sig_tier_counts(variants),
+    }
+
+
+def clin_sig_tier_counts(variants: list[VariantRow]) -> dict[str, dict[str, int]]:
+    """`manifest.stats.clin_sig_counts` and `clin_sig_variant_counts` (RM300).
+
+    Every `VALID_CLIN_SIG` member is a key, zeros included, in sorted order: the vocabulary is closed
+    and fixed per `compiler_version`, so an absent key would be ambiguous between zero and not counted.
+    The tier is the row's effective `clin_sig`, so a boolean-only row counts where
+    `clin_sig_from_booleans` can name one; a row with no derivable tier counts nowhere, and its number
+    is readable as a total minus the sum rather than stored (`@derived-not-stored`).
+    """
+    rows = dict.fromkeys(sorted(VALID_CLIN_SIG), 0)
+    keys: dict[str, set[str]] = {tier: set() for tier in rows}
+    for v in variants:
+        tier = v.effective_clin_sig
+        if tier is None:
+            continue
+        rows[tier] += 1
+        keys[tier].add(v.variant_key)
+    return {
+        "clin_sig_counts": rows,
+        "clin_sig_variant_counts": {tier: len(members) for tier, members in keys.items()},
     }
 
 
@@ -1065,6 +1089,8 @@ def _build_manifest(
             clinvar_count=vstats.get("clinvar_count", 0),
             pathogenic_count=vstats.get("pathogenic_count", 0),
             benign_count=vstats.get("benign_count", 0),
+            clin_sig_counts=vstats.get("clin_sig_counts", {}),
+            clin_sig_variant_counts=vstats.get("clin_sig_variant_counts", {}),
         ),
         compilation=Compilation(
             compile_success=True,

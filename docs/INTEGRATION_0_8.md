@@ -39,6 +39,15 @@ that carry it, and `vocab.RETIRED_WARNING_CODES` declares it with the reason. If
 wrong. The phrase constant `QUAL_INVERSION_PHRASE` is gone from the compiler; its text stays listed in
 COMPILER.md § The phrases, under *retired*, for grepping old manifests.
 
+## 1.2 New manifest fields (no break)
+
+`Stats` ignores keys it does not know, so a 0.7 reader parses these and drops them.
+
+| Field | Item | What it holds |
+| --- | --- | --- |
+| `stats.clin_sig_counts` | RM300 | Authored `variants.csv` rows per ClinVar tier, from the effective `clin_sig`, every `VALID_CLIN_SIG` member present (zeros included) in sorted order. Rows, the grain of `pathogenic_count`. Empty on a manifest compiled before 0.8, which means *not counted*, never zero. |
+| `stats.clin_sig_variant_counts` | RM300 | Distinct `variant_key`s per tier, keyed the same way. |
+
 ## 2. What to change
 
 1. If you parse `manifest.json` with `just-dna-format`, move your pin to 0.8 when you start reading

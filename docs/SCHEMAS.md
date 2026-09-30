@@ -396,8 +396,11 @@ always-`False` columns that look like the missing half of it.
 
 **`manifest.stats.pathogenic_count` counts the boolean and therefore counts both tiers.** That is
 consistent with the boolean's meaning rather than a second bug, but it is not what "pathogenic" reads
-as: a module of 400k pathogenic and 215k likely-pathogenic rows reports 615k. Facet on `clin_sig` when
-the tiers matter. Note also that it counts **authored `variants.csv` rows**, not parquet rows — the two
+as: a module of 400k pathogenic and 215k likely-pathogenic rows reports 615k. **Since 0.8 (RM300) the
+split is in the manifest:** `stats.clin_sig_counts` gives authored rows per tier and
+`stats.clin_sig_variant_counts` distinct `variant_key`s per tier, each keyed on every `VALID_CLIN_SIG`
+member in sorted order with zeros included, from the effective `clin_sig`. A row with no derivable tier
+is in no key, so its count is a total minus the sum rather than a stored field. Note also that it counts **authored `variants.csv` rows**, not parquet rows — the two
 diverge wherever resolution expanded one authored row onto several loci, so it is not the number of
 rows a consumer reading `weights.parquet` will find.
 

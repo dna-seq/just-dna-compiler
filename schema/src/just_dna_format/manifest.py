@@ -28,6 +28,7 @@ from just_dna_format.identity import (
 from just_dna_format.vocab import (
     RECOMMENDED_AUTHOR_KINDS,
     VALID_AUTHOR_ROLES,
+    VALID_CLIN_SIG,
     VALID_VERIFICATION_CHECKS,
     VALID_VERIFICATION_SKIPS,
     VALID_WARNING_CODES,
@@ -246,6 +247,37 @@ class Stats(BaseModel):
             "counts once per genotype row. Facet on `clin_sig` to split the tiers."
         ),
     )
+    # RM300 (S123): the tiers the two folded counts above cannot split. A mapping rather than a field per
+    # tier, so a tier added to the vocabulary is a new key rather than a new field.
+    clin_sig_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Authored variants.csv rows per ClinVar tier, keyed on every `VALID_CLIN_SIG` member in "
+            "sorted order, zeros included, so an absent key never has to be read as zero. The tier is "
+            "the row's effective `clin_sig` (a row with only the legacy booleans counts where they "
+            "imply one). Rows, not variants, the grain of `pathogenic_count`. A row with no derivable "
+            "tier is counted in no key: that count is `weights_rows` minus the sum, where no row was "
+            "dropped or expanded. Empty on a manifest compiled before 0.8, which means not counted."
+        ),
+    )
+    clin_sig_variant_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "Distinct `variant_key`s per ClinVar tier, keyed like `clin_sig_counts`. A variant whose "
+            "genotype rows carry two tiers counts under both. Variants with no derivable tier are "
+            "counted in no key; `variant_count` is the total. Empty on a manifest compiled before 0.8."
+        ),
+    )
+
+    @field_validator("clin_sig_counts", "clin_sig_variant_counts")
+    @classmethod
+    def _check_tier_counts(cls, value: dict[str, int]) -> dict[str, int]:
+        unknown = sorted(set(value) - VALID_CLIN_SIG)
+        if unknown:
+            raise ValueError(f"tier counts are keyed on VALID_CLIN_SIG members, got: {unknown}")
+        if any(count < 0 for count in value.values()):
+            raise ValueError("a tier count is never negative")
+        return value
 
 
 class Compilation(BaseModel):

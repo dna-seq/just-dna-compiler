@@ -124,7 +124,7 @@ looks the name up, not the package.
 
 `models.py`: **`ValidationResult`** (`valid`, `errors`, `warnings`, `info`, `stats`) — the `.stats` key
 contract is `variant_count`/`unique_rsids`/`gene_count`/`genes`/`categories`/`study_count`/
-`clinvar_count`/`pathogenic_count`/`benign_count`/`module_name`. **`CompilationResult`** (`success`,
+`clinvar_count`/`pathogenic_count`/`benign_count`/`clin_sig_counts`/`clin_sig_variant_counts`/`module_name`. **`CompilationResult`** (`success`,
 `output_dir`, `errors`, `warnings`, `stats`, `manifest` — the emitted `ModuleManifest`, `None` on failure).
 
 ## What the compiler can and cannot validate
