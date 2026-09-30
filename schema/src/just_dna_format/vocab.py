@@ -349,7 +349,9 @@ ELEMENT_RULE_MEANINGS: dict[str, str] = {
         "the record on, at its index in the record's ALT list, which is element index+1 on a "
         "Number=R field because element zero there is the reference. Where the row names no single "
         "ALT, or the record carries none of the ones it names, the rule decides nothing and a "
-        "consumer withholds rather than picking"
+        "consumer withholds rather than picking. A VCF 4.5 local-allele field (LAD, LPL, …; Number "
+        "LA, LR or LG) orders its values by the sample's LAA, not by ALT, so a consumer resolves it to "
+        "its global equivalent through LAA before applying this or any rule"
     ),
     "reference": (
         "the reference element — element zero of a Number=R field. A field with no reference element "

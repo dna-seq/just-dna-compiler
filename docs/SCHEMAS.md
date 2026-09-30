@@ -1132,6 +1132,15 @@ have had nothing to say about the case it was built for. How multiplicity is enc
 business and this tier holds no opinion on it (P2); which of the values the annotation means is the
 module's, and that is all `source_element` states.
 
+**A local-allele field is resolved through `LAA` before any rule is applied (RM316).** VCF 4.5 gives
+every `A`/`R`/`G` FORMAT field a local equivalent (`LAD`, `LPL`, …, `Number` `LA`/`LR`/`LG`) whose values
+follow the sample's `LAA` list rather than the ALT list (§1.6.2). With ALT `A,C,T,<*>` and `LAA=2,4`,
+`LAD=20,30,10` is REF, `C`, `<*>`, so ALT `C` (ALT index 2) is `LAD` element 1. A module keeps pointing
+at the global field (`FORMAT/AD`). A consumer whose merged file carries only `LAD` resolves it to `AD`
+through `LAA`, as the spec itself recommends, and applies the rule to that. Applied to `LAD` directly,
+`annotated_alt` reads another allele's depth, well-formed and wrong. A `local_annotated_alt` rule is
+refused: it would make the module describe how the consumer's file was merged (P2).
+
 The reference-inclusion trap is written into the vocabulary rather than left to a footnote. On a
 `Number=R` field the reference is element zero, so "the larger of the two" has two answers; every
 ranging rule therefore comes in a pair — the bare name counts the reference element, the `_alt` name

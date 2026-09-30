@@ -1267,25 +1267,6 @@ the registry tests have to accept a retired, unemitted member. The honest replac
 field the reference record usually leaves missing, is a new code and therefore a minor on `0.8`.
 Whether to build that at all, or only document it, is the call.
 
-## RM316 — the `annotated_alt` element rule counts by ALT position, and VCF 4.5's local-allele fields order their values through `LAA`
-
-**Severity** low (medium for the first module that points at an `A`/`R`/`G` FORMAT field with it) · **Status** open — **a patch** · **Owner** format (`vocab.ELEMENT_RULE_MEANINGS`) + docs (the consumer contract) · **Motivating case** [VCF_4_5_AUDIT § 5](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313
-
-**What 4.5 added.** §1.6.2: `LAA` lists, per sample, which ALT alleles are in play and in what order.
-Every `A`/`R`/`G` FORMAT field has a local equivalent (`LAD`, `LPL`, …) read through it, and a file may
-carry only the local one. In the spec's example, ALT `A,C,T,<*>` with `LAA=2,4` gives `LAD=20,30,10` as
-REF, C, `<*>`.
-
-**What we say.** `annotated_alt` is *"at its index in the record's ALT list, which is element index+1
-on a Number=R field"*. On `LAD`, ALT `C` (index 2) is element 1. A module rightly writes
-`source_field=FORMAT/AD`. A consumer whose merged 4.5 file carries only `LAD`, and falls back to it
-under our sentence, reads the wrong allele's depth: well-formed and wrong.
-
-**The patch (text).** In `annotated_alt`'s meaning and in the consumer contract: resolve a local-allele
-field to its global equivalent through `LAA` before applying any element rule, as §1.6.2 recommends.
-The value-ranging rules survive unchanged. A `local_annotated_alt` rule is refused, because it would
-make the module describe how the consumer's file was merged (P2).
-
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

@@ -41,6 +41,10 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-30 — RM316: a local-allele field is resolved through `LAA` before an element rule applies (patch, on `main`)
+
+**format / docs** — `annotated_alt` is defined by ALT index, and VCF 4.5's local-allele fields (`LAD`, `LPL`, …) order their values by the sample's `LAA` instead. A consumer whose merged file carries only `LAD` would read another allele's depth. The rule's printed meaning and SCHEMAS.md now say to resolve the local field to its global equivalent through `LAA` first, as the spec recommends. Text only; no new rule.
+
 ## 2026-09-30 — RM315: the VCF cardinality table is all of 4.5's reserved keys, so `INFO/RUC` is checked (patch, on `main`)
 
 **format** — `vocab.VCF_FIELD_NUMBER` held only Tables 1 and 2 of VCF 4.4, which left out the keys §3 and §4 reserve, among them `RUC`, the field `binning` names for a repeat count. A `source_field=INFO/RUC` with no element rule therefore drew no warning. The table now transcribes every key VCF 4.5 reserves, and `CICN` joins the INFO/FORMAT collision set. `VCF_NUMBER_MEANINGS` covers 4.5's `LA`, `LR`, `LG` and `M`. **Existing modules may see `vcf_pointer_unselected_element` or `vcf_pointer_key_collision` on pointers that were silent before**, with the same codes as always. None of the shipped examples does.
