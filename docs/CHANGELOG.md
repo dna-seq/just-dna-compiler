@@ -41,6 +41,10 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-30 — RM314: a reference block's extent is read per sample, from FORMAT `LEN` first (patch, on `main`)
+
+**format / docs** — `VariantRow.callable_from`'s description and SCHEMAS.md's VCF-reading contract told a consumer to find a gVCF reference block by INFO `END`. VCF 4.5 made `END` the maximum over every sample's FORMAT `LEN`, so on a multi-sample file it credits one sample's block to another's positions: a confident absence where nobody called. The rule now reads `LEN` first and `END` only where `LEN` is absent, and a `.` GT inside the sample's own earlier block is that block's call. Text only; single-sample and 4.4 files read exactly as before.
+
 ## 2026-09-29 — RM310: a CPIC outage during `cache rebuild` is a failed lane, not a traceback (patch, on `main`)
 
 **enricher** — `caches._rebuild_cpic` now catches `cpic.CpicError`, which `CpicClient` raises on a

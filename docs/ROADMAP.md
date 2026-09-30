@@ -1267,28 +1267,6 @@ the registry tests have to accept a retired, unemitted member. The honest replac
 field the reference record usually leaves missing, is a new code and therefore a minor on `0.8`.
 Whether to build that at all, or only document it, is the call.
 
-## RM314 — the reference-block rule we print reads INFO `END`, which VCF 4.5 made a cross-sample maximum, so a multi-sample file credits one sample's block to another's positions
-
-**Severity** medium · **Status** open — **a patch** · **Owner** format (the `callable_from` description) + docs (SCHEMAS.md, the consumer contract) · **Motivating case** [VCF_4_5_AUDIT § 1](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313
-
-**What 4.5 changed.** §5.5 moves a gVCF reference block's extent to a per-sample FORMAT `LEN`. §1.6.1
-deprecates INFO `END` and, when it is present, makes it *"the maximum end reference position"* over
-every sample's `LEN`. §5.5 also says a position covered by a sample's own earlier `<*>` block carries
-`GT=.` for that sample.
-
-**What we tell consumers.** `VariantRow.callable_from`'s description and SCHEMAS.md's *Reference
-evidence is a block* paragraph say a block is *"one record with END="*, found by interval containment
-on it. In the record `1 100 . A <*> . . END=199 GT:MIN_DP:LEN 0/0:30:100 0/0:30:10`, sample two called
-100–109 only, and our rule credits it with 150. For a `requires_callable` row at 150 that is a
-confident absence nobody screened for: the direction SCHEMAS.md itself calls dangerous. The `GT=.` rule
-errs the safe way, but our text still sends the consumer to the wrong record.
-
-**The patch (text only).** Read the sample's own FORMAT `LEN` first, and `END` only where `LEN` is
-absent (the spec's own fallback). A `.` GT inside that sample's own earlier block is that block's call,
-not a no-call. Update the `callable_from` description, the SCHEMAS.md paragraph and its quoted 4.4
-record, and the consumer contract. No column, no validator: P3 and P8 are not reached. Severity is
-stated for the file the spec permits; no real multi-sample 4.5 file with per-sample `LEN` was measured.
-
 ## RM315 — the VCF reserved-key tables we transcribe miss keys the spec reserves, among them `RUC`, and name no spec version
 
 **Severity** medium · **Status** open — **a patch** · **Owner** format (`vocab.VCF_FIELD_NUMBER`, `VCF_COLLIDING_KEYS`, `VCF_NUMBER_MEANINGS`) + docs · **Motivating case** [VCF_4_5_AUDIT §§ 3–4](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313

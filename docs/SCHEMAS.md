@@ -999,12 +999,23 @@ record, which the compile path will never see, and the same row read against a v
 in the file is legitimate.
 
 **Reference evidence is a block, so callability is interval containment and the depth field is
-`MIN_DP` (RM57).** A gVCF states reference confidence as one record spanning a range (`1 4370 . G <*>
-. . END=4383 GT:DP:GQ:MIN_DP:PL`, §5.5), not one record per base. A consumer joining `callable_from` on
-position equality will find nothing at most covered positions and read it as a no-call. And `DP` on such
-a record is the block *average*: a DP of 25 over 14 bases is compatible with an uncovered base inside
-them, which is precisely the case `requires_callable` exists to catch. `MIN_DP` is the block floor and
-is what a callability threshold should be stated against.
+`MIN_DP` (RM57).** A gVCF states reference confidence as one `<*>` record spanning a range, not one
+record per base. A consumer joining `callable_from` on position equality will find nothing at most
+covered positions and read it as a no-call. And `DP` on such a record is the block *average*: a DP of 25
+over 14 bases is compatible with an uncovered base inside them, which is precisely the case
+`requires_callable` exists to catch. `MIN_DP` is the block floor and is what a callability threshold
+should be stated against.
+
+**A block's extent is per sample: `FORMAT/LEN` first, `INFO/END` only where `LEN` is absent (RM314).**
+VCF 4.5 moved the extent to FORMAT `LEN` (§5.5, Table 2) and made INFO `END` *"the maximum end reference
+position"* over every sample's `LEN` (§1.6.1), keeping END only as the fallback when LEN is missing. In
+`1 100 . A <*> . . END=199 GT:MIN_DP:LEN 0/0:30:100 0/0:30:10`, sample one called 100–199 and sample two
+called 100–109. Read from `END`, sample two is credited with position 150, and a `requires_callable` row
+there reports a confident absence at a position nobody called, the dangerous direction. A single-sample
+gVCF, and every 4.4 file, has `END` equal to the sample's own extent, so the rule changes nothing there.
+§5.5 also sets `GT` to `.` (and drops every other FORMAT field but `LAA`) at a position a sample's own
+earlier `<*>` block already called. A `.` inside that sample's block is the block's call, so the
+evidence to read is the block's, not a no-call.
 
 **A measurement that spans several bins has no state, and the placeholder is to withhold (RM56).**
 `RUC` travels with `CIRUC` and `CN` with `CICN`, and a missing bound on either means *unbounded*
