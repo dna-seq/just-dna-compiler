@@ -152,31 +152,6 @@ Measure against the PureTarget VCFs first. The probe lists them, with FMR1, HTT 
 **Legality.** A contract sentence alone is a patch. A new element rule or pointer shape is a minor. It
 is filed against 0.8 because the RM66 overlap wants one decision.
 
-## RM283 — nothing notices the ClinPGx archive the lane builds from going quiet, which is how it served a fourteen-month-old snapshot
-
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** enricher
-(`clinpgx_build`, its `release.json`) · **Motivating case** RM175's *"that gap is the honest
-remainder"*, left unfiled, found by the 2026-09-27 postmortem sweep (P10) · *related* RM175, RM173,
-`@currency-asks-the-source-not-the-cache`
-
-RM175 found the lane building from `clinicalAnnotations.zip`, retired upstream and frozen on S3 for
-fourteen months while still answering 200. It shipped a narrow guard, refusing the retired member
-names, and listed three wider ones it did not build: audit each default URL against the source's
-listing, record the S3 `Last-Modified` beside `CREATED_*.txt` in `release.json`, and fire when one
-archive of a multi-archive source is much older than its siblings. It closed with *"Nothing built
-here would notice `summaryAnnotations.zip` itself going quiet, and that gap is the honest
-remainder"*, and gave that remainder no number.
-
-**Confirmed on 2026-09-27.** `clinpgx_build` records `CREATED_*.txt` only. It reads no
-`Last-Modified` and compares nothing across archives.
-
-**What to build, cheapest first.** Record `Last-Modified` in `release.json`. That is a new field in a
-published snapshot's description, so it is minor-class. Then a finding that compares it with the
-sibling archives' dates on the same fetch, reporting and never refusing (a source going quiet is not a
-`strict` matter, `@a-source-recuring-is-not-a-strict-matter`). The URL audit needs a browser (RM175's
-trap: every ClinPGx HTML route is a JS shell), so it stays a manual step written into the lane's
-rebuild runbook, not machinery.
-
 ## RM288 — two snapshot builders and the PGx drafter make every caller enumerate their exception family, a question RM101 named and left in a test's exemption block
 
 **Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (a public exception base) ·

@@ -4646,6 +4646,19 @@ is refused with the rename, its date, the retired filename and the URL to use in
 that is neither says *that* instead. `just-dna-enricher clinpgx build` prints the refusal as
 `CLINPGX BUILD FAILED: …` and exits 1.
 
+**A build that downloads also asks how old the archive is against its siblings (RM283, 0.8).** The
+refusal above catches the retired *name*; nothing caught the current archive itself going quiet.
+`probe_archive_dates` sends `HEAD` to the lane's archive and to `SIBLING_ARCHIVES`
+(`variantAnnotations.zip`, `clinicalVariants.zip`, from RM166's inventory) on the same host, following
+the 303 to S3, and `build_snapshot` records every `Last-Modified` in `release.json` under one key,
+`archive_last_modified` (name → ISO date, `null` for an archive whose `HEAD` did not answer). When the
+lane's archive trails the newest sibling by `STALE_AFTER_DAYS` (180) or more, the build logs one warning,
+`cache rebuild` appends it to the lane's detail and `clinpgx build` prints it; it never refuses. A
+sibling that did not answer is named and never treated as old. The date is the S3 object's, so it sits
+beside `dataset` and is never the label, which stays `CREATED_*.txt`. A build from `--zip` asks nobody and
+writes no key. Auditing each default URL against the downloads page stays a manual rebuild step, since
+every ClinPGx HTML route is a JavaScript shell.
+
 Nothing about the table itself moved: the other fourteen columns are identical in name and order, and
 `Phenotype Category` carries the same values with the same `;` separator, so no vocabulary member, no
 model field and no parquet column changed. The **data** moved, which is the point — 16,087 → 16,117
@@ -4863,7 +4876,7 @@ and `EnsemblResolver` are the latter, and are exempt from the contract suite for
 | `gene_validity` | `GeneValidityError` | `GeneValidityUnavailable` |
 | `gwas` | `GwasError` | `GwasNotFound` |
 | `identifiers` | `IdentifierCheckError` | `IdentifierUnavailable` |
-| `literature` | `LiteratureEnrichmentError` | `LiteratureUnavailable` |
+| `literature` | `LiteratureEnrichmentError` | `LiteratureUnavailable`, `FulltextUnavailable` (RM258: the fulltext clients' unanswered request) |
 | `litvar` | `LitvarError` | `LitvarUnavailable` |
 | `mitomap` | `MitomapError` | `MitomapUnavailable` |
 | `pgx` | `PgxEnrichmentError` | — |

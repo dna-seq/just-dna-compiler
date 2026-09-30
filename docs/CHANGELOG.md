@@ -41,6 +41,13 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-30 — RM283: a ClinPGx build says when its archive has gone quiet (0.8, uncut)
+
+**enricher** — A ClinPGx build that downloads now `HEAD`s its archive and two sibling archives, records
+their `Last-Modified` in `release.json` as `archive_last_modified`, and warns (never refuses) when the
+lane's archive is 180 days or more behind the newest sibling. RM175's incident, a fourteen-month-old
+archive still answering 200, would have been named on the first build.
+
 ## 2026-09-30 — RM263: a DOI's PMID, through Europe PMC (0.8, uncut)
 
 **enricher** — `lookup_citation(doi=…)` / `hint citation --doi` with no PMID now asks Europe PMC which

@@ -25,6 +25,7 @@ import re
 import zipfile
 from pathlib import Path
 
+import httpx
 import polars as pl
 import pytest
 from just_dna_enricher.clinpgx import (
@@ -36,11 +37,15 @@ from just_dna_enricher.clinpgx import (
 from just_dna_enricher.clinpgx_build import (
     CURRENT_ARCHIVE,
     RETIRED_ARCHIVE,
+    SIBLING_ARCHIVES,
+    STALE_AFTER_DAYS,
     ArchiveVintage,
     ClinPgxArchiveError,
     build_snapshot,
+    probe_archive_dates,
     read_created_date,
     read_license,
+    staleness_finding,
 )
 from just_dna_enricher.licensing import LicenseRefusal
 from just_dna_format import verification as verification_module
@@ -602,3 +607,92 @@ def test_each_withheld_code_has_its_own_sentence() -> None:
     }
     assert len(set(texts.values())) == len(VALID_CLINPGX_WITHHELD_CODES) == 2
     assert all("strict does not refuse" in text for text in texts.values())
+
+
+# ── RM283: when the archive the lane builds from has gone quiet ──────────────────────────────────
+
+
+def _heads(stamps: dict[str, object]) -> httpx.Client:
+    """A client answering `HEAD <name>` from `stamps`: a date string is its `Last-Modified`, `None` a
+    200 with no header, an int that status, and an exception class is raised as a transport failure."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        name = request.url.path.rsplit("/", 1)[-1]
+        answer = stamps[name]
+        if isinstance(answer, type) and issubclass(answer, Exception):
+            raise answer("egress down", request=request)
+        if isinstance(answer, int):
+            return httpx.Response(answer)
+        headers = {"last-modified": answer} if answer else {}
+        return httpx.Response(200, headers=headers)
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+_FRESH = "Sat, 05 Sep 2026 08:12:33 GMT"
+
+
+def test_a_fresh_lane_records_every_date_and_says_nothing(tmp_path: Path) -> None:
+    dates = probe_archive_dates(
+        _heads({CURRENT_ARCHIVE.archive: _FRESH, **dict.fromkeys(SIBLING_ARCHIVES, _FRESH)})
+    )
+    result = build_snapshot(_archive(tmp_path), tmp_path / "out", archive_dates=dates)
+    release = json.loads((tmp_path / "out" / "release.json").read_text())
+    assert release["archive_last_modified"] == dict.fromkeys(
+        (CURRENT_ARCHIVE.archive, *SIBLING_ARCHIVES), "2026-09-05T08:12:33Z"
+    )
+    assert release["dataset"].startswith("clinpgx")  # the label is still the CREATED_ date, not a header
+    assert result.staleness is None
+
+
+def test_a_lane_181_days_behind_its_newest_sibling_is_named(tmp_path: Path) -> None:
+    stamps = {
+        CURRENT_ARCHIVE.archive: "Mon, 06 Mar 2026 08:00:00 GMT",
+        **dict.fromkeys(SIBLING_ARCHIVES, _FRESH),
+    }
+    result = build_snapshot(
+        _archive(tmp_path), tmp_path / "out", archive_dates=probe_archive_dates(_heads(stamps))
+    )
+    assert result.staleness is not None
+    days = int(re.search(r"(\d+) days before", result.staleness).group(1))
+    assert days >= STALE_AFTER_DAYS
+
+
+def test_rm175s_real_incident_is_the_named_fixture() -> None:
+    """The retired `clinicalAnnotations.zip` as S3 served it on 2026-09-30: last written 2025-07-05,
+    against siblings rebuilt 2026-09-05. Fourteen months, and nothing said so until RM283."""
+    stamps = {
+        "clinicalAnnotations.zip": "Sat, 05 Jul 2025 07:31:53 GMT",
+        "variantAnnotations.zip": "Sat, 05 Sep 2026 08:14:03 GMT",
+        "clinicalVariants.zip": "Sat, 05 Sep 2026 07:31:23 GMT",
+    }
+    finding = staleness_finding(probe_archive_dates(_heads(stamps), lane="clinicalAnnotations.zip"))
+    assert finding is not None
+    assert (
+        "clinicalAnnotations.zip was last written 2025-07-05, 427 days before variantAnnotations.zip"
+        in finding
+    )
+
+
+def test_a_sibling_that_does_not_answer_is_named_and_never_aged() -> None:
+    stamps = {
+        CURRENT_ARCHIVE.archive: "Mon, 06 Mar 2026 08:00:00 GMT",
+        SIBLING_ARCHIVES[0]: httpx.ConnectError,
+        SIBLING_ARCHIVES[1]: _FRESH,
+    }
+    dates = probe_archive_dates(_heads(stamps))
+    assert dates.unanswered == [SIBLING_ARCHIVES[0]]
+    finding = staleness_finding(dates)
+    assert finding is not None and f"Not asked: {SIBLING_ARCHIVES[0]}" in finding
+
+
+def test_a_sibling_missing_its_header_or_failing_leaves_nothing_to_compare() -> None:
+    stamps = {CURRENT_ARCHIVE.archive: _FRESH, SIBLING_ARCHIVES[0]: None, SIBLING_ARCHIVES[1]: 503}
+    dates = probe_archive_dates(_heads(stamps))
+    assert dates.unanswered == sorted(SIBLING_ARCHIVES)
+    assert staleness_finding(dates) is None  # withheld, not fresh
+
+
+def test_a_build_from_a_local_archive_records_no_dates(tmp_path: Path) -> None:
+    build_snapshot(_archive(tmp_path), tmp_path / "out")
+    assert "archive_last_modified" not in json.loads((tmp_path / "out" / "release.json").read_text())

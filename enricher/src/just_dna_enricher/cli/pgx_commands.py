@@ -14,8 +14,10 @@ from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, enrich_clinpgx
 from just_dna_enricher.clinpgx_build import (
     CURRENT_ARCHIVE,
     DEFAULT_CLINPGX_URL,
+    ArchiveDates,
     ClinPgxArchiveError,
     download_clinpgx_zip,
+    probe_archive_dates,
 )
 from just_dna_enricher.clinpgx_build import build_snapshot as build_clinpgx_snapshot
 from just_dna_enricher.clinpgx_draft import draft_pharm_variants
@@ -78,13 +80,18 @@ def clinpgx_build_(
         typer.secho(f"SKIPPED: {reason}", fg=typer.colors.YELLOW, err=True)
         raise typer.Exit(code=1)
     source_sha: str | None = None
+    dates: ArchiveDates | None = None
     try:
         if zip_path is None:
             # Named for what `--url` actually points at, so a mirror or a retired name is visible on
             # disk rather than filed under whatever this lane used to download.
             filename = Path(urlparse(url).path).name or CURRENT_ARCHIVE.archive
             zip_path, source_sha = download_clinpgx_zip(Path(out_dir) / filename, url)
-        result = build_clinpgx_snapshot(zip_path, out_dir, source_url=url, source_sha256=source_sha)
+            # RM283: the downloaded archive's `Last-Modified` against its siblings'. Report-only.
+            dates = probe_archive_dates(lane=filename)
+        result = build_clinpgx_snapshot(
+            zip_path, out_dir, source_url=url, source_sha256=source_sha, archive_dates=dates
+        )
     except (ClinPgxArchiveError, OSError) as exc:
         typer.secho(f"CLINPGX BUILD FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
@@ -94,6 +101,8 @@ def clinpgx_build_(
         f"genes: {len(result.genes)}  release: {result.created_date}"
     )
     typer.echo(f"licence pinned: {result.license_sha256}")
+    if result.staleness:
+        typer.secho(f"warning: {result.staleness}", fg=typer.colors.YELLOW, err=True)
 
 
 @clinpgx_app.command("check")

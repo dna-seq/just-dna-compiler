@@ -35,6 +35,44 @@ up.
 The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on
 the `0.8` branch in the proposal's order. Newest first.
 
+## RM283 — nothing notices the ClinPGx archive the lane builds from going quiet, which is how it served a fourteen-month-old snapshot
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** enricher
+(`clinpgx_build`, its `release.json`) · **Motivating case** RM175's *"that gap is the honest
+remainder"*, left unfiled, found by the 2026-09-27 postmortem sweep (P10) · *related* RM175, RM173,
+`@currency-asks-the-source-not-the-cache`
+
+**Residuals** won't fix — the URL audit needs a browser, because every ClinPGx HTML route is a JavaScript shell, so it stays a manual rebuild step
+
+RM175 found the lane building from `clinicalAnnotations.zip`, retired upstream and frozen on S3 for
+fourteen months while still answering 200. It shipped a narrow guard, refusing the retired member
+names, and listed three wider ones it did not build: audit each default URL against the source's
+listing, record the S3 `Last-Modified` beside `CREATED_*.txt` in `release.json`, and fire when one
+archive of a multi-archive source is much older than its siblings. It closed with *"Nothing built
+here would notice `summaryAnnotations.zip` itself going quiet, and that gap is the honest
+remainder"*, and gave that remainder no number.
+
+**Confirmed on 2026-09-27.** `clinpgx_build` records `CREATED_*.txt` only. It reads no
+`Last-Modified` and compares nothing across archives.
+
+**What to build, cheapest first.** Record `Last-Modified` in `release.json`. That is a new field in a
+published snapshot's description, so it is minor-class. Then a finding that compares it with the
+sibling archives' dates on the same fetch, reporting and never refusing (a source going quiet is not a
+`strict` matter, `@a-source-recuring-is-not-a-strict-matter`). The URL audit needs a browser (RM175's
+trap: every ClinPGx HTML route is a JS shell), so it stays a manual step written into the lane's
+rebuild runbook, not machinery.
+
+**What shipped.** `clinpgx_build.probe_archive_dates` (`HEAD` the lane's archive and
+`SIBLING_ARCHIVES`, following the 303, reading `Last-Modified`; every failure leg leaves that archive
+`None`, since the probe gates nothing) and `staleness_finding` (a sentence at `STALE_AFTER_DAYS` = 180 or
+more behind the newest known sibling, naming any sibling not asked; withheld when there is nothing to
+compare). `build_snapshot(archive_dates=…)` writes one key, `archive_last_modified`, beside `dataset`
+and never as it, and returns the dates and the sentence on the result. The two download paths
+(`cache rebuild` and `clinpgx build`) probe after downloading; a build from a local archive writes no
+key. Tests with stubbed `HEAD`s: fresh, 181 days behind, a sibling missing its header, a sibling that
+fails, a build that asked nobody, and RM175's incident as the named fixture — the dates S3 served on
+2026-09-30, `clinicalAnnotations.zip` 2025-07-05 against `variantAnnotations.zip` 2026-09-05, 427 days.
+
 ## RM263 — a DOI has no route to its PMID, although `StudyRow.pmid` is the required half
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** enricher (`lookup`,

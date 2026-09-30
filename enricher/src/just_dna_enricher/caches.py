@@ -437,16 +437,21 @@ def _rebuild_clinpgx(request: RebuildRequest) -> RebuildOutcome:
     request.out_dir.mkdir(parents=True, exist_ok=True)
     try:
         sha: str | None = None
+        dates: clinpgx_build.ArchiveDates | None = None
         archive = request.source
         if archive is None:
             archive, sha = clinpgx_build.download_clinpgx_zip(
                 request.out_dir / clinpgx_build.CURRENT_ARCHIVE.archive
             )
+            # RM283: on the same fetch, how the archive's age compares with its siblings'. A build
+            # from a local archive asked nobody, so it records nothing.
+            dates = clinpgx_build.probe_archive_dates()
         result = clinpgx_build.build_snapshot(
             archive,
             request.out_dir,
             source_url=clinpgx_build.DEFAULT_CLINPGX_URL,
             source_sha256=sha,
+            archive_dates=dates,
         )
     except (clinpgx_build.ClinPgxArchiveError, ImportError, OSError) as exc:
         return RebuildOutcome("clinpgx", False, str(exc))
@@ -454,7 +459,7 @@ def _rebuild_clinpgx(request: RebuildRequest) -> RebuildOutcome:
         "clinpgx",
         True,
         f"{result.annotation_count} annotations over {len(result.genes)} genes, "
-        f"release {result.created_date}",
+        f"release {result.created_date}" + (f"; {result.staleness}" if result.staleness else ""),
         result.parquet_path.parent.parent,
     )
 
