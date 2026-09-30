@@ -51,7 +51,6 @@ from just_dna_enricher import (
     clinpgx_build,
     clinvar_build,
     constraint_build,
-    cpic,
     cpic_build,
     drug_labels_build,
     mane_build,
@@ -470,9 +469,8 @@ def _rebuild_cpic(request: RebuildRequest) -> RebuildOutcome:
         return refused
     try:
         result = cpic_build.build_snapshot(request.out_dir)
-    # `CpicError` is the client's transport/5xx type and `cpic_build` does not translate it, so it is
-    # named here as the CLI's `cpic build` names it (RM310). Which side should own this list is RM288.
-    except (cpic.CpicError, cpic_build.CpicBuildError, ImportError, OSError) as exc:
+    # The builder owns its error family (RM288); RM310 was this list, spelled here, missing one member.
+    except cpic_build.ERRORS as exc:
         return RebuildOutcome("cpic", False, str(exc))
     return RebuildOutcome(
         "cpic",
@@ -508,7 +506,7 @@ def _rebuild_pharmvar(request: RebuildRequest) -> RebuildOutcome:
         )
     try:
         result = pharmvar_build.build_snapshot(request.out_dir)
-    except (ImportError, OSError, pharmvar.PharmVarError) as exc:
+    except pharmvar_build.ERRORS as exc:
         return RebuildOutcome("pharmvar", False, str(exc))
     return RebuildOutcome(
         "pharmvar",

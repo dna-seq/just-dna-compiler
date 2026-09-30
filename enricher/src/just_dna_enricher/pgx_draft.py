@@ -31,7 +31,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from just_dna_compiler.draft import DraftReport, append_rows
+from just_dna_compiler.draft import DraftError, DraftReport, append_rows
 from just_dna_format.pgx import STAR_ALLELE_PATTERN, AlleleFunctionRow, DiplotypeRow, HaplotypeRow
 
 from just_dna_enricher.cpic import (
@@ -42,12 +42,24 @@ from just_dna_enricher.cpic import (
     CpicSnapshotClient,
 )
 from just_dna_enricher.drafting import DRAFT_PROVIDERS, licence_commit, record_draft_provenance
-from just_dna_enricher.enrich import source_build_mismatch
-from just_dna_enricher.licensing import CPIC_TERMS, check_declared_use, effective_declared_use
+from just_dna_enricher.enrich import EnrichmentError, source_build_mismatch
+from just_dna_enricher.licensing import CPIC_TERMS, LicenseRefusal, check_declared_use, effective_declared_use
 from just_dna_enricher.locations import resolve_cpic_reference
 
 #: This provider's registry entry (RM228).
 _PROVIDER = DRAFT_PROVIDERS["cpic"]
+
+#: **A callee-owned tuple, not a base class and not a list at each call site (RM288).** A base class
+#: makes a caller's `except` order load-bearing (`@client-exception-contract`), and a list spelled at
+#: every call site drifts: `caches._rebuild_cpic` named `CpicBuildError` and forgot `CpicError`, so a
+#: CPIC outage escaped `cache rebuild` (RM310). The surface owns the list here, and a caller writes
+#: `except <module>.ERRORS`, so the order of the members does not matter and a new one reaches every
+#: caller. A test drives the surface and asserts everything it raises is a member.
+#: `CpicError` from the client; `DraftError` from appending rows; `EnrichmentError` from
+#: `source_build_mismatch` on an unreadable `module_spec.yaml`; `LicenseRefusal` when the declared use
+#: is one CPIC's terms forbid (it escaped `draft --use commercial` as a traceback before); `OSError`
+#: writing the tables.
+ERRORS: tuple[type[Exception], ...] = (CpicError, DraftError, EnrichmentError, LicenseRefusal, OSError)
 
 #: The assembly CPIC's `sequence_location.position` is on — probed, not assumed: `rs1799853` is
 #: `10:94942290` there, which is its GRCh38 position (GRCh37 is `10:96702047`). Named for the reason

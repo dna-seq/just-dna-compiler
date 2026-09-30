@@ -40,7 +40,7 @@ from typing import Any
 from just_dna_format.layout import atomic_write_text
 from just_dna_format.normalize import now_utc_iso
 
-from just_dna_enricher.cpic import DEFAULT_CPIC_ENDPOINT, CpicClient, normalize_chrom
+from just_dna_enricher.cpic import DEFAULT_CPIC_ENDPOINT, CpicClient, CpicError, normalize_chrom
 from just_dna_enricher.locations import RELEASE_FILENAME, SNAPSHOT_DATA_DIRNAME
 
 try:  # the one guarded optional import (CLAUDE.md): polars is builder-only ([dev] extra)
@@ -61,6 +61,17 @@ RECOMMENDATIONS_PARQUET = "recommendations.parquet"
 
 class CpicBuildError(RuntimeError):
     """The CPIC snapshot could not be built."""
+
+
+#: **A callee-owned tuple, not a base class and not a list at each call site (RM288).** A base class
+#: makes a caller's `except` order load-bearing (`@client-exception-contract`), and a list spelled at
+#: every call site drifts: `caches._rebuild_cpic` named `CpicBuildError` and forgot `CpicError`, so a
+#: CPIC outage escaped `cache rebuild` (RM310). The surface owns the list here, and a caller writes
+#: `except <module>.ERRORS`, so the order of the members does not matter and a new one reaches every
+#: caller. A test drives the surface and asserts everything it raises is a member.
+#: `CpicError` is the client's transport/5xx type, which this builder does not translate; `ImportError`
+#: is the missing `[dev]` polars; `OSError` is writing the snapshot.
+ERRORS: tuple[type[Exception], ...] = (CpicError, CpicBuildError, ImportError, OSError)
 
 
 @dataclass

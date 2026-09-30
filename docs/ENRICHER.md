@@ -4882,6 +4882,13 @@ and `EnsemblResolver` are the latter, and are exempt from the contract suite for
 | `pgx` | `PgxEnrichmentError` | — |
 | `strchive` | `StrchiveError` | `StrchiveUnavailable` |
 
+**Three surfaces raise a declared family instead of one type (RM288, 0.8).** `cpic_build.ERRORS`,
+`pharmvar_build.ERRORS` and `pgx_draft.ERRORS` are tuples the surface owns, and a caller writes
+`except cpic_build.ERRORS` (and so on) rather than listing the members, so a new member reaches every
+caller and `except` order never matters. RM310 was the list shape failing: `cache rebuild` named
+`CpicBuildError` and not `CpicError`. `pgx_draft.ERRORS` includes `LicenseRefusal`, which used to escape
+`draft --use commercial` as a traceback.
+
 **Clients — the transport layer, which a consumer calling a pass never meets**
 
 | module | base type | narrowed by |

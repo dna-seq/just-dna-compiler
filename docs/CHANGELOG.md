@@ -41,6 +41,13 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-30 — RM288: the CPIC and PharmVar builders and the PGx drafter export their error families (0.8, uncut)
+
+**enricher** — `cpic_build.ERRORS`, `pharmvar_build.ERRORS` and `pgx_draft.ERRORS` are callee-owned
+tuples of every type each surface raises, and every caller in the tier catches `<module>.ERRORS` instead
+of spelling its own list (RM310 was such a list missing one member). An AST test refuses a caller that
+spells the list. `draft --use commercial` against CPIC now prints `DRAFT FAILED` instead of a traceback.
+
 ## 2026-09-30 — RM283: a ClinPGx build says when its archive has gone quiet (0.8, uncut)
 
 **enricher** — A ClinPGx build that downloads now `HEAD`s its archive and two sibling archives, records

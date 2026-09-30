@@ -8,8 +8,8 @@ import typer
 from just_dna_compiler.draft import DraftError, authoring_requirements, blank_template
 from just_dna_format.manifest import VerificationRecord
 
-from just_dna_enricher.cli._shared import _DRAFT_PRECONDITION_ERRORS, _attest_on_the_way_out, _use, app
-from just_dna_enricher.cpic import CpicError
+from just_dna_enricher import pgx_draft
+from just_dna_enricher.cli._shared import _attest_on_the_way_out, _use, app
 from just_dna_enricher.enrich import EnrichmentError
 from just_dna_enricher.identifiers import IdentifierCheckError, IdentifierUnavailable, check_identifiers
 from just_dna_enricher.identifiers import pgs_withheld_sentences as identifier_pgs_withheld
@@ -92,7 +92,7 @@ def draft_(
                 offline=offline,
                 cpic_cache=cpic_cache,
             )
-        except (CpicError, *_DRAFT_PRECONDITION_ERRORS) as exc:
+        except pgx_draft.ERRORS as exc:
             typer.secho(f"DRAFT FAILED ({name}): {exc}", fg=typer.colors.RED, err=True)
             raise typer.Exit(code=1) from exc
         if result.skipped:

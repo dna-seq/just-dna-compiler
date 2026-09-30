@@ -9,6 +9,7 @@ import typer
 from just_dna_compiler.draft import DraftError
 from just_dna_format.vocab import VALID_DECLARED_USE
 
+from just_dna_enricher import cpic_build, pharmvar_build
 from just_dna_enricher.cli._shared import _mode, _use, app
 from just_dna_enricher.clinpgx import ClinPgxEnrichmentError, enrich_clinpgx
 from just_dna_enricher.clinpgx_build import (
@@ -21,8 +22,7 @@ from just_dna_enricher.clinpgx_build import (
 )
 from just_dna_enricher.clinpgx_build import build_snapshot as build_clinpgx_snapshot
 from just_dna_enricher.clinpgx_draft import draft_pharm_variants
-from just_dna_enricher.cpic import DEFAULT_CPIC_ENDPOINT, CpicError
-from just_dna_enricher.cpic_build import CpicBuildError
+from just_dna_enricher.cpic import DEFAULT_CPIC_ENDPOINT
 from just_dna_enricher.cpic_build import build_snapshot as build_cpic_snapshot
 from just_dna_enricher.drug_labels import (
     DEFAULT_DRUG_LABELS_URL,
@@ -38,7 +38,6 @@ from just_dna_enricher.licensing import (
     check_declared_use,
 )
 from just_dna_enricher.locations import SNAPSHOT_LICENSE_FILENAME, repro_out
-from just_dna_enricher.pharmvar import PharmVarError
 from just_dna_enricher.pharmvar_build import build_snapshot as build_pharmvar_snapshot
 from just_dna_enricher.upload import (
     DEFAULT_CLINPGX_REPO_ID,
@@ -192,7 +191,7 @@ def cpic_build_(
         raise typer.Exit(code=1)
     try:
         result = build_cpic_snapshot(out_dir, endpoint=endpoint)
-    except (CpicError, CpicBuildError) as exc:
+    except cpic_build.ERRORS as exc:
         typer.secho(f"CPIC BUILD FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     typer.secho(f"cpic snapshot: {result.out_dir / 'data'}", fg=typer.colors.GREEN)
@@ -304,7 +303,7 @@ def pharmvar_build_(
         raise typer.Exit(code=1)
     try:
         result = build_pharmvar_snapshot(out_dir)
-    except PharmVarError as exc:
+    except pharmvar_build.ERRORS as exc:
         typer.secho(f"PHARMVAR BUILD FAILED: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
     typer.secho(f"pharmvar snapshot: {result.out_dir / 'data'}", fg=typer.colors.GREEN)

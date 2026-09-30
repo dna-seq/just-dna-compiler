@@ -51,6 +51,17 @@ ALLELES_PARQUET = "alleles.parquet"
 VARIANTS_PARQUET = "variants.parquet"
 
 
+#: **A callee-owned tuple, not a base class and not a list at each call site (RM288).** A base class
+#: makes a caller's `except` order load-bearing (`@client-exception-contract`), and a list spelled at
+#: every call site drifts: `caches._rebuild_cpic` named `CpicBuildError` and forgot `CpicError`, so a
+#: CPIC outage escaped `cache rebuild` (RM310). The surface owns the list here, and a caller writes
+#: `except <module>.ERRORS`, so the order of the members does not matter and a new one reaches every
+#: caller. A test drives the surface and asserts everything it raises is a member.
+#: `PharmVarError` covers the client (a missing key, an outage) and the builder's own refusals;
+#: `ImportError` is the missing `[dev]` polars; `OSError` is writing the snapshot.
+ERRORS: tuple[type[Exception], ...] = (PharmVarError, ImportError, OSError)
+
+
 @dataclass
 class PharmVarBuildResult:
     out_dir: Path

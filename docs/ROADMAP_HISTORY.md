@@ -35,6 +35,54 @@ up.
 The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on
 the `0.8` branch in the proposal's order. Newest first.
 
+## RM288 — two snapshot builders and the PGx drafter make every caller enumerate their exception family, a question RM101 named and left in a test's exemption block
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (a public exception base) ·
+**Owner** enricher (`cpic_build`, `pharmvar_build`, `pgx_draft`) · **Motivating case** RM101's
+exemption block in `enricher/tests/test_pass_exception_contract.py`, *"a real question and a wider one
+than this item"*, found unhomed by the 2026-09-27 postmortem sweep (P14) · *related* RM101, RM96,
+`@client-exception-contract`
+
+**Residuals** none
+
+RM101 made every enrichment pass raise one documented type. It exempted `cpic_build.build_snapshot`,
+`pharmvar_build.build_snapshot` and `pgx_draft.draft_gene` by name. Their callers spell the family out
+(`except (CpicError, CpicBuildError)`, `except (CpicError, *_DRAFT_PRECONDITION_ERRORS)`). That works,
+but it is the *list* shape: a caller has to know which types to name, which is the drift RM96 was the
+lesson for. The only record of the question is the comment in the test's `exempt` set.
+
+**Confirmed on 2026-09-27.** The three entries are still exempt, and no ROADMAP file names the
+question.
+
+**What to decide.** Whether each surface gets one catchable base (a subclass relation over the existing
+types, which makes a caller's `except` order load-bearing: `@client-exception-contract`'s AST guard
+applies), or whether the list shape is kept on purpose and the exemption comment is rewritten as a
+decision rather than a deferral. A new public exception base is new surface, so building it is a minor.
+
+**The first incident, 2026-09-29: RM310.** `caches._rebuild_cpic` named one of CPIC's two error types
+and a 503 escaped `cache rebuild`. RM310 patched that one list and left the mechanism here.
+
+**What shipped.** The entry's second option, decided by PT1: a callee-owned tuple. `cpic_build.ERRORS`
+= `(CpicError, CpicBuildError, ImportError, OSError)`, `pharmvar_build.ERRORS` = `(PharmVarError,
+ImportError, OSError)`, `pgx_draft.ERRORS` = `(CpicError, DraftError, EnrichmentError, LicenseRefusal,
+OSError)`, each beside a comment saying why it is a tuple. Every caller now catches the module's tuple:
+`caches._rebuild_cpic`/`_rebuild_pharmvar`, the `cpic build`/`pharmvar build` commands and `draft`. The
+CLI's shared `_DRAFT_PRECONDITION_ERRORS` stays, since the CIViC drafter uses it too, and
+`pgx_draft.ERRORS` names those two members itself.
+
+**Found while building, and the same item:** `draft_gene` raises `LicenseRefusal` on a commercial
+declaration, and the `draft` command's list did not name it, so `draft --use commercial` escaped as a
+traceback. The tuple includes it because the surface raises it, which is what the stub test asserts.
+
+**Tests.** `test_builder_error_families.py`: an AST walk finds every `try` whose body calls one of the
+three surfaces (by module attribute or imported alias) and asserts a handler catches that module's
+`ERRORS`; a second walk refuses `CpicBuildError` named bare anywhere but its own module. A mutation run
+(the cache adapter's handler put back to a spelled list) fails both. Each surface is then driven through
+its real code with stubs, and everything it raised is a member of its tuple: CPIC's 503, PharmVar with no
+key, and the drafter's licence refusal, unreadable build declaration and client outage. The three stay
+in `test_pass_exception_contract.py`'s exempt set, with the comment rewritten as this decision.
+RM310's `CACHE_LANES` walk stays green.
+
 ## RM283 — nothing notices the ClinPGx archive the lane builds from going quiet, which is how it served a fourteen-month-old snapshot
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** enricher

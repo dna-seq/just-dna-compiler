@@ -152,31 +152,6 @@ Measure against the PureTarget VCFs first. The probe lists them, with FMR1, HTT 
 **Legality.** A contract sentence alone is a patch. A new element rule or pointer shape is a minor. It
 is filed against 0.8 because the RM66 overlap wants one decision.
 
-## RM288 — two snapshot builders and the PGx drafter make every caller enumerate their exception family, a question RM101 named and left in a test's exemption block
-
-**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (a public exception base) ·
-**Owner** enricher (`cpic_build`, `pharmvar_build`, `pgx_draft`) · **Motivating case** RM101's
-exemption block in `enricher/tests/test_pass_exception_contract.py`, *"a real question and a wider one
-than this item"*, found unhomed by the 2026-09-27 postmortem sweep (P14) · *related* RM101, RM96,
-`@client-exception-contract`
-
-RM101 made every enrichment pass raise one documented type. It exempted `cpic_build.build_snapshot`,
-`pharmvar_build.build_snapshot` and `pgx_draft.draft_gene` by name. Their callers spell the family out
-(`except (CpicError, CpicBuildError)`, `except (CpicError, *_DRAFT_PRECONDITION_ERRORS)`). That works,
-but it is the *list* shape: a caller has to know which types to name, which is the drift RM96 was the
-lesson for. The only record of the question is the comment in the test's `exempt` set.
-
-**Confirmed on 2026-09-27.** The three entries are still exempt, and no ROADMAP file names the
-question.
-
-**What to decide.** Whether each surface gets one catchable base (a subclass relation over the existing
-types, which makes a caller's `except` order load-bearing: `@client-exception-contract`'s AST guard
-applies), or whether the list shape is kept on purpose and the exemption comment is rewritten as a
-decision rather than a deferral. A new public exception base is new surface, so building it is a minor.
-
-**The first incident, 2026-09-29: RM310.** `caches._rebuild_cpic` named one of CPIC's two error types
-and a 503 escaped `cache rebuild`. RM310 patched that one list and left the mechanism here.
-
 ## RM303 — the snapshot layout is a contract with six parties and no model, so it belongs in `just-dna-format`
 
 **Severity** medium · **Status** open — filed 2026-09-28 at the maintainer's request, **taken into

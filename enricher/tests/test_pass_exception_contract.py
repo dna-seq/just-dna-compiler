@@ -294,14 +294,13 @@ def test_every_pass_taking_an_injected_client_is_covered() -> None:
         # exception for these two to translate, and asserting a type would assert the wrong contract.
         "grch37.recover_rsid",
         "grch37.diagnose_wrong_build",
-        # Snapshot builders and the drafting surface rather than enrichment passes, and each caller
-        # already spells the several types out: `except (CpicError, CpicBuildError)`,
-        # `except PharmVarError`, `except (CpicError, *_DRAFT_PRECONDITION_ERRORS)`. Those work
-        # today, and they are the *list* shape rather than the type shape — a caller has to know
-        # which four to name, which is the drift the report argued against and RM96 is the lesson
-        # for. Left alone here on purpose: it is a real question and a wider one than this item,
-        # which is about passes whose documented type was silently wrong, not about callers who
-        # correctly enumerate a family. Filed as RM288 (2026-09-27).
+        # Snapshot builders and the drafting surface rather than enrichment passes, and **decided by
+        # RM288 (0.8) to raise a declared family rather than one type**. Each exports it as `ERRORS`, a
+        # callee-owned tuple, and every caller writes `except <module>.ERRORS`: no base class, which
+        # would make `except` order load-bearing, and no list at the call site, which drifted into
+        # RM310. That is a different contract from the one this test asserts, so the three stay
+        # exempt here and `test_builder_error_families.py` asserts theirs: every caller catches the
+        # tuple (an AST walk), and each surface raises only its members (driven with stubs).
         "cpic_build.build_snapshot",
         "pharmvar_build.build_snapshot",
         "pgx_draft.draft_gene",
@@ -331,6 +330,11 @@ def test_every_pass_taking_an_injected_client_is_covered() -> None:
         # status code — *not* in `test_client_exception_contract.py`, which this comment named for a
         # day and which has never held an Atlas case: that file walks the httpx clients.
         "alphagenome_check.check_variant_impact",
+        # RM283. Raises nothing by design, like the two `grch37` entries: every `HEAD` that fails, for
+        # any reason, leaves that archive's date `None`, which `staleness_finding` reads as
+        # could-not-ask rather than old. The probe gates nothing, so it may not cost a build its
+        # snapshot, and there is no failure for a caller to catch.
+        "clinpgx_build.probe_archive_dates",
     }
     uncovered = discovered - covered
     assert uncovered == exempt, sorted(uncovered.symmetric_difference(exempt))
