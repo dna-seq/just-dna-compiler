@@ -90,6 +90,8 @@ just-dna-compiler compile ./my_module ./out
 | `--compression` | parquet codec, default `zstd`. Changes `artifact.digest`, never `content_signature` |
 | `--compiled-by` | the provenance tag `verify` checks by default (e.g. `marketplace-server`) |
 | `--strip-identity` / `--authority-key` | drop authority-owned identity keys on the way out |
+| `--ensembl-reference` | record which reference the resolution table came from, in `manifest.compilation.ensembl_reference` (since 0.8) |
+| `--ba1-threshold` | the allele frequency above which a pathogenic row draws the ACMG BA1 warning, default `0.05` (since 0.8) |
 
 The compiler **never reaches the network**. Every coordinate it did not get from you
 came out of the injected `resolution.csv`; with nothing injected it skips resolution and says so in a

@@ -35,6 +35,36 @@ up.
 The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on
 the `0.8` branch in the proposal's order. Newest first.
 
+## RM278 — the `compile` command cannot pass `ensembl_reference` or `ba1_threshold`, so every CLI-compiled manifest has a null `ensembl_reference`
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** compiler (`cli.py`
+`compile`) · **Motivating case** RM218's *surfaced, not fixed* (§13.8), which left the question open
+and tracked nowhere, found by the 2026-09-27 postmortem sweep (P6) · *related* RM218
+
+**Residuals** none
+
+**Confirmed on 2026-09-27.** `compile_module` takes `ensembl_reference` and `ba1_threshold`, and
+`just-dna-compiler compile --help` offers neither. So
+`manifest.compilation.ensembl_reference` cannot be stamped by the shipped command, and a module
+compiled through the CLI records no reference, whatever it was resolved against. `ba1_threshold` is
+the ACMG BA1 cutoff its own docstring says a carrier-allele module would want to move. COMPILER.md
+states the gap and `test_cli_parity.py` does not assert compile-flag parity, so nothing will move it.
+
+**Why a minor, not a patch.** Two new CLI options are new public surface, and `main` takes none
+(the RM268 fix-forward). The decision is small: add both, or say in COMPILER.md why the CLI
+deliberately stays narrower than the API. Either way, extend `test_cli_parity.py` to assert the
+decided set, so the next parameter cannot drift in unweighed.
+
+**What shipped.** Both options, passed straight through: `--ensembl-reference` (a string, as
+`compile_module` takes it) and `--ba1-threshold` (a float defaulting to the API's
+`BA1_ALLELE_FREQUENCY_THRESHOLD`). `test_cli_parity.py` asserts the `compile` command's options, with
+three renames mapped (`resolve`, `strip_identity`, `authority_key`), equal `compile_module`'s
+parameters minus `log_files`, `provenance_file`, `logo_file` and `readme_file`, each declared with its
+reason: they are auto-discovered beside the spec, so an explicit path is an API-only override. A CLI
+compile with `--ensembl-reference ensembl-115` stamps it into the manifest, and a non-numeric threshold
+is refused. COMPILER.md's gap paragraph, which sat in the middle of the command table, is replaced by
+the decision below the table, and the COMPILING guide lists both flags.
+
 ## RM300 — the manifest cannot say how many rows are pathogenic, only how many carry the folded flag
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (new optional manifest fields) ·

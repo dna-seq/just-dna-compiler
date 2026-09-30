@@ -36,6 +36,7 @@ from just_dna_format.vocab import TEMPLATE_PLACEHOLDER
 from pydantic import ValidationError
 
 from just_dna_compiler.compiler import (
+    BA1_ALLELE_FREQUENCY_THRESHOLD,
     close_module,
     compile_module,
     content_signature,
@@ -147,6 +148,18 @@ def compile(
     authority_key: list[str] = typer.Option(
         [], "--authority-key", help="Extra authority-owned module key to strip (repeatable)."
     ),
+    ensembl_reference: str | None = typer.Option(
+        None,
+        "--ensembl-reference",
+        help="Pinned reference id to record in manifest.compilation.ensembl_reference "
+        "(e.g. the Ensembl release the resolution table was built from).",
+    ),
+    ba1_threshold: float = typer.Option(
+        BA1_ALLELE_FREQUENCY_THRESHOLD,
+        "--ba1-threshold",
+        help="Allele frequency above which a pathogenic variant draws the ACMG BA1 warning. "
+        "Warning-only, so it tunes noise, never whether the compile succeeds.",
+    ),
 ) -> None:
     """Compile a spec directory into a parquet artifact + manifest.json. Exit 1 on failure."""
     result = compile_module(
@@ -158,6 +171,8 @@ def compile(
         compiled_by=compiled_by,
         authority_keys=_authority_keys(strip_identity, authority_key),
         strict=strict,
+        ensembl_reference=ensembl_reference,
+        ba1_threshold=ba1_threshold,
     )
     _echo_messages(result)
     if result.success:

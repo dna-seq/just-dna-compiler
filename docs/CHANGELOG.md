@@ -41,6 +41,14 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-30 — RM278: `compile --ensembl-reference` and `--ba1-threshold` (0.8, uncut)
+
+**compiler** — The `compile` command gains `--ensembl-reference` (stamps
+`manifest.compilation.ensembl_reference`, which a CLI compile could not set before) and
+`--ba1-threshold`. `test_cli_parity.py` now asserts the command's options equal `compile_module`'s
+parameters minus a declared set of four, each with its reason (the auto-discovered log, provenance,
+logo and readme paths).
+
 ## 2026-09-30 — RM300: the manifest counts rows and variants per ClinVar tier (0.8, uncut)
 
 **format** + **compiler** — `stats.pathogenic_count`/`benign_count` fold a tier pair each, so a

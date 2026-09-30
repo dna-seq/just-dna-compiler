@@ -1874,21 +1874,9 @@ positions"`; `test_roundtrip_regressions.py` holds `"pointer, not an expression"
 |---|---|---|
 | `validate <spec>` | `compiler.validate_spec` | `--strip-identity` / `--authority-key`. Read-only — it never stamps a closure |
 | `close <spec>` | `compiler.close_module` | `--by`, `--private-key`. Writes the RM73 closure into `verification.json`, bound to the authored bytes. Refuses an invalid spec; a warning does not refuse |
-| `compile <spec> <out>` | `compiler.compile_module` | `--strict/--no-strict`, `--resolve/--no-resolve`, `--compression`, `--compiled-by`, and the **deprecated** `--ensembl-cache` (routes to the enricher; removed at 1.0). Prints `digest`, `content_signature`, `resolution_mode`/`fully_resolved`/`resolution_signature` |
+| `compile <spec> <out>` | `compiler.compile_module` | `--strict/--no-strict`, `--resolve/--no-resolve`, `--compression`, `--compiled-by`, `--ensembl-reference`, `--ba1-threshold` (RM278), and the **deprecated** `--ensembl-cache` (routes to the enricher; removed at 1.0). Prints `digest`, `content_signature`, `resolution_mode`/`fully_resolved`/`resolution_signature` |
 | `signature <spec>` | `compiler.content_signature` | no compile, no reference |
 
-**Two `compile_module` parameters the CLI does not expose**, stated rather than left to be
-rediscovered (RM218). `ensembl_reference` and `ba1_threshold` are Python-API-only, and the first has a
-visible consequence: `manifest.compilation.ensembl_reference` **cannot be stamped by the shipped
-command at all**, so a module compiled through the CLI carries no record of which reference the
-compile was told about. `ba1_threshold` tunes the ACMG BA1 common-allele cutoff, which the parameter's
-own docstring frames as something a module curating a common recessive carrier allele would want to
-move — also unreachable without importing the API.
-
-Neither is a defect and neither is a decision anyone took: `test_cli_parity.py` guards the surfaces
-the schema tier cannot expose and does not assert compile-flag parity, so the two drifted in without
-being weighed. Whether the CLI should grow them is RM278 (open, a minor) —
-what is settled is that the gap is written down instead of being a surprise.
 | `reverse <parquet_dir> <out>` | `compiler.reverse_module` | `--resolution/--no-resolution` (default on) + display overrides |
 | `verify <module_dir>` | **`format.integrity.verify_manifest`** | `--public-key`, `--check-inputs/-logs/-provenance/-logo/-readme/-derived` |
 | `keygen` | **`format.signing.generate_private_key_pem`** + `public_key_b64_from_pem` | `--out` (refuses to overwrite) |
@@ -1901,6 +1889,14 @@ what is settled is that the gap is written down instead of being a surprise.
 | `describe <kind>` | `hints.describe_table` | one table's columns + pick-lists, each column's `category` and its vocabulary's per-member `notes` |
 | `hint <kind>` | `hints.inspect_rows` | `--file`/`--row`, `--json` |
 | `sweep <before> <after>` | `sweep.compare_outputs` + `gate_findings` | `--spec-root` (compile AFTER with the installed compiler), `--release` (run the release gate; exit 1 on a finding), `--json`. A **release-sequence** command, not an ordinary test — it needs the previous release installed |
+
+**`compile` exposes every `compile_module` parameter but four, by decision (RM278).** `--ensembl-reference`
+stamps `manifest.compilation.ensembl_reference`, which a CLI compile could not do before 0.8, and
+`--ba1-threshold` moves the ACMG BA1 cutoff. The four left out are `log_files`, `provenance_file`,
+`logo_file` and `readme_file`: each is auto-discovered beside the spec, which is where a CLI author
+keeps them, so an explicit path is an API-only override. `test_cli_parity.py` asserts the option set
+equals the parameters minus that declared set, so the next parameter cannot drift in unweighed, which
+is how the first two did (RM218).
 
 **`--no-resolve` is the master switch, not an Ensembl switch** (S14). With an injected `resolution.csv`
 beside the spec it used to compile *successfully* with `chrom=None` on every weight row — a silent

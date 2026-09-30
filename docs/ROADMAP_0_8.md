@@ -223,24 +223,6 @@ why, the gap `unreachable_rsids`, `unconsulted_rsids` and `allele_mismatches` ea
 state. Add the field (or fields) on `0.8`, beside those, and decide whether "anchor base unreadable"
 (transient, re-run) and "not a base" (permanent) are one list or two. · *related* RM268, RM271, S20, S85
 
-## RM278 — the `compile` command cannot pass `ensembl_reference` or `ba1_threshold`, so every CLI-compiled manifest has a null `ensembl_reference`
-
-**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** compiler (`cli.py`
-`compile`) · **Motivating case** RM218's *surfaced, not fixed* (§13.8), which left the question open
-and tracked nowhere, found by the 2026-09-27 postmortem sweep (P6) · *related* RM218
-
-**Confirmed on 2026-09-27.** `compile_module` takes `ensembl_reference` and `ba1_threshold`, and
-`just-dna-compiler compile --help` offers neither. So
-`manifest.compilation.ensembl_reference` cannot be stamped by the shipped command, and a module
-compiled through the CLI records no reference, whatever it was resolved against. `ba1_threshold` is
-the ACMG BA1 cutoff its own docstring says a carrier-allele module would want to move. COMPILER.md
-states the gap and `test_cli_parity.py` does not assert compile-flag parity, so nothing will move it.
-
-**Why a minor, not a patch.** Two new CLI options are new public surface, and `main` takes none
-(the RM268 fix-forward). The decision is small: add both, or say in COMPILER.md why the CLI
-deliberately stays narrower than the API. Either way, extend `test_cli_parity.py` to assert the
-decided set, so the next parameter cannot drift in unweighed.
-
 ## RM283 — nothing notices the ClinPGx archive the lane builds from going quiet, which is how it served a fourteen-month-old snapshot
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** enricher
