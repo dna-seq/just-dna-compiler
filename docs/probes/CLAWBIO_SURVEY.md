@@ -495,7 +495,7 @@ numbers below came from `.claude/rm-next.py`, not from this file: items 1–6 ar
 [RM238](../ROADMAP_0_8.md#rm238--a-per-tissue-eqtl-has-no-row-and-expression_effectscsv-is-the-wrong-table-to-widen),
 [RM239](../ROADMAP_0_8.md#rm239--a-fine-mapping-posterior-has-no-column-and-gwas_effectscsv-already-has-its-key)
 and [RM240](../ROADMAP_0_8.md#rm240--the-clawbio-nutrition-panel-compiles-and-the-corpus-should-carry-it)
-respectively, plus [RM241](../ROADMAP_0_8.md#rm241--weighting-does-not-survive-reverse-so-a-reversed-module-has-no-scale-to-read)
+respectively, plus [RM241](../ROADMAP_HISTORY.md#rm241--weighting-does-not-survive-reverse-so-a-reversed-module-has-no-scale-to-read)
 for the `weighting` observation in § *The translation, run*. **Where an entry and this section
 disagree, the entry wins** — it is the tracked one, and this stays the evidence.
 

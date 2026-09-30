@@ -442,8 +442,12 @@ def reverse(
     title: str | None = typer.Option(None, "--title"),
     description: str | None = typer.Option(None, "--description"),
     report_title: str | None = typer.Option(None, "--report-title"),
-    icon: str = typer.Option("database", "--icon"),
-    color: str = typer.Option("#6435c9", "--color"),
+    icon: str | None = typer.Option(
+        None, "--icon", help="Override the icon. Read from the artifact's manifest.json by default."
+    ),
+    color: str | None = typer.Option(
+        None, "--color", help="Override the colour. Read from the artifact's manifest.json by default."
+    ),
     version: str | None = typer.Option(
         None, "--version", help="Advisory module.version to re-emit into the spec."
     ),

@@ -2,14 +2,24 @@
 
 import csv
 import logging
+import shutil
 from pathlib import Path
 from typing import Any
 
 import polars as pl
 import yaml
 from just_dna_format.base import derive_variant_key
+from just_dna_format.integrity import sha256_file
 from just_dna_format.layout import sidecar_write_path
-from just_dna_format.manifest import Verification, read_manifest
+from just_dna_format.manifest import (
+    LOGO_EXTENSIONS,
+    README_CANDIDATES,
+    SCHEMA_VERSION,
+    FileEntry,
+    ModuleManifest,
+    Verification,
+    read_manifest,
+)
 from just_dna_format.overrides import OverrideRow
 
 from just_dna_compiler.compiler.positional import _POSITIONAL_TABLE_KINDS
@@ -57,6 +67,64 @@ def _module_name_from_parquets(parquet_dir: Path) -> str | None:
     return None
 
 
+#: Every `module_spec.yaml` field `reverse_module` writes back, as a dotted path (RM241). A test walks
+#: `ModuleSpecConfig`, `ModuleInfo` and `Defaults` and asserts their fields equal this set together
+#: with `REVERSE_EXCLUDED`, so a new spec field fails the suite until somebody decides which side it
+#: is on. Before this registry, each field reverse recovered had been added on its own after its own
+#: incident (`version` by RM103, `genome_build` by the 2026-08-06 audit), and nothing said which of
+#: the others were missing — the round trip dropped `weighting`, the display block, `license`,
+#: `authorship`, `authority_precedence` and `panel` while both identity digests held.
+REVERSE_RECONSTRUCTED: frozenset[str] = frozenset(
+    {
+        "schema_version",
+        "genome_build",
+        "panel",
+        "authorship",
+        "license",
+        "weighting",
+        "authority_precedence",
+        "module.name",
+        "module.version",
+        "module.title",
+        "module.description",
+        "module.report_title",
+        "module.icon",
+        "module.icon_set",
+        "module.color",
+        "defaults.curator",
+        "defaults.method",
+    }
+)
+
+#: The spec fields reverse does **not** write back, each with the reason (RM241).
+REVERSE_EXCLUDED: dict[str, str] = {
+    # The two blocks are walked field by field; the block itself is a container, not a value.
+    "module": "a block: its fields are listed individually",
+    "defaults": "a block: its fields are listed individually",
+    "defaults.priority": (
+        "the manifest carries no default priority, and `priority` is written verbatim per row "
+        "instead, so every row keeps its value and no default is needed to reproduce it"
+    ),
+}
+
+
+def _artifact_manifest(parquet_dir: Path) -> ModuleManifest | None:
+    """The artifact's own `manifest.json`, or `None` for a bare parquet directory or one this
+    compiler cannot parse.
+
+    **Tolerant on purpose.** Every value read from it is provenance or presentation, and a provenance
+    failure must not stop a reverse; what the callers must not do is *invent* a value, which is why
+    each has an explicit fallback for the `None` case rather than a default buried here.
+    """
+    path = parquet_dir / "manifest.json"
+    if not path.is_file():
+        return None
+    try:
+        return read_manifest(path)
+    except (OSError, ValueError):
+        return None
+
+
 def _authored_version_from_artifact(parquet_dir: Path) -> str | None:
     """The `module.version` the author wrote, recovered from the artifact's own `manifest.json`.
 
@@ -66,43 +134,24 @@ def _authored_version_from_artifact(parquet_dir: Path) -> str | None:
     module would disagree with its own round trip on a published field. Preferring the pre-coercion
     string makes the field a fixed point: `v2` re-emits as `v2`, coerces to `2.0.0` again, and both
     manifest cells match lap 1.
-
-    It also repairs a quieter loss. Reverse used to emit no `version:` at all unless a caller supplied
-    one, so the author's spelling did not survive a round trip even when it was ordinary SemVer. Same
-    tolerant shape as `_genome_build_from_artifact`, and the same rule: recover it or return `None`,
-    never invent one.
     """
-    path = parquet_dir / "manifest.json"
-    if not path.is_file():
+    manifest = _artifact_manifest(parquet_dir)
+    if manifest is None:
         return None
-    try:
-        identity = read_manifest(path).identity
-    except (OSError, ValueError):
-        return None
-    return identity.version_coerced_from or identity.version
+    return manifest.identity.version_coerced_from or manifest.identity.version
 
 
 def _genome_build_from_artifact(parquet_dir: Path) -> str | None:
     """Recover the module's declared `genome_build` from the artifact's own `manifest.json`.
 
     `genome_build` is authored `module_spec.yaml` metadata that reaches the artifact through the
-    manifest and **no parquet column**, so this is the only place it survives a compile. Reverse has
-    to consult it: unlike `title`, getting the build wrong is not cosmetic — a coordinate is not
-    absolute, so re-emitting a GRCh37 module as GRCh38 makes the next compile mint a GRCh38 VRS allele
-    id for a GRCh37 position, which is a *false content-addressed claim* rather than a lost label.
-
-    Returns `None` for a bare parquet directory with no manifest, or a manifest this compiler cannot
-    parse — the same "recover it from the artifact, else fall back" shape as
-    `_module_name_from_parquets`. A provenance failure must not stop a reverse, so the read is
-    tolerant; what it must not do is *invent* a build, which is why the caller's fallback is explicit.
+    manifest and **no parquet column**, so this is the only place it survives a compile. Getting it
+    wrong is not cosmetic — a coordinate is not absolute, so re-emitting a GRCh37 module as GRCh38
+    makes the next compile mint a GRCh38 VRS allele id for a GRCh37 position, which is a *false
+    content-addressed claim* rather than a lost label.
     """
-    path = parquet_dir / "manifest.json"
-    if not path.is_file():
-        return None
-    try:
-        return read_manifest(path).genome_build
-    except (OSError, ValueError):
-        return None
+    manifest = _artifact_manifest(parquet_dir)
+    return manifest.genome_build if manifest is not None else None
 
 
 def _artifact_verification(parquet_dir: Path) -> Verification | None:
@@ -115,18 +164,57 @@ def _artifact_verification(parquet_dir: Path) -> Verification | None:
     became a correct sentence aimed at the wrong defect the moment a closure could ride alone — which
     is now thirteen of the sixteen reference examples. That is the RM77 class, and the compile-side
     stale message already branches the same way.
-
-    Tolerant in the same way and for the same reason as the build recovery above: an unreadable
-    manifest is a provenance failure, and a provenance failure must not stop a reverse. A `None` here
-    only ever costs the warning.
     """
-    path = parquet_dir / "manifest.json"
-    if not path.is_file():
-        return None
-    try:
-        return read_manifest(path).verification
-    except (OSError, ValueError):
-        return None
+    manifest = _artifact_manifest(parquet_dir)
+    return manifest.verification if manifest is not None else None
+
+
+def _copy_shipped_file(parquet_dir: Path, output_dir: Path, entry: FileEntry | None, what: str) -> None:
+    """Copy a file the compile shipped beside the parquets (README, logo) back into the spec, byte for
+    byte, after checking it against the manifest's record of it (RM241).
+
+    The compile copies `README.md` / `logo.png` into the artifact and records its hash, so the bytes
+    are there to be read; reverse used to leave them behind, and the recompile's manifest then had no
+    `readme` at all. A file whose hash disagrees with the record is **not** copied: it is not the file
+    the manifest describes, and passing it on would let the next compile attest bytes nobody compiled.
+    A file under a name the compile does not discover on its own is copied and named, since the next
+    compile needs `readme_file=`/`logo_file=` to pick it up.
+    """
+    if entry is None:
+        return
+    source = parquet_dir / entry.name
+    if not source.is_file():
+        logger.warning(
+            "The artifact's manifest records a %s (%s) that is not in %s, so the reversed spec has none.",
+            what,
+            entry.name,
+            parquet_dir,
+        )
+        return
+    if sha256_file(source) != entry.sha256:
+        logger.warning(
+            "The %s in %s (%s) does not match the hash its manifest records, so it was not copied into "
+            "the reversed spec: it is not the file that was compiled.",
+            what,
+            parquet_dir,
+            entry.name,
+        )
+        return
+    destination = output_dir / entry.name
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, destination)
+    discovered = (
+        entry.name in README_CANDIDATES
+        if what == "readme"
+        else entry.name in {f"logo.{ext}" for ext in LOGO_EXTENSIONS}
+    )
+    if not discovered:
+        logger.warning(
+            "The %s was copied as %s, a name the compiler does not discover on its own; pass it "
+            "explicitly when compiling the reversed spec.",
+            what,
+            entry.name,
+        )
 
 
 def _verification_loss_notice(block: Verification) -> str:
@@ -165,25 +253,30 @@ def reverse_module(
     title: str | None = None,
     description: str | None = None,
     report_title: str | None = None,
-    icon: str = "database",
-    color: str = "#6435c9",
+    icon: str | None = None,
+    color: str | None = None,
     version: str | None = None,
     write_resolution: bool = True,
     genome_build: str | None = None,
 ) -> Path:
     """Reverse-engineer a parquet module back into the spec DSL (yaml + csv). Returns output_dir.
 
-    `version` (like `title`/`description`) is authored `module:` metadata, out of `artifact.digest`
-    and so not materialized into any parquet. **Since RM103 it is recovered from the artifact's own
-    `manifest.json` when the caller supplies none**, rather than dropped: an explicit argument still
-    wins, and a bare parquet directory with no manifest still leaves the key out of the block. What is
-    recovered is `identity.version_coerced_from` where the compile recorded one, falling back to
-    `identity.version` — the pre-coercion string, because re-emitting the coerced one gives the next
-    compile nothing to coerce and `version_coerced_from` then goes absent on lap 2, which is a module
-    disagreeing with its own round trip on a published field.
+    **Every `module_spec.yaml` field the artifact carries is written back (RM241)**, and
+    `REVERSE_RECONSTRUCTED` / `REVERSE_EXCLUDED` say which those are. The spec's metadata reaches the
+    artifact through `manifest.json` and no parquet column: the `module:` block's display fields
+    (`manifest.display`), `version` (`identity`), `genome_build`, the defaults' `curator`/`method`,
+    `license`, `weighting`, `authorship`, `authority_precedence` and `panel`. The README and logo the
+    compile shipped beside the parquets are copied back byte for byte, after a hash check against the
+    manifest. Each value is taken in the same order: **an explicit argument, then the manifest, then
+    the fallback** a bare parquet directory with no manifest has always had (name-derived titles,
+    `database`/`#6435c9`, the most common row curator/method). `icon` and `color` default to `None` so
+    "not passed" can be told apart from "passed the old default".
 
-    `genome_build` is **not** in that class, even though it reaches the artifact the same way (the
-    manifest, never a parquet column). A wrong title is cosmetic; a wrong build relocates every
+    `version` is recovered as `identity.version_coerced_from` where the compile recorded one, falling
+    back to `identity.version` — the pre-coercion string, because re-emitting the coerced one gives the
+    next compile nothing to coerce and `version_coerced_from` then goes absent on lap 2 (RM103).
+
+    `genome_build` matters more than the rest. A wrong title is cosmetic; a wrong build relocates every
     coordinate in the module. This used to be hardcoded `"GRCh38"`, so
     `compile → reverse → compile` on a `genome_build: GRCh37` module re-emitted it as GRCh38 and the
     recompile minted `ga4gh:VA.…` ids — GRCh38 allele identities for GRCh37 positions — moving
@@ -229,12 +322,13 @@ def reverse_module(
     if write_resolution:
         sidecar_paths["resolution.csv"] = sidecar_write_path(output_dir, "resolution.csv")
 
+    manifest = _artifact_manifest(parquet_dir)
     if module_name is None:
         module_name = _module_name_from_parquets(parquet_dir) or parquet_dir.name
     if genome_build is None:
-        genome_build = _genome_build_from_artifact(parquet_dir) or "GRCh38"
-    if version is None:
-        version = _authored_version_from_artifact(parquet_dir)
+        genome_build = (manifest.genome_build if manifest is not None else None) or "GRCh38"
+    if version is None and manifest is not None:
+        version = manifest.identity.version_coerced_from or manifest.identity.version
 
     # **The attestation cannot be carried, and the silence about that was the defect (RM45).**
     # `verification.json` records checks the *enricher* put against sources this tier cannot reach,
@@ -244,7 +338,7 @@ def reverse_module(
     # `manifest.compilation.warnings` — a surface consumers parse (RM44) — differs between a module
     # and its own round trip with nothing edited. Losing a record of what was checked is acceptable;
     # losing it invisibly is the S16 silent-success shape.
-    dropped_verification = _artifact_verification(parquet_dir)
+    dropped_verification = manifest.verification if manifest is not None else None
     if dropped_verification is not None:
         logger.warning(_verification_loss_notice(dropped_verification), output_dir)
 
@@ -256,31 +350,64 @@ def reverse_module(
     # value for rows that never set one — turning weights `['high', None]` into `['high', 'high']`
     # on recompile (a Principle 7 idempotency break). It is written verbatim, per row, instead.
     default_priority: str | None = None
-    if weights_df is not None:
+    # The manifest records the spec's own `defaults.curator`/`method` (RM241). The row-mode guess is
+    # the bare-directory fallback, and it was worse than lossy on a table-only module: with no
+    # `weights.parquet` there are no rows to take a mode over, so a PGx module's defaults came back as
+    # `unknown` and the recompiled manifest said so.
+    if manifest is not None and manifest.curator is not None:
+        default_curator = manifest.curator
+    elif weights_df is not None:
         default_curator = _most_common(weights_df, "curator") or "unknown"
+    if manifest is not None and manifest.method is not None:
+        default_method = manifest.method
+    elif weights_df is not None:
         default_method = _most_common(weights_df, "method") or "unknown"
 
     defaults_dict: dict[str, Any] = {"curator": default_curator, "method": default_method}
 
+    display = manifest.display if manifest is not None else None
+    fallback_title = module_name.replace("_", " ").title()
     module_block: dict[str, Any] = {
         "name": module_name,
-        "title": title or module_name.replace("_", " ").title(),
-        "description": description or f"Annotation module: {module_name}",
-        "report_title": report_title or module_name.replace("_", " ").title(),
-        "icon": icon,
-        "color": color,
+        "title": title or (display.title if display else fallback_title),
+        "description": description
+        or (display.description if display else f"Annotation module: {module_name}"),
+        "report_title": report_title or (display.report_title if display else fallback_title),
+        "icon": icon or (display.icon if display else "database"),
+        "color": color or (display.color if display else "#6435c9"),
     }
+    if display is not None:
+        module_block["icon_set"] = display.icon_set
     if version is not None:
         module_block["version"] = version
-    spec = {
-        "schema_version": "1.0",
+    spec: dict[str, Any] = {
+        # The one value the spec model accepts, so writing the constant is reconstructing it.
+        "schema_version": SCHEMA_VERSION,
         "module": module_block,
         "defaults": defaults_dict,
         "genome_build": genome_build,
     }
+    # The advisory blocks, copied through from the manifest the compile copied them into, and each
+    # written only when the module carried it, so a module without one reverses to a spec without one.
+    if manifest is not None:
+        if manifest.panel is not None:
+            spec["panel"] = manifest.panel.model_dump(mode="json", exclude_none=True)
+        if manifest.authorship:
+            spec["authorship"] = [
+                entry.model_dump(mode="json", exclude_none=True) for entry in manifest.authorship
+            ]
+        if manifest.license is not None:
+            spec["license"] = manifest.license
+        if manifest.weighting is not None:
+            spec["weighting"] = manifest.weighting.model_dump(mode="json", exclude_none=True)
+        if manifest.authority_precedence:
+            spec["authority_precedence"] = list(manifest.authority_precedence)
     (output_dir / "module_spec.yaml").write_text(
-        yaml.dump(spec, default_flow_style=False, sort_keys=False), encoding="utf-8"
+        yaml.dump(spec, default_flow_style=False, sort_keys=False, allow_unicode=True), encoding="utf-8"
     )
+    if manifest is not None:
+        _copy_shipped_file(parquet_dir, output_dir, manifest.readme, "readme")
+        _copy_shipped_file(parquet_dir, output_dir, manifest.logo, "logo")
 
     # variants.csv + studies.csv only when the module has them.
     if weights_df is not None:

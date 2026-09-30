@@ -687,7 +687,10 @@ A round trip is a **fixed point, not a backup**. `compile → reverse → compil
 authored value and reproduces the digest offline, which is Principle 7 and is tested. What it does
 not do is restore a module:
 
-- **Lost, because they are manifest-only:** `authorship`, `provenance`, `logo`, `readme`, `panel`.
+- **Kept since RM241, although they are manifest-only:** the display block, `version`, the
+  defaults' `curator`/`method`, `license`, `weighting`, `authorship`, `authority_precedence`, `panel`,
+  and the README and logo (copied back after a hash check). Before 0.8 these were lost too.
+- **Lost, because it is manifest-only and not authored:** `provenance`.
 - **Lost, because it is not in the artifact:** `verification.json` — every check record *and* the
   closure. A reversed spec is open and warns until a human closes it again, which is deliberate:
   reverse holds no key and no standing to declare someone else's authoring finished.

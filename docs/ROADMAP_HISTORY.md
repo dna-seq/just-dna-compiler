@@ -30,6 +30,73 @@ up.
 
 
 
+# The 0.8 PT1 build round
+
+The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on
+the `0.8` branch in the proposal's order. Newest first.
+
+## RM241 — `weighting` does not survive `reverse`, so a reversed module has no scale to read
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut — a minor**, taken into 0.8 on 2026-09-29 ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md), widened there to every authored field `reverse` drops, and decided) · **filed 2026-09-13 from [RM188](ROADMAP_0_8.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
+ClawBio half** · **Owner** format · **Motivating case**
+[`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *The translation, run*, last paragraph
+
+**Residuals** RM270 — a round trip still drops every `vrs_id`, because no variant parquet carries it · won't fix — `provenance` and the verification attestation are not in the artifact, so there is nothing to read back
+
+`weight` is the one magnitude in this format with no unit beside it (`@weight-has-no-unit`), and RM92
+built `module_spec.weighting` — `scale`, `method`, `note` — to be the place a module says what its
+weights mean. It is **advisory, copied into the manifest, and not reconstructed by `reverse_module`**,
+in the same class as `panel` / `authorship` / `license`. All of that is documented and, taken one field
+at a time, defensible: it is not content, so it is correctly outside `content_signature`.
+
+**The survey hit the consequence.** Translating ClawBio's nutrition panel forced an honest `weighting`
+block to be written — their weights are hand-assigned importances *within* a nutrient domain, and
+their scorer normalises by the weight of the SNPs it happened to find, so a domain score is comparable
+only inside one domain of one run. That block is the single most useful sentence in the translated
+module. `reverse` then drops it. So a consumer holding two **reversed** modules has two `weight`
+columns and no way to learn that they are on different scales — which is the exact failure RM92 was
+built to prevent, surviving in the one path RM92 does not cover.
+
+**Three candidate dispositions, and this entry does not pick one.** (a) Nothing — write it in the
+[FAQ](FAQ.md) as a known lossy field and let a consumer read the *original* spec, which is what
+`reverse`'s own contract already says. (b) Carry `weighting` through `reverse` from the manifest,
+which is where it already lives — cheap, and it changes what `reverse` claims to be. (c) Decide the
+lossy set is right and that the real defect is that nothing *warns*, the way the dropped verification
+attestation warns. **(c) is the most likely right answer** and is the cheapest to test: `reverse`
+already emits one warning for a dropped attestation, so a second for a dropped `weighting` costs one
+line and tells the author the thing they need to know at the moment it stops being true.
+
+**Do not fix this by putting `weighting` inside `content_signature`.** It is prose about a column, not
+the column; hashing it would make a reworded note move the digest, which is the defect
+[FAQ](FAQ.md) already answers twice.
+
+**Decided 2026-09-29, and wider than this entry.** Probing (c) found `weighting` is one of several
+authored fields `reverse` drops while the round-trip gate stays green, because the gate compares two
+digests that both exclude the manifest. [PROPOSAL_0_8_PT1 § RM241](proposals/PROPOSAL_0_8_PT1.md)
+carries the measurement and the build: `reverse` rebuilds every authored field the artifact carries,
+and the gate compares the manifest's authored projection. (a) and (c) are both superseded.
+
+**What shipped.** `reverse_module` reads the artifact's `manifest.json` once and writes back every spec
+field it carries: the `module:` block's `title`/`description`/`report_title`/`icon`/`icon_set`/`color`
+from `manifest.display`, `version` (RM103's rule), `genome_build`, `license`, `weighting`,
+`authorship`, `authority_precedence`, `panel`, and the defaults' `curator`/`method`. The README and logo
+are copied back byte for byte after a hash check against `manifest.readme`/`manifest.logo`; a file that
+disagrees with its record is not copied. The order is an explicit argument, then the manifest, then the
+bare-directory fallback, and `icon`/`color` default to `None` (API and CLI) so "not passed" is visible.
+`REVERSE_RECONSTRUCTED` and `REVERSE_EXCLUDED` (`defaults.priority`, with its reason) are asserted equal
+to the walked `ModuleSpecConfig`/`ModuleInfo`/`Defaults` fields. The reference-example round trip now
+compares the manifest's authored projection across laps, and `test_reverse_reconstructs_the_spec.py`
+sets every field on a copy of `hfe_hemochromatosis` and asserts two laps. Run against the old `reverse`,
+the projection check failed on every example.
+
+**One departure from the proposal, recorded rather than silent.** PT1 said the manifest carries no
+`defaults` and left `curator`/`method` to the row-mode guess. It does carry them, as
+`manifest.curator`/`method`, and the guess was worse than lossy on a table-only module: with no
+`weights.parquet` there is no mode to take, so every PGx example came back with `unknown` defaults and
+its recompiled manifest said so. Both are now read from the manifest, with the mode as the fallback.
+`defaults.priority` is the one spec field not written back, because the manifest has no default
+priority and every row carries its own.
+
 # The 0.7 build round
 
 The items [PROPOSAL_0_7.md](proposals/PROPOSAL_0_7.md) decided on 2026-08-27/28 and the 0.7 batch then

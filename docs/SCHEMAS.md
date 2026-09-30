@@ -1759,7 +1759,7 @@ with the same `content_signature` and the same `artifact.digest`. It is priced a
 layer's full rate under Principle 9 and pays for itself by making a methodological position readable;
 and because nothing resolves with it, it has no arity to outgrow. Advisory in the same class as
 `weighting:`/`authorship:`/`license:` — copied into the manifest, out of both identity halves, and
-not reconstructed by the lossy `reverse_module`. A per-variant exception is an `overrides.csv` row
+written back by `reverse_module` from there (RM241). A per-variant exception is an `overrides.csv` row
 rather than a second mechanism.
 
 The vocabulary is **open**, because `authority` is open wherever else it appears. The two things it

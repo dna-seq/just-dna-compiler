@@ -1624,8 +1624,8 @@ class Weighting(BaseModel):
     are, and a consumer chooses a table wholesale rather than blending row by row.
 
     Advisory metadata, exactly like `license`: out of `artifact.digest` and out of `content_signature`
-    (the identity/display half of `module_spec.yaml` is excluded by design), and **not reconstructed
-    by the lossy `reverse_module`**, same class as `panel`/`authorship`/`license`.
+    (the identity/display half of `module_spec.yaml` is excluded by design). `reverse_module` writes it
+    back from the manifest, like every other spec field the artifact carries (RM241).
     """
 
     model_config = ConfigDict(extra="forbid")

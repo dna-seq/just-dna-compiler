@@ -1056,45 +1056,6 @@ That is a claim about their curation, and it belongs in the README as a sentence
 
 **Related** RM188, RM92 (see RM241 — the `weighting` block this example is forced to write).
 
-## RM241 — `weighting` does not survive `reverse`, so a reversed module has no scale to read
-
-**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md), widened there to every authored field `reverse` drops, and decided) · **filed 2026-09-13 from [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
-ClawBio half** · **Owner** format · **Motivating case**
-[`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *The translation, run*, last paragraph
-
-`weight` is the one magnitude in this format with no unit beside it (`@weight-has-no-unit`), and RM92
-built `module_spec.weighting` — `scale`, `method`, `note` — to be the place a module says what its
-weights mean. It is **advisory, copied into the manifest, and not reconstructed by `reverse_module`**,
-in the same class as `panel` / `authorship` / `license`. All of that is documented and, taken one field
-at a time, defensible: it is not content, so it is correctly outside `content_signature`.
-
-**The survey hit the consequence.** Translating ClawBio's nutrition panel forced an honest `weighting`
-block to be written — their weights are hand-assigned importances *within* a nutrient domain, and
-their scorer normalises by the weight of the SNPs it happened to find, so a domain score is comparable
-only inside one domain of one run. That block is the single most useful sentence in the translated
-module. `reverse` then drops it. So a consumer holding two **reversed** modules has two `weight`
-columns and no way to learn that they are on different scales — which is the exact failure RM92 was
-built to prevent, surviving in the one path RM92 does not cover.
-
-**Three candidate dispositions, and this entry does not pick one.** (a) Nothing — write it in the
-[FAQ](FAQ.md) as a known lossy field and let a consumer read the *original* spec, which is what
-`reverse`'s own contract already says. (b) Carry `weighting` through `reverse` from the manifest,
-which is where it already lives — cheap, and it changes what `reverse` claims to be. (c) Decide the
-lossy set is right and that the real defect is that nothing *warns*, the way the dropped verification
-attestation warns. **(c) is the most likely right answer** and is the cheapest to test: `reverse`
-already emits one warning for a dropped attestation, so a second for a dropped `weighting` costs one
-line and tells the author the thing they need to know at the moment it stops being true.
-
-**Do not fix this by putting `weighting` inside `content_signature`.** It is prose about a column, not
-the column; hashing it would make a reworded note move the digest, which is the defect
-[FAQ](FAQ.md) already answers twice.
-
-**Decided 2026-09-29, and wider than this entry.** Probing (c) found `weighting` is one of several
-authored fields `reverse` drops while the round-trip gate stays green, because the gate compares two
-digests that both exclude the manifest. [PROPOSAL_0_8_PT1 § RM241](proposals/PROPOSAL_0_8_PT1.md)
-carries the measurement and the build: `reverse` rebuilds every authored field the artifact carries,
-and the gate compares the manifest's authored projection. (a) and (c) are both superseded.
-
 ## RM164 — `heteroplasmy.csv` is a shipped table kind with no source behind it
 
 **Severity** medium · **Status** open — **PARKED to 0.8, decided 2026-09-01**, moved into this file

@@ -131,6 +131,13 @@ authored value that lives only in the manifest; compare the authored projection.
 already wrote. The changed defaults loosen a parameter's type (`str` to `str | None`), which is minor
 surface. Price: nothing authored, nothing derived.
 
+**Addendum 2026-09-30, from the build.** The manifest *does* carry the defaults, as
+`manifest.curator`/`method`, so the premise above was wrong. The row-mode guess also produced
+`unknown` on every table-only module, which has no `weights.parquet` to take a mode over. Both are
+now read from the manifest, with the mode as the bare-directory fallback, and only
+`defaults.priority` is in `EXCLUDED`. The logo is copied back beside the README, since it is shipped
+and hashed the same way.
+
 **Residuals.** The `vrs_id` loss found in the same probe is RM270's (below). `defaults.curator/method`
 stays a normalization, stated in the *Normalized* bullet, because the manifest does not carry it.
 

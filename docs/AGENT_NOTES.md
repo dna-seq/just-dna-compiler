@@ -476,6 +476,20 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   not exist for reverse to emit; adding the column names would produce a permanently empty header.
   Recovering them after a round-trip means re-running the enricher.
 
+- `@a-digest-gate-cannot-see-the-manifest` — **A round-trip gate made of digests cannot see an authored value that lives only in
+  the manifest; compare the authored projection.** RM241, 0.8. `test_reference_examples_roundtrip.py`
+  compared `artifact.digest` and `content_signature` across `compile → reverse → compile`, and both
+  exclude `manifest.json` by design. So `reverse` could rebuild the whole `module:` display block from
+  the module name, drop `weighting`/`license`/`authorship`/`authority_precedence`/`panel`/the README,
+  and turn a table-only module's defaults into `unknown`, on every example, while the gate stayed
+  green. Each field reverse *did* recover had been added after its own incident (`version` by RM103,
+  `genome_build` by the 2026-08-06 audit), which is the list shape: nothing said which of the others
+  were missing. The repair has two halves and both are needed. The gate compares the manifest's
+  authored projection across laps, and `REVERSE_RECONSTRUCTED ∪ REVERSE_EXCLUDED` is asserted equal to
+  the walked spec model fields, so a new field fails until somebody places it. **The rejected rule was
+  "read the manifest only for what can move a digest"**: it sounded like P7 and was not. P7 asks
+  whether an authored value survives, and a digest is only one of the places an authored value lives.
+
 - `@sidecar-authoritative` — **`enrich()` treats an existing `resolution.csv` beside the spec as authoritative** (merged, never
   clobbered) — and so do the two new passes for `frequencies.csv` / `gene_metrics.csv`, and VRS minting
   for an existing `vrs_id`. To regenerate after a machinery change you MUST **delete the sidecar first**,

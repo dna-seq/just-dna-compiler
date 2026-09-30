@@ -137,10 +137,17 @@ is materialized into `weights.parquet` and the positional tables where it belong
 → [SCHEMAS § The resolution table](SCHEMAS.md#the-resolution-table-05-provisional).
 
 **Does `reverse` give me my spec back?**
-No. It is a fixed point, not a backup. Manifest-only fields (`authorship`, `provenance`, `logo`,
-`readme`, and since 0.6 `weighting`), the whole verification attestation *and its closure*, and
-`resolution.csv`'s provenance are all lost — deliberately, in each case. → [COMPILER § Reverse](COMPILER.md#reverse) and
+No. It is a fixed point, not a backup. Since 0.8 (RM241) it does write back every spec field the
+manifest carries, and the README and logo. What is still lost is what the artifact does not hold: the
+verification attestation *and its closure*, `provenance`, and `resolution.csv`'s provenance. → [COMPILER § Reverse](COMPILER.md#reverse) and
 [MODULE_LIFECYCLE § 6.9](MODULE_LIFECYCLE.md).
+
+**My reversed module lost its title, colour, `weighting` or README. Is that expected?**
+Not since 0.8. Before RM241, reverse rebuilt the `module:` block from the module name and dropped
+`weighting`, `license`, `authorship`, `authority_precedence`, `panel` and the README, and the
+round-trip test passed anyway because both identity digests leave the manifest out. Reverse now reads
+them from the artifact's `manifest.json`; a bare parquet directory with no manifest still gets the
+name-derived defaults. → [COMPILER § Reverse](COMPILER.md#reverse).
 
 **Reverse drops `rsid_alternates` — is that a bug to file?**
 No, closed, do not re-flag. Reverse rebuilds the table from `weights.parquet`, which carries no

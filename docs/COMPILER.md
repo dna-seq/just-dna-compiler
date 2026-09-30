@@ -85,10 +85,10 @@ looks the name up, not the package.
   and has nothing to do with Ensembl. `ba1_threshold` is the ACMG BA1 allele-frequency cutoff — a
   parameter rather than a constant, because the right value is disease-specific.
 - **`reverse_module(parquet_dir, output_dir, module_name=None, title=None, description=None,
-  report_title=None, icon="database", color="#6435c9", version=None, write_resolution=True,
-  genome_build=None) -> Path`** — reverse a compiled artifact back to the authored DSL.
-  `genome_build=None` reads it from the artifact's own `manifest.json` (it lives in no parquet
-  column); pass it only for a bare parquet directory carrying no manifest.
+  report_title=None, icon=None, color=None, version=None, write_resolution=True,
+  genome_build=None) -> Path`** — reverse a compiled artifact back to the authored DSL. Every
+  metadata argument left `None` is read from the artifact's own `manifest.json`, and falls back to the
+  bare-directory default only when there is no manifest (RM241, § Reverse).
 
 - **`load_csv_rows(path, row_model, file_label, genome_build=DEFAULT_GENOME_BUILD) -> (rows, errors,
   warnings)`** — the authored-CSV loader, **public since 0.5.1** (RM41). It was `_load_csv_rows`, and it
@@ -1345,8 +1345,9 @@ resolves from a table that no longer says what it said.
 
 ## Reverse
 
-`reverse_module` reads the **parquet artifact only** (never `manifest.json`) and emits into `output_dir`:
-`module_spec.yaml` (always), `variants.csv` + `resolution.csv` (when `weights.parquet` exists;
+`reverse_module` reads the parquets for every row, and the artifact's `manifest.json` for every
+`module_spec.yaml` field the manifest carries (RM241). It emits into `output_dir`: `module_spec.yaml`
+(always), the `README`/logo the compile shipped (when the manifest records them), `variants.csv` + `resolution.csv` (when `weights.parquet` exists;
 `resolution.csv` gated on `write_resolution=True`), `studies.csv` (when present), one CSV per present
 table kind, and one CSV per derived-fact sidecar whose parquet is present (`frequencies.csv`,
 `gene_metrics.csv`, `literature.csv`, `gene_validity.csv`, `clinical_assertions.csv`, `sources.csv`),
@@ -1385,19 +1386,28 @@ plus `overrides.csv` when `overrides.parquet` is present (0.7, RM124).
   recomputed rather than stored: `allele_frequency` is derived on write and is not a `FrequencyRow`
   field, so it falls away by construction rather than by a special case, and re-deriving it on the next
   compile reproduces the identical parquet.
-- **Normalized:** title/description/report_title fall back to name-derived defaults; icon/color from
-  args; curator/method from the most-common column value.
-- **Recovered from `manifest.json`, not normalized: `genome_build`.** It reaches the artifact through the
-  manifest and no parquet column, and reverse used to re-emit the constant `GRCh38` — listed here, for a
-  release, as a harmless normalization "out of the digest". It is not out of the digest, because the
-  build decides the *identity key*: a GRCh37 module reversed as GRCh38 recompiled with `ga4gh:VA.…` keys
-  minted for GRCh37 coordinates, so `artifact.digest` moved **and** the new key asserted an allele at a
-  base the module never named. `_genome_build_from_artifact` reads it; `genome_build=` (CLI
-  `--genome-build`) overrides; a bare parquet directory with no manifest falls back to `GRCh38`, the
-  format's own default. See `reference_examples/grch37_build/`.
-- **Lost (manifest-only, out of `artifact.digest`):** `authorship`, `panel` (**deprecated in 0.6,
-  removed at 1.0 — RM4**; see below), `provenance`, `logo`,
-  `readme`, and the **verification attestation** (RM45) — `verification.json` is not in the artifact,
+- **Recovered from `manifest.json` (RM241): every spec field the artifact carries.**
+  `REVERSE_RECONSTRUCTED` in `compiler/reverse.py` lists them — the `module:` block's display fields
+  (`manifest.display`), `version` (`identity`, pre-coercion spelling first, RM103), `genome_build`,
+  the defaults' `curator`/`method`, `license`, `weighting`, `authorship`, `authority_precedence` and
+  `panel` — and `REVERSE_EXCLUDED` names the rest with a reason, under a test that walks the spec
+  models and asserts the two sets cover every field. The README and logo are copied byte for byte
+  after a hash check against the manifest's record; a file that disagrees is not copied. Every value
+  is taken in one order: **an explicit argument, then the manifest, then the bare-directory
+  fallback**. `genome_build` is the value that made this list necessary rather than cosmetic: it
+  decides the *identity key*, so a GRCh37 module reversed as GRCh38 recompiled with `ga4gh:VA.…` keys
+  minted for GRCh37 coordinates, moving `artifact.digest` and asserting an allele at a base the module
+  never named (`reference_examples/grch37_build/`). The rest could not move a digest, and that is why
+  they went unnoticed: the round-trip gate compared `artifact.digest` and `content_signature`, both of
+  which leave the manifest out by design, so it could not fail on any of them. It now also compares
+  the manifest's authored projection across laps.
+- **Normalized, only for a bare parquet directory with no manifest:** title/report_title fall back to
+  name-derived defaults, description to `Annotation module: <name>`, icon/color to
+  `database`/`#6435c9`, curator/method to the most-common column value, `genome_build` to `GRCh38`.
+  `defaults.priority` is never written: the manifest carries no default priority, and `priority` is
+  re-emitted verbatim per row instead.
+- **Lost (not in the artifact to be read):** `provenance`, and the **verification attestation**
+  (RM45) — `verification.json` is not in the artifact,
   so there is nothing for reverse to read and inventing one would mint a claim nobody put; a reversed
   module carries no `manifest.verification`, which is the honest *says nothing*, and re-attesting
   means re-running the checks. **The RM73 closure rides that document and is lost with it**, so a
@@ -1407,11 +1417,10 @@ plus `overrides.csv` when `overrides.parquet` is present (0.7, RM124).
   and it is precisely what blocks promoting the finding to a refusal at 1.0: under a gate, step 3 of
   `compile → reverse → compile` would refuse on every module. The three candidate answers are recorded
   in [ROADMAP_1_0.md](ROADMAP_1_0.md) § RM73 (gate half). A
-  consumer needing these reads `manifest.json` (preserved verbatim by the forward compile). The test of
-  whether something belongs on this list is whether losing it can change a parquet byte — which is why
-  `genome_build` moved off it. `readme` joins `logo` here for the same reason and with the same
-  consequence: `reverse` writes no readme into the re-emitted spec, so a recompile of a reversed module
-  attests none — the three signatures are still a fixed point, because prose was never in any of them.
+  consumer needing these reads `manifest.json` (preserved verbatim by the forward compile). This list
+  used to hold `authorship`, `panel`, `logo` and `readme` too, on the test of whether losing a value
+  could change a parquet byte. That test was the wrong one: P7 asks whether an *authored value*
+  survives, and those four were in the artifact all along (RM241).
 
 ## Output artifact & hashing
 
@@ -2127,7 +2136,7 @@ modules silently vanishing from a catalogue.
 | `trait_efo_id` (`VariantRow`, `StudyRow`) | ✅ CURIE(s) | ✅ | — | complete |
 | `doi` (`StudyRow`, RM11) | ✅ DOI grammar, verbatim | ✅ `studies.parquet` | — | complete |
 | `provenance_quote` / `provenance_regex` (`StudyRow`, RM12) | ✅ free-text / author-time `re.compile` | ✅ `studies.parquet` | — | complete (P1 pattern grammar; matched consumer-side) |
-| `authorship` (`ModuleSpecConfig`/`ModuleManifest`, RM14) | ✅ `Contribution` (role closed, kind open, `extra=forbid`) | ✅ **manifest** (out of digest) | — | complete (metadata; not reversed) |
+| `authorship` (`ModuleSpecConfig`/`ModuleManifest`, RM14) | ✅ `Contribution` (role closed, kind open, `extra=forbid`) | ✅ **manifest** (out of digest) | — | complete (metadata; reversed from the manifest since RM241) |
 | `clin_sig` (`VariantRow`) | ✅ full vocab | ✅ | ✅ ↔ `pathogenic`/`benign` aliases | complete |
 | `module.version` (`ModuleInfo`, 0.4.1) | ✅ freeform advisory (legacy `v2`/`3`) | ✅ **manifest** `Identity.version` iff valid SemVer; `reverse_module(version=)` re-emits | ✅ `normalize_version` preview (RM17 enforces) | complete (advisory) |
 | authority-key strip (0.4.1) | ✅ inject-only pre-strip; dropped → `.info`; typo'd still `extra=forbid` | — | — | complete (DI) |
@@ -2151,7 +2160,7 @@ modules silently vanishing from a catalogue.
 | **`redistribution` (0.5, settled 0.6)** | ✅ tri-state; `None` ≠ `False` | ✅ `sources.parquet`; per-layer facet + module-wide verdict → **manifest** | ✅ most-restrictive-wins | complete — **recorded here, enforced downstream** (RM27; the ask is in SCHEMAS.md) |
 | **GWAS effect sizes (0.6, RM90)** | ✅ `effect_direction` closed; `effect_measure` open; `effect_unit` free text and **inside the fact hash** | ✅ `gwas_effects.parquet` (in digest, fact-hashed) | ✅ orphan rows warn, never fail | complete (Catalog route in the enricher; fills no `weight` — see MODULE_LIFECYCLE § Stage 3) |
 | **Expression effects (0.7, RM194+RM200)** | ✅ `effect_direction` closed (shared with `GwasEffectRow` — same axis); `effect_measure` open; `effect_unit` null on every AlphaGenome row and **stated rather than invented**; `gene` and `gene_id` both inside the fact hash | ✅ `expression_effects.parquet` (in digest, fact-hashed) | ✅ **no orphan check, deliberately** — the rows are locus-wide by construction, so `gwas_effects`' check would fire on nearly every row | complete (`alphagenome expression`; non-commercial, gated at compile via `sources.csv`) |
-| **weighting declaration (0.6, RM92)** | ✅ three free-text strings, `extra="forbid"` | ✅ `manifest.weighting`; moves neither identity half | — | complete; dropped by `reverse_module`, like `license`/`panel`/`authorship` |
+| **weighting declaration (0.6, RM92)** | ✅ three free-text strings, `extra="forbid"` | ✅ `manifest.weighting`; moves neither identity half | — | complete; reversed from the manifest since RM241, like `license`/`panel`/`authorship` |
 | **verification attestation (0.6, RM45)** | ✅ binding recomputed from the authored inputs, proof-of-work re-checked; stale ⇒ warn + drop, never fatal | ✅ `manifest.verification` (out of `artifact.digest`); nothing reaches a parquet | — (the enricher puts the checks) | complete (`verification.json`; nothing in the block is trusted) |
 | **authoring closure (0.6, RM73)** | ✅ published when the attestation holds and carries one; absent ⇒ warn in both modes; a *signed* closure that does not verify ⇒ drop the whole block | ✅ `manifest.verification.closure`; moves no digest and no signature (measured on all sixteen reference examples) | ✅ `close` writes it; `validate` never does | mechanism complete (`compiler.close_module`); the **refusal** is 1.0 and blocked — see ROADMAP_1_0 § RM73 |
 | **drafting (0.5)** | ✅ appended rows are validated rows; keys reuse `_TABLE_DUPE_KEYS` | — (writes authored CSVs, not parquet) | ✅ append / already-present / differs report | complete (`draft.append_rows`, `blank_template`); `DRAFTABLE` covers the SNP core, the table kinds and `sources.csv` (0.5.4) |
@@ -2236,16 +2245,15 @@ a patch: the objection is that filling a blank asserts what no curator wrote, no
    `artifact.digest` is GRCh38-relative. A GRCh37/T2T module compiles but is not re-resolved for that
    build. Legacy-from-implementation, not a principle — build-aware identity is RM15. A no-coord rsid
    mapping to several loci is expanded to one row per locus (data-agnostic), shipping GRCh38-now.
-4. **`reverse_module` reconstructs the compilable core, not manifest-only metadata.** It reads the
-   parquets for everything materialized into them, and `manifest.json` for the **one** authored value
-   that is digest-relevant and lives nowhere else: `genome_build`. That single read replaced a
-   "parquet only, never `manifest.json`" rule which sounded principled and was how the build came to be
-   hardcoded — the rule's real content is *nothing in the digest may be invented*, and for a
-   non-GRCh38 module the invented build changed the identity key, hence the digest. Absence is handled
-   rather than assumed: no manifest means the format's default, and an explicit `genome_build=` always
-   wins. `authorship`/`panel`/`provenance`/`logo` genuinely are not restored and genuinely cannot move a
-   parquet byte. What *is* round-trip-critical — every authored value, including a poly-effect variant's
-   per-effect `gene`/`phenotype`/`category` — is restored.
+4. **`reverse_module` restores every authored value the artifact carries, and nothing else.** It
+   reads the parquets for everything materialized into them, and `manifest.json` for every spec field
+   that reaches the artifact only there (RM241; the list is `REVERSE_RECONSTRUCTED`). This replaced a
+   "parquet only, never `manifest.json`" rule which sounded principled and was how the build came to
+   be hardcoded, and then a narrower rule that read the manifest only for values that could move a
+   digest, under which the display block, `weighting`, `license`, `authorship`, `authority_precedence`,
+   `panel` and the README were silently dropped. Absence is handled rather than assumed: no manifest
+   means the old fallbacks, and an explicit argument always wins. What reverse cannot restore is what
+   the artifact does not hold: `provenance` and the verification attestation.
 5. **Gene-panel materialization, and now the `panel:` block itself (RM4).** Compiling a
    `GenePanelSpec` into `weights.parquet` is not deferred any more, it is **dropped**. The compiler
    must not create rows no curator wrote — the same objection that bars filling `direction` from

@@ -46,6 +46,34 @@ def _signatures(result) -> tuple[str, str]:
     return (manifest.artifact.digest, manifest.content_signature)
 
 
+def _authored_projection(manifest) -> dict[str, object]:
+    """Every authored value that reaches the artifact through `manifest.json` and nowhere else (RM241).
+
+    **The two digests above cannot see any of it, by design.** `artifact.digest` covers the parquets
+    and `content_signature` the authored rows, and both leave the manifest out, so a `reverse` that
+    dropped `weighting` or rebuilt the display block from the module name round-tripped green on every
+    example while the recompiled manifest said something else. A round-trip gate made of digests is
+    blind to exactly the values that live only in the manifest, so this compares them directly.
+
+    The README and logo enter by hash: they are shipped beside the parquets and recorded here, and a
+    lost file is the recompile's `readme` going to `None`.
+    """
+    return {
+        "display": manifest.display.model_dump(),
+        "genome_build": manifest.genome_build,
+        "version": (manifest.identity.version, manifest.identity.version_coerced_from),
+        "curator": manifest.curator,
+        "method": manifest.method,
+        "license": manifest.license,
+        "weighting": manifest.weighting.model_dump() if manifest.weighting else None,
+        "authorship": [entry.model_dump() for entry in manifest.authorship],
+        "authority_precedence": list(manifest.authority_precedence),
+        "panel": manifest.panel.model_dump() if manifest.panel else None,
+        "readme": (manifest.readme.name, manifest.readme.sha256) if manifest.readme else None,
+        "logo": (manifest.logo.name, manifest.logo.sha256) if manifest.logo else None,
+    }
+
+
 def _resolution_signature(result) -> str | None:
     """**On `manifest.compilation`, not on the manifest root — and that is why this is a function.**
 
@@ -77,6 +105,7 @@ def test_reference_example_round_trips_to_a_fixed_point(spec: Path, tmp_path: Pa
     second = compile_module(tmp_path / "rev1", tmp_path / "a2")
     assert second.success, second.errors
     assert _signatures(first) == _signatures(second)
+    assert _authored_projection(first.manifest) == _authored_projection(second.manifest)
 
     # A second lap, because "reverse produces something that recompiles" and "reverse is a fixed
     # point" are different claims — a transform can be stable from the second iteration onward while
@@ -85,6 +114,7 @@ def test_reference_example_round_trips_to_a_fixed_point(spec: Path, tmp_path: Pa
     third = compile_module(tmp_path / "rev2", tmp_path / "a3")
     assert third.success, third.errors
     assert _signatures(second) == _signatures(third)
+    assert _authored_projection(second.manifest) == _authored_projection(third.manifest)
     assert _resolution_signature(second) == _resolution_signature(third)
 
     # `resolution_signature` on the FIRST lap is the one with a documented exception, and once the

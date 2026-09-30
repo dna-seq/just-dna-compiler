@@ -547,7 +547,9 @@ drops every `vrs_id`.** Compiling `reference_examples/hfe_hemochromatosis`, reve
 again takes `compilation.vrs_alleles_identified` from 10 to 0 of 12. `reverse` rebuilds
 `resolution.csv` from the parquets, and no variant parquet carries the id. By P7's own remedy ("the
 artifact is missing a field, not the spec") that is candidate 4 above, so it is evidence for this
-item rather than a new one.
+item rather than a new one. RM241, which made `reverse` write back every spec field the manifest
+carries, names this loss as its residual: the id is in no parquet, so there is nothing for reverse to
+read.
 
 **Pinned by RM291 (2026-09-27).** `compiler/tests/test_consumer_join.py` joins every reference example
 against a bcftools-normalized ClinVar slice, and the two SHOX rows Ensembl spells at `X:634690`

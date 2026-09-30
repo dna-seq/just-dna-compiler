@@ -203,6 +203,7 @@ attached, and the rejected repair is usually the one that looks obvious from the
 - The Ensembl snapshot pipe-joins `alt`; every other link uses commas. `@snapshot-pipe-alt`
 - Resolution reads the PGx tables too; subjects dedupe with `variants.csv` first. `@resolution-reads-pgx-tables`
 - Reverse dropping `rsid_alternates` is closed, not a bug — don't re-flag it. `@rsid-alternates-closed`
+- A round-trip gate made of digests cannot see a value that lives only in the manifest; compare the authored projection. `@a-digest-gate-cannot-see-the-manifest`
 - A sidecar is merged, never clobbered — delete it to regenerate after a machinery change; since 0.7 that delete is free. `@sidecar-authoritative`
 - A correction to a derived table goes in `overrides.csv`, applied and never merged in; it is a third category in neither table registry. `@overlay-not-inside`
 - The enricher reads the overlay at input reads only, never at a merge baseline; answered is per field. `@overlay-read-at-inputs-never-at-baselines`

@@ -41,6 +41,18 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-30 — RM241: `reverse` writes back every spec field the manifest carries (0.8, uncut)
+
+**compiler** — `reverse_module` now reads the artifact's `manifest.json` for the whole spec header: the
+`module:` block's display fields, `version`, `genome_build`, the defaults' `curator`/`method`,
+`license`, `weighting`, `authorship`, `authority_precedence` and `panel`. The README and logo are copied
+back after a hash check. Before, the display block was rebuilt from the module name and the rest was
+dropped, and the round-trip test passed because both identity digests leave the manifest out; it now
+also compares the manifest's authored projection. **Surface:** `reverse_module(icon=, color=)` and the
+CLI's `--icon`/`--color` default to `None` rather than `"database"`/`"#6435c9"` (the fallback for a
+bare parquet directory is unchanged), and `compiler.reverse` gains `REVERSE_RECONSTRUCTED` and
+`REVERSE_EXCLUDED`. No digest moves.
+
 ## 2026-09-29 — RM310: a CPIC outage during `cache rebuild` is a failed lane, not a traceback (patch, on `main`)
 
 **enricher** — `caches._rebuild_cpic` now catches `cpic.CpicError`, which `CpicClient` raises on a

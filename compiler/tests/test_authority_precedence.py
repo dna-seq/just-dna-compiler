@@ -163,16 +163,18 @@ def test_no_warning_or_error_mentions_the_field(tmp_path: Path) -> None:
     assert not [w for w in check.warnings if "authority_precedence" in w]
 
 
-def test_reverse_drops_it_and_the_result_still_compiles(tmp_path: Path) -> None:
-    """Same class as `weighting:`/`authorship:`/`license:`, and dropped for the same reason:
-    `reverse_module` rebuilds the spec from the parquets, this reaches no parquet, and inventing a
-    default would author a methodological claim no human made."""
+def test_reverse_writes_it_back_and_the_result_still_compiles(tmp_path: Path) -> None:
+    """Same class as `weighting:`/`authorship:`/`license:`: it reaches no parquet but it reaches the
+    manifest, and since RM241 `reverse_module` writes it back from there. This test pinned the drop
+    until then."""
     spec = _spec(tmp_path / "spec", ["clinvar", "pubmind"])
     first = compile_module(spec, tmp_path / "a1")
     assert first.success, first.errors
     assert first.manifest.authority_precedence == ["clinvar", "pubmind"]
 
     reverse_module(tmp_path / "a1", tmp_path / "rev")
-    assert "authority_precedence" not in (tmp_path / "rev" / "module_spec.yaml").read_text()
     check = validate_spec(tmp_path / "rev")
     assert check.valid, check.errors
+    second = compile_module(tmp_path / "rev", tmp_path / "a2")
+    assert second.success, second.errors
+    assert second.manifest.authority_precedence == ["clinvar", "pubmind"]

@@ -383,9 +383,9 @@ class ModuleSpecConfig(BaseModel):
             "**checks** it against the annotation-layer rows of the licensing table, warning in both "
             "modes when they disagree rather than replacing either. Advisory only in the sense that "
             "no gate reads it — unlike `module.version`, which a publishing registry really does "
-            "stamp. The authoritative per-source record is `sources.csv`, which round-trips; this "
-            "key is a human convenience and is NOT reconstructed by the lossy `reverse_module` "
-            "(same class as `panel`/`authorship`)."
+            "stamp. The authoritative per-source record is `sources.csv`; this key is the author's "
+            "statement about the module as a whole, and `reverse_module` writes it back from the "
+            "manifest (RM241)."
         ),
     )
     weighting: Weighting | None = Field(
@@ -395,8 +395,8 @@ class ModuleSpecConfig(BaseModel):
             "What this module's `weight` column means — `scale`, `method` and `note`, all free text "
             "(RM92). `weight` is the one magnitude in the format with no unit beside it, so without "
             "this a consumer combining two modules' weights cannot know they are on different "
-            "scales. Advisory, copied into the manifest, and NOT reconstructed by the lossy "
-            "`reverse_module` (same class as `panel`/`authorship`/`license`)."
+            "scales. Advisory, copied into the manifest, and written back by `reverse_module` from "
+            "there (RM241)."
         ),
     )
 
@@ -404,7 +404,7 @@ class ModuleSpecConfig(BaseModel):
         json_schema_extra=since("0.7.0"),
         default_factory=list,
         description=(
-            "Optional ordered list of the annotation authorities this module's curator weighted while deciding its clinical calls, most-trusted first — e.g. `[clinvar, pubmind]` (RM134). A **methodological stance, recorded and computed with by nothing**: no tier reads it to resolve anything, no check consults it, no verdict and no emitted row depends on it, and changing it moves neither identity half. It exists so a consumer can see the stance instead of inferring it by reading every contested row.\n\nIt resolves nothing because nothing can. With five authorities in a two-against-three disagreement, this order says one thing and a majority says another, and choosing between those rules is a judgement about how rank trades against agreement count — a weighting model this format does not have and has declined to invent three times. So the concordance record states the agreement state and each authority's own call, a consumer holding its own model computes what it likes, and a per-variant exception is an `overrides.csv` row rather than a second mechanism. Advisory like `weighting:`/`authorship:`/`license:`, copied into the manifest, and NOT reconstructed by the lossy `reverse_module`."
+            "Optional ordered list of the annotation authorities this module's curator weighted while deciding its clinical calls, most-trusted first — e.g. `[clinvar, pubmind]` (RM134). A **methodological stance, recorded and computed with by nothing**: no tier reads it to resolve anything, no check consults it, no verdict and no emitted row depends on it, and changing it moves neither identity half. It exists so a consumer can see the stance instead of inferring it by reading every contested row.\n\nIt resolves nothing because nothing can. With five authorities in a two-against-three disagreement, this order says one thing and a majority says another, and choosing between those rules is a judgement about how rank trades against agreement count — a weighting model this format does not have and has declined to invent three times. So the concordance record states the agreement state and each authority's own call, a consumer holding its own model computes what it likes, and a per-variant exception is an `overrides.csv` row rather than a second mechanism. Advisory like `weighting:`/`authorship:`/`license:`, copied into the manifest, and written back by `reverse_module` from there (RM241)."
         ),
     )
 
