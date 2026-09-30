@@ -95,3 +95,6 @@ def test_enrich_keeps_the_same_event_and_drops_the_different_one(
     placed = {r.rsid: (r.chrom, r.start) for r in result.rows if r.chrom}
     assert placed == {"rs77944059": ("2", 166204477)}
     assert "rs1" in result.unresolved
+    # RM272: the dropped locus is named on the result, per locus, not only in the log.
+    assert result.reference_rejected_loci == ["rs1 2:166204477"]
+    assert result.non_nucleotide_rsids == [] and result.unanchored_rsids == []

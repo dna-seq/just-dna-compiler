@@ -74,6 +74,9 @@ class EnsemblResolver:
     # One GRCh38 base at a 1-based position, or `None` — what anchors a one-sided REST indel (RM268).
     # Private like `_client`, so a patch adds no constructor surface; a test sets it the same way.
     _read_base: Callable[[str, int], str | None] | None = None
+    # rsIDs this resolver answered with no placeable locus because every mapping carried no nucleotide
+    # allele (RM271), collected so a caller can name them (RM272). Accumulates across calls.
+    non_nucleotide_rsids: set[str] = field(default_factory=set)
 
     def _base_reader(self) -> Callable[[str, int], str | None]:
         if self._read_base is None:
@@ -152,6 +155,8 @@ class EnsemblResolver:
             # RM271. A mapping with no nucleotide allele (`dbSNP_novariation`, an `N` run) is not a
             # locus. Permanent, unlike an unreadable anchor, so an rsID left with none is the existing
             # answered-empty `[]`, and the words say it is Ensembl's own "no variation here".
+            if not loci:
+                self.non_nucleotide_rsids.add(rsid)
             log = logger.warning if not loci else logger.info
             log(
                 "V1 REST for %s: %d mapping(s) carry no nucleotide allele (e.g. dbSNP_novariation) and "

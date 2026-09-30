@@ -120,3 +120,21 @@ def test_the_snapshot_serves_only_nucleotide_loci(snapshot: Path, caplog: pytest
 def test_a_position_backfill_never_takes_an_rsid_from_a_novariation_row(snapshot: Path) -> None:
     _, candidates, _ = lookup_loci(snapshot, [], [("1", 2651767, "T", None), ("11", 5225642, "CT", "CA")])
     assert candidates == {("1", 2651767, "T", None): [], ("11", 5225642, "CT", "CA"): ["rs33946775"]}
+
+
+def test_the_snapshot_names_the_rsids_it_holds_with_no_base_to_a_collector(snapshot: Path) -> None:
+    """RM272: the same two rsIDs the log names reach a caller's set, and only rsIDs left with no locus.
+    `rs1603142144` has an N-masked chrY row and a placeable chrX row, so it is not among them."""
+    rsids = ["rs2100212723", "rs1553186440", "rs33946775", "rs3838485", "rs1603142144"]
+    collected: set[str] = set()
+    lookup_loci(snapshot, rsids, [], non_nucleotide=collected)
+    assert collected == {"rs2100212723", "rs1553186440"}
+
+
+def test_the_live_resolver_names_an_rsid_with_no_placeable_mapping() -> None:
+    resolver = EnsemblResolver()
+    resolver._client = httpx.Client(
+        transport=_rest_only({"mappings": [_mapping("1", 94108691, "G/TTTTTTTTTTTNNNNNNNNNNN")]})
+    )
+    resolver.resolve_rsid("rs2101156061")
+    assert resolver.non_nucleotide_rsids == {"rs2101156061"}

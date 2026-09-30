@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-30 — RM272: `EnrichmentResult` names three answered-but-withheld states (0.8, uncut)
+
+**enricher** — `unanchored_rsids` (live Ensembl's one-sided indel whose anchor base could not be read,
+RM268; transient), `non_nucleotide_rsids` (every allele either Ensembl rung gave is not a base, RM271;
+permanent) and `reference_rejected_loci` (per locus, the indel the reference showed is a different
+event, RM274). Each rsID is in exactly one list and still in `unresolved`. The logs are unchanged.
+`resolver.lookup_loci` takes an optional `non_nucleotide=` collector, and `EnsemblResolver` gains
+`non_nucleotide_rsids`.
+
 ## 2026-09-30 — RM278: `compile --ensembl-reference` and `--ba1-threshold` (0.8, uncut)
 
 **compiler** — The `compile` command gains `--ensembl-reference` (stamps

@@ -423,6 +423,59 @@ def test_an_unanchorable_ensembl_answer_writes_no_row_and_is_named_apart(
     assert [row for row in result.rows if row.rsid == "rs8176719"] == []
 
 
+def test_three_answered_or_failed_states_are_named_apart_and_stay_unresolved(
+    cache: Path, tmp_path: Path
+) -> None:
+    """RM272. One run, one rsID in each state, each named in exactly one result list and still in
+    `unresolved`: a failed request (rs6567160, transient), a one-sided indel whose anchor base cannot be
+    read (rs8176719, RM268, transient), and a mapping whose only allele is an `N` run (rs2101156061,
+    RM271, permanent). The strings are what live REST served for these ids."""
+
+    mappings = {
+        "rs8176719": {"start": 133257522, "end": 133257521, "seq_region_name": "9", "allele_string": "-/C"},
+        "rs2101156061": {
+            "start": 94108691,
+            "end": 94108691,
+            "seq_region_name": "1",
+            "allele_string": "G/TTTTTTTTTTTNNNNNNNNNNN",
+        },
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "graphql" in str(request.url):
+            return httpx.Response(200, json={"data": {"variant": None}})
+        rsid = str(request.url).rstrip("/").split("/")[-1].split("?")[0]
+        if rsid not in mappings:
+            raise httpx.ConnectError("egress down", request=request)
+        return httpx.Response(200, json={"mappings": [{"assembly_name": "GRCh38", **mappings[rsid]}]})
+
+    resolver = EnsemblResolver()
+    resolver._read_base = lambda _chrom, _pos: None
+    resolver._client = httpx.Client(transport=httpx.MockTransport(handler))
+    spec = _spec(
+        tmp_path / "spec",
+        "rsid,genotype,state,conclusion\nrs6567160,C/T,risk,c\nrs8176719,T/TC,risk,c\nrs2101156061,G/G,risk,c\n",
+    )
+    result = enrich(
+        spec, ensembl_cache=cache, clinvar_cache=tmp_path, resolver=resolver, use_gnomad=False, download=False
+    )
+
+    lists = {
+        "unreachable": result.unreachable_rsids,
+        "unanchored": result.unanchored_rsids,
+        "non_nucleotide": result.non_nucleotide_rsids,
+    }
+    assert lists == {
+        "unreachable": ["rs6567160"],
+        "unanchored": ["rs8176719"],
+        "non_nucleotide": ["rs2101156061"],
+    }
+    named = [rsid for members in lists.values() for rsid in members]
+    assert len(named) == len(set(named))  # disjoint
+    assert set(named) <= set(result.unresolved)
+    assert result.reference_rejected_loci == []
+
+
 def test_a_dbsnp_outage_does_not_sink_a_finished_enrichment(
     cache: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

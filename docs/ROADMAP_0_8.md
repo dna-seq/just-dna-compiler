@@ -209,20 +209,6 @@ DOI-only lookup two titles, Crossref's and PubMed's, and whether a disagreement 
 `warning` or only two `info` findings side by side is the decision still to make. `EuropePmcClient`
 has no DOI search today; one method.
 
-## RM272 — an answered-but-unplaceable rsID has no structured name in `EnrichmentResult`
-
-**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** enricher
-(`EnrichmentResult`) · **Motivating case** RM268 and RM271, 2026-09-27
-
-RM268 withholds a live REST locus whose anchor base cannot be read, and RM271 withholds loci whose
-alleles are not bases; RM274 keeps an indel the reference could not settle, and drops one it showed is
-a different event. On `main` all of these are reported by a log warning only, because a new
-`EnrichmentResult` field is minor-class (the first RM268 commit added `unanchored_rsids` there and was
-fixed forward). A caller reading the result sees these rsIDs only in `unresolved`, which is silent about
-why, the gap `unreachable_rsids`, `unconsulted_rsids` and `allele_mismatches` each closed for their
-state. Add the field (or fields) on `0.8`, beside those, and decide whether "anchor base unreadable"
-(transient, re-run) and "not a base" (permanent) are one list or two. · *related* RM268, RM271, S20, S85
-
 ## RM283 — nothing notices the ClinPGx archive the lane builds from going quiet, which is how it served a fourteen-month-old snapshot
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** enricher

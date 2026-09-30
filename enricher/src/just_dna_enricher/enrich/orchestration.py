@@ -433,8 +433,11 @@ def _run_enrichment(
     # rsIDs the live link could not put a question to at all — a failed request, not an empty answer.
     unreachable_rsids: set[str] = set()
     # Live Ensembl answered with one-sided indels whose anchor base could not be read (RM268). Warned
-    # apart from `unreachable_rsids`; a result field naming them is minor-scope, so it waits for 0.8.
+    # apart from `unreachable_rsids`, and named on the result since RM272.
     unanchored_rsids: set[str] = set()
+    # rsIDs a rung answered with no nucleotide allele at any locus (RM271), from the snapshot and from
+    # the live resolver. Reduced to the ones left with no locus at all when the result is built (RM272).
+    non_nucleotide_rsids: set[str] = set()
     unconsulted_rsids: set[str] = set()  # nobody looked (RM98) — see the EnrichResult field
     # The source answered and every locus it gave was rejected by the allele-aware filter (S85). A
     # list rather than a set: it carries a finding per subject, not a bare id.
@@ -464,7 +467,9 @@ def _run_enrichment(
         # check would silently never run on exactly the modules it exists for.
         rsids = [v.rsid for v in need_pos if v.rsid] + [rsid for rsid, _, _, _ in verify_pairs]
         try:
-            rsid_to_loci, pos_candidates, _ = lookup_loci(reference, rsids, positions)
+            rsid_to_loci, pos_candidates, _ = lookup_loci(
+                reference, rsids, positions, non_nucleotide=non_nucleotide_rsids
+            )
         except Exception as exc:
             # A *located* cache can still be unusable — a stale snapshot, or a parquet a different
             # tool wrote — and the query then raises rather than returning nothing. That was fatal
@@ -597,6 +602,11 @@ def _run_enrichment(
             try:
                 for rsid in missing:
                     loci, src = client.resolve_rsid(rsid)
+                    # RM272: the resolver names an rsID whose every mapping carried no nucleotide
+                    # allele. Read by attribute because a host may inject its own resolver, and one
+                    # that does not collect them simply contributes none.
+                    if loci == [] and rsid in getattr(client, "non_nucleotide_rsids", ()):
+                        non_nucleotide_rsids.add(rsid)
                     if loci is None and src is not None:
                         # Ensembl answered, with one-sided indels whose anchor base could not be read
                         # (RM268). Unchecked like a failed request, and no row for the same reason,
@@ -1417,6 +1427,14 @@ def _run_enrichment(
         unreachable_rsids=sorted(unreachable_rsids),
         unconsulted_rsids=sorted(unconsulted_rsids),
         allele_mismatches=allele_mismatches,
+        # RM272. Reduced to the rsIDs left with no locus from ANY link, and apart from the transient
+        # states, so the lists stay disjoint: a snapshot row with no bases that live Ensembl then placed,
+        # or that another link placed, is not a permanent absence.
+        unanchored_rsids=sorted(unanchored_rsids - set(rsid_to_loci)),
+        non_nucleotide_rsids=sorted(
+            non_nucleotide_rsids - set(rsid_to_loci) - unreachable_rsids - unanchored_rsids
+        ),
+        reference_rejected_loci=list(reference_rejected),
         rsid_coordinates=pair_check,
         rederived=rederived,
         dataset_currency=dataset_currency,

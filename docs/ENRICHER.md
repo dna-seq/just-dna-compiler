@@ -985,6 +985,20 @@ the asking *succeeded* and the answer did not match. `strand_flip` is the single
 settle from the allele strings alone, and it is `False` for *not established* rather than *established
 otherwise* — an allele that cannot be complemented withholds it.
 
+**Three more states are named since 0.8 (RM272)**, each an rsID that is also in `unresolved` and in
+exactly one of these lists, because each has a different remedy:
+
+- `unanchored_rsids` — live Ensembl answered with a one-sided indel whose anchor base could not be read
+  (RM268), so no row is written. **Transient**: re-run where the GRCh38 reference can be read.
+- `non_nucleotide_rsids` — every allele the snapshot and live Ensembl gave is not a base
+  (`dbSNP_novariation`, `<.>`, an `N` run; RM271), and the row is written `not_found`. **Permanent**:
+  dbSNP records no variation at that mapping, and asking again gets the same answer.
+- `reference_rejected_loci` — per **locus** (`"<rsid> <chrom>:<start>"`), the loci the GRCh38 reference
+  showed are a different indel of the same size from the authored genotype's (RM274). Permanent, and
+  about which locus rather than whether the rsID resolved, so it is not an rsID list.
+
+The log lines that named them before stay as they were.
+
 **The row itself is unchanged, deliberately, and that is not a half-fix.** Adding a
 `VALID_RESOLUTION_STATUS` member would change a wire vocabulary every reader of a published
 `resolution.csv` shares; dropping the row would move `resolution_signature`, since `variant_key` and

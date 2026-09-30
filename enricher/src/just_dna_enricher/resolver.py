@@ -292,6 +292,7 @@ def lookup_loci(
     reference: Path,
     rsids: list[str],
     positions: list[tuple[str | None, int | None, str | None, str | None]],
+    non_nucleotide: set[str] | None = None,
 ) -> tuple[dict[str, list[dict]], dict[tuple, list[str]], list[str]]:
     """Public cache lookup the enricher uses to *build* a resolution table (0.5).
 
@@ -299,11 +300,16 @@ def lookup_loci(
     Ensembl reference. The reverse map is **allele-aware** (matches the authored `alt` when given) and
     returns *all* candidate rsIDs at that exact allele — never a silent first-pick — so the caller can
     take a deterministic pick and flag a genuine multi-rsid allele as ambiguous. Inject-only.
+
+    `non_nucleotide`, when given, receives the rsIDs the snapshot holds with no nucleotide allele at
+    any locus (RM271), so a caller can name them rather than read them out of the log (RM272).
     """
     warnings: list[str] = []
     con = _connect(reference)
     try:
-        rsid_to_loci = _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings) if rsids else {}
+        rsid_to_loci = (
+            _lookup_positions_by_rsid(con, sorted(set(rsids)), warnings, non_nucleotide) if rsids else {}
+        )
         pos_candidates = (
             _lookup_rsid_candidates(con, "ensembl_variations", "id", positions) if positions else {}
         )
@@ -441,7 +447,10 @@ def _snapshot_alleles(cell: object) -> list[str]:
 
 
 def _lookup_positions_by_rsid(
-    con: duckdb.DuckDBPyConnection, rsids: list[str], warnings: list[str]
+    con: duckdb.DuckDBPyConnection,
+    rsids: list[str],
+    warnings: list[str],
+    non_nucleotide: set[str] | None = None,
 ) -> dict[str, list[dict]]:
     """Batch lookup: rsid -> [{chrom, start, ref, alts}, ...] (ALL loci, deterministically ordered).
 
@@ -477,6 +486,8 @@ def _lookup_positions_by_rsid(
             {"chrom": str(chrom), "start": int(start), "ref": placed[0], "alts": ",".join(placed[1])}
         )
     only_unplaceable = sorted(unplaceable - set(result))
+    if non_nucleotide is not None:
+        non_nucleotide.update(only_unplaceable)
     if only_unplaceable:
         # In the snapshot, so "not in the injected snapshot" would be false; said once, not per rsID.
         logger.warning(

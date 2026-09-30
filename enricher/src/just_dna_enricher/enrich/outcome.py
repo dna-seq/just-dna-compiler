@@ -194,6 +194,22 @@ class EnrichmentResult:
     # match. The row is honestly unresolved, so it stays; what was wrong was the reason it gave.
     # Empty is a clean bill only because every branch that writes one appends here.
     allele_mismatches: list[AlleleMismatch] = field(default_factory=list)
+    # Three more answered-but-withheld states (RM272), each apart from the neighbours above and from one
+    # another, because the remedy differs. Each rsID here is also in `unresolved` (by its key), which is
+    # silent about why; the three lists are disjoint.
+    #
+    # `unanchored_rsids`: live Ensembl answered with one-sided indels whose anchor base could not be
+    # read (RM268), so no locus was written. **Transient**: a re-run that can read the reference fixes it.
+    unanchored_rsids: list[str] = field(default_factory=list)
+    # `non_nucleotide_rsids`: every allele Ensembl gave, in the snapshot and live, is not a base
+    # (`dbSNP_novariation`, `<.>`, an `N` run; RM271), so dbSNP records no variation there. **Permanent**:
+    # re-running asks the same question and gets the same answer.
+    non_nucleotide_rsids: list[str] = field(default_factory=list)
+    # `reference_rejected_loci`: loci dropped because the GRCh38 reference shows their indel is a
+    # different event of the same size from the authored genotype's (RM274). Per **locus**, as
+    # `"<rsid> <chrom>:<start>"`, since one rsID can keep other loci. **Permanent**, and a finding
+    # about which locus, not about whether the rsID resolved.
+    reference_rejected_loci: list[str] = field(default_factory=list)
     # What the rsid↔coordinate pass did (`resolver.check_rsid_coordinates`): the pairs it compared,
     # the ones the reference could not place, and the disagreements. Surfaced for the RM40/RM41 reason
     # — the run computes it and a consumer would otherwise recompute it from the log — and because the

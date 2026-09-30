@@ -35,6 +35,35 @@ up.
 The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on
 the `0.8` branch in the proposal's order. Newest first.
 
+## RM272 — an answered-but-unplaceable rsID has no structured name in `EnrichmentResult`
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** enricher
+(`EnrichmentResult`) · **Motivating case** RM268 and RM271, 2026-09-27
+
+**Residuals** none
+
+RM268 withholds a live REST locus whose anchor base cannot be read, and RM271 withholds loci whose
+alleles are not bases; RM274 keeps an indel the reference could not settle, and drops one it showed is
+a different event. On `main` all of these are reported by a log warning only, because a new
+`EnrichmentResult` field is minor-class (the first RM268 commit added `unanchored_rsids` there and was
+fixed forward). A caller reading the result sees these rsIDs only in `unresolved`, which is silent about
+why, the gap `unreachable_rsids`, `unconsulted_rsids` and `allele_mismatches` each closed for their
+state. Add the field (or fields) on `0.8`, beside those, and decide whether "anchor base unreadable"
+(transient, re-run) and "not a base" (permanent) are one list or two. · *related* RM268, RM271, S20, S85
+
+**What shipped.** Three `EnrichmentResult` fields beside `unreachable_rsids`, `unconsulted_rsids` and
+`allele_mismatches`, each documented with its remedy: `unanchored_rsids` (the set the pass already
+kept), `non_nucleotide_rsids`, and `reference_rejected_loci` (the stated assumption held: per locus, a
+field of its own, and it has a reader in the same place the log line had one). The non-nucleotide rsIDs
+are collected from **both** Ensembl rungs, since RM271 filters in both: the snapshot through a new
+optional `non_nucleotide=` collector on `resolver.lookup_loci` (additive, the return shape unchanged),
+and live REST through `EnsemblResolver.non_nucleotide_rsids`, read by attribute so an injected resolver
+without it contributes none. The result keeps the lists disjoint by construction: a non-nucleotide rsID
+some other link placed, or that also failed or went unanchored, is not listed. Tested with one enrich
+run holding one rsID in each state (the strings live REST served), each named in exactly one list and
+all in `unresolved`; the RM274 test now asserts its locus on the result; and both collectors are pinned
+directly.
+
 ## RM278 — the `compile` command cannot pass `ensembl_reference` or `ba1_threshold`, so every CLI-compiled manifest has a null `ensembl_reference`
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** compiler (`cli.py`
@@ -1279,7 +1308,7 @@ an `EnsemblResolver.read_base` constructor field and a public `sequences.grch38_
 field, parameter and public function, each minor-class under the triage runbook's release table, and
 [RELEASE_CYCLE](RELEASE_CYCLE.md) keeps `main` patch-only. Fixed forward: the reader is private, the
 field is gone, and the warning carries the naming. The structured list is
-[RM272](ROADMAP_0_8.md#rm272--an-answered-but-unplaceable-rsid-has-no-structured-name-in-enrichmentresult),
+[RM272](#rm272--an-answered-but-unplaceable-rsid-has-no-structured-name-in-enrichmentresult),
 for `0.8`.
 
 ## RM264 — the 0.7.x manifest read an abstract-only miss as a checked quote, and the patch line re-describes it
