@@ -54,6 +54,20 @@ Feature: Alleles, genotypes and contig ploidy
     # `StudyRow` has `ref` but no `alts`, so `{ref}` alone would flag every study of a non-reference
     # allele, which is most of them. Silent under `--no-resolve` for the same reason, which is correct.
 
+  # source: compiler/src/just_dna_compiler/compiler/variant_checks.py
+  # anchor: _check_conclusion_genotypes
+  @code:conclusion_names_other_genotype @actionable @both_modes
+  Scenario: two conclusions at one site are swapped
+    Given a variants.csv whose C/C row's conclusion is about AA
+    And whose A/A row's conclusion is about CC
+    When the module is compiled with --strict
+    Then the compile succeeds
+    And a warning says the two conclusions "look swapped"
+    And a row carrying its neighbour's sentence is reported "as if copied from that row"
+    # RM279 shipped this rule as a hint, so an author who never ran `hint` got a green --strict compile
+    # on a swapped pair taken from a real module. It warns rather than refuses: ten of ten real over one
+    # corpus is a measurement, not a licence, and the conclusion may be right and the genotype wrong.
+
   # source: compiler/src/just_dna_compiler/compiler/allele_checks.py
   # anchor: _check_genotype_coverage
   @code:genotype_coverage_gap @actionable @both_modes

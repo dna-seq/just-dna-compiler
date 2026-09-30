@@ -16,6 +16,68 @@ from just_dna_format.vrs import (
 )
 
 from just_dna_compiler.compiler.table_checks import _examples
+from just_dna_compiler.conclusion import conclusion_genotype_mismatches
+
+# ── Conclusion text against its own genotype (RM308) ────────────────────────────
+
+
+def _check_conclusion_genotypes(variants: list[VariantRow]) -> list[str]:
+    """A conclusion naming another genotype at its locus and never its own row's (RM308).
+
+    RM279's rule (`conclusion.conclusion_genotype_mismatches`), which until 0.8 ran only on the
+    authoring surface (`hint`, `lint_rows`): the compile half needed a new warning code, and that is a
+    minor. So a module nobody linted compiled green under `--strict` with a swapped pair.
+
+    **Aggregated by reason, two of them**, because the fix differs. Rows that name each other are a
+    swapped pair, and the repair is to exchange two conclusions. A row naming a neighbour that does not
+    name it back carries text copied from that neighbour, and the repair is to rewrite one. A warning
+    in both modes: ten of ten real over one corpus is a measurement, not a licence to refuse. It reports
+    and never repairs, since the conclusion may be right and the genotype wrong
+    (`@refutation-withholds`).
+
+    Here only, in the pre-flight: it reads authored text and genotypes, which resolution never changes,
+    and `compile_module` inherits the finding through `validation.warnings`.
+    """
+    hits = conclusion_genotype_mismatches(variants)
+    if not hits:
+        return []
+    by_row = {hit.row: hit for hit in hits}
+
+    def describe(index: int) -> str:
+        row = variants[index]
+        locus = row.rsid or f"{row.chrom}:{row.start}"
+        named = ", ".join("/".join(pair) for pair in by_row[index].named)
+        return f"{locus} {row.genotype} names {named}"
+
+    swapped = [
+        i
+        for i, hit in by_row.items()
+        if any(j in by_row and i in by_row[j].named_rows for j in hit.named_rows)
+    ]
+    copied = [i for i in by_row if i not in set(swapped)]
+    findings: list[str] = []
+    if swapped:
+        findings.append(
+            CodedWarning(
+                "conclusion_names_other_genotype",
+                f"{len(swapped)} variants.csv row(s) carry a conclusion that names another genotype at "
+                f"the locus and never the row's own, and the rows name each other, so two conclusions "
+                f"look swapped: {_examples([describe(i) for i in swapped])}. Check which text belongs "
+                f"to which genotype; nothing here is changed.",
+            )
+        )
+    if copied:
+        findings.append(
+            CodedWarning(
+                "conclusion_names_other_genotype",
+                f"{len(copied)} variants.csv row(s) carry a conclusion that names another genotype at "
+                f"the locus and never the row's own, as if copied from that row: "
+                f"{_examples([describe(i) for i in copied])}. Check that the text belongs to this "
+                f"genotype; nothing here is changed.",
+            )
+        )
+    return findings
+
 
 # ── Cross-row validation ───────────────────────────────────────────────────────
 

@@ -312,22 +312,6 @@ variants per tier are wanted too, since the existing counts are per genotype row
 **Legality and price.** A new optional manifest field is additive and minor-legal (P3). It is not in
 `artifact.digest`, and the compiler writes it, so it costs nearly nothing (P9). Not on `main`.
 
-## RM308 — the conclusion-genotype finding runs only on the authoring surface, so a module nobody linted compiles green with a swapped pair
-
-**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (a new warning code) · **Owner** format
-(`VALID_WARNING_CODES`) + compiler (`validate_spec`, `compile_module`) · **Motivating case** RM279's
-residual, 2026-09-28 · *related* RM279, RM309
-
-RM279 shipped the rule as a hint because the compile half needs a member of `VALID_WARNING_CODES`, and a
-new member is minor-class: a reader pinned to an older `just-dna-format` refuses a manifest carrying it.
-So an author who never runs `hint` or `lint_rows` still gets a green `--strict` compile on a swapped
-pair. The rule is `just_dna_compiler.conclusion.conclusion_genotype_mismatches`, already separate from
-`hints` so the compile path can call it. What the minor owes: one code named for the finding (for
-example `conclusion_names_other_genotype`), emission at both `validate` and `compile`
-(`@parity-by-check`), aggregated by reason, a `features/` scenario, and the phrase pinned in the
-COMPILER.md warning catalogue. It stays a warning in both modes: 10 of 10 is a measurement over one
-corpus, not a licence to refuse.
-
 ## RM313 — RM57's `quality_floor_inverted` warning reads VCF QUAL backwards, and tells authors so on every compile
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-30** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)): the retirement alone would be a patch, and the replacement finding's new code makes the pair a minor · **Owner** compiler (`_check_quality_inversion`) + format (the `quality_from` description) · **Motivating case** relayed 2026-09-30 by the just-vcf session, which found it checking its own frame schema against VCFv4.5 · *related* RM57, RM6, [VCF_4_4_AUDIT § 5](probes/VCF_4_4_AUDIT.md#5-a-min_quality-floor-against-qual-inverts-on-exactly-the-rows-it-exists-for)

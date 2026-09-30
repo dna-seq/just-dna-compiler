@@ -1581,7 +1581,7 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
   `rsid_no_hosting_locus`
 - **VRS** — `vrs_id_unverifiable`, `vrs_coverage_incomplete`
 - **`variants.csv` coherence** — `weight_sign_disagrees_with_effect`, `genotype_allele_not_at_locus`,
-  `effect_allele_not_at_locus`, `genotype_coverage_gap`, `quality_floor_inverted`,
+  `effect_allele_not_at_locus`, `genotype_coverage_gap`, `conclusion_names_other_genotype`, `quality_floor_inverted`,
   `missing_allele_marker_in_alts`, `vcf_pointer_key_collision`, `vcf_pointer_unselected_element`,
   `composite_gene_cell`, `symbolic_allele_unusable`
 - **binning tables** — `bin_tiling_inferred`, `bin_tiling_contradicted`, `bin_coverage_gap`,
@@ -1752,6 +1752,15 @@ an earlier row is superseded and kept: {groups}. Nothing is deleted and nothing 
 classification_date is read as current, both rows stay so the drift is visible, and
 manifest.gene_validity.classifications publishes the current one. A curating body re-curating is not
 an error in your module.
+
+conclusion_names_other_genotype (RM308, 0.8), one sentence per reason — rows naming each other, and a
+row naming a neighbour that does not name it back:
+{n} variants.csv row(s) carry a conclusion that names another genotype at the locus and never the
+row's own, and the rows name each other, so two conclusions look swapped: e.g. {rsid} {genotype} names
+{named}; …. Check which text belongs to which genotype; nothing here is changed.
+{n} variants.csv row(s) carry a conclusion that names another genotype at the locus and never the
+row's own, as if copied from that row: e.g. …. Check that the text belongs to this genotype; nothing
+here is changed.
 
 fact_rows_contradict (RM275, 0.8): {table} carries {n} key(s) under which two rows state different
 values: {key} ({fields}); … (+{m} more). The enricher writes this table one row per key, so a consumer

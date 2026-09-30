@@ -1457,6 +1457,7 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "genotype_allele_not_at_locus",  # a genotype names an allele the locus does not carry
         "effect_allele_not_at_locus",  # `effect_allele` is not among the locus's alleles
         "genotype_coverage_gap",  # a site states two or more genotypes and misses one
+        "conclusion_names_other_genotype",  # a conclusion naming another genotype and never its own (RM308)
         "quality_floor_inverted",  # a QUAL floor read against the reference record
         "missing_allele_marker_in_alts",  # `.` in `alts` — VCF's no-alternate marker, not an allele
         "vcf_pointer_key_collision",  # a pointer key INFO and FORMAT both define

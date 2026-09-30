@@ -35,6 +35,39 @@ up.
 The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on
 the `0.8` branch in the proposal's order. Newest first.
 
+## RM308 — the conclusion-genotype finding runs only on the authoring surface, so a module nobody linted compiles green with a swapped pair
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (a new warning code) · **Owner** format
+(`VALID_WARNING_CODES`) + compiler (`validate_spec`, `compile_module`) · **Motivating case** RM279's
+residual, 2026-09-28 · *related* RM279, RM309
+
+**Residuals** RM309 — the negation half of RM279's rule, still unmeasured, whose compile half would join this code
+
+RM279 shipped the rule as a hint because the compile half needs a member of `VALID_WARNING_CODES`, and a
+new member is minor-class: a reader pinned to an older `just-dna-format` refuses a manifest carrying it.
+So an author who never runs `hint` or `lint_rows` still gets a green `--strict` compile on a swapped
+pair. The rule is `just_dna_compiler.conclusion.conclusion_genotype_mismatches`, already separate from
+`hints` so the compile path can call it. What the minor owes: one code named for the finding (for
+example `conclusion_names_other_genotype`), emission at both `validate` and `compile`
+(`@parity-by-check`), aggregated by reason, a `features/` scenario, and the phrase pinned in the
+COMPILER.md warning catalogue. It stays a warning in both modes: 10 of 10 is a measurement over one
+corpus, not a licence to refuse.
+
+**What shipped.** `variant_checks._check_conclusion_genotypes` runs RM279's rule
+(`conclusion.conclusion_genotype_mismatches`, unchanged) in the shared pre-flight, beside the genotype
+coverage check, so `validate` and `compile` carry the finding once each. New code
+`conclusion_names_other_genotype`, actionable, a warning in both modes, aggregated by **two reasons**
+because the repair differs: rows that name each other ("look swapped", exchange two conclusions), and a
+row naming a neighbour that does not name it back ("as if copied", rewrite one). Tested with RM279's
+real fixtures through a positioned spec and a green `--strict` compile; a correct module naming its
+neighbour stays quiet. No reference example fires. The hint keeps its per-row, line-numbered form.
+
+**Found while building, and fixed in the same round:** the RM275 tests filtered result warnings by
+`.code`, but a result's `warnings` are plain strings (the code is lost at the pydantic field,
+`@finding-loses-its-code-at-a-boundary`), so two negative tests there could not fail. Both files now
+match the pinned phrase and read the code from `warnings_summary`, and a mutation run (the "both
+stated" filter removed) shows the empty-cell test failing.
+
 ## RM275 — seven derived fact tables have no duplicate rule, so two contradicting rows under one key compile green under `--strict`
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (re-sized 2026-09-27, see the last paragraph), with

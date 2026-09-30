@@ -843,9 +843,9 @@ def _check_conclusions(
 ) -> None:
     """A `variants.csv` conclusion that names another genotype at its locus and never its own (RM279).
 
-    **Authoring surface only, like the missing-sentinel finding above.** The compile half needs a
-    member of `VALID_WARNING_CODES`, and a new member is minor-class: a reader pinned to an older
-    `just-dna-format` refuses a manifest carrying it. That half is RM308, a minor."""
+    The same rule runs at `validate` and `compile` since 0.8 (RM308), as
+    `conclusion_names_other_genotype`; this is its per-row form, with line numbers, for the authoring
+    surface."""
     if model is not VariantRow:
         return
     rows = [r if isinstance(r, VariantRow) else None for r in parsed]

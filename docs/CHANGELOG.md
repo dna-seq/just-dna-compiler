@@ -41,6 +41,14 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-30 — RM308: a conclusion naming another genotype warns at `validate` and `compile` (0.8, uncut)
+
+**compiler** + **format** — RM279's rule ran only on the authoring surface (`hint`, `lint_rows`), so a
+module nobody linted compiled green under `--strict` with two conclusions swapped. It now runs in the
+pre-flight as **`conclusion_names_other_genotype`**, a new member of `VALID_WARNING_CODES` (an
+old-reader break, in `INTEGRATION_0_8.md`), one sentence per reason: a swapped pair, or text copied from
+a neighbour. A warning in both modes.
+
 ## 2026-09-30 — RM275: two fact-table rows under one merge key that disagree now warn (0.8, uncut)
 
 **compiler** + **format** — `frequencies`, `gene_metrics`, `literature`, `gene_validity`,

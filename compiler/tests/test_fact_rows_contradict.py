@@ -29,7 +29,9 @@ def _with_duplicated_gene_validity_row(tmp_path: Path, edit) -> Path:
 
 
 def _codes(warnings: list[str]) -> list[str]:
-    return [w for w in warnings if getattr(w, "code", None) == "fact_rows_contradict"]
+    """The finding's sentences. A result's `warnings` are plain strings (the code does not survive the
+    pydantic field), so this matches the pinned phrase; `warnings_summary` is where the code is read."""
+    return [w for w in warnings if "two rows state different values" in w]
 
 
 def test_a_contradicting_pair_warns_under_strict_and_the_compile_stays_green(tmp_path: Path) -> None:
@@ -42,9 +44,9 @@ def test_a_contradicting_pair_warns_under_strict_and_the_compile_stays_green(tmp
     assert compiled.success, compiled.errors
 
     # Parity by check: the pre-flight and the compile carry the same finding, once each.
+    assert len(_codes(checked.warnings)) == 1
     assert _codes(checked.warnings) == _codes(compiled.warnings)
-    # The published list is plain strings (a pydantic field drops the code), so match the phrase there.
-    [finding] = [w for w in compiled.manifest.compilation.warnings if "two rows state different values" in w]
+    [finding] = _codes(compiled.manifest.compilation.warnings)
     assert "gene_validity.csv carries 1 key(s) under which two rows state different values" in finding
     assert "classification" in finding
     assert compiled.manifest.compilation.warnings_summary["fact_rows_contradict"] == 1
@@ -52,13 +54,19 @@ def test_a_contradicting_pair_warns_under_strict_and_the_compile_stays_green(tmp
 
 def test_an_identical_duplicate_is_not_a_contradiction(tmp_path: Path) -> None:
     spec = _with_duplicated_gene_validity_row(tmp_path, lambda row: row)
-    assert not _codes(compile_module(spec, tmp_path / "out").warnings)
+    compiled = compile_module(spec, tmp_path / "out")
+    assert compiled.success, compiled.errors
+    assert not _codes(compiled.warnings)
+    assert "fact_rows_contradict" not in compiled.manifest.compilation.warnings_summary
 
 
 def test_a_cell_one_row_leaves_empty_is_not_a_contradiction(tmp_path: Path) -> None:
     """`@absent-is-not-different`: an unstated cell beside a stated one is an absence."""
     spec = _with_duplicated_gene_validity_row(tmp_path, lambda row: row.replace(",Definitive,", ",,"))
-    assert not _codes(compile_module(spec, tmp_path / "out").warnings)
+    compiled = compile_module(spec, tmp_path / "out")
+    assert compiled.success, compiled.errors
+    assert not _codes(compiled.warnings)
+    assert "fact_rows_contradict" not in compiled.manifest.compilation.warnings_summary
 
 
 def test_the_check_is_generic_over_the_registered_tables() -> None:

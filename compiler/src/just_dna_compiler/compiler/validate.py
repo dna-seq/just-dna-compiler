@@ -74,6 +74,7 @@ from just_dna_compiler.compiler.table_checks import (
 from just_dna_compiler.compiler.tables import _FACT_TABLES, _TABLE_KINDS, OVERRIDES_CSV, _locate_sidecar
 from just_dna_compiler.compiler.variant_checks import (
     _check_build_coordinates,
+    _check_conclusion_genotypes,
     _check_contig_ploidy,
     _CoordinateTable,
     _cross_validate_variants,
@@ -885,6 +886,9 @@ def _validate_spec(
         # genotypes plus, for the reference allele alone, the injected table, so this side sees
         # everything it needs. `compile_module` inherits the warning through `validation.warnings`.
         all_warnings.extend(_check_genotype_coverage(variants, membership_table))
+        # RM279's conclusion rule, here for the same reason as the coverage check above: authored cells
+        # only, so the compile inherits it rather than re-running it (RM308, `@parity-by-check`).
+        all_warnings.extend(_check_conclusion_genotypes(variants))
         # Ploidy runs here *and* post-resolution in `compile_module`, because the two passes see
         # different rows. Here it catches a hand-written `MT,3243,A/G` on the standalone `validate`
         # command, where there is no resolution step at all; there it catches the rsID-authored form,
