@@ -868,6 +868,11 @@ def lookup_citation(
         resolved_pmid: str | None = None
         if pmcid:
             resolved_pmid = _check_pmcid(hint, hint.pmcid or pmcid, clients, authored_pmid=pmid)
+        # A DOI with no PMID beside it has a route to one through Europe PMC (RM263), the same
+        # advisory shape as the PMC id's. Only when nothing else supplied a PMID: an authored one wins,
+        # and a PMC id's resolution already named the paper.
+        if doi and not pmid and not resolved_pmid:
+            resolved_pmid = _check_doi_pmid(hint, doi, clients)
         # The resolved id is then put to PubMed, so the answer names the *paper* rather than only a
         # number: a converter reply a curator cannot check against the article they meant is
         # exactly the existence-is-not-identity failure (S12). The authored `pmid` still wins when
@@ -931,6 +936,67 @@ def _check_doi(hint: CitationHint, doi: str, clients: LookupClients) -> None:
             + " — existence is not identity, so confirm this is the paper you meant.",
         )
     )
+
+
+def _check_doi_pmid(hint: CitationHint, doi: str, clients: LookupClients) -> str | None:
+    """DOI → PMID through Europe PMC's search (RM263). Reports; never fills.
+
+    One PMID becomes an **advisory** the author types (`pmid` is redundancy-bearing, as for a PMC
+    id), and the caller then asks PubMed which paper it is, so a DOI-only lookup ends with two titles,
+    Crossref's and PubMed's. **They are reported side by side as two `info` findings and never
+    compared**: a DOI names one paper, yet its two title records can differ while naming it, because
+    PubMed bracket-translates a non-English title (`10.1055/s-0041-111184` is *Agitation und
+    Aggression in der Psychiatrie* at Crossref and *[Agitation and Agression in Psychiatric
+    Patients].* at PubMed), and a string comparison would warn on every such paper.
+
+    Several PMIDs for one DOI withhold the advisory and name them all (`@multiplicity-is-a-finding`).
+    None is Europe PMC saying it holds no MEDLINE record, which is not PubMed saying it has none
+    (`@absence-is-weighted-by-the-base-rate`). A request that failed leaves everything `None`.
+    """
+    europepmc = clients.ensure("europepmc", EuropePmcClient)
+    try:
+        pmids = europepmc.pmids_for_doi(doi)
+    except Exception as exc:
+        hint.findings.append(
+            Finding(None, "pmid", "info", f"Europe PMC could not be asked for DOI {doi}'s PMID: {exc}")
+        )
+        return None
+    if not pmids:
+        hint.findings.append(
+            Finding(
+                None,
+                "pmid",
+                "info",
+                f"Europe PMC holds no PubMed record for DOI {doi}. That is Europe PMC's answer, not "
+                f"PubMed's; a work PubMed does not index (a preprint, book or dataset) is cited by `doi` "
+                f"alone, which studies.csv accepts",
+            )
+        )
+        return None
+    if len(pmids) > 1:
+        hint.findings.append(
+            Finding(
+                None,
+                "pmid",
+                "warning",
+                f"Europe PMC holds {len(pmids)} PubMed records for DOI {doi}: {', '.join(pmids)}. None "
+                f"is offered as the PMID, because picking one would be a guess; check which paper you "
+                f"meant against each",
+            )
+        )
+        return None
+    [pmid] = pmids
+    hint.alterations.append(
+        _advisory(
+            "pmid",
+            pmid,
+            "europepmc",
+            f"the PubMed id Europe PMC holds for DOI {doi}. Not written, because the citation check "
+            f"compares the pmid you wrote against PubMed's record — filling it from a registry would "
+            f"compare the registry with itself",
+        )
+    )
+    return pmid
 
 
 def _check_pmid(hint: CitationHint, pmid: str, clients: LookupClients) -> None:

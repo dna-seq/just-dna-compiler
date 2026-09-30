@@ -152,25 +152,6 @@ Measure against the PureTarget VCFs first. The probe lists them, with FMR1, HTT 
 **Legality.** A contract sentence alone is a patch. A new element rule or pointer shape is a minor. It
 is filed against 0.8 because the RM66 overlap wants one decision.
 
-## RM263 — a DOI has no route to its PMID, although `StudyRow.pmid` is the required half
-
-**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** enricher (`lookup`,
-`literature`) · **Motivating case** [S113](CONSUMER_SUGGESTIONS_HISTORY.md#s113--lookup_citationdoi-settles-existence-and-never-identity-title-journal-year-and-author-are-always-null), the reporter's second candidate fix
-
-**What was confirmed.** A curator holding only a DOI (what a paper's landing page gives you) can now
-learn which paper it is (RM262), but not its PMID, and `StudyRow.pmid` is the column the schema
-requires. RM50 built the same route for a PMC id through NCBI's converter; a DOI has none. Europe PMC's
-search answers it: `DOI:"10.1038/ng826"` returns PMID `11788828`, measured 2026-09-25, and covers all
-of PubMed. NCBI's converter also takes DOIs but only answers for articles in PMC, and Enattah 2002 is
-not in PMC, so it would miss exactly the paywalled case.
-
-**The shape is RM50's, and the open question is the second title.** The resolved PMID comes back as an
-advisory (`applied=False`, `refusal="redundancy_bearing"`), never a fill, since `pmid` is
-redundancy-bearing. Then PubMed is asked which paper that PMID is, as `_check_pmcid` does. That gives a
-DOI-only lookup two titles, Crossref's and PubMed's, and whether a disagreement between them is a
-`warning` or only two `info` findings side by side is the decision still to make. `EuropePmcClient`
-has no DOI search today; one method.
-
 ## RM283 — nothing notices the ClinPGx archive the lane builds from going quiet, which is how it served a fourteen-month-old snapshot
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** enricher

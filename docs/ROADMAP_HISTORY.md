@@ -35,6 +35,40 @@ up.
 The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on
 the `0.8` branch in the proposal's order. Newest first.
 
+## RM263 — a DOI has no route to its PMID, although `StudyRow.pmid` is the required half
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** enricher (`lookup`,
+`literature`) · **Motivating case** [S113](CONSUMER_SUGGESTIONS_HISTORY.md#s113--lookup_citationdoi-settles-existence-and-never-identity-title-journal-year-and-author-are-always-null), the reporter's second candidate fix
+
+**Residuals** none
+
+**What was confirmed.** A curator holding only a DOI (what a paper's landing page gives you) can now
+learn which paper it is (RM262), but not its PMID, and `StudyRow.pmid` is the column the schema
+requires. RM50 built the same route for a PMC id through NCBI's converter; a DOI has none. Europe PMC's
+search answers it: `DOI:"10.1038/ng826"` returns PMID `11788828`, measured 2026-09-25, and covers all
+of PubMed. NCBI's converter also takes DOIs but only answers for articles in PMC, and Enattah 2002 is
+not in PMC, so it would miss exactly the paywalled case.
+
+**The shape is RM50's, and the open question is the second title.** The resolved PMID comes back as an
+advisory (`applied=False`, `refusal="redundancy_bearing"`), never a fill, since `pmid` is
+redundancy-bearing. Then PubMed is asked which paper that PMID is, as `_check_pmcid` does. That gives a
+DOI-only lookup two titles, Crossref's and PubMed's, and whether a disagreement between them is a
+`warning` or only two `info` findings side by side is the decision still to make. `EuropePmcClient`
+has no DOI search today; one method.
+
+**What shipped.** `EuropePmcClient.pmids_for_doi(doi)` searches `DOI:"<doi>" AND SRC:MED` and returns
+the sorted PMIDs, translating every failure leg to `LiteratureUnavailable` as `lookup` does.
+`lookup_citation` takes the route only for a DOI with no authored PMID and no PMC-id resolution:
+`_check_doi_pmid` offers one PMID as an advisory (`applied=False`, `refusal="redundancy_bearing"`,
+`source="europepmc"`) and hands it to `_check_pmid`, so PubMed's title arrives as its own `info` finding
+beside Crossref's; nothing compares the two strings. Two or more PMIDs withhold the advisory and are all
+named in a warning, and PubMed is not asked about any of them. Zero is said as Europe PMC's answer, not
+PubMed's. Offline tests cover the four arms (one, several, none, an authored PMID skipping the route) and
+the existing DOI-only tests now inject a Europe PMC double, since they would otherwise reach the network.
+Two live tests sit behind `JUST_DNA_NETWORK_TESTS=1` (`10.1038/ng826` → `11788828`, and the Thieme DOI's
+two titles both `info`); they passed on 2026-09-30, the first attempt after one transient Europe PMC miss
+that the lookup reported as "could not be asked".
+
 ## RM258 — an outage during the literature fetch writes a row that merge-not-clobber never asks again
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) — found while building RM257 ·
@@ -1456,7 +1490,7 @@ story rather than about what the class promises.
 - **Rewriting title markup.** Crossref passes JATS tags (`<i>`) through. The field is for a person to
   compare against the paper they meant; cleaning it would be a second opinion about the title.
 - **The reporter's second candidate, DOI → PMID, in the same change.** It is a separate request, a
-  separate client method, and an advisory rather than a fill. Filed as [RM263](ROADMAP_0_8.md#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).
+  separate client method, and an advisory rather than a fill. Filed as [RM263](#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).
 
 ## RM259 — a position has no gene to ask the Atlas about, so the reverse span lookup ships
 

@@ -41,6 +41,13 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-30 — RM263: a DOI's PMID, through Europe PMC (0.8, uncut)
+
+**enricher** — `lookup_citation(doi=…)` / `hint citation --doi` with no PMID now asks Europe PMC which
+PubMed record the DOI names (`EuropePmcClient.pmids_for_doi`, new) and offers it as an advisory, never a
+fill, then asks PubMed which paper that is. Crossref's title and PubMed's are reported as two `info`
+findings; several PMIDs withhold the advisory and are named; none is reported as Europe PMC's answer.
+
 ## 2026-09-30 — RM258: the literature pass records how the fulltext question ended, and asks an outage again (0.8, uncut)
 
 **enricher** + **format** — A Europe PMC or BioC 5xx used to read like "no copy": the row was written on

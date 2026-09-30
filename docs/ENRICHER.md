@@ -3418,7 +3418,15 @@ diagnosis and none of them repair:
   (RM262, S113): `CrossrefClient.work` parses the `/works` record the existence request already
   returned into the same four fields the PMID branch fills from `esummary`, with the matching
   `DOI … names: '…'` finding. With a PMID given too, PubMed's record fills the fields and the DOI's
-  title is still reported. A 200 that is not a Crossref record withholds. DOI → PMID is RM263.
+  title is still reported. A 200 that is not a Crossref record withholds.
+- **A DOI with no PMID gets one through Europe PMC** (RM263, 0.8): `EuropePmcClient.pmids_for_doi`
+  searches `DOI:"…" AND SRC:MED`, which covers all of PubMed, where NCBI's converter answers only for
+  articles in PMC (`10.1038/ng826` is 11788828, Enattah 2002, not in PMC). One PMID comes back as an
+  **advisory** (`source="europepmc"`), and PubMed is then asked which paper it is, so the lookup ends
+  with Crossref's title and PubMed's as **two `info` findings that nothing compares**: a DOI names one
+  paper, yet PubMed bracket-translates a non-English title (`10.1055/s-0041-111184`), so a comparison
+  would warn on every such paper. Several PMIDs withhold the advisory and are all named in a warning;
+  none is Europe PMC's answer, said as that and never as PubMed's. An authored `pmid` skips the route.
 - **`lookup_citation(pmcid=…)` / `hint citation --pmcid`** resolves the other direction through NCBI's
   converter and then asks PubMed *which paper that is*, because a converter that hands back a number and
   stops is the same existence-is-not-identity failure one registry over. The resolved id comes back as

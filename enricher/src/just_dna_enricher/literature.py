@@ -411,6 +411,30 @@ class EuropePmcClient:
                 }
         return out
 
+    def pmids_for_doi(self, doi: str) -> list[str]:
+        """The PubMed ids Europe PMC holds for one DOI, sorted, from its MEDLINE source (RM263).
+
+        Europe PMC's search covers all of PubMed, where NCBI's id converter answers only for articles
+        in PMC, so this reaches the paywalled case the converter misses (`10.1038/ng826` is
+        `11788828`, Enattah 2002, not in PMC). An empty list is **Europe PMC's** answer that it holds
+        no MEDLINE record for the DOI, never a statement about PubMed. More than one id is returned as
+        it came, so a caller can report the multiplicity rather than pick. Failures translate to
+        `LiteratureUnavailable` on every leg, as `lookup` does (`@client-exception-contract`).
+        """
+        try:
+            response = self._get(
+                "search", {"query": f'DOI:"{doi}" AND SRC:MED', "resultType": "lite", "format": "json"}
+            )
+            payload = response.json()
+        except httpx.HTTPError as exc:
+            raise LiteratureUnavailable(f"Europe PMC could not be asked about DOI {doi}: {exc}") from exc
+        except ValueError as exc:
+            raise LiteratureUnavailable(
+                f"Europe PMC answered {response.status_code} with a body that is not JSON: {exc}"
+            ) from exc
+        records = (payload.get("resultList") or {}).get("result") or []
+        return sorted({str(r["pmid"]) for r in records if r.get("pmid")}, key=int)
+
     def fetch_fulltext(self, pmcid: str) -> str | None:
         """Whitespace-normalized article text; `None` when Europe PMC holds no copy; raises
         `FulltextUnavailable` when the request never got an answer (RM258).

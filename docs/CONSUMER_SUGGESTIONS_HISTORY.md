@@ -5243,7 +5243,7 @@ consumer (us) order passes without hand-kept knowledge. Offered as an observatio
 
 ## S113 — `lookup_citation(doi=…)` settles existence and never identity: title, journal, year and author are always null
 
-**Status — accepted; your fix (1) shipped as [RM262](ROADMAP_HISTORY.md#rm262--a-doi-answered-existence-and-never-identity-although-the-body-naming-the-paper-was-already-in-hand) on the `0.8` branch, uncut (enricher), your (3) with it, and your (2) filed as [RM263](ROADMAP_0_8.md#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).**
+**Status — accepted; your fix (1) shipped as [RM262](ROADMAP_HISTORY.md#rm262--a-doi-answered-existence-and-never-identity-although-the-body-naming-the-paper-was-already-in-hand) on the `0.8` branch, uncut (enricher), your (3) with it, and your (2) filed as [RM263](ROADMAP_HISTORY.md#rm263--a-doi-has-no-route-to-its-pmid-although-studyrowpmid-is-the-required-half).**
 Reproduced live on `10.1038/ng826`, exactly as you wrote it. `CrossrefClient.work(doi)` now parses
 the `/works` body the existence request already returned (no extra request), and `lookup_citation`
 fills `title`, `journal`, `year` and `first_author` from it, with an `info` finding
