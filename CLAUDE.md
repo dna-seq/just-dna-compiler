@@ -32,7 +32,7 @@ edited as routine work:
 - **`docs/history/`** — the closed record: the retired halves of the three history files, the round-2
   consumer thread, and `ROADMAP_0_7.md`. **Count the halves from `ls`, never from a sentence here** —
   each has been split more than once, at the release boundary of the day.
-- **`docs/proposals/`** — the `PROPOSAL_*` design threads, **nine concluded, none live**. A live one
+- **`docs/proposals/`** — the `PROPOSAL_*` design threads, **ten concluded, none live**. A live one
   wins over the roadmap files until its items land; a closed one is closed against reopening its own
   decisions, never against recording a new one taken inside the same release. **Read a proposal beside
   its items' ROADMAP_HISTORY entries, never alone** — entries there say things their own probe or

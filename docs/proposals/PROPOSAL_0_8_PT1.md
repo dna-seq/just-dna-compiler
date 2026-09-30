@@ -1,8 +1,13 @@
 # PROPOSAL 0.8 PT1: the bugfix round, where every decision is already made
 
-**Status: live.** Drafted and decided with the maintainer on 2026-09-29, in one interview over the open
-items on `main` and in [ROADMAP_0_8.md](../ROADMAP_0_8.md). While its items are unbuilt, it overrides
-the roadmap files for them. Once an item lands, its record moves to ROADMAP_HISTORY as usual.
+**Status: concluded 2026-09-30.** Every item below landed on the `0.8` branch in the build order, one
+commit each (RM241, RM275, RM308, RM313, RM300, RM278, RM272, RM258, RM263, RM283, RM288), and RM270's
+addendum was already in place; each record is in [ROADMAP_HISTORY](../ROADMAP_HISTORY.md) with its
+**Residuals**. It no longer overrides the roadmap files. Departures taken during the build are recorded
+as dated addenda here (RM241) and in the items' history entries (RM241, RM258).
+
+Drafted and decided with the maintainer on 2026-09-29, in one interview over the open items on `main`
+and in [ROADMAP_0_8.md](../ROADMAP_0_8.md).
 
 **What PT1 is.** The first build round on the `0.8` branch, limited to defects and gaps whose repair
 the entries had already mostly worked out. Each item below states its decision, the build, the test
