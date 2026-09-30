@@ -5,14 +5,20 @@ validity currency, and the cross-checks against `variants.csv`.
 from collections.abc import Callable
 from typing import Any
 
-from just_dna_format.assertions import ClinicalAssertionRow
-from just_dna_format.base import derive_variant_key
+from just_dna_format.assertions import CLINICAL_ASSERTION_FACT_FIELDS, ClinicalAssertionRow
+from just_dna_format.base import derive_variant_key, merge_key
+from just_dna_format.expression import EXPRESSION_FACT_FIELDS, ExpressionEffectRow
 from just_dna_format.findings import CodedWarning
-from just_dna_format.frequency import FrequencyRow
-from just_dna_format.gene_metrics import GeneMetricsRow
-from just_dna_format.gene_validity import GeneValidityRow, superseded_groups, undecidable_groups
-from just_dna_format.gwas import GwasEffectRow
-from just_dna_format.literature import LiteratureRow
+from just_dna_format.frequency import FREQUENCY_FACT_FIELDS, FrequencyRow
+from just_dna_format.gene_metrics import GENE_METRICS_FACT_FIELDS, GeneMetricsRow
+from just_dna_format.gene_validity import (
+    GENE_VALIDITY_FACT_FIELDS,
+    GeneValidityRow,
+    superseded_groups,
+    undecidable_groups,
+)
+from just_dna_format.gwas import GWAS_FACT_FIELDS, GwasEffectRow
+from just_dna_format.literature import LITERATURE_FACT_FIELDS, LiteratureRow
 from just_dna_format.overrides import (
     VINDICATING_OVERLAY_TABLES,
     classify_update_targets,
@@ -27,6 +33,83 @@ from just_dna_compiler.compiler.tables import BA1_ALLELE_FREQUENCY_THRESHOLD
 # Relative tolerance for the float redundancy checks. These are published numbers rendered through a
 # CSV, so exact equality is the wrong test; anything looser than this would stop catching real slips.
 _REDUNDANCY_TOLERANCE: float = 1e-6
+
+
+#: The fact tables whose rows are compared under their merge key for a contradiction (RM275), each with
+#: the columns compared: the table's own fact fields, the set its signature already hashes, so a
+#: provenance column (`fetched_at`, `status`) differing between two copies of one fact is not a
+#: contradiction. **Beside `_TABLE_DUPE_KEYS`, never inside it.** Those entries refuse on a repeated key,
+#: and registering these seven there would refuse modules that compile today, which Principle 3 does
+#: not allow inside a major. The fact tables in `_TABLE_DUPE_KEYS` are exempt here because they already
+#: refuse; a test asserts the two sets together cover `_FACT_TABLES`.
+FACT_CONTRADICTION_FIELDS: dict[type, tuple[str, ...]] = {
+    FrequencyRow: FREQUENCY_FACT_FIELDS,
+    GeneMetricsRow: GENE_METRICS_FACT_FIELDS,
+    LiteratureRow: LITERATURE_FACT_FIELDS,
+    GeneValidityRow: GENE_VALIDITY_FACT_FIELDS,
+    ClinicalAssertionRow: CLINICAL_ASSERTION_FACT_FIELDS,
+    GwasEffectRow: GWAS_FACT_FIELDS,
+    ExpressionEffectRow: EXPRESSION_FACT_FIELDS,
+}
+
+
+def _stated(value: object) -> bool:
+    """A cell that says something. `None` and the empty string are both *unstated* (`@absent-is-not-different`)."""
+    return value is not None and value != "" and value != []
+
+
+def _check_fact_rows_contradict(table: str, model: type, rows: list[Any]) -> list[str]:
+    """Two rows under one merge key that state different values for one fact (RM275).
+
+    The enricher writes every one of these tables by merge key (`base.merge_key`), so two rows under
+    one key are two answers to one question, and a consumer reading the parquet gets whichever comes
+    first. **"Different" means both stated and different**: a repeated identical row says the same
+    thing twice, and a row leaving a cell empty beside one that fills it is an absence, not a
+    disagreement. The key is derived from `merge_key` rather than restated, so this check and the pass
+    that writes the table cannot disagree about which rows are the same row
+    (`@suppression-from-merge-key`).
+
+    `gene_validity.csv` keeps two rows for one claim on purpose when a source re-curates, and those
+    never meet here: a re-curation carries a new `assertion_id` (ClinGen embeds the curation
+    timestamp in it), and the grain fallback includes `dataset`, so the two rows have different merge
+    keys. The currency checks own that case.
+
+    A warning in both modes, aggregated per table with a count and the first three keys. Refusing is a
+    tightening, so it waits for 1.0 (ROADMAP § The 1.0 cleanup).
+    """
+    fields = FACT_CONTRADICTION_FIELDS[model]
+    groups: dict[tuple, list[Any]] = {}
+    for row in rows:
+        groups.setdefault(merge_key(row), []).append(row)
+    contradicted: list[tuple[tuple, list[str]]] = []
+    for key, members in groups.items():
+        if len(members) < 2:
+            continue
+        differing = [
+            name
+            for name in fields
+            if len({repr(v) for v in (getattr(row, name) for row in members) if _stated(v)}) > 1
+        ]
+        if differing:
+            contradicted.append((key, differing))
+    if not contradicted:
+        return []
+    # A kind with a fallback key tags it `id`/`grain` (see `merge_key`); the tag is not part of the name.
+    tagged = bool(getattr(model, "_KEY_FALLBACK_FIELDS", ()))
+    shown = "; ".join(
+        f"{'/'.join(str(part) for part in (key[1:] if tagged else key) if _stated(part))} ({', '.join(names)})"
+        for key, names in contradicted[:3]
+    )
+    more = "" if len(contradicted) <= 3 else f" (+{len(contradicted) - 3} more)"
+    return [
+        CodedWarning(
+            "fact_rows_contradict",
+            f"{table} carries {len(contradicted)} key(s) under which two rows state different values: "
+            f"{shown}{more}. The enricher writes this table one row per key, so a consumer reading it "
+            f"gets whichever row comes first. Delete the row that is wrong, or delete the table and "
+            f"re-run the pass that writes it. Refused from 1.0.",
+        )
+    ]
 
 
 def _close(left: float, right: float, tolerance: float = _REDUNDANCY_TOLERANCE) -> bool:

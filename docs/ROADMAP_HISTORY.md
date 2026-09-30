@@ -35,6 +35,64 @@ up.
 The bugfix round [PROPOSAL_0_8_PT1.md](proposals/PROPOSAL_0_8_PT1.md) decided on 2026-09-29, built on
 the `0.8` branch in the proposal's order. Newest first.
 
+## RM275 — seven derived fact tables have no duplicate rule, so two contradicting rows under one key compile green under `--strict`
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut** — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (re-sized 2026-09-27, see the last paragraph), with
+refusal at **1.0** · **Owner** compiler (`_TABLE_DUPE_KEYS`) · **Motivating case** RM107's residual (0.6), *"it wants its own item"*,
+found unfiled by the 2026-09-27 postmortem sweep (P3) · *related* RM107, RM109, RM124, RM130
+
+**Residuals** won't fix — refusing inside a minor would break modules that compile today, so the refusal waits in ROADMAP § The 1.0 cleanup
+
+RM107 widened the duplicate check to `sources.csv` and wrote down what it left: *"The remaining gap is
+the other fact tables, which have no duplicate rule at all; RM109's own defect produced exactly such a
+pair and nothing reported it."* Walked on 2026-09-27, `_FACT_TABLES` minus `_TABLE_DUPE_KEYS` is
+`frequencies`, `gene_metrics`, `literature`, `gene_validity`, `clinical_assertions`, `gwas_effects`
+and `expression_effects`. RM124 and RM130 registered their own tables, and none of these.
+
+**Reproduced.** `reference_examples/hboc_palb2` with its first `gene_validity.csv` row duplicated and
+the copy's `classification` changed from `definitive` to `refuted`. `compile --strict` exits 0, and
+`gene_validity.parquet` carries both rows for `PALB2 / MONDO:0012565 / autosomal_recessive`. A consumer
+reads one or the other depending on row order.
+
+**Two constraints on the build.**
+
+- **Derive each key from the merge key the enricher already writes the table by**
+  (`base.merge_key`, `@suppression-from-merge-key`), never a second hand-kept tuple. `gene_validity`
+  keeps two rows on purpose when the source's classification drifts (the comment at
+  `gene_validity.py:288-311`). So "duplicate" means **both stated and different** under the merge key
+  (`@absent-is-not-different`), not merely a repeated key.
+- **Refusing is a tightening.** A published module carrying such a pair compiles today, and P3 says
+  existing modules keep validating inside a major. So the check lands as a warning in both modes on
+  `main`, and becomes a refusal at 1.0 (a 1.0-tracker line when this is built).
+
+
+**Re-sized to a minor, 2026-09-27, before building.** The warning needs its own code, and a new member
+of `VALID_WARNING_CODES` is not legibility-only: `ModuleManifest.warnings_summary` validates every key
+against that closed set, so a just-dna-format 0.7.2 reader **refuses** a manifest carrying the new
+code. That is an old-reader break (the INTEGRATION_0_7 shape), which `main` cannot take. Reusing an
+existing code would name the wrong finding (`@warning-code-names-the-finding`), and a log line alone
+is invisible to every consumer reading findings. Build it on the `0.8` branch, with the INTEGRATION
+note that says a reader must be at 0.8 to read such a manifest.
+
+**What shipped.** A new check, `fact_checks._check_fact_rows_contradict`, beside `_TABLE_DUPE_KEYS`
+and not in it. It groups each of the seven tables' rows by `base.merge_key` and reports a key under
+which two rows state **different, stated** values in one of the table's fact fields (the set its
+signature already hashes, so a differing `fetched_at` is not a contradiction). New code
+`fact_rows_contradict`, actionable, a warning in both modes, aggregated per table with a count and
+three example keys naming the differing columns. It runs in the shared pre-flight and reaches the
+compile through it, once. `FACT_CONTRADICTION_FIELDS` plus the refusing registry are asserted to cover
+`_FACT_TABLES` exactly. The entry's reproduction (`hboc_palb2`, a duplicated `gene_validity` row with
+`refuted`) now warns under a green `--strict`; an identical duplicate and a copy leaving the cell empty
+do not. Shown failing with the call disabled. No reference example fires.
+
+**The drift case, measured before settling the rule.** `gene_validity.csv`'s deliberate second row on
+a re-curation never meets this check: ClinGen's `assertion_id` embeds the curation timestamp, so a
+re-curation has a new primary key, and the grain fallback includes `dataset`. The currency checks keep
+that case.
+
+**The old-reader break** is recorded in the new [INTEGRATION_0_8.md](INTEGRATION_0_8.md) § 1, which
+this item opened, and refusal at 1.0 is a line in ROADMAP § The 1.0 cleanup.
+
 ## RM241 — `weighting` does not survive `reverse`, so a reversed module has no scale to read
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-30 on `0.8`, uncut — a minor**, taken into 0.8 on 2026-09-29 ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md), widened there to every authored field `reverse` drops, and decided) · **filed 2026-09-13 from [RM188](ROADMAP_0_8.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s

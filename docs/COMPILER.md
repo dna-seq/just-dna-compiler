@@ -1593,7 +1593,7 @@ actionable, which is `vocab.ACTIONABLE_WARNING_CODES`, derived by subtraction:
   `literature_row_uncited`, `quote_counter_stale`, `quoted_article_license_restrictive`
 - **sources and licensing** — `source_row_unused`, `source_terms_unrecorded`,
   `declared_license_disagrees`
-- **the injected fact tables** — `derived_row_orphan`, `faf95_exceeds_frequency`,
+- **the injected fact tables** — `derived_row_orphan`, `fact_rows_contradict`, `faf95_exceeds_frequency`,
   `oe_lof_outside_interval`, `oe_lof_disagrees_with_counts`, `clin_sig_contradicts_frequency`,
   `clin_sig_concordance_contested`, `gene_validity_superseded`,
   `gene_validity_currency_undecidable`
@@ -1735,7 +1735,7 @@ compiled artifact — reverse will not re-emit them — and --strict refuses ins
 with an injected table present, which spells out that the flag names Ensembl but is the master switch
 and that there is no "do not reach the network" flag because the compiler never does.
 
-**Four phrases added since 2026-08-28**, each carrying its code:
+**Phrases added since 2026-08-28**, each carrying its code:
 
 ```
 derived_row_orphan (the concordance arm): {table} records {n} subject(s) no variant in this module
@@ -1752,6 +1752,11 @@ an earlier row is superseded and kept: {groups}. Nothing is deleted and nothing 
 classification_date is read as current, both rows stay so the drift is visible, and
 manifest.gene_validity.classifications publishes the current one. A curating body re-curating is not
 an error in your module.
+
+fact_rows_contradict (RM275, 0.8): {table} carries {n} key(s) under which two rows state different
+values: {key} ({fields}); … (+{m} more). The enricher writes this table one row per key, so a consumer
+reading it gets whichever row comes first. Delete the row that is wrong, or delete the table and re-run
+the pass that writes it. Refused from 1.0.
 
 gene_validity_currency_undecidable: gene_validity.csv carries several curations for {n} gene-disease
 claim(s) and nothing orders them: {groups}. Either two rows share a classification_date or one states

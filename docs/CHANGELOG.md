@@ -41,6 +41,15 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-09-30 — RM275: two fact-table rows under one merge key that disagree now warn (0.8, uncut)
+
+**compiler** + **format** — `frequencies`, `gene_metrics`, `literature`, `gene_validity`,
+`clinical_assertions`, `gwas_effects` and `expression_effects` had no duplicate rule, so two rows under
+one merge key stating different values compiled green under `--strict` and a consumer read whichever
+came first. They now warn in both modes as **`fact_rows_contradict`**, a new member of
+`VALID_WARNING_CODES`. That is an **old-reader break**: a 0.7 `just-dna-format` refuses a manifest
+carrying the code, recorded in the new `INTEGRATION_0_8.md`. Refused from 1.0.
+
 ## 2026-09-30 — RM241: `reverse` writes back every spec field the manifest carries (0.8, uncut)
 
 **compiler** — `reverse_module` now reads the artifact's `manifest.json` for the whole spec header: the

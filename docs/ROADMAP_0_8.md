@@ -223,43 +223,6 @@ why, the gap `unreachable_rsids`, `unconsulted_rsids` and `allele_mismatches` ea
 state. Add the field (or fields) on `0.8`, beside those, and decide whether "anchor base unreadable"
 (transient, re-run) and "not a base" (permanent) are one list or two. · *related* RM268, RM271, S20, S85
 
-## RM275 — seven derived fact tables have no duplicate rule, so two contradicting rows under one key compile green under `--strict`
-
-**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) (re-sized 2026-09-27, see the last paragraph), with
-refusal at **1.0** · **Owner** compiler (`_TABLE_DUPE_KEYS`) · **Motivating case** RM107's residual (0.6), *"it wants its own item"*,
-found unfiled by the 2026-09-27 postmortem sweep (P3) · *related* RM107, RM109, RM124, RM130
-
-RM107 widened the duplicate check to `sources.csv` and wrote down what it left: *"The remaining gap is
-the other fact tables, which have no duplicate rule at all; RM109's own defect produced exactly such a
-pair and nothing reported it."* Walked on 2026-09-27, `_FACT_TABLES` minus `_TABLE_DUPE_KEYS` is
-`frequencies`, `gene_metrics`, `literature`, `gene_validity`, `clinical_assertions`, `gwas_effects`
-and `expression_effects`. RM124 and RM130 registered their own tables, and none of these.
-
-**Reproduced.** `reference_examples/hboc_palb2` with its first `gene_validity.csv` row duplicated and
-the copy's `classification` changed from `definitive` to `refuted`. `compile --strict` exits 0, and
-`gene_validity.parquet` carries both rows for `PALB2 / MONDO:0012565 / autosomal_recessive`. A consumer
-reads one or the other depending on row order.
-
-**Two constraints on the build.**
-
-- **Derive each key from the merge key the enricher already writes the table by**
-  (`base.merge_key`, `@suppression-from-merge-key`), never a second hand-kept tuple. `gene_validity`
-  keeps two rows on purpose when the source's classification drifts (the comment at
-  `gene_validity.py:288-311`). So "duplicate" means **both stated and different** under the merge key
-  (`@absent-is-not-different`), not merely a repeated key.
-- **Refusing is a tightening.** A published module carrying such a pair compiles today, and P3 says
-  existing modules keep validating inside a major. So the check lands as a warning in both modes on
-  `main`, and becomes a refusal at 1.0 (a 1.0-tracker line when this is built).
-
-
-**Re-sized to a minor, 2026-09-27, before building.** The warning needs its own code, and a new member
-of `VALID_WARNING_CODES` is not legibility-only: `ModuleManifest.warnings_summary` validates every key
-against that closed set, so a just-dna-format 0.7.2 reader **refuses** a manifest carrying the new
-code. That is an old-reader break (the INTEGRATION_0_7 shape), which `main` cannot take. Reusing an
-existing code would name the wrong finding (`@warning-code-names-the-finding`), and a log line alone
-is invisible to every consumer reading findings. Build it on the `0.8` branch, with the INTEGRATION
-note that says a reader must be at 0.8 to read such a manifest.
-
 ## RM278 — the `compile` command cannot pass `ensembl_reference` or `ba1_threshold`, so every CLI-compiled manifest has a null `ensembl_reference`
 
 **Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-09-29** ([PROPOSAL_0_8_PT1](proposals/PROPOSAL_0_8_PT1.md)) · **Owner** compiler (`cli.py`

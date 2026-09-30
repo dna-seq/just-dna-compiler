@@ -259,6 +259,21 @@ Feature: Derived sidecars, their arithmetic, and their orphans
     # authored quotes, every counter reading zero — and they compile green.
 
   # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
+  # anchor: _check_fact_rows_contradict
+  @code:fact_rows_contradict @actionable @both_modes
+  Scenario: two rows of a fact table give two answers to one question
+    Given a gene_validity.csv whose first row is repeated with its classification changed
+    When the module is compiled with --strict
+    Then the compile succeeds
+    And a warning says the table carries a key "under which two rows state different values"
+    And it names the column that differs
+    And a repeated identical row, or a copy leaving that cell empty, raises nothing
+    # The enricher writes every derived fact table one row per merge key, so two rows under one key are
+    # two answers to one question and a consumer reads whichever comes first. RM107 widened the
+    # refusing duplicate check to sources.csv and left these seven with no rule. A refusal would break
+    # modules that compile today, so this warns until 1.0.
+
+  # source: compiler/src/just_dna_compiler/compiler/fact_checks.py
   # anchor: _check_gene_validity_currency
   @code:gene_validity_superseded @carried @both_modes
   Scenario: a curating body re-curating is not an error in your module

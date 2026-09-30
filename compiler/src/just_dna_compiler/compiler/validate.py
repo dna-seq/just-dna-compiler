@@ -38,6 +38,8 @@ from just_dna_compiler.compiler.binning_checks import (
     _check_measure_shape,
 )
 from just_dna_compiler.compiler.fact_checks import (
+    FACT_CONTRADICTION_FIELDS,
+    _check_fact_rows_contradict,
     _check_frequency_arithmetic,
     _check_gene_metrics_arithmetic,
     _check_gene_validity_currency,
@@ -421,6 +423,11 @@ def _validate_spec(
             tbl_errors, tbl_warnings = _validate_table_kind(injected_path.name, model, injected_rows)
             all_errors.extend(tbl_errors)
             all_warnings.extend(tbl_warnings)
+            if model in FACT_CONTRADICTION_FIELDS:
+                # RM275. Here only, and that is parity rather than a gap: `compile_module` starts its
+                # channel from these findings, and the rows it would re-check are the same injected,
+                # post-overlay rows, so a second emission there could only duplicate this one.
+                all_warnings.extend(_check_fact_rows_contradict(injected_path.name, model, injected_rows))
             if model is GeneValidityRow:
                 # Parity by CHECK, not by table (`@parity-by-check`): the currency finding is pure
                 # computation over bytes the pre-flight has already loaded, needs no `output_dir` and

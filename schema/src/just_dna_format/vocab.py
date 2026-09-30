@@ -1491,6 +1491,7 @@ VALID_WARNING_CODES: frozenset[str] = frozenset(
         "declared_license_disagrees",  # the module's licence and its sources report differently
         # ── the injected fact tables ──
         "derived_row_orphan",  # a fact row about something no variant in the module names
+        "fact_rows_contradict",  # two rows under one merge key stating different values (RM275)
         "faf95_exceeds_frequency",  # a 95% CI lower bound above its own point estimate
         "oe_lof_outside_interval",  # a point estimate outside the interval published beside it
         "oe_lof_disagrees_with_counts",  # obs/exp and `oe_lof` are one quantity and they differ

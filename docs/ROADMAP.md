@@ -1551,6 +1551,16 @@ kept as a deprecated shim that emits `DeprecationWarning` and routes to the enri
 import. **Disposition:** Remove the `ensembl_cache`/`resolve_with_ensembl` params outright at 1.0
 (internal call, not the wire/artifact contract, so additive-within-major does not protect it).
 
+### `fact_rows_contradict` — refuse a contradicting pair under a fact table's merge key (RM275)
+
+Since 0.8 two rows of `frequencies`, `gene_metrics`, `literature`, `gene_validity`,
+`clinical_assertions`, `gwas_effects` or `expression_effects` that share a merge key and state
+different values warn in both modes. Refusing them is a tightening, so it waits for the major: at 1.0
+the check becomes an error, and the tables join the refusing side beside `_TABLE_DUPE_KEYS` (the rule
+stays *both stated and different*, never *the key repeats*). **Upgrade line:** a module that warns with
+`fact_rows_contradict` on 0.8 fails to compile on 1.0 until the wrong row is deleted or the table is
+regenerated.
+
 ### Coordinate-first identity (option C)
 
 **Severity** — · **Status** ✅ resolved in 0.5 by VRS — kept for traceability
