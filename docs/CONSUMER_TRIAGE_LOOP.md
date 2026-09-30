@@ -31,8 +31,15 @@ curl -sf "https://api.github.com/gists/$GIST" \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["history"][0]["version"])'
 ```
 
-**In sync through gist revision `b063b65ef777cf06002e6fa14953d6503692d1f1`**, inbound, adopted
-2026-09-25: the watcher became a newest-wins singleton per watched file (exit 3 when superseded), the
+**In sync through gist revision `96b6953362bb4854e05db04334086c43c9eeb170`**, ours, pushed
+2026-09-30. It carries the Claude Code arming outward: `wake-on-inbox.sh` (the uncapped socket
+wrapper with its `armed` canary) and `arm-on-prompt.py` (the prompt hook, which ignores the watcher's
+own `[watcher ` posts), plus a §2 paragraph and two README rows. The existing scripts went across
+byte-identical, verified against the pushed version. **The unauthenticated API read above was stale
+after that push**: for a while it still named the previous head and file list, while
+`gh api /gists/<id>` already showed the new one. So verify an outward push through `gh api`, or by
+fetching pinned to the returned version, never by the anonymous check. Before it,
+`b063b65ef777cf06002e6fa14953d6503692d1f1`, inbound, adopted 2026-09-25: the watcher became a newest-wins singleton per watched file (exit 3 when superseded), the
 arming moved to a one-shot background task (§1), and a fence-blindness note joined §6. The two Python
 scripts and `item-next.py` were byte-identical to the previous revision, so the fingerprint gate below
 was satisfied trivially. Before it, `f53d7e181ca89fcd26d5aa9cda365e9d93699345`, ours, pushed 2026-09-13,
@@ -266,8 +273,37 @@ The lock is pinned by `schema/tests/test_rm_allocator.py`, which runs eight allo
 runs the same eight with `flock` neutered** to show they collide. A guard nobody has watched fail is a
 guess.
 
-Arm the watcher as a **one-shot background task** that wakes the agent on a real event and on nothing
-else — `Bash` with `run_in_background: true`, command:
+**Since 2026-09-30 a prompt arms it: name this runbook in a prompt, in any wording.** The committed
+`UserPromptSubmit` hook `.claude/hooks/arm_triage_watcher.py` (registered in `.claude/settings.json`)
+fires on any prompt citing `CONSUMER_TRIAGE_LOOP.md`. The citation is the only invariant, because the
+triage seat is the session pointed at this runbook, so no other seat arms a watcher. A prompt carrying
+the watcher's own `[watcher ` prefix never arms it: its event line cites this runbook too, and a
+machine-written line re-arming the machine that wrote it is a loop to rule out, not merely bound. The hook starts
+`.claude/wake-on-suggestions.sh` detached. That wrapper runs the watcher outside the harness, which
+since Claude Code 2.1.285 stops every background task it owns after its `timeout` (30 minutes by
+default, 2 hours at most). It wakes the session by posting a user message to the session's own
+inbox socket (`$CLAUDE_CODE_MESSAGING_SOCKET`). It keeps watching after each event, so nothing needs
+re-arming. It survives `/clear`, since the process and the socket stay the same, and it exits when it
+is superseded or when the session ends and the socket disappears.
+
+**Two things to check on every arming.** First, the hook adds an `[triage watcher] armed on …` line to
+the turn. Second, the wrapper's first post, `[watcher …] armed`, arrives during that same turn. That
+second one is the canary for the one undocumented thing this path rests on: the socket's message
+format (`{"type":"user","message":{…}}`, taken from Claude Code's own help text; the
+[cross-session messaging docs](https://code.claude.com/docs/en/cross-session-messaging) specify only
+the auth line). If the canary does not arrive, the format changed. Say so, and use the fallback below.
+
+A hook arms it, never the agent, because auto mode's classifier refuses to let a session write or
+launch something that wakes itself, and a hook is not classified. Stay out of bypass mode: a session
+that bypasses prompts holds every message the watcher posts ("did not attest its permission mode")
+until approved. The setting that lifts that hold, `crossSessionInbound: "accept"`, is ignored in repo
+and local settings and opens the inbox to every session on the machine. Never forge the sender-mode
+field to get past the hold: it is the safety gate itself. `schema/tests/test_triage_watcher.py`
+runs the whole path against a fake inbox socket.
+
+The fallback is the **one-shot background task**, which wakes the agent on a real event and on
+nothing else. Pass `timeout: 7200000`, and re-arm it when it stops. `Bash` with
+`run_in_background: true`, command:
 
 ```
 coproc W { exec .claude/watch-suggestions.sh; }; p=$W_PID
@@ -280,7 +316,7 @@ kill "$p" 2>/dev/null; wait "$p"
 
 **Not the `Monitor` tool any more, decided 2026-09-25.** It once took `persistent: true`; it now caps
 every watch at 30 minutes, so a persistent watcher becomes a timer that wakes the agent at each expiry
-to be re-armed and spends tokens on an empty inbox. The background task has no expiry. Save `$W_PID`
+to be re-armed and spends tokens on an empty inbox. A background task had no expiry until 2.1.285. Save `$W_PID`
 before the loop — bash may unset it once the coprocess exits — and arm again after each event. Adopted
 from the gist (revision `b063b65e…`), where it was found in another tree first.
 

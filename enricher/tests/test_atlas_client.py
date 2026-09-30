@@ -26,6 +26,7 @@ from pathlib import Path
 import just_dna_enricher
 import pytest
 from just_dna_enricher import atlas_protos
+from just_dna_enricher.net import PacingGate
 
 #: The tests read the client's own source for the AST walk, so they need where it lives — asked of
 #: the package rather than composed from this file's location, which would break if either moved.
@@ -824,3 +825,51 @@ def test_connect_hands_the_channel_those_options(monkeypatch):
     ac.connect("x")
     assert tuple(seen["options"]) == tuple(ac.channel_options())
     assert dict(seen["options"])["grpc.enable_retries"] == 0
+
+
+class _FlakyStub:
+    """Fails `failures` times with a retryable status, then answers with no scores."""
+
+    def __init__(self, failures: int):
+        self.calls = 0
+        self._failures = failures
+
+    def GetDenseVariantScores(self, request, metadata=None):  # camelCase: the proto's own method name
+        self.calls += 1
+        if self.calls <= self._failures:
+            raise _RpcError(grpc.StatusCode.UNAVAILABLE, "flap")
+        return atlas_service_pb2.DenseVariantScores()
+
+
+def test_the_gate_counts_every_attempt_not_every_call(no_backoff):
+    """RM307: `spent` is one per upstream attempt, so a host metering egress sees the retries too (S95)."""
+    stub = _FlakyStub(failures=2)
+    client = ac.AtlasClient(stub, api_key="x")
+    client.score_variant("chr1", 10001, "T", "A", scorers=("AVI_SCORE",))
+    assert stub.calls == 3
+    assert client.gate.spent == stub.calls
+
+
+def test_an_injected_gate_is_the_one_waited_on_and_can_be_shared():
+    """Two clients handed one gate draw slots from it, spaced by its interval, on its clock."""
+    now = [0.0]
+    slept: list[float] = []
+
+    def sleeper(seconds: float) -> None:
+        slept.append(seconds)
+        now[0] += seconds
+
+    gate = PacingGate(interval=2.0, clock=lambda: now[0], sleeper=sleeper)
+    first = ac.AtlasClient(_FlakyStub(failures=0), api_key="x", gate=gate)
+    second = ac.AtlasClient(_FlakyStub(failures=0), api_key="x", gate=gate)
+    first.score_variant("chr1", 10001, "T", "A", scorers=("AVI_SCORE",))
+    second.score_variant("chr1", 10001, "T", "A", scorers=("AVI_SCORE",))
+    assert first.gate is second.gate is gate
+    assert gate.spent == 2
+    assert slept == [2.0]
+
+
+def test_the_default_interval_is_the_measured_zero():
+    """Stated, not defaulted: ALPHAGENOME_ATLAS.md § 6.7 found no throttle up to 21 calls/s."""
+    assert ac.ATLAS_REQUEST_INTERVAL == 0.0
+    assert ac.AtlasClient(_FlakyStub(failures=0), api_key="x").gate.interval == ac.ATLAS_REQUEST_INTERVAL

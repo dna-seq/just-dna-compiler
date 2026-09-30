@@ -66,6 +66,18 @@ from just_dna_format.normalize import normalize_utc_timestamp
 from just_dna_format.resolution import ResolutionRow
 from just_dna_format.vocab import check_vocab
 
+#: What an `update` that reaches no row can say about the source having caught up with the author
+#: (RM290). Closed (Principle 6), and three-valued like every answer here:
+#:
+#: * `sole` — the table holds a subject only while it is in question and is rewritten whole, so a
+#:   subject leaving it has one reading: the question closed. Reported as `overlay_answer_vindicated`.
+#: * `withheld` — the member can leave while the source agrees with the author (a re-derivation that
+#:   renumbers the group), and it can leave for reasons that are not agreement, or be mistyped.
+#:   Nothing here separates them, so the generic finding names every reading and claims none.
+#: * `none` — the key is stable and the table is merged, so a source adopting the author's value
+#:   leaves the row in place and the update keeps matching. Absence is never agreement.
+VINDICATION_READINGS: frozenset[str] = frozenset({"sole", "withheld", "none"})
+
 
 @dataclass(frozen=True)
 class OverlayTarget:
@@ -75,11 +87,29 @@ class OverlayTarget:
     within-group discriminator, or `None` for a table whose subject already identifies exactly one
     row. Both are **column names on `model`**, checked by a walked test rather than trusted — a
     registry is only as good as the guard that walks it (`@registry-completeness`).
+
+    `vindication` is a member of `VINDICATION_READINGS`, and `vindication_reason` says why, as a field
+    rather than a comment, so the decision for each table travels with the table (RM290).
     """
 
     model: type[BaseModel]
     subject_field: str
     member_field: str | None
+    vindication: str
+    vindication_reason: str
+
+    def __post_init__(self) -> None:
+        check_vocab(self.vindication, VINDICATION_READINGS, "OverlayTarget.vindication")
+        if not self.vindication_reason.strip():
+            raise ValueError(f"{self.model.__name__}: a vindication reading needs its reason")
+
+
+_MERGED = (
+    "none",
+    "the key is the source's own stable identity and a pass merges rather than rewrites, so a source "
+    "adopting the author's value still carries the row and the update still matches; an absent row "
+    "was never written, was withdrawn, or is mistyped, and none of those is agreement",
+)
 
 
 #: The derived tables an overlay may correct, and how each one is keyed.
@@ -138,15 +168,33 @@ class OverlayTarget:
 #: the sentence — which is the failure mode exactly: a description is a claim, it is not walked by any
 #: test, and nothing tells a reader it is a table short.
 OVERRIDABLE_TABLES: dict[str, OverlayTarget] = {
-    "resolution.csv": OverlayTarget(ResolutionRow, "variant_key", "locus_index"),
-    "frequencies.csv": OverlayTarget(FrequencyRow, "variant_key", "population"),
-    "gene_metrics.csv": OverlayTarget(GeneMetricsRow, "gene", "dataset"),
-    "gene_validity.csv": OverlayTarget(GeneValidityRow, "gene", "assertion_id"),
-    "clinical_assertions.csv": OverlayTarget(ClinicalAssertionRow, "variant_key", "variation_id"),
-    "literature.csv": OverlayTarget(LiteratureRow, "pmid", None),
-    "gwas_effects.csv": OverlayTarget(GwasEffectRow, "association_id", None),
-    "clin_sig_concordance.csv": OverlayTarget(ClinSigConcordanceRow, "variant_key", "genotype"),
-    "expression_effects.csv": OverlayTarget(ExpressionEffectRow, "variant_key", "gene"),
+    "resolution.csv": OverlayTarget(
+        ResolutionRow,
+        "variant_key",
+        "locus_index",
+        "withheld",
+        "a re-derivation replaces a subject's locus group whole (RM115) and `locus_index` is a position "
+        "in that group, so the author's corrected locus can come back under another index, the "
+        "source can have moved it elsewhere, or the key is mistyped",
+    ),
+    "frequencies.csv": OverlayTarget(FrequencyRow, "variant_key", "population", *_MERGED),
+    "gene_metrics.csv": OverlayTarget(GeneMetricsRow, "gene", "dataset", *_MERGED),
+    # A source adopting the author's classification here does not remove a row: it adds a newer
+    # curation to the currency group and the corrected one stays, still matched. That is a value
+    # comparison against the group's CURRENT row, not an absence, and it is RM311.
+    "gene_validity.csv": OverlayTarget(GeneValidityRow, "gene", "assertion_id", *_MERGED),
+    "clinical_assertions.csv": OverlayTarget(ClinicalAssertionRow, "variant_key", "variation_id", *_MERGED),
+    "literature.csv": OverlayTarget(LiteratureRow, "pmid", None, *_MERGED),
+    "gwas_effects.csv": OverlayTarget(GwasEffectRow, "association_id", None, *_MERGED),
+    "clin_sig_concordance.csv": OverlayTarget(
+        ClinSigConcordanceRow,
+        "variant_key",
+        "genotype",
+        "sole",
+        "the record holds contested subjects only and is rewritten whole, so a subject leaving it means "
+        "the disagreement ended (RM117)",
+    ),
+    "expression_effects.csv": OverlayTarget(ExpressionEffectRow, "variant_key", "gene", *_MERGED),
 }
 
 
@@ -778,12 +826,13 @@ def update_targets(
 LOSSY_OVERLAY_TABLES: frozenset[str] = frozenset({"literature.csv", "resolution.csv"})
 
 
-#: The table where an `update` reaching no row has a **known** meaning rather than an ambiguous one
-#: (RM117). `clin_sig_concordance.csv` is rewritten whole by the enricher and only *contested* subjects
-#: reach it, so a subject leaving the record is the archive having stopped contesting it — which
-#: `concordance.py` already names as how an author learns the archive caught up with them. Every other
-#: table's absence has several readings; this one's has one worth reporting as good news.
-VINDICATING_OVERLAY_TABLE: str = "clin_sig_concordance.csv"
+#: The tables where an `update` reaching no row has a **known** meaning rather than an ambiguous one
+#: (RM117): those whose `vindication` is `sole`. Read off the registry (RM290), so a table earns the
+#: reading by a decision recorded beside its key, never by being named here. Today that is
+#: `clin_sig_concordance.csv` alone, and a test pins the set.
+VINDICATING_OVERLAY_TABLES: frozenset[str] = frozenset(
+    name for name, target in OVERRIDABLE_TABLES.items() if target.vindication == "sole"
+)
 
 
 def classify_vindicated_answers(table: str, targets: Sequence[tuple[tuple[str, str], bool]]) -> list[str]:
@@ -807,7 +856,7 @@ def classify_vindicated_answers(table: str, targets: Sequence[tuple[tuple[str, s
     # `_render_keys` takes `(subject, member)` pairs, so the pair is passed through rather than the
     # whole `(key, matched)` tuple — which rendered as a Python repr with the member appended twice.
     resolved = [key for key, matched in targets if not matched]
-    if table != VINDICATING_OVERLAY_TABLE or not resolved:
+    if table not in VINDICATING_OVERLAY_TABLES or not resolved:
         return []
     return [
         CodedWarning(

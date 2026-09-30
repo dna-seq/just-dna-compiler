@@ -21,7 +21,7 @@ from just_dna_format.normalize import now_utc_iso
 from just_dna_format.overrides import (
     LOSSY_OVERLAY_TABLES,
     OVERRIDABLE_TABLES,
-    VINDICATING_OVERLAY_TABLE,
+    VINDICATING_OVERLAY_TABLES,
     OverrideRow,
     apply_overrides,
     update_targets,
@@ -861,7 +861,7 @@ def compile_module(
         # from the same post-overlay rows.
         if csv_name in OVERRIDABLE_TABLES:
             overlaid.add(csv_name)
-            lossy = csv_name in LOSSY_OVERLAY_TABLES or csv_name == VINDICATING_OVERLAY_TABLE
+            lossy = csv_name in LOSSY_OVERLAY_TABLES or csv_name in VINDICATING_OVERLAY_TABLES
             if lossy:
                 compile_deferred[csv_name] = update_targets(csv_name, rows, overrides)
             rows, apply_errors, apply_warnings = apply_overrides(

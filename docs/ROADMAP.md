@@ -698,28 +698,22 @@ a snapshot, so an offline deployment gets every answer but this one.
 terms have to be recorded as a `SourceRow` before the lane can be published. A new lane is new public
 surface, so this is a minor.
 
-## RM290 — the "vindicated" reading of an unmatched overlay row exists for one overridable table, and nobody decided the others
+## RM311 — a `gene_validity.csv` correction the source has since adopted, or superseded, says nothing
 
-**Severity** low · **Status** open — **a patch** (a finding's classification), a decision first ·
-**Owner** schema (`overrides.VINDICATING_OVERLAY_TABLE`) + compiler · **Motivating case** S60's
-*"what we are keeping regardless of the shape"* and RM117, found unhomed by the 2026-09-27 postmortem
-sweep (P15) · *related* S60, S52, RM117, RM137
+**Severity** low · **Status** open — **a patch** if both arms reuse existing codes (a new one would make it a minor), a decision first · **Owner** schema (`gene_validity`, `overrides`) + compiler ·
+**Motivating case** RM290's refuted premise, 2026-09-29 · *related* RM290, RM108, RM117
 
-S60 found that an overlay row which no longer changes anything can mean the source caught up: the
-author's judgement was later vindicated and the row can retire. The reply kept it as *"a property of
-the design rather than a nice detail"*, since S52 had seen the same shape. RM117 built it for exactly
-one table: `VINDICATING_OVERLAY_TABLE = "clin_sig_concordance.csv"`, which the compiler routes away
-from the generic *"may be mistyped"* finding.
+When ClinGen adopts an author's corrected classification, it publishes a newer curation in the same
+currency group, and the corrected row stays, marked `SUPERSEDED` (`classify_currency` deletes nothing).
+The overlay `update` still matches that old row, so no finding fires. The author is never told the
+source caught up, and never told their correction now targets a superseded curation.
 
-**Confirmed on 2026-09-27.** `OVERRIDABLE_TABLES` has more members, and every other table's unmatched
-row still reads *may be mistyped*. On a table whose values a later source release can change (for
-example `gene_validity.csv`, whose classifications drift), that is the wrong thing to tell an author
-whose correction the source has since adopted.
-
-**What to decide.** Per table, whether an unmatched update has a vindicated reading, and whether that
-reading is the only one (as on the concordance table) or one of two, which would be withheld
-(`@two-vocabularies-that-do-not-meet-withhold`). Turning the constant into a per-table field on
-`OverlayTarget` is internal. Reporting it reuses the existing warning code, so it is a patch.
+**Two arms, both a value comparison against the group's `CURRENT` row.** If the overlay's value equals
+the current curation's, the author was vindicated (`overlay_answer_vindicated`'s meaning). If it
+differs, the correction patches history while a newer curation says something else
+(`gene_validity_superseded` is the nearest existing code). A group whose currency is undecidable
+withholds, as `classify_currency` already does. **What to decide:** whether the second arm is the
+existing superseded finding or a new code, which sizes this item.
 
 ## RM292 — a verification check does not say what it checked against, so a check that witnesses itself reads as verified
 
@@ -1007,31 +1001,6 @@ v46 lane too (about one more day)? And the answering surface: `gene_exons(symbol
 constrains both: an exon lookup answers *where*, and AlphaGenome's own per-record gene remains the
 attribution.
 
-## RM307 — the AlphaGenome Atlas client has no pacing gate, and the interval one needs is unmeasured
-
-**Severity** low · **Status** open — **a patch** (internal behaviour; no schema, no parquet) ·
-**Owner** enricher (`atlas_client`) · **Motivating case** RM280's pacing half, split off when RM280
-shipped its retry half on 2026-09-28 · *related* RM280, RM192, `@shared-pacing-gate`,
-`@retry-attempt-floor`
-
-**What is missing.** Most retried clients in the tier wait on a `net.PacingGate` once per attempt
-(`cpic` and `ensembl` are the other two that do not). `AtlasClient` does not. RM280 gave it the house retry floor, so
-`JUST_DNA_HTTP_RETRY_ATTEMPTS` can now raise its attempts, and those attempts are not paced. The
-gate is also what counts `spent` (S95), so an Atlas call is the one upstream attempt a host metering
-egress cannot see.
-
-**Why RM280 did not build it.** A gate needs an interval, and nothing settles one.
-[ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md) records that no quota or rate-limit figure is
-published and none was measured. Nothing in this repository calls the client from more than one
-thread, but `check_variant_impact(client=...)` takes a host's client, so a host threading its work
-shares one client by following the injection API. That is the S15 argument for making a gate
-shareable in the first place.
-
-**What to decide.** The interval: measured against the service, or a stated courtesy value with no
-upstream figure behind it. And whether `AtlasClient` takes an injected `gate=` like the httpx
-clients, so a host running several clients can hand them one. Internal behaviour either way, so a
-patch.
-
 ## RM309 — a `risk`/`protective` state whose own conclusion negates it goes unflagged
 
 **Severity** low · **Status** open — **a patch** (a hint), parked on a precision measurement · **Owner**
@@ -1045,30 +1014,6 @@ on a neutral row is correct, and *"does not reduce risk"* can support either sta
 same gate RM279 had**, a hand-judged precision over the reporter's six curated modules plus the
 registry corpus. The gate is satisfiable today, because both the corpus and the rule exist. Like
 RM279 it is patch-class only as a hint, and its compile half would join RM308.
-
-## RM310 — `cache rebuild --only cpic` lets a CPIC outage escape as a traceback, and the lanes after it never build
-
-**Severity** medium · **Status** open — **a patch** (one handler, no surface) · **Owner** enricher
-(`caches._rebuild_cpic`) · **Motivating case** found 2026-09-29 while vetting RM288 for the 0.8 pt1
-proposal · *related* RM288, RM97, RM101, `@client-exception-contract`
-
-**Reproduced.** `caches._rebuild_cpic` catches `(cpic_build.CpicBuildError, ImportError, OSError)`.
-`cpic_build.build_snapshot` fetches through `CpicClient`, which raises `CpicError` on a transport
-failure or a 5xx (RM97 made it do so), and nothing in `cpic_build` translates it. With
-`build_snapshot` stubbed to raise `CpicError("… 503")`, `_rebuild_cpic` raises instead of returning a
-failed `RebuildOutcome`. The CLI's `cache rebuild` loop (`cli.py`, the `rebuild_lane` call) and
-`rebuild_caches` have no per-lane backstop, so every lane after CPIC in registry order is neither
-built nor reported. `prepare_caches` survives only through its catch-all `except Exception`, which
-reports the lane as a generic crash.
-
-**Why it happened.** It is the list shape RM288 records: the CLI's `cpic_build_` names
-`(CpicError, CpicBuildError)` correctly, and the second caller, written later, named one of the two.
-That is the drift RM96 was the lesson for, and it is the first incident RM288 had lacked.
-
-**The patch.** Add `cpic.CpicError` to the handler, and a test that stubs each builder's client to
-raise its documented type and asserts every `_rebuild_*` returns an outcome rather than raising. The
-test walks `CACHE_LANES`, never a hand-kept list. Which mechanism stops the next drift is RM288's
-question, not this one's.
 
 ## RM312 — `test_a_wrapped_diagnostic_is_matchable_through_cli_text` passes or fails on the length of `tmp_path`
 
@@ -1085,6 +1030,71 @@ it is, through the path length. The `cli_text` half, which is the behaviour, hol
 **The patch.** Pin the path length. Build the missing path from a fixed long name, or feed a path whose
 length makes the box wrap inside the phrase by construction. Drop the negative assertion if it cannot
 be made deterministic, since the helper's reason is recorded in the docstring.
+
+## RM314 — the reference-block rule we print reads INFO `END`, which VCF 4.5 made a cross-sample maximum, so a multi-sample file credits one sample's block to another's positions
+
+**Severity** medium · **Status** open — **a patch** · **Owner** format (the `callable_from` description) + docs (SCHEMAS.md, the consumer contract) · **Motivating case** [VCF_4_5_AUDIT § 1](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313
+
+**What 4.5 changed.** §5.5 moves a gVCF reference block's extent to a per-sample FORMAT `LEN`. §1.6.1
+deprecates INFO `END` and, when it is present, makes it *"the maximum end reference position"* over
+every sample's `LEN`. §5.5 also says a position covered by a sample's own earlier `<*>` block carries
+`GT=.` for that sample.
+
+**What we tell consumers.** `VariantRow.callable_from`'s description and SCHEMAS.md's *Reference
+evidence is a block* paragraph say a block is *"one record with END="*, found by interval containment
+on it. In the record `1 100 . A <*> . . END=199 GT:MIN_DP:LEN 0/0:30:100 0/0:30:10`, sample two called
+100–109 only, and our rule credits it with 150. For a `requires_callable` row at 150 that is a
+confident absence nobody screened for: the direction SCHEMAS.md itself calls dangerous. The `GT=.` rule
+errs the safe way, but our text still sends the consumer to the wrong record.
+
+**The patch (text only).** Read the sample's own FORMAT `LEN` first, and `END` only where `LEN` is
+absent (the spec's own fallback). A `.` GT inside that sample's own earlier block is that block's call,
+not a no-call. Update the `callable_from` description, the SCHEMAS.md paragraph and its quoted 4.4
+record, and the consumer contract. No column, no validator: P3 and P8 are not reached. Severity is
+stated for the file the spec permits; no real multi-sample 4.5 file with per-sample `LEN` was measured.
+
+## RM315 — the VCF reserved-key tables we transcribe miss keys the spec reserves, among them `RUC`, and name no spec version
+
+**Severity** medium · **Status** open — **a patch** · **Owner** format (`vocab.VCF_FIELD_NUMBER`, `VCF_COLLIDING_KEYS`, `VCF_NUMBER_MEANINGS`) + docs · **Motivating case** [VCF_4_5_AUDIT §§ 3–4](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313
+
+**What is missing.** `VCF_FIELD_NUMBER` claims to transcribe the spec's reserved keys, but it lacks
+§3's INFO keys (`RUC`, `RN`, `RUS`, `RUL`, `RB`, `RUB`, `CIRUC`, `CIRB`, `SVLEN`, `CIPOS`, `CIEND`,
+`CILEN`, `CICN`, …), §4's FORMAT `CICN`, `NQ`, `HAP` and `AHAP`, Table 2's `PP`, and every 4.5 key
+(`LEN`, `LAA`, `LA`, the local-allele family, the base-modification aliases). `CICN` is reserved in both
+namespaces with different cardinality, like `CN`, and is absent from `VCF_COLLIDING_KEYS`. And no doc a
+consumer reads says which spec version the tables describe.
+
+**Why it bites.** `binning._VCF_MEASURE_FIELDS` names `RUC` as the field a `repeat_count` is read
+from, and `RUC` is `Number=.`. Probed on `htt_repeat_expansion` with `source_element` emptied:
+`INFO/RUC` gives no warning, while `FORMAT/AD` gives `vcf_pointer_unselected_element`.
+
+**The patch.** Transcribe the missing keys, add `CICN` with its sentence in `VCF_COLLISION_REASONS`
+(asserted total), and fix the comment placing the structural keys in §5.6 (they are §3 and §4). Add
+`VCF_NUMBER_MEANINGS` entries for `LA`/`LR`/`LG`/`M`: it is read through `.get(..., default)`, so a
+missing meaning prints the default silently (`@lookup-with-a-default-hides-a-new-member`). Assert
+equality between the codes the table uses and the codes the meanings cover. State "VCF 4.5; a key added
+after it is unknown and withholds" in SCHEMAS.md and COMPILER.md. Leave the pinned `"is not a whole
+number in VCF 4.4"` phrase alone: it is API and still true. The `M[0-9]+[ACGTUN]` family is a pattern,
+so its named aliases go in, and the ChEBI-numbered form stays unknown. No new code.
+
+## RM316 — the `annotated_alt` element rule counts by ALT position, and VCF 4.5's local-allele fields order their values through `LAA`
+
+**Severity** low (medium for the first module that points at an `A`/`R`/`G` FORMAT field with it) · **Status** open — **a patch** · **Owner** format (`vocab.ELEMENT_RULE_MEANINGS`) + docs (the consumer contract) · **Motivating case** [VCF_4_5_AUDIT § 5](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313
+
+**What 4.5 added.** §1.6.2: `LAA` lists, per sample, which ALT alleles are in play and in what order.
+Every `A`/`R`/`G` FORMAT field has a local equivalent (`LAD`, `LPL`, …) read through it, and a file may
+carry only the local one. In the spec's example, ALT `A,C,T,<*>` with `LAA=2,4` gives `LAD=20,30,10` as
+REF, C, `<*>`.
+
+**What we say.** `annotated_alt` is *"at its index in the record's ALT list, which is element index+1
+on a Number=R field"*. On `LAD`, ALT `C` (index 2) is element 1. A module rightly writes
+`source_field=FORMAT/AD`. A consumer whose merged 4.5 file carries only `LAD`, and falls back to it
+under our sentence, reads the wrong allele's depth: well-formed and wrong.
+
+**The patch (text).** In `annotated_alt`'s meaning and in the consumer contract: resolve a local-allele
+field to its global equivalent through `LAA` before applying any element rule, as §1.6.2 recommends.
+The value-ranging rules survive unchanged. A `local_annotated_alt` rule is refused, because it would
+make the module describe how the consumer's file was merged (P2).
 
 # Not format scope
 
@@ -2096,6 +2106,13 @@ New ideas enter here as freeform suggestions, then graduate through the design c
   row, the question is which parent state each row was computed from, and no sidecar records that
   (`@currency-cannot-be-a-column`). Nobody has asked for the cascade itself; the observation is what
   was offered.
+
+- **~~A measure kind for base-modification fractions~~ — promoted 2026-09-30.** The VCF 4.5 audit
+  (§ 6) parked it for lack of demand. The maintainer then named demand (PacBio samples arriving), and
+  [METHYLATION_PACBIO](probes/METHYLATION_PACBIO.md) measured what PacBio users actually hold. The
+  per-base VCF 4.5 `M5mC` shape this bullet described has no PacBio producer. What exists became
+  RM317 (TRGT `FORMAT/AM`, FMR1), RM318 (imprinting regions in BED/TSV) and RM319 (TRGT's `MC` count),
+  all in [ROADMAP_0_8.md](ROADMAP_0_8.md).
 
 ## Consumer note (just-dna-lite, 2026-08-21) — a dogfooding pass over ten modules, and the eleven findings that are yours rather than the plugin's
 

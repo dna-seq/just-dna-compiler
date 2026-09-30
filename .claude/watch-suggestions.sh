@@ -83,7 +83,7 @@ paused=""
 while true; do
     owner || exit "$SUPERSEDED"     # replaced by a newer arming
     on=$(current_branch)
-    if [ "$on" != "$BRANCH" ]; then
+    if [ -n "$BRANCH" ] && [ "$on" != "$BRANCH" ]; then   # BRANCH= never pauses
         # Announce the transition once. A pause nobody can see reads as a dead watcher,
         # and repeating it every quarter hour would be the noise the filter exists to avoid.
         if [ "$paused" != "$on" ]; then

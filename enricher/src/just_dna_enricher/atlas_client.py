@@ -39,8 +39,15 @@ budget and backoff under `net.attempt_floor`, like every other client in this ti
 that become `AtlasUnavailable`, so `INTERNAL`, which the contract always called retryable and
 upstream's config never retried, is now asked again.
 
-No pacing gate yet (`@shared-pacing-gate`): the Atlas publishes no rate budget and none was measured,
-so the interval a gate needs is a decision rather than a fact. That is RM307.
+**A gate, and its interval is zero because the service measured none** (RM307). The Atlas publishes
+no rate budget, so it was measured on 2026-09-29 with the stub called directly (no retry layer to
+hide a throttle): 479 sequential calls in 90 s (5.3/s), then 1,493 calls from four threads in 70 s
+(21/s, about 1,270 a minute) came back `OK`, with no `RESOURCE_EXHAUSTED` anywhere. What did move
+was concurrency: sixteen threads on one channel got *less* through (16.7/s) and 32 of 1,600 calls sat
+until the 30 s deadline. So `ATLAS_REQUEST_INTERVAL` is `0.0`, stated rather than defaulted, and the
+gate is still there for the two things a gate does besides waiting: it counts `spent`, one per
+attempt, so a host metering egress sees Atlas calls like every other upstream's (S95), and a host
+running several clients can inject one shared `gate=` with whatever interval it wants.
 
 `ListDenseVariantScores` **is** here — `score_interval` — and the reason it took a second attempt is
 recorded in `_interval`: the blocker was `Interval.strand` having no zero member, not the
@@ -56,7 +63,7 @@ import grpc
 from tenacity import retry, retry_if_exception, wait_random_exponential
 
 from just_dna_enricher.atlas_protos import OUT_DIR, SERVICE_CONFIG_NAME
-from just_dna_enricher.net import attempt_floor
+from just_dna_enricher.net import PacingGate, attempt_floor
 
 # The one guarded module-level import the house rules allow, and the reason it is guarded is that
 # the bindings are a build product rather than source: `generated/` is git-ignored, so a fresh
@@ -409,12 +416,23 @@ def _retryable(exc: BaseException) -> bool:
     return isinstance(exc, grpc.RpcError) and isinstance(_translate(exc, variant=""), AtlasUnavailable)
 
 
+#: Seconds between Atlas attempts. Zero on a measurement, not by default: no throttle up to 21/s
+#: (the module docstring has the numbers). Raise it on the injected gate, never here per call.
+ATLAS_REQUEST_INTERVAL: float = 0.0
+
+
 class AtlasClient:
     """The three Atlas RPCs, with the transport's exceptions kept inside."""
 
-    def __init__(self, stub, *, api_key: str) -> None:
+    def __init__(self, stub, *, api_key: str, gate: PacingGate | None = None) -> None:
         self._stub = stub
         self._metadata = (("x-goog-api-key", api_key),)
+        self._gate = gate if gate is not None else PacingGate(ATLAS_REQUEST_INTERVAL)
+
+    @property
+    def gate(self) -> PacingGate:
+        """The gate every attempt waits on; its `spent` is this client's upstream attempts."""
+        return self._gate
 
     @retry(
         stop=attempt_floor(RETRY_DEFAULT_ATTEMPTS),
@@ -432,7 +450,10 @@ class AtlasClient:
         reraise=True,
     )
     def _call(self, rpc, request, metadata):
-        """The retried half: one RPC, re-asked while `_retryable`. The callers translate (retry, then translate)."""
+        """The retried half: one RPC, re-asked while `_retryable`. The callers translate (retry, then translate).
+
+        The gate is waited on here, inside the retry, so one admission is one upstream attempt."""
+        self._gate.wait()
         return rpc(request, metadata=metadata)
 
     def score_variant(
@@ -571,7 +592,13 @@ class AtlasClient:
         return tuple(entry.variant_scorer.name for entry in response.variant_scorer_metadata)
 
 
-def connect(api_key: str, *, address: str = DEFAULT_ADDRESS, timeout: float = 30.0) -> AtlasClient:
+def connect(
+    api_key: str,
+    *,
+    address: str = DEFAULT_ADDRESS,
+    timeout: float = 30.0,
+    gate: PacingGate | None = None,
+) -> AtlasClient:
     """Open a channel and hand back a client, translating a failed handshake like any other error."""
     channel = grpc.secure_channel(
         address,
@@ -582,4 +609,4 @@ def connect(api_key: str, *, address: str = DEFAULT_ADDRESS, timeout: float = 30
         grpc.channel_ready_future(channel).result(timeout)
     except grpc.FutureTimeoutError as exc:
         raise AtlasUnavailable(f"channel to {address} not ready within {timeout}s") from exc
-    return AtlasClient(atlas_service_pb2_grpc.AtlasServiceStub(channel=channel), api_key=api_key)
+    return AtlasClient(atlas_service_pb2_grpc.AtlasServiceStub(channel=channel), api_key=api_key, gate=gate)

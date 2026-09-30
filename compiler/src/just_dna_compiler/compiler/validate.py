@@ -14,7 +14,7 @@ from just_dna_format.literature import LiteratureRow
 from just_dna_format.overrides import (
     LOSSY_OVERLAY_TABLES,
     OVERRIDABLE_TABLES,
-    VINDICATING_OVERLAY_TABLE,
+    VINDICATING_OVERLAY_TABLES,
     OverrideRow,
     apply_overrides,
     overlay_coherence_errors,
@@ -405,7 +405,7 @@ def _validate_spec(
                 # first because reachability needs `studies.csv`, the second because an unmatched
                 # answer there is the archive having caught up rather than a fault, and saying so is
                 # the point.
-                lossy = csv_name in LOSSY_OVERLAY_TABLES or csv_name == VINDICATING_OVERLAY_TABLE
+                lossy = csv_name in LOSSY_OVERLAY_TABLES or csv_name in VINDICATING_OVERLAY_TABLES
                 if lossy:
                     deferred_unmatched[csv_name] = update_targets(csv_name, injected_rows, overrides)
                 injected_rows, apply_errors, apply_warnings = apply_overrides(

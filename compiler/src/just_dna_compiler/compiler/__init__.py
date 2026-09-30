@@ -123,7 +123,7 @@ from just_dna_format.normalize import parse_p_value as parse_p_value
 from just_dna_format.normalize import strip_authority_keys as strip_authority_keys
 from just_dna_format.overrides import LOSSY_OVERLAY_TABLES as LOSSY_OVERLAY_TABLES
 from just_dna_format.overrides import OVERRIDABLE_TABLES as OVERRIDABLE_TABLES
-from just_dna_format.overrides import VINDICATING_OVERLAY_TABLE as VINDICATING_OVERLAY_TABLE
+from just_dna_format.overrides import VINDICATING_OVERLAY_TABLES as VINDICATING_OVERLAY_TABLES
 from just_dna_format.overrides import OverrideRow as OverrideRow
 from just_dna_format.overrides import apply_overrides as apply_overrides
 from just_dna_format.overrides import classify_update_targets as classify_update_targets

@@ -204,6 +204,140 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM310 — `cache rebuild --only cpic` lets a CPIC outage escape as a traceback, and the lanes after it never build
+
+**Severity** medium · **Status** ✅ **SHIPPED 2026-09-29 on `main`, uncut — a patch** (one handler, no surface) · **Owner** enricher
+(`caches._rebuild_cpic`) · **Motivating case** found 2026-09-29 while vetting RM288 for the 0.8 pt1
+proposal · *related* RM288, RM97, RM101, `@client-exception-contract`
+
+**Residuals** RM288 — which side owns a builder's error list, so the next caller cannot name half of it
+
+**Reproduced.** `caches._rebuild_cpic` catches `(cpic_build.CpicBuildError, ImportError, OSError)`.
+`cpic_build.build_snapshot` fetches through `CpicClient`, which raises `CpicError` on a transport
+failure or a 5xx (RM97 made it do so), and nothing in `cpic_build` translates it. With
+`build_snapshot` stubbed to raise `CpicError("… 503")`, `_rebuild_cpic` raises instead of returning a
+failed `RebuildOutcome`. The CLI's `cache rebuild` loop (`cli.py`, the `rebuild_lane` call) and
+`rebuild_caches` have no per-lane backstop, so every lane after CPIC in registry order is neither
+built nor reported. `prepare_caches` survives only through its catch-all `except Exception`, which
+reports the lane as a generic crash.
+
+**Why it happened.** It is the list shape RM288 records: the CLI's `cpic_build_` names
+`(CpicError, CpicBuildError)` correctly, and the second caller, written later, named one of the two.
+That is the drift RM96 was the lesson for, and it is the first incident RM288 had lacked.
+
+**The patch.** Add `cpic.CpicError` to the handler, and a test that stubs each builder's client to
+raise its documented type and asserts every `_rebuild_*` returns an outcome rather than raising. The
+test walks `CACHE_LANES`, never a hand-kept list. Which mechanism stops the next drift is RM288's
+question, not this one's.
+
+**What shipped.** `_rebuild_cpic` names `cpic.CpicError` beside `CpicBuildError`, as the CLI's
+`cpic build` does. `test_rebuild_adapters_contain_their_errors.py` walks `CACHE_LANES`, makes each
+adapter's first builder call raise its documented type (both of CPIC's), and asserts the adapter
+returns `built=False` with the error in its detail. A set-equality guard fails when a lane gains an
+adapter with no stated errors. With the handler reverted, only the `CpicError` case fails. Routed by
+the maintainer through a peer session; the mechanism stays RM288's.
+
+## RM290 — the "vindicated" reading of an unmatched overlay row exists for one overridable table, and nobody decided the others
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-29 on `main`, uncut — a patch** (a registry field; no
+finding moves) · **Owner** schema (`overrides.OverlayTarget.vindication`) + compiler · **Motivating case** S60's
+*"what we are keeping regardless of the shape"* and RM117, found unhomed by the 2026-09-27 postmortem
+sweep (P15) · *related* S60, S52, RM117, RM137, RM311
+
+**Residuals** RM311 — the `gene_validity.csv` case this entry names is not an absence, and it needs a
+value comparison rather than a classification
+
+S60 found that an overlay row which no longer changes anything can mean the source caught up: the
+author's judgement was later vindicated and the row can retire. The reply kept it as *"a property of
+the design rather than a nice detail"*, since S52 had seen the same shape. RM117 built it for exactly
+one table: `VINDICATING_OVERLAY_TABLE = "clin_sig_concordance.csv"`, which the compiler routes away
+from the generic *"may be mistyped"* finding.
+
+**Confirmed on 2026-09-27.** `OVERRIDABLE_TABLES` has more members, and every other table's unmatched
+row still reads *may be mistyped*. On a table whose values a later source release can change (for
+example `gene_validity.csv`, whose classifications drift), that is the wrong thing to tell an author
+whose correction the source has since adopted.
+
+**What to decide.** Per table, whether an unmatched update has a vindicated reading, and whether that
+reading is the only one (as on the concordance table) or one of two, which would be withheld
+(`@two-vocabularies-that-do-not-meet-withhold`). Turning the constant into a per-table field on
+`OverlayTarget` is internal. Reporting it reuses the existing warning code, so it is a patch.
+
+**Decided by the maintainer on 2026-09-29: yes, with concordance's shape as the default.** Taken as
+the shape of the mechanism rather than a reading for every table, because generalising
+vindication-by-absence would tell an author with a mistyped `variant_key` that the authorities now
+agree, which is the misleading message RM117 was built to remove, reversed.
+
+**What shipped.** `VINDICATING_OVERLAY_TABLE` became `OverlayTarget.vindication`, a closed
+`VINDICATION_READINGS` member (`sole` / `withheld` / `none`) with a mandatory `vindication_reason`
+beside it, and `VINDICATING_OVERLAY_TABLES` is derived from the registry. The per-table decision,
+checked against each writer rather than assumed:
+
+* `clin_sig_concordance.csv` is **`sole`**. It holds contested subjects only and is rewritten whole
+  (`concordance.py`), unchanged from RM117.
+* `resolution.csv` is **`withheld`**. A re-derivation replaces a subject's locus group whole (RM115)
+  and `locus_index` is a position in it, so the author's corrected locus can return under another index
+  while the source agrees with them. The generic finding already names every reading.
+* The seven merged tables (`frequencies`, `gene_metrics`, `gene_validity`, `clinical_assertions`,
+  `literature`, `gwas_effects`, `expression_effects`) are **`none`**. Each writer merges and never
+  clobbers, and each key is the source's stable identity, so a source adopting the author's value
+  leaves the row in place and the update keeps matching. An absent row was never written, was
+  withdrawn, or is mistyped, and none of those is agreement.
+
+**No finding moves**, so `warnings_summary` on every existing manifest is unchanged, and Principle 3
+has no correction to declare. Walked tests pin the set to the concordance record alone, refuse a
+reading outside the vocabulary or without a reason, and assert that no other table's unmatched update
+is ever called vindicated.
+
+**The entry's premise was partly wrong.** It named `gene_validity.csv` as the table where "may be
+mistyped" is the wrong thing to tell an author whose correction the source adopted. But a source
+adopting it there does not remove a row: a newer curation joins the currency group, the corrected one
+stays (`classify_currency` deletes nothing), and the overlay still matches. So the author is told
+nothing at all rather than told the wrong thing. The signal is a value comparison of the overlay
+against the group's `CURRENT` row, which is RM311.
+
+## RM307 — the AlphaGenome Atlas client has no pacing gate, and the interval one needs is unmeasured
+
+**Severity** low · **Status** ✅ **SHIPPED 2026-09-29 on `main`, uncut — a patch** (internal behaviour;
+no schema, no parquet) · **Owner** enricher (`atlas_client`) · **Motivating case** RM280's pacing half, split off when RM280
+shipped its retry half on 2026-09-28 · *related* RM280, RM192, `@shared-pacing-gate`,
+`@retry-attempt-floor`
+
+**Residuals** won't fix — a daily quota, if one exists: finding it means spending it, and a hit would
+arrive as `RESOURCE_EXHAUSTED`, which is already `AtlasUnavailable` and retried.
+
+**What is missing.** Most retried clients in the tier wait on a `net.PacingGate` once per attempt
+(`cpic` and `ensembl` are the other two that do not). `AtlasClient` does not. RM280 gave it the house retry floor, so
+`JUST_DNA_HTTP_RETRY_ATTEMPTS` can now raise its attempts, and those attempts are not paced. The
+gate is also what counts `spent` (S95), so an Atlas call is the one upstream attempt a host metering
+egress cannot see.
+
+**Why RM280 did not build it.** A gate needs an interval, and nothing settles one.
+[ALPHAGENOME_ATLAS.md](probes/ALPHAGENOME_ATLAS.md) records that no quota or rate-limit figure is
+published and none was measured. Nothing in this repository calls the client from more than one
+thread, but `check_variant_impact(client=...)` takes a host's client, so a host threading its work
+shares one client by following the injection API. That is the S15 argument for making a gate
+shareable in the first place.
+
+**What to decide.** The interval: measured against the service, or a stated courtesy value with no
+upstream figure behind it. And whether `AtlasClient` takes an injected `gate=` like the httpx
+clients, so a host running several clients can hand them one. Internal behaviour either way, so a
+patch.
+
+**Decided by the maintainer on 2026-09-29: measure it, and if nothing needs pacing, record that.**
+Measured with the stub called directly, so no retry could absorb a throttle
+([ALPHAGENOME_ATLAS.md § 6.7](probes/ALPHAGENOME_ATLAS.md), program in A.8): 479 sequential calls in
+90 s, then 1,493 calls from four threads in 70 s (21/s, about 1,270 a minute), all `OK`. Sixteen threads
+got *less* through (16.7/s) and 32 of 1,600 calls hit the 30 s deadline, so concurrency degrades before
+any quota answers. No `RESOURCE_EXHAUSTED` in about 3,570 calls.
+
+**What shipped.** `ATLAS_REQUEST_INTERVAL = 0.0`, stated as a measurement. `AtlasClient` holds a
+`net.PacingGate` (its own, or one injected with `gate=`, also on `connect`) and waits on it once per
+attempt inside the retry, so `gate.spent` counts upstream attempts like every other client's (S95). A
+host sharing one gate across clients sets whatever interval it wants. The probe's *"API quota and rate
+limits. Not measured"* line is struck, and a stale pointer in the same probe (A.8 for the two-package
+recipe, which is A.6) is corrected.
+
 ## RM279 — nothing checks a `conclusion` against the other cells on its own row, so a swapped pair compiles green
 
 **Severity** low · **Status** ✅ **SHIPPED 2026-09-28 on `main`, uncut — a patch** (the genotype rule, as an

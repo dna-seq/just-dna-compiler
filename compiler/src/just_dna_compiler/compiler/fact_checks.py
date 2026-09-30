@@ -14,7 +14,7 @@ from just_dna_format.gene_validity import GeneValidityRow, superseded_groups, un
 from just_dna_format.gwas import GwasEffectRow
 from just_dna_format.literature import LiteratureRow
 from just_dna_format.overrides import (
-    VINDICATING_OVERLAY_TABLE,
+    VINDICATING_OVERLAY_TABLES,
     classify_update_targets,
     classify_vindicated_answers,
 )
@@ -519,7 +519,7 @@ def _classify_deferred_overlay_updates(
     for table, targets in deferred.items():
         if not targets:
             continue
-        if table == VINDICATING_OVERLAY_TABLE:
+        if table in VINDICATING_OVERLAY_TABLES:
             # RM117. Not a reachability question: an unmatched answer here has ONE reading, and it is
             # the good one. Routed away from `classify_update_targets` entirely rather than given a
             # predicate, because the generic finding's "may be mistyped" is the wrong thing to put to
