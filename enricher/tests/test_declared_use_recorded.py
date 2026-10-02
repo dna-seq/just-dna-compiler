@@ -187,4 +187,5 @@ def test_every_gate_with_a_module_reads_its_recorded_declaration() -> None:
         "cli.clinpgx_build_labels_",
         "cli.cpic_build_",
         "cli.pharmvar_build_",
+        "cli.pubmind_build_",
     }, gates

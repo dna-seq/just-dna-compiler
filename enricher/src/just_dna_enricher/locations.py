@@ -162,9 +162,9 @@ CPIC_SUBDIR: str = "cpic"
 PHARMVAR_SUBDIR: str = "pharmvar"
 
 #: PubMind's cache is inject-only for a different reason and the difference is worth reading. PharmVar's
-#: bytes arrive under a key whose terms bar passing it on; PubMind's arrive under **no stated terms at
-#: all** — the ANNOVAR-redistributed table publishes none, and unknown is not permissive. Same
-#: consequence either way (`None` is never `True`): a builder and a `resolve_`, deliberately no
+#: bytes arrive under a key whose terms bar passing it on; PubMind's arrive under **CC BY-NC-ND 4.0**
+#: (answered 2026-09-28, RM320), which allows sharing the table as published but not the snapshot,
+#: since decomposing and normalizing it makes adapted material. Same consequence either way: a builder and a `resolve_`, deliberately no
 #: `download.ensure_pubmind_snapshot` and no HF repo, and a `pubmind publish` that exists in order to
 #: refuse rather than being absent for somebody to helpfully add.
 PUBMIND_SUBDIR: str = "pubmind"

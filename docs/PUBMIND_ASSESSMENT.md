@@ -210,6 +210,9 @@ clearly.
   (`@no-named-licence`): unknown commercial terms warn, they never gate, and we record `None` rather
   than guessing, because `licensing.py` defines null as *"the terms could not be established"*.
 
+  **Superseded 2026-09-28 (RM320):** WGLab answered in writing that this table is **CC BY-NC-ND 4.0**
+  (§ Open questions). The bullet above is the reading of the day and is kept as written.
+
 Running the PubMind pipeline ourselves is not a scoping judgement, it is barred: the Constitution's
 non-goals forbid pulling LLM SDKs into **any** tier of this workspace, and AI-assisted authoring is
 `just-dna-pipelines`' job by name. The cost argument — multiple H100/A100-class GPUs, by the authors'
@@ -512,7 +515,8 @@ turn on one unanswered question:
 for what is not — `license=None`, `license_url` pointing at CHOP's `LICENSE.md`, `commercial_use=None`,
 `redistribution=None`, attribution to CHOP and the paper. The nulls are load-bearing: `licensing.py`
 defines null as *"the terms could not be established"*, which is a weaker and more honest statement
-than either permission or refusal, and it is the state we are actually in.
+than either permission or refusal, and it is the state we are actually in. **Superseded 2026-09-28 (RM320)**: the answer
+is CC BY-NC-ND 4.0, and `PUBMIND_TERMS` now records it.
 
 Client mechanics follow the existing contract without exception: retry then translate, both legs, into
 a `PubMindUnavailable` subclass rather than a flat error (`@client-exception-contract`); the cache path
@@ -554,8 +558,18 @@ test pinning them fails on the next ANNOVAR release for no reason. Assert the re
 - ~~Are the indel rows left-normalized?~~ **Answered 2026-09-27 (RM273): no.** 5,158 of 20,006
   single-base-anchored indel rows provably shift left, read from the row alone; the rest are undecided
   without the reference. `pubmind_draft` states the count for the rows it withholds.
-- What are the ANNOVAR-distributed table's data terms? Only CHOP can answer, and the answer decides
-  whether sections B and C are ever shippable.
+- ~~What are the ANNOVAR-distributed table's data terms?~~ **Answered 2026-09-28: CC BY-NC-ND 4.0**
+  (RM320). A WGLab collaborator replied on
+  [WGLab/PubMind#5](https://github.com/WGLab/PubMind/issues/5): the *lightweight* PubMind-DB release
+  (aggregated pathogenicity and confidence only), distributed through ANNOVAR and Zenodo, is
+  CC BY-NC-ND 4.0. The software and the *full* PubMind-DB are under CHOP's `LICENSE.md`. The Zenodo
+  CC BY 4.0 label was a mistake, and they corrected it. The reply came from the repository's maintainers
+  rather than CHOP's Office of Technology Transfer, and it covers exactly the file `pubmind build` reads,
+  so it is sufficient and the question is not to be re-asked. `PUBMIND_TERMS` records it as
+  `commercial_use=False`, `share_alike=False`, `redistribution=True`, the same reading
+  `ARTICLE_TERMS_BY_LICENSE` gives the licence, with NoDerivatives in `notice`. `pubmind publish` still
+  refuses, now because the snapshot is adapted material. The record of the search that preceded the
+  question follows, kept as it was written.
 
   **Searched 2026-09-27, still unanswered in writing.** No page names terms for
   `hg38_pubmind_db.txt.gz`. WGLab's README and pubmind.wglab.org send the *full* PubMind-DB (references,
@@ -572,7 +586,7 @@ test pinning them fails on the next ANNOVAR release for no reason. Assert the re
   the owner's own statements is not terms either. So `None` on every axis stands. The
   written question goes to CHOP's Office of Technology Transfer (`techtransfer@chop.edu`, named in
   `LICENSE.md`) or the WGLab/PubMind GitHub repo. **Asked 2026-09-27 as
-  [WGLab/PubMind#5](https://github.com/WGLab/PubMind/issues/5)**; the answer goes here.
+  [WGLab/PubMind#5](https://github.com/WGLab/PubMind/issues/5)**, and answered above.
 - Does the table get a stable release cadence? One snapshot dated 2026-08-24 is not a cadence, and the
   refresh design depends on it.
 - Is the PVID stable across releases? If it is not, then nothing about a PubMind reference is

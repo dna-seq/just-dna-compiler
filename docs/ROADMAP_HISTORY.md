@@ -204,6 +204,38 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM320 — PubMind's terms are answered: the ANNOVAR table is CC BY-NC-ND 4.0, so a module carrying it is non-commercial and the build gates on `--use`
+
+**Severity** medium (it moves a compile outcome) · **Status** ✅ **SHIPPED 2026-10-02 on `main`, uncut — a patch** (a corrected terms constant and the gate it feeds; no schema change) · **Owner** enricher (`licensing.py`, `pubmind_build.py`, `pubmind_draft.py`, `caches.py`, `cli.py`) · **Motivating case** [WGLab/PubMind#5](https://github.com/WGLab/PubMind/issues/5), asked 2026-09-27 and answered 2026-09-28 · *related* RM134, RM289, RM27, S99, `@no-named-licence`, `@acquisition-gate-is-not-a-read-gate`
+
+**Residuals** none
+
+RM134 shipped with `PUBMIND_TERMS` at `None` on every axis because no page stated terms for the
+ANNOVAR-distributed table, and named asking WGLab and CHOP as the only unblock. The postmortem listed
+it as never asked (P16); it was asked on 2026-09-27. A WGLab collaborator replied that the *lightweight*
+PubMind-DB release (aggregated pathogenicity and confidence, via ANNOVAR and Zenodo) is **CC BY-NC-ND
+4.0**. The software and the full PubMind-DB stay under CHOP's `LICENSE.md`, and the Zenodo CC BY 4.0
+label was their mistake, now corrected. The reply covers exactly the file `pubmind build` reads.
+
+1. **`PUBMIND_TERMS`** is `license="CC-BY-NC-ND-4.0"`, `commercial_use=False`, `share_alike=False`,
+   `redistribution=True`, the reading `ARTICLE_TERMS_BY_LICENSE` already gives the licence, and a test
+   holds the two equal. `license_url` is the written answer. **NoDerivatives has no axis**, so it is in
+   `notice`.
+2. **The compile outcome moves.** A `pubmind` licence row now taints, so a module carrying one compiles
+   only under `non_commercial`. Before, it compiled under any declaration and the manifest named
+   `pubmind` in `unknown_terms_sources`. A module drafted before this keeps its all-null row, because
+   `sources.csv` merges never clobber; deleting the row and re-drafting records the terms. That is
+   declared here and in the CHANGELOG rather than repaired, because overwriting a recorded licence row
+   is the thing the never-clobber rule protects a curator's hand-edit from.
+3. **`pubmind build` gains `--use`, and `cache rebuild` gates the lane.** The flag was refused while the
+   gate could only skip; with a no-sale source it answers per declaration, as on `clinpgx build`. The
+   lane's `terms` field now carries `PUBMIND_TERMS`.
+4. **The drafter is still not gated**, on the same rule as before: reading an operator-built snapshot is
+   not a fetch. Its warning now names the licence and the `--use non-commercial` the compile will ask for.
+5. **`pubmind publish` still refuses**, for a new reason: the snapshot decomposes and normalizes the
+   table, which makes it adapted material, and NoDerivatives bars sharing that. The refusal, the lane's
+   `unpublished` reason and `release.json`'s `notice` say so.
+
 ## RM316 — the `annotated_alt` element rule counts by ALT position, and VCF 4.5's local-allele fields order their values through `LAA`
 
 **Severity** low (medium for the first module that points at an `A`/`R`/`G` FORMAT field with it) · **Status** ✅ **SHIPPED 2026-09-30 on `main`, uncut — a patch** · **Owner** format (`vocab.ELEMENT_RULE_MEANINGS`) + docs (the consumer contract) · **Motivating case** [VCF_4_5_AUDIT § 5](probes/VCF_4_5_AUDIT.md), 2026-09-30 · *related* RM53, RM54, RM57, RM313
@@ -7639,6 +7671,8 @@ the shared normalizer, § B the N-authority check, § C `draft-panel --source pu
 (doi:10.1038/s41467-026-76834-4, 20 August 2026), and a user direction on 2026-08-28 to design both a
 ClinVar-shaped derived table and a ClinVar concordance check · **Full design**
 [PUBMIND_ASSESSMENT.md](PUBMIND_ASSESSMENT.md)
+
+**Residuals** RM320
 
 PubMind extracts variant–disease–pathogenicity associations from 41.7 M PubMed abstracts and 5.4 M PMC
 full texts with LLaMA-3.3-70B behind a fine-tuned BERT triage stage. It is **a source, not a

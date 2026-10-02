@@ -542,28 +542,33 @@ def test_a_dry_run_appends_nothing_at_all_and_still_answers_the_worklist(tmp_pat
 # ── Licensing, provenance, and the self-agreement trap ──────────────────────────────────────────
 
 
-def test_the_licence_row_records_null_on_every_term_and_the_draft_is_not_skipped(
+def test_the_licence_row_records_the_nc_nd_terms_and_the_draft_is_not_skipped(
     tmp_path: Path,
 ) -> None:
-    """Unknown terms warn and never gate. `check_declared_use` is a gate on *fetching*, and nothing
-    is fetched here — the operator built the snapshot themselves — so the reason is reported in the
-    source's own words and the rows are written."""
+    """Reading an operator-built snapshot is not a fetch (`@acquisition-gate-is-not-a-read-gate`), so
+    an `unstated` draft still writes its rows. What the CC BY-NC-ND terms decide is downstream: the
+    licence row taints, so the compile refuses until the author declares a non-commercial use, and
+    the warning says so (RM320)."""
     spec = _spec(tmp_path)
     result = _draft(spec, tmp_path, [_pubmind_record()])
     assert result.added_for("variants.csv") == 1
     assert any(
-        "terms of the ANNOVAR-redistributed table could not be established" in w for w in result.warnings
-    )
+        "CC-BY-NC-ND-4.0" in w and "--use non-commercial" in w and "NoDerivatives" in w
+        for w in result.warnings
+    ), result.warnings
 
     rows, errors, _ = load_csv_rows(sources_path(spec, error=RuntimeError), SourceRow, "sources.csv")
     assert not errors
     (row,) = [r for r in rows if r.source == PUBMIND_TERMS.source]
-    assert (row.license, row.share_alike, row.commercial_use, row.redistribution) == (None, None, None, None)
+    assert (row.license, row.share_alike, row.commercial_use, row.redistribution) == (
+        PUBMIND_TERMS.license,
+        PUBMIND_TERMS.share_alike,
+        PUBMIND_TERMS.commercial_use,
+        PUBMIND_TERMS.redistribution,
+    )
     assert row.dataset == "pubmind_abcdef123456"
     assert row.declared_use == "unstated"
-    # What § A pinned, restated over the row this provider actually wrote: an unknown does not taint,
-    # so the compile does not refuse — `taints_commercial_use` requires an explicit `False`.
-    assert taints_commercial_use(row) is False
+    assert taints_commercial_use(row) is True
 
 
 def test_the_drafted_call_is_an_establishable_copy_that_stops_matching_once_it_is_edited(

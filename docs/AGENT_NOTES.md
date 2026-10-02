@@ -3728,6 +3728,12 @@ transform + the validation-ceiling table), [ENRICHER.md](ENRICHER.md) (the netwo
   words and writes the row with nulls; unknown terms warn and never gate (`@no-named-licence`), and what
   the unknown answer really governs is *publishing* a module carrying those bytes.
 
+  **The terms were answered on 2026-09-28 (RM320): CC BY-NC-ND 4.0.** The rule did not move, and that is
+  the point: the drafter still does not call the gate, because reading a snapshot is still not a fetch.
+  What moved is downstream of it. The row the drafter writes now carries `commercial_use=False`, so the
+  *compile* refuses a module with no non-commercial declaration, and `pubmind build` — which really is a
+  fetch — gained the `--use` flag it had been refused while the gate could only skip.
+
 - `@a-cache-lane-has-three-stages-and-a-list-cannot-say-which-are-missing` — **Every snapshot this tier
   builds has three stages — acquire, build, publish — and a roster that is a hand-kept list can name
   none of them as missing (RM176, 0.7).** The cache roster was a four-tuple list inside `cli.py`, and

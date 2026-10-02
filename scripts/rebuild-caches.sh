@@ -36,7 +36,7 @@ if [[ -z "$OUT" ]]; then
 fi
 shift
 
-# The declared use reaches the licence-gated lanes (ClinPGx, its drug labels, CPIC, PharmVar). They
+# The declared use reaches the licence-gated lanes (ClinPGx, its drug labels, CPIC, PharmVar, PubMind). They
 # forbid sale, so `unstated` SKIPS them and `commercial` REFUSES: an operator who does not say gets
 # a run that quietly builds fewer lanes, which is why this defaults to nothing and lets the gate
 # print its own reason rather than picking a declaration on the operator's behalf.

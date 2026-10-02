@@ -341,7 +341,7 @@ def test_rows_are_emitted_in_karyotype_order(snapshot) -> None:
     assert keys == sorted(keys)
 
 
-def test_release_json_records_the_provenance_and_says_the_terms_are_unknown(snapshot) -> None:
+def test_release_json_records_the_provenance_and_names_the_terms(snapshot) -> None:
     """All three of sha256/ETag/Last-Modified, so an upstream revision becomes a finding.
 
     A local `--table` establishes none of the two headers, so they are recorded as `null` — unknown
@@ -355,7 +355,7 @@ def test_release_json_records_the_provenance_and_says_the_terms_are_unknown(snap
     assert release["source_etag"] is None and release["source_last_modified"] is None
     assert release["genome_build"] == "GRCh38"
     assert release["redistributable"] is False
-    assert "no data terms" in release["notice"]
+    assert "CC BY-NC-ND 4.0" in release["notice"] and "NoDerivatives" in release["notice"]
     assert release["builder_version"] and release["built_at"]
 
 

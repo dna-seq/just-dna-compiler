@@ -206,6 +206,9 @@ def test_the_licence_gated_lanes_are_the_ones_carrying_terms() -> None:
     to describe. Carrying terms and being *refused* are
     different things, and `_gate` already keeps them apart — a refusal is a `False` outcome, an
     unestablished permission is a `None` one.
+
+    `pubmind` joined on 2026-10-02 (RM320), when WGLab answered that its table is CC BY-NC-ND 4.0.
+    Its lane has no `ensure`, so the field gates `cache rebuild` there rather than `cache pull`.
     """
     gated = {lane.name: lane.terms.source for lane in CACHE_LANES if lane.terms is not None}
     assert gated == {
@@ -214,6 +217,7 @@ def test_the_licence_gated_lanes_are_the_ones_carrying_terms() -> None:
         "cpic": "cpic",
         "drug_labels": "clinpgx",
         "pharmvar": "pharmvar",
+        "pubmind": "pubmind",
     }
 
 

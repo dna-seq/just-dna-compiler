@@ -25,7 +25,7 @@ equality over a walked set, never a floor and never a count in prose.
 
 **Every absence carries its reason as a field, not as a comment.** A lane with no `ensure` states why
 in `unpublished`, and the three reasons are genuinely different — PharmVar's and PubMind's are
-refusals (a personal key; terms nobody publishes), ACMG's and MANE's are unestablished permissions,
+refusals (a personal key; NoDerivatives), ACMG's and MANE's are unestablished permissions,
 and Ensembl's is that it is built elsewhere. A comment saying so speaks to whoever opens this file;
 a field says it in `cache status`, in `cache pull` and in `cache rebuild`, which is where somebody
 actually asks the question.
@@ -82,6 +82,7 @@ from just_dna_enricher.licensing import (
     CLINPGX_TERMS,
     CPIC_TERMS,
     PHARMVAR_TERMS,
+    PUBMIND_TERMS,
     LicenseRefusal,
     SourceTerms,
     check_declared_use,
@@ -569,6 +570,9 @@ def _rebuild_civic(request: RebuildRequest) -> RebuildOutcome:
 
 
 def _rebuild_pubmind(request: RebuildRequest) -> RebuildOutcome:
+    refused = _gate(PUBMIND_TERMS, request.declared_use, "pubmind")
+    if refused is not None:
+        return refused
     request.out_dir.mkdir(parents=True, exist_ok=True)
     try:
         if request.source is not None:
@@ -961,10 +965,10 @@ CACHE_LANES: list[CacheLane] = [
         rebuild=_rebuild_pubmind,
         ensure=None,
         publish_repo=None,
-        terms=None,
+        terms=PUBMIND_TERMS,
         unpublished=(
-            "refused: the ANNOVAR-distributed table states no data terms at all, and an "
-            "unestablished permission is not a permission. Build your own with `pubmind build`"
+            "refused: the ANNOVAR-distributed table is CC BY-NC-ND 4.0, and the snapshot is "
+            "adapted material NoDerivatives forbids sharing. Build your own with `pubmind build`"
         ),
     ),
     CacheLane(
@@ -1369,7 +1373,7 @@ def prepare_lane(lane: CacheLane, request: RebuildRequest) -> PrepareOutcome:
     **The route is a property of the lane, never a flag.** A lane with an `ensure` is published, so
     pulling is right and building would spend an operator's bandwidth re-deriving bytes somebody
     already made. A lane without one is unpublished *for a recorded reason* — PharmVar's personal
-    key, PubMind's absent terms, NCBI's policy, ACMG's supplementary material — and building locally
+    key, PubMind's NoDerivatives, NCBI's policy, ACMG's supplementary material — and building locally
     is the only route there will ever be. Asking the caller to choose would be asking them to restate
     the licensing story as a flag.
 

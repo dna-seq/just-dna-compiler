@@ -41,14 +41,12 @@ and its competing calls are all reported, and no row is written. Contestation is
 PVID at the key *before* `--clin-sig` and `--min-confidence` are applied, because a filter that
 removes the dissenting record has picked the winner just as surely as `mode()` would.
 
-**Terms are unknown, and unknown warns rather than gates** (`@no-named-licence`). `check_declared_use`
-is a gate on *fetching*, and its unknown branch skips — correctly, for a pass that would go and get
-data whose terms nobody can state. Nothing is fetched here: there is no `ensure_pubmind_snapshot` by
-design, the operator built the snapshot themselves with `pubmind build`, and refusing to read it would
-make that command's output a file nothing may consume. So the reason is *reported* in the source's own
-words and the draft proceeds, exactly as the GWAS Catalog pass does with the same null terms. What the
-unknown answer gates is **publishing** a module carrying those bytes, which is the redistribution axis
-nothing in this repo designs yet.
+**The terms are CC BY-NC-ND 4.0, and reading them is not a fetch** (`@acquisition-gate-is-not-a-read-gate`,
+RM320). `check_declared_use` gates *taking* the data, which is `pubmind build --download`. Nothing is
+fetched here: there is no `ensure_pubmind_snapshot` by design, and the operator built the snapshot
+themselves. So the terms are *reported* and the draft proceeds. What they govern downstream is the
+licence row this draft writes: `commercial_use=False` taints the module, so a `commercial` declaration
+refuses at compile, and NoDerivatives — the clause no axis carries — is in that row's `notice`.
 
 **What it will not fill**, each a rule rather than an omission:
 
@@ -486,9 +484,9 @@ def draft_gene_panel_from_pubmind(
         resolved = resolve_pubmind_reference()
         if resolved is None:
             raise PubMindDraftError(
-                "no PubMind snapshot found. It is operator-built and never published — the terms of "
-                "the ANNOVAR-redistributed table could not be established, so nothing here passes it "
-                "on. Build one with `just-dna-enricher pubmind build --download` and point "
+                "no PubMind snapshot found. It is operator-built and never published — the "
+                "ANNOVAR-redistributed table is CC BY-NC-ND 4.0, and the snapshot is adapted material "
+                "NoDerivatives forbids sharing. Build one with `just-dna-enricher pubmind build --download` and point "
                 "$JUST_DNA_PUBMIND_CACHE at it, or pass --pubmind-cache PATH."
             )
         reference = Path(resolved)
@@ -512,10 +510,10 @@ def draft_gene_panel_from_pubmind(
     # `check_declared_use`, which is a gate on *fetching*, is not the right question for a snapshot
     # the operator built themselves.
     warnings.append(
-        f"{PUBMIND_SOURCE}: the terms of the ANNOVAR-redistributed table could not be established, "
-        f"so every licence cell on this module's {PUBMIND_SOURCE} row is null. Unknown is neither "
-        f"permission nor refusal: the compile does not refuse a null, and what the answer would "
-        f"govern is publishing a module carrying these values."
+        f"{PUBMIND_SOURCE}: the ANNOVAR-redistributed table is {PUBMIND_TERMS.license} "
+        f"({PUBMIND_TERMS.license_url}). It may not be sold, so a module carrying these values "
+        f"compiles only under a non-commercial declaration (`--use non-commercial`), and "
+        f"NoDerivatives bars sharing adapted material built from it."
     )
 
     positions = gene_positions(clinvar_reference, genes)

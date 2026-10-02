@@ -41,6 +41,14 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-10-02 — RM320: PubMind's table is CC BY-NC-ND 4.0, so a module carrying it compiles only as non-commercial (patch, on `main`)
+
+**enricher** — WGLab answered in writing ([WGLab/PubMind#5](https://github.com/WGLab/PubMind/issues/5)) that the PubMind table ANNOVAR and Zenodo distribute is CC BY-NC-ND 4.0. `PUBMIND_TERMS` now records `commercial_use=False`, `share_alike=False` and `redistribution=True`, with NoDerivatives in `notice`. Before, every axis was `None`.
+
+**What changes for you.** A module whose `sources.csv` carries a freshly written `pubmind` row now **refuses to compile** under `unstated` or `commercial` and compiles under `non_commercial`. Before, it compiled under any declaration and `manifest.sources` named `pubmind` in `unknown_terms_sources`. `pubmind build` gains `--use` and skips under `unstated`, as `clinpgx build` does, and `cache rebuild` applies the same gate to the lane. Pass `--use non-commercial` (or `JUST_DNA_USE=non-commercial` for `scripts/rebuild-caches.sh`). `draft-panel --source pubmind` is still not gated, and its warning now names the licence. `pubmind publish` still refuses, now because the snapshot is adapted material that NoDerivatives bars sharing.
+
+**A module drafted before this keeps its all-null `pubmind` row**, because a `sources.csv` merge never overwrites a recorded row. It goes on compiling as before. To record the terms, delete the `pubmind` row and re-draft.
+
 ## 2026-09-30 — RM316: a local-allele field is resolved through `LAA` before an element rule applies (patch, on `main`)
 
 **format / docs** — `annotated_alt` is defined by ALT index, and VCF 4.5's local-allele fields (`LAD`, `LPL`, …) order their values by the sample's `LAA` instead. A consumer whose merged file carries only `LAD` would read another allele's depth. The rule's printed meaning and SCHEMAS.md now say to resolve the local field to its global equivalent through `LAA` first, as the spec recommends. Text only; no new rule.
