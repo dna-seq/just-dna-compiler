@@ -17,6 +17,14 @@ this file holds only what the inbox cannot say.
 - **Keep, runbook's**: the gist sync in `docs/CONSUMER_TRIAGE_LOOP.md`. Checked at seating: revision
   `96b69533…`, the recorded baseline, so nothing to adopt.
 
+**Consolidated 2026-11-04** (`62542f3`, on the maintainer's ask): the kit's ledger and archiver are the
+logic, a strict superset of the clone's and the gist's. `.claude/triage-state.py` and `triage-archive.py`
+are byte-identical copies kept for CI, guarded by a parity test; re-copy them when the pin moves. The
+gist sync is retired. `.claude/rm-next.py` stays until kit #242 and #243 land. Kit issues filed, by
+priority: #241 (high, bare `--next` answers S1), #242 (high, paths only from the environment;
+`item-next.py` bare reserves into `docs/ROADMAP.md`), #243 (medium, index rows own no id), #244 (low,
+malformed marker sha), #245 (low, link-checker gotcha; notes-file wording).
+
 **First pass**: S125–S127 answered and archived (`5e2cc18`), after committing the items alone
 (`1ee5925`). Filed RM337–RM340.
 
@@ -24,8 +32,8 @@ this file holds only what the inbox cannot say.
 
 | Item | State |
 |---|---|
-| RM339 (S126, snapshot cache trusted when partial) | `unattended`: a patch, built in a worktree from `origin/main` once the maintainer is away |
-| RM337 (S125, silent drop under `logs/`) | `unattended`, same |
+| RM339 (S126, snapshot cache trusted when partial) | `unattended`: a patch, built in a worktree from `origin/main` once the maintainer is away. A built Ensembl cache carries a `.sha256` beside each parquet: check it as the completion record |
+| RM337 (S125, silent drop under `logs/`) | `unattended`, same; the lead builds RM338 (decided `bf5dbde`) after it, both touch `_collect_logs` |
 | RM340 (S127, VRS warning names `verification.json`) | `unattended`, same |
 | RM338 (S125, which files under `logs/` ship) | the lead's: taken into its plan and put to the maintainer, 2026-11-03 |
 | push of `main` | the maintainer's: auto mode denies a seat's granted push (kit #238), so the maintainer pushes until it lands; the lead asked triage not to push its commits |
