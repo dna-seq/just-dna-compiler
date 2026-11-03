@@ -1152,24 +1152,6 @@ attestation.
 
 **Residuals** none yet.
 
-## RM342 — the manifest does not record the toolchain that wrote the bytes, so a digest that moves cannot say why
-
-**Severity** medium · **Status** open — **a minor** (a new optional manifest field); the pm places it in 0.9 · **Owner** format + compiler · **Motivating case** RM341 · *related* RM304, RM341
-
-**Why it is filed.** polars stays uncapped (RM341, the maintainer, 2026-11-04). From 2.0 the parquet bytes name
-the polars release that wrote them, so two installs of one `compiler_version` mint different digests for equal
-content, and nothing in the manifest says which polars wrote which. The liaison's adoption map, item 3: record
-the polars version beside `compiler_version` in `manifest.compilation`, as an optional field. That is additive
-and minor-legal. The alternative, deciding in P4 that the digest names the toolchain, would be a charter
-amendment.
-
-**Open questions.** Whether the record is one manifest field or a toolchain block (polars, arrow if it ever
-appears, Python); whether `verify` reports a digest mismatch whose recorded toolchain differs from the running
-one as its own reason (`@vrs-three-outcomes` asks for that); and whether P4's sentence on reproducibility needs
-an amendment once the toolchain is recorded.
-
-**Residuals** none yet.
-
 ## RM344 — a `.duckdb` Ensembl cache written by duckdb 2.0 crashes a 1.x enricher instead of falling back to the parquet beside it
 
 **Severity** low · **Status** open — **a patch**, `unattended` (about 15 minutes) · **Owner** enricher

@@ -1968,3 +1968,23 @@ v46 lane too (about one more day)? And the answering surface: `gene_exons(symbol
 `gene_span`, or a position → (gene, transcript, exon) lookup. The attribution rule in `gene_spans.py`
 constrains both: an exon lookup answers *where*, and AlphaGenome's own per-record gene remains the
 attribution.
+
+## RM342 — the manifest does not record the toolchain that wrote the bytes, so a digest that moves cannot say why
+
+**0.9, decided 2026-11-04.** Placed in 0.9 under the 2026-11-03 scope rule. The liaison locks polars 2 in the release that ships this item, and has no earlier deadline, so the lock waits for 0.9 with it.
+
+**Severity** medium · **Status** open — **a minor** (a new optional manifest field); the pm places it in 0.9 · **Owner** format + compiler · **Motivating case** RM341 · *related* RM304, RM341
+
+**Why it is filed.** polars stays uncapped (RM341, the maintainer, 2026-11-04). From 2.0 the parquet bytes name
+the polars release that wrote them, so two installs of one `compiler_version` mint different digests for equal
+content, and nothing in the manifest says which polars wrote which. The liaison's adoption map, item 3: record
+the polars version beside `compiler_version` in `manifest.compilation`, as an optional field. That is additive
+and minor-legal. The alternative, deciding in P4 that the digest names the toolchain, would be a charter
+amendment.
+
+**Open questions.** Whether the record is one manifest field or a toolchain block (polars, arrow if it ever
+appears, Python); whether `verify` reports a digest mismatch whose recorded toolchain differs from the running
+one as its own reason (`@vrs-three-outcomes` asks for that); and whether P4's sentence on reproducibility needs
+an amendment once the toolchain is recorded.
+
+**Residuals** none yet.
