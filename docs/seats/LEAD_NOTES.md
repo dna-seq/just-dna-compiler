@@ -25,8 +25,11 @@ The lead's working state, rewritten to the present before each reset. Last rewri
 
 ## Open decisions
 
-- **RM338** (which files under `logs/` ship), handed over by triage: the person's call, put to them in chat
-  2026-11-03 with options and a recommendation. RM337 (the warning for what is left behind) is triage's
-  patch and legal whatever RM338 decides.
+None open.
+
+## Plan
+
+- **RM338**: decided 2026-11-03 (content-checked text plus png/jpg, no SVG; ROADMAP entry). `unattended`,
+  `after RM337` (triage's patch, same function). Built by the lead in a worktree once RM337 lands.
 
 The lead's own, none yet. The plan's states have not been read against what exists; that is the next start's first step.
