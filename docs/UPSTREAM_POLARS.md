@@ -67,7 +67,12 @@ this: 2.1.0 changes the data pages anyway.
 second cap we'll block em"). Nothing functional blocks 2.x. polars-bio already caps the consumers that need it,
 and a cap here would block every other consumer and would hold just-dna-lite back after polars-bio lifts its
 own. The digest question is for the lead: record the polars version beside `compiler_version`, and declare the
-move in the release that takes 2.x into `uv.lock`. Plan sent to the lead 2026-11-04.
+move in the release that takes 2.x into `uv.lock`. Plan sent to the lead 2026-11-04; the version field is
+**RM342** (a minor; the pm places it in 0.9).
+
+**Lock schedule (the liaison's, 2026-11-04):** move `uv.lock` to polars 2.x in the release that ships RM342, so
+the one-time digest move arrives together with the field that explains it, plus a `RELEASE_RECORDS` line
+(parquet bytes move, content unchanged). Nothing breaks on 2.x in the meantime, so there is no earlier deadline.
 
 ## Our pieces that duplicate an upstream feature
 

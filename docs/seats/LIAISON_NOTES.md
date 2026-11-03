@@ -25,12 +25,19 @@ would miss them. A tags-only mode would fit better; that is a kit wish.
 lists are read against our uses, and both majors were measured (suites, bytes, storage), so the verdicts are in
 the ledgers. The full entry lists are not read, so the read marks stay at the installed versions.
 
+**The person's rule (2026-11-04, relayed by the lead):** the liaison decides adoption blockers and hands the
+lead adoption maps. A pin goes on only when a new major is proven to break something, and only until support is
+integrated. The lead pins as a safety only if the liaison is unavailable and work must move. The lead commits
+the lock; the liaison schedules it and tells the lead when.
+
 **Decided by the person, 2026-11-04: no cap on either major.** polars-bio's own `<2` already holds just-dna-lite,
 and a second cap here would block everyone else.
 
 **Sent to the lead** (it files the RMs; this seat's grant covers only its ledgers and notes), 2026-11-03/04: the
 adoption plan for both majors without a cap, which supersedes the first message's cap option; and, for RM304, PR
 ga4gh/vrs-python#665 (`RleSubunitMode`, which `vrs/2.1` will default to SMALLEST).
+
+**Lock schedule:** duckdb 2.x once RM344 lands; polars 2.x with RM342 (0.9). RM343 (EXPLAIN test) is done.
 
 **Push:** none from this seat yet. The lead reports that auto mode denied its own granted push (kit #238), and
 the person pushes until that is fixed.

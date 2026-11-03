@@ -53,7 +53,11 @@ and it belongs to the lead. Sent to the lead 2026-11-03.
   `fetchall()` sits inside the `duckdb.Error` handler; the suite passed. 2.0 deprecates the implicit
   table-function string (`FROM 'x.parquet'`); we always write `read_parquet(...)`.
 
-**No cap** (the person, 2026-11-04). Nothing we publish is written by duckdb, and the test fix is the one change.
+**No cap** (the person, 2026-11-04). Nothing we publish is written by duckdb. Filed by the lead: the test as
+**RM343** (done, 7350955), the resolver crash as **RM344** (patch, unattended).
+
+**Lock schedule (the liaison's, 2026-11-04):** move `uv.lock` to duckdb 2.x once RM344 has landed. Before that,
+a 2.0 lock would build caches that a 1.x enricher crashes on.
 
 ## Our pieces that duplicate an upstream feature
 
