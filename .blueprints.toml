@@ -1,0 +1,64 @@
+[repo]
+# The repo's channel takes this name too; the seats talk there, in agent-chat and in announcements (D104).
+id = "just-dna-compiler"
+
+# Questions the sessions here put to the decision model (RM14); carried over from the clone's own copy.
+[decisions]
+send = true
+
+[seat.lead]
+# The person's own coding sessions here (docs/seats/LEAD.md): the plan, the design, the build, the
+# releases. Triage hands it a fix past a patch; the liaison, a change an upstream release asks; the pm, a
+# proposal.
+wake_from = "just-dna-compiler/triage just-dna-compiler/liaison just-dna-compiler/pm */secretary"
+
+# The desk's answers to this seat's questions, each said once (D133); the desk files this repo's
+# questions under repo:just-dna-compiler.
+[seat.lead.watch.desk]
+cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-compiler lead"
+
+[seat.lead.zulip]
+pool = "~/.config/agent-seat-blueprints/zulip/pool"
+
+[seat.pm]
+# The steer above the code (docs/seats/PM.md): strategy, licensing, the name, the research list. The lead
+# asks it for a direction call; it proposes to the lead and writes no code.
+wake_from = "just-dna-compiler/lead just-dna-compiler/triage just-dna-compiler/liaison */secretary"
+
+[seat.pm.watch.desk]
+cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-compiler pm"
+
+[seat.pm.zulip]
+pool = "~/.config/agent-seat-blueprints/zulip/pool"
+
+[seat.triage]
+# Answers the consumers (docs/seats/TRIAGE.md): their notes in docs/CONSUMER_SUGGESTIONS.md, a reply in
+# the document, a patch on main, an RM item for the rest. The other seats relay a consumer report to it.
+wake_from = "just-dna-compiler/lead just-dna-compiler/liaison just-dna-compiler/pm */secretary"
+
+# One line when docs/CONSUMER_SUGGESTIONS.md differs from HEAD and has settled, said once per state; paused
+# off the remote's default branch. A consumer writes its item there uncommitted, from its own session.
+[seat.triage.watch.inbox]
+cmd = "sh kit:drivers/git/watch-file.sh docs/CONSUMER_SUGGESTIONS.md"
+
+# One line when a commit to the inbox lands on origin's main that this clone's main does not hold: an item
+# pushed from elsewhere, which the file watcher cannot see.
+[seat.triage.watch.inbox-commits]
+cmd = "sh kit:drivers/git/watch-remote.sh --path docs/CONSUMER_SUGGESTIONS.md"
+
+[seat.triage.watch.desk]
+cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-compiler triage"
+
+[seat.triage.zulip]
+pool = "~/.config/agent-seat-blueprints/zulip/pool"
+
+[seat.liaison]
+# What the packages stand on and do not own (docs/seats/LIAISON.md): each upstream release read against
+# what the code uses, an upstream's defect drafted for the person. Any seat sends it an upstream symptom.
+wake_from = "just-dna-compiler/lead just-dna-compiler/triage just-dna-compiler/pm */liaison */upstream-liaison */secretary"
+
+[seat.liaison.watch.desk]
+cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-compiler liaison"
+
+[seat.liaison.zulip]
+pool = "~/.config/agent-seat-blueprints/zulip/pool"
