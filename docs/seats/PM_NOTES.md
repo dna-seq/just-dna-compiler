@@ -32,6 +32,17 @@ back into 0.8 as inputs to RM333's confidence labels.
 - **Merge warning sent to the lead**: the next `main` → `0.8` sync meets `ROADMAP_0_8.md` rewritten on both
   sides.
 
+## Open questions and owed work
+
+- RM149's gate: **decided 2026-11-03, it stays** (option 1). Written under RM149 in ROADMAP_0_9.md.
+- The test registry `_ENTRY_FILES` → a `ROADMAP*.md` glob: the person asked whether a naming convention can
+  replace the hard-coded list. It can (the glob finds the same 8 files). Handed to the lead on 2026-11-03.
+- The interviews for the 0.8 rounds, RM323 first, then the indel cluster; the proposals follow them.
+- `docs/STRATEGY.md`: not started; the first question is who the three packages serve.
+- `docs/DREAMS.md` (the 2026-10-19 four-model dream) is this seat's file and is untracked. Adding it to
+  `mkdocs.yml` (`not_in_nav`) is the lead's edit; until then the docs-nav test fails on it. Its ideas
+  have no verdicts yet.
+
 ## Licensing, as it stands (noted, not yet raised)
 
 - **The copyright holder.** The person, 2026-11-03: "Copyright is technically still mine (Newton Winter) as
