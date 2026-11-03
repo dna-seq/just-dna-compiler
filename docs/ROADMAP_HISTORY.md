@@ -204,6 +204,33 @@ The count is a log line, not a `MissBuildResult` field (minor-class). The three 
 Principle 2 (the lane docstring, the `mitomap miss` CLI note, the drafter note) and ENRICHER.md's
 bucket table now say what happens instead.
 
+## RM341 — polars 2.x writes its version into every parquet footer, so one `compiler_version` mints a digest per polars release
+
+**Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (a dependency cap and a
+test; no schema change, no digest moves under the polars a lock installs) · **Owner** compiler (packaging) · **Motivating case** the liaison's measurement, `docs/UPSTREAM_POLARS.md`
+(2026-11-03) · *related* RM342, RM304
+
+**Measured.** `polars>=1.42.0` has no upper bound. polars 2.0 writes `created_by = 'Polars (python) version
+<v> (build <hash>)'` into the parquet footer (pola-rs/polars#29106, following the parquet spec). The liaison
+compiled three reference examples twice under 1.44.2 and once under 2.1.0. The tables, schema, codec and row
+groups are equal, but every parquet's sha256 and every `artifact.digest` differ, while 1.44.2 reproduces itself
+byte for byte. P4 pins reproducibility to `compiler_version`, so one compiler release installed beside two polars
+releases would mint two digests for one spec, with nothing in the manifest saying why.
+
+**The patch.** Cap `polars<2` in the compiler, which the enricher inherits, the way RM304's `ga4gh.vrs<2.4`
+mitigation was shipped. Add a test that reads the footer of every parquet a real compile writes and fails when
+the installed polars version appears there, so the cap cannot be lifted quietly. It is lifted only by RM342.
+
+**Residuals** the cap is a stopgap. polars 2.x stays out of reach until RM342 records the toolchain in the
+manifest, and lifting the cap is that item's job, announced.
+
+**What shipped.** `compiler/pyproject.toml` pins `polars>=1.42.0,<2`, and `uv lock` changed only the specifier.
+`compiler/tests/test_parquet_names_no_toolchain.py` compiles `apoe_epsilon` and reads each parquet's thrift footer
+straight from the bytes (the compiler tier has no pyarrow). It fails when `pl.__version__` appears there. Run
+before the cap under `uv run --isolated --with polars==2.1.0`, it failed on `diplotypes.parquet` and
+`haplotypes.parquet`, naming 2.1.0. Under the locked 1.44.2 it passes. That run checks the liaison's measurement
+on this machine rather than relaying it.
+
 ## RM320 — PubMind's terms are answered: the ANNOVAR table is CC BY-NC-ND 4.0, so a module carrying it is non-commercial and the build gates on `--use`
 
 **Severity** medium (it moves a compile outcome) · **Status** ✅ **SHIPPED 2026-10-02 on `main`, uncut — a patch** (a corrected terms constant and the gate it feeds; no schema change) · **Owner** enricher (`licensing.py`, `pubmind_build.py`, `pubmind_draft.py`, `caches.py`, `cli.py`) · **Motivating case** [WGLab/PubMind#5](https://github.com/WGLab/PubMind/issues/5), asked 2026-09-27 and answered 2026-09-28 · *related* RM134, RM289, RM27, S99, `@no-named-licence`, `@acquisition-gate-is-not-a-read-gate`

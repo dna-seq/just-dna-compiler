@@ -53,7 +53,8 @@ timestamp is a column in the parquet. → S7, which also rejects the two other p
 **Does a rebuild always mint a new digest?**
 No. An untouched spec recompiled under a fixed compiler reproduces it exactly. What moves it across
 rebuilds is a **toolchain change** — parquet is not byte-deterministic across polars/arrow versions,
-which is why P4 scopes the guarantee to a fixed `compiler_version`.
+which is why P4 scopes the guarantee to a fixed `compiler_version`. polars from 2.0 writes its own version into
+every parquet footer, so the compiler caps `polars<2` until the manifest records the toolchain (RM341, RM342).
 → [CONSTITUTION](CONSTITUTION.md) P4, and [MODULE_LIFECYCLE § 6.4](MODULE_LIFECYCLE.md).
 
 **Does re-running the enricher restamp `fetched_at` and churn my digest?**

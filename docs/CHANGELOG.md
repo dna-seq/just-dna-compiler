@@ -41,6 +41,17 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — RM341: polars is capped below 2, because 2.x writes its version into every parquet (patch, on `main`)
+
+**compiler** — `polars>=1.42.0,<2`. From 2.0, polars puts its version and build hash in each parquet footer's
+`created_by`, so every `artifact.digest` would change with each polars release, even a patch, under one
+`compiler_version`. Measured on three reference examples: the tables are equal and the digests differ. A test
+reads the footers of a real compile and fails if the running polars version appears in them.
+
+**What changes for you.** Nothing under the polars the lock installs: no digest moves. An environment that already
+had polars 2.x installed beside the compiler resolves back to 1.x. RM342 records the toolchain in the manifest, and
+is what lets 2.x back in.
+
 ## 2026-11-03 — the triage seat's kit watchers replace the hook-armed inbox watcher (repo tooling, on `main`)
 
 **repo** — Since the seating, the triage seat's watchers in `.blueprints.toml` wake it on a consumer's note.

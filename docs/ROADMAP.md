@@ -1152,25 +1152,6 @@ attestation.
 
 **Residuals** none yet.
 
-## RM341 — polars 2.x writes its version into every parquet footer, so one `compiler_version` mints a digest per polars release
-
-**Severity** high · **Status** open — **a patch**, `urgent` (a cap, under ten minutes), built 2026-11-04 by the
-lead · **Owner** compiler (packaging) · **Motivating case** the liaison's measurement, `docs/UPSTREAM_POLARS.md`
-(2026-11-03) · *related* RM342, RM304
-
-**Measured.** `polars>=1.42.0` has no upper bound. polars 2.0 writes `created_by = 'Polars (python) version
-<v> (build <hash>)'` into the parquet footer (pola-rs/polars#29106, following the parquet spec). The liaison
-compiled three reference examples twice under 1.44.2 and once under 2.1.0. The tables, schema, codec and row
-groups are equal, but every parquet's sha256 and every `artifact.digest` differ, while 1.44.2 reproduces itself
-byte for byte. P4 pins reproducibility to `compiler_version`, so one compiler release installed beside two polars
-releases would mint two digests for one spec, with nothing in the manifest saying why.
-
-**The patch.** Cap `polars<2` in the compiler, which the enricher inherits, the way RM304's `ga4gh.vrs<2.4`
-mitigation was shipped. Add a test that reads the footer of every parquet a real compile writes and fails when
-the installed polars version appears there, so the cap cannot be lifted quietly. It is lifted only by RM342.
-
-**Residuals** none yet.
-
 ## RM342 — the manifest does not record the toolchain that wrote the bytes, so a digest that moves cannot say why
 
 **Severity** medium · **Status** open — **a minor** (a new optional manifest field), release undecided: **the pm
