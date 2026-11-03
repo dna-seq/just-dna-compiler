@@ -390,6 +390,8 @@ workaround the S110 reply gives. It is still a step nobody will know to take.
 **Severity** low · **Status** open — **a minor, release undecided** · **Owner** enricher (`lookup`,
 `literature`) · **Motivating case** [S113](CONSUMER_SUGGESTIONS_HISTORY.md#s113--lookup_citationdoi-settles-existence-and-never-identity-title-journal-year-and-author-are-always-null), the reporter's second candidate fix
 
+**For longevitymap v2 (2026-11-03):** v2 cites preprints, whose rows hold a DOI and need a PMID; RM336 is the parsing half. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+
 **What was confirmed.** A curator holding only a DOI (what a paper's landing page gives you) can now
 learn which paper it is (RM262), but not its PMID, and `StudyRow.pmid` is the column the schema
 requires. RM50 built the same route for a PMC id through NCBI's converter; a DOI has none. Europe PMC's
@@ -658,6 +660,8 @@ note that says a reader must be at 0.8 to read such a manifest.
 **Severity** low · **Status** open — **a minor, release undecided** · **Owner** format / enricher ·
 **Motivating case** RM276's minor half, split off when the warning shipped on 2026-09-27 · *related*
 RM276, RM170, RM165
+
+**For longevitymap v2 (2026-11-03):** a source's evidence grade travelling into a module is the same column family as RM324's tier. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
 RM276 names a drafted locus STRchive grades `Refuted` or `Disputed`, in a note the drafting run prints
 once. Nothing in the module keeps it, so the next reader of `repeat_alleles.csv` sees `DMD`'s bands
@@ -1016,6 +1020,8 @@ open (see *Decided*) · **Owner** format (the authored models) + compiler (the p
 an explanatory mode, and one text cannot be right for all three · *related* RM7, RM28, the "not format
 scope" note on lay-language rendering
 
+**For longevitymap v2 (2026-11-03):** v2 writes for three readers (citizen, geneticist, ageing researcher), which is the register question. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+
 **The ask.** Today every annotation carries one `conclusion`, the detailed wording. The report needs up
 to three **registers** of the same claim: **detailed** (today's text), **lay** (a simpler explanation for
 someone without the background), and **concise** (scientifically accurate but very brief, for a table
@@ -1195,6 +1201,8 @@ attribution.
 (`VALID_WARNING_CODES`) + compiler (`validate_spec`, `compile_module`) · **Motivating case** RM279's
 residual, 2026-09-28 · *related* RM279, RM309
 
+**For longevitymap v2 (2026-11-03):** v2 hand-writes per-genotype conclusions for its scored loci and a 528-rsID legacy layer. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+
 RM279 shipped the rule as a hint because the compile half needs a member of `VALID_WARNING_CODES`, and a
 new member is minor-class: a reader pinned to an older `just-dna-format` refuses a manifest carrying it.
 So an author who never runs `hint` or `lint_rows` still gets a green `--strict` compile on a swapped
@@ -1274,6 +1282,8 @@ Whether to build that at all, or only document it, is the call.
 **Motivating case** the longevitymap v2 requirements (just-dna-lite
 `docs/longevitymap_v2/longevitymap_v2_requirements.md` §4.2, §6.2, §10), read against the schema
 2026-11-03 · *related* RM28, `@field-description-is-a-claim`
+
+**For longevitymap v2 (2026-11-03):** v2's plan sets `pleiotropic` and `conditional` expecting behaviour. See [the group](ROADMAP_0_8.md#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
 **What was confirmed.** The `flags` description says *"Reserved tags the tooling acts on:
 conditional|phased|pleiotropic"*, and the comment above `RESERVED_FLAGS` says the same. A grep over

@@ -48,6 +48,335 @@ decisions that touched these items are in [PROPOSAL_0_6.md](proposals/PROPOSAL_0
 
 ---
 
+## longevitymap v2 — what its requirements need from the format, taken into 0.8 as a priority (2026-11-03)
+
+**Source.** just-dna-lite's `docs/longevitymap_v2/longevitymap_v2_requirements.md` (draft 1, 2026-11-03),
+the plan for re-curating `longevitymap` as 2.0.0 around evidence tiers and seven per-locus axes. It was
+read against the 0.7.1 schema on 2026-11-03. Most of its §6 fits today. The items below are the places where
+it does not, each with its Principle 9 price. Every one is additive, so each is legal in a minor (P3/P8).
+
+**Status.** The maintainer took the fifteen new items into 0.8 **as a priority** on 2026-11-03. One shape is
+already decided: `tradeoff` is **computed** from per-trait rows and never authored (RM327). Every item
+the plan needs, new or older, carries the tag `*for* longevitymap v2` in its index row, so
+`grep -n 'for\* longevitymap v2' docs/RM_TOC*.md` lists the whole group. `PROPOSAL_0_8_PT1.md`, on the
+`0.8` branch, is owed an entry for the group; that file belongs to the seat building 0.8.
+
+**Order.** RM323 first, because RM324's tier, RM326's outcome strip and RM329's age-of-action class all
+land wherever RM323 puts per-locus facts. RM322 next, since APOE is the lead locus.
+
+| Item | What it adds | Price (P9) | Note |
+|---|---|---|---|
+| [RM323](#rm323--a-fact-about-a-locus-has-no-authored-home-so-every-per-locus-axis-is-copied-onto-each-genotype-row-and-nothing-checks-the-copies-agree) | where per-locus facts live: typed columns per genotype plus an agreement warning, or a locus table | full ×n, or a new table kind | **decide first** |
+| [RM322](#rm322--diplotypescsv-carries-none-of-the-axes-a-scored-finding-needs-so-apoe-the-modules-headline-result-cannot-state-its-tier-mechanism-or-trade-off) | `DiplotypeRow` gains `negatives`, `category`, `priority`, `flags` (maybe `actionability`), so APOE can carry the axes | full ×4–5 |  |
+| [RM324](#rm324--there-is-no-evidence-tier-column-so-the-axis-that-gates-visibility-is-a-flags-tiera-token) | evidence tier as value + scheme | full ×2 | home from RM323 |
+| [RM325](#rm325--studiescsv-has-no-sample-size-and-v2s-tier-a-rule-is-stated-in-n) | `StudyRow` sample size (and cases) | full ×1–2 |  |
+| [RM326](#rm326--a-study-row-cannot-say-which-outcome-it-measured-so-the-definition-of-pro-longevity-lives-in-a-study_design-prefix) | `StudyRow` phenotype class; evidence role and the outcome strip derived from it | full ×1, derived near-zero | check EFO first |
+| [RM327](#rm327--pleiotropy-has-no-per-trait-row-so-a-trade-off-can-only-be-prose-and-tradeoff-is-computed-rather-than-authored) | per-trait benefit/harm table (mediator folds in); `tradeoff` computed; reserve the name | full (new kind), derived near-zero, reservation a patch | `tradeoff` decided |
+| [RM328](#rm328--no-study-row-can-name-the-ancestry-it-was-measured-in-so-european-only-evidence-is-a-hand-set-flag) | `StudyRow` ancestry on a vocabulary; `eur_only_evidence` derived | full ×1, derived near-zero | RM188 axis 2 |
+| [RM329](#rm329--an-age-stratified-estimate-has-no-age-band-so-age-of-action-is-reconstructed-from-statistical_test-prose) | `StudyRow` age band and whose age | full ×2–3 | interim works (RM140) |
+| [RM330](#rm330--an-effect-measured-in-one-sex-one-smoking-stratum-or-one-genotype-has-no-row) | the stratum an estimate was measured in; sex as the first query-time modifier | full ×2 | RM188 axis 3 |
+| [RM331](#rm331--a-study-measured-on-an-ld-proxy-cannot-say-so-and-filing-it-under-the-lead-checks-the-proxys-allele-against-the-leads) | `StudyRow` proxy variant + r²; the allele check follows the proxy | full ×2–3 |  |
+| [RM332](#rm332--a-beta-has-no-unit-on-authored-rows-while-gwas_effectscsv-has-carried-one-since-06) | `effect_unit` on authored rows, as `gwas_effects.csv` has | full ×1–2 |  |
+| [RM333](#rm333--the-effector-gene-behind-a-gwas-locus-has-no-source-and-no-column) | an Open Targets lane; effector gene, score, release on a derived table | half, plus a lane | licence unprobed |
+| [RM334](#rm334--an-hla-allele-has-no-table-and-tag-snps-cannot-stand-in-for-one) | an HLA allele table keyed `(gene, allele)` | full (new kind) |  |
+| [RM335](#rm335--model-organism-evidence-has-nowhere-to-go-and-a-study-row-naming-the-rsid-claims-the-mouse-study-was-about-the-human-variant) | a model-organism evidence table | full (new kind) |  |
+| [RM336](#rm336--a-doi-written-into-pmid-parses-as-five-or-six-pubmed-ids-and-the-literature-pass-looks-each-one-up) | a DOI-token arm in `validate_pmid_cell` | near-zero (a refusal or a warning code) | reproduced |
+
+**Older items the plan also needs, tagged rather than moved** (each keeps its own status and release):
+
+- **RM28** (this file) — KL-VS buffering in APOE4 carriers joins two loci on two chromosomes, so no haplotype holds it; added as a corpus entry there.
+- **RM188** (this file) — its axes 2, 3 and 5 are now numbered, as RM328, RM330 and RM324.
+- **RM236** (this file) — causal confidence C1 and effector confidence E1 both key on a variant being coding.
+- **RM238** (this file) — the cis-QTL colocalisation behind effector confidence E1/E2.
+- **RM239** (this file) — the fine-mapping posterior is the input to causal confidence C1–C4.
+- **RM241** (this file) — v2 declares `weighting:` precisely to say it has no weights, and `reverse` drops the block.
+- **RM248** (this file) — v2's §5 is a report specification: a context card, grouping by mechanism, a research view.
+- **RM263** ([ROADMAP.md](ROADMAP.md)) — v2 cites preprints, whose rows hold a DOI and need a PMID; RM336 is the parsing half.
+- **RM294** ([ROADMAP.md](ROADMAP.md)) — a source's evidence grade travelling into a module is the same column family as RM324's tier.
+- **RM302** ([ROADMAP.md](ROADMAP.md)) — v2 writes for three readers (citizen, geneticist, ageing researcher), which is the register question.
+- **RM308** ([ROADMAP.md](ROADMAP.md)) — v2 hand-writes per-genotype conclusions for its scored loci and a 528-rsID legacy layer.
+- **RM321** ([ROADMAP.md](ROADMAP.md)) — v2's plan sets `pleiotropic` and `conditional` expecting behaviour.
+
+The authored `report:` block in [ROADMAP.md's idea-book](ROADMAP.md) is the unnumbered half of RM248 and
+answers v2's §8 consumer requests 1 and 2 (category prose from the module, no "Net weight").
+
+## RM322 — `diplotypes.csv` carries none of the axes a scored finding needs, so APOE, the module's headline result, cannot state its tier, mechanism or trade-off
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format (`DiplotypeRow`) + compiler (the diplotype parquet and `reverse`) · **Motivating case** longevitymap v2 requirements §6.4, decision D2 · *for* longevitymap v2 · *related* RM323, RM28
+
+**What was confirmed.** `DiplotypeRow` has `gene`, `haplotype_a`, `haplotype_b`, `trait_efo_id`,
+`direction`, `clin_sig`, `phenotype`, `conclusion` and the PharmGKB drug block (`drug`, `response`,
+`evidence_level`, `recommendation_strength`, `clinical_context`). It has no `negatives`, `category`,
+`priority`, `flags`, `actionability`, `stat_significance` or `effect_*`. v2 scores APOE once, as an ε
+diplotype (R-APOE-1), so its tier A locus is the one locus that can say none of the things the report
+groups and orders by.
+
+**What already fits.** The key includes `trait_efo_id`, so one row per (diplotype, trait) is legal: an
+Alzheimer's row and a lifespan row per ε pair, which is how the plan's two framings coexist.
+
+**Shapes, priced.**
+
+- **Widen `DiplotypeRow`** with the general annotation columns: `negatives`, `category`, `priority`,
+  `flags`, and possibly `actionability`. Full price each, minor-legal; RM70 is the precedent for
+  carrying a `VariantRow` column to a PGx table. `VariantRow` itself calls these axes general ("any
+  variant finding may carry them"), so this is not a foreign domain's columns on a PGx table. Each
+  is three touch points, plus the diplotype parquet and `reverse`.
+- **Author APOE as rs429358/rs7412 genotype rows in `variants.csv`.** Refused: a per-SNP row cannot
+  say ε2/ε4, and the plan's own rule is to score APOE once.
+- **README prose.** Drops the axes out of the data entirely.
+
+**To design.** Which columns, and whether the home RM323 decides for locus-level facts also reaches a
+gene-pair subject (it does not if that home is keyed on `variant_key`).
+
+## RM323 — a fact about a locus has no authored home, so every per-locus axis is copied onto each genotype row and nothing checks the copies agree
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first, and **decide this before RM324, RM326 and RM329** · **Owner** format + compiler · **Motivating case** longevitymap v2 requirements §4.2 · *for* longevitymap v2 · *related* RM322, RM324
+
+**What was confirmed.** `VariantRow` keys on `(variant_key, genotype)`. v2's tier, causal confidence,
+effector confidence, age of action, outcome profile and animal support describe the **locus**, not a
+genotype, so the plan writes each as a `flags` token on all three genotype rows. Nothing compares the
+copies, so an edit to one row leaves the locus saying two things. `annotations.parquet` is the
+per-variant table, but it is derived (keyed on the variant-effect pair) and an author cannot write it.
+
+**Shapes, priced, neither picked.**
+
+- **Typed optional columns on `VariantRow`**, repeated per genotype, plus a new warning code when the
+  rows of one variant disagree. Full price per column; the code is minor-class (RM308's rule).
+- **A locus table keyed on `variant_key`** that the per-locus columns live on. Full price, a new table
+  kind. It joins the frozen identity, so nothing is restated. It does not reach a diplotype subject
+  (RM322), and APOE is the module's lead locus.
+
+The decision is where the per-locus axes live. RM324's tier, RM326's derived outcome profile and
+RM329's age-of-action class all land wherever this decides.
+
+## RM324 — there is no evidence-tier column, so the axis that gates visibility is a `flags: tier:A` token
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.1 · *for* longevitymap v2 · *related* RM323, RM188 (axis 5), RM294
+
+**Need.** v2's tier A–D decides what is scored and what a reader sees by default. The plan carries it
+as `flags: tier:A` and derives `priority` from it. That makes `priority` (described only as "priority
+level override") a second spelling of the tier.
+
+**What not to reuse.** `evidence_level` is PharmGKB's closed `1A`–`4` on the PGx tables. Writing a
+module's own A–D scale into it puts two instruments under one name (P5).
+
+**Shape.** A value plus the scheme it is measured on, refused without the scheme: the 0.7
+`StudyRow.confidence` / `confidence_unit` pair is the precedent, and `@weight-has-no-unit` is why.
+Full ×2. Where it lives is RM323's decision. Design it with RM188's axis 5 (a salience separate from
+clinical severity; dna-engine carries a `tier`) and RM294 (whether a source's evidence grade travels
+into a module), since all three are one column family.
+
+## RM325 — `studies.csv` has no sample size, and v2's tier A rule is stated in N
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format (+ enricher, if a derived N is filled) · **Motivating case** longevitymap v2 requirements §4.1 · *for* longevitymap v2 · *related* RM324, RM326
+
+**What was confirmed.** Tier A requires "N ≥ 100k lives, or ≥ 3k cases above the 90th percentile".
+No table in the format carries a sample size. A grep for `sample_size` or `n_cases` over the schema
+finds nothing, on `StudyRow` or on `GwasEffectRow`. So the rubric cannot be checked from the artifact.
+
+**Shape.** `sample_size` (and `n_cases` for case-control designs) on `StudyRow`. Full ×1–2. **The
+name needs the P5 audit**: parental-lifespan studies count *lives* (two parents per participant),
+which is not the number of people genotyped. A derived N on `gwas_effects.csv` is a separate half-cost
+option. The GWAS Catalog publishes its sample description as text, so probe the real field before
+modelling it (`@probe-the-real-file`).
+
+## RM326 — a study row cannot say which outcome it measured, so the definition of "pro-longevity" lives in a `study_design` prefix
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format + compiler (derived columns) · **Motivating case** longevitymap v2 requirements §4.5, R-DEF-1 · *for* longevitymap v2 · *related* RM323, RM325
+
+**Need.** v2 sorts every study into one of twelve phenotype classes (`EXTREME_SURVIVAL_CC`,
+`PARENTAL_LIFESPAN`, `OWN_SURVIVAL`, `VIABILITY_AF`, `HEALTHSPAN`, `MULTIVARIATE_AGEING`, `FAMILIAL`,
+`DISEASE_DEPLETION`, `RARE_BURDEN`, `EVOLUTIONARY`, `MR`, `BIOMARKER`), and the class decides what a row
+may do. The plan writes it as a prefix in `study_design`. But `study_design` describes the study
+(case-control, GWAS, meta-analysis) and the class describes the outcome, so a prefix puts two axes in
+one cell (P5).
+
+**Ask first whether it is derivable.** `StudyRow.trait_efo_id` already distinguishes some classes
+(OBA life span against EFO parental longevity). Measure how many of the twelve an ontology term
+separates before adding a column.
+
+**Shape.** One optional column with a vocabulary (closed or recommended-open is a decision). Full ×1.
+Two things become **derived, near-zero**, once it exists:
+
+- *evidence role* (score or annotate). This is the module's own policy over classes, so it belongs in
+  the module's README, never a column.
+- *the outcome strip* per locus (healthspan / lifespan / exceptional survival). Kleene, never
+  two-valued: a locus with no study row of a class is **untested** and withheld, never "no effect".
+
+## RM327 — pleiotropy has no per-trait row, so a trade-off can only be prose, and `tradeoff` is computed rather than authored
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**; the `tradeoff` shape is **decided** (computed, by the maintainer, 2026-11-03), the table is design first · **Owner** format + compiler · **Motivating case** longevitymap v2 requirements §4.2 (pleiotropy, mediator), §10 · *for* longevitymap v2 · *related* RM321, USE_CASES § 6a
+
+**What was confirmed.** `VariantRow` keys on `(variant_key, genotype)`, so a genotype row states one
+claim about one trait. Re-keying a shipped authored table is major-only (P3; RM140's text). `DiplotypeRow`
+already keys on `trait_efo_id`, so the two tables disagree on whether pleiotropy is a row. The per-trait
+*facts* already arrive in `gwas_effects.csv` (derived, with `effect_direction` increase/decrease). What
+has no home is the curator's per-trait *judgement*: whether this allele's effect on that trait is a
+benefit or a harm, which `VALID_EFFECT_DIRECTIONS` deliberately does not say.
+
+**`direction: contested` is not the interim.** Its description says the sources disagree about the sign.
+At a trade-off nobody disagrees: two known effects point opposite ways. SH2B3 and CDKN2B-AS1 are
+genome-wide-significant lifespan hits, so their lifespan sign is established, and the trade-off belongs
+in `negatives` until this table exists.
+
+**Shape.**
+
+- **An authored per-trait table** keyed on `(variant_key, effect_allele, trait_efo_id)`, carrying the
+  existing `direction` vocabulary, a role (`outcome` or `mediator`), and a citation. The mediator EFO the
+  plan parks in `flags: mediator:` folds in here, so `trait_efo_id` stays role-free. Full, a new table
+  kind.
+- **`tradeoff`, computed, never authored** (decided). True when an allele has a `protective` and a `risk`
+  row across traits. Kleene: false only when every trait's judgement is present and none of them is
+  opposite, and unknown otherwise, unless both signs are already present. A derived column, near-zero.
+- **Reserve the name `tradeoff`** in `RESERVED_NAMES_0_4` with a reason, so nobody authors it before
+  the computed one lands. A patch, about 30 minutes; not done yet, it is a `schema/src` edit.
+
+## RM328 — no study row can name the ancestry it was measured in, so "European-only evidence" is a hand-set flag
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format + compiler (derived) · **Motivating case** longevitymap v2 requirements §5.4 (R-ANC-1, R-ANC-2) · *for* longevitymap v2 · *related* RM188 (axis 2)
+
+**What was confirmed.** `StudyRow.population` is free text. `GwasEffectRow.ancestry` and
+`PgsRow.training_ancestry` exist but each is scoped to its own table. RM188 sighted this axis three times
+in other projects (dna-engine's `transferability`, kaiseki, OmniGenis). This is the first in-house
+module that needs it.
+
+**Shape.** A multi-valued `ancestry` on `StudyRow` bound to a vocabulary. **Which one is the decision**:
+the 1000G superpopulation codes behind `training_ancestry`, or the gnomAD population list, and
+`vocab.py` forbids merging the two. Full ×1. Then `eur_only_evidence` is **derived** (near-zero): every
+supporting row says EUR. Kleene again: a row with no ancestry makes the answer unknown, never false.
+The ancestry banner (R-ANC-3) is just-dna-lite's half.
+
+## RM329 — an age-stratified estimate has no age band, so age of action is reconstructed from `statistical_test` prose
+
+**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.2 (age of action), Timmers 2019 age bands · *for* longevitymap v2 · *related* RM323, RM140
+
+**Interim that works.** One study row per age band, each with a stated and different
+`statistical_test`. RM140's rule silences `duplicate_study_citation` for exactly that case. Otherwise
+it warns, in both modes, and never refuses.
+
+**Shape.** Band bounds plus whose age they are: participant or parent, at which event (death,
+recruitment). Full ×2–3. The names need the P5 audit before they are fixed. The age-of-action *class*
+(LIFELONG, MIDLIFE, LATE…) is a per-locus judgement and lands in RM323's home. Its confidence grade
+(DIRECT, DIRECT_WEAK) is partly derivable from the bands once they are data.
+
+## RM330 — an effect measured in one sex, one smoking stratum or one genotype has no row
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.2 (context), §10 (`effect_modifiers`) · *for* longevitymap v2 · *related* RM188 (axis 3), RM28
+
+**Need.** FOXO3 rs2802292 is positive in men only, HLA-DRB1\*15:01 is anti-longevity in men, and some
+estimates exist only in smoking strata. The plan writes these as `flags: sex_specific:m` and in the
+conclusion prose. RM188 sighted this axis three times (open-genome-atlas, a nutrigenomics project,
+genomi's caveat). `CopyNumberRow.modifier_gene` / `modifier_cn` is the only precedent, and it is genetic.
+
+**Two different things, kept apart.**
+
+- **The stratum a study measured in**: a fact about the estimate, so optional `StudyRow` columns (the
+  modifier and its level). Full ×2.
+- **A conclusion that depends on the modifier**: the consumer supplies it at query time (sex from
+  karyotype, smoking from nothing). That is the injected cofactor RM28 dropped in 2026-08 with the rule
+  "each class gets a plain column on demand". This is the demand, and sex is the candidate first class.
+
+A modifier that is **another locus's genotype** (KL-VS in APOE4 carriers) is not this item. It is RM28's
+corpus entry.
+
+## RM331 — a study measured on an LD proxy cannot say so, and filing it under the lead checks the proxy's allele against the lead's
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format + compiler (`_check_study_effect_alleles`) · **Motivating case** longevitymap v2 requirements §6.2 (`rsid`, `ld_proxy_of`), §6.4 (APOE proxies) · *for* longevitymap v2 · *related* RM91
+
+**What was confirmed.** The plan scores lead variants only and records proxies "on study rows". But
+`StudyRow` has no `flags`, so there is nowhere to write that. A study of a proxy then has two homes, and
+both are wrong:
+
+- **Under the lead's rsID**, `_check_study_effect_alleles` checks the proxy's `effect_allele` against
+  the lead's alleles. It refuses if they differ and passes silently, with the wrong meaning, if they
+  happen to match.
+- **Under the proxy's rsID**, it raises `study_variant_orphan`.
+
+The APOE region alone has five proxies (rs2075650, rs4420638, rs769449, rs405509, rs449647), and
+rs2075650 is the one genome-wide hit in the Sebastiani 2012 classifier.
+
+**Shape.** A proxy column pair on `StudyRow` (the measured variant and its r², plus the LD reference
+population), with `effect_allele` checked against the proxy's alleles rather than the lead's. Full ×2–3.
+
+## RM332 — a `beta` has no unit on authored rows, while `gwas_effects.csv` has carried one since 0.6
+
+**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority** · **Owner** format · **Motivating case** longevitymap v2 requirements §6.2 (`effect_measure`), §9 step 3 (sign conventions) · *for* longevitymap v2 · *related* `@weight-has-no-unit`
+
+**What was confirmed.** `GwasEffectRow.effect_unit` (0.6) records the unit of a `beta` verbatim.
+`VariantRow` and `StudyRow` have only `effect_measure`. v2's betas come in years per allele (sometimes
+doubled from a parental estimate), in Martingale residuals (Pilling) and in healthspan hazards (Zenin),
+so the plan writes the unit into `statistical_test` prose.
+
+**Shape.** `effect_unit` on `StudyRow` (and on `VariantRow`, which is a decision), free text and verbatim,
+mirroring the derived table. Full ×1–2. A sign convention ("positive = shorter life") is not a unit:
+`effect_allele` with `direction` already says it.
+
+## RM333 — the effector gene behind a GWAS locus has no source and no column
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** enricher (a new lane) + format (a derived table's columns) · **Motivating case** longevitymap v2 requirements §4.2 (causal and effector confidence, R-CAUSAL) · *for* longevitymap v2 · *related* RM239, RM238, RM236
+
+**Need.** v2 names a gene only at effector confidence E1/E2, using Open Targets locus-to-gene (L2G)
+scores and coloc. `VariantRow.gene` is a symbol with no provenance, so nothing tells a nearest gene from
+an effector call. RM239 covers the fine-mapping posterior on `gwas_effects.csv`, RM238 the per-tissue
+eQTL (parked), and RM236 the coding consequence that C1/E1 key on. No item covers L2G, and no lane reads
+Open Targets.
+
+**Shape.** An Open Targets snapshot lane, walked through [CACHE_SURFACE.md](CACHE_SURFACE.md)'s checklist,
+**licence probed first** (not verified here). Effector gene, score, method and release on a derived table
+(half cost). The C1–C4 / E1–E4 labels are the module's rubric over those inputs, so they are computed
+once the inputs exist, never authored.
+
+## RM334 — an HLA allele has no table, and tag SNPs cannot stand in for one
+
+**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §2 (R-HLA), §10 · *for* longevitymap v2 · *related* RM331
+
+**Need.** HLA-DRB1\*15:01 and B\*57:01 are v2's most consistent non-APOE signals, and the plan defers
+them to tag SNPs flagged with r².
+
+**Why no existing brick fits.** `HaplotypeRow` is a *definition*: the variants that are on one strand.
+An HLA tag SNP is a probabilistic proxy whose r² depends on ancestry, so writing it as a definition would
+be a false claim. `AlleleFunctionRow` has the nearest key, `(gene, allele)`, but its columns are PGx
+activity and function.
+
+**Shape.** A per-allele carrier table keyed on `(gene, allele)` at a stated field resolution (two-field),
+with `direction`, `trait_efo_id`, `conclusion` and a citation. The consumer joins it against an HLA
+typing call, which is a measurement a SNP VCF does not contain. The tag-SNP fallback reuses RM331's proxy
+shape. Full, a new table kind. Validating the nomenclature (IPD-IMGT/HLA) is an open question.
+
+## RM335 — model-organism evidence has nowhere to go, and a study row naming the rsID claims the mouse study was about the human variant
+
+**Severity** low · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**, design first · **Owner** format · **Motivating case** longevitymap v2 requirements §4.3 (R-ANIMAL-1…5), §10 · *for* longevitymap v2 · *related* RM327
+
+**What was confirmed.** The plan's interim is a `studies.csv` row with `study_design: model_organism`.
+That row is false either way:
+
+- **With the rsID**, it says a mouse lifespan study was about the human SNP.
+- **Without one**, it attaches to the whole module, because `StudyRow` has no `gene` column (RM47 made the
+  variant optional, not a gene the row could name instead).
+
+**Shape.** A separate table, one concern per table: the human gene with an orthologue id (symbol
+matching found 20 of the 22 genes NCBI orthologues found), species, model type, sex, diet, the lifespan
+effect, and the direction concordance with the human allele (`concordant`, `discordant`,
+`nonmonotone`), with a citation. Annotation only: it never reaches an effect column or a tier
+(R-ANIMAL-1). Full, a new table kind.
+
+## RM336 — a DOI written into `pmid` parses as five or six PubMed ids, and the literature pass looks each one up
+
+**Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-11-03 as a priority**; a refusal or a warning is the decision · **Owner** format (`spec.validate_pmid_cell`) · **Motivating case** longevitymap v2 requirements §6.3 ("`pmid`, or `doi` for preprints") · *for* longevitymap v2 · *related* RM50, RM263, [ROADMAP § `StudyRow.pmid` required + PMID-shaped](ROADMAP.md#studyrowpmid-required--pmid-shaped)
+
+**Reproduced 2026-11-03.** `StudyRow(rsid="rs429358", pmid="10.1101/2025.03.01.640000")` validates.
+`extract_pmids` returns `['10', '1101', '2025', '03', '01', '640000']`, and `doi:10.1038/s41586-019-1234-5`
+gives five. `enricher/src/just_dna_enricher/literature.py` iterates `extract_pmids(study.pmid)`, so the
+literature pass checks PubMed records 10, 1101 and so on as the row's citations. A preprint-only row is
+exactly where an author writes this, because `pmid` is required and the paper has only a DOI.
+
+**Same class as RM50.** RM50 gave `validate_pmid_cell` a PMCID arm, refusing a cell whose only id is a
+PubMed Central number and naming it. A DOI is the next registry whose digits read as PMIDs.
+
+**The decision.** A refusal arm like RM50's makes cells that shipped modules may already hold invalid
+(P3/P8), while a new warning code is minor-class (RM308's rule). The real fix for preprints stays the 1.0
+doi-first demotion. RM263 is the route from a DOI to its PMID.
+
 ## RM317 — FMR1 repeat methylation is in every PacBio TRGT VCF as `FORMAT/AM`, and no module can bin it on a two-allele record
 
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-30**, design first · **Owner** format (a `measure_kind` member, the element-rule vocabulary, the host table) + compiler · **Motivating case** the maintainer, 2026-09-30: a beneficiary will soon hold PacBio samples, so methylation is wanted, "just don't build on thin air"; evidence in [METHYLATION_PACBIO §§ 1.1, 3, 4.1](probes/METHYLATION_PACBIO.md) · *related* RM317–RM319, RM66, RM65, RM164
@@ -321,6 +650,8 @@ could have, which is a new optional table or spec block; two of its three exits 
 [RM188](ROADMAP_0_8.md#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics),
 and RM7 below (which is **not** the same item — see *What this is not*)
 
+**For longevitymap v2 (2026-11-03):** v2's §5 is a report specification: a context card, grouping by mechanism, a research view. See [the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+
 **The ask, verbatim in intent:** some kind of report schema — Jinja templates or something — where the
 *contents* are static and declarative and all the fancy CSS lives downstream.
 
@@ -457,6 +788,8 @@ routed; round 2's roster is below, searched for rather than named** · **Owner**
 then whichever tier the findings land in ·
 **Motivating case** the maintainer's direction, not a consumer report
 
+**For longevitymap v2 (2026-11-03):** its axes 2, 3 and 5 are now numbered, as RM328, RM330 and RM324. See [the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+
 **Progress.** Both named competitors are now probed, one document each, and neither turned out to be
 a competing *format*: [`probes/GENOMI_SURVEY.md`](probes/GENOMI_SURVEY.md) (genomi is a runtime; its
 thirteen-record curated catalogue is a `variants.csv` in Python, and §8 ranks seven annotation gaps,
@@ -567,10 +900,10 @@ field, the field is answering a real question.
    published on the HF org with a `release.json`, walked through [CACHE_SURFACE.md](CACHE_SURFACE.md)'s
    checklist, and the GSA manifest's licence probed before it is republished
    (`@probe-the-real-file`, `@no-named-licence`).
-2. **A per-variant claim's ancestry transferability** — three sightings: dna-engine's `transferability`, `Bluefinee/kaiseki`'s Japanese-cohort reconciliation, `drhudsonandrade/OmniGenis` recording discovery-cohort ancestry per GWAS association. We carry `PgsRow.training_ancestry` and `GwasEffectRow.ancestry`, both scoped to their own table; there is no way to say *this variants.csv row was established in one population*.
-3. **Effect modified by a non-genetic factor** — two sightings, and genomi is the third: `sinhaankur/open-genome-atlas` splits each marker's evidence by `kind` (diet / lifestyle / geo), **each axis independently cited**; `drdaviddelorenzo/nutrigenomics` scopes its `weight` to a `nutrient_domain`; genomi's own caveat *"folate fortification status of the population modifies effect size"* is the same fact in prose. `CopyNumberRow`'s `modifier_gene` / `modifier_cn` is the precedent shape for a *genetic* modifier and there is no environmental one. Note that the second sighting also lands on `@weight-has-no-unit`: their `weight` at least names the domain it is a weight *in*.
+2. **A per-variant claim's ancestry transferability** — three sightings: dna-engine's `transferability`, `Bluefinee/kaiseki`'s Japanese-cohort reconciliation, `drhudsonandrade/OmniGenis` recording discovery-cohort ancestry per GWAS association. We carry `PgsRow.training_ancestry` and `GwasEffectRow.ancestry`, both scoped to their own table; there is no way to say *this variants.csv row was established in one population*. **Numbered 2026-11-03 as [RM328](#rm328--no-study-row-can-name-the-ancestry-it-was-measured-in-so-european-only-evidence-is-a-hand-set-flag), for longevitymap v2.**
+3. **Effect modified by a non-genetic factor** — two sightings, and genomi is the third: `sinhaankur/open-genome-atlas` splits each marker's evidence by `kind` (diet / lifestyle / geo), **each axis independently cited**; `drdaviddelorenzo/nutrigenomics` scopes its `weight` to a `nutrient_domain`; genomi's own caveat *"folate fortification status of the population modifies effect size"* is the same fact in prose. `CopyNumberRow`'s `modifier_gene` / `modifier_cn` is the precedent shape for a *genetic* modifier and there is no environmental one. Note that the second sighting also lands on `@weight-has-no-unit`: their `weight` at least names the domain it is a weight *in*. **Numbered 2026-11-03 as [RM330](#rm330--an-effect-measured-in-one-sex-one-smoking-stratum-or-one-genotype-has-no-row), for longevitymap v2.**
 4. **Two sources disagreeing, as a recorded verdict** — three sightings: kaiseki's `DISCORDANCE_RATIO`, which **refuses to publish a consensus frequency** when cohorts disagree; `Gunshipz/genomine`'s cross-tool confidence/disagreement layer; allelix's ADRs. `clin_sig_concordance.csv` does exactly this for clinical significance and **only** for clinical significance — kaiseki does it for allele frequency, where `frequencies.csv` has per-population rows and no verdict.
-5. **A hand-assigned salience separate from clinical severity** — two sightings: `alexlaverty/dna-health-report`'s `magnitude` 0–6 per genotype, and SNPedia's own `m` field carried through snappy. `VariantRow.priority` is the candidate analogue; whether "priority level override" means the same thing is a question for the survey, not an assumption.
+5. **A hand-assigned salience separate from clinical severity** — two sightings: `alexlaverty/dna-health-report`'s `magnitude` 0–6 per genotype, and SNPedia's own `m` field carried through snappy. `VariantRow.priority` is the candidate analogue; whether "priority level override" means the same thing is a question for the survey, not an assumption. **Numbered 2026-11-03 as [RM324](#rm324--there-is-no-evidence-tier-column-so-the-axis-that-gates-visibility-is-a-flags-tiera-token), for longevitymap v2.**
 
 **A sixth shape was seen and is already decided against, recorded so it is not re-raised.**
 `dianguan0105/Custom-Personal-Genome-Interpretation` stores GRCh37 and GRCh38 coordinates *on the same
@@ -646,6 +979,8 @@ next person to run this search will find it in the same result set.
 **Owner** format (schema + compiler), then enricher · **Motivating case**
 [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *the two columns their engine reads that we
 cannot store*
+
+**For longevitymap v2 (2026-11-03):** causal confidence C1 and effector confidence E1 both key on a variant being coding. See [the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
 [ROADMAP § Reserved namespace](ROADMAP.md#reserved-namespace) lists `consequence` (the VEP/Sequence
 Ontology term) and `impact` (`HIGH|MODERATE|LOW|MODIFIER`) as *planned future annotation axes*, with
@@ -725,6 +1060,8 @@ ClawBio half; PARKED on a consumer, deliberately** · **Owner** enricher · **Mo
 [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *nine databases, and the two axes that come
 back with no home*
 
+**For longevitymap v2 (2026-11-03):** the cis-QTL colocalisation behind effector confidence E1/E2. See [the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+
 `clawbio.py run gwas --demo` on rs3798220 returns five cis-eQTLs **by named tissue** from GTEx and the
 EBI eQTL Catalogue — `LPA` in Liver at β −0.82, in Adipose at −0.45, `SLC22A3` in Liver at +0.31.
 Nothing here holds that. `expression_effects.csv` exists and is the wrong place: it is
@@ -750,6 +1087,8 @@ eQTL Catalogue bulk artifacts weigh, and what their terms say (`@probe-the-real-
 **Severity** low · **Status** open — **filed 2026-09-13 from [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s ClawBio half** ·
 **Owner** enricher · **Motivating case** [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) §
 *nine databases, and the two axes that come back with no home*
+
+**For longevitymap v2 (2026-11-03):** the fine-mapping posterior is the input to causal confidence C1–C4. See [the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
 The same `gwas-lookup` report returns three fine-mapping credible sets for rs3798220 with a posterior
 probability and 95%/99% set membership per `(trait, study)` — PP 0.92 for Lipoprotein(a) in
@@ -816,6 +1155,8 @@ That is a claim about their curation, and it belongs in the README as a sentence
 **Severity** low · **Status** open — **filed 2026-09-13 from [RM188](#rm188--the-competitor-survey--run-calwbios-and-genomis-pipelines-read-their-reports-and-re-fold-the-logic-into-module-mechanics)'s
 ClawBio half** · **Owner** format · **Motivating case**
 [`probes/CLAWBIO_SURVEY.md`](probes/CLAWBIO_SURVEY.md) § *The translation, run*, last paragraph
+
+**For longevitymap v2 (2026-11-03):** v2 declares `weighting:` precisely to say it has no weights, and `reverse` drops the block. See [the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
 
 `weight` is the one magnitude in this format with no unit beside it (`@weight-has-no-unit`), and RM92
 built `module_spec.weighting` — `scale`, `method`, `note` — to be the place a module says what its
@@ -1064,6 +1405,8 @@ parked-on-shape** — a smaller and much more answerable place to be parked.
 the injected-cofactor half closed, the predicate half stays here · **Owner** format (schema + compiler)
 · **Motivating case** combination annotations; disclosure policy
 
+**For longevitymap v2 (2026-11-03):** KL-VS buffering in APOE4 carriers joins two loci on two chromosomes, so no haplotype holds it; added as a corpus entry there. See [the group](#longevitymap-v2--what-its-requirements-need-from-the-format-taken-into-08-as-a-priority-2026-11-03).
+
 **Read this entry knowing how much of the original item has already dissolved.** Probing in 0.5 removed
 most of it, and the 0.6 review removed the rest of the cofactor axis. What is left is genuinely small
 and genuinely unsolved.
@@ -1280,6 +1623,13 @@ its own module and left Lewis out for exactly this reason. It is the same subjec
 CPIC's six gene pairs, outside pharmacogenomics, and like them it enumerates (a small table over two
 per-gene phenotype vocabularies), so it argues for a two-subject key and not for a predicate.
 Unbuilt, so it is corpus evidence and not a measured case.
+
+**A longevity instance, 2026-11-03: KL-VS buffering in APOE ε4 carriers.** longevitymap v2's plan
+(§4.2, protection type `BUFFERING`) holds that the KL-VS heterozygote matters in ε4 carriers. KL is on
+chromosome 13 and APOE on 19, so no haplotype holds the pair, and both halves are already enumerable on
+their own (KL-VS as two-SNP haplotype rows, APOE as `apoe_epsilon`). Like CPIC's gene pairs and Lewis, it
+argues for a **two-subject key** over two enumerated per-gene states (3 × 6 rows), not for a predicate.
+The plan's interim is `flags: conditional` plus prose, and that tag does nothing ([RM321](ROADMAP.md#rm321--variantrowflags-calls-its-reserved-tags-the-tags-the-tooling-acts-on-and-no-tier-acts-on-any-of-them)). Unbuilt; corpus evidence.
 
 ### What dissolved, so it is not re-proposed
 
