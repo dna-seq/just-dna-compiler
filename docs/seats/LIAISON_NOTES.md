@@ -39,5 +39,9 @@ ga4gh/vrs-python#665 (`RleSubunitMode`, which `vrs/2.1` will default to SMALLEST
 
 **Lock schedule:** duckdb 2.x once RM344 lands; polars 2.x with RM342 (0.9). RM343 (EXPLAIN test) is done.
 
-**Push:** none from this seat yet. The lead reports that auto mode denied its own granted push (kit #238), and
-the person pushes until that is fixed.
+**Push:** the pm pushed main at the person's word on 2026-11-04 (dfcdb89..150d916), with the liaison's commits
+through 1e7aa80. 4424266 (the watchers switched to tags only) waits on main with the lead's notes. This seat has
+not pushed: a push would carry the lead's commits too, and the lead asked that no seat push for it.
+
+**Watchers since kit v0.1.119:** `polars --tags --tag-pattern '^py-'` and `duckdb-python --tags`, one wake per
+release (#246). The priming change c339487 (cap on a proven break, adoption maps) was read; no concern.
