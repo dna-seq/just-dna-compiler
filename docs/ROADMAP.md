@@ -1170,6 +1170,27 @@ an amendment once the toolchain is recorded.
 
 **Residuals** none yet.
 
+## RM344 — a `.duckdb` Ensembl cache written by duckdb 2.0 crashes a 1.x enricher instead of falling back to the parquet beside it
+
+**Severity** low · **Status** open — **a patch**, `unattended` (about 15 minutes) · **Owner** enricher
+(`resolver.py`) · **Motivating case** the liaison's adoption map for duckdb 2, item 2, `docs/UPSTREAM_DUCKDB.md`
+(2026-11-04) · *related* RM343
+
+**Measured.** duckdb 1.5.5 refuses a database file written by 2.0: `... with version number 999, but we can only
+read versions between 64 and 68`. `resolver.py` opens the deprecated prebuilt `ensembl_variations.duckdb` with
+`duckdb.connect(..., read_only=True)` at both of its sites and has no handler. An empty or stale db already
+falls back to the parquet `data/` beside it, but a db written by a newer duckdb raises from `connect`. A cache
+built on a machine with duckdb 2 therefore stops a 1.x enricher that reads it, although the parquet next to it
+would answer.
+
+**The patch.** In the cache-directory case, a db this duckdb cannot open falls back to the parquet `data/`, the
+same way an empty one does, and says so in a warning that names the file and the storage version. A
+`.duckdb` file passed directly has no parquet to fall back to, so it raises `EnsemblReferenceError` naming the
+version and suggesting the parquet cache. The path is deprecated and retired at 1.0. The test writes a db the
+running duckdb cannot read rather than mocking `connect`.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
