@@ -1326,6 +1326,11 @@ argument for leaving this at a warning.
 
 **Frozen, decided 2026-11-03.** The maintainer froze the Gherkin work. The verification bench beside the seats kit (`harness/bestiary`) marks all eight of its Gherkin entries retired by their origin, after the acceptance pipeline's originator reversed on it in September 2026, and the same day the maintainer chose TLC model checking over Gherkin for the kit's own acceptance work. Nothing here is built until that is reopened; the status line below predates it.
 
+**What the freeze leaves running, decided 2026-11-03.** The maintainer kept the corpus gate:
+`schema/tests/test_feature_corpus.py` still fails a new warning code that has no scenario, so `features/`
+keeps growing as text with each new code, and with no runner. The freeze stops the review and the runner work
+this entry asked for, not the corpus.
+
 **Severity** medium · **Status** open — **a minor, taken into 0.8 on 2026-09-21; asked by the maintainer
 2026-08-31** · **Owner** format + compiler (the test corpus) · **Found by** running the consumer loop
 
