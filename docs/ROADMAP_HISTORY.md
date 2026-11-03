@@ -228,8 +228,8 @@ one passes under the locked 1.x and under 2.0.0.
 
 ## RM341 — polars 2.x writes its version into every parquet footer, so one `compiler_version` mints a digest per polars release
 
-**Severity** high · **Status** ✅ **SHIPPED 2026-11-04 on `main`, uncut — a patch** (a dependency cap and a
-test; no schema change, no digest moves under the polars a lock installs) · **Owner** compiler (packaging) · **Motivating case** the liaison's measurement, `docs/UPSTREAM_POLARS.md`
+**Severity** high · **Status** ✖ **CLOSED 2026-11-04 — the cap was reverted before it was pushed; no cap, the
+maintainer's decision** · **Owner** compiler (packaging) · **Motivating case** the liaison's measurement, `docs/UPSTREAM_POLARS.md`
 (2026-11-03) · *related* RM342, RM304
 
 **Measured.** `polars>=1.42.0` has no upper bound. polars 2.0 writes `created_by = 'Polars (python) version
@@ -243,10 +243,20 @@ releases would mint two digests for one spec, with nothing in the manifest sayin
 mitigation was shipped. Add a test that reads the footer of every parquet a real compile writes and fails when
 the installed polars version appears there, so the cap cannot be lifted quietly. It is lifted only by RM342.
 
-**Residuals** the cap is a stopgap. polars 2.x stays out of reach until RM342 records the toolchain in the
-manifest, and lifting the cap is that item's job, announced.
+**Residuals** RM342 records the toolchain, so a digest that differs between installs can say why.
 
-**What shipped.** `compiler/pyproject.toml` pins `polars>=1.42.0,<2`, and `uv lock` changed only the specifier.
+**Reverted, and the rule that replaced it (the maintainer, 2026-11-04).** No cap on polars or duckdb. polars-bio
+already caps just-dna-lite at `polars<2`, and a second cap here would block every other consumer. The rule:
+**the liaison decides adoption blockers and hands the lead an adoption map. A pin goes in only when a new major
+is proven to break something, and stays until support is integrated.** When the liaison is unavailable to settle
+compatibility and work has to move, the lead may pin as a safety. polars 2.x breaks nothing here: under 2.x the
+tables and `content_signature` are equal, and the digest moving between installs is what P4 already scopes to a
+fixed toolchain. The cap and its footer test were removed in the commit after the one that added them, both
+unpushed. The footer test was dropped as well, because it would go red the day `uv.lock` moves to polars 2.
+That move is the liaison's adoption map, item 4: every digest moves once, and the release records that the
+content is unchanged.
+
+**What was built, then reverted.** `compiler/pyproject.toml` pinned `polars>=1.42.0,<2`, and `uv lock` changed only the specifier.
 `compiler/tests/test_parquet_names_no_toolchain.py` compiles `apoe_epsilon` and reads each parquet's thrift footer
 straight from the bytes (the compiler tier has no pyarrow). It fails when `pl.__version__` appears there. Run
 before the cap under `uv run --isolated --with polars==2.1.0`, it failed on `diplotypes.parquet` and

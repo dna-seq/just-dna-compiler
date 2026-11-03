@@ -1154,15 +1154,14 @@ attestation.
 
 ## RM342 — the manifest does not record the toolchain that wrote the bytes, so a digest that moves cannot say why
 
-**Severity** medium · **Status** open — **a minor** (a new optional manifest field), release undecided: **the pm
-sizes it** · **Owner** format + compiler · **Motivating case** RM341 · *related* RM304, RM341
+**Severity** medium · **Status** open — **a minor** (a new optional manifest field); the pm places it in 0.9 · **Owner** format + compiler · **Motivating case** RM341 · *related* RM304, RM341
 
-**Why it is filed.** RM341's cap is a stopgap, the way RM304's cap on `ga4gh.vrs` is. polars 2.x will be needed
-eventually (a security fix, a dependency's floor), and from 2.0 the parquet bytes name the polars release. The
-three repairs the liaison named are: keep the cap (it only postpones the problem); record the polars version (and
-the parquet writer's `created_by`) in the manifest beside `compiler_version`; or decide that the digest names the
-toolchain and say so in P4. The second is additive and minor-legal. The third is a charter amendment. Lifting the
-cap after either is an announced change, never a silent one.
+**Why it is filed.** polars stays uncapped (RM341, the maintainer, 2026-11-04). From 2.0 the parquet bytes name
+the polars release that wrote them, so two installs of one `compiler_version` mint different digests for equal
+content, and nothing in the manifest says which polars wrote which. The liaison's adoption map, item 3: record
+the polars version beside `compiler_version` in `manifest.compilation`, as an optional field. That is additive
+and minor-legal. The alternative, deciding in P4 that the digest names the toolchain, would be a charter
+amendment.
 
 **Open questions.** Whether the record is one manifest field or a toolchain block (polars, arrow if it ever
 appears, Python); whether `verify` reports a digest mismatch whose recorded toolchain differs from the running

@@ -15,10 +15,7 @@ maintainers = [
 # deprecated ensembl_cache surface routes there via a guarded optional import, retired at 1.0).
 dependencies = [
     "just-dna-format>=0.7.1",
-    # Capped below 2 (RM341): from 2.0 polars writes its version into every parquet footer, so the
-    # artifact digest would move with each polars release under one compiler_version. Lifted only
-    # with RM342, which records the toolchain; test_parquet_names_no_toolchain.py guards it.
-    "polars>=1.42.0,<2",
+    "polars>=1.42.0",
     "pyyaml>=6.0.2",
     "typer>=0.12.0",
 ]
