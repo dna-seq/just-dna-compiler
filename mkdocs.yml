@@ -283,6 +283,8 @@ not_in_nav: |
   POSTMORTEM_2026_09_27.md
   PUBMIND_ASSESSMENT.md
   RELEASE_CYCLE.md
+  # The liaison seat's ledgers, one per upstream the packages stand on (docs/seats/LIAISON.md).
+  UPSTREAM_*.md
   audit/
   history/
   # Re-included, gitignore style: this one archived page is in the nav (see the *Upgrading* comment
