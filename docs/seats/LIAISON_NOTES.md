@@ -21,16 +21,15 @@ installed versions: ga4gh.vrs 2.3.3, polars 1.44.2, duckdb 1.5.5. `mkdocs.yml` `
 the tag lines. duckdb-python's patch releases are tagged on version branches, so a `--path` watcher on main
 would miss them. A tags-only mode would fit better; that is a kit wish.
 
-**Half read (the backlog):**
+**Half read (the backlog):** polars `py-2.0.0`/`py-2.1.0` and duckdb `1.5.6`/`2.0.0`. Their breaking-change
+lists are read against our uses, and both majors were measured (suites, bytes, storage), so the verdicts are in
+the ledgers. The full entry lists are not read, so the read marks stay at the installed versions.
 
-- polars `py-2.0.0` and `py-2.1.0`: measured as a whole (the digest moves through `created_by`, the compiler suite
-  passes). The release notes are not read entry by entry, so the read mark stays at 1.44.2.
-- duckdb `1.5.6` and `2.0.0`: measured as a whole (one `EXPLAIN` string test fails). The notes are not read;
-  open question: `.duckdb` storage compatibility for `resolver.py:78`.
-- The enricher suite under polars 2.1.0 ran at seating. Record its result in the polars ledger.
+**Decided by the person, 2026-11-04: no cap on either major.** polars-bio's own `<2` already holds just-dna-lite,
+and a second cap here would block everyone else.
 
-**Sent to the lead** (it files the RMs; this seat's grant covers only its ledgers and notes): the polars
-`created_by` digest move with the uncapped pin; the duckdb 2.0 `EXPLAIN` test; and, for RM304, PR
+**Sent to the lead** (it files the RMs; this seat's grant covers only its ledgers and notes), 2026-11-03/04: the
+adoption plan for both majors without a cap, which supersedes the first message's cap option; and, for RM304, PR
 ga4gh/vrs-python#665 (`RleSubunitMode`, which `vrs/2.1` will default to SMALLEST).
 
 **Push:** none from this seat yet. The lead reports that auto mode denied its own granted push (kit #238), and

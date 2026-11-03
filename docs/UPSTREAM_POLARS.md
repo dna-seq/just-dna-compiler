@@ -28,24 +28,46 @@ use polars only in builders (`@duckdb-vs-polars`).
 ### 2.0.0 / 2.1.0, measured as a whole — every artifact digest moves; nothing else did (2026-11-03)
 
 - **Suites:** `uv run --isolated --with polars==2.1.0 pytest compiler/tests`: 1557 passed, 1 skipped, no
-  warnings. The enricher suite under 2.1.0: see the notes file until it is recorded here.
+  warnings; `enricher/tests`: 2281 passed, 68 skipped.
 - **Bytes:** three reference examples (`apoe_epsilon`, `pathogenic_clinvar`, `cyp2c19_star_alleles`) compiled
   twice under 1.44.2 and once under 2.1.0. Under 1.44.2 the two compiles are byte-identical. Under 2.1.0 every
   parquet's sha256 and every `artifact.digest` differ (`pathogenic_clinvar`: `…8ef062b846eb` → `…c04864c8f97f`).
 - **Why:** read back with polars and pyarrow, every table is equal (`DataFrame.equals`), with the same schema,
-  codec (ZSTD), row-group count and key-value metadata keys. The one difference is the footer's `created_by`:
-  `'Polars'` under 1.44.2, `'Polars (python) version 2.1.0 (build 7f902bd3ffd27ff82d14278a09a295ff2f7aed92)'`
-  under 2.1.0. The files grow by about that string's length (7651 → 7721 bytes). Upstream: PR pola-rs/polars#29106
-  "Add polars version to parquet created_by field", merged 2026-09-03, first in `py-2.0.0`, written to follow
-  the parquet spec's `<Application> version <App Version> (build <App Build Hash>)`.
+  codec (ZSTD), encodings (`PLAIN`, `RLE`), statistics, format version and row-group count. Two separate
+  things moved the bytes, found by comparing each file's bytes before its footer (`pq_footer.py` in the
+  seating session; it reads the footer length from the last 8 bytes):
+  1. **1.44.2 → 2.0.0: only the footer.** The data pages are byte-identical; the footer's `created_by` went
+     from `'Polars'` to `'Polars (python) version 2.0.0 (build 22a147de…)'`. Upstream: PR pola-rs/polars#29106
+     "Add polars version to parquet created_by field", merged 2026-09-03, first in `py-2.0.0`. The string is
+     built in `crates/polars-parquet/src/arrow/write/file.rs:59` from the version and the build commit, and
+     nothing in `write_parquet` (2.1.0 signature) sets or omits it.
+  2. **2.0.0 → 2.1.0: the data pages.** They differ in all eight parquets of two examples, with the tables still
+     equal. 2.1.0 changed how nested columns are written (#30251, #30245), and our `List(Utf8)` columns
+     (`authored_ident`, `genotype`, `alts`, `flags`) are nested.
+- **Suites, both majors together** (`--with polars==2.1.0 --with duckdb==2.0.0`, all three packages): 4833
+  passed, 73 skipped, 3 failed. Of the three, only duckdb's `EXPLAIN` test is a major's (`UPSTREAM_DUCKDB.md`).
+  `docs/DREAMS.md` was a peer's untracked file, and the triage-archive test passed on rerun under both majors
+  (a peer commit landed mid-run).
+- **Code against the breaking lists:** 2.0's (SQL window and literal semantics, plugin CSE, Parquet ENUM read
+  as String, the `.map` namespace, `cut`/`qcut` deprecated) and 2.1's (no mixed string/numeric arithmetic in
+  eager) reach nothing we call. Our one `map_elements` (`enricher/src/just_dna_enricher/clinvar_build.py:373`)
+  is not the `.map` namespace.
+- **Who else holds polars below 2:** polars-bio 0.36.2, which just-dna-lite stands on, pins `polars<2,>=1.40.0`.
 
-**Sorted: breaks us.** From 2.0 on, the polars version and build hash are inside every parquet we write, so
-`artifact.digest` changes with every polars release, even a patch, when the spec and the compiler stay the same.
-P4 already scopes reproducibility to a fixed `compiler_version` (FAQ, "Does a rebuild always mint a new
-digest?"), but `polars>=1.42.0` has no upper bound, so one `compiler_version` installed on two machines can
-mint two digests for one spec. That was possible before; from 2.0 on it is certain whenever the polars versions
-differ. The fix belongs to the lead: pin polars, record the polars version, or decide that the digest names
-the toolchain. Sent to the lead 2026-11-03.
+**Sorted: breaks us, in the digest only.** Every 2.x release writes its own version and build into every
+parquet we produce, so from 2.0 on `artifact.digest` changes with every polars release, even a patch. Releases
+like 2.1.0 also change the data pages. The table contents stay equal. P4 and P7 already limit byte reproducibility
+to a fixed `compiler_version` and compiler environment. Goal 3 says a digest is reproducible by "anyone holding
+the inputs and the pinned compiler version", but `polars>=1.42.0` has no upper bound, so the compiler version
+does not pin the bytes. Under 1.x two machines minted the same digest unless the writer changed; under 2.x they
+mint different digests whenever their polars versions differ. Writing a constant `created_by` would not remove
+this: 2.1.0 changes the data pages anyway.
+
+**No cap** (the person, 2026-11-04: "what's the reason to pin? Their pin limits the top by itself, by imposing
+second cap we'll block em"). Nothing functional blocks 2.x. polars-bio already caps the consumers that need it,
+and a cap here would block every other consumer and would hold just-dna-lite back after polars-bio lifts its
+own. The digest question is for the lead: record the polars version beside `compiler_version`, and declare the
+move in the release that takes 2.x into `uv.lock`. Plan sent to the lead 2026-11-04.
 
 ## Our pieces that duplicate an upstream feature
 
