@@ -46,7 +46,8 @@ ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 **repo** — The person's rule, written into the liaison's and the lead's primings. The liaison decides what
 blocks adopting a new major of an upstream and hands the lead an adoption map. A dependency is capped only once
 the new major is shown to break something here, and the cap is lifted once support is integrated. polars 2 and
-duckdb 2 broke nothing that RM343 and RM344 do not cover, so neither is capped. No package changes.
+duckdb 2 broke nothing that RM343 and RM344 do not cover, so neither is capped. The lead caps a dependency
+only as a safety, when the liaison is unavailable and work has to move. No package changes.
 
 ## 2026-11-04 — RM343: a query-shape test reads duckdb 2.0's `Hash Join` (patch, on `main`)
 

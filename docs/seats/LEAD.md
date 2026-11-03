@@ -40,6 +40,12 @@ including batch when needed. RMS are done in wroktrees, minors have own branches
 - **A consumer report goes to triage**, appended to `docs/CONSUMER_SUGGESTIONS.md` in the reporter's words.
 - **A question of direction** (who it serves, a licence, the name, what a minor or a major holds) **goes to
   the pm**.
+- **A new major of an upstream is the liaison's to judge.** It sends an adoption map, and caps the dependency
+  itself once the major is shown to break something. If the liaison is unavailable and you must move, cap it
+  yourself as a safety, tell the liaison, and leave lifting the cap to it. The person, 2026-11-04: "Alt: if
+  liaison is unavailable to sort out compatibility and you need to move, [the lead pins] as a safety". It was
+  said after this seat capped polars on its own, unasked and with no break shown (RM341, reverted). Agreed:
+  nothing checks it.
 
 ## No tooling seat here
 
