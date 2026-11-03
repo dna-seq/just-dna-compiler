@@ -217,7 +217,9 @@ same hash join, and the timing test passes. `duckdb>=1.1.0` is uncapped, so a fr
 **The patch.** The assertion reads the operator name in either spelling. No cap, since nothing else in the suite
 moved. Capping a runtime dependency to keep one test's string would hold every consumer back for a test.
 
-**Residuals** none. The liaison's ledger (`docs/UPSTREAM_DUCKDB.md`) keeps the rest of 2.0's read.
+**Residuals** none
+
+The liaison's ledger (`docs/UPSTREAM_DUCKDB.md`) keeps the rest of 2.0's read.
 
 **What shipped.** `test_lookup_clin_sig_is_a_hash_join_not_an_or_chain` upper-cases the plan text and turns
 spaces into underscores before looking for `HASH_JOIN`. The old assertion was run under
