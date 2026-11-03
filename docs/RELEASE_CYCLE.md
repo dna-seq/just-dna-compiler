@@ -6,10 +6,16 @@ and the roadmap files follow this page; where one of them disagrees, this page i
 
 ## Seats
 
-Work runs in two or more Claude Code sessions, each with one purpose:
+Work runs in Claude Code sessions, each holding one seat for its whole run, on the seats kit since
+2026-11-03. [seats/README.md](seats/README.md) lists the four with their primings. For a release:
 
-- the **triage seat**, unattended, which turns inbound `Sn` into replies and `RMn`;
-- the **interactive coding seat**, which works with the maintainer.
+- the **pm** sizes each minor and major scope: what goes in, its plan and its proposals
+  ([ROADMAP_0_8.md](ROADMAP_0_8.md), [ROADMAP_1_0.md](ROADMAP_1_0.md), `proposals/`). It writes no code;
+- the **lead** executes what the pm settled, working with the maintainer: each `RMn` in a worktree of its
+  own, a minor's scope on that minor's branch, everything else on `main`. It merges, prepares a cut
+  whole, and tags it once the maintainer has published (publishing stays theirs);
+- **triage** turns inbound `Sn` into replies and `RMn`, and ships the patch fixes on `main`;
+- the **liaison** reads each upstream release against what the code uses.
 
 A seat does not take another seat's work or offer to.
 

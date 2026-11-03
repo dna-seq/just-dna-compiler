@@ -41,6 +41,14 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-03 — the repository runs on seats: lead, pm, triage, liaison (docs only, on `main`)
+
+**repo** — Four standing seats from the seats kit replace the two-seat description in
+[RELEASE_CYCLE.md § Seats](RELEASE_CYCLE.md#seats). The pm sizes minor and major scopes, the lead executes them,
+triage keeps the consumer inbox and the patches on `main`, and the liaison reads upstream releases. Their primings
+are in `docs/seats/`, now listed in `mkdocs.yml`'s `not_in_nav`; the seat pull requests had left
+`test_nav_and_not_in_nav_partition_the_docs_directory` red. No package changes.
+
 ## 2026-11-03 — RM327, in part: `tradeoff` is a reserved column name (patch, on `main`)
 
 **format** — `tradeoff` joins `vocab.RESERVED_NAMES_0_4`. The maintainer decided that a trade-off (an allele `protective` on one trait and `risk` on another) is **computed** from a per-trait benefit/harm table, never authored. That table is RM327's minor half and is not built yet. Reserving the name keeps a hand-set column out before the computed one lands. longevitymap v2 has trade-off loci to write, and this is the word an author would reach for.

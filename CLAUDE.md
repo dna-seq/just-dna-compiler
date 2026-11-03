@@ -27,7 +27,7 @@ gotcha book: it is loaded into every session and has a size ceiling.
 ## The doc map — what each answers, and what to grep
 
 **`docs/` root holds only what is still live.** Five subfolders hold the rest, and nothing in them is
-edited as routine work:
+edited as routine work (a sixth, `docs/seats/`, is live: the seats' primings and notes, in the table below):
 
 - **`docs/history/`** — the closed record: the retired halves of the three history files, the round-2
   consumer thread, and `ROADMAP_0_7.md`. **Count the halves from `ls`, never from a sentence here** —
@@ -90,6 +90,7 @@ edited as routine work:
 | [MODULE_LIFECYCLE.md](docs/MODULE_LIFECYCLE.md) | origin → publish → a consumer's join; **what pass 2+ moves** | `grep -n '^## ' docs/MODULE_LIFECYCLE.md` |
 | [FAQ.md](docs/FAQ.md) | settled questions keyed by *question* ("why did my digest move?") | `grep -n '^\*\*' docs/FAQ.md` |
 | [RELEASE_CYCLE.md](docs/RELEASE_CYCLE.md) | how an `RMn` becomes a release: the seats, **version by omission** (non-blocked patch items go into the next patch on `main` unasked; an undecided part gets an interview first; **a commit on `main` is patch scope only** — minor-class work goes on the open minor branch, `0.8` today), the minor cycle from interview to cut, and tic/tac **after 1.0 only**. The §4 item counts are a lamp, never a start pistol | `grep -n '^## ' docs/RELEASE_CYCLE.md` |
+| [seats/README.md](docs/seats/README.md) | the four seats a session takes with `/seats:seat` (lead, pm, triage, liaison): each one's priming, notes, inbox and what it owns. Who sizes a scope (pm) and who executes it (lead) | `grep -n '^| \*\*' docs/seats/README.md` |
 | [CONSUMER_SUGGESTIONS.md](docs/CONSUMER_SUGGESTIONS.md) | the **open** consumer inbox (`Sn`) — empty means nothing owed | `grep -n '^## S' docs/CONSUMER_SUGGESTIONS.md` |
 | [CONSUMER_SUGGESTIONS_HISTORY.md](docs/CONSUMER_SUGGESTIONS_HISTORY.md) | answered `Sn`, verbatim, with the reply; it keeps the **whole** contents list across all three halves. **S62 onward live here**; the 0.6 line's S25–S61 sit in [history/](docs/history/CONSUMER_SUGGESTIONS_HISTORY_0_6.md) and 0.5's S1–S24, S27, S28 in [history/](docs/history/CONSUMER_SUGGESTIONS_HISTORY_PRE_0_6.md) | `grep -rn '^## S[0-9]' docs/CONSUMER_SUGGESTIONS_HISTORY.md docs/history/` |
 | [CONSUMER_TRIAGE_LOOP.md](docs/CONSUMER_TRIAGE_LOOP.md) | the runbook for answering an `Sn`, and the ledger | `grep -n '^## ' docs/CONSUMER_TRIAGE_LOOP.md` |
