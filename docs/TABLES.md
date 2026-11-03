@@ -222,6 +222,13 @@ the overlay sits beside it and wins at read time. So a correction is a third cat
 neither table registry, and "fix the derived CSV directly" is the repair this file exists to refuse —
 the next enricher run would overwrite it.
 
+**A row the enricher never writes is not a correction, and it does not go here.** The refusal above is
+about changing a value the machine wrote. An uncited `literature.csv` row, written by hand to record a
+paper someone read and took nothing from (RM147), contradicts no machine value: it is added, not
+edited, and the literature pass is merge-not-clobber, so it keeps the row. The compiler drops it from
+the artifact, and the CSV is where the record lives. The row has no column for the reason, who decided
+or when; a consumer who wants those keeps them in its own record (S125).
+
 **Match the key as the model *stores* it, not as you spelled it.** A raw string compare against the
 authored spelling grew the overlay by one row per run, because the stored form had already been
 normalised. This is the single most common way to author this table wrong, and the symptom is a table

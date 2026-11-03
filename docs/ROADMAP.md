@@ -1309,6 +1309,109 @@ it here.
 
 **Residuals** none yet.
 
+## RM337 — a file under `logs/` that is not `*.log` is dropped from the compile, and nothing says so
+
+**Severity** medium · **Status** open — **a patch** · **Owner** compiler (`_collect_logs`) ·
+**Motivating case** S125 in CONSUMER_SUGGESTIONS_HISTORY.md (just-module-creator `F116`, 2026-10-05) ·
+*related* RM338, RM147
+
+**Reproduced 2026-11-03** on a copy of `reference_examples/apoe_epsilon` with six files under `logs/`
+(`authoring.log`, `trace/session-a.jsonl`, `run.json`, `notes.md`, `notes.txt`, `fig.png`):
+`compile_module` succeeds, no warning mentions a log, and both `manifest.logs` and the output's `logs/`
+hold `logs/authoring.log` alone. Discovery globs `*.log` at the top level and `logs/**/*.log` below it,
+and skips everything else under `logs/` without a word. The registry's server-side compile leaves
+discovery to the compiler, so an upload carries the file and the published version does not.
+
+**The patch.** A coded warning, in both modes, naming each file under `logs/` that discovery left behind
+and saying that only `*.log` ships. It changes no verdict and ships nothing new, so it is legal whatever
+RM338 decides; once RM338 widens the set, the warning names whatever is still left out. An explicit
+`log_files` list is unaffected, since it already ships any path it names. The new code owes a
+`features/` scenario.
+
+**Residuals** none yet.
+
+## RM338 — which files under `logs/` ship: `*.log` only, a text allowlist, content-checked text, or images too
+
+**Severity** low · **Status** open — **a patch** by legality; which files ship is undecided, and the
+decision is the maintainer's · **Owner** compiler (`_collect_logs`) · **Motivating case** S125 in
+CONSUMER_SUGGESTIONS_HISTORY.md (just-module-creator `F116`, 2026-10-05) · *related* RM337, RM147
+
+**The ask.** The reporter wants a JSON Lines session ledger (search receipts, fetch receipts, decisions)
+to travel with a module, and offers, in order: decide on content rather than the name (`.log`, `.txt`
+and `.md` decode as UTF-8, `.json` parses, every non-blank `.jsonl` line parses); failing that, the
+allowlist `.log .txt .md .json .jsonl`; and images as a question rather than a request (`png`/`jpg` can
+be checked by magic bytes as `LOGO_EXTENSIONS` already is; SVG is XML that can carry script).
+
+**Legality.** No schema moves. `manifest.logs` is a list of `FileEntry`, and `artifact_digest` hashes
+`manifest.artifact.files` only, so no module's byte or content identity changes. P3 and P8 do not reach
+it. What it changes is exposure: a module that already has a stray `notes.md` under `logs/` starts
+shipping it at its next recompile, and a published file is permanent. That is why this waits for a
+decision instead of being built unasked.
+
+**What to decide.** The set; whether a file whose content contradicts its extension warns, or refuses
+under `strict`; and images, with a size ceiling. RM147's advice against a `logs/` *writer* still stands
+and is not reopened: this carries the consumer's own ledger, it does not give the format a ledger
+schema.
+
+**Residuals** none yet.
+
+## RM339 — an interrupted snapshot pull leaves a cache that reads as complete, so it is never finished
+
+**Severity** high · **Status** open — **a patch** · **Owner** enricher (`download._provision_snapshot`) ·
+**Motivating case** S126 in CONSUMER_SUGGESTIONS_HISTORY.md (just-dna-registry `warm-caches`,
+2026-10-08) · *related* `@a-derived-lane-has-parents-and-an-absent-parent-is-not-an-empty-result`,
+`@a-failed-fetch-is-not-a-no-op`
+
+**Reproduced 2026-11-03.** A cache directory holding one footer-valid `homo_sapiens-chr1.parquet` and
+nothing else: `ensure_snapshot` returns it without touching the network. `if existing and not corrupt:
+return cache_dir` trusts any non-empty set of whole files, and the `.part`-then-rename staging that
+keeps each file whole is exactly what makes an interrupted pull look finished: every file present
+verifies, and the missing ones leave no trace. The lane's `resolve()` inherits the answer, so
+`warm-caches`, its dry run and just-dna-lite's `prepare-caches` agree the lane is present. In the
+reported run that was 3 of 25 chromosomes, and `enrich` would have resolved rsIDs against them silently.
+Every snapshot sharing the helper has it.
+
+**The patch.** Trust a cache only when it carries a record of a finished pull and every file the record
+names is present and whole; without one, fetch what is missing and skip what verifies, which keeps "no
+network on a warm cache". The reporter's candidate writes that record at the end of a successful pull.
+`release.json` is already fetched last, after every parquet, so where a repo publishes one its presence
+marks a finished pull; whether it lists the files, and whether every lane's repo publishes one, is the
+first thing to check when building, before adding a file to the layout (`locations`, and
+`docs/CACHE_SURFACE.md`'s checklist). Caches provisioned before the record existed either refetch once
+or are compared with the remote listing the first time the network is reachable; that choice is the
+build's. Second, smaller: name `HF_HUB_DOWNLOAD_TIMEOUT` in the error a read timeout raises, since the
+10 s default is short for files of 0.5–1 GB.
+
+**Residuals** none yet.
+
+## RM340 — the VRS-coverage warning counts alleles with no ALT and does not point at the record that says why
+
+**Severity** low · **Status** open — **a patch** · **Owner** compiler (`_vrs_coverage` warning) ·
+**Motivating case** S127 in CONSUMER_SUGGESTIONS_HISTORY.md (just-module-creator `F118`, 2026-10-25) ·
+*related* RM251, `@unreachable-not-absent`, `@answered-is-not-absent`
+
+**What stands of the report.** After RM251, `source="authored"` rows with empty `ref`/`alts` are two
+populations: rows with no rsID, which no refresh can fill, and rows whose live rsID the injected Ensembl
+snapshot predates, which a newer snapshot would fill. The reporter's correction found the split already
+stated, by name, in `verification.json`'s `rsid_coordinate_agreement` record (*"absent from this
+snapshot is not absent from Ensembl"*). The rows are truthful; what is missing is the join. The compile
+warning (*"VRS allele identity covers 166/183 … 17 allele(s): no ALT recorded"*) gives no pointer to the
+record that explains the gap.
+
+**The patch.** When the spec directory's `verification.json` carries an `rsid_coordinate_agreement`
+record with pairs not compared, the no-ALT line of `vrs_coverage_incomplete` says so and names the
+record. The compiler already reads the block at compile (`_read_verification_block`). Message text only,
+under `@warning-text-is-api`: the existing phrase stays and the pointer is appended. Run
+`schema/tests/test_feature_corpus.py`, since `features/` quotes emission text.
+
+**Not taken.** A new `status` member such as `position_only`, or a second `source` value. The reporter
+argues against the second themselves, and `@answered-is-not-absent` is the house answer to the first:
+`VALID_RESOLUTION_STATUS` is a wire vocabulary every reader of a published `resolution.csv` shares, and
+the row was never the untruth. Only the reason it gives is missing, and the reason already exists in the
+attestation.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.

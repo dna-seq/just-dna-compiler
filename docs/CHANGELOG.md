@@ -41,6 +41,17 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-03 — triage of S125–S127: four items filed, one doc fix (docs only, on `main`)
+
+**docs** — The triage seat's first pass answered the three consumer items that had sat in the inbox,
+uncommitted, since October. None had been worked on anywhere, and all three reproduced against the
+code. Filed as patches: RM337 (a file under `logs/` that is not `*.log` is dropped from a green compile
+with no warning), RM339 (an interrupted snapshot pull leaves a cache every caller reads as complete),
+and RM340 (the VRS-coverage warning does not point at the `verification.json` record that already
+explains its no-ALT alleles). RM338 records the undecided half of S125, which files under `logs/` ship.
+`TABLES.md`'s `overrides.csv` section now says that a hand-written uncited `literature.csv` row (RM147)
+is an addition the refusal there does not cover. No package changes.
+
 ## 2026-11-03 — the repository runs on seats: lead, pm, triage, liaison (docs only, on `main`)
 
 **repo** — Four standing seats from the seats kit replace the two-seat description in
