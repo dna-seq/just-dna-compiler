@@ -73,16 +73,17 @@ cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-compiler liai
 
 # The upstreams' clones, one line each in the liaison state file (docs/seats/LIAISON.md). vrs-python's trunk
 # is quiet (17 commits in 30 days), so it is watched as is. polars (126 a week) and duckdb-python (211 in 30
-# days) are polled once a day: their releases are tags, and duckdb-python tags its patches on a version
-# branch (v1.5.6 on v1.5-variegata), which a --path watcher on main would miss, since --path drops tag lines.
+# days) are watched for tags only (kit v0.1.119, #246): one wake per release, a patch tagged on a version
+# branch included (duckdb-python's v1.5.6 is on v1.5-variegata). polars also tags its Rust crates (rs-*),
+# which the packages do not install, so only its Python releases (py-*) are said.
 [seat.liaison.watch.ga4gh-vrs]
 cmd = "sh kit:classes/liaison/watch-upstream.sh ga4gh-vrs"
 
 [seat.liaison.watch.polars]
-cmd = "sh kit:classes/liaison/watch-upstream.sh polars --every 86400"
+cmd = "sh kit:classes/liaison/watch-upstream.sh polars --tags --tag-pattern '^py-'"
 
 [seat.liaison.watch.duckdb-python]
-cmd = "sh kit:classes/liaison/watch-upstream.sh duckdb-python --every 86400"
+cmd = "sh kit:classes/liaison/watch-upstream.sh duckdb-python --tags"
 
 [seat.liaison.zulip]
 pool = "~/.config/agent-seat-blueprints/zulip/pool"
