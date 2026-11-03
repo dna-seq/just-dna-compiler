@@ -4109,7 +4109,7 @@ which moves. That is the README shape.
 `overrides.parquet` can find two modules with one signature whose overlay prose differs — the
 consumer's own argument against their fix, and the shape README already has; stated in SCHEMAS. And
 the maintainer's observation on the resulting picture — byte digest moved, every signature intact,
-*what* moved unstated — is [RM181](ROADMAP_0_8.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker).
+*what* moved unstated — is [RM181](ROADMAP_0_9.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker).
 
 ## RM187 — eleven bulk downloads carried one body in eleven copies, four of them leaking the transport
 

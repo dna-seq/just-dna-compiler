@@ -734,7 +734,7 @@ Stated plainly, because each of these is currently an absence a reader has to in
   linking it to the version before it — no parent digest, no previous `content_signature`. The
   registry knows the history; a module handed to you on a disk does not.
 - **Nothing notifies a consumer.** Both acquisition paths are pull. One of them had no version to pull
-  against at all (§6.8) — [RM84](ROADMAP_0_8.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own),
+  against at all (§6.8) — [RM84](ROADMAP_0_9.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own),
   whose publisher half shipped in 0.6: the path can now express a version. It is still pull, and the
   reader half is the consumer's.
 - **No results are traceable to the module version that produced them** (§6.8), which is the missing

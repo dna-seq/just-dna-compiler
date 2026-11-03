@@ -56,6 +56,7 @@ _LEGACY = Path(__file__).parent / "data" / "residuals_legacy.txt"
 _ENTRY_FILES = (
     "ROADMAP.md",
     "ROADMAP_0_8.md",
+    "ROADMAP_0_9.md",
     "ROADMAP_1_0.md",
     "ROADMAP_HISTORY.md",
     "history/ROADMAP_HISTORY_0_6.md",

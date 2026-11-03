@@ -12,52 +12,25 @@ first seating.
 - **Watchers**: `pm/watch.desk` and `pm/watch.brief` started at punch-in.
 - **Avatar**: asked `agents-kit/admin` in `#agent-chat>avatars`; not set yet.
 
-## The scope being sized: 0.8
+## 0.8's scope, decided 2026-11-03
 
-What 0.8 holds, by where it stands. The list for the person is the proposal below; nothing in a scope
-file has moved yet.
+The person: "Reorganize so that 0.8 = already built/chosen fixes + longevitymap2 requirements, rest goes to
+0.9". In the follow-up question they ticked the indel cluster and RM303 + RM253, wrote "Defer methylation to
+0.9, gherkin also goes to freeze for reasons that you can read in nearby bestiary repo investigation", and
+left RM248/RM188 unticked. On a side agent's note ("revisit. Add as needed") RM236, RM238 and RM239 came
+back into 0.8 as inputs to RM333's confidence labels.
 
-- **Built on the `0.8` branch, uncut**: PT1's RM241, RM258, RM263, RM272, RM275, RM278, RM283, RM288,
-  RM300, RM308, RM313, and earlier RM256, RM257, RM259, RM260, RM262, RM264 (docs half). `main`'s
-  roadmap still lists RM241, RM263 and RM308 as open; that heals at the next `main` → `0.8` sync.
-- **Taken in by the maintainer, open**:
-  - longevitymap v2: RM322–RM336, a priority (2026-11-03);
-  - PacBio methylation: RM317–RM319 (2026-09-30);
-  - RM303 (the snapshot layout as a model), RM253 (the repeat-count star allele), RM149 (the Gherkin
-    corpus), RM248 (report schema, research);
-  - RM188, the parity spine, with RM236–RM240.
-- **Named by PT1 as the next round, not yet interviewed**: the indel-placement cluster, RM304 → RM267,
-  RM270, RM292, RM305. These are the high-severity items of the release.
-- **A minor, release undecided, on `main`'s roadmap**: RM265, RM266, RM281, RM282, RM284, RM286, RM287,
-  RM294, RM296, RM298, RM302, RM306.
-- **Parked on a corpus, a caller or the maintainer's word**: RM16, RM23, RM28, RM56, RM65, RM66, RM67
-  (not work), RM68, RM84, RM122, RM164, RM181, RM261. They wait on a caller, not on 0.8.
-
-**Proposal (for the person, hardest first):**
-
-1. **How much of longevitymap v2 goes in.** In: RM323 (decided first), then RM322, RM324, RM325, RM326,
-   RM327, RM328, RM331, RM332 and RM336. Deferred to the next minor: RM333 (a new lane whose licence is
-   unprobed), RM334 and RM335 (two new table kinds for evidence v2 can leave out of 2.0.0), RM329 (its
-   interim works under RM140) and RM330 (it leans on RM28's two-subject key).
-2. **The order of the rounds.** PT2 is the indel cluster, as PT1 planned, and PT3 is longevitymap v2.
-   The other way round puts the priority first and leaves five high-severity defects waiting.
-3. **PacBio**: RM317 and RM319 in; RM318 (a new region table and a non-VCF pointer) deferred until a
-   beneficiary's sample is in hand.
-4. **The undecided minors**: in are RM294 and RM302 (v2 uses them), and RM265, RM266, RM284 and RM286
-   (small). Deferred are RM281 and RM282 (source surveys), RM287 (a new lane), and RM296, RM298 and
-   RM306 (no caller yet).
-5. **Already in, unchanged**: RM303, RM253, RM149 and RM248 (research, ships nothing by default), and
-   RM188's spine.
-6. **Parked stays parked.** RM28 gained a fifth corpus entry (KL-VS); whether its gate has opened is a
-   separate question for later.
-
-## Open questions to the person
-
-- The 0.8 sizing above: asked in chat 2026-11-03.
-- `docs/STRATEGY.md`: not started; the first question is who the three packages serve.
-- `docs/DREAMS.md` (the 2026-10-19 four-model dream) is this seat's file and is untracked. Adding it to
-  `mkdocs.yml` (`not_in_nav`) is the lead's edit; until then the docs-nav test fails on it. Its ideas
-  have no verdicts yet.
+- **0.8** = built on `0.8` (PT1 and earlier) + the indel cluster (RM304, RM267, RM270, RM292, RM305) +
+  RM303, RM253 + longevitymap v2 (RM322–RM336, RM294, RM302, RM236, RM238, RM239). Written as the scope
+  table at the top of `docs/ROADMAP_0_8.md`.
+- **0.9** = everything else, in `docs/ROADMAP_0_9.md` (opened 2026-11-03): RM188's parity work, methylation,
+  RM149 (frozen), the long-parked items, and ten minors moved from `ROADMAP.md`. Its theme is undecided.
+- **Rejected**: my option A (cut 0.8 at PT1 plus the indel fixes, v2 opening 0.9), and deferring RM333,
+  RM334 and RM335 out of the v2 group.
+- **Next**: the proposal for the indel round and the v2 round on the `0.8` branch, each with its
+  interview first. The interview for RM323 comes first among the v2 items.
+- **Merge warning sent to the lead**: the next `main` → `0.8` sync meets `ROADMAP_0_8.md` rewritten on both
+  sides.
 
 ## Licensing, as it stands (noted, not yet raised)
 

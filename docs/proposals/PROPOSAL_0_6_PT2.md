@@ -370,7 +370,7 @@ carry, and this document is the record that it was noticed here first.
 ## RM84 — the publisher writes a path that cannot express a version
 
 **Severity** medium-high · **Owner** enricher (`upload.upload_module`) · **Filed** 2026-08-16 from
-MODULE_LIFECYCLE § 6.8 · **Entry** [ROADMAP_0_8.md § RM84](../ROADMAP_0_8.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
+MODULE_LIFECYCLE § 6.8 · **Entry** [ROADMAP_0_8.md § RM84](../ROADMAP_0_9.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
 
 ### The problem
 
@@ -655,15 +655,15 @@ and nothing is deferred because of the digest.
 
 | Item | Where | Why not now |
 |---|---|---|
-| **RM16** authored PRS weights | [0.7](../ROADMAP_0_8.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest) | Full-cost authored table; unblocks on a real consumer combining authored weights, which does not exist. Fixing the shape now spends a one-way door on a guess. |
-| **RM23** `predictions.csv` | [0.7](../ROADMAP_0_8.md#rm23--computational-predictor-scores-as-a-table) | Full-cost authored table; both blockers unmoved — per-transcript grain undecided, acquisition unmeasured. A research task, not a schema task. |
-| **RM28** meta-conclusions (predicate half) | [0.7](../ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half) | Parked on a corpus that is ~70% built. The cofactor half already closed; what remains is open-world negation, which no operator fixes. |
+| **RM16** authored PRS weights | [0.7](../ROADMAP_0_9.md#rm16--authored-prs-weights-a-scoring-file-not-a-manifest) | Full-cost authored table; unblocks on a real consumer combining authored weights, which does not exist. Fixing the shape now spends a one-way door on a guess. |
+| **RM23** `predictions.csv` | [0.7](../ROADMAP_0_9.md#rm23--computational-predictor-scores-as-a-table) | Full-cost authored table; both blockers unmoved — per-transcript grain undecided, acquisition unmeasured. A research task, not a schema task. |
+| **RM28** meta-conclusions (predicate half) | [0.7](../ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half) | Parked on a corpus that is ~70% built. The cofactor half already closed; what remains is open-world negation, which no operator fixes. |
 | **RM55** removing `modifier_cn` | [1.0](../ROADMAP_1_0.md#rm55-removal-half--the-integer-copy-number-and-repeat-count-columns) | Removal is what the amended rule reserves for a major. The column is *deprecated* here, which needs no major, and 1.0 drops it — so 1.0 inherits a removal rather than a retype. |
-| **RM56** (policy half) | [0.7](../ROADMAP_0_8.md#rm56-policy-half--the-rule-for-a-measurement-that-spans-bins) | Prerequisite is a real caller VCF, so the closed vocabulary is fixed against what callers emit rather than a guess. 0.6 ships withhold plus an explicit not-implemented warning. |
-| **RM65** positional repeat/CN tables | [0.7](../ROADMAP_0_8.md#rm65-implementation-half--repeat-and-copy-number-tables-are-positional) | Same caller-VCF prerequisite. Also takes RM43's fill lane from three tables to five. |
-| **RM66** several motifs per locus | [0.7](../ROADMAP_0_8.md#rm66--one-repeat-locus-several-motifs) | Filed beside RM65 so both arrive with the same evidence; a keying change on a shipped table, the expensive kind. |
-| **RM67** polyploid genotypes | [0.7](../ROADMAP_0_8.md#rm67--polyploid-and-partially-phased-genotypes) | **Not work** — a documented divergence. The message was fixed on 2026-08-14; the decision did not change. |
-| **RM68** drafting on a non-GRCh38 module | [0.7](../ROADMAP_0_8.md#rm68--a-drafting-provider-on-a-non-grch38-module-refuse-or-strip-to-the-rsid) | Blocked on RM15, which dissolves the premise. Both candidate behaviours are refuted; the warning shipped in 0.6. A behaviour fixed before RM15 is one RM15 would have to undo. |
+| **RM56** (policy half) | [0.7](../ROADMAP_0_9.md#rm56-policy-half--the-rule-for-a-measurement-that-spans-bins) | Prerequisite is a real caller VCF, so the closed vocabulary is fixed against what callers emit rather than a guess. 0.6 ships withhold plus an explicit not-implemented warning. |
+| **RM65** positional repeat/CN tables | [0.7](../ROADMAP_0_9.md#rm65-implementation-half--repeat-and-copy-number-tables-are-positional) | Same caller-VCF prerequisite. Also takes RM43's fill lane from three tables to five. |
+| **RM66** several motifs per locus | [0.7](../ROADMAP_0_9.md#rm66--one-repeat-locus-several-motifs) | Filed beside RM65 so both arrive with the same evidence; a keying change on a shipped table, the expensive kind. |
+| **RM67** polyploid genotypes | [0.7](../ROADMAP_0_9.md#rm67--polyploid-and-partially-phased-genotypes) | **Not work** — a documented divergence. The message was fixed on 2026-08-14; the decision did not change. |
+| **RM68** drafting on a non-GRCh38 module | [0.7](../ROADMAP_0_9.md#rm68--a-drafting-provider-on-a-non-grch38-module-refuse-or-strip-to-the-rsid) | Blocked on RM15, which dissolves the premise. Both candidate behaviours are refuted; the warning shipped in 0.6. A behaviour fixed before RM15 is one RM15 would have to undo. |
 | **RM69** `resolution_signature` off GRCh38 | 0.7 as filed, [1.0 since 2026-08-27](../ROADMAP_1_0.md#rm69--resolution_signature-is-not-a-round-trip-invariant-when-the-positional-fill-is-skipped) | Blocked on RM15. A documented limit of P7, not a breach — P7's own stated remedy points at a blocker P7 cannot remove. |
 | **RM70** `requires_callable` on the PGx tables | [shipped in 0.7](../ROADMAP_HISTORY.md#rm70--requires_callable-is-variantrow-only-so-no-pgx-table-can-state-cpics-core-assumption) | Two **authored** columns, full cost twice, on the layer the rare human writes; the unblock condition — a real module whose author wants to state it — is unmet. Additive, so nothing waits on a version. |
 | **RM71** the drafted-stub allele worklist | [0.7](../ROADMAP_HISTORY.md#rm71--the-alleles-a-drafted-genotype-stub-must-be-written-from-are-in-no-file) | Every candidate that writes is refuted; the one survivor puts the worklist in a *third* place while the complaint is that it is not in the one being edited. The open question is where an author does this work, and this repo has no model of that. |

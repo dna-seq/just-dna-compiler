@@ -831,7 +831,7 @@ before being claimed as a guard.
 
 ## RM88 — republishing without bumping `version:` overwrites a versioned path with different bytes
 
-✅ **Shipped in `just-dna-enricher` 0.6.1.** [RM84](../ROADMAP_0_8.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
+✅ **Shipped in `just-dna-enricher` 0.6.1.** [RM84](../ROADMAP_0_9.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own)
 built the versioned path `data/<name>/v<version>/` and it did exactly what it said. What it could not
 do was notice that the version had *not* moved: an author who recompiled a changed module and
 republished without editing `version:` overwrote the versioned copy with different bytes, and the path
@@ -2658,7 +2658,7 @@ so zero corpus modules would fire either finding today.
 
 **Severity** medium · **Status** ✅ **SHIPPED 2026-09-03 in the uncut 0.7.0** — the stamp half only
 (`just-dna-enricher`, two parquet columns and one `release.json` field; **no model and no authored
-surface**). The shape underneath it stays [RM28](../ROADMAP_0_8.md#rm28--meta-conclusions-the-predicate-half),
+surface**). The shape underneath it stays [RM28](../ROADMAP_0_9.md#rm28--meta-conclusions-the-predicate-half),
 parked, and this item is where its first counted corpus entry came from · **Owner** enricher ·
 **Motivating case** the RM170 probe, which found it while measuring the refutation set
 ([CONTRADICTION_CORPORA](../probes/CONTRADICTION_CORPORA.md) §2.2)

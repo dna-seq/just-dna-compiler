@@ -120,8 +120,8 @@ rounds and branches of around 400 commits that were hard to follow and maintain.
 
 From 1.0 on, the intent is to alternate: **even minors are bugfix and stabilization only, odd minors
 carry new features**, each with its own deferrals. It does not apply before 1.0, because feature parity
-with competitors is needed now and moving it out of 0.8 would stall it. So 0.8 stays as its roadmap
-file declares it: stabilization and competitor parity.
+with competitors is needed now. 0.8 is as its roadmap file declares it. Since 2026-11-03 that is the
+work already built, the chosen fixes and longevitymap v2. Competitor parity moved to 0.9 with the rest.
 
 ## Majors
 

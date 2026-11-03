@@ -771,7 +771,7 @@ corpus was written — so they were authored that way and nothing could say so.
 
 The corpus is now **13 files and 228 scenarios**, 118 registry-tagged and 110 structural, with 182
 quoted phrases checked against real string literals. **RM149 stays open**: still a draft nobody has
-read, and the second addendum in [ROADMAP_0_8.md](ROADMAP_0_8.md#rm149--expected-behaviour-lives-in-prose-and-the-prose-is-where-two-readers-split)
+read, and the second addendum in [ROADMAP_0_8.md](ROADMAP_0_9.md#rm149--expected-behaviour-lives-in-prose-and-the-prose-is-where-two-readers-split)
 carries the two scoping questions it answered with a measurement — why refusals without a code have no
 registry to walk, and why the phrase check's file scope is right.
 
@@ -2651,7 +2651,7 @@ decided with the maintainer before the cut because the window in which it moves 
   `content_identity_exclusions`, read only by `integrity.content_signature`, so `model_dump()` stays
   complete for every writer. The stamped-column idiom was probed first and emptied `reason` in
   `draft._authored_dump` and the enricher's overlay writers — a drafted row the model then refuses.
-- **Filed, not built**: [RM181](ROADMAP_0_8.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker) — a byte digest moving beside intact
+- **Filed, not built**: [RM181](ROADMAP_0_9.md#rm181--a-byte-digest-that-moves-beside-intact-signatures-says-something-changed-and-not-what-and-provenance-has-no-shift-tracker) — a byte digest moving beside intact
   signatures says *something* changed and not what, and provenance has no shift tracker of its own.
   The maintainer's note for the 0.8 digest-coverage review.
 

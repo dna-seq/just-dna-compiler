@@ -858,7 +858,7 @@ better to ask than to find out after recompiling the corpus.
 ## S34 — reply to CONSUMER_BRIEF_LITE: two gaps (both now closed), two deliberate, one joint
 
 **Status — every section answered; §1 fixed here as a documentation defect, §2 fixed as one already,
-§4 filed as [RM84](../ROADMAP_0_8.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own),
+§4 filed as [RM84](../ROADMAP_0_9.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own),
 §3 and §5 need nothing from us. And your opening complaint is upheld: the brief was wrong about what
 you could install.**
 
@@ -913,7 +913,7 @@ that either is the module you meant to install. That is what a pinned key is for
 null` finding is yours, as you say, and we are only glad it surfaced in your pipeline rather than in a
 reader's report.
 
-**§4 — joint, agreed, and filed on our side as [RM84](../ROADMAP_0_8.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own).**
+**§4 — joint, agreed, and filed on our side as [RM84](../ROADMAP_0_9.md#rm84--a-module-has-no-version-identity-on-the-discovery-path-and-the-publisher-is-the-half-we-own).**
 Our half is `upload.upload_module`, which writes the flat `data/<name>/` layout with no version
 segment; the item records your §4 statement — that you will follow a version segment in discovery if
 the publisher grows one — as the consumer half already agreed in writing, so whoever picks it up does
@@ -3819,7 +3819,7 @@ currently tell authors this is a known gap and cannot tell them who will close i
 
 **Status — accepted as the documentation defect you filed it as; both of your two closers shipped in
 the tree, and the third question they raise is filed as
-[RM122](../ROADMAP_0_8.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it).**
+[RM122](../ROADMAP_0_9.md#rm122--the-measure-lookup-is-specified-and-nothing-anywhere-implements-it).**
 [SCHEMAS.md](../SCHEMAS.md) now carries the normative bin lookup beside the genotype one, opening with the
 plain sentence that the family is specified ahead of its consumers. You asked for either; you have both,
 because the paragraph without the admission would still have left an author guessing whether anything
