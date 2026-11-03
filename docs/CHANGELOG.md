@@ -41,6 +41,17 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-03 — the triage seat's kit watchers replace the hook-armed inbox watcher (repo tooling, on `main`)
+
+**repo** — Since the seating, the triage seat's watchers in `.blueprints.toml` wake it on a consumer's note.
+`watch.inbox` is the kit's file watcher on `CONSUMER_SUGGESTIONS.md`, with the same 150 s settle; `watch.inbox-commits`
+catches an item pushed to `origin` instead. The old pair would have rung a second time on every note, so it is
+removed: the `UserPromptSubmit` hook `.claude/hooks/arm_triage_watcher.py`, the wrapper
+`.claude/wake-on-suggestions.sh`, the watcher `.claude/watch-suggestions.sh` and their test
+`schema/tests/test_triage_watcher.py`. `.claude/settings.json` now holds no hook. Triage confirmed its kit watcher
+fired on the real S125–S127 edit before the removal. [CONSUMER_TRIAGE_LOOP.md §1](CONSUMER_TRIAGE_LOOP.md#1-setup)
+describes the seat's watchers, and the gist's `watch-inbox.sh` is no longer adopted here. No package changes.
+
 ## 2026-11-03 — triage of S125–S127: four items filed, one doc fix (docs only, on `main`)
 
 **docs** — The triage seat's first pass answered the three consumer items that had sat in the inbox,

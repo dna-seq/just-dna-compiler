@@ -1,15 +1,1 @@
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/arm_triage_watcher.py\"",
-            "timeout": 10
-          }
-        ]
-      }
-    ]
-  }
-}
+{}

@@ -88,7 +88,8 @@ in the worst direction: the digest says *something arrived*, the files say *noth
 natural reading is that the digest check is broken. It is the `history[0]` hazard one layer down —
 an inbound channel that looks healthy while nothing comes through it.
 
-The local names differ for the watcher only (`watch-inbox.sh` → `.claude/watch-suggestions.sh`):
+The gist's watcher, `watch-inbox.sh`, is **not adopted here since 2026-11-03**: the triage seat's kit
+watcher replaces it (§1). Every other file keeps its name:
 
 ```bash
 GIST=54b94bda01812be937b892146d1bb254
@@ -224,18 +225,18 @@ anywhere else either, so the only way to find out whether an item had been consi
 
 ## 1. Setup
 
-Four scripts, all in `.claude/`, none packaged. The first three are the `Sn` loop; the fourth allocates
-the `RMn` the loop's route **(a)** files, and is the only one that writes outside the two consumer
-documents:
+The triage seat's watchers, declared in `.blueprints.toml`, notice that a consumer has written (below).
+Three scripts, all in `.claude/` and none packaged, do the rest. The first two are the `Sn` loop. The third
+allocates the `RMn` that the loop's route **(a)** files, and it is the only one that writes outside the two
+consumer documents:
 
 | | |
 |---|---|
-| `.claude/watch-suggestions.sh` | debounced watcher: one line of stdout when the file stops changing. The only one that is really bash |
 | `.claude/triage-state.py` | the ledger: which sections are new, revised, or already answered. Takes a path, so it reads the history file too; `--next` prints the next unclaimed `Sn`. Also prints `STRUCTURE` lines when a fenced block breaks the section boundaries |
 | `.claude/triage-archive.py` | moves answered sections into the history file and **verifies** each fingerprint survived the move. **Refuses outright** on a `STRUCTURE` finding, since a span that ends at the wrong line moves the wrong bytes and the fingerprint check cannot see it |
 | `.claude/rm-next.py` | the `RMn` allocator: scans `docs/` for every number, and **reserves** the next one by appending a `🔷 reserved` row to [RM_TOC.md](RM_TOC.md) under an advisory `flock`. `--dry-run` reads without claiming, `--list` shows standing reservations, `--release RMn` drops one |
 
-**Run the three Python ones, never `bash` them** — `./.claude/triage-state.py` or
+**Run them under Python, never `bash` them** — `./.claude/triage-state.py` or
 `python3 .claude/triage-state.py`. They carried a `.sh` extension until 2026-08-16 and the mismatch had
 a cost; §6 has it.
 
@@ -273,78 +274,21 @@ The lock is pinned by `schema/tests/test_rm_allocator.py`, which runs eight allo
 runs the same eight with `flock` neutered** to show they collide. A guard nobody has watched fail is a
 guess.
 
-**Since 2026-09-30 a prompt arms it: name this runbook in a prompt, in any wording.** The committed
-`UserPromptSubmit` hook `.claude/hooks/arm_triage_watcher.py` (registered in `.claude/settings.json`)
-fires on any prompt citing `CONSUMER_TRIAGE_LOOP.md`. The citation is the only invariant, because the
-triage seat is the session pointed at this runbook, so no other seat arms a watcher. A prompt carrying
-the watcher's own `[watcher ` prefix never arms it: its event line cites this runbook too, and a
-machine-written line re-arming the machine that wrote it is a loop to rule out, not merely bound. The hook starts
-`.claude/wake-on-suggestions.sh` detached. That wrapper runs the watcher outside the harness, which
-since Claude Code 2.1.285 stops every background task it owns after its `timeout` (30 minutes by
-default, 2 hours at most). It wakes the session by posting a user message to the session's own
-inbox socket (`$CLAUDE_CODE_MESSAGING_SOCKET`). It keeps watching after each event, so nothing needs
-re-arming. It survives `/clear`, since the process and the socket stay the same, and it exits when it
-is superseded or when the session ends and the socket disappears.
+**Since 2026-11-03 the triage seat's watchers wake it, and nothing is armed by hand.** `.blueprints.toml`
+declares two of them under `[seat.triage]`, and the seat's watchdog starts them when the seat is taken
+(`/seats:seat triage`):
 
-**Two things to check on every arming.** First, the hook adds an `[triage watcher] armed on …` line to
-the turn. Second, the wrapper's first post, `[watcher …] armed`, arrives during that same turn. That
-second one is the canary for the one undocumented thing this path rests on: the socket's message
-format (`{"type":"user","message":{…}}`, taken from Claude Code's own help text; the
-[cross-session messaging docs](https://code.claude.com/docs/en/cross-session-messaging) specify only
-the auth line). If the canary does not arrive, the format changed. Say so, and use the fallback below.
+- `watch.inbox`, the kit's `drivers/git/watch-file.sh` on `docs/CONSUMER_SUGGESTIONS.md`, says one line
+  when the file differs from `HEAD` and has settled. That covers the usual case: a consumer writes the
+  item uncommitted, from its own session;
+- `watch.inbox-commits`, the kit's `drivers/git/watch-remote.sh --path`, says one line when a commit to the
+  inbox lands on `origin`'s `main` that this clone does not hold. The file watcher cannot see that case.
 
-A hook arms it, never the agent, because auto mode's classifier refuses to let a session write or
-launch something that wakes itself, and a hook is not classified. Stay out of bypass mode: a session
-that bypasses prompts holds every message the watcher posts ("did not attest its permission mode")
-until approved. The setting that lifts that hold, `crossSessionInbound: "accept"`, is ignored in repo
-and local settings and opens the inbox to every session on the machine. Never forge the sender-mode
-field to get past the hold: it is the safety gate itself. `schema/tests/test_triage_watcher.py`
-runs the whole path against a fake inbox socket.
-
-The fallback is the **one-shot background task**, which wakes the agent on a real event and on
-nothing else. Pass `timeout: 7200000`, and re-arm it when it stops. `Bash` with
-`run_in_background: true`, command:
-
-```
-coproc W { exec .claude/watch-suggestions.sh; }; p=$W_PID
-while IFS= read -r line <&"${W[0]}"; do
-  case "$line" in *"nothing pending"*|*paus*|*resum*) continue;; esac
-  echo "$line"; break
-done
-kill "$p" 2>/dev/null; wait "$p"
-```
-
-**Not the `Monitor` tool any more, decided 2026-09-25.** It once took `persistent: true`; it now caps
-every watch at 30 minutes, so a persistent watcher becomes a timer that wakes the agent at each expiry
-to be re-armed and spends tokens on an empty inbox. A background task had no expiry until 2.1.285. Save `$W_PID`
-before the loop — bash may unset it once the coprocess exits — and arm again after each event. Adopted
-from the gist (revision `b063b65e…`), where it was found in another tree first.
-
-**Arm it on every run, and don't check first.** The watcher is a newest-wins singleton per watched file:
-a new start records itself in a pidfile under `$XDG_RUNTIME_DIR`, keyed on the watched file's resolved
-path, and stops the previous owner after checking that pid's command line; every poll it re-reads the
-pidfile and exits if it is no longer the owner. So arming twice leaves one watcher. Checking first is
-what goes wrong: the harness's task list shows only what the current session spawned, so re-arming on
-"no tasks found" left two, and every settle was reported twice. A sibling repository running its own
-`watch-suggestions.sh` is a different key and is never touched.
-
-**The task's exit status says how it ended**, because the wrapper ends in `wait` on the watcher:
-
-| status | meaning | action |
-|---|---|---|
-| 0, with a line | an event | triage, then arm again |
-| 3, no output | **superseded**: a newer arming took over | none, the newer watcher is live |
-| 0, no output | stopped on purpose (a TERM while it still owned the pidfile) | arm again if still wanted |
-| anything else | the watcher failed | read the output, fix, arm again |
-
-The harness reports the superseded case as *failed* with exit code 3; that is expected. Verified on a
-scratch inbox before adoption: a second arming made the first exit 3, a TERM to the owner exited 0 and
-removed the pidfile, and an append fired the event line.
-
-`TaskStop` cancels it. It reacts only while the
-session is open and the REPL is idle. **Editing the script does not reach a running monitor** — bash
-reads a script incrementally — so `TaskStop` and re-arm after changing it. Nothing needs installing — `inotify-tools`, `entr`, `fswatch` and
-python `watchdog` are all absent from this machine, and `stat` polling is enough at this cadence.
+The watchdog delivers each line to the seat, and wakes it when idle. It keeps a watcher alive across
+`/clear` and a restart, and says each state once. A change of watcher reaches it only through
+`watchdog.py stop triage` and the seat taken again. The watchers that came before were a `UserPromptSubmit`
+hook arming `.claude/wake-on-suggestions.sh` around `.claude/watch-suggestions.sh`, and before that a
+one-shot background task. Both were retired at the seating; git holds them before the commit that removed them.
 
 **Hooks cannot do this job.** Claude Code hooks fire on the agent's own lifecycle (`PreToolUse`,
 `PostToolUse`, `SessionStart`, `Stop`); a consumer editing a file triggers none of them. The trigger has
@@ -354,17 +298,18 @@ to be a process.
 
 Consumers write these notes through an agent, so the shape is a burst — five edits in a minute — with
 gaps wherever the agent stops to read or probe something. A 60-second timer fires in the middle of such
-a run and triages half a note. `COOLDOWN` defaults to **150s**, `POLL` to 10s, so an event lands 150–160
-seconds after the last write. Consecutive saves inside the cooldown collapse into **one** event, because
-each mtime bump restarts the timer.
+a run and triages half a note. The kit's `watch-file.sh` settles for **150s** (`--settle`) and polls every
+10s (`--every`), so an event lands 150–160 seconds after the last write. Consecutive saves inside the
+settle window collapse into **one** event, because each change restarts it.
 
-Raise it if a consumer's runs are slower. The only cost of waiting is latency, and the cost of firing
-early is a reply to a half-written item.
+Raise it in the seat's `cmd` line in `.blueprints.toml` if a consumer's runs are slower. The only cost of
+waiting is latency, and the cost of firing early is a reply to a half-written item.
 
 ### First run
 
-The watcher seeds itself from the current mtime with the dirty flag clear, so **it never fires for a
-change that predates it**. Run the ledger once at startup to pick up the standing backlog:
+The watcher says an uncommitted state it finds at start once that state has settled, but it knows
+nothing of items already committed and unanswered. Run the ledger once at startup to pick up the
+standing backlog:
 
 ```
 .claude/triage-state.py            # every section and its verdict
@@ -838,8 +783,8 @@ Each of these was a bug in the loop, not a hypothetical:
   reproduces the full set.
 
   The same reasoning removed every bare-path invocation: `triage-archive.py` shells out to the ledger
-  through `sys.executable` and `watch-suggestions.sh` through `$PYTHON`, so neither the exec bit nor
-  the shebang is load-bearing anywhere any more.
+  through `sys.executable`, and `watch-suggestions.sh` (retired 2026-11-03) did the same through
+  `$PYTHON`, so neither the exec bit nor the shebang is load-bearing anywhere any more.
 - **An id under two top-level headings archives as one section, and the fingerprint check reports it
   as a mutation.** Found on 2026-08-31, when a consumer filed S76 as a withdrawal section plus the
   original text below it, both at `## S76`. `section_span` resolves an id to the **first** matching

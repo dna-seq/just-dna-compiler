@@ -458,7 +458,7 @@ order rather than jumping to code.
    Every `Sn` gets a `**Status —**` reply written back into the document; the runbook is
    [CONSUMER_TRIAGE_LOOP.md](docs/CONSUMER_TRIAGE_LOOP.md) (four routes; **legality sizes the release,
    severity only orders the queue**; the ledger `.claude/triage-state.py` says which items are
-   unanswered). `.claude/watch-suggestions.sh` notices that a consumer has written.
+   unanswered). The triage seat's watchers (`.blueprints.toml`) notice that a consumer has written.
    **The two `.py` tools run under `python3`, never `bash`** — bash reads `import x` as ImageMagick's
    screen-capture tool and litters the repo root (runbook §6).
    **Do not start a second feedback file** — both pre-`Sn` threads were retired for the same reason,
