@@ -1267,6 +1267,38 @@ the registry tests have to accept a retired, unemitted member. The honest replac
 field the reference record usually leaves missing, is a new code and therefore a minor on `0.8`.
 Whether to build that at all, or only document it, is the call.
 
+## RM321 — `VariantRow.flags` calls its reserved tags "the tags the tooling acts on", and no tier acts on any of them
+
+**Severity** low · **Status** open — **a patch** for the description; deciding what a reserved tag
+*should* do is a separate question · **Owner** format (`spec.RESERVED_FLAGS`, the `flags` description) ·
+**Motivating case** the longevitymap v2 requirements (just-dna-lite
+`docs/longevitymap_v2/longevitymap_v2_requirements.md` §4.2, §6.2, §10), read against the schema
+2026-11-03 · *related* RM28, `@field-description-is-a-claim`
+
+**What was confirmed.** The `flags` description says *"Reserved tags the tooling acts on:
+conditional|phased|pleiotropic"*, and the comment above `RESERVED_FLAGS` says the same. A grep over
+`schema/src`, `compiler/src` and `enricher/src` finds exactly one reader. It is the compiler's INFO
+line, and all it does is leave reserved tags out of the "non-reserved flags in use" list. The
+`phased` boolean in `weights.parquet` comes from a `|` in `genotype`, never from the tag. Nothing
+reads `conditional` or `pleiotropic`.
+
+**Why it matters now.** The longevitymap v2 plan sets `pleiotropic` on every pleiotropy row and
+uses `conditional` as its interim for KL-VS-in-APOE4 buffering. Both choices assume the tooling does
+something with the tag. It does nothing, so for a reader the tag is a label and the meaning stays in
+the conclusion prose. An author who trusts the description believes some behaviour is attached, and
+none is.
+
+**The patch.** Make the description and the comment say what is true: the tags are *reserved names*,
+held so a later release can give them behaviour, and today they only stay out of the INFO list.
+Pin that with a test that walks the three tiers' sources for readers of each reserved tag. Then a
+reader added later forces someone to edit the description.
+
+**Not in scope.** Giving `conditional` a meaning. That is RM28's predicate, and RM28 is parked on
+a corpus. The longevitymap KL-VS×APOE4 case is a candidate corpus entry there, not a reason to build
+it here.
+
+**Residuals** none yet.
+
 # Not format scope
 
 Listed so they are not mistaken for format scope, and so nobody re-proposes them.
