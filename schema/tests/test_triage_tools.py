@@ -20,6 +20,7 @@ asks for exactly that and because a guard nobody has watched fail is a guess.
 """
 
 import importlib.util
+import os
 import pathlib
 import re
 import subprocess
@@ -172,6 +173,22 @@ def test_both_tools_derive_the_same_span():
     )
 
 
+@pytest.mark.skipif(not os.environ.get("BLUEPRINTS_KIT"), reason="no seats kit in this shell (CI has none)")
+@pytest.mark.parametrize("tool", ["triage-state.py", "triage-archive.py"])
+def test_the_vendored_tools_are_the_kits_byte_for_byte(tool):
+    """`.claude/` carries the kit's ledger and archiver only so CI can lint the real documents.
+
+    The kit's copies are the logic (2026-11-03: they are a strict superset of the clone's and of the
+    gist's), and sessions run them through `$BLUEPRINTS_KIT`. A copy that drifts from the kit is a
+    second implementation deciding the boundaries of a reporter's prose, which is how the ledger and
+    the archiver once disagreed. Re-copy from the kit after a pin moves; never patch the copy.
+    """
+    kit = pathlib.Path(os.environ["BLUEPRINTS_KIT"]) / "classes" / "triage" / tool
+    assert (CLAUDE / tool).read_bytes() == kit.read_bytes(), (
+        f".claude/{tool} differs from {kit}: copy the kit's over it (cp), or file the change on the kit"
+    )
+
+
 def test_the_archiver_refuses_a_document_whose_fences_are_broken(tmp_path):
     """Refuse before writing, because the move's own verification cannot see this."""
     docs = tmp_path / "docs"
@@ -184,11 +201,20 @@ def test_the_archiver_refuses_a_document_whose_fences_are_broken(tmp_path):
     for tool in ("triage-state.py", "triage-archive.py"):
         (claude / tool).write_bytes((CLAUDE / tool).read_bytes())
 
+    # The kit's archiver takes its documents from the environment; outside a clone it names the
+    # variable it needs rather than guessing a path.
+    env = {
+        **os.environ,
+        "INBOX": str(live),
+        "HISTORY": str(docs / "CONSUMER_SUGGESTIONS_HISTORY.md"),
+        "PREFIX": "S",
+    }
     result = subprocess.run(
         [sys.executable, str(claude / "triage-archive.py"), "S62"],
         capture_output=True,
         text=True,
         cwd=tmp_path,
+        env=env,
     )
     assert result.returncode != 0
     assert "refusing to archive" in result.stderr

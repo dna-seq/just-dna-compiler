@@ -1,58 +1,81 @@
 #!/usr/bin/env python3
-"""Ledger for the consumer-suggestion triage loop.
+"""Ledger for the document-as-inbox triage loop. See classes/triage/LOOP.md.
 
-Reports, per top-level `## Sn` section of a consumer-notes document, whether it has
-been triaged — and if it was, whether the consumer has revised it since.
+Reports, per top-level `## <PREFIX><n>` section of an inbox document, whether it has been triaged —
+and if it was, whether the reporter has revised it since.
 
-The ledger is the document itself. A triaged section carries, inside its
-`**Status —**` paragraph, a marker holding a fingerprint of the consumer's own text:
+**The document is the ledger.** A triaged section carries, inside its reply, a marker holding a
+fingerprint of the reporter's own text:
 
-    <!-- triaged: 0.5.3 · sha 4f2a1c9d8e07 -->
+    <!-- triaged: 1.4.0 · sha 43031f8f63b3 -->
 
-The fingerprint deliberately excludes every `**Status` paragraph and the marker, so it
-covers what the consumer wrote and never what we replied. Re-running after our own
-write is therefore a no-op, which is what stops the watcher self-firing forever.
+The fingerprint excludes the reply and the marker, so it covers what the reporter wrote and never what
+you answered. Re-running after your own write is therefore a no-op, which is what stops a file watcher
+firing forever.
 
 Verdicts:
     new             no marker, no reply       -> triage it
     unmarked-reply  replied before the marker -> backfill the marker (see --backfill)
-    revised         marker, fingerprint moved -> consumer edited a replied item, re-triage
+    revised         marker, fingerprint moved -> the reporter edited an answered item, re-triage
     current         marker matches            -> nothing to do
 
-This file is Python with a `.py` extension for a reason — see the `bash` trap in
-docs/CONSUMER_TRIAGE_LOOP.md § 6. Run it, never `bash` it.
+Configuration (environment, all optional):
+    INBOX     path to the live document          (default <repo>/docs/FEEDBACK.md)
+    HISTORY   path to the answered-items document (default alongside INBOX, *_HISTORY.md)
+    PREFIX    item id prefix                     (default S, so `## S12 — …`)
+
+Python, and named `.py` for it: run it or pass it to `python3`, never to `bash`. See the extension
+gotcha in classes/triage/LOOP.md § 5 — under bash this docstring is executed as commands.
 
 Usage:
-    .claude/triage-state.py [path] [--pending] [--backfill]
-    .claude/triage-state.py --next        # the next unclaimed Sn, over the live + history files
+    triage-state.py [path] [--pending] [--backfill]
+    triage-state.py --next        # the next unclaimed id, over the inbox AND the history file
 """
 
 import hashlib
+import os
 import pathlib
 import re
 import sys
 
-DOCS = pathlib.Path(__file__).resolve().parent.parent / "docs"
-DEFAULT_DOC = DOCS / "CONSUMER_SUGGESTIONS.md"
+PREFIX = os.environ.get("PREFIX", "S")
 
 
-# Every file an `Sn` can be sitting in, found rather than listed: the live inbox, the history file, and
-# the archived halves of the history file, which live in a subdirectory and will be joined by more of
-# them. `next_id` is wrong the moment one of these is missed — it would hand out an id that is already
-# taken — and a hard-coded list is exactly the thing that goes stale when a file is split off.
-def corpus() -> list[pathlib.Path]:
-    return [DEFAULT_DOC, *sorted(DOCS.rglob("CONSUMER_SUGGESTIONS_HISTORY*.md"))]
+def _clone_docs(name: str) -> pathlib.Path:
+    """<the clone>/docs/NAME, the clone being the working directory's, at its main worktree: these scripts
+    run from the kit's copy, so their own location says nothing about the repository they serve (RM2), and
+    the inbox a reporter leaves uncommitted, and the watcher reads, is the shared checkout's, never a
+    linked worktree's committed copy. None outside a clone: the caller refuses when it needs the path."""
+    import subprocess
+
+    r = subprocess.run(["git", "worktree", "list", "--porcelain"], capture_output=True, text=True)
+    first = r.stdout.splitlines()[0] if r.returncode == 0 and r.stdout else ""
+    if not first.startswith("worktree "):
+        return None
+    return pathlib.Path(first[len("worktree "):]) / "docs" / name
 
 
-# A section is a top-level `## Sn` heading. `###` sub-headings fold into their parent:
-# they are part of what the consumer wrote, so they belong in the parent's fingerprint.
-SECTION_RE = re.compile(r"^## +S(\d+)\b")
+def _need(path: "pathlib.Path | None", var: str) -> pathlib.Path:
+    """PATH, or a refusal naming VAR when it could not be found: outside a clone, with VAR unset."""
+    if path is None:
+        sys.exit(f"{pathlib.Path(sys.argv[0]).name}: not in a git clone, and {var} is not set: run it in the "
+                 "repository, or set it")
+    return path
+
+
+_inbox = os.environ.get("INBOX") or _clone_docs("FEEDBACK.md")
+INBOX = pathlib.Path(_inbox).resolve() if _inbox else None
+HISTORY = (pathlib.Path(os.environ["HISTORY"]) if os.environ.get("HISTORY")
+           else INBOX.with_name(f"{INBOX.stem}_HISTORY{INBOX.suffix}") if INBOX else None)
+
+# A section is a top-level `## <PREFIX><n>` heading. `###` sub-headings fold into their parent: they
+# are part of what the reporter wrote, so they belong in the parent's fingerprint.
+SECTION_RE = re.compile(rf"^## +{re.escape(PREFIX)}(\d+)\b")
 BOUNDARY_RE = re.compile(r"^#{1,2} ")
 STATUS_RE = re.compile(r"^\*\*Status\b")
 MARKER_RE = re.compile(r"<!-- *triaged:.*?sha +([0-9a-f]{12}) *-->")
-# A trailing horizontal rule is punctuation between sections rather than anything the consumer said,
-# and dropping one is editorial — so hashing it lets our own separator edit report as `revised`. Same
-# family as the marker exclusion. Adopted from the published gist, where a second repo hit it first.
+# A horizontal rule. Only ever stripped from the END of a body, where it is the furniture separating
+# this section from the next one rather than anything the reporter wrote — see `fingerprint`.
 RULE_RE = re.compile(r"^(?:-{3,}|\*{3,}|_{3,})$")
 # A fenced block opens on ``` or ~~~ indented up to three spaces, and closes on a run of the same
 # character at least as long carrying no info string. Everything inside is somebody's snippet.
@@ -62,13 +85,13 @@ FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 def fenced_lines(lines: list[str]) -> tuple[set[int], int | None]:
     """(indices sitting inside a fenced code block, index of an unclosed opening fence or None).
 
-    **A `#` at column 1 inside a fence is a comment in a consumer's snippet, not a heading**, and
+    **A `#` at column 1 inside a fence is a comment in a reporter's snippet, not a heading**, and
     every span in both tools is bounded by headings. Treating one as a boundary truncates the span
     — which blinds the ledger to the tail of a section and, because `triage-archive.py` shares
     `BOUNDARY_RE`, cuts a report in half on the way to the history file. That is not hypothetical:
-    S62 spent a commit and a release split across the two documents, and the archiver's own
-    verification reported it clean, because a fingerprint covers the consumer's prose and both
-    halves hashed the same truncated body. See CONSUMER_TRIAGE_LOOP.md § 6.
+    a report can spend a release split across the two documents while the archiver's own
+    verification reports it clean, because a fingerprint covers the reporter's prose and both
+    halves hash the same truncated body. See classes/triage/LOOP.md § 5.
 
     An unclosed fence is returned rather than raised so the caller can refuse: with no closer the
     scan swallows the rest of the document, which is a worse failure than the one this fixes.
@@ -97,16 +120,17 @@ def fence_findings(lines: list[str]) -> list[str]:
     """Structural complaints about fences, as lines of prose. Empty means the document is sound.
 
     Both are silent failures the fingerprint check cannot reach, because a fingerprint covers the
-    consumer's prose and says nothing about where a section *ends*:
+    reporter's prose and says nothing about where a section *ends*:
 
     * an unclosed block swallows every heading below it, so spans run to the end of the document;
     * a `## Sn` heading sitting inside a block is invisible to the ledger — the section vanishes
       from the roster rather than reporting a bad verdict, which is the worse way to fail.
 
-    The second is not hypothetical. `cf4c3bd` archived S55's span truncated at a flush-left `#`,
-    stranding 76 lines in the inbox; a later pass swept them back in under S54, where the block's
-    opening fence was missing because it had travelled with S55. That left an unmatched closer,
-    and once spans became fence-aware it hid `## S55` completely.
+    Neither is hypothetical. In the repository this loop was built for, two reports were cut in
+    half by the same flush-left `#` — one of them stranding 76 lines that a later pass swept back
+    in under the *previous* item, where the block's opening fence was missing because it had
+    travelled with the section it belonged to. That left an unmatched closer, which hid a whole
+    section from the roster once spans became fence-aware.
     """
     fenced, open_at = fenced_lines(lines)
     out = []
@@ -141,7 +165,7 @@ def sections(lines: list[str]) -> list[tuple[str, int, list[str]]]:
     for start, line in enumerate(lines):
         if start in fenced or not SECTION_RE.match(line):
             continue
-        ident = "S" + SECTION_RE.match(line).group(1)
+        ident = PREFIX + SECTION_RE.match(line).group(1)
         end = boundary_after(lines, start, fenced)
         out.append((ident, start + 1, lines[start + 1 : end]))
     return out
@@ -150,11 +174,9 @@ def sections(lines: list[str]) -> list[tuple[str, int, list[str]]]:
 def block_replies(lines: list[str]) -> dict[str, int]:
     """Section ids answered by a `**Status` paragraph in an enclosing `# ` preamble.
 
-    The house convention allows one reply to cover several sections at once — the
-    0.5.2 block at the top of the just-dna-lite notes answers S3, S4 and S6 together.
-    Such a section carries no reply of its own, so the naive presence test reads it as
-    untriaged. Maps id -> last line of the covering paragraph, which is where a
-    backfilled marker for it would go.
+    One reply may cover several sections at once — a release note answering three reports together.
+    Such a section carries no reply of its own, so a naive presence test reads it as untriaged. Maps
+    id -> last line of the covering paragraph, which is where a backfilled marker for it would go.
     """
     covered: dict[str, int] = {}
     fenced, _ = fenced_lines(lines)
@@ -162,31 +184,32 @@ def block_replies(lines: list[str]) -> dict[str, int]:
         if start in fenced or not line.startswith("# "):
             continue
         for i in range(start + 1, len(lines)):
-            if i not in fenced and BOUNDARY_RE.match(lines[i]):  # preamble ends at the first section
+            if i not in fenced and BOUNDARY_RE.match(lines[i]):  # preamble ends at first section
                 break
             if not STATUS_RE.match(lines[i]):
                 continue
             end = i
             while end + 1 < len(lines) and lines[end + 1].strip() != "":
                 end += 1
-            for ident in set(re.findall(r"\bS(\d+)\b", " ".join(lines[i : end + 1]))):
-                covered.setdefault("S" + ident, end)
+            named = re.findall(rf"\b{re.escape(PREFIX)}(\d+)\b", " ".join(lines[i : end + 1]))
+            for ident in set(named):
+                covered.setdefault(PREFIX + ident, end)
     return covered
 
 
 def reply_end(body: list[str], start: int) -> int:
     """Index of the last line of the reply that begins at `start`.
 
-    **A triaged reply ends at its marker, not at the first blank line.** The documented shape puts
-    the reply first in the section and terminates it with the marker, so a reply of several
-    paragraphs — which is the normal size for one that has to say what was probed, where it landed
-    and why a candidate repair was rejected — is excluded whole. Paragraph-scoped skipping read
-    every paragraph after the first as consumer text, so writing a reply immediately reported the
-    section `revised`, which is the same self-firing failure the marker exclusion was added to stop.
+    **A triaged reply ends at its marker, not at the first blank line.** The reply goes first in the
+    section and is terminated by the marker, so a reply of several paragraphs — the normal size for one
+    that says what was probed, where it landed, and why a candidate repair was rejected — is excluded
+    whole. Paragraph-scoped skipping read every paragraph after the first as reporter text, so writing
+    a reply immediately reported the section `revised`: the same self-firing failure the marker
+    exclusion exists to stop, by another route.
 
-    With no marker ahead (a reply written before the ledger existed) the reply is taken as the
-    single paragraph. That is all that can be inferred, and it fails safe: swallowing the rest of
-    the section instead would hash every unmarked reply to the same empty text.
+    With no marker ahead (a reply written before this ledger existed) the reply is taken as the single
+    paragraph. That is all that can be inferred, and it fails safe: swallowing the rest of the section
+    would hash every unmarked reply to the same empty text.
     """
     for i in range(start, len(body)):
         if MARKER_RE.search(body[i]):
@@ -197,12 +220,12 @@ def reply_end(body: list[str], start: int) -> int:
     return end
 
 
-def consumer_text(body: list[str]) -> list[str]:
+def reporter_text(body: list[str]) -> list[str]:
     """Body with every reply and every marker removed.
 
-    Markers are dropped wherever they appear, not only inside a reply: a section
-    answered by a shared block reply carries a standalone one, and hashing it would
-    make the section read `revised` from the moment it was marked.
+    Markers are dropped wherever they appear, not only inside a reply: a section answered by a shared
+    block reply carries a standalone one, and hashing it would make the section read `revised` from the
+    moment it was marked.
     """
     kept: list[str] = []
     index = 0
@@ -220,9 +243,19 @@ def consumer_text(body: list[str]) -> list[str]:
 
 
 def fingerprint(body: list[str]) -> str:
-    """Stable over cosmetic edits: trailing whitespace and blank-line runs are normalized."""
+    """Stable over cosmetic edits: trailing whitespace, blank-line runs and a trailing rule.
+
+    The trailing rule matters more than it looks. A section's body runs to the next heading, so the
+    `---` a reporter puts *before* their new section lands at the end of the PREVIOUS one — and
+    without this, appending an item silently flips the last answered item to `revised`. That is a
+    false positive on the one verdict that has to stay trustworthy: once answered items are archived,
+    `revised` is the only thing that catches a reporter genuinely editing what they reported.
+
+    Stripped only from the end, never the middle, so a rule inside the reporter's own prose (a pasted
+    YAML document opening with `---`, say) still counts as their text.
+    """
     normalized, blank = [], False
-    for line in consumer_text(body):
+    for line in reporter_text(body):
         stripped = line.rstrip()
         if stripped == "":
             if blank:
@@ -259,15 +292,28 @@ def classify(body: list[str], block_replied: bool) -> tuple[str, str, str | None
     return "current", current, stored
 
 
+def corpus() -> list[pathlib.Path]:
+    """Every file an id can be sitting in: the inbox, the history file, and any half split off it.
+
+    Found rather than listed. A history file that grows past reading gets split — this document
+    describes doing exactly that — and a hard-coded pair stops seeing the split-off half the moment
+    it exists. `next_id` is then wrong in the one direction that matters: it hands out an id that is
+    already taken and already has a reply attached to it, which is the hazard the "ids are never
+    reused" rule exists to prevent. The glob keys on the history file's own stem, so
+    `FEEDBACK_HISTORY_PRE_1_0.md` beside `FEEDBACK_HISTORY.md` is picked up without configuring
+    anything, in subdirectories too.
+    """
+    found = sorted(INBOX.parent.rglob(f"{HISTORY.stem}*{HISTORY.suffix}"))
+    return [INBOX, *found] if found else [INBOX, HISTORY]
+
+
 def next_id() -> tuple[str, dict[str, int]]:
-    """The next unclaimed `Sn`, over the live document **and** every history file.
+    """The next unclaimed id, over the inbox **and** the history file.
 
     Computed rather than remembered, because the number is exactly the kind of fact that goes stale:
-    once answered items move out, the live file's highest id is not the corpus's highest, and an empty
-    inbox would invite `S1` a second time. Scanning the files cannot drift from them — which is why
-    `corpus()` globs for the history files rather than naming them.
-
-    Returns `(next, {filename: highest})` so a caller can see where the number came from."""
+    once answered items move out, the inbox's highest id is not the corpus's highest, and an empty
+    inbox would invite id 1 a second time. Scanning the files cannot drift from them.
+    """
     highest: dict[str, int] = {}
     for doc in corpus():
         if not doc.is_file():
@@ -279,7 +325,7 @@ def next_id() -> tuple[str, dict[str, int]]:
         ]
         if ids:
             highest[doc.name] = max(ids)
-    return f"S{max(highest.values(), default=0) + 1}", highest
+    return f"{PREFIX}{max(highest.values(), default=0) + 1}", highest
 
 
 def main() -> int:
@@ -287,13 +333,14 @@ def main() -> int:
     flags = {a for a in sys.argv[1:] if a.startswith("--")}
 
     if "--next" in flags:
+        _need(INBOX, "INBOX")
         ident, seen = next_id()
         for name, top in sorted(seen.items()):
-            print(f"{name}: highest S{top}", file=sys.stderr)
+            print(f"{name}: highest {PREFIX}{top}", file=sys.stderr)
         print(ident)
         return 0
 
-    doc = pathlib.Path(args[0]) if args else DEFAULT_DOC
+    doc = pathlib.Path(args[0]) if args else _need(INBOX, "INBOX")
     if not doc.is_file():
         print(f"no such document: {doc}", file=sys.stderr)
         return 2
@@ -302,13 +349,15 @@ def main() -> int:
     for complaint in fence_findings(lines):
         print(f"STRUCTURE  {doc.name}:{complaint}", file=sys.stderr)
     covered = block_replies(lines)
-    rows = [(ident, line, *classify(body, ident in covered)) for ident, line, body in sections(lines)]
+    rows = [
+        (ident, line, *classify(body, ident in covered)) for ident, line, body in sections(lines)
+    ]
     pending = [r for r in rows if r[2] in {"new", "revised", "unmarked-reply"}]
 
     if "--backfill" in flags:
         return backfill(doc, lines, rows, covered)
 
-    for ident, line, verdict, current, stored in pending if "--pending" in flags else rows:
+    for ident, line, verdict, current, stored in (pending if "--pending" in flags else rows):
         note = f"  (was {stored})" if verdict == "revised" else ""
         if verdict == "unmarked-reply" and ident in covered:
             note = "  (block reply)"
@@ -329,10 +378,10 @@ def main() -> int:
 def backfill(doc: pathlib.Path, lines: list[str], rows: list, covered: dict[str, int]) -> int:
     """Stamp a marker onto sections replied to before the ledger existed.
 
-    Only touches `unmarked-reply`, and never invents or edits a reply. A section with
-    its own `**Status` paragraph gets the marker appended to it. A section answered by
-    a shared block reply gets a standalone marker line at the end of its own body,
-    because one paragraph cannot carry four different fingerprints.
+    Only touches `unmarked-reply`, and never invents or edits a reply. A section with its own `**Status`
+    paragraph gets the marker appended to it. A section answered by a shared block reply gets a
+    standalone marker line at the end of its own body, because one paragraph cannot carry several
+    different fingerprints.
     """
     edits = []
     fenced, _ = fenced_lines(lines)

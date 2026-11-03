@@ -5,200 +5,25 @@ a watcher notices when a consumer has finished writing, an agent triages what is
 gets a **maintainer reply written back into the document itself**. The document is the transcript, and
 it is also the state — there is no queue, no database and no external ledger.
 
-**A generalized, self-contained copy of this loop is published as a gist** —
-<https://gist.github.com/winternewt/54b94bda01812be937b892146d1bb254> — with the three scripts
-parameterized (`INBOX`/`HISTORY`/`PREFIX`) and every repo-specific reference stripped. If you change the
-*pattern* here (the algorithm, a script's contract, a gotcha), update it there too; if you change
-something only true of this repo, do not.
+**Since 2026-11-03 the loop runs on the seats kit, and this file holds what is local.** The procedure is
+the kit's triage runbook, `classes/triage/LOOP.md` at the tag this clone pins, read beside the triage
+seat's priming, [seats/TRIAGE.md](seats/TRIAGE.md). The kit's scripts are the logic. Read with their
+comments stripped, they are a strict superset of this repository's old copies and of the gist's: the same
+ledger and boundary scan, parameterized, plus an archiver that writes both files beside themselves and
+checks the fingerprints before either replaces its original. What stays here is what only this
+repository can say: the charter's legality table (§3 Step 1), the thresholds (§4), the gotchas met in
+this tree (§6), and the record of the first runs (§7). §5's grant is now the seat's, in its priming.
 
-### Sync in from the gist at the start of a pass, and adopt what has come back
+### The gist sync is retired (2026-11-03)
 
-**The gist is where fixes from other repositories arrive, so it is read as well as written.** Other
-trees run this loop, and a defect in the *pattern* is usually met there first — the `**Status`-preamble
-collision in §6 was found while adopting the loop into a second repository, not here. That makes the
-published copy an inbound channel, and a fix sitting in it unadopted is the same failure this whole
-document is about: something answered somewhere nobody looks. What stays one-way is the **content** —
-the gist never reads this repo's items, only its machinery.
-
-**Check the digest first, and pull the files only when it has moved.** Fetching both scripts and
-diffing them every pass is almost always work for nothing: the gist changes rarely, and the diff is
-noisy enough (below) that reading one is not free either. The gist's own revision id is a digest of
-the whole thing and is public, so the check costs a single unauthenticated request:
-
-```bash
-GIST=54b94bda01812be937b892146d1bb254
-curl -sf "https://api.github.com/gists/$GIST" \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["history"][0]["version"])'
-```
-
-**In sync through gist revision `96b6953362bb4854e05db04334086c43c9eeb170`**, ours, pushed
-2026-09-30. It carries the Claude Code arming outward: `wake-on-inbox.sh` (the uncapped socket
-wrapper with its `armed` canary) and `arm-on-prompt.py` (the prompt hook, which ignores the watcher's
-own `[watcher ` posts), plus a §2 paragraph and two README rows. The existing scripts went across
-byte-identical, verified against the pushed version. **The unauthenticated API read above was stale
-after that push**: for a while it still named the previous head and file list, while
-`gh api /gists/<id>` already showed the new one. So verify an outward push through `gh api`, or by
-fetching pinned to the returned version, never by the anonymous check. Before it,
-`b063b65ef777cf06002e6fa14953d6503692d1f1`, inbound, adopted 2026-09-25: the watcher became a newest-wins singleton per watched file (exit 3 when superseded), the
-arming moved to a one-shot background task (§1), and a fence-blindness note joined §6. The two Python
-scripts and `item-next.py` were byte-identical to the previous revision, so the fingerprint gate below
-was satisfied trivially. Before it, `f53d7e181ca89fcd26d5aa9cda365e9d93699345`, ours, pushed 2026-09-13,
-in sync by construction. It carries one thing outward — the allocator's argument surface, below
-— and touches no other file: the three scripts were verified byte-identical against the previous
-revision after the write. Its predecessor `e81d9a18755ea215144518489c52e5c5669b0b25` (2026-09-01, ours)
-was the baseline before it, and carried **two** things outward: the tracked-item allocator as the
-generic `item-next.py` (§1 here, §2 there) and the duplicate-id entry that had been owed since
-2026-08-31. The three existing scripts went across byte-identical, verified against the previous
-revision — this push adds a file and extends two documents, and touches nothing else. It supersedes
-`fd7c3b5e462fcc27c8f597b24f466738c1b42991` (2026-08-21, ours, which only added the CDN note) and
-`32967e3699c0…` before it, the substantive one of that pair; before those `fffbcc65653b…`
-(2026-08-21), which was a genuine inbound adoption, the first since the channel was built and the one
-that paid for it. Earlier still: `a74366fa6d72…` (2026-08-21, ours), `bd793a8ce98b…` (2026-08-18) and
-`ab7e2a89c48d…` (2026-08-16), the baseline the digest check was first pinned to.
-
-**A published `gh` gotcha found by this push, and it exits 0.** `gh gist edit <id> -f <name>` does not
-read stdin on every version — on 2.4.0 it selects a file for interactive editing, so
-`gh gist edit … -f README.md < README.md` reported success and changed nothing; only the API call
-`gh api -X PATCH /gists/<id> --input <payload.json>` actually wrote. **Verify a push by re-reading the
-version-pinned raw URL and comparing bytes**, never by the command's exit code — `--add` for a new file
-did work, which is what made the partial success look complete.
-
-**The scripts were byte-identical across the inbound revision** — everything that arrived was prose, so
-the auto-adopt gate below was satisfied trivially: with no `fingerprint()` change there was nothing to
-restamp.
-
-Same sha back means nothing has arrived and the sync-in is finished for that pass; a different one means
-pull the files and read the diff. **Update this line, with its date, whenever an adoption *or* a push
-lands** — it is the baseline, and a stale one re-diffs work already taken, which after a push means
-re-reading your own writing as though a stranger had sent it.
-
-`history[0]` is the newest entry, checked and not recalled — its `committed_at` equals the gist's
-`updated_at`. Getting that orientation backwards is the failure worth guarding, because it does not
-announce itself: the check would read `unchanged` forever and the inbound channel would look healthy
-while nothing came through it. If `api.github.com` is ever unreachable, the fallback is a conditional
-GET against the raw URLs carrying a stored `ETag`, where a `304` is the same "unchanged" answer. Build
-one or the other, never both.
-
-**Pin the raw fetch to the revision the digest check just returned.** The bare
-`<gist>/raw/<name>` URL is CDN-cached and goes stale for a good while after a write — measured on
-2026-08-21, immediately after our own push: the API reported the new revision while every unversioned
-raw URL still served the previous one, and `Cache-Control: no-cache` did not shift it.
-`<gist>/raw/<version>/<name>` was correct straight away. This matters because the two halves disagree
-in the worst direction: the digest says *something arrived*, the files say *nothing changed*, and the
-natural reading is that the digest check is broken. It is the `history[0]` hazard one layer down —
-an inbound channel that looks healthy while nothing comes through it.
-
-The gist's watcher, `watch-inbox.sh`, is **not adopted here since 2026-11-03**: the triage seat's kit
-watcher replaces it (§1). Every other file keeps its name:
-
-```bash
-GIST=54b94bda01812be937b892146d1bb254
-V=$(curl -sf "https://api.github.com/gists/$GIST" \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["history"][0]["version"])')
-G=https://gist.githubusercontent.com/winternewt/$GIST/raw/$V
-for f in triage-state.py triage-archive.py; do curl -sfL "$G/$f" -o "/tmp/gist-$f"; done
-diff -u /tmp/gist-triage-state.py .claude/triage-state.py     # noisy: most of it is parameterization
-```
-
-**Read the diff for logic, not for prose.** Nearly every line differs because the gist is
-parameterized and names no repo document, so a raw diff buries the two or three lines that matter.
-Compare the code with docstrings and comments stripped, and adopt only what is a *behaviour* change:
-in the 2026-08-17 sync those were `RULE_RE` (a trailing horizontal rule was being hashed as if the
-consumer had written it) and the archiver's closing line, which still said "add each one's row to the
-index table" — wording §4 retired when the table became a contents list.
-
-**Auto-adopt is the default, and it has exactly one gate: does adopting move a fingerprint?** A fix to
-the machinery is presumed wanted, since it was found by someone running the same loop and there is no
-local reason to differ. But a change to `fingerprint()` re-scores every marker already stamped, and
-those sections then read `revised` — our own adoption impersonating a consumer revision, which is the
-one signal the ledger exists to carry. So run the ledger over **both** documents immediately after,
-and if nothing moved you are done.
-
-**If something moved, prove the cause before restamping, and the proof is cheap.** Do not reach for
-git archaeology: if the ledger read all-`current` immediately *before* the adoption, then the old
-function still matched every recorded marker, so the whole delta is the function and no prose changed.
-That check is one command and it is stronger than a diff. Restamp to the new values and say so in the
-commit. `--backfill` will not do it — it only touches `unmarked-reply`, deliberately, because silently
-restamping a `revised` section is how a genuine re-triage signal gets erased. Adopting `RULE_RE` moved
-four (S2, S6, S7, S12 — the four reports ending in a `---`) and they were restamped on that proof.
-
-**What must not be adopted**, since the gist is the generic copy and this tree is not: the
-`INBOX`/`HISTORY`/`PREFIX` parameterization, the `FEEDBACK.md` defaults, and any pointer to
-`TRIAGE_LOOP.md`, which is the gist's name for this file. Adopting those silently repoints the tools at
-documents that do not exist here.
-
-**Push the other way too, and check it in the same pass** — the sync is bidirectional even though each
-direction is a separate act. **The standing debt was discharged on 2026-08-18**: the branch-pause in
-`watch-suggestions.sh` (§1) and the digest check above both reached the gist in revision `bd793a8c…`,
-genericized, along with the correction to §2's "why not git" that the branch-pause forced — the
-published copy still called *the loop must not commit* a fatal reason for the design, which stopped
-being true here when §5's permit was granted, and a watcher that pauses because the loop commits cannot
-sit in a document saying it does not. Updating the gist is a publish and stays the user's to authorize;
-it was authorized for that push and is not a standing permission.
-
-**One item was owed outward on 2026-08-21 and was pushed the same day**: *stamp the arrival
-fingerprint, not the value the ledger prints after you write the reply* (§6). That is pattern material
-rather than local tuning — the gist never carried the wrong sentence, it simply never said which sha to
-write, so a reader who reasonably guesses "run the ledger and copy what it prints" walks into the trap
-on every reply longer than a paragraph, which is most of them. It went into the gist's Step 3, where the
-stamping actually happens, and the baseline above moved with it.
-
-**Nothing is owed outward as of 2026-09-01.** The duplicate-id entry in §6 — an id under two
-top-level headings archives as one section, and the fingerprint check reports it as a mutation *after
-writing* — was owed from 2026-08-31 and went across in the push above, into the published §5's
-second-repo subsection. It is pattern material rather than local tuning: `section_span` and the
-verification are both in the published copy, so the same refusal happens in any tree running this loop,
-and the entry is a hand step plus a *why not fixed in the tools*. The allocator went with it.
-
-**The one item owed since 2026-09-04 was pushed on 2026-09-13, authorized, and nothing is owed
-outward as of it.** `.claude/rm-next.py`'s reserve path was also its *default*
-path, so any flag it did not recognise fell through to `allocate()`: `--help` spent RM189 that way and
-a typo spent RM190 while the first was being repaired, each leaving a tombstone row because ids are
-never reused. Fixed here in `0d73268` with `KNOWN_FLAGS`, a real `--help`, exit 2 on anything else, and
-`--note`'s value excluded from the flag scan. **The published copy still has it**, checked rather than
-assumed: `item-next.py` at the baseline revision ends in a bare fall-through to `allocate()` with no
-flag validation anywhere above it, so `item-next.py --help` reserves an id in any tree running the
-generic loop. It is pattern material by the same test as the allocator itself — the defect is in the
-shape *a tool whose no-flag path mutates*, not in anything local
-(`@an-index-is-not-an-allocator`).
-
-**Reproduced against the published copy before porting, which is the only way to tell a generic defect
-from a local one.** On a scratch index holding one `RM1`, the gist's own `item-next.py --help` printed
-no help, exited 0, and left a `🔷 reserved` row for RM2 behind. The port carries `KNOWN_FLAGS`, a real
-`--help` printing the module docstring, exit 2 naming the unknown flags, and `--note`'s value excluded
-from the flag scan so a note may open with a dash; the usage block gains a `--help` line and a
-paragraph saying why the refusal is load-bearing rather than tidy. Both arms were run on that same
-fixture after porting — help prints and the index is untouched, an unknown flag exits 2 and the index
-is untouched, and `--dry-run`, `--note` and a plain allocation still behave. **Verified by re-reading
-the version-pinned raw URL and comparing bytes**, never by the command's exit code, and the other three
-files were diffed against the previous revision to show the write touched nothing else. Nothing else since `e81d9a18…` is owed: the line-length gate and the
-runbook's `ruff format` bullet are this repository's CI, and the §4 counter's third failure below is an
-entry about a section the gist deliberately does not carry.
-
-**Three items went outward on 2026-08-21, in revision `32967e36…`, with the CDN note following in
-`fd7c3b5e…`, and nothing was owed as of it.**
-The gist had the furniture entry for prose moving **in** — a footer swallowed by the last section — and
-no flush-left `#` gotcha at all, in either half; it now carries the joined version, since
-`triage-archive.py` shares the boundary scan and the same line that truncates a *reading* truncates a
-*move*. Also pushed: the fence-aware span logic with its refusal, and a `corpus()` fix for `--next`,
-which read a fixed inbox/history pair while the same document describes splitting the history file —
-on a fixture with a split-off half the published copy returned an id five short of the true one, each
-of them already answered. All three were reproduced against the gist's own scripts in a scratch repo
-before being pushed, which is the only way to tell a generic defect from a local one.
-
-**The allocator crossed, but its *placement* here did not.** `.claude/rm-next.py` is published as
-`item-next.py`, parameterized on `INDEX`/`SCAN_DIR`/`ITEM_PREFIX`/`ANCHOR` — this tree's `RM_TOC.md`,
-`docs/` and `RM` are all defaults over there, and the published copy names none of them. What stayed
-local is the reservation *anchor* being `## ⏳ Open, no release decided`, which is this index's own
-heading; the generic default is the first `## ` heading, since a generic copy cannot know one.
-
-**§4 and §5 are deliberately not generalized, decided 2026-08-21 — do not re-raise this.** The published
-copy has never carried a thresholds section or an unattended-permit section, and it should not: the
-numbers are this tree's tuning and the permit is this tree's grant, so a generic copy stating either
-would be publishing a local decision as though it were the pattern. The practical consequence is that
-the stale-counter correction of 2026-08-20 (*count the idiom, not a fixed version number*) has nothing
-to be stale in over there, and a future pass that notices the absence should read it as intended rather
-than as a debt.
+This section used to make every pass check the published gist
+(<https://gist.github.com/winternewt/54b94bda01812be937b892146d1bb254>) for fixes other repositories
+had sent back, and push this tree's fixes out to it. The kit took over both directions: a fix to the
+loop lands in the kit and reaches every repository with its pin, and a defect found here is filed on
+the kit's issues (the skill `report-to-kit`), never patched locally. The last baseline was gist revision
+`96b6953362bb4854e05db04334086c43c9eeb170`, checked unchanged on 2026-11-03. The section's full text,
+with every adoption and push it recorded, is at `git show 8c010c0:docs/CONSUMER_TRIAGE_LOOP.md`.
+Whether the gist itself is retired or pointed at the kit is the maintainer's call, since it is a publish.
 
 **The live document holds only what is unanswered.** An item moves to
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md) once its reply is written, which is
@@ -226,19 +51,36 @@ anywhere else either, so the only way to find out whether an item had been consi
 ## 1. Setup
 
 The triage seat's watchers, declared in `.blueprints.toml`, notice that a consumer has written (below).
-Three scripts, all in `.claude/` and none packaged, do the rest. The first two are the `Sn` loop. The third
-allocates the `RMn` that the loop's route **(a)** files, and it is the only one that writes outside the two
-consumer documents:
+Three scripts do the rest. The first two are the `Sn` loop and are the kit's; the third allocates the `RMn`
+that the loop's route **(a)** files, and is still this repository's own:
 
 | | |
 |---|---|
-| `.claude/triage-state.py` | the ledger: which sections are new, revised, or already answered. Takes a path, so it reads the history file too; `--next` prints the next unclaimed `Sn`. Also prints `STRUCTURE` lines when a fenced block breaks the section boundaries |
-| `.claude/triage-archive.py` | moves answered sections into the history file and **verifies** each fingerprint survived the move. **Refuses outright** on a `STRUCTURE` finding, since a span that ends at the wrong line moves the wrong bytes and the fingerprint check cannot see it |
+| ledger | the kit's `classes/triage/triage-state.py`: which sections are new, revised, or already answered. Takes a path, so it reads the history file too; `--next` prints the next unclaimed `Sn`. Also prints `STRUCTURE` lines when a fenced block breaks the section boundaries |
+| archiver | the kit's `classes/triage/triage-archive.py`: moves answered sections into the history file and **verifies** each fingerprint survived the move, before either file is replaced. **Refuses outright** on a `STRUCTURE` finding, since a span that ends at the wrong line moves the wrong bytes and the fingerprint check cannot see it |
 | `.claude/rm-next.py` | the `RMn` allocator: scans `docs/` for every number, and **reserves** the next one by appending a `🔷 reserved` row to [RM_TOC.md](RM_TOC.md) under an advisory `flock`. `--dry-run` reads without claiming, `--list` shows standing reservations, `--release RMn` drops one |
 
-**Run them under Python, never `bash` them** — `./.claude/triage-state.py` or
-`python3 .claude/triage-state.py`. They carried a `.sh` extension until 2026-08-16 and the mismatch had
-a cost; §6 has it.
+The kit's scripts default to `docs/FEEDBACK.md`, so they take this tree's documents from the environment:
+
+```bash
+export INBOX=docs/CONSUMER_SUGGESTIONS.md HISTORY=docs/CONSUMER_SUGGESTIONS_HISTORY.md PREFIX=S
+sh "$BLUEPRINTS_KIT/bin/py.sh" "$BLUEPRINTS_KIT/classes/triage/triage-state.py" --pending
+sh "$BLUEPRINTS_KIT/bin/py.sh" "$BLUEPRINTS_KIT/classes/triage/triage-archive.py" S14 S15
+```
+
+**`.claude/triage-state.py` and `.claude/triage-archive.py` are byte-identical copies of the kit's**, kept
+only so CI, which has no kit, can lint the real documents (`schema/tests/test_triage_tools.py`). A test
+fails when either drifts from the kit a session runs; after the pin moves, copy the kit's over them.
+Never patch them: a change goes to the kit.
+
+**The allocator stays local until the kit's `item-next.py` can replace it here**, measured on
+2026-11-03. Pointed at this tree it reserves the same next number, but its scan counts only the lines
+that own an id (headings, reservation and tombstone rows, the changelog), so it misses RM3, RM18 and RM19,
+which live here only as index or table rows. And run without `INDEX`, `SCAN_DIR` and `ANCHOR` it would
+write its reservation into `docs/ROADMAP.md`. Both are filed on the kit.
+
+**Run every one under Python, never `bash` it.** They carried a `.sh` extension until 2026-08-16 and
+the mismatch had a cost; §6 has it.
 
 ### `RM_TOC.md` is an index, and an index is not an allocator
 
@@ -309,11 +151,13 @@ waiting is latency, and the cost of firing early is a reply to a half-written it
 
 The watcher says an uncommitted state it finds at start once that state has settled, but it knows
 nothing of items already committed and unanswered. Run the ledger once at startup to pick up the
-standing backlog:
+standing backlog (`K` and the environment as in §1, so the kit's copies read this tree's
+documents):
 
 ```
-.claude/triage-state.py            # every section and its verdict
-.claude/triage-state.py --pending  # just the ones needing work
+K="$BLUEPRINTS_KIT/classes/triage"
+"$K/triage-state.py"            # every section and its verdict
+"$K/triage-state.py" --pending  # just the ones needing work
 ```
 
 **Point it at the history file too, every time — an empty inbox is not an all-clear.** That run is the
@@ -323,7 +167,7 @@ did not survive the move. On 2026-08-17 the inbox was empty and this turned up t
 S36 `unmarked-reply`, both from the pass that had archived them.
 
 ```
-.claude/triage-state.py docs/CONSUMER_SUGGESTIONS_HISTORY.md   # every row must read `current`
+"$K/triage-state.py" docs/CONSUMER_SUGGESTIONS_HISTORY.md   # every row must read `current`
 ```
 
 ---
@@ -520,7 +364,7 @@ exactly the shape of the S63/S64 pair, which arrived four minutes apart.
 ### Step 4 — move the answered item to the history file
 
 ```
-.claude/triage-archive.py S14 S15 [--dry-run]
+"$K/triage-archive.py" S14 S15 [--dry-run]
 ```
 
 It cuts each section — heading, consumer prose, reply and marker — out of
@@ -662,6 +506,12 @@ legibility fixes is not the thing that needs a planning decision.
 ---
 
 ## 5. What the loop agent may do unattended
+
+**Superseded on 2026-11-03 by the triage seat's grant**, in [seats/TRIAGE.md § Grant](seats/TRIAGE.md#grant):
+patches on `main` only, an `RMn` fix built in a worktree of its own cut from `origin/main`, and a
+fast-forward push of `main`. Where this section and the priming disagree, the priming wins. The text
+below is the 2026-08-11 grant it replaced, kept for its reasoning (the relock order, wiping `dist/`,
+confessing a cornered state), which still holds.
 
 A standing grant, given 2026-08-11, back when it **overrode** the global "only commit when asked"
 default for this loop and nothing else. Since 2026-08-21 the global preference is commit-as-you-go with
@@ -1009,9 +859,9 @@ consumer item is **S19** and the next roadmap item is **RM47** — but read both
 off this sentence, which is exactly the kind that goes stale:
 
 ```
-.claude/triage-state.py                                    # the live inbox — empty means nothing owed
-.claude/triage-state.py docs/CONSUMER_SUGGESTIONS_HISTORY.md   # every answered item, all `current`
-.claude/triage-state.py --next                             # the next unclaimed Sn, over BOTH files
+"$K/triage-state.py"                                    # the live inbox — empty means nothing owed
+"$K/triage-state.py" docs/CONSUMER_SUGGESTIONS_HISTORY.md   # every answered item, all `current`
+"$K/triage-state.py" --next                             # the next unclaimed Sn, over BOTH files
 ```
 
 **An emptied inbox breaks id numbering unless the next id is pinned, and this is the one hazard the

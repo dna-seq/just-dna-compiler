@@ -457,9 +457,9 @@ order rather than jumping to code.
    reply in the live file" never means "no work was done"**: establish what shipped before designing.
    Every `Sn` gets a `**Status —**` reply written back into the document; the runbook is
    [CONSUMER_TRIAGE_LOOP.md](docs/CONSUMER_TRIAGE_LOOP.md) (four routes; **legality sizes the release,
-   severity only orders the queue**; the ledger `.claude/triage-state.py` says which items are
-   unanswered). The triage seat's watchers (`.blueprints.toml`) notice that a consumer has written.
-   **The two `.py` tools run under `python3`, never `bash`** — bash reads `import x` as ImageMagick's
+   severity only orders the queue**; the ledger, the seats kit's `classes/triage/triage-state.py` with `INBOX=docs/CONSUMER_SUGGESTIONS.md`,
+   says which items are unanswered; `.claude/` holds a byte-identical copy for CI). The triage seat's watchers (`.blueprints.toml`) notice that a consumer has written.
+   **The `.py` tools run under `python3`, never `bash`** — bash reads `import x` as ImageMagick's
    screen-capture tool and litters the repo root (runbook §6).
    **Do not start a second feedback file** — both pre-`Sn` threads were retired for the same reason,
    that an inbox the ledger cannot see is a backlog nobody sees: round 1 on 2026-08-12 (git `53f9260`,
