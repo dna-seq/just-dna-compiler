@@ -41,7 +41,8 @@ None open.
   (triage's patch, same function). Built by the lead in a worktree once RM337 lands.
 - **RM344**: `unattended`, a patch (a duckdb-2-written `.duckdb` cache falls back to parquet).
 - **RM342**: a minor, the pm's to place (0.9). Polars version in `manifest.compilation`.
-- **Liaison's adoption map, item 4**: when `uv.lock` moves to polars 2, every digest moves once, and that release
-  owes a RELEASE_RECORDS line (content unchanged). duckdb 2 lock any time (RM343 landed). The liaison schedules it.
+- **Lock moves, the liaison's schedule (2026-11-04):** duckdb 2.x into `uv.lock` once RM344 lands, so RM344
+  unblocks it. polars 2.x into `uv.lock` in the release that ships RM342 (0.9), with a RELEASE_RECORDS line
+  (parquet bytes move, content unchanged). Nothing breaks on 2.x meanwhile.
 
 The lead's own, none yet. The plan's states have not been read against what exists; that is the next start's first step.
