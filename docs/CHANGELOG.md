@@ -41,6 +41,13 @@ stay here because this log is shared across the ecosystem, but their code is **n
 ships with 0.8. `main` is `v0.7.2` plus patch-scope work only. The rule is in
 [RELEASE_CYCLE.md](RELEASE_CYCLE.md).
 
+## 2026-11-04 — a new major of an upstream: the liaison maps it, and a cap needs a proven break (seats, on `main`)
+
+**repo** — The person's rule, written into the liaison's and the lead's primings. The liaison decides what
+blocks adopting a new major of an upstream and hands the lead an adoption map. A dependency is capped only once
+the new major is shown to break something here, and the cap is lifted once support is integrated. polars 2 and
+duckdb 2 broke nothing that RM343 and RM344 do not cover, so neither is capped. No package changes.
+
 ## 2026-11-04 — RM343: a query-shape test reads duckdb 2.0's `Hash Join` (patch, on `main`)
 
 **enricher (tests)** — duckdb 2.0 prints the join operator as `Hash Join` where 1.x printed `HASH_JOIN`, so on

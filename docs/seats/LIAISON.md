@@ -21,6 +21,16 @@ the forge and its clone on this machine is a line of the liaison's state file
 (`$XDG_STATE_HOME/agent-seat-blueprints/liaison/upstreams`, the kit's `watch-upstream.sh`), shared by every
 liaison seat on this machine: add your lines, never edit another's.
 
+## A new major of an upstream
+
+The person, 2026-11-04: "liaison decides on adoption blockers and give[s] you adoption maps, pin when necessary
+(eg proven the new major actively breaks something) until support is integrated." So this seat decides what
+blocks adopting a new major, and hands the lead an adoption map: what breaks, where (`path:line`), the fix and
+its cost. It caps the dependency in the package's `pyproject.toml` and runs `uv lock` only once it has shown
+that the new major breaks something here. It lifts the cap when the lead has integrated support. A cap kept
+"to be safe" blocks every consumer of the package; polars-bio's cap on just-dna-lite was the case the person
+weighed. Agreed: nothing checks it.
+
 ## Fellow liaisons
 
 Another repository of the person's stands on polars too, through a layer above it. Before drafting a filing on
@@ -29,7 +39,8 @@ a shared upstream, ask its liaison in `agent-chat`, as the role's outbound step 
 ## Grant
 
 The person, 2026-11-03 (quoted whole in `docs/seats/LEAD.md`). Commit and push `main`, as a fast-forward: its
-ledgers and its notes. A tag the kit's tools need. Nothing else: no code, no branch or merge, no release. A post
+ledgers and its notes, and a dependency cap with its `uv lock` (above, the person, 2026-11-04). A tag the kit's tools
+need. Nothing else: no other code, no branch or merge, no release. A post
 upstream (an issue, a comment, a reaction) is drafted and shown whole, and posted only on the person's word.
 
 ## Before a reset
