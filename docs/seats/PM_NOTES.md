@@ -55,9 +55,16 @@ file has moved yet.
 
 - The 0.8 sizing above: asked in chat 2026-11-03.
 - `docs/STRATEGY.md`: not started; the first question is who the three packages serve.
+- `docs/DREAMS.md` (the 2026-10-19 four-model dream) is this seat's file and is untracked. Adding it to
+  `mkdocs.yml` (`not_in_nav`) is the lead's edit; until then the docs-nav test fails on it. Its ideas
+  have no verdicts yet.
 
 ## Licensing, as it stands (noted, not yet raised)
 
+- **The copyright holder.** The person, 2026-11-03: "Copyright is technically still mine (Newton Winter) as
+  I still am a sole maintainer". `LICENSE` names "DNA-Seq" instead. Whether the line should name them,
+  and what reopens it (a second maintainer, an organisation taking the work), is a point for a lawyer
+  and for the person. Not raised yet.
 - **The packages**: `LICENSE` is MIT, "Copyright (c) 2026 DNA-Seq", at the repository root only. None of
   the four `pyproject.toml` files declares `license`, and no package directory carries a licence file, so
   whether the wheels ship one is unchecked.
