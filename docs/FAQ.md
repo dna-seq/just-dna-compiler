@@ -424,4 +424,4 @@ every declaration, which is what S99 ran into. A module drafted then keeps its a
 No. An answered item moves byte-for-byte to
 [CONSUMER_SUGGESTIONS_HISTORY.md](CONSUMER_SUGGESTIONS_HISTORY.md) with a row in its index. An empty
 live file means nothing is owed. And never read the next free `Sn` off a written-down number; run
-`INBOX=docs/CONSUMER_SUGGESTIONS.md python3 .claude/triage-state.py --next` (without `INBOX` it answers `S1`).
+`python3 .claude/triage-state.py --next`.

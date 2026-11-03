@@ -19,7 +19,8 @@ which is the documented shape.
 The contents line is deliberately NOT written: naming what an item was and how it ended is editorial,
 and a generated line would be a worse version of the thing the index exists for.
 
-Configuration (environment, all optional): INBOX, HISTORY, PREFIX — as for triage-state.py.
+Configuration (the environment, else .blueprints.toml [triage], all optional): INBOX, HISTORY, PREFIX — as for
+triage-state.py.
 
 Python, and named `.py` for it: run it or pass it to `python3`, never to `bash`. See the extension
 gotcha in classes/triage/LOOP.md § 5 — under bash this docstring is executed as commands.
@@ -36,35 +37,13 @@ import subprocess
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
-PREFIX = os.environ.get("PREFIX", "S")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))  # triage_conf, beside this script
+import triage_conf as conf  # noqa: E402
 
-
-def _clone_docs(name: str) -> pathlib.Path:
-    """<the clone>/docs/NAME, the clone being the working directory's, at its main worktree: these scripts
-    run from the kit's copy, so their own location says nothing about the repository they serve (RM2), and
-    the inbox a reporter leaves uncommitted, and the watcher reads, is the shared checkout's, never a
-    linked worktree's committed copy. None outside a clone: the caller refuses when it needs the path."""
-    import subprocess
-
-    r = subprocess.run(["git", "worktree", "list", "--porcelain"], capture_output=True, text=True)
-    first = r.stdout.splitlines()[0] if r.returncode == 0 and r.stdout else ""
-    if not first.startswith("worktree "):
-        return None
-    return pathlib.Path(first[len("worktree "):]) / "docs" / name
-
-
-def _need(path: "pathlib.Path | None", var: str) -> pathlib.Path:
-    """PATH, or a refusal naming VAR when it could not be found: outside a clone, with VAR unset."""
-    if path is None:
-        sys.exit(f"{pathlib.Path(sys.argv[0]).name}: not in a git clone, and {var} is not set: run it in the "
-                 "repository, or set it")
-    return path
-
-
-_inbox = os.environ.get("INBOX") or _clone_docs("FEEDBACK.md")
-INBOX = pathlib.Path(_inbox).resolve() if _inbox else None
-HISTORY = (pathlib.Path(os.environ["HISTORY"]) if os.environ.get("HISTORY")
-           else INBOX.with_name(f"{INBOX.stem}_HISTORY{INBOX.suffix}") if INBOX else None)
+PREFIX = conf.text("PREFIX", "S")
+INBOX = conf.path("INBOX", "docs/FEEDBACK.md")
+HISTORY = conf.path("HISTORY", None) or (INBOX.with_name(f"{INBOX.stem}_HISTORY{INBOX.suffix}") if INBOX else None)
+_need = conf.need
 INBOX = _need(INBOX, "INBOX")  # the archive always needs the inbox
 LEDGER = HERE / "triage-state.py"
 

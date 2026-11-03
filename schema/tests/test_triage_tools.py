@@ -174,7 +174,7 @@ def test_both_tools_derive_the_same_span():
 
 
 @pytest.mark.skipif(not os.environ.get("BLUEPRINTS_KIT"), reason="no seats kit in this shell (CI has none)")
-@pytest.mark.parametrize("tool", ["triage-state.py", "triage-archive.py"])
+@pytest.mark.parametrize("tool", ["triage-state.py", "triage-archive.py", "triage_conf.py"])
 def test_the_vendored_tools_are_the_kits_byte_for_byte(tool):
     """`.claude/` carries the kit's ledger and archiver only so CI can lint the real documents.
 
@@ -198,7 +198,7 @@ def test_the_archiver_refuses_a_document_whose_fences_are_broken(tmp_path):
     (docs / "CONSUMER_SUGGESTIONS_HISTORY.md").write_text("# History\n")
     claude = tmp_path / ".claude"
     claude.mkdir()
-    for tool in ("triage-state.py", "triage-archive.py"):
+    for tool in ("triage-state.py", "triage-archive.py", "triage_conf.py"):
         (claude / tool).write_bytes((CLAUDE / tool).read_bytes())
 
     # The kit's archiver takes its documents from the environment; outside a clone it names the

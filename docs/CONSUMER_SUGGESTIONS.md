@@ -15,11 +15,11 @@ history file, so an empty inbox says nothing about how many ids are taken — nu
 the next report is a second S1. The number is computed rather than remembered:
 
 ```
-INBOX=docs/CONSUMER_SUGGESTIONS.md python3 .claude/triage-state.py --next   # this file AND the history
+python3 .claude/triage-state.py --next        # scans this file AND the history file
 ```
 
-`INBOX` is required: without it the ledger reads `docs/FEEDBACK.md`, which does not exist here, and
-answers `S1`. The pinned number above is the answer when you cannot run it.
+It reads this file's path from `.blueprints.toml`'s `[triage]` table. The pinned number above is the
+answer when you cannot run it.
 
 Ids are never reused, including for an item answered as a non-issue: the reply is part of the record and
 a recycled id would collide with it.

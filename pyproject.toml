@@ -97,7 +97,17 @@ target-version = "py313"
 # `test_every_archived_section_is_marked_and_matches` failed on it — correctly. A snippet in an answered
 # item is evidence about the moment the reply was written, not a sample anyone should run today, so the
 # formatter has no standing over it for the same reason it has none over a commit message.
-extend-exclude = ["**/generated/**", "**/*.md"]
+#
+# The three `.claude/` triage files are the seats kit's, copied byte for byte so CI can lint the inbox
+# documents; `test_the_vendored_tools_are_the_kits_byte_for_byte` fails when they drift. Formatting them
+# here would be the drift, so the kit's own gates govern them.
+extend-exclude = [
+    "**/generated/**",
+    "**/*.md",
+    ".claude/triage-state.py",
+    ".claude/triage-archive.py",
+    ".claude/triage_conf.py",
+]
 # Not enforced as a lint (E501 is deliberately unselected) but enforced as formatting: `ruff format
 # --check .` runs in CI beside `ruff check .`, so this is the width the tree is actually at rather than
 # one it would be at if anyone ran the formatter. It matches the prose-heavy docstrings and long

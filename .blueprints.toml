@@ -31,6 +31,17 @@ cmd = "sh kit:bin/py.sh kit:classes/desk/watch-answers.py just-dna-compiler pm"
 [seat.pm.zulip]
 pool = "~/.config/agent-seat-blueprints/zulip/pool"
 
+# The triage scripts' documents (kit v0.1.118, #242), so every seat runs them bare: the inbox and its history,
+# ids S<n>; the RM index the allocator reserves into, scanning docs/, under its reservations heading.
+[triage]
+inbox = "docs/CONSUMER_SUGGESTIONS.md"
+history = "docs/CONSUMER_SUGGESTIONS_HISTORY.md"
+prefix = "S"
+index = "docs/RM_TOC.md"
+scan_dir = "docs"
+item_prefix = "RM"
+anchor = "## 🔷 Reservations"
+
 [seat.triage]
 # Answers the consumers (docs/seats/TRIAGE.md): their notes in docs/CONSUMER_SUGGESTIONS.md, a reply in
 # the document, a patch on main, an RM item for the rest. The other seats relay a consumer report to it.

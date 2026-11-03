@@ -57,9 +57,8 @@ def is_full_charter_read(tool_input: dict) -> bool:
     limit = tool_input.get("limit")
     if offset not in (None, 0, 1):
         return False  # started mid-file — a range read, not the whole chapter
-    if limit is not None and limit < 190:  # charter is 198 lines
-        return False
-    return True
+    # charter is 198 lines, so a narrower limit is a range read
+    return limit is None or limit >= 190
 
 
 def is_gated_edit(tool_input: dict) -> bool:

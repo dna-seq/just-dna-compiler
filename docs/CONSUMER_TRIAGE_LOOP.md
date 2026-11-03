@@ -60,24 +60,26 @@ that the loop's route **(a)** files, and is still this repository's own:
 | archiver | the kit's `classes/triage/triage-archive.py`: moves answered sections into the history file and **verifies** each fingerprint survived the move, before either file is replaced. **Refuses outright** on a `STRUCTURE` finding, since a span that ends at the wrong line moves the wrong bytes and the fingerprint check cannot see it |
 | `.claude/rm-next.py` | the `RMn` allocator: scans `docs/` for every number, and **reserves** the next one by appending a `🔷 reserved` row to [RM_TOC.md](RM_TOC.md) under an advisory `flock`. `--dry-run` reads without claiming, `--list` shows standing reservations, `--release RMn` drops one |
 
-The kit's scripts default to `docs/FEEDBACK.md`, so they take this tree's documents from the environment:
+Since kit v0.1.118 they read this tree's documents from `.blueprints.toml`'s `[triage]` table (inbox,
+history, prefix, and the `RM` index with its scan root and reservations heading), so they run bare; the
+environment still outranks the table:
 
 ```bash
-export INBOX=docs/CONSUMER_SUGGESTIONS.md HISTORY=docs/CONSUMER_SUGGESTIONS_HISTORY.md PREFIX=S
 sh "$BLUEPRINTS_KIT/bin/py.sh" "$BLUEPRINTS_KIT/classes/triage/triage-state.py" --pending
 sh "$BLUEPRINTS_KIT/bin/py.sh" "$BLUEPRINTS_KIT/classes/triage/triage-archive.py" S14 S15
 ```
 
-**`.claude/triage-state.py` and `.claude/triage-archive.py` are byte-identical copies of the kit's**, kept
+**`.claude/triage-state.py`, `.claude/triage-archive.py` and `.claude/triage_conf.py` are byte-identical copies of the kit's**, kept
 only so CI, which has no kit, can lint the real documents (`schema/tests/test_triage_tools.py`). A test
-fails when either drifts from the kit a session runs; after the pin moves, copy the kit's over them.
-Never patch them: a change goes to the kit.
+fails when one drifts from the kit a session runs; after the pin moves, copy the kit's over them. Never
+patch them: a change goes to the kit. They are outside `ruff` (`pyproject.toml`), since formatting them
+would be the drift.
 
-**The allocator stays local until the kit's `item-next.py` can replace it here**, measured on
-2026-11-03. Pointed at this tree it reserves the same next number, but its scan counts only the lines
-that own an id (headings, reservation and tombstone rows, the changelog), so it misses RM3, RM18 and RM19,
-which live here only as index or table rows. And run without `INDEX`, `SCAN_DIR` and `ANCHOR` it would
-write its reservation into `docs/ROADMAP.md`. Both are filed on the kit.
+**The allocator stays local until the kit's `item-next.py` can replace it here**, measured again at
+v0.1.118. It now reads the index from the table and reserves the same next number, but it counts entry
+rows only in the index file itself, and this index is paged: its rows live in `RM_TOC_000_099.md` and the
+pages after it. So it still misses RM3, RM18 and RM19, and an item whose reservation was replaced by its
+page row before its heading was written would be invisible to it. Filed on the kit.
 
 **Run every one under Python, never `bash` it.** They carried a `.sh` extension until 2026-08-16 and
 the mismatch had a cost; §6 has it.
@@ -151,8 +153,7 @@ waiting is latency, and the cost of firing early is a reply to a half-written it
 
 The watcher says an uncommitted state it finds at start once that state has settled, but it knows
 nothing of items already committed and unanswered. Run the ledger once at startup to pick up the
-standing backlog (`K` and the environment as in §1, so the kit's copies read this tree's
-documents):
+standing backlog (the kit's copies read this tree's documents from the `[triage]` table):
 
 ```
 K="$BLUEPRINTS_KIT/classes/triage"

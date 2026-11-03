@@ -19,10 +19,12 @@ Verdicts:
     revised         marker, fingerprint moved -> the reporter edited an answered item, re-triage
     current         marker matches            -> nothing to do
 
-Configuration (environment, all optional):
+Configuration, all optional: the environment, else the clone's .blueprints.toml table [triage] (its keys the
+lower-case names, a path relative to the clone's root: #242), else the default:
     INBOX     path to the live document          (default <repo>/docs/FEEDBACK.md)
     HISTORY   path to the answered-items document (default alongside INBOX, *_HISTORY.md)
     PREFIX    item id prefix                     (default S, so `## S12 — …`)
+`--next` refuses, exit 3, when the inbox does not exist: an id counted over no documents is unknown (#241).
 
 Python, and named `.py` for it: run it or pass it to `python3`, never to `bash`. See the extension
 gotcha in classes/triage/LOOP.md § 5 — under bash this docstring is executed as commands.
@@ -38,35 +40,13 @@ import pathlib
 import re
 import sys
 
-PREFIX = os.environ.get("PREFIX", "S")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))  # triage_conf, beside this script
+import triage_conf as conf  # noqa: E402
 
-
-def _clone_docs(name: str) -> pathlib.Path:
-    """<the clone>/docs/NAME, the clone being the working directory's, at its main worktree: these scripts
-    run from the kit's copy, so their own location says nothing about the repository they serve (RM2), and
-    the inbox a reporter leaves uncommitted, and the watcher reads, is the shared checkout's, never a
-    linked worktree's committed copy. None outside a clone: the caller refuses when it needs the path."""
-    import subprocess
-
-    r = subprocess.run(["git", "worktree", "list", "--porcelain"], capture_output=True, text=True)
-    first = r.stdout.splitlines()[0] if r.returncode == 0 and r.stdout else ""
-    if not first.startswith("worktree "):
-        return None
-    return pathlib.Path(first[len("worktree "):]) / "docs" / name
-
-
-def _need(path: "pathlib.Path | None", var: str) -> pathlib.Path:
-    """PATH, or a refusal naming VAR when it could not be found: outside a clone, with VAR unset."""
-    if path is None:
-        sys.exit(f"{pathlib.Path(sys.argv[0]).name}: not in a git clone, and {var} is not set: run it in the "
-                 "repository, or set it")
-    return path
-
-
-_inbox = os.environ.get("INBOX") or _clone_docs("FEEDBACK.md")
-INBOX = pathlib.Path(_inbox).resolve() if _inbox else None
-HISTORY = (pathlib.Path(os.environ["HISTORY"]) if os.environ.get("HISTORY")
-           else INBOX.with_name(f"{INBOX.stem}_HISTORY{INBOX.suffix}") if INBOX else None)
+PREFIX = conf.text("PREFIX", "S")
+INBOX = conf.path("INBOX", "docs/FEEDBACK.md")
+HISTORY = conf.path("HISTORY", None) or (INBOX.with_name(f"{INBOX.stem}_HISTORY{INBOX.suffix}") if INBOX else None)
+_need = conf.need
 
 # A section is a top-level `## <PREFIX><n>` heading. `###` sub-headings fold into their parent: they
 # are part of what the reporter wrote, so they belong in the parent's fingerprint.
@@ -114,6 +94,28 @@ def fenced_lines(lines: list[str]) -> tuple[set[int], int | None]:
         if fence is not None:
             inside.add(i)
     return inside, opened_at
+
+
+MARKER_ANY_RE = re.compile(r"<!-- *triaged:")
+
+
+def marker_findings(lines: list[str]) -> list[str]:
+    """A `<!-- triaged: … -->` comment whose sha is not twelve hex characters, as a line of prose naming its section
+    (#244). The ledger cannot see it, so the section reads `unmarked-reply` and its reply is cut at the first
+    paragraph: said here, the mistake reads as a malformed marker rather than a missing one. One in a fenced block
+    is the reporter's own text and is left alone."""
+    fenced, _ = fenced_lines(lines)
+    out, section = [], "before the first item"
+    for i, line in enumerate(lines):
+        if i in fenced:
+            continue
+        head = SECTION_RE.match(line)
+        if head:
+            section = f"{PREFIX}{head.group(1)}"
+        elif MARKER_ANY_RE.search(line) and not MARKER_RE.search(line):
+            out.append(f"line {i + 1}: {section}'s triaged marker has no 12-hex sha, so the ledger cannot see it and the "
+                       "section reads unmarked: stamp it with the 12-character sha this ledger prints")
+    return out
 
 
 def fence_findings(lines: list[str]) -> list[str]:
@@ -334,6 +336,10 @@ def main() -> int:
 
     if "--next" in flags:
         _need(INBOX, "INBOX")
+        if not INBOX.is_file():  # an id counted over no documents is unknown, never 1: it may be taken (#241)
+            print(f"{pathlib.Path(sys.argv[0]).name}: the inbox {INBOX} does not exist ({conf.source('INBOX')}), so "
+                  "the next id is unknown; nothing handed out", file=sys.stderr)
+            return 3
         ident, seen = next_id()
         for name, top in sorted(seen.items()):
             print(f"{name}: highest {PREFIX}{top}", file=sys.stderr)
@@ -342,11 +348,11 @@ def main() -> int:
 
     doc = pathlib.Path(args[0]) if args else _need(INBOX, "INBOX")
     if not doc.is_file():
-        print(f"no such document: {doc}", file=sys.stderr)
+        print(f"no such document: {doc}" + ("" if args else f" ({conf.source('INBOX')})"), file=sys.stderr)
         return 2
 
     lines = doc.read_text().splitlines()
-    for complaint in fence_findings(lines):
+    for complaint in fence_findings(lines) + marker_findings(lines):
         print(f"STRUCTURE  {doc.name}:{complaint}", file=sys.stderr)
     covered = block_replies(lines)
     rows = [
